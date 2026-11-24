@@ -23,7 +23,10 @@ use sunrise_world::registry::BlockStateId;
 type Pos = (i32, i32, i32);
 
 /// Comparator input of a heart (`getAnalogOutputSignal`).
-pub(super) fn heart_signal(world: &sunrise_client::world::World, pos: BlockPos) -> Option<i32> {
+pub(in crate::game) fn heart_signal(
+    world: &sunrise_client::world::World,
+    pos: BlockPos,
+) -> Option<i32> {
     match world.block_entities.get(&(pos.x, pos.y, pos.z))? {
         BlockEntity::CreakingHeart(h) => Some(h.output_signal),
         _ => None,
@@ -192,7 +195,7 @@ impl Game<'_> {
     }
     /// After `Creaking.hurtServer` posts ENTITY_ACTION, check the live protector, let
     /// a player-credited hit reach the heart, then play the mob's hurt sound.
-    pub(super) fn creaking_hurt(&mut self, home: [i32; 3], id: u32, by_player: bool) {
+    pub(in crate::game) fn creaking_hurt(&mut self, home: [i32; 3], id: u32, by_player: bool) {
         let Some(join) = self.mob_object(id).map(|m| m.join) else {
             return;
         };
@@ -239,7 +242,7 @@ impl Game<'_> {
         }
     }
     /// `Creaking.tearDown`: the crumble particles.
-    pub(super) fn creaking_tear_down(&mut self, center: [f64; 3], spread: [f64; 3]) {
+    pub(in crate::game) fn creaking_tear_down(&mut self, center: [f64; 3], spread: [f64; 3]) {
         let registry = self.pack.assets.registry;
         let crumble = |this: &mut Self, name: &str, props: &[(&str, &str)], count: i32| {
             let Some(mut state) = registry
@@ -284,14 +287,14 @@ impl Game<'_> {
     /// death and a natural heart drops experience. `onExplosionHit` does the
     /// same for the creaking, and awards the experience only when its
     /// blast's indirect source is a player (`creaking_heart_broken_by`).
-    pub(super) fn creaking_heart_broken(&mut self, pos: [i32; 3], by_player: bool) {
+    pub(in crate::game) fn creaking_heart_broken(&mut self, pos: [i32; 3], by_player: bool) {
         let award = by_player && !self.creative && !self.spectator();
         self.creaking_heart_broken_by(pos, award);
     }
     /// `creaking_heart_broken` once the breaker is known: `award` is
     /// `tryAwardExperience`'s player check (a player who neither builds
     /// instantly, `preventsBlockDrops`, nor spectates).
-    pub(super) fn creaking_heart_broken_by(&mut self, pos: [i32; 3], award: bool) {
+    pub(in crate::game) fn creaking_heart_broken_by(&mut self, pos: [i32; 3], award: bool) {
         let key = (pos[0], pos[1], pos[2]);
         if !matches!(
             self.world.block_entities.get(&key),
@@ -341,7 +344,7 @@ impl Game<'_> {
     /// `CreakingHeartBlockEntity.serverTick` of the heart at `key`. Its slot
     /// stays while uprooted, so that a heart whose block went away is still
     /// found here and lets go of its protector.
-    pub(super) fn tick_creaking_heart(&mut self, key: Pos) -> Result<()> {
+    pub(in crate::game) fn tick_creaking_heart(&mut self, key: Pos) -> Result<()> {
         let Some((lease, BlockEntity::CreakingHeart(mut heart))) =
             self.world.block_entities.take(&key)
         else {
@@ -377,7 +380,7 @@ impl Game<'_> {
         Ok(())
     }
     /// `ServerLevel.isSpawningMonsters`.
-    pub(super) fn spawning_monsters(&self) -> bool {
+    pub(in crate::game) fn spawning_monsters(&self) -> bool {
         self.ui.difficulty != 0
             && self
                 .ui
@@ -392,7 +395,7 @@ impl Game<'_> {
     /// entity (`newBlockEntity`) the first time their chunk is seen lit.
     /// Only the chunks that arrived since are looked at: a server holds tens
     /// of thousands, and reading each one every tick cost milliseconds.
-    pub(super) fn scan_for_hearts(&mut self) {
+    pub(in crate::game) fn scan_for_hearts(&mut self) {
         if self
             .pack
             .assets
@@ -457,7 +460,7 @@ impl Game<'_> {
 
 /// What the creaking code remembers between ticks.
 #[derive(Default)]
-pub(super) struct CreakingState {
+pub(in crate::game) struct CreakingState {
     /// Chunks already scanned for heart blocks.
     scanned: sunrise_client::fast_hash::FxHashSet<(i32, i32)>,
     /// Resident chunks not scanned yet (not lit yet, or just arrived).
@@ -471,7 +474,7 @@ pub(super) struct CreakingState {
 impl CreakingState {
     /// Exchange the chunks scanned for creaking hearts with another level's
     /// (game/world/levels.rs).
-    pub(super) fn swap_level(&mut self, other: &mut Self) {
+    pub(in crate::game) fn swap_level(&mut self, other: &mut Self) {
         std::mem::swap(&mut self.scanned, &mut other.scanned);
         std::mem::swap(&mut self.unscanned, &mut other.unscanned);
         std::mem::swap(&mut self.revision, &mut other.revision);

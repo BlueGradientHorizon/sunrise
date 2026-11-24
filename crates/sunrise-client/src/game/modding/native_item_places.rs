@@ -95,7 +95,7 @@ impl Game<'_> {
     /// minecart's (the open menu's copy while one shows it, as `cart_slots`), a chest boat's, or
     /// a chested donkey's, mule's or llama's (`AbstractHorse.inventory`, `getInventoryColumns`
     /// rows of three). With where it stands, for what a split throws.
-    pub(super) fn edit_entity_slots<R>(
+    pub(in crate::game) fn edit_entity_slots<R>(
         &mut self,
         id: u32,
         edit: impl FnOnce(&mut [Option<ItemStack>], [f64; 3]) -> R,
@@ -179,7 +179,7 @@ impl Game<'_> {
     }
     /// How many slots the inventory of entity `entity` in the level in place has, as
     /// `entity_slots` reaches them: none for an entity without one, and on a client.
-    pub(super) fn entity_container_size(&self, entity: u32) -> Option<usize> {
+    pub(in crate::game) fn entity_container_size(&self, entity: u32) -> Option<usize> {
         self.entity_automation_size(entity).or_else(|| {
             let m = self
                 .mobs
@@ -191,7 +191,7 @@ impl Game<'_> {
     /// How many slots the container entity `entity` of the level in place shows automation
     /// (`EntitySelector.CONTAINER_ENTITY_SELECTOR`: chest and hopper minecarts, chest boats; a
     /// chested mount is not one): none for any other entity, and on a client.
-    pub(super) fn entity_automation_size(&self, entity: u32) -> Option<usize> {
+    pub(in crate::game) fn entity_automation_size(&self, entity: u32) -> Option<usize> {
         if self.remote.is_some() {
             return None;
         }
@@ -207,7 +207,7 @@ impl Game<'_> {
     /// seven (main hand, off hand, feet, legs, chest, head and body, by `EquipmentSlot`'s
     /// ordinal; the saddle is not automation's to move), none for any other entity, and on a
     /// client.
-    pub(super) fn entity_equipment_size(&self, entity: u32) -> Option<usize> {
+    pub(in crate::game) fn entity_equipment_size(&self, entity: u32) -> Option<usize> {
         // The handler must not exist on a client: the same gate every read
         // and write of a slot answers (`equipment_stack`).
         if !self.places_simulated() {
@@ -219,13 +219,13 @@ impl Game<'_> {
     }
     /// `EntityType.is(TagKey)`: whether `entity_type` (`minecraft:player`) is in the entity
     /// type tag `tag` (`minecraft:cannot_be_pushed_onto_boats`).
-    pub(super) fn entity_type_in_tag(&self, entity_type: &str, tag: &str) -> bool {
+    pub(in crate::game) fn entity_type_in_tag(&self, entity_type: &str, tag: &str) -> bool {
         self.entity_tag_matches(tag, entity_type)
     }
     /// Lend a native place's stack without encoding components. Reading a chest vehicle's
     /// `EntitySlot` unpacks its pending loot table without a player
     /// (`ContainerEntity.getChestVehicleItem`).
-    pub(super) fn game_stack(
+    pub(in crate::game) fn game_stack(
         &mut self,
         place: &ItemPlace,
         read: &mut dyn for<'a> FnMut(ItemStackView<'a>),
@@ -337,7 +337,7 @@ impl Game<'_> {
         (stack.count > 0).then_some(EquipmentRead::resident(stack))
     }
     /// Edit the resolved slot without going through an equipment setter or stopping item use.
-    pub(super) fn game_edit_stack(
+    pub(in crate::game) fn game_edit_stack(
         &mut self,
         place: &ItemPlace,
         tx: &TransactionContext,
@@ -531,7 +531,7 @@ impl Game<'_> {
     /// Runs the vanilla `ItemStack.onCraftedBy` effects for a stack a mod-delivered menu result
     /// owns. The stack mutation is journaled through the caller's transaction and the statistic
     /// is deferred until its root commit.
-    pub(super) fn game_on_crafted_by(
+    pub(in crate::game) fn game_on_crafted_by(
         &mut self,
         place: &ItemPlace,
         tx: &TransactionContext,
@@ -647,7 +647,7 @@ impl Game<'_> {
     /// commit; an entity slot's into the entity's other slots (`forHandlerIndex`). How much
     /// went: 0 where `game_stack` reads nothing for want of the place. In transaction
     /// `tx`, which keeps each place as it was. The player's screen follows with the tick's sync.
-    pub(super) fn game_insert(
+    pub(in crate::game) fn game_insert(
         &mut self,
         place: &ItemPlace,
         resource: &ItemStack,
@@ -796,7 +796,7 @@ impl Game<'_> {
     /// `ItemAccess.extract` at those places: up to `amount` of the item and components of
     /// `resource`, how many came out. An item entity emptied stays, empty, until the root commit
     /// removes it. A creative player's hand gives without losing any (`forInfiniteMaterials`).
-    pub(super) fn game_extract(
+    pub(in crate::game) fn game_extract(
         &mut self,
         place: &ItemPlace,
         resource: &ItemStack,
@@ -944,7 +944,7 @@ impl Game<'_> {
     }
     /// Drops `stack` at the middle of the block at `pos`, as a block entity's handler gives up
     /// what it can't put back.
-    pub(super) fn drop_at(&mut self, pos: [i32; 3], stack: ItemStack) {
+    pub(in crate::game) fn drop_at(&mut self, pos: [i32; 3], stack: ItemStack) {
         if self.entity_ids_exhausted() {
             return;
         }
@@ -956,7 +956,7 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-pub(super) mod tests {
+pub(in crate::game) mod tests {
     use super::super::BlockEntity;
     use super::super::api_values::TryIntoApi;
     use super::super::native_entity_refs::tests::with_game;
@@ -2947,7 +2947,7 @@ pub(super) mod tests {
     #[ignore = "daily"]
     fn player_slot_extract_matches_resident_damage_without_max_damage() {
         crate::game::in_own_process(
-            "game::native_item_places::tests::player_slot_extract_matches_resident_damage_without_max_damage",
+            "game::server_side::native_item_places::tests::player_slot_extract_matches_resident_damage_without_max_damage",
             || {
                 with_game(|game| {
                     open_to_lan(game);
@@ -3590,7 +3590,7 @@ pub(super) mod tests {
     #[ignore = "daily"]
     fn crafted_by_replaces_the_map_in_a_handler_backed_slot() {
         if crate::game::native_entity_refs::tests::run_fresh_cases(
-            "game::native_item_places::tests::crafted_by_replaces_the_map_in_a_handler_backed_slot",
+            "game::server_side::native_item_places::tests::crafted_by_replaces_the_map_in_a_handler_backed_slot",
             "SUNRISE_CRAFTED_BY_HANDLER_CASE",
             &["replace"],
         ) {
@@ -3634,7 +3634,7 @@ pub(super) mod tests {
     #[ignore = "daily"]
     fn crafted_by_refused_handler_write_drops_the_map_and_stat() {
         if crate::game::native_entity_refs::tests::run_fresh_cases(
-            "game::native_item_places::tests::crafted_by_refused_handler_write_drops_the_map_and_stat",
+            "game::server_side::native_item_places::tests::crafted_by_refused_handler_write_drops_the_map_and_stat",
             "SUNRISE_CRAFTED_BY_HANDLER_CASE",
             &["refuse"],
         ) {
@@ -3672,7 +3672,7 @@ pub(super) mod tests {
 
         const CASE: &str = "SUNRISE_CRAFTED_BY_PACKET_REFUSAL_CASE";
         if crate::game::native_entity_refs::tests::run_fresh_cases(
-            "game::native_item_places::tests::crafted_by_packet_refusal_returns_commit_refused_and_drops_map_and_stat",
+            "game::server_side::native_item_places::tests::crafted_by_packet_refusal_returns_commit_refused_and_drops_map_and_stat",
             CASE,
             &["exchange", "settle"],
         ) {

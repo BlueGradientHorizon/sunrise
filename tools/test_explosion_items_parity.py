@@ -19,7 +19,7 @@ except ImportError:
     import test_rust_parity as base
     import test_model_baking_parity as baking
 
-FIXTURE = 'game::explosion::tests::explosion_items_parity_fixture'
+FIXTURE = 'game::server_side::explosion::tests::explosion_items_parity_fixture'
 
 
 def cases():

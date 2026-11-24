@@ -429,7 +429,7 @@ mod tests {
     #[ignore = "daily"]
     fn a_client_lists_the_dragon_and_its_parts_in_a_box() {
         if super::super::tests::run_fresh_cases(
-            "game::native_entity_refs::dragon_query::tests::a_client_lists_the_dragon_and_its_parts_in_a_box",
+            "game::server_side::native_entity_refs::dragon_query::tests::a_client_lists_the_dragon_and_its_parts_in_a_box",
             "SUNRISE_CLIENT_ENTITY_BOX_QUERY_CHILD",
             &["client"],
         ) {

@@ -9,7 +9,7 @@ pub(in crate::game) use sunrise_gameplay::crash_save::CrashSave;
 impl Game<'_> {
     /// `MinecraftServer.runServer`'s finally: once startup begins, every exit
     /// stops and saves the server, including a failed init or tick.
-    pub(super) fn run_server_lifecycle(
+    pub(in crate::game) fn run_server_lifecycle(
         &mut self,
         dedicated: bool,
         run: impl FnOnce(&mut Self, &mut bool) -> Result<()>,
@@ -153,7 +153,7 @@ impl Game<'_> {
     /// open must never overwrite a world the server did not successfully adopt.
     /// The session lock is not that marker: it is installed before the prepared
     /// level, so tag reads work, and a save in that gap would write the placeholder.
-    pub(super) fn finish_server_save(
+    pub(in crate::game) fn finish_server_save(
         &mut self,
         crashed: bool,
         run_error: Option<&str>,

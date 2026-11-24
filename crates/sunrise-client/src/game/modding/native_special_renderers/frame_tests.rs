@@ -32,7 +32,7 @@ fn a_special_dropped_item_outlines_only_its_committed_world_vertices() {
     };
 
     crate::game::in_own_process(
-        "game::native_special_renderers::frame_tests::a_special_dropped_item_outlines_only_its_committed_world_vertices",
+        "game::client_side::native_special_renderers::frame_tests::a_special_dropped_item_outlines_only_its_committed_world_vertices",
         || {
             crate::game::native_entity_refs::tests::with_client_game(|game| {
                 install_special_stick(game);
@@ -216,7 +216,7 @@ const COUNT: u32 = 6;
 #[ignore = "daily"]
 fn a_special_renderer_is_never_asked_inside_a_lifted_pass() {
     crate::game::in_own_process(
-        "game::native_special_renderers::frame_tests::a_special_renderer_is_never_asked_inside_a_lifted_pass",
+        "game::client_side::native_special_renderers::frame_tests::a_special_renderer_is_never_asked_inside_a_lifted_pass",
         a_special_renderer_is_never_asked_inside_a_lifted_pass_isolated,
     );
 }

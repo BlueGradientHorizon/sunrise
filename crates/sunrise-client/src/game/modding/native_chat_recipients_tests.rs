@@ -395,7 +395,7 @@ fn dispatcher_say_filters_the_acting_guests_captured_copy() {
 #[test]
 #[ignore = "daily"]
 fn listener_commands_do_not_count_as_command_block_successes() {
-    let name = "game::native_chat_recipients_tests::listener_commands_do_not_count_as_command_block_successes";
+    let name = "game::server_side::native_chat_recipients_tests::listener_commands_do_not_count_as_command_block_successes";
     crate::game::in_own_process(name, || {
         let results = Arc::new(Mutex::new(Vec::new()));
         let mods = vec![mod_api::ModEntry::new(

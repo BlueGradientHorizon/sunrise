@@ -9,7 +9,7 @@ impl Game<'_> {
     /// that blocks attacks, from either hand, and has used it for the component's block delay.
     /// False while it uses nothing or another item. None for armor stands, the dragon and a
     /// stale handle.
-    pub(super) fn living_is_blocking(&self, living: LivingRef) -> Option<bool> {
+    pub(in crate::game) fn living_is_blocking(&self, living: LivingRef) -> Option<bool> {
         // How long the item in use has been used: a player's and a guest's use counts up from 0,
         // a mob's counter from 1.
         let target = self.native_living_read_target(living)?;

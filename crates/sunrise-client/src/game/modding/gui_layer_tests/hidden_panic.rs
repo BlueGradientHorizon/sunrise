@@ -13,7 +13,7 @@ use std::sync::Mutex;
 #[ignore = "daily"]
 fn a_panicking_hidden_status_replacement_leaves_other_rows() {
     if run_fresh_cases(
-        "game::gui_layer_tests::hidden_panic::a_panicking_hidden_status_replacement_leaves_other_rows",
+        "game::client_side::gui_layer_tests::hidden_panic::a_panicking_hidden_status_replacement_leaves_other_rows",
         "SUNRISE_HIDDEN_STATUS_PANIC_FIXTURE",
         &["run"],
     ) {

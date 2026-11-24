@@ -80,7 +80,7 @@ fn antenna_block_matrix(head: glam::Mat4, flowerbed_shift: bool) -> glam::Mat4 {
 impl Game<'_> {
     /// `ElderGuardianParticleGroup`: the ghostly elder guardian that swings
     /// up in front of the camera while the curse is laid, fading in and out.
-    pub(super) fn elder_apparition_geometry(&self, alpha: f64, out: &mut Vec<Vertex>) {
+    pub(in crate::game) fn elder_apparition_geometry(&self, alpha: f64, out: &mut Vec<Vertex>) {
         for &left in self.particles.elder_guardians() {
             self.elder_guardian_geometry(left, alpha, out);
         }
@@ -201,7 +201,7 @@ impl Game<'_> {
         cull_back_quads(out, first);
     }
     /// The blocks one mob holds or carries.
-    pub(super) fn mob_block_geometry(
+    pub(in crate::game) fn mob_block_geometry(
         &self,
         mob: &Mob,
         camera: glam::DVec3,
@@ -382,7 +382,7 @@ impl Game<'_> {
     /// `ItemInHandLayer`: both hands through the item model pipeline. World
     /// draws take the held-item tint, level lighting and the mob's GPU path
     /// when supported. GUI previews light the projected quads themselves.
-    pub(super) fn held_item_geometry(
+    pub(in crate::game) fn held_item_geometry(
         &self,
         mob: &Mob,
         camera: glam::DVec3,
@@ -526,7 +526,7 @@ impl Game<'_> {
     /// `CustomHeadLayer`: non-armour items worn in the head slot (carved
     /// pumpkins, mob skulls and player heads, or custom blocks) on players
     /// and mobs.
-    pub(super) fn head_item_geometry(
+    pub(in crate::game) fn head_item_geometry(
         &self,
         mob: &Mob,
         camera: glam::DVec3,

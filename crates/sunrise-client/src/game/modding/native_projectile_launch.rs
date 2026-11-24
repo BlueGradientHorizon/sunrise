@@ -8,7 +8,7 @@ use sunrise_client::{
 use sunrise_core::geometry::Vec3;
 
 impl Game<'_> {
-    pub(super) fn spawn_projectile_from_rotation(
+    pub(in crate::game) fn spawn_projectile_from_rotation(
         &mut self,
         owner: LivingRef,
         entity_type: &Identifier,
@@ -65,7 +65,7 @@ impl Game<'_> {
     /// inactive guest, so launch listeners see that player's identity, not the
     /// player currently swapped into Game. The shot's id; None when the guest
     /// can't be swapped in.
-    pub(super) fn spawn_owned_projectile(
+    pub(in crate::game) fn spawn_owned_projectile(
         &mut self,
         owner: Option<Target>,
         mut shot: Projectile,
@@ -88,7 +88,7 @@ impl Game<'_> {
 
 /// The thrown item projectile `entity_type` names, carrying `carried`:
 /// vanilla's throwables or a content thrown type. None for any other type.
-pub(super) fn thrown_projectile_kind(
+pub(in crate::game) fn thrown_projectile_kind(
     entity_type: &str,
     carried: &ItemStack,
 ) -> Option<ProjectileKind> {

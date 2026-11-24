@@ -18,7 +18,7 @@ It checks that the vertex counts match and reports median, p95 and p99 after war
 prepared resources on an optimized build:
 
 ```sh
-SUNRISE_TEST_RESOURCES=$PWD/.local/sunrise-client/26.3 cargo test --profile fast -p sunrise-client --lib -- --ignored --nocapture --exact game::native_special_renderers::cost_tests::special_item_draw_cost
+SUNRISE_TEST_RESOURCES=$PWD/.local/sunrise-client/26.3 cargo test --profile fast -p sunrise-client --lib -- --ignored --nocapture --exact game::client_side::native_special_renderers::cost_tests::special_item_draw_cost
 ```
 
 ## Historical: cached recipes

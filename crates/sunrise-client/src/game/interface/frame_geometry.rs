@@ -6,7 +6,7 @@ use sunrise_client::{gfx::CelestialBody, mobs::ModelNormals};
 
 impl Game<'_> {
     /// Stored local and remote display positions, keeping the furthest stage on each cell.
-    pub(super) fn crack_stages(&self) -> Vec<([i32; 3], u32)> {
+    pub(in crate::game) fn crack_stages(&self) -> Vec<([i32; 3], u32)> {
         let mut stages: Vec<([i32; 3], u32)> = Vec::new();
         let mut add = |pos: [i32; 3], stage: u32| match stages.iter_mut().find(|c| c.0 == pos) {
             Some(c) => c.1 = c.1.max(stage),
@@ -36,7 +36,7 @@ impl Game<'_> {
 
     /// `renderBlockDestroyAnimation`: eligible cells within 32 blocks of the camera,
     /// with each stage sprite's atlas origin. No hook is asked during extraction.
-    pub(super) fn cracks(&self, camera: glam::DVec3) -> Vec<([i32; 3], [f32; 2])> {
+    pub(in crate::game) fn cracks(&self, camera: glam::DVec3) -> Vec<([i32; 3], [f32; 2])> {
         let names = crack_stage_names(self.settings.improved_transparency);
         self.crack_stages()
             .into_iter()
@@ -61,7 +61,7 @@ impl Game<'_> {
     /// Returns the sun and moon quads with what each is (`celestial_bodies`), and the stars'
     /// frame and brightness (the renderer keeps their geometry, built once). The bodies fade
     /// with the rain (`rainBrightness = 1 - rainLevel`, their colour's alpha).
-    pub(super) fn celestial_geometry(
+    pub(in crate::game) fn celestial_geometry(
         &self,
         sky: &sunrise_client::environment::Sky,
         rain: f32,
@@ -87,7 +87,7 @@ impl Game<'_> {
         (out, bodies, stars)
     }
     /// `renderPlayerHand`: ask `RenderArmEvent` before submitting the default arm.
-    pub(super) fn first_person_arm(
+    pub(in crate::game) fn first_person_arm(
         &self,
         left: bool,
         m: glam::Mat4,
@@ -172,7 +172,7 @@ impl Game<'_> {
     /// both hands in view space, converted to camera-relative world space,
     /// and where the arm and each item start, with the `currentRenderedItemId`
     /// a shader pack reads for them.
-    pub(super) fn hand_geometry(&mut self, alpha: f64) -> (Vec<Vertex>, Vec<(u32, i32)>) {
+    pub(in crate::game) fn hand_geometry(&mut self, alpha: f64) -> (Vec<Vertex>, Vec<(u32, i32)>) {
         let mut out = Vec::new();
         let mut runs = Vec::new();
         // F1 hides both; a native HUD mode may keep the hands visible. The
@@ -474,7 +474,7 @@ impl Game<'_> {
         (out, runs)
     }
     /// WeatherEffectRenderer: rain and snow columns within the weather radius.
-    pub(super) fn weather_geometry(
+    pub(in crate::game) fn weather_geometry(
         &mut self,
         camera: glam::DVec3,
         alpha: f64,
@@ -668,7 +668,7 @@ fn crack_stage_names(improved_transparency: bool) -> &'static [&'static str; 10]
 /// The crack's sprite size (and stage 0's origin) the crumbling shaders read: of the set drawn,
 /// as a resource pack may replace one set and not the other (a 32x pack's `destroy_stage_*`
 /// beside vanilla's 16x `destroy_oit_stage_*`, #11164).
-pub(super) fn crumbling_sprite(
+pub(in crate::game) fn crumbling_sprite(
     sprites: &std::collections::HashMap<String, sunrise_client::hud::Rect>,
     improved_transparency: bool,
 ) -> [f32; 4] {

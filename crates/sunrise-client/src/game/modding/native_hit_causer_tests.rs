@@ -402,7 +402,7 @@ fn self_caused(game: &mut super::Game<'_>, seen: &Mutex<Vec<Seen>>) {
 fn a_hit_listener_reads_the_causer_at_each_damage_site() {
     const CASE: &str = "SUNRISE_TEST_HIT_CAUSERS";
     if run_fresh_cases(
-        "game::native_hit_causer_tests::a_hit_listener_reads_the_causer_at_each_damage_site",
+        "game::server_side::native_hit_causer_tests::a_hit_listener_reads_the_causer_at_each_damage_site",
         CASE,
         &[
             "projectile",

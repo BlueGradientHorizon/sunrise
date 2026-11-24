@@ -21,10 +21,10 @@ use {
     sunrise_world::{chunk::BlockState, level::flags},
 };
 
-pub(super) use sunrise_client_gameplay::command_block_screen::{
+pub(in crate::game) use sunrise_client_gameplay::command_block_screen::{
     Button, CommandBlockScreen, previous_y,
 };
-pub(super) use sunrise_gameplay::command_blocks::{
+pub(in crate::game) use sunrise_gameplay::command_blocks::{
     CommandBlockEdit, CommandBlockTransition, analog_signal, command_block_mut, conditional,
     facing_step, facing_yaw, mark_condition_met, offset, set_powered, state_of,
 };
@@ -33,14 +33,14 @@ type Pos = (i32, i32, i32);
 
 impl Game<'_> {
     /// `Player.canUseGameMasterBlocks`: creative with game master commands.
-    pub(super) fn can_use_game_master_blocks(&self) -> bool {
+    pub(in crate::game) fn can_use_game_master_blocks(&self) -> bool {
         self.creative && self.ui.registries.permission >= 2
     }
     /// `CommandBlock.useWithoutItem` on a server's client, which opens the
     /// screen itself (`Player.openCommandBlock`) while the server only
     /// answers the click: the block at `pos`, when it is a command block the
     /// player may edit.
-    pub(super) fn open_command_block_if_editable(&mut self, pos: Pos) {
+    pub(in crate::game) fn open_command_block_if_editable(&mut self, pos: Pos) {
         let is_command_block = self
             .block_state_at(pos)
             .is_some_and(|state| Mode::of_block(&state.name).is_some());
@@ -48,7 +48,7 @@ impl Game<'_> {
             self.open_command_block(pos);
         }
     }
-    pub(super) fn command_block(&self, pos: Pos) -> Option<&CommandBlock> {
+    pub(in crate::game) fn command_block(&self, pos: Pos) -> Option<&CommandBlock> {
         match self.world.block_entities.get(&pos)? {
             BlockEntity::CommandBlock(c) => Some(c),
             _ => None,
@@ -71,13 +71,13 @@ impl Game<'_> {
         self.with_level(|b, level, ticks| b.schedule_tick(level, ticks, at, 1));
     }
     /// `isAutomatic` of the command block at `pos`, before new data loads.
-    pub(super) fn command_block_auto(&self, pos: Pos) -> bool {
+    pub(in crate::game) fn command_block_auto(&self, pos: Pos) -> bool {
         self.command_block(pos).is_some_and(|c| c.auto)
     }
     /// `CommandBlockEntity.loadAdditional` with a level (`/setblock`, `/fill`,
     /// `/data`) ends with `setAutomatic`: a block that turned automatic, is
     /// not powered and is no chain block schedules its first tick.
-    pub(super) fn command_block_loaded(&mut self, pos: Pos, was_auto: bool) {
+    pub(in crate::game) fn command_block_loaded(&mut self, pos: Pos, was_auto: bool) {
         let Some(c) = self.command_block(pos) else {
             return;
         };
@@ -102,7 +102,7 @@ impl Game<'_> {
     /// `CommandBlockEditScreen.updateGui`: new data for the command block the
     /// edit screen shows refreshes its fields. The mode and conditional live in
     /// the block state here (vanilla's `CommandBlockEntity.Mode`).
-    pub(super) fn command_block_data_arrived(&mut self, pos: Pos) {
+    pub(in crate::game) fn command_block_data_arrived(&mut self, pos: Pos) {
         if self
             .command_block_screen
             .as_ref()
@@ -140,7 +140,7 @@ impl Game<'_> {
     /// `CommandBlock.setPlacedBy`: unless the item carried block entity data
     /// output tracking follows `send_command_feedback` and
     /// the block's own automatic flag; then the block takes the signal around it.
-    pub(super) fn command_block_placed(&mut self, pos: Pos, stack: Option<&ItemStack>) {
+    pub(in crate::game) fn command_block_placed(&mut self, pos: Pos, stack: Option<&ItemStack>) {
         let defaults = !stack.is_some_and(|stack| {
             stack.carries_component(
                 self.items().get(&stack.item),
@@ -178,7 +178,7 @@ impl Game<'_> {
     }
 
     /// `CommandBlock.tick`.
-    pub(super) fn command_block_tick(&mut self, pos: BlockPos) {
+    pub(in crate::game) fn command_block_tick(&mut self, pos: BlockPos) {
         let key = (pos.x, pos.y, pos.z);
         let Some(state) = self.block_state_at(key) else {
             return;
@@ -329,7 +329,7 @@ impl Game<'_> {
     /// `Commands.performPrefixedCommand` for a `BaseCommandBlock`: `command`
     /// from `source` at game master level, and how many of its results
     /// succeeded.
-    pub(super) fn run_as_game_master(&mut self, command: &str, source: Source) -> i32 {
+    pub(in crate::game) fn run_as_game_master(&mut self, command: &str, source: Source) -> i32 {
         // performPrefixedCommand: a leading slash is allowed.
         let line = command.strip_prefix('/').unwrap_or(command).to_owned();
         let outer = self.cmds.results.replace(Vec::new());
@@ -342,7 +342,11 @@ impl Game<'_> {
     /// `CloseableCommandBlockSource.sendSystemMessage`: the block's last
     /// output, stamped with the time. Nothing when it doesn't track output
     /// (`CommandSource.NULL`).
-    pub(super) fn command_block_output(&mut self, pos: Pos, format: impl FnOnce(Text) -> Text) {
+    pub(in crate::game) fn command_block_output(
+        &mut self,
+        pos: Pos,
+        format: impl FnOnce(Text) -> Text,
+    ) {
         if let Some(c) = command_block_mut(&mut self.world, pos)
             && c.track_output
         {
@@ -354,7 +358,7 @@ impl Game<'_> {
     /// (`BaseCommandBlock.acceptsSuccess`): its output while it tracks output
     /// and `send_command_feedback` is on. The operators' share is
     /// `broadcast_to_admins`.
-    pub(super) fn command_block_success(&mut self, pos: Pos, message: Text) {
+    pub(in crate::game) fn command_block_success(&mut self, pos: Pos, message: Text) {
         if self
             .ui
             .rules
@@ -365,7 +369,7 @@ impl Game<'_> {
     }
 
     /// `LocalPlayer.openCommandBlock`.
-    pub(super) fn open_command_block(&mut self, pos: Pos) {
+    pub(in crate::game) fn open_command_block(&mut self, pos: Pos) {
         let Some(block) = self.command_block(pos).cloned() else {
             return;
         };
@@ -376,7 +380,7 @@ impl Game<'_> {
         self.open_edit_screen(pos, None, block, mode, conditional(state));
     }
     /// The screen over `block`: a command block's at `pos`, or a minecart's.
-    pub(super) fn open_edit_screen(
+    pub(in crate::game) fn open_edit_screen(
         &mut self,
         pos: Pos,
         cart: Option<u32>,
@@ -404,12 +408,12 @@ impl Game<'_> {
         self.set_screen(Screen::CommandBlock);
         self.capture(false);
     }
-    pub(super) fn close_command_block(&mut self) {
+    pub(in crate::game) fn close_command_block(&mut self) {
         self.command_block_screen = None;
         self.set_screen(Screen::Playing);
         self.capture(true);
     }
-    pub(super) fn draw_command_block(&mut self, batch: &mut HudBatch) {
+    pub(in crate::game) fn draw_command_block(&mut self, batch: &mut HudBatch) {
         let Some(s) = self.command_block_screen.as_ref() else {
             self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
             self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
@@ -515,7 +519,7 @@ impl Game<'_> {
         sunrise_client::screen_draw::paint_tooltip(batch, atlas, &draws, tooltip);
     }
     /// The wheel over the suggestion list (`CommandSuggestions.mouseScrolled`).
-    pub(super) fn command_block_scroll(&mut self, amount: f32) -> bool {
+    pub(in crate::game) fn command_block_scroll(&mut self, amount: f32) -> bool {
         let mouse = (
             self.client.cursor.0.floor() as i32,
             self.client.cursor.1.floor() as i32,
@@ -525,11 +529,11 @@ impl Game<'_> {
             .is_some_and(|s| s.command.scroll(mouse, f64::from(amount)))
     }
     /// The command box's completion request for an `ask_server` node.
-    pub(super) fn command_block_suggestion_request(&mut self) -> Option<(i32, String)> {
+    pub(in crate::game) fn command_block_suggestion_request(&mut self) -> Option<(i32, String)> {
         self.command_block_screen.as_mut()?.command.take_request()
     }
     /// The server's completions for the command box's `ask_server` request.
-    pub(super) fn command_block_server_suggestions(
+    pub(in crate::game) fn command_block_server_suggestions(
         &mut self,
         id: i32,
         range: (usize, usize),
@@ -546,7 +550,7 @@ impl Game<'_> {
         s.command.server_suggestions(&m, &c, id, range, list);
         self.command_block_screen = Some(s);
     }
-    pub(super) fn command_block_click(&mut self) -> bool {
+    pub(in crate::game) fn command_block_click(&mut self) -> bool {
         let Some(mut s) = self.command_block_screen.take() else {
             return false;
         };
@@ -615,7 +619,7 @@ impl Game<'_> {
     /// then Enter is Done, Escape cancels, the rest edits the command.
     /// A key pressed on the command block screen, with the edit shortcut it
     /// makes and the text it types.
-    pub(super) fn command_block_key_code(
+    pub(in crate::game) fn command_block_key_code(
         &mut self,
         key: KeyCode,
         shortcut: Option<sunrise_client::clipboard::EditShortcut>,
@@ -668,7 +672,7 @@ impl Game<'_> {
         handled
     }
     /// Characters typed into the command box (`StringUtil.isAllowedChatCharacter`).
-    pub(super) fn command_block_type(&mut self, typed: &str) {
+    pub(in crate::game) fn command_block_type(&mut self, typed: &str) {
         let allowed: String = typed
             .chars()
             .filter(|&c| c != '\u{a7}' && c >= ' ' && c != '\u{7f}')
@@ -721,7 +725,7 @@ impl Game<'_> {
     }
     /// `ServerGamePacketListenerImpl.handleSetCommandBlock` for a guest: the
     /// block is edited only by a creative player with game master commands.
-    pub(super) fn lan_set_command_block(&mut self, conn: u32, p: play::SetCommandBlock) {
+    pub(in crate::game) fn lan_set_command_block(&mut self, conn: u32, p: play::SetCommandBlock) {
         let Some(g) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
             return;
         };
@@ -746,7 +750,7 @@ impl Game<'_> {
     /// `ServerPlayer.openCommandBlock`: the command block's data
     /// (`saveCustomOnly`) goes to the guest whose use opened it, as the
     /// chunk's update tag leaves it out and the edit screen shows it.
-    pub(super) fn lan_open_command_block(&mut self, conn: u32, pos: Pos) {
+    pub(in crate::game) fn lan_open_command_block(&mut self, conn: u32, pos: Pos) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
@@ -775,7 +779,7 @@ impl Game<'_> {
         );
     }
     /// What `handleSetCommandBlock` does once the player may edit the block.
-    pub(super) fn apply_command_block(&mut self, s: &CommandBlockEdit) {
+    pub(in crate::game) fn apply_command_block(&mut self, s: &CommandBlockEdit) {
         let pos = s.pos;
         let registry = self.pack.assets.registry;
         let Some(current) = self.block_state_at(pos) else {

@@ -6,7 +6,7 @@ use sunrise_client::custom_sky::{Conditions, Weather};
 
 /// The layers' eased brightness between frames, and when the last frame was.
 #[derive(Default)]
-pub(super) struct CustomSkyView {
+pub(in crate::game) struct CustomSkyView {
     state: sunrise_client::custom_sky::State,
     last: Option<std::time::Instant>,
 }
@@ -14,7 +14,7 @@ pub(super) struct CustomSkyView {
 impl Game<'_> {
     /// Fills the renderer's custom sky layers for this frame; `camera` is the eye's position.
     /// Nothing for the title screen, the Nether (it has no sky) or a sky a shader pack draws.
-    pub(super) fn custom_sky_frame(
+    pub(in crate::game) fn custom_sky_frame(
         &mut self,
         camera: [f64; 3],
         sky: &sunrise_client::environment::Sky,

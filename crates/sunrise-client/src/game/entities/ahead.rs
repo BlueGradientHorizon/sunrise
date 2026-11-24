@@ -150,7 +150,7 @@ impl ItemTables<'_> {
 
 /// `getEntityCollisions(entity, bounds.expandTowards(movement))`: the box around an item that its
 /// move reads others' boxes in (a block of slack for the next velocity).
-pub(super) fn reach(item: &ItemEntity) -> Aabb {
+pub(in crate::game) fn reach(item: &ItemEntity) -> Aabb {
     let v = item.velocity;
     item.bounds()
         .inflate(Vec3::new(v.x.abs() + 1.0, v.y.abs() + 1.0, v.z.abs() + 1.0))
@@ -158,10 +158,10 @@ pub(super) fn reach(item: &ItemEntity) -> Aabb {
 
 /// An item's move as its turn makes it: without physics (inside a block), alive, discarded, and
 /// its splashes.
-pub(super) type Moved = (bool, bool, bool, Vec<ItemSplash>);
+pub(in crate::game) type Moved = (bool, bool, bool, Vec<ItemSplash>);
 
 /// One item's move, worked out on a copy.
-pub(super) struct Ahead {
+pub(in crate::game) struct Ahead {
     moved: ItemEntity,
     result: Moved,
     /// What a merge before its turn can change: its count, age and pickup delay.
@@ -211,12 +211,12 @@ fn ahead() -> bool {
 }
 
 /// The moves worked out ahead, by the item's place in the loop.
-pub(super) struct Moves(Vec<Option<Ahead>>);
+pub(in crate::game) struct Moves(Vec<Option<Ahead>>);
 
 impl Moves {
     /// The moves of the items that will tick (`ticks`), on the helper threads; none while the
     /// parallel tick is off, for few items, or with a mod that could see an item's move.
-    pub(super) fn work_out(
+    pub(in crate::game) fn work_out(
         game: &Game,
         items: &[ItemEntity],
         obstacles: &ObstacleGrid,
@@ -262,7 +262,7 @@ impl Moves {
     /// Item `i`'s move, put in place, when it was worked out and no merge changed the item since.
     /// Under `SUNRISE_PARALLEL_TICK=verify` the move is made again at its turn, on a copy, and a
     /// difference is logged.
-    pub(super) fn take(
+    pub(in crate::game) fn take(
         &mut self,
         i: usize,
         item: &mut ItemEntity,

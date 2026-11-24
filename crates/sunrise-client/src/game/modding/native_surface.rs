@@ -364,7 +364,7 @@ fn query_friction(
 }
 
 impl Game<'_> {
-    pub(super) fn level_friction(
+    pub(in crate::game) fn level_friction(
         &self,
         level: LevelRef,
         pos: [i32; 3],
@@ -398,7 +398,7 @@ impl Game<'_> {
 
     /// The friction of `state` at `pos` under the boat `b` (`AbstractBoat.getGroundFriction`,
     /// `Leashable.angularFriction`), from `own`, the block's value.
-    pub(super) fn boat_friction(
+    pub(in crate::game) fn boat_friction(
         &self,
         b: &Boat,
         pos: BlockPos,
@@ -824,7 +824,7 @@ mod tests {
         use sunrise_client::chunk::Chunk;
 
         if run_fresh_cases(
-            "game::native_surface::tests::a_server_friction_part_reads_its_block_entitys_saved_material",
+            "game::server_side::native_surface::tests::a_server_friction_part_reads_its_block_entitys_saved_material",
             "SUNRISE_FRICTION_BLOCK_ENTITY_CHILD",
             &["server"],
         ) {

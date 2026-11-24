@@ -26,7 +26,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::explosion::tests::explosion_items_parity_fixture",
+    "test": "game::server_side::explosion::tests::explosion_items_parity_fixture",
     "path": "crates/sunrise-client/src/game/entities/explosion.rs",
     "reason": "requires prepared resources; tools/test_explosion_items_parity.py",
     "rationale": "Existing parity-harness step in tools/ci/ignored-tests/issue-2177.txt; #2177 supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
@@ -50,7 +50,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::functions::typed_state_range_read_tests::loaded_pack_direction_ranges_keep_full_and_filtered_domains",
+    "test": "game::server_side::functions::typed_state_range_read_tests::loaded_pack_direction_ranges_keep_full_and_filtered_domains",
     "path": "crates/sunrise-client/src/game/administration/functions/typed_state_range_tests.rs",
     "reason": "needs prepared resources, actual pack and scratch homes/cwd",
     "rationale": "Existing separately supplied input SUNRISE_TYPED_RANGE_PACK in tools/ci/ignored-tests/harness-inputs.txt; its dedicated workflow/harness must supply this input, which ordinary prepared resources do not contain. needs prepared resources, actual pack and scratch homes/cwd"
@@ -58,7 +58,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::functions::typed_state_range_read_tests::loaded_pack_state_ranges_match_typed_controls",
+    "test": "game::server_side::functions::typed_state_range_read_tests::loaded_pack_state_ranges_match_typed_controls",
     "path": "crates/sunrise-client/src/game/administration/functions/typed_state_range_tests.rs",
     "reason": "needs prepared resources, actual pack and scratch homes/cwd",
     "rationale": "Existing separately supplied input SUNRISE_TYPED_RANGE_PACK in tools/ci/ignored-tests/harness-inputs.txt; its dedicated workflow/harness must supply this input, which ordinary prepared resources do not contain. needs prepared resources, actual pack and scratch homes/cwd"
@@ -66,7 +66,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::levels::tests::an_old_chunk_saves_the_heights_its_new_neighbour_calculated",
+    "test": "game::server_side::levels::tests::an_old_chunk_saves_the_heights_its_new_neighbour_calculated",
     "path": "crates/sunrise-client/src/game/world/levels.rs",
     "reason": "needs SUNRISE_TEST_RESOURCES, a scratch SUNRISE_HOME and the constructed H077_OLD_WORLD",
     "rationale": "No harness exists. Plain known failure in tools/ci/ignored-tests/old-world.txt (#1028): the daily sunrise-client shard runs it with --include-ignored, and it fails at the absent H077_OLD_WORLD. Remove the row when a reproducible 1.20.4 generation recipe or the exact private CI fixture is provisioned."
@@ -74,7 +74,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::levels::tests::features_write_a_full_neighbour_only_through_its_sections",
+    "test": "game::server_side::levels::tests::features_write_a_full_neighbour_only_through_its_sections",
     "path": "crates/sunrise-client/src/game/world/levels.rs",
     "reason": "needs SUNRISE_TEST_RESOURCES, a scratch SUNRISE_HOME and the constructed H077_OLD_WORLD",
     "rationale": "No harness exists. Plain known failure in tools/ci/ignored-tests/old-world.txt (#1028): the daily sunrise-client shard runs it with --include-ignored, and it fails at the absent H077_OLD_WORLD. Remove the row when a reproducible 1.20.4 generation recipe or the exact private CI fixture is provisioned."
@@ -82,7 +82,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::levels::tests::the_overworld_cache_holds_the_edge_chunks_calculated_heights",
+    "test": "game::server_side::levels::tests::the_overworld_cache_holds_the_edge_chunks_calculated_heights",
     "path": "crates/sunrise-client/src/game/world/levels.rs",
     "reason": "needs SUNRISE_TEST_RESOURCES, a scratch SUNRISE_HOME and the constructed H077_OLD_WORLD",
     "rationale": "No harness exists. Plain known failure in tools/ci/ignored-tests/old-world.txt (#1028): the daily sunrise-client shard runs it with --include-ignored, and it fails at the absent H077_OLD_WORLD. Remove the row when a reproducible 1.20.4 generation recipe or the exact private CI fixture is provisioned."
@@ -114,7 +114,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::mod_api_host::attachment_membership_tests::attachment_entity_read_bench",
+    "test": "game::server_side::mod_api_host::attachment_membership_tests::attachment_entity_read_bench",
     "path": "crates/sunrise-client/src/game/modding/mod_api_host.rs",
     "reason": "manual attachment scaling benchmark; needs SUNRISE_TEST_RESOURCES",
     "rationale": "Opt-in measurement, not an ordinary daily correctness check: manual attachment scaling benchmark; needs SUNRISE_TEST_RESOURCES. Run by hand on an idle machine with the optimized profile and its explicitly requested inputs; all assertions remain in the test."
@@ -122,7 +122,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::native_block_entity_item_tests::timing_container_moves_beside_saved_data",
+    "test": "game::server_side::native_block_entity_item_tests::timing_container_moves_beside_saved_data",
     "path": "crates/sunrise-client/src/game/modding/native_block_entity_item_tests.rs",
     "reason": "needs prepared resources in SUNRISE_TEST_RESOURCES; runs in an isolated scratch process",
     "rationale": "Opt-in wall-clock measurement, not a daily correctness check: returns without measuring unless SUNRISE_JOURNAL_TIMING is set. Run by hand with SUNRISE_JOURNAL_TIMING=1 and SUNRISE_TEST_RESOURCES, using --ignored --exact --nocapture on its full test path; with_mod_parts runs the measurement in an isolated child process. All assertions remain in the test."
@@ -130,7 +130,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::native_block_entity_item_tests::timing_storage_against_items_across_barrel_cells",
+    "test": "game::server_side::native_block_entity_item_tests::timing_storage_against_items_across_barrel_cells",
     "path": "crates/sunrise-client/src/game/modding/native_block_entity_item_tests.rs",
     "reason": "needs prepared resources in SUNRISE_TEST_RESOURCES; runs in an isolated scratch process",
     "rationale": "Opt-in wall-clock measurement, not a daily correctness check: returns without measuring unless SUNRISE_STORAGE_TIMING is set. Run by hand with SUNRISE_STORAGE_TIMING=1 and SUNRISE_TEST_RESOURCES, using --ignored --exact --nocapture on its full test path; with_mod_parts runs the measurement in an isolated child process. All assertions remain in the test."
@@ -138,7 +138,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::native_goal_ticks::tests::mod_goal_tick_cost",
+    "test": "game::server_side::native_goal_ticks::tests::mod_goal_tick_cost",
     "path": "crates/sunrise-client/src/game/modding/native_goal_ticks/native_goal_ticks_tests.rs",
     "reason": "cost probe",
     "rationale": "Opt-in measurement, not an ordinary daily correctness check: cost probe. Run by hand on an idle machine with the optimized profile and its explicitly requested inputs; all assertions remain in the test."
@@ -202,7 +202,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::remote_vehicles::tests::steering_mount_control_matches_vanilla",
+    "test": "game::client_side::remote_vehicles::tests::steering_mount_control_matches_vanilla",
     "path": "crates/sunrise-client/src/game/network/remote_vehicles.rs",
     "reason": "requires prepared resources and the vanilla mount-control reference",
     "rationale": "Existing parity-harness step in tools/ci/ignored-tests/issue-2177.txt; #2177 supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
@@ -210,7 +210,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::special_attack_fixture::tests::special_attack_cases_without_world_startup",
+    "test": "game::server_side::special_attack_fixture::tests::special_attack_cases_without_world_startup",
     "path": "crates/sunrise-client/src/game/items/special_attack_fixture.rs",
     "reason": "needs prepared resources and SUNRISE_SPECIAL_ATTACK_CASES=INPUT,OUTPUT",
     "rationale": "Existing separately supplied input SUNRISE_SPECIAL_ATTACK_CASES in tools/ci/ignored-tests/harness-inputs.txt; its dedicated workflow/harness must supply this input, which ordinary prepared resources do not contain. needs prepared resources and SUNRISE_SPECIAL_ATTACK_CASES=INPUT,OUTPUT"
@@ -690,7 +690,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::native_special_renderers::cost_tests::special_item_draw_cost",
+    "test": "game::client_side::native_special_renderers::cost_tests::special_item_draw_cost",
     "path": "crates/sunrise-client/src/game/modding/native_special_renderers/cost_tests.rs",
     "reason": "measurement; needs SUNRISE_TEST_RESOURCES",
     "rationale": "Existing explicit manual runner by-hand in tools/ci/ignored-tests/manual-sunrise-client.txt: the per-draw cost table in docs/performance/special-item-renderers.md, run by hand with SUNRISE_TEST_RESOURCES, --profile fast --ignored --nocapture. Not selected by daily shards."
@@ -698,7 +698,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::campfire::block_entity_items_tests::block_entity_items_match_the_vanilla_cases",
+    "test": "game::server_side::campfire::block_entity_items_tests::block_entity_items_match_the_vanilla_cases",
     "path": "crates/sunrise-client/src/game/blocks/tests/block_entity_items_tests.rs",
     "reason": "run through tools/test_block_entity_item_geometry_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_block_entity_item_geometry_parity.py writes the cases and the vanilla oracle's answers and sets SUNRISE_BLOCK_ENTITY_ITEM_CASES/_OUT, without which the test panics, so it cannot run as a prepared-resource daily test."
@@ -746,7 +746,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::interactions::tests::interaction_negative_height_bounds_invert_downward_26_3",
+    "test": "game::client_side::interactions::tests::interaction_negative_height_bounds_invert_downward_26_3",
     "path": "crates/sunrise-client/src/game/items/interactions.rs",
     "reason": "run by tools/test_camera_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_camera_parity.py records the vanilla 26.3 camera parity witness into .local and runs this test against it through SUNRISE_CAMERA_PARITY_WITNESS, so no recorded vanilla data is committed."
@@ -754,7 +754,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::interactions::tests::interaction_unsynced_default_sync_and_pose_sync_seat_height_26_3",
+    "test": "game::client_side::interactions::tests::interaction_unsynced_default_sync_and_pose_sync_seat_height_26_3",
     "path": "crates/sunrise-client/src/game/items/interactions.rs",
     "reason": "run by tools/test_camera_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_camera_parity.py records the vanilla 26.3 camera parity witness into .local and runs this test against it through SUNRISE_CAMERA_PARITY_WITNESS, so no recorded vanilla data is committed."
@@ -922,7 +922,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::remote_camera::camera_mount_tests::a_spectated_rider_backs_off_by_its_living_vehicles_camera_distance",
+    "test": "game::client_side::remote_camera::camera_mount_tests::a_spectated_rider_backs_off_by_its_living_vehicles_camera_distance",
     "path": "crates/sunrise-client/src/game/network/tests/camera_mount_tests.rs",
     "reason": "run by tools/test_camera_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_camera_parity.py records the vanilla 26.3 camera mount witness into .local and runs this test against it through SUNRISE_CAMERA_MOUNT_WITNESS, so no recorded vanilla data is committed."
@@ -930,7 +930,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::remote_camera::camera_tests::a_spectated_sleeping_villager_shows_the_bed_view",
+    "test": "game::client_side::remote_camera::camera_tests::a_spectated_sleeping_villager_shows_the_bed_view",
     "path": "crates/sunrise-client/src/game/network/tests/remote_camera_tests.rs",
     "reason": "run by tools/test_camera_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_camera_parity.py records the vanilla 26.3 sleeping camera witness into .local and runs this test against it through SUNRISE_REMOTE_CAMERA_SLEEPING_DIR, so no recorded vanilla data is committed."
@@ -1002,7 +1002,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::text_displays::display_parity_tests::initial_start_min_value_and_duration_edge_cases_match_vanilla_26_3",
+    "test": "game::client_side::text_displays::display_parity_tests::initial_start_min_value_and_duration_edge_cases_match_vanilla_26_3",
     "path": "crates/sunrise-client/src/game/entities/text_displays/display_parity_tests.rs",
     "reason": "run by tools/test_displays_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_displays_parity.py records the vanilla 26.3 display witness into .local and runs this test against it through SUNRISE_DISPLAY_PARITY_WITNESS, so no recorded vanilla data is committed."
@@ -1010,7 +1010,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::text_displays::display_parity_tests::teleport_duration_unclamped_negative_same_target_and_rotation_match_vanilla_26_3",
+    "test": "game::client_side::text_displays::display_parity_tests::teleport_duration_unclamped_negative_same_target_and_rotation_match_vanilla_26_3",
     "path": "crates/sunrise-client/src/game/entities/text_displays/display_parity_tests.rs",
     "reason": "run by tools/test_displays_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_displays_parity.py records the vanilla 26.3 display witness into .local and runs this test against it through SUNRISE_DISPLAY_PARITY_WITNESS, so no recorded vanilla data is committed."
@@ -1018,7 +1018,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::text_displays::display_parity_tests::display_shadow_respects_pre_tick_and_invisibility_flag_26_3",
+    "test": "game::client_side::text_displays::display_parity_tests::display_shadow_respects_pre_tick_and_invisibility_flag_26_3",
     "path": "crates/sunrise-client/src/game/entities/text_displays/display_parity_tests.rs",
     "reason": "run by tools/test_displays_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_displays_parity.py records the vanilla 26.3 display witness into .local and runs this test against it through SUNRISE_DISPLAY_PARITY_WITNESS, so no recorded vanilla data is committed."
@@ -1026,7 +1026,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::text_displays::display_parity_tests::display_camera_angles_and_billboard_use_active_camera_not_player_26_3",
+    "test": "game::client_side::text_displays::display_parity_tests::display_camera_angles_and_billboard_use_active_camera_not_player_26_3",
     "path": "crates/sunrise-client/src/game/entities/text_displays/display_parity_tests.rs",
     "reason": "run by tools/test_displays_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_displays_parity.py records the vanilla 26.3 display witness into .local and runs this test against it through SUNRISE_DISPLAY_PARITY_WITNESS, so no recorded vanilla data is committed."
@@ -1034,7 +1034,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::text_displays::display_parity_tests::display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_3",
+    "test": "game::client_side::text_displays::display_parity_tests::display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_3",
     "path": "crates/sunrise-client/src/game/entities/text_displays/display_parity_tests.rs",
     "reason": "run by tools/test_displays_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_displays_parity.py records the vanilla 26.3 display witness into .local and runs this test against it through SUNRISE_DISPLAY_PARITY_WITNESS, so no recorded vanilla data is committed."
@@ -1042,7 +1042,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::text_displays::display_parity_tests::text_display_render_order_solid_split_and_see_through_sort_26_3",
+    "test": "game::client_side::text_displays::display_parity_tests::text_display_render_order_solid_split_and_see_through_sort_26_3",
     "path": "crates/sunrise-client/src/game/entities/text_displays/display_parity_tests.rs",
     "reason": "run by tools/test_displays_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_displays_parity.py records the vanilla 26.3 display witness into .local and runs this test against it through SUNRISE_DISPLAY_PARITY_WITNESS, so no recorded vanilla data is committed."
@@ -1050,7 +1050,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::text_displays::display_parity_tests::text_display_resolves_inline_player_head_profiles_26_3",
+    "test": "game::client_side::text_displays::display_parity_tests::text_display_resolves_inline_player_head_profiles_26_3",
     "path": "crates/sunrise-client/src/game/entities/text_displays/display_parity_tests.rs",
     "reason": "run by tools/test_displays_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_displays_parity.py records the vanilla 26.3 display witness into .local and runs this test against it through SUNRISE_DISPLAY_PARITY_WITNESS, so no recorded vanilla data is committed."
@@ -1058,7 +1058,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::text_displays::display_parity_tests::bold_missing_glyph_displays_and_block_display_83224_match_vanilla_26_3",
+    "test": "game::client_side::text_displays::display_parity_tests::bold_missing_glyph_displays_and_block_display_83224_match_vanilla_26_3",
     "path": "crates/sunrise-client/src/game/entities/text_displays/display_parity_tests.rs",
     "reason": "run by tools/test_displays_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_displays_parity.py records the vanilla 26.3 display witness into .local and runs this test against it through SUNRISE_DISPLAY_PARITY_WITNESS, so no recorded vanilla data is committed."
@@ -1066,7 +1066,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::text_displays::display_parity_tests::review_parity_witness_matches_vanilla_26_3",
+    "test": "game::client_side::text_displays::display_parity_tests::review_parity_witness_matches_vanilla_26_3",
     "path": "crates/sunrise-client/src/game/entities/text_displays/display_parity_tests.rs",
     "reason": "run by tools/test_displays_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_displays_parity.py records the vanilla 26.3 display witness into .local and runs this test against it through SUNRISE_DISPLAY_PARITY_WITNESS, so no recorded vanilla data is committed."
@@ -1202,7 +1202,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::lan::sources_tests::a_loaded_sulfur_cube_fuse_matches_the_pinned_oracle",
+    "test": "game::server_side::lan::sources_tests::a_loaded_sulfur_cube_fuse_matches_the_pinned_oracle",
     "path": "crates/sunrise-client/src/game/network/lan/sulfur_cube_meta_tests.rs",
     "reason": "run by tools/test_sulfur_cube_fuse_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_sulfur_cube_fuse_parity.py records the vanilla 26.3 sulfur cube fuse witnesses into .local and runs this test against them through SUNRISE_SULFUR_CUBE_FUSE_WITNESS_DIR, so no recorded vanilla data is committed."
@@ -1226,7 +1226,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::lan_pvp::arrow_hit_sound_tests::an_arrow_that_hurts_another_player_dings_its_shooter",
+    "test": "game::server_side::lan_pvp::arrow_hit_sound_tests::an_arrow_that_hurts_another_player_dings_its_shooter",
     "path": "crates/sunrise-client/src/game/network/lan_pvp.rs",
     "reason": "run by tools/test_arrow_hit_ding_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_arrow_hit_ding_parity.py records the vanilla 26.3 arrow-hit witness into .local and runs this test against it through SUNRISE_ARROW_HIT_DING_WITNESS, so no recorded vanilla data is committed."
@@ -1258,7 +1258,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::native_client_screens::client_screen_tests::done_on_an_unedited_book_sends_it_and_drops_its_filtered_text",
+    "test": "game::client_side::native_client_screens::client_screen_tests::done_on_an_unedited_book_sends_it_and_drops_its_filtered_text",
     "path": "crates/sunrise-client/src/game/interface/native_client_screens.rs",
     "reason": "run by tools/test_writable_book_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_writable_book_parity.py records the vanilla 26.3 writable-book witness into .local and runs this test against it through SUNRISE_WRITABLE_BOOK_WITNESS, so no recorded vanilla data is committed."
@@ -1402,7 +1402,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::persist::thrown_item_tests::a_moved_thrown_item_projectile_saves_its_loaded_item",
+    "test": "game::server_side::persist::thrown_item_tests::a_moved_thrown_item_projectile_saves_its_loaded_item",
     "path": "crates/sunrise-client/src/game/world/persist/thrown_item_tests.rs",
     "reason": "run by tools/test_thrown_item_save_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_thrown_item_save_parity.py records the vanilla 26.3 moved thrown-item save witness into .local and runs this test against it through SUNRISE_THROWN_ITEM_SAVE_WITNESS, so no recorded vanilla data is committed."

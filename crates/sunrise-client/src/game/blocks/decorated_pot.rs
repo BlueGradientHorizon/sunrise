@@ -16,7 +16,7 @@ use {
     sunrise_world::loot::{ContainerLootContext, LootData},
 };
 
-pub(super) const DECORATED_POT: &str = "minecraft:decorated_pot";
+pub(in crate::game) const DECORATED_POT: &str = "minecraft:decorated_pot";
 
 /// `DecoratedPotBlockEntity.WobbleStyle` ordinals.
 const WOBBLE_POSITIVE: i32 = 0;
@@ -26,7 +26,7 @@ const WOBBLE_NEGATIVE: i32 = 1;
 /// loot table, if any, is removed and `LootTable.fill` puts its roll in
 /// `item`. The roll draws from `LootTableSeed`, else the table's random
 /// sequence, else the level random (`LootContext.Builder.create`).
-pub(super) fn unpack_loot(
+pub(in crate::game) fn unpack_loot(
     tag: &mut Tag,
     loot: Option<&LootData>,
     random: &mut LegacyRandom,
@@ -92,12 +92,12 @@ pub(in crate::game) fn pot_data_in(
 impl Game<'_> {
     /// `DecoratedPotBlockEntity.saveAdditional` for commands: a pure view of
     /// the existing saved state. Unlike pot_tag, this never unpacks loot.
-    pub(super) fn pot_data(&self, pos: [i32; 3]) -> Option<Tag> {
+    pub(in crate::game) fn pot_data(&self, pos: [i32; 3]) -> Option<Tag> {
         pot_data_in(&self.world, self.res.facts(), pos)
     }
     /// `DecoratedPotBlockEntity.loadAdditional`: command edits and BlockInput
     /// loading write back to the same saved tag that live pot interactions use.
-    pub(super) fn set_pot_data(&mut self, pos: [i32; 3], input: &Tag) -> Option<bool> {
+    pub(in crate::game) fn set_pot_data(&mut self, pos: [i32; 3], input: &Tag) -> Option<bool> {
         let before = self.pot_data(pos)?;
         let mut input = input.clone();
         if let Tag::Compound(map) = &mut input {
@@ -116,7 +116,7 @@ impl Game<'_> {
     }
     /// The pot's saved tag at `pos` with its loot unpacked (a new one for a
     /// pot without), or None when no pot is there.
-    pub(super) fn pot_tag(&mut self, pos: [i32; 3]) -> Option<Tag> {
+    pub(in crate::game) fn pot_tag(&mut self, pos: [i32; 3]) -> Option<Tag> {
         let state = self.world.block(pos[0], pos[1], pos[2]);
         if &*self.res.facts().get(state).name != "minecraft:decorated_pot" {
             return None;
@@ -142,7 +142,7 @@ impl Game<'_> {
         Some(tag)
     }
     /// The pot's item or empty-hand method, on the captured block state.
-    pub(super) fn use_decorated_pot(
+    pub(in crate::game) fn use_decorated_pot(
         &mut self,
         pos: [i32; 3],
         state: sunrise_world::registry::BlockStateId,

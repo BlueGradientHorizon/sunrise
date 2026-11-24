@@ -17,7 +17,7 @@ except ImportError:
     import lab
     import test_rust_parity as base
 
-TESTS = 'game::lan::world_spawn_sync_tests::'
+TESTS = 'game::server_side::lan::world_spawn_sync_tests::'
 
 
 def main():

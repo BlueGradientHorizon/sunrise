@@ -286,7 +286,7 @@ fn display_shadow_respects_pre_tick_and_invisibility_flag_26_3() {
 #[ignore = "run by tools/test_displays_parity.py"]
 fn display_camera_angles_and_billboard_use_active_camera_not_player_26_3() {
     if run_fresh_cases(
-        "game::text_displays::display_parity_tests::display_camera_angles_and_billboard_use_active_camera_not_player_26_3",
+        "game::client_side::text_displays::display_parity_tests::display_camera_angles_and_billboard_use_active_camera_not_player_26_3",
         "SUNRISE_DISPLAY_CAMERA_ANGLES_CASE",
         &["camera_angles"],
     ) {
@@ -386,7 +386,7 @@ fn display_camera_angles_and_billboard_use_active_camera_not_player_26_3() {
 #[ignore = "daily"]
 fn no_culling_text_displays_are_not_frustum_culled_26_3() {
     if run_fresh_cases(
-        "game::text_displays::display_parity_tests::no_culling_text_displays_are_not_frustum_culled_26_3",
+        "game::client_side::text_displays::display_parity_tests::no_culling_text_displays_are_not_frustum_culled_26_3",
         "SUNRISE_DISPLAY_NO_CULLING_CASE",
         &["no_culling"],
     ) {
@@ -467,7 +467,7 @@ fn no_culling_text_displays_are_not_frustum_culled_26_3() {
 #[ignore = "run by tools/test_displays_parity.py"]
 fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_3() {
     if run_fresh_cases(
-        "game::text_displays::display_parity_tests::display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_3",
+        "game::client_side::text_displays::display_parity_tests::display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_3",
         "SUNRISE_DISPLAY_LIFECYCLE_CASE",
         &["lifecycle"],
     ) {
@@ -798,7 +798,7 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
 #[ignore = "run by tools/test_displays_parity.py"]
 fn text_display_render_order_solid_split_and_see_through_sort_26_3() {
     if run_fresh_cases(
-        "game::text_displays::display_parity_tests::text_display_render_order_solid_split_and_see_through_sort_26_3",
+        "game::client_side::text_displays::display_parity_tests::text_display_render_order_solid_split_and_see_through_sort_26_3",
         "SUNRISE_DISPLAY_RENDER_ORDER_CASE",
         &["render_order"],
     ) {
@@ -1007,7 +1007,7 @@ fn text_display_render_order_solid_split_and_see_through_sort_26_3() {
 #[ignore = "run by tools/test_displays_parity.py"]
 fn text_display_resolves_inline_player_head_profiles_26_3() {
     if run_fresh_cases(
-        "game::text_displays::display_parity_tests::text_display_resolves_inline_player_head_profiles_26_3",
+        "game::client_side::text_displays::display_parity_tests::text_display_resolves_inline_player_head_profiles_26_3",
         "SUNRISE_DISPLAY_INLINE_HEAD_CASE",
         &["inline_head"],
     ) {
@@ -1071,7 +1071,7 @@ fn text_display_resolves_inline_player_head_profiles_26_3() {
 #[ignore = "daily"]
 fn block_display_backface_culling_translucent_pass_and_light_emission_26_3() {
     if run_fresh_cases(
-        "game::text_displays::display_parity_tests::block_display_backface_culling_translucent_pass_and_light_emission_26_3",
+        "game::client_side::text_displays::display_parity_tests::block_display_backface_culling_translucent_pass_and_light_emission_26_3",
         "SUNRISE_DISPLAY_BLOCK_LIGHT_CASE",
         &["block_light"],
     ) {
@@ -1176,7 +1176,7 @@ fn block_display_backface_culling_translucent_pass_and_light_emission_26_3() {
 #[ignore = "daily"]
 fn display_name_tags_and_fire_block_light_match_vanilla_26_3() {
     if run_fresh_cases(
-        "game::text_displays::display_parity_tests::display_name_tags_and_fire_block_light_match_vanilla_26_3",
+        "game::client_side::text_displays::display_parity_tests::display_name_tags_and_fire_block_light_match_vanilla_26_3",
         "SUNRISE_DISPLAY_NAME_TAG_CASE",
         &["name_tag"],
     ) {
@@ -1302,7 +1302,7 @@ fn display_name_tags_and_fire_block_light_match_vanilla_26_3() {
     });
 }
 
-const SECTION_GATE_NAME: &str = "game::text_displays::display_parity_tests::section_compiled_and_visible_gates_displays_and_mobs_26_3";
+const SECTION_GATE_NAME: &str = "game::client_side::text_displays::display_parity_tests::section_compiled_and_visible_gates_displays_and_mobs_26_3";
 const SECTION_GATE_CASE: &str = "SUNRISE_DISPLAY_SECTION_GATE_CASE";
 
 #[test]
@@ -1439,7 +1439,7 @@ fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
 #[ignore = "run by tools/test_displays_parity.py"]
 fn bold_missing_glyph_displays_and_block_display_83224_match_vanilla_26_3() {
     if run_fresh_cases(
-        "game::text_displays::display_parity_tests::bold_missing_glyph_displays_and_block_display_83224_match_vanilla_26_3",
+        "game::client_side::text_displays::display_parity_tests::bold_missing_glyph_displays_and_block_display_83224_match_vanilla_26_3",
         "SUNRISE_DISPLAY_83224_CASE",
         &["bold_83224"],
     ) {
@@ -1644,7 +1644,7 @@ fn bold_missing_glyph_displays_and_block_display_83224_match_vanilla_26_3() {
 #[ignore = "daily"]
 fn set_camera_on_display_and_unbobbed_culling_match_vanilla_26_3() {
     if run_fresh_cases(
-        "game::text_displays::display_parity_tests::set_camera_on_display_and_unbobbed_culling_match_vanilla_26_3",
+        "game::client_side::text_displays::display_parity_tests::set_camera_on_display_and_unbobbed_culling_match_vanilla_26_3",
         "SUNRISE_DISPLAY_SET_CAMERA_CASE",
         &["set_camera"],
     ) {

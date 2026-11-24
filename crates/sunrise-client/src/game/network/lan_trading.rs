@@ -15,14 +15,14 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
 
 /// A guest's open trading screen.
 #[derive(Clone)]
-pub(super) struct GuestMerchant {
-    pub(super) window: i32,
+pub(in crate::game) struct GuestMerchant {
+    pub(in crate::game) window: i32,
     state: i32,
     /// The payment slots and the result.
-    pub(super) slots: [Option<ItemStack>; 3],
+    pub(in crate::game) slots: [Option<ItemStack>; 3],
     /// Persistent quick-craft (drag) state across rebuilt merchant menus.
-    pub(super) drag: QuickCraftDrag,
-    pub(super) merchant: Box<MerchantState>,
+    pub(in crate::game) drag: QuickCraftDrag,
+    pub(in crate::game) merchant: Box<MerchantState>,
     /// The offers the client was last sent.
     sent: Vec<merchant::MerchantOffer>,
     sent_level: i32,
@@ -43,7 +43,7 @@ fn uuid_words(uuid: u128) -> [i32; 4] {
 
 /// A villager whose profession the world's table cannot resolve (its mod is
 /// gone): its trades skip the result processing and its screen closes.
-pub(super) fn opaque_villager(
+pub(in crate::game) fn opaque_villager(
     professions: &sunrise_client::mobs::villager::ResolvedProfessions,
     species: sunrise_client::mobs::Species,
     profession: &sunrise_client::mobs::villager::ProfessionState,
@@ -54,7 +54,7 @@ pub(super) fn opaque_villager(
 
 /// How a merchant menu op runs: ordinary, a read-only probe on a copy, or a pickup with a
 /// stacked answer.
-pub(super) enum MerchantRun<'a> {
+pub(in crate::game) enum MerchantRun<'a> {
     Plain,
     Probe,
     Decided(Option<&'a sunrise_client::menu::StackedOutcome>),
@@ -62,7 +62,7 @@ pub(super) enum MerchantRun<'a> {
 
 impl Game<'_> {
     /// Development oracle: observe the actual open guest merchant, never a synthetic menu.
-    pub(super) fn harness_merchant(
+    pub(in crate::game) fn harness_merchant(
         &self,
         host: &super::lan::LanHost,
         conn: u32,
@@ -95,7 +95,7 @@ impl Game<'_> {
 
     /// A trading screen the guest's interaction opened (it opened as a
     /// station while the guest acted): handed to the guest.
-    pub(super) fn lan_open_merchant(&mut self, conn: u32, mut state: MerchantState) {
+    pub(in crate::game) fn lan_open_merchant(&mut self, conn: u32, mut state: MerchantState) {
         let Some(uuid) = self
             .lan
             .as_ref()
@@ -202,7 +202,7 @@ impl Game<'_> {
         out.insert("insertion".into(), Tag::String(text.as_str().into()));
         Tag::Compound(out)
     }
-    pub(super) fn lan_send_offers(&mut self, conn: u32, gm: &mut GuestMerchant) {
+    pub(in crate::game) fn lan_send_offers(&mut self, conn: u32, gm: &mut GuestMerchant) {
         if let Some(host) = self.lan.as_mut() {
             Self::send_merchant_offers(&mut host.hub, conn, gm);
         }
@@ -255,7 +255,7 @@ impl Game<'_> {
         gm.sent_level = s.level;
         gm.sent_xp = s.xp;
     }
-    pub(super) fn lan_send_merchant_content(&mut self, conn: u32, gm: &mut GuestMerchant) {
+    pub(in crate::game) fn lan_send_merchant_content(&mut self, conn: u32, gm: &mut GuestMerchant) {
         if let Some(host) = self.lan.as_mut() {
             let Some(gi) = host.hub.guests.iter().position(|g| g.conn == conn) else {
                 return;
@@ -281,7 +281,7 @@ impl Game<'_> {
     }
 
     /// `lan_merchant_op`, run as a decision asks (see `MerchantRun`).
-    pub(super) fn lan_merchant_op_with(
+    pub(in crate::game) fn lan_merchant_op_with(
         &mut self,
         conn: u32,
         window: Option<i32>,
@@ -398,7 +398,7 @@ impl Game<'_> {
         true
     }
     /// Execute only on a detached menu. The caller decides if and when to publish it.
-    pub(super) fn read_merchant_menu(
+    pub(in crate::game) fn read_merchant_menu(
         &self,
         conn: u32,
         gm: &GuestMerchant,
@@ -480,7 +480,7 @@ impl Game<'_> {
     }
 
     /// Close an open merchant whose profession became unresolved, returning inputs.
-    pub(super) fn close_opaque_merchant(&mut self, id: u32) {
+    pub(in crate::game) fn close_opaque_merchant(&mut self, id: u32) {
         if self
             .station
             .as_ref()
@@ -511,7 +511,11 @@ impl Game<'_> {
     }
 
     /// A container click on the guest's trading window.
-    pub(super) fn lan_merchant_click_plain(&mut self, conn: u32, p: &play::ContainerClick) -> bool {
+    pub(in crate::game) fn lan_merchant_click_plain(
+        &mut self,
+        conn: u32,
+        p: &play::ContainerClick,
+    ) -> bool {
         let input = match p.input {
             0 => Input::Pickup,
             1 => Input::QuickMove,
@@ -601,7 +605,7 @@ impl Game<'_> {
         handled
     }
     /// ServerboundSelectTradePacket: the selection hint, then tryMoveItems.
-    pub(super) fn lan_select_trade(&mut self, conn: u32, index: i32) {
+    pub(in crate::game) fn lan_select_trade(&mut self, conn: u32, index: i32) {
         let Ok(index) = usize::try_from(index) else {
             return;
         };
@@ -627,11 +631,11 @@ impl Game<'_> {
     }
     /// The guest closed the trading window (or it is closed for them):
     /// MerchantMenu.removed, then the villager gets its state back.
-    pub(super) fn lan_merchant_closed(&mut self, conn: u32, window: Option<i32>) -> bool {
+    pub(in crate::game) fn lan_merchant_closed(&mut self, conn: u32, window: Option<i32>) -> bool {
         self.lan_merchant_removed(conn, window, super::lan_crafting::MenuRemoval::Live)
     }
 
-    pub(super) fn lan_merchant_removed(
+    pub(in crate::game) fn lan_merchant_removed(
         &mut self,
         conn: u32,
         window: Option<i32>,
@@ -686,7 +690,7 @@ impl Game<'_> {
     }
     /// `Merchant.stillValid` for a trader: it is alive and the guest is within
     /// the entity interaction range plus 4 of its box.
-    pub(super) fn lan_merchant_valid(
+    pub(in crate::game) fn lan_merchant_valid(
         &self,
         g: &sunrise_client::lan::guest::Guest,
         id: u32,
@@ -702,7 +706,7 @@ impl Game<'_> {
         })
     }
     /// `ServerPlayer.tick`: broadcast menu changes before checking `stillValid`.
-    pub(super) fn lan_merchant_tick(&mut self) {
+    pub(in crate::game) fn lan_merchant_tick(&mut self) {
         let changes: Vec<_> =
             self.lan
                 .as_ref()
@@ -760,7 +764,7 @@ impl Game<'_> {
     }
     /// `Villager.updateSpecialPrices` notifies the current buyer's menu only if
     /// offers exist. `MerchantContainer.updateSellItem` only makes a sound with payment.
-    pub(super) fn villager_trade_will_notify(&self, id: u32, uuid: [i32; 4]) -> bool {
+    pub(in crate::game) fn villager_trade_will_notify(&self, id: u32, uuid: [i32; 4]) -> bool {
         if self.level.player_uuid == Some(uuid)
             && let Some(station) = &self.station
             && station
@@ -793,7 +797,7 @@ impl Game<'_> {
     }
 
     /// Refresh open guest prices after the actual villager reputation event.
-    pub(super) fn lan_merchant_reputation(
+    pub(in crate::game) fn lan_merchant_reputation(
         &mut self,
         id: u32,
         only: Option<[i32; 4]>,
@@ -880,7 +884,11 @@ impl Game<'_> {
     }
     /// Takes a station a guest's action opened: a trading screen or a
     /// workstation menu goes to the guest (game/network/lan_stations.rs).
-    pub(super) fn lan_station_opened(&mut self, conn: u32, station: super::stations::Station) {
+    pub(in crate::game) fn lan_station_opened(
+        &mut self,
+        conn: u32,
+        station: super::stations::Station,
+    ) {
         let mut station = station;
         if station.kind == StationKind::Merchant
             && let Some(m) = station.merchant.take()
@@ -894,11 +902,11 @@ impl Game<'_> {
 
 impl Game<'_> {
     /// The guest whose trading screen is open on mob `mob`.
-    pub(super) fn lan_trade_conn(&self, mob: u32) -> Option<u32> {
+    pub(in crate::game) fn lan_trade_conn(&self, mob: u32) -> Option<u32> {
         self.lan_trade_screen(mob).map(|(conn, _)| conn)
     }
     /// The live trading screen and its guest, even during a borrowed guest turn.
-    pub(super) fn lan_trade_screen(&self, mob: u32) -> Option<(u32, &GuestMerchant)> {
+    pub(in crate::game) fn lan_trade_screen(&self, mob: u32) -> Option<(u32, &GuestMerchant)> {
         let host = self.lan.as_ref()?;
         host.menus.iter().find_map(|(&conn, state)| {
             let screen = state.merchant.as_ref()?;
@@ -907,18 +915,18 @@ impl Game<'_> {
     }
     /// The live session of a guest's open trading screen, whose offers,
     /// experience and level are newer than the mob's until the screen closes.
-    pub(super) fn lan_trade_session(&self, conn: u32) -> Option<&merchant::Session> {
+    pub(in crate::game) fn lan_trade_session(&self, conn: u32) -> Option<&merchant::Session> {
         let gm = self.lan.as_ref()?.menus.get(&conn)?.merchant.as_ref()?;
         Some(&gm.merchant.session)
     }
     /// The guest's player UUID.
-    pub(super) fn lan_trade_player(&self, conn: u32) -> Option<u128> {
+    pub(in crate::game) fn lan_trade_player(&self, conn: u32) -> Option<u128> {
         Some(self.lan.as_ref()?.hub.guest(conn)?.uuid)
     }
     /// Changes the session of a guest's open trading screen and sends the
     /// client its offers and result slot again. The merchant's own random is
     /// not drawn: the update sound is held back.
-    pub(super) fn lan_trade_edit(
+    pub(in crate::game) fn lan_trade_edit(
         &mut self,
         conn: u32,
         edit: impl FnOnce(&mut merchant::Session),
@@ -1322,7 +1330,7 @@ mod tests {
     #[ignore = "daily"]
     fn a_merchant_edit_reaches_the_guest_trading_with_it() {
         if crate::game::native_entity_refs::tests::run_fresh_cases(
-            "game::lan_trading::tests::a_merchant_edit_reaches_the_guest_trading_with_it",
+            "game::server_side::lan_trading::tests::a_merchant_edit_reaches_the_guest_trading_with_it",
             "SUNRISE_MERCHANT_EDIT_CHILD",
             &["game"],
         ) {

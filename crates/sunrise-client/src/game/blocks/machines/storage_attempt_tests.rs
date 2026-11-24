@@ -421,7 +421,7 @@ fn item_capability_presence_does_not_open_loot_or_load_chunks() {
     use sunrise_core::nbt::Tag;
 
     if run_fresh_cases(
-        "game::machines::native_items::storage_attempt_tests::item_capability_presence_does_not_open_loot_or_load_chunks",
+        "game::server_side::machines::native_items::storage_attempt_tests::item_capability_presence_does_not_open_loot_or_load_chunks",
         "SUNRISE_ITEM_PRESENCE_CHILD",
         &["server", "client"],
     ) {
@@ -561,7 +561,7 @@ fn a_committed_pot_write_in_another_level_survives_the_parent_abort() {
     use sunrise_core::nbt::Tag;
 
     if run_fresh_cases(
-        "game::machines::native_items::storage_attempt_tests::a_committed_pot_write_in_another_level_survives_the_parent_abort",
+        "game::server_side::machines::native_items::storage_attempt_tests::a_committed_pot_write_in_another_level_survives_the_parent_abort",
         "SUNRISE_CROSS_LEVEL_SAVED_POT_CHILD",
         &["server"],
     ) {
@@ -640,7 +640,7 @@ fn block_capabilities_contain_panics_under_the_provider_owner() {
     const DISCOVERY: [i32; 3] = [1, 64, 0];
     const CONSTRUCTION: [i32; 3] = [2, 64, 0];
     if run_fresh_cases(
-        "game::machines::native_items::storage_attempt_tests::block_capabilities_contain_panics_under_the_provider_owner",
+        "game::server_side::machines::native_items::storage_attempt_tests::block_capabilities_contain_panics_under_the_provider_owner",
         FLAG,
         &["client", "server"],
     ) {
@@ -802,7 +802,7 @@ fn aborting_a_pot_insert_restores_its_named_loot_sequence() {
     use sunrise_world::loot::{LootData, PackOverlay};
 
     default_fixture(
-        "game::machines::native_items::storage_attempt_tests::aborting_a_pot_insert_restores_its_named_loot_sequence",
+        "game::server_side::machines::native_items::storage_attempt_tests::aborting_a_pot_insert_restores_its_named_loot_sequence",
         |game| {
             const TABLE: &str = "test:pot";
             const SEQUENCE: &str = "test:pot_storage";
@@ -896,7 +896,7 @@ fn aborting_a_pot_insert_restores_its_named_loot_sequence() {
 #[ignore = "daily"]
 fn hopper_respects_a_mod_container_only_when_empty_rule() {
     default_fixture(
-        "game::machines::native_items::storage_attempt_tests::hopper_respects_a_mod_container_only_when_empty_rule",
+        "game::server_side::machines::native_items::storage_attempt_tests::hopper_respects_a_mod_container_only_when_empty_rule",
         |game| {
             place(game, HOPPER, "minecraft:hopper");
             hopper(
@@ -1020,7 +1020,7 @@ fn count(game: &Game<'_>, pos: Pos, slot: usize) -> u32 {
 #[ignore = "daily"]
 fn blocked_pull_ticks_extract_abort_restore_without_hopper_mark_or_cooldown() {
     fixture(
-        "game::machines::native_items::storage_attempt_tests::blocked_pull_ticks_extract_abort_restore_without_hopper_mark_or_cooldown",
+        "game::server_side::machines::native_items::storage_attempt_tests::blocked_pull_ticks_extract_abort_restore_without_hopper_mark_or_cooldown",
         |game, _, probe| {
             blocked_hopper(game);
             place(game, BELOW, "minecraft:bedrock");
@@ -1068,7 +1068,7 @@ fn blocked_pull_ticks_extract_abort_restore_without_hopper_mark_or_cooldown() {
 #[ignore = "daily"]
 fn blocked_push_ticks_share_one_abort_and_restore_refused_source_slots() {
     fixture(
-        "game::machines::native_items::storage_attempt_tests::blocked_push_ticks_share_one_abort_and_restore_refused_source_slots",
+        "game::server_side::machines::native_items::storage_attempt_tests::blocked_push_ticks_share_one_abort_and_restore_refused_source_slots",
         |game, _, probe| {
             hopper(
                 game,
@@ -1145,7 +1145,7 @@ fn blocked_push_ticks_share_one_abort_and_restore_refused_source_slots() {
 #[ignore = "daily"]
 fn push_then_pull_commit_in_one_tick_with_only_the_ordered_hopper_marks() {
     fixture(
-        "game::machines::native_items::storage_attempt_tests::push_then_pull_commit_in_one_tick_with_only_the_ordered_hopper_marks",
+        "game::server_side::machines::native_items::storage_attempt_tests::push_then_pull_commit_in_one_tick_with_only_the_ordered_hopper_marks",
         |game, _, probe| {
             hopper(game, vec![Some(ItemStack::new("minecraft:stone", 64)); 5]);
             storage(game, BELOW, vec![None; 2]);
@@ -1213,7 +1213,7 @@ fn push_then_pull_commit_in_one_tick_with_only_the_ordered_hopper_marks() {
 #[ignore = "daily"]
 fn pull_chooses_the_first_slot_after_extract_and_not_an_existing_stack() {
     fixture(
-        "game::machines::native_items::storage_attempt_tests::pull_chooses_the_first_slot_after_extract_and_not_an_existing_stack",
+        "game::server_side::machines::native_items::storage_attempt_tests::pull_chooses_the_first_slot_after_extract_and_not_an_existing_stack",
         |game, _, probe| {
             blocked_hopper(game);
             place(game, BELOW, "minecraft:bedrock");
@@ -1279,7 +1279,7 @@ fn pull_chooses_the_first_slot_after_extract_and_not_an_existing_stack() {
 #[ignore = "daily"]
 fn full_storage_and_fully_stacked_hopper_are_the_only_capacity_shortcuts() {
     fixture(
-        "game::machines::native_items::storage_attempt_tests::full_storage_and_fully_stacked_hopper_are_the_only_capacity_shortcuts",
+        "game::server_side::machines::native_items::storage_attempt_tests::full_storage_and_fully_stacked_hopper_are_the_only_capacity_shortcuts",
         |game, _, probe| {
             hopper(game, vec![Some(ItemStack::new("minecraft:stone", 64)); 5]);
             storage(
@@ -1315,7 +1315,7 @@ fn full_storage_and_fully_stacked_hopper_are_the_only_capacity_shortcuts() {
 #[ignore = "daily"]
 fn dropper_commits_refused_insertion_and_its_storage_notifications() {
     fixture(
-        "game::machines::native_items::storage_attempt_tests::dropper_commits_refused_insertion_and_its_storage_notifications",
+        "game::server_side::machines::native_items::storage_attempt_tests::dropper_commits_refused_insertion_and_its_storage_notifications",
         |game, _, probe| {
             place(game, HOPPER, "minecraft:dropper");
             let state = game.world.block(8, 64, 8);
@@ -1382,7 +1382,7 @@ fn dropper_commits_refused_insertion_and_its_storage_notifications() {
 #[ignore = "daily"]
 fn vanilla_container_provider_and_entity_never_ask_their_storage() {
     fixture(
-        "game::machines::native_items::storage_attempt_tests::vanilla_container_provider_and_entity_never_ask_their_storage",
+        "game::server_side::machines::native_items::storage_attempt_tests::vanilla_container_provider_and_entity_never_ask_their_storage",
         |game, _, probe| {
             use crate::game::minecarts::{CartKind, Minecart};
             for target in ["minecraft:chest", "minecraft:composter", "minecraft:air"] {
@@ -1431,7 +1431,7 @@ fn vanilla_container_provider_and_entity_never_ask_their_storage() {
 #[ignore = "daily"]
 fn failed_block_pull_stops_but_minecart_falls_back_to_item_entities() {
     fixture(
-        "game::machines::native_items::storage_attempt_tests::failed_block_pull_stops_but_minecart_falls_back_to_item_entities",
+        "game::server_side::machines::native_items::storage_attempt_tests::failed_block_pull_stops_but_minecart_falls_back_to_item_entities",
         |game, _, probe| {
             use crate::game::minecarts::{CartKind, Minecart};
             storage(
@@ -1463,7 +1463,7 @@ fn failed_block_pull_stops_but_minecart_falls_back_to_item_entities() {
 #[ignore = "daily"]
 fn nontransactional_storage_loses_a_blocked_extraction_on_abort() {
     fixture(
-        "game::machines::native_items::storage_attempt_tests::nontransactional_storage_loses_a_blocked_extraction_on_abort",
+        "game::server_side::machines::native_items::storage_attempt_tests::nontransactional_storage_loses_a_blocked_extraction_on_abort",
         |game, _, probe| {
             blocked_hopper(game);
             place(game, BELOW, "minecraft:bedrock");
@@ -1495,7 +1495,7 @@ fn nontransactional_storage_loses_a_blocked_extraction_on_abort() {
 #[ignore = "daily"]
 fn extract_notifications_cross_signal_each_tick_and_comparator_ticks_every_second_tick() {
     fixture(
-        "game::machines::native_items::storage_attempt_tests::extract_notifications_cross_signal_each_tick_and_comparator_ticks_every_second_tick",
+        "game::server_side::machines::native_items::storage_attempt_tests::extract_notifications_cross_signal_each_tick_and_comparator_ticks_every_second_tick",
         |game, _, probe| {
             use sunrise_core::ticks::TickTypeId;
             use sunrise_world::level::LevelAccess as _;
@@ -1607,7 +1607,7 @@ fn extract_notifications_cross_signal_each_tick_and_comparator_ticks_every_secon
 #[ignore = "daily"]
 fn a_blocked_pull_slot_aborts_before_the_next_slot_commits() {
     fixture(
-        "game::machines::native_items::storage_attempt_tests::a_blocked_pull_slot_aborts_before_the_next_slot_commits",
+        "game::server_side::machines::native_items::storage_attempt_tests::a_blocked_pull_slot_aborts_before_the_next_slot_commits",
         |game, _, probe| {
             blocked_hopper(game);
             place(game, BELOW, "minecraft:bedrock");
@@ -1656,7 +1656,7 @@ fn a_blocked_pull_slot_aborts_before_the_next_slot_commits() {
 #[ignore = "daily"]
 fn pushes_use_only_the_opposite_face_for_each_hopper_facing() {
     fixture(
-        "game::machines::native_items::storage_attempt_tests::pushes_use_only_the_opposite_face_for_each_hopper_facing",
+        "game::server_side::machines::native_items::storage_attempt_tests::pushes_use_only_the_opposite_face_for_each_hopper_facing",
         |game, _, probe| {
             place(game, ABOVE, "minecraft:bedrock");
             let base = game.world.block(8, 64, 8);
@@ -1705,7 +1705,7 @@ fn pushes_use_only_the_opposite_face_for_each_hopper_facing() {
 #[ignore = "daily"]
 fn refused_push_callback_journals_source_without_losing_the_restored_item() {
     fixture(
-        "game::machines::native_items::storage_attempt_tests::refused_push_callback_journals_source_without_losing_the_restored_item",
+        "game::server_side::machines::native_items::storage_attempt_tests::refused_push_callback_journals_source_without_losing_the_restored_item",
         |game, level, probe| {
             hopper(
                 game,
@@ -1753,7 +1753,7 @@ fn refused_push_callback_journals_source_without_losing_the_restored_item() {
 #[ignore = "daily"]
 fn dropper_removes_accepted_source_before_a_real_root_commit_callback() {
     fixture(
-        "game::machines::native_items::storage_attempt_tests::dropper_removes_accepted_source_before_a_real_root_commit_callback",
+        "game::server_side::machines::native_items::storage_attempt_tests::dropper_removes_accepted_source_before_a_real_root_commit_callback",
         |game, _, probe| {
             place(game, HOPPER, "minecraft:dropper");
             let state = game.world.block(8, 64, 8);
@@ -1814,7 +1814,7 @@ fn dropper_removes_accepted_source_before_a_real_root_commit_callback() {
 #[ignore = "daily"]
 fn dropper_reserves_source_across_writable_insertion_notices() {
     fixture(
-        "game::machines::native_items::storage_attempt_tests::dropper_reserves_source_across_writable_insertion_notices",
+        "game::server_side::machines::native_items::storage_attempt_tests::dropper_reserves_source_across_writable_insertion_notices",
         |game, _, probe| {
             for replacement in [false, true] {
                 place(game, HOPPER, "minecraft:dropper");
@@ -1863,7 +1863,7 @@ fn dropper_reserves_source_across_writable_insertion_notices() {
 #[ignore = "daily"]
 fn refused_dropper_replacement_rolls_back_without_losing_either_item() {
     fixture(
-        "game::machines::native_items::storage_attempt_tests::refused_dropper_replacement_rolls_back_without_losing_either_item",
+        "game::server_side::machines::native_items::storage_attempt_tests::refused_dropper_replacement_rolls_back_without_losing_either_item",
         |game, _, probe| {
             place(game, HOPPER, "minecraft:dropper");
             let state = game.world.block(8, 64, 8);
@@ -1912,7 +1912,7 @@ fn refused_dropper_replacement_rolls_back_without_losing_either_item() {
 #[ignore = "daily"]
 fn dropper_routes_saved_pot_directly_even_with_a_storage_provider() {
     fixture(
-        "game::machines::native_items::storage_attempt_tests::dropper_routes_saved_pot_directly_even_with_a_storage_provider",
+        "game::server_side::machines::native_items::storage_attempt_tests::dropper_routes_saved_pot_directly_even_with_a_storage_provider",
         |game, _, probe| {
             use crate::game::spill;
             use sunrise_core::nbt::Tag;

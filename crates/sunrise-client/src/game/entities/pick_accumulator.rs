@@ -3,7 +3,7 @@ use super::Game;
 use sunrise_core::geometry::{Aabb, Vec3};
 
 #[derive(Clone, Copy, Debug)]
-pub(super) struct PickCandidate {
+pub(in crate::game) struct PickCandidate {
     pub id: u32,
     pub point: [f64; 3],
     pub distance_sq: f64,
@@ -11,7 +11,7 @@ pub(super) struct PickCandidate {
 }
 
 /// Ray segment `(from, to)` matching `LocalPlayer.pick`.
-pub(super) fn pick_ray_segment(eye: [f64; 3], dir: [f64; 3], reach: f64) -> (Vec3, Vec3) {
+pub(in crate::game) fn pick_ray_segment(eye: [f64; 3], dir: [f64; 3], reach: f64) -> (Vec3, Vec3) {
     let from = Vec3::new(eye[0], eye[1], eye[2]);
     let to = Vec3::new(
         from.x + dir[0] * reach,
@@ -21,14 +21,14 @@ pub(super) fn pick_ray_segment(eye: [f64; 3], dir: [f64; 3], reach: f64) -> (Vec
     (from, to)
 }
 
-pub(super) struct PickAccumulator {
+pub(in crate::game) struct PickAccumulator {
     pub hovered: Option<PickCandidate>,
     nearest_sq: f64,
     candidates: Option<Vec<PickCandidate>>,
 }
 
 impl PickAccumulator {
-    pub(super) fn new(max_distance_sq: f64) -> Self {
+    pub(in crate::game) fn new(max_distance_sq: f64) -> Self {
         Self {
             hovered: None,
             nearest_sq: max_distance_sq,
@@ -36,7 +36,11 @@ impl PickAccumulator {
         }
     }
 
-    pub(super) fn consider_candidate(&mut self, game: &Game<'_>, candidate: PickCandidate) -> bool {
+    pub(in crate::game) fn consider_candidate(
+        &mut self,
+        game: &Game<'_>,
+        candidate: PickCandidate,
+    ) -> bool {
         if let Some(candidates) = &mut self.candidates {
             candidates.push(candidate);
             return false;
@@ -44,7 +48,7 @@ impl PickAccumulator {
         self.accept(candidate, game.pick_shares_vehicle(candidate.id), false)
     }
 
-    pub(super) fn consider_box(
+    pub(in crate::game) fn consider_box(
         &mut self,
         game: &Game<'_>,
         id: u32,
@@ -59,7 +63,10 @@ impl PickAccumulator {
     }
 
     /// Reuses the caller's candidate buffer when `CanRiderInteract` is subscribed.
-    pub(super) fn recording(max_distance_sq: f64, mut candidates: Vec<PickCandidate>) -> Self {
+    pub(in crate::game) fn recording(
+        max_distance_sq: f64,
+        mut candidates: Vec<PickCandidate>,
+    ) -> Self {
         candidates.clear();
         Self {
             candidates: Some(candidates),
@@ -67,7 +74,7 @@ impl PickAccumulator {
         }
     }
 
-    pub(super) fn dispatch(&mut self, game: &mut Game<'_>) -> Vec<PickCandidate> {
+    pub(in crate::game) fn dispatch(&mut self, game: &mut Game<'_>) -> Vec<PickCandidate> {
         let candidates = self.candidates.take().unwrap_or_default();
         let camera = game.pick_camera_id();
         for &candidate in &candidates {
@@ -119,7 +126,7 @@ impl PickAccumulator {
 
 impl Game<'_> {
     /// Vanilla `ProjectileUtil.getEntityHitResult` per-box test (`AABB.contains` and `AABB.clip`).
-    pub(super) fn test_pick_box(
+    pub(in crate::game) fn test_pick_box(
         &self,
         id: u32,
         from: Vec3,
@@ -153,7 +160,7 @@ impl Game<'_> {
     }
 
     /// `Entity.canBePickedFromInside`, false only for a sulfur cube holding a body item.
-    pub(super) fn pickable_from_inside(&self, id: u32) -> bool {
+    pub(in crate::game) fn pickable_from_inside(&self, id: u32) -> bool {
         !self.mobs.iter().any(|m| {
             m.id == id
                 && m.species() == sunrise_client::mobs::Species::SulfurCube
@@ -161,7 +168,7 @@ impl Game<'_> {
         })
     }
 
-    pub(super) fn pick_camera_id(&self) -> Option<u32> {
+    pub(in crate::game) fn pick_camera_id(&self) -> Option<u32> {
         if let Some(remote) = self.remote.as_ref() {
             if let Some(id) = remote.camera {
                 remote.detached_camera.is_none().then_some(id as u32)
@@ -177,7 +184,7 @@ impl Game<'_> {
     }
 
     /// True if `id` (or the wire entity behind a synthetic special-target id) is the camera entity.
-    pub(super) fn is_pick_camera(&self, id: u32) -> bool {
+    pub(in crate::game) fn is_pick_camera(&self, id: u32) -> bool {
         let Some(camera) = self.pick_camera_id() else {
             return false;
         };
@@ -235,7 +242,7 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn pick_shares_vehicle(&self, id: u32) -> bool {
+    pub(in crate::game) fn pick_shares_vehicle(&self, id: u32) -> bool {
         let camera_root = self
             .pick_camera_id()
             .and_then(|camera| self.pick_vehicle_root(camera))

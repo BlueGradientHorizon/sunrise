@@ -8,7 +8,8 @@ use crate::game::native_hooks::particle_count_tests::frame_scene;
 use sunrise_assets::resource_source::{Resource, ResourceSource};
 use sunrise_client::gfx::ScreenshotRequest;
 
-const NAME: &str = "game::cloud_height_frame_tests::the_cloud_layer_follows_the_dimensions_height";
+const NAME: &str =
+    "game::client_side::cloud_height_frame_tests::the_cloud_layer_follows_the_dimensions_height";
 const CASE: &str = "SUNRISE_CLOUD_HEIGHT_FRAME_CASE";
 
 /// A pack whose clouds cover the whole frame (each face's quad placed by `gl_VertexIndex`,

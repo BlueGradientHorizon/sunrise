@@ -152,17 +152,18 @@ impl MapRegistries for WorldRegistries<'_> {
     }
 }
 
-pub(super) type LoadedMaps<V> = BTreeMap<String, HashMap<String, BTreeMap<String, V>>>;
+pub(in crate::game) type LoadedMaps<V> = BTreeMap<String, HashMap<String, BTreeMap<String, V>>>;
 
 /// The winning JSON by registry, then map id, then entry id in sorted order.
 #[cfg(test)]
-pub(super) type MergedDataMaps = LoadedMaps<Value>;
+pub(in crate::game) type MergedDataMaps = LoadedMaps<Value>;
 
 #[derive(Default)]
 pub(crate) struct DataMaps {
-    pub(super) biome_keys: std::sync::Arc<mod_api::__private::BiomeKeys>,
+    pub(in crate::game) biome_keys: std::sync::Arc<mod_api::__private::BiomeKeys>,
     maps: BTreeMap<String, HashMap<String, Vec<(String, Tag)>>>,
-    pub(super) mob_maps: std::sync::Arc<sunrise_client::neoforge_mob_maps::NeoForgeMobMaps>,
+    pub(in crate::game) mob_maps:
+        std::sync::Arc<sunrise_client::neoforge_mob_maps::NeoForgeMobMaps>,
 }
 
 /// `minecraft:` for an id written without a namespace.
@@ -178,7 +179,7 @@ fn full_id(id: &str) -> Cow<'_, str> {
 /// the packs'), with ids and tags resolved against `registries`. Unknown registries and bad
 /// type ids are left out with a warning; a file that isn't a valid data map or contains an
 /// undecodable value is skipped atomically with an error.
-pub(super) fn load_maps<V: Clone>(
+pub(in crate::game) fn load_maps<V: Clone>(
     types: &[DataMapType],
     overlay: &sunrise_world::loot::PackOverlay<'_>,
     registries: &dyn MapRegistries,
@@ -350,7 +351,7 @@ impl Game<'_> {
 impl Game<'_> {
     /// The server's merged data maps, none unless this is a server whose
     /// tables were built from packs and mods' files.
-    pub(super) fn loaded_data_maps(&self) -> Result<&DataMaps, mod_api::DataMapError> {
+    pub(in crate::game) fn loaded_data_maps(&self) -> Result<&DataMaps, mod_api::DataMapError> {
         if self.serving.is_none() && self.options.dedicated.is_none() {
             return Err(mod_api::DataMapError::Unavailable);
         }

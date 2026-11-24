@@ -1,21 +1,21 @@
 //! `ClientboundAddTransientBlockPacket` on the window's `Game`: queueing, draining and drawing the blocks whose state lives in `sunrise_client_gameplay::transient_blocks`.
 use super::Game;
 use std::time::Instant;
-pub(super) use sunrise_client_gameplay::transient_blocks::TransientBlocks;
+pub(in crate::game) use sunrise_client_gameplay::transient_blocks::TransientBlocks;
 use sunrise_client_gameplay::transient_blocks::shows_block;
 use sunrise_client_render::render_geometry::Vertex;
 use sunrise_world::registry::BlockStateId;
 
 impl Game<'_> {
     /// `ClientPacketListener.handleAddTransientBlockPacket`.
-    pub(super) fn add_transient_block(&mut self, pos: [i32; 3], state: i32) {
+    pub(in crate::game) fn add_transient_block(&mut self, pos: [i32; 3], state: i32) {
         self.client
             .transient_blocks
             .queue(pos, BlockStateId(state as u32));
     }
 
     /// `LevelExtractor.drainTransientBlockQueue`, once a frame.
-    pub(super) fn drain_transient_block_queue(&mut self) {
+    pub(in crate::game) fn drain_transient_block_queue(&mut self) {
         self.client
             .transient_blocks
             .drain(Instant::now(), self.streaming.sequence());
@@ -25,7 +25,11 @@ impl Game<'_> {
     /// run out, drawn as a moving block at its position, camera-relative.
     /// One whose section mesh has been rebuilt since it came is dropped
     /// (`performTransientBlockRemovals`).
-    pub(super) fn transient_block_geometry(&mut self, camera: glam::DVec3, out: &mut Vec<Vertex>) {
+    pub(in crate::game) fn transient_block_geometry(
+        &mut self,
+        camera: glam::DVec3,
+        out: &mut Vec<Vertex>,
+    ) {
         if self.client.transient_blocks.shown.is_empty() {
             return;
         }

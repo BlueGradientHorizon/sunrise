@@ -250,7 +250,7 @@ fn in_scene(test: &str, check: impl FnOnce(&mut Game<'_>, &Arc<Mutex<Heard>>, &F
         let status = std::process::Command::new(std::env::current_exe().unwrap())
             .args([
                 "--exact",
-                &format!("game::native_item_frame_renderers_tests::{test}"),
+                &format!("game::client_side::native_item_frame_renderers_tests::{test}"),
                 "--include-ignored",
                 "--nocapture",
             ])
@@ -412,7 +412,7 @@ fn an_unregistered_item_frame_is_byte_identical_to_the_vanilla_route() {
         let status = std::process::Command::new(std::env::current_exe().unwrap())
             .args([
                 "--exact",
-                "game::native_item_frame_renderers_tests::an_unregistered_item_frame_is_byte_identical_to_the_vanilla_route",
+                "game::client_side::native_item_frame_renderers_tests::an_unregistered_item_frame_is_byte_identical_to_the_vanilla_route",
                 "--include-ignored",
                 "--nocapture",
             ])

@@ -20,7 +20,7 @@ impl Game<'_> {
     /// chest boat or a minecart with a chest still drops what it holds, and
     /// a boat its lead, as vanilla's `remove` does. False for a player, a dragon part,
     /// or a stale handle.
-    pub(super) fn entity_discard(&mut self, entity: EntityRef) -> bool {
+    pub(in crate::game) fn entity_discard(&mut self, entity: EntityRef) -> bool {
         self.entity_remove(entity, RemovalReason::Discarded)
     }
     /// Removes the entity for `reason` (`Entity.remove`): `Discarded`, as
@@ -28,7 +28,11 @@ impl Game<'_> {
     /// removal (Oozing's slimes, Weaving's cobwebs, Wind Charged's burst),
     /// still with no death and no loot. False for a player, a dragon part, or a stale
     /// handle.
-    pub(super) fn entity_remove(&mut self, entity: EntityRef, reason: RemovalReason) -> bool {
+    pub(in crate::game) fn entity_remove(
+        &mut self,
+        entity: EntityRef,
+        reason: RemovalReason,
+    ) -> bool {
         let killed = reason == RemovalReason::Killed;
         match self.native_entity_target(entity) {
             // A part leaves the level with its dragon, never alone.
@@ -92,7 +96,7 @@ impl Game<'_> {
     /// default pickup delay: the item entity. None for an empty stack or an
     /// unknown item, a stale handle, a player in another level, or an item a
     /// mod kept out.
-    pub(super) fn entity_spawn_at_location(
+    pub(in crate::game) fn entity_spawn_at_location(
         &mut self,
         entity: EntityRef,
         stack: ItemStack,
@@ -132,12 +136,12 @@ impl Game<'_> {
             .then(|| EntityRef::new(entity.epoch(), id))
     }
     /// A mob leaves the level: its effects act first when it was killed.
-    pub(super) fn remove_mob_now(&mut self, id: u32, killed: bool) {
+    pub(in crate::game) fn remove_mob_now(&mut self, id: u32, killed: bool) {
         self.remove_mob_after(id, killed, |_| {});
     }
 
     /// Run the caller's preparation and the killed effects while the mob still resolves.
-    pub(super) fn remove_mob_after(
+    pub(in crate::game) fn remove_mob_after(
         &mut self,
         id: u32,
         killed: bool,
@@ -204,7 +208,7 @@ impl Game<'_> {
         }
     }
     /// Takes out the entities mods removed since the last sweep.
-    pub(super) fn native_removals_flush(&mut self) {
+    pub(in crate::game) fn native_removals_flush(&mut self) {
         if self.persist.removals.is_empty() {
             return;
         }

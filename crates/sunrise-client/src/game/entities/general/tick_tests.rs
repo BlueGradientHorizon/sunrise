@@ -678,7 +678,7 @@ fn a_parked_level_holds_the_counter_until_it_returns() {
 #[ignore = "daily"]
 fn a_panicking_row_rolls_back_and_the_next_tick_proceeds() {
     crate::game::in_own_process(
-        "game::general::tick_tests::a_panicking_row_rolls_back_and_the_next_tick_proceeds",
+        "game::server_side::general::tick_tests::a_panicking_row_rolls_back_and_the_next_tick_proceeds",
         || {
             with_counter(|game, l| {
                 let first = seeded_row(game, [1, 2, 3, 4], 41);

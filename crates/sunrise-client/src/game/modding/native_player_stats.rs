@@ -14,12 +14,12 @@ use super::native_namespaced_id::namespaced;
 
 impl Game<'_> {
     /// Whether `player` still names the same player on this server.
-    pub(super) fn native_player_current(&self, player: PlayerRef) -> bool {
+    pub(in crate::game) fn native_player_current(&self, player: PlayerRef) -> bool {
         self.player_handle_read(player).is_some()
     }
     /// The guest record `player` reads from outside their turn, or None
     /// when their state is in the game (they act, or they are the host).
-    pub(super) fn native_player_resting(
+    pub(in crate::game) fn native_player_resting(
         &self,
         player: PlayerRef,
     ) -> Option<&sunrise_client::lan::guest::Guest> {
@@ -54,7 +54,7 @@ impl Game<'_> {
     /// The value of statistic `stat_type` for `key` (`minecraft:stone`,
     /// `minecraft:jump`...), as `ServerStatsCounter.getValue`: 0 when never
     /// counted.
-    pub(super) fn player_stat(
+    pub(in crate::game) fn player_stat(
         &self,
         player: PlayerRef,
         stat_type: StatType,
@@ -65,7 +65,7 @@ impl Game<'_> {
         Some(stats.map_or(0, |s| s.get(ty, &namespaced(key))))
     }
     /// `ServerStatsCounter.toJson` for this player's live counter.
-    pub(super) fn player_statistics(&self, player: PlayerRef) -> Option<String> {
+    pub(in crate::game) fn player_statistics(&self, player: PlayerRef) -> Option<String> {
         if !self.is_logical_server() {
             return None;
         }
@@ -78,7 +78,11 @@ impl Game<'_> {
     /// Decode with the server's registries before entering the player's turn. Inside a
     /// transaction the replacement waits for the root commit, as the game's own deferred
     /// statistics do, so counters and criterion scores never outlive an abort apart.
-    pub(super) fn player_set_statistics(&mut self, player: PlayerRef, snapshot: &str) -> bool {
+    pub(in crate::game) fn player_set_statistics(
+        &mut self,
+        player: PlayerRef,
+        snapshot: &str,
+    ) -> bool {
         if !self.is_logical_server() {
             return false;
         }
@@ -97,7 +101,7 @@ impl Game<'_> {
         self.restore_player_statistics(player, values)
     }
     /// The replacement itself, in the player's turn.
-    pub(super) fn restore_player_statistics(
+    pub(in crate::game) fn restore_player_statistics(
         &mut self,
         player: PlayerRef,
         values: StatValues,
@@ -123,7 +127,7 @@ impl Game<'_> {
     /// for its own counts, so `player_stat_award` hears it and may rewrite or cancel
     /// it, and scoreboard criteria follow. False for a player it can't
     /// reach.
-    pub(super) fn player_award_stat(
+    pub(in crate::game) fn player_award_stat(
         &mut self,
         player: PlayerRef,
         stat_type: StatType,
@@ -137,7 +141,7 @@ impl Game<'_> {
     }
     /// `Player.resetStat`: sets the statistic back to 0, which scoreboard
     /// criteria follow. False for a player it can't reach.
-    pub(super) fn player_reset_stat(
+    pub(in crate::game) fn player_reset_stat(
         &mut self,
         player: PlayerRef,
         stat_type: StatType,
@@ -151,7 +155,7 @@ impl Game<'_> {
 
     /// Whether the player's recipe book knows `recipe`
     /// (`ServerRecipeBook.contains`).
-    pub(super) fn player_has_discovered_recipe(
+    pub(in crate::game) fn player_has_discovered_recipe(
         &self,
         player: PlayerRef,
         recipe: &str,
@@ -167,7 +171,10 @@ impl Game<'_> {
     }
     /// Every recipe the player's recipe book knows (`ServerRecipeBook.recipes`), qualified ids in
     /// order. None for a player it can't reach.
-    pub(super) fn player_discovered_recipes(&self, player: PlayerRef) -> Option<Vec<String>> {
+    pub(in crate::game) fn player_discovered_recipes(
+        &self,
+        player: PlayerRef,
+    ) -> Option<Vec<String>> {
         if !self.native_player_current(player) {
             return None;
         }
@@ -182,7 +189,7 @@ impl Game<'_> {
     /// `player_recipe_discovered` hook, and the client hears of them.
     /// Unknown ids are skipped. The number of recipe displays added, None
     /// for a player it can't reach.
-    pub(super) fn player_award_recipes(
+    pub(in crate::game) fn player_award_recipes(
         &mut self,
         player: PlayerRef,
         recipes: &[&str],
@@ -191,7 +198,7 @@ impl Game<'_> {
     }
     /// `ServerPlayer.resetRecipes`, as `/recipe take` does. The number of
     /// recipe displays taken out, None for a player it can't reach.
-    pub(super) fn player_reset_recipes(
+    pub(in crate::game) fn player_reset_recipes(
         &mut self,
         player: PlayerRef,
         recipes: &[&str],
@@ -264,7 +271,7 @@ mod tests {
         };
 
         if run_fresh_cases(
-            "game::native_player_stats::tests::statistics_restore_updates_live_scores_and_next_request_without_awarding",
+            "game::server_side::native_player_stats::tests::statistics_restore_updates_live_scores_and_next_request_without_awarding",
             "SUNRISE_STATISTICS_SNAPSHOT_CHILD",
             &["restore"],
         ) {

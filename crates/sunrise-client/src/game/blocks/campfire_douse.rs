@@ -30,7 +30,7 @@ impl Game<'_> {
     /// `CampfireBlock.douse` and the campfire gone out, kept as predicted
     /// under `seq`. The level event's sound comes from the server. True when
     /// it doused (SUCCESS), which ends the click for both hands.
-    pub(super) fn predict_campfire_douse(
+    pub(in crate::game) fn predict_campfire_douse(
         &mut self,
         hit: &Hit,
         held: Option<&ItemStack>,
@@ -88,7 +88,7 @@ impl Game<'_> {
 
     /// `CampfireBlock.useItemOn` with `held` in the hand that acts, the block
     /// at `pos` clicked: true when it doused a lit campfire (SUCCESS).
-    pub(super) fn use_campfire_douse(
+    pub(in crate::game) fn use_campfire_douse(
         &mut self,
         hit: &Hit,
         held: Option<&ItemStack>,

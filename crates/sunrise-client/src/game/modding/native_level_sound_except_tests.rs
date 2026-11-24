@@ -36,7 +36,7 @@ fn sound_packets(rx: &mpsc::Receiver<Out>) -> Vec<sunrise_protocol::packets::pla
 /// the shared test process's language table or registries.
 fn in_isolated_process(test_name: &str, body: impl FnOnce()) {
     crate::game::in_own_process(
-        &format!("game::native_level_sound_except_tests::{test_name}"),
+        &format!("game::server_side::native_level_sound_except_tests::{test_name}"),
         body,
     );
 }

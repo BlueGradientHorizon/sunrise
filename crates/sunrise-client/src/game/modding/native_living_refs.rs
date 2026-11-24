@@ -53,7 +53,7 @@ fn player_slot<'a>(
 }
 
 /// Lend one equipment slot to the API, applying overlays and encoding components only on demand.
-pub(super) fn lend_equipment(
+pub(in crate::game) fn lend_equipment(
     stack: EquipmentRead<'_>,
     read: &mut dyn for<'a> FnMut(ItemStackView<'a>),
 ) -> Option<()> {
@@ -63,7 +63,7 @@ pub(super) fn lend_equipment(
 }
 
 /// Use checked slot metadata to lend the same lazy view to readers and component editors.
-pub(super) fn with_equipment_view<R>(
+pub(in crate::game) fn with_equipment_view<R>(
     stack: &EquipmentRead<'_>,
     metadata: StackReadMetadata,
     read: impl for<'a> FnOnce(ItemStackView<'a>) -> R,
@@ -73,7 +73,7 @@ pub(super) fn with_equipment_view<R>(
 }
 
 /// The equipment slot of a hand (`LivingEntity.getItemInHand`/`setItemInHand`).
-pub(super) fn hand_slot(hand: Hand) -> EquipmentSlot {
+pub(in crate::game) fn hand_slot(hand: Hand) -> EquipmentSlot {
     match hand {
         Hand::Main => EquipmentSlot::MainHand,
         Hand::Off => EquipmentSlot::OffHand,
@@ -139,7 +139,7 @@ fn api_modifier(m: &Modifier) -> Option<AttributeModifier> {
 
 impl Game<'_> {
     /// What a living handle names now: a player, a mob, an armor stand or the dragon.
-    pub(super) fn native_living_target(&self, living: LivingRef) -> Option<Target> {
+    pub(in crate::game) fn native_living_target(&self, living: LivingRef) -> Option<Target> {
         match self.native_entity_target(living.entity())? {
             t @ (Target::Player
             | Target::Guest(_)
@@ -150,7 +150,7 @@ impl Game<'_> {
         }
     }
     /// A direct, non-damaging call to the short `LivingEntity.knockback` entry.
-    pub(super) fn living_knockback(
+    pub(in crate::game) fn living_knockback(
         &mut self,
         living: LivingRef,
         strength: f64,
@@ -285,7 +285,7 @@ impl Game<'_> {
         attack
     }
 
-    pub(super) fn knock_back_armor_stand(
+    pub(in crate::game) fn knock_back_armor_stand(
         &mut self,
         id: u32,
         mut knock: Knock,
@@ -327,14 +327,14 @@ impl Game<'_> {
     ///
     /// On a client, only the local player is one: the client keeps the others'
     /// equipment, effects and health only as far as it draws them. API 382.
-    pub(super) fn living(&self, entity: EntityRef) -> Option<LivingRef> {
+    pub(in crate::game) fn living(&self, entity: EntityRef) -> Option<LivingRef> {
         let living = LivingRef::new(entity);
         self.native_living_read_target(living).map(|_| living)
     }
     /// What a living handle names for a read that works on both sides: the
     /// server's entity, or on a client the local player (`Minecraft.player`),
     /// whose state is the client's copy of what the server sent.
-    pub(super) fn native_living_read_target(&self, living: LivingRef) -> Option<Target> {
+    pub(in crate::game) fn native_living_read_target(&self, living: LivingRef) -> Option<Target> {
         if self.is_logical_server() {
             return self.native_living_target(living);
         }
@@ -350,7 +350,11 @@ impl Game<'_> {
     /// an armor stand and the dragon answer from their live attribute map: the
     /// type's defaults, the saved `attributes`, and the modifiers of what they
     /// wear or hold.
-    pub(super) fn living_attribute_value(&self, living: LivingRef, id: &str) -> Option<f64> {
+    pub(in crate::game) fn living_attribute_value(
+        &self,
+        living: LivingRef,
+        id: &str,
+    ) -> Option<f64> {
         self.native_living_attribute(
             living,
             id,
@@ -360,7 +364,11 @@ impl Game<'_> {
 
     /// The base value of an attribute, before modifiers
     /// (`AttributeMap.getBaseValue`), read as the effective value is.
-    pub(super) fn living_attribute_base(&self, living: LivingRef, id: &str) -> Option<f64> {
+    pub(in crate::game) fn living_attribute_base(
+        &self,
+        living: LivingRef,
+        id: &str,
+    ) -> Option<f64> {
         self.native_living_attribute(living, id, sunrise_world::attribute_map::ValueKind::Base)
     }
 
@@ -370,7 +378,7 @@ impl Game<'_> {
     /// unavailable entity; on a client, for any entity but the local player
     /// (the client keeps no attribute map of another entity's, only the few
     /// fields it draws).
-    pub(super) fn living_attributes(&self, living: LivingRef) -> Option<Vec<Identifier>> {
+    pub(in crate::game) fn living_attributes(&self, living: LivingRef) -> Option<Vec<Identifier>> {
         let catalog = &self.motion.attributes;
         let entity = self.native_living_attribute_entity(living)?;
         Some(
@@ -390,7 +398,7 @@ impl Game<'_> {
     /// empty list; None for an attribute the entity type does not have, a
     /// stale handle, or on a client for any entity but the local player,
     /// whose copy of the synced instances it reads.
-    pub(super) fn living_attribute_modifiers(
+    pub(in crate::game) fn living_attribute_modifiers(
         &self,
         living: LivingRef,
         id: &str,
@@ -406,7 +414,7 @@ impl Game<'_> {
     /// the attribute (vanilla throws), for an attribute the entity type does
     /// not have, a non-finite amount, the dragon (whose attributes nothing
     /// reads yet), a stale handle, or on a client.
-    pub(super) fn living_add_attribute_modifier(
+    pub(in crate::game) fn living_add_attribute_modifier(
         &mut self,
         living: LivingRef,
         attribute: &str,
@@ -420,7 +428,7 @@ impl Game<'_> {
     /// any (`addOrUpdateTransientModifier`, `addOrReplacePermanentModifier`):
     /// the new one's lifetime wins. False as `add_attribute_modifier` is,
     /// except that a taken id is replaced.
-    pub(super) fn living_replace_attribute_modifier(
+    pub(in crate::game) fn living_replace_attribute_modifier(
         &mut self,
         living: LivingRef,
         attribute: &str,
@@ -433,7 +441,7 @@ impl Game<'_> {
     /// Removes the modifier with id `id` from the attribute
     /// (`AttributeInstance.removeModifier`), whatever its lifetime. False when
     /// there was none, and in the cases `add_attribute_modifier` is.
-    pub(super) fn living_remove_attribute_modifier(
+    pub(in crate::game) fn living_remove_attribute_modifier(
         &mut self,
         living: LivingRef,
         attribute: &str,
@@ -445,7 +453,7 @@ impl Game<'_> {
     /// Sets the attribute's base value (`AttributeInstance.setBaseValue`);
     /// the value stays within the attribute's range. False for a non-finite
     /// base, and in the cases `add_attribute_modifier` is.
-    pub(super) fn living_set_attribute_base(
+    pub(in crate::game) fn living_set_attribute_base(
         &mut self,
         living: LivingRef,
         attribute: &str,
@@ -598,7 +606,7 @@ impl Game<'_> {
         )
     }
 
-    pub(super) fn native_target_attribute(
+    pub(in crate::game) fn native_target_attribute(
         &self,
         target: Target,
         name: &str,
@@ -621,7 +629,7 @@ impl Game<'_> {
     /// nothing, carrying no one this side holds back). None for a stale
     /// handle, an armor stand or the dragon: the portal walk carries
     /// neither as its own traveller.
-    pub(super) fn living_can_use_portal(&self, living: LivingRef) -> Option<bool> {
+    pub(in crate::game) fn living_can_use_portal(&self, living: LivingRef) -> Option<bool> {
         match self.native_living_read_target(living)? {
             // The engine's own gate, the one the client's portal entry runs
             // (`player_can_use_portal`, #943).
@@ -645,7 +653,7 @@ impl Game<'_> {
     /// living entity's next melee strike reaches `target`. The check is a
     /// mob's; a player's attack reach is another rule (the interaction range
     /// attribute), so a player answers None.
-    pub(super) fn living_in_melee_range(
+    pub(in crate::game) fn living_in_melee_range(
         &self,
         living: LivingRef,
         target: EntityRef,
@@ -668,7 +676,7 @@ impl Game<'_> {
     /// `#freeze_immune_wearables` worn), a player's (`PlayerMotion::can_freeze`:
     /// not a spectator, no immune armor). None for a stale handle, an armor
     /// stand or the dragon.
-    pub(super) fn living_can_freeze(&self, living: LivingRef) -> Option<bool> {
+    pub(in crate::game) fn living_can_freeze(&self, living: LivingRef) -> Option<bool> {
         match self.native_living_read_target(living)? {
             Target::Mob(id) => {
                 let m = self.mobs.iter().find(|m| m.id == id && !m.removed)?;
@@ -682,7 +690,7 @@ impl Game<'_> {
     /// Membership in the live `#can_breathe_under_water` tag for a mob.
     /// The tag read only, not the whole drown decision. None for a stale handle,
     /// an armor stand or the dragon.
-    pub(super) fn living_can_breathe_underwater(&self, living: LivingRef) -> Option<bool> {
+    pub(in crate::game) fn living_can_breathe_underwater(&self, living: LivingRef) -> Option<bool> {
         match self.native_living_read_target(living)? {
             Target::Mob(id) => {
                 let mob = self.mobs.iter().find(|m| m.id == id && !m.removed)?;
@@ -701,7 +709,7 @@ impl Game<'_> {
     /// the block at the sleeping position, its `facing` where that block is
     /// one of `#minecraft:beds`. None where the sleeper keeps no position,
     /// the block is not a bed, or the handle is stale.
-    pub(super) fn living_bed_orientation(&self, living: LivingRef) -> Option<Direction> {
+    pub(in crate::game) fn living_bed_orientation(&self, living: LivingRef) -> Option<Direction> {
         let pos = self.living_sleeping_pos(living)?;
         let w = self.mob_world_base(&[]);
         let name = w.block_name(pos[0], pos[1], pos[2]);
@@ -721,7 +729,7 @@ impl Game<'_> {
     /// `Damageable#getHealth`). During a player's turn only that player
     /// resolves: the hub is out for their action, and other players'
     /// handles read `None` until it is back.
-    pub(super) fn living_health(&self, living: LivingRef) -> Option<f32> {
+    pub(in crate::game) fn living_health(&self, living: LivingRef) -> Option<f32> {
         let target = self.native_living_read_target(living)?;
         super::native_living_body::body_health(self.native_living_body(target)?)
     }
@@ -730,14 +738,14 @@ impl Game<'_> {
     /// map; a mob, an armor stand and the dragon their own fields (the
     /// armor stand the fixed 20 the game seeds it with, the dragon its
     /// 200) until live attribute maps cover them.
-    pub(super) fn living_max_health(&self, living: LivingRef) -> Option<f32> {
+    pub(in crate::game) fn living_max_health(&self, living: LivingRef) -> Option<f32> {
         let target = self.native_living_read_target(living)?;
         super::native_living_body::body_max_health(self.native_living_body(target)?)
     }
     /// Whether the entity is alive (`LivingEntity.isAlive`; Paper's
     /// `Entity#isDead` is its inverse). A dying mob, mid death
     /// animation, is not.
-    pub(super) fn living_alive(&self, living: LivingRef) -> Option<bool> {
+    pub(in crate::game) fn living_alive(&self, living: LivingRef) -> Option<bool> {
         self.living_health(living).map(alive_at)
     }
 
@@ -745,7 +753,7 @@ impl Game<'_> {
     /// `Damageable#setHealth`), cut to its maximum health. No heal or damage
     /// hook runs. False for a stale handle, a non-finite value, an armor stand
     /// or the dragon.
-    pub(super) fn living_set_health(&mut self, living: LivingRef, health: f32) -> bool {
+    pub(in crate::game) fn living_set_health(&mut self, living: LivingRef, health: f32) -> bool {
         if !health.is_finite() {
             return false;
         }
@@ -797,7 +805,7 @@ impl Game<'_> {
     /// `living_heal` hook, which may change or cancel it. A dead or dying
     /// entity isn't healed, and health stops at the maximum. False for a stale
     /// handle, a non-finite amount, a zero-health entity, an armor stand or the dragon.
-    pub(super) fn living_heal(&mut self, living: LivingRef, amount: f32) -> bool {
+    pub(in crate::game) fn living_heal(&mut self, living: LivingRef, amount: f32) -> bool {
         if !amount.is_finite()
             || !self
                 .living_health(living)
@@ -826,7 +834,7 @@ impl Game<'_> {
     /// `LivingEntity.getKillCredit`: the remembered player takes precedence,
     /// even if the player cannot be resolved; otherwise the last hurting mob,
     /// in whichever loaded level it is now (`credited_entity`).
-    pub(super) fn living_kill_credit(&self, living: LivingRef) -> Option<EntityRef> {
+    pub(in crate::game) fn living_kill_credit(&self, living: LivingRef) -> Option<EntityRef> {
         let credit = match self.native_living_target(living)? {
             Target::Player => self.combat.player_credit(self.world.game_time),
             Target::Guest(conn) => self
@@ -850,7 +858,7 @@ impl Game<'_> {
     /// `armadillo.rs` reads it). None for a stale handle, a window that has
     /// passed, an attacker that is gone, an armor stand, the dragon or a
     /// client.
-    pub(super) fn living_last_attacker(&self, living: LivingRef) -> Option<EntityRef> {
+    pub(in crate::game) fn living_last_attacker(&self, living: LivingRef) -> Option<EntityRef> {
         match self.native_living_target(living)? {
             Target::Player => self
                 .combat
@@ -901,7 +909,10 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn living_last_hurt_mob(&self, living: LivingRef) -> Option<(EntityRef, i32)> {
+    pub(in crate::game) fn living_last_hurt_mob(
+        &self,
+        living: LivingRef,
+    ) -> Option<(EntityRef, i32)> {
         let (id, timestamp) = self.living_last_hurt_record(living)?;
         let target = self.entity(id)?;
         self.last_hurt_target_alive(id)
@@ -935,7 +946,7 @@ impl Game<'_> {
     /// `EntityReference.getEntity` for a kill credit, which looks through
     /// every level (`getEntityInAnyDimension`): the entity `id` in the level
     /// in place, else [`Self::credited_elsewhere`].
-    pub(super) fn credited_entity(&self, id: u32) -> Option<EntityRef> {
+    pub(in crate::game) fn credited_entity(&self, id: u32) -> Option<EntityRef> {
         self.entity(id).or_else(|| self.credited_elsewhere(id))
     }
 
@@ -958,7 +969,7 @@ impl Game<'_> {
     }
 
     /// Resolve one live equipment slot without taking a copy or reading any other slot.
-    pub(super) fn living_equipment_stack(
+    pub(in crate::game) fn living_equipment_stack(
         &self,
         living: LivingRef,
         slot: EquipmentSlot,
@@ -967,7 +978,7 @@ impl Game<'_> {
     }
 
     /// Read one equipment slot of an already resolved target.
-    pub(super) fn equipment_stack_for(
+    pub(in crate::game) fn equipment_stack_for(
         &self,
         target: Target,
         slot: EquipmentSlot,
@@ -983,7 +994,7 @@ impl Game<'_> {
     }
 
     /// Lend the stack in `slot` (`LivingEntity.getItemBySlot`).
-    pub(super) fn living_equipment(
+    pub(in crate::game) fn living_equipment(
         &self,
         living: LivingRef,
         slot: EquipmentSlot,
@@ -993,7 +1004,7 @@ impl Game<'_> {
     }
 
     /// Damage an equipped stack without an equip/unequip notification.
-    pub(super) fn living_hurt_and_break(
+    pub(in crate::game) fn living_hurt_and_break(
         &mut self,
         living: LivingRef,
         slot: EquipmentSlot,
@@ -1055,7 +1066,7 @@ impl Game<'_> {
         broken
     }
 
-    pub(super) fn damage_player_equipment(
+    pub(in crate::game) fn damage_player_equipment(
         &mut self,
         slot: EquipmentSlot,
         amount: i32,
@@ -1111,7 +1122,7 @@ impl Game<'_> {
     }
 
     /// Lend the stack in `hand` (`LivingEntity.getItemInHand`).
-    pub(super) fn living_hand_item(
+    pub(in crate::game) fn living_hand_item(
         &self,
         living: LivingRef,
         hand: Hand,
@@ -1123,7 +1134,7 @@ impl Game<'_> {
     /// hand's slot or the off hand's, written as `set_equipment`
     /// writes them, with its equip events and sound. None, air or a zero count
     /// empties the hand. False means unsupported or stale.
-    pub(super) fn living_set_hand_item(
+    pub(in crate::game) fn living_set_hand_item(
         &mut self,
         living: LivingRef,
         hand: Hand,
@@ -1140,7 +1151,7 @@ impl Game<'_> {
     /// This is a direct write: it takes effect and is final immediately, even
     /// inside `host.transaction`. A mob's write makes any equip/unequip event
     /// and equip sound immediately; a stand's or the dragon's makes neither. API 382.
-    pub(super) fn living_set_equipment(
+    pub(in crate::game) fn living_set_equipment(
         &mut self,
         living: LivingRef,
         slot: EquipmentSlot,
@@ -1153,7 +1164,7 @@ impl Game<'_> {
     /// transaction — an abort stays quiet — while the equipment and the
     /// attribute map change at once, as later steps of the same transaction
     /// read them.
-    pub(super) fn write_living_equipment(
+    pub(in crate::game) fn write_living_equipment(
         &mut self,
         living: LivingRef,
         slot: EquipmentSlot,
@@ -1278,7 +1289,7 @@ impl Game<'_> {
 
     /// The slot and sound `stack`'s `equippable` component names
     /// (`Equippable.slot`, `equipSound`).
-    pub(super) fn equippable_slot_sound(
+    pub(in crate::game) fn equippable_slot_sound(
         &self,
         stack: &ItemStack,
     ) -> Option<(super::dispenser::Slot, String)> {
@@ -1329,7 +1340,7 @@ impl Game<'_> {
     /// throw along the view then counts in its stats and fires `item_toss`.
     /// None for an empty stack, a stand or the dragon, a stale handle, or an
     /// item a mod kept out. API @API:living_refs@.
-    pub(super) fn living_drop(
+    pub(in crate::game) fn living_drop(
         &mut self,
         living: LivingRef,
         stack: ItemStack,
@@ -1360,12 +1371,12 @@ impl Game<'_> {
     }
     /// `TamableAnimal.isTame`, `AbstractHorse.isTamed`: None for a kind that
     /// can't be tamed or a stale handle. API @API:living_refs@.
-    pub(super) fn living_is_tamed(&self, living: LivingRef) -> Option<bool> {
+    pub(in crate::game) fn living_is_tamed(&self, living: LivingRef) -> Option<bool> {
         self.native_tamable(living).map(|m| m.extra.tame)
     }
     /// The owner's UUID (`OwnableEntity.getOwnerReference`): None for a wild
     /// mob, a kind that can't be tamed, or a stale handle. API @API:living_refs@.
-    pub(super) fn living_owner(&self, living: LivingRef) -> Option<u128> {
+    pub(in crate::game) fn living_owner(&self, living: LivingRef) -> Option<u128> {
         let owner = self.native_tamable(living)?.extra.owner?;
         Some(sunrise_client::lan::playerdata::ints_uuid(owner))
     }

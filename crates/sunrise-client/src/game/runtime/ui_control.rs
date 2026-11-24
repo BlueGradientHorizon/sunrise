@@ -16,7 +16,7 @@ use sunrise_client::{
 };
 use winit::event::MouseButton;
 
-pub(super) const HELP: &[&str] = &[
+pub(in crate::game) const HELP: &[&str] = &[
     "ui                             every widget of the open screen: id, kind, label, bounds, value",
     "click ID [right|middle] [shift] click a widget of ui by its id (slot-N: as click-slot N)",
     "set ID VALUE                   move a slider to VALUE (0..1), as a click on its track",
@@ -26,7 +26,7 @@ pub(super) const HELP: &[&str] = &[
 /// they never read the screen the click left; before the first frame, for
 /// that one, as a game answers its socket before it has drawn anything.
 #[derive(Default)]
-pub(super) struct UiWait {
+pub(in crate::game) struct UiWait {
     /// The widget generation at the last click, and when it happened.
     after: Option<(u64, Instant)>,
     waiting: Vec<Request>,
@@ -40,7 +40,7 @@ impl UiWait {
             })
     }
     /// The commands that can run now.
-    pub(super) fn ready(&mut self) -> Vec<Request> {
+    pub(in crate::game) fn ready(&mut self) -> Vec<Request> {
         if self.stale() {
             return Vec::new();
         }
@@ -48,7 +48,7 @@ impl UiWait {
         std::mem::take(&mut self.waiting)
     }
     /// The screen changed: widget commands wait for it to be drawn again.
-    pub(super) fn clicked(&mut self) {
+    pub(in crate::game) fn clicked(&mut self) {
         self.after = Some((widgets::generation(), Instant::now()));
     }
 }
@@ -56,7 +56,7 @@ impl UiWait {
 impl Game<'_> {
     /// The open screen's widgets: those the last frame drew, then the slots
     /// of an open inventory or menu (`slot-ID`, the ids of `click-slot`).
-    pub(super) fn ui_nodes(&self) -> Vec<Node> {
+    pub(in crate::game) fn ui_nodes(&self) -> Vec<Node> {
         let size = self.gui_batch().map(|b| [b.width, b.height]);
         let mut nodes = widgets::tree(&widgets::last_labelled(), &widgets::last_targets(), size);
         if matches!(self.client.screen, Screen::Inventory | Screen::Creative)
@@ -125,7 +125,7 @@ impl Game<'_> {
 
     /// `ui`, `click` and `set`, and `screen` and `click-button` held until the first frame;
     /// `Handled::No` for other commands.
-    pub(super) fn ui_command(
+    pub(in crate::game) fn ui_command(
         &mut self,
         words: &[&str],
         line: &str,

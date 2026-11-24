@@ -20,14 +20,14 @@ use std::{
 use sunrise_client::{Result, text::Text};
 
 /// A message's structured component as `ComponentSerialization.CODEC` writes it.
-pub(super) fn canonical_component(text: &Text) -> Value {
+pub(in crate::game) fn canonical_component(text: &Text) -> Value {
     sunrise_client::scoreboard::canonical_component(&text.component())
 }
 
 /// A message as `[text, style]` runs with adjacent equal styles merged; the
 /// style lists colour, bold, italic, underlined, strikethrough, obfuscated
 /// and the suggested command.
-pub(super) fn spans(text: &Text) -> Value {
+pub(in crate::game) fn spans(text: &Text) -> Value {
     let mut out: Vec<(String, Value)> = Vec::new();
     for span in &text.spans {
         if span.text.is_empty() {
@@ -54,7 +54,7 @@ impl Game<'_> {
     /// Pump the real client's connection, without predicting movement: the
     /// oracle's player stays where commands put it. Errors cross the server
     /// boundary through Integrated::stop, including script and save failures.
-    pub(super) fn wait_command_harness(&mut self) -> Result<()> {
+    pub(in crate::game) fn wait_command_harness(&mut self) -> Result<()> {
         let server = self.integrated.take().ok_or("command harness: no server")?;
         let client_config = std::env::var_os("SUNRISE_HARNESS_CLIENT_CONFIG");
         let mut wrote_config = false;
@@ -231,7 +231,11 @@ impl Game<'_> {
             std::thread::sleep(Duration::from_millis(2));
         }
     }
-    pub(super) fn run_command_harness(&mut self, script: &Path, output: &Path) -> Result<()> {
+    pub(in crate::game) fn run_command_harness(
+        &mut self,
+        script: &Path,
+        output: &Path,
+    ) -> Result<()> {
         let deadline = Instant::now()
             + Duration::from_secs(
                 std::env::var("SUNRISE_HARNESS_TIMEOUT")

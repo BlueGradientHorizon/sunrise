@@ -53,7 +53,7 @@ fn murder_uses_only_the_victims_sensor_memory() {
 #[ignore = "daily"]
 fn every_accepted_hurt_counts_for_its_own_attacker() {
     if run_fresh_cases(
-        "game::villagers::witness_tests::every_accepted_hurt_counts_for_its_own_attacker",
+        "game::server_side::villagers::witness_tests::every_accepted_hurt_counts_for_its_own_attacker",
         "SUNRISE_VILLAGER_HURT_SEQUENCE_CHILD",
         &["same-tick"],
     ) {
@@ -131,7 +131,7 @@ fn every_accepted_hurt_counts_for_its_own_attacker() {
 #[ignore = "daily"]
 fn two_hits_of_a_mob_without_uuid_share_one() {
     if run_fresh_cases(
-        "game::villagers::witness_tests::two_hits_of_a_mob_without_uuid_share_one",
+        "game::server_side::villagers::witness_tests::two_hits_of_a_mob_without_uuid_share_one",
         "SUNRISE_VILLAGER_HURT_STING_CHILD",
         &["sting"],
     ) {
@@ -180,7 +180,7 @@ fn two_hits_of_a_mob_without_uuid_share_one() {
 #[ignore = "daily"]
 fn hurt_gossip_belongs_to_the_hits_own_player() {
     if run_fresh_cases(
-        "game::villagers::witness_tests::hurt_gossip_belongs_to_the_hits_own_player",
+        "game::server_side::villagers::witness_tests::hurt_gossip_belongs_to_the_hits_own_player",
         "SUNRISE_VILLAGER_HURT_CLOUD_CHILD",
         &["cloud"],
     ) {

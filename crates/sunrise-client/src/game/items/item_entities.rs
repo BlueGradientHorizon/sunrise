@@ -7,7 +7,7 @@ use crate::game::collision_source::Mover;
 /// `SUNRISE_STILL` from a random seeded by its position alone: a client seeds an item's random
 /// with the server's entity id, which follows the order chunks load in and differs between
 /// launches. The draw is made either way, so the item's random stays where vanilla's would be.
-pub(super) fn bob_offset(position: Vec3, drawn: f32, still: bool) -> f32 {
+pub(in crate::game) fn bob_offset(position: Vec3, drawn: f32, still: bool) -> f32 {
     let drawn = if still {
         sunrise_client::mobs::entity_random(0, position).next_float()
     } else {
@@ -25,7 +25,7 @@ struct GivenBack {
 }
 
 impl Game<'_> {
-    pub(super) fn tick_items(&mut self) {
+    pub(in crate::game) fn tick_items(&mut self) {
         let mut round = self.item_update_round();
         self.tick_dropped_items(&mut round);
         sunrise_threads::work::clear_work();
@@ -34,10 +34,10 @@ impl Game<'_> {
     }
     /// An item that joined during this tick's entity pass: it first ticks on
     /// the next one.
-    pub(super) fn joined_during_entity_pass(&self, id: u32) -> bool {
+    pub(in crate::game) fn joined_during_entity_pass(&self, id: u32) -> bool {
         id > self.server.ticked_entities_through || self.server.contact_drops.contains(&id)
     }
-    pub(super) fn tick_dropped_items(&mut self, round: &mut native_ticks::TickRound) {
+    pub(in crate::game) fn tick_dropped_items(&mut self, round: &mut native_ticks::TickRound) {
         let mut items = self.dropped.lift();
         // ServerLevel.tick: only entities in entity-ticking chunks tick.
         let ticking = self.entity_ticking_area();
@@ -467,7 +467,7 @@ impl Game<'_> {
     }
     /// `ItemUtils.onContainerDestroyed`: spilled stacks use their own constructor
     /// motion (0.2 up and ±0.1 sideways), leaving the level random untouched.
-    pub(super) fn spawn_destroyed_contents(&mut self, destroyed: Vec<(ItemStack, Vec3)>) {
+    pub(in crate::game) fn spawn_destroyed_contents(&mut self, destroyed: Vec<(ItemStack, Vec3)>) {
         for (stack, at) in destroyed {
             self.spawn_item_own(stack, [at.x, at.y, at.z], 0);
         }
@@ -475,12 +475,17 @@ impl Game<'_> {
     /// `ExperienceOrb.award`: orbs of the largest sizes; each draws the id
     /// `tryMergeToExisting` compares from the level random, then moves with
     /// its own random.
-    pub(super) fn spawn_orbs(&mut self, at: [f64; 3], value: u32) {
+    pub(in crate::game) fn spawn_orbs(&mut self, at: [f64; 3], value: u32) {
         self.spawn_orbs_toward(at, [0.0; 3], value);
     }
     /// `ExperienceOrb.awardWithDirection`: `award` whose fresh orbs start
     /// `roughly` that way (`new ExperienceOrb(level, pos, roughly, value)`).
-    pub(super) fn spawn_orbs_toward(&mut self, at: [f64; 3], roughly: [f64; 3], mut value: u32) {
+    pub(in crate::game) fn spawn_orbs_toward(
+        &mut self,
+        at: [f64; 3],
+        roughly: [f64; 3],
+        mut value: u32,
+    ) {
         while value > 0 {
             let v = ExperienceOrb::split(value);
             value -= v;
@@ -494,13 +499,18 @@ impl Game<'_> {
     /// 1 block box of `at`, whose id is a multiple of 40 from `merge_id`, takes
     /// the new one as one more in its count (and restarts its age); otherwise
     /// a fresh orb spawns.
-    pub(super) fn award_orb(&mut self, at: [f64; 3], value: u32, merge_id: i32) {
+    pub(in crate::game) fn award_orb(&mut self, at: [f64; 3], value: u32, merge_id: i32) {
         if !self.merge_new_orb(at, value, merge_id) {
             self.add_orb(at, value);
         }
     }
     /// `tryMergeToExisting`: true when an orb took the new one.
-    pub(super) fn merge_new_orb(&mut self, at: [f64; 3], value: u32, merge_id: i32) -> bool {
+    pub(in crate::game) fn merge_new_orb(
+        &mut self,
+        at: [f64; 3],
+        value: u32,
+        merge_id: i32,
+    ) -> bool {
         let centre = Vec3::new(at[0], at[1], at[2]);
         let half = Vec3::new(0.5, 0.5, 0.5);
         let area = Aabb::new(centre.subtract(half), centre.add_vector(half));
@@ -547,7 +557,7 @@ impl Game<'_> {
     /// Whether orb `into` takes orb `from` (0: a spawning orb of `from_value`),
     /// given vanilla's `canMerge` answer: the mods may flip it, then cancel the merge.
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn orb_merges(
+    pub(in crate::game) fn orb_merges(
         &mut self,
         into: u32,
         into_value: i32,
@@ -585,7 +595,7 @@ impl Game<'_> {
     }
     /// `ExperienceOrb.tick`'s scan before movement, once every twenty ticks.
     /// Hooks can change the resident list, so retain join identities, not indices.
-    pub(super) fn merge_orb(&mut self, i: usize) {
+    pub(in crate::game) fn merge_orb(&mut self, i: usize) {
         if !self.orbs[i].ticks.is_multiple_of(20) {
             return;
         }
@@ -647,7 +657,7 @@ impl Game<'_> {
     /// `Entity.unstuckIfPossible`, which `ExperienceOrb`'s constructor runs on an
     /// orb whose box is in a block: the free spot nearest its box's centre. An
     /// orb in open air keeps its position.
-    pub(super) fn unstuck_orb(&self, at: [f64; 3]) -> [f64; 3] {
+    pub(in crate::game) fn unstuck_orb(&self, at: [f64; 3]) -> [f64; 3] {
         let b = self.res.behaviours();
         let border = self.border_bounds();
         ExperienceOrb::unstuck(Vec3::new(at[0], at[1], at[2]), &border, |p| {
@@ -658,13 +668,13 @@ impl Game<'_> {
     }
     /// `new ExperienceOrb(level, pos, Vec3.ZERO, value)`: yaw and motion from
     /// the orb's own random.
-    pub(super) fn add_orb(&mut self, at: [f64; 3], value: u32) {
+    pub(in crate::game) fn add_orb(&mut self, at: [f64; 3], value: u32) {
         self.add_orb_toward(at, [0.0; 3], value);
     }
     /// `new ExperienceOrb(level, pos, roughly, value)`: a random motion that
     /// points against `roughly` is turned round, and the orb starts half its
     /// size (0.25) along `roughly`, unstuck if it collides there.
-    pub(super) fn add_orb_toward(&mut self, at: [f64; 3], roughly: [f64; 3], value: u32) {
+    pub(in crate::game) fn add_orb_toward(&mut self, at: [f64; 3], roughly: [f64; 3], value: u32) {
         let len_sqr = roughly.iter().map(|v| v * v).sum::<f64>();
         // Vec3.normalize: a vector shorter than 1e-5 has no direction.
         let len = len_sqr.sqrt();
@@ -810,7 +820,11 @@ impl Game<'_> {
     /// `at` (the eyes less 0.3): slots 0..36, armor feet to head (36..39),
     /// the off hand (40), each thrown in a random direction. The mods hear
     /// the drops (`native_living_drops`) before they join the level.
-    pub(super) fn drop_inventory(&mut self, at: [f64; 3], dying: &creatures::DyingDrops<'_>) {
+    pub(in crate::game) fn drop_inventory(
+        &mut self,
+        at: [f64; 3],
+        dying: &creatures::DyingDrops<'_>,
+    ) {
         let mut stacks: Vec<ItemStack> = Vec::new();
         if !self
             .ui
@@ -837,14 +851,14 @@ impl Game<'_> {
     }
 
     /// Item entity `i` leaves the level (`Entity.discard`); mods hear it.
-    pub(super) fn remove_dropped(&mut self, i: usize) -> ItemEntity {
+    pub(in crate::game) fn remove_dropped(&mut self, i: usize) -> ItemEntity {
         let e = self.dropped.remove(i);
         self.native_entity_left(e.id);
         e
     }
 
     /// Experience orb `i` leaves the level (`Entity.discard`); mods hear it.
-    pub(super) fn remove_orb(&mut self, i: usize) -> ExperienceOrb {
+    pub(in crate::game) fn remove_orb(&mut self, i: usize) -> ExperienceOrb {
         let o = self.orbs.remove(i);
         self.native_entity_left(o.id);
         o
@@ -852,13 +866,13 @@ impl Game<'_> {
 
     /// The item entity `spawn_item` just added, unless a native mod kept it
     /// out of the level (`native_entity_join_level`).
-    pub(super) fn just_spawned_item(&mut self) -> Option<&mut ItemEntity> {
+    pub(in crate::game) fn just_spawned_item(&mut self) -> Option<&mut ItemEntity> {
         let id = self.server.next_entity;
         self.dropped.last_mut().filter(|d| d.id == id)
     }
 
     /// `new ItemEntity(level, x, y, z, stack, dx, dy, dz)`.
-    pub(super) fn spawn_item(
+    pub(in crate::game) fn spawn_item(
         &mut self,
         stack: ItemStack,
         position: [f64; 3],
@@ -880,7 +894,7 @@ impl Game<'_> {
     }
 
     /// The dispenser constructs default motion before replacing it with the throw.
-    pub(super) fn spawn_item_thrown(
+    pub(in crate::game) fn spawn_item_thrown(
         &mut self,
         stack: ItemStack,
         position: [f64; 3],
@@ -890,7 +904,7 @@ impl Game<'_> {
         self.add_item_entity_prepared(stack, position, Some(velocity), 0, Some(random));
     }
 
-    pub(super) fn add_item_entity(
+    pub(in crate::game) fn add_item_entity(
         &mut self,
         stack: ItemStack,
         position: [f64; 3],
@@ -901,7 +915,7 @@ impl Game<'_> {
     }
 
     /// Block.popResource
-    pub(super) fn pop_resource(&mut self, pos: [i32; 3], stack: ItemStack) {
+    pub(in crate::game) fn pop_resource(&mut self, pos: [i32; 3], stack: ItemStack) {
         let block_drops = self
             .ui
             .rules
@@ -914,7 +928,7 @@ impl Game<'_> {
     /// `Containers.dropItemStack`: a crafting remainder leaves from inside the
     /// block, split by the level random, and can be picked up at once. Unlike
     /// `Block.popResource` it has no `block_drops` test.
-    pub(super) fn drop_item_stack_containers(&mut self, pos: [i32; 3], stack: ItemStack) {
+    pub(in crate::game) fn drop_item_stack_containers(&mut self, pos: [i32; 3], stack: ItemStack) {
         let count = stack.count;
         let at = [f64::from(pos[0]), f64::from(pos[1]), f64::from(pos[2])];
         for piece in
@@ -933,7 +947,7 @@ impl Game<'_> {
 
     /// `Block.popResourceFromFace`: the loot leaves the clicked face with the
     /// face's own motion instead of the item's random one.
-    pub(super) fn pop_resource_from_face(
+    pub(in crate::game) fn pop_resource_from_face(
         &mut self,
         pos: [i32; 3],
         face: [i32; 3],
@@ -990,7 +1004,7 @@ impl Game<'_> {
     /// along the view direction. `thrown_from_hand` (`drop(stack, true)`, the
     /// drop key) names the player as the thrower; `drop(stack, false)`, for
     /// what no longer fits in the inventory, does not.
-    pub(super) fn throw_from_eyes(
+    pub(in crate::game) fn throw_from_eyes(
         &mut self,
         thrown: ItemStack,
         eye: [f64; 3],
@@ -1013,7 +1027,7 @@ impl Game<'_> {
     }
 
     /// `LivingEntity.createItemStackToDrop` draws the spread from the player's own random.
-    pub(super) fn player_drop_motion(&mut self, randomly: bool) -> [f64; 3] {
+    pub(in crate::game) fn player_drop_motion(&mut self, randomly: bool) -> [f64; 3] {
         match self.player.as_mut() {
             Some(player) => sunrise_client::entities::drop_motion(
                 &mut player.random,
@@ -1033,7 +1047,7 @@ impl Game<'_> {
     /// `FurnaceResultSlot.checkTakeAchievements`: the player took from the output of the
     /// furnace at `pos`, which pops the experience of what it made at them
     /// (`awardUsedRecipesAndPopExperience`) and forgets it.
-    pub(super) fn award_furnace_recipes(&mut self, pos: (i32, i32, i32), at: [f64; 3]) {
+    pub(in crate::game) fn award_furnace_recipes(&mut self, pos: (i32, i32, i32), at: [f64; 3]) {
         let used = match self.world.block_entities.get_mut(&pos) {
             Some(BlockEntity::Furnace(f)) => {
                 let used = f.recipe_experience(world_recipes!(self));

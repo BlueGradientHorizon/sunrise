@@ -26,14 +26,14 @@ fn brighter<'a>(
 
 impl Game<'_> {
     /// How brightly each item glows, built on first use.
-    pub(super) fn luminance(&self) -> &Luminance {
+    pub(in crate::game) fn luminance(&self) -> &Luminance {
         self.client
             .luminance
             .get_or_init(|| Luminance::new(self.res.facts(), self.pack.assets.registry))
     }
     /// The player's, mobs' and dropped items' sources in their original order, with borrowed
     /// item names (none for fire). Nothing, including luminance, is visited while disabled.
-    pub(super) fn dynamic_light_sources(
+    pub(in crate::game) fn dynamic_light_sources(
         &self,
         alpha: f64,
     ) -> impl Iterator<Item = (Source, Option<&str>)> {
@@ -107,7 +107,7 @@ impl Game<'_> {
         })
     }
     /// The nearest MAX sources, without building an intermediate list or owning item names.
-    pub(super) fn gather_dynamic_lights(&mut self, camera: DVec3, alpha: f64) {
+    pub(in crate::game) fn gather_dynamic_lights(&mut self, camera: DVec3, alpha: f64) {
         let _span = sunrise_client::spans::guard("pr_light_gather");
         let mut out = std::mem::take(&mut self.client.dynamic_lights);
         dynamic_light::select_iter(

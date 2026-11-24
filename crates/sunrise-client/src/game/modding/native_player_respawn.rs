@@ -7,7 +7,10 @@ use sunrise_core::geometry::Vec3;
 impl Game<'_> {
     /// The Respawn button for a dead player (`handleClientCommand`'s `PERFORM_RESPAWN`), outside
     /// every player's hook. Each refusal is a variant of [`RespawnRefusal`], checked in its order.
-    pub(super) fn player_respawn(&mut self, player: PlayerRef) -> Result<(), RespawnRefusal> {
+    pub(in crate::game) fn player_respawn(
+        &mut self,
+        player: PlayerRef,
+    ) -> Result<(), RespawnRefusal> {
         if self.remote.is_some() {
             return Err(RespawnRefusal::Client);
         }
@@ -43,7 +46,7 @@ impl Game<'_> {
     /// nothing (`TeleportTransition.missingRespawnBlock`), not when there was no point or its
     /// level is gone (`TeleportTransition.createDefault`). Each level it reads is put in place
     /// for the read, and the caller's back before it returns.
-    pub(super) fn player_respawn_target(
+    pub(in crate::game) fn player_respawn_target(
         &mut self,
         player: PlayerRef,
     ) -> Result<RespawnTarget, RespawnTargetUnavailable> {

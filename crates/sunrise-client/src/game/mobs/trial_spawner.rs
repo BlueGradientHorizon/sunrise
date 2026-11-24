@@ -104,7 +104,7 @@ impl TrialSpawnerLevel for GameLevel<'_, '_> {
 impl Game<'_> {
     /// The server tick of the trial spawner at `key`. Its client tick comes
     /// after every block entity's.
-    pub(super) fn tick_trial_spawner(&mut self, key: Pos) -> Result<()> {
+    pub(in crate::game) fn tick_trial_spawner(&mut self, key: Pos) -> Result<()> {
         let Some((current, ominous)) = self.trial_spawner_block(key) else {
             return Ok(());
         };
@@ -123,7 +123,7 @@ impl Game<'_> {
     /// the mods' hook (`api_block_entity_update_tag`), and the block
     /// states with `trial_spawner_state=active`, the only ones whose tag
     /// holds `next_mob_spawns_at` (`TrialSpawnerStateData.getUpdateTag`).
-    pub(super) fn lan_update_tag_sources(
+    pub(in crate::game) fn lan_update_tag_sources(
         &self,
         encoder: &mut sunrise_client::lan::chunks::ChunkEncoder,
     ) {
@@ -147,7 +147,7 @@ impl Game<'_> {
             .collect();
     }
     /// The trial spawner block at `key`: its state and ominous flag.
-    pub(super) fn trial_spawner_block(&self, key: Pos) -> Option<(TrialState, bool)> {
+    pub(in crate::game) fn trial_spawner_block(&self, key: Pos) -> Option<(TrialState, bool)> {
         let block = self
             .pack
             .assets
@@ -168,7 +168,7 @@ impl Game<'_> {
             block.properties.get("ominous").is_some_and(|v| v == "true"),
         ))
     }
-    pub(super) fn server_tick_trial_spawner(
+    pub(in crate::game) fn server_tick_trial_spawner(
         &mut self,
         key: Pos,
         spawner: &mut TrialSpawner,
@@ -310,7 +310,7 @@ impl Game<'_> {
         Ok(())
     }
     /// `setState` (and `removeOminous`): the block's state and ominous flag.
-    pub(super) fn set_trial_spawner_state(
+    pub(in crate::game) fn set_trial_spawner_state(
         &mut self,
         key: Pos,
         state: TrialState,
@@ -360,7 +360,7 @@ impl Game<'_> {
         }
     }
     /// `sendBlockUpdated` of a block entity: the clients load its new update tag.
-    pub(super) fn mark_block_entity_updated(&mut self, key: Pos) {
+    pub(in crate::game) fn mark_block_entity_updated(&mut self, key: Pos) {
         self.world
             .path_type_block_updated(sunrise_core::position::BlockPos::new(key.0, key.1, key.2));
         if let Some(log) = self.world.block_log.as_mut() {

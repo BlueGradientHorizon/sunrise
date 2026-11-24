@@ -5,7 +5,7 @@ use std::{cell::RefCell, collections::VecDeque};
 use sunrise_client::{hud::HudBatch, toasts::SystemToast};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum SystemToastId {
+pub(in crate::game) enum SystemToastId {
     Narrator,
     PackLoadFailure,
     PackDownload(usize),
@@ -13,7 +13,7 @@ pub(super) enum SystemToastId {
     Title,
 }
 
-pub(super) enum Toast {
+pub(in crate::game) enum Toast {
     Advancement(advancements::Toast),
     Tutorial(tutorial::HintToast),
     System(Option<SystemToastId>, SystemToast),
@@ -24,22 +24,22 @@ pub(super) enum Toast {
     Mod(mod_toasts::Entry),
 }
 
-pub(super) struct VisibleToast {
-    pub(super) toast: Toast,
-    pub(super) slot: usize,
+pub(in crate::game) struct VisibleToast {
+    pub(in crate::game) toast: Toast,
+    pub(in crate::game) slot: usize,
     // A reset can resize the content, but the instance keeps its original slots.
     slots: u32,
 }
 
 #[derive(Default)]
-pub(super) struct ToastManager {
-    pub(super) pending_mod: RefCell<Vec<mod_toasts::Pending>>,
-    pub(super) queued: VecDeque<Toast>,
-    pub(super) visible: Vec<VisibleToast>,
+pub(in crate::game) struct ToastManager {
+    pub(in crate::game) pending_mod: RefCell<Vec<mod_toasts::Pending>>,
+    pub(in crate::game) queued: VecDeque<Toast>,
+    pub(in crate::game) visible: Vec<VisibleToast>,
 }
 
 impl ToastManager {
-    pub(super) fn all_mut(&mut self) -> impl Iterator<Item = &mut Toast> {
+    pub(in crate::game) fn all_mut(&mut self) -> impl Iterator<Item = &mut Toast> {
         self.visible
             .iter_mut()
             .map(|entry| &mut entry.toast)
@@ -47,14 +47,14 @@ impl ToastManager {
     }
 
     /// `ToastManager.getToast` looks in the visible list before the queue.
-    pub(super) fn find_mut<T>(
+    pub(in crate::game) fn find_mut<T>(
         &mut self,
         get: impl FnMut(&mut Toast) -> Option<&mut T>,
     ) -> Option<&mut T> {
         self.all_mut().find_map(get)
     }
 
-    pub(super) fn system_mut(&mut self, id: SystemToastId) -> Option<&mut SystemToast> {
+    pub(in crate::game) fn system_mut(&mut self, id: SystemToastId) -> Option<&mut SystemToast> {
         self.find_mut(|entry| match entry {
             Toast::System(Some(key), toast) if *key == id => Some(toast),
             _ => None,
@@ -64,7 +64,7 @@ impl ToastManager {
     /// `ToastManager.update`: finish/update the visible list before offering
     /// vacancies to the queue, in insertion order. Admission cannot sound a
     /// visibility change until the next update of the promoted instance.
-    pub(super) fn update(&mut self, multiplier: f64) -> (Option<bool>, bool) {
+    pub(in crate::game) fn update(&mut self, multiplier: f64) -> (Option<bool>, bool) {
         let mut visibility_sound = None;
         self.visible.retain_mut(|entry| {
             let (sound, finished) = match &mut entry.toast {
@@ -113,7 +113,7 @@ impl ToastManager {
 }
 
 impl Game<'_> {
-    pub(super) fn add_system_toast(
+    pub(in crate::game) fn add_system_toast(
         &mut self,
         id: Option<SystemToastId>,
         mut toast: SystemToast,
@@ -132,7 +132,7 @@ impl Game<'_> {
         true
     }
 
-    pub(super) fn add_or_update_system_toast(
+    pub(in crate::game) fn add_or_update_system_toast(
         &mut self,
         id: SystemToastId,
         new: SystemToast,
@@ -146,7 +146,7 @@ impl Game<'_> {
     }
 
     /// `ToastManager.extractRenderState`: F1 hides the draw, not the update.
-    pub(super) fn draw_every_toast(&mut self, batch: &mut HudBatch) {
+    pub(in crate::game) fn draw_every_toast(&mut self, batch: &mut HudBatch) {
         let replay = self.replay.playing();
         let hidden = self.ui.player_hides_gui || replay;
         let diagnostic_hidden = replay || self.overlay_holds_view();

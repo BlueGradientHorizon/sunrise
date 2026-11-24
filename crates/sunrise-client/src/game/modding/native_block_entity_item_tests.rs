@@ -20,7 +20,7 @@ fn commit(host: &mut dyn ServerHost, test: impl FnOnce(&mut dyn ServerHost, &Tra
 #[test]
 #[ignore = "daily"]
 fn internal_slots_preserve_automation_limits_and_nested_transactions() {
-    const NAME: &str = "game::native_block_entity_item_tests::internal_slots_preserve_automation_limits_and_nested_transactions";
+    const NAME: &str = "game::server_side::native_block_entity_item_tests::internal_slots_preserve_automation_limits_and_nested_transactions";
     with_mod_parts(NAME, |root| {
         super::native_entity_refs::tests::with_game_at(root, |game| {
             let entity = mod_holder(game);
@@ -278,7 +278,7 @@ fn container_holder(game: &mut super::Game<'_>, keys: usize) -> mod_api::BlockEn
 #[test]
 #[ignore = "daily"]
 fn container_moves_roll_back_slots_and_saved_data_in_any_order() {
-    const NAME: &str = "game::native_block_entity_item_tests::container_moves_roll_back_slots_and_saved_data_in_any_order";
+    const NAME: &str = "game::server_side::native_block_entity_item_tests::container_moves_roll_back_slots_and_saved_data_in_any_order";
     with_mod_parts(NAME, |root| {
         super::native_entity_refs::tests::with_game_at(root, |game| {
             let entity = container_holder(game, 3);
@@ -370,8 +370,7 @@ fn holder_state(
 #[test]
 #[ignore = "daily"]
 fn a_container_move_keeps_one_slot_not_the_entity() {
-    const NAME: &str =
-        "game::native_block_entity_item_tests::a_container_move_keeps_one_slot_not_the_entity";
+    const NAME: &str = "game::server_side::native_block_entity_item_tests::a_container_move_keeps_one_slot_not_the_entity";
     with_mod_parts(NAME, |root| {
         super::native_entity_refs::tests::with_game_at(root, |game| {
             let entity = container_holder(game, 100_000);
@@ -431,8 +430,7 @@ fn a_container_move_keeps_one_slot_not_the_entity() {
 #[test]
 #[ignore = "daily"]
 fn a_child_whole_capture_keeps_its_older_slot_entries() {
-    const NAME: &str =
-        "game::native_block_entity_item_tests::a_child_whole_capture_keeps_its_older_slot_entries";
+    const NAME: &str = "game::server_side::native_block_entity_item_tests::a_child_whole_capture_keeps_its_older_slot_entries";
     with_mod_parts(NAME, |root| {
         super::native_entity_refs::tests::with_game_at(root, |game| {
             let entity = container_holder(game, 3);
@@ -521,7 +519,7 @@ fn a_child_whole_capture_keeps_its_older_slot_entries() {
 #[test]
 #[ignore = "daily"]
 fn an_insert_past_a_short_mod_list_rolls_back_its_length() {
-    const NAME: &str = "game::native_block_entity_item_tests::an_insert_past_a_short_mod_list_rolls_back_its_length";
+    const NAME: &str = "game::server_side::native_block_entity_item_tests::an_insert_past_a_short_mod_list_rolls_back_its_length";
     with_mod_parts(NAME, |root| {
         super::native_entity_refs::tests::with_game_at(root, |game| {
             let entity = container_holder(game, 3);
@@ -581,7 +579,7 @@ fn slots_at(game: &super::Game<'_>, pos: (i32, i32, i32)) -> Option<Vec<Option<I
 #[test]
 #[ignore = "daily"]
 fn each_slot_journalled_container_aborts_to_its_exact_stacks() {
-    const NAME: &str = "game::native_block_entity_item_tests::each_slot_journalled_container_aborts_to_its_exact_stacks";
+    const NAME: &str = "game::server_side::native_block_entity_item_tests::each_slot_journalled_container_aborts_to_its_exact_stacks";
     with_mod_parts(NAME, |root| {
         super::native_entity_refs::tests::with_game_at(root, |game| {
             let entity = mod_holder(game);
@@ -634,7 +632,7 @@ fn each_slot_journalled_container_aborts_to_its_exact_stacks() {
 #[test]
 #[ignore = "daily"]
 fn a_kept_slot_goes_back_only_into_the_block_entity_it_came_from() {
-    const NAME: &str = "game::native_block_entity_item_tests::a_kept_slot_goes_back_only_into_the_block_entity_it_came_from";
+    const NAME: &str = "game::server_side::native_block_entity_item_tests::a_kept_slot_goes_back_only_into_the_block_entity_it_came_from";
     with_mod_parts(NAME, |root| {
         super::native_entity_refs::tests::with_game_at(root, |game| {
             let entity = mod_holder(game);
@@ -708,8 +706,7 @@ fn a_kept_slot_goes_back_only_into_the_block_entity_it_came_from() {
 #[test]
 #[ignore = "needs prepared resources in SUNRISE_TEST_RESOURCES; runs in an isolated scratch process"]
 fn timing_container_moves_beside_saved_data() {
-    const NAME: &str =
-        "game::native_block_entity_item_tests::timing_container_moves_beside_saved_data";
+    const NAME: &str = "game::server_side::native_block_entity_item_tests::timing_container_moves_beside_saved_data";
     if std::env::var_os("SUNRISE_JOURNAL_TIMING").is_none() {
         return;
     }
@@ -747,7 +744,7 @@ fn timing_container_moves_beside_saved_data() {
 #[test]
 #[ignore = "daily"]
 fn storage_asks_a_game_container_by_kind_and_rolls_back_with_its_transaction() {
-    const NAME: &str = "game::native_block_entity_item_tests::storage_asks_a_game_container_by_kind_and_rolls_back_with_its_transaction";
+    const NAME: &str = "game::server_side::native_block_entity_item_tests::storage_asks_a_game_container_by_kind_and_rolls_back_with_its_transaction";
     with_mod_parts(NAME, |root| {
         super::native_entity_refs::tests::with_game_at(root, |game| {
             let entity = mod_holder(game);
@@ -872,7 +869,7 @@ fn whole_state(game: &super::Game<'_>, pos: (i32, i32, i32)) -> String {
 #[test]
 #[ignore = "daily"]
 fn storage_writes_abort_to_the_exact_state_of_every_container_kind() {
-    const NAME: &str = "game::native_block_entity_item_tests::storage_writes_abort_to_the_exact_state_of_every_container_kind";
+    const NAME: &str = "game::server_side::native_block_entity_item_tests::storage_writes_abort_to_the_exact_state_of_every_container_kind";
     with_mod_parts(NAME, |root| {
         super::native_entity_refs::tests::with_game_at(root, |game| {
             let entity = mod_holder(game);
@@ -944,8 +941,7 @@ fn storage_writes_abort_to_the_exact_state_of_every_container_kind() {
 #[test]
 #[ignore = "daily"]
 fn an_aborted_bulk_transfer_conserves_every_item() {
-    const NAME: &str =
-        "game::native_block_entity_item_tests::an_aborted_bulk_transfer_conserves_every_item";
+    const NAME: &str = "game::server_side::native_block_entity_item_tests::an_aborted_bulk_transfer_conserves_every_item";
     with_mod_parts(NAME, |root| {
         super::native_entity_refs::tests::with_game_at(root, |game| {
             let entity = mod_holder(game);
@@ -1004,8 +1000,7 @@ fn an_aborted_bulk_transfer_conserves_every_item() {
 #[test]
 #[ignore = "needs prepared resources in SUNRISE_TEST_RESOURCES; runs in an isolated scratch process"]
 fn timing_storage_against_items_across_barrel_cells() {
-    const NAME: &str =
-        "game::native_block_entity_item_tests::timing_storage_against_items_across_barrel_cells";
+    const NAME: &str = "game::server_side::native_block_entity_item_tests::timing_storage_against_items_across_barrel_cells";
     if std::env::var_os("SUNRISE_STORAGE_TIMING").is_none() {
         return;
     }

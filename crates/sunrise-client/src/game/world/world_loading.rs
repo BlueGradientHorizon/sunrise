@@ -2,7 +2,7 @@
 use super::*;
 use sunrise_client::vanillagen::TerrainResources;
 
-pub(super) struct WorldRequest {
+pub(in crate::game) struct WorldRequest {
     pub save_root: PathBuf,
     pub folder: String,
     pub name: Option<String>,
@@ -11,13 +11,13 @@ pub(super) struct WorldRequest {
     pub create: Option<sunrise_client::title::WorldOptions>,
     pub rule_registry: Arc<sunrise_client::gamerules::RuleRegistry>,
     /// Where the server's region workers send their notices.
-    pub(super) chunk_reports: Arc<sunrise_client::chunk_io::Reports>,
+    pub(in crate::game) chunk_reports: Arc<sunrise_client::chunk_io::Reports>,
     /// The account the world opens under, for an integrated server
     /// (`IntegratedServer.getSingleplayerProfile`): its name and UUID.
     owner: Option<(String, u128)>,
 }
 
-pub(super) struct PreparedWorld {
+pub(in crate::game) struct PreparedWorld {
     pub save_root: PathBuf,
     /// The levels' shapes, from the world's dimension types.
     pub shapes: sunrise_client::chunk::LevelShapes,
@@ -405,7 +405,7 @@ impl WorldRequest {
     }
 }
 
-pub(super) struct WorldLoader {
+pub(in crate::game) struct WorldLoader {
     handle: JoinHandle<std::result::Result<PreparedWorld, String>>,
 }
 
@@ -467,7 +467,7 @@ static PRELOAD: std::sync::Mutex<Preload> = std::sync::Mutex::new(Preload::Idle)
 /// at the title screen itself: many players only go to Multiplayer, and
 /// small machines need the memory. Dropped after `PRELOAD_KEPT` away from
 /// the world screens without a world opening.
-pub(super) fn preload_world_data(
+pub(in crate::game) fn preload_world_data(
     on_world_screens: bool,
     resources: &std::path::Path,
     data_source: &sunrise_assets::resource_source::ResourceSource,
@@ -523,7 +523,7 @@ pub(super) fn preload_world_data(
 /// opening. Read for the world's own data packs and preset, the bundle and
 /// decoration `make_streaming` asks for; a world they don't fit (one its
 /// upgrade rewrites) reads its own when it opens.
-pub(super) fn preload_launch_world(
+pub(in crate::game) fn preload_launch_world(
     folder: &str,
     resources: &std::path::Path,
     data_source: &sunrise_assets::resource_source::ResourceSource,
@@ -587,14 +587,14 @@ pub(super) fn preload_launch_world(
 }
 
 /// A world opens: what `preload_world_data` read is the world's from now on.
-pub(super) fn world_data_used() {
+pub(in crate::game) fn world_data_used() {
     *PRELOAD.lock().unwrap_or_else(|e| e.into_inner()) = Preload::Used;
 }
 
 /// The game's biomes with the world's enabled packs over them, from the same
 /// pack list its worldgen is built from (`WorldgenOverrides` keeps only the
 /// biomes this table knows).
-pub(super) fn packed_biomes(
+pub(in crate::game) fn packed_biomes(
     world_root: &std::path::Path,
     resources: &std::path::Path,
     base: &Arc<sunrise_client::biome::Biomes>,
@@ -640,7 +640,7 @@ fn live_feature_overrides(
 /// (`applyNewPackConfig` reloads the world with the new pack config): the
 /// packs the temp folder and the resources root hold, the selection the
 /// Create screen made.
-pub(super) fn creation_worldgen_overrides(
+pub(in crate::game) fn creation_worldgen_overrides(
     pack_dir: Option<&std::path::Path>,
     resources: &std::path::Path,
     data_packs: &[String],
@@ -969,7 +969,7 @@ fn mod_terrain(
 
 /// The file beside the world that keeps the structure references of the level `id`. An id with a
 /// `/` puts it in a folder of `data/`.
-pub(super) fn structure_references_file(
+pub(in crate::game) fn structure_references_file(
     world_root: &std::path::Path,
     id: &str,
 ) -> std::path::PathBuf {
@@ -994,7 +994,7 @@ fn keep_structure_references(
     }));
 }
 
-pub(super) fn make_streaming(
+pub(in crate::game) fn make_streaming(
     res: &Resources,
     pack: &PackResources,
     options: &Options,
@@ -1731,7 +1731,7 @@ mod tests {
         // test process another test may own the global logger, or flood those lines: this runs
         // in a process of its own.
         if run_fresh_cases(
-            "game::world_loading::tests::a_world_saved_with_other_mod_versions_fires_mod_mismatch",
+            "game::server_side::world_loading::tests::a_world_saved_with_other_mod_versions_fires_mod_mismatch",
             "SUNRISE_MOD_MISMATCH_CHILD",
             &["alone"],
         ) {

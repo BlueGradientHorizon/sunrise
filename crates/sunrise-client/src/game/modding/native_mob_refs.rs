@@ -13,7 +13,7 @@ fn warden_mob_target_bounds(mob: &Mob) -> Option<Aabb> {
 }
 
 /// What decides whether a player can be a mob's target.
-pub(super) struct PlayerFacts {
+pub(in crate::game) struct PlayerFacts {
     pub mode: i32,
     pub alive: bool,
     pub invulnerable: bool,
@@ -65,7 +65,7 @@ impl Game<'_> {
 
     /// A player target's game mode, liveness, invulnerability (the ability,
     /// the `Invulnerable` flag or its window) and uuid.
-    pub(super) fn native_player_facts(&self, target: Target) -> Option<PlayerFacts> {
+    pub(in crate::game) fn native_player_facts(&self, target: Target) -> Option<PlayerFacts> {
         match target {
             Target::Guest(conn) => {
                 let g = self.command_guest(conn)?;
@@ -117,7 +117,7 @@ impl Game<'_> {
     /// `Mob.asValidTarget` and the modeled `canAttack` overrides: the game's
     /// own state as the target's facts, through the one rule set
     /// [`Mob::valid_target`] (#1175) a goal tick's view shares.
-    pub(super) fn native_mob_valid_target(&self, mob: &Mob, target: Target) -> bool {
+    pub(in crate::game) fn native_mob_valid_target(&self, mob: &Mob, target: Target) -> bool {
         if mob.species() == Species::Warden {
             return self.warden_valid_target(self.mob_team_of(mob), target);
         }
@@ -170,7 +170,7 @@ impl Game<'_> {
     }
     /// `Warden.getTarget` resolves the stored entity and validates the read;
     /// the brain memory is not changed when that entity becomes invalid.
-    pub(super) fn warden_attack_target(
+    pub(in crate::game) fn warden_attack_target(
         &self,
         mob: &Mob,
         scope: Option<(&Mob, &MobWorld<'_>)>,
@@ -286,7 +286,7 @@ impl Game<'_> {
     /// The entity as a vanilla Mob: a mob or the ender dragon. Players, armor
     /// stands, stale handles and clients are rejected. Mobs taken out for
     /// ticking are unavailable (a #29 follow-up).
-    pub(super) fn mob(&self, entity: EntityRef) -> Option<MobRef> {
+    pub(in crate::game) fn mob(&self, entity: EntityRef) -> Option<MobRef> {
         match self.native_entity_target(entity)? {
             Target::Mob(_) | Target::Dragon(_) => Some(MobRef::new(entity)),
             _ => None,
@@ -294,7 +294,7 @@ impl Game<'_> {
     }
 
     /// The existing portal decision for an available mob in the current level.
-    pub(super) fn mob_can_use_portal(&self, mob: MobRef) -> Option<bool> {
+    pub(in crate::game) fn mob_can_use_portal(&self, mob: MobRef) -> Option<bool> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
@@ -307,7 +307,7 @@ impl Game<'_> {
     /// unavailable mob or player binding, or a target without a living handle
     /// read as None. The dragon reads what a mod set, while it stays a valid
     /// target (`EnderDragon.canAttack`); its flight never sets one.
-    pub(super) fn mob_target(&self, mob: MobRef) -> Option<LivingRef> {
+    pub(in crate::game) fn mob_target(&self, mob: MobRef) -> Option<LivingRef> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return self.native_dragon_target(mob.entity());
         };
@@ -343,7 +343,11 @@ impl Game<'_> {
     /// Invalid targets are refused (false, mob unchanged); vanilla instead
     /// stores `asValidTarget(target)`, clearing the target when it is invalid.
     /// False also means a stale handle, client, or an unavailable mob/player.
-    pub(super) fn mob_set_target(&mut self, mob: MobRef, target: Option<LivingRef>) -> bool {
+    pub(in crate::game) fn mob_set_target(
+        &mut self,
+        mob: MobRef,
+        target: Option<LivingRef>,
+    ) -> bool {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return self.native_dragon_set_target(mob.entity(), target);
         };
@@ -386,7 +390,7 @@ impl Game<'_> {
     }
 
     /// Dispatch a mod-initiated change while the mob remains in the game.
-    pub(super) fn native_mob_target_event(
+    pub(in crate::game) fn native_mob_target_event(
         &self,
         mob: MobRef,
         original_target: Option<LivingRef>,
@@ -415,7 +419,7 @@ impl Game<'_> {
     /// fake player (the root rule for every mob target setter), a player in
     /// another level, or anything else (an armor stand, the dragon, a stale
     /// handle).
-    pub(super) fn native_mob_bind_target(
+    pub(in crate::game) fn native_mob_bind_target(
         &mut self,
         id: u32,
         target: Option<LivingRef>,
@@ -462,7 +466,11 @@ impl Game<'_> {
     /// False for a fake player, a player in another level, a mob without an
     /// attack-target brain (`MobRef::set_target` writes those), a stale or
     /// unavailable mob, the dragon, or on a client.
-    pub(super) fn mob_set_brain_target(&mut self, mob: MobRef, target: Option<LivingRef>) -> bool {
+    pub(in crate::game) fn mob_set_brain_target(
+        &mut self,
+        mob: MobRef,
+        target: Option<LivingRef>,
+    ) -> bool {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
@@ -525,19 +533,19 @@ impl Game<'_> {
 
     /// `Mob.isAggressive`, the synced mob flag (the dragon's reaches its
     /// clients as `DATA_MOB_FLAGS_ID`).
-    pub(super) fn mob_is_aggressive(&self, mob: MobRef) -> Option<bool> {
+    pub(in crate::game) fn mob_is_aggressive(&self, mob: MobRef) -> Option<bool> {
         self.native_mob_flag(mob, MobFlag::Aggressive)
     }
 
     /// `Mob.setAggressive`. False for an unavailable mob.
-    pub(super) fn mob_set_aggressive(&mut self, mob: MobRef, value: bool) -> bool {
+    pub(in crate::game) fn mob_set_aggressive(&mut self, mob: MobRef, value: bool) -> bool {
         self.native_mob_set_flag(mob, MobFlag::Aggressive, value)
     }
 
     /// `TamableAnimal.isInSittingPose`: the synced pose, which only a sit goal
     /// or this write changes. None for a horse, another mob kind, the dragon,
     /// a stale or removed handle, or a client.
-    pub(super) fn mob_is_in_sitting_pose(&self, mob: MobRef) -> Option<bool> {
+    pub(in crate::game) fn mob_is_in_sitting_pose(&self, mob: MobRef) -> Option<bool> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
@@ -548,7 +556,7 @@ impl Game<'_> {
     /// `TamableAnimal.setInSittingPose`: writes the synced pose and marks the
     /// mob for sync, leaving the saved order alone. False for a horse,
     /// another mob kind, the dragon, a stale or removed handle, or a client.
-    pub(super) fn mob_set_in_sitting_pose(&mut self, mob: MobRef, sitting: bool) -> bool {
+    pub(in crate::game) fn mob_set_in_sitting_pose(&mut self, mob: MobRef, sitting: bool) -> bool {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
@@ -566,13 +574,13 @@ impl Game<'_> {
     /// `Mob.isPersistenceRequired`. The dragon never despawns
     /// (`EnderDragon.checkDespawn` is empty), but keeps and saves the flag
     /// (`PersistenceRequired`).
-    pub(super) fn mob_persistence_required(&self, mob: MobRef) -> Option<bool> {
+    pub(in crate::game) fn mob_persistence_required(&self, mob: MobRef) -> Option<bool> {
         self.native_mob_flag(mob, MobFlag::Persistent)
     }
 
     /// `Mob.setPersistenceRequired`, which sets the flag and cannot clear it.
     /// False for an unavailable mob.
-    pub(super) fn mob_set_persistence_required(&mut self, mob: MobRef) -> bool {
+    pub(in crate::game) fn mob_set_persistence_required(&mut self, mob: MobRef) -> bool {
         self.native_mob_set_flag(mob, MobFlag::Persistent, true)
     }
 
@@ -580,7 +588,7 @@ impl Game<'_> {
     /// leashed mobs and species-specific reasons to stay, such as an enderman
     /// carrying a block. Independent of `PersistenceRequired` and `NoAI`.
     /// None for an unavailable mob or the separately modeled dragon.
-    pub(super) fn mob_requires_custom_persistence(&self, mob: MobRef) -> Option<bool> {
+    pub(in crate::game) fn mob_requires_custom_persistence(&self, mob: MobRef) -> Option<bool> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
@@ -594,7 +602,7 @@ impl Game<'_> {
     /// while what NoAI keeps running in vanilla (the daylight burn of the
     /// undead, a horse's tail) still does. Saved with it as `NoAI`. None
     /// for anything but a mob.
-    pub(super) fn mob_no_ai(&self, mob: MobRef) -> Option<bool> {
+    pub(in crate::game) fn mob_no_ai(&self, mob: MobRef) -> Option<bool> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
@@ -604,7 +612,7 @@ impl Game<'_> {
     /// `Mob.setNoAi`: whether the mob's own AI runs. With no AI the mob
     /// stands (what NoAI keeps in vanilla still runs), and the flag is
     /// saved with it as `NoAI`. False for anything but a mob.
-    pub(super) fn mob_set_no_ai(&mut self, mob: MobRef, no_ai: bool) -> bool {
+    pub(in crate::game) fn mob_set_no_ai(&mut self, mob: MobRef, no_ai: bool) -> bool {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
@@ -619,7 +627,7 @@ impl Game<'_> {
     /// reason to stay (a player near, a hit). Despawning and a raid's
     /// recruiting read it. None for a stale or unavailable mob, the dragon,
     /// or on a client.
-    pub(super) fn mob_no_action_time(&self, mob: MobRef) -> Option<i32> {
+    pub(in crate::game) fn mob_no_action_time(&self, mob: MobRef) -> Option<i32> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
@@ -636,7 +644,7 @@ impl Game<'_> {
     /// on from (a far-away mob's despawn chance starts past 600). Not saved,
     /// as in vanilla. False for a stale or unavailable mob, the dragon, or
     /// on a client.
-    pub(super) fn mob_set_no_action_time(&mut self, mob: MobRef, ticks: i32) -> bool {
+    pub(in crate::game) fn mob_set_no_action_time(&mut self, mob: MobRef, ticks: i32) -> bool {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
@@ -653,7 +661,7 @@ impl Game<'_> {
     /// babies, such as zombies, keep their non-growing baby state instead.
     /// Leaves `NoAI` and `PersistenceRequired` unchanged. False, with no
     /// changes, for an unavailable mob or a species with no baby form.
-    pub(super) fn mob_set_baby(&mut self, mob: MobRef, baby: bool) -> bool {
+    pub(in crate::game) fn mob_set_baby(&mut self, mob: MobRef, baby: bool) -> bool {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
@@ -676,7 +684,7 @@ impl Game<'_> {
     /// hold their look control, as in vanilla: the wanted position waits
     /// until it runs again. False for non-finite coordinates, a stale or
     /// unavailable mob, a client, and the dragon.
-    pub(super) fn mob_look_at(&mut self, mob: MobRef, at: [f64; 3]) -> bool {
+    pub(in crate::game) fn mob_look_at(&mut self, mob: MobRef, at: [f64; 3]) -> bool {
         if at.iter().any(|v| !v.is_finite()) {
             return false;
         }
@@ -697,7 +705,7 @@ impl Game<'_> {
     /// species refuses. A creaking being looked at holds its jump control,
     /// as in vanilla: the wish waits until it runs again. False for a stale
     /// or unavailable mob, a client, and the dragon.
-    pub(super) fn mob_jump(&mut self, mob: MobRef) -> bool {
+    pub(in crate::game) fn mob_jump(&mut self, mob: MobRef) -> bool {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
@@ -714,7 +722,12 @@ impl Game<'_> {
     /// while keeping `pos` as the center, `clear_restriction`'s shape. The
     /// area is saved with the mob (`home_pos`, `home_radius`). False for a
     /// stale or unavailable mob, a client, and the dragon.
-    pub(super) fn mob_restrict_to(&mut self, mob: MobRef, at: [i32; 3], radius: i32) -> bool {
+    pub(in crate::game) fn mob_restrict_to(
+        &mut self,
+        mob: MobRef,
+        at: [i32; 3],
+        radius: i32,
+    ) -> bool {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
@@ -729,7 +742,7 @@ impl Game<'_> {
     /// after `clear_restriction` and after a load (`[0, 0, 0]` for a mob
     /// that never had one, vanilla's `ZERO`). None for a stale or
     /// unavailable mob, a client, and the dragon.
-    pub(super) fn mob_restrict_center(&self, mob: MobRef) -> Option<[i32; 3]> {
+    pub(in crate::game) fn mob_restrict_center(&self, mob: MobRef) -> Option<[i32; 3]> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
@@ -744,7 +757,7 @@ impl Game<'_> {
 
     /// `Mob.getRestrictRadius`: `-1` while the mob has no restriction.
     /// None for a stale or unavailable mob, a client, and the dragon.
-    pub(super) fn mob_restrict_radius(&self, mob: MobRef) -> Option<i32> {
+    pub(in crate::game) fn mob_restrict_radius(&self, mob: MobRef) -> Option<i32> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
@@ -760,7 +773,7 @@ impl Game<'_> {
 
     /// `Mob.hasRestriction`. None for a stale or unavailable mob, a client,
     /// and the dragon.
-    pub(super) fn mob_has_restriction(&self, mob: MobRef) -> Option<bool> {
+    pub(in crate::game) fn mob_has_restriction(&self, mob: MobRef) -> Option<bool> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
@@ -777,7 +790,7 @@ impl Game<'_> {
     /// `Mob.clearRestriction`: the restriction goes, the center stays (its
     /// own goals read no restriction, as vanilla's `-1` radius). False for
     /// a stale or unavailable mob, a client, and the dragon.
-    pub(super) fn mob_clear_restriction(&mut self, mob: MobRef) -> bool {
+    pub(in crate::game) fn mob_clear_restriction(&mut self, mob: MobRef) -> bool {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
@@ -792,7 +805,11 @@ impl Game<'_> {
     /// the home area; a mob without a restriction is within everywhere, as
     /// in vanilla. None for a stale or unavailable mob, a client, and the
     /// dragon.
-    pub(super) fn mob_is_within_restriction(&self, mob: MobRef, at: [i32; 3]) -> Option<bool> {
+    pub(in crate::game) fn mob_is_within_restriction(
+        &self,
+        mob: MobRef,
+        at: [i32; 3],
+    ) -> Option<bool> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
@@ -807,7 +824,7 @@ impl Game<'_> {
 
     /// `Mob.isLeftHanded`: whether the mob holds things in its left hand
     /// (the mob flags in its entity data). None for anything but a mob.
-    pub(super) fn mob_left_handed(&self, mob: MobRef) -> Option<bool> {
+    pub(in crate::game) fn mob_left_handed(&self, mob: MobRef) -> Option<bool> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
@@ -823,7 +840,7 @@ impl Game<'_> {
     /// `Mob.setLeftHanded`: sets the mob flag the players around get with
     /// the mob's next entity data and see in its swing and held items.
     /// Saved with the mob as `LeftHanded`. False for anything but a mob.
-    pub(super) fn mob_set_left_handed(&mut self, mob: MobRef, left_handed: bool) -> bool {
+    pub(in crate::game) fn mob_set_left_handed(&mut self, mob: MobRef, left_handed: bool) -> bool {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
@@ -837,7 +854,7 @@ impl Game<'_> {
     /// `Mob.canPickUpLoot`, with the overrides of an allay (holding
     /// something) and a sulfur cube (with no block). None for anything but
     /// a mob.
-    pub(super) fn mob_can_pick_up_loot(&self, mob: MobRef) -> Option<bool> {
+    pub(in crate::game) fn mob_can_pick_up_loot(&self, mob: MobRef) -> Option<bool> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
@@ -853,7 +870,11 @@ impl Game<'_> {
     /// (saved with it as `CanPickUpLoot`; clients are not told, as in
     /// vanilla). An allay and a sulfur cube decide for themselves. False
     /// for anything but a mob.
-    pub(super) fn mob_set_can_pick_up_loot(&mut self, mob: MobRef, can_pick_up: bool) -> bool {
+    pub(in crate::game) fn mob_set_can_pick_up_loot(
+        &mut self,
+        mob: MobRef,
+        can_pick_up: bool,
+    ) -> bool {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };

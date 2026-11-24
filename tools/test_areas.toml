@@ -55,7 +55,8 @@ paths = [
 ]
 cargo = [
   { package = "sunrise-client", target = "lib", filter = "game::explosion" },
-  { package = "sunrise-client", target = "lib", filter = "game::tnt::" },
+  { package = "sunrise-client", target = "lib", filter = "game::server_side::explosion" },
+  { package = "sunrise-client", target = "lib", filter = "game::server_side::tnt::" },
   { package = "sunrise-client", target = "lib", filter = "game::wind::" },
 ]
 harnesses = [
@@ -104,8 +105,8 @@ paths = [
 cargo = [
   { package = "sunrise-client-lib", target = "lib", filter = "mobs::" },
   { package = "sunrise-client", target = "lib", filter = "game::creatures::" },
-  { package = "sunrise-client", target = "lib", filter = "game::stats::phantom_spawn_tests" },
-  { package = "sunrise-client", target = "lib", filter = "game::wither_star_tests" },
+  { package = "sunrise-client", target = "lib", filter = "game::server_side::stats::phantom_spawn_tests" },
+  { package = "sunrise-client", target = "lib", filter = "game::server_side::wither_star_tests" },
 ]
 harnesses = [
   "mob_*", "allay_*", "animal_love_cause", "armadillo_save_reload", "baby_pig_attachment", "breeze_hook",
@@ -286,7 +287,7 @@ cargo = [
   { package = "sunrise-command", target = "lib", filter = "" },
   { package = "sunrise-world", target = "lib", filter = "nbt_path::" },
   { package = "sunrise-client", target = "lib", filter = "game::commands::" },
-  { package = "sunrise-client", target = "lib", filter = "game::server_reload::" },
+  { package = "sunrise-client", target = "lib", filter = "game::server_side::server_reload::" },
   { package = "sunrise-client", target = "lib", filter = "game::mob_discard_tests::" },
 ]
 harnesses = [
@@ -315,8 +316,8 @@ paths = [
 cargo = [
   { package = "sunrise-client-lib", target = "lib", filter = "menu::" },
   { package = "sunrise-client-lib", target = "lib", filter = "crafting::" },
-  { package = "sunrise-client", target = "lib", filter = "game::container_hooks::" },
-  { package = "sunrise-client", target = "lib", filter = "game::extras::mouse_tweaks::" },
+  { package = "sunrise-client", target = "lib", filter = "game::client_side::container_hooks::" },
+  { package = "sunrise-client", target = "lib", filter = "game::client_side::extras::mouse_tweaks::" },
 ]
 harnesses = [
   "menu_click", "anvil_name", "container_*", "storage_menu", "vehicle_container", "carrier_inventory", "simple_container",
@@ -387,8 +388,10 @@ paths = [
 ]
 cargo = [
   { package = "sunrise-client", target = "lib", filter = "game::native_" },
-  { package = "sunrise-client", target = "lib", filter = "game::transactions::" },
-  { package = "sunrise-client", target = "lib", filter = "game::gui_entity::" },
+  { package = "sunrise-client", target = "lib", filter = "game::client_side::native_" },
+  { package = "sunrise-client", target = "lib", filter = "game::server_side::native_" },
+  { package = "sunrise-client", target = "lib", filter = "game::server_side::transactions::" },
+  { package = "sunrise-client", target = "lib", filter = "game::client_side::gui_entity::" },
   { package = "sunrise-client", target = "lib", filter = "game::host::" },
   { package = "sunrise-client", target = "lib", filter = "game::api_values::" },
   { package = "sunrise-client", target = "lib", filter = "game::load_conditions::" },

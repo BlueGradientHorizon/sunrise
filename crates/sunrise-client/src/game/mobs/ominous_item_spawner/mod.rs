@@ -20,28 +20,28 @@ const ABOUT_TO_SPAWN: i64 = 36;
 const TICKS_SCALING: f32 = 50.0;
 const ROTATION_SPEED: f32 = 40.0;
 
-pub(super) struct OminousItemSpawner {
+pub(in crate::game) struct OminousItemSpawner {
     /// Entity-owned registration metadata; content clones are detached.
-    pub(super) attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
+    pub(in crate::game) attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
     pub(in crate::game) join: sunrise_client::join_seq::JoinSeq,
     /// Its entity id: from the entity counter on the server, the server's on
     /// a client.
-    pub(super) id: u32,
+    pub(in crate::game) id: u32,
     /// `DATA_ITEM`; `minecraft:air` stands for `ItemStack.EMPTY`.
-    pub(super) item: ItemStack,
-    pub(super) position: [f64; 3],
-    pub(super) spawn_item_after: i64,
+    pub(in crate::game) item: ItemStack,
+    pub(in crate::game) position: [f64; 3],
+    pub(in crate::game) spawn_item_after: i64,
     tick_count: i64,
     /// `Entity.remainingFireTicks`, counted down by `baseTick`.
-    pub(super) fire_ticks: i32,
+    pub(in crate::game) fire_ticks: i32,
     /// `Entity.DATA_SHARED_FLAGS_ID` on-fire bit, set after `baseTick` fire processing.
-    pub(super) synced_fire: bool,
+    pub(in crate::game) synced_fire: bool,
     /// `Entity.hasVisualFire` (`HasVisualFire` in NBT).
-    pub(super) has_visual_fire: bool,
+    pub(in crate::game) has_visual_fire: bool,
     /// Its UUID, and the compound it was loaded from (fields Sunrise doesn't
     /// model survive a save).
-    pub(super) uuid: [i32; 4],
-    pub(super) raw: Option<Box<sunrise_core::nbt::Tag>>,
+    pub(in crate::game) uuid: [i32; 4],
+    pub(in crate::game) raw: Option<Box<sunrise_core::nbt::Tag>>,
 }
 
 sunrise_client::impl_joined!(OminousItemSpawner);
@@ -74,7 +74,7 @@ fn block(p: [f64; 3]) -> [i32; 3] {
 
 impl Game<'_> {
     /// `OminousItemSpawner.create` added at `position`.
-    pub(super) fn add_ominous_item_spawner(
+    pub(in crate::game) fn add_ominous_item_spawner(
         &mut self,
         item: ItemStack,
         position: [f64; 3],
@@ -98,10 +98,10 @@ impl Game<'_> {
     }
     /// A saved spawner, as `readAdditionalSaveData` leaves it: its tick
     /// count starts again from 0.
-    pub(super) fn load_ominous_item_spawner(&mut self, tag: sunrise_core::nbt::Tag) {
+    pub(in crate::game) fn load_ominous_item_spawner(&mut self, tag: sunrise_core::nbt::Tag) {
         self.load_ominous_item_spawner_transferred(tag, None);
     }
-    pub(super) fn load_ominous_item_spawner_transferred(
+    pub(in crate::game) fn load_ominous_item_spawner_transferred(
         &mut self,
         mut tag: sunrise_core::nbt::Tag,
         transferred: Option<super::entity_initialization::TransferredEntityState>,
@@ -145,7 +145,7 @@ impl Game<'_> {
     /// Every item spawner's tick: `commonTick`'s count, `tickServer` (the
     /// warning sound, then the item) and `tickClient` (particles every 5
     /// game ticks).
-    pub(super) fn tick_ominous_item_spawners(&mut self) {
+    pub(in crate::game) fn tick_ominous_item_spawners(&mut self) {
         // ServerLevel.tick: only entities in entity-ticking chunks that joined before the pass tick.
         let ticking = self.entity_ticking_area();
         let through = self.server.ticked_entities_through;
@@ -191,7 +191,7 @@ impl Game<'_> {
     }
     /// `handleAddEntity` for a spawner a server sent: its item comes with the
     /// entity data (`ItemStack.EMPTY` until then, which draws nothing).
-    pub(super) fn add_remote_ominous_item_spawner(&mut self, id: u32, position: [f64; 3]) {
+    pub(in crate::game) fn add_remote_ominous_item_spawner(&mut self, id: u32, position: [f64; 3]) {
         self.ominous_spawners.push(OminousItemSpawner {
             attachment_lifetime: Default::default(),
             join: Default::default(),
@@ -209,7 +209,7 @@ impl Game<'_> {
     }
     /// `OminousItemSpawner.tick` on a client: `tickCount` and `tickClient`,
     /// the particles every 5 game ticks; only the server spawns the item.
-    pub(super) fn tick_remote_ominous_item_spawners(&mut self) {
+    pub(in crate::game) fn tick_remote_ominous_item_spawners(&mut self) {
         let at: Vec<[f64; 3]> = self.ominous_spawners.iter().map(|s| s.position).collect();
         self.ominous_spawners.for_each_mut(|s| s.tick_count += 1);
         if self.world.game_time % 5 == 0 {
@@ -260,7 +260,7 @@ impl Game<'_> {
     }
     /// `OminousItemSpawnerRenderer`: the item, full bright, growing over its
     /// first 50 ticks and turning.
-    pub(super) fn ominous_item_spawner_geometry(
+    pub(in crate::game) fn ominous_item_spawner_geometry(
         &self,
         camera: glam::DVec3,
         alpha: f64,

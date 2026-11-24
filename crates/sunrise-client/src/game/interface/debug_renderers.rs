@@ -58,7 +58,7 @@ fn cube(center: [i32; 3], radius: i32) -> impl Iterator<Item = [i32; 3]> {
 impl Game<'_> {
     /// `CollisionBoxRenderer`: the block collisions within 6 of the camera
     /// entity's box, white.
-    pub(super) fn debug_renderer_gizmos(&self, g: &mut Gizmos) {
+    pub(in crate::game) fn debug_renderer_gizmos(&self, g: &mut Gizmos) {
         if !self.debug_entry("visualize_collision_boxes") {
             return;
         }
@@ -99,7 +99,11 @@ impl Game<'_> {
     }
 
     /// The fill and text renderers' geometry for this frame.
-    pub(super) fn debug_renderer_geometry(&mut self, camera: glam::DVec3, out: &mut Vec<Vertex>) {
+    pub(in crate::game) fn debug_renderer_geometry(
+        &mut self,
+        camera: glam::DVec3,
+        out: &mut Vec<Vertex>,
+    ) {
         let water = self.debug_entry("visualize_water_levels");
         let heightmap = self.debug_entry("visualize_heightmap");
         let block_light = self.debug_entry("visualize_block_light_levels");

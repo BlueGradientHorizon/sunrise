@@ -16,7 +16,7 @@ use std::collections::{HashMap, HashSet};
 mod tests;
 
 #[derive(Default)]
-pub(super) struct EntityInitialization {
+pub(in crate::game) struct EntityInitialization {
     /// The object holders already told (entity IDs and separate player UUIDs). An entity is forgotten when it leaves the world (`forget_entity`:
     /// death, a chunk unloading), so the next one made from its data is
     /// told again, as vanilla constructs a new entity for each of those.
@@ -25,13 +25,13 @@ pub(super) struct EntityInitialization {
     /// `ServerPlayer`.
     players: HashMap<u128, u32>,
     /// The holder being told now: its attachments are reachable before it is in the level.
-    pub(super) active: Option<Holder>,
+    pub(in crate::game) active: Option<Holder>,
 }
 
 impl Game<'_> {
     /// Tell the listeners about a new entity of type `kind`, unless it was already told. Marked
     /// before the dispatch, so a listener's own attachment access doesn't tell it again.
-    pub(super) fn initialize_entity(&mut self, holder: Holder, kind: &str) {
+    pub(in crate::game) fn initialize_entity(&mut self, holder: Holder, kind: &str) {
         if !mod_api::__private::listened(mod_api::HookId::EntityConstructing) {
             return;
         }
@@ -62,7 +62,7 @@ impl Game<'_> {
     /// `initialize_entity` for a holder whose attachments are about to be read, its type
     /// looked up: an entity that started on a path that doesn't tell (one made and touched
     /// within a pass, before the join pass) is told before the read.
-    pub(super) fn initialize_entity_on_access(&mut self, holder: Holder) {
+    pub(in crate::game) fn initialize_entity_on_access(&mut self, holder: Holder) {
         if !mod_api::__private::listened(mod_api::HookId::EntityConstructing) {
             return;
         }
@@ -81,7 +81,7 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn forget_entity_initialization(&mut self, holder: Holder) {
+    pub(in crate::game) fn forget_entity_initialization(&mut self, holder: Holder) {
         if let Holder::Entity(id) = holder
             && let Some(mob) = self.mobs.iter_mut().find(|mob| mob.id == id)
         {
@@ -96,7 +96,7 @@ impl Game<'_> {
     /// Forget destroyed objects in this level before its UUID metadata is pruned.
     /// The supplied set includes reachable off-level objects. Other levels and
     /// player lifetimes are owned by their own cleanup boundaries.
-    pub(super) fn prune_entity_initializations(&mut self, retained: &HashSet<u32>) {
+    pub(in crate::game) fn prune_entity_initializations(&mut self, retained: &HashSet<u32>) {
         self.server
             .entity_initialization
             .initialized
@@ -109,7 +109,7 @@ impl Game<'_> {
     /// A LAN guest's player, its file just read for connection `conn`: told once per
     /// connection (`PlayerList.placeNewPlayer` constructs the `ServerPlayer`, then
     /// `loadPlayerData` reads its file).
-    pub(super) fn initialize_server_player(&mut self, uuid: u128, conn: u32) {
+    pub(in crate::game) fn initialize_server_player(&mut self, uuid: u128, conn: u32) {
         if self.server.entity_initialization.players.insert(uuid, conn) != Some(conn) {
             self.forget_entity_initialization(Holder::Player(uuid));
         }
@@ -118,7 +118,7 @@ impl Game<'_> {
 
     /// `PlayerList.respawn`: the guest gets a new `ServerPlayer`, told again, and the data it
     /// keeps (`copy_on_death`, already in place) is restored over it.
-    pub(super) fn reinitialize_server_player(&mut self, uuid: u128, conn: u32) {
+    pub(in crate::game) fn reinitialize_server_player(&mut self, uuid: u128, conn: u32) {
         self.forget_entity_initialization(Holder::Player(uuid));
         self.initialize_guest_player_under_data(uuid, conn);
     }
@@ -150,12 +150,12 @@ impl Game<'_> {
 /// Explicit ownership passed alongside one travelling object's NBT, never encoded in NBT.
 /// Not Clone: a transfer cannot install the same runtime state twice.
 #[derive(Debug)]
-pub(super) struct TransferredEntityState {
+pub(in crate::game) struct TransferredEntityState {
     attachments: Option<sunrise_mod_runtime::attachments::Attachments>,
     initialized: bool,
     accepted_hit: Option<std::sync::Arc<sunrise_client::health::AcceptedHit>>,
     died: bool,
-    pub(super) transient: bool,
+    pub(in crate::game) transient: bool,
     /// The source id whose attachment map a transaction open at the take kept: the
     /// arrival moves that keeping to the new id.
     journaled: Option<u32>,
@@ -184,7 +184,10 @@ impl Game<'_> {
     /// Inside a transaction the take is journaled: the map's writes in the action roll back
     /// wherever the map is, and the source level's index keeps its rows until the root closes
     /// (`defer_departure`). Travel itself is not undone, so the map stays with the entity.
-    pub(super) fn take_transferred_entity_state(&mut self, id: u32) -> TransferredEntityState {
+    pub(in crate::game) fn take_transferred_entity_state(
+        &mut self,
+        id: u32,
+    ) -> TransferredEntityState {
         let journaled = (!self.transactions.is_empty()).then(|| {
             self.journal_attachments(Holder::Entity(id));
             id
@@ -218,7 +221,7 @@ impl Game<'_> {
 
     /// Install before `remember_uuid`: the destination is the same logical entity,
     /// so neither construction nor the saved overlay may replace its runtime values.
-    pub(super) fn adopt_transferred_entity_state(
+    pub(in crate::game) fn adopt_transferred_entity_state(
         &mut self,
         id: u32,
         state: TransferredEntityState,
@@ -259,7 +262,7 @@ impl Game<'_> {
 }
 
 impl Game<'_> {
-    pub(super) fn forget_remote_entity_construction(&mut self, id: i32) {
+    pub(in crate::game) fn forget_remote_entity_construction(&mut self, id: i32) {
         self.forget_entity_initialization(Holder::Entity(id as u32));
         if let Some(uuid) = self
             .remote

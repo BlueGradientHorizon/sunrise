@@ -24,7 +24,7 @@ impl Game<'_> {
     }
     /// A panda takes what lies at its feet when its mouth is free, and
     /// looks for food within 6 and 8 blocks for `PandaSitGoal`.
-    pub(super) fn tick_pandas(&mut self) {
+    pub(in crate::game) fn tick_pandas(&mut self) {
         let griefing = self
             .ui
             .rules
@@ -75,7 +75,7 @@ impl Game<'_> {
         }
     }
     /// `Panda.mobInteract` for a click with `item`; whether the click is taken.
-    pub(super) fn interact_panda(&mut self, index: usize, item: &str) -> bool {
+    pub(in crate::game) fn interact_panda(&mut self, index: usize, item: &str) -> bool {
         let creative = self.creative;
         let m = &mut self.mobs[index];
         if panda::scared(m) {
@@ -142,7 +142,7 @@ impl Game<'_> {
         true
     }
     /// `Panda.afterSneeze`: the grown pandas within 10 blocks of a cub jump.
-    pub(super) fn panda_sneezed(&mut self, id: u32) {
+    pub(in crate::game) fn panda_sneezed(&mut self, id: u32) {
         let Some(area) = self
             .mobs
             .iter()
@@ -176,7 +176,7 @@ impl Game<'_> {
     }
     /// What a window draws of its pandas: the crumbs of a bite
     /// (`addEatingParticles`) and the sneeze's particle.
-    pub(super) fn panda_effects(&mut self) {
+    pub(in crate::game) fn panda_effects(&mut self) {
         let mut bites = Vec::new();
         let mut sneezes = Vec::new();
         for m in self

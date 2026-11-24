@@ -12,7 +12,7 @@ use sunrise_client::{
     server::user_lists::{BanList, IpBanList, OpList, WhiteList},
 };
 
-pub(super) fn with_save_game(root: &std::path::Path, test: impl FnOnce(&mut Game<'_>)) {
+pub(in crate::game) fn with_save_game(root: &std::path::Path, test: impl FnOnce(&mut Game<'_>)) {
     native_guest_turn_tests::with_guests(|game| {
         game.server.world_root = root.to_path_buf();
         game.save = Arc::new(SaveDir::new(
@@ -70,7 +70,7 @@ fn visibility_listener_unwind_does_not_block_an_outside_save() {
     // Save admission is process-wide, even when this game's visibility is settled.
     // Other fixtures may legitimately hold leases; isolate the real save proof.
     crate::game::in_own_process(
-        "game::visibility_unwind_tests::visibility_listener_unwind_does_not_block_an_outside_save",
+        "game::server_side::visibility_unwind_tests::visibility_listener_unwind_does_not_block_an_outside_save",
         visibility_unwind_save,
     );
 }

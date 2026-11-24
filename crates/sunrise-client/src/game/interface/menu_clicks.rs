@@ -5,14 +5,14 @@ use super::*;
 
 impl Game<'_> {
     /// `quickMoveStack` of the open plain menu for a shift-click.
-    pub(super) fn inventory_quick_move(&mut self, slot: usize) -> bool {
+    pub(in crate::game) fn inventory_quick_move(&mut self, slot: usize) -> bool {
         self.click_open_inventory(Some(slot), 0, sunrise_client::menu::Input::QuickMove)
     }
     /// `AbstractContainerMenu.clicked` on the open inventory, crafting table,
     /// chest, hopper, dispenser or furnace menu, run by the verified menu
     /// engine (`sunrise_client::menu`). `slot` None is outside the window.
     /// False when the open screen is not one the engine models.
-    pub(super) fn click_open_inventory(
+    pub(in crate::game) fn click_open_inventory(
         &mut self,
         slot: Option<usize>,
         button: i32,
@@ -49,7 +49,7 @@ impl Game<'_> {
     /// `handleCreativeModeItemDrop`, then sends the slot (`broadcastChanges`,
     /// `handleCreativeModeItemAdd`); the carried stack stays. Only the server drops it: this is
     /// the client of a server (`remote`).
-    pub(super) fn creative_throw_carrying(&mut self, slot: usize, button: i32) {
+    pub(in crate::game) fn creative_throw_carrying(&mut self, slot: usize, button: i32) {
         let Some(old) = self
             .slot_mut(slot)
             .as_ref()
@@ -81,7 +81,7 @@ impl Game<'_> {
     }
     /// A click on an item tab's display slot: the screen's own handling
     /// (`creative::click_display`), never the menu's.
-    pub(super) fn creative_display_click(
+    pub(in crate::game) fn creative_display_click(
         &mut self,
         slot: usize,
         button: i32,
@@ -122,7 +122,7 @@ impl Game<'_> {
         }
     }
     /// Several clicks on one menu instance (a quick craft drag is three).
-    pub(super) fn menu_ops(
+    pub(in crate::game) fn menu_ops(
         &mut self,
         ops: &[(Option<usize>, i32, sunrise_client::menu::Input)],
     ) -> bool {
@@ -192,7 +192,7 @@ impl Game<'_> {
     /// stack, menu data and drops are copied back when it returns Some(true)
     /// (Some(false): handled, nothing kept; None: not handled). False when the
     /// open screen is not one the engine models or `run` did not handle it.
-    pub(super) fn menu_session(
+    pub(in crate::game) fn menu_session(
         &mut self,
         run: impl FnOnce(
             &mut sunrise_client::menu::Menu,
@@ -205,7 +205,7 @@ impl Game<'_> {
 
     /// Like `menu_session`, with read-only access to connection state before
     /// deciding whether to keep the prediction.
-    pub(super) fn menu_session_with_game(
+    pub(in crate::game) fn menu_session_with_game(
         &mut self,
         run: impl FnOnce(
             &Self,
@@ -996,7 +996,7 @@ impl Game<'_> {
     }
     /// `CrafterBlockEntity.setSlotState`: the menu's slot states land on the
     /// block entity, whose `setChanged` marks the chunk for saving.
-    pub(super) fn apply_crafter_slot_states(&mut self, menu: &sunrise_client::menu::Menu) {
+    pub(in crate::game) fn apply_crafter_slot_states(&mut self, menu: &sunrise_client::menu::Menu) {
         let Some(key) = self.container else {
             return;
         };
@@ -1013,7 +1013,7 @@ impl Game<'_> {
             self.container_changed(key);
         }
     }
-    pub(super) fn click_inventory(&mut self, right: bool) -> bool {
+    pub(in crate::game) fn click_inventory(&mut self, right: bool) -> bool {
         if self.mod_browser_press(right) || self.mount_click(right) {
             return true;
         }
@@ -1205,7 +1205,7 @@ impl Game<'_> {
     }
 
     /// A screen closed or lost its pointer: discard the unfinished click gesture.
-    pub(super) fn reset_inventory_clicks(&mut self) {
+    pub(in crate::game) fn reset_inventory_clicks(&mut self) {
         self.client.inv_clicks.cancel_drag();
         self.client.inv_drag = None;
         self.client.last_inv_click = None;
@@ -1213,7 +1213,7 @@ impl Game<'_> {
 
     /// A sound a menu click made the player play (a bundle's insert or
     /// remove): `Entity.playSound` at the player.
-    pub(super) fn player_menu_sound(&mut self, sound: &str) {
+    pub(in crate::game) fn player_menu_sound(&mut self, sound: &str) {
         let Some(p) = self.player.as_ref() else {
             return;
         };

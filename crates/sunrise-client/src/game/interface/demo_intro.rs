@@ -17,7 +17,7 @@ const BUTTON_HEIGHT: f32 = 20.0;
 const SECTION_SPACE: f32 = 12.0;
 const LINE_HEIGHT: f32 = 9.0;
 
-pub(super) struct DemoIntro {
+pub(in crate::game) struct DemoIntro {
     title: Text,
     messages: [Text; 2],
     buttons: [Text; 2],
@@ -96,7 +96,7 @@ struct Layout {
 }
 
 impl Game<'_> {
-    pub(super) fn apply_demo_event(&mut self, param: f32) {
+    pub(in crate::game) fn apply_demo_event(&mut self, param: f32) {
         // DEMO_EVENT compares the raw float; signed zero matches, but rounded
         // neighbors, unknown phases and NaN do not.
         if param == 0.0 {
@@ -130,7 +130,7 @@ impl Game<'_> {
         self.say_system_queued(&message);
     }
 
-    pub(super) fn draw_demo_intro(&self, batch: &mut HudBatch) {
+    pub(in crate::game) fn draw_demo_intro(&self, batch: &mut HudBatch) {
         let Some(intro) = &self.client.demo_intro else {
             return;
         };
@@ -187,7 +187,7 @@ impl Game<'_> {
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
     }
 
-    pub(super) fn demo_intro_click(&mut self) -> bool {
+    pub(in crate::game) fn demo_intro_click(&mut self) -> bool {
         let Some(intro) = &self.client.demo_intro else {
             return false;
         };
@@ -217,7 +217,7 @@ impl Game<'_> {
     /// `MouseHandler.grabMouse`, and Later's button calls `grabMouse` before
     /// `onClose`. The grab is asked for once the screen hooks let the close go
     /// ahead, as every other close to the HUD asks for it.
-    pub(super) fn close_demo_intro(&mut self) {
+    pub(in crate::game) fn close_demo_intro(&mut self) {
         self.set_screen(Screen::Playing);
         if self.client.screen == Screen::Playing {
             self.capture(true);
@@ -273,7 +273,7 @@ mod tests {
     #[ignore = "daily"]
     fn demo_packets_open_the_parentless_intro_and_narrate_only_exact_hints() {
         in_own_process(
-            "game::demo_intro::tests::demo_packets_open_the_parentless_intro_and_narrate_only_exact_hints",
+            "game::client_side::demo_intro::tests::demo_packets_open_the_parentless_intro_and_narrate_only_exact_hints",
             || {
                 let veto = Arc::new(AtomicBool::new(false));
                 let mods = vec![ModEntry::new(

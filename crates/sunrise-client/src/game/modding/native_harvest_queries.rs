@@ -12,7 +12,7 @@ impl Game<'_> {
     /// fake player (their state swapped in); a client only its local player. None for a stale
     /// handle, an unknown state, a dead player, a level other than the one in place, or a call
     /// from inside one of those hooks, which would run it again without bound.
-    pub(super) fn player_destroy_progress(
+    pub(in crate::game) fn player_destroy_progress(
         &mut self,
         player: PlayerRef,
         level: LevelRef,
@@ -45,7 +45,7 @@ impl Game<'_> {
     /// in); a client only its local player. None for a stale handle, an unknown state, a dead player,
     /// a level other than the one in place, or a call from inside a harvest hook
     /// (`can_harvest_block`, `player_harvest_check`), which would recurse.
-    pub(super) fn player_has_correct_tool_for_drops(
+    pub(in crate::game) fn player_has_correct_tool_for_drops(
         &mut self,
         player: PlayerRef,
         level: LevelRef,

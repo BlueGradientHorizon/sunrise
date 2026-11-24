@@ -18,7 +18,7 @@ fn mod_key_slot(mapping: ModKeyMappingRef) -> ModKeySlot {
 impl Game<'_> {
     /// Binds the mods' mappings to the player's keys (`sunrise-mods.txt`) or their declared
     /// defaults: when the settings apply, at start and after Controls changes one.
-    pub(super) fn bind_mod_mappings(&mut self) {
+    pub(in crate::game) fn bind_mod_mappings(&mut self) {
         let mappings = super::mods::collect_key_mappings(
             self.options.execution_role,
             mod_api::__private::key_mappings(),
@@ -148,7 +148,7 @@ impl Game<'_> {
     /// One key event, the window's after it handled it or the control socket's: the mods'
     /// mappings bound to it hear it (`KeyMapping.set`, `KeyMapping.click`), then `input_key`
     /// fires. `key` is vanilla's name for it; the rest is what `native_input_key` takes.
-    pub(super) fn key_input(
+    pub(in crate::game) fn key_input(
         &mut self,
         key: Option<&'static str>,
         layout_key: Option<&str>,
@@ -169,7 +169,7 @@ impl Game<'_> {
     }
     /// The control socket's `key KEY down|up|tap|repeat`, through `key_input` as a window key
     /// goes: a tap is a press, then a release. A script types on a QWERTY layout.
-    pub(super) fn socket_key_input(&mut self, key: KeyCode, action: &str) {
+    pub(in crate::game) fn socket_key_input(&mut self, key: KeyCode, action: &str) {
         let name = sunrise_client::keybinds::key_name(key);
         let layout_key = match key {
             KeyCode::Backquote
@@ -200,7 +200,7 @@ impl Game<'_> {
         }
     }
     /// The same as a key's for a mouse button (`MouseHandler.onButton`).
-    pub(super) fn mod_mappings_button(&mut self, button: MouseButton, pressed: bool) {
+    pub(in crate::game) fn mod_mappings_button(&mut self, button: MouseButton, pressed: bool) {
         let action = if pressed {
             KeyAction::Press
         } else {

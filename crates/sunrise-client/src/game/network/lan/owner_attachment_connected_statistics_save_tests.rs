@@ -62,8 +62,7 @@ mod owner_attachment_save_tests {
 
     /// Each test loads resources, which replaces process-wide tables: it runs
     /// in a fresh process of its own.
-    const HERE: &str =
-        "game::lan::owner_attachment_connected_statistics_save_tests::owner_attachment_save_tests";
+    const HERE: &str = "game::server_side::lan::owner_attachment_connected_statistics_save_tests::owner_attachment_save_tests";
 
     #[test]
     #[ignore = "daily"]

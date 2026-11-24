@@ -40,7 +40,7 @@ struct Open {
 }
 
 /// A dialog a clicked command closed, kept for its confirmation's no.
-pub(super) struct ClosedDialog(Box<Open>);
+pub(in crate::game) struct ClosedDialog(Box<Open>);
 
 /// A text input's control: `EditBox`, or `MultiLineEditBox` for a multiline one.
 enum Field {
@@ -85,7 +85,7 @@ impl Field {
 
 /// The dialog screens a server can open.
 #[derive(Default)]
-pub(super) struct DialogState {
+pub(in crate::game) struct DialogState {
     open: Option<Open>,
     revision: u64,
     /// `WaitingForResponseScreen`, since when.
@@ -99,7 +99,7 @@ impl DialogState {
     /// the dialog's own `pause` (`CommonDialogData.pause`, true by default),
     /// `WaitingForResponseScreen` overrides it false, and the warning above
     /// the dialog is a `ConfirmScreen`, which inherits `Screen`'s true.
-    pub(super) fn pauses_world(&self) -> bool {
+    pub(in crate::game) fn pauses_world(&self) -> bool {
         if self.warning {
             return true;
         }
@@ -138,13 +138,13 @@ impl Game<'_> {
     }
 
     /// Whether a dialog screen takes the input.
-    pub(super) fn dialog_open(&self) -> bool {
+    pub(in crate::game) fn dialog_open(&self) -> bool {
         let d = &self.dialogs;
         d.open.is_some() || d.waiting.is_some() || d.warning
     }
     /// What tells one dialog screen from another for a controller's focus: a new dialog is a
     /// new screen, and so are the warning and waiting screens.
-    pub(super) fn dialog_screen_key(&self) -> (bool, bool, Option<u64>) {
+    pub(in crate::game) fn dialog_screen_key(&self) -> (bool, bool, Option<u64>) {
         let d = &self.dialogs;
         (
             d.warning,
@@ -153,7 +153,7 @@ impl Game<'_> {
         )
     }
     /// The warning icon in the dialog's corner, while the dialog itself shows.
-    pub(super) fn dialog_warning_icon(&self) -> Option<[f32; 4]> {
+    pub(in crate::game) fn dialog_warning_icon(&self) -> Option<[f32; 4]> {
         let d = &self.dialogs;
         if d.warning || d.waiting.is_some() {
             return None;
@@ -161,7 +161,7 @@ impl Game<'_> {
         self.dialog_layout().map(|layout| layout.warning)
     }
     /// The focused dialog input, including the initial keyboard focus before any click.
-    pub(super) fn dialog_navigation_focus(&self) -> Option<[f32; 4]> {
+    pub(in crate::game) fn dialog_navigation_focus(&self) -> Option<[f32; 4]> {
         if self.dialogs.warning || self.dialogs.waiting.is_some() {
             return None;
         }
@@ -179,7 +179,7 @@ impl Game<'_> {
 
     /// Dialog body controls are added before the footer; the warning button
     /// is added last, but has its own earlier tab group.
-    pub(super) fn dialog_navigation_order(&self) -> Option<Vec<[f32; 4]>> {
+    pub(in crate::game) fn dialog_navigation_order(&self) -> Option<Vec<[f32; 4]>> {
         let warning = self.dialog_warning_icon()?;
         let open = self.dialogs.open.as_ref()?;
         let layout = self.dialog_layout()?;
@@ -197,7 +197,7 @@ impl Game<'_> {
     }
 
     /// Apply a focus path without clicking the dialog's editor or changing its caret.
-    pub(super) fn set_dialog_navigation_focus(&mut self, target: Target) {
+    pub(in crate::game) fn set_dialog_navigation_focus(&mut self, target: Target) {
         let focus = if matches!(target.kind, WidgetKind::Field | WidgetKind::Slider { .. }) {
             self.dialogs.open.as_ref().and_then(|open| {
                 self.dialog_layout()?
@@ -223,11 +223,11 @@ impl Game<'_> {
     }
 
     /// The dialog itself shows, with a text input to start on.
-    pub(super) fn dialog_starts_typing(&self) -> bool {
+    pub(in crate::game) fn dialog_starts_typing(&self) -> bool {
         !self.dialogs.warning && self.dialogs.waiting.is_none() && self.dialog_has_text_field()
     }
     /// The dialog's focus is a text input of many lines, where Enter is a new line.
-    pub(super) fn dialog_typing_lines(&self) -> bool {
+    pub(in crate::game) fn dialog_typing_lines(&self) -> bool {
         self.dialogs.open.as_ref().is_some_and(|o| {
             let field = o.focus.and_then(|f| o.fields.get(f));
             matches!(field, Some(Some(Field::Multi(_))))
@@ -235,7 +235,7 @@ impl Game<'_> {
     }
     /// Whether the dialog's focus is one of its text inputs, which takes the
     /// keys.
-    pub(super) fn dialog_typing(&self) -> bool {
+    pub(in crate::game) fn dialog_typing(&self) -> bool {
         let d = &self.dialogs;
         !d.warning
             && d.waiting.is_none()
@@ -246,7 +246,11 @@ impl Game<'_> {
             })
     }
 
-    pub(super) fn decode_dialog(&self, tag: &Tag, dynamic: Option<&Dynamic>) -> Option<Dialog> {
+    pub(in crate::game) fn decode_dialog(
+        &self,
+        tag: &Tag,
+        dynamic: Option<&Dynamic>,
+    ) -> Option<Dialog> {
         let items = self
             .remote
             .as_ref()
@@ -264,13 +268,17 @@ impl Game<'_> {
         )
     }
 
-    pub(super) fn show_dialog(&mut self, tag: &Tag) {
+    pub(in crate::game) fn show_dialog(&mut self, tag: &Tag) {
         self.show_dialog_in_phase(tag, None);
     }
 
     /// `showDialog`: the dialog replaces an open one (and a waiting screen);
     /// under the warning screen, it is what Back returns to.
-    pub(super) fn show_dialog_in_phase(&mut self, tag: &Tag, configuration: Option<Arc<Dynamic>>) {
+    pub(in crate::game) fn show_dialog_in_phase(
+        &mut self,
+        tag: &Tag,
+        configuration: Option<Arc<Dynamic>>,
+    ) {
         let dynamic = configuration
             .as_deref()
             .or_else(|| self.remote.as_ref().map(|r| r.registries.as_ref()));
@@ -365,14 +373,14 @@ impl Game<'_> {
 
     /// `clearDialog`: the dialog closes (under the warning screen, Back then
     /// returns to what was open before it).
-    pub(super) fn clear_dialog(&mut self) {
+    pub(in crate::game) fn clear_dialog(&mut self) {
         if self.dialogs.open.take().is_some() && !self.dialog_open() {
             self.dialog_receiver_changed();
         }
     }
 
     /// Every dialog screen goes (a disconnect, or the level loading screen).
-    pub(super) fn close_dialogs(&mut self) {
+    pub(in crate::game) fn close_dialogs(&mut self) {
         self.dialogs = DialogState {
             revision: self.dialogs.revision,
             ..DialogState::default()
@@ -400,7 +408,7 @@ impl Game<'_> {
     }
 
     /// The confirmation's no: the dialog again, with what was typed in it.
-    pub(super) fn reopen_dialog(&mut self, dialog: ClosedDialog) {
+    pub(in crate::game) fn reopen_dialog(&mut self, dialog: ClosedDialog) {
         self.open_screen_overlay("dialog", |game| {
             game.dialogs.revision = game.dialogs.revision.wrapping_add(1);
             game.dialogs.open = Some(*dialog.0);
@@ -521,7 +529,7 @@ impl Game<'_> {
     }
 
     /// A `show_dialog` click event's dialog: a registry id or the dialog itself.
-    pub(super) fn show_dialog_ref(&mut self, dialog: &Tag) {
+    pub(in crate::game) fn show_dialog_ref(&mut self, dialog: &Tag) {
         self.show_dialog_ref_in_phase(dialog, None);
     }
 
@@ -548,7 +556,7 @@ impl Game<'_> {
     }
 
     /// `ClientboundShowDialogPacket` in play: a registry entry or the dialog.
-    pub(super) fn show_play_dialog(
+    pub(in crate::game) fn show_play_dialog(
         &mut self,
         dialog: &sunrise_protocol::packets::play::DialogHolder,
     ) {
@@ -577,7 +585,7 @@ impl Game<'_> {
         ))
     }
 
-    pub(super) fn draw_dialog(&mut self, batch: &mut HudBatch) {
+    pub(in crate::game) fn draw_dialog(&mut self, batch: &mut HudBatch) {
         if !self.dialog_open() {
             return;
         }
@@ -938,7 +946,7 @@ impl Game<'_> {
     }
 
     /// A left click on a dialog screen.
-    pub(super) fn dialog_click(&mut self) -> Result<bool> {
+    pub(in crate::game) fn dialog_click(&mut self) -> Result<bool> {
         let cursor = self.client.cursor;
         if self.dialogs.warning {
             let (title, message, _) = self.warning_texts();
@@ -1120,7 +1128,7 @@ impl Game<'_> {
 
     /// The mouse wheel over a dialog: a cycle button under it takes the
     /// step, else the body scrolls 10 a step.
-    pub(super) fn dialog_scroll(&mut self, delta: f32) -> bool {
+    pub(in crate::game) fn dialog_scroll(&mut self, delta: f32) -> bool {
         let Some(layout) = self.dialog_layout() else {
             return false;
         };
@@ -1184,7 +1192,7 @@ impl Game<'_> {
     }
 
     /// The pointer moved with a text field or slider held.
-    pub(super) fn dialog_drag(&mut self) -> bool {
+    pub(in crate::game) fn dialog_drag(&mut self) -> bool {
         if self.dialogs.warning || self.dialogs.waiting.is_some() {
             return false;
         }
@@ -1220,7 +1228,7 @@ impl Game<'_> {
     }
 
     /// The left button released: a held slider lets go and clicks.
-    pub(super) fn dialog_release(&mut self) -> bool {
+    pub(in crate::game) fn dialog_release(&mut self) -> bool {
         if self.dialogs.warning || self.dialogs.waiting.is_some() {
             return false;
         }
@@ -1242,7 +1250,7 @@ impl Game<'_> {
     /// A key pressed on a dialog screen: Escape closes what allows it, the
     /// rest goes to the focused input before the screen's shared navigation
     /// (`shortcut`: the press as an edit shortcut).
-    pub(super) fn dialog_key(
+    pub(in crate::game) fn dialog_key(
         &mut self,
         key: KeyCode,
         shortcut: Option<EditShortcut>,
@@ -1317,7 +1325,7 @@ impl Game<'_> {
     }
 
     /// Whether the open dialog has a text input.
-    pub(super) fn dialog_has_text_field(&self) -> bool {
+    pub(in crate::game) fn dialog_has_text_field(&self) -> bool {
         self.dialogs
             .open
             .as_ref()
@@ -1326,7 +1334,7 @@ impl Game<'_> {
 
     /// `type TEXT` with a dialog open: into the focused text input, or the
     /// first one.
-    pub(super) fn dialog_type(&mut self, text: &str) -> bool {
+    pub(in crate::game) fn dialog_type(&mut self, text: &str) -> bool {
         let Some(open) = self.dialogs.open.as_mut() else {
             return false;
         };
@@ -1343,7 +1351,7 @@ impl Game<'_> {
 
     /// What `state` reports: the open dialog and its values, or the waiting
     /// and warning screens.
-    pub(super) fn dialog_status(&self) -> serde_json::Value {
+    pub(in crate::game) fn dialog_status(&self) -> serde_json::Value {
         let d = &self.dialogs;
         let screen = if d.warning {
             Some("warning")
@@ -1385,7 +1393,7 @@ mod warning_tests {
     #[ignore = "daily"]
     fn warning_disconnect_label_follows_server_ownership() {
         in_own_process(
-            "game::dialogs::warning_tests::warning_disconnect_label_follows_server_ownership",
+            "game::client_side::dialogs::warning_tests::warning_disconnect_label_follows_server_ownership",
             || {
                 with_client_game(|game| {
                     let (client, _server) = Pipe::pair();

@@ -156,7 +156,7 @@ impl mod_api::prelude::TextHost for StartupDiscovery {
         Err(mod_api::text::TextFormError::Unavailable)
     }
 }
-pub(super) fn discover(kind: PackType, mods: &ModsState) -> Vec<Pack> {
+pub(in crate::game) fn discover(kind: PackType, mods: &ModsState) -> Vec<Pack> {
     if !mod_api::__private::enabled_listened(HookId::AddPackFinders) {
         return Vec::new();
     }
@@ -171,7 +171,7 @@ pub(super) fn discover(kind: PackType, mods: &ModsState) -> Vec<Pack> {
     registry.packs
 }
 
-pub(super) fn data_packs(mods: &ModsState) -> Vec<std::sync::Arc<DataPack>> {
+pub(in crate::game) fn data_packs(mods: &ModsState) -> Vec<std::sync::Arc<DataPack>> {
     discover(PackType::ServerData, mods)
         .into_iter()
         .map(|pack| {
@@ -184,7 +184,7 @@ pub(super) fn data_packs(mods: &ModsState) -> Vec<std::sync::Arc<DataPack>> {
 }
 
 /// The same repository is used by commands, content loading and world generation.
-pub(super) fn data_repository(
+pub(in crate::game) fn data_repository(
     world: &std::path::Path,
     resources: &std::path::Path,
     additional: &[std::sync::Arc<DataPack>],
@@ -196,7 +196,7 @@ pub(super) fn data_repository(
 }
 
 impl Game<'_> {
-    pub(super) fn discover_mod_packs(&mut self, kind: PackType) -> Vec<Pack> {
+    pub(in crate::game) fn discover_mod_packs(&mut self, kind: PackType) -> Vec<Pack> {
         if !mod_api::__private::enabled_listened(HookId::AddPackFinders) {
             return Vec::new();
         }

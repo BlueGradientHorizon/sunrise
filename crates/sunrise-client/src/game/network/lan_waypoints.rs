@@ -115,7 +115,7 @@ impl Game<'_> {
     /// level: a player who changes level leaves the old one's manager
     /// (`ServerLevel.removePlayerImmediately`: untracked for everyone there)
     /// and joins the new one's (`addDuringTeleport`).
-    pub(super) fn lan_update_waypoints(&mut self) {
+    pub(in crate::game) fn lan_update_waypoints(&mut self) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };

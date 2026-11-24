@@ -7,4 +7,4 @@ sunrise-client game::native_connection_groups::tests::received_groups_join_and_u
 sunrise-client game::native_connection_groups::tests::viewed_group_bundles_are_scoped_and_refuse_invalid_targets lib daily resources
 sunrise-client game::remote::tests::play_bundle_tests::a_grouped_column_split_across_tcp_reads_is_adopted_as_one_bundle lib daily resources
 sunrise-client game::remote::tests::play_bundle_tests::a_split_frame_group_bundle_refuses_a_mismatched_companion lib daily resources
-sunrise-client game::view_pass::tests::a_saved_block_entity_republishes_its_group_before_a_loaded_only_column_is_sent lib daily resources
+sunrise-client game::server_side::view_pass::tests::a_saved_block_entity_republishes_its_group_before_a_loaded_only_column_is_sent lib daily resources

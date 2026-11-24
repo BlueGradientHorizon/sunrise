@@ -8,8 +8,7 @@
 use crate::game::model_baking_completed_tests::reload;
 use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game};
 
-const NAME: &str =
-    "game::packs::clouds_reload_tests::a_pack_whose_clouds_vanilla_reads_past_fails_the_load";
+const NAME: &str = "game::client_side::packs::clouds_reload_tests::a_pack_whose_clouds_vanilla_reads_past_fails_the_load";
 const CASE: &str = "SUNRISE_CLOUDS_RELOAD_CASE";
 
 /// A `w` by `h` RGBA image with the cells at `filled` opaque.
@@ -249,7 +248,7 @@ fn content_entity_stays_registered_after_startup_pack_rollback() {
     use crate::game::*;
 
     if run_fresh_cases(
-        "game::packs::clouds_reload_tests::content_entity_stays_registered_after_startup_pack_rollback",
+        "game::client_side::packs::clouds_reload_tests::content_entity_stays_registered_after_startup_pack_rollback",
         "SUNRISE_CONTENT_ENTITY_PACK_ROLLBACK_CASE",
         &["startup"],
     ) {
@@ -338,7 +337,7 @@ fn startup_saves_the_cleared_selection_even_when_a_required_pack_fails() {
     const REQUIRED_FAILURE: &str =
         "assets/minecraft/textures/environment/clouds.png: (5, 2) outside of image bounds (4, 6)";
     if run_fresh_cases(
-        "game::packs::clouds_reload_tests::startup_saves_the_cleared_selection_even_when_a_required_pack_fails",
+        "game::client_side::packs::clouds_reload_tests::startup_saves_the_cleared_selection_even_when_a_required_pack_fails",
         CASE,
         &["open", "load"],
     ) {

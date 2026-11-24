@@ -14,13 +14,13 @@ use sunrise_client::{
 use sunrise_protocol::packets::play::Serverbound as S;
 use winit::keyboard::KeyCode;
 
-pub(super) type Pos = (i32, i32, i32);
+pub(in crate::game) type Pos = (i32, i32, i32);
 
 /// `Screen.extractRenderState`'s grey for the labels: `-6250336`.
-pub(super) const LABEL: u32 = 0xFFA0_A0A0;
+pub(in crate::game) const LABEL: u32 = 0xFFA0_A0A0;
 
 /// The job of an edit screen's footer button `id`, given the ids of its Done and Cancel.
-pub(super) fn footer_action(
+pub(in crate::game) fn footer_action(
     id: u8,
     done: u8,
     cancel: u8,
@@ -34,7 +34,7 @@ pub(super) fn footer_action(
 }
 
 /// A widget of an edit screen at GUI pixels.
-pub(super) enum Item {
+pub(in crate::game) enum Item {
     Label {
         text: Text,
         x: f32,
@@ -83,7 +83,7 @@ pub(super) enum Item {
 }
 
 /// What a press on a button does to the screen.
-pub(super) enum Outcome {
+pub(in crate::game) enum Outcome {
     Stay,
     /// Send the packet and close.
     Send(S),
@@ -94,7 +94,7 @@ pub(super) enum Outcome {
 }
 
 /// One edit screen's widgets and rules.
-pub(super) trait Editor {
+pub(in crate::game) trait Editor {
     /// The text boxes, in tab order.
     fn edits(&mut self) -> &mut [EditBox];
     /// The widgets for the block entity as it is now, in a `w`×`h` screen.
@@ -143,9 +143,9 @@ pub(super) trait Editor {
 }
 
 /// The open edit screen.
-pub(super) struct BlockEditScreen {
-    pub(super) pos: Pos,
-    pub(super) editor: Box<dyn Editor>,
+pub(in crate::game) struct BlockEditScreen {
+    pub(in crate::game) pos: Pos,
+    pub(in crate::game) editor: Box<dyn Editor>,
     /// The text box with the focus, and which of them show.
     focus: Option<usize>,
     /// The text of each box when the screen last looked, to see what changed.
@@ -155,7 +155,7 @@ pub(super) struct BlockEditScreen {
 }
 
 impl BlockEditScreen {
-    pub(super) fn new(pos: Pos, editor: Box<dyn Editor>) -> Self {
+    pub(in crate::game) fn new(pos: Pos, editor: Box<dyn Editor>) -> Self {
         let focus = Some(editor.initial_focus());
         Self {
             pos,
@@ -167,7 +167,7 @@ impl BlockEditScreen {
     }
     /// Whether one of the block's text boxes has the keyboard's focus: the
     /// window asks the OS for an input method only then.
-    pub(super) fn text_focused(&self) -> bool {
+    pub(in crate::game) fn text_focused(&self) -> bool {
         self.focus.is_some()
     }
 }
@@ -210,7 +210,7 @@ fn edit_tooltip(
 impl Game<'_> {
     /// `LocalPlayer.open*Block`: the edit screen for the block entity at
     /// `pos`.
-    pub(super) fn open_block_editor(&mut self, pos: Pos, editor: Box<dyn Editor>) {
+    pub(in crate::game) fn open_block_editor(&mut self, pos: Pos, editor: Box<dyn Editor>) {
         let mut screen = BlockEditScreen::new(pos, editor);
         let opening = self
             .world
@@ -235,7 +235,7 @@ impl Game<'_> {
     /// A use of a game master block on a server's client, which opens the
     /// screen itself (`BlockEntity.usedBy`) while the server only answers the
     /// click. The block at `pos`, when the player may use it.
-    pub(super) fn open_block_editor_if_editable(&mut self, pos: Pos) {
+    pub(in crate::game) fn open_block_editor_if_editable(&mut self, pos: Pos) {
         if !self.can_use_game_master_blocks() {
             return;
         }
@@ -248,7 +248,7 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn close_block_editor(&mut self) {
+    pub(in crate::game) fn close_block_editor(&mut self) {
         self.block_editor = None;
         self.set_screen(Screen::Playing);
         self.capture(true);
@@ -305,7 +305,7 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn draw_block_editor(&mut self, batch: &mut HudBatch) {
+    pub(in crate::game) fn draw_block_editor(&mut self, batch: &mut HudBatch) {
         let cursor = self.client.cursor;
         let Some(items) = self.with_block_editor(|s, e| {
             let items = s.editor.items(e, batch.width, batch.height);
@@ -436,7 +436,7 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn block_editor_click(&mut self) -> bool {
+    pub(in crate::game) fn block_editor_click(&mut self) -> bool {
         let size = self
             .renderer
             .as_ref()
@@ -502,7 +502,7 @@ impl Game<'_> {
     }
 
     /// The cursor moved with a slider held (`AbstractSliderButton.onDrag`).
-    pub(super) fn block_editor_drag(&mut self) -> bool {
+    pub(in crate::game) fn block_editor_drag(&mut self) -> bool {
         let x = self.client.cursor.0;
         if let Some(screen) = self.block_editor.as_mut()
             && let Some((id, sx, sw)) = screen.dragging
@@ -514,7 +514,7 @@ impl Game<'_> {
     }
 
     /// The left button released: a held slider lets go.
-    pub(super) fn block_editor_release(&mut self) -> bool {
+    pub(in crate::game) fn block_editor_release(&mut self) -> bool {
         self.block_editor
             .as_mut()
             .is_some_and(|screen| screen.dragging.take().is_some())
@@ -522,7 +522,7 @@ impl Game<'_> {
 
     /// A key pressed on an edit screen: Enter is Done, Escape cancels, Tab
     /// moves between the boxes, the rest edits the focused one.
-    pub(super) fn block_editor_key_code(
+    pub(in crate::game) fn block_editor_key_code(
         &mut self,
         key: KeyCode,
         shortcut: Option<sunrise_client::clipboard::EditShortcut>,
@@ -642,7 +642,7 @@ impl Game<'_> {
     }
 
     /// A status for the open screen.
-    pub(super) fn block_editor_status(&mut self, status: Text, size: Option<[i32; 3]>) {
+    pub(in crate::game) fn block_editor_status(&mut self, status: Text, size: Option<[i32; 3]>) {
         let Some(mut screen) = self.block_editor.take() else {
             return;
         };
@@ -676,7 +676,7 @@ impl Game<'_> {
 
     /// Characters typed (`type TEXT` from the agent control): into the box
     /// with the focus.
-    pub(super) fn block_editor_type(&mut self, typed: &str) {
+    pub(in crate::game) fn block_editor_type(&mut self, typed: &str) {
         let Some(mut screen) = self.block_editor.take() else {
             return;
         };
@@ -692,7 +692,7 @@ impl Game<'_> {
 
 /// `Screen.isValidCharacterForName`: the characters an identifier takes,
 /// with one `:` before any `/`, and `/` only after it.
-pub(super) fn valid_character_for_name(current: &str, c: char, cursor: usize) -> bool {
+pub(in crate::game) fn valid_character_for_name(current: &str, c: char, cursor: usize) -> bool {
     let colon = current.chars().position(|x| x == ':');
     let slash = current.chars().position(|x| x == '/');
     match c {
@@ -705,7 +705,7 @@ pub(super) fn valid_character_for_name(current: &str, c: char, cursor: usize) ->
 
 /// `CycleButton.cycleValue`: the value `delta` steps on in `values`, wrapping;
 /// a current value that is not in the list steps from -1.
-pub(super) fn cycle<T: Copy + PartialEq>(values: &[T], current: T, delta: i32) -> T {
+pub(in crate::game) fn cycle<T: Copy + PartialEq>(values: &[T], current: T, delta: i32) -> T {
     let at = values
         .iter()
         .position(|v| *v == current)
@@ -715,7 +715,7 @@ pub(super) fn cycle<T: Copy + PartialEq>(values: &[T], current: T, delta: i32) -
 }
 
 /// `CommonComponents.OPTION_ON` / `OPTION_OFF`.
-pub(super) fn on_off(on: bool) -> Text {
+pub(in crate::game) fn on_off(on: bool) -> Text {
     Text::translate(if on { "options.on" } else { "options.off" }, &[])
 }
 

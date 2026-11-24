@@ -69,7 +69,7 @@ impl Hooks for PanicAfterAdmission {
 fn shoot_listener_panic_after_admission_preserves_owned_rows() {
     const CASE: &str = "SUNRISE_PROJECTILE_IMPACT_PANIC_CASE";
     if crate::game::native_entity_refs::tests::run_fresh_cases(
-        "game::native_projectiles::impact_panic_tests::shoot_listener_panic_after_admission_preserves_owned_rows",
+        "game::server_side::native_projectiles::impact_panic_tests::shoot_listener_panic_after_admission_preserves_owned_rows",
         CASE,
         &["overworld", "nether"],
     ) {

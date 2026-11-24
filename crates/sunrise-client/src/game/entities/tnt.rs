@@ -15,13 +15,13 @@ use sunrise_core::{
 use sunrise_world::level::flags as level_flags;
 
 #[derive(Clone, Debug)]
-pub(super) struct PrimedTnt {
+pub(in crate::game) struct PrimedTnt {
     /// Entity-owned registration metadata; content clones are detached.
-    pub(super) attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
+    pub(in crate::game) attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
     /// `Entity.yRot` and `xRot` (`/tp`, `/data get ... Rotation`).
     pub rotation: [f32; 2],
     /// When it joined its list (`sunrise_client::join_seq`); set by the list.
-    pub(super) join: sunrise_client::join_seq::JoinSeq,
+    pub(in crate::game) join: sunrise_client::join_seq::JoinSeq,
     /// The entity id a server tracks it by (0 until it is tracked).
     pub id: u32,
     pub position: Vec3,
@@ -51,11 +51,11 @@ pub(super) struct PrimedTnt {
     pub block_state: Option<sunrise_world::registry::BlockStateId>,
     /// What `entity_size` answered at its last size refresh (`EntityEvent.Size`): its box takes
     /// the answer while it holds for its vanilla size.
-    pub(super) size_answer: Option<sunrise_client::pose::SizeAnswer>,
+    pub(in crate::game) size_answer: Option<sunrise_client::pose::SizeAnswer>,
 }
 impl PrimedTnt {
     /// The live state encoded for each existing save view.
-    pub(super) fn block_state_nbt(
+    pub(in crate::game) fn block_state_nbt(
         &self,
         registry: &sunrise_world::registry::BlockRegistry,
     ) -> sunrise_core::nbt::Tag {
@@ -66,10 +66,10 @@ impl PrimedTnt {
     }
 
     /// `EntityTypes.TNT`'s `sized(0.98F, 0.98F)`, widened from the float.
-    pub(super) const SIZE: f64 = 0.98_f32 as f64;
+    pub(in crate::game) const SIZE: f64 = 0.98_f32 as f64;
     /// `EntityTypes.TNT.getDimensions()`: width, height and eye height.
-    pub(super) const DIMENSIONS: [f32; 3] = [0.98, 0.98, 0.15];
-    pub(super) fn bounds(&self) -> Aabb {
+    pub(in crate::game) const DIMENSIONS: [f32; 3] = [0.98, 0.98, 0.15];
+    pub(in crate::game) fn bounds(&self) -> Aabb {
         let h = Self::SIZE / 2.0;
         let vanilla = Aabb::new(
             Vec3::new(self.position.x - h, self.position.y, self.position.z - h),
@@ -88,7 +88,7 @@ impl PrimedTnt {
     }
     /// `Entity.move`: a pending stuck multiplier is used up by the next move,
     /// which starts from rest. Returns it, for a move that scales its step by it.
-    pub(super) fn take_stuck(&mut self) -> Option<Vec3> {
+    pub(in crate::game) fn take_stuck(&mut self) -> Option<Vec3> {
         if self.stuck.length_squared() <= 1.0e-7 {
             return None;
         }
@@ -97,7 +97,7 @@ impl PrimedTnt {
     }
     /// PowderSnowBlock.getCollisionShape: a top that holds it once it has
     /// fallen more than 2.5 blocks, read with [`Self::collision_context`].
-    pub(super) fn powder_snow_subject(
+    pub(in crate::game) fn powder_snow_subject(
         &self,
     ) -> sunrise_client::collisions::PowderSnowSubject<'static> {
         sunrise_client::collisions::PowderSnowSubject {
@@ -105,7 +105,7 @@ impl PrimedTnt {
             ..Default::default()
         }
     }
-    pub(super) fn collision_context(
+    pub(in crate::game) fn collision_context(
         &self,
     ) -> sunrise_world::collision_context::CollisionContext<'static> {
         sunrise_client::motion::BodyMotion::entity_context(self.id, self.position)
@@ -114,7 +114,7 @@ impl PrimedTnt {
     /// water, each step down is narrowed to a float before it adds to the
     /// fall; landing forgets it. Returns whether it landed after a fall, when
     /// the caller posts HIT_GROUND.
-    pub(super) fn check_fall_damage(&mut self, moved_y: f64) -> bool {
+    pub(in crate::game) fn check_fall_damage(&mut self, moved_y: f64) -> bool {
         if !self.in_water && moved_y < 0.0 {
             self.fall_distance -= f64::from(moved_y as f32);
         }
@@ -129,7 +129,7 @@ impl PrimedTnt {
     /// snow and cobwebs it went through make it stuck, a bubble column lifts or
     /// drags it, and slime it stands on slows it, first. Returns the columns it
     /// is at the top of, which send their surface particles.
-    pub(super) fn apply_effects_from_blocks(
+    pub(in crate::game) fn apply_effects_from_blocks(
         &mut self,
         motion: sunrise_client::motion::BodyMotion<'_>,
         registry: &sunrise_world::registry::BlockRegistry,
@@ -161,7 +161,7 @@ impl PrimedTnt {
         tops
     }
     #[cfg(test)]
-    pub(super) fn tick(
+    pub(in crate::game) fn tick(
         &mut self,
         world: &sunrise_client::world::World,
         collision: &sunrise_world::block_collision::BlockCollisionRegistry<'_>,
@@ -187,7 +187,7 @@ impl PrimedTnt {
     }
     /// Client prediction and isolated physics tests have no server landing effects.
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn tick_among(
+    pub(in crate::game) fn tick_among(
         &mut self,
         world: &sunrise_client::world::World,
         collision: &sunrise_world::block_collision::BlockCollisionRegistry<'_>,
@@ -358,7 +358,7 @@ impl PrimedTnt {
 impl Game<'_> {
     /// Asks the mods whether the TNT at `pos` may be primed
     /// (`native_tnt_primed`); the acting guest, if any, is its player.
-    pub(super) fn tnt_prime_allowed(&mut self, pos: BlockPos) -> bool {
+    pub(in crate::game) fn tnt_prime_allowed(&mut self, pos: BlockPos) -> bool {
         let mut cancel = false;
         self.native_tnt_primed(
             self.server.lan_acting_uuid,
@@ -375,7 +375,7 @@ impl Game<'_> {
     }
     /// Primes TNT a level event announced, or, when the mods refuse, puts
     /// back the block the fire or signal had already taken out.
-    pub(super) fn prime_tnt_event(&mut self, pos: BlockPos, rot: f64) {
+    pub(in crate::game) fn prime_tnt_event(&mut self, pos: BlockPos, rot: f64) {
         if self.tnt_prime_allowed(pos) {
             self.add_primed_tnt(pos, rot, 80, None, None);
             return;
@@ -393,7 +393,7 @@ impl Game<'_> {
     }
     /// `new PrimedTnt(level, x + 0.5, y, z + 0.5, owner)`; `short` applies
     /// `wasExploded`'s random short fuse. Plays `entity.tnt.primed` for primes.
-    pub(super) fn spawn_primed_tnt(
+    pub(in crate::game) fn spawn_primed_tnt(
         &mut self,
         pos: BlockPos,
         short: bool,
@@ -424,7 +424,7 @@ impl Game<'_> {
         self.add_primed_tnt(pos, rot, fuse, owner, guest);
     }
     /// Adds primed TNT at the block's bottom centre, pushed along `rot`.
-    pub(super) fn add_primed_tnt(
+    pub(in crate::game) fn add_primed_tnt(
         &mut self,
         pos: BlockPos,
         rot: f64,
@@ -472,7 +472,7 @@ impl Game<'_> {
     /// skipped if tiny): its fall and the block speed factor, then
     /// `moveEntityByPiston`'s `applyEffectsFromBlocks(previousPos, position)`,
     /// so powder snow it was pushed into makes it stuck.
-    pub(super) fn finish_tnt_piston_move(&mut self, i: usize, from: Vec3) {
+    pub(in crate::game) fn finish_tnt_piston_move(&mut self, i: usize, from: Vec3) {
         let t = &mut self.tnts[i];
         let factor = sunrise_client::motion::block_speed_factor_at(
             &self.world,
@@ -486,7 +486,7 @@ impl Game<'_> {
     }
     /// `moveEntityByPiston`'s `applyEffectsFromBlocks(previousPos, position)`
     /// for primed TNT `i`, also run when `limitPistonMovement` left no push.
-    pub(super) fn tnt_piston_block_effects(&mut self, i: usize, from: Vec3) {
+    pub(in crate::game) fn tnt_piston_block_effects(&mut self, i: usize, from: Vec3) {
         let t = &self.tnts[i];
         let (id, footprint, ground, mut velocity) =
             (t.id, (t.position, t.bounds()), t.ground, t.velocity);
@@ -521,7 +521,7 @@ impl Game<'_> {
             self.bubble_column_particles(pos);
         }
     }
-    pub(super) fn take_removed_tnt(&mut self, id: u32) -> Option<PrimedTnt> {
+    pub(in crate::game) fn take_removed_tnt(&mut self, id: u32) -> Option<PrimedTnt> {
         self.with_destroying_vehicle(super::commands::Target::Tnt(id), |game| {
             let i = game.tnts.iter().position(|t| t.id == id)?;
             Some(game.tnts.remove(i))
@@ -534,7 +534,7 @@ impl Game<'_> {
     /// One primed TNT's `tick`: it moves, and explodes when its fuse is out.
     /// `i` is its place in the list; the caller has checked it is ticking.
     /// `entities` are the boxes that stop its move (`Game::entity_collisions` with `Mover::Passive`).
-    pub(super) fn tick_one_tnt(&mut self, i: usize, entities: &[Aabb]) -> Result<()> {
+    pub(in crate::game) fn tick_one_tnt(&mut self, i: usize, entities: &[Aabb]) -> Result<()> {
         let t = &mut self.tnts[i];
         let motion = sunrise_client::motion::BodyMotion {
             world: &self.world,
@@ -658,7 +658,7 @@ impl Game<'_> {
         Ok(())
     }
     /// The saved compound of primed TNT `i`: chunk saves, `/data get`, portals.
-    pub(super) fn tnt_nbt(&mut self, i: usize) -> sunrise_core::nbt::Tag {
+    pub(in crate::game) fn tnt_nbt(&mut self, i: usize) -> sunrise_core::nbt::Tag {
         let id = self.tnts[i].id;
         let uuid = self.uuid_for(id);
         let owner = self.tnt_owner_uuid(self.tnts[i].owner, self.tnts[i].guest);
@@ -710,7 +710,7 @@ impl Game<'_> {
     }
     /// `Explosion.getIndirectSourceEntity` of the primed TNT `id` that a
     /// blast names as its source: its owner, as `set_blast_owner` sets it.
-    pub(super) fn set_tnt_blast_owner(&mut self, id: u32) {
+    pub(in crate::game) fn set_tnt_blast_owner(&mut self, id: u32) {
         let (owner, guest) = self
             .tnts
             .iter()
@@ -723,7 +723,7 @@ impl Game<'_> {
     /// (a TNT's igniter, a player's projectile, a player) names it, which
     /// `blast_attacker`, the damage type and kill credit read. A player is the
     /// one on `guest`, the player in place without one.
-    pub(super) fn set_blast_owner(&mut self, owner: Option<Who>, guest: Option<u32>) {
+    pub(in crate::game) fn set_blast_owner(&mut self, owner: Option<Who>, guest: Option<u32>) {
         self.combat.blast_guest = guest;
         self.combat.blast_owner = tnt_blast_owner(
             owner,
@@ -741,7 +741,7 @@ impl Game<'_> {
     }
     /// The attack a player-owned blast's hits land in: its causing player's,
     /// so a mob it kills is that player's kill.
-    pub(super) fn blast_owner_attack(&self) -> sunrise_client::health::Attack {
+    pub(in crate::game) fn blast_owner_attack(&self) -> sunrise_client::health::Attack {
         let id = self
             .combat
             .blast_owner
@@ -768,7 +768,7 @@ impl Game<'_> {
         self.mob_by_uuid(uuid).map(|m| (Who::Mob(m), None))
     }
     /// `TntBlock.useItemOn`: flint and steel or a fire charge primes TNT.
-    pub(super) fn ignite_tnt(&mut self, stack: &ItemStack) -> Result<bool> {
+    pub(in crate::game) fn ignite_tnt(&mut self, stack: &ItemStack) -> Result<bool> {
         let item = &*stack.item;
         if item != "minecraft:flint_and_steel" && item != "minecraft:fire_charge" {
             return Ok(false);
@@ -820,7 +820,9 @@ impl Game<'_> {
     }
     /// The sprites of the TNT block's six faces (up, down, north, south, west, east), from its
     /// block model; `None` without a model. Once a frame, however many runs of TNT draw.
-    pub(super) fn tnt_face_sprites(&self) -> Option<[Option<sunrise_client_render::hud::Rect>; 6]> {
+    pub(in crate::game) fn tnt_face_sprites(
+        &self,
+    ) -> Option<[Option<sunrise_client_render::hud::Rect>; 6]> {
         let state = self.pack.assets.registry.default_state("minecraft:tnt")?;
         // Face sprites from the block model: up, down, north, south, west, east.
         let Ok(models) = self
@@ -855,7 +857,7 @@ impl Game<'_> {
 
     /// `TntRenderer`: the block centred on the entity, swelling over the last
     /// 10 ticks and flashing white every 5 ticks.
-    pub(super) fn tnt_geometry(
+    pub(in crate::game) fn tnt_geometry(
         &self,
         camera: glam::DVec3,
         alpha: f64,
@@ -1011,7 +1013,7 @@ impl Game<'_> {
 impl Game<'_> {
     /// `positionRider` for the mobs riding primed TNT: the passenger attachment
     /// (the top of its 0.98 box), less the rider's own vehicle attachment.
-    pub(super) fn seat_tnt_mobs(&mut self, riders: &super::passengers::Riders) {
+    pub(in crate::game) fn seat_tnt_mobs(&mut self, riders: &super::passengers::Riders) {
         for i in 0..self.tnts.len() {
             let (id, pos, prev) = (
                 self.tnts[i].id,
@@ -1057,7 +1059,7 @@ fn tnt_seat(tnt: Vec3, rider_offset: f64) -> Vec3 {
 }
 
 /// A general rider's seat on primed TNT: no vehicle attachment of its own.
-pub(super) fn tnt_general_seat(tnt: Vec3) -> Vec3 {
+pub(in crate::game) fn tnt_general_seat(tnt: Vec3) -> Vec3 {
     tnt_seat(tnt, 0.0)
 }
 

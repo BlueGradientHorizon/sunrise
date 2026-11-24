@@ -132,7 +132,7 @@ pub(in crate::game) enum CameraPlayer {
 /// `Minecraft.setCameraEntity` from a ClientboundSetCameraPacket: the player's
 /// own id puts the view back on the player; an id the level does not hold
 /// changes nothing (`ClientboundSetCameraPacket.getEntity` is null).
-pub(super) fn camera_after_packet(
+pub(in crate::game) fn camera_after_packet(
     current: Option<i32>,
     player_id: i32,
     camera_id: i32,
@@ -165,7 +165,10 @@ fn sleeping_view(m: &Mob) -> Option<Option<f32>> {
 /// interpolated position, `getViewYRot`/`getViewXRot` and eye height, with
 /// its scale and camera distance for a detached view. A living entity's
 /// `getViewYRot` is its head's yaw (`yHeadRot`), not its body's `yRot`.
-pub(super) fn mob_camera_entity(m: &Mob, (scale, camera_distance): (f32, f64)) -> CameraEntity {
+pub(in crate::game) fn mob_camera_entity(
+    m: &Mob,
+    (scale, camera_distance): (f32, f64),
+) -> CameraEntity {
     CameraEntity {
         position: [m.position.x, m.position.y, m.position.z],
         previous: [m.previous.x, m.previous.y, m.previous.z],
@@ -190,11 +193,11 @@ pub(super) fn mob_camera_entity(m: &Mob, (scale, camera_distance): (f32, f64)) -
 /// (`getDimensionsMarker`): none for a marker, `BABY_DIMENSIONS`' 0.9875 for
 /// a small stand, the type's 1.7775 otherwise.
 #[cfg(test)]
-pub(super) fn stand_camera_entity(a: &ArmorStand) -> CameraEntity {
+pub(in crate::game) fn stand_camera_entity(a: &ArmorStand) -> CameraEntity {
     stand_camera_entity_with(a, (1.0, 4.0))
 }
 
-pub(super) fn stand_camera_entity_with(
+pub(in crate::game) fn stand_camera_entity_with(
     a: &ArmorStand,
     (scale, camera_distance): (f32, f64),
 ) -> CameraEntity {
@@ -224,7 +227,7 @@ pub(super) fn stand_camera_entity_with(
 /// `Camera.alignWithEntity`'s view of a boat, which is not living (no
 /// `getScale`, no camera distance): its interpolated position and `Entity`'s
 /// view rotation, with `EntityType.BOAT`'s `eyeHeight(0.5625F)`.
-pub(super) fn boat_camera_entity(b: &super::boats::Boat) -> CameraEntity {
+pub(in crate::game) fn boat_camera_entity(b: &super::boats::Boat) -> CameraEntity {
     CameraEntity {
         position: [b.position.x, b.position.y, b.position.z],
         previous: [b.previous.x, b.previous.y, b.previous.z],
@@ -245,7 +248,7 @@ pub(super) fn boat_camera_entity(b: &super::boats::Boat) -> CameraEntity {
 /// `ItemFrame.setDirection` turns it: `get2DDataValue() * 90` in yaw (south 0,
 /// west 1, north 2, east 3), or `-90 * getAxisDirection().getStep()` in pitch
 /// on the floor and ceiling.
-pub(super) fn frame_camera_entity(f: &ItemFrame) -> CameraEntity {
+pub(in crate::game) fn frame_camera_entity(f: &ItemFrame) -> CameraEntity {
     let step = f.step().map(f64::from);
     let at: [f64; 3] = std::array::from_fn(|i| f64::from(f.pos[i]) + 0.5 - step[i] * 0.46875);
     let (y_rot, x_rot) = match f.facing {
@@ -272,7 +275,7 @@ pub(super) fn frame_camera_entity(f: &ItemFrame) -> CameraEntity {
 /// `Camera.alignWithEntity`'s view of a painting: a hanging entity sits at the
 /// centre of its box (`HangingEntity.recalculateBoundingBox`), faces
 /// `get2DDataValue() * 90`, and keeps `EntityType.PAINTING`'s `0.425F` eyes.
-pub(super) fn painting_camera_entity(p: &Painting) -> CameraEntity {
+pub(in crate::game) fn painting_camera_entity(p: &Painting) -> CameraEntity {
     let (lo, hi) = p.bounds();
     let at = std::array::from_fn(|i| (lo[i] + hi[i]) * 0.5);
     let y_rot = f32::from(p.facing & 3) * 90.0;
@@ -292,7 +295,7 @@ pub(super) fn painting_camera_entity(p: &Painting) -> CameraEntity {
 /// `Camera.alignWithEntity`'s view of primed TNT: its interpolated position
 /// and `Entity`'s view rotation (priming never changes it), with
 /// `EntityType.TNT`'s `eyeHeight(0.15F)`.
-pub(super) fn tnt_camera_entity(t: &super::tnt::PrimedTnt) -> CameraEntity {
+pub(in crate::game) fn tnt_camera_entity(t: &super::tnt::PrimedTnt) -> CameraEntity {
     CameraEntity {
         position: [t.position.x, t.position.y, t.position.z],
         previous: [t.previous.x, t.previous.y, t.previous.z],
@@ -307,7 +310,7 @@ pub(super) fn tnt_camera_entity(t: &super::tnt::PrimedTnt) -> CameraEntity {
 }
 
 /// `Camera.alignWithEntity`'s view of an `Interaction`: non-living, scalable dimensions.
-pub(super) fn interaction_camera_entity(
+pub(in crate::game) fn interaction_camera_entity(
     i: &super::interactions::RemoteInteraction,
 ) -> CameraEntity {
     CameraEntity {
@@ -341,7 +344,7 @@ fn tracked_camera_entity(t: &super::remote::Tracked) -> CameraEntity {
 
 /// Unit-test fixture wrapping entity slices for pure `CameraEntity` view checks.
 #[cfg(test)]
-pub(super) struct CameraEntities<'a> {
+pub(in crate::game) struct CameraEntities<'a> {
     pub mobs: &'a [Mob],
     pub stands: &'a [ArmorStand],
     pub boats: &'a [super::boats::Boat],
@@ -358,7 +361,7 @@ pub(super) struct CameraEntities<'a> {
 
 #[cfg(test)]
 impl CameraEntities<'_> {
-    pub(super) fn holds(&self, id: u32) -> bool {
+    pub(in crate::game) fn holds(&self, id: u32) -> bool {
         self.mobs.iter().any(|m| m.id == id)
             || self.stands.iter().any(|a| a.id == id)
             || self.boats.iter().any(|b| b.id == id)
@@ -371,7 +374,7 @@ impl CameraEntities<'_> {
                 .is_some_and(|tracked| tracked.contains_key(&(id as i32)))
     }
 
-    pub(super) fn view(&self, id: u32) -> Option<CameraEntity> {
+    pub(in crate::game) fn view(&self, id: u32) -> Option<CameraEntity> {
         let mut entity = self.entity_view(id)?;
         entity.mount = self.living_vehicle(id);
         Some(entity)
@@ -425,7 +428,7 @@ impl CameraEntities<'_> {
 /// `GameRenderer.checkEntityPostEffect`: the chain a spectated creeper, spider or
 /// enderman puts on the screen, or one a mod registered for its own entity type
 /// (`Hooks::register_entity_spectator_shaders`).
-pub(super) fn entity_post_effect(kind: &str) -> Option<&'static str> {
+pub(in crate::game) fn entity_post_effect(kind: &str) -> Option<&'static str> {
     sunrise_client_render::spectator_shaders::chain(kind)
 }
 
@@ -482,19 +485,19 @@ impl Game<'_> {
     }
 
     /// `GameRenderer.clearSpectatedEntityPostEffect`.
-    pub(super) fn clear_spectated_entity_post_effect(&mut self) {
+    pub(in crate::game) fn clear_spectated_entity_post_effect(&mut self) {
         self.client.spectated_post_effect = None;
         self.client.spectated_post_effect_active = false;
     }
 
     /// `GameRenderer.toggleSpectatorPostEffect` (`key.toggleSpectatorShaderEffects` / F4).
-    pub(super) fn toggle_spectator_post_effect(&mut self) {
+    pub(in crate::game) fn toggle_spectator_post_effect(&mut self) {
         self.client.spectated_post_effect_active = !self.client.spectated_post_effect_active;
     }
 
     /// `GameRenderer.checkEntityPostEffect` for the camera entity, or for none
     /// (`first_person` false: the third-person view clears it).
-    pub(super) fn check_entity_post_effect(&mut self, first_person: bool) {
+    pub(in crate::game) fn check_entity_post_effect(&mut self, first_person: bool) {
         self.client.spectated_post_effect = self
             .camera_subject()
             .filter(|_| first_person)
@@ -590,7 +593,7 @@ impl Game<'_> {
     }
 
     /// `LocalPlayer.isControlledCamera`: the view is the player's own.
-    pub(super) fn controls_camera(&self) -> bool {
+    pub(in crate::game) fn controls_camera(&self) -> bool {
         self.remote_camera_id().is_none()
     }
     /// Camera entity's UUID and feet position (`Minecraft.getCameraEntity`), borrowing
@@ -975,7 +978,7 @@ impl Game<'_> {
     }
 
     /// Resolve a live client entity's pose and camera inputs; never substitutes the detached camera.
-    pub(super) fn live_entity_camera_subject(
+    pub(in crate::game) fn live_entity_camera_subject(
         &self,
         remote: &Remote,
         id: i32,
@@ -1479,7 +1482,7 @@ impl Game<'_> {
     }
 
     /// The view of the entity a server attached the camera to, live or detached.
-    pub(super) fn spectated_camera_snapshot(&self) -> Option<CameraEntity> {
+    pub(in crate::game) fn spectated_camera_snapshot(&self) -> Option<CameraEntity> {
         self.camera_subject()
             .filter(|c| !c.is_local_player)
             .map(|c| c.camera)
@@ -1523,12 +1526,12 @@ impl Game<'_> {
         self.remote_entity_living_values(a.id as i32)
     }
     /// The entity under a spectator's crosshair (`Minecraft.hitResult` as an `EntityHitResult`).
-    pub(super) fn spectator_click_target(&self) -> Option<i32> {
+    pub(in crate::game) fn spectator_click_target(&self) -> Option<i32> {
         self.crosshair_entity_hit().map(|hit| hit.id)
     }
 
     /// `LevelRenderer`: the camera entity is not drawn from its own eyes, but a sleeping one is.
-    pub(super) fn hides_as_camera(&self, id: u32) -> bool {
+    pub(in crate::game) fn hides_as_camera(&self, id: u32) -> bool {
         self.client.camera_type.is_first_person()
             && self.live_remote_camera_id() == Some(id)
             && !self

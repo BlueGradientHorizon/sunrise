@@ -156,7 +156,7 @@ const CLIENT_SOUNDS: &[&str] = &[
 
 impl Game<'_> {
     /// Run every scenario of `spec` ("SCENARIOS,OUTPUT") and write the results.
-    pub(super) fn sculk_fixture(&mut self, spec: &str) -> Result<()> {
+    pub(in crate::game) fn sculk_fixture(&mut self, spec: &str) -> Result<()> {
         assert!(
             !self.options.execution_role.is_client(),
             "fixture requires a server Game"

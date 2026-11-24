@@ -15,15 +15,16 @@ use sunrise_client::{
 use winit::{event::MouseButton, keyboard::KeyCode, window::Fullscreen};
 
 /// `CommonLinks.ACCESSIBILITY_HELP`, the Accessibility page's footer link.
-pub(super) const ACCESSIBILITY_HELP_LINK: &str = "https://aka.ms/MinecraftJavaAccessibility";
+pub(in crate::game) const ACCESSIBILITY_HELP_LINK: &str =
+    "https://aka.ms/MinecraftJavaAccessibility";
 
-pub(super) const CONTROL_HELP: &[&str] = &[
+pub(in crate::game) const CONTROL_HELP: &[&str] = &[
     "options-get [KEY...]           options.txt values by key, with their type, range or choices",
     "options-set KEY VALUE          set an option (enums by name, keys as key.keyboard.w, lists as JSON), apply and save it",
 ];
 
 impl Game<'_> {
-    pub(super) fn save_title_options(&mut self) {
+    pub(in crate::game) fn save_title_options(&mut self) {
         if let Some(title) = &self.title
             && (title.last_server != self.settings.file.string("lastServer")
                 || title.skip_multiplayer_warning
@@ -41,7 +42,11 @@ impl Game<'_> {
         }
     }
     /// `options-get` and `options-set`; None for other commands.
-    pub(super) fn options_control(&mut self, words: &[&str], line: &str) -> Result<Option<Value>> {
+    pub(in crate::game) fn options_control(
+        &mut self,
+        words: &[&str],
+        line: &str,
+    ) -> Result<Option<Value>> {
         match words[0] {
             "options-get" => {
                 let file = self.settings.to_file();
@@ -101,18 +106,18 @@ impl Game<'_> {
     }
     /// This player's `options.txt`: in the game folder, or in `--player-dir` when several
     /// players share one (`logging::set_player_dir`).
-    pub(super) fn options_path() -> std::path::PathBuf {
+    pub(in crate::game) fn options_path() -> std::path::PathBuf {
         sunrise_client::logging::player_dir().join("options.txt")
     }
     /// The game folder (the working directory): what its players share, saves, packs, mods.
-    pub(super) fn game_dir() -> std::path::PathBuf {
+    pub(in crate::game) fn game_dir() -> std::path::PathBuf {
         std::env::current_dir().unwrap_or_default()
     }
     /// `shaderpacks/` in the game folder.
-    pub(super) fn shader_packs_dir() -> std::path::PathBuf {
+    pub(in crate::game) fn shader_packs_dir() -> std::path::PathBuf {
         Self::game_dir().join(sunrise_client::shader_pack_list::DIR)
     }
-    pub(super) fn gui_size(&self) -> (f32, f32) {
+    pub(in crate::game) fn gui_size(&self) -> (f32, f32) {
         let size = self
             .renderer
             .as_ref()
@@ -123,7 +128,7 @@ impl Game<'_> {
     /// Close the options screens (`OptionsScreen.onClose`) back to where they
     /// were opened: the recipe book's settings, World Options, the title or
     /// the pause menu.
-    pub(super) fn leave_options(&mut self) {
+    pub(in crate::game) fn leave_options(&mut self) {
         let to_game = self.client.options_from_title;
         let back = if let Some(screen) = self.client.panel.recipes_settings_return.take() {
             screen
@@ -146,10 +151,10 @@ impl Game<'_> {
         self.show_calibration((0.0, 0.0));
     }
     /// Open the options screens (OptionsScreen) from the title or pause menu.
-    pub(super) fn open_options(&mut self, from_title: bool) {
+    pub(in crate::game) fn open_options(&mut self, from_title: bool) {
         self.open_options_at(from_title, Page::Main);
     }
-    pub(super) fn open_options_at(&mut self, from_title: bool, page: Page) {
+    pub(in crate::game) fn open_options_at(&mut self, from_title: bool, page: Page) {
         // Gameplay keys must not stay held behind the options screen, where
         // bindings can also change before the physical key is released.
         self.clear_device_keys();
@@ -208,7 +213,7 @@ impl Game<'_> {
             self.ui.options.pack_configs = super::packs::pack_configs(&self.vanilla_root());
         }
     }
-    pub(super) fn draw_options(&mut self, batch: &mut HudBatch, allowed: bool) {
+    pub(in crate::game) fn draw_options(&mut self, batch: &mut HudBatch, allowed: bool) {
         if !allowed {
             self.ui.options.discard_draw();
             return;
@@ -245,7 +250,7 @@ impl Game<'_> {
     }
     /// HDR calibration's test picture to the renderer, full screen while it runs: the
     /// window goes fullscreen for it and back after, as it was (maximized, say).
-    pub(super) fn show_calibration(&mut self, size: (f32, f32)) {
+    pub(in crate::game) fn show_calibration(&mut self, size: (f32, f32)) {
         let picture = (self.client.screen == Screen::Options)
             .then(|| self.ui.options.calibration_picture(&self.gui.atlas, size))
             .flatten();
@@ -284,7 +289,7 @@ impl Game<'_> {
             _ => {}
         }
     }
-    pub(super) fn options_mouse(&mut self, pressed: bool, right: bool) -> Result<bool> {
+    pub(in crate::game) fn options_mouse(&mut self, pressed: bool, right: bool) -> Result<bool> {
         if !pressed {
             if right {
                 return Ok(false);
@@ -313,7 +318,7 @@ impl Game<'_> {
         self.handle_option_events(events)?;
         Ok(handled)
     }
-    pub(super) fn options_drag(&mut self) -> Result<bool> {
+    pub(in crate::game) fn options_drag(&mut self) -> Result<bool> {
         let size = self.gui_size();
         let framebuffer = self.renderer.as_ref().map_or([1280, 720], |r| {
             [r.config.width as i32, r.config.height as i32]
@@ -331,7 +336,11 @@ impl Game<'_> {
         self.handle_option_events(events)?;
         Ok(handled)
     }
-    pub(super) fn options_key(&mut self, key: KeyCode, text: Option<&str>) -> Result<bool> {
+    pub(in crate::game) fn options_key(
+        &mut self,
+        key: KeyCode,
+        text: Option<&str>,
+    ) -> Result<bool> {
         let size = self.gui_size();
         let shift = self.has_shift_down();
         let framebuffer = self.renderer.as_ref().map_or([1280, 720], |r| {
@@ -347,7 +356,7 @@ impl Game<'_> {
         self.refresh_screen_widgets();
         Ok(handled)
     }
-    pub(super) fn options_key_released(&mut self, key: KeyCode) -> Result<bool> {
+    pub(in crate::game) fn options_key_released(&mut self, key: KeyCode) -> Result<bool> {
         self.ui.options.modifiers = self.modifiers().bits;
         let events = self.ui.options.key_released(&mut self.settings, key);
         let handled = !events.is_empty();
@@ -355,7 +364,7 @@ impl Game<'_> {
         Ok(handled)
     }
     /// Ctrl+A/C/V/X in the options' search boxes; false when none has focus.
-    pub(super) fn options_shortcut(
+    pub(in crate::game) fn options_shortcut(
         &mut self,
         shortcut: sunrise_client::clipboard::EditShortcut,
     ) -> bool {
@@ -363,7 +372,7 @@ impl Game<'_> {
             .options
             .shortcut(&self.gui.atlas, shortcut, &mut self.clipboard)
     }
-    pub(super) fn options_scroll(&mut self, amount: f32) -> Result<bool> {
+    pub(in crate::game) fn options_scroll(&mut self, amount: f32) -> Result<bool> {
         if self.pad_stick_scroll() {
             let size = self.gui_size();
             self.ui
@@ -394,15 +403,15 @@ impl Game<'_> {
         Ok(handled)
     }
     /// Mouse buttons pressed while a key is being bound.
-    pub(super) fn options_waiting_for_key(&self) -> bool {
+    pub(in crate::game) fn options_waiting_for_key(&self) -> bool {
         self.ui.options.selected_key.is_some()
     }
-    pub(super) fn options_bind_mouse(&mut self, button: MouseButton) -> Result<()> {
+    pub(in crate::game) fn options_bind_mouse(&mut self, button: MouseButton) -> Result<()> {
         self.ui.options.modifiers = self.modifiers().bits;
         let events = self.ui.options.bind_mouse(&mut self.settings, button);
         self.handle_option_events(events)
     }
-    pub(super) fn handle_option_events(&mut self, events: Vec<Event>) -> Result<()> {
+    pub(in crate::game) fn handle_option_events(&mut self, events: Vec<Event>) -> Result<()> {
         for e in events {
             match e {
                 Event::ButtonClick => self.audio.play_button_click(),
@@ -570,7 +579,7 @@ impl Game<'_> {
         Ok(())
     }
     /// LanguageManager.setSelected + reload: translations, then re-wrap chat.
-    pub(super) fn load_language(&mut self, code: &str) {
+    pub(in crate::game) fn load_language(&mut self, code: &str) {
         lang::set(lang::Language::load(&[&self.pack.source], code));
         self.refresh_remote_language();
         self.ui.chat.rescale(&self.gui.atlas);
@@ -604,7 +613,7 @@ impl Game<'_> {
         }
     }
     /// Settings that Sunrise applies beyond render distance, volume and GUI scale.
-    pub(super) fn apply_ui_settings(&mut self) {
+    pub(in crate::game) fn apply_ui_settings(&mut self) {
         sunrise_client::parallel::set_setting(self.settings.sunrise.parallel_tick);
         if sunrise_client_render::mipmap::set_dither_cutouts(
             self.settings.sunrise.dither_cutout_mips,
@@ -685,7 +694,10 @@ impl Game<'_> {
         // GUI-scale changes rebuild mounted children before the next input.
         self.refresh_screen_widgets();
     }
-    pub(super) fn resize_state_of(&self, size: winit::dpi::PhysicalSize<u32>) -> ResizeState {
+    pub(in crate::game) fn resize_state_of(
+        &self,
+        size: winit::dpi::PhysicalSize<u32>,
+    ) -> ResizeState {
         let viewport = self
             .renderer
             .as_ref()
@@ -703,7 +715,7 @@ impl Game<'_> {
         }
     }
     /// Fires `window_resize` once when the physical or GUI-scaled dimensions change.
-    pub(super) fn notify_window_resize(&mut self) {
+    pub(in crate::game) fn notify_window_resize(&mut self) {
         // The size `ClientOptionsClientHost::window_size` reads, so the two agree.
         let Some([width, height]) = self.window_size() else {
             return;
@@ -721,7 +733,7 @@ impl Game<'_> {
     }
     /// `Window.updateFullscreenState`: a fullscreen change made by the window
     /// system is adopted by the option (`Minecraft.fullscreenStateChanged`).
-    pub(super) fn observe_fullscreen(&mut self) {
+    pub(in crate::game) fn observe_fullscreen(&mut self) {
         // HDR calibration's own fullscreen is not the player's option: it
         // goes back to what it was when the calibration ends.
         if self.ui.options.calibration_window.is_some() {
@@ -737,7 +749,7 @@ impl Game<'_> {
         }
     }
     /// F11 (key.fullscreen): Window.toggleFullScreen, remembered in options.txt.
-    pub(super) fn toggle_fullscreen(&mut self) {
+    pub(in crate::game) fn toggle_fullscreen(&mut self) {
         self.settings.fullscreen = !self.settings.fullscreen;
         self.settings.save(&Self::options_path());
         self.apply_ui_settings();
@@ -748,7 +760,7 @@ impl Game<'_> {
     /// With `SUNRISE_SHADER_PACK` set the developer override wins and the key does nothing.
     /// Invalidation stays with the normal selection path: the next frame's `shader_pack_inputs`
     /// sees the changed pick and drops or loads the pack itself, for either pack kind.
-    pub(super) fn toggle_shader_pack(&mut self) {
+    pub(in crate::game) fn toggle_shader_pack(&mut self) {
         let present = |key: &str| {
             sunrise_client::shader_pack_list::resolve(&Self::shader_packs_dir(), key)
                 .1
@@ -788,7 +800,7 @@ impl Game<'_> {
     }
     /// `FramerateLimitTracker.getFramerateLimit`: the Max Framerate option,
     /// throttled when minimised, idle, or in a menu without a world.
-    pub(super) fn framerate_limit(&self) -> i32 {
+    pub(in crate::game) fn framerate_limit(&self) -> i32 {
         let context = FrameContext {
             inactivity: if self.settings.inactivity_fps_limit == "minimized" {
                 InactivityFpsLimit::Minimized
@@ -837,7 +849,7 @@ impl Game<'_> {
     /// `Minecraft.runTick`'s frame limiter: `FramerateLimiter.limitDisplayFPS`
     /// below 260 frames per second, sleeping then spin-waiting until the
     /// frame's slot ends (not in scripted frame-count runs).
-    pub(super) fn limit_frame(&mut self) {
+    pub(in crate::game) fn limit_frame(&mut self) {
         if self.options.frames.is_some() {
             return;
         }
@@ -864,7 +876,7 @@ impl Game<'_> {
     /// Fullbright as this window may draw it (`fullbright_held`): the renderer's flag and the
     /// graphics screen's row. Each tick (`tick_frame_visuals`) and when settings apply, so
     /// joining or leaving a server needs no call of its own.
-    pub(super) fn hold_fullbright(&mut self) {
+    pub(in crate::game) fn hold_fullbright(&mut self) {
         let held = fullbright_held(
             self.remote.as_ref().map(|_| self.integrated.is_some()),
             self.replay.playing(),
@@ -911,7 +923,7 @@ mod resize_state_tests {
     fn viewport_resize_notifications_follow_each_player() {
         // Winit permits only one event loop per process, even after it is dropped.
         if crate::game::native_entity_refs::tests::run_fresh_cases(
-            "game::options::resize_state_tests::viewport_resize_notifications_follow_each_player",
+            "game::client_side::options::resize_state_tests::viewport_resize_notifications_follow_each_player",
             "SUNRISE_RESIZE_STATE_CHILD",
             &["window"],
         ) {
@@ -989,7 +1001,7 @@ mod resize_state_tests {
     fn window_size_reads_the_size_window_resize_reports() {
         // Winit permits only one event loop per process, even after it is dropped.
         if crate::game::native_entity_refs::tests::run_fresh_cases(
-            "game::options::resize_state_tests::window_size_reads_the_size_window_resize_reports",
+            "game::client_side::options::resize_state_tests::window_size_reads_the_size_window_resize_reports",
             "SUNRISE_WINDOW_SIZE_CHILD",
             &["window"],
         ) {

@@ -8,7 +8,7 @@ use sunrise_client::motion::PlayerMotion;
 fn constructed_and_saved_mob_uuids_survive_repeated_reconstruction() {
     // Opt in only in a fresh child; never mutate the parallel parent's environment.
     if crate::game::native_entity_refs::tests::run_fresh_cases(
-        "game::persist::summon_uuid_conflict_tests::constructed_and_saved_mob_uuids_survive_repeated_reconstruction",
+        "game::server_side::persist::summon_uuid_conflict_tests::constructed_and_saved_mob_uuids_survive_repeated_reconstruction",
         "SUNRISE_TEST_SEEDS",
         &["1"],
     ) {
@@ -86,7 +86,7 @@ fn positioned(kind: &str, uuid: Option<[i32; 4]>) -> Tag {
 fn cloud_fangs_and_kept_entities_keep_their_constructor_uuid() {
     // Opt in only in a fresh child; never mutate the parallel parent's environment.
     if crate::game::native_entity_refs::tests::run_fresh_cases(
-        "game::persist::summon_uuid_conflict_tests::cloud_fangs_and_kept_entities_keep_their_constructor_uuid",
+        "game::server_side::persist::summon_uuid_conflict_tests::cloud_fangs_and_kept_entities_keep_their_constructor_uuid",
         "SUNRISE_TEST_SEEDS",
         &["1"],
     ) {

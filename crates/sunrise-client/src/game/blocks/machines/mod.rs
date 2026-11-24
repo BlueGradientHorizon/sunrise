@@ -39,7 +39,7 @@ use sunrise_world::{
     registry::BlockStateId,
 };
 
-pub(super) use sunrise_gameplay::hoppers::{
+pub(in crate::game) use sunrise_gameplay::hoppers::{
     HopperState, ItemColumns, StampedItemColumns, cat_sitting_above, dir_from_name, offset, room,
     shelf_signal,
 };
@@ -75,7 +75,7 @@ fn wake_hoppers_reaching(
 }
 
 impl Game<'_> {
-    pub(super) fn hopper_cooldown(&self, pos: Pos) -> i32 {
+    pub(in crate::game) fn hopper_cooldown(&self, pos: Pos) -> i32 {
         hopper_cooldown_in(&self.server.hoppers, &self.world, pos)
     }
 }
@@ -127,7 +127,7 @@ impl View {
         None
     }
     /// `WorldlyContainer.getSlotsForFace` or every slot, zero-allocation iterator.
-    pub(super) fn slots_for_face_iter(&self, face: Option<Direction>) -> Slots<'_> {
+    pub(in crate::game) fn slots_for_face_iter(&self, face: Option<Direction>) -> Slots<'_> {
         match (self.kind, face) {
             (Kind::Furnace, Some(Direction::Down)) => Slots::Slice(&[2, 1]),
             (Kind::Furnace, Some(Direction::Up)) => Slots::Slice(&[0]),
@@ -153,7 +153,7 @@ impl View {
             _ => 99,
         }
     }
-    pub(super) fn slots_to_add_iter(&self, face: Option<Direction>) -> Slots<'_> {
+    pub(in crate::game) fn slots_to_add_iter(&self, face: Option<Direction>) -> Slots<'_> {
         if matches!(self.kind, Kind::Furnace | Kind::Brewing | Kind::Mod) && face.is_some() {
             self.slots_for_face_iter(face)
         } else {
@@ -166,7 +166,7 @@ impl View {
     }
 }
 
-pub(super) enum Slots<'a> {
+pub(in crate::game) enum Slots<'a> {
     Range(std::ops::Range<usize>),
     Slice(&'static [usize]),
     Mod(&'a [usize]),
@@ -203,7 +203,7 @@ impl Iterator for Slots<'_> {
 impl ExactSizeIterator for Slots<'_> {}
 
 /// State-level container queries shared by the game and comparator signals.
-pub(super) struct Containers<'a> {
+pub(in crate::game) struct Containers<'a> {
     world: &'a World,
     behaviours: &'a Behaviours,
     items: &'a Items,
@@ -360,7 +360,7 @@ impl Containers<'_> {
         self.registry.state(state).map_or("", |s| s.name.as_str())
     }
     /// `ItemInstance.getMaxStackSize`, using the effective component after patching.
-    pub(super) fn max_stack(&self, stack: &ItemStack) -> u32 {
+    pub(in crate::game) fn max_stack(&self, stack: &ItemStack) -> u32 {
         let info = self.items.get(&stack.item);
         match stack.effective_max_stack_size(info) {
             Some(max) => max.clamp(1, 99) as u32,
@@ -770,7 +770,7 @@ fn bone_meal_stack() -> &'static ItemStack {
 /// Comparator input from a container block entity (0 when there is none):
 /// `ChestBlock.getContainer(.., false)`, whose blocked check sees the level's
 /// cats (`isCatSittingOnChest`).
-pub(super) fn container_signal(level: &mut super::GameLevel<'_>, pos: BlockPos) -> i32 {
+pub(in crate::game) fn container_signal(level: &mut super::GameLevel<'_>, pos: BlockPos) -> i32 {
     let view = level.containers().comparator_view((pos.x, pos.y, pos.z));
     if let Some(view) = &view {
         for &(key, _) in &view.parts {
@@ -795,7 +795,7 @@ impl super::GameLevel<'_> {
 }
 
 impl Game<'_> {
-    pub(super) fn containers(&self) -> Containers<'_> {
+    pub(in crate::game) fn containers(&self) -> Containers<'_> {
         Containers {
             world: &self.world,
             behaviours: self.res.behaviours(),
@@ -805,7 +805,7 @@ impl Game<'_> {
             mobs: &self.mobs,
         }
     }
-    pub(super) fn stored_container_signal(&self, pos: Pos) -> i32 {
+    pub(in crate::game) fn stored_container_signal(&self, pos: Pos) -> i32 {
         // Match a GameLevel view; the level's block entities own the slots.
         Containers {
             brewing: None,
@@ -813,7 +813,12 @@ impl Game<'_> {
         }
         .stored_container_signal(pos)
     }
-    pub(super) fn block_can_place(&self, pos: [i32; 3], slot: usize, stack: &ItemStack) -> bool {
+    pub(in crate::game) fn block_can_place(
+        &self,
+        pos: [i32; 3],
+        slot: usize,
+        stack: &ItemStack,
+    ) -> bool {
         let containers = self.containers();
         let Some(view) = containers.view((pos[0], pos[1], pos[2]), false) else {
             return false;
@@ -862,7 +867,7 @@ impl Game<'_> {
         }
     }
     /// `BlockEntity.setChanged` at `pos`: comparators re-read the container.
-    pub(super) fn container_changed(&mut self, pos: Pos) {
+    pub(in crate::game) fn container_changed(&mut self, pos: Pos) {
         if pos.1 == super::minecarts::CART_KEY_Y {
             return;
         }
@@ -876,7 +881,7 @@ impl Game<'_> {
     }
 
     /// `BlockEntity.setChanged` updates without dispatching `contents_changed` again.
-    pub(super) fn container_changed_without_hook(&mut self, pos: Pos) {
+    pub(in crate::game) fn container_changed_without_hook(&mut self, pos: Pos) {
         if pos.1 == super::minecarts::CART_KEY_Y {
             return;
         }
@@ -1184,7 +1189,7 @@ impl Game<'_> {
     }
     /// `HopperBlockEntity.pushItemsTick` of the hopper at `pos`, if its block
     /// is still a hopper (`BlockEntityType.isValid`).
-    pub(super) fn tick_hopper(&mut self, pos: Pos) {
+    pub(in crate::game) fn tick_hopper(&mut self, pos: Pos) {
         let time = self.world.game_time;
         // Every hopper keeps its cooldown and the tick it last ticked
         // (`HopperBlockEntity.tickedGameTime`), idle ones too: a hopper that
@@ -1228,20 +1233,20 @@ impl Game<'_> {
     /// attempt: vanilla decrements the cooldown and stamps `tickedGameTime` on
     /// every tick, and a feeder that runs later in the same tick reads the
     /// stamp to choose 7 ticks over 8.
-    pub(super) fn tick_sleeping_hopper(&mut self, pos: Pos) {
+    pub(in crate::game) fn tick_sleeping_hopper(&mut self, pos: Pos) {
         let state = self.server.hoppers.entry(pos).or_default();
         state.cooldown = state.cooldown.wrapping_sub(1).max(0);
         state.ticked = self.world.game_time;
     }
     /// Drops the cooldowns of hoppers whose block entity is gone.
-    pub(super) fn forget_gone_hoppers(&mut self) {
+    pub(in crate::game) fn forget_gone_hoppers(&mut self) {
         let entities = &self.world.block_entities;
         self.server.hoppers.retain(|p, _| {
             matches!(entities.get(p), Some(BlockEntity::Chest(items)) if items.len() == HOPPER_SLOTS)
         });
     }
     /// `HopperBlockEntity.tryMoveItems` with `suckInItems`.
-    pub(super) fn hopper_try_move_items(&mut self, pos: Pos) {
+    pub(in crate::game) fn hopper_try_move_items(&mut self, pos: Pos) {
         let state = self.world.block(pos.0, pos.1, pos.2);
         self.hopper_try_move_items_with_state(pos, state);
     }
@@ -1331,7 +1336,7 @@ impl Game<'_> {
     }
     /// Wakes the sleeping hoppers whose suck area (`Hopper.SUCK_AABB`) a dropped
     /// item's box reaches, once a tick before the hoppers tick.
-    pub(super) fn wake_hoppers_near_items(&mut self) {
+    pub(in crate::game) fn wake_hoppers_near_items(&mut self) {
         if !self.world.block_entities.any_hopper_asleep() {
             return;
         }
@@ -1355,7 +1360,7 @@ impl Game<'_> {
         wake_hoppers_reaching(&mut self.world.block_entities, item.bounds());
     }
     /// Wakes the sleeping hoppers a minecart or boat could be taken from.
-    pub(super) fn wake_hoppers_near_vehicles(&mut self) {
+    pub(in crate::game) fn wake_hoppers_near_vehicles(&mut self) {
         if !self.world.block_entities.any_hopper_asleep() {
             return;
         }
@@ -1371,7 +1376,7 @@ impl Game<'_> {
     /// tick: an item whose box meets the hopper's bowl (`Hopper.INSIDE`) and
     /// its suck area runs `tryMoveItems` with that item as the pickup, in the
     /// entity phase, before the hopper's own tick counts its cooldown down.
-    pub(super) fn hoppers_catch_items(&mut self) {
+    pub(in crate::game) fn hoppers_catch_items(&mut self) {
         let mut i = 0;
         while i < self.dropped.len() {
             let item = &self.dropped[i];
@@ -1477,7 +1482,7 @@ impl Game<'_> {
     }
     /// A mod's item handler through `side`. Vanilla containers and container providers keep
     /// their direct automation path even when a capability overrides their public storage.
-    pub(super) fn item_part_at(
+    pub(in crate::game) fn item_part_at(
         &mut self,
         pos: Pos,
         side: Direction,
@@ -1498,7 +1503,7 @@ impl Game<'_> {
     /// from where it came, after the part's own writes, so a part handing it on back into the
     /// source loses nothing: how many went. A part taking none, a part answering more than it
     /// was offered (a mod bug) and a failed `take` undo the move (none went).
-    pub(super) fn put_into_part(
+    pub(in crate::game) fn put_into_part(
         &mut self,
         part: &Capability<dyn ResourceHandler<ItemResource>>,
         stack: &ItemStack,
@@ -2111,7 +2116,11 @@ impl Game<'_> {
     /// cart. `ServerLevel.tickNonPassenger` ticks the vehicle, then its
     /// passengers, so a ridden cart pulls too; Sunrise ticks that one in its
     /// rider's turn (`tick_cart_riding`). `alive` is `isAlive` after the move.
-    pub(super) fn hopper_cart_tick(&mut self, cart: &mut super::minecarts::Minecart, alive: bool) {
+    pub(in crate::game) fn hopper_cart_tick(
+        &mut self,
+        cart: &mut super::minecarts::Minecart,
+        alive: bool,
+    ) {
         if alive && cart.kind == super::minecarts::CartKind::Hopper && cart.enabled {
             self.hopper_cart_suck(cart);
         }
@@ -2121,7 +2130,7 @@ impl Game<'_> {
     /// entities over it or touching it, each tick without a cooldown.
     /// `consumedItemThisFrame` in 26.3 caps a tick at one item: the tick tries
     /// once, and `makeStepAlongTrack` may try again, but only one succeeds.
-    pub(super) fn hopper_cart_suck(&mut self, cart: &mut super::minecarts::Minecart) {
+    pub(in crate::game) fn hopper_cart_suck(&mut self, cart: &mut super::minecarts::Minecart) {
         if !self.unpack_ticked_cart_loot(cart) {
             return;
         }
@@ -2163,7 +2172,11 @@ impl Game<'_> {
     // ---- dispensers and droppers ----
 
     /// `DispenserBlock.dispenseFrom` / `DropperBlock.dispenseFrom`.
-    pub(super) fn dispense_from(&mut self, pos: BlockPos, state: BlockStateId) -> Result<()> {
+    pub(in crate::game) fn dispense_from(
+        &mut self,
+        pos: BlockPos,
+        state: BlockStateId,
+    ) -> Result<()> {
         let key = (pos.x, pos.y, pos.z);
         let name = self.res.facts().get(state).name.clone();
         if &*name == "minecraft:crafter" {
@@ -2286,7 +2299,7 @@ enum Screen {
 }
 
 impl Game<'_> {
-    pub(super) fn machine_layout_selector(&self) -> Option<bool> {
+    pub(in crate::game) fn machine_layout_selector(&self) -> Option<bool> {
         self.machine_screen().map(|s| s == Screen::Hopper)
     }
     fn machine_screen(&self) -> Option<Screen> {
@@ -2316,7 +2329,7 @@ impl Game<'_> {
         }
     }
     /// `imageHeight` of the open screen (HopperScreen is 133 tall).
-    pub(super) fn screen_height(&self) -> f32 {
+    pub(in crate::game) fn screen_height(&self) -> f32 {
         if let Some(height) = self.native_screen_height() {
             return height;
         }
@@ -2341,7 +2354,7 @@ impl Game<'_> {
         }
     }
     /// HopperMenu / DispenserMenu slot layouts; None for other screens.
-    pub(super) fn machine_slot_position(&self, i: usize) -> Option<(f32, f32)> {
+    pub(in crate::game) fn machine_slot_position(&self, i: usize) -> Option<(f32, f32)> {
         let screen = self.machine_screen()?;
         let inventory_y = if screen == Screen::Hopper { 51.0 } else { 84.0 };
         Some(match i {
@@ -2557,7 +2570,7 @@ mod furnace_fuel_transfer_tests {
     #[ignore = "daily"]
     fn a_side_hopper_respects_the_furnace_fuel_patch_and_bucket_rule() {
         if run_fresh_cases(
-            "game::machines::furnace_fuel_transfer_tests::a_side_hopper_respects_the_furnace_fuel_patch_and_bucket_rule",
+            "game::server_side::machines::furnace_fuel_transfer_tests::a_side_hopper_respects_the_furnace_fuel_patch_and_bucket_rule",
             "SUNRISE_FURNACE_HOPPER_CASE",
             &["side"],
         ) {
@@ -3014,7 +3027,7 @@ mod part_front_tests {
     #[ignore = "daily"]
     fn a_part_handing_a_crafters_output_back_into_its_grid_loses_none() {
         let Some(root) = declared_part_root(
-            "game::machines::part_front_tests::a_part_handing_a_crafters_output_back_into_its_grid_loses_none",
+            "game::server_side::machines::part_front_tests::a_part_handing_a_crafters_output_back_into_its_grid_loses_none",
         ) else {
             return;
         };
@@ -3075,7 +3088,7 @@ mod part_front_tests {
     #[ignore = "daily"]
     fn a_part_handing_a_droppers_item_back_into_it_loses_none() {
         let Some(root) = declared_part_root(
-            "game::machines::part_front_tests::a_part_handing_a_droppers_item_back_into_it_loses_none",
+            "game::server_side::machines::part_front_tests::a_part_handing_a_droppers_item_back_into_it_loses_none",
         ) else {
             return;
         };
@@ -3133,7 +3146,7 @@ mod part_front_tests {
     #[ignore = "daily"]
     fn a_dropper_and_a_crafter_put_into_a_mod_part_in_front_of_them() {
         let Some(root) = declared_part_root(
-            "game::machines::part_front_tests::a_dropper_and_a_crafter_put_into_a_mod_part_in_front_of_them",
+            "game::server_side::machines::part_front_tests::a_dropper_and_a_crafter_put_into_a_mod_part_in_front_of_them",
         ) else {
             return;
         };
@@ -3690,7 +3703,7 @@ mod tests {
     #[ignore = "daily"]
     fn an_idle_hopper_sleeps_and_wakes_for_what_it_could_take() {
         crate::game::in_own_process(
-            "game::machines::tests::an_idle_hopper_sleeps_and_wakes_for_what_it_could_take",
+            "game::server_side::machines::tests::an_idle_hopper_sleeps_and_wakes_for_what_it_could_take",
             || {
                 let mut resources = None;
                 let mut game = server_game(&mut resources);

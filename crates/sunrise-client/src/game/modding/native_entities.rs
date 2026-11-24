@@ -81,7 +81,7 @@ fn root_id(target: Option<Target>, first: u32, live: impl Fn(u32) -> bool) -> Op
 }
 
 /// The entity id a summoned stack's root is known by.
-pub(super) fn target_id(t: Target) -> Option<u32> {
+pub(in crate::game) fn target_id(t: Target) -> Option<u32> {
     match t {
         Target::Mob(id)
         | Target::Item(id)
@@ -125,7 +125,7 @@ impl Game<'_> {
     /// load, one a mod kept out (`native_entity_join_level`), or with the entity ids exhausted.
     /// Inside a transaction the id comes back at once: a join a mod cancels at the root commit
     /// leaves its handle stale.
-    pub(super) fn summon(
+    pub(in crate::game) fn summon(
         &mut self,
         dimension: &str,
         kind: &str,
@@ -245,7 +245,11 @@ impl Game<'_> {
     /// until then. The same holds for a call a listener makes while that commit is told: its
     /// joins are told after the batch being told. A `through` is the commit's own flush of one
     /// batch, never held.
-    pub(super) fn native_joins_flush(&mut self, loaded_from_disk: bool, watch: u32) -> bool {
+    pub(in crate::game) fn native_joins_flush(
+        &mut self,
+        loaded_from_disk: bool,
+        watch: u32,
+    ) -> bool {
         self.flush_joins(loaded_from_disk, watch, &[], None)
     }
     /// [`Self::native_joins_flush`], never announcing the entities `removed` names and, with a
@@ -486,7 +490,7 @@ impl Game<'_> {
     /// Entities that were moved, not added (a portal's arrival keeps being
     /// silent): everything now in the level counts as announced, and will
     /// be told when it leaves.
-    pub(super) fn native_joins_skip(&mut self) {
+    pub(in crate::game) fn native_joins_skip(&mut self) {
         let observed = sunrise_client::join_seq::JoinSeq::latest();
         if self.remote.is_none() && !mod_api::__private::mods().is_empty() {
             self.assign_pending_join_ids();
@@ -502,14 +506,14 @@ impl Game<'_> {
     }
     /// An entity taken out of the level without leaving it (an item through
     /// an End gateway): forgotten, not told of.
-    pub(super) fn native_leave_skip(&mut self, id: u32) {
+    pub(in crate::game) fn native_leave_skip(&mut self, id: u32) {
         self.entity_section_forget(id);
         if let Ok(i) = self.persist.live.binary_search_by_key(&id, |l| l.0) {
             self.persist.live.remove(i);
         }
     }
     /// Entity `id` has left the level: told once, if mods were told it joined.
-    pub(super) fn native_entity_left(&mut self, id: u32) {
+    pub(in crate::game) fn native_entity_left(&mut self, id: u32) {
         if self.remote.is_some()
             || self.hold_announcement(super::transactions::Announcement::Left(id))
         {
@@ -532,7 +536,7 @@ impl Game<'_> {
     /// through a portal, unloaded), lowest id first. Marks the entities still
     /// there in the registry and tells the rest: no allocation, and nothing
     /// runs when no mod is loaded or none was announced.
-    pub(super) fn native_leaves_flush(&mut self) {
+    pub(in crate::game) fn native_leaves_flush(&mut self) {
         self.native_removals_flush();
         if self.persist.live.is_empty()
             || self.remote.is_some()

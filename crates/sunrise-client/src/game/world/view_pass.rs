@@ -18,13 +18,13 @@ use sunrise_client::{Result, lan::hub::TickCtx};
 impl Game<'_> {
     /// What the players' viewed areas ask of level `dim`: None for nothing, else whether one of
     /// them ticks.
-    pub(super) fn viewed_level(&self, dim: Dim) -> Option<bool> {
+    pub(in crate::game) fn viewed_level(&self, dim: Dim) -> Option<bool> {
         self.lan.as_ref()?.hub.viewed_level(dim.id())
     }
 
     /// Whether level `dim` needs a view pass when it is not ticked: areas name it, or a client
     /// still holds chunks of it whose linger, forgets and `close` are not done.
-    pub(super) fn needs_view_pass(&self, dim: Dim) -> bool {
+    pub(in crate::game) fn needs_view_pass(&self, dim: Dim) -> bool {
         self.viewed_level(dim).is_some()
             || self
                 .lan
@@ -33,7 +33,7 @@ impl Game<'_> {
     }
 
     /// A chunk pass for each idle level held by a view or a spawn preparation ticket.
-    pub(super) fn run_view_passes(&mut self, ticked: &[Dim], running: bool) -> Result<()> {
+    pub(in crate::game) fn run_view_passes(&mut self, ticked: &[Dim], running: bool) -> Result<()> {
         let viewed: Vec<Dim> = Dim::all()
             .into_iter()
             .filter(|d| {
@@ -653,7 +653,7 @@ pub(in crate::game) mod tests {
         };
         use sunrise_protocol::connection_groups::{Cell, Entry, Section};
 
-        const NAME: &str = "game::view_pass::tests::a_saved_block_entity_republishes_its_group_before_a_loaded_only_column_is_sent";
+        const NAME: &str = "game::server_side::view_pass::tests::a_saved_block_entity_republishes_its_group_before_a_loaded_only_column_is_sent";
         if run_fresh_cases(NAME, "SUNRISE_VIEW_GROUP_REOPEN", &["run"]) {
             return;
         }

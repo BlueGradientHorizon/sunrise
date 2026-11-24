@@ -1,6 +1,5 @@
 //! `LevelEventHandler` 1039 (`LevelEvent.SOUND_PHANTOM_BITE`): the sound a
 //! phantom's bite posts.
-use super::*;
 use crate::game::*;
 use sunrise_core::random::{LegacyRandom, RandomSource};
 

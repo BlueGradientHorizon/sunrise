@@ -3,22 +3,22 @@ use super::{Game, PackResources, Renderer, UiResources, client_reload};
 use std::sync::Arc;
 use sunrise_client::gfx::PreparedModels;
 
-pub(super) struct InitialModelGeneration {
-    pub(super) pack: PackResources,
-    pub(super) gui: UiResources,
+pub(in crate::game) struct InitialModelGeneration {
+    pub(in crate::game) pack: PackResources,
+    pub(in crate::game) gui: UiResources,
 }
 
-pub(super) struct PendingClientStart {
-    pub(super) models: InitialModelGeneration,
-    pub(super) applies: Vec<client_reload::PreparedClientReload>,
-    pub(super) pack_error: Option<String>,
-    pub(super) handoff: bool,
+pub(in crate::game) struct PendingClientStart {
+    pub(in crate::game) models: InitialModelGeneration,
+    pub(in crate::game) applies: Vec<client_reload::PreparedClientReload>,
+    pub(in crate::game) pack_error: Option<String>,
+    pub(in crate::game) handoff: bool,
 }
 
 impl Game<'_> {
     /// AtlasManager.apply: adopt the uploaded textures and the GUI sprites, without
     /// admitting the new model store or its GPU buffers.
-    pub(super) fn publish_client_atlases(
+    pub(in crate::game) fn publish_client_atlases(
         &mut self,
         atlas: &Arc<super::RenderAssets>,
         gui: UiResources,
@@ -42,14 +42,14 @@ impl Game<'_> {
         prepared
     }
 
-    pub(super) fn install_model_upload(&mut self, prepared: Option<PreparedModels>) {
+    pub(in crate::game) fn install_model_upload(&mut self, prepared: Option<PreparedModels>) {
         self.stitching_block_atlas = None;
         if let Some(renderer) = &mut self.renderer {
             renderer.publish_prepared_models(prepared);
         }
     }
 
-    pub(super) fn apply_initial_model_generation(
+    pub(in crate::game) fn apply_initial_model_generation(
         &mut self,
         models: InitialModelGeneration,
         client_applies: Vec<client_reload::PreparedClientReload>,

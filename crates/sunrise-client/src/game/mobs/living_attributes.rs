@@ -38,7 +38,7 @@ fn equipment_seed(m: &Mob) -> Vec<sunrise_core::nbt::Tag> {
         .collect()
 }
 
-pub(super) fn modifier_invalidation_undo(
+pub(in crate::game) fn modifier_invalidation_undo(
     catalog: &Arc<Catalog>,
     mob: &Mob,
 ) -> Option<ModifierChanges> {
@@ -55,7 +55,11 @@ pub(super) fn modifier_invalidation_undo(
     }
 }
 
-pub(super) fn undo_mob_modifiers(catalog: &Arc<Catalog>, m: &mut Mob, changes: ModifierChanges) {
+pub(in crate::game) fn undo_mob_modifiers(
+    catalog: &Arc<Catalog>,
+    m: &mut Mob,
+    changes: ModifierChanges,
+) {
     let mut live = std::mem::take(&mut m.extra.live);
     let result = live.undo_modifier_changes(catalog, &m.kind.id, changes, || equipment_seed(m));
     warn_failed(m.id, &m.kind.id, result);
@@ -104,7 +108,7 @@ impl Game<'_> {
     /// holds swaps the old item's attribute modifiers for the new one's. An
     /// entity that changed nothing costs a compare of its eight slots, and
     /// one that wears nothing and never wore anything is skipped outright.
-    pub(super) fn tick_equipment_attributes(&mut self) {
+    pub(in crate::game) fn tick_equipment_attributes(&mut self) {
         if self.remote.is_some() || self.options.execution_role.is_client() {
             return;
         }
@@ -145,7 +149,7 @@ impl Game<'_> {
 
     /// Snapshot before any write that can refresh or invalidate the live map.
     /// The non-transactional paths never read or allocate a modifier snapshot.
-    pub(super) fn snapshot_mob_modifiers(&self, id: u32) -> Option<ModifierSnapshot> {
+    pub(in crate::game) fn snapshot_mob_modifiers(&self, id: u32) -> Option<ModifierSnapshot> {
         if self.transactions.is_empty() {
             return None;
         }
@@ -155,7 +159,7 @@ impl Game<'_> {
 
     /// Refresh equipment immediately, keeping the live diff if the caller took
     /// a transaction snapshot. The ordinary tick remains the other writers' safety net.
-    pub(super) fn collect_mob_equipment_attributes(
+    pub(in crate::game) fn collect_mob_equipment_attributes(
         &mut self,
         id: u32,
         before: Option<ModifierSnapshot>,
@@ -1319,7 +1323,7 @@ mod tests {
     fn a_mods_item_modifiers_reach_the_wearer() {
         // The stack hooks are a process-wide table: install them in a child of its own.
         if crate::game::native_entity_refs::tests::run_fresh_cases(
-            "game::living_attributes::tests::a_mods_item_modifiers_reach_the_wearer",
+            "game::server_side::living_attributes::tests::a_mods_item_modifiers_reach_the_wearer",
             "SUNRISE_ITEM_MODIFIERS_WEARER_CHILD",
             &["plated"],
         ) {

@@ -23,30 +23,30 @@ use super::{Game, Screen};
 /// What the native hooks see of the screen showing (`observe_screen`), kept
 /// beside its build so one `ScreenState` holds both.
 #[derive(Clone)]
-pub(super) struct ObservedScreen {
-    pub(super) id: &'static str,
+pub(in crate::game) struct ObservedScreen {
+    pub(in crate::game) id: &'static str,
     /// Not a `Screen` value: the title's own screen or an overlay drawn over
     /// gameplay (sign editor, book, dialog, prompt). `set_screen` never sees
     /// it open or close.
-    pub(super) overlay: bool,
-    pub(super) mod_screen: Option<String>,
-    pub(super) menu: Option<String>,
-    pub(super) menu_generation: Option<u64>,
+    pub(in crate::game) overlay: bool,
+    pub(in crate::game) mod_screen: Option<String>,
+    pub(in crate::game) menu: Option<String>,
+    pub(in crate::game) menu_generation: Option<u64>,
     /// Dialog, warning and waiting screens share one public id, not one receiver.
-    pub(super) dialog_key: Option<(bool, bool, Option<u64>)>,
-    pub(super) title: Option<std::sync::Arc<mod_api::Text>>,
-    pub(super) rect: [f32; 4],
+    pub(in crate::game) dialog_key: Option<(bool, bool, Option<u64>)>,
+    pub(in crate::game) title: Option<std::sync::Arc<mod_api::Text>>,
+    pub(in crate::game) rect: [f32; 4],
     /// Actual GUI-scaled screen dimensions (`width`, `height`), used to detect
     /// viewport/GUI-scale resizes independently of a panel's `rect`.
-    pub(super) screen_size: [f32; 2],
-    pub(super) slots: usize,
-    pub(super) mouse: [f32; 2],
-    pub(super) partial_tick: f32,
-    pub(super) regions: Vec<mod_api::ScreenRegion>,
+    pub(in crate::game) screen_size: [f32; 2],
+    pub(in crate::game) slots: usize,
+    pub(in crate::game) mouse: [f32; 2],
+    pub(in crate::game) partial_tick: f32,
+    pub(in crate::game) regions: Vec<mod_api::ScreenRegion>,
 }
 
 impl ObservedScreen {
-    pub(super) fn view(&self) -> ScreenView<'_> {
+    pub(in crate::game) fn view(&self) -> ScreenView<'_> {
         ScreenView::from(mod_api::__private::built::ScreenView {
             id: self.id,
             mod_screen: self.mod_screen.as_deref(),
@@ -67,54 +67,54 @@ impl ObservedScreen {
 /// Built once per open and per resize, never per frame. A screen bumps its own
 /// revision when one of its layout inputs moves (Options' page or scroll, a
 /// book opening), and the build is remade then.
-pub(super) struct ScreenBuild {
+pub(in crate::game) struct ScreenBuild {
     /// Which screen this was built for.
-    pub(super) screen: Screen,
+    pub(in crate::game) screen: Screen,
     identity: Option<&'static str>,
     /// The GUI-scaled size (`getGuiScaledWidth`/`getGuiScaledHeight`), in GUI pixels.
-    pub(super) size: (f32, f32),
+    pub(in crate::game) size: (f32, f32),
     /// The GUI scale (`narration`'s framebuffer space).
-    pub(super) scale: f32,
+    pub(in crate::game) scale: f32,
     /// The panel the screen draws (`NativeScreenView.rect`), else the window.
-    pub(super) rect: [f32; 4],
+    pub(in crate::game) rect: [f32; 4],
     /// The panel's `leftPos`/`topPos`.
-    pub(super) origin: (f32, f32),
+    pub(in crate::game) origin: (f32, f32),
     /// The screen's own widgets, as rectangles.
-    pub(super) layout: BuildLayout,
+    pub(in crate::game) layout: BuildLayout,
     /// Panels drawn outside `rect`.
-    pub(super) exclusion: Vec<[f32; 4]>,
+    pub(in crate::game) exclusion: Vec<[f32; 4]>,
 }
 
 /// A container screen's layout: the panel it draws in, the panels beside it,
 /// and every slot's hover box. Read by its drawing, `slot_at`,
 /// `clicked_outside` and `screen_exclusion`; never rebuilt per call.
 #[derive(Clone, Debug, PartialEq)]
-pub(super) struct ContainerLayout {
-    pub(super) slot_inputs: super::container_layout::SlotInputs,
+pub(in crate::game) struct ContainerLayout {
+    pub(in crate::game) slot_inputs: super::container_layout::SlotInputs,
     /// `leftPos`, `topPos`, `imageWidth`, `imageHeight` in GUI pixels.
-    pub(super) image: [f32; 4],
+    pub(in crate::game) image: [f32; 4],
     /// `getXOrigin`/`getYOrigin`: the player inventory's top-left corner.
-    pub(super) origin: (f32, f32),
+    pub(in crate::game) origin: (f32, f32),
     /// The open recipe book's panel.
-    pub(super) book: Option<[f32; 4]>,
+    pub(in crate::game) book: Option<[f32; 4]>,
     /// The effect panels' box beside the window.
-    pub(super) effects: Option<[f32; 4]>,
-    pub(super) shows_effects: bool,
-    pub(super) effects_revision: u64,
+    pub(in crate::game) effects: Option<[f32; 4]>,
+    pub(in crate::game) shows_effects: bool,
+    pub(in crate::game) effects_revision: u64,
     /// The `RenderInventoryMobEffects` answer the panel box was laid out with.
-    pub(super) effects_layout: EffectsLayout,
+    pub(in crate::game) effects_layout: EffectsLayout,
     /// The creative tab rows above and below the window.
-    pub(super) tabs: Option<[[f32; 4]; 2]>,
+    pub(in crate::game) tabs: Option<[[f32; 4]; 2]>,
     /// Every slot's `isHovering` box (the 16x16 slot grown by one pixel on
     /// every side) and its slot id, in `slots()` order.
-    pub(super) slots: Vec<(usize, [f32; 4])>,
+    pub(in crate::game) slots: Vec<(usize, [f32; 4])>,
 }
 
 impl ContainerLayout {
     /// The areas the screen draws outside `image`, in the order the screen
     /// draws them: the creative tab rows then the effect panels, or the
     /// recipe book then the effect panels.
-    pub(super) fn exclusion(&self) -> Vec<[f32; 4]> {
+    pub(in crate::game) fn exclusion(&self) -> Vec<[f32; 4]> {
         let mut areas = Vec::new();
         match self.tabs {
             Some([above, below]) => {
@@ -132,27 +132,27 @@ impl ContainerLayout {
 /// lays them out. Read by the drawing, `pause_click` and `pause_key`; never
 /// rebuilt per call.
 #[derive(Clone, Debug, PartialEq)]
-pub(super) struct PauseLayout {
+pub(in crate::game) struct PauseLayout {
     /// The `PauseScreen.init` inputs this layout was made from: a server's
     /// links or a custom-additions dialog appearing, or a page registering a
     /// row, is a new layout even at the same size.
-    pub(super) inputs: PauseInputs,
+    pub(in crate::game) inputs: PauseInputs,
     /// `(x, y, width, label key, action id, active)`, in `PauseScreen`'s order.
-    pub(super) buttons: Vec<(f32, f32, f32, &'static str, u8, bool)>,
+    pub(in crate::game) buttons: Vec<(f32, f32, f32, &'static str, u8, bool)>,
     /// `(x, y, sprite)`: the report bugs, feedback, friends and player reporting
     /// icons, in that order.
-    pub(super) icons: [(f32, f32, &'static str); 4],
+    pub(in crate::game) icons: [(f32, f32, &'static str); 4],
 }
 
 /// What `PauseScreen.init` reads and the paused screen can see change while it
 /// is open: the connection (the disconnect label), a server's links, the
 /// custom-additions dialog and the extra page rows.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(super) struct PauseInputs {
-    pub(super) remote: bool,
-    pub(super) links: bool,
-    pub(super) additions: bool,
-    pub(super) rows: Vec<(&'static str, u8)>,
+pub(in crate::game) struct PauseInputs {
+    pub(in crate::game) remote: bool,
+    pub(in crate::game) links: bool,
+    pub(in crate::game) additions: bool,
+    pub(in crate::game) rows: Vec<(&'static str, u8)>,
 }
 
 /// `InBedChatScreen`'s widget beside the chat box: the Leave Bed button
@@ -160,20 +160,20 @@ pub(super) struct PauseInputs {
 /// and drawn and hit-tested only while the player sleeps, so a sleeper's
 /// chat opening on a plain chat build needs no rebuild.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct ChatLayout {
-    pub(super) leave_bed: (i32, i32, i32, i32),
+pub(in crate::game) struct ChatLayout {
+    pub(in crate::game) leave_bed: (i32, i32, i32, i32),
 }
 
 /// `AbstractCommandBlockEditScreen.init`'s buttons: the output toggle, the
 /// command block's three mode switches (none for a minecart) and Done/Cancel.
 /// Read by the drawing and `command_block_click`.
 #[derive(Clone, Debug, PartialEq)]
-pub(super) struct CommandBlockLayout {
+pub(in crate::game) struct CommandBlockLayout {
     /// A minecart's screen (`getPreviousY` 150, no mode switches): an input,
     /// so another kind of edit screen opening at the same size rebuilds.
-    pub(super) cart: bool,
+    pub(in crate::game) cart: bool,
     /// `(button, x, y, width)`, all 20 high, in `init`'s order.
-    pub(super) buttons: Vec<(super::command_blocks::Button, f32, f32, f32)>,
+    pub(in crate::game) buttons: Vec<(super::command_blocks::Button, f32, f32, f32)>,
 }
 
 /// A screen's own widgets, as rectangles.
@@ -183,7 +183,7 @@ pub(super) struct CommandBlockLayout {
 /// and `CommandBlock`. (Options keeps its own built layout, keyed by its
 /// revision, in `OptionsUi`.)
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(super) enum BuildLayout {
+pub(in crate::game) enum BuildLayout {
     /// Not migrated yet: the build has the window's rectangle only.
     #[default]
     Empty,
@@ -199,7 +199,7 @@ pub(super) enum BuildLayout {
 
 /// A layout a screen just made for its build. One arm per migrated screen;
 /// `sync` replaces the built one when it differs.
-pub(super) enum ScreenLayout {
+pub(in crate::game) enum ScreenLayout {
     Container(ContainerLayout),
     Pause(PauseLayout),
     Chat(ChatLayout),
@@ -266,7 +266,7 @@ impl ScreenBuild {
     }
 
     /// The build's container layout, when it has one at this size.
-    pub(super) fn container(&self, width: f32, height: f32) -> Option<&ContainerLayout> {
+    pub(in crate::game) fn container(&self, width: f32, height: f32) -> Option<&ContainerLayout> {
         if self.size != (width, height) {
             return None;
         }
@@ -277,7 +277,7 @@ impl ScreenBuild {
     }
 
     /// The build's pause layout, when it has one at this size.
-    pub(super) fn pause(&self, width: f32, height: f32) -> Option<&PauseLayout> {
+    pub(in crate::game) fn pause(&self, width: f32, height: f32) -> Option<&PauseLayout> {
         if self.size != (width, height) {
             return None;
         }
@@ -288,7 +288,7 @@ impl ScreenBuild {
     }
 
     /// The build's chat layout, when it has one at this size.
-    pub(super) fn chat(&self, width: f32, height: f32) -> Option<&ChatLayout> {
+    pub(in crate::game) fn chat(&self, width: f32, height: f32) -> Option<&ChatLayout> {
         match &self.layout {
             BuildLayout::Chat(layout) if self.size == (width, height) => Some(layout),
             _ => None,
@@ -296,7 +296,11 @@ impl ScreenBuild {
     }
 
     /// The build's command block layout, when it has one at this size.
-    pub(super) fn command_block(&self, width: f32, height: f32) -> Option<&CommandBlockLayout> {
+    pub(in crate::game) fn command_block(
+        &self,
+        width: f32,
+        height: f32,
+    ) -> Option<&CommandBlockLayout> {
         match &self.layout {
             BuildLayout::CommandBlock(layout) if self.size == (width, height) => Some(layout),
             _ => None,
@@ -307,47 +311,47 @@ impl ScreenBuild {
 /// The last handled mouse press on a screen, for vanilla's 250ms double-click
 /// detection (`MouseHandler.LastClick`, `MouseHandler.java:101-106`).
 #[derive(Clone, Copy, Debug)]
-pub(super) struct LastScreenClick {
+pub(in crate::game) struct LastScreenClick {
     time: u64,
     title_mode: Option<u64>,
-    pub(super) screen_instance: u64,
-    pub(super) button: i32,
+    pub(in crate::game) screen_instance: u64,
+    pub(in crate::game) button: i32,
 }
 
 /// What the game knows about the screen showing: the snapshot the native hooks
 /// see (`ObservedScreen`) and the build the screen's drawing will read.
 #[derive(Default)]
-pub(super) struct ScreenState {
-    pub(super) observed: Option<ObservedScreen>,
-    pub(super) build: ScreenBuildState,
+pub(in crate::game) struct ScreenState {
+    pub(in crate::game) observed: Option<ObservedScreen>,
+    pub(in crate::game) build: ScreenBuildState,
     /// The last draw's regions and the screen they are of (`ScreenView::regions`).
     regions: (Option<Screen>, Vec<mod_api::ScreenRegion>),
     /// The box the recipe book's tab (and category arrow) sprites made as this
     /// frame painted them (`recipe_book_screen::sprite_bounds`); None when the
     /// book drew none.
-    pub(super) drawn_book_tabs: std::cell::Cell<Option<[f32; 4]>>,
-    pub(super) widgets: super::screen_widgets::MountedScreenWidgets,
+    pub(in crate::game) drawn_book_tabs: std::cell::Cell<Option<[f32; 4]>>,
+    pub(in crate::game) widgets: super::screen_widgets::MountedScreenWidgets,
     /// Monotonic identity of the currently open screen instance. Bumped on
     /// every screen open, close, or replacement, and preserved across
     /// same-instance resize/rebuild (`Screen.resize`/`rebuildWidgets`).
-    pub(super) screen_instance: u64,
+    pub(in crate::game) screen_instance: u64,
     /// Identity of the text field that last owned IME composition, so switching
     /// directly between two fields clears the old field's preedit and area.
-    pub(super) ime_focus: Option<u64>,
+    pub(in crate::game) ime_focus: Option<u64>,
     /// Last handled screen mouse press for 250ms double-click detection.
-    pub(super) last_click: Option<LastScreenClick>,
+    pub(in crate::game) last_click: Option<LastScreenClick>,
     /// A mod's `ScreenOpening::Vanilla` answer is opening its screen: that
     /// change fires no screen hook again.
-    pub(super) replacing: bool,
+    pub(in crate::game) replacing: bool,
     /// The last change the screen hooks decided went another way than asked
     /// (a mod's `Cancel`, `ModScreen` or `Vanilla`): a caller's grab after it
     /// leaves the screen that shows its pointer. Never set with no listener.
-    pub(super) answered: std::cell::Cell<bool>,
+    pub(in crate::game) answered: std::cell::Cell<bool>,
 }
 
 impl ScreenState {
     /// Advance the receiving screen's identity. Rebuilding children is not a replacement.
-    pub(super) fn bump_instance(&mut self) -> u64 {
+    pub(in crate::game) fn bump_instance(&mut self) -> u64 {
         self.screen_instance = self.screen_instance.wrapping_add(1);
         self.last_click = None;
         self.screen_instance
@@ -356,7 +360,7 @@ impl ScreenState {
     /// Whether a press at `now` on `screen_instance` with `button` is a vanilla
     /// double-click (within 250ms on the same screen instance and button,
     /// `MouseHandler.java:101-106`).
-    pub(super) fn is_double_click(
+    pub(in crate::game) fn is_double_click(
         &self,
         now: u64,
         screen_instance: u64,
@@ -373,7 +377,7 @@ impl ScreenState {
     }
 
     /// Record a handled mouse press for subsequent double-click detection.
-    pub(super) fn record_click(
+    pub(in crate::game) fn record_click(
         &mut self,
         now: u64,
         screen_instance: u64,
@@ -413,7 +417,7 @@ struct RoomMemo {
 
 /// The open screen's build and what it was made from.
 #[derive(Default)]
-pub(super) struct ScreenBuildState {
+pub(in crate::game) struct ScreenBuildState {
     current: Option<ScreenBuild>,
     /// The frame's effects answer, while this frame asked for one.
     effects: std::cell::Cell<Option<EffectsMemo>>,
@@ -425,13 +429,13 @@ pub(super) struct ScreenBuildState {
 
 impl ScreenBuildState {
     /// A fresh overlay instance must build even when its kind is unchanged.
-    pub(super) fn reopened(&mut self) {
+    pub(in crate::game) fn reopened(&mut self) {
         self.current = None;
     }
 
     /// The answer this frame already took for `screen` in `space`, so a
     /// second build of the same frame asks the mods nothing.
-    pub(super) fn effects_answer(
+    pub(in crate::game) fn effects_answer(
         &self,
         frame: u64,
         screen: Screen,
@@ -444,7 +448,7 @@ impl ScreenBuildState {
     }
 
     /// Keeps this frame's answer for a second build in the same frame.
-    pub(super) fn keep_effects_answer(
+    pub(in crate::game) fn keep_effects_answer(
         &self,
         frame: u64,
         screen: Screen,
@@ -460,7 +464,7 @@ impl ScreenBuildState {
     }
 
     /// The room the mods asked this frame for `screen`, if they were asked.
-    pub(super) fn room_answer(&self, frame: u64, screen: Screen) -> Option<f32> {
+    pub(in crate::game) fn room_answer(&self, frame: u64, screen: Screen) -> Option<f32> {
         self.room
             .get()
             .filter(|memo| memo.frame == frame && memo.screen == screen)
@@ -468,7 +472,7 @@ impl ScreenBuildState {
     }
 
     /// Keeps this frame's room for the layout's other inputs in the same frame.
-    pub(super) fn keep_room_answer(&self, frame: u64, screen: Screen, room: f32) {
+    pub(in crate::game) fn keep_room_answer(&self, frame: u64, screen: Screen, room: f32) {
         self.room.set(Some(RoomMemo {
             frame,
             screen,
@@ -478,7 +482,7 @@ impl ScreenBuildState {
 
     /// Whether `sync` would make a new build for this screen, identity and
     /// size: the caller makes the fresh layout only then.
-    pub(super) fn needs_build(
+    pub(in crate::game) fn needs_build(
         &self,
         screen: Screen,
         shown: bool,
@@ -503,7 +507,7 @@ impl ScreenBuildState {
     /// comparison found a change. The same screen can keep its panel while its layout
     /// moves under it (a book opens, the effects answer changes, a creative
     /// tab swaps the slots), so a different layout remakes the build in place.
-    pub(super) fn sync(
+    pub(in crate::game) fn sync(
         &mut self,
         screen: Screen,
         shown: bool,
@@ -568,7 +572,7 @@ impl Game<'_> {
     }
 
     /// Framebuffer size and GUI projection, including before the renderer is initialized.
-    pub(super) fn gui_frame_now(&self) -> ([u32; 2], GuiSize) {
+    pub(in crate::game) fn gui_frame_now(&self) -> ([u32; 2], GuiSize) {
         let framebuffer = self.renderer.as_ref().map_or_else(
             || {
                 self.window.as_ref().map_or([1280, 720], |window| {
@@ -586,7 +590,7 @@ impl Game<'_> {
     }
 
     /// `Screen.init`/`Screen.resize` builds the open screen, and drops it when it closes.
-    pub(super) fn build_screen(&mut self) {
+    pub(in crate::game) fn build_screen(&mut self) {
         self.build_screen_at(self.gui_frame_now().0);
     }
 
@@ -727,7 +731,7 @@ impl Game<'_> {
     /// painted, or nothing when `screen_render_pre` cancelled the drawing.
     /// Called once the screen has drawn, before `screen_render_post`; the
     /// input hooks then read it until the next draw.
-    pub(super) fn publish_screen_regions(
+    pub(in crate::game) fn publish_screen_regions(
         &mut self,
         batch: &HudBatch,
         region_screen: Option<Screen>,
@@ -759,7 +763,7 @@ impl Game<'_> {
 
     /// The last published draw's regions of `screen` (`ScreenView::regions`).
     /// Empty for another screen and when no screen hook listens.
-    pub(super) fn screen_regions(&self, screen: Screen) -> &[mod_api::ScreenRegion] {
+    pub(in crate::game) fn screen_regions(&self, screen: Screen) -> &[mod_api::ScreenRegion] {
         match &self.screen_state.regions {
             (Some(of), regions) if *of == screen => regions,
             _ => &[],
@@ -767,7 +771,7 @@ impl Game<'_> {
     }
 
     /// The build's container layout, when it holds `batch`'s size.
-    pub(super) fn built_container(
+    pub(in crate::game) fn built_container(
         &self,
         batch: &sunrise_client::hud::HudBatch,
     ) -> Option<&ContainerLayout> {
@@ -779,7 +783,7 @@ impl Game<'_> {
     }
 
     /// The build's pause layout, when it holds `(width, height)`.
-    pub(super) fn built_pause(&self, width: f32, height: f32) -> Option<&PauseLayout> {
+    pub(in crate::game) fn built_pause(&self, width: f32, height: f32) -> Option<&PauseLayout> {
         self.screen_state
             .build
             .current
@@ -788,7 +792,7 @@ impl Game<'_> {
     }
 
     /// The build's chat layout, when it holds `(width, height)`.
-    pub(super) fn built_chat(&self, width: f32, height: f32) -> Option<&ChatLayout> {
+    pub(in crate::game) fn built_chat(&self, width: f32, height: f32) -> Option<&ChatLayout> {
         self.screen_state
             .build
             .current
@@ -797,7 +801,7 @@ impl Game<'_> {
     }
 
     /// The build's command block layout, when it holds `(width, height)`.
-    pub(super) fn built_command_block(
+    pub(in crate::game) fn built_command_block(
         &self,
         width: f32,
         height: f32,
@@ -838,7 +842,7 @@ impl Game<'_> {
     /// this size (or, for the edit screen, for this kind of block). An
     /// unchanged frame only compares: the boxes keep their size and nothing
     /// is laid out.
-    pub(super) fn text_screen_layout(
+    pub(in crate::game) fn text_screen_layout(
         &mut self,
         identity: Option<&'static str>,
         gui: GuiSize,
@@ -1602,7 +1606,7 @@ mod tests {
         };
 
         if crate::game::native_entity_refs::tests::run_fresh_cases(
-            "game::screen_build::tests::each_screen_region_is_where_vanilla_draws_it",
+            "game::client_side::screen_build::tests::each_screen_region_is_where_vanilla_draws_it",
             "SUNRISE_SCREEN_REGIONS_CHILD",
             &["regions"],
         ) {

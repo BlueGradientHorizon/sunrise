@@ -5,14 +5,14 @@ use sunrise_client::mobs::DamageKind;
 impl Game<'_> {
     /// Player.attack's cost after an accepted special-entity hurt. Hanging
     /// decorations consume their hit in skipAttackInteraction, before this tail.
-    pub(super) fn special_attack_exhaustion(&mut self) {
+    pub(in crate::game) fn special_attack_exhaustion(&mut self) {
         if let Some(player) = self.player.as_mut() {
             player.cause_food_exhaustion(0.1);
         }
     }
     /// The attacker's side of Player.causeExtraKnockback, including when the
     /// accepted target was removed by its hurt implementation.
-    pub(super) fn special_attack_slowdown(&mut self, knockback: f32) {
+    pub(in crate::game) fn special_attack_slowdown(&mut self, knockback: f32) {
         if knockback > 0.0 {
             self.attacker_slowdown();
         }
@@ -21,7 +21,7 @@ impl Game<'_> {
     /// above 0: the horizontal motion times 0.6 (the vertical kept), and the
     /// sprint stopped. The server's hit and a server's client's simulated one
     /// decide the knockback each their own way.
-    pub(super) fn attacker_slowdown(&mut self) {
+    pub(in crate::game) fn attacker_slowdown(&mut self) {
         if let Some(player) = self.player.as_mut() {
             player.velocity.x *= sunrise_client::attack_strength::ATTACKER_SLOWDOWN;
             player.velocity.z *= sunrise_client::attack_strength::ATTACKER_SLOWDOWN;
@@ -29,7 +29,7 @@ impl Game<'_> {
         self.stop_sprint_after_extra_knockback();
     }
 
-    pub(super) fn attack_dragon(&mut self) -> bool {
+    pub(in crate::game) fn attack_dragon(&mut self) -> bool {
         let Some((id, d)) = self.dragon_hit() else {
             return false;
         };
@@ -64,7 +64,7 @@ impl Game<'_> {
         true
     }
     /// `VehicleEntity.hurtServer` from the player's attack.
-    pub(super) fn attack_cart(&mut self) -> bool {
+    pub(in crate::game) fn attack_cart(&mut self) -> bool {
         let Some((i, d)) = self.cart_hit() else {
             return false;
         };

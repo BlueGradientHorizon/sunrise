@@ -15,7 +15,7 @@ use sunrise_client::{
 use sunrise_core::random::RandomSource;
 
 /// `EntityEvent.DROWN_PARTICLES`: broadcast with the drowning damage.
-pub(super) const DROWN_EVENT: i8 = 67;
+pub(in crate::game) const DROWN_EVENT: i8 = 67;
 
 struct Entry {
     damage_type: String,
@@ -41,7 +41,7 @@ struct PendingAttacker {
 
 /// `LivingEntity.lastHurtByPlayer`: a reference that survives a disconnect.
 #[derive(Clone, Copy)]
-pub(super) struct PlayerCredit(pub(super) u128);
+pub(in crate::game) struct PlayerCredit(pub(in crate::game) u128);
 impl From<PlayerCredit> for u128 {
     fn from(credit: PlayerCredit) -> Self {
         credit.0
@@ -50,30 +50,30 @@ impl From<PlayerCredit> for u128 {
 impl CombatTracker {
     /// `LivingEntity.lastHurtByPlayer`, remembered for 100 ticks (taken, as a
     /// dead player's memory goes with them).
-    pub(super) fn take_hurt_by_player(&mut self, now: i64) -> Option<PlayerCredit> {
+    pub(in crate::game) fn take_hurt_by_player(&mut self, now: i64) -> Option<PlayerCredit> {
         let credit = self.player_credit(now);
         self.last_hurt_by_player = None;
         credit
     }
     /// Whether a player hurt this body within the last 100 ticks
     /// (`lastHurtByPlayerMemoryTime > 0`), without forgetting them.
-    pub(super) fn recently_hit_by_player(&self, now: i64) -> bool {
+    pub(in crate::game) fn recently_hit_by_player(&self, now: i64) -> bool {
         self.player_credit(now).is_some()
     }
     /// The player reference while its 100-tick memory is active.
-    pub(super) fn player_credit(&self, now: i64) -> Option<PlayerCredit> {
+    pub(in crate::game) fn player_credit(&self, now: i64) -> Option<PlayerCredit> {
         self.last_hurt_by_player
             .and_then(|(credit, at)| (now - at < 100).then_some(credit))
     }
     /// `LivingEntity.setLastHurtByPlayer(player, 100)`.
-    pub(super) fn note_hurt_by_player(&mut self, credit: PlayerCredit, now: i64) {
+    pub(in crate::game) fn note_hurt_by_player(&mut self, credit: PlayerCredit, now: i64) {
         self.last_hurt_by_player = Some((credit, now));
     }
 }
 #[derive(Default)]
-pub(super) struct CombatTracker {
+pub(in crate::game) struct CombatTracker {
     /// The arrows and bee stingers stuck in the body.
-    pub(super) stuck: Stuck,
+    pub(in crate::game) stuck: Stuck,
     entries: Vec<Entry>,
     last_damage: i64,
     in_combat: bool,
@@ -93,108 +93,108 @@ pub(super) struct CombatTracker {
     /// by [`Game::with_attack`], which restores the previous one on return.
     attack: Attack,
     /// The mob whose projectile is hitting the player now.
-    pub(super) projectile_owner: Option<u32>,
+    pub(in crate::game) projectile_owner: Option<u32>,
     /// The display name of the projectile hitting the player now: the
     /// `DamageSource.directEntity` the death message names when no owner is
     /// known (`AbstractArrow.onHitEntity` makes an ownerless arrow its own
     /// cause).
-    pub(super) projectile_direct: Option<Text>,
+    pub(in crate::game) projectile_direct: Option<Text>,
     /// The player whose primed TNT is going off now (`PrimedTnt.getOwner`):
     /// its entity id and display name, the blast's causing entity.
-    pub(super) blast_owner: Option<(u32, Text)>,
+    pub(in crate::game) blast_owner: Option<(u32, Text)>,
     /// `Some(None)` is an explicitly ownerless crystal/cart DamageSource.
-    pub(super) explicit_explosion_cause: Option<Option<super::explosion::ExplosionCause>>,
-    pub(super) explicit_explosion_direct: Option<Text>,
+    pub(in crate::game) explicit_explosion_cause: Option<Option<super::explosion::ExplosionCause>>,
+    pub(in crate::game) explicit_explosion_direct: Option<Text>,
     /// The guest behind `blast_owner`, when that player is a LAN guest; the
     /// host's own blast leaves it None.
-    pub(super) blast_guest: Option<u32>,
+    pub(in crate::game) blast_guest: Option<u32>,
     /// `blast_owner` is a player (`getIndirectSourceEntity() instanceof
     /// Player`), not a mob whose UUID the TNT's `owner` names.
-    pub(super) blast_owner_player: bool,
-    pub(super) projectile_attacker: Option<(u32, Text)>,
-    pub(super) enchantment_projectile_attacker: Option<u32>,
+    pub(in crate::game) blast_owner_player: bool,
+    pub(in crate::game) projectile_attacker: Option<(u32, Text)>,
+    pub(in crate::game) enchantment_projectile_attacker: Option<u32>,
     /// The projectile hitting the player now is another player's that
     /// `ServerPlayer.canHarmPlayer` refuses (the `pvp` rule, an ally).
-    pub(super) refuse_player_hit: bool,
+    pub(in crate::game) refuse_player_hit: bool,
     /// The hit on the player now runs its post-attack effects (thorns) only
     /// if the player lives through it (`WitherSkull.onHitEntity`).
-    pub(super) post_attack_if_alive: bool,
+    pub(in crate::game) post_attack_if_alive: bool,
     /// The mob whose swing is being applied, when the caller knows it. Without
     /// it the attacker is the mob nearest to where the hit came from, which
     /// walks every mob.
-    pub(super) melee_mob: Option<u32>,
+    pub(in crate::game) melee_mob: Option<u32>,
     /// The attack event handled last hurt its target (`doHurtTarget` returned
     /// true). The events of one blow read it: `Zombie.doHurtTarget` burns only
     /// once `super.doHurtTarget` did (`MobEvent::ZombieIgnite` follows the
     /// attack it rides).
-    pub(super) hit_landed: bool,
+    pub(in crate::game) hit_landed: bool,
     /// A firework rocket's burst is hurting the player now: the rocket is
     /// the direct entity (`rocket_hurt_player`).
-    pub(super) rocket_hit: bool,
+    pub(in crate::game) rocket_hit: bool,
     /// The arrow hurting the player now pierces (`AbstractArrow.getPierceLevel` above 0):
     /// `LivingEntity.applyItemBlocking` lets it past a raised shield (`arrow_hits_player`).
-    pub(super) piercing_hit: bool,
+    pub(in crate::game) piercing_hit: bool,
     /// The player whose melee hit is landing on the player now: where they
     /// stand and the seconds their weapon disables a shield for
     /// (`getSecondsToDisableBlocking`).
-    pub(super) player_attacker: Option<([f64; 3], f32)>,
+    pub(in crate::game) player_attacker: Option<([f64; 3], f32)>,
     /// While set, a sweep attack's reach to the other players is kept here
     /// instead of landing, for the caller that holds the LAN host.
-    pub(super) sweeps: Option<Vec<super::lan_pvp::Sweep>>,
+    pub(in crate::game) sweeps: Option<Vec<super::lan_pvp::Sweep>>,
     /// The mob exploding now (`ServerExplosion.source`): its team's friendly
     /// fire decides whom the blast may hurt.
-    pub(super) explosion_source: Option<u32>,
+    pub(in crate::game) explosion_source: Option<u32>,
     /// The primed TNT, TNT cart, fireball, wither skull or end crystal
     /// exploding now, by entity id (`Explosion.getDirectSourceEntity`; a
     /// mob's is `explosion_source`).
-    pub(super) explosion_direct: Option<u32>,
+    pub(in crate::game) explosion_direct: Option<u32>,
     /// The exploding mob as predicates see it (`ServerExplosion.source`,
     /// `ServerPlayer.currentExplosionCause`), for a mob already out of the list.
-    pub(super) explosion_cause: Option<sunrise_client::advancements::EntityView>,
+    pub(in crate::game) explosion_cause: Option<sunrise_client::advancements::EntityView>,
     /// The exploding mob named itself (`MobEvent::ExplosionSource`), so the
     /// blast leaves it out (`getEntities(source, box)`). A source guessed
     /// from the mobs near the centre is still hurt: it may be a bystander.
-    pub(super) explosion_source_named: bool,
+    pub(in crate::game) explosion_source_named: bool,
     /// The entity list a listening `explosion_detonate` left behind, in the
     /// order the blast visits it: the listeners took the spared entities out
     /// and may have added others. `None` when no mod listened, and the walks
     /// visit every entity as before (`explosion_detonate.rs`).
-    pub(super) blast_hit_list: Option<Vec<u32>>,
+    pub(in crate::game) blast_hit_list: Option<Vec<u32>>,
     /// `blast_hit_list`'s ids as a set, so a walk's membership check stays
     /// constant time however large the list is.
-    pub(super) blast_hit_ids: std::collections::HashSet<u32>,
+    pub(in crate::game) blast_hit_ids: std::collections::HashSet<u32>,
     /// The blast's direct source is in water (`Explosion.getDirectSourceEntity`
     /// `.isInWater`): paintings, item frames and cushions ignore it
     /// (`BlockAttachedEntity.ignoreExplosion`).
-    pub(super) explosion_in_water: bool,
+    pub(in crate::game) explosion_in_water: bool,
     /// The blast now going off comes from a primed TNT, creeper, wither
     /// skull, wither or TNT minecart, the sources that empty a hive they
     /// destroy (`BeehiveBlock.getDrops`).
-    pub(super) hive_emptying_blast: bool,
+    pub(in crate::game) hive_emptying_blast: bool,
     /// The blast now going off comes from a primed TNT minecart, which
     /// neither resists on nor breaks a rail or the block under one
     /// (`MinecartTNT.getBlockExplosionResistance`, `shouldBlockExplode`).
-    pub(super) rail_proof_blast: bool,
+    pub(in crate::game) rail_proof_blast: bool,
     /// The mob that owns the projectile exploding now (`getIndirectSourceEntity`):
     /// the mobs the blast hurts record it as their attacker.
-    pub(super) explosion_owner: Option<u32>,
+    pub(in crate::game) explosion_owner: Option<u32>,
     /// `WitherSkull.getBlockExplosionResistance`: a dangerous skull's blast
     /// caps every destroyable block's resistance at this value.
-    pub(super) blast_resistance_cap: Option<f32>,
+    pub(in crate::game) blast_resistance_cap: Option<f32>,
     /// A mod blast's own damage type, calculator and effects
     /// (`level_explode`'s settings), while it goes off.
-    pub(super) blast_settings: super::explosion_settings::BlastSettings,
+    pub(in crate::game) blast_settings: super::explosion_settings::BlastSettings,
     /// Charged creepers whose blast just went off and that have not dropped
     /// a head yet (`Creeper.droppedSkulls`): they are gone from the mob list,
     /// but the mobs they killed still ask for their loot.
-    pub(super) charged_exploders: Vec<u32>,
+    pub(in crate::game) charged_exploders: Vec<u32>,
     /// The mobs whose blast went off this tick and that left the mob list
     /// (`MobEvent::ExplosionSource`): their names, for the death messages of
     /// the mobs the blast killed.
-    pub(super) exploded: Vec<(u32, Text)>,
+    pub(in crate::game) exploded: Vec<(u32, Text)>,
     /// The entity types of `exploded`: a player their blast killed is still
     /// credited to them (`LivingEntity.getKillCredit` during the explosion).
-    pub(super) exploded_kinds: Vec<(u32, String)>,
+    pub(in crate::game) exploded_kinds: Vec<(u32, String)>,
     /// The player's fall distance before this tick's movement (as of the
     /// end of the last one).
     fall_before: f64,
@@ -203,18 +203,18 @@ impl CombatTracker {
     /// Whether the blast now hurting entities visits `id`: the storages are
     /// the walk, unless a listening `explosion_detonate` left a list, and
     /// then only what that list names is.
-    pub(super) fn visits(&self, id: u32) -> bool {
+    pub(in crate::game) fn visits(&self, id: u32) -> bool {
         self.blast_hit_list.is_none() || self.blast_hit_ids.contains(&id)
     }
 
     /// The attack lent by the enclosing [`Game::with_attack`] (`damage_level_of!(game, game.combat.attack(), .., ..)`).
-    pub(super) fn attack(&self) -> &Attack {
+    pub(in crate::game) fn attack(&self) -> &Attack {
         &self.attack
     }
 
     /// The newest damage of this fight for `events`: when it landed (game
     /// time), its damage type, the amount and the name of what dealt it.
-    pub(super) fn last_hit(&self) -> Option<(i64, String, Option<f32>, Option<String>)> {
+    pub(in crate::game) fn last_hit(&self) -> Option<(i64, String, Option<f32>, Option<String>)> {
         let e = self.entries.last()?;
         let by = e
             .attacker
@@ -224,7 +224,7 @@ impl CombatTracker {
         Some((self.last_damage, e.damage_type.clone(), Some(e.damage), by))
     }
     /// The scalar death-tail/death-message fallback, not the full accepted killing source.
-    pub(super) fn last_blow(&self) -> Option<(&str, u32)> {
+    pub(in crate::game) fn last_blow(&self) -> Option<(&str, u32)> {
         let e = self.entries.last()?;
         Some((&e.damage_type, e.attacker.as_ref().map_or(0, |a| a.0)))
     }
@@ -234,13 +234,13 @@ impl CombatTracker {
     }
     /// `CombatTracker.getKiller`'s credited attacker: the entity that last
     /// hurt the body, within a hundred ticks of the hurt.
-    pub(super) fn kill_credit(&self, now: i64) -> Option<u32> {
+    pub(in crate::game) fn kill_credit(&self, now: i64) -> Option<u32> {
         let ((id, _), at) = self.last_hurt_by.as_ref()?;
         (now - at <= 100).then_some(*id)
     }
     /// `LivingEntity.getLastDamageSource` for an advancement's
     /// `killing_blow`: the newest combat entry's type and causing entity.
-    pub(super) fn killing_blow(&self) -> Option<(String, Option<u32>)> {
+    pub(in crate::game) fn killing_blow(&self) -> Option<(String, Option<u32>)> {
         self.entries.last().map(|e| {
             (
                 e.damage_type.clone(),
@@ -251,7 +251,7 @@ impl CombatTracker {
     /// The player's hurt is over: when a native mod canceled it, the
     /// attackers noted for it go, as no combat entry takes them and the next
     /// hit of the same damage type must not be credited to them.
-    pub(super) fn forget_noted(&mut self, canceled: bool) {
+    pub(in crate::game) fn forget_noted(&mut self, canceled: bool) {
         if let Some((attackers, directs)) = self.noted_since.take()
             && canceled
         {
@@ -266,20 +266,29 @@ impl Game<'_> {
     /// skipped. Mob victims take their attack explicitly (`DamageLevel::attacked_by`); this is
     /// the one implicit scope left, because the player-victim path (`hurt_player_from`,
     /// `mob_hits_player`) has ~30 callers that would all pass it through.
-    pub(super) fn with_attack<R>(&mut self, attack: Attack, f: impl FnOnce(&mut Self) -> R) -> R {
+    pub(in crate::game) fn with_attack<R>(
+        &mut self,
+        attack: Attack,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
         let outer = std::mem::replace(&mut self.combat.attack, attack);
         let result = f(self);
         self.combat.attack = outer;
         result
     }
     /// The attack the hits on the player land in now (a reader of `combat.attack`).
-    pub(super) fn current_attack(&self) -> Attack {
+    pub(in crate::game) fn current_attack(&self) -> Attack {
         self.combat.attack.clone()
     }
 
     /// `LivingEntity.makeDrownParticles`: `count` bubbles around the entity
     /// (vanilla's eight), moving with it.
-    pub(super) fn drown_particles(&mut self, at: [f64; 3], velocity: [f64; 3], count: i32) {
+    pub(in crate::game) fn drown_particles(
+        &mut self,
+        at: [f64; 3],
+        velocity: [f64; 3],
+        count: i32,
+    ) {
         let bubble = ParticleOptions::simple(ParticleType::Bubble);
         for _ in 0..count {
             let mut triangle = || {
@@ -292,7 +301,7 @@ impl Game<'_> {
     }
     /// Entity event 67 from a server, for this client's own player or an
     /// entity it draws.
-    pub(super) fn remote_drown(&mut self, id: i32) {
+    pub(in crate::game) fn remote_drown(&mut self, id: i32) {
         let own = self.remote.as_ref().is_some_and(|r| r.entity_id == id);
         let body = if own {
             self.player.as_ref().map(|p| {
@@ -314,7 +323,12 @@ impl Game<'_> {
     /// Another positive count goes to the players around as that many bubble
     /// particles and is drawn here, since a vanilla client's event 67 always
     /// draws eight; none sends nothing.
-    pub(super) fn drown_bubbles(&mut self, at: [f64; 3], velocity: [f64; 3], bubbles: i32) -> bool {
+    pub(in crate::game) fn drown_bubbles(
+        &mut self,
+        at: [f64; 3],
+        velocity: [f64; 3],
+        bubbles: i32,
+    ) -> bool {
         if bubbles == 8 {
             return true;
         }
@@ -326,7 +340,7 @@ impl Game<'_> {
         false
     }
     /// A mob's drowning tick (`MobEvent::Drown`).
-    pub(super) fn mob_drown(&mut self, mob: u32, at: [f64; 3], bubbles: i32) {
+    pub(in crate::game) fn mob_drown(&mut self, mob: u32, at: [f64; 3], bubbles: i32) {
         let v = self
             .mobs
             .iter()
@@ -338,7 +352,7 @@ impl Game<'_> {
         }
     }
     /// The display name of a mob: its custom name or its type's name.
-    pub(super) fn mob_display_name(&self, id: u32) -> Option<Text> {
+    pub(in crate::game) fn mob_display_name(&self, id: u32) -> Option<Text> {
         let m = self.mobs.iter().find(|m| m.id == id)?;
         Some(match &m.custom_name {
             Some(name) => Text::literal(name.clone()),
@@ -346,24 +360,24 @@ impl Game<'_> {
         })
     }
     /// `getLastHurtByMob`: the last mob to hurt the player, for 100 ticks.
-    pub(super) fn player_hurt_by(&self) -> Option<(sunrise_client::mobs::Who, i64)> {
+    pub(in crate::game) fn player_hurt_by(&self) -> Option<(sunrise_client::mobs::Who, i64)> {
         let ((id, _), at) = self.combat.last_hurt_by.as_ref()?;
         (self.world.game_time - at <= 100).then_some((sunrise_client::mobs::Who::Mob(*id), *at))
     }
     /// Remember who deals the next `damage_type` damage to the player.
-    pub(super) fn note_attacker(&mut self, damage_type: &str, mob: u32) {
+    pub(in crate::game) fn note_attacker(&mut self, damage_type: &str, mob: u32) {
         if let Some(name) = self.mob_display_name(mob) {
             self.note_named_attacker(damage_type, mob, name);
         }
     }
     /// `note_attacker` for an entity that is not one of `self.mobs` (the
     /// ender dragon).
-    pub(super) fn note_named_attacker(&mut self, damage_type: &str, id: u32, name: Text) {
+    pub(in crate::game) fn note_named_attacker(&mut self, damage_type: &str, id: u32, name: Text) {
         self.note_player_attacker(damage_type, id, name, None);
     }
     /// `note_named_attacker` for a player, with their custom-named main-hand
     /// item for the death message's `.item` form.
-    pub(super) fn note_player_attacker(
+    pub(in crate::game) fn note_player_attacker(
         &mut self,
         damage_type: &str,
         id: u32,
@@ -381,7 +395,7 @@ impl Game<'_> {
     }
     /// A non-living or already removed cause remains in the damage source,
     /// but cannot resolve as an EntityReference for kill credit.
-    pub(super) fn note_uncredited_attacker(
+    pub(in crate::game) fn note_uncredited_attacker(
         &mut self,
         damage_type: &str,
         id: u32,
@@ -401,7 +415,7 @@ impl Game<'_> {
     /// The `DamageSource.directEntity` of the next `damage_type` damage when
     /// nothing caused it (a splash potion nobody threw): the death message
     /// names it instead (`getLocalizedDeathMessage`). It is no kill credit.
-    pub(super) fn note_direct_entity(&mut self, damage_type: &str, name: Text) {
+    pub(in crate::game) fn note_direct_entity(&mut self, damage_type: &str, name: Text) {
         self.combat.mark();
         self.combat
             .pending_direct
@@ -446,7 +460,7 @@ impl Game<'_> {
     }
     /// Commit accepted hurt memories while its source is still in the pending queue.
     /// Knockback needs this before the later event drain consumes RecordedDamage.
-    pub(super) fn commit_pending_hurt_memories(
+    pub(in crate::game) fn commit_pending_hurt_memories(
         &mut self,
         damage_type: &str,
         attack: Option<&Attack>,
@@ -468,7 +482,7 @@ impl Game<'_> {
     }
 
     /// `CombatTracker.recordDamage` for the motion events of this tick.
-    pub(super) fn record_combat(&mut self, events: &[MotionEvent]) {
+    pub(in crate::game) fn record_combat(&mut self, events: &[MotionEvent]) {
         self.recheck_combat();
         // The attacker of the hit whose damage was just recorded, for its criterion.
         let mut recorded: Option<(String, u32)> = None;
@@ -651,7 +665,7 @@ impl Game<'_> {
         }
     }
     /// The display component of a custom-named held stack.
-    pub(super) fn mob_main_hand_name(&self, id: u32) -> Option<Text> {
+    pub(in crate::game) fn mob_main_hand_name(&self, id: u32) -> Option<Text> {
         let m = self.mobs.iter().find(|m| m.id == id)?;
         let mut stack = m.extra.main_hand_stack()?.clone();
         if !has_custom_name(&stack) {
@@ -664,14 +678,17 @@ impl Game<'_> {
     }
     /// `getMainHandItem().getDisplayName()` of the player in place, when the
     /// stack has a custom name.
-    pub(super) fn main_hand_custom_name(&self) -> Option<Text> {
+    pub(in crate::game) fn main_hand_custom_name(&self) -> Option<Text> {
         let stack = self.inventory.get(self.selected)?.as_ref()?;
         has_custom_name(stack).then(|| self.stack_display_name(stack))
     }
     /// `main_hand_custom_name` of a player who is not in place: the guest
     /// `conn` between turns, or none for the host while a guest acts (their
     /// hotbar slot is kept by the swap).
-    pub(super) fn player_main_hand_custom_name(&self, player: Option<u32>) -> Option<Text> {
+    pub(in crate::game) fn player_main_hand_custom_name(
+        &self,
+        player: Option<u32>,
+    ) -> Option<Text> {
         if player == self.server.lan_acting {
             return self.main_hand_custom_name();
         }
@@ -688,7 +705,7 @@ impl Game<'_> {
     }
     /// `CombatTracker.getDeathMessage` for a player whose display name is
     /// `me`: a server's guest is not `PLAYER_NAME`.
-    pub(super) fn combat_death_message_for(&mut self, me: Text) -> Text {
+    pub(in crate::game) fn combat_death_message_for(&mut self, me: Text) -> Text {
         self.recheck_combat();
         let entries = std::mem::take(&mut self.combat.entries);
         self.combat.in_combat = false;
@@ -776,7 +793,7 @@ impl Game<'_> {
     /// (`EntityReference.getEntity` looks through every level), is sent how it
     /// died. `killer` is the player who last hurt it (`None` inside for the
     /// host), from `last_hurt_by_player`.
-    pub(super) fn tell_owner_pet_died(&mut self, m: &Mob, killer: Option<Option<u32>>) {
+    pub(in crate::game) fn tell_owner_pet_died(&mut self, m: &Mob, killer: Option<Option<u32>>) {
         let tamable = matches!(
             m.species(),
             Species::Wolf
@@ -826,7 +843,11 @@ impl Game<'_> {
     }
     /// `CombatTracker.getDeathMessage` for a mob, from the hits it recorded
     /// (`Mob::combat`), told the way the player's own tracker tells them.
-    pub(super) fn mob_death_message(&mut self, m: &Mob, killer: Option<Option<u32>>) -> Text {
+    pub(in crate::game) fn mob_death_message(
+        &mut self,
+        m: &Mob,
+        killer: Option<Option<u32>>,
+    ) -> Text {
         use sunrise_client::mobs::{DamageKind, Who};
         let me = mob_name(m);
         // The player behind a `Who::Player` hit: the last one to hurt it, or
@@ -956,7 +977,7 @@ fn fall_location_of(name: &str, trapdoor: bool) -> &'static str {
 /// Whether the causing entity deals `kind` itself (`DamageSources.mobAttack`,
 /// `playerAttack`, a mace's or a spear's, a ram's no-aggro blow, a sting, a
 /// sonic boom, thorns): the fork's one answer lives with the damage sources.
-pub(super) use sunrise_client::health::melee;
+pub(in crate::game) use sunrise_client::health::melee;
 
 #[cfg(test)]
 mod fall_location_tests {
@@ -1063,7 +1084,7 @@ impl Game<'_> {
 /// Hits one mob's tick deals another, handled after the mob loop.
 impl Game<'_> {
     /// A melee hit on another mob, then `postAttack`; whether it landed.
-    pub(super) fn mob_attacks_mob(
+    pub(in crate::game) fn mob_attacks_mob(
         &mut self,
         target: u32,
         amount: f32,
@@ -1083,7 +1104,13 @@ impl Game<'_> {
     /// `Bee.doHurtTarget`: the sting, then, only when it landed, the stinger
     /// in the victim, the poison and the sting sound. A refused sting gives
     /// the bee back the stinger and the anger `sting` set inside its tick.
-    pub(super) fn sting(&mut self, target: Who, amount: f32, poison_ticks: i32, source: Damage) {
+    pub(in crate::game) fn sting(
+        &mut self,
+        target: Who,
+        amount: f32,
+        poison_ticks: i32,
+        source: Damage,
+    ) {
         let from = source.from.unwrap_or_default();
         let mob = match source.attacker {
             Some(Who::Mob(id)) => Some(id),
@@ -1134,7 +1161,7 @@ impl Game<'_> {
     /// rest of that tick (its movement, its own goals) still ran before the hit.
     /// The caller compensates only newly reset timers: a stronger hit during
     /// cooldown leaves timers that already counted down this tick unchanged.
-    pub(super) fn catch_up_countdowns(
+    pub(in crate::game) fn catch_up_countdowns(
         &self,
         attacker: Option<sunrise_client::mobs::Who>,
         target: u32,

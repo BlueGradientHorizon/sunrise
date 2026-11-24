@@ -4,7 +4,7 @@ use mod_api::{MenuRef, MenuSlotKind};
 use sunrise_client::containers::{ModMenuType, mod_menu_type};
 
 impl Game<'_> {
-    pub(super) fn menu_slot_kinds(&self, menu: MenuRef) -> Option<Vec<MenuSlotKind>> {
+    pub(in crate::game) fn menu_slot_kinds(&self, menu: MenuRef) -> Option<Vec<MenuSlotKind>> {
         if !matches!(self.client.screen, Screen::Inventory | Screen::Creative) {
             return None;
         }

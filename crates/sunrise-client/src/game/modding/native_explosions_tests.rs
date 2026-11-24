@@ -225,7 +225,7 @@ fn kill(source: fn(&mut Game<'_>) -> u32, (causing, damage_type, credited): (i32
 
 fn kills(name: &str, source: fn(&mut Game<'_>) -> u32, expected: (i32, &'static str, bool)) {
     if run_fresh_cases(
-        &format!("game::native_explosions_tests::{name}"),
+        &format!("game::server_side::native_explosions_tests::{name}"),
         "SUNRISE_EXPLOSION_DEATH_CHILD",
         &["blast"],
     ) {
@@ -238,7 +238,7 @@ fn kills(name: &str, source: fn(&mut Game<'_>) -> u32, expected: (i32, &'static 
 #[ignore = "daily"]
 fn a_player_hit_expires_on_a_living_mob_after_the_last_memory_tick() {
     if run_fresh_cases(
-        "game::native_explosions_tests::a_player_hit_expires_on_a_living_mob_after_the_last_memory_tick",
+        "game::server_side::native_explosions_tests::a_player_hit_expires_on_a_living_mob_after_the_last_memory_tick",
         "SUNRISE_MOB_CREDIT_EXPIRY_CHILD",
         &["expiry"],
     ) {

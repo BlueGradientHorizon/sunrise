@@ -415,7 +415,7 @@ fn the_idle_close_keeps_a_runtime_level_open_until_its_unload() {
 #[ignore = "daily"]
 fn an_idle_level_aborts_an_abandoned_chunk_unload_transaction_before_it_closes() {
     crate::game::in_own_process(
-        "game::runtime_levels_tests::an_idle_level_aborts_an_abandoned_chunk_unload_transaction_before_it_closes",
+        "game::server_side::runtime_levels_tests::an_idle_level_aborts_an_abandoned_chunk_unload_transaction_before_it_closes",
         || {
             const ID: &str = "abandon:a";
             const POS: [i32; 3] = [1, -50, 1];
@@ -506,7 +506,7 @@ fn a_ticket_a_chunk_unload_listener_adds_keeps_an_idle_custom_level_open() {
 
     // A parallel world load can replace the process-wide dimension list during the idle ticks.
     if run_fresh_cases(
-        "game::runtime_levels_tests::a_ticket_a_chunk_unload_listener_adds_keeps_an_idle_custom_level_open",
+        "game::server_side::runtime_levels_tests::a_ticket_a_chunk_unload_listener_adds_keeps_an_idle_custom_level_open",
         "SUNRISE_RUNTIME_LEVEL_RESCUE_CHILD",
         &["rescue"],
     ) {
@@ -570,7 +570,7 @@ fn load_chunk_fails_where_a_mods_generator_panics() {
 
     // The mods' chunk generators are a process-wide table: a child process of its own.
     if run_fresh_cases(
-        "game::runtime_levels_tests::load_chunk_fails_where_a_mods_generator_panics",
+        "game::server_side::runtime_levels_tests::load_chunk_fails_where_a_mods_generator_panics",
         "SUNRISE_RUNTIME_LEVEL_FAILED_CHUNK_CHILD",
         &["failed_chunk"],
     ) {
@@ -634,7 +634,7 @@ fn a_live_loading_ticket_keeps_an_idle_custom_level_open_until_it_expires() {
 
     // A parallel world load can replace the process-wide dimension list during the idle ticks.
     if run_fresh_cases(
-        "game::runtime_levels_tests::a_live_loading_ticket_keeps_an_idle_custom_level_open_until_it_expires",
+        "game::server_side::runtime_levels_tests::a_live_loading_ticket_keeps_an_idle_custom_level_open_until_it_expires",
         "SUNRISE_RUNTIME_LEVEL_LOADING_TICKET_CHILD",
         &["loading_ticket"],
     ) {

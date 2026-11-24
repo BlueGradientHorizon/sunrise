@@ -38,13 +38,13 @@ use sunrise_core::nbt::{JavaString, Tag};
 use sunrise_perf_format::v1::{StopReason, Trigger};
 use sunrise_protocol::text::translatable;
 
-pub(super) mod biome_regions;
+pub(in crate::game) mod biome_regions;
 mod missing_mods;
 pub(crate) use missing_mods::is_missing_mods_refusal;
-pub(super) mod events;
+pub(in crate::game) mod events;
 mod management;
 use sunrise_gameplay::dedicated::predicate_graph;
-pub(super) mod report;
+pub(in crate::game) mod report;
 mod status;
 mod transfer;
 
@@ -178,7 +178,7 @@ static SETUP: OnceLock<Mutex<Option<Setup>>> = OnceLock::new();
 static USER_CACHE: Mutex<Option<UserCache>> = Mutex::new(None);
 
 /// PlayerList.placeNewPlayer: a player who joined is cached (and the file saved).
-pub(super) fn player_joined(id: u128, name: &str) {
+pub(in crate::game) fn player_joined(id: u128, name: &str) {
     if let Some(cache) = USER_CACHE.lock().unwrap().as_mut() {
         cache.add(NameAndId {
             id,
@@ -188,7 +188,7 @@ pub(super) fn player_joined(id: u128, name: &str) {
 }
 
 /// A player in the user cache by id, on a dedicated server.
-pub(super) fn cached_user_by_id(id: u128) -> Option<NameAndId> {
+pub(in crate::game) fn cached_user_by_id(id: u128) -> Option<NameAndId> {
     USER_CACHE.lock().unwrap().as_mut()?.get_by_id(id)
 }
 
@@ -245,7 +245,7 @@ fn idles_out(idle_ticks: u64, minutes: i32, won_game: bool) -> bool {
 }
 
 /// Log4j's console pattern: `[HH:mm:ss] [thread/LEVEL]: message`.
-pub(super) fn log(level: &str, message: &str) {
+pub(in crate::game) fn log(level: &str, message: &str) {
     log_from("Server thread", level, message);
 }
 
@@ -295,7 +295,7 @@ pub(in crate::game) fn capture_log(f: impl FnOnce()) -> Vec<String> {
 
 /// Main.main up to the server start: arguments, server.properties (stored
 /// back at once), eula.txt. False when the process should stop here.
-pub(super) fn preflight(options: &mut Options) -> Result<bool> {
+pub(in crate::game) fn preflight(options: &mut Options) -> Result<bool> {
     let args = options.dedicated.clone().unwrap_or_default();
     let mut universe = PathBuf::from(".");
     let mut world = None;
@@ -430,7 +430,7 @@ fn ban_fields<T>(ban: &BanEntry<T>) -> serde_json::Value {
 /// The operator, whitelist and ban lists (DedicatedPlayerList), shared with
 /// the connection threads that check logins, and the server's own switches
 /// that an operator's command changes.
-pub(super) struct Lists {
+pub(in crate::game) struct Lists {
     pub ops: OpList,
     pub white: WhiteList,
     pub bans: BanList,
@@ -576,7 +576,7 @@ const LEGACY_PRESET_NAMES: [(&str, sunrise_client::save::WorldPreset); 2] = [
 ];
 
 /// A tick slower than this, in milliseconds, enters the slow ring (five ticks' worth, a stall players feel) unless `SUNRISE_SPIKES` names another.
-pub(super) const SLOW_TICK_MS: f32 = 250.0;
+pub(in crate::game) const SLOW_TICK_MS: f32 = 250.0;
 /// `MinecraftServer.OVERLOADED_WARNING_INTERVAL_NANOS` plus 100 ticks: the
 /// "Can't keep up!" warning comes at most this often.
 const OVERLOAD_WARNING_INTERVAL: Duration = Duration::from_secs(15);
@@ -704,7 +704,7 @@ fn ban_date(millis: i64) -> String {
 }
 /// What a banned player is told: `multiplayer.disconnect.banned.reason` and, for a ban that ends,
 /// `multiplayer.disconnect.banned.expiration` (PlayerList.canPlayerLogin).
-pub(super) fn ban_message(ban: &BanEntry<NameAndId>) -> Tag {
+pub(in crate::game) fn ban_message(ban: &BanEntry<NameAndId>) -> Tag {
     let mut reason = translatable_tag(
         "multiplayer.disconnect.banned.reason",
         vec![ban_reason(&ban.reason)],
@@ -845,7 +845,7 @@ fn count_empty_tick(
 }
 
 /// `MinecraftServer.setAutoSave`: enable or disable periodic saves and report whether it changed.
-pub(super) fn set_auto_save(lists: &Mutex<Lists>, enabled: bool) -> bool {
+pub(in crate::game) fn set_auto_save(lists: &Mutex<Lists>, enabled: bool) -> bool {
     let mut l = lists.lock().unwrap();
     let changed = l.autosave != enabled;
     l.autosave = enabled;
@@ -877,7 +877,7 @@ const BROADCAST: &[&str] = &[
 impl Game<'_> {
     /// DedicatedServer.initServer and MinecraftServer.runServer.
     // The epoch starts at world open; failures before that send no lifecycle event.
-    pub(super) fn run_dedicated(&mut self) -> Result<()> {
+    pub(in crate::game) fn run_dedicated(&mut self) -> Result<()> {
         self.run_server_lifecycle(true, Self::run_dedicated_inner)
     }
 
@@ -1493,7 +1493,7 @@ impl Game<'_> {
     /// without keeping a player there. A dedicated server only finds the world
     /// spawn (MinecraftServer.setInitialSpawn): a player's spawn is found as
     /// one joins.
-    pub(super) fn settle_spawn(&mut self) -> Result<()> {
+    pub(in crate::game) fn settle_spawn(&mut self) -> Result<()> {
         let deadline = Instant::now() + Duration::from_secs(600);
         if self.is_dedicated_server() {
             if self.level.spawn.is_none() {
@@ -1532,7 +1532,7 @@ impl Game<'_> {
     /// The chunks to keep loaded: the players' (lan_update_streaming). While
     /// nobody is online a dedicated server keeps none (vanilla has no spawn
     /// ticket), an integrated one the spawn chunk's.
-    pub(super) fn update_dedicated_streaming(&mut self) {
+    pub(in crate::game) fn update_dedicated_streaming(&mut self) {
         let rule = self
             .ui
             .rules
@@ -1559,7 +1559,7 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn ban_ip_target(&self, target: &str) -> Option<String> {
+    pub(in crate::game) fn ban_ip_target(&self, target: &str) -> Option<String> {
         if target.parse::<std::net::IpAddr>().is_ok() {
             Some(target.to_owned())
         } else {
@@ -1587,7 +1587,7 @@ impl Game<'_> {
 
     /// ServerGamePacketListenerImpl.tick: players idle longer than the
     /// timeout are kicked.
-    pub(super) fn kick_idle(&mut self, minutes: i32) {
+    pub(in crate::game) fn kick_idle(&mut self, minutes: i32) {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
@@ -1608,7 +1608,7 @@ impl Game<'_> {
     }
 
     /// Ops' permission levels for the hub (PlayerList.getProfilePermissions).
-    pub(super) fn sync_ops(&mut self, lists: &Arc<Mutex<Lists>>) {
+    pub(in crate::game) fn sync_ops(&mut self, lists: &Arc<Mutex<Lists>>) {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
@@ -1625,7 +1625,7 @@ impl Game<'_> {
 
     /// The mods' say on `user` getting the permission level `new` (0 for `deop`) in the
     /// operator list: true when one canceled it. The old level is the entry's, else 0.
-    pub(super) fn permission_change(
+    pub(in crate::game) fn permission_change(
         &mut self,
         lists: &Arc<Mutex<Lists>>,
         user: &NameAndId,
@@ -1655,7 +1655,7 @@ impl Game<'_> {
     }
 
     /// A player on the server, by name.
-    pub(super) fn online_player(&self, name: &str) -> Option<NameAndId> {
+    pub(in crate::game) fn online_player(&self, name: &str) -> Option<NameAndId> {
         let hub = &self.lan.as_ref()?.hub;
         let g = hub
             .guests
@@ -1681,7 +1681,7 @@ impl Game<'_> {
 
     /// `Services.nameToIdCache().get(name)`: the user cache, else the profile
     /// service, else (offline) the offline player.
-    pub(super) fn resolve_name(&self, name: &str) -> Option<NameAndId> {
+    pub(in crate::game) fn resolve_name(&self, name: &str) -> Option<NameAndId> {
         USER_CACHE.lock().unwrap().as_mut().and_then(|cache| {
             cache.get_by_name(name, |lower| {
                 let found = profiles::find_by_name(&profiles::discovery_url(), lower);
@@ -1748,7 +1748,10 @@ impl Game<'_> {
     /// level the last server tick left in place (the last one ticked, often
     /// the nether). Its commands run there and the level in place is put back
     /// afterwards.
-    pub(super) fn as_console_in_spawn_level<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
+    pub(in crate::game) fn as_console_in_spawn_level<T>(
+        &mut self,
+        f: impl FnOnce(&mut Self) -> T,
+    ) -> T {
         let back = console_level(self.dim, self.world_spawn_level())
             .and_then(|dim| self.enter_command_level(dim));
         let source = super::commands::execute::Source {
@@ -1765,7 +1768,7 @@ impl Game<'_> {
     }
 
     /// A console or RCON announcement, logged without adding to the source's command output.
-    pub(super) fn dedicated_console_say(&mut self, message: String) {
+    pub(in crate::game) fn dedicated_console_say(&mut self, message: String) {
         let name = if self.server.rcon_source {
             "Rcon"
         } else {
@@ -2242,7 +2245,7 @@ impl Game<'_> {
 
     /// `DedicatedServer.setUsingWhitelist`: the flag, and `white-list` in
     /// server.properties.
-    pub(super) fn set_using_whitelist(&mut self, lists: &Arc<Mutex<Lists>>, on: bool) {
+    pub(in crate::game) fn set_using_whitelist(&mut self, lists: &Arc<Mutex<Lists>>, on: bool) {
         let changed = {
             let mut lists = lists.lock().unwrap();
             let changed = lists.use_whitelist != on;
@@ -2256,7 +2259,11 @@ impl Game<'_> {
     }
 
     /// `DedicatedServer.setPlayerIdleTimeout`: update the live idle sweep and persist its minutes.
-    pub(super) fn set_player_idle_timeout(&mut self, lists: &Arc<Mutex<Lists>>, minutes: i32) {
+    pub(in crate::game) fn set_player_idle_timeout(
+        &mut self,
+        lists: &Arc<Mutex<Lists>>,
+        minutes: i32,
+    ) {
         lists.lock().unwrap().player_idle_timeout = minutes;
         self.store_property("player-idle-timeout", minutes.to_string());
     }
@@ -2282,7 +2289,7 @@ impl Game<'_> {
 
     /// `DedicatedServer.setEnforceWhitelist`: the flag, and `enforce-whitelist` in
     /// server.properties.
-    pub(super) fn set_enforce_whitelist(&mut self, lists: &Arc<Mutex<Lists>>, on: bool) {
+    pub(in crate::game) fn set_enforce_whitelist(&mut self, lists: &Arc<Mutex<Lists>>, on: bool) {
         lists.lock().unwrap().enforce_whitelist = on;
         self.store_property("enforce-whitelist", on.to_string());
     }
@@ -2295,7 +2302,7 @@ impl Game<'_> {
     }
 
     /// DedicatedServerSettings.update: change one key and store the file.
-    pub(super) fn store_property(&mut self, key: &str, value: String) {
+    pub(in crate::game) fn store_property(&mut self, key: &str, value: String) {
         let path = PathBuf::from("server.properties");
         if let Ok(p) = ServerProperties::from_file(&path, &mut SystemEntropy::default())
             && let Ok(p) = p.update(key, value)
@@ -2307,7 +2314,7 @@ impl Game<'_> {
     /// MinecraftServer.kickUnlistedPlayers: with `enforce-whitelist` and the
     /// whitelist on, whoever is online and not on the whitelist file is
     /// disconnected (operators are not spared here).
-    pub(super) fn kick_unlisted_players(&mut self, lists: &Arc<Mutex<Lists>>) {
+    pub(in crate::game) fn kick_unlisted_players(&mut self, lists: &Arc<Mutex<Lists>>) {
         let unlisted: Vec<u128> = {
             let l = lists.lock().unwrap();
             let Some(host) = self.lan.as_ref() else {
@@ -2337,7 +2344,7 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn kick_uuid(&mut self, uuid: u128, reason: Tag) {
+    pub(in crate::game) fn kick_uuid(&mut self, uuid: u128, reason: Tag) {
         let conns: Vec<u32> = self.lan.as_ref().map_or_else(Vec::new, |h| {
             h.hub
                 .guests
@@ -2353,7 +2360,7 @@ impl Game<'_> {
 
     /// `Hub::kick`, with the server's `kick` event recorded. Whether it started the guest's
     /// disconnect: false for a missing guest and one whose disconnect is already pending.
-    pub(super) fn kick_conn(&mut self, conn: u32, reason: Tag) -> bool {
+    pub(in crate::game) fn kick_conn(&mut self, conn: u32, reason: Tag) -> bool {
         let Some(h) = self.lan.as_mut() else {
             return false;
         };
@@ -2392,7 +2399,11 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn stop_dedicated(&mut self, crashed: bool, run_error: Option<&str>) -> Result<()> {
+    pub(in crate::game) fn stop_dedicated(
+        &mut self,
+        crashed: bool,
+        run_error: Option<&str>,
+    ) -> Result<()> {
         self.streaming.abort_generation();
         self.levels.abort_parked_generation();
         // A failed open keeps its opening phase until the final save attempts finish.
@@ -2432,7 +2443,7 @@ impl Game<'_> {
 /// the tick panics there, to see what crash teardown keeps.
 /// `armed` is asked only when the variable names `point`, so the tick pays one
 /// load of a `OnceLock` without it.
-pub(super) fn crash_fixture(point: &'static str, armed: impl FnOnce() -> bool) {
+pub(in crate::game) fn crash_fixture(point: &'static str, armed: impl FnOnce() -> bool) {
     use sunrise_world::crash_fixture::{CrashFixture, selected};
     if selected() == Some(CrashFixture::Panic(point)) && armed() {
         panic!("crash fixture at {point}");
@@ -2440,7 +2451,7 @@ pub(super) fn crash_fixture(point: &'static str, armed: impl FnOnce() -> bool) {
 }
 
 /// The text of a panic payload (`panic!("..")` is a `&str`, a formatted one a `String`).
-pub(super) fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
+pub(in crate::game) fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
     payload
         .downcast_ref::<&str>()
         .map(|s| (*s).to_owned())
@@ -2476,7 +2487,7 @@ impl Game<'_> {
         Ok(failed)
     }
 
-    pub(super) fn stop_after_crash(&mut self, message: &str) -> Result<()> {
+    pub(in crate::game) fn stop_after_crash(&mut self, message: &str) -> Result<()> {
         // Single player's server thread (`integrated.rs`) has no console: it logs to the game's log.
         let integrated = self.serving.is_some();
         let warn = |message: &str| {
@@ -2961,7 +2972,7 @@ mod tests {
                 .args([
                     "--include-ignored",
                     "--exact",
-                    "game::dedicated::tests::console_logging_survives_closed_stdout",
+                    "game::server_side::dedicated::tests::console_logging_survives_closed_stdout",
                     "--nocapture",
                 ])
                 .env(CHILD_HOME, &home)

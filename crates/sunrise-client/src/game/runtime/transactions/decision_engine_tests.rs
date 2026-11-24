@@ -49,7 +49,7 @@ fn initial(target: Target, game: &Game<'_>) {
 #[ignore = "daily"]
 fn actual_menu_frozen_click_and_outer_abort_use_the_game_journal() {
     if run_fresh_cases(
-        "game::transactions::decision::engine::tests::actual_menu_frozen_click_and_outer_abort_use_the_game_journal",
+        "game::server_side::transactions::decision::engine::tests::actual_menu_frozen_click_and_outer_abort_use_the_game_journal",
         "SUNRISE_DFA_ENGINE_CHILD",
         &["run"],
     ) {
@@ -77,7 +77,7 @@ fn actual_menu_frozen_click_and_outer_abort_use_the_game_journal() {
 #[ignore = "daily"]
 fn actual_menu_cursor_aba_is_stale_and_undoes_a_nested_commit() {
     if run_fresh_cases(
-        "game::transactions::decision::engine::tests::actual_menu_cursor_aba_is_stale_and_undoes_a_nested_commit",
+        "game::server_side::transactions::decision::engine::tests::actual_menu_cursor_aba_is_stale_and_undoes_a_nested_commit",
         "SUNRISE_DFA_ENGINE_CHILD",
         &["run"],
     ) {
@@ -117,7 +117,7 @@ fn actual_menu_cursor_aba_is_stale_and_undoes_a_nested_commit() {
 #[ignore = "daily"]
 fn actual_owner_replacement_is_stale_and_same_owner_reentry_is_busy() {
     if run_fresh_cases(
-        "game::transactions::decision::engine::tests::actual_owner_replacement_is_stale_and_same_owner_reentry_is_busy",
+        "game::server_side::transactions::decision::engine::tests::actual_owner_replacement_is_stale_and_same_owner_reentry_is_busy",
         "SUNRISE_DFA_ENGINE_CHILD",
         &["run"],
     ) {
@@ -175,7 +175,7 @@ fn actual_owner_replacement_is_stale_and_same_owner_reentry_is_busy() {
 #[ignore = "daily"]
 fn actual_owner_nested_edit_and_panic_roll_back_before_the_next_click() {
     if run_fresh_cases(
-        "game::transactions::decision::engine::tests::actual_owner_nested_edit_and_panic_roll_back_before_the_next_click",
+        "game::server_side::transactions::decision::engine::tests::actual_owner_nested_edit_and_panic_roll_back_before_the_next_click",
         "SUNRISE_DFA_ENGINE_CHILD",
         &["run"],
     ) {

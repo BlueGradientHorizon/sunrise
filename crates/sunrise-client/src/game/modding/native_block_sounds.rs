@@ -109,7 +109,7 @@ impl GameLevel<'_> {
     /// `LevelAccess::place_sound_type`: the state's own `sounds` unless a part on its block
     /// answers another, asked with the acting player, or none when no player places it (a
     /// dispenser).
-    pub(super) fn part_place_sound_type(
+    pub(in crate::game) fn part_place_sound_type(
         &self,
         pos: BlockPos,
         state: BlockStateId,

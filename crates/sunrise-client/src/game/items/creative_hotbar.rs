@@ -6,7 +6,7 @@ use sunrise_core::nbt::Tag;
 
 impl Game<'_> {
     /// Whether the live mapping is held, regardless of the device's current state.
-    pub(super) fn mapped_key_down(&self, mapping: &str) -> bool {
+    pub(in crate::game) fn mapped_key_down(&self, mapping: &str) -> bool {
         keybinds::VanillaMappingSlot::by_name(mapping)
             .is_some_and(|slot| self.client.vanilla_mappings.is_down(slot))
     }
@@ -14,7 +14,7 @@ impl Game<'_> {
     /// `CreativeModeInventoryScreen.selectTab` on the HOTBAR tab: each saved
     /// row's nine stacks, or for an empty row a locked paper in that row's own
     /// slot, named after the keys that save it (`inventory.hotbarInfo`).
-    pub(super) fn refresh_saved_hotbars(&mut self) {
+    pub(in crate::game) fn refresh_saved_hotbars(&mut self) {
         if !self.creative_screen.tab().hotbar {
             return;
         }
@@ -68,7 +68,7 @@ impl Game<'_> {
     /// each of its nine slots at once (`handleCreativeModeItemAdd`, changed or
     /// not), so a drop later in the tick drops what the server now holds; save
     /// stores the hotbar and says so on the action bar.
-    pub(super) fn hotbar_load_or_save(&mut self, index: usize, load: bool) {
+    pub(in crate::game) fn hotbar_load_or_save(&mut self, index: usize, load: bool) {
         let path = Self::options_path().with_file_name("hotbar.nbt");
         let known = |id: &str| self.items().get(id).is_some();
         let mut rows = hotbar::load(&path, &known);

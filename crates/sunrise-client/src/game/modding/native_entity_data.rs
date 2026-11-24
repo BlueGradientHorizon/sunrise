@@ -16,7 +16,7 @@ impl Game<'_> {
     /// The entity's data as `/data get entity` shows it
     /// (`Entity.saveWithoutId`): its compound without `id`. An entity with no
     /// UUID yet gets the one it will be saved with. API 386.
-    pub(super) fn entity_nbt(&mut self, entity: EntityRef) -> Option<Compound> {
+    pub(in crate::game) fn entity_nbt(&mut self, entity: EntityRef) -> Option<Compound> {
         if self.remote.is_some() {
             return None;
         }
@@ -37,7 +37,7 @@ impl Game<'_> {
     /// arrow, spectral arrow or trident reloads as `AbstractArrow.readAdditionalSaveData` reads
     /// it (`life`, `inGround`, `pickup`, ...); other projectiles take only their position,
     /// motion, rotation and flags. API 386.
-    pub(super) fn entity_merge_nbt(&mut self, entity: EntityRef, nbt: Compound) -> bool {
+    pub(in crate::game) fn entity_merge_nbt(&mut self, entity: EntityRef, nbt: Compound) -> bool {
         if self.remote.is_some() {
             return false;
         }
@@ -56,7 +56,7 @@ impl Game<'_> {
     }
     /// Borrow the entity's scoreboard tags (`Entity.entityTags()`) without the
     /// lossy conversion used by `/tag <entity> list`.
-    pub(super) fn entity_tags(&self, entity: EntityRef) -> Option<EntityTags<'_>> {
+    pub(in crate::game) fn entity_tags(&self, entity: EntityRef) -> Option<EntityTags<'_>> {
         if self.remote.is_some() {
             return None;
         }
@@ -64,7 +64,7 @@ impl Game<'_> {
     }
     /// Adds tag `tag` (`Entity.addTag`): false when it has it already, holds
     /// 1024, its kind can't store tags yet, or the handle is stale. API 386.
-    pub(super) fn entity_add_tag(&mut self, entity: EntityRef, tag: &str) -> bool {
+    pub(in crate::game) fn entity_add_tag(&mut self, entity: EntityRef, tag: &str) -> bool {
         if self.remote.is_some() {
             return false;
         }
@@ -82,7 +82,7 @@ impl Game<'_> {
     }
     /// Removes tag `tag` (`Entity.removeTag`): false when it didn't have it.
     /// API 386.
-    pub(super) fn entity_remove_tag(&mut self, entity: EntityRef, tag: &str) -> bool {
+    pub(in crate::game) fn entity_remove_tag(&mut self, entity: EntityRef, tag: &str) -> bool {
         if self.remote.is_some() {
             return false;
         }
@@ -99,7 +99,7 @@ impl Game<'_> {
     /// @API:client_entity_refs@), from the custom name the server synced
     /// (`Entity.DATA_CUSTOM_NAME`) and a player's profile name. API
     /// 386.
-    pub(super) fn entity_name(&self, entity: EntityRef) -> Option<String> {
+    pub(in crate::game) fn entity_name(&self, entity: EntityRef) -> Option<String> {
         let t = self.native_entity_read_target(entity)?;
         if let Some(r) = &self.remote {
             let id = i32::try_from(entity.id()).ok()?;
@@ -124,7 +124,11 @@ impl Game<'_> {
     /// player, a kind whose name Sunrise keeps nowhere yet (projectiles, the
     /// dragon and crystals, primed TNT, falling blocks, experience orbs,
     /// ominous item spawners), a stale handle or on a client.
-    pub(super) fn entity_set_custom_name(&mut self, entity: EntityRef, name: Option<Text>) -> bool {
+    pub(in crate::game) fn entity_set_custom_name(
+        &mut self,
+        entity: EntityRef,
+        name: Option<Text>,
+    ) -> bool {
         let Some(id) = self.name_holder(entity) else {
             return false;
         };
@@ -142,7 +146,7 @@ impl Game<'_> {
     }
     /// Whether the entity's name shows over it at any distance
     /// (`Entity.isCustomNameVisible`); false for the kinds that keep no name.
-    pub(super) fn entity_custom_name_visible(&self, entity: EntityRef) -> Option<bool> {
+    pub(in crate::game) fn entity_custom_name_visible(&self, entity: EntityRef) -> Option<bool> {
         let t = self.native_entity_target(entity)?;
         let Some(id) = named_id(t) else {
             return Some(false);
@@ -161,7 +165,7 @@ impl Game<'_> {
     /// Shows the entity's name at any distance, or only when looked at
     /// (`Entity.setCustomNameVisible`): saved, and sent to the players
     /// tracking a mob or an armor stand. False where `set_custom_name` is.
-    pub(super) fn entity_set_custom_name_visible(
+    pub(in crate::game) fn entity_set_custom_name_visible(
         &mut self,
         entity: EntityRef,
         visible: bool,
@@ -181,7 +185,7 @@ impl Game<'_> {
     }
     /// The category of the entity's type (`EntityType.getCategory`): a mob's
     /// from its type, `Monster` for the dragon, `Misc` for every other kind.
-    pub(super) fn entity_classification(&self, entity: EntityRef) -> Option<MobCategory> {
+    pub(in crate::game) fn entity_classification(&self, entity: EntityRef) -> Option<MobCategory> {
         Some(match self.native_entity_target(entity)? {
             Target::Mob(id) => match self.mobs.iter().find(|m| m.id == id)?.category() {
                 "monster" => MobCategory::Monster,
@@ -203,7 +207,7 @@ impl Game<'_> {
     /// tell (displays, markers, interactions, evoker fangs, area effect
     /// clouds, ominous item spawners), are in it while the handle names them.
     /// False for a stale handle or on a client.
-    pub(super) fn entity_added_to_level(&self, entity: EntityRef) -> bool {
+    pub(in crate::game) fn entity_added_to_level(&self, entity: EntityRef) -> bool {
         match self.native_entity_target(entity) {
             None => false,
             Some(

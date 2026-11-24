@@ -84,7 +84,7 @@ impl Game<'_> {
     /// packs' and native mods' changes included. Read from the item report's JSON, so a
     /// number is an `Int`, `Long` or `Double` and a boolean a `Byte`. None where the item
     /// hasn't the component, and for an unknown item.
-    pub(super) fn item_default_component(
+    pub(in crate::game) fn item_default_component(
         &self,
         item: mod_api::ItemKey,
         component: &str,
@@ -98,14 +98,14 @@ impl Game<'_> {
     /// Item `item`'s cooking-fuel burn time in ticks (`FuelValues.burnDuration` of its `cooking_fuel`
     /// component, the data pack's context int provider resolved), None where it is no fuel. API
     /// @API:item_components@.
-    pub(super) fn item_burn_time(&self, item: mod_api::ItemKey) -> Option<i32> {
+    pub(in crate::game) fn item_burn_time(&self, item: mod_api::ItemKey) -> Option<i32> {
         let item = mod_api::__private::item_key_id(item)?;
         let (time, _) = self.items().get(item)?.fuel.as_ref()?;
         Some(self.res.providers().int_value(time))
     }
     /// Item `item`'s chance to raise a composter's level (its `compostable` component's layers provider
     /// resolved), None where it is not compostable. API @API:item_components@.
-    pub(super) fn item_compost_chance(&self, item: mod_api::ItemKey) -> Option<f32> {
+    pub(in crate::game) fn item_compost_chance(&self, item: mod_api::ItemKey) -> Option<f32> {
         let item = mod_api::__private::item_key_id(item)?;
         let layers = self.items().get(item)?.compostable.as_ref()?;
         Some(self.res.providers().layer_chance(layers))
@@ -430,7 +430,11 @@ impl Game<'_> {
     /// enchantment definitions (`EnchantmentHelper.has`), behind
     /// `ItemResource::has_enchantment_effect`, through the opaque backend. API
     /// @API:item_components@.
-    pub(super) fn item_has_enchantment_effect(&self, stack: &ItemStack, effect: &str) -> bool {
+    pub(in crate::game) fn item_has_enchantment_effect(
+        &self,
+        stack: &ItemStack,
+        effect: &str,
+    ) -> bool {
         world_stations!(self)
             .enchantments
             .has_component(stack, effect)
@@ -441,7 +445,7 @@ impl Game<'_> {
 #[allow(dead_code)]
 impl Game<'_> {
     /// Read a native component, including the item's default when not patched.
-    pub(super) fn native_component<'a>(
+    pub(in crate::game) fn native_component<'a>(
         &'a self,
         stack: &'a ItemStack,
         id: &str,
@@ -464,7 +468,7 @@ impl Game<'_> {
     }
 
     /// Set a registered native component after checking the network NBT limits.
-    pub(super) fn native_set_component(
+    pub(in crate::game) fn native_set_component(
         &self,
         stack: &mut ItemStack,
         id: &str,
@@ -490,7 +494,7 @@ impl Game<'_> {
     }
 
     /// Remove a native component, including its item default.
-    pub(super) fn native_remove_component(
+    pub(in crate::game) fn native_remove_component(
         &self,
         stack: &mut ItemStack,
         id: &str,

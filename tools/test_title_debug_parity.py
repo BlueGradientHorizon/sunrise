@@ -16,7 +16,7 @@ except ImportError:
     import test_rust_parity as base
     import test_model_baking_parity as baking
 
-TEST = 'game::debug_options::tests::title_debug_'
+TEST = 'game::client_side::debug_options::tests::title_debug_'
 
 
 def main():

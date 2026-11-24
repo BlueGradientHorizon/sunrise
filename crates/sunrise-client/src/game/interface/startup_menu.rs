@@ -12,7 +12,7 @@ use sunrise_client::{
 use winit::{event::KeyEvent, keyboard::ModifiersState};
 
 #[derive(Default)]
-pub(super) struct StartupMenu {
+pub(in crate::game) struct StartupMenu {
     title: Option<Title>,
     options: OptionsUi,
     options_open: bool,
@@ -54,7 +54,7 @@ pub(super) struct StartupMenu {
     pub pending: Option<PendingWorldEntry>,
     pub reload_packs: bool,
     /// A committed client pack selection, independent of other reload requests.
-    pub(super) pack_selection_revision: u64,
+    pub(in crate::game) pack_selection_revision: u64,
     /// Browse mods' worker (`mod_browser`).
     mod_jobs: super::mod_browser::Jobs,
     perf: sunrise_client::telemetry::Session,
@@ -96,7 +96,7 @@ impl StartupMenu {
         Ok(menu)
     }
 
-    pub(super) fn set_root(
+    pub(in crate::game) fn set_root(
         &mut self,
         root: PathBuf,
         settings: &Settings,
@@ -129,7 +129,7 @@ impl StartupMenu {
         }
     }
 
-    pub(super) fn handoff(&mut self, game: &mut Game<'_>) {
+    pub(in crate::game) fn handoff(&mut self, game: &mut Game<'_>) {
         let registry = Arc::new(crate::game::api_values::game_rule_registry());
         if let Some(PendingWorldEntry::Local {
             create: Some(options),
@@ -185,7 +185,7 @@ impl StartupMenu {
     /// After a frame is drawn: its widgets become the last frame's, and the
     /// open screen's narration reads them (`Gui.update`'s
     /// `handleDelayedNarration`). `gui` is the GUI size.
-    pub(super) fn frame_drawn(&mut self, gui: (f32, f32)) {
+    pub(in crate::game) fn frame_drawn(&mut self, gui: (f32, f32)) {
         self.frames += 1;
         sunrise_client::widgets::end_frame(self.frames);
         // The keyboard's focus follows its widget, or starts again on a new
@@ -395,7 +395,7 @@ fn panic_text(payload: &(dyn std::any::Any + Send)) -> &str {
 
 /// Each generation has its own channel and progress. Pack changes wait for the
 /// old tail before starting another generation, including cache/global writes.
-pub(super) fn spawn_loader(
+pub(in crate::game) fn spawn_loader(
     options: &Options,
     settings: &Settings,
     pack_selection_revision: u64,
@@ -452,7 +452,7 @@ pub(super) fn spawn_loader(
 }
 
 impl Loading {
-    pub(super) fn poll_menu_resources(&mut self) -> Result<()> {
+    pub(in crate::game) fn poll_menu_resources(&mut self) -> Result<()> {
         // Once `Done` arrived the generation is over: the caller may have taken
         // its result, and the finished loader's channel is closed.
         if self.loaded.is_none() && !self.delivered {
@@ -505,7 +505,7 @@ impl Loading {
             self.settings.save(&Game::options_path());
         }
     }
-    pub(super) fn apply_menu_settings(&mut self) {
+    pub(in crate::game) fn apply_menu_settings(&mut self) {
         if let Some(renderer) = &mut self.renderer {
             renderer.gamma = self.settings.gamma as f32;
             renderer.set_present_mode(self.settings.vsync, self.settings.sunrise.present_mode);
@@ -871,7 +871,7 @@ impl Loading {
     }
 
     /// The Realms screen's join, once its address came back: queued like a click on a server.
-    pub(super) fn poll_menu_realms(&mut self, event_loop: &dyn EventLoopCtl) {
+    pub(in crate::game) fn poll_menu_realms(&mut self, event_loop: &dyn EventLoopCtl) {
         if let Some(action) = self
             .menu
             .title
@@ -1139,7 +1139,7 @@ impl Loading {
         self.menu.key_synthetic = was;
     }
 
-    pub(super) fn menu_event(
+    pub(in crate::game) fn menu_event(
         &mut self,
         event_loop: &dyn EventLoopCtl,
         event: WindowEvent,
@@ -1404,7 +1404,7 @@ impl Loading {
         Ok(())
     }
 
-    pub(super) fn draw_menu(&mut self, batch: &mut HudBatch) {
+    pub(in crate::game) fn draw_menu(&mut self, batch: &mut HudBatch) {
         // The buttons crates add to the title screen show by what is installed now
         // (`sunrise_hooks::title`), as on the game's own title screen.
         self.sync_title_mods();
@@ -1504,7 +1504,7 @@ impl Loading {
         // admitted on handoff to Game, before their first animation or sound.
     }
 
-    pub(super) fn restart_menu_resources(&mut self) -> Result<()> {
+    pub(in crate::game) fn restart_menu_resources(&mut self) -> Result<()> {
         if !self.menu.reload_packs || self.loaded.is_none() {
             return Ok(());
         }
@@ -1724,7 +1724,7 @@ mod tests {
     #[ignore = "daily"]
     fn resource_pack_drops_import_from_startup_and_game_options() {
         if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::startup_menu::tests::resource_pack_drops_import_from_startup_and_game_options",
+            "game::client_side::startup_menu::tests::resource_pack_drops_import_from_startup_and_game_options",
             "SUNRISE_RESOURCE_PACK_DROP_CHILD",
             &["import"],
         ) {
@@ -1857,7 +1857,7 @@ mod tests {
         const REPLACEMENT: &str = "file/replacement";
         const ASSET: &str = "assets/fixture/texts/replacement.txt";
         if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::startup_menu::tests::startup_pack_recovery_only_clears_the_failed_selection_revision",
+            "game::client_side::startup_menu::tests::startup_pack_recovery_only_clears_the_failed_selection_revision",
             CASE,
             &["current", "superseded"],
         ) {
@@ -1966,7 +1966,7 @@ mod tests {
     #[ignore = "daily"]
     fn startup_client_pack_recovery_preserves_pending_world_pack_edits() {
         if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::startup_menu::tests::startup_client_pack_recovery_preserves_pending_world_pack_edits",
+            "game::client_side::startup_menu::tests::startup_client_pack_recovery_preserves_pending_world_pack_edits",
             "SUNRISE_STARTUP_PACK_RECOVERY_WORLD_EDITOR_CASE",
             &["data-packs"],
         ) {
@@ -2052,7 +2052,7 @@ mod tests {
     fn menu_is_usable_while_the_core_worker_is_blocked() {
         // Publishing the empty root's language must not replace another game's language.
         if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::startup_menu::tests::menu_is_usable_while_the_core_worker_is_blocked",
+            "game::client_side::startup_menu::tests::menu_is_usable_while_the_core_worker_is_blocked",
             "SUNRISE_STARTUP_BLOCKED_WORKER_CASE",
             &["blocked"],
         ) {

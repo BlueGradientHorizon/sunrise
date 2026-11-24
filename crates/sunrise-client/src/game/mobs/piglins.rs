@@ -273,7 +273,7 @@ impl Game<'_> {
     /// `#minecraft:piglin_safe_armor`, once the parts of its item answered
     /// (`ItemPart::makes_piglins_neutral`). An item with no part for it costs one
     /// table lookup.
-    pub(super) fn wearing_gold(&self) -> bool {
+    pub(in crate::game) fn wearing_gold(&self) -> bool {
         let tag = self
             .res
             .items()
@@ -295,7 +295,7 @@ impl Game<'_> {
     /// Piglins notice wanted items on the ground within 9 blocks (`PiglinAi.wantsToPickup`:
     /// gold and other loved items, nuggets, food, gear), walk to them and
     /// take them (`GoToWantedItem`, `Piglin.pickUpItem`).
-    pub(super) fn piglin_pickups(&mut self) {
+    pub(in crate::game) fn piglin_pickups(&mut self) {
         let griefing = self
             .ui
             .rules
@@ -424,7 +424,7 @@ impl Game<'_> {
     }
     /// `PiglinAi.mobInteract`: hand a piglin the held `stack` (`canAdmire`: only
     /// piglin currency is accepted from the hand; other loved items are passed over).
-    pub(super) fn give_piglin(&mut self, index: usize, stack: &ItemStack) -> bool {
+    pub(in crate::game) fn give_piglin(&mut self, index: usize, stack: &ItemStack) -> bool {
         let m = &self.mobs[index];
         if m.species() != Species::Piglin
             || m.is_baby()
@@ -450,7 +450,7 @@ impl Game<'_> {
     /// anything else. Babies equip the admired item, or hold it in the main hand
     /// after stashing or throwing the old item. An empty off hand (a second stop
     /// of the same hit) does nothing.
-    pub(super) fn finish_admiring(&mut self, mob: u32) {
+    pub(in crate::game) fn finish_admiring(&mut self, mob: u32) {
         let Some(i) = self.mobs.iter().position(|m| m.id == mob) else {
             return;
         };
@@ -585,7 +585,7 @@ impl Game<'_> {
         best.map(|(uuid, _)| uuid)
     }
     /// `PiglinAi.angerNearbyPiglins`.
-    pub(super) fn anger_piglins(&mut self, only_if_seen: bool) {
+    pub(in crate::game) fn anger_piglins(&mut self, only_if_seen: bool) {
         // Fake players never become a mob's target.
         if self.server.lan_acting_fake {
             return;
@@ -689,7 +689,7 @@ impl Game<'_> {
         })
     }
     /// Whether breaking or opening this block angers piglins.
-    pub(super) fn guarded_by_piglins(&self, name: &str) -> bool {
+    pub(in crate::game) fn guarded_by_piglins(&self, name: &str) -> bool {
         self.res
             .items()
             .block_tags

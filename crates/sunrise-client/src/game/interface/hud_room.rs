@@ -12,7 +12,7 @@ impl Game<'_> {
     /// The HUD's clock this frame (`hud_kit::motion`): still, so overlays show their motion
     /// settled, while the game is paused, frame-stepped (`SUNRISE_STILL`, a screenshot
     /// sequence) or a repro recording or replay runs.
-    pub(super) fn hud_clock(&self) -> Clock {
+    pub(in crate::game) fn hud_clock(&self) -> Clock {
         let still = self.pause
             || self.clock.still()
             || self.screenshot_sequence.is_some()
@@ -24,7 +24,7 @@ impl Game<'_> {
     /// What the HUD shows on a `w` x `h` GUI px view this frame, as keep-outs: the boss bars
     /// while the HUD shows (`show_hud`: not F1, not Replay Studio), as wide as the bar or its
     /// widest name.
-    pub(super) fn hud_room(&self, w: f32, h: f32, show_hud: bool) -> Room {
+    pub(in crate::game) fn hud_room(&self, w: f32, h: f32, show_hud: bool) -> Room {
         let mut room = Room::new(w, h);
         if !show_hud {
             return room;
@@ -54,7 +54,7 @@ impl Game<'_> {
 
     /// Reserve the highest painted status row, vanilla or replaced, down to the bottom
     /// of the view. Measure only the installed body's paint, not the surrounding hook draws.
-    pub(super) fn keep_status_rows(&mut self, vertices: &[HudVertex], w: f32, h: f32) {
+    pub(in crate::game) fn keep_status_rows(&mut self, vertices: &[HudVertex], w: f32, h: f32) {
         let top = vertices.iter().map(|v| v.pos[1]).fold(h, f32::min);
         if top < self.ui.room.bottom() {
             let half = hud_overlays::HOTBAR_HALF_WIDTH;
@@ -73,13 +73,13 @@ impl Game<'_> {
     /// An overlay holds the middle of the view (the radial menu, once it shows: a quick tap of
     /// its opener draws nothing, so nothing blinks). The 2D and F3 crosshairs, the chat's lines,
     /// the toasts and the first-person hands give way to it.
-    pub(super) fn overlay_holds_view(&self) -> bool {
+    pub(in crate::game) fn overlay_holds_view(&self) -> bool {
         self.pad_radial_shown()
     }
 
     /// The hands drawn in first person this frame: none while an overlay holds the view, as the
     /// radial menu's tiles sit where they are.
-    pub(super) fn hands_shown(&self) -> [bool; 2] {
+    pub(in crate::game) fn hands_shown(&self) -> [bool; 2] {
         if self.overlay_holds_view() {
             [false; 2]
         } else {

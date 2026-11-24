@@ -21,7 +21,7 @@ impl Game<'_> {
     /// `EntityType.spawn`, the general insertion `/summon` reaches), with the
     /// velocity, rotation and owner `spawn` gives. None, with nothing spawned,
     /// for every refusal `level_spawn_entity`'s declaration lists.
-    pub(super) fn level_spawn_entity(
+    pub(in crate::game) fn level_spawn_entity(
         &mut self,
         level: LevelRef,
         kind: &str,
@@ -89,7 +89,7 @@ impl Game<'_> {
     }
     /// `LevelRef::spawn_mob`: [`level_spawn_entity`](Self::level_spawn_entity)'s
     /// living route for a mob at rest, with no owner.
-    pub(super) fn level_spawn_mob(
+    pub(in crate::game) fn level_spawn_mob(
         &mut self,
         level: LevelRef,
         kind: &str,
@@ -192,23 +192,31 @@ impl Game<'_> {
         self.native_joins_flush(false, id).then_some(id)
     }
     /// The level's natural spawning limits. None for a stale handle or on a client.
-    pub(super) fn level_spawn_limits(&self, level: LevelRef) -> Option<SpawnLimits> {
+    pub(in crate::game) fn level_spawn_limits(&self, level: LevelRef) -> Option<SpawnLimits> {
         self.native_level_world(level)?;
         Some(self.spawn_policy(level.dimension()).limits)
     }
     /// The level's natural spawning flags. None for a stale handle or on a client.
-    pub(super) fn level_spawn_flags(&self, level: LevelRef) -> Option<SpawnFlags> {
+    pub(in crate::game) fn level_spawn_flags(&self, level: LevelRef) -> Option<SpawnFlags> {
         self.native_level_world(level)?;
         Some(self.spawn_policy(level.dimension()).flags)
     }
     /// Sets the level's natural spawning limits for the rest of the open. False for a
     /// stale handle or on a client.
-    pub(super) fn level_set_spawn_limits(&mut self, level: LevelRef, limits: SpawnLimits) -> bool {
+    pub(in crate::game) fn level_set_spawn_limits(
+        &mut self,
+        level: LevelRef,
+        limits: SpawnLimits,
+    ) -> bool {
         self.native_set_spawn_policy(level, |policy| policy.limits = limits)
     }
     /// Sets the level's natural spawning flags for the rest of the open. False as for
     /// `level_set_spawn_limits`.
-    pub(super) fn level_set_spawn_flags(&mut self, level: LevelRef, flags: SpawnFlags) -> bool {
+    pub(in crate::game) fn level_set_spawn_flags(
+        &mut self,
+        level: LevelRef,
+        flags: SpawnFlags,
+    ) -> bool {
         self.native_set_spawn_policy(level, |policy| policy.flags = flags)
     }
     fn native_set_spawn_policy(
@@ -228,7 +236,7 @@ impl Game<'_> {
     }
     /// `ServerLevel.canSpawnEntitiesInChunk` as natural spawning answers it. None for a
     /// stale handle or on a client.
-    pub(super) fn level_can_spawn_entities_in_chunk(
+    pub(in crate::game) fn level_can_spawn_entities_in_chunk(
         &self,
         level: LevelRef,
         pos: [i32; 2],

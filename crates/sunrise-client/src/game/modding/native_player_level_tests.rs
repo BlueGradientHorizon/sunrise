@@ -65,7 +65,7 @@ fn diamonds(game: &super::Game<'_>, conn: u32) -> u32 {
 #[ignore = "daily"]
 fn a_give_to_a_player_in_another_level_drops_overflow_there() {
     if run_fresh_cases(
-        "game::native_player_level_tests::a_give_to_a_player_in_another_level_drops_overflow_there",
+        "game::server_side::native_player_level_tests::a_give_to_a_player_in_another_level_drops_overflow_there",
         "SUNRISE_GIVE_OVERFLOW_CHILD",
         &["overflow"],
     ) {
@@ -212,7 +212,7 @@ impl mod_api::Hooks for GiveJoin {
 #[ignore = "daily"]
 fn a_give_to_a_borrowed_player_drops_in_their_level() {
     if run_fresh_cases(
-        "game::native_player_level_tests::a_give_to_a_borrowed_player_drops_in_their_level",
+        "game::server_side::native_player_level_tests::a_give_to_a_borrowed_player_drops_in_their_level",
         "SUNRISE_GIVE_OVERFLOW_CHILD",
         &["borrowed"],
     ) {
@@ -269,7 +269,7 @@ fn a_give_that_fits_plays_pickup_in_the_players_level() {
     use sunrise_protocol::{buf::Reader, packets::play::Clientbound as C};
 
     if run_fresh_cases(
-        "game::native_player_level_tests::a_give_that_fits_plays_pickup_in_the_players_level",
+        "game::server_side::native_player_level_tests::a_give_that_fits_plays_pickup_in_the_players_level",
         "SUNRISE_GIVE_OVERFLOW_CHILD",
         &["sound"],
     ) {
@@ -501,7 +501,7 @@ fn a_give_to_a_player_in_another_level_keeps_their_open_menu() {
 #[ignore = "daily"]
 fn an_inventory_reward_for_a_player_in_another_level_waits_for_their_own_tick() {
     if run_fresh_cases(
-        "game::native_player_level_tests::an_inventory_reward_for_a_player_in_another_level_waits_for_their_own_tick",
+        "game::server_side::native_player_level_tests::an_inventory_reward_for_a_player_in_another_level_waits_for_their_own_tick",
         "SUNRISE_GIVE_OVERFLOW_CHILD",
         &["advancement"],
     ) {

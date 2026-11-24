@@ -9,7 +9,7 @@ use sunrise_client::mobs::Mob;
 /// `Entity.getIndirectPassengersStream` for `vehicle`: the vehicle and every
 /// vehicle riding it, directly or through another rider. `mounts` holds
 /// `(vehicle, its vehicle)` for every mob.
-pub(super) fn passenger_vehicles(vehicle: u32, mounts: &[(u32, Option<u32>)]) -> Vec<u32> {
+pub(in crate::game) fn passenger_vehicles(vehicle: u32, mounts: &[(u32, Option<u32>)]) -> Vec<u32> {
     let mut ids = vec![vehicle];
     let mut i = 0;
     while i < ids.len() {
@@ -28,7 +28,7 @@ impl Game<'_> {
     /// `Entity.startRiding` for the acting player: the rider link, then
     /// `CriteriaTriggers.START_RIDING_TRIGGER` for every server player the
     /// vehicle carries.
-    pub(super) fn start_riding(&mut self, vehicle: u32) {
+    pub(in crate::game) fn start_riding(&mut self, vehicle: u32) {
         self.riding = Some(vehicle);
         self.seat_player(vehicle);
         self.note_started_riding(vehicle);
@@ -61,7 +61,7 @@ impl Game<'_> {
     }
 
     /// The first seat, preserving enumeration order on a tie without sorting or allocating.
-    pub(super) fn first_seated_passenger(&self, vehicle: u32) -> Option<(i64, u32, bool)> {
+    pub(in crate::game) fn first_seated_passenger(&self, vehicle: u32) -> Option<(i64, u32, bool)> {
         let mut first: Option<(i64, u32, bool)> = None;
         self.any_passenger_seat(vehicle, &[], |seat| {
             if first.is_none_or(|old| seat.0 < old.0) {
@@ -199,7 +199,7 @@ impl Game<'_> {
     /// player aboard hears the trigger; a host's turn can fire it now, while
     /// a guest's turn (the hub held by its action) leaves it for
     /// [`Self::flush_started_riding`] once every player is back in place.
-    pub(super) fn note_started_riding(&mut self, vehicle: u32) {
+    pub(in crate::game) fn note_started_riding(&mut self, vehicle: u32) {
         self.server.started_riding.push(vehicle);
         if self.lan.is_some() && self.server.lan_acting.is_none() {
             self.flush_started_riding();
@@ -207,7 +207,7 @@ impl Game<'_> {
     }
 
     /// Fires the queued `started_riding` triggers with every player in place.
-    pub(super) fn flush_started_riding(&mut self) {
+    pub(in crate::game) fn flush_started_riding(&mut self) {
         for vehicle in std::mem::take(&mut self.server.started_riding) {
             self.trigger_started_riding(vehicle);
         }

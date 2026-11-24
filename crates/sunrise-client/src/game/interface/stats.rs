@@ -7,7 +7,7 @@ use super::{Dim, Game};
 use std::path::PathBuf;
 use sunrise_core::{geometry::Vec3, identifier::Identifier, random::RandomSource};
 
-pub(super) use sunrise_gameplay::stats::{Stats, locate_player_json, player_json};
+pub(in crate::game) use sunrise_gameplay::stats::{Stats, locate_player_json, player_json};
 use sunrise_gameplay::stats::{namespaced, stat_registry};
 
 #[cfg(test)]
@@ -80,7 +80,7 @@ impl Game<'_> {
             Some((ty.to_owned(), key.to_owned(), n))
         }
     }
-    pub(super) fn stat_registry_contains(&self, registry: &str, id: &Identifier) -> bool {
+    pub(in crate::game) fn stat_registry_contains(&self, registry: &str, id: &Identifier) -> bool {
         if let Some(host) = self.lan.as_ref() {
             return Identifier::parse_namespaced(registry)
                 .is_some_and(|registry| host.hub.synced_id(&registry, id).is_some());
@@ -101,7 +101,7 @@ impl Game<'_> {
         ))
     }
     /// `ServerStatsCounter.parseLocal`.
-    pub(super) fn load_stats(&mut self) {
+    pub(in crate::game) fn load_stats(&mut self) {
         if self.stats.loaded || self.remote.is_some() || self.no_player_here() {
             return;
         }
@@ -111,7 +111,7 @@ impl Game<'_> {
         }
     }
     /// `ServerStatsCounter.save`.
-    pub(super) fn save_stats(&self) {
+    pub(in crate::game) fn save_stats(&self) {
         if !self.stats.loaded
             || self.remote.is_some()
             || self.no_player_here()
@@ -128,7 +128,7 @@ impl Game<'_> {
     }
     /// `ServerPlayer.awardStat`: `n` more of the statistic `ty` (a bare type
     /// such as `used`) and `key`, unless a native mod cancels the award.
-    pub(super) fn award_stat(&mut self, ty: &str, key: &str, n: i32) {
+    pub(in crate::game) fn award_stat(&mut self, ty: &str, key: &str, n: i32) {
         if self.server.lan_acting_fake {
             return;
         }
@@ -147,7 +147,7 @@ impl Game<'_> {
 
     /// Edit the award before borrowing its owner's stats. The normal counter,
     /// dirty set and scoreboard event are all written by `Stats::add`.
-    pub(super) fn award_stat_to(
+    pub(in crate::game) fn award_stat_to(
         &mut self,
         ty: &str,
         key: &str,
@@ -169,7 +169,7 @@ impl Game<'_> {
         }
     }
     /// `Player.awardStat(Identifier)`: `n` more of the custom statistic `key`.
-    pub(super) fn award_custom_stat(&mut self, key: &str, n: i32) {
+    pub(in crate::game) fn award_custom_stat(&mut self, key: &str, n: i32) {
         namespaced(key, |key| self.award_stat("custom", key, n));
     }
     /// `ServerPlayer.awardStat` for a causing entity, regardless of who owns the acting turn.
@@ -185,7 +185,7 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn award_displaced_stat(&mut self, depth: usize, key: &str, n: i32) {
+    pub(in crate::game) fn award_displaced_stat(&mut self, depth: usize, key: &str, n: i32) {
         let frame = &self.lan_displaced_players[depth];
         if frame.fake {
             return;
@@ -212,13 +212,13 @@ impl Game<'_> {
         });
     }
     /// The per-tick counters (`Player.tick`/`ServerPlayer.tick` awardStat).
-    pub(super) fn tick_player_stat_counters(&mut self) {
+    pub(in crate::game) fn tick_player_stat_counters(&mut self) {
         self.load_stats();
         self.count_tick_stats(self.sleeping.is_some());
         self.tick_movement_stats();
     }
     /// `Player.tick`'s counters for the player in `self.player`.
-    pub(super) fn count_tick_stats(&mut self, sleeping: bool) {
+    pub(in crate::game) fn count_tick_stats(&mut self, sleeping: bool) {
         let Some(p) = self.player.as_ref() else {
             return;
         };
@@ -245,7 +245,7 @@ impl Game<'_> {
         self.movement_stats(d);
     }
     /// `Player.checkMovementStatistics` / `checkRidingStatistics` for one move.
-    pub(super) fn movement_stats(&mut self, d: Vec3) {
+    pub(in crate::game) fn movement_stats(&mut self, d: Vec3) {
         let Some(p) = self.player.as_ref() else {
             return;
         };
@@ -347,7 +347,7 @@ impl Game<'_> {
     /// (`ServerLevel.isSpawningMonsters`: `spawn_monsters` too). Every
     /// player of the level counts: the game's own and the hosted ones (a
     /// server thread's players are all hosted).
-    pub(super) fn spawn_phantoms(&mut self) {
+    pub(in crate::game) fn spawn_phantoms(&mut self) {
         let rules = &self.ui.rules;
         if !rules.bool_at(sunrise_client::gamerules::vanilla::SPAWN_MOBS)
             || !rules.bool_at(sunrise_client::gamerules::vanilla::SPAWN_MONSTERS)

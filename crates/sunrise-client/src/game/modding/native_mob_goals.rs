@@ -17,7 +17,7 @@ use sunrise_client::mobs::{
 /// species variant of one (a bee's `BeeHurtByOtherGoal`, a labeled stroll)
 /// keeps its own vanilla name, as `goals` reads it and `remove_goal` takes
 /// it to remove that one.
-pub(super) fn goal_id(name: &str) -> &str {
+pub(in crate::game) fn goal_id(name: &str) -> &str {
     match name {
         "Float" => "float",
         "ClimbOnTopOfPowderSnow" => "climb_on_top_of_powder_snow",
@@ -60,7 +60,12 @@ impl Game<'_> {
     /// (`nearest_target`, `hurt_by_target`) go in through
     /// `add_target_goal`; both selectors take them, as vanilla's two
     /// selectors do.
-    pub(super) fn mob_add_goal(&mut self, mob: MobRef, priority: i32, goal: &GoalSpec) -> bool {
+    pub(in crate::game) fn mob_add_goal(
+        &mut self,
+        mob: MobRef,
+        priority: i32,
+        goal: &GoalSpec,
+    ) -> bool {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
@@ -84,7 +89,7 @@ impl Game<'_> {
 
     /// `GoalSelector.addGoal` on the mob's target selector. The same rules
     /// as `add_goal`.
-    pub(super) fn mob_add_target_goal(
+    pub(in crate::game) fn mob_add_target_goal(
         &mut self,
         mob: MobRef,
         priority: i32,
@@ -117,7 +122,7 @@ impl Game<'_> {
     /// unavailable mob, a client, and the dragon. Nothing in a mob's tick
     /// resolves, as its copy is held out there: add what a mod needs in
     /// `entity_join`, which fires for a loaded chunk's mobs too.
-    pub(super) fn mob_remove_goal(&mut self, mob: MobRef, id: &str) -> Option<usize> {
+    pub(in crate::game) fn mob_remove_goal(&mut self, mob: MobRef, id: &str) -> Option<usize> {
         let Some(Target::Mob(entity)) = self.native_entity_target(mob.entity()) else {
             return None;
         };
@@ -127,7 +132,11 @@ impl Game<'_> {
 
     /// `GoalSelector.removeGoal` on the target selector, by kind, as
     /// `remove_goal` does on the goal selector.
-    pub(super) fn mob_remove_target_goal(&mut self, mob: MobRef, id: &str) -> Option<usize> {
+    pub(in crate::game) fn mob_remove_target_goal(
+        &mut self,
+        mob: MobRef,
+        id: &str,
+    ) -> Option<usize> {
         let Some(Target::Mob(entity)) = self.native_entity_target(mob.entity()) else {
             return None;
         };
@@ -139,7 +148,7 @@ impl Game<'_> {
     /// selector as a `MobGoalEntry` (the priority, the kind id and
     /// whether it runs), in registration order. None for a stale or
     /// unavailable mob, a client, and the dragon.
-    pub(super) fn mob_goals(&self, mob: MobRef) -> Option<Vec<MobGoalEntry>> {
+    pub(in crate::game) fn mob_goals(&self, mob: MobRef) -> Option<Vec<MobGoalEntry>> {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return None;
         };
@@ -158,7 +167,7 @@ impl Game<'_> {
 
     /// Every goal of the target selector, as `goals` reads the goal
     /// selector's.
-    pub(super) fn mob_target_goals(&self, mob: MobRef) -> Option<Vec<MobGoalEntry>> {
+    pub(in crate::game) fn mob_target_goals(&self, mob: MobRef) -> Option<Vec<MobGoalEntry>> {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return None;
         };

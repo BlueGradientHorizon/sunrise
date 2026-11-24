@@ -57,7 +57,7 @@ impl Game<'_> {
     /// The inventory slot holding `hand`'s stack (the selected hotbar slot, or the offhand's 40) and
     /// that stack, of `guest`: read from the game in their own turn, when their record holds the
     /// outer player's.
-    pub(super) fn held_by<'a>(
+    pub(in crate::game) fn held_by<'a>(
         &'a self,
         guest: &'a Guest,
         hand: Hand,
@@ -77,7 +77,7 @@ impl Game<'_> {
     /// showed never becomes the menu's own storage. In the player's own turn (an item's use
     /// that opened the menu), the record holds the outer player's inventory, so mirroring
     /// and resending wait until after the turn.
-    pub(super) fn player_back_mod_menu_slots(
+    pub(in crate::game) fn player_back_mod_menu_slots(
         &mut self,
         player: mod_api::PlayerRef,
         window: i32,
@@ -195,7 +195,7 @@ impl Game<'_> {
     }
 
     /// What container slot `n` of `conn`'s menu `window` shows, when a mod backed it.
-    pub(super) fn native_menu_place(
+    pub(in crate::game) fn native_menu_place(
         &self,
         conn: u32,
         window: i32,
@@ -219,7 +219,7 @@ impl Game<'_> {
         (open.window == backed.window && open.slots == Slots::Native).then_some(backed)
     }
 
-    pub(super) fn forget_menu_places(&mut self, conn: u32) {
+    pub(in crate::game) fn forget_menu_places(&mut self, conn: u32) {
         if let Some(menus) = self.lan.as_mut().and_then(|lan| lan.menus.get_mut(&conn)) {
             menus.slot_places = None;
         }
@@ -301,7 +301,7 @@ impl Game<'_> {
     /// menu's slots), queues one look at that menu's places for after the write
     /// (`NativeMenuEvent::PlacesChanged`). Any other write, and every write while no menu is
     /// backed, returns at the first checks.
-    pub(super) fn notice_menu_place_write(&mut self, place: &ItemPlace) {
+    pub(in crate::game) fn notice_menu_place_write(&mut self, place: &ItemPlace) {
         let mut root = place;
         while let ItemPlace::Nested { parent, .. } = root {
             root = &**parent;
@@ -329,7 +329,7 @@ impl Game<'_> {
 
     /// Queues one look at the places of `conn`'s backed menu (`NativeMenuEvent::PlacesChanged`),
     /// unless one is already waiting to be taken.
-    pub(super) fn queue_menu_places_notice(&mut self, conn: u32, uuid: u128, window: i32) {
+    pub(in crate::game) fn queue_menu_places_notice(&mut self, conn: u32, uuid: u128, window: i32) {
         let Some(lan) = self.lan.as_mut() else {
             return;
         };
@@ -349,7 +349,7 @@ impl Game<'_> {
 
     /// A change notice taken (`NativeMenuEvent::PlacesChanged`): the backed menu's places looked
     /// at again, or forgotten once that menu is no longer open.
-    pub(super) fn menu_places_changed(&mut self, uuid: u128, window: i32) {
+    pub(in crate::game) fn menu_places_changed(&mut self, uuid: u128, window: i32) {
         let Some(conn) = self.native_conn(uuid) else {
             return;
         };
@@ -372,7 +372,7 @@ impl Game<'_> {
 
     /// The menu `window` closed (`NativeMenuEvent::Closed`): its places end with it. Its
     /// mirrored slots went with the menu (`native_menu` is cleared on close).
-    pub(super) fn menu_places_closed(&mut self, uuid: u128, window: i32) {
+    pub(in crate::game) fn menu_places_closed(&mut self, uuid: u128, window: i32) {
         if let Some(conn) = self.native_conn(uuid)
             && self
                 .lan
@@ -389,7 +389,7 @@ impl Game<'_> {
     /// routing run, for a menu no mod backed or a click this backing does not handle. Before any
     /// click on a backed menu a held place's stack must still be the bound one; else the menu
     /// closes and the click does nothing.
-    pub(super) fn place_menu_click(
+    pub(in crate::game) fn place_menu_click(
         &mut self,
         uuid: u128,
         window: i32,
@@ -475,7 +475,7 @@ impl Game<'_> {
         Some(applied)
     }
 
-    pub(super) fn publish_backed_menu_click(
+    pub(in crate::game) fn publish_backed_menu_click(
         &mut self,
         conn: u32,
         uuid: u128,
@@ -1153,7 +1153,7 @@ mod tests {
     fn a_code_opened_backed_menu_respects_its_display_only_slot() {
         // Content registries are process-global.
         if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::native_menu_places::tests::a_code_opened_backed_menu_respects_its_display_only_slot",
+            "game::server_side::native_menu_places::tests::a_code_opened_backed_menu_respects_its_display_only_slot",
             "SUNRISE_MENU_PLACES_HIDDEN_CHILD",
             &["hidden"],
         ) {

@@ -29,7 +29,7 @@ use sunrise_client::{
     text::{self, Text},
 };
 use sunrise_core::bounding_box::BoundingBox;
-pub(super) use sunrise_gameplay::game_tests::{Retry, TestError, number};
+pub(in crate::game) use sunrise_gameplay::game_tests::{Retry, TestError, number};
 use sunrise_world::{
     level::flags,
     worldgen::structure::{Mirror, Rotation, StructureTemplate},
@@ -45,7 +45,7 @@ enum Action {
 }
 
 /// `GameTestInfo`.
-pub(super) struct Info {
+pub(in crate::game) struct Info {
     id: u32,
     /// `id()`: the test's registry id.
     key: String,
@@ -73,7 +73,7 @@ pub(super) struct Info {
 }
 
 impl Info {
-    pub(super) fn new(
+    pub(in crate::game) fn new(
         id: u32,
         key: String,
         def: TestDef,
@@ -104,7 +104,7 @@ impl Info {
         }
     }
 
-    pub(super) fn with_retry(mut self, retry: Retry) -> Self {
+    pub(in crate::game) fn with_retry(mut self, retry: Retry) -> Self {
         self.retry = retry;
         self
     }
@@ -176,15 +176,15 @@ impl Info {
 }
 
 /// One `GameTestBatch`.
-pub(super) struct Batch {
-    pub(super) index: i32,
-    pub(super) environment: String,
+pub(in crate::game) struct Batch {
+    pub(in crate::game) index: i32,
+    pub(in crate::game) environment: String,
     dimension: String,
-    pub(super) infos: Vec<Info>,
+    pub(in crate::game) infos: Vec<Info>,
 }
 
 /// What `GameTestRunner.Builder` is given.
-pub(super) struct RunnerOptions {
+pub(in crate::game) struct RunnerOptions {
     halt_on_error: bool,
     batch_size: usize,
     clear_between_batches: bool,
@@ -197,7 +197,11 @@ pub(super) struct RunnerOptions {
 }
 
 impl RunnerOptions {
-    pub(super) fn new(halt_on_error: bool, grid: Option<Grid>, from_command: bool) -> Self {
+    pub(in crate::game) fn new(
+        halt_on_error: bool,
+        grid: Option<Grid>,
+        from_command: bool,
+    ) -> Self {
         Self {
             halt_on_error,
             batch_size: 50,
@@ -211,7 +215,7 @@ impl RunnerOptions {
 
     /// `/test verify`: `batcher(fromGameTestInfo(100))`, the grid for
     /// existing tests too, `haltOnError`, `clearBetweenBatches`.
-    pub(super) fn verify(grid: Grid) -> Self {
+    pub(in crate::game) fn verify(grid: Grid) -> Self {
         Self {
             halt_on_error: true,
             batch_size: 100,
@@ -260,7 +264,10 @@ fn batch_infos(infos: Vec<Info>, size: usize) -> Vec<Batch> {
 /// `/test verify`'s batches: each test in each rotation 100 times, with
 /// `RetryOptions(1, true)`, at the test's block if it has one; the batch
 /// index is the rotation's ordinal.
-pub(super) fn verify_batches(infos: &[Info], mut next_id: impl FnMut() -> u32) -> Vec<Batch> {
+pub(in crate::game) fn verify_batches(
+    infos: &[Info],
+    mut next_id: impl FnMut() -> u32,
+) -> Vec<Batch> {
     let mut batches = Vec::new();
     for info in infos {
         for (ordinal, rotation) in Rotation::ALL.into_iter().enumerate() {
@@ -365,7 +372,7 @@ impl DimGrid {
 
 /// `StructureGridSpawner`: a grid per dimension, made when the first test of
 /// that dimension is placed (`firstTestNorthWestCorner.apply(dimension)`).
-pub(super) struct Grid {
+pub(in crate::game) struct Grid {
     /// The column `createTestPositionAround` starts from: the source's.
     around: (i32, i32),
     per_row: i32,
@@ -375,7 +382,7 @@ pub(super) struct Grid {
 }
 
 impl Grid {
-    pub(super) fn new(around: (i32, i32), per_row: i32) -> Self {
+    pub(in crate::game) fn new(around: (i32, i32), per_row: i32) -> Self {
         Self {
             around,
             per_row,
@@ -385,7 +392,7 @@ impl Grid {
     }
 
     /// `clearOnBatch = true`.
-    pub(super) fn clearing(mut self) -> Self {
+    pub(in crate::game) fn clearing(mut self) -> Self {
         self.clear_on_batch = true;
         self
     }
@@ -447,14 +454,14 @@ fn summary_coordinates(key: &str, at: [i32; 3], dim: Dim, rotation: [i32; 2], co
 
 /// `GameTestTicker.SINGLETON` and the runner it holds, `FailedTestTracker`.
 #[derive(Default)]
-pub(super) struct GameTests {
+pub(in crate::game) struct GameTests {
     ticker: Vec<Info>,
     runner: Option<Runner>,
     ticking: bool,
     halting: bool,
     next_id: u32,
     /// `FailedTestTracker.LAST_FAILED_TESTS`.
-    pub(super) failed: Vec<String>,
+    pub(in crate::game) failed: Vec<String>,
     outbox: Vec<Out>,
     /// The command that starts the runner is still running: its source takes
     /// `TestBatchSummaryDisplayer`'s lines then and there.
@@ -465,7 +472,7 @@ pub(super) struct GameTests {
 
 impl GameTests {
     /// A test of the runner (placed or still to place) is in `dim`.
-    pub(super) fn has_tests_in(&self, dim: Dim) -> bool {
+    pub(in crate::game) fn has_tests_in(&self, dim: Dim) -> bool {
         self.ticker.iter().any(|i| i.dim == dim)
             || self.runner.as_ref().is_some_and(|r| {
                 r.batches
@@ -476,7 +483,7 @@ impl GameTests {
             })
     }
 
-    pub(super) fn next_id(&mut self) -> u32 {
+    pub(in crate::game) fn next_id(&mut self) -> u32 {
         self.next_id += 1;
         self.next_id
     }
@@ -485,7 +492,7 @@ impl GameTests {
 impl Game<'_> {
     /// `TestCommand.trackAndStartRunner`: command summaries retain their
     /// original source. Test-block actions and verify keep their existing path.
-    pub(super) fn track_and_start_command_runner(&mut self, infos: Vec<Info>, grid: Grid) {
+    pub(in crate::game) fn track_and_start_command_runner(&mut self, infos: Vec<Info>, grid: Grid) {
         let mut source = self
             .server
             .command_source
@@ -513,7 +520,7 @@ impl Game<'_> {
     // ---- GameTestRunner / GameTestTicker ----
 
     /// `GameTestTicker.clear`: a pass in progress halts at its end.
-    pub(super) fn clear_game_tests(&mut self) {
+    pub(in crate::game) fn clear_game_tests(&mut self) {
         if self.game_tests.ticking {
             self.game_tests.halting = true;
         } else {
@@ -528,7 +535,7 @@ impl Game<'_> {
     /// `TestCommand.trackAndStartRunner` for tests already built (batched by
     /// environment, 50 to a batch): the tracker and its listeners, then
     /// `GameTestRunner.start`.
-    pub(super) fn track_and_start_runner(
+    pub(in crate::game) fn track_and_start_runner(
         &mut self,
         infos: Vec<Info>,
         halt_on_error: bool,
@@ -543,7 +550,11 @@ impl Game<'_> {
     }
 
     /// `TestCommand.trackAndStartRunner` for batches already made.
-    pub(super) fn track_and_start_batches(&mut self, batches: Vec<Batch>, options: RunnerOptions) {
+    pub(in crate::game) fn track_and_start_batches(
+        &mut self,
+        batches: Vec<Batch>,
+        options: RunnerOptions,
+    ) {
         let tracked = batches
             .iter()
             .flat_map(|b| &b.infos)
@@ -720,7 +731,7 @@ impl Game<'_> {
 
     /// `GameTestServer`'s per-tick call: `MinecraftServer.tickServer`'s
     /// `GameTestTicker.SINGLETON.tick()`, for the tests of the level in place.
-    pub(super) fn tick_game_tests(&mut self) {
+    pub(in crate::game) fn tick_game_tests(&mut self) {
         self.flush_game_test_output();
         if self.game_tests.runner.is_none() {
             return;
@@ -822,7 +833,7 @@ impl Game<'_> {
     /// Run `f` with `dim`'s level in place (`enter_level`, as a command
     /// whose source is there), then put the level back. None when the level
     /// cannot be entered.
-    pub(super) fn in_test_level<R>(
+    pub(in crate::game) fn in_test_level<R>(
         &mut self,
         dim: Dim,
         f: impl FnOnce(&mut Self) -> R,
@@ -840,7 +851,7 @@ impl Game<'_> {
 
     /// `level.getChunk(pos)` for the chunks of `area`: forced (the test needs
     /// them kept) and waited for, as vanilla loads them synchronously.
-    pub(super) fn load_test_chunks(&mut self, area: &BoundingBox) {
+    pub(in crate::game) fn load_test_chunks(&mut self, area: &BoundingBox) {
         let missing = |g: &Self| -> bool {
             (area.min[0] >> 4..=area.max[0] >> 4).any(|x| {
                 (area.min[2] >> 4..=area.max[2] >> 4).any(|z| !g.world.chunks.contains_key(&(x, z)))
@@ -911,7 +922,7 @@ impl Game<'_> {
     }
 
     /// `getTestBoundingBox`: the structure's box and its padding.
-    pub(super) fn test_bounding_box(&self, pos: Pos) -> Option<BoundingBox> {
+    pub(in crate::game) fn test_bounding_box(&self, pos: Pos) -> Option<BoundingBox> {
         let padding = self.test_holder_padding(pos);
         let inner = self.test_structure_box(pos)?;
         Some(BoundingBox::new(

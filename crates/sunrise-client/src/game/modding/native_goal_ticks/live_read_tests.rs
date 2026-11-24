@@ -284,7 +284,7 @@ fn a_players_last_hurt_mob_resolves_the_mob_lent_to_its_tick() {
 
     // Loading resources replaces process-wide tables: the case runs in its own process.
     if run_fresh_cases(
-        "game::native_goal_ticks::live_read_tests::a_players_last_hurt_mob_resolves_the_mob_lent_to_its_tick",
+        "game::server_side::native_goal_ticks::live_read_tests::a_players_last_hurt_mob_resolves_the_mob_lent_to_its_tick",
         "SUNRISE_GOAL_LAST_HURT_MOB_CASE",
         &["lent"],
     ) {

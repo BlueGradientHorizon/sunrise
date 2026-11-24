@@ -26,7 +26,7 @@ const CHILD: &str = "SUNRISE_SINGLEPLAYER_OWNER_CHILD";
 /// Runs `test` (this module's test of that name) in a fresh process, and false there.
 fn in_child(test: &str) -> bool {
     // The shared helper checks that exactly this test ran and gives the child a scratch home.
-    let name = format!("game::native_singleplayer_owner_tests::{test}");
+    let name = format!("game::server_side::native_singleplayer_owner_tests::{test}");
     super::native_entity_refs::tests::run_fresh_cases(&name, CHILD, &["owner"])
 }
 

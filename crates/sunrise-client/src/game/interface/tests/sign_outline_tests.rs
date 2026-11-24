@@ -19,7 +19,7 @@ use sunrise_protocol::{
 #[ignore = "daily"]
 fn sign_outline_follows_scope_and_camera_subject_in_both_draw_paths() {
     in_own_process(
-        "game::sign_outline_tests::sign_outline_follows_scope_and_camera_subject_in_both_draw_paths",
+        "game::client_side::sign_outline_tests::sign_outline_follows_scope_and_camera_subject_in_both_draw_paths",
         || super::native_entity_refs::tests::with_client_game(check_signs),
     );
 }

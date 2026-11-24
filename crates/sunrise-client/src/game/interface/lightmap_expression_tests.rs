@@ -10,7 +10,8 @@ use super::native_entity_refs::tests::{run_fresh_cases, with_client_game};
 use crate::game::native_hooks::particle_count_tests::frame_scene;
 use sunrise_assets::resource_source::{Resource, ResourceSource};
 
-const NAME: &str = "game::lightmap_expression_tests::a_packs_lightmap_draws_its_expression_uniform";
+const NAME: &str =
+    "game::client_side::lightmap_expression_tests::a_packs_lightmap_draws_its_expression_uniform";
 const CASE: &str = "SUNRISE_LIGHTMAP_EXPRESSION_CASE";
 /// The biome of `frame_scene`'s empty chunk (its biome 0), the camera's.
 const BIOME: &str = "minecraft:badlands";
@@ -260,13 +261,13 @@ fn corner(game: &mut super::Game<'_>) -> [u8; 3] {
 }
 
 /// A game frame.
-pub(super) fn frame(game: &mut super::Game<'_>) -> sunrise_client::Result<bool> {
+pub(in crate::game) fn frame(game: &mut super::Game<'_>) -> sunrise_client::Result<bool> {
     game.render_with(|renderer, frame| renderer.render(frame))
 }
 
 /// The colour of the pixel two in from the top left corner of the frame `draw` draws (a game
 /// frame, a loading screen's), from a screenshot of it.
-pub(super) fn corner_of(
+pub(in crate::game) fn corner_of(
     game: &mut super::Game<'_>,
     draw: impl FnOnce(&mut super::Game<'_>) -> sunrise_client::Result<bool>,
 ) -> [u8; 3] {

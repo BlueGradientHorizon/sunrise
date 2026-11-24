@@ -8,14 +8,14 @@ use super::{
 use sunrise_client::graphics::EntityCullingMode;
 use sunrise_client::voxel_occlusion::Culler as OcclusionCuller;
 pub use sunrise_client_gameplay::entity_occlusion::{EntityCullDecision, at};
-pub(super) use sunrise_client_gameplay::entity_occlusion::{
+pub(in crate::game) use sunrise_client_gameplay::entity_occlusion::{
     EntityOcclusion, cull_box, default_range, entity_view_scale, orb_in_view,
 };
 use sunrise_client_gameplay::occlusion_culling::QuerySource;
 use sunrise_core::geometry::{Aabb, Vec3};
 
 impl Game<'_> {
-    pub(super) fn prepare_entity_culling(&mut self) {
+    pub(in crate::game) fn prepare_entity_culling(&mut self) {
         // The mods' render hooks: whether any listens this frame, and no entity canceled yet.
         super::native_mob_draw::begin_entity_frame();
         // Spans tell the pack's passes which entities are hidden; without them, nothing changes.
@@ -28,7 +28,11 @@ impl Game<'_> {
         };
     }
 
-    pub(super) fn cull_entity_vertices(&self, vertices: &mut Vec<Vertex>, start: usize) -> bool {
+    pub(in crate::game) fn cull_entity_vertices(
+        &self,
+        vertices: &mut Vec<Vertex>,
+        start: usize,
+    ) -> bool {
         let hidden = self.occlusion_hidden(Some(vertices), start, None);
         if hidden
             && !(self.occlusion.shadow_casters.0 && self.hide_spans_from(start, vertices.len()))
@@ -43,7 +47,11 @@ impl Game<'_> {
         hidden
     }
 
-    pub(super) fn cull_entity_camera_bounds(&self, lo: glam::Vec3, hi: glam::Vec3) -> bool {
+    pub(in crate::game) fn cull_entity_camera_bounds(
+        &self,
+        lo: glam::Vec3,
+        hi: glam::Vec3,
+    ) -> bool {
         if self.occlusion.occlusion_hidden_camera_bounds(
             &section_scene!(self),
             self.settings.sunrise.entity_culling,
@@ -61,12 +69,12 @@ impl Game<'_> {
     }
 
     /// Pre-model visibility hook for dynamic block-entity geometry.
-    pub(super) fn block_entity_occluded(&self, bounds: Aabb) -> bool {
+    pub(in crate::game) fn block_entity_occluded(&self, bounds: Aabb) -> bool {
         self.occlusion_hidden(None, 0, Some(bounds))
     }
 
     /// Cull from the shared entity AABB before generating its model vertices.
-    pub(super) fn entity_cull_decision<T: RenderEntityBounds>(
+    pub(in crate::game) fn entity_cull_decision<T: RenderEntityBounds>(
         &self,
         entity: &T,
         alpha: f64,
@@ -76,7 +84,7 @@ impl Game<'_> {
 
     /// Cull from a renderer-computed envelope when the rendered transform has
     /// extra offsets or model geometry that the entity type alone cannot see.
-    pub(super) fn entity_cull_decision_in_bounds<T: RenderEntityBounds>(
+    pub(in crate::game) fn entity_cull_decision_in_bounds<T: RenderEntityBounds>(
         &self,
         entity: &T,
         render_bounds: Aabb,
@@ -153,7 +161,7 @@ impl Game<'_> {
     }
 
     /// Refine an AABB-visible result with the exact bounds of the rendered mesh.
-    pub(super) fn finish_entity_occlusion<T: RenderEntityBounds>(
+    pub(in crate::game) fn finish_entity_occlusion<T: RenderEntityBounds>(
         &self,
         decision: EntityCullDecision,
         entity: &T,
@@ -208,14 +216,14 @@ pub(in crate::game) fn streaming_radius_for(
 
 impl Game<'_> {
     /// Options.getEffectiveRenderDistance: the client setting, capped by the server's view distance.
-    pub(super) fn effective_render_distance(&self) -> i32 {
+    pub(in crate::game) fn effective_render_distance(&self) -> i32 {
         effective_render_distance_for(
             self.settings.render_distance,
             self.remote.as_ref().map(|r| r.view_distance),
         )
     }
     /// Entity.setViewScale: entity distance times the render distance's boost (1 at 8 chunks, 2.5 at 20+).
-    pub(super) fn view_scale(&self) -> f64 {
+    pub(in crate::game) fn view_scale(&self) -> f64 {
         entity_view_scale(
             self.effective_render_distance(),
             self.settings.entity_distance,
@@ -242,7 +250,7 @@ impl Game<'_> {
     /// EntityRenderer.shouldRender: the entity within `range` blocks of the
     /// camera, measured from its current `position`, and its culling box
     /// (`lo`..`hi`, interpolated, in world space) grown by 0.5 in the view.
-    pub(super) fn entity_in_view(
+    pub(in crate::game) fn entity_in_view(
         &self,
         camera: glam::DVec3,
         position: glam::DVec3,
@@ -267,7 +275,7 @@ impl Game<'_> {
     /// `width` wide and `height` tall, interpolated by `alpha` and grown by
     /// `grow` (a renderer's getBoundingBoxForCulling).
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn standing_entity_in_view(
+    pub(in crate::game) fn standing_entity_in_view(
         &self,
         camera: glam::DVec3,
         previous: glam::DVec3,
@@ -287,7 +295,7 @@ impl Game<'_> {
 }
 
 impl Game<'_> {
-    pub(super) fn prepare_occlusion_culling(&mut self, camera: glam::DVec3) {
+    pub(in crate::game) fn prepare_occlusion_culling(&mut self, camera: glam::DVec3) {
         self.occlusion.section_camera = None;
         self.occlusion.section_visibility_valid = false;
         let entity_mode = self.settings.sunrise.entity_culling;
@@ -345,7 +353,7 @@ impl Game<'_> {
             .then(|| OcclusionCuller::new(camera.to_array(), 8_192));
     }
 
-    pub(super) fn finish_async_occlusion_culling(&mut self) {
+    pub(in crate::game) fn finish_async_occlusion_culling(&mut self) {
         if let Some(culler) = &mut self.occlusion.async_culler {
             culler.finish_frame(&self.world, self.res.facts());
         }

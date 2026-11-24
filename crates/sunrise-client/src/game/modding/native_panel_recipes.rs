@@ -45,16 +45,16 @@ const TABS: usize = 16;
 /// What the panel shows instead of its items: a title, tabs (`tab` the
 /// selected one) and the recipes.
 #[derive(Clone, Debug, PartialEq)]
-pub(super) struct RecipePage {
-    pub(super) title: String,
-    pub(super) tabs: Vec<BrowserStack>,
-    pub(super) tab: u32,
-    pub(super) recipes: Vec<BrowserRecipe>,
+pub(in crate::game) struct RecipePage {
+    pub(in crate::game) title: String,
+    pub(in crate::game) tabs: Vec<BrowserStack>,
+    pub(in crate::game) tab: u32,
+    pub(in crate::game) recipes: Vec<BrowserRecipe>,
 }
 impl RecipePage {
     /// `native_panel_recipes`' page, cut as `set-recipes` cuts one; none
     /// without recipes (the items again).
-    pub(super) fn new(
+    pub(in crate::game) fn new(
         title: &str,
         tabs: Vec<BrowserStack>,
         tab: u32,
@@ -97,7 +97,7 @@ impl RecipePage {
 }
 
 /// One recipe as the game draws it.
-pub(super) struct Shown {
+pub(in crate::game) struct Shown {
     layout: BrowserLayout,
     width: usize,
     height: usize,
@@ -114,7 +114,7 @@ pub(super) struct Shown {
 }
 
 /// The recipes a panel shows, and its page.
-pub(super) struct Pages {
+pub(in crate::game) struct Pages {
     title: String,
     /// The tabs' icons and the selected one.
     tabs: Vec<(BrowserStack, Option<ItemStack>)>,
@@ -125,7 +125,7 @@ pub(super) struct Pages {
 }
 
 impl Pages {
-    pub(super) fn new(
+    pub(in crate::game) fn new(
         items: &sunrise_client::items::Items,
         shown: &RecipePage,
         old: Option<Pages>,
@@ -323,7 +323,7 @@ impl Well {
 }
 
 /// A fluid's colour: its look's tint, else vanilla water's and lava's, else grey.
-pub(super) fn fluid_tint(fluid: &str, look: Option<u32>) -> u32 {
+pub(in crate::game) fn fluid_tint(fluid: &str, look: Option<u32>) -> u32 {
     look.unwrap_or(match fluid {
         "minecraft:water" => 0xFF3F76E4,
         "minecraft:lava" => 0xFFFF6A00,
@@ -406,7 +406,7 @@ impl Game<'_> {
         stacks.get(n % stacks.len().max(1))
     }
     /// The tab under the pointer: its index and icon.
-    pub(super) fn recipe_tab_hovered(
+    pub(in crate::game) fn recipe_tab_hovered(
         &self,
         layout: &Layout,
     ) -> Option<(usize, BrowserStack, ItemStack)> {
@@ -421,7 +421,10 @@ impl Game<'_> {
         })
     }
     /// The fluid in the well under the pointer.
-    pub(super) fn recipe_fluid_hovered(&self, layout: &Layout) -> Option<mod_api::FluidStack> {
+    pub(in crate::game) fn recipe_fluid_hovered(
+        &self,
+        layout: &Layout,
+    ) -> Option<mod_api::FluidStack> {
         let pages = self.client.panel.recipes.as_ref()?;
         self.recipes_shown(layout)
             .into_iter()
@@ -436,7 +439,7 @@ impl Game<'_> {
             })
     }
     /// The recipe slot under the pointer: recipe, slot, and its stack now.
-    pub(super) fn recipe_slot_hovered(
+    pub(in crate::game) fn recipe_slot_hovered(
         &self,
         layout: &Layout,
     ) -> Option<(usize, usize, BrowserStack, ItemStack)> {
@@ -456,7 +459,7 @@ impl Game<'_> {
     }
 
     /// Draws the title row, the page's recipes and the page arrows.
-    pub(super) fn draw_browser_recipes(&mut self, batch: &mut HudBatch, layout: &Layout) {
+    pub(in crate::game) fn draw_browser_recipes(&mut self, batch: &mut HudBatch, layout: &Layout) {
         let Some(pages) = &self.client.panel.recipes else {
             return;
         };
@@ -739,7 +742,12 @@ impl Game<'_> {
 
     /// A wheel notch `d` over the recipe pages: turns them as the arrows
     /// do (`wheel_turn`, telling the mod of a turn); false off the panel.
-    pub(super) fn browser_recipes_wheel(&mut self, layout: &Layout, owner: &Owner, d: f32) -> bool {
+    pub(in crate::game) fn browser_recipes_wheel(
+        &mut self,
+        layout: &Layout,
+        owner: &Owner,
+        d: f32,
+    ) -> bool {
         let Some(pages) = &self.client.panel.recipes else {
             return false;
         };
@@ -759,7 +767,7 @@ impl Game<'_> {
     }
 
     /// A press on the recipes: true when it hit one of their parts.
-    pub(super) fn browser_recipes_press(
+    pub(in crate::game) fn browser_recipes_press(
         &mut self,
         layout: &Layout,
         owner: &Owner,

@@ -83,7 +83,7 @@ impl HiveHost for GameHive<'_, '_> {
 impl Game<'_> {
     /// Route a target assigned outside the mob tick through the same listener
     /// as AI, before changing the player's binding or the mob's state.
-    pub(super) fn set_event_ai_target(
+    pub(in crate::game) fn set_event_ai_target(
         &mut self,
         id: u32,
         target: Option<Who>,
@@ -173,7 +173,7 @@ impl Game<'_> {
         registry.resolve(&s).ok()
     }
     /// The hive's honey level and front, from its block state.
-    pub(super) fn hive_state(&self, at: [i32; 3]) -> Option<(Option<i32>, [i32; 2])> {
+    pub(in crate::game) fn hive_state(&self, at: [i32; 3]) -> Option<(Option<i32>, [i32; 2])> {
         let state = self.world.block(at[0], at[1], at[2]);
         let name =
             sunrise_client::block_entity_types::factory_block(&self.res.facts().get(state).name);
@@ -193,7 +193,7 @@ impl Game<'_> {
     }
     /// `BeehiveBlockEntity.serverTick` of the hive at `key`, after an
     /// emergency exit if fire is beside it (`BeehiveBlock.updateShape`).
-    pub(super) fn tick_beehive(&mut self, key: (i32, i32, i32)) {
+    pub(in crate::game) fn tick_beehive(&mut self, key: (i32, i32, i32)) {
         let at = [key.0, key.1, key.2];
         let Some((honey, facing)) = self.hive_state(at) else {
             return;
@@ -226,7 +226,7 @@ impl Game<'_> {
     }
     /// `BeehiveBlockEntity.addOccupant` for a bee its `BeeEnterHiveGoal`
     /// sent in: off its lead, its tag stored, the bee gone.
-    pub(super) fn bee_enter_hive(&mut self, mob: u32, at: [i32; 3]) {
+    pub(in crate::game) fn bee_enter_hive(&mut self, mob: u32, at: [i32; 3]) {
         let key = (at[0], at[1], at[2]);
         if !self
             .mobs
@@ -279,7 +279,7 @@ impl Game<'_> {
         }
     }
     /// `BeehiveBlockEntity.emptyAllLivingFromHive` with no player about.
-    pub(super) fn empty_hive(&mut self, at: [i32; 3], facing: [i32; 2], status: Release) {
+    pub(in crate::game) fn empty_hive(&mut self, at: [i32; 3], facing: [i32; 2], status: Release) {
         let key = (at[0], at[1], at[2]);
         let Some((lease, BlockEntity::Beehive(mut hive))) = self.world.block_entities.take(&key)
         else {
@@ -293,7 +293,7 @@ impl Game<'_> {
     /// `BeehiveBlock.playerDestroy` without silk touch: the bees come out
     /// angry at the player unless smoke calms them, then
     /// `angerNearbyBees`.
-    pub(super) fn hive_broken_by_player(
+    pub(in crate::game) fn hive_broken_by_player(
         &mut self,
         at: [i32; 3],
         mut hive: Beehive,
@@ -331,7 +331,11 @@ impl Game<'_> {
     /// the honeycombs and a glass bottle a honey bottle from a full hive
     /// (honey level 5), then the honey level resets and, unless a campfire
     /// smokes the hive, the bees come out angry. True when it took the click.
-    pub(super) fn use_beehive(&mut self, pos: [i32; 3], held: Option<&ItemStack>) -> Result<bool> {
+    pub(in crate::game) fn use_beehive(
+        &mut self,
+        pos: [i32; 3],
+        held: Option<&ItemStack>,
+    ) -> Result<bool> {
         let Some(held) = held else { return Ok(false) };
         let shears = self.stack_shears(held, ability::SHEARS_HARVEST);
         if !shears && &*held.item != "minecraft:glass_bottle" {
@@ -436,7 +440,7 @@ impl Game<'_> {
     /// `BeehiveBlock.angerNearbyBees`: bees within 8 blocks (6 up and down)
     /// without a target go for a random player in the same box, the window's
     /// own or a guest (`None` is the window's player).
-    pub(super) fn anger_nearby_bees(&mut self, at: [i32; 3]) {
+    pub(in crate::game) fn anger_nearby_bees(&mut self, at: [i32; 3]) {
         let min = Vec3::new(
             f64::from(at[0]) - 8.0,
             f64::from(at[1]) - 6.0,

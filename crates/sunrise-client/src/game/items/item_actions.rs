@@ -5,12 +5,12 @@ use super::*;
 
 impl Game<'_> {
     /// The hand whose use ended the click, if any.
-    pub(super) fn use_item(&mut self) -> Result<Option<Hand>> {
+    pub(in crate::game) fn use_item(&mut self) -> Result<Option<Hand>> {
         self.with_player_actor(|game| game.use_item_as_player())
     }
 
     /// `Minecraft.startUseItem`: the main hand, then the off hand.
-    pub(super) fn use_item_as_player(&mut self) -> Result<Option<Hand>> {
+    pub(in crate::game) fn use_item_as_player(&mut self) -> Result<Option<Hand>> {
         // Spectators only look (MultiPlayerGameMode.useItemOn/useItem pass),
         // but on a server a spectator's use on a block opens the block's
         // menu (ServerPlayerGameMode.useItemOn).
@@ -81,7 +81,7 @@ impl Game<'_> {
     /// The index in `list` of the entity an interact packet's `target` names,
     /// by its server id (`Level.getEntity(id)`), or None for an id this level
     /// does not hold: `handleInteract` finds nothing then either.
-    pub(super) fn named_entity<T>(
+    pub(in crate::game) fn named_entity<T>(
         list: &[T],
         target: i32,
         id: impl Fn(&T) -> u32,
@@ -92,7 +92,10 @@ impl Game<'_> {
     /// Whether `now` is still the stack `before` was: the same item and the
     /// same count, or both empty. The check after a hook that may change the
     /// world is this shallow on purpose; components are not compared.
-    pub(super) fn same_item_and_count(now: Option<&ItemStack>, before: Option<&ItemStack>) -> bool {
+    pub(in crate::game) fn same_item_and_count(
+        now: Option<&ItemStack>,
+        before: Option<&ItemStack>,
+    ) -> bool {
         match (now, before) {
             (None, None) => true,
             (Some(a), Some(b)) => a.item == b.item && a.count == b.count,
@@ -106,7 +109,10 @@ impl Game<'_> {
     /// way `Minecraft.hitResult` does. `native_entity_interact_specific` and
     /// `native_interact_entity` hear it first; a claim swings the hand and
     /// ends the click.
-    pub(super) fn interact_entity(&mut self, target: Option<InteractTarget>) -> Result<bool> {
+    pub(in crate::game) fn interact_entity(
+        &mut self,
+        target: Option<InteractTarget>,
+    ) -> Result<bool> {
         // Native mods, where Player.interactOn starts: before the entity's
         // own interact and the item's interactLivingEntity. The entity is the
         // one the packet named, or the one the crosshair picked.
@@ -182,7 +188,11 @@ impl Game<'_> {
     /// Asks the mods whether the acting guest may empty `stack` at `pos`
     /// (`native_bucket_empty`): true when one cancelled it. A game's own
     /// player is not asked.
-    pub(super) fn bucket_empty_cancelled(&mut self, stack: &ItemStack, pos: [i32; 3]) -> bool {
+    pub(in crate::game) fn bucket_empty_cancelled(
+        &mut self,
+        stack: &ItemStack,
+        pos: [i32; 3],
+    ) -> bool {
         let (Some(uuid), Some(name)) = (
             self.server.lan_acting_uuid,
             self.server.lan_acting_name.clone(),
@@ -201,7 +211,7 @@ impl Game<'_> {
     }
 
     /// The player as a block's `useItemOn` / `useWithoutItem` sees them.
-    pub(super) fn use_context(&self) -> PlayerContext {
+    pub(in crate::game) fn use_context(&self) -> PlayerContext {
         PlayerContext {
             yaw: self.yaw,
             pitch: self.pitch,

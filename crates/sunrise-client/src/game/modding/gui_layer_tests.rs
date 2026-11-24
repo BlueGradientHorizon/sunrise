@@ -267,7 +267,7 @@ impl Hooks for HealthLayer {
 fn health_extraction_runs_only_in_the_vanilla_layer_body() {
     const CASE: &str = "SUNRISE_HEALTH_LAYER_FIXTURE";
     if run_fresh_cases(
-        "game::gui_layer_tests::health_extraction_runs_only_in_the_vanilla_layer_body",
+        "game::client_side::gui_layer_tests::health_extraction_runs_only_in_the_vanilla_layer_body",
         CASE,
         &["vanilla", "replace"],
     ) {
@@ -441,7 +441,7 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
 fn mod_layers_draw_in_their_place_and_hide_like_vanilla_layers() {
     // The layer order is kept once per process.
     if run_fresh_cases(
-        "game::gui_layer_tests::mod_layers_draw_in_their_place_and_hide_like_vanilla_layers",
+        "game::client_side::gui_layer_tests::mod_layers_draw_in_their_place_and_hide_like_vanilla_layers",
         "SUNRISE_GUI_LAYER_FIXTURE",
         &["run"],
     ) {
@@ -547,7 +547,7 @@ fn mod_layers_draw_in_their_place_and_hide_like_vanilla_layers() {
 fn a_gui_wrapper_panic_is_contained_but_delegated_engine_paint_is_fatal() {
     use sunrise_client::hud::{Blend, rgba};
 
-    let test = "game::gui_layer_tests::a_gui_wrapper_panic_is_contained_but_delegated_engine_paint_is_fatal";
+    let test = "game::client_side::gui_layer_tests::a_gui_wrapper_panic_is_contained_but_delegated_engine_paint_is_fatal";
     crate::game::in_own_process(test, || {
         struct Wrapper(&'static str, bool);
         #[mod_api::__subscriptions]
@@ -671,7 +671,7 @@ fn hotbar_attack_indicator_progress_edits_only_stock_hotbar_paint() {
     const HOTBAR: &str = "minecraft:hotbar";
     const CASE: &str = "SUNRISE_HOTBAR_ATTACK_INDICATOR_FIXTURE";
     if run_fresh_cases(
-        "game::gui_layer_tests::hotbar_attack_indicator_progress_edits_only_stock_hotbar_paint",
+        "game::client_side::gui_layer_tests::hotbar_attack_indicator_progress_edits_only_stock_hotbar_paint",
         CASE,
         &["stock", "replace", "delegate", "skip"],
     ) {
@@ -1097,7 +1097,8 @@ fn f1_hides_vanilla_paint_without_skipping_the_hud_walk() {
         text::{Style, Text},
     };
 
-    let test = "game::gui_layer_tests::f1_hides_vanilla_paint_without_skipping_the_hud_walk";
+    let test =
+        "game::client_side::gui_layer_tests::f1_hides_vanilla_paint_without_skipping_the_hud_walk";
     crate::game::in_own_process(test, || {
         const MOD_PAINT: u32 = 0xFF13_579B;
         static CANCEL_HUD: AtomicBool = AtomicBool::new(false);
@@ -1299,7 +1300,7 @@ fn f1_subtitles_paint_in_the_container_background_without_redispatch() {
     use sunrise_client::{hud::rgba, options_file::V, sound_engine::Notification};
 
     crate::game::in_own_process(
-        "game::gui_layer_tests::f1_subtitles_paint_in_the_container_background_without_redispatch",
+        "game::client_side::gui_layer_tests::f1_subtitles_paint_in_the_container_background_without_redispatch",
         || {
             const MARKER: u32 = 0xFFAE_2818;
             struct Observer;
@@ -1400,7 +1401,7 @@ fn options_controller_notice_paints_after_screen_post_despite_hud_cancel() {
     use sunrise_client::{controller_notice::Notice, hud::rgba, hud_layout::abgr};
 
     crate::game::in_own_process(
-        "game::gui_layer_tests::options_controller_notice_paints_after_screen_post_despite_hud_cancel",
+        "game::client_side::gui_layer_tests::options_controller_notice_paints_after_screen_post_despite_hud_cancel",
         || {
             const MARKER: u32 = 0xFFAE_2818;
             struct CancelHud;
@@ -1454,7 +1455,7 @@ fn panicking_hud_listeners_under_f1_disable_only_themselves_and_report_their_own
     use sunrise_client::hud::Rect;
 
     crate::game::in_own_process(
-        "game::gui_layer_tests::panicking_hud_listeners_under_f1_disable_only_themselves_and_report_their_owner",
+        "game::client_side::gui_layer_tests::panicking_hud_listeners_under_f1_disable_only_themselves_and_report_their_owner",
         || {
             const OWNER: &str = "broken_hud_listener";
             struct Broken;
@@ -1594,7 +1595,7 @@ fn a_panicking_hud_painter_shows_its_error_toast_under_f1() {
     use sunrise_client::{text::Text, toasts::SystemToast};
 
     const OWNER: &str = "broken_hud";
-    let test = "game::gui_layer_tests::a_panicking_hud_painter_shows_its_error_toast_under_f1";
+    let test = "game::client_side::gui_layer_tests::a_panicking_hud_painter_shows_its_error_toast_under_f1";
     crate::game::in_own_process(test, || {
         struct BrokenHud;
         #[mod_api::__subscriptions]

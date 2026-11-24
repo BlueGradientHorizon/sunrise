@@ -8,11 +8,11 @@
 //! writes the scenario's name to PATH with the extension `done`.
 use super::Game;
 use super::event_loop::EventLoopCtl;
-pub(super) use sunrise_client_gameplay::tick_script::{TickScript, parse};
+pub(in crate::game) use sunrise_client_gameplay::tick_script::{TickScript, parse};
 
 impl Game<'_> {
     /// Before a client tick: start the scenario the harness handed over, or play this tick's lines.
-    pub(super) fn tick_script_step(&mut self, event_loop: &dyn EventLoopCtl) {
+    pub(in crate::game) fn tick_script_step(&mut self, event_loop: &dyn EventLoopCtl) {
         let Some(path) = self
             .client
             .tick_script

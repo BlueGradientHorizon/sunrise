@@ -23,7 +23,10 @@ fn target_point(eye: [f64; 3], bounds: [[f64; 3]; 2], reach: f64) -> Option<([f6
 }
 
 impl Game<'_> {
-    pub(super) fn targeting_entity_hit(&self, entity: EntityRef) -> Option<([f64; 3], f64)> {
+    pub(in crate::game) fn targeting_entity_hit(
+        &self,
+        entity: EntityRef,
+    ) -> Option<([f64; 3], f64)> {
         let remote = self.remote.as_ref().filter(|r| r.logged_in)?;
         if !self.native_window() || remote.entity_id as u32 == entity.id() {
             return None;
@@ -74,7 +77,7 @@ impl Game<'_> {
         Some((point, distance))
     }
     /// The optional batch is resolved once for this click, then each hit uses vanilla's send path.
-    pub(super) fn mod_attack_targets(&mut self) -> bool {
+    pub(in crate::game) fn mod_attack_targets(&mut self) -> bool {
         if !mod_api::__private::listened(mod_api::HookId::ClientAttackTarget) {
             return false;
         }

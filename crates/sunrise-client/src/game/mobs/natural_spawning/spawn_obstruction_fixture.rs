@@ -255,7 +255,7 @@ fn with_relay(test: impl FnOnce(&mut Game<'_>)) {
 #[ignore = "daily"]
 fn spawn_entity_obstruction() {
     crate::game::in_own_process(
-        "game::natural_spawning::spawn_obstruction_fixture::spawn_entity_obstruction",
+        "game::server_side::natural_spawning::spawn_obstruction_fixture::spawn_entity_obstruction",
         || {
             with_relay(|game| {
                 let cases = include_str!(concat!(

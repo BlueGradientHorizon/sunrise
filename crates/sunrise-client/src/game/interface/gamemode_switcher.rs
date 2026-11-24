@@ -8,7 +8,7 @@ use sunrise_client::{
 };
 
 impl Game<'_> {
-    pub(super) fn open_gamemode_switcher(&mut self) {
+    pub(in crate::game) fn open_gamemode_switcher(&mut self) {
         self.client.gamemode_switcher = Some(GameModeSwitcher::new(self.mode, self.previous_mode));
         self.set_screen(Screen::GameModeSwitcher);
         self.clear_device_keys();
@@ -18,7 +18,7 @@ impl Game<'_> {
         self.capture(false);
     }
 
-    pub(super) fn close_gamemode_switcher(&mut self, apply: bool) {
+    pub(in crate::game) fn close_gamemode_switcher(&mut self, apply: bool) {
         let selected = self.client.gamemode_switcher.take().map(|s| s.selected);
         self.set_screen(Screen::Playing);
         self.capture(true);
@@ -36,7 +36,7 @@ impl Game<'_> {
     /// modifier's own mouse button applies the hovered mode and closes the
     /// screen, as the modifier key's release does (`keyReleased`). A modifier
     /// bound to a keyboard key matches no mouse button.
-    pub(super) fn switcher_release(&mut self, button: winit::event::MouseButton) -> bool {
+    pub(in crate::game) fn switcher_release(&mut self, button: winit::event::MouseButton) -> bool {
         if sunrise_client::game_mode_switcher::release_applies(
             &keybinds::mouse_name(button),
             self.settings.keys.get("key.debug.modifier"),
@@ -47,7 +47,7 @@ impl Game<'_> {
         false
     }
 
-    pub(super) fn draw_gamemode_switcher(&mut self, batch: &mut HudBatch) {
+    pub(in crate::game) fn draw_gamemode_switcher(&mut self, batch: &mut HudBatch) {
         let (w, h) = (batch.width as i32, batch.height as i32);
         let Some(switcher) = &mut self.client.gamemode_switcher else {
             self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);

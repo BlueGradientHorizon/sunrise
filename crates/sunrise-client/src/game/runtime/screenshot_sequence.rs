@@ -15,7 +15,7 @@ const MAX_FRAMES: u32 = 10_000;
 /// The commands a running sequence lets through: they change nothing it draws.
 const READ_ONLY: [&str; 5] = ["screenshot-sequence", "hello", "help", "status", "state"];
 
-pub(super) struct Sequence {
+pub(in crate::game) struct Sequence {
     frames: u32,
     step_ms: f64,
     /// The frame drawn next, from 1.
@@ -28,7 +28,7 @@ pub(super) struct Sequence {
 }
 
 impl Sequence {
-    pub(super) fn timing(&self) -> FrameTiming {
+    pub(in crate::game) fn timing(&self) -> FrameTiming {
         FrameTiming::nth(self.next, self.step_ms)
     }
 }
@@ -122,7 +122,7 @@ impl Game<'_> {
     }
 
     /// `screenshot-sequence ...`; `None` while the reply waits for the PNG.
-    pub(super) fn screenshot_sequence_command(
+    pub(in crate::game) fn screenshot_sequence_command(
         &mut self,
         line: &str,
         reply: &Sender<String>,
@@ -172,7 +172,10 @@ impl Game<'_> {
 
     /// While a sequence runs, the control commands that would change what it draws are
     /// refused; `quit` ends it first.
-    pub(super) fn screenshot_sequence_gate(&mut self, command: Option<&str>) -> Result<()> {
+    pub(in crate::game) fn screenshot_sequence_gate(
+        &mut self,
+        command: Option<&str>,
+    ) -> Result<()> {
         if self.screenshot_sequence.is_none() || command.is_none_or(|c| READ_ONLY.contains(&c)) {
             return Ok(());
         }
@@ -187,7 +190,7 @@ impl Game<'_> {
     }
 
     /// Ends the running sequence, if any, and sends its reply.
-    pub(super) fn end_screenshot_sequence(&mut self, outcome: Result<Value>) {
+    pub(in crate::game) fn end_screenshot_sequence(&mut self, outcome: Result<Value>) {
         let Some(sequence) = self.screenshot_sequence.take() else {
             return;
         };
@@ -207,7 +210,7 @@ impl Game<'_> {
 
     /// One frame of the running sequence: the next one, on its clock. A frame the surface
     /// refused is drawn again; the last is saved, and the reply sent.
-    pub(super) fn render_sequence_frame(&mut self) -> Result<bool> {
+    pub(in crate::game) fn render_sequence_frame(&mut self) -> Result<bool> {
         let sequence = self
             .screenshot_sequence
             .as_ref()

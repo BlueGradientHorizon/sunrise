@@ -11,7 +11,7 @@ impl Game<'_> {
     /// `GuiGraphics.fillGradient` for [`mod_api::DrawContext::fill_gradient`]: `rect` is
     /// `[x, y, w, h]` and `top` / `bottom` are ARGB at `y` / `y + h`. Zero area,
     /// one-axis inversion or non-finite input draws nothing; both axes inverted flips the colours.
-    pub(super) fn native_fill_gradient(
+    pub(in crate::game) fn native_fill_gradient(
         &self,
         batch: &mut HudBatch,
         rect: [f32; 4],
@@ -31,7 +31,7 @@ impl Game<'_> {
         batch.fill_gradient(&self.gui.atlas, (x, y, w, h), abgr(top), abgr(bottom));
     }
     /// Vanilla's nine-slice widget rendering. `color` is ARGB, as `fill` uses.
-    pub(super) fn native_gui_nine_slice(
+    pub(in crate::game) fn native_gui_nine_slice(
         &self,
         batch: &mut HudBatch,
         sprite: &str,
@@ -51,12 +51,17 @@ impl Game<'_> {
         );
     }
     /// A vanilla tooltip at the cursor, in GUI pixels.
-    pub(super) fn native_gui_tooltip(&self, batch: &mut HudBatch, lines: &[Text], at: [f32; 2]) {
+    pub(in crate::game) fn native_gui_tooltip(
+        &self,
+        batch: &mut HudBatch,
+        lines: &[Text],
+        at: [f32; 2],
+    ) {
         sunrise_client::ui::tooltip(batch, &self.gui.atlas, lines, (at[0], at[1]));
     }
 
     /// Draw an item stack with custom count/decoration text (or None) at `at` in GUI units.
-    pub(super) fn native_gui_draw_item_with(
+    pub(in crate::game) fn native_gui_draw_item_with(
         &self,
         batch: &mut HudBatch,
         stack: &EngineStack,

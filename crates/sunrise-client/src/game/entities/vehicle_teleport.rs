@@ -12,13 +12,13 @@ use sunrise_core::nbt::Tag;
 pub use sunrise_gameplay::teleport_transition::TeleportMotion;
 pub(in crate::game) use sunrise_gameplay::teleport_transition::{Pose, Transition};
 use sunrise_gameplay::teleport_transition::{absolute_pitch, is_horse};
-pub(super) use sunrise_gameplay::teleport_transition::{
+pub(in crate::game) use sunrise_gameplay::teleport_transition::{
     cart_known_movement, passenger_destination, passenger_rotation,
 };
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 
 /// `Entity.teleportCrossDimension`'s transitions for the general rows of one tree that left their level: the root takes `transition`, each rider its own vehicle's.
-pub(super) fn transfer_general_tree(
+pub(in crate::game) fn transfer_general_tree(
     rows: &mut [super::general::GeneralRow],
     root: u32,
     transition: Transition,
@@ -76,11 +76,11 @@ mod teleport_cross_tests;
 
 impl Game<'_> {
     /// `AbstractMinecart.getDismountLocationForPassenger` for a standing mob.
-    pub(super) fn cart_dismount_point(&self, vehicle: u32, rider: u32) -> Option<Vec3> {
+    pub(in crate::game) fn cart_dismount_point(&self, vehicle: u32, rider: u32) -> Option<Vec3> {
         self.cart_dismount_point_from(self.cart_object(vehicle)?, self.mob_object(rider)?)
     }
 
-    pub(super) fn cart_dismount_mob(
+    pub(in crate::game) fn cart_dismount_mob(
         &self,
         vehicle: u32,
         rider: &sunrise_client::mobs::Mob,
@@ -89,7 +89,7 @@ impl Game<'_> {
     }
 
     /// The live tick snapshot may have moved beyond the cart's owning slot.
-    pub(super) fn cart_dismount_point_from(
+    pub(in crate::game) fn cart_dismount_point_from(
         &self,
         cart: &super::minecarts::Minecart,
         rider: &sunrise_client::mobs::Mob,
@@ -143,12 +143,12 @@ impl Game<'_> {
 
     /// `AbstractHorse.getDismountLocationForPassenger`: try either side
     /// through the mount's height, then fall back to its feet.
-    pub(super) fn horse_dismount_point(&self, vehicle: u32, rider: u32) -> Option<Vec3> {
+    pub(in crate::game) fn horse_dismount_point(&self, vehicle: u32, rider: u32) -> Option<Vec3> {
         self.horse_dismount_mobs(self.mob_object(vehicle)?, self.mob_object(rider)?)
     }
 
     /// The horse search for a mount and rider currently lent out of the mob list.
-    pub(super) fn horse_dismount_mobs(
+    pub(in crate::game) fn horse_dismount_mobs(
         &self,
         mount: &sunrise_client::mobs::Mob,
         rider: &sunrise_client::mobs::Mob,
@@ -215,7 +215,7 @@ impl Game<'_> {
     }
 
     /// `Entity.teleportPassengers` on a mob dismounted during a transition.
-    pub(super) fn snap_mob_passengers(&mut self, root: u32) {
+    pub(in crate::game) fn snap_mob_passengers(&mut self, root: u32) {
         use sunrise_client::mobs::riders;
         let Some(vehicle) = self.mob_object(root) else {
             return;
@@ -257,7 +257,7 @@ impl Game<'_> {
     /// transition that keeps it (`TeleportMotion::Keep`) carries over, a
     /// minecart's clamped (`cart_known_movement`). None for a player, whose
     /// client holds its motion, and an entity no level holds.
-    pub(super) fn transition_motion(&mut self, t: Target) -> Option<Vec3> {
+    pub(in crate::game) fn transition_motion(&mut self, t: Target) -> Option<Vec3> {
         let id = super::native_entities::target_id(t)?;
         let motion = self
             .in_target_level(t, |g| {
@@ -273,7 +273,7 @@ impl Game<'_> {
     }
     /// After a teleport placed `t` in its level: `motion` is its motion again
     /// (`Entity.teleportSetPosition` with `Relative.DELTA`).
-    pub(super) fn restore_transition_motion(&mut self, t: Target, motion: Vec3) {
+    pub(in crate::game) fn restore_transition_motion(&mut self, t: Target, motion: Vec3) {
         let Some(id) = super::native_entities::target_id(t) else {
             return;
         };
@@ -442,7 +442,7 @@ impl Game<'_> {
     /// `Entity.teleportCrossDimension`: carry a command's entire vehicle tree
     /// into the destination level, retaining UUIDs and the passengers' mounts,
     /// the root's motion as `motion` says.
-    pub(super) fn teleport_vehicle_across(
+    pub(in crate::game) fn teleport_vehicle_across(
         &mut self,
         target: Target,
         destination: super::Dim,
@@ -628,7 +628,7 @@ impl Game<'_> {
 
     /// `BlockAttachedEntity.setPos`: a frame or painting moves to the block
     /// holding the position; its bounds follow from it.
-    pub(super) fn teleport_hanging(&mut self, t: Target, v: Vec3) {
+    pub(in crate::game) fn teleport_hanging(&mut self, t: Target, v: Vec3) {
         let pos = [v.x.floor() as i32, v.y.floor() as i32, v.z.floor() as i32];
         match t {
             Target::Frame(id) => {
@@ -646,7 +646,7 @@ impl Game<'_> {
     }
 
     /// The riders of `t`, about to be placed at `to`, teleported before it; returns the riding players' connections.
-    pub(super) fn teleport_riders_first(
+    pub(in crate::game) fn teleport_riders_first(
         &mut self,
         t: Target,
         to: Vec3,
@@ -668,7 +668,7 @@ impl Game<'_> {
     }
 
     /// `Entity.teleportSameDimension`'s walk of `vehicle`'s riders, deepest first; returns the players' connections.
-    pub(super) fn teleport_passengers(
+    pub(in crate::game) fn teleport_passengers(
         &mut self,
         vehicle: u32,
         from: Pose,
@@ -858,7 +858,7 @@ impl Game<'_> {
     }
 
     /// `Entity.sendTeleportTransitionToPlayers`: every player riding the tree hears the vehicle's written pose and motion.
-    pub(super) fn announce_vehicle_teleport(&mut self, t: Target, riding: &[u32]) {
+    pub(in crate::game) fn announce_vehicle_teleport(&mut self, t: Target, riding: &[u32]) {
         let Some(id) = vehicle_id(t) else {
             return;
         };
@@ -886,7 +886,7 @@ impl Game<'_> {
 
     /// `Entity.forceSetRotation`: yaw, head yaw, pitch and their old values
     /// only. Position, motion, the vehicle and the riders stay.
-    pub(super) fn set_rotation(&mut self, t: Target, rotation: [f32; 2]) {
+    pub(in crate::game) fn set_rotation(&mut self, t: Target, rotation: [f32; 2]) {
         let _ = self.in_target_level(t, |g| g.set_rotation_in_level(t, rotation));
     }
     fn set_rotation_in_level(&mut self, t: Target, [yaw, pitch]: [f32; 2]) {

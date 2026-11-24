@@ -23,11 +23,11 @@ use sunrise_core::random::{LegacyRandom, LevelRandom};
 
 type Pos = (i32, i32, i32);
 
-pub(super) struct TakenVault {
-    pub(super) lease: BlockEntityLease,
-    pub(super) vault: Box<Vault>,
-    pub(super) current: VaultState,
-    pub(super) ominous: bool,
+pub(in crate::game) struct TakenVault {
+    pub(in crate::game) lease: BlockEntityLease,
+    pub(in crate::game) vault: Box<Vault>,
+    pub(in crate::game) current: VaultState,
+    pub(in crate::game) ominous: bool,
 }
 
 /// What a key insertion supplies to the reward roll
@@ -75,7 +75,11 @@ impl Game<'_> {
     /// VaultBlock.useItemOn on a client level: something in the hand on an ACTIVE vault is
     /// SUCCESS_SERVER, so the click ends there (no UseItem, no other hand, no swing); only the
     /// server tries the key.
-    pub(super) fn vault_takes_click(&self, pos: [i32; 3], held: Option<&ItemStack>) -> bool {
+    pub(in crate::game) fn vault_takes_click(
+        &self,
+        pos: [i32; 3],
+        held: Option<&ItemStack>,
+    ) -> bool {
         let state = self.world.block(pos[0], pos[1], pos[2]);
         held.is_some()
             && self.pack.assets.registry.state(state).is_some_and(|block| {
@@ -84,7 +88,7 @@ impl Game<'_> {
             })
     }
     /// The vault at `key` with its block's state and ominous flag.
-    pub(super) fn take_vault(&mut self, key: Pos) -> Option<TakenVault> {
+    pub(in crate::game) fn take_vault(&mut self, key: Pos) -> Option<TakenVault> {
         let state = self.world.block(key.0, key.1, key.2);
         let block = self.pack.assets.registry.state(state)?;
         if sunrise_client::block_entity_types::factory_block(&block.name) != "minecraft:vault" {
@@ -191,7 +195,7 @@ impl Game<'_> {
     }
     /// The server tick of the vault at `key`, then its client tick when there
     /// is a window.
-    pub(super) fn tick_vault(&mut self, key: Pos) -> Result<()> {
+    pub(in crate::game) fn tick_vault(&mut self, key: Pos) -> Result<()> {
         let pos = [key.0, key.1, key.2];
         let ticked = self.with_vault(key, None, |v, l, random, state, ominous, roll, events| {
             v.server_tick(l, random, pos, state, ominous, roll, events);
@@ -206,7 +210,11 @@ impl Game<'_> {
     }
     /// `VaultBlock.useItemOn` with `held` in the hand that acts: true when the
     /// vault took the click (an active vault, with anything in the hand).
-    pub(super) fn use_vault(&mut self, pos: [i32; 3], held: Option<&ItemStack>) -> Result<bool> {
+    pub(in crate::game) fn use_vault(
+        &mut self,
+        pos: [i32; 3],
+        held: Option<&ItemStack>,
+    ) -> Result<bool> {
         let Some(stack) = held.cloned() else {
             return Ok(false);
         };
@@ -288,7 +296,12 @@ impl Game<'_> {
     }
     /// `VaultRenderer`: the display item of every vault near the camera that
     /// shows one, turning above its floor.
-    pub(super) fn vault_geometry(&self, camera: glam::DVec3, alpha: f64, out: &mut Vec<Vertex>) {
+    pub(in crate::game) fn vault_geometry(
+        &self,
+        camera: glam::DVec3,
+        alpha: f64,
+        out: &mut Vec<Vertex>,
+    ) {
         self.vault_items(camera, alpha, |d| {
             self.submit_item_world(d.state, d.pose, d.light, out);
         });
@@ -296,7 +309,7 @@ impl Game<'_> {
 
     /// The items [`Self::vault_geometry`] draws: each copy of a display item's
     /// cluster (`ItemEntityRenderer.renderMultipleFromCount`).
-    pub(super) fn vault_items(
+    pub(in crate::game) fn vault_items(
         &self,
         camera: glam::DVec3,
         alpha: f64,

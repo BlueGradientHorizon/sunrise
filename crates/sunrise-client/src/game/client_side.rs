@@ -1,5 +1,372 @@
 //! Client-owned fields of [`super::Game`].
-use super::*;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use super::*;
+
+#[path = "interface/advancements_screen.rs"]
+pub(in crate::game) mod advancements_screen;
+#[path = "runtime/agent_settings.rs"]
+pub(in crate::game) mod agent_settings;
+#[path = "blocks/beacon.rs"]
+pub(in crate::game) mod beacon;
+#[path = "interface/block_editor.rs"]
+pub(in crate::game) mod block_editor;
+#[path = "entities/boat_rider_fixture.rs"]
+pub(in crate::game) mod boat_rider_fixture;
+#[path = "blocks/bookshelves.rs"]
+pub(in crate::game) mod bookshelves;
+#[path = "items/bundles.rs"]
+pub(in crate::game) mod bundles;
+#[path = "interface/camera_hud.rs"]
+pub(in crate::game) mod camera_hud;
+#[path = "items/client_attack_targets.rs"]
+pub(in crate::game) mod client_attack_targets;
+#[path = "modding/client_cracks.rs"]
+pub(in crate::game) mod client_cracks;
+#[path = "modding/client_executor.rs"]
+pub(in crate::game) mod client_executor;
+#[path = "interface/client_reload/mod.rs"]
+pub(in crate::game) mod client_reload;
+#[path = "runtime/client_tick_steps.rs"]
+pub(in crate::game) mod client_tick_steps;
+#[path = "interface/clipboard.rs"]
+pub(in crate::game) mod clipboard;
+#[cfg(test)]
+#[path = "interface/cloud_height_frame_tests.rs"]
+pub(in crate::game) mod cloud_height_frame_tests;
+#[path = "interface/code_of_conduct.rs"]
+pub(in crate::game) mod code_of_conduct;
+#[path = "administration/command_blocks.rs"]
+pub(in crate::game) mod command_blocks;
+#[path = "interface/container_hooks.rs"]
+pub(in crate::game) mod container_hooks;
+#[path = "interface/container_layout.rs"]
+pub(in crate::game) mod container_layout;
+#[path = "runtime/control.rs"]
+pub(in crate::game) mod control;
+#[path = "items/creative_hotbar.rs"]
+pub(in crate::game) mod creative_hotbar;
+#[path = "interface/creative_screen.rs"]
+pub(in crate::game) mod creative_screen;
+#[cfg(test)]
+#[path = "entities/crosshair_pick_tests.rs"]
+pub(in crate::game) mod crosshair_pick_tests;
+#[path = "interface/custom_sky.rs"]
+pub(in crate::game) mod custom_sky;
+#[path = "interface/debug_keys.rs"]
+pub(in crate::game) mod debug_keys;
+#[path = "interface/debug_options.rs"]
+pub(in crate::game) mod debug_options;
+#[cfg(test)]
+#[path = "modding/debug_renderer_tests.rs"]
+pub(in crate::game) mod debug_renderer_tests;
+#[path = "interface/debug_renderers.rs"]
+pub(in crate::game) mod debug_renderers;
+#[path = "interface/demo_intro.rs"]
+pub(in crate::game) mod demo_intro;
+#[path = "interface/dialogs.rs"]
+pub(in crate::game) mod dialogs;
+#[cfg(test)]
+#[path = "interface/dragon_boss_bar_name_tests.rs"]
+pub(in crate::game) mod dragon_boss_bar_name_tests;
+#[path = "interface/dynamic_lights.rs"]
+pub(in crate::game) mod dynamic_lights;
+#[cfg(test)]
+#[path = "blocks/enchant_power_beam_tests.rs"]
+pub(in crate::game) mod enchant_power_beam_tests;
+#[path = "interface/entity_culling/mod.rs"]
+pub(in crate::game) mod entity_culling;
+#[path = "interface/extras.rs"]
+pub(in crate::game) mod extras;
+#[path = "world/far_terrain_edits.rs"]
+pub(in crate::game) mod far_terrain_edits;
+#[path = "interface/focused_text_field.rs"]
+pub(in crate::game) mod focused_text_field;
+#[path = "interface/fov.rs"]
+pub(in crate::game) mod fov;
+#[path = "interface/frame_geometry.rs"]
+pub(in crate::game) mod frame_geometry;
+#[cfg(feature = "friends")]
+#[path = "network/friends.rs"]
+pub(in crate::game) mod friends;
+#[cfg(not(feature = "friends"))]
+#[path = "network/friends_off.rs"]
+pub(in crate::game) mod friends;
+#[path = "interface/gamemode_switcher.rs"]
+pub(in crate::game) mod gamemode_switcher;
+#[path = "entities/glowing.rs"]
+pub(in crate::game) mod glowing;
+#[path = "interface/gui_entity.rs"]
+pub(in crate::game) mod gui_entity;
+#[cfg(test)]
+#[path = "modding/gui_layer_tests.rs"]
+pub(in crate::game) mod gui_layer_tests;
+#[path = "items/held_items.rs"]
+pub(in crate::game) mod held_items;
+#[cfg(test)]
+#[path = "interface/highlight_tip_tests.rs"]
+pub(in crate::game) mod highlight_tip_tests;
+#[path = "interface/hud_editor.rs"]
+pub(in crate::game) mod hud_editor;
+#[path = "interface/hud_room.rs"]
+pub(in crate::game) mod hud_room;
+#[path = "interface/ime.rs"]
+pub(in crate::game) mod ime;
+#[path = "modding/initial_client_models.rs"]
+pub(in crate::game) mod initial_client_models;
+#[path = "runtime/input_trace.rs"]
+pub(in crate::game) mod input_trace;
+#[path = "items/interactions.rs"]
+pub(in crate::game) mod interactions;
+#[path = "interface/inventory_input.rs"]
+pub(in crate::game) mod inventory_input;
+#[path = "interface/inventory_slots.rs"]
+pub(in crate::game) mod inventory_slots;
+#[path = "interface/item_draw.rs"]
+pub(in crate::game) mod item_draw;
+#[path = "network/lan_screen.rs"]
+pub(in crate::game) mod lan_screen;
+#[path = "runtime/launch_timeout.rs"]
+pub(in crate::game) mod launch_timeout;
+#[cfg(test)]
+#[path = "interface/lightmap_expression_tests.rs"]
+pub(in crate::game) mod lightmap_expression_tests;
+#[path = "runtime/loading_screen.rs"]
+pub(in crate::game) mod loading_screen;
+#[path = "runtime/loading_window.rs"]
+pub(in crate::game) mod loading_window;
+#[path = "interface/locator_bar.rs"]
+pub(in crate::game) mod locator_bar;
+#[path = "interface/look.rs"]
+pub(in crate::game) mod look;
+#[path = "blocks/loom.rs"]
+pub(in crate::game) mod loom;
+#[path = "interface/menu_clicks.rs"]
+pub(in crate::game) mod menu_clicks;
+#[path = "mobs/mob_blocks.rs"]
+pub(in crate::game) mod mob_blocks;
+#[path = "mobs/mob_sounds.rs"]
+pub(in crate::game) mod mob_sounds;
+#[cfg(test)]
+#[path = "modding/mod_menu_decisions_tests.rs"]
+pub(in crate::game) mod mod_menu_decisions_tests;
+#[path = "interface/mod_toasts.rs"]
+pub(in crate::game) mod mod_toasts;
+#[path = "interface/music.rs"]
+pub(in crate::game) mod music;
+#[path = "interface/narrator.rs"]
+pub(in crate::game) mod narrator;
+#[path = "modding/native_block_entity_draw.rs"]
+pub mod native_block_entity_draw;
+#[path = "modding/native_claimed_items.rs"]
+pub(in crate::game) mod native_claimed_items;
+#[path = "interface/native_client_screens.rs"]
+pub(in crate::game) mod native_client_screens;
+#[path = "modding/native_client_services.rs"]
+pub mod native_client_services;
+#[path = "modding/native_client_session.rs"]
+pub(in crate::game) mod native_client_session;
+#[path = "modding/native_components.rs"]
+pub(in crate::game) mod native_components;
+#[path = "modding/native_custom_geometry.rs"]
+pub(in crate::game) mod native_custom_geometry;
+#[path = "modding/native_dynamic_textures.rs"]
+pub(in crate::game) mod native_dynamic_textures;
+#[path = "modding/native_fluid_render.rs"]
+pub(in crate::game) mod native_fluid_render;
+#[cfg(test)]
+#[path = "modding/native_general_renderers_tests.rs"]
+pub(in crate::game) mod native_general_renderers_tests;
+#[path = "modding/native_hotbar_slot.rs"]
+pub(in crate::game) mod native_hotbar_slot;
+#[path = "modding/native_instance_groups.rs"]
+pub(in crate::game) mod native_instance_groups;
+#[cfg(test)]
+#[path = "modding/native_item_frame_renderers_tests.rs"]
+pub(in crate::game) mod native_item_frame_renderers_tests;
+#[path = "modding/native_key_mappings.rs"]
+pub(in crate::game) mod native_key_mappings;
+#[cfg(test)]
+#[path = "modding/native_key_mappings_tests.rs"]
+pub(in crate::game) mod native_key_mappings_tests;
+#[cfg(test)]
+#[path = "modding/native_level_notify_tests.rs"]
+pub(in crate::game) mod native_level_notify_tests;
+#[path = "modding/native_living_blocking.rs"]
+pub(in crate::game) mod native_living_blocking;
+#[path = "modding/native_local_player_writes.rs"]
+pub(in crate::game) mod native_local_player_writes;
+#[path = "modding/native_local_sounds.rs"]
+pub(in crate::game) mod native_local_sounds;
+#[path = "modding/native_mapping_presses.rs"]
+pub(in crate::game) mod native_mapping_presses;
+#[path = "modding/native_menu_slot_kinds.rs"]
+pub(in crate::game) mod native_menu_slot_kinds;
+#[path = "modding/native_model_3d.rs"]
+pub(in crate::game) mod native_model_3d;
+#[path = "modding/native_net.rs"]
+pub(in crate::game) mod native_net;
+#[path = "modding/native_panel.rs"]
+pub(in crate::game) mod native_panel;
+#[path = "modding/native_panel_recipes.rs"]
+pub(in crate::game) mod native_panel_recipes;
+#[path = "modding/native_passage_cross.rs"]
+pub(in crate::game) mod native_passage_cross;
+#[cfg(test)]
+#[path = "modding/native_render_pair_tests.rs"]
+pub(in crate::game) mod native_render_pair_tests;
+#[path = "modding/native_scene.rs"]
+pub(in crate::game) mod native_scene;
+#[path = "modding/native_scene_live.rs"]
+pub(in crate::game) mod native_scene_live;
+#[cfg(test)]
+#[path = "modding/native_scene_live_tests.rs"]
+pub(in crate::game) mod native_scene_live_tests;
+#[path = "modding/native_shaders.rs"]
+pub(in crate::game) mod native_shaders;
+#[cfg(test)]
+#[path = "modding/native_small_reads_tests.rs"]
+pub(in crate::game) mod native_small_reads_tests;
+#[path = "modding/native_special_renderers.rs"]
+pub(in crate::game) mod native_special_renderers;
+#[cfg(test)]
+#[path = "modding/native_spectator_shader_tests.rs"]
+pub(in crate::game) mod native_spectator_shader_tests;
+#[path = "modding/native_terrain_model.rs"]
+pub(in crate::game) mod native_terrain_model;
+#[path = "interface/options.rs"]
+pub(in crate::game) mod options;
+#[cfg(test)]
+#[path = "interface/options_close_tests.rs"]
+pub(in crate::game) mod options_close_tests;
+#[cfg(test)]
+#[path = "interface/pack_clouds_frame_tests.rs"]
+pub(in crate::game) mod pack_clouds_frame_tests;
+#[path = "world/packs/mod.rs"]
+pub(in crate::game) mod packs;
+#[path = "interface/pad_actions.rs"]
+pub(in crate::game) mod pad_actions;
+#[path = "interface/pad_craft.rs"]
+pub(in crate::game) mod pad_craft;
+#[path = "interface/pad_menu.rs"]
+pub(in crate::game) mod pad_menu;
+#[path = "modding/payload_transport.rs"]
+pub(in crate::game) mod payload_transport;
+#[path = "interface/perspective.rs"]
+pub(in crate::game) mod perspective;
+#[path = "entities/pick_accumulator.rs"]
+pub(in crate::game) mod pick_accumulator;
+#[path = "interface/play_input.rs"]
+pub(in crate::game) mod play_input;
+#[cfg(test)]
+#[path = "interface/polytone_frame_tests.rs"]
+pub(in crate::game) mod polytone_frame_tests;
+#[path = "entities/pvp.rs"]
+pub(in crate::game) mod pvp;
+#[path = "interface/quick_actions.rs"]
+pub(in crate::game) mod quick_actions;
+#[path = "items/recipe_book.rs"]
+pub(in crate::game) mod recipe_book;
+#[path = "network/remote_block_writes.rs"]
+pub(in crate::game) mod remote_block_writes;
+#[path = "network/remote_camera.rs"]
+pub(in crate::game) mod remote_camera;
+#[path = "network/remote_chat.rs"]
+pub(in crate::game) mod remote_chat;
+#[path = "network/remote_objects.rs"]
+pub(in crate::game) mod remote_objects;
+#[path = "network/remote_removal.rs"]
+pub(in crate::game) mod remote_removal;
+#[cfg(test)]
+#[path = "world/remote_save_tests.rs"]
+pub(in crate::game) mod remote_save_tests;
+#[path = "network/remote_vehicles.rs"]
+pub(in crate::game) mod remote_vehicles;
+#[path = "interface/render_settings.rs"]
+pub(in crate::game) mod render_settings;
+#[path = "interface/render_tick.rs"]
+pub(in crate::game) mod render_tick;
+#[path = "runtime/replay.rs"]
+pub(in crate::game) mod replay;
+#[path = "runtime/resource_loader.rs"]
+pub(in crate::game) mod resource_loader;
+#[path = "interface/screen_backgrounds.rs"]
+pub(in crate::game) mod screen_backgrounds;
+#[path = "interface/screen_build.rs"]
+pub(in crate::game) mod screen_build;
+#[path = "interface/screen_build_fixture.rs"]
+pub(in crate::game) mod screen_build_fixture;
+#[cfg(test)]
+#[path = "interface/screen_render_phase_tests.rs"]
+pub(in crate::game) mod screen_render_phase_tests;
+#[path = "interface/screen_room.rs"]
+pub(in crate::game) mod screen_room;
+#[path = "interface/screen_widgets.rs"]
+pub(in crate::game) mod screen_widgets;
+#[path = "interface/screens.rs"]
+pub(in crate::game) mod screens;
+#[path = "runtime/screenshot_sequence.rs"]
+pub(in crate::game) mod screenshot_sequence;
+#[path = "network/server_links.rs"]
+pub(in crate::game) mod server_links;
+#[path = "world/server_packs.rs"]
+pub(in crate::game) mod server_packs;
+#[cfg(test)]
+#[path = "interface/shader_pack_switch_tests.rs"]
+pub(in crate::game) mod shader_pack_switch_tests;
+#[cfg(test)]
+#[path = "interface/tests/sign_outline_tests.rs"]
+pub(in crate::game) mod sign_outline_tests;
+#[path = "network/social.rs"]
+pub(in crate::game) mod social;
+#[path = "interface/spectator.rs"]
+pub(in crate::game) mod spectator;
+#[path = "modding/stacked_on_other.rs"]
+pub(in crate::game) mod stacked_on_other;
+#[path = "interface/startup_menu.rs"]
+pub(in crate::game) mod startup_menu;
+#[path = "runtime/station_control.rs"]
+pub(in crate::game) mod station_control;
+#[path = "interface/stats_screen.rs"]
+pub(in crate::game) mod stats_screen;
+#[path = "interface/studio.rs"]
+pub(in crate::game) mod studio;
+#[path = "interface/subtitle_hud.rs"]
+pub(in crate::game) mod subtitle_hud;
+#[cfg(test)]
+#[path = "blocks/sulfur_bucket_tests.rs"]
+pub(in crate::game) mod sulfur_bucket_tests;
+#[cfg(test)]
+#[path = "interface/sync_background_tests.rs"]
+pub(in crate::game) mod sync_background_tests;
+#[path = "entities/text_displays.rs"]
+pub(in crate::game) mod text_displays;
+#[cfg(test)]
+#[path = "interface/text_expression_tests.rs"]
+pub(in crate::game) mod text_expression_tests;
+#[path = "world/tick_script.rs"]
+pub(in crate::game) mod tick_script;
+#[path = "interface/toast_manager.rs"]
+pub(in crate::game) mod toast_manager;
+#[path = "blocks/transient_blocks.rs"]
+pub(in crate::game) mod transient_blocks;
+#[path = "runtime/ui_control.rs"]
+pub(in crate::game) mod ui_control;
+#[cfg(test)]
+#[path = "items/use_same_item_tests.rs"]
+pub(in crate::game) mod use_same_item_tests;
+#[path = "items/using_item.rs"]
+pub(in crate::game) mod using_item;
+#[path = "interface/win.rs"]
+pub(in crate::game) mod win;
+#[path = "runtime/window_handler.rs"]
+pub(in crate::game) mod window_handler;
+#[path = "runtime/window_title.rs"]
+pub(in crate::game) mod window_title;
+#[cfg(test)]
+#[path = "modding/world_name_tag_tests.rs"]
+pub(in crate::game) mod world_name_tag_tests;
+#[path = "world/world_session.rs"]
+pub(in crate::game) mod world_session;
 
 pub(in crate::game) struct ClientState {
     /// `DebugEntryChunkGeneration`'s `lastPos` and `result`: F3's `Density` line is sampled
@@ -8,10 +375,10 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game) pending_pack_reload: bool,
     /// HDR, Smooth Gradients, picked path and outcome at the last frame attempt, including a failed
     /// replacement (`follow_frame`).
-    pub(in crate::game) frame_attempted: render_settings::FrameAttempt,
+    pub(in crate::game::client_side) frame_attempted: render_settings::FrameAttempt,
     /// When `resourcepacks/` was last looked at for the open pack screen, and what it held
     /// (`watch_pack_folder`).
-    pub(in crate::game) pack_folder: Option<(
+    pub(in crate::game::client_side) pack_folder: Option<(
         std::time::Instant,
         Vec<(String, u64, Option<std::time::SystemTime>)>,
     )>,
@@ -22,16 +389,17 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game) link_prompt: Option<String>,
     /// A server's Code of Conduct to accept (game/interface/code_of_conduct.rs).
     pub(in crate::game) code_of_conduct: Option<code_of_conduct::Prompt>,
-    pub(in crate::game) world_renderer_ready: bool,
+    pub(in crate::game::client_side) world_renderer_ready: bool,
     pub(in crate::game) instance_groups:
         std::cell::RefCell<native_instance_groups::InstanceGroupStorage>,
-    pub(in crate::game) standalone_geometry: native_block_entity_draw::StandaloneGeometry,
+    pub(in crate::game::client_side) standalone_geometry:
+        native_block_entity_draw::StandaloneGeometry,
     /// `FogRenderer`'s evolving state.
     pub(in crate::game) fog: sunrise_client::fog::FogState,
     pub(in crate::game) screen_fx: sunrise_client::screen_effects::ScreenEffects,
     /// `LocalPlayer.itemActivation`: the totem flying up to the screen.
     pub(in crate::game) item_activation: sunrise_client::item_activation::ItemActivation,
-    pub(in crate::game) weather_parameters: sunrise_client::weather::ParameterCache,
+    pub(in crate::game::client_side) weather_parameters: sunrise_client::weather::ParameterCache,
     pub(in crate::game) panorama_rotation: sunrise_client::gfx::panorama::Rotation,
     pub(in crate::game) lod_source_attempted: bool,
     pub(in crate::game) lod_observe: sunrise_client::fast_hash::FxHashSet<(i32, i32)>,
@@ -55,18 +423,19 @@ pub(in crate::game) struct ClientState {
     /// This mouse event's button-up ended a container hook's press latch (`container_button_up`).
     pub(in crate::game) container_owned_up: bool,
     /// Physical mouse presses so far: a drag knows whether its press is still the latest.
-    pub(in crate::game) physical_presses: u64,
+    pub(in crate::game::client_side) physical_presses: u64,
     /// `AbstractContainerScreen`'s quick craft and skip-release state.
-    pub(in crate::game) inv_clicks: sunrise_client::container_screen::Clicks,
+    pub(in crate::game::client_side) inv_clicks: sunrise_client::container_screen::Clicks,
     /// The Mouse Tweaks extra's drag and wheel (`tweaks`).
-    pub(in crate::game) tweaks: extras::mouse_tweaks::Tweaks,
+    pub(in crate::game::client_side) tweaks: extras::mouse_tweaks::Tweaks,
     /// The wheel and hovered slot of `BundleMouseActions`.
-    pub(in crate::game) bundle_mouse: bundles::BundleMouse,
+    pub(in crate::game::client_side) bundle_mouse: bundles::BundleMouse,
     /// The last inventory click, for the double click that gathers a stack.
-    pub(in crate::game) last_inv_click: Option<(std::time::Instant, Option<usize>, bool)>,
+    pub(in crate::game::client_side) last_inv_click:
+        Option<(std::time::Instant, Option<usize>, bool)>,
     /// `lastQuickMoved`: what the last Shift click moved, which a Shift
     /// double click moves every stack of.
-    pub(in crate::game) last_quick_moved: Option<ItemStack>,
+    pub(in crate::game::client_side) last_quick_moved: Option<ItemStack>,
     /// The other players' cracks (`LevelRenderer.destroyingBlocks`): breaker id to the block,
     /// stage (0..=9), last refresh time and stored additional display positions.
     pub(in crate::game) destroying: HashMap<i32, client_cracks::ClientCrack>,
@@ -78,7 +447,8 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game) physical_buttons: HashSet<MouseButton>,
     pub(in crate::game) drag_button: Option<MouseButton>,
     /// Control + left click as a right click (macOS).
-    pub(in crate::game) right_click_emulation: sunrise_client_input::mouse::RightClickEmulation,
+    pub(in crate::game::client_side) right_click_emulation:
+        sunrise_client_input::mouse::RightClickEmulation,
     pub(in crate::game) cursor: (f32, f32),
     /// The window pointer sample; frames and input project it at the current GUI size.
     pub(in crate::game) window_cursor: Option<sunrise_client::window::PointerSample>,
@@ -107,18 +477,18 @@ pub(in crate::game) struct ClientState {
     /// The window's last focus change during a scripted run, applied once the run ends.
     pub(in crate::game) focus_after_run: Option<bool>,
     /// Whether the window currently accepts input method events.
-    pub(in crate::game) ime_allowed: bool,
+    pub(in crate::game::client_side) ime_allowed: bool,
     /// The character of the key held down, for the input method's echo of it.
     pub(in crate::game) held_key_text: ime::HeldKeyText,
     /// The candidate window's area last given to the window, in pixels.
-    pub(in crate::game) ime_area: Option<[i32; 4]>,
+    pub(in crate::game::client_side) ime_area: Option<[i32; 4]>,
     /// When the window lost focus, while it is still without
     /// (`Minecraft.lastActiveTime`: pausing waits 500 ms).
     pub(in crate::game) focus_lost: Option<Instant>,
     /// The keyboard's modifier state (`KeyEvent.modifiers`).
     pub(in crate::game) modifiers: winit::keyboard::ModifiersState,
     /// The window's fullscreen request and reported state.
-    pub(in crate::game) fullscreen: sunrise_client::window::FullscreenState,
+    pub(in crate::game::client_side) fullscreen: sunrise_client::window::FullscreenState,
     /// MouseHandler's accumulated look and wheel state.
     pub(in crate::game) mouse: MouseLook,
     /// An agent moved the mouse (`mouse-move`) since the pointer was last
@@ -129,7 +499,7 @@ pub(in crate::game) struct ClientState {
     /// Uniform `KeyState` (`isDown`, `clickCount`) for every vanilla mapping slot.
     pub(in crate::game) vanilla_mappings: sunrise_client::keymapping::VanillaMappings,
     /// A world screen with the pointer captured was open last frame.
-    pub(in crate::game) was_playing: bool,
+    pub(in crate::game::client_side) was_playing: bool,
     pub(in crate::game) debug: bool,
     /// `sunrise-ctl gpu-passes`: time Sunrise's own passes on the GPU with F3 shut.
     pub(in crate::game) gpu_passes: bool,
@@ -137,7 +507,7 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game) gpu_pass_detail: bool,
     pub(in crate::game) screen: Screen,
     /// What `window_resize` last reported: the physical size and the GUI settings behind the scaled size.
-    pub(in crate::game) resize_state: Option<ResizeState>,
+    pub(in crate::game::client_side) resize_state: Option<ResizeState>,
     /// Avoid an endless rebuild loop if the new device is lost as well.
     pub(in crate::game) last_device_recovery: Option<Instant>,
     /// CPU geometry storage retained across frames, including empty/title frames.
@@ -145,7 +515,8 @@ pub(in crate::game) struct ClientState {
     /// Sunrise Extras' dynamic lights this frame (`dynamic_lights.rs`), and how brightly each
     /// item glows (built the first time the extra is on).
     pub(in crate::game) dynamic_lights: Vec<[f32; 4]>,
-    pub(in crate::game) luminance: std::cell::OnceCell<sunrise_client::dynamic_light::Luminance>,
+    pub(in crate::game::client_side) luminance:
+        std::cell::OnceCell<sunrise_client::dynamic_light::Luminance>,
     /// Name tags drawn over everything (`RenderPipelines.TEXT_SEE_THROUGH`).
     pub(in crate::game) see_through_vertices: Vec<Vertex>,
     /// The first-person player's model, which only a native pack's shadow pass draws.
@@ -173,7 +544,7 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game) pack_ids: Option<shader_packs::PackIds>,
     pub(in crate::game) started: Instant,
     /// `SpectatorGui`: the menu a spectator opens with the hotbar keys.
-    pub(in crate::game) spectator_gui: sunrise_client::spectator_menu::SpectatorGui,
+    pub(in crate::game::client_side) spectator_gui: sunrise_client::spectator_menu::SpectatorGui,
     /// FramerateLimitTracker.latestInputTime.
     pub(in crate::game) last_input: Instant,
     pub(in crate::game) frames: u64,
@@ -190,10 +561,10 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game) prepared_model_draws:
         std::cell::RefCell<Vec<sunrise_client::gfx::PreparedModelDraw>>,
     /// Scratch for the copies a frame draws through the terrain materials.
-    pub(in crate::game) model_copy_order: Vec<u32>,
+    pub(in crate::game::client_side) model_copy_order: Vec<u32>,
     pub(in crate::game) world_geometry: Option<sunrise_client::world_geometry::WorldGeometry>,
     /// `DebugRenderer.lastDebugEntriesVersion`: none before the first view of a world.
-    pub(in crate::game) debug_renderers_version: Option<u64>,
+    pub(in crate::game::client_side) debug_renderers_version: Option<u64>,
     /// Next undrawn mod layer in HUD `gui_layers::order`; `None` while hidden or outside its pass.
     pub(in crate::game) hud_layer_next: Option<usize>,
     /// The mod block entities' view distances, asked of the parts once (`native_block_entity_draw`).
@@ -203,7 +574,7 @@ pub(in crate::game) struct ClientState {
     /// resolved from the block names once, not for every block entity in every frame.
     pub(in crate::game) block_entity_reach: std::cell::OnceCell<Box<[(Reach, bool)]>>,
     /// `item_level` for one frame, game time, day time and dimension.
-    pub(in crate::game) item_level_cache: std::cell::RefCell<
+    pub(in crate::game::client_side) item_level_cache: std::cell::RefCell<
         Option<(
             (u64, i64, i64, &'static str),
             sunrise_assets::item_model::LevelState,
@@ -218,30 +589,30 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game) gui_ticks: i32,
     /// The sprite animation clock (`TextureManager.tick`): counts only the ticks the level
     /// runs normally, so `/tick freeze` holds it and `/tick step` moves it on.
-    pub(in crate::game) texture_ticks: u64,
+    pub(in crate::game::client_side) texture_ticks: u64,
     pub(in crate::game) health_hud: hud_layout::HealthHud,
     pub(in crate::game) message: Option<(String, Instant)>,
     pub(in crate::game) music: sunrise_client::music::MusicManager,
     /// The tracks native mods play over the music (`native_music_layers`).
-    pub(in crate::game) music_layers: sunrise_client::music::MusicLayers,
+    pub(in crate::game::client_side) music_layers: sunrise_client::music::MusicLayers,
     /// `ToastManager.nowPlayingToast`: there while Music Toast is not Never.
-    pub(in crate::game) now_playing: Option<sunrise_client::toasts::NowPlayingToast>,
+    pub(in crate::game::client_side) now_playing: Option<sunrise_client::toasts::NowPlayingToast>,
     /// The Music Toast option the toast was last set up for.
-    pub(in crate::game) music_toast_state: u8,
-    pub(in crate::game) music_notes: sunrise_client::toasts::MusicNotes,
+    pub(in crate::game::client_side) music_toast_state: u8,
+    pub(in crate::game::client_side) music_notes: sunrise_client::toasts::MusicNotes,
     pub(in crate::game) ambience: sunrise_client::ambience::Ambience,
     /// The sound engine was told the game paused (pauseAllExcept).
-    pub(in crate::game) sound_paused: bool,
+    pub(in crate::game::client_side) sound_paused: bool,
     /// Minecarts whose `MinecartSoundInstance` is playing.
     pub(in crate::game) cart_sounds: HashSet<u32>,
     /// The minecart the riding sounds were started for (`LocalPlayer.startRiding`).
     pub(in crate::game) riding_cart_sounds: Option<u32>,
     /// The happy ghast its riding sound was started for (`LocalPlayer.startRiding`).
-    pub(in crate::game) riding_sound: Option<u32>,
+    pub(in crate::game::client_side) riding_sound: Option<u32>,
     /// `LocalPlayer.wasFallFlying` for the elytra's flying sound.
-    pub(in crate::game) was_fall_flying: bool,
+    pub(in crate::game::client_side) was_fall_flying: bool,
     /// Bees whose buzz is playing, and whether it is the aggressive one.
-    pub(in crate::game) bee_sounds: HashMap<u32, bool>,
+    pub(in crate::game::client_side) bee_sounds: HashMap<u32, bool>,
     /// Remote guardian eye targets reused between ticks.
     pub(in crate::game) guardian_look_scratch: Vec<(usize, [f64; 3])>,
     pub(in crate::game) explicit_particle_quads: sunrise_client::particles::ParticleQuads,
@@ -262,10 +633,10 @@ pub(in crate::game) struct ClientState {
     /// `Camera` (eye height and field-of-view easing, view placement).
     pub(in crate::game) view: sunrise_client::camera::Camera,
     /// `FramerateLimiter` and its clock.
-    pub(in crate::game) limiter: sunrise_client::window::FramerateLimiter,
-    pub(in crate::game) frame_clock: sunrise_client::window::SystemClock,
+    pub(in crate::game::client_side) limiter: sunrise_client::window::FramerateLimiter,
+    pub(in crate::game::client_side) frame_clock: sunrise_client::window::SystemClock,
     /// Hud.scopeScale (spyglass overlay size).
-    pub(in crate::game) scope_scale: f32,
+    pub(in crate::game::client_side) scope_scale: f32,
     /// Duration of the last frame in ticks (GUI easing).
     pub(in crate::game) frame_ticks: f32,
     /// `ItemStack.popTime` of the nine hotbar stacks, then the off hand: set to 5
@@ -287,19 +658,19 @@ pub(in crate::game) struct ClientState {
     /// the hand doesn't show yet (`Game::hand_stack_replaced`).
     pub(in crate::game) hands_replaced: [bool; 2],
     pub(in crate::game) hand_strength: sunrise_client::attack_strength::AttackStrength,
-    pub(in crate::game) look: look::LookCache,
+    pub(in crate::game::client_side) look: look::LookCache,
     pub(in crate::game) tutorial: tutorial::Tutorial,
     pub(in crate::game) toast_manager: toast_manager::ToastManager,
     /// The open screen's narration (`Screen`'s narration state and timing).
     pub(in crate::game) narration: sunrise_client::screen_narrator::ScreenNarrator,
     /// Where the options screen returns: true = title, false = pause menu.
-    pub(in crate::game) options_from_title: bool,
+    pub(in crate::game::client_side) options_from_title: bool,
     /// `ClientAvatarState`: walked distance and view bob.
     pub(in crate::game) avatar: sunrise_client::camera::AvatarBob,
     /// OptiFine custom sky layers' eased brightness (`custom_sky.rs`).
-    pub(in crate::game) custom_sky: custom_sky::CustomSkyView,
+    pub(in crate::game::client_side) custom_sky: custom_sky::CustomSkyView,
     /// `ClientLevel.rainSoundTime`: ticks of rain since the last rain sound.
-    pub(in crate::game) rain_sound_time: i32,
+    pub(in crate::game::client_side) rain_sound_time: i32,
     /// Bolts that struck here and sky flashes they made, in total (`status`).
     pub(in crate::game) lightning_seen: [u32; 2],
     /// The open WinScreen (game/interface/win.rs).
@@ -316,9 +687,9 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game) map_frame_model: frames::FrameModel,
     pub(in crate::game) glow_map_frame_model: frames::FrameModel,
     /// `WaypointStyleManager`.
-    pub(in crate::game) waypoint_styles: sunrise_client::locator_bar::WaypointStyles,
+    pub(in crate::game::client_side) waypoint_styles: sunrise_client::locator_bar::WaypointStyles,
     /// `ClientWaypointManager`: the locator bar's waypoints.
-    pub(in crate::game) waypoints: sunrise_client::locator_bar::ClientWaypoints,
+    pub(in crate::game::client_side) waypoints: sunrise_client::locator_bar::ClientWaypoints,
     /// The camera the last frame drew from (position, yaw, pitch, fov), for the locator bar.
     pub(in crate::game) locator_camera: Option<([f64; 3], f32, f32, f32)>,
     pub(in crate::game) native_camera_frame: Option<mod_api::Camera>,
@@ -340,7 +711,7 @@ pub(in crate::game) struct ClientState {
     /// `GameRenderer.spectatedEntityEffectActive` (`toggleSpectatorPostEffect`).
     pub(in crate::game) spectated_post_effect_active: bool,
     /// `LocalPlayer.experienceDisplayStartTick`: (last progress, seen a change, tick).
-    pub(in crate::game) experience_display: (f32, bool, u64),
+    pub(in crate::game::client_side) experience_display: (f32, bool, u64),
     pub(in crate::game) boat_models: boats::BoatModels,
     /// EndCrystalModel's baked layer.
     pub(in crate::game) crystal_model: Option<sunrise_client::mobs::Part>,
@@ -353,10 +724,12 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game) map_patches: Vec<sunrise_client::font::Patch>,
     pub(in crate::game) name_tag_layouts: names::NameTagLayouts,
     pub(in crate::game) see_through_collector: text_displays::SeeThroughCollector,
-    pub(in crate::game) translucent_display_collector: text_displays::TranslucentDisplayCollector,
-    pub(in crate::game) display_visible_scratch: Vec<(i32, f64)>,
-    pub(in crate::game) block_display_parts_scratch: Vec<u32>,
-    pub(in crate::game) display_inline_profiles_scratch: Vec<std::sync::Arc<serde_json::Value>>,
+    pub(in crate::game::client_side) translucent_display_collector:
+        text_displays::TranslucentDisplayCollector,
+    pub(in crate::game::client_side) display_visible_scratch: Vec<(i32, f64)>,
+    pub(in crate::game::client_side) block_display_parts_scratch: Vec<u32>,
+    pub(in crate::game::client_side) display_inline_profiles_scratch:
+        Vec<std::sync::Arc<serde_json::Value>>,
     pub(in crate::game) interactions:
         std::collections::HashMap<i32, interactions::RemoteInteraction>,
     /// The fence knots a server tracks to this client, by entity id, at their
@@ -373,19 +746,19 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game) remote_hooks: Vec<fishing::RemoteHook>,
     pub(in crate::game) trident_model: Option<sunrise_client::mobs::Part>,
     pub(in crate::game) arrow_model: Option<sunrise_client::mobs::Part>,
-    pub(in crate::game) bee_stinger_model: Option<sunrise_client::mobs::Part>,
+    pub(in crate::game::client_side) bee_stinger_model: Option<sunrise_client::mobs::Part>,
     /// The creative search projection whose stacks the mods' `item_name` parts last named.
     pub(in crate::game) creative_search_named: Option<u64>,
     /// `CreativeModeInventoryScreen.ignoreTextInput`: the chat key opened the
     /// search tab, so the letter it carries is not typed into the box.
     pub(in crate::game) creative_ignore_text: bool,
     /// The Agent Control setting the socket was last opened or closed for (`agent_settings`).
-    pub(in crate::game) agent_control_on: bool,
+    pub(in crate::game::client_side) agent_control_on: bool,
     /// When an agent's last command came.
-    pub(in crate::game) agent_last: Option<Instant>,
+    pub(in crate::game::client_side) agent_last: Option<Instant>,
     pub(in crate::game) frame_stats: sunrise_client::control::FrameStats,
     /// This thread's and all threads' allocation counts at the last rendered frame.
-    pub(in crate::game) alloc_mark: Option<(
+    pub(in crate::game::client_side) alloc_mark: Option<(
         sunrise_threads::alloc_count::Counts,
         sunrise_threads::alloc_count::Counts,
     )>,
@@ -408,7 +781,7 @@ pub(in crate::game) struct ClientState {
     /// This frame's view frustum, for culling entities and block entities.
     pub(in crate::game) view_frustum: Option<sunrise_client::gfx::JoinedFrusta>,
     /// `SUNRISE_TICK_SCRIPT`'s scenario (game/world/tick_script.rs).
-    pub(in crate::game) tick_script: tick_script::TickScript,
+    pub(in crate::game::client_side) tick_script: tick_script::TickScript,
     /// The last water plane `water_plane` found, kept while none is in reach.
     pub(in crate::game) water_plane_memo: std::cell::Cell<Option<f32>>,
     /// The camera's block and the second `water_plane` last scanned at.
@@ -424,12 +797,12 @@ pub(in crate::game) struct ClientState {
     /// A connection the Disconnected screen makes on its next frame, as that answer asked.
     pub(in crate::game) retry_due: Option<sunrise_hooks::connection::Server>,
     /// What the window's title last showed: its session part and the language (window_title.rs).
-    pub(in crate::game) window_title: Option<(Option<&'static str>, u64)>,
-    pub(super) studio: studio::Studio,
+    pub(in crate::game::client_side) window_title: Option<(Option<&'static str>, u64)>,
+    pub(in crate::game) studio: studio::Studio,
     /// The Social Interactions screen and the players whose chat is hidden (game/network/social.rs).
     pub(in crate::game) social: social::Social,
     /// Chat Settings opened from RestrictionsScreen: Done returns to World Options.
-    pub(in crate::game) options_to_world_options: bool,
+    pub(in crate::game::client_side) options_to_world_options: bool,
     /// `GameTestBlockHighlightRenderer.markers`: block, text, removal time.
     pub(in crate::game) test_highlights: HashMap<(i32, i32, i32), (String, std::time::Instant)>,
     /// KeyboardHandler's debug key state (game/interface/debug_keys.rs), the physical
@@ -438,14 +811,15 @@ pub(in crate::game) struct ClientState {
     /// The F3 overlay's charts (F3+2, F3+3).
     pub(in crate::game) debug_charts: sunrise_client::debug_chart::DebugCharts,
     /// `DebugOptionsScreen` while it is open (game/interface/debug_options.rs).
-    pub(in crate::game) debug_options: Option<debug_options::DebugOptionsUi>,
+    pub(in crate::game::client_side) debug_options: Option<debug_options::DebugOptionsUi>,
     /// `DebugEntryMemory`'s readings (game/interface/debug_lines.rs).
     pub(in crate::game) memory_meter:
         std::cell::RefCell<sunrise_client::debug_overlay::MemoryMeter>,
     /// The F3 overlay's vertices between rebuilds (`draw_debug_overlay_under`).
-    pub(in crate::game) debug_paint: RefCell<sunrise_client::debug_overlay::PaintCache>,
+    pub(in crate::game::client_side) debug_paint:
+        RefCell<sunrise_client::debug_overlay::PaintCache>,
     /// The F3 overlay's last reading of the refresh rate, and when it was taken.
-    pub(in crate::game) debug_refresh: std::cell::Cell<Option<(Instant, Option<u32>)>>,
+    pub(in crate::game::client_side) debug_refresh: std::cell::Cell<Option<(Instant, Option<u32>)>>,
     /// `Minecraft.gpuUtilization`: the last timed frame's GPU time over its
     /// CPU time, in percent.
     pub(in crate::game) gpu_utilization: f64,
@@ -464,14 +838,14 @@ pub(in crate::game) struct ClientState {
     /// The screen ([`Game::key_screen`]) the menu focus belongs to. Another
     /// screen in front drops it, as `Gui.setScreen` drops the focus of the
     /// screen it leaves (`Screen.clearFocus`).
-    pub(in crate::game) focus_screen: u64,
-    pub(in crate::game) gamemode_switcher:
+    pub(in crate::game::client_side) focus_screen: u64,
+    pub(in crate::game::client_side) gamemode_switcher:
         Option<sunrise_client::game_mode_switcher::GameModeSwitcher>,
     /// The game is handling a key, mouse or typed-text event, from the window or the
     /// control socket: the only time a mod reaches the clipboard (`with_user_input`).
-    pub(in crate::game) user_input: std::cell::Cell<bool>,
+    pub(in crate::game::client_side) user_input: std::cell::Cell<bool>,
     /// Select All in the append-only text fields.
-    pub(in crate::game) text_selection: sunrise_client::clipboard::AppendSelection,
+    pub(in crate::game::client_side) text_selection: sunrise_client::clipboard::AppendSelection,
     /// The client loop consumes a mod's quit request outside the calling hook.
     pub(in crate::game) client_quit: std::cell::Cell<saving::ClientQuit>,
     /// The world was saved for the application ending (`save_for_exit`).
@@ -486,14 +860,14 @@ pub(in crate::game) struct ClientState {
     /// `Hud.bossOverlay`: the bars this window is showing.
     pub(in crate::game) boss_overlay: sunrise_client::boss_overlay::BossOverlay,
     /// `WorldBorderRenderer` and its render state.
-    pub(in crate::game) border_renderer: sunrise_client::border_render::BorderRenderer,
+    pub(in crate::game::client_side) border_renderer: sunrise_client::border_render::BorderRenderer,
     /// The camera's 16-block section when the wall was last invalidated.
-    pub(in crate::game) border_section: Option<[i32; 3]>,
-    pub(in crate::game) border_state: sunrise_client::border_render::BorderRenderState,
+    pub(in crate::game::client_side) border_section: Option<[i32; 3]>,
+    pub(in crate::game::client_side) border_state: sunrise_client::border_render::BorderRenderState,
     pub(in crate::game) subtitles: subtitle_hud::SubtitleState,
-    pub(in crate::game) stats_ui: stats_screen::StatsUi,
+    pub(in crate::game::client_side) stats_ui: stats_screen::StatsUi,
     /// The Server Links screens' state (game/network/server_links.rs).
-    pub(in crate::game) links_ui: server_links::LinksUi,
+    pub(in crate::game::client_side) links_ui: server_links::LinksUi,
     pub(in crate::game) camera_type: sunrise_client::camera::CameraType,
     pub(in crate::game) requested_camera_type:
         std::cell::Cell<Option<sunrise_client::camera::CameraType>>,

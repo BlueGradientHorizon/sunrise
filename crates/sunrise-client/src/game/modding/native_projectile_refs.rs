@@ -57,7 +57,7 @@ impl Game<'_> {
     /// Narrows an entity to a projectile: one in the projectile list, a trident
     /// a player threw or a firework rocket. None for another kind, a stale
     /// handle or a client.
-    pub(super) fn projectile(&self, entity: EntityRef) -> Option<ProjectileRef> {
+    pub(in crate::game) fn projectile(&self, entity: EntityRef) -> Option<ProjectileRef> {
         let projectile = ProjectileRef::new(entity);
         self.native_projectile_backing(projectile)
             .map(|_| projectile)
@@ -74,7 +74,7 @@ impl Game<'_> {
 
     /// `Projectile.getOwner`: the owner as a resolved entity. None for no
     /// owner, one that is gone or in another level, or a stale handle.
-    pub(super) fn projectile_owner(&self, projectile: ProjectileRef) -> Option<EntityRef> {
+    pub(in crate::game) fn projectile_owner(&self, projectile: ProjectileRef) -> Option<EntityRef> {
         self.native_projectile_backing(projectile)?;
         self.entity_owner(projectile.entity())
     }
@@ -82,7 +82,7 @@ impl Game<'_> {
     /// `TraceableEntity.getOwner`: a projectile's owner (`Projectile.getOwner`)
     /// or a general row's, as a resolved entity. None for no owner or a kind
     /// with none, one that is gone or in another level, or a stale handle.
-    pub(super) fn entity_owner(&self, entity: EntityRef) -> Option<EntityRef> {
+    pub(in crate::game) fn entity_owner(&self, entity: EntityRef) -> Option<EntityRef> {
         let Some(backing) = self.native_projectile_backing(ProjectileRef::new(entity)) else {
             let Target::General(id) = self.native_entity_target(entity)? else {
                 return None;
@@ -112,7 +112,7 @@ impl Game<'_> {
 
     /// Resolves hit credit, persistent identity, and a separate non-living
     /// vehicle identity for collision exclusion. None for a stale owner or hook.
-    pub(super) fn native_projectile_owner_fields(
+    pub(in crate::game) fn native_projectile_owner_fields(
         &mut self,
         owner: Option<EntityRef>,
     ) -> Option<(OwnerFields, Option<u32>)> {
@@ -171,7 +171,7 @@ impl Game<'_> {
     /// `Projectile.setOwner`. False for a stale projectile or owner, or an
     /// owner that is a fishing hook (a trident a player threw takes a player
     /// only). Does not touch `leftOwner`.
-    pub(super) fn projectile_set_owner(
+    pub(in crate::game) fn projectile_set_owner(
         &mut self,
         projectile: ProjectileRef,
         owner: Option<EntityRef>,
@@ -196,7 +196,7 @@ impl Game<'_> {
     /// draw. A trident a player threw and a rocket turn the same way (no
     /// acceleration power). False, and nothing changed, for a stale projectile,
     /// `by` or owner, a non-finite power or a refusal.
-    pub(super) fn projectile_deflect(
+    pub(in crate::game) fn projectile_deflect(
         &mut self,
         projectile: ProjectileRef,
         deflection: Deflection,
@@ -265,7 +265,10 @@ impl Game<'_> {
     }
 
     /// `AbstractArrow.pickup`, for an arrow or a mob's trident.
-    pub(super) fn projectile_pickup(&self, projectile: ProjectileRef) -> Option<ArrowPickup> {
+    pub(in crate::game) fn projectile_pickup(
+        &self,
+        projectile: ProjectileRef,
+    ) -> Option<ArrowPickup> {
         Some(
             match self.native_projectile(projectile)?.arrow.as_ref()?.pickup {
                 Pickup::Disallowed => ArrowPickup::Disallowed,
@@ -277,7 +280,7 @@ impl Game<'_> {
 
     /// Sets `AbstractArrow.pickup`. False for a stale handle or a projectile
     /// that is not an arrow or a mob's trident.
-    pub(super) fn projectile_set_pickup(
+    pub(in crate::game) fn projectile_set_pickup(
         &mut self,
         projectile: ProjectileRef,
         pickup: ArrowPickup,
@@ -313,7 +316,7 @@ impl Game<'_> {
     }
 
     /// `AbstractArrow.getPierceLevel`: the signed byte stored by vanilla.
-    pub(super) fn projectile_pierce_level(
+    pub(in crate::game) fn projectile_pierce_level(
         &self,
         projectile: ProjectileRef,
     ) -> Result<i8, PierceLevelError> {
@@ -326,7 +329,7 @@ impl Game<'_> {
     }
 
     /// `AbstractArrow.setPierceLevel`: stores the signed byte without clamping.
-    pub(super) fn projectile_set_pierce_level(
+    pub(in crate::game) fn projectile_set_pierce_level(
         &mut self,
         projectile: ProjectileRef,
         level: i8,
@@ -339,7 +342,7 @@ impl Game<'_> {
     }
 
     /// `AbstractArrow.getBaseDamage`, for an arrow (a trident's is fixed).
-    pub(super) fn projectile_base_damage(&self, projectile: ProjectileRef) -> Option<f64> {
+    pub(in crate::game) fn projectile_base_damage(&self, projectile: ProjectileRef) -> Option<f64> {
         match self.native_projectile(projectile)?.kind {
             ProjectileKind::Arrow { base_damage, .. } => Some(base_damage),
             _ => None,
@@ -348,7 +351,7 @@ impl Game<'_> {
 
     /// `AbstractArrow.setBaseDamage`. False for a stale handle, a projectile
     /// that is not an arrow, or a value that is not finite.
-    pub(super) fn projectile_set_base_damage(
+    pub(in crate::game) fn projectile_set_base_damage(
         &mut self,
         projectile: ProjectileRef,
         damage: f64,
@@ -369,14 +372,14 @@ impl Game<'_> {
     }
 
     /// `AbstractArrow.isCritArrow`, for an arrow.
-    pub(super) fn projectile_critical(&self, projectile: ProjectileRef) -> Option<bool> {
+    pub(in crate::game) fn projectile_critical(&self, projectile: ProjectileRef) -> Option<bool> {
         let p = self.native_projectile(projectile)?;
         matches!(p.kind, ProjectileKind::Arrow { .. }).then(|| p.critical())
     }
 
     /// `AbstractArrow.setCritArrow`; clients see the flag at once through the
     /// entity data. False for a stale handle or a projectile that is not an arrow.
-    pub(super) fn projectile_set_critical(
+    pub(in crate::game) fn projectile_set_critical(
         &mut self,
         projectile: ProjectileRef,
         critical: bool,

@@ -9,7 +9,7 @@ use sunrise_world::registry::BlockStateId;
 
 /// The most falling blocks a level holds before `spawn_falling_block`
 /// refuses more: a mod's debris shouldn't take the server's tick with it.
-pub(super) const NATIVE_FALLING_MAX: usize = 1024;
+pub(in crate::game) const NATIVE_FALLING_MAX: usize = 1024;
 /// The largest speed a thrown block starts with, in blocks a tick on each
 /// axis (`Entity.setDeltaMovement` takes any; a packet's speed is cut to 3.9).
 const NATIVE_FALLING_MAX_SPEED: f64 = 3.9;
@@ -34,7 +34,7 @@ impl Game<'_> {
     /// dimension, an air or unknown state, a chunk that isn't loaded, a value
     /// that isn't finite, or with 1024 falling blocks in the level already.
     /// Each axis of `velocity` is cut to 3.9.
-    pub(super) fn spawn_falling_block(
+    pub(in crate::game) fn spawn_falling_block(
         &mut self,
         dimension: &str,
         state: BlockStateId,

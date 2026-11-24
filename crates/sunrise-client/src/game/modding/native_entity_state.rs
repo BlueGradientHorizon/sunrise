@@ -15,7 +15,7 @@ use sunrise_client::motion::PlayerMotion;
 use sunrise_client::pose::Pose;
 
 /// `Pose`'s serialized names by id (`Pose.STANDING` is 0).
-pub(super) const POSES: [&str; 18] = [
+pub(in crate::game) const POSES: [&str; 18] = [
     "standing",
     "fall_flying",
     "sleeping",
@@ -37,7 +37,7 @@ pub(super) const POSES: [&str; 18] = [
 ];
 
 /// `Entity.getMaxAirSupply`: a dolphin's 4800, an axolotl's 6000, else 300.
-pub(super) fn max_air(species: Option<Species>) -> i32 {
+pub(in crate::game) fn max_air(species: Option<Species>) -> i32 {
     match species {
         Some(Species::Dolphin) => 4800,
         Some(Species::Axolotl) => sunrise_client::mobs::axolotl::MAX_AIR,
@@ -81,7 +81,7 @@ impl Game<'_> {
     /// `isSecondaryUseActive`: the local client's live semantic sneak state (not the
     /// physical key binding or last tick's crouching pose); the server's shift-key flag.
     /// False for non-player entities, None for a stale or unreachable handle.
-    pub(super) fn entity_is_shift_key_down(&self, entity: EntityRef) -> Option<bool> {
+    pub(in crate::game) fn entity_is_shift_key_down(&self, entity: EntityRef) -> Option<bool> {
         if !self.is_logical_server() {
             return Some(match self.native_client_entity_target(entity)? {
                 Target::Player => self.held_mapping(sunrise_client::actions::Action::Sneak),
@@ -98,7 +98,7 @@ impl Game<'_> {
     /// another player is a mob that keeps what the server sent), `Mob`'s left-handed flag and
     /// `ArmorStand`'s right arm. The dragon's left-handed draw is not kept, so it reads right.
     /// The mob read uses its resident row without a separate pass over the mob list.
-    pub(super) fn entity_main_arm(&self, entity: EntityRef) -> Option<mod_api::MainHand> {
+    pub(in crate::game) fn entity_main_arm(&self, entity: EntityRef) -> Option<mod_api::MainHand> {
         let (target, location) = if self.is_logical_server() {
             self.native_entity_target_with_location(entity)?
         } else {
@@ -131,13 +131,13 @@ impl Game<'_> {
     }
     /// Whether the entity crouches (`Entity.isCrouching`: the crouching
     /// pose).
-    pub(super) fn entity_is_crouching(&self, entity: EntityRef) -> Option<bool> {
+    pub(in crate::game) fn entity_is_crouching(&self, entity: EntityRef) -> Option<bool> {
         Some(self.entity_pose(entity)? == "crouching")
     }
     /// Whether the entity sprints (`Entity.isSprinting`): a player, or a
     /// cat or ocelot dashing after its target (their shared sprinting flag);
     /// false for the other kinds.
-    pub(super) fn entity_is_sprinting(&self, entity: EntityRef) -> Option<bool> {
+    pub(in crate::game) fn entity_is_sprinting(&self, entity: EntityRef) -> Option<bool> {
         Some(match self.native_entity_body(entity)? {
             Body::Player(p) => p.sprinting,
             Body::Mob(m) => m.extra.sprinting,
@@ -146,7 +146,11 @@ impl Game<'_> {
     }
     /// `Entity.setSprinting` for a player (the flag and the speed modifier) or a mob (the
     /// flag, sent to the clients). False for other kinds, a stale handle and a client.
-    pub(super) fn entity_set_sprinting(&mut self, entity: EntityRef, sprinting: bool) -> bool {
+    pub(in crate::game) fn entity_set_sprinting(
+        &mut self,
+        entity: EntityRef,
+        sprinting: bool,
+    ) -> bool {
         if !self.is_logical_server() {
             return false;
         }
@@ -192,7 +196,7 @@ impl Game<'_> {
     }
     /// Whether the entity touched water at its last fluid update
     /// (`Entity.isInWater`): players and mobs.
-    pub(super) fn entity_is_in_water(&self, entity: EntityRef) -> Option<bool> {
+    pub(in crate::game) fn entity_is_in_water(&self, entity: EntityRef) -> Option<bool> {
         match self.native_target_body(self.native_entity_read_target(entity)?)? {
             Body::Player(p) => Some(p.fluids.was_touching_water),
             Body::Mob(m) => Some(m.fluids.in_water),
@@ -200,14 +204,14 @@ impl Game<'_> {
         }
     }
     /// The player's swimming flag, distinct from its pose (which also covers crawling).
-    pub(super) fn entity_is_swimming(&self, entity: EntityRef) -> Option<bool> {
+    pub(in crate::game) fn entity_is_swimming(&self, entity: EntityRef) -> Option<bool> {
         match self.native_target_body(self.native_entity_read_target(entity)?)? {
             Body::Player(p) => Some(p.swimming),
             _ => None,
         }
     }
     /// Whether the entity is in lava (`Entity.isInLava`): players and mobs.
-    pub(super) fn entity_is_in_lava(&self, entity: EntityRef) -> Option<bool> {
+    pub(in crate::game) fn entity_is_in_lava(&self, entity: EntityRef) -> Option<bool> {
         match self.native_entity_body(entity)? {
             Body::Player(p) => Some(p.is_in_lava()),
             Body::Mob(m) => Some(m.fluids.in_lava),
@@ -218,7 +222,10 @@ impl Game<'_> {
     /// it (`IEntityExtension.getFluidTypeHeight`), highest first; empty in no fluid. Players and
     /// mobs: water and lava, the fluids Sunrise's entity update tracks. On a client these
     /// are the predicted local player's state or the displayed entity's last fluid update.
-    pub(super) fn entity_fluid_heights(&self, entity: EntityRef) -> Option<Vec<(String, f64)>> {
+    pub(in crate::game) fn entity_fluid_heights(
+        &self,
+        entity: EntityRef,
+    ) -> Option<Vec<(String, f64)>> {
         use sunrise_client::motion::{LAVA, WATER};
         Some(
             match self.native_target_body(self.native_entity_read_target(entity)?)? {
@@ -237,7 +244,7 @@ impl Game<'_> {
     /// The fluid at the entity's eyes from its last fluid update
     /// (`IEntityExtension.getFirstEyeInFluidType`): water or lava, none in air. Players and mobs.
     /// On a client this reads its own cached fluid update, without sampling the world again.
-    pub(super) fn entity_eye_fluid(&self, entity: EntityRef) -> Option<Option<String>> {
+    pub(in crate::game) fn entity_eye_fluid(&self, entity: EntityRef) -> Option<Option<String>> {
         use sunrise_client::motion::{LAVA, WATER};
         Some(
             match self.native_target_body(self.native_entity_read_target(entity)?)? {
@@ -248,7 +255,7 @@ impl Game<'_> {
         )
     }
     /// Entity.isUnderWater uses eye sample AND contact; LocalPlayer's override uses the sample alone.
-    pub(super) fn entity_is_under_water(&self, entity: EntityRef) -> Option<bool> {
+    pub(in crate::game) fn entity_is_under_water(&self, entity: EntityRef) -> Option<bool> {
         match self.native_target_body(self.native_entity_read_target(entity)?)? {
             Body::Player(p) if !self.is_logical_server() => Some(p.is_under_water()),
             Body::Player(p) => Some(p.fluids.was_eye_in_water && p.fluids.was_touching_water),
@@ -258,7 +265,7 @@ impl Game<'_> {
     }
 
     /// Entity.isOnFire: remaining ticks or the client's synced flag, unless fire immune.
-    pub(super) fn entity_is_on_fire(&self, entity: EntityRef) -> Option<bool> {
+    pub(in crate::game) fn entity_is_on_fire(&self, entity: EntityRef) -> Option<bool> {
         let (ticks, immune) = match self
             .native_entity_read_target(entity)
             .and_then(|target| self.native_target_body(target))
@@ -287,7 +294,7 @@ impl Game<'_> {
     }
 
     /// `Entity.fireImmune`: effective immunity on the side of the host.
-    pub(super) fn entity_fire_immune(&self, entity: EntityRef) -> Option<bool> {
+    pub(in crate::game) fn entity_fire_immune(&self, entity: EntityRef) -> Option<bool> {
         match self
             .native_entity_read_target(entity)
             .and_then(|target| self.native_target_body(target))
@@ -312,12 +319,16 @@ impl Game<'_> {
             .tracked_fire_immunity(i32::try_from(entity.id()).ok()?)
     }
 
-    pub(super) fn entity_set_fire_immunity(&mut self, entity: EntityRef, immune: bool) -> bool {
+    pub(in crate::game) fn entity_set_fire_immunity(
+        &mut self,
+        entity: EntityRef,
+        immune: bool,
+    ) -> bool {
         self.native_entity_target(entity)
             .is_some_and(|target| self.set_fire_immunity_for(target, immune))
     }
 
-    pub(super) fn entity_set_client_fire_immunity(
+    pub(in crate::game) fn entity_set_client_fire_immunity(
         &mut self,
         entity: EntityRef,
         immune: bool,
@@ -368,7 +379,7 @@ impl Game<'_> {
 
     /// The ticks the entity burns for (`Entity.getRemainingFireTicks`):
     /// players, mobs, armor stands and items.
-    pub(super) fn entity_fire_ticks(&self, entity: EntityRef) -> Option<i32> {
+    pub(in crate::game) fn entity_fire_ticks(&self, entity: EntityRef) -> Option<i32> {
         match self.native_entity_body(entity)? {
             Body::Player(p) => Some(p.fire_ticks),
             Body::Mob(m) => Some(m.fire_ticks),
@@ -384,7 +395,7 @@ impl Game<'_> {
     /// `Entity.getPortalCooldown`: a player's own portal state, the falling
     /// block's, a pearl's End gateway state, or the level's for the other
     /// kinds its portal walk carries (zero when it keeps no state for one).
-    pub(super) fn entity_portal_cooldown(&self, entity: EntityRef) -> Option<i32> {
+    pub(in crate::game) fn entity_portal_cooldown(&self, entity: EntityRef) -> Option<i32> {
         let id = match self.native_entity_target(entity)? {
             // The acting guest's state is in place for its turn (the entry of `guest_turn`).
             Target::Player => return Some(self.portals.player.cooldown),
@@ -435,7 +446,11 @@ impl Game<'_> {
     /// field, an End gateway traveller) that this write does not own, so it
     /// needs its own owner decision before it can reach them. False for a kind
     /// the read refuses or a stale handle.
-    pub(super) fn entity_set_portal_cooldown(&mut self, entity: EntityRef, ticks: i32) -> bool {
+    pub(in crate::game) fn entity_set_portal_cooldown(
+        &mut self,
+        entity: EntityRef,
+        ticks: i32,
+    ) -> bool {
         if ticks < 0 || !self.is_logical_server() {
             return false;
         }
@@ -471,7 +486,7 @@ impl Game<'_> {
         }
     }
     /// Sets the remaining fire ticks (`Entity.setRemainingFireTicks`).
-    pub(super) fn entity_set_remaining_fire_ticks(
+    pub(in crate::game) fn entity_set_remaining_fire_ticks(
         &mut self,
         entity: EntityRef,
         ticks: i32,
@@ -515,14 +530,14 @@ impl Game<'_> {
         }
     }
     /// Clears positive fire ticks while retaining fire immunity (`Entity.clearFire`).
-    pub(super) fn entity_clear_fire(&mut self, entity: EntityRef) -> bool {
+    pub(in crate::game) fn entity_clear_fire(&mut self, entity: EntityRef) -> bool {
         let Some(ticks) = self.entity_fire_ticks(entity) else {
             return false;
         };
         self.entity_set_remaining_fire_ticks(entity, ticks.min(0))
     }
     /// The entity's air (`Entity.getAirSupply`): players and mobs.
-    pub(super) fn entity_air_supply(&self, entity: EntityRef) -> Option<i32> {
+    pub(in crate::game) fn entity_air_supply(&self, entity: EntityRef) -> Option<i32> {
         match self.native_target_body(self.native_entity_read_target(entity)?)? {
             Body::Player(p) => Some(p.air),
             Body::Mob(m) => Some(m.air),
@@ -530,7 +545,7 @@ impl Game<'_> {
         }
     }
     /// Sets the entity's air (`Entity.setAirSupply`).
-    pub(super) fn entity_set_air_supply(&mut self, entity: EntityRef, air: i32) -> bool {
+    pub(in crate::game) fn entity_set_air_supply(&mut self, entity: EntityRef, air: i32) -> bool {
         match self.native_entity_target(entity) {
             Some(Target::Player) => match self.player.as_mut() {
                 Some(player) => {
@@ -563,7 +578,7 @@ impl Game<'_> {
     }
     /// The most air the entity holds (`Entity.getMaxAirSupply`): 300, a
     /// dolphin's 4800, an axolotl's 6000.
-    pub(super) fn entity_max_air_supply(&self, entity: EntityRef) -> Option<i32> {
+    pub(in crate::game) fn entity_max_air_supply(&self, entity: EntityRef) -> Option<i32> {
         match self.native_target_body(self.native_entity_read_target(entity)?)? {
             Body::Mob(m) => Some(max_air(Some(m.species()))),
             _ => Some(max_air(None)),
@@ -571,7 +586,7 @@ impl Game<'_> {
     }
     /// Whether the mob makes no sounds (`Entity.isSilent`, its `Silent`
     /// tag); false for a player.
-    pub(super) fn entity_is_silent(&self, entity: EntityRef) -> Option<bool> {
+    pub(in crate::game) fn entity_is_silent(&self, entity: EntityRef) -> Option<bool> {
         match self.native_entity_body(entity)? {
             Body::Player(_) => Some(false),
             Body::Mob(m) => Some(m.silent),
@@ -580,7 +595,7 @@ impl Game<'_> {
     }
     /// Silences the mob or lets it make sounds again (`Entity.setSilent`).
     /// False for the other kinds.
-    pub(super) fn entity_set_silent(&mut self, entity: EntityRef, silent: bool) -> bool {
+    pub(in crate::game) fn entity_set_silent(&mut self, entity: EntityRef, silent: bool) -> bool {
         let Some(Target::Mob(id)) = self.native_entity_target(entity) else {
             return false;
         };
@@ -595,7 +610,7 @@ impl Game<'_> {
     /// Whether the entity's model is hidden (`Entity.isInvisible`): the
     /// invisibility effect on a player or a mob, a mob's or an armor stand's
     /// flag.
-    pub(super) fn entity_is_invisible(&self, entity: EntityRef) -> Option<bool> {
+    pub(in crate::game) fn entity_is_invisible(&self, entity: EntityRef) -> Option<bool> {
         match self.native_entity_target(entity)? {
             Target::Player => Some(self.potions.effects.get("invisibility").is_some()),
             Target::Guest(conn) => Some(
@@ -613,7 +628,11 @@ impl Game<'_> {
         }
     }
     /// Sets the entity's frozen ticks (`Entity.setTicksFrozen`).
-    pub(super) fn entity_set_ticks_frozen(&mut self, entity: EntityRef, ticks: i32) -> bool {
+    pub(in crate::game) fn entity_set_ticks_frozen(
+        &mut self,
+        entity: EntityRef,
+        ticks: i32,
+    ) -> bool {
         match self.native_entity_target(entity) {
             Some(Target::Player) => self.player.as_mut().is_some_and(|p| {
                 p.ticks_frozen = ticks;
@@ -636,14 +655,14 @@ impl Game<'_> {
         }
     }
     /// Returns the mob's persistent glowing tag (`Entity.hasGlowingTag`).
-    pub(super) fn entity_glowing(&self, entity: EntityRef) -> Option<bool> {
+    pub(in crate::game) fn entity_glowing(&self, entity: EntityRef) -> Option<bool> {
         match self.native_entity_body(entity)? {
             Body::Mob(m) => Some(m.glowing),
             _ => None,
         }
     }
     /// Returns the mob's or dropped item's no-gravity flag (`Entity.isNoGravity`).
-    pub(super) fn entity_no_gravity(&self, entity: EntityRef) -> Option<bool> {
+    pub(in crate::game) fn entity_no_gravity(&self, entity: EntityRef) -> Option<bool> {
         match self.native_entity_body(entity)? {
             Body::Mob(m) => Some(m.no_gravity),
             Body::Other(Target::Item(id)) => self
@@ -655,7 +674,7 @@ impl Game<'_> {
         }
     }
     /// Returns the entity's frozen ticks (`Entity.getTicksFrozen`).
-    pub(super) fn entity_ticks_frozen(&self, entity: EntityRef) -> Option<i32> {
+    pub(in crate::game) fn entity_ticks_frozen(&self, entity: EntityRef) -> Option<i32> {
         match self.native_entity_body(entity)? {
             Body::Player(p) => Some(p.ticks_frozen),
             Body::Mob(m) => Some(m.ticks_frozen),
@@ -665,7 +684,7 @@ impl Game<'_> {
     /// Ticks the entity has lived (`Entity.tickCount`): on a server, living entities, item
     /// entities, experience orbs and minecarts; on a client, every entity of the level it
     /// shows ([`Self::client_entity_tick_count`]). Wraps as vanilla's `int` does.
-    pub(super) fn entity_tick_count(&self, entity: EntityRef) -> Option<i32> {
+    pub(in crate::game) fn entity_tick_count(&self, entity: EntityRef) -> Option<i32> {
         if !self.is_logical_server() {
             return self.client_entity_tick_count(entity);
         }
@@ -706,7 +725,7 @@ impl Game<'_> {
             .or_else(|| remote.general.rows.get(&id).map(|row| row.age as i32))
     }
     /// Sets the mob's persistent glowing tag (`Entity.setGlowingTag`). Returns false for players and guests.
-    pub(super) fn entity_set_glowing(&mut self, entity: EntityRef, glowing: bool) -> bool {
+    pub(in crate::game) fn entity_set_glowing(&mut self, entity: EntityRef, glowing: bool) -> bool {
         let Some(Target::Mob(id)) = self.native_entity_target(entity) else {
             return false;
         };
@@ -718,7 +737,11 @@ impl Game<'_> {
     }
     /// Sets the mob's or dropped item's no-gravity flag (`Entity.setNoGravity`). Returns false
     /// for players and guests.
-    pub(super) fn entity_set_no_gravity(&mut self, entity: EntityRef, no_gravity: bool) -> bool {
+    pub(in crate::game) fn entity_set_no_gravity(
+        &mut self,
+        entity: EntityRef,
+        no_gravity: bool,
+    ) -> bool {
         match self.native_entity_target(entity) {
             Some(Target::Mob(id)) => self.mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
                 m.no_gravity = no_gravity;
@@ -739,7 +762,11 @@ impl Game<'_> {
         }
     }
     /// Sets the entity's shared invisibility flag (`Entity.setInvisible`). Returns false for players and guests.
-    pub(super) fn entity_set_invisible(&mut self, entity: EntityRef, invisible: bool) -> bool {
+    pub(in crate::game) fn entity_set_invisible(
+        &mut self,
+        entity: EntityRef,
+        invisible: bool,
+    ) -> bool {
         match self.native_entity_target(entity) {
             Some(Target::Mob(id)) => self.mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
                 m.invisible = invisible;
@@ -760,7 +787,7 @@ impl Game<'_> {
     /// The entity's pose (`Entity.getPose`) as `Pose` names it: `standing`,
     /// `crouching`, `swimming`, `sleeping`, a warden's `roaring`... Kinds
     /// with no pose stand.
-    pub(super) fn entity_pose(&self, entity: EntityRef) -> Option<&'static str> {
+    pub(in crate::game) fn entity_pose(&self, entity: EntityRef) -> Option<&'static str> {
         Some(match self.native_entity_body(entity)? {
             Body::Player(p) => player_pose(p.pose),
             Body::Mob(m) => POSES.get(usize::from(sync::pose_id(m))).copied()?,
@@ -1966,7 +1993,7 @@ mod tests {
     #[ignore = "daily"]
     fn a_client_reads_the_main_arm_the_server_sent() {
         if run_fresh_cases(
-            "game::native_entity_state::tests::a_client_reads_the_main_arm_the_server_sent",
+            "game::server_side::native_entity_state::tests::a_client_reads_the_main_arm_the_server_sent",
             "SUNRISE_TEST_CLIENT_MAIN_ARM_CASE",
             &["client"],
         ) {
@@ -2061,7 +2088,7 @@ mod tests {
     #[ignore = "daily"]
     fn a_server_reads_the_reported_main_hand_and_the_left_handed_flag() {
         if run_fresh_cases(
-            "game::native_entity_state::tests::a_server_reads_the_reported_main_hand_and_the_left_handed_flag",
+            "game::server_side::native_entity_state::tests::a_server_reads_the_reported_main_hand_and_the_left_handed_flag",
             "SUNRISE_TEST_SERVER_MAIN_ARM_CASE",
             &["server"],
         ) {

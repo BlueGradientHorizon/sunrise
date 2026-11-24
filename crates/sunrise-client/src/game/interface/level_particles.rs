@@ -12,27 +12,27 @@ use sunrise_world::level::LevelEvent;
 use sunrise_world::registry::BlockStateId;
 
 impl Game<'_> {
-    pub(super) fn dragon_egg_particles(&mut self, pos: [i32; 3], data: i32) {
+    pub(in crate::game) fn dragon_egg_particles(&mut self, pos: [i32; 3], data: i32) {
         self.particles.block_teleportation(pos, data, [16, 8, 16]);
     }
     /// Event 2016: `Shulker.teleportSomewhere`'s particles between the
     /// shell's old and new cells.
-    pub(super) fn shulker_teleport_particles(&mut self, pos: [i32; 3], data: i32) {
+    pub(in crate::game) fn shulker_teleport_particles(&mut self, pos: [i32; 3], data: i32) {
         self.particles.block_teleportation(pos, data, [8, 8, 8]);
     }
     /// Event 2017: `TeleportRandomlyConsumeEffect`'s directional particles.
-    pub(super) fn consume_teleport_particles(&mut self, pos: [i32; 3], data: i32) {
+    pub(in crate::game) fn consume_teleport_particles(&mut self, pos: [i32; 3], data: i32) {
         self.particles
             .block_teleportation(pos, data, [127, 127, 127]);
     }
     /// Event 2018: an enderman's portal trail.
-    pub(super) fn enderman_teleport_particles(&mut self, pos: [i32; 3], data: i32) {
+    pub(in crate::game) fn enderman_teleport_particles(&mut self, pos: [i32; 3], data: i32) {
         self.particles
             .enderman_teleportation(pos, data, self.settings.particles);
     }
     /// `LevelEventHandler.levelEvent` 3002 to 3005, drawing from the client
     /// level's random.
-    pub(super) fn block_particle_event(&mut self, id: i32, pos: BlockPos, data: i32) {
+    pub(in crate::game) fn block_particle_event(&mut self, id: i32, pos: BlockPos, data: i32) {
         let ty = match id {
             3002 => ParticleType::ElectricSpark,
             3003 => ParticleType::WaxOn,
@@ -58,7 +58,7 @@ impl Game<'_> {
     /// `BoneMealItem.addGrowthParticles` (event 1505, `count` the data):
     /// happy villager sparks over a spreading block's neighbourhood (grass,
     /// nylium, netherrack, moss) or water, or inside a growing block.
-    pub(super) fn growth_particles(&mut self, pos: BlockPos, count: i32) {
+    pub(in crate::game) fn growth_particles(&mut self, pos: BlockPos, count: i32) {
         let p = [pos.x, pos.y, pos.z];
         let state = self.world.block(p[0], p[1], p[2]);
         let facts = self.res.facts();
@@ -148,14 +148,14 @@ impl Game<'_> {
     /// `LevelEventHandler` 2011 (a bee grew a crop) and 2012 (a turtle egg
     /// laid on sand): `ParticleUtils.spawnParticleInBlock` with happy villager
     /// sparks.
-    pub(super) fn turtle_egg_particles(&mut self, pos: BlockPos, count: i32) {
+    pub(in crate::game) fn turtle_egg_particles(&mut self, pos: BlockPos, count: i32) {
         let at = [pos.x, pos.y, pos.z];
         let height = self.block_shape_top(at);
         self.spawn_particles(at, count, 0.5, height, true, ParticleType::HappyVillager);
     }
     /// `LevelEventHandler` 3009 (a sniffer egg cracking on moss):
     /// `spawnParticlesOnBlockFaces(.., EGG_CRACK, UniformInt.of(3, 6))`.
-    pub(super) fn sniffer_egg_crack_particles(&mut self, pos: BlockPos) {
+    pub(in crate::game) fn sniffer_egg_crack_particles(&mut self, pos: BlockPos) {
         let mut spawned = Vec::new();
         particles::on_block_faces_between(
             self.particles.level_random(),
@@ -171,7 +171,7 @@ impl Game<'_> {
     }
     /// `LevelEventHandler` 1501 (lava put out) and 2009 (a wet sponge dried):
     /// eight puffs just above the block, drawn after the sound.
-    pub(super) fn puffs_above_block(&mut self, pos: BlockPos, ty: ParticleType) {
+    pub(in crate::game) fn puffs_above_block(&mut self, pos: BlockPos, ty: ParticleType) {
         let options = ParticleOptions::simple(ty);
         for _ in 0..8 {
             let r = self.particles.level_random();
@@ -183,7 +183,7 @@ impl Game<'_> {
     }
     /// `LevelEventHandler` 1502 (a redstone torch burning out): five smoke
     /// puffs inside the block, drawn after the sound.
-    pub(super) fn torch_burnout_smoke(&mut self, pos: BlockPos) {
+    pub(in crate::game) fn torch_burnout_smoke(&mut self, pos: BlockPos) {
         let options = ParticleOptions::simple(ParticleType::Smoke);
         for _ in 0..5 {
             let r = self.particles.level_random();
@@ -194,7 +194,7 @@ impl Game<'_> {
         }
     }
     /// `LevelEventHandler` 1503: smoke on the inserted eye.
-    pub(super) fn end_portal_frame_smoke(&mut self, pos: BlockPos) {
+    pub(in crate::game) fn end_portal_frame_smoke(&mut self, pos: BlockPos) {
         let options = ParticleOptions::simple(ParticleType::Smoke);
         for _ in 0..16 {
             let r = self.particles.level_random();
@@ -206,7 +206,7 @@ impl Game<'_> {
     }
     /// `LevelEventHandler` 2006 (`DragonFireball.onHit`): 200 dragon breath
     /// particles thrown outwards, then the explosion sound when `data` is 1.
-    pub(super) fn dragon_fireball_burst(&mut self, pos: BlockPos, data: i32) {
+    pub(in crate::game) fn dragon_fireball_burst(&mut self, pos: BlockPos, data: i32) {
         for _ in 0..200 {
             let r = self.particles.level_random();
             let dist = r.next_float() * 4.0;
@@ -253,7 +253,7 @@ impl Game<'_> {
     /// `LevelEventHandler` 1504: `PointedDripstoneBlock.spawnDripParticle` at
     /// the tip `pos`. The fluid above the stalactite's root picks the drip;
     /// with none, the dimension's default (lava in the Nether).
-    pub(super) fn dripstone_drip_particle(&mut self, pos: BlockPos) {
+    pub(in crate::game) fn dripstone_drip_particle(&mut self, pos: BlockPos) {
         let tip_state = self.world.block(pos.x, pos.y, pos.z);
         if !self.is_stalactite(tip_state) {
             return;
@@ -320,7 +320,7 @@ impl Game<'_> {
     /// (an end portal opening, the dragon's death roar): here, and sent to
     /// every guest whatever their dimension, each at their own position
     /// (`Hub::global_level_event`).
-    pub(super) fn global_level_event(&mut self, id: i32, pos: [i32; 3], data: i32) {
+    pub(in crate::game) fn global_level_event(&mut self, id: i32, pos: [i32; 3], data: i32) {
         // ServerLevel.globalLevelEvent: without global_sound_events it is a
         // plain level event (`levelEvent(null, ...)`), sent to the players
         // near `pos`; the vanilla client has no plain sound for 1023, 1028
@@ -342,7 +342,12 @@ impl Game<'_> {
     }
     /// Deliver one committed global level event immediately without touching unrelated
     /// `lan_global_events` or `lan_events`, preserving packet order across effect kinds.
-    pub(super) fn deliver_global_level_event(&mut self, id: i32, pos: [i32; 3], data: i32) {
+    pub(in crate::game) fn deliver_global_level_event(
+        &mut self,
+        id: i32,
+        pos: [i32; 3],
+        data: i32,
+    ) {
         if !self
             .ui
             .rules
@@ -362,7 +367,7 @@ impl Game<'_> {
     }
     /// `LevelEventHandler.globalLevelEvent`: the sound two blocks from the
     /// camera towards the event, so it is heard from anywhere.
-    pub(super) fn global_level_event_sound(&mut self, id: i32, pos: [i32; 3]) {
+    pub(in crate::game) fn global_level_event_sound(&mut self, id: i32, pos: [i32; 3]) {
         let (sound, volume) = match id {
             1023 => ("minecraft:entity.wither.spawn", 1.0),
             1028 => ("minecraft:entity.ender_dragon.death", 5.0),
@@ -386,7 +391,7 @@ impl Game<'_> {
     }
     /// `ClientLevel.addBreakingBlockEffects`: the block's hit sound (only for
     /// `play_sound`) and one crumb on the face being mined; nothing for air.
-    pub(super) fn breaking_block_effects(
+    pub(in crate::game) fn breaking_block_effects(
         &mut self,
         pos: [i32; 3],
         face: [i32; 3],
@@ -404,7 +409,12 @@ impl Game<'_> {
     /// `LevelEventHandler.potionSplashParticles` (2002 with `Effect`, 2007
     /// with `InstantEffect`): eight splash potion crumbs, and a hundred
     /// spell particles in the potion's colour `data`, flung out in a disc.
-    pub(super) fn potion_splash_particles(&mut self, pos: BlockPos, data: i32, instant: bool) {
+    pub(in crate::game) fn potion_splash_particles(
+        &mut self,
+        pos: BlockPos,
+        data: i32,
+        instant: bool,
+    ) {
         let ty = if instant {
             ParticleType::InstantEffect
         } else {
@@ -464,14 +474,14 @@ impl Game<'_> {
         }
     }
     /// Queue and play level event `id` at `pos` (`Level.levelEvent`).
-    pub(super) fn level_event_at(&mut self, id: i32, pos: [i32; 3], data: i32) {
+    pub(in crate::game) fn level_event_at(&mut self, id: i32, pos: [i32; 3], data: i32) {
         self.level_event_from(None, id, pos, data);
     }
 
     /// Deliver one committed level event immediately without draining unrelated `level_events` or
     /// `lan_events`, sending its packet directly when a LAN host is active so packet order matches
     /// commit order across effect kinds.
-    pub(super) fn deliver_level_event(&mut self, id: i32, pos: [i32; 3], data: i32) {
+    pub(in crate::game) fn deliver_level_event(&mut self, id: i32, pos: [i32; 3], data: i32) {
         let saved_level_events = std::mem::take(&mut self.level_events);
         let saved_lan_events = std::mem::take(&mut self.server.lan_events);
         self.level_events.push(LevelEvent::LevelEvent {
@@ -495,7 +505,7 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn level_event_from(
+    pub(in crate::game) fn level_event_from(
         &mut self,
         source: Option<sunrise_world::level::LevelEventPlayer>,
         id: i32,

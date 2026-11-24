@@ -25,20 +25,20 @@ thread_local! {
         std::cell::RefCell::default();
 }
 
-pub(super) fn outcome(path: &Path) -> Option<Option<Api>> {
+pub(in crate::game) fn outcome(path: &Path) -> Option<Option<Api>> {
     OUTCOMES.with_borrow(|packs| packs.get(path).map(|(_, api)| *api))
 }
 
-pub(super) fn remember(path: &Path, stamp: Option<u64>, api: Option<Api>) {
+pub(in crate::game) fn remember(path: &Path, stamp: Option<u64>, api: Option<Api>) {
     OUTCOMES.with_borrow_mut(|packs| packs.insert(path.to_owned(), (stamp, api)));
 }
 
-pub(super) fn refused(path: &Path, stamp: Option<u64>) -> bool {
+pub(in crate::game) fn refused(path: &Path, stamp: Option<u64>) -> bool {
     OUTCOMES.with_borrow(|packs| packs.get(path) == Some(&(stamp, None)))
 }
 
 #[derive(Default)]
-pub(super) struct NativeShaders {
+pub(in crate::game) struct NativeShaders {
     /// The resolved pack path, of either kind (`game/interface/shader_packs.rs`); empty: none.
     pub picked: String,
     /// The pack's files when it was last read (`fingerprint`).
@@ -90,7 +90,7 @@ impl NativeShaders {
 
 impl Game<'_> {
     /// Builds the pack at `path` when its files changed since it was last read.
-    pub(super) fn tick_native_shader_pack(&mut self, path: &Path) {
+    pub(in crate::game) fn tick_native_shader_pack(&mut self, path: &Path) {
         // A reload would replace the pack a `screenshot-sequence` draws: it waits for the reply.
         if self.screenshot_sequence.is_some() {
             return;
@@ -222,13 +222,13 @@ fn not_drawn(m: &Manifest, switch: bool) -> Option<String> {
 
 /// `SUNRISE_HDR_FRAME=float`: shader API 0.2 packs are drawn, on a float frame where the
 /// renderer is made with one picked and not refused, as HDR without a pack is (`PickedPack::hdr_float`).
-pub(super) fn linear_frame_switch() -> bool {
+pub(in crate::game) fn linear_frame_switch() -> bool {
     std::env::var("SUNRISE_HDR_FRAME").is_ok_and(|v| v == "float")
 }
 
 /// A hash of the names, sizes and modification times of the pack's files and of its saved
 /// option values (`None` when the pack is unreadable).
-pub(super) fn fingerprint(path: &Path) -> Option<u64> {
+pub(in crate::game) fn fingerprint(path: &Path) -> Option<u64> {
     fn walk(path: &Path, hasher: &mut std::hash::DefaultHasher) -> Option<()> {
         let meta = std::fs::metadata(path).ok()?;
         path.hash(hasher);

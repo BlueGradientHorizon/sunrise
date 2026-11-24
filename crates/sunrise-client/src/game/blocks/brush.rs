@@ -17,12 +17,12 @@ use sunrise_client::{
 use sunrise_client_render::block_entity_reach::Reach;
 use sunrise_core::random::RandomSource;
 
-pub(super) use sunrise_gameplay::brushing::{Brushing, USE_DURATION, completion_state};
+pub(in crate::game) use sunrise_gameplay::brushing::{Brushing, USE_DURATION, completion_state};
 
 impl Game<'_> {
     /// `BrushItem.onUseTick` for a brush used `ticks` ticks so far, the
     /// hand of `slot` acting.
-    pub(super) fn tick_brush(
+    pub(in crate::game) fn tick_brush(
         &mut self,
         stack: &sunrise_client::items::ItemStack,
         slot: usize,
@@ -87,7 +87,7 @@ impl Game<'_> {
     }
 
     /// `BrushItem.spawnDustParticles`.
-    pub(super) fn brush_dust(&mut self, hit: &Hit, off_hand: bool) {
+    pub(in crate::game) fn brush_dust(&mut self, hit: &Hit, off_hand: bool) {
         let state = self.world.block(hit.pos[0], hit.pos[1], hit.pos[2]);
         let Some((sprite, tint)) = self.particle_sprite(state, hit.pos) else {
             return;
@@ -279,7 +279,7 @@ impl Game<'_> {
 
     /// `BrushableBlockEntity.checkReset`, from `BrushableBlock.tick`: a block
     /// left alone loses two counts, again every four ticks.
-    pub(super) fn brushable_tick(&mut self, pos: [i32; 3]) {
+    pub(in crate::game) fn brushable_tick(&mut self, pos: [i32; 3]) {
         let time = self.world.game_time;
         let Some(mut brush) = self.server.brushing.remove(&pos) else {
             return;
@@ -304,14 +304,18 @@ impl Game<'_> {
     }
 
     /// `BrushableBlockRenderer`: reveal the item from the first brushed face.
-    pub(super) fn brushable_geometry(&self, camera: glam::DVec3, out: &mut Vec<Vertex>) {
+    pub(in crate::game) fn brushable_geometry(&self, camera: glam::DVec3, out: &mut Vec<Vertex>) {
         self.brushable_items(camera, |d| {
             self.submit_item_world(d.state, d.pose, d.light, out);
         });
     }
 
     /// The items [`Self::brushable_geometry`] draws.
-    pub(super) fn brushable_items(&self, camera: glam::DVec3, mut draw: impl FnMut(BlockItemDraw)) {
+    pub(in crate::game) fn brushable_items(
+        &self,
+        camera: glam::DVec3,
+        mut draw: impl FnMut(BlockItemDraw),
+    ) {
         use sunrise_assets::item_model::DisplayContext;
         let _items = sunrise_client::spans::raw_flight_guard("block_entity_items");
         let reach = Reach::Default;
@@ -382,7 +386,7 @@ impl Game<'_> {
 
     /// Level event 3008 (`LevelEventHandler`): the finished block's sound
     /// and break particles.
-    pub(super) fn brush_complete_event(&mut self, pos: [i32; 3], data: i32) {
+    pub(in crate::game) fn brush_complete_event(&mut self, pos: [i32; 3], data: i32) {
         let state = sunrise_world::registry::BlockStateId(data as u32);
         let sound = match &*self.res.facts().get(state).name {
             "minecraft:suspicious_sand" => "minecraft:item.brush.brushing.sand.complete",

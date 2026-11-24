@@ -23,7 +23,7 @@ use sunrise_core::{
 use sunrise_world::{fluid::FluidKind, level::LevelAccess, registry::BlockStateId};
 
 /// Shared weapon damage effects; callers choose live RNG for an attack or a snapshot for a read.
-pub(super) fn stack_enchanted_damage(
+pub(in crate::game) fn stack_enchanted_damage(
     enchantments: &Enchantments,
     stack: &ItemStack,
     ctx: &EffectContext<'_>,
@@ -85,7 +85,7 @@ impl PlayerSlot {
 /// `pitch`: the effect's `direction` turned by the look
 /// (`Entity.getLookQuaternion`: pitch about x, then yaw about y), scaled by
 /// `coordinate_scale` and the level's `magnitude`.
-pub(super) fn look_impulse(effect: &Value, level: u32, yaw: f32, pitch: f32) -> Vec3 {
+pub(in crate::game) fn look_impulse(effect: &Value, level: u32, yaw: f32, pitch: f32) -> Vec3 {
     let vec3 = |key: &str| [0, 1, 2].map(|i| effect[key][i].as_f64().unwrap_or(0.0));
     let (d, scale) = (vec3("direction"), vec3("coordinate_scale"));
     let magnitude = f64::from(level_value(&effect["magnitude"], level));
@@ -139,7 +139,7 @@ fn refuse_xp_repair_ratio(item: &str, ratio: f32) {
 impl Game<'_> {
     /// `Attributes.MINING_EFFICIENCY` (efficiency), which `Player.getDestroySpeed`
     /// adds to a tool speed above 1: 0 without a player or attribute.
-    pub(super) fn mining_efficiency(&mut self) -> f32 {
+    pub(in crate::game) fn mining_efficiency(&mut self) -> f32 {
         self.player
             .as_mut()
             .and_then(|player| player.attribute("minecraft:mining_efficiency").ok())
@@ -147,7 +147,7 @@ impl Game<'_> {
     }
     /// `Player.getDestroySpeed`'s final `Attributes.BLOCK_BREAK_SPEED` factor:
     /// 1.0 by default, so a missing player or attribute changes nothing.
-    pub(super) fn block_break_speed(&mut self) -> f32 {
+    pub(in crate::game) fn block_break_speed(&mut self) -> f32 {
         block_break_speed_factor(
             self.player
                 .as_mut()
@@ -155,7 +155,7 @@ impl Game<'_> {
         )
     }
     /// `Attributes.SUBMERGED_MINING_SPEED` (0.2, raised by aqua affinity).
-    pub(super) fn submerged_mining_speed(&self) -> f32 {
+    pub(in crate::game) fn submerged_mining_speed(&self) -> f32 {
         let mut total = 0.0;
         for stack in self.armor.iter().flatten() {
             for (attr, _, amount, op) in self.stations().enchantments.attributes(stack) {
@@ -170,7 +170,7 @@ impl Game<'_> {
     /// on the stack `wearer` wears or uses: what Unbreaking leaves
     /// (`EnchantmentHelper.processDurabilityChange`), then what the item's
     /// parts make of it (`IItemExtension.damageItem`).
-    pub(super) fn durability_loss(
+    pub(in crate::game) fn durability_loss(
         &mut self,
         stack: &ItemStack,
         amount: u32,
@@ -209,7 +209,7 @@ impl Game<'_> {
     }
     /// `ItemStack.hurtAndBreak` for the player's `stack`: the wear Unbreaking
     /// leaves, and `ItemDurabilityTrigger` when some is left (`applyDamage`).
-    pub(super) fn wear(&mut self, stack: &ItemStack, amount: u32) -> u32 {
+    pub(in crate::game) fn wear(&mut self, stack: &ItemStack, amount: u32) -> u32 {
         // ItemStack.isDamageableItem: an unbreakable stack, or one without
         // damage/max_damage, takes no wear before Unbreaking or mods are asked.
         let component = |id| stack.data().and_then(|data| data.other(id));
@@ -227,12 +227,21 @@ impl Game<'_> {
     }
 
     /// `getEnchantedDamage - base`: damage bonus of the held weapon against a mob type.
-    pub(super) fn enchant_damage_bonus(&mut self, target: &str, victim: Option<u32>) -> f32 {
+    pub(in crate::game) fn enchant_damage_bonus(
+        &mut self,
+        target: &str,
+        victim: Option<u32>,
+    ) -> f32 {
         self.enchanted_damage(target, 0.0, victim)
     }
     /// `Player.getEnchantedDamage`: `base` run through the held weapon's
     /// damage effects against a mob type.
-    pub(super) fn enchanted_damage(&mut self, target: &str, base: f32, victim: Option<u32>) -> f32 {
+    pub(in crate::game) fn enchanted_damage(
+        &mut self,
+        target: &str,
+        base: f32,
+        victim: Option<u32>,
+    ) -> f32 {
         let Some(held) = self.held().map(|stack| self.item_combat_stack(stack)) else {
             return base;
         };
@@ -259,7 +268,7 @@ impl Game<'_> {
     }
 
     /// Evaluate a pre-hit weapon snapshot with actual actor identities supplied by the hit.
-    pub(super) fn weapon_enchanted_damage(
+    pub(in crate::game) fn weapon_enchanted_damage(
         &mut self,
         held: &ItemStack,
         actors: Option<(u32, u32)>,
@@ -281,7 +290,7 @@ impl Game<'_> {
         self.evaluate_weapon_damage(held, actors, ctx, base)
     }
 
-    pub(super) fn evaluate_weapon_damage(
+    pub(in crate::game) fn evaluate_weapon_damage(
         &mut self,
         held: &ItemStack,
         actors: Option<(u32, u32)>,
@@ -345,7 +354,11 @@ impl Game<'_> {
     /// `Player.attack`'s extra knockback: `getKnockback` (the ATTACK_KNOCKBACK
     /// attribute, plus the weapon's knockback enchantment, halved) plus 0.5 for a
     /// sprinting full-strength hit, and whether the hit is that knockback attack.
-    pub(super) fn extra_knockback(&mut self, target_kind: &str, scale: f32) -> (f32, bool) {
+    pub(in crate::game) fn extra_knockback(
+        &mut self,
+        target_kind: &str,
+        scale: f32,
+    ) -> (f32, bool) {
         let sprinting = self.player.as_ref().is_some_and(|p| p.sprinting);
         // LivingEntity.getKnockback: `(float)getAttributeValue(ATTACK_KNOCKBACK)`, which
         // the weapon's knockback enchantment then adds to (EnchantmentHelper.modifyKnockback).
@@ -379,7 +392,7 @@ impl Game<'_> {
     /// `causeExtraKnockback`'s direction, `(sin yRot, -cos yRot)` from Mth's
     /// sine table: the target flies where the attacker looks, not away from
     /// it (straight along an axis when the attacker faces one).
-    pub(super) fn extra_knockback_direction(&self) -> (f64, f64) {
+    pub(in crate::game) fn extra_knockback_direction(&self) -> (f64, f64) {
         use sunrise_core::geometry::trig;
         let yaw = f64::from(self.yaw * trig::DEG_TO_RAD);
         (f64::from(trig::sin(yaw)), -f64::from(trig::cos(yaw)))
@@ -391,7 +404,7 @@ impl Game<'_> {
     /// skips the knockback. A hit on another player, a boat, a minecart, an
     /// End crystal or a shulker bullet does simulate one:
     /// `remote_attacker_knockback`.)
-    pub(super) fn stop_sprint_after_extra_knockback(&mut self) {
+    pub(in crate::game) fn stop_sprint_after_extra_knockback(&mut self) {
         if let Some(p) = self.player.as_mut() {
             let _ = p.set_sprinting(false);
         }
@@ -400,7 +413,7 @@ impl Game<'_> {
     /// melee hit (`Player.itemAttackInteraction`, the sweep's
     /// `doPostAttackEffects`): the victim's equipment first (Thorns), then the
     /// attacker's weapon on the victim (fire aspect and wind burst).
-    pub(super) fn post_attack(&mut self, mob: usize) {
+    pub(in crate::game) fn post_attack(&mut self, mob: usize) {
         if let Some(id) = self.mobs.get(mob).map(|m| m.id) {
             self.mob_post_attack(id, Some(Who::Player), Some("minecraft:player"), None);
         }
@@ -490,7 +503,7 @@ impl Game<'_> {
     /// `EnchantmentHelper.doPostPiercingAttackEffects`: the
     /// `minecraft:post_piercing_attack` effects of the weapon in hand after a
     /// jab (Lunge's dash).
-    pub(super) fn post_piercing_attack(&mut self) {
+    pub(in crate::game) fn post_piercing_attack(&mut self) {
         let Some(held) = self.held().cloned() else {
             return;
         };
@@ -607,7 +620,7 @@ impl Game<'_> {
     /// `minecraft:post_attack` explode effects on the attacker (wind burst):
     /// a burst at the player's feet that only knocks back and triggers
     /// blocks (`ExplodeEffect` with `block_interaction: trigger`).
-    pub(super) fn post_attack_bursts(&mut self, held: &ItemStack, victim: &str) {
+    pub(in crate::game) fn post_attack_bursts(&mut self, held: &ItemStack, victim: &str) {
         let Some(p) = self.player.as_ref() else {
             return;
         };
@@ -681,7 +694,7 @@ impl Game<'_> {
     /// `attacker` hurt the player: Thorns on what the player holds or wears
     /// hurts the mob by `thorns` damage the player caused, so it is knocked
     /// back from the player, turns on them and is theirs to kill.
-    pub(super) fn thorns(&mut self, attacker: u32) {
+    pub(in crate::game) fn thorns(&mut self, attacker: u32) {
         self.player_thorns(|g, min, max| {
             // DamageEntity: Mth.randomBetween from the hurt entity's own random.
             let Some(index) = g.mob_index.find(&g.mobs, attacker) else {
@@ -710,7 +723,7 @@ impl Game<'_> {
     /// The victim's side of thorns when another player hit this one: the
     /// damage each piece deals that player, rolled from the attacker's own
     /// random (a player's, which no level draw shares).
-    pub(super) fn thorns_damage(&mut self) -> Vec<f32> {
+    pub(in crate::game) fn thorns_damage(&mut self) -> Vec<f32> {
         let mut hits = Vec::new();
         self.player_thorns(|_, min, max| {
             hits.push(random_source::entity().next_float() * (max - min) + min);
@@ -812,7 +825,7 @@ impl Game<'_> {
     }
     /// `EnchantmentHelper.doPostAttackEffectsWithItemSource`'s victim loop:
     /// each equipment slot's chance, damage from the attacker's random, then wear.
-    pub(super) fn mob_post_attack(
+    pub(in crate::game) fn mob_post_attack(
         &mut self,
         target: u32,
         attacker: Option<Who>,
@@ -1166,7 +1179,7 @@ impl Game<'_> {
     /// Bow enchantments at release: (extra base damage, infinity keeps the arrow).
     /// `ammo` is the item being fired: `Enchantment.itemContext` hands it to the
     /// `ammo_use` conditions as the tool, so Infinity only frees plain arrows.
-    pub(super) fn bow_enchantments(&mut self, ammo: &str) -> (f64, bool) {
+    pub(in crate::game) fn bow_enchantments(&mut self, ammo: &str) -> (f64, bool) {
         let Some(bow) = self.held().cloned() else {
             return (0.0, false);
         };
@@ -1202,7 +1215,7 @@ impl Game<'_> {
     /// to the players around) and sometimes a sound. Runs for the window's own
     /// player and for each guest on the server (`guest_server_tick`); a remote
     /// client leaves it to its server.
-    pub(super) fn tick_soul_speed(&mut self) -> Option<([f64; 3], [f64; 3])> {
+    pub(in crate::game) fn tick_soul_speed(&mut self) -> Option<([f64; 3], [f64; 3])> {
         const ID: &str = "minecraft:soul_speed";
         let player = self.player.as_mut()?;
         if player.client_side {
@@ -1289,7 +1302,11 @@ impl Game<'_> {
     /// player, run on the server once the player has moved: `LivingEntity.baseTick`
     /// runs it when the block position changed, `checkFallDamage` when it lands.
     /// `from` and `was_on_ground` are where and how the tick began.
-    pub(super) fn location_changed_effects(&mut self, from: [f64; 3], was_on_ground: bool) {
+    pub(in crate::game) fn location_changed_effects(
+        &mut self,
+        from: [f64; 3],
+        was_on_ground: bool,
+    ) {
         let Some(p) = self.player.as_ref() else {
             return;
         };
@@ -1323,7 +1340,7 @@ impl Game<'_> {
     /// `LivingEntity.onChangedBlock`, landing and `collectEquipmentChanges`
     /// for an armor stand: run location effects before travel (including a
     /// piston push), on landing, and for newly equipped items.
-    pub(super) fn armor_stand_location_effects(&mut self, index: usize, landed: bool) {
+    pub(in crate::game) fn armor_stand_location_effects(&mut self, index: usize, landed: bool) {
         let stand = &mut self.armor_stands[index];
         let block = BlockPos::containing(stand.position);
         let moved = !landed && stand.enchantment_block.replace(block) != Some(block);
@@ -1502,7 +1519,7 @@ impl Game<'_> {
     /// Enchantment attribute modifiers of active equipment, including held Efficiency.
     /// Each piece's modifier id ends with its slot (`EnchantmentAttributeEffect.idForSlot`),
     /// so the same enchantment on two pieces stacks instead of replacing itself.
-    pub(super) fn apply_enchantment_attributes(&mut self) {
+    pub(in crate::game) fn apply_enchantment_attributes(&mut self) {
         let mut wanted: Vec<(String, String, f64, String)> = Vec::new();
         for (stack, slot) in self
             .armor

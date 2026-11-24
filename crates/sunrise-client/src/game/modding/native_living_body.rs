@@ -13,7 +13,7 @@ use sunrise_world::attribute_map::ValueKind;
 use sunrise_world::attributes::entity::Catalog;
 
 /// `LivingEntity.getHealth`.
-pub(super) fn body_health(body: LivingBody<'_>) -> Option<f32> {
+pub(in crate::game) fn body_health(body: LivingBody<'_>) -> Option<f32> {
     match body {
         LivingBody::Mob(m) => Some(m.health),
         LivingBody::Player(p) => match p.health {
@@ -27,7 +27,7 @@ pub(super) fn body_health(body: LivingBody<'_>) -> Option<f32> {
 }
 
 /// `LivingEntity.getAbsorptionAmount`: none for an armor stand or the dragon, which carry none.
-pub(super) fn body_absorption(body: LivingBody<'_>) -> Option<f32> {
+pub(in crate::game) fn body_absorption(body: LivingBody<'_>) -> Option<f32> {
     match body {
         LivingBody::Mob(m) => Some(m.absorption),
         LivingBody::Player(p) => match p.health {
@@ -45,7 +45,7 @@ pub(super) fn body_absorption(body: LivingBody<'_>) -> Option<f32> {
 /// `LivingEntity.getMaxHealth`. Players read their attribute map; a mob, an armor stand and
 /// the dragon their own fields (the armor stand the fixed 20 the game seeds it with, the
 /// dragon its 200) until live attribute maps cover them.
-pub(super) fn body_max_health(body: LivingBody<'_>) -> Option<f32> {
+pub(in crate::game) fn body_max_health(body: LivingBody<'_>) -> Option<f32> {
     match body {
         LivingBody::Mob(m) => Some(m.attrs.max_health),
         LivingBody::Player(p) => {
@@ -59,7 +59,7 @@ pub(super) fn body_max_health(body: LivingBody<'_>) -> Option<f32> {
 /// `AttributeMap.getValue` or `getBaseValue` of `name`: None for an attribute the entity
 /// type does not have. A mob, an armor stand and the dragon answer from their live attribute
 /// map, built from `catalog` on the first read.
-pub(super) fn body_attribute(
+pub(in crate::game) fn body_attribute(
     body: LivingBody<'_>,
     catalog: &Arc<Catalog>,
     name: &str,
@@ -91,7 +91,7 @@ fn player_attribute(player: PlayerBody<'_>, name: &str, kind: ValueKind) -> Opti
 
 /// `LivingEntity.getEffect` of the effect at registry index `index`: none for an armor stand
 /// or the dragon, which keep no effects.
-pub(super) fn body_effect(body: LivingBody<'_>, index: usize) -> Option<ActiveEffect> {
+pub(in crate::game) fn body_effect(body: LivingBody<'_>, index: usize) -> Option<ActiveEffect> {
     match body {
         LivingBody::Mob(m) => {
             let e = m
@@ -107,7 +107,7 @@ pub(super) fn body_effect(body: LivingBody<'_>, index: usize) -> Option<ActiveEf
 }
 
 /// `LivingEntity.getActiveEffects`, in the order their store keeps them.
-pub(super) fn body_effects(body: LivingBody<'_>) -> Option<Vec<ActiveEffect>> {
+pub(in crate::game) fn body_effects(body: LivingBody<'_>) -> Option<Vec<ActiveEffect>> {
     match body {
         LivingBody::Mob(m) => Some(m.extra.effects.iter().map(|e| mob_effect(m, e)).collect()),
         LivingBody::Player(p) => Some(p.effects?.list.iter().map(active_effect).collect()),
@@ -116,7 +116,7 @@ pub(super) fn body_effects(body: LivingBody<'_>) -> Option<Vec<ActiveEffect>> {
 }
 
 /// `LivingEntity.hasEffect` of the effect at registry index `index`.
-pub(super) fn body_potion_affected(body: LivingBody<'_>, index: usize) -> bool {
+pub(in crate::game) fn body_potion_affected(body: LivingBody<'_>, index: usize) -> bool {
     match body {
         LivingBody::Mob(m) => m
             .extra
@@ -131,7 +131,7 @@ pub(super) fn body_potion_affected(body: LivingBody<'_>, index: usize) -> bool {
 }
 
 /// `LivingEntity.getItemBySlot`: the live stack, never a copy.
-pub(super) fn body_equipment(
+pub(in crate::game) fn body_equipment(
     body: LivingBody<'_>,
     slot: EquipmentSlot,
 ) -> Option<EquipmentRead<'_>> {
@@ -145,7 +145,7 @@ pub(super) fn body_equipment(
 
 /// The type a living body is of (`Entity.getType`), by name: the one mapping the full host's
 /// `entity_kind` and a hit's view both resolve.
-pub(super) fn body_kind_name<'a>(body: LivingBody<'a>) -> &'a str {
+pub(in crate::game) fn body_kind_name<'a>(body: LivingBody<'a>) -> &'a str {
     match body {
         LivingBody::Mob(m) => &m.kind.id,
         LivingBody::Player(_) => PLAYER,
@@ -155,14 +155,14 @@ pub(super) fn body_kind_name<'a>(body: LivingBody<'a>) -> &'a str {
 }
 
 /// A player's, an armor stand's and the dragon's type names.
-pub(super) const PLAYER: &str = "minecraft:player";
-pub(super) const ARMOR_STAND: &str = "minecraft:armor_stand";
-pub(super) const ENDER_DRAGON: &str = "minecraft:ender_dragon";
+pub(in crate::game) const PLAYER: &str = "minecraft:player";
+pub(in crate::game) const ARMOR_STAND: &str = "minecraft:armor_stand";
+pub(in crate::game) const ENDER_DRAGON: &str = "minecraft:ender_dragon";
 
 /// The registry key of the type a living body is of (`Entity.getType`), as the accepted
 /// resources resolved it: a mob's type keeps its own, the other three are in `keys`. The one read
 /// both the full host's `entity_kind` and a hit's view make.
-pub(super) fn body_kind(
+pub(in crate::game) fn body_kind(
     body: LivingBody<'_>,
     keys: sunrise_client::health::LivingTypeKeys,
 ) -> Option<mod_api::EntityTypeKey> {
@@ -176,7 +176,7 @@ pub(super) fn body_kind(
 
 /// The holder of a living body's attachments: a player's by UUID where its borrower knows it,
 /// any other entity's by id.
-pub(super) fn body_holder(body: LivingBody<'_>) -> Option<mod_api::Holder> {
+pub(in crate::game) fn body_holder(body: LivingBody<'_>) -> Option<mod_api::Holder> {
     Some(match body {
         LivingBody::Mob(m) => mod_api::Holder::Entity(m.id),
         LivingBody::Player(p) => mod_api::Holder::Player(p.uuid?),
@@ -185,7 +185,7 @@ pub(super) fn body_holder(body: LivingBody<'_>) -> Option<mod_api::Holder> {
 }
 
 /// `Mob.isNoAi`: None for anything but a mob.
-pub(super) fn body_no_ai(body: LivingBody<'_>) -> Option<bool> {
+pub(in crate::game) fn body_no_ai(body: LivingBody<'_>) -> Option<bool> {
     match body {
         LivingBody::Mob(m) => Some(m.no_ai),
         _ => None,
@@ -193,7 +193,7 @@ pub(super) fn body_no_ai(body: LivingBody<'_>) -> Option<bool> {
 }
 
 /// An armor stand's body.
-pub(super) fn stand_body(a: &sunrise_client::entities::ArmorStand) -> LivingBody<'_> {
+pub(in crate::game) fn stand_body(a: &sunrise_client::entities::ArmorStand) -> LivingBody<'_> {
     LivingBody::Stand(FixedBody {
         id: a.id,
         health: &a.health,
@@ -203,7 +203,7 @@ pub(super) fn stand_body(a: &sunrise_client::entities::ArmorStand) -> LivingBody
 }
 
 /// The dragon's body.
-pub(super) fn dragon_body(d: &super::dragon::Dragon) -> LivingBody<'_> {
+pub(in crate::game) fn dragon_body(d: &super::dragon::Dragon) -> LivingBody<'_> {
     LivingBody::Dragon(FixedBody {
         id: d.id,
         health: &d.health,
@@ -239,7 +239,7 @@ impl Game<'_> {
     }
     /// The body a living target names now, where its reads are: the player in place's own
     /// fields, a guest's hub record, a mob that is not removed, an armor stand or the dragon.
-    pub(super) fn native_living_body(&self, target: Target) -> Option<LivingBody<'_>> {
+    pub(in crate::game) fn native_living_body(&self, target: Target) -> Option<LivingBody<'_>> {
         Some(match target {
             Target::Player => {
                 let p = self.player.as_ref()?;

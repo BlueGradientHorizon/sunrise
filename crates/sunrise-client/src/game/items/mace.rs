@@ -22,7 +22,7 @@ use sunrise_core::{
 mod player_armor_weapon_tests;
 
 /// `CombatRules.getDamageAfterAbsorb`: the attacking weapon's armor effectiveness.
-pub(super) fn breach_modifier<'a>(
+pub(in crate::game) fn breach_modifier<'a>(
     weapon: Option<&'a ItemStack>,
     target: &'a str,
     source: DamageKind,
@@ -66,7 +66,7 @@ const KNOCKBACK_POWER: f32 = 0.7;
 /// `Entity.isAlliedTo` between the player (`player` its UUID) and a mob
 /// without teams: `TamableAnimal.considersEntityAsAlly` (a pet it tamed) and
 /// `Allay.considersEntityAsAlly` (an allay that likes it).
-pub(super) fn ally_of_player(m: &Mob, player: Option<[i32; 4]>) -> bool {
+pub(in crate::game) fn ally_of_player(m: &Mob, player: Option<[i32; 4]>) -> bool {
     let tamable = matches!(
         m.species(),
         Species::Wolf
@@ -82,7 +82,7 @@ pub(super) fn ally_of_player(m: &Mob, player: Option<[i32; 4]>) -> bool {
 /// The entity a sweep leaves out: the one the attack hit (`target` of
 /// `Player.doSweepAttack`).
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum Spared {
+pub(in crate::game) enum Spared {
     Nothing,
     Mob(u32),
     Stand(u32),
@@ -97,7 +97,7 @@ fn sweep_base_damage(ratio: f32, attack_damage: f32, scale: f32) -> f32 {
 }
 /// A smash's knockback on the players, put off while a guest's turn holds
 /// the other players.
-pub(super) struct SmashPush {
+pub(in crate::game) struct SmashPush {
     center: Vec3,
     heavy: f64,
     attacker: Option<u32>,
@@ -131,12 +131,12 @@ fn smash_push(center: Vec3, heavy: f64, at: Vec3, velocity: &mut Vec3, resistanc
 }
 
 /// `MaceItem.canSmashAttack` with explicit actor state.
-pub(super) fn can_smash(fall: f64, fall_flying: bool) -> bool {
+pub(in crate::game) fn can_smash(fall: f64, fall_flying: bool) -> bool {
     fall > FALL_THRESHOLD && !fall_flying
 }
 
 /// `MaceItem.getAttackDamageBonus`, with an explicit stack, actor fall and RNG.
-pub(super) fn stack_smash_damage(
+pub(in crate::game) fn stack_smash_damage(
     enchantments: &sunrise_items::enchant::Enchantments,
     stack: &sunrise_items::items::ItemStack,
     fall: f64,
@@ -196,11 +196,11 @@ impl Game<'_> {
     }
     /// A held mace about to smash (`MaceItem.getItemDamageSource`: the attack
     /// is `mace_smash` damage).
-    pub(super) fn smash_attack(&self) -> bool {
+    pub(in crate::game) fn smash_attack(&self) -> bool {
         self.holds_mace() && self.can_smash_attack()
     }
     /// The damage source of the player's hit from `from` with the held item.
-    pub(super) fn attack_source(&self, from: [f64; 3]) -> Damage {
+    pub(in crate::game) fn attack_source(&self, from: [f64; 3]) -> Damage {
         let motion = self
             .player
             .as_ref()
@@ -223,7 +223,7 @@ impl Game<'_> {
     /// `MaceItem.getAttackDamageBonus` against `victim`: 4 per block for the
     /// first three blocks fallen, 2 for the next five, 1 after that, plus
     /// `smash_damage_per_fallen_block` (Density) for every block.
-    pub(super) fn smash_damage_bonus(&mut self, victim: &str) -> f32 {
+    pub(in crate::game) fn smash_damage_bonus(&mut self, victim: &str) -> f32 {
         if !self.smash_attack() {
             return 0.0;
         }
@@ -262,7 +262,7 @@ impl Game<'_> {
     /// `source.getEntity()` of a blow as `SulfurCube.knockback` reads it: its eye position
     /// (`getEyePosition`), view direction (`getLookAngle`, `calculateViewVector(xRot, yRot)`)
     /// and feet (`position`). The player is the one acting, a mob one in the list.
-    pub(super) fn attacker_aim(
+    pub(in crate::game) fn attacker_aim(
         &self,
         who: Option<sunrise_client::mobs::Who>,
     ) -> Option<sunrise_client::mobs::Aim> {
@@ -291,7 +291,7 @@ impl Game<'_> {
     /// stack the mob that swung holds, and the registry its effects are read
     /// from. A projectile's weapon (an arrow's `firedFromWeapon`) is not
     /// passed: no vanilla bow carries the component.
-    pub(super) fn player_armor_weapon(
+    pub(in crate::game) fn player_armor_weapon(
         &self,
         attacker: Option<u32>,
         projectile: bool,
@@ -316,7 +316,7 @@ impl Game<'_> {
     /// `LivingEntity.hurtServer` of the mob at `index` by the player's hit:
     /// the weapon's `armor_effectiveness` enchantments (Breach) thin its armor.
     /// Returns whether the hurt landed and whether it killed, before death listeners ran.
-    pub(super) fn hurt_by_player(
+    pub(in crate::game) fn hurt_by_player(
         &mut self,
         index: usize,
         amount: f32,
@@ -409,7 +409,7 @@ impl Game<'_> {
     }
     /// Takes the absorbed tenths a projectile's hit left on the mobs; the shooter gets them
     /// as `damage_dealt_absorbed` when it is the player (`LivingEntity.actuallyHurt`).
-    pub(super) fn settle_dealt_absorbed(&mut self, by_player: bool) {
+    pub(in crate::game) fn settle_dealt_absorbed(&mut self, by_player: bool) {
         let absorbed: i32 = self
             .mobs
             .iter_mut()
@@ -423,7 +423,7 @@ impl Game<'_> {
     /// at `index`: the item's `hurtEnemy` (the "used" statistic of a weapon),
     /// the post-attack enchantments, then `postHurtEnemy` with the weapon's
     /// wear.
-    pub(super) fn weapon_hit(&mut self, index: usize) {
+    pub(in crate::game) fn weapon_hit(&mut self, index: usize) {
         let Some(stack) = self.held().cloned() else {
             // An empty hand still meets the victim's own post-attack
             // enchantments (Thorns).
@@ -451,7 +451,7 @@ impl Game<'_> {
     }
     /// `ItemStack.postHurtEnemy`: `hurtAndBreak(weapon.itemDamagePerAttack)` of
     /// the weapon in the acting hand.
-    pub(super) fn weapon_wear(&mut self, stack: &ItemStack) {
+    pub(in crate::game) fn weapon_wear(&mut self, stack: &ItemStack) {
         let items = self.res.items();
         let weapon = items
             .weapon_damage(stack)
@@ -530,7 +530,7 @@ impl Game<'_> {
     /// player: the weapon's side of it, as `weapon_hit` does for a mob. A
     /// smash stops the fall and its Wind Burst (a `post_attack` explosion on
     /// the attacker) launches the attacker.
-    pub(super) fn weapon_hit_player(&mut self, victim_on_ground: bool) {
+    pub(in crate::game) fn weapon_hit_player(&mut self, victim_on_ground: bool) {
         let Some(stack) = self.held().cloned() else {
             return;
         };
@@ -553,7 +553,7 @@ impl Game<'_> {
     /// mob, a smash stops the fall and knocks the creatures around the stand
     /// away, and the Wind Burst (a `post_attack` explosion on the attacker)
     /// launches the attacker.
-    pub(super) fn weapon_hit_stand(&mut self, id: u32, center: Vec3, on_ground: bool) {
+    pub(in crate::game) fn weapon_hit_stand(&mut self, id: u32, center: Vec3, on_ground: bool) {
         let Some(stack) = self.held().cloned() else {
             return;
         };
@@ -627,7 +627,7 @@ impl Game<'_> {
         self.each_guest_hit_except(push.attacker, |g| g.smash_push_player(push));
     }
     /// The pushes guests' smashes put off.
-    pub(super) fn flush_smash_pushes(&mut self) {
+    pub(in crate::game) fn flush_smash_pushes(&mut self) {
         for push in std::mem::take(&mut self.creatures.smash_pushes) {
             self.smash_push_players(&push);
         }
@@ -663,7 +663,7 @@ impl Game<'_> {
     /// `getEnchantedDamage(1 + sweeping ratio * attack damage) * strength`,
     /// knocked back 0.4 along the player's yaw. The player's allies and the
     /// target (`spared`) are spared.
-    pub(super) fn sweep_damage(&mut self, target: Aabb, spared: Spared, scale: f32) {
+    pub(in crate::game) fn sweep_damage(&mut self, target: Aabb, spared: Spared, scale: f32) {
         let Some(player) = self.player.as_ref() else {
             return;
         };
@@ -800,7 +800,7 @@ impl Game<'_> {
     }
     /// Level event 2013 (`ParticleUtils.spawnSmashAttackParticles`): dust
     /// pillars of the block at `pos`, a cluster over it and a ring 3.5 out.
-    pub(super) fn smash_dust(&mut self, pos: BlockPos, count: i32) {
+    pub(in crate::game) fn smash_dust(&mut self, pos: BlockPos, count: i32) {
         let state = self.world.block(pos.x, pos.y, pos.z);
         let Some((sprite, tint)) = self.particle_sprite(state, [pos.x, pos.y, pos.z]) else {
             return;

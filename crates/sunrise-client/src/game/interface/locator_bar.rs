@@ -20,17 +20,17 @@ const PLAYER_EYES: f64 = 1.62;
 
 impl Game<'_> {
     /// `ClientPacketListener.handleWaypoint`.
-    pub(super) fn handle_waypoint(&mut self, packet: &TrackedWaypoint) {
+    pub(in crate::game) fn handle_waypoint(&mut self, packet: &TrackedWaypoint) {
         self.client.waypoints.apply(packet);
     }
     /// A new connection or world starts with no waypoints.
-    pub(super) fn clear_waypoints(&mut self) {
+    pub(in crate::game) fn clear_waypoints(&mut self) {
         self.client.waypoints = ClientWaypoints::default();
     }
     /// `LocalPlayer.setExperienceValues`: a change of progress shows the
     /// experience bar for 100 ticks, except the first one
     /// (`experienceDisplayStartTick` starts at `Integer.MIN_VALUE`).
-    pub(super) fn track_experience_display(&mut self) {
+    pub(in crate::game) fn track_experience_display(&mut self) {
         let progress = self.experience.progress;
         let (last, seen, _) = &mut self.client.experience_display;
         if progress != *last {
@@ -53,7 +53,7 @@ impl Game<'_> {
     }
     /// `Hud.willPrioritizeExperienceInfo`. A start of 0 is none: the stamps above are at least 1
     /// (a new world under `SUNRISE_STILL` is still at tick 0).
-    pub(super) fn experience_recent(&self) -> bool {
+    pub(in crate::game) fn experience_recent(&self) -> bool {
         let (_, _, start) = self.client.experience_display;
         start != 0 && start + 100 > self.visual_ticks()
     }
@@ -76,11 +76,11 @@ impl Game<'_> {
         self.client.waypoints.has_waypoints()
     }
     /// The local player's UUID, as servers know it.
-    pub(super) fn own_uuid(&self) -> u128 {
+    pub(in crate::game) fn own_uuid(&self) -> u128 {
         self.own_profile_uuid().unwrap_or_default()
     }
 
-    pub(super) fn own_profile_uuid(&self) -> Option<u128> {
+    pub(in crate::game) fn own_profile_uuid(&self) -> Option<u128> {
         match &self.remote {
             Some(r) => Some(r.profile()),
             None => self.level.player_uuid.map(ints_uuid),
@@ -130,7 +130,11 @@ impl Game<'_> {
     }
     /// `LocatorBar.extractRenderState`: distance and self-exclusion from the camera entity,
     /// angles and projection from the last frame's render camera.
-    pub(super) fn locator_bar_draws(&self, gui_width: i32, gui_height: i32) -> Vec<GuiDraw> {
+    pub(in crate::game) fn locator_bar_draws(
+        &self,
+        gui_width: i32,
+        gui_height: i32,
+    ) -> Vec<GuiDraw> {
         let Some((camera_pos, yaw, pitch, fov)) = self.client.locator_camera else {
             return Vec::new();
         };

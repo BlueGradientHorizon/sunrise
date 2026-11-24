@@ -15,13 +15,13 @@ use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_world::food::Difficulty;
 
 /// `Game` seen by a finalizeSpawn `Ctx`.
-pub(super) struct FinalizeGame<'a, 'g> {
-    pub(super) game: &'a mut Game<'g>,
+pub(in crate::game) struct FinalizeGame<'a, 'g> {
+    pub(in crate::game) game: &'a mut Game<'g>,
 }
 
 /// A finalizeSpawn biome lookup with its chunk not loaded: the plains' id,
 /// the same default the biome facts fall back to.
-pub(super) fn biome_or_plains(name: Option<String>) -> String {
+pub(in crate::game) fn biome_or_plains(name: Option<String>) -> String {
     name.unwrap_or_else(|| "minecraft:plains".to_owned())
 }
 
@@ -100,16 +100,16 @@ impl finalize::FinalizeLevel for FinalizeGame<'_, '_> {
 
 impl Game<'_> {
     /// `DimensionType.moonPhase` at the level's day time.
-    pub(super) fn finalize_moon_phase(&self) -> usize {
+    pub(in crate::game) fn finalize_moon_phase(&self) -> usize {
         (self.world.day_time.div_euclid(24000).rem_euclid(8)) as usize
     }
     /// The level's game time (`Level.getDayTime`).
-    pub(super) fn finalize_game_time(&self) -> i64 {
+    pub(in crate::game) fn finalize_game_time(&self) -> i64 {
         self.world.day_time
     }
     /// The first free chicken a jockey can take: alive, unhindered, inside
     /// the bounds.
-    pub(super) fn finalize_free_chicken(&self, bounds: Aabb) -> Option<u32> {
+    pub(in crate::game) fn finalize_free_chicken(&self, bounds: Aabb) -> Option<u32> {
         self.mobs
             .iter()
             .find(|c| {
@@ -122,13 +122,13 @@ impl Game<'_> {
             .map(|c| c.id)
     }
     /// `Fallable.isHalloween` at the level's clock.
-    pub(super) fn finalize_halloween(&self) -> bool {
+    pub(in crate::game) fn finalize_halloween(&self) -> bool {
         finalize::is_halloween()
     }
     /// The tables a finalizeSpawn `Ctx` borrows: the variant registries, the
     /// enchantments and items its gear rolls need, and `EntityTypes.CAMEL_HUSK`'s
     /// dimensions if the table has the type.
-    pub(super) fn finalize_spawn_data(&self) -> finalize::SpawnData<'_> {
+    pub(in crate::game) fn finalize_spawn_data(&self) -> finalize::SpawnData<'_> {
         let game = self;
         finalize::SpawnData {
             registries: game.res.spawn_registries(),
@@ -144,7 +144,7 @@ impl Game<'_> {
     }
     /// The mod event half of a finalizeSpawn, mapped to the `Ctx`'s outcome:
     /// the level decides, and the game carries it out.
-    pub(super) fn finalize_spawn_event_result(
+    pub(in crate::game) fn finalize_spawn_event_result(
         &self,
         mob: &mut Mob,
         reason: Reason,
@@ -162,7 +162,7 @@ impl Game<'_> {
     /// `finalize::Ctx` world generation runs, over the live level, with the
     /// level's random (`world.random`). Mobs the call made (jockeys and
     /// mounts) join the level beside it.
-    pub(super) fn finalize_plain(
+    pub(in crate::game) fn finalize_plain(
         &mut self,
         mob: &mut Mob,
         difficulty: &spawning::LocalDifficulty,
@@ -172,7 +172,7 @@ impl Game<'_> {
     }
     /// [`Game::finalize_plain`] with the pack's group data, as a listener of
     /// `finalize_spawn` left it.
-    pub(super) fn finalize_grouped(
+    pub(in crate::game) fn finalize_grouped(
         &mut self,
         mob: &mut Mob,
         difficulty: &spawning::LocalDifficulty,

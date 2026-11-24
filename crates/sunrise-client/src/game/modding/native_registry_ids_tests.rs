@@ -53,9 +53,9 @@ fn serve(game: &mut super::Game<'_>) {
 #[test]
 #[ignore = "daily"]
 fn a_server_answers_vanilla_and_mod_ids() {
-    let Some(root) =
-        declared_part_root("game::native_registry_ids_tests::a_server_answers_vanilla_and_mod_ids")
-    else {
+    let Some(root) = declared_part_root(
+        "game::server_side::native_registry_ids_tests::a_server_answers_vanilla_and_mod_ids",
+    ) else {
         return;
     };
     with_game_at(root, |game| {

@@ -1,7 +1,7 @@
 //! Client crack state belongs to one level and expires independently of new updates.
 use super::{Game, Mining};
 
-pub(super) struct ClientCrack {
+pub(in crate::game) struct ClientCrack {
     pub pos: [i32; 3],
     pub stage: u8,
     pub updated_at: i64,
@@ -10,7 +10,7 @@ pub(super) struct ClientCrack {
 
 impl Game<'_> {
     /// Preserve the stage's stored display answer across prediction updates.
-    pub(super) fn set_client_mining(&mut self, mut mining: Option<Mining>) {
+    pub(in crate::game) fn set_client_mining(&mut self, mut mining: Option<Mining>) {
         if let Some(next) = &mut mining
             && let Some(old) = self.mining.as_mut().filter(|old| old.pos == next.pos)
         {
@@ -20,7 +20,7 @@ impl Game<'_> {
         self.update_local_crack();
     }
 
-    pub(super) fn update_local_crack(&mut self) {
+    pub(in crate::game) fn update_local_crack(&mut self) {
         if !self.native_window() {
             return;
         }
@@ -57,14 +57,14 @@ impl Game<'_> {
         });
     }
 
-    pub(super) fn expire_client_cracks(&mut self) {
+    pub(in crate::game) fn expire_client_cracks(&mut self) {
         let now = self.world.game_time;
         self.client
             .destroying
             .retain(|_, crack| now.saturating_sub(crack.updated_at) <= 400);
     }
 
-    pub(super) fn reset_client_world(&mut self, seed: i64) {
+    pub(in crate::game) fn reset_client_world(&mut self, seed: i64) {
         self.client.destroying.clear();
         self.mining = None;
         self.world = Game::world_for_mods(self.res.facts().air, seed);

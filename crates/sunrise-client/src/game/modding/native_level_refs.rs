@@ -34,7 +34,7 @@ fn calling_mod_owns(controller: TicketController) -> bool {
 }
 
 /// The stored light of `layer` at `pos` in `world`, as the game's own light query reads it.
-pub(super) fn world_brightness(world: &World, layer: LightLayer, pos: [i32; 3]) -> i32 {
+pub(in crate::game) fn world_brightness(world: &World, layer: LightLayer, pos: [i32; 3]) -> i32 {
     let light = world.light(pos[0], pos[1], pos[2]);
     i32::from(match layer {
         LightLayer::Block => light & 15,
@@ -71,7 +71,7 @@ fn biome_search_within_budget(parameters: mod_api::BiomeSearch, height: i32) -> 
 }
 
 impl Game<'_> {
-    pub(super) fn level_add_water_ticket(
+    pub(in crate::game) fn level_add_water_ticket(
         &mut self,
         level: LevelRef,
         min: [i32; 3],
@@ -96,7 +96,7 @@ impl Game<'_> {
             .map(|id| mod_api::WaterTicket::new(level, id))
     }
 
-    pub(super) fn water_ticket_remove(&mut self, ticket: mod_api::WaterTicket) -> bool {
+    pub(in crate::game) fn water_ticket_remove(&mut self, ticket: mod_api::WaterTicket) -> bool {
         let Some(owner) = mod_api::content::crash::current_native_mod() else {
             return false;
         };
@@ -120,13 +120,13 @@ impl Game<'_> {
         world.water_tickets.remove(owner, ticket.id())
     }
 
-    pub(super) fn level_has_water_ticket(&self, level: LevelRef, pos: [i32; 3]) -> bool {
+    pub(in crate::game) fn level_has_water_ticket(&self, level: LevelRef, pos: [i32; 3]) -> bool {
         self.native_level_world(level)
             .is_some_and(|world| world.water_tickets.contains(pos))
     }
 
     /// `ServerLevel.findClosestBiome3d`, using the same generator query as `/locate biome`.
-    pub(super) fn level_find_closest_biome(
+    pub(in crate::game) fn level_find_closest_biome(
         &self,
         level: LevelRef,
         biome: &str,
@@ -161,7 +161,7 @@ impl Game<'_> {
 
     /// `ServerLevel.findNearestMapStructure` without skipping known starts, through
     /// the generator search `/locate structure` runs.
-    pub(super) fn level_find_nearest_structure(
+    pub(in crate::game) fn level_find_nearest_structure(
         &self,
         level: LevelRef,
         structure: &str,
@@ -206,7 +206,7 @@ impl Game<'_> {
     }
 
     /// The authoritative server's `LevelReader.getBiome`, including parked levels.
-    pub(super) fn level_biome_at(&self, level: LevelRef, pos: [i32; 3]) -> Option<String> {
+    pub(in crate::game) fn level_biome_at(&self, level: LevelRef, pos: [i32; 3]) -> Option<String> {
         if !self.is_logical_server() {
             return None;
         }
@@ -214,7 +214,11 @@ impl Game<'_> {
     }
 
     /// The client's current copy of `LevelReader.getBiome`, never an authoritative server read.
-    pub(super) fn level_client_biome(&self, level: LevelRef, pos: [i32; 3]) -> Option<String> {
+    pub(in crate::game) fn level_client_biome(
+        &self,
+        level: LevelRef,
+        pos: [i32; 3],
+    ) -> Option<String> {
         if self.is_logical_server() {
             return None;
         }
@@ -222,7 +226,7 @@ impl Game<'_> {
     }
 
     /// A biome's natural spawners by category from the world's biome table.
-    pub(super) fn level_biome_spawners(
+    pub(in crate::game) fn level_biome_spawners(
         &self,
         level: LevelRef,
         biome: &str,
@@ -232,7 +236,7 @@ impl Game<'_> {
     }
 
     /// A biome's own sky, fog and water colours from the world's biome table.
-    pub(super) fn level_biome_effects(
+    pub(in crate::game) fn level_biome_effects(
         &self,
         level: LevelRef,
         biome: &str,
@@ -242,7 +246,7 @@ impl Game<'_> {
     }
 
     /// Whether a biome is in a biome tag, by the world's live tag tables.
-    pub(super) fn level_biome_in_tag(
+    pub(in crate::game) fn level_biome_in_tag(
         &self,
         level: LevelRef,
         biome: &str,
@@ -257,7 +261,7 @@ impl Game<'_> {
     }
 
     /// A biome's `Biome.ClimateSettings` from the world's biome table, data packs included.
-    pub(super) fn level_biome_properties(
+    pub(in crate::game) fn level_biome_properties(
         &self,
         level: LevelRef,
         biome: &str,
@@ -267,13 +271,13 @@ impl Game<'_> {
     }
 
     /// `ServerLevel.getLogicalHeight`: the dimension's logical height, not its build height.
-    pub(super) fn level_logical_height(&self, level: LevelRef) -> Option<i32> {
+    pub(in crate::game) fn level_logical_height(&self, level: LevelRef) -> Option<i32> {
         Some(self.native_level_read_world(level)?.shape.logical_height)
     }
 
     /// `BlockGetter.getBlockFloorHeight` with an empty collision context.
     /// Uses the normal dynamic shapes, querying below only when this shape is empty.
-    pub(super) fn level_block_floor_height(
+    pub(in crate::game) fn level_block_floor_height(
         &self,
         level: LevelRef,
         [x, y, z]: [i32; 3],
@@ -292,16 +296,16 @@ impl Game<'_> {
     }
 
     /// The border of a resident server level, through the handle's lifetime check.
-    pub(super) fn level_world_border(&self, level: LevelRef) -> Option<[f64; 4]> {
+    pub(in crate::game) fn level_world_border(&self, level: LevelRef) -> Option<[f64; 4]> {
         self.native_level_world(level)?;
         Some(self.border.bounds())
     }
     /// The world a handle names now, or None for a stale or foreign one.
-    pub(super) fn native_level_world(&self, level: LevelRef) -> Option<&World> {
+    pub(in crate::game) fn native_level_world(&self, level: LevelRef) -> Option<&World> {
         self.native_level_world_result(level).ok()
     }
     /// The single residency boundary for typed server-level reads.
-    pub(super) fn native_level_world_result(
+    pub(in crate::game) fn native_level_world_result(
         &self,
         level: LevelRef,
     ) -> Result<&World, mod_api::LevelReadError> {
@@ -321,7 +325,7 @@ impl Game<'_> {
     /// The world a handle names for a read that works on both sides: the
     /// server's level, or on a client the one it shows (`Minecraft.level`, its
     /// copy of the server's). None for a stale handle or another dimension.
-    pub(super) fn native_level_read_world(&self, level: LevelRef) -> Option<&World> {
+    pub(in crate::game) fn native_level_read_world(&self, level: LevelRef) -> Option<&World> {
         if self.is_logical_server() {
             return self.native_level_world(level);
         }
@@ -332,7 +336,7 @@ impl Game<'_> {
     }
     /// Find a loaded chunk in an open server level: `ServerChunkCache.getChunkNow`, which also
     /// makes a FULL column one of the level's recent FULL lookups (`Streaming::note_full_read`).
-    pub(super) fn chunk(&self, level: LevelRef, pos: [i32; 2]) -> Option<ChunkRef> {
+    pub(in crate::game) fn chunk(&self, level: LevelRef, pos: [i32; 2]) -> Option<ChunkRef> {
         let world = self.native_level_world(level)?;
         let key = (pos[0], pos[1]);
         if !world.chunks.contains_key(&key) {
@@ -345,7 +349,7 @@ impl Game<'_> {
     }
     /// Every loaded chunk of an open server level as handles, ordered by chunk x then z. None
     /// for a stale handle or on a client. Loads nothing.
-    pub(super) fn level_loaded_chunks(&self, level: LevelRef) -> Option<Vec<ChunkRef>> {
+    pub(in crate::game) fn level_loaded_chunks(&self, level: LevelRef) -> Option<Vec<ChunkRef>> {
         let mut positions: Vec<(i32, i32)> = self
             .native_level_world(level)?
             .chunks
@@ -361,18 +365,22 @@ impl Game<'_> {
         )
     }
     /// Whether this chunk is loaded; false on a client or for a stale handle.
-    pub(super) fn chunk_loaded(&self, chunk: ChunkRef) -> bool {
+    pub(in crate::game) fn chunk_loaded(&self, chunk: ChunkRef) -> bool {
         self.chunk(chunk.level(), chunk.pos()).is_some()
     }
     /// The status of a loaded chunk. Proto chunks are not exposed here.
-    pub(super) fn chunk_status(&self, chunk: ChunkRef) -> Option<ChunkStatus> {
+    pub(in crate::game) fn chunk_status(&self, chunk: ChunkRef) -> Option<ChunkStatus> {
         self.chunk(chunk.level(), chunk.pos())
             .map(|_| ChunkStatus::Full)
     }
     /// A handle for chunk `pos` of an open level, loaded or not, so a mod can
     /// force an unloaded chunk. None for a stale handle, on a client, and for
     /// a chunk outside the world (`ChunkPos` past 30 million blocks).
-    pub(super) fn level_chunk_ref(&self, level: LevelRef, pos: [i32; 2]) -> Option<ChunkRef> {
+    pub(in crate::game) fn level_chunk_ref(
+        &self,
+        level: LevelRef,
+        pos: [i32; 2],
+    ) -> Option<ChunkRef> {
         self.native_level_world(level)?;
         chunk_in_world(pos).then_some(ChunkRef::new(level, pos))
     }
@@ -380,7 +388,7 @@ impl Game<'_> {
     /// until it is there, under a one-tick `UNKNOWN` ticket (`Game::load_full_chunk`).
     /// `Unloaded` for a stale handle, on a client, for a chunk past `ChunkPos.isValid`, and when
     /// the level's generation is paused or stopped; `Failed` when a generation it needs panicked.
-    pub(super) fn level_load_chunk(
+    pub(in crate::game) fn level_load_chunk(
         &mut self,
         level: LevelRef,
         pos: [i32; 2],
@@ -402,7 +410,7 @@ impl Game<'_> {
     }
     /// Whether `/forceload` holds the chunk (`ServerLevel.getForcedChunks`),
     /// loaded or not; a mod's own ticket on it does not count. None for a stale handle or on a client.
-    pub(super) fn chunk_forced(&self, chunk: ChunkRef) -> Option<bool> {
+    pub(in crate::game) fn chunk_forced(&self, chunk: ChunkRef) -> Option<bool> {
         let [x, z] = chunk.pos();
         Some(
             self.native_level_streaming(chunk.level())?
@@ -420,7 +428,7 @@ impl Game<'_> {
     /// returning, or when streaming starts if it is still paused.
     /// False for a stale handle, on a client, outside the world, or when
     /// adding after generation has stopped.
-    pub(super) fn chunk_set_forced(&mut self, chunk: ChunkRef, forced: bool) -> bool {
+    pub(in crate::game) fn chunk_set_forced(&mut self, chunk: ChunkRef, forced: bool) -> bool {
         if self.native_level_streaming(chunk.level()).is_none() || !chunk_in_world(chunk.pos()) {
             return false;
         }
@@ -448,7 +456,7 @@ impl Game<'_> {
     /// `level_load`, say) are not candidates, and a controller registered
     /// without a validator keeps all of its tickets. Nothing is built while no
     /// mod listens.
-    pub(super) fn validate_mod_chunk_tickets(&mut self, dim: super::Dim) {
+    pub(in crate::game) fn validate_mod_chunk_tickets(&mut self, dim: super::Dim) {
         let Some(streaming) = self.mod_ticket_streaming_mut(dim) else {
             return;
         };
@@ -496,7 +504,7 @@ impl Game<'_> {
     /// discarded. False outside a mod's hook, for another mod's controller, on
     /// a client, for a chunk outside the world and for a level the server has
     /// not opened.
-    pub(super) fn chunk_set_mod_forced(
+    pub(in crate::game) fn chunk_set_mod_forced(
         &mut self,
         chunk: ChunkRef,
         controller: TicketController,
@@ -530,7 +538,7 @@ impl Game<'_> {
     /// The chunk tickets `controller` holds in the level, as (owner, chunk
     /// position, natural_spawning), in order. None for a stale handle, on a
     /// client, outside a mod's hook and for another mod's controller.
-    pub(super) fn level_mod_forced_chunks(
+    pub(in crate::game) fn level_mod_forced_chunks(
         &self,
         level: LevelRef,
         controller: TicketController,
@@ -548,7 +556,7 @@ impl Game<'_> {
     }
     /// The level's force-loaded chunks (`/forceload query`), sorted as
     /// the command lists them. None for a stale handle or on a client.
-    pub(super) fn level_forced_chunks(&self, level: LevelRef) -> Option<Vec<[i32; 2]>> {
+    pub(in crate::game) fn level_forced_chunks(&self, level: LevelRef) -> Option<Vec<[i32; 2]>> {
         let mut forced: Vec<(i32, i32)> = self
             .native_level_streaming(level)?
             .commanded()
@@ -559,7 +567,7 @@ impl Game<'_> {
         Some(forced.into_iter().map(|(x, z)| [x, z]).collect())
     }
     /// Borrow the resident site without lending any writable host to discovery.
-    pub(super) fn level_with_capability_site(
+    pub(in crate::game) fn level_with_capability_site(
         &self,
         at: mod_api::BlockSide,
         visit: &mut dyn FnMut(&dyn mod_api::LevelHost, mod_api::BlockCapabilitySite),
@@ -581,14 +589,18 @@ impl Game<'_> {
     /// The block state ID at `pos` (`Level.getBlockState`), without formatting a string.
     /// None for a chunk that isn't loaded or a `y` outside the world. On a client, the state
     /// the server sent for a column the client holds, of its own level or a viewed one.
-    pub(super) fn level_block_state(&self, level: LevelRef, pos: [i32; 3]) -> Option<BlockStateId> {
+    pub(in crate::game) fn level_block_state(
+        &self,
+        level: LevelRef,
+        pos: [i32; 3],
+    ) -> Option<BlockStateId> {
         let world = self.native_level_view_world(level)?;
         let [x, y, z] = pos;
         world.is_loaded_at(x, y, z).then(|| world.block(x, y, z))
     }
     /// `BlockState.isRedstoneConductor(level, pos)` of the block at `pos`. None for a stale
     /// handle, a client or an unloaded `pos`.
-    pub(super) fn level_is_redstone_conductor(
+    pub(in crate::game) fn level_is_redstone_conductor(
         &self,
         level: LevelRef,
         pos: [i32; 3],
@@ -601,7 +613,7 @@ impl Game<'_> {
     /// simulation. The player must be live in the level in place, and the block must be loaded;
     /// parked levels cannot provide the hook's level context. A stale handle, invalid face,
     /// unavailable player or level, or no transformation returns None.
-    pub(super) fn level_block_transform(
+    pub(in crate::game) fn level_block_transform(
         &self,
         level: LevelRef,
         player: PlayerRef,
@@ -661,7 +673,7 @@ impl Game<'_> {
     /// `FluidState.getFlow` at `pos`: the current that pushes an entity there, after the
     /// `fluid_flow` hook, as entities feel it. Zero where no fluid flows. None as for
     /// `block_state`.
-    pub(super) fn level_fluid_flow(&self, level: LevelRef, pos: [i32; 3]) -> Option<Vec3> {
+    pub(in crate::game) fn level_fluid_flow(&self, level: LevelRef, pos: [i32; 3]) -> Option<Vec3> {
         let world = self.native_level_read_world(level)?;
         let [x, y, z] = pos;
         world.is_loaded_at(x, y, z).then(|| {
@@ -676,14 +688,18 @@ impl Game<'_> {
     }
     /// The block at `pos` without its properties: `minecraft:oak_stairs`.
     /// None as for `block_state`. API 381.
-    pub(super) fn level_block(&self, level: LevelRef, pos: [i32; 3]) -> Option<mod_api::BlockKey> {
+    pub(in crate::game) fn level_block(
+        &self,
+        level: LevelRef,
+        pos: [i32; 3],
+    ) -> Option<mod_api::BlockKey> {
         self.level_block_state(level, pos)
             .and_then(|state| mod_api::__private::block_key(&self.res.facts().get(state).name))
     }
     /// Property `key` of the block state at `pos` (`BlockState.getValue`):
     /// `east` for `facing`. None for a block without it, or as for
     /// `block_state`. API 381.
-    pub(super) fn level_block_property(
+    pub(in crate::game) fn level_block_property(
         &self,
         level: LevelRef,
         pos: [i32; 3],
@@ -698,7 +714,7 @@ impl Game<'_> {
             .get(key)
             .cloned()
     }
-    pub(super) fn level_get_enchant_power_bonus(
+    pub(in crate::game) fn level_get_enchant_power_bonus(
         &self,
         level: LevelRef,
         pos: [i32; 3],
@@ -720,7 +736,7 @@ impl Game<'_> {
     /// Read the mod-published connection group at `pos`, or `Ok(None)` when unset, unloaded, or
     /// out of height. Works on both server (including parked levels) and client (including viewed
     /// levels).
-    pub(super) fn level_connection_group(
+    pub(in crate::game) fn level_connection_group(
         &self,
         level: LevelRef,
         pos: [i32; 3],
@@ -739,7 +755,7 @@ impl Game<'_> {
     /// `LevelRef::capability` looks up. False for a level parked while the server ticks
     /// another (its blocks can still be read), for a handle of an earlier open, and on a
     /// client.
-    pub(super) fn level_in_place(&self, level: LevelRef) -> bool {
+    pub(in crate::game) fn level_in_place(&self, level: LevelRef) -> bool {
         self.is_logical_server()
             && self.level_handle_current(level)
             && self.dim.key() == level.dimension()
@@ -765,7 +781,7 @@ impl Game<'_> {
     /// conducts included (`SignalGetter.getSignal(pos, direction)`, as a block reads its
     /// neighbour `pos` that lies `direction` from it), 0 to 15. None for another level, a stale
     /// handle or a client. Takes a shared host and opens no transaction.
-    pub(super) fn level_signal(
+    pub(in crate::game) fn level_signal(
         &self,
         level: LevelRef,
         pos: [i32; 3],
@@ -775,7 +791,7 @@ impl Game<'_> {
     }
     /// The strong power alone that the block at `pos` gives that way
     /// (`SignalGetter.getDirectSignal(pos, direction)`), 0 to 15. None as for `signal`.
-    pub(super) fn level_direct_signal(
+    pub(in crate::game) fn level_direct_signal(
         &self,
         level: LevelRef,
         pos: [i32; 3],
@@ -785,18 +801,30 @@ impl Game<'_> {
     }
     /// The strongest strong power reaching the block at `pos` from its six neighbours
     /// (`SignalGetter.getDirectSignalTo`), 0 to 15. None as for `signal`.
-    pub(super) fn level_direct_signal_to(&self, level: LevelRef, pos: [i32; 3]) -> Option<i32> {
+    pub(in crate::game) fn level_direct_signal_to(
+        &self,
+        level: LevelRef,
+        pos: [i32; 3],
+    ) -> Option<i32> {
         self.native_level_signals(level, |s| s.direct_signal_to(block_pos(pos)))
     }
     /// The strongest power reaching the block at `pos` from its six neighbours
     /// (`SignalGetter.getBestNeighborSignal`, what a dispenser or a piston reads), 0 to 15.
     /// None as for `signal`.
-    pub(super) fn level_best_neighbor_signal(&self, level: LevelRef, pos: [i32; 3]) -> Option<i32> {
+    pub(in crate::game) fn level_best_neighbor_signal(
+        &self,
+        level: LevelRef,
+        pos: [i32; 3],
+    ) -> Option<i32> {
         self.native_level_signals(level, |s| s.best_neighbor_signal(block_pos(pos)))
     }
     /// Whether any neighbour powers the block at `pos` (`SignalGetter.hasNeighborSignal`),
     /// asking no side past the first that does. False where `signal` is None.
-    pub(super) fn level_has_neighbor_signal(&self, level: LevelRef, pos: [i32; 3]) -> bool {
+    pub(in crate::game) fn level_has_neighbor_signal(
+        &self,
+        level: LevelRef,
+        pos: [i32; 3],
+    ) -> bool {
         self.native_level_signals(level, |s| s.has_neighbor_signal(block_pos(pos)))
             .unwrap_or(false)
     }
@@ -805,11 +833,11 @@ impl Game<'_> {
     /// read or write there finds the world. False on a client or for a stale
     /// handle: the position is not loaded here. On a client, a chunk it holds is loaded
     /// (`ClientLevel.hasChunkAt`). API 381.
-    pub(super) fn level_is_loaded(&self, level: LevelRef, pos: [i32; 3]) -> bool {
+    pub(in crate::game) fn level_is_loaded(&self, level: LevelRef, pos: [i32; 3]) -> bool {
         self.native_level_read_world(level)
             .is_some_and(|w| w.is_loaded_at(pos[0], pos[1], pos[2]))
     }
-    pub(super) fn level_get_light_emission(
+    pub(in crate::game) fn level_get_light_emission(
         &self,
         level: LevelRef,
         pos: [i32; 3],
@@ -839,7 +867,7 @@ impl Game<'_> {
     /// The stored light of one layer at `pos` (`BlockAndLightGetter.getBrightness`), 0 to 15.
     /// As with `block_state`, a client reads the named level, shown or open for viewing.
     /// Returns None if the level is unavailable or the position isn't loaded.
-    pub(super) fn level_brightness(
+    pub(in crate::game) fn level_brightness(
         &self,
         level: LevelRef,
         layer: LightLayer,
@@ -851,7 +879,11 @@ impl Game<'_> {
             .then(|| world_brightness(world, layer, pos))
     }
     /// `BlockAndLightGetter.canSeeSky`: whether the local sky light at `pos` is full.
-    pub(super) fn level_can_see_sky(&self, level: LevelRef, pos: [i32; 3]) -> Option<bool> {
+    pub(in crate::game) fn level_can_see_sky(
+        &self,
+        level: LevelRef,
+        pos: [i32; 3],
+    ) -> Option<bool> {
         Some(super::native_world_read::can_see_sky(
             self.native_level_read_world(level)?,
             pos,
@@ -863,7 +895,7 @@ impl Game<'_> {
     /// itself. A check already queued there since the last ask queues nothing, as vanilla's
     /// queue is a set. False off the level in place, for a stale handle, on a client and for a
     /// position that isn't loaded.
-    pub(super) fn level_check_light(&mut self, level: LevelRef, pos: [i32; 3]) -> bool {
+    pub(in crate::game) fn level_check_light(&mut self, level: LevelRef, pos: [i32; 3]) -> bool {
         if !self.native_level_write_allowed(level, pos) || self.dim.key() != level.dimension() {
             return false;
         }
@@ -881,7 +913,7 @@ impl Game<'_> {
     }
     /// The capability generation at `pos`, in an active or parked level. None for a stale
     /// handle, a client, an unloaded position and one outside build height.
-    pub(super) fn level_capability_generation(
+    pub(in crate::game) fn level_capability_generation(
         &self,
         level: LevelRef,
         [x, y, z]: [i32; 3],
@@ -893,7 +925,7 @@ impl Game<'_> {
     /// Moves the capability generation at `pos` on, at the root commit inside a transaction.
     /// False off the level in place, for a stale handle, on a client and for a position that
     /// isn't loaded.
-    pub(super) fn level_invalidate_capabilities(
+    pub(in crate::game) fn level_invalidate_capabilities(
         &mut self,
         level: LevelRef,
         [x, y, z]: [i32; 3],
@@ -909,7 +941,7 @@ impl Game<'_> {
     }
     /// `LivingEntity.hasLineOfSight`'s clip between two points (collider shapes, no fluids):
     /// whether it misses. None as for `level_clip`.
-    pub(super) fn level_line_of_sight(
+    pub(in crate::game) fn level_line_of_sight(
         &self,
         level: LevelRef,
         from: [f64; 3],
@@ -925,7 +957,7 @@ impl Game<'_> {
     }
     /// `LevelData.getRespawnData`: the world spawn and its facing. None on a client, for a
     /// stale handle, and before the world has chosen its spawn.
-    pub(super) fn level_respawn_data(&self, level: LevelRef) -> Option<RespawnData> {
+    pub(in crate::game) fn level_respawn_data(&self, level: LevelRef) -> Option<RespawnData> {
         if !self.native_world_data_allowed(level) {
             return None;
         }
@@ -944,7 +976,7 @@ impl Game<'_> {
     }
     /// `/setworldspawn`'s write (`set_world_spawn`) in the handle's level. False for a stale
     /// handle, a client, a non-finite angle and a position outside the spawnable bounds.
-    pub(super) fn level_set_respawn_data(
+    pub(in crate::game) fn level_set_respawn_data(
         &mut self,
         level: LevelRef,
         pos: [i32; 3],
@@ -962,7 +994,7 @@ impl Game<'_> {
     }
     /// Map `id`'s saved data as it stands (`with_map`). None on a client, for a stale handle
     /// and for a map nothing made.
-    pub(super) fn level_map_data(&self, level: LevelRef, id: i32) -> Option<MapState> {
+    pub(in crate::game) fn level_map_data(&self, level: LevelRef, id: i32) -> Option<MapState> {
         if !self.native_world_data_allowed(level) {
             return None;
         }
@@ -978,7 +1010,12 @@ impl Game<'_> {
     }
     /// Repaint map `id` (`MapData::paint`). False for another length, a stale handle, a
     /// client, a map nothing made and a map whose pixels are all as given.
-    pub(super) fn level_set_map_data(&mut self, level: LevelRef, id: i32, colors: &[u8]) -> bool {
+    pub(in crate::game) fn level_set_map_data(
+        &mut self,
+        level: LevelRef,
+        id: i32,
+        colors: &[u8],
+    ) -> bool {
         if !self.native_world_data_allowed(level) {
             return false;
         }
@@ -988,7 +1025,7 @@ impl Game<'_> {
     }
     /// Queue the level to be saved at the start of the next server tick. False for a stale
     /// handle and on a client.
-    pub(super) fn level_request_save(&mut self, level: LevelRef) -> bool {
+    pub(in crate::game) fn level_request_save(&mut self, level: LevelRef) -> bool {
         if self.native_level_world(level).is_none() {
             return false;
         }
@@ -999,7 +1036,7 @@ impl Game<'_> {
     /// The due tick path for the block at `pos` now (`Behaviours::due_block_tick`). False for
     /// a refused write, a stale or parked handle, a client and an unloaded or out-of-height
     /// position.
-    pub(super) fn level_block_tick(&mut self, level: LevelRef, pos: [i32; 3]) -> bool {
+    pub(in crate::game) fn level_block_tick(&mut self, level: LevelRef, pos: [i32; 3]) -> bool {
         if !self.native_level_tick_allowed(level, pos) {
             return false;
         }
@@ -1010,7 +1047,7 @@ impl Game<'_> {
     }
     /// The flow step of the fluid at `pos` now (`Behaviours::scheduled_fluid_tick`, the body of
     /// a due fluid tick). False as for `level_block_tick`.
-    pub(super) fn level_fluid_tick(&mut self, level: LevelRef, pos: [i32; 3]) -> bool {
+    pub(in crate::game) fn level_fluid_tick(&mut self, level: LevelRef, pos: [i32; 3]) -> bool {
         if !self.native_level_tick_allowed(level, pos) {
             return false;
         }
@@ -1021,7 +1058,11 @@ impl Game<'_> {
     }
     /// `tickChunk`'s random tick of `pos` now (`Behaviours::random_tick`). False as for
     /// `level_block_tick`.
-    pub(super) fn level_block_random_tick(&mut self, level: LevelRef, pos: [i32; 3]) -> bool {
+    pub(in crate::game) fn level_block_random_tick(
+        &mut self,
+        level: LevelRef,
+        pos: [i32; 3],
+    ) -> bool {
         if !self.native_level_tick_allowed(level, pos) {
             return false;
         }
@@ -1041,7 +1082,7 @@ impl Game<'_> {
     /// `ServerLevel.findLightningTargetAround` (`lightning_target`) for the column at `pos`,
     /// in the level in place. None for another level, a stale handle, a client and an
     /// unloaded column.
-    pub(super) fn level_lightning_target(
+    pub(in crate::game) fn level_lightning_target(
         &mut self,
         level: LevelRef,
         pos: [i32; 3],
@@ -1055,7 +1096,7 @@ impl Game<'_> {
     /// (`LevelHeightAccessor.getMinY`, `getHeight`). Reads any loaded server level
     /// or the client's current level. None for a stale handle, before client login,
     /// or for a dimension unavailable on this side. Does not load chunks. API 381.
-    pub(super) fn level_height(&self, level: LevelRef) -> Option<(i32, i32)> {
+    pub(in crate::game) fn level_height(&self, level: LevelRef) -> Option<(i32, i32)> {
         self.native_level_read_world(level)
             .map(|w| (w.shape.min_y, w.shape.height))
     }
@@ -1081,7 +1122,7 @@ impl Game<'_> {
     }
     /// The ticks the server has run (`Level.getGameTime`), shared by every
     /// level as in vanilla. API 381.
-    pub(super) fn level_game_time(&self, level: LevelRef) -> Option<i64> {
+    pub(in crate::game) fn level_game_time(&self, level: LevelRef) -> Option<i64> {
         self.native_level_read_world(level)?;
         Some(self.world.game_time)
     }
@@ -1089,7 +1130,7 @@ impl Game<'_> {
     /// every level; it keeps counting past 24000. On a client, the synchronized
     /// Overworld clock, advanced at its server-supplied rate, even when the
     /// displayed dimension has a different default clock. API 381.
-    pub(super) fn level_day_time(&self, level: LevelRef) -> Option<i64> {
+    pub(in crate::game) fn level_day_time(&self, level: LevelRef) -> Option<i64> {
         self.native_level_read_world(level)?;
         if self.is_logical_server() {
             Some(self.command_clock_time("minecraft:overworld"))
@@ -1943,7 +1984,7 @@ mod tests {
     fn paused_forced_loads_are_queued_and_stopped_generation_refuses_adds() {
         if run_fresh_cases(
             concat!(
-                "game::native_level_refs::tests::",
+                "game::server_side::native_level_refs::tests::",
                 "paused_forced_loads_are_queued_and_stopped_generation_refuses_adds"
             ),
             "SUNRISE_FORCED_STREAMING_CHILD",
@@ -2798,7 +2839,7 @@ mod tests {
         // as the process's mods: a child process of its own.
         if run_fresh_cases(
             concat!(
-                "game::native_level_refs::tests::",
+                "game::server_side::native_level_refs::tests::",
                 "load_chunk_brings_a_lit_full_chunk_under_a_ticket_that_expires_after_a_tick"
             ),
             "SUNRISE_LOAD_CHUNK_CHILD",
@@ -2894,7 +2935,7 @@ mod tests {
         // The game fixture publishes process-wide worldgen tables: a child process of its own.
         if run_fresh_cases(
             concat!(
-                "game::native_level_refs::tests::",
+                "game::server_side::native_level_refs::tests::",
                 "a_resident_read_lets_load_chunk_answer_without_a_new_ticket"
             ),
             "SUNRISE_LOAD_CHUNK_READ_CHILD",

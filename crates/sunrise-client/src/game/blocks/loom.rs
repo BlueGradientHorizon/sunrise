@@ -14,15 +14,15 @@ use sunrise_client::{
 /// Per-menu loom state: `selectablePatterns`, the selected index and the
 /// screen's scroller.
 #[derive(Default)]
-pub(super) struct LoomState {
-    pub(super) patterns: Vec<Arc<str>>,
-    pub(super) selected: Option<usize>,
+pub(in crate::game) struct LoomState {
+    pub(in crate::game) patterns: Vec<Arc<str>>,
+    pub(in crate::game) selected: Option<usize>,
     /// `displayPatterns`: the pattern buttons are shown.
-    pub(super) display: bool,
-    pub(super) has_max: bool,
-    pub(super) scroll: f32,
-    pub(super) start_row: usize,
-    pub(super) scrolling: bool,
+    pub(in crate::game) display: bool,
+    pub(in crate::game) has_max: bool,
+    pub(in crate::game) scroll: f32,
+    pub(in crate::game) start_row: usize,
+    pub(in crate::game) scrolling: bool,
     /// The inputs the screen last saw (`bannerStack`, `dyeStack`, `patternStack`).
     last_inputs: [Option<ItemStack>; 3],
 }
@@ -47,7 +47,7 @@ fn inside(p: (f32, f32), x: f32, y: f32, w: f32, h: f32) -> bool {
 impl Game<'_> {
     /// `LoomScreen.containerChanged`: the error flag, whether the pattern
     /// buttons show (only when an input changed), and the scroller reset.
-    pub(super) fn loom_screen_changed(&mut self) {
+    pub(in crate::game) fn loom_screen_changed(&mut self) {
         let Some(s) = self.station.as_mut().filter(|s| s.kind == Kind::Loom) else {
             return;
         };
@@ -70,7 +70,7 @@ impl Game<'_> {
     }
     /// A sound the loom or stonecutter menu played: the result's once per
     /// tick (`lastSoundTime`).
-    pub(super) fn station_sound(&mut self, sound: &str) {
+    pub(in crate::game) fn station_sound(&mut self, sound: &str) {
         let ticks = self.ticks;
         let Some(s) = self.station.as_mut() else {
             return;
@@ -104,7 +104,7 @@ impl Game<'_> {
         taken
     }
     /// A left click inside the loom's pattern grid or scroller.
-    pub(super) fn loom_click(&mut self, local: (f32, f32)) -> bool {
+    pub(in crate::game) fn loom_click(&mut self, local: (f32, f32)) -> bool {
         let Some(start_row) = self
             .station
             .as_ref()
@@ -131,7 +131,7 @@ impl Game<'_> {
         false
     }
     /// The pattern buttons a controller can focus (GUI origin relative).
-    pub(super) fn loom_targets(&self) -> Vec<[f32; 4]> {
+    pub(in crate::game) fn loom_targets(&self) -> Vec<[f32; 4]> {
         let Some(loom) = self.station.as_ref().map(|s| &s.loom).filter(|l| l.display) else {
             return Vec::new();
         };
@@ -149,7 +149,7 @@ impl Game<'_> {
             .collect()
     }
     /// `LoomScreen.mouseDragged` on the scroller.
-    pub(super) fn loom_drag(&mut self) -> bool {
+    pub(in crate::game) fn loom_drag(&mut self) -> bool {
         let Some(size) = self
             .renderer
             .as_ref()
@@ -170,13 +170,13 @@ impl Game<'_> {
         }
         false
     }
-    pub(super) fn loom_release(&mut self) -> bool {
+    pub(in crate::game) fn loom_release(&mut self) -> bool {
         self.station
             .as_mut()
             .is_some_and(|s| std::mem::take(&mut s.loom.scrolling))
     }
     /// `LoomScreen.mouseScrolled`.
-    pub(super) fn loom_scroll(&mut self, d: f32) -> bool {
+    pub(in crate::game) fn loom_scroll(&mut self, d: f32) -> bool {
         let Some(l) = self.station.as_mut().map(|s| &mut s.loom) else {
             return false;
         };
@@ -215,7 +215,7 @@ impl Game<'_> {
     }
     /// Paints `screen_layout` calls at the menu origin (ox, oy): the container
     /// background and the dimmed world are drawn by the caller.
-    pub(super) fn paint_screen(
+    pub(in crate::game) fn paint_screen(
         &self,
         batch: &mut HudBatch,
         ox: f32,
@@ -312,7 +312,7 @@ impl Game<'_> {
     }
     /// `LoomScreen.extractBackground` after the background (the verified
     /// `screen_layout::loom`); returns the hovered pattern's tooltip.
-    pub(super) fn draw_loom(
+    pub(in crate::game) fn draw_loom(
         &mut self,
         batch: &mut HudBatch,
         ox: f32,

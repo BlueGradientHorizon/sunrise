@@ -8,7 +8,7 @@ use sunrise_world::registry::BlockStateId;
 
 impl Game<'_> {
     /// The block at `pos` went from `previous` to `state` in the client's world.
-    pub(super) fn client_block_written(
+    pub(in crate::game) fn client_block_written(
         &mut self,
         pos: [i32; 3],
         previous: BlockStateId,

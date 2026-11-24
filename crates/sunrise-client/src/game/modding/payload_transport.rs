@@ -11,18 +11,18 @@ use sunrise_client::raw_payloads::{Body, Endpoint, Incoming, Prepared, Side, con
 use sunrise_protocol::payload_negotiation::Phase;
 
 /// Fits the journal-growth allowance already charged by each prepared operation.
-pub(super) struct Deferred {
+pub(in crate::game) struct Deferred {
     epoch: Arc<Epoch>,
     prepared: Prepared,
 }
 const _: () = assert!(std::mem::size_of::<Deferred>() <= 256);
 impl Deferred {
-    pub(super) fn publish(self) {
+    pub(in crate::game) fn publish(self) {
         let _ = self.epoch.with_active(|| self.prepared.publish());
     }
 }
 impl Game<'_> {
-    pub(super) fn player_send_payload(
+    pub(in crate::game) fn player_send_payload(
         &mut self,
         player: PlayerRef,
         id: &PayloadId,
@@ -37,7 +37,7 @@ impl Game<'_> {
     }
     /// `player_send_payload` to each of `players`; a refused send is skipped. The caller crossed
     /// the body once; each connection's queue owns its own copy.
-    pub(super) fn players_send_payload(
+    pub(in crate::game) fn players_send_payload(
         &mut self,
         players: &[PlayerRef],
         id: &PayloadId,
@@ -51,7 +51,7 @@ impl Game<'_> {
             })
             .count() as u32
     }
-    pub(super) fn send_payload_to_server(
+    pub(in crate::game) fn send_payload_to_server(
         &mut self,
         id: &PayloadId,
         bytes: PayloadBytes,
@@ -67,13 +67,13 @@ impl Game<'_> {
     /// NeoForge's `hasChannel`: the decision `send_payload_to_server` makes on the session's
     /// current epoch (`Epoch::sends`, which `Epoch::can_send` shares), with no bytes and no
     /// allocation, a no included.
-    pub(super) fn has_channel(&self, id: &PayloadId) -> bool {
+    pub(in crate::game) fn has_channel(&self, id: &PayloadId) -> bool {
         self.remote
             .as_ref()
             .and_then(|remote| remote.session.payload_transport().epoch())
             .is_some_and(|epoch| epoch.sends(&id.0))
     }
-    pub(super) fn queue_current_payload(
+    pub(in crate::game) fn queue_current_payload(
         &mut self,
         endpoint: Endpoint,
         id: &PayloadId,
@@ -85,7 +85,7 @@ impl Game<'_> {
             .ok_or(PayloadSendError::NotNegotiated)?;
         self.queue_payload(endpoint, epoch, id, bytes)
     }
-    pub(super) fn queue_payload(
+    pub(in crate::game) fn queue_payload(
         &mut self,
         endpoint: Endpoint,
         epoch: Arc<Epoch>,
@@ -100,7 +100,7 @@ impl Game<'_> {
         Ok(PayloadAccepted::Queued)
     }
     /// Use the receiving endpoint, not a sender resolved from a later guest incarnation.
-    pub(super) fn run_payload(&mut self, endpoint: Endpoint, incoming: Incoming) {
+    pub(in crate::game) fn run_payload(&mut self, endpoint: Endpoint, incoming: Incoming) {
         if !incoming.epoch.active() {
             return;
         }

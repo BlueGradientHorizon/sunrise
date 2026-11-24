@@ -25,7 +25,7 @@ use {
 
 type Pos = (i32, i32, i32);
 
-pub(super) use sunrise_gameplay::structure_blocks::{
+pub(in crate::game) use sunrise_gameplay::structure_blocks::{
     TemplateEntry, encode_template, load_settings, template_file,
 };
 pub use sunrise_gameplay::structure_blocks::{create_seed, template_size};
@@ -35,7 +35,7 @@ impl Game<'_> {
     /// master blocks (or a spectator), each structure block's box and, with
     /// Show Invisible Blocks on, a marker for every barrier, light, structure
     /// void and air block in it, as far as each renderer reaches (`Reach`).
-    pub(super) fn bounding_box_gizmos(&self, camera: [f64; 3], g: &mut Gizmos) {
+    pub(in crate::game) fn bounding_box_gizmos(&self, camera: [f64; 3], g: &mut Gizmos) {
         let game_master = self.can_use_game_master_blocks() || self.spectator();
         let facts = self.res.facts();
         let render_distance = self.effective_render_distance();
@@ -108,7 +108,7 @@ impl Game<'_> {
     }
 
     /// `StructureBlock.setPlacedBy`: the placing player is the author.
-    pub(super) fn structure_block_placed(&mut self, pos: Pos) {
+    pub(in crate::game) fn structure_block_placed(&mut self, pos: Pos) {
         let author = self
             .server
             .lan_acting_name
@@ -121,7 +121,7 @@ impl Game<'_> {
 
     /// `StructureTemplateManager.get`: the cache (misses included), else the
     /// world's saved structures, else the game's own.
-    pub(super) fn template_entry(&mut self, name: &str) -> Option<TemplateEntry> {
+    pub(in crate::game) fn template_entry(&mut self, name: &str) -> Option<TemplateEntry> {
         if let Some(cached) = self.server.structure_templates.get(name) {
             return cached.clone();
         }
@@ -281,7 +281,7 @@ impl Game<'_> {
     /// `fillFromWorld`, which leaves a template alone when a side of the area
     /// is empty; `ignore_air` is `ignoreBlocks = [AIR]`.
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn save_structure_area(
+    pub(in crate::game) fn save_structure_area(
         &mut self,
         name: &str,
         origin: [i32; 3],
@@ -345,7 +345,7 @@ impl Game<'_> {
     /// `StructureTemplate.placeInWorld` of a template at `at`: the entities
     /// it brings are spawned and the block entities it loaded sent to the
     /// clients. Returns whether it placed.
-    pub(super) fn place_template_entry(
+    pub(in crate::game) fn place_template_entry(
         &mut self,
         entry: &TemplateEntry,
         at: BlockPos,
@@ -365,7 +365,7 @@ impl Game<'_> {
     /// already read, whichever way it was read: the level's own placement, the
     /// entities it brings spawned, and the block entities it loaded sent to the
     /// clients. Returns whether it placed.
-    pub(super) fn place_template_object(
+    pub(in crate::game) fn place_template_object(
         &mut self,
         template: &StructureTemplate,
         at: BlockPos,
@@ -475,7 +475,7 @@ impl Game<'_> {
 
     /// The `mode` of the block state at `pos` (if it is `block`), set with
     /// `UPDATE_CLIENTS` and the block entity kept.
-    pub(super) fn set_mode_property(&mut self, pos: Pos, block: &str, mode: &str) {
+    pub(in crate::game) fn set_mode_property(&mut self, pos: Pos, block: &str, mode: &str) {
         let registry = self.pack.assets.registry;
         let current = registry.state(self.world.block(pos.0, pos.1, pos.2));
         let Some(current) = current.filter(|s| s.name == block) else {
@@ -528,7 +528,7 @@ impl Game<'_> {
 
     /// `StructureBlock.neighborChanged` (the level's neighbour hook): a rising
     /// signal triggers the block once.
-    pub(super) fn structure_block_neighbor_changed(&mut self, pos: Pos) {
+    pub(in crate::game) fn structure_block_neighbor_changed(&mut self, pos: Pos) {
         if self.structure_block_at(pos).is_none() {
             return;
         }
@@ -550,7 +550,11 @@ impl Game<'_> {
 
     /// `ServerGamePacketListenerImpl.handleSetStructureBlock` for a guest:
     /// only a creative player with game master commands edits the block.
-    pub(super) fn lan_set_structure_block(&mut self, conn: u32, p: play::SetStructureBlock) {
+    pub(in crate::game) fn lan_set_structure_block(
+        &mut self,
+        conn: u32,
+        p: play::SetStructureBlock,
+    ) {
         let Some(g) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
             return;
         };

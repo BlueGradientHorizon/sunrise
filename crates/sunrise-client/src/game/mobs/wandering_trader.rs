@@ -5,11 +5,11 @@ use super::{Dim, Game, creatures::Creatures};
 use sunrise_client::save::{read_dat, write_dat};
 use sunrise_gameplay::wandering_trader::{TraderLevel, roll};
 
-pub(super) use sunrise_gameplay::wandering_trader::Spawner;
+pub(in crate::game) use sunrise_gameplay::wandering_trader::Spawner;
 
 impl Creatures {
     /// A fresh spawner for a newly opened world.
-    pub(super) fn reset_trader(&mut self) {
+    pub(in crate::game) fn reset_trader(&mut self) {
         self.trader = Spawner::default();
     }
 }
@@ -30,7 +30,7 @@ impl Game<'_> {
             .trader
             .load(tag.as_ref().and_then(|t| t.get("data")));
     }
-    pub(super) fn save_wandering_trader(&mut self) {
+    pub(in crate::game) fn save_wandering_trader(&mut self) {
         let Some(tag) = self.creatures.trader.to_save() else {
             return;
         };
@@ -39,7 +39,7 @@ impl Game<'_> {
         }
     }
     /// `WanderingTraderSpawner.tick`.
-    pub(super) fn tick_wandering_trader(&mut self) {
+    pub(in crate::game) fn tick_wandering_trader(&mut self) {
         if self.dim != Dim::Overworld
             || !self
                 .ui

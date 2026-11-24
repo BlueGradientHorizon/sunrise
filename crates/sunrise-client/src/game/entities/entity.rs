@@ -35,7 +35,7 @@ use sunrise_world::{
 
 /// Assign a stored owner's delayed id at its existing allocation point.
 /// Kinds without a lifetime slot pass None; a bound owner must keep its id.
-pub(super) fn assign_stored_id(
+pub(in crate::game) fn assign_stored_id(
     next: &mut u32,
     id: &mut u32,
     lifetime: Option<&sunrise_mod_runtime::attachments::AttachmentLifetime>,
@@ -49,7 +49,7 @@ pub(super) fn assign_stored_id(
 /// nothing (projectiles, rockets, TNT, falling blocks, armor stands here) stays
 /// untouched. A strike runs the stages in this order.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum ThunderHit {
+pub(in crate::game) enum ThunderHit {
     Untouched,
     /// Burns, takes 5 damage, and the kinds with their own `thunderHit` change.
     Mob,
@@ -63,19 +63,19 @@ pub(super) enum ThunderHit {
 
 /// What a blast knows about itself, for the entities in its reach to answer.
 #[derive(Clone, Copy)]
-pub(super) struct Blast {
+pub(in crate::game) struct Blast {
     /// `VehicleEntity.ignoreExplosion`: a mob's blast, with mob griefing off.
-    pub(super) vehicles_ignore: bool,
+    pub(in crate::game) vehicles_ignore: bool,
     /// `ItemEntity.ignoreExplosion` (`shouldAffectBlocklikeEntities`).
-    pub(super) items_ignore: bool,
+    pub(in crate::game) items_ignore: bool,
     /// The exploding mob, which `getEntities(source, box)` leaves out.
-    pub(super) spared: Option<u32>,
+    pub(in crate::game) spared: Option<u32>,
 }
 
 /// `EntityType.TRIDENT.getDimensions()`: width, height and eye height.
 const THROWN_TRIDENT_DIMENSIONS: [f32; 3] = [0.5, 0.5, 0.13];
 
-pub(super) trait Entity: EntityRules {
+pub(in crate::game) trait Entity: EntityRules {
     /// The kind's serializer overlays its object-owned attachments itself (for
     /// recursive object trees); the common save walk must not encode them twice.
     const SERIALIZES_ATTACHMENTS: bool = false;
@@ -428,7 +428,7 @@ pub(super) trait Entity: EntityRules {
 
 /// Bounds and identity needed by the render occlusion culler. Moving renderers
 /// use interpolated entity bounds; attached entities use their own world bounds.
-pub(super) trait RenderEntityBounds {
+pub(in crate::game) trait RenderEntityBounds {
     fn render_id(&self) -> u32;
     fn render_bounds(&self, alpha: f64) -> Aabb;
     fn render_glowing(&self, game: &Game<'_>) -> bool {
@@ -880,7 +880,7 @@ macro_rules! stored_motion {
 
 /// Apply the common non-damage `Entity` writes to the state the mover actually owns.
 /// An absent field means this mover does not track that effect.
-pub(super) fn apply_contact_writes(
+pub(in crate::game) fn apply_contact_writes(
     writes: Vec<mod_api::EntityWrite>,
     velocity: &mut Vec3,
     mut fall_distance: Option<&mut f64>,
@@ -917,7 +917,7 @@ pub(super) fn apply_contact_writes(
 
 impl Game<'_> {
     /// `Block.fallOn` effects for bodies whose `causeFallDamage` does nothing.
-    pub(super) fn nonliving_fall_on(
+    pub(in crate::game) fn nonliving_fall_on(
         &mut self,
         id: u32,
         feet: Vec3,
@@ -941,7 +941,7 @@ impl Game<'_> {
     }
 
     /// Finish a body bounce before the caller changes the live entity's delta movement.
-    pub(super) fn finish_body_restitution(
+    pub(in crate::game) fn finish_body_restitution(
         &mut self,
         (id, kind): (u32, &str),
         feet: Vec3,
@@ -1198,7 +1198,7 @@ impl Game<'_> {
         sunrise_client::block_contact::inside_written(state, at, writes);
     }
 
-    pub(super) fn body_motion<'a>(
+    pub(in crate::game) fn body_motion<'a>(
         &'a self,
         side: &'a dyn sunrise_client::motion::SideLevel,
     ) -> sunrise_client::motion::BodyMotion<'a> {
@@ -1214,7 +1214,7 @@ impl Game<'_> {
 
     /// Step on the retained block before the simulating body's inside scan.
     /// Client copies edit motion only; the server hands the writes to the body owner.
-    pub(super) fn body_step_on(
+    pub(in crate::game) fn body_step_on(
         &mut self,
         entity: (u32, &str),
         footprint: (Vec3, Aabb),
@@ -1244,7 +1244,7 @@ impl Game<'_> {
         step_on(StepLevel::Server(&mut level), step, velocity)
     }
 
-    pub(super) fn tick_item_with_block_contacts(
+    pub(in crate::game) fn tick_item_with_block_contacts(
         &mut self,
         item: &mut ItemEntity,
         escape_speed: Option<f32>,
@@ -1403,27 +1403,27 @@ macro_rules! define_entity_handles {
         /// Every list, borrowed apart from the rest of `Game`, for
         /// [`for_each_entity`] while the world is borrowed mutably.
         #[derive(Clone, Copy)]
-        pub(super) struct EntityLists<'w> {
-            $(pub(super) $field: &'w [$ty],)*
+        pub(in crate::game) struct EntityLists<'w> {
+            $(pub(in crate::game) $field: &'w [$ty],)*
         }
 
         /// One entity, by list and index.
         #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-        pub(super) enum EntityHandle {
+        pub(in crate::game) enum EntityHandle {
             $($kind(usize),)*
         }
 
         /// Allocation-free storage-order walk with stable IDs and verified index hints.
         /// The next ID is captured before the caller can remove the current entity.
-        pub(super) struct EntityIdCursor {
+        pub(in crate::game) struct EntityIdCursor {
             before: JoinSeq,
             $($field: (Option<(u32, JoinSeq)>, usize, usize),)*
         }
 
         /// Every list moved out of `Game`, for [`for_each_entity_mut`]: the
         /// world stays readable while the entities change.
-        pub(super) struct TakenEntities {
-            $(pub(super) $field: sunrise_client::join_seq::JoinList<$ty, { $crate::game::entity::direct_entity_edit!($kind) }>,)*
+        pub(in crate::game) struct TakenEntities {
+            $(pub(in crate::game) $field: sunrise_client::join_seq::JoinList<$ty, { $crate::game::entity::direct_entity_edit!($kind) }>,)*
         }
 
 
@@ -1459,7 +1459,7 @@ macro_rules! define_entity_handles {
 
             /// Visits every entity once in join order. On authoritative lists, tick passes
             /// can reorder storage; report any such list rather than taking it as join order.
-            pub(super) fn walk_in_join_order(
+            pub(in crate::game) fn walk_in_join_order(
                 self,
                 mut visit: impl FnMut(EntityHandle, JoinSeq),
             ) -> Result<(), JoinOrderError> {
@@ -1480,12 +1480,12 @@ macro_rules! define_entity_handles {
 
         impl Game<'_> {
             /// Moves every list out; give it back with `restore_entities`.
-            pub(super) fn take_entities(&mut self) -> TakenEntities {
+            pub(in crate::game) fn take_entities(&mut self) -> TakenEntities {
                 TakenEntities {
                     $($field: self$(.$list)+.lift(),)*
                 }
             }
-            pub(super) fn restore_entities(&mut self, taken: TakenEntities) {
+            pub(in crate::game) fn restore_entities(&mut self, taken: TakenEntities) {
                 $({
                     let expected = self$(.$list)+.len() + taken.$field.len();
                     self$(.$list)+.restore(taken.$field, sunrise_client::join_seq::RestoreOrder::SurvivorsFirst);
@@ -1494,12 +1494,12 @@ macro_rules! define_entity_handles {
             }
             /// Every entity's handle: lengths read now, nothing allocated, and
             /// no borrow of `Game` held, so the caller can change it mid-walk.
-            pub(super) fn entity_handles(&self) -> impl Iterator<Item = EntityHandle> + use<> {
+            pub(in crate::game) fn entity_handles(&self) -> impl Iterator<Item = EntityHandle> + use<> {
                 std::iter::empty()
                     $(.chain((0..self$(.$list)+.len()).map(EntityHandle::$kind)))*
             }
 
-            pub(super) fn entity_id_cursor(&self) -> EntityIdCursor {
+            pub(in crate::game) fn entity_id_cursor(&self) -> EntityIdCursor {
                 EntityIdCursor {
                     before: JoinSeq::upcoming(),
                     $($field: (self$(.$list)+.first().map(|e| (e.id(), e.join_seq())), 0, self$(.$list)+.len()),)*
@@ -1509,7 +1509,7 @@ macro_rules! define_entity_handles {
             /// Verify a stable identity before returning any index-bearing handle.
             /// Removed next identities resume at the next surviving original join.
             /// The captured join ceiling excludes entities spawned by callbacks.
-            pub(super) fn next_entity_id(&self, cursor: &mut EntityIdCursor) -> Option<(u32, EntityHandle)> {
+            pub(in crate::game) fn next_entity_id(&self, cursor: &mut EntityIdCursor) -> Option<(u32, EntityHandle)> {
                 $({
                     let (next, hint, remaining) = &mut cursor.$field;
                     if *remaining > 0 {
@@ -1535,7 +1535,7 @@ macro_rules! define_entity_handles {
             }
 
             /// Resolve one stable ID, checking its cheap index hint before searching.
-            pub(super) fn refresh_entity_handle(&self, id: u32, hint: EntityHandle) -> Option<EntityHandle> {
+            pub(in crate::game) fn refresh_entity_handle(&self, id: u32, hint: EntityHandle) -> Option<EntityHandle> {
                 match hint {
                     $(EntityHandle::$kind(i) => {
                         if self$(.$list)+.get(i).is_some_and(|e| e.id() == id) { Some(hint) }
@@ -1545,7 +1545,7 @@ macro_rules! define_entity_handles {
             }
 
             /// Takes the entity out of its list (`Entity.discard` before it ever ticked).
-            pub(super) fn discard_entity(&mut self, handle: EntityHandle) {
+            pub(in crate::game) fn discard_entity(&mut self, handle: EntityHandle) {
                 match handle {
                     $(EntityHandle::$kind(i) => {
                         self$(.$list)+.remove(i);
@@ -1555,7 +1555,7 @@ macro_rules! define_entity_handles {
 
             /// [`Self::entity_handles`], last of each list first, so the
             /// caller can remove the entity it is on.
-            pub(super) fn entity_handles_rev(&self) -> impl Iterator<Item = EntityHandle> + use<> {
+            pub(in crate::game) fn entity_handles_rev(&self) -> impl Iterator<Item = EntityHandle> + use<> {
                 std::iter::empty()
                     $(.chain((0..self$(.$list)+.len()).rev().map(EntityHandle::$kind)))*
             }
@@ -1570,7 +1570,7 @@ pub(crate) use define_entity_handles;
     dead_code,
     reason = "the tick order work that reads this has not landed yet"
 )]
-pub(super) enum JoinOrderError {
+pub(in crate::game) enum JoinOrderError {
     /// Never put in its list through the list's own `push`, so it has no
     /// join number.
     Unjoined(EntityHandle),
@@ -1581,7 +1581,7 @@ pub(super) enum JoinOrderError {
 
 /// The families `entity_geometry` draws in one ordered pass.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum DrawFamily {
+pub(in crate::game) enum DrawFamily {
     Mob,
     LocalPlayer,
     RemoteGeneral,
@@ -1601,9 +1601,9 @@ pub(super) enum DrawFamily {
 /// Entities of one family, by list index, that joined back to back as far as the ordered
 /// pass is concerned.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(super) struct DrawRun {
-    pub(super) family: DrawFamily,
-    pub(super) range: std::ops::Range<usize>,
+pub(in crate::game) struct DrawRun {
+    pub(in crate::game) family: DrawFamily,
+    pub(in crate::game) range: std::ops::Range<usize>,
 }
 
 impl DrawFamily {
@@ -1721,7 +1721,7 @@ impl Game<'_> {
     /// index. Respawn either keeps the lists or clears them for a new level. The server's
     /// save loads, level swaps, and tick-specific list reorders never feed this merge; they
     /// publish to the window through packets.
-    pub(super) fn ordered_draw_runs(
+    pub(in crate::game) fn ordered_draw_runs(
         &self,
         draw_general: bool,
         draw_crystals: bool,
@@ -1782,11 +1782,11 @@ macro_rules! with_entity {
         $crate::game::entity::entity_lists!(match_entity, shared, $entity, $game, $handle, $body)
     };
 }
-pub(super) use with_entity;
+pub(in crate::game) use with_entity;
 
 #[path = "entity/list_borrows.rs"]
 mod list_borrows;
-pub(super) use list_borrows::entity_lists_of;
+pub(in crate::game) use list_borrows::entity_lists_of;
 pub(crate) use list_borrows::{borrow_level_list, borrow_lists};
 /// What a hit lends its listeners besides the level ([`sunrise_client::health::HitEffects`]):
 /// the level sound queue and sound-seed stream, and the entity the site lends (`$lend`: an
@@ -1835,7 +1835,7 @@ macro_rules! hit_reads_of {
             })
     };
 }
-pub(super) use hit_reads_of;
+pub(in crate::game) use hit_reads_of;
 /// A hit's one decision about its causing entity `$causing` (an entity id, 0 for none), taken
 /// before the site borrows the game's fields for the hit: whether a `HitHost` hook listens,
 /// the causer's place in `$game.mobs` when it is a mob, and otherwise, when it is not the player
@@ -1859,7 +1859,7 @@ macro_rules! causer_decision {
         (causing, listened, mob, parked)
     }};
 }
-pub(super) use causer_decision;
+pub(in crate::game) use causer_decision;
 /// The causing entity `$causing` a hit on the mob at `$index` of `$game.mobs` lends its
 /// listeners, beside that victim, as `$decision` ([`causer_decision`]) decided: another mob of
 /// the list (split with `get_disjoint_mut`), the player in place, or a parked guest's record
@@ -1900,7 +1900,7 @@ macro_rules! victim_and_causer {
         }
     }};
 }
-pub(super) use victim_and_causer;
+pub(in crate::game) use victim_and_causer;
 /// The causing entity a hit on the player in place lends its listeners, as `$decision`
 /// ([`causer_decision`]) decided: a mob of `$game.mobs`, or a parked guest's record. The player
 /// causing its own hit is not lent again: the listener reads it as the victim.
@@ -1924,7 +1924,7 @@ macro_rules! player_victim_causer {
         }
     }};
 }
-pub(super) use player_victim_causer;
+pub(in crate::game) use player_victim_causer;
 /// The level `$game` ticks, lent to a hit's damage hooks with its block registry and merged
 /// tag tables, so a mob or the player beside them can take the hit. `$attack` is the
 /// [`Attack`](sunrise_client::health::Attack) the site took first. Every site names what it
@@ -1964,7 +1964,7 @@ macro_rules! damage_level_of {
         .with_reads(crate::game::entity::hit_reads_of!($game))
     };
 }
-pub(super) use damage_level_of;
+pub(in crate::game) use damage_level_of;
 /// `$game`'s [`PlayerResolver`](sunrise_client::health::PlayerResolver),
 /// borrowing only the fields it reads (`Game::acting_uuid`'s).
 macro_rules! player_resolver {
@@ -1982,8 +1982,8 @@ macro_rules! player_resolver {
         }
     };
 }
-pub(super) use hit_effects_of;
-pub(super) use player_resolver;
+pub(in crate::game) use hit_effects_of;
+pub(in crate::game) use player_resolver;
 
 macro_rules! walk_lists {
     (($lists:expr, $entity:ident, $body:block)
@@ -2002,7 +2002,7 @@ macro_rules! for_each_entity {
         $crate::game::entity::entity_lists!(walk_lists, $lists, $entity, $body)
     };
 }
-pub(super) use for_each_entity;
+pub(in crate::game) use for_each_entity;
 
 macro_rules! walk_lists_mut {
     (($lists:expr, $entity:ident, $body:block)
@@ -2018,7 +2018,7 @@ macro_rules! for_each_entity_mut {
         $crate::game::entity::entity_lists!(walk_lists_mut, $lists, $entity, $body)
     };
 }
-pub(super) use for_each_entity_mut;
+pub(in crate::game) use for_each_entity_mut;
 
 /// [`with_entity`], with the entity mutable.
 macro_rules! with_entity_mut {
@@ -2026,7 +2026,7 @@ macro_rules! with_entity_mut {
         $crate::game::entity::entity_lists!(match_entity, exclusive, $entity, $game, $handle, $body)
     };
 }
-pub(super) use with_entity_mut;
+pub(in crate::game) use with_entity_mut;
 
 macro_rules! save_lists {
     (($game:expr, $keys:expr, $out:expr, $include_transient:expr)
@@ -2121,7 +2121,7 @@ impl Game<'_> {
     }
     /// Whether `load_listed` loads `kind` as a vehicle that takes its mob
     /// riders (`take_mob_passengers`): a mob, boat, minecart or primed TNT.
-    pub(super) fn listed_kind_takes_riders(&self, kind: &str) -> bool {
+    pub(in crate::game) fn listed_kind_takes_riders(&self, kind: &str) -> bool {
         self.loads_as_mob(kind)
             || self.loads_as_boat(kind)
             || loads_as_cart(kind)
@@ -2129,7 +2129,7 @@ impl Game<'_> {
     }
     /// Loads a saved entity as the first kind in `entity_lists!` that claims
     /// its type id: `Err` hands the compound back when none does.
-    pub(super) fn load_listed(
+    pub(in crate::game) fn load_listed(
         &mut self,
         kind: &str,
         uuid: Option<[i32; 4]>,
@@ -2141,7 +2141,7 @@ impl Game<'_> {
     /// Restore a live portal object with its explicitly captured runtime ownership.
     /// This dispatch covers only reconstructible portal kinds; ordinary disk loads
     /// continue through the canonical kind walk without transfer state.
-    pub(super) fn load_listed_transferred(
+    pub(in crate::game) fn load_listed_transferred(
         &mut self,
         kind: &str,
         uuid: Option<[i32; 4]>,
@@ -2169,7 +2169,7 @@ impl Game<'_> {
     }
 
     /// The ids of the entities that are not on the walk of `entity_lists!`.
-    pub(super) fn entity_ids_off_walk(&self) -> impl Iterator<Item = u32> + '_ {
+    pub(in crate::game) fn entity_ids_off_walk(&self) -> impl Iterator<Item = u32> + '_ {
         self.cushions
             .iter()
             .map(|e| e.id)
@@ -2198,7 +2198,7 @@ impl Game<'_> {
             .chain(self.natural_knot_id_iter())
     }
     /// The ids of every entity in the level that is not removed: one walk.
-    pub(super) fn live_entity_ids(&self) -> HashSet<u32> {
+    pub(in crate::game) fn live_entity_ids(&self) -> HashSet<u32> {
         let mut alive: HashSet<u32> = self.entity_ids_off_walk().collect();
         for_each_entity!(entity_lists_of!(self), entity => {
             if !entity.is_removed() {
@@ -2208,7 +2208,7 @@ impl Game<'_> {
         alive
     }
     /// Saves every entity of every kind that lies in `keys` into `out`, by chunk.
-    pub(super) fn save_every_entity(
+    pub(in crate::game) fn save_every_entity(
         &mut self,
         keys: &HashSet<ChunkKey>,
         out: &mut HashMap<ChunkKey, Vec<(u32, JoinSeq, Tag)>>,
@@ -2722,7 +2722,7 @@ impl Entity for Minecart {
 }
 
 /// Width and height `EntityType.ARMOR_STAND` gives a stand.
-pub(super) fn armor_stand_size(stand: &ArmorStand) -> (f64, f64) {
+pub(in crate::game) fn armor_stand_size(stand: &ArmorStand) -> (f64, f64) {
     if stand.marker {
         (0.0, 0.0)
     } else if stand.small {

@@ -282,7 +282,7 @@ fn world_open_and_wire_use_the_pack_biome_instead_of_the_bundled_file() {
 
     // World open replaces the process-wide wire snapshot for the session.
     if run_fresh_cases(
-        "game::server_reload::tests::datapack_publication_tests::world_open_and_wire_use_the_pack_biome_instead_of_the_bundled_file",
+        "game::server_side::server_reload::tests::datapack_publication_tests::world_open_and_wire_use_the_pack_biome_instead_of_the_bundled_file",
         "SUNRISE_PACK_BIOME_WIRE_CASE",
         &["world-open"],
     ) {

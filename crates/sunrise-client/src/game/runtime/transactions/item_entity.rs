@@ -1,10 +1,10 @@
 /// First writes to each field, independently: moving an item need not clone its stack.
 #[derive(Default)]
-pub(super) struct KeptItemEntity {
+pub(in crate::game) struct KeptItemEntity {
     stack: Option<ItemStack>,
     pickup_delay: Option<i64>,
     target: Option<Option<[i32; 4]>>,
-    pub(super) velocity: Option<Vec3>,
+    pub(in crate::game) velocity: Option<Vec3>,
 }
 
 impl KeptItemEntity {
@@ -34,7 +34,7 @@ impl KeptItemEntity {
 impl Game<'_> {
     /// Sets the stack of `id` for an item place. A caller that already has a
     /// validated resident slot uses `journal_set_item_entity_at` instead.
-    pub(super) fn journal_set_item_entity(&mut self, id: u32, stack: ItemStack) -> bool {
+    pub(in crate::game) fn journal_set_item_entity(&mut self, id: u32, stack: ItemStack) -> bool {
         self.dropped
             .iter()
             .position(|item| item.id == id)
@@ -42,7 +42,11 @@ impl Game<'_> {
     }
 
     /// An item emptied in a transaction stays, empty, until root commit removes it.
-    pub(super) fn journal_set_item_entity_at(&mut self, index: usize, stack: ItemStack) -> bool {
+    pub(in crate::game) fn journal_set_item_entity_at(
+        &mut self,
+        index: usize,
+        stack: ItemStack,
+    ) -> bool {
         let Some(level) = self.transactions.level_frame(self.dim) else {
             return self.native_set_item_entity(index, stack);
         };
@@ -61,7 +65,7 @@ impl Game<'_> {
     }
 
     /// Lend an item in the active level and the first-write journal of its innermost open frame.
-    pub(super) fn journal_item_fields(
+    pub(in crate::game) fn journal_item_fields(
         &mut self,
         index: usize,
     ) -> (
@@ -76,7 +80,7 @@ impl Game<'_> {
         (item, kept)
     }
 
-    pub(super) fn journal_set_item_pickup_delay(&mut self, index: usize, ticks: i32) {
+    pub(in crate::game) fn journal_set_item_pickup_delay(&mut self, index: usize, ticks: i32) {
         let (item, kept) = self.journal_item_fields(index);
         if let Some(kept) = kept {
             kept.pickup_delay.get_or_insert(item.pickup_delay);
@@ -84,7 +88,11 @@ impl Game<'_> {
         item.pickup_delay = i64::from(ticks);
     }
 
-    pub(super) fn journal_set_item_target(&mut self, index: usize, target: Option<[i32; 4]>) {
+    pub(in crate::game) fn journal_set_item_target(
+        &mut self,
+        index: usize,
+        target: Option<[i32; 4]>,
+    ) {
         let (item, kept) = self.journal_item_fields(index);
         if let Some(kept) = kept {
             kept.target.get_or_insert(item.target);

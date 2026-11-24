@@ -35,7 +35,7 @@ impl Game<'_> {
     /// `ItemCooldowns.getCooldownGroup(stack)`: the group `stack`'s
     /// cooldown is filed under, the group its `use_cooldown` component names
     /// (its own, else its item's default), else its item id.
-    pub(super) fn item_cooldown_group(&self, stack: &ItemStack) -> String {
+    pub(in crate::game) fn item_cooldown_group(&self, stack: &ItemStack) -> String {
         let default = self
             .items()
             .get(&stack.item)
@@ -44,7 +44,10 @@ impl Game<'_> {
     }
     /// Every group the player waits on and its ticks left, ordered by
     /// group.
-    pub(super) fn player_item_cooldowns(&self, player: PlayerRef) -> Option<Vec<ItemCooldown>> {
+    pub(in crate::game) fn player_item_cooldowns(
+        &self,
+        player: PlayerRef,
+    ) -> Option<Vec<ItemCooldown>> {
         let mut out: Vec<ItemCooldown> = self
             .native_cooldowns_of(player)?
             .remaining()
@@ -58,12 +61,16 @@ impl Game<'_> {
         Some(out)
     }
     /// `ItemCooldowns.isOnCooldown`: whether `group` still has time to run.
-    pub(super) fn player_has_item_cooldown(&self, player: PlayerRef, group: &str) -> Option<bool> {
+    pub(in crate::game) fn player_has_item_cooldown(
+        &self,
+        player: PlayerRef,
+        group: &str,
+    ) -> Option<bool> {
         Some(self.native_cooldowns_of(player)?.is_on_cooldown(group))
     }
     /// `ItemCooldowns.getCooldownPercent(group, 0)`: what is left of the
     /// group's cooldown, from 1 (just started) to 0 (none).
-    pub(super) fn player_item_cooldown_percent(
+    pub(in crate::game) fn player_item_cooldown_percent(
         &self,
         player: PlayerRef,
         group: &str,
@@ -73,7 +80,7 @@ impl Game<'_> {
     /// `ItemCooldowns.addCooldown(group, ticks)`: starts (or restarts) the
     /// group's cooldown, and the player's client draws it on every item of the
     /// group (`ServerItemCooldowns.onCooldownStarted`).
-    pub(super) fn player_set_item_cooldown(
+    pub(in crate::game) fn player_set_item_cooldown(
         &mut self,
         player: PlayerRef,
         group: &str,
@@ -84,7 +91,11 @@ impl Game<'_> {
     }
     /// `ItemCooldowns.removeCooldown(group)`: ends the group's cooldown now,
     /// on the client too (`ServerItemCooldowns.onCooldownEnded`).
-    pub(super) fn player_remove_item_cooldown(&mut self, player: PlayerRef, group: &str) -> bool {
+    pub(in crate::game) fn player_remove_item_cooldown(
+        &mut self,
+        player: PlayerRef,
+        group: &str,
+    ) -> bool {
         let group: Arc<str> = group.into();
         self.native_as_player_handle(player, |game| {
             game.cooldowns.remove(&group);
@@ -95,7 +106,7 @@ impl Game<'_> {
     }
     /// `Player.takeXpDelay`: the ticks before the player can take the next
     /// experience orb.
-    pub(super) fn player_exp_cooldown(&self, player: PlayerRef) -> Option<u32> {
+    pub(in crate::game) fn player_exp_cooldown(&self, player: PlayerRef) -> Option<u32> {
         match self.player_handle_read(player)? {
             super::native_server::PlayerRead::Acting { .. } => Some(self.server.xp_delay),
             super::native_server::PlayerRead::Guest(g) => Some(
@@ -109,7 +120,11 @@ impl Game<'_> {
     }
     /// Sets `Player.takeXpDelay`: no orb is taken for `ticks` ticks. The
     /// change is not reported to `player_exp_cooldown_change`.
-    pub(super) fn player_set_exp_cooldown(&mut self, player: PlayerRef, ticks: u32) -> bool {
+    pub(in crate::game) fn player_set_exp_cooldown(
+        &mut self,
+        player: PlayerRef,
+        ticks: u32,
+    ) -> bool {
         self.native_as_player_handle(player, |game| game.server.xp_delay = ticks)
     }
     /// Sets the player's `WardenSpawnTracker.cooldownTicks`: sculk shriekers
@@ -117,7 +132,7 @@ impl Game<'_> {
     /// one tracker here, the integrated server owner's (the shriekers read it
     /// for whoever sets them off), so this is every player's.
     /// False, changing nothing, for anyone but the tracker's owner until each player has their own.
-    pub(super) fn player_set_warden_warning_cooldown(
+    pub(in crate::game) fn player_set_warden_warning_cooldown(
         &mut self,
         player: PlayerRef,
         ticks: u32,

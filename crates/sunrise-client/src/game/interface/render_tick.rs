@@ -66,7 +66,7 @@ struct ExtractedBlockScreenEffect {
     pos: BlockPos,
     renderer: SelectedBlockScreenEffectRenderer,
 }
-pub(super) fn player_tracking_body(player: &PlayerMotion) -> TrackingBody {
+pub(in crate::game) fn player_tracking_body(player: &PlayerMotion) -> TrackingBody {
     TrackingBody {
         feet: [player.position.x, player.position.y, player.position.z],
         width: f64::from(player.dimensions.width),
@@ -74,7 +74,7 @@ pub(super) fn player_tracking_body(player: &PlayerMotion) -> TrackingBody {
     }
 }
 
-pub(super) fn mob_tracking_body(mob: &Mob) -> TrackingBody {
+pub(in crate::game) fn mob_tracking_body(mob: &Mob) -> TrackingBody {
     let (width, height, _) = mob.dims();
     TrackingBody {
         feet: [mob.position.x, mob.position.y, mob.position.z],
@@ -86,7 +86,7 @@ pub(super) fn mob_tracking_body(mob: &Mob) -> TrackingBody {
 /// `getHeight(Heightmap.Types.MOTION_BLOCKING, x, z)` from the chunk's
 /// heightmap: one above the highest block in `blocks_motion_in_heightmap` or
 /// holding a fluid, however far above the camera it is.
-pub(super) fn motion_blocking_height(
+pub(in crate::game) fn motion_blocking_height(
     world: &World,
     properties: &Properties,
     x: i32,
@@ -145,7 +145,7 @@ impl Game<'_> {
     /// Polytone GPU particles, before the frame's quads are built: any pending clear, the
     /// renderer's verdict on each shader and on the quads drawn here, then the heightmap for the readers that draw (a custom shader's `Sampler1`,
     /// and the surface rain drawn as quads dies under), every half second.
-    pub(super) fn polytone_gpu_decide(&mut self, camera: glam::DVec3) {
+    pub(in crate::game) fn polytone_gpu_decide(&mut self, camera: glam::DVec3) {
         // A mod's clear asked since the last frame goes first: cleared records read nothing.
         self.apply_mod_particle_clear();
         let (world, properties) = (&self.world, &self.pack.assets.properties);
@@ -162,7 +162,7 @@ impl Game<'_> {
 
     /// After the frame's quads (and any clear in their extraction): the records of the types
     /// the renderer draws with their own shader go to it.
-    pub(super) fn polytone_gpu_particles(&mut self, camera: glam::DVec3, alpha: f64) {
+    pub(in crate::game) fn polytone_gpu_particles(&mut self, camera: glam::DVec3, alpha: f64) {
         let world = &self.world;
         let renderer = self.renderer.as_mut().map(|r| r as _);
         self.particles
@@ -172,19 +172,19 @@ impl Game<'_> {
     }
 
     /// `GameRenderer`'s cardinal light: the level's type uses the Nether's diffuse lights.
-    pub(super) fn nether_lighting(&self) -> bool {
+    pub(in crate::game) fn nether_lighting(&self) -> bool {
         self.dimension_type().cardinal_light == CardinalLight::Nether
     }
     /// `SkyRenderer`'s overworld skybox: sun, moon and stars.
-    pub(super) fn overworld_skybox(&self) -> bool {
+    pub(in crate::game) fn overworld_skybox(&self) -> bool {
         self.dimension_type().skybox == Skybox::Overworld
     }
     /// `SkyRenderer`'s End skybox and its flashes.
-    pub(super) fn end_skybox(&self) -> bool {
+    pub(in crate::game) fn end_skybox(&self) -> bool {
         self.dimension_type().skybox == Skybox::End
     }
     /// `LevelRenderer.prepareTranslucents`: prepare the clouds the frame draws.
-    pub(super) fn frame_cloud_uv(
+    pub(in crate::game) fn frame_cloud_uv(
         &self,
         title: bool,
         sky: &sunrise_client::environment::Sky,
@@ -195,7 +195,7 @@ impl Game<'_> {
         let white = self.gui.atlas.sprites.get("sunrise/white")?;
         Some([(white.u0 + white.u1) / 2.0, (white.v0 + white.v1) / 2.0])
     }
-    pub(super) fn forward(&self) -> [f64; 3] {
+    pub(in crate::game) fn forward(&self) -> [f64; 3] {
         let (yaw, pitch) = (
             f64::from(self.yaw).to_radians(),
             f64::from(self.pitch).to_radians(),
@@ -207,7 +207,7 @@ impl Game<'_> {
         ]
     }
     /// `Camera.getNearPlane` at the FOV option, as `getFluidInCamera` asks for it.
-    pub(super) fn near_plane(&self) -> NearPlane {
+    pub(in crate::game) fn near_plane(&self) -> NearPlane {
         let [width, height] = self
             .renderer
             .as_ref()
@@ -219,7 +219,7 @@ impl Game<'_> {
         )
     }
     /// `FogRenderer.setupFog` for the frame's camera, and Sunrise's Fog option.
-    pub(super) fn frame_fog(
+    pub(in crate::game) fn frame_fog(
         &self,
         camera: glam::DVec3,
         sky: &sunrise_client::environment::Sky,
@@ -374,14 +374,14 @@ impl Game<'_> {
         }
     }
     /// `Level.getMinY`: the current dimension type's minimum y.
-    pub(super) fn level_min_y(&self) -> i32 {
+    pub(in crate::game) fn level_min_y(&self) -> i32 {
         match self.remote.as_ref() {
             Some(r) => r.dimension.min_y,
             None => self.world.shape.min_y,
         }
     }
     /// `SkyRenderer.shouldRenderDarkDisc`: uses `minecraft.player` eye and water state, not camera.
-    pub(super) fn dark_disc(&self, _camera: glam::DVec3) -> bool {
+    pub(in crate::game) fn dark_disc(&self, _camera: glam::DVec3) -> bool {
         let Some(p) = self.player.as_ref() else {
             return false;
         };
@@ -396,7 +396,7 @@ impl Game<'_> {
     /// `ScreenEffectRenderer` + `Hud` camera overlays for this frame.
     /// `scale` is the player's `LivingEntity.getScale`.
     /// `hand_projection` is the frame's `camera::hand_projection`, which mods draw under.
-    pub(super) fn screen_quads(
+    pub(in crate::game) fn screen_quads(
         &self,
         partial: f32,
         size: [u32; 2],
@@ -700,7 +700,7 @@ impl Game<'_> {
     /// What `Minecraft` ticks outside the level's own tick: `GameRenderer.tick` runs the light
     /// flicker whenever the game is not paused, frozen or not, while `TextureManager.tick`
     /// needs the level running normally. `SUNRISE_STILL` keeps both with the world.
-    pub(super) fn tick_frame_visuals(&mut self, running: bool) {
+    pub(in crate::game) fn tick_frame_visuals(&mut self, running: bool) {
         self.hold_fullbright();
         if running || !self.clock.still() {
             self.client.fog.tick_flicker();
@@ -728,13 +728,16 @@ impl Game<'_> {
     }
     /// Under `SUNRISE_STILL` a frozen client's rain fog sits at its level, as the rain does: it
     /// eases only in `tick_particles`, which waits for the world.
-    pub(super) fn settle_rain_fog(&mut self) {
+    pub(in crate::game) fn settle_rain_fog(&mut self) {
         if let Some(e) = self.camera_eye_position() {
             let (rain, sky_light, rains) = self.rain_fog_inputs(e);
             settle_rain_fog(&mut self.client.fog, rain, sky_light, rains);
         }
     }
-    pub(super) fn remote_tracking_body(&self, id: i32) -> Option<(TrackingTarget, TrackingBody)> {
+    pub(in crate::game) fn remote_tracking_body(
+        &self,
+        id: i32,
+    ) -> Option<(TrackingTarget, TrackingBody)> {
         if self.remote.as_ref().is_some_and(|r| r.entity_id == id) {
             let player = self.player.as_ref()?;
             return Some((TrackingTarget::LocalPlayer, player_tracking_body(player)));
@@ -754,7 +757,7 @@ impl Game<'_> {
     }
 
     /// The client level's particle sources and the engine's tick, in one go.
-    pub(super) fn tick_particles(&mut self) {
+    pub(in crate::game) fn tick_particles(&mut self) {
         self.tick_particle_sources();
         self.tick_particle_engine();
     }
@@ -1170,7 +1173,7 @@ impl Game<'_> {
     /// The ticks the frame shows (animated textures, the HUD, a shader pack's clock): the
     /// client's, or under `SUNRISE_STILL` (`FixedStep::still`) the world's game time, which
     /// moves only while the world runs.
-    pub(super) fn visual_ticks(&self) -> u64 {
+    pub(in crate::game) fn visual_ticks(&self) -> u64 {
         if self.clock.still() {
             self.world.game_time.max(0) as u64
         } else {
@@ -1180,7 +1183,7 @@ impl Game<'_> {
 
     /// The clock of the animated textures: `Minecraft.runTick` ticks the `TextureManager`
     /// only while the level runs normally. Under `SUNRISE_STILL` it is the world's ticks.
-    pub(super) fn texture_clock(&self) -> u64 {
+    pub(in crate::game) fn texture_clock(&self) -> u64 {
         if self.clock.still() {
             self.visual_ticks()
         } else {
@@ -1190,7 +1193,7 @@ impl Game<'_> {
 
     /// `Util.getMillis` for what the frame shows (the world border's scroll, the hearts' blink,
     /// the glint's under the switch): under `SUNRISE_STILL`, the world's ticks in milliseconds.
-    pub(super) fn visual_millis(&self) -> i64 {
+    pub(in crate::game) fn visual_millis(&self) -> i64 {
         if self.clock.still() {
             self.visual_ticks() as i64 * 50
         } else {
@@ -1327,7 +1330,7 @@ mod tests {
         use sunrise_core::{geometry::Vec3, nbt::Tag};
 
         in_own_process(
-            "game::render_tick::tests::equipment_camera_overlays_emit_in_vanilla_slot_order",
+            "game::client_side::render_tick::tests::equipment_camera_overlays_emit_in_vanilla_slot_order",
             || {
                 with_client_game(|game| {
                     game.player = Some(

@@ -16,12 +16,12 @@ use sunrise_client::{
 use winit::event::MouseButton;
 
 #[derive(Default)]
-pub(super) struct ExtrasState {
+pub(in crate::game) struct ExtrasState {
     fps: FpsCounter,
     /// Attack and use click rates.
     cps: [Cps; 2],
     /// Captured before pre listeners; shared by the draw and post listeners.
-    pub(super) frame_partial_ticks: Option<(f32, f32)>,
+    pub(in crate::game) frame_partial_ticks: Option<(f32, f32)>,
 }
 
 impl Game<'_> {
@@ -29,7 +29,7 @@ impl Game<'_> {
         self.client.started.elapsed().as_secs_f64()
     }
     /// Mouse buttons while playing, for mods' clicks.
-    pub(super) fn extras_mouse(&mut self, button: MouseButton, pressed: bool) {
+    pub(in crate::game) fn extras_mouse(&mut self, button: MouseButton, pressed: bool) {
         let i = match button {
             MouseButton::Left => 0,
             MouseButton::Right => 1,
@@ -42,7 +42,7 @@ impl Game<'_> {
         }
     }
     /// Once per frame: update frame timing and the extra HUD state.
-    pub(super) fn extras_frame(&mut self, elapsed: Duration) {
+    pub(in crate::game) fn extras_frame(&mut self, elapsed: Duration) {
         // For mods (`render.frame-stats`, `native_frame_rate`).
         let now = self.extras_now();
         self.client
@@ -59,12 +59,12 @@ impl Game<'_> {
         self.recipes_received_now();
     }
     /// The frame counter for mods: fps, min, 1% low.
-    pub(super) fn frame_reading(&self) -> (u32, u32, u32) {
+    pub(in crate::game) fn frame_reading(&self) -> (u32, u32, u32) {
         let r = self.client.extras.fps.reading();
         (r.fps, r.min, r.low)
     }
     /// Attack and use clicks in the last second.
-    pub(super) fn click_reading(&mut self) -> (u32, u32) {
+    pub(in crate::game) fn click_reading(&mut self) -> (u32, u32) {
         let now = self.extras_now();
         let [l, r] = &mut self.client.extras.cps;
         (l.per_second(now) as u32, r.per_second(now) as u32)
@@ -77,26 +77,26 @@ impl Game<'_> {
         })
     }
     /// The field-of-view modifier target, divided by a smooth zoom.
-    pub(super) fn zoomed_fov_target(&self, vanilla: f32) -> f32 {
+    pub(in crate::game) fn zoomed_fov_target(&self, vanilla: f32) -> f32 {
         match self.zoom_now() {
             (factor, true, _) => fov_target(vanilla, factor),
             _ => vanilla,
         }
     }
     /// The field of view in degrees, divided by an instant zoom.
-    pub(super) fn zoomed_fov_degrees(&self, fov: f32) -> f32 {
+    pub(in crate::game) fn zoomed_fov_degrees(&self, fov: f32) -> f32 {
         match self.zoom_now() {
             (factor, false, _) => fov / factor,
             _ => fov,
         }
     }
     /// Mouse turning while zoomed.
-    pub(super) fn zoom_turn_scale(&self) -> f64 {
+    pub(in crate::game) fn zoom_turn_scale(&self) -> f64 {
         self.zoom_now().2
     }
     /// The PvP HUD widgets and the engine's extra corner panels. The caller hides
     /// these with F1, and hands the remaining corner space to the whole-HUD Post hook.
-    pub(super) fn draw_extras(&mut self, batch: &mut HudBatch, corners: &mut Corners) {
+    pub(in crate::game) fn draw_extras(&mut self, batch: &mut HudBatch, corners: &mut Corners) {
         self.draw_pvp_hud(batch, corners);
         // The layers crates registered (`sunrise_hooks::hud`): none, no canvas.
         let layers = sunrise_hooks::hud::engine::all();
@@ -107,7 +107,7 @@ impl Game<'_> {
     }
     /// The height the status effect icons take at the top right
     /// (`Hud.extractEffects`: beneficial at y 1, harmful at y 26).
-    pub(super) fn effect_rows_height(&self) -> f32 {
+    pub(in crate::game) fn effect_rows_height(&self) -> f32 {
         let effects = &self.potions.effects.list;
         if effects.is_empty() || self.client.screen != Screen::Playing || self.pvp_effects_shown() {
             return 0.0;

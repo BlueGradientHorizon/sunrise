@@ -29,7 +29,7 @@ const RED: u32 = 0xFF_5555;
 static DEBUG_CPU: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 
 /// Reads the overlay's CPU name in the background when the window opens, for F3's first frame.
-pub(super) fn warm_debug_cpu() {
+pub(in crate::game) fn warm_debug_cpu() {
     // A thread that can't start only leaves the read to that first frame.
     let _ = std::thread::Builder::new()
         .name("debug-cpu-name".into())
@@ -93,7 +93,7 @@ impl Game<'_> {
     /// A physical key event (already in `physical_keys`) before the game's
     /// own handling. Returns true when it is used up (a debug combination,
     /// F3 itself, F3+Escape).
-    pub(super) fn debug_key(&mut self, key: KeyCode, action: KeyAction) -> bool {
+    pub(in crate::game) fn debug_key(&mut self, key: KeyCode, action: KeyAction) -> bool {
         let Some(name) = keybinds::key_name(key) else {
             return false;
         };
@@ -201,11 +201,11 @@ impl Game<'_> {
         }
     }
     /// `Util.getMillis` (positive: KeyboardHandler treats 0 as unset).
-    pub(super) fn debug_millis(&self) -> i64 {
+    pub(in crate::game) fn debug_millis(&self) -> i64 {
         self.client.started.elapsed().as_millis() as i64 + 1_000_000
     }
     /// `KeyboardHandler.tick`: the debug crash countdown.
-    pub(super) fn tick_debug_keys(&mut self) -> Result<()> {
+    pub(in crate::game) fn tick_debug_keys(&mut self) -> Result<()> {
         let now = self.debug_millis();
         match self.client.debug_keys.tick(now) {
             None => {}
@@ -234,7 +234,7 @@ impl Game<'_> {
     }
     /// The network charts' samples each tick: `BandwidthDebugMonitor.tick` always, and the
     /// integrated server's instant ping (a remote one is `tick_debug_connection`).
-    pub(super) fn tick_debug_charts(&mut self) {
+    pub(in crate::game) fn tick_debug_charts(&mut self) {
         let shown = self.client.debug && self.client.debug_charts.network;
         let Some(r) = &self.remote else {
             // The integrated server answers within the tick.
@@ -284,7 +284,7 @@ impl Game<'_> {
         }
     }
     /// The overlay's chart lines (`DebugScreenOverlay`'s "Debug charts").
-    pub(super) fn debug_chart_lines(&self) -> [String; 3] {
+    pub(in crate::game) fn debug_chart_lines(&self) -> [String; 3] {
         let keys = &self.settings.keys;
         let modifier = keys.get("key.debug.modifier");
         let key = |mapping: &str| {
@@ -332,7 +332,7 @@ impl Game<'_> {
     }
     /// `Gui.extractRenderState`'s debug overlay, over everything the frame
     /// drew (menus too); the debug options screen draws it under itself.
-    pub(super) fn draw_debug_overlay(&self, batch: &mut HudBatch, size: [u32; 2]) {
+    pub(in crate::game) fn draw_debug_overlay(&self, batch: &mut HudBatch, size: [u32; 2]) {
         if self.client.screen != Screen::DebugOptions {
             self.draw_debug_overlay_under(batch, size);
         }
@@ -351,7 +351,7 @@ impl Game<'_> {
     /// (`debug-profile.json`), at the debug GUI scale, and the charts while
     /// the overlay is open. F1 hides it unless a screen is open. Sunrise paints
     /// it 20 times a second and copies those vertices in between.
-    pub(super) fn draw_debug_overlay_under(&self, batch: &mut HudBatch, size: [u32; 2]) {
+    pub(in crate::game) fn draw_debug_overlay_under(&self, batch: &mut HudBatch, size: [u32; 2]) {
         if !self.debug_overlay_visible() {
             // Nothing reads the server's lines now: it stops computing them each tick.
             if let Some(server) = &self.integrated {
@@ -430,7 +430,7 @@ impl Game<'_> {
     }
     /// Whether the overlay is listing GPU pass times (its `system_specs` lines), the only reason
     /// it has to time passes.
-    pub(super) fn debug_lists_gpu_passes(&self) -> bool {
+    pub(in crate::game) fn debug_lists_gpu_passes(&self) -> bool {
         self.client.debug
             && self.title.is_none()
             && !(self.ui.hide_gui && self.client.screen == Screen::Playing)
@@ -453,7 +453,7 @@ impl Game<'_> {
         rate
     }
     /// `DebugEntryFps`.
-    pub(super) fn debug_fps_line(&self, d: &mut debug_overlay::Displayer) {
+    pub(in crate::game) fn debug_fps_line(&self, d: &mut debug_overlay::Displayer) {
         let limit = self.framerate_limit();
         let present = self
             .renderer
@@ -490,7 +490,7 @@ impl Game<'_> {
         ));
     }
     /// `DebugEntrySimplePerformanceImpactors`.
-    pub(super) fn debug_performance_lines(&self, d: &mut debug_overlay::Displayer) {
+    pub(in crate::game) fn debug_performance_lines(&self, d: &mut debug_overlay::Displayer) {
         let s = &self.settings;
         d.line(format!(
             "{}{}B: {}",
@@ -517,7 +517,7 @@ impl Game<'_> {
         ));
     }
     /// `DebugEntrySystemSpecs` (no Java line: Sunrise has no JVM).
-    pub(super) fn debug_system_lines(
+    pub(in crate::game) fn debug_system_lines(
         &self,
         d: &mut debug_overlay::Displayer,
         framebuffer: [i32; 2],
@@ -598,7 +598,7 @@ impl Game<'_> {
         }
     }
     /// `DebugEntryTps` for local and remote connections.
-    pub(super) fn debug_tps_line(&self, d: &mut debug_overlay::Displayer) {
+    pub(in crate::game) fn debug_tps_line(&self, d: &mut debug_overlay::Displayer) {
         if self.player.is_some() {
             use sunrise_core::java_number::format_fixed;
             let [tx, rx] = self
@@ -670,7 +670,7 @@ impl Game<'_> {
         self.debug_feedback(Text::translate(key, &[]));
     }
     /// `LocalPlayer.isReducedDebugInfo`: the server's rule or the option.
-    pub(super) fn reduced_debug_info(&self) -> bool {
+    pub(in crate::game) fn reduced_debug_info(&self) -> bool {
         self.settings.reduced_debug_info
             || self
                 .ui
@@ -679,7 +679,7 @@ impl Game<'_> {
             || self.remote.as_ref().is_some_and(|r| r.reduced_debug_info)
     }
     /// `DebugScreenEntryList.isCurrentlyEnabled` for an entry's path.
-    pub(super) fn debug_entry(&self, path: &str) -> bool {
+    pub(in crate::game) fn debug_entry(&self, path: &str) -> bool {
         self.debug_entries.enabled(
             &self.registered_debug_entries,
             path,
@@ -688,11 +688,11 @@ impl Game<'_> {
         )
     }
     /// The `3d_crosshair` entry.
-    pub(super) fn debug_crosshair(&self) -> bool {
+    pub(in crate::game) fn debug_crosshair(&self) -> bool {
         self.debug_entry("3d_crosshair")
     }
     /// `Permissions.COMMANDS_GAMEMASTER` (`GameModeCommand.PERMISSION_CHECK`).
-    pub(super) fn gamemaster(&self) -> bool {
+    pub(in crate::game) fn gamemaster(&self) -> bool {
         self.ui.registries.permission >= 2
     }
     fn toggle_option(&mut self, key: &str) -> bool {
@@ -910,7 +910,7 @@ impl Game<'_> {
     }
     /// `ServerboundChangeGameModePacket` handled by the integrated server:
     /// `GameModeCommand.setGameMode` with its feedback.
-    pub(super) fn change_game_mode(&mut self, mode: GameMode) {
+    pub(in crate::game) fn change_game_mode(&mut self, mode: GameMode) {
         if self.remote.is_some() {
             use sunrise_protocol::packets::play::ChangeGameMode;
             let mode = match mode {
@@ -999,7 +999,7 @@ impl Game<'_> {
     }
     /// `BlockEntity.saveWithoutMetadata` of the block entity at `pos`, if
     /// there is one: its data without the id or the position.
-    pub(super) fn block_entity_tag(&self, pos: [i32; 3]) -> Option<Tag> {
+    pub(in crate::game) fn block_entity_tag(&self, pos: [i32; 3]) -> Option<Tag> {
         let e = self.world.block_entities.get(&(pos[0], pos[1], pos[2]))?;
         let name = self.data_block_name(pos);
         let mut tag =
@@ -1014,7 +1014,7 @@ impl Game<'_> {
     /// `ClientPacketListener.handleTagQueryPacket`: the server's answer to
     /// the last debug query (`DebugQueryHandler.handleResponse`) completes
     /// it; an answer to an older query is ignored.
-    pub(super) fn answer_tag_query(&mut self, transaction: i32, tag: Tag) {
+    pub(in crate::game) fn answer_tag_query(&mut self, transaction: i32, tag: Tag) {
         let Some(reply) = self
             .remote
             .as_mut()
@@ -1078,7 +1078,7 @@ impl Game<'_> {
         self.clipboard.set(text);
     }
     /// The debug renderers' gizmos for a frame (`DebugRenderer.emitGizmos`).
-    pub(super) fn debug_gizmos(&self, alpha: f32, camera: [f64; 3]) -> Gizmos {
+    pub(in crate::game) fn debug_gizmos(&self, alpha: f32, camera: [f64; 3]) -> Gizmos {
         let mut g = Gizmos::default();
         self.bounding_box_gizmos(camera, &mut g);
         self.debug_renderer_gizmos(&mut g);
@@ -1415,7 +1415,7 @@ fn step_view(step: [i32; 3]) -> (f32, f32) {
 /// `DebugQueryHandler`: the last debug NBT query (F3+I) sent to the server
 /// and what its answer completes. Only the newest query is answered.
 #[derive(Debug)]
-pub(super) struct DebugQuery {
+pub(in crate::game) struct DebugQuery {
     transaction: i32,
     pending: Option<QueryReply>,
 }
@@ -1430,7 +1430,7 @@ impl Default for DebugQuery {
 /// What a debug query's answer is copied into: the block command
 /// (`copyCreateBlockCommand`) or the entity's (`copyCreateEntityCommand`).
 #[derive(Clone, Debug, PartialEq)]
-pub(super) enum QueryReply {
+pub(in crate::game) enum QueryReply {
     Block {
         pos: [i32; 3],
         state: String,
@@ -1465,10 +1465,10 @@ impl DebugQuery {
 /// server-level branch, so with no generator (a remote server, a LAN world joined, the server
 /// thread not there yet) nothing is drawn and nothing of the last world is kept.
 #[derive(Default)]
-pub(super) struct DensityCache(Option<(&'static str, [i32; 3], Option<String>)>);
+pub(in crate::game) struct DensityCache(Option<(&'static str, [i32; 3], Option<String>)>);
 impl DensityCache {
     /// The line to draw; `sample` is `None` without a generator.
-    pub(super) fn line(
+    pub(in crate::game) fn line(
         &mut self,
         dim: &'static str,
         feet: [i32; 3],
@@ -1488,7 +1488,7 @@ impl DensityCache {
         self.0.as_ref().and_then(|(_, _, line)| line.as_deref())
     }
     /// Another world: its generator, not the last one's line.
-    pub(super) fn clear(&mut self) {
+    pub(in crate::game) fn clear(&mut self) {
         self.0 = None;
     }
 }

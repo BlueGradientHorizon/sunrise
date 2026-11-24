@@ -9,9 +9,9 @@ use sunrise_client::chunk::Chunk;
 use sunrise_client::mobs::Who;
 use sunrise_core::position::ChunkPos;
 
-pub(super) const PIG: &str = "00000251-0000-0000-0000-000000000001";
+pub(in crate::game) const PIG: &str = "00000251-0000-0000-0000-000000000001";
 
-pub(super) fn game(test: impl FnOnce(&mut Game<'_>)) {
+pub(in crate::game) fn game(test: impl FnOnce(&mut Game<'_>)) {
     crate::game::native_entity_refs::tests::with_game(|game| {
         game.build_registries();
         game.load_server_loot();
@@ -35,7 +35,7 @@ pub(super) fn game(test: impl FnOnce(&mut Game<'_>)) {
 }
 
 /// Runs `command`: whether it succeeded and what it said.
-pub(super) fn run(game: &mut Game<'_>, command: &str) -> (bool, Vec<String>) {
+pub(in crate::game) fn run(game: &mut Game<'_>, command: &str) -> (bool, Vec<String>) {
     game.server.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
     let said = game.server.chat_capture.take().unwrap_or_default();
@@ -46,7 +46,7 @@ pub(super) fn run(game: &mut Game<'_>, command: &str) -> (bool, Vec<String>) {
 }
 
 /// The `entity_die` events posted while `f` runs.
-pub(super) fn deaths(
+pub(in crate::game) fn deaths(
     game: &mut Game<'_>,
     f: impl FnOnce(&mut Game<'_>),
 ) -> Vec<([f64; 3], Option<Who>)> {

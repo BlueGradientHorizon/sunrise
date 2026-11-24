@@ -98,7 +98,7 @@ impl Game<'_> {
     }
 
     /// Object ownership for persistence cleanup, never a level-query membership set.
-    pub(super) fn retained_entity_ids(&self) -> std::collections::HashSet<u32> {
+    pub(in crate::game) fn retained_entity_ids(&self) -> std::collections::HashSet<u32> {
         let mut retained = self.live_entity_ids();
         retained.extend(self.persist.off_level.keys().copied());
         retained
@@ -107,7 +107,7 @@ impl Game<'_> {
     /// The attachments of entities that left the level, dropped: each tick
     /// while any entity has some. Only those entities are looked at, and
     /// nothing else of the entities' memory changes.
-    pub(super) fn prune_entity_attachments(&mut self) {
+    pub(in crate::game) fn prune_entity_attachments(&mut self) {
         let alive = self.retained_entity_ids();
         let gone: Vec<u32> = self
             .persist
@@ -122,14 +122,14 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn native_authoritative(&self) -> bool {
+    pub(in crate::game) fn native_authoritative(&self) -> bool {
         self.is_logical_server()
     }
 
     /// Access a holder's attachment map, to lend to a mod: a server's, whose
     /// synced changes are sent at the pass's end, or a client's copy of what
     /// its server synced.
-    pub(super) fn attachment_map(
+    pub(in crate::game) fn attachment_map(
         &mut self,
         holder: mod_api::Holder,
         access: AttachmentAccess,
@@ -152,7 +152,7 @@ impl Game<'_> {
 
     /// `attachment_map` without recording the holder for the sync. Inside a transaction, the
     /// map is kept as it was on its first access, so an abort puts it back.
-    pub(super) fn attachment_map_quiet(
+    pub(in crate::game) fn attachment_map_quiet(
         &mut self,
         holder: mod_api::Holder,
         access: AttachmentAccess,
@@ -166,7 +166,7 @@ impl Game<'_> {
 
     /// Bind first-store contents to their real owner, including writes made before
     /// insertion by EntityConstructing listeners. Never invent a temporary owner.
-    pub(super) fn bind_resident_entity_attachments(
+    pub(in crate::game) fn bind_resident_entity_attachments(
         &mut self,
         id: u32,
     ) -> Result<(), mod_api::AttachmentError> {
@@ -214,7 +214,7 @@ impl Game<'_> {
 
     /// Where `holder`'s attachment map lives now: an entity's by its object ID, a player's where
     /// their state is (swapped in for a guest's turn, or kept beside), the world's others.
-    pub(super) fn attachment_slot(
+    pub(in crate::game) fn attachment_slot(
         &mut self,
         holder: mod_api::Holder,
         access: AttachmentAccess,
@@ -340,7 +340,7 @@ impl Game<'_> {
 }
 
 /// A level a both-side level hook reads, which knows the side it is on.
-pub(super) trait SidedLevel: mod_api::LevelHost {
+pub(in crate::game) trait SidedLevel: mod_api::LevelHost {
     fn client_side(&self) -> bool;
 }
 
@@ -368,7 +368,7 @@ impl SidedLevel for super::native_hooks::HitLevel<'_> {
     }
 }
 
-pub(super) fn level_side(level: &impl SidedLevel) -> mod_api::LevelSide<'_> {
+pub(in crate::game) fn level_side(level: &impl SidedLevel) -> mod_api::LevelSide<'_> {
     if level.client_side() {
         mod_api::LevelSide::Client(level)
     } else {

@@ -12,7 +12,7 @@ use sunrise_client::{
 /// What a fluid draws as in a `fluid_box`: its sprite's layer, its `0xAARRGGBB` tint and its
 /// block light.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) struct FluidBoxLook {
+pub(in crate::game) struct FluidBoxLook {
     layer: u32,
     tint: u32,
     luminosity: u8,
@@ -21,7 +21,7 @@ pub(super) struct FluidBoxLook {
 impl Game<'_> {
     /// Draws `stack` as a still fluid filling `bounds` under `draw`'s pose, sampling the fluid's
     /// still sprite from the block sprite arrays. See `BlockEntityDrawContext::fluid_box`.
-    pub(super) fn native_draw_fluid_box(
+    pub(in crate::game) fn native_draw_fluid_box(
         &self,
         draw: &mut BlockEntityDraw,
         stack: &FluidStack,

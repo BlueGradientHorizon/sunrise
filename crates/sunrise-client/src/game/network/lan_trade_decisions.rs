@@ -119,7 +119,11 @@ pub(in crate::game) enum Effect {
 }
 
 impl Game<'_> {
-    pub(super) fn lan_merchant_click(&mut self, conn: u32, p: &play::ContainerClick) -> bool {
+    pub(in crate::game) fn lan_merchant_click(
+        &mut self,
+        conn: u32,
+        p: &play::ContainerClick,
+    ) -> bool {
         let input = match (p.slot, p.input) {
             (2, 0) => Input::Pickup,
             (2, 1) => Input::QuickMove,
@@ -193,7 +197,7 @@ impl Game<'_> {
 
     /// Screen replacement cannot publish while a transaction owns a click. The older
     /// merchant guard protects its own guest; a scoped mod click can reach any guest's menu.
-    pub(super) fn menu_click_in_progress(&self, conn: u32) -> bool {
+    pub(in crate::game) fn menu_click_in_progress(&self, conn: u32) -> bool {
         self.transactions
             .iter()
             .any(|level| level.menu_click_active.is_some() || level.trades.active == Some(conn))
@@ -471,7 +475,7 @@ impl Game<'_> {
 
     /// Any write to an open merchant menu, including a MerchantRef edit to another guest,
     /// belongs to the transaction that first changed it.
-    pub(super) fn journal_guest_merchant(&mut self, conn: u32) {
+    pub(in crate::game) fn journal_guest_merchant(&mut self, conn: u32) {
         let Some(level) = self.transactions.last() else {
             return;
         };
@@ -527,7 +531,7 @@ impl Game<'_> {
     /// A replacement can close a funded window from a listener's transaction.
     /// Keep the player's wire window with the trade and hold any open/close
     /// packets until the frame commits.
-    pub(super) fn journal_merchant_replacement(&mut self, conn: u32) {
+    pub(in crate::game) fn journal_merchant_replacement(&mut self, conn: u32) {
         let Some(level) = self.transactions.last_mut() else {
             return;
         };
@@ -560,7 +564,7 @@ impl Game<'_> {
 
     /// Keep the fields merchant operations own, not the mob's health, equipment or effects,
     /// which belong to their owning journals.
-    pub(super) fn journal_merchant_mob(&mut self, id: u32) {
+    pub(in crate::game) fn journal_merchant_mob(&mut self, id: u32) {
         let Some(level) = self.transactions.last_mut() else {
             return;
         };
@@ -593,7 +597,7 @@ impl Game<'_> {
     }
 
     /// Keep trade-set sequence loans and draws at their first transactional write.
-    pub(super) fn journal_trade_sequences(&mut self) {
+    pub(in crate::game) fn journal_trade_sequences(&mut self) {
         if let Some(level) = self.transactions.last_mut() {
             level
                 .trades
@@ -630,11 +634,11 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn merchant_take_active(&self) -> bool {
+    pub(in crate::game) fn merchant_take_active(&self) -> bool {
         self.transactions.iter().any(|l| l.packets.is_some())
     }
 
-    pub(super) fn merchant_drops(
+    pub(in crate::game) fn merchant_drops(
         &mut self,
         conn: u32,
         stacks: Vec<sunrise_client::items::ItemStack>,
@@ -652,14 +656,19 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn merchant_orb(&mut self, at: [f64; 3], value: u32) {
+    pub(in crate::game) fn merchant_orb(&mut self, at: [f64; 3], value: u32) {
         if self.merchant_take_active() {
             self.after_commit(After::Trade(Box::new(Effect::Orb(at, value))));
         } else {
             self.add_orb(at, value);
         }
     }
-    pub(super) fn merchant_sound(&mut self, sound: &'static str, at: [f64; 3], pitch: f32) {
+    pub(in crate::game) fn merchant_sound(
+        &mut self,
+        sound: &'static str,
+        at: [f64; 3],
+        pitch: f32,
+    ) {
         if self.merchant_take_active() {
             self.defer_effect(super::transactions::DeferredEffect::Sound {
                 sound,
@@ -674,7 +683,7 @@ impl Game<'_> {
 
     // The criterion and its listener run tentatively. Rewards can spawn entities and run
     // arbitrary functions, so their publication belongs to the successful root commit.
-    pub(super) fn defer_merchant_reward(&mut self, advancement: &Advancement) -> bool {
+    pub(in crate::game) fn defer_merchant_reward(&mut self, advancement: &Advancement) -> bool {
         if !self.merchant_take_active() {
             return false;
         }

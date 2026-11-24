@@ -110,10 +110,10 @@ struct StickScrolled {
 }
 
 #[derive(Default)]
-pub(super) struct MenuCursor {
+pub(in crate::game) struct MenuCursor {
     /// Where the pad put the pointer (GUI pixels); `None` while the mouse
     /// has it.
-    pub(super) pos: Option<(f32, f32)>,
+    pub(in crate::game) pos: Option<(f32, f32)>,
     last_poll: Option<Instant>,
     /// The stick moved the cursor last poll (it settles when let go).
     moving: bool,
@@ -135,19 +135,19 @@ pub(super) struct MenuCursor {
     /// The held D-pad direction and when it last stepped.
     repeat: Option<(Button, Instant, bool)>,
     /// Pointer buttons the pad holds down.
-    pub(super) held: [bool; 2],
+    pub(in crate::game) held: [bool; 2],
     /// The focused button A went down on: letting go presses it, unless the
     /// focus moved or the input was cancelled first.
-    pub(super) armed: Option<Target>,
+    pub(in crate::game) armed: Option<Target>,
     /// The frame count when `pad_reveal` scrolled the focused row into view: the frames drawn
     /// before it still show the row where it was, so the focus isn't looked for in them.
-    pub(super) revealed: Option<u64>,
+    pub(in crate::game) revealed: Option<u64>,
     /// The OS pointer is hidden while the pad's cursor is drawn.
     os_hidden: bool,
     /// Polls since a menu opened (its widgets are drawn after one frame).
     open_polls: u32,
     /// Focus mode: the focused target as last drawn.
-    pub(super) focus: Option<Target>,
+    pub(in crate::game) focus: Option<Target>,
     /// The left stick's step direction last poll.
     stick: Option<Button>,
     pending: Option<Pending>,
@@ -156,28 +156,28 @@ pub(super) struct MenuCursor {
     /// Steps since the held direction went down (sliders speed up).
     repeats: u32,
     /// The on-screen keyboard, open over a text field.
-    pub(super) osk: Option<Keyboard>,
+    pub(in crate::game) osk: Option<Keyboard>,
     /// The recipe being crafted straight into the inventory (`pad_craft`).
-    pub(super) craft: Option<super::pad_craft::DirectCraft>,
+    pub(in crate::game) craft: Option<super::pad_craft::DirectCraft>,
     /// LT held over the crafting book: it changes the category as it comes up, unless A was
     /// pressed meanwhile (LT + A crafts, `pad_craft`).
-    pub(super) trigger: Option<HeldTrigger>,
+    pub(in crate::game) trigger: Option<HeldTrigger>,
     /// The keyboard was closed on this screen (it doesn't open by itself again).
     osk_dismissed: bool,
     /// The keyboard drives the focus (`key_focus`: Tab, the arrows, Enter):
     /// focus mode whatever the screen, the OS pointer shown.
-    pub(super) keyboard: bool,
+    pub(in crate::game) keyboard: bool,
     /// The focused slider's arrows change its value (`canChangeValue`).
     slider_edit: bool,
     /// The slider A took hold of for left and right to move, and the screen it's on.
-    pub(super) slider_hold: Option<(u64, Rect)>,
+    pub(in crate::game) slider_hold: Option<(u64, Rect)>,
     /// What the last click landed on: vanilla focuses it, so the next Tab
     /// or arrow goes on from there (`ContainerEventHandler.mouseClicked`).
-    pub(super) origin: Option<Rect>,
+    pub(in crate::game) origin: Option<Rect>,
     /// A shortcut put the focus here: not where the screen reopens.
     shortcut_focus: Option<Rect>,
     /// A pointer event the pad or the keyboard sends is being handled.
-    pub(super) synthetic: bool,
+    pub(in crate::game) synthetic: bool,
     /// The real mouse's last sample, independent of the keyboard's virtual pointer.
     real_pointer: Option<PointerSample>,
     /// The screen the keyboard's focus is on (`Game::key_screen`), and the
@@ -202,14 +202,14 @@ pub(super) struct MenuCursor {
 
 /// LT held over the crafting book.
 #[derive(Clone, Copy)]
-pub(super) struct HeldTrigger {
+pub(in crate::game) struct HeldTrigger {
     /// A was pressed while it was held: it was LT + A, not a category change.
     pressed_a: bool,
 }
 
 impl MenuCursor {
     /// A running direct craft ends, as cleanly as the server still lets it (`DirectCraft::stop`).
-    pub(super) fn stop_craft(&mut self) {
+    pub(in crate::game) fn stop_craft(&mut self) {
         if let Some(craft) = &mut self.craft {
             craft.stop();
         }
@@ -280,7 +280,7 @@ fn armed_click(armed: Option<Target>, focus: Option<Target>) -> Option<Target> {
 impl Game<'_> {
     /// A menu, a screen, the title, a sign or a book is open: the pad drives
     /// it instead of the player.
-    pub(super) fn pad_in_menu(&self) -> bool {
+    pub(in crate::game) fn pad_in_menu(&self) -> bool {
         self.key_focus_screen() || self.prompt_open()
     }
 
@@ -315,7 +315,7 @@ impl Game<'_> {
 
     /// B or Start on a prompt: as Escape, the top one first. The code of conduct has no answer
     /// by Escape (`shouldCloseOnEsc`), and a dialog only when it allows it.
-    pub(super) fn pad_prompt_back(&mut self) -> Result<()> {
+    pub(in crate::game) fn pad_prompt_back(&mut self) -> Result<()> {
         if self.command_prompt.is_some() {
             self.answer_command_prompt(false);
         } else if self.client.link_prompt.is_some() {
@@ -348,7 +348,7 @@ impl Game<'_> {
         first_controller_target(targets.iter().copied().filter(|t| Some(t.rect) != warning))
     }
 
-    pub(super) fn gui_batch(&self) -> Option<HudBatch> {
+    pub(in crate::game) fn gui_batch(&self) -> Option<HudBatch> {
         self.renderer.as_ref().map(|r| {
             HudBatch::new(
                 [r.config.width, r.config.height],
@@ -361,7 +361,7 @@ impl Game<'_> {
     /// containers, and the screens whose clickable parts register no focus
     /// target (the advancements map, the statistics lists, the pack rows, a
     /// book's page text), where the pointer does (the keyboard always focuses).
-    pub(super) fn pad_navigation_mode(&self) -> bool {
+    pub(in crate::game) fn pad_navigation_mode(&self) -> bool {
         self.prompt_open() || !self.pad_pointer_screen()
     }
 
@@ -378,7 +378,7 @@ impl Game<'_> {
             || (self.client.screen == Screen::Options && self.ui.options.page() == Page::Packs)
     }
 
-    pub(super) fn pad_focus_mode(&self) -> bool {
+    pub(in crate::game) fn pad_focus_mode(&self) -> bool {
         self.pad.menu.keyboard || self.pad_navigation_mode()
     }
 
@@ -386,7 +386,7 @@ impl Game<'_> {
     /// target (sliders, fields, rows, keyboard keys), and the slots
     /// and tabs of inventories (GUI pixels), on screen. The keyboard's
     /// focus skips what vanilla's keyboard can't reach (`key_targets`).
-    pub(super) fn pad_targets(&self) -> Vec<Target> {
+    pub(in crate::game) fn pad_targets(&self) -> Vec<Target> {
         if self.pad.menu.keyboard {
             self.key_targets()
         } else {
@@ -647,7 +647,7 @@ impl Game<'_> {
     /// up (`pad_synthetic_event`), not the window's. A controller's click or
     /// a focused widget's is not the mouse, so the native mods' mouse hooks
     /// skip it.
-    pub(super) fn pad_synthetic_input(&self) -> bool {
+    pub(in crate::game) fn pad_synthetic_input(&self) -> bool {
         self.pad.menu.synthetic
     }
 
@@ -658,12 +658,12 @@ impl Game<'_> {
     }
 
     /// The wheel event being handled only scrolls (`MenuCursor::stick_scroll`).
-    pub(super) fn pad_stick_scroll(&self) -> bool {
+    pub(in crate::game) fn pad_stick_scroll(&self) -> bool {
         self.pad.menu.stick_scroll || self.pad.menu.step_scroll
     }
 
     /// It came from a focus step, so the pointer still decides what scrolls.
-    pub(super) fn pad_step_scroll(&self) -> bool {
+    pub(in crate::game) fn pad_step_scroll(&self) -> bool {
         self.pad.menu.step_scroll
     }
 
@@ -763,7 +763,7 @@ impl Game<'_> {
     }
 
     /// A button in a menu.
-    pub(super) fn pad_menu_button(
+    pub(in crate::game) fn pad_menu_button(
         &mut self,
         event_loop: &dyn EventLoopCtl,
         button: Button,
@@ -1315,7 +1315,7 @@ impl Game<'_> {
     /// The pad leaves screen `screen`: remember its focus there for when it
     /// comes back. Called before the new screen's targets are read, so the
     /// focus is still the left screen's.
-    pub(super) fn pad_remember_focus(&mut self, screen: u64) {
+    pub(in crate::game) fn pad_remember_focus(&mut self, screen: u64) {
         self.pad.menu.left_screen = widgets::generation();
         let Some(focus) = self.pad.menu.focus else {
             return;
@@ -1337,7 +1337,7 @@ impl Game<'_> {
     /// it, so only the pad's focus shows. The screen it clears need not be
     /// the one in front (a screen that just opened leaves the old focus
     /// behind it), so every menu's click focus goes.
-    pub(super) fn clear_screen_click_focus(&mut self) {
+    pub(in crate::game) fn clear_screen_click_focus(&mut self) {
         if let Some(title) = self.title.as_mut()
             && !matches!(title.mode, sunrise_client::title::Mode::MissingMods { .. })
         {
@@ -1356,7 +1356,7 @@ impl Game<'_> {
     /// button a click focused is not still highlighted
     /// (`AbstractWidget.isHoveredOrFocused`) when the player comes back to it.
     /// The frame after another screen is front, `key_screen` names a new one.
-    pub(super) fn drop_left_screen_focus(&mut self) {
+    pub(in crate::game) fn drop_left_screen_focus(&mut self) {
         let screen = self.key_screen();
         if another_screen_is_front(&mut self.client.focus_screen, screen) {
             self.clear_screen_click_focus();
@@ -1365,7 +1365,7 @@ impl Game<'_> {
 
     /// The controller's focus ring in focus mode, for the screen's narration:
     /// the focused widget.
-    pub(super) fn pad_focus_rect(&self) -> Option<[f32; 4]> {
+    pub(in crate::game) fn pad_focus_rect(&self) -> Option<[f32; 4]> {
         let focus = self
             .pad
             .menu
@@ -1424,7 +1424,7 @@ impl Game<'_> {
 
     /// An inventory with its recipe book open and nothing over it: the book's tabs are targets
     /// only then (`recipe_book_targets`).
-    pub(super) fn pad_recipe_book_showing(&self) -> bool {
+    pub(in crate::game) fn pad_recipe_book_showing(&self) -> bool {
         self.title.is_none()
             && self.client.screen == Screen::Inventory
             && self
@@ -1458,7 +1458,7 @@ impl Game<'_> {
     /// steps focus, the right stick scrolls, a held direction repeats, focus
     /// follows its widget from frame to frame, and the OS pointer hides
     /// while the pad drives.
-    pub(super) fn pad_menu_frame(&mut self, event_loop: &dyn EventLoopCtl) {
+    pub(in crate::game) fn pad_menu_frame(&mut self, event_loop: &dyn EventLoopCtl) {
         let now = Instant::now();
         let seconds = self
             .pad
@@ -1999,7 +1999,7 @@ impl Game<'_> {
     }
 
     /// `pad status`: the menu mode, the focused target and every target.
-    pub(super) fn pad_menu_status(&self) -> serde_json::Value {
+    pub(in crate::game) fn pad_menu_status(&self) -> serde_json::Value {
         let kind = |k: Kind| match k {
             Kind::Button | Kind::Mounted { field: false, .. } => "button",
             Kind::Slider { .. } => "slider",
@@ -2035,7 +2035,7 @@ impl Game<'_> {
 
     // ---- the keyboard: vanilla's focus navigation (`key_focus`) ----
 
-    pub(super) fn pad_cancel_menu(&mut self, event_loop: &dyn EventLoopCtl) {
+    pub(in crate::game) fn pad_cancel_menu(&mut self, event_loop: &dyn EventLoopCtl) {
         for right in [false, true] {
             if self.pad.menu.held[usize::from(right)] {
                 self.pad_pointer_button(event_loop, right, false);
@@ -2053,14 +2053,14 @@ impl Game<'_> {
     }
 
     /// The keyboard drives the open menu's focus.
-    pub(super) fn key_focus_driving(&self) -> bool {
+    pub(in crate::game) fn key_focus_driving(&self) -> bool {
         self.pad.menu.keyboard && self.key_focus_screen()
     }
 
     /// A pointer event the keyboard sends (a press, the hidden pointer on
     /// the focused widget) is being handled: the screen's narration doesn't
     /// take it for the mouse (`InputType` stays the keyboard's).
-    pub(super) fn key_focus_quiet(&self) -> bool {
+    pub(in crate::game) fn key_focus_quiet(&self) -> bool {
         self.pad.menu.synthetic && self.pad.menu.keyboard
     }
 
@@ -2098,7 +2098,7 @@ impl Game<'_> {
     /// container's own close key can move the focus and close the screen in
     /// one press (Tab bound to the inventory), and vanilla clears the focus
     /// before the next frame, so nothing stays highlighted.
-    pub(super) fn pad_clear_focus(&mut self) {
+    pub(in crate::game) fn pad_clear_focus(&mut self) {
         self.pad.menu.clear_focus();
     }
 
@@ -2108,7 +2108,7 @@ impl Game<'_> {
     /// widget's own keys come first (a text field's caret, a slider's
     /// value). Whether the key was used; when not, the screen has it (a
     /// container also has Tab and the arrows once they moved the focus).
-    pub(super) fn key_focus_key(
+    pub(in crate::game) fn key_focus_key(
         &mut self,
         event_loop: &dyn EventLoopCtl,
         key: KeyCode,
@@ -2258,7 +2258,7 @@ impl Game<'_> {
     }
 
     /// Which screen is open, as far as the keyboard's focus cares.
-    pub(super) fn key_screen(&self) -> u64 {
+    pub(in crate::game) fn key_screen(&self) -> u64 {
         use std::hash::{Hash, Hasher};
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         std::mem::discriminant(&self.client.screen).hash(&mut hasher);
@@ -2345,7 +2345,7 @@ impl Game<'_> {
     /// The real mouse, before the screen takes it: where it is, and a press
     /// or a scroll hands it the pointer back from the keyboard, at the
     /// place the mouse left it (`setLastInputType(MOUSE)`).
-    pub(super) fn key_focus_mouse(
+    pub(in crate::game) fn key_focus_mouse(
         &mut self,
         event_loop: &dyn EventLoopCtl,
         event: &WindowEvent,
@@ -2386,7 +2386,7 @@ impl Game<'_> {
 
     /// The first built-in child under the pointer. A previous screen's frame
     /// must not keep its bounds in the new screen's input order.
-    pub(super) fn native_pointer_child(&self) -> Option<Target> {
+    pub(in crate::game) fn native_pointer_child(&self) -> Option<Target> {
         if !widgets::last_input_screen_is(self.key_screen()) {
             return None;
         }
@@ -2417,7 +2417,7 @@ impl Game<'_> {
             })
     }
 
-    pub(super) fn focus_native_pointer_child(&mut self, child: Target) {
+    pub(in crate::game) fn focus_native_pointer_child(&mut self, child: Target) {
         if !self.pad.menu.synthetic && self.key_focus_screen() {
             self.clear_mounted_widget_focus();
             self.pad.menu.origin = Some(child.rect);
@@ -2426,7 +2426,7 @@ impl Game<'_> {
 
     /// The keyboard lets go of the pointer: it goes back to the real mouse.
     /// Widget hover uses the real mouse while keyboard navigation moves the virtual pointer.
-    pub(super) fn widget_tooltip_cursor(&self) -> (f32, f32) {
+    pub(in crate::game) fn widget_tooltip_cursor(&self) -> (f32, f32) {
         if !self.key_focus_driving() {
             return self.client.cursor;
         }
@@ -2480,7 +2480,7 @@ impl Game<'_> {
 
     /// The keyboard focus the title had while resources loaded
     /// (`StartupMenu`), carried into the game's.
-    pub(super) fn key_focus_adopt(&mut self, focus: Target, slider_edit: bool) {
+    pub(in crate::game) fn key_focus_adopt(&mut self, focus: Target, slider_edit: bool) {
         let screen = self.key_screen();
         let menu = &mut self.pad.menu;
         menu.key_screen = screen;
@@ -2561,7 +2561,7 @@ impl Game<'_> {
 
     /// What a key of the on-screen keyboard does: the same as a typed key in
     /// the field that has focus.
-    pub(super) fn pad_osk_output(&mut self, out: osk::Output) {
+    pub(in crate::game) fn pad_osk_output(&mut self, out: osk::Output) {
         use osk::Output;
         let (key, text) = match &out {
             Output::Text(t) => (None, Some(t.as_str())),
@@ -2733,7 +2733,7 @@ impl Game<'_> {
 
     /// The pad's cursor (pointer mode) or focus highlight (focus mode), and
     /// the on-screen keyboard, over everything else.
-    pub(super) fn draw_pad_cursor(&self, batch: &mut HudBatch) {
+    pub(in crate::game) fn draw_pad_cursor(&self, batch: &mut HudBatch) {
         widgets::set_action_glyphs(self.pad_action_glyphs_on());
         widgets::set_action_screen(self.key_screen());
         if !self.pad_in_menu() {
@@ -2829,7 +2829,7 @@ fn field_at(targets: &[Target], at: (f32, f32)) -> bool {
 /// Whether `front` is another screen than the one `shown` names yet, and
 /// records it: the menu focus belongs to the screen that showed it
 /// (`Gui.setScreen` clears the focus of the screen it leaves).
-pub(super) fn another_screen_is_front(shown: &mut u64, front: u64) -> bool {
+pub(in crate::game) fn another_screen_is_front(shown: &mut u64, front: u64) -> bool {
     std::mem::replace(shown, front) != front
 }
 

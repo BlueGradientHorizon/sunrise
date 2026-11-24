@@ -22,7 +22,7 @@ except ImportError:
 
 NAME = 'server-player-packets-parity'
 ORACLE = 'VanillaServerPlayerPacketsOracle'
-TEST = 'game::lan::player_packet_tests::server_player_packet_witness'
+TEST = 'game::server_side::lan::player_packet_tests::server_player_packet_witness'
 CASES = {
     '141': ['credits_pose', 'credits_move_count', 'credits_idle_credit', 'ordinary_idle_credit',
             'repeated_position', 'invalid_rotation'],

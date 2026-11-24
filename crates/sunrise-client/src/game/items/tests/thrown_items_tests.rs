@@ -113,7 +113,7 @@ fn a_pickup_pitch_is_not_drawn_from_the_levels_random() {
     use sunrise_core::random::{EntityRandom, LegacyRandom};
 
     if run_fresh_cases(
-        "game::item_entities::thrown_items_tests::a_pickup_pitch_is_not_drawn_from_the_levels_random",
+        "game::server_side::item_entities::thrown_items_tests::a_pickup_pitch_is_not_drawn_from_the_levels_random",
         "SUNRISE_PICKUP_PITCH_CASE",
         &["pickup"],
     ) {

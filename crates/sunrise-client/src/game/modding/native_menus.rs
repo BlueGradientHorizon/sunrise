@@ -31,7 +31,7 @@ pub(crate) fn native_menu_inventory_slot(size: usize, slot: i32) -> Option<usize
 /// Adds every stack of `gets` to the 36 slots of `inventory`, onto matching
 /// stacks first, then into empty slots, hotbar first; false when one doesn't
 /// fit whole. `max` is an item's stack size.
-pub(super) fn fit(
+pub(in crate::game) fn fit(
     inventory: &mut [Option<ItemStack>],
     gets: &[ItemStack],
     max: &impl Fn(&ItemStack) -> u32,
@@ -68,7 +68,7 @@ pub(super) fn fit(
 /// a command executor, the menus can be opened and filled).
 #[allow(dead_code)]
 impl Game<'_> {
-    pub(super) fn native_conn(&self, uuid: u128) -> Option<u32> {
+    pub(in crate::game) fn native_conn(&self, uuid: u128) -> Option<u32> {
         let host = self.lan.as_ref()?;
         let g = host
             .hub
@@ -82,7 +82,7 @@ impl Game<'_> {
     /// the menu they had open: its window id, a new one each time. The old
     /// menu closes as a close does, its cursor stack going back to the
     /// inventory, and `replace` says whether the client is first sent a close.
-    pub(super) fn open_menu(
+    pub(in crate::game) fn open_menu(
         &mut self,
         uuid: u128,
         rows: u8,
@@ -107,7 +107,7 @@ impl Game<'_> {
     /// `ServerPlayer.openMenu`'s close of the menu that was open: `closeContainer`, which then
     /// tells the client, or `doCloseContainer` for a provider that skips the client's close.
     /// Either way the old menu's `removed` runs and the mods hear it close.
-    pub(super) fn close_for_open(&mut self, conn: u32, replace: MenuReplace) {
+    pub(in crate::game) fn close_for_open(&mut self, conn: u32, replace: MenuReplace) {
         self.journal_merchant_replacement(conn);
         match replace {
             MenuReplace::CloseFirst => self.guest_close_menus_and_tell(conn),
@@ -115,7 +115,10 @@ impl Game<'_> {
         }
     }
     /// `ServerPlayer.containerCounter`: the window id the player's last opened menu took.
-    pub(super) fn player_container_counter(&self, player: mod_api::PlayerRef) -> Option<i32> {
+    pub(in crate::game) fn player_container_counter(
+        &self,
+        player: mod_api::PlayerRef,
+    ) -> Option<i32> {
         if !self.is_logical_server() {
             return None;
         }
@@ -123,7 +126,7 @@ impl Game<'_> {
     }
     /// `ServerPlayer.nextContainerCounter` with no menu after it: the counter moves as an open
     /// moves it, and nothing opens or closes.
-    pub(super) fn player_next_container_counter(
+    pub(in crate::game) fn player_next_container_counter(
         &mut self,
         player: mod_api::PlayerRef,
     ) -> Option<i32> {
@@ -140,7 +143,7 @@ impl Game<'_> {
     /// block: the type's container slots show empty and their clicks reach the mods, as
     /// `open_menu`'s do; `extra` and `pos` go first in its `sunrise:menu_extra` payload, and
     /// `replace` is the provider's choice of the client's close, as for `open_menu`.
-    pub(super) fn player_open_mod_menu(
+    pub(in crate::game) fn player_open_mod_menu(
         &mut self,
         player: mod_api::PlayerRef,
         request: ModMenuOpen,
@@ -240,7 +243,7 @@ impl Game<'_> {
     }
     /// The native menu the player has open as window `window`, for its slots;
     /// None for another window, a menu the game opened, or a player not here.
-    pub(super) fn menu(&self, uuid: u128, window: i32) -> Option<MenuRef> {
+    pub(in crate::game) fn menu(&self, uuid: u128, window: i32) -> Option<MenuRef> {
         let conn = self.native_conn(uuid)?;
         self.lan
             .as_ref()?
@@ -256,7 +259,7 @@ impl Game<'_> {
     }
     /// Replaces what the player's open native menu `window` shows, without reopening it
     /// (`AbstractContainerMenu.sendAllDataToRemote`): the whole contents in one packet.
-    pub(super) fn menu_set_items(
+    pub(in crate::game) fn menu_set_items(
         &mut self,
         uuid: u128,
         window: i32,
@@ -287,7 +290,7 @@ impl Game<'_> {
     }
     /// Closes the player's native menu (a `native_menu_closed` follows). An active click
     /// stages the close for its current window and sends it only once the transaction commits.
-    pub(super) fn close_menu(&mut self, uuid: u128) {
+    pub(in crate::game) fn close_menu(&mut self, uuid: u128) {
         if let Some(conn) = self.native_conn(uuid)
             && let Some(guest) = self.lan.as_ref().and_then(|host| host.hub.guest(conn))
             && let Some(open) = guest
@@ -304,7 +307,7 @@ type ContainerPos = (i32, i32, i32);
 
 /// A menu the player opened, including the block entity instances it opened.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(super) struct HeardMenu {
+pub(in crate::game) struct HeardMenu {
     window: i32,
     /// The menu type's name; a mount's inventory has none in vanilla.
     menu: String,
@@ -315,7 +318,7 @@ pub(super) struct HeardMenu {
 }
 
 impl GuestMenus {
-    pub(super) fn menu_holds(
+    pub(in crate::game) fn menu_holds(
         &self,
         menu: Option<&Menu>,
         pos: ContainerPos,
@@ -332,12 +335,15 @@ impl GuestMenus {
 
 /// What a mount's inventory is called, as vanilla's `HorseInventoryMenu` has
 /// no menu type.
-pub(super) const MOUNT_MENU: &str = "sunrise:mount_inventory";
+pub(in crate::game) const MOUNT_MENU: &str = "sunrise:mount_inventory";
 
 /// The menu `conn` has open, whichever way the game keeps it: a block's
 /// container, a trade, a crafting table, a workstation, a lectern or a
 /// mount's inventory. Not the player's own inventory menu.
-pub(super) fn open_menu_of(host: &LanHost, conn: u32) -> Option<(i32, &str, Option<[i32; 3]>)> {
+pub(in crate::game) fn open_menu_of(
+    host: &LanHost,
+    conn: u32,
+) -> Option<(i32, &str, Option<[i32; 3]>)> {
     let g = host.hub.guest(conn)?;
     let play = host.play.get(&conn);
     let menus = host.menus.get(&conn);
@@ -378,7 +384,7 @@ impl Game<'_> {
     /// `ServerPlayer.openMenu` / `openHorseInventory`: called only after
     /// constructing the menu, queuing its open packet and sending full contents.
     /// Remember it before dispatch so a hook can close it synchronously.
-    pub(super) fn player_menu_opening(&mut self, conn: u32) {
+    pub(in crate::game) fn player_menu_opening(&mut self, conn: u32) {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
@@ -418,7 +424,7 @@ impl Game<'_> {
     /// `conn`'s tracked menu closes with the guest's state in place
     /// (`ServerPlayer.doCloseContainer`). Close listeners are checked independently
     /// of open listeners.
-    pub(super) fn player_menu_closing(&mut self, conn: u32) {
+    pub(in crate::game) fn player_menu_closing(&mut self, conn: u32) {
         let heard = self
             .lan
             .as_mut()
@@ -487,7 +493,7 @@ impl Game<'_> {
     }
 
     /// The notices the hub collected, dispatched with the hub in `self.lan` and no guest turn active.
-    pub(super) fn run_native_menu_events(&mut self) {
+    pub(in crate::game) fn run_native_menu_events(&mut self) {
         loop {
             let Some(host) = self.lan.as_mut() else {
                 return;
@@ -855,7 +861,7 @@ mod tests {
         use mod_api::{Hooks, ModEntry, Mods, PlayerContainerCloseEvent, PlayerContainerOpenEvent};
         use std::sync::Mutex;
         if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::native_menus::tests::container_hooks_follow_actual_open_boundaries_without_a_tick",
+            "game::server_side::native_menus::tests::container_hooks_follow_actual_open_boundaries_without_a_tick",
             "SUNRISE_CONTAINER_BOUNDARY_CASE",
             &["same_tick", "replace", "mount", "guest"],
         ) {
@@ -1576,7 +1582,7 @@ mod tests {
         use std::sync::Mutex;
         const CASE: &str = "SUNRISE_MOD_MENU_REPLACE_CHILD";
         if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::native_menus::tests::a_mod_menu_opened_in_place_sends_no_close_and_still_closes_the_old_menu",
+            "game::server_side::native_menus::tests::a_mod_menu_opened_in_place_sends_no_close_and_still_closes_the_old_menu",
             CASE,
             &["close_first", "in_place"],
         ) {
@@ -1729,7 +1735,7 @@ mod tests {
     #[ignore = "daily"]
     fn mod_menu_backend_payload_and_refusals() {
         if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::native_menus::tests::mod_menu_backend_payload_and_refusals",
+            "game::server_side::native_menus::tests::mod_menu_backend_payload_and_refusals",
             "SUNRISE_MOD_MENU_BACKEND_CHILD",
             &["backend"],
         ) {

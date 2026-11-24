@@ -74,7 +74,7 @@ impl Game<'_> {
     /// already has an entity number keeps its UUID and constructor attachments here, outside the
     /// game's tables, until it joins; children a listener removed or replaced are forgotten, also
     /// when a listener panics, so none leaves state behind.
-    pub(super) fn dispatch_pending_children<T>(
+    pub(in crate::game) fn dispatch_pending_children<T>(
         &mut self,
         hook: mod_api::HookId,
         breeding: bool,
@@ -229,7 +229,7 @@ impl Game<'_> {
     /// then each half-size child is constructed in order with its yaw draw from the parent. With a
     /// `mob_split` listener the whole list is constructed first and lent; otherwise each
     /// child joins as it is made, exactly as vanilla does.
-    pub(super) fn split_cube_children(&mut self, dying: &mut Mob) {
+    pub(in crate::game) fn split_cube_children(&mut self, dying: &mut Mob) {
         let drawn = sunrise_client::mobs::cube::split_count(dying);
         if drawn == 0 {
             return;
@@ -293,7 +293,7 @@ impl Game<'_> {
 
     /// `Animal.spawnChildFromBreeding` once `baby` is constructed: lends it to the listeners and
     /// applies the remaining baby (or its replacement) before publishing the action's effects.
-    pub(super) fn breed_with_listeners<T>(
+    pub(in crate::game) fn breed_with_listeners<T>(
         &mut self,
         parent: u32,
         partner: u32,

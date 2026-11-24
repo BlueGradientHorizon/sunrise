@@ -5,7 +5,7 @@ use sunrise_core::geometry::{Aabb, Vec3};
 
 type Pos = (i32, i32, i32);
 
-pub(super) struct ModContainerOpeners {
+pub(in crate::game) struct ModContainerOpeners {
     pub count: u32,
     generation: u64,
     recheck: i64,
@@ -14,11 +14,11 @@ pub(super) struct ModContainerOpeners {
 
 impl Game<'_> {
     /// startOpen/stopOpen, with the opening player's body in place.
-    pub(super) fn mod_container_player_opener(&mut self, pos: Pos, open: bool) {
+    pub(in crate::game) fn mod_container_player_opener(&mut self, pos: Pos, open: bool) {
         self.mod_container_player_opener_for(pos, open, None);
     }
 
-    pub(super) fn mod_container_player_opener_for(
+    pub(in crate::game) fn mod_container_player_opener_for(
         &mut self,
         pos: Pos,
         open: bool,
@@ -31,7 +31,7 @@ impl Game<'_> {
         self.change_mod_container_openers(pos, open, Some(Who::Player), range, bound);
     }
 
-    pub(super) fn mod_container_opener(
+    pub(in crate::game) fn mod_container_opener(
         &mut self,
         pos: Pos,
         open: bool,
@@ -114,7 +114,7 @@ impl Game<'_> {
     }
 
     /// Scheduled rechecks only: no player or mob walk without an open container.
-    pub(super) fn tick_mod_container_viewers(&mut self) {
+    pub(in crate::game) fn tick_mod_container_viewers(&mut self) {
         let dim = self.dim.id();
         let time = self.world.game_time;
         let due: Vec<_> = self

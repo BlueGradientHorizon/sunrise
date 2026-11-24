@@ -12,7 +12,7 @@ except ImportError:
     import test_rust_parity as base
 
 PARITY_MANUAL = "python3 tools/test_spawn_obstruction_parity.py --test-binary GAMEPLAY_TEST_BINARY"
-FIXTURE = "game::natural_spawning::spawn_obstruction_fixture::spawn_entity_obstruction"
+FIXTURE = "game::server_side::natural_spawning::spawn_obstruction_fixture::spawn_entity_obstruction"
 
 
 def main():

@@ -3,7 +3,7 @@
 use super::*;
 
 #[derive(Default)]
-pub(super) struct FrameAttempt<K = FrameKey>(Option<K>);
+pub(in crate::game) struct FrameAttempt<K = FrameKey>(Option<K>);
 
 /// The frame the renderer would be made with (`Renderer::requested_frame`), the pick's path,
 /// its outcome.
@@ -23,7 +23,7 @@ impl<K: PartialEq> FrameAttempt<K> {
 }
 
 impl Game<'_> {
-    pub(super) fn renderer_for(
+    pub(in crate::game) fn renderer_for(
         &self,
         window: Arc<Window>,
         pack: &PackResources,
@@ -56,7 +56,7 @@ impl Game<'_> {
     /// Smooth Gradients or the pick (unless refused) call for another frame than the renderer's,
     /// it is made again before this frame draws. Without the switch a frame stays until the next
     /// start, as before.
-    pub(super) fn follow_frame(&mut self) {
+    pub(in crate::game) fn follow_frame(&mut self) {
         if !native_shaders::linear_frame_switch() {
             return;
         }
@@ -132,7 +132,7 @@ impl Game<'_> {
         Ok(())
     }
 
-    pub(super) fn apply_settings(&mut self) {
+    pub(in crate::game) fn apply_settings(&mut self) {
         self.bind_mod_mappings();
         // LocalPlayer.refreshChatAbilities: the chat shows what the Chat option allows.
         let abilities = self.chat_abilities();
@@ -179,7 +179,7 @@ impl Game<'_> {
 
     /// The sprite layers a shader pack draws in the translucent pass: every section is meshed
     /// again when they change.
-    pub(super) fn set_translucent_layers(&mut self, layers: Vec<bool>) {
+    pub(in crate::game) fn set_translucent_layers(&mut self, layers: Vec<bool>) {
         if *layers != *self.streaming.translucent_layers {
             self.streaming.translucent_layers = layers.into();
             self.all_sections_changed();
@@ -188,7 +188,7 @@ impl Game<'_> {
 
     /// LOD Distance and Far Detail Reduced as the player chose them, the
     /// distance no farther than a server sampling far terrain for us allows.
-    pub(super) fn far_terrain_choice(&self) -> (u32, bool) {
+    pub(in crate::game) fn far_terrain_choice(&self) -> (u32, bool) {
         let g = &self.settings.sunrise;
         let reduced = g.far_detail == sunrise_client::graphics::FarDetail::Reduced;
         let distance = match self.server_far_terrain() {
@@ -201,7 +201,7 @@ impl Game<'_> {
     /// The far terrain another machine's server samples for us
     /// (`lod_net`): a client of a dedicated server or of a LAN world, not of
     /// its own server thread, which hands its generator over directly.
-    pub(super) fn server_far_terrain(&self) -> Option<sunrise_client::lod_net::Offer> {
+    pub(in crate::game) fn server_far_terrain(&self) -> Option<sunrise_client::lod_net::Offer> {
         if self.integrated.is_some() {
             return None;
         }
@@ -209,7 +209,7 @@ impl Game<'_> {
     }
 
     /// LOD Distance as far terrain uses it (`graphics::lod_distance_capped`).
-    pub(super) fn lod_distance(&self) -> u32 {
+    pub(in crate::game) fn lod_distance(&self) -> u32 {
         let (distance, _) = self.far_terrain_choice();
         match &self.renderer {
             Some(renderer) => {
@@ -220,7 +220,7 @@ impl Game<'_> {
     }
 
     /// Only enabled LOD worlds extend the renderer's range, never simulation.
-    pub(super) fn terrain_distance(&self) -> i32 {
+    pub(in crate::game) fn terrain_distance(&self) -> i32 {
         let distance = self.effective_render_distance();
         if self.lod.is_some() {
             distance.max(self.lod_distance() as i32)
@@ -234,7 +234,7 @@ impl Game<'_> {
     /// A new renderer's atlas holds only the pack's sprites: what was drawn into it at run time
     /// (skins, maps, mods' dynamic textures, the themed UI's glyphs and corners) has to be drawn
     /// again.
-    pub(super) fn forget_atlas_slots(&mut self) {
+    pub(in crate::game) fn forget_atlas_slots(&mut self) {
         self.client.skin_slots.forget();
         self.maps.slots.forget();
         self.client.trim_slots.forget();
@@ -245,14 +245,14 @@ impl Game<'_> {
         sunrise_client::ui_theme::reset_atlas();
     }
 
-    pub(super) fn new_renderer(&self, window: Arc<Window>) -> Result<Renderer> {
+    pub(in crate::game) fn new_renderer(&self, window: Arc<Window>) -> Result<Renderer> {
         self.renderer_for(window, &self.pack, &self.gui)
     }
 
     /// A renderer made again from the resources loaded takes over: what named the old one's
     /// atlas slots is forgotten, the world is meshed again, and the shader pack and the
     /// settings are applied again.
-    pub(super) fn adopt_renderer(&mut self, renderer: Renderer) {
+    pub(in crate::game) fn adopt_renderer(&mut self, renderer: Renderer) {
         self.adopt(renderer, false);
     }
 
@@ -283,7 +283,7 @@ impl Game<'_> {
 
     /// `LevelExtractor.allChanged`: displayed sections and mesh work are
     /// discarded, then every loaded section is rebuilt.
-    pub(super) fn all_sections_changed(&mut self) {
+    pub(in crate::game) fn all_sections_changed(&mut self) {
         self.clear_lod();
         self.pending_uploads.clear();
         if let Some(renderer) = self.renderer.as_mut() {

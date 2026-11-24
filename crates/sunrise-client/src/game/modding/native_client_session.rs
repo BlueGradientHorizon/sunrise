@@ -7,7 +7,7 @@ use mod_api::{BlockBreakingState, BlockPos, ClientFrameStats, ClientServer, Play
 use std::sync::Arc;
 
 impl Game<'_> {
-    pub(super) fn native_session(&self) -> Option<&Remote> {
+    pub(in crate::game) fn native_session(&self) -> Option<&Remote> {
         self.native_window().then_some(())?;
         self.native_lifecycle.epoch()?;
         self.remote.as_ref().filter(|remote| remote.logged_in)
@@ -16,7 +16,7 @@ impl Game<'_> {
     /// The connected server, not a stale reconnect target. None outside a
     /// logged-in client world. External display names are not retained; memory
     /// connections have no address. Friend-invite secrets are redacted.
-    pub(super) fn native_client_server(&self) -> Option<ClientServer<'_>> {
+    pub(in crate::game) fn native_client_server(&self) -> Option<ClientServer<'_>> {
         let remote = self.native_session()?;
         let integrated = self.integrated.as_ref();
         Some(ClientServer {
@@ -29,14 +29,14 @@ impl Game<'_> {
 
     /// A snapshot of the applied language code, not a pending options selection.
     /// None outside a logged-in client world.
-    pub(super) fn native_client_language(&self) -> Option<Arc<str>> {
+    pub(in crate::game) fn native_client_language(&self) -> Option<Arc<str>> {
         self.native_session()?;
         Some(sunrise_client::lang::code_snapshot())
     }
 
     /// `PlayerInfo.getLatency` of the local player in milliseconds, 0 before the server's first
     /// measurement; None outside a logged-in client world or before the server lists the player.
-    pub(super) fn native_client_latency(&self) -> Option<u32> {
+    pub(in crate::game) fn native_client_latency(&self) -> Option<u32> {
         self.native_session()?;
         let latency = self.own_latency()?;
         Some(u32::try_from(latency).unwrap_or(0))
@@ -44,7 +44,7 @@ impl Game<'_> {
 
     /// The player list as the Tab overlay draws it ([`tab_list`]); None outside a logged-in
     /// client world.
-    pub(super) fn native_client_tab_list(&self) -> Option<mod_api::ClientTabList> {
+    pub(in crate::game) fn native_client_tab_list(&self) -> Option<mod_api::ClientTabList> {
         let remote = self.native_session()?;
         Some(tab_list(
             &remote.listed_tab_players(),
@@ -101,7 +101,7 @@ impl Game<'_> {
 
     /// Existing local frame counters; None outside a logged-in client world.
     /// This read collects no history and sends nothing anywhere.
-    pub(super) fn native_client_frame_stats(&self) -> Option<ClientFrameStats> {
+    pub(in crate::game) fn native_client_frame_stats(&self) -> Option<ClientFrameStats> {
         self.native_session()?;
         Some(ClientFrameStats {
             fps: self.client.fps,
@@ -115,14 +115,17 @@ impl Game<'_> {
         })
     }
 
-    pub(super) fn native_local_status(&self, player: PlayerRef) -> Option<()> {
+    pub(in crate::game) fn native_local_status(&self, player: PlayerRef) -> Option<()> {
         self.native_session()?;
         (self.local_player()? == player).then_some(())
     }
 
     /// The local player's predicted breaking state, including Idle. None for
     /// stale, nonlocal or fake handles and outside a logged-in client world.
-    pub(super) fn player_block_breaking(&self, player: PlayerRef) -> Option<BlockBreakingState> {
+    pub(in crate::game) fn player_block_breaking(
+        &self,
+        player: PlayerRef,
+    ) -> Option<BlockBreakingState> {
         self.native_local_status(player)?;
         Some(
             self.mining
@@ -139,7 +142,7 @@ impl Game<'_> {
 
     /// The local player's existing cave ambience mood, normally 0 through 1.
     /// None for stale, nonlocal or fake handles and outside a client world.
-    pub(super) fn player_ambient_mood(&self, player: PlayerRef) -> Option<f32> {
+    pub(in crate::game) fn player_ambient_mood(&self, player: PlayerRef) -> Option<f32> {
         self.native_local_status(player)?;
         Some(self.client.ambience.moodiness)
     }
@@ -177,7 +180,7 @@ fn tab_list(
 }
 
 #[cfg(test)]
-pub(super) mod tests {
+pub(in crate::game) mod tests {
     use super::super::native_entity_refs::tests::with_client_game;
     use super::*;
 

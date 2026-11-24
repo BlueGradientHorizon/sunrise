@@ -14,7 +14,7 @@ impl Game<'_> {
     /// `LocalPlayer.startRiding` on a happy ghast or an `AbstractNautilus`:
     /// its riding sound (a minecart's are `start_cart_sounds`'). Then what the
     /// instance reads about the mob the player rides.
-    pub(super) fn start_riding_sound(&mut self) -> Option<RiddenSound> {
+    pub(in crate::game) fn start_riding_sound(&mut self) -> Option<RiddenSound> {
         let ridden = self
             .riding
             .and_then(|id| self.mobs.iter().find(|m| m.id == id && !m.removed))
@@ -59,7 +59,7 @@ impl Game<'_> {
     /// Start the buzz of each bee that has none (or whose anger changed, which
     /// swaps the flying loop for the aggressive one and back), forget the mobs
     /// that are gone, and read what the instances follow.
-    pub(super) fn start_mob_sounds(&mut self) -> Vec<MobSound> {
+    pub(in crate::game) fn start_mob_sounds(&mut self) -> Vec<MobSound> {
         let game_time = self.world.game_time;
         let mut mobs = Vec::new();
         let mut bee_indices = Vec::new();
@@ -115,7 +115,7 @@ impl Game<'_> {
 
     /// `ClientPacketListener.handleEntityEvent` 21 starts a fresh instance
     /// for every guardian attack event, even while an earlier one plays.
-    pub(super) fn start_guardian_sound(&mut self, id: u32) {
+    pub(in crate::game) fn start_guardian_sound(&mut self, id: u32) {
         let Some(m) = self.mobs.iter().find(|m| {
             m.id == id
                 && !m.removed
@@ -140,7 +140,7 @@ impl Game<'_> {
 
     /// `ClientPacketListener.handleEntityEvent` 63: a sniffer's digging
     /// sound loop starts (`SnifferSoundInstance`).
-    pub(super) fn start_sniffer_digging_sound(&mut self, id: u32) {
+    pub(in crate::game) fn start_sniffer_digging_sound(&mut self, id: u32) {
         let Some(m) = self
             .mobs
             .iter()

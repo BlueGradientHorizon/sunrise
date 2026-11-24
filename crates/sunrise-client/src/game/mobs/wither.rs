@@ -14,7 +14,7 @@ impl Game<'_> {
     /// `LivingEntity.createWitherRose`: a mob a wither killed leaves a wither
     /// rose where it stood (with mobGriefing, on air that can hold it), else
     /// drops one.
-    pub(super) fn create_wither_rose(&mut self, m: &sunrise_client::mobs::Mob) {
+    pub(in crate::game) fn create_wither_rose(&mut self, m: &sunrise_client::mobs::Mob) {
         // getKillCredit: the player who last hurt it, else the last mob (kept
         // for 100 ticks).
         let wither = match m.ai.last_hurt_by {
@@ -32,7 +32,11 @@ impl Game<'_> {
     }
     /// `LivingEntity.createWitherRose` for a dying player (`ServerPlayer.die`),
     /// whose kill credit is `killer`.
-    pub(super) fn create_wither_rose_by(&mut self, position: [f64; 3], killer: Option<u32>) {
+    pub(in crate::game) fn create_wither_rose_by(
+        &mut self,
+        position: [f64; 3],
+        killer: Option<u32>,
+    ) {
         let wither = killer.filter(|&id| self.is_wither(id));
         self.create_wither_rose_at(position, wither);
     }
@@ -79,7 +83,7 @@ impl Game<'_> {
     /// `pattern.find(level, pos)` for the wither patterns: '^' a wither
     /// skeleton skull, '#' a summon base block, '~' air. `at_origin` can
     /// substitute a proposed state without putting it in the world.
-    pub(super) fn find_wither_pattern(
+    pub(in crate::game) fn find_wither_pattern(
         &self,
         pattern: BlockPattern,
         pos: [i32; 3],
@@ -105,7 +109,7 @@ impl Game<'_> {
     }
 
     /// The same spawn eligibility for an actual or proposed skull placement.
-    pub(super) fn wither_spawn_pattern(
+    pub(in crate::game) fn wither_spawn_pattern(
         &self,
         placed: [i32; 3],
         state: BlockStateId,
@@ -126,7 +130,10 @@ impl Game<'_> {
 
     /// `WitherSkullBlock.checkSpawn`: the T of three skulls on four soul sand
     /// or soul soil, built in any orientation, becomes a wither.
-    pub(super) fn check_wither_spawn(&mut self, placed: [i32; 3]) -> sunrise_client::Result<()> {
+    pub(in crate::game) fn check_wither_spawn(
+        &mut self,
+        placed: [i32; 3],
+    ) -> sunrise_client::Result<()> {
         // The transaction journals ordinary state and entity changes, not this
         // pattern's flag-2 writes, destroy events and subsequent neighbour pass.
         // The mod placement preflight refuses a completing formation before it writes.
@@ -179,7 +186,7 @@ impl Game<'_> {
     /// skull with an owner (healing a wither owner 5 when it kills), else 5
     /// `magic`, withering on a living target that took it (10 seconds on
     /// Normal, 40 on Hard, none on Easy), then a power 1 blast.
-    pub(super) fn wither_skull_hit(
+    pub(in crate::game) fn wither_skull_hit(
         &mut self,
         p: &Projectile,
         hit: sunrise_client::projectiles::Hit,
@@ -414,21 +421,21 @@ impl Game<'_> {
 }
 /// `!target.isAlive()` after a hit that landed: a totem that fired keeps the
 /// player alive.
-pub(super) fn killed(hurt: bool, dead_or_dying: bool, totem_used: bool) -> bool {
+pub(in crate::game) fn killed(hurt: bool, dead_or_dying: bool, totem_used: bool) -> bool {
     hurt && dead_or_dying && !totem_used
 }
 /// `WitherSkull.onHitEntity`'s damage source.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct SkullSource {
-    pub(super) amount: f32,
-    pub(super) kind: DamageKind,
+pub(in crate::game) struct SkullSource {
+    pub(in crate::game) amount: f32,
+    pub(in crate::game) kind: DamageKind,
     /// The source's position: the skull's for `witherSkull(skull, owner)`,
     /// none for `magic()`, which has no entity.
-    pub(super) from: Option<[f64; 3]>,
+    pub(in crate::game) from: Option<[f64; 3]>,
 }
 /// 8 `wither_skull` from a skull with a living owner, else 5 `magic`.
 /// `skull` is where the skull is.
-pub(super) fn skull_source(owner: Option<Who>, skull: [f64; 3]) -> SkullSource {
+pub(in crate::game) fn skull_source(owner: Option<Who>, skull: [f64; 3]) -> SkullSource {
     match owner {
         Some(_) => SkullSource {
             amount: 8.0,
@@ -443,7 +450,7 @@ pub(super) fn skull_source(owner: Option<Who>, skull: [f64; 3]) -> SkullSource {
     }
 }
 /// Wither skulls drawn as the skull model, blue when dangerous.
-pub(super) fn skull_kind(p: &Projectile) -> Option<bool> {
+pub(in crate::game) fn skull_kind(p: &Projectile) -> Option<bool> {
     match p.kind {
         ProjectileKind::WitherSkull { dangerous } => Some(dangerous),
         _ => None,

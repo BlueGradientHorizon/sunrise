@@ -14,16 +14,16 @@ use sunrise_client::{
 use winit::keyboard::KeyCode;
 
 /// `PlayerSocialManager.hiddenPlayers` and the screen's state.
-pub(super) struct Social {
+pub(in crate::game) struct Social {
     pub hidden: HashSet<u128>,
     /// `discoveredNamesToUUID`, the other way: the names of the players seen, so a hidden player
     /// who left is still listed by name.
     names: HashMap<u128, String>,
     page: Page,
-    pub(super) search: EditBox,
+    pub(in crate::game) search: EditBox,
     /// `PlayerEntry.TOOLTIP_DELAY`: the row buttons' tooltips wait 500 ms.
     tooltip: social_screen::TooltipDelay,
-    pub(super) scroll: f32,
+    pub(in crate::game) scroll: f32,
     /// Opened from the pause menu: Done goes back there.
     from_pause: bool,
 }
@@ -65,7 +65,7 @@ impl Game<'_> {
         }
     }
     /// `Minecraft.isBlocked`: whether a player's chat is hidden (never the player's own).
-    pub(super) fn social_hides(&self, id: u128) -> bool {
+    pub(in crate::game) fn social_hides(&self, id: u128) -> bool {
         if !self.client.social.hidden.contains(&id) {
             return false;
         }
@@ -81,7 +81,7 @@ impl Game<'_> {
         id != me
     }
     /// `new SocialInteractionsScreen(lastScreen)`: it opens on All, with an empty search.
-    pub(super) fn open_social(&mut self, from_pause: bool) {
+    pub(in crate::game) fn open_social(&mut self, from_pause: bool) {
         self.client.social.page = Page::All;
         self.client.social.search.set_value("");
         self.client.social.tooltip = Default::default();
@@ -90,7 +90,7 @@ impl Game<'_> {
         self.set_screen(Screen::Social);
         self.capture(false);
     }
-    pub(super) fn close_social(&mut self) {
+    pub(in crate::game) fn close_social(&mut self) {
         if self.client.social.from_pause {
             self.set_screen(Screen::Paused);
         } else {
@@ -169,7 +169,10 @@ impl Game<'_> {
             _ => self.level.name.clone(),
         }
     }
-    pub(super) fn draw_social_screen(&mut self, batch: &mut sunrise_client::hud::HudBatch) {
+    pub(in crate::game) fn draw_social_screen(
+        &mut self,
+        batch: &mut sunrise_client::hud::HudBatch,
+    ) {
         self.flush_skin_slots();
         let view = self.social_view();
         sunrise_client::widgets::begin_screen(|| {
@@ -190,7 +193,7 @@ impl Game<'_> {
             sunrise_client::ui::tooltip(batch, &self.gui.atlas, &[tooltip], self.client.cursor);
         }
     }
-    pub(super) fn social_click(&mut self) -> bool {
+    pub(in crate::game) fn social_click(&mut self) -> bool {
         let size = self.gui_size();
         let cursor = self.client.cursor;
         let view = self.social_view();
@@ -245,7 +248,7 @@ impl Game<'_> {
         true
     }
     /// `AbstractSelectionList.mouseScrolled`: a row's height and a bit a notch.
-    pub(super) fn social_scroll(&mut self, delta: f32) -> bool {
+    pub(in crate::game) fn social_scroll(&mut self, delta: f32) -> bool {
         if !self.pad_stick_scroll()
             && !self.pad_step_scroll()
             && !social_screen::list_contains(self.client.cursor, self.gui_size())
@@ -258,7 +261,7 @@ impl Game<'_> {
         true
     }
     /// The search box has the focus from the start (`setInitialFocus`): typing fills it.
-    pub(super) fn social_key(&mut self, key: KeyCode) -> bool {
+    pub(in crate::game) fn social_key(&mut self, key: KeyCode) -> bool {
         if key == KeyCode::Escape {
             self.close_social();
             return true;
@@ -268,7 +271,7 @@ impl Game<'_> {
         self.client.social.scroll = 0.0;
         handled
     }
-    pub(super) fn social_backspace(&mut self) {
+    pub(in crate::game) fn social_backspace(&mut self) {
         self.client
             .social
             .search
@@ -276,7 +279,7 @@ impl Game<'_> {
         self.client.social.scroll = 0.0;
     }
     /// Characters into the search box (`searchBox.setMaxLength(16)`).
-    pub(super) fn social_type(&mut self, text: &str) {
+    pub(in crate::game) fn social_type(&mut self, text: &str) {
         let text: String = text.chars().filter(|c| !c.is_control()).collect();
         self.client.social.search.insert_text(&text);
         self.client.social.scroll = 0.0;

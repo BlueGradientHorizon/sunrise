@@ -8,12 +8,12 @@ use sunrise_client::{
 };
 
 #[derive(Default)]
-pub(super) struct CreditEntity {
+pub(in crate::game) struct CreditEntity {
     id: i32,
     main: Option<ItemStack>,
 }
 
-pub(super) struct CreditPlan {
+pub(in crate::game) struct CreditPlan {
     victim: i32,
     player: Option<(PlayerCredit, CreditEntity)>,
     existing_player_live: bool,
@@ -34,13 +34,13 @@ struct HurtBy {
     trade_feedback: bool,
 }
 
-pub(super) struct CreditLoan<'a> {
+pub(in crate::game) struct CreditLoan<'a> {
     plan: CreditPlan,
     players: &'a mut HashMap<u32, PlayerCredit>,
 }
 
 impl CreditPlan {
-    pub(super) fn lend(self, players: &mut HashMap<u32, PlayerCredit>) -> CreditLoan<'_> {
+    pub(in crate::game) fn lend(self, players: &mut HashMap<u32, PlayerCredit>) -> CreditLoan<'_> {
         CreditLoan {
             plan: self,
             players,
@@ -130,7 +130,7 @@ impl KnockbackCredit for CreditLoan<'_> {
 
 impl Game<'_> {
     /// The attacking entity's canonical UUID, already assigned on creation or admission.
-    pub(super) fn known_attacker_uuid(&self, id: u32) -> Option<[i32; 4]> {
+    pub(in crate::game) fn known_attacker_uuid(&self, id: u32) -> Option<[i32; 4]> {
         self.known_resident_entity_uuid_at(self.dim.key(), id)
             .or_else(|| self.persist.uuids.get(&id).copied())
     }
@@ -163,7 +163,7 @@ impl Game<'_> {
 
     /// Capture only this victim's possible credit holders, not a table of every entity.
     /// UUID responsibility is committed by the loan at the accepted-hit memory point.
-    pub(super) fn prepare_knockback_credit(
+    pub(in crate::game) fn prepare_knockback_credit(
         &self,
         victim: i32,
         attacker: Option<Who>,

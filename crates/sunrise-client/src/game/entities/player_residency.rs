@@ -1,7 +1,7 @@
 //! Specialized authoritative owners that are not homogeneous entity lists.
 use super::{Game, commands::Target};
 
-pub(super) enum SpecializedSource<'a> {
+pub(in crate::game) enum SpecializedSource<'a> {
     Player(&'a sunrise_client::motion::PlayerMotion),
     Guest(&'a sunrise_client::lan::guest::Guest),
     Hook(&'a super::fishing::Hook),
@@ -25,7 +25,7 @@ impl SpecializedSource<'_> {
 }
 
 impl Game<'_> {
-    pub(super) fn current_player_resident_location(&self) -> Option<Location> {
+    pub(in crate::game) fn current_player_resident_location(&self) -> Option<Location> {
         match self.server.lan_acting {
             Some(conn) => self.command_guest(conn)?.residency.location(),
             None => self.resident_entities.local_player.location(),
@@ -34,7 +34,7 @@ impl Game<'_> {
 
     /// Engine UUID consumers retain a specialized owner's immutable identity
     /// even through a real loan. Public I access applies its policy beforehand.
-    pub(super) fn known_resident_entity_uuid_at(
+    pub(in crate::game) fn known_resident_entity_uuid_at(
         &self,
         dimension: mod_api::DimensionKey,
         id: u32,
@@ -46,7 +46,7 @@ impl Game<'_> {
         (at.owner.dimension == dimension).then_some(uuid).flatten()
     }
 
-    pub(super) fn resident_target_id(&self, target: Target) -> Option<u32> {
+    pub(in crate::game) fn resident_target_id(&self, target: Target) -> Option<u32> {
         match target {
             Target::Player => match self.server.lan_acting {
                 Some(conn) => self
@@ -69,7 +69,7 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn acting_player_join(&self) -> sunrise_client::join_seq::JoinSeq {
+    pub(in crate::game) fn acting_player_join(&self) -> sunrise_client::join_seq::JoinSeq {
         self.server
             .lan_acting
             .and_then(|conn| self.command_guest(conn))
@@ -79,7 +79,7 @@ impl Game<'_> {
             )
     }
 
-    pub(super) fn install_fishing_hook(&mut self, mut hook: super::fishing::Hook) {
+    pub(in crate::game) fn install_fishing_hook(&mut self, mut hook: super::fishing::Hook) {
         hook.caster = self.server.lan_acting;
         hook.caster_generation = self.acting_player_join();
         self.hook.discard();
@@ -87,7 +87,7 @@ impl Game<'_> {
         self.hook.replace(hook);
     }
 
-    pub(super) fn remove_local_player_body(&mut self) {
+    pub(in crate::game) fn remove_local_player_body(&mut self) {
         self.reset_client_item_use();
         self.hook.discard();
         let id = self.player.as_ref().map(|player| player.entity_id as u32);
@@ -101,7 +101,7 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn bind_local_player_residency(&mut self) {
+    pub(in crate::game) fn bind_local_player_residency(&mut self) {
         if self.server.lan_acting.is_some() {
             return;
         }
@@ -145,7 +145,7 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn bind_current_hook_residency(&mut self) {
+    pub(in crate::game) fn bind_current_hook_residency(&mut self) {
         let journal = self.resident_entities.table.borrow().producer();
         let (owner, source) = self
             .hook
@@ -175,7 +175,7 @@ impl Game<'_> {
         );
     }
 
-    pub(super) fn bind_specialized_resident_owners(&mut self, journal: &Journal) {
+    pub(in crate::game) fn bind_specialized_resident_owners(&mut self, journal: &Journal) {
         self.resident_entities.local_player.rebind(journal);
         let body_id = self.player.as_ref().map(|player| player.entity_id as u32);
         if self.server.lan_acting.is_some()
@@ -238,7 +238,7 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn specialized_resident_source(
+    pub(in crate::game) fn specialized_resident_source(
         &self,
         at: Location,
     ) -> Option<SourceEntity<(SpecializedSource<'_>, Target)>> {
@@ -340,7 +340,7 @@ impl Game<'_> {
         })
     }
 
-    pub(super) fn with_specialized_resident_slot<R>(
+    pub(in crate::game) fn with_specialized_resident_slot<R>(
         &mut self,
         at: Location,
         visit: impl FnOnce(&mut sunrise_mod_runtime::attachments::AttachmentLifetime) -> R,
@@ -381,7 +381,7 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn locate_specialized_resident_owner(
+    pub(in crate::game) fn locate_specialized_resident_owner(
         &self,
         at: Location,
     ) -> Option<SourceEntity<(Target, bool)>> {

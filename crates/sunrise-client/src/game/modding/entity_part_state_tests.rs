@@ -88,6 +88,17 @@ impl Hooks for StateMod {
     }
 }
 
+/// Libtest name of a `#[test]` in this module, derived from `module_path!()`.
+macro_rules! test_name {
+    ($test:ident) => {{
+        let _: fn() = $test;
+        let module = module_path!()
+            .split_once("::")
+            .map_or(module_path!(), |(_, path)| path);
+        format!("{module}::{}", stringify!($test))
+    }};
+}
+
 /// Runs the test `name` in a fresh process (installed mods are process-wide) with `StateMod`
 /// installed, on a dedicated server's overworld with chunk 0 0 loaded.
 fn with_state_mod(name: &str, test: impl FnOnce(&mut Game<'_>)) {
@@ -191,8 +202,8 @@ fn indexed(game: &Game<'_>, level: Dim) -> Vec<(u32, i32)> {
 #[test]
 #[ignore = "daily"]
 fn entity_part_state_is_per_entity_through_edits_transactions_and_panics() {
-    const NAME: &str = "game::entity_part_state_tests::entity_part_state_is_per_entity_through_edits_transactions_and_panics";
-    with_state_mod(NAME, |game| {
+    let name = test_name!(entity_part_state_is_per_entity_through_edits_transactions_and_panics);
+    with_state_mod(&name, |game| {
         let (a, b) = (
             mob(game, "minecraft:cow", 11),
             mob(game, "minecraft:cow", 12),
@@ -315,8 +326,9 @@ fn entity_part_state_is_per_entity_through_edits_transactions_and_panics() {
 #[test]
 #[ignore = "daily"]
 fn a_removed_or_unloaded_entity_is_stale_and_a_reloaded_one_reads_its_saved_value() {
-    const NAME: &str = "game::entity_part_state_tests::a_removed_or_unloaded_entity_is_stale_and_a_reloaded_one_reads_its_saved_value";
-    with_state_mod(NAME, |game| {
+    let name =
+        test_name!(a_removed_or_unloaded_entity_is_stale_and_a_reloaded_one_reads_its_saved_value);
+    with_state_mod(&name, |game| {
         // No declaration means no allocation: a mob type no Part keeps state on gets no
         // attachment map and no index row from its spawn, a tick and a save.
         let sheep = mob(game, "minecraft:sheep", 20);
@@ -381,8 +393,8 @@ fn a_removed_or_unloaded_entity_is_stale_and_a_reloaded_one_reads_its_saved_valu
 #[test]
 #[ignore = "daily"]
 fn a_spawn_or_removal_inside_an_aborted_action_keeps_the_bindings() {
-    const NAME: &str = "game::entity_part_state_tests::a_spawn_or_removal_inside_an_aborted_action_keeps_the_bindings";
-    with_state_mod(NAME, |game| {
+    let name = test_name!(a_spawn_or_removal_inside_an_aborted_action_keeps_the_bindings);
+    with_state_mod(&name, |game| {
         let cow = mob(game, "minecraft:cow", 31);
         assert_eq!(Charge::edit_state(game, cow, |_, n| *n = 7), Ok(()));
 
@@ -447,8 +459,10 @@ fn a_spawn_or_removal_inside_an_aborted_action_keeps_the_bindings() {
 #[test]
 #[ignore = "daily"]
 fn a_lone_mob_or_general_row_moves_under_a_new_id_and_a_ridden_pig_keeps_its_handle() {
-    const NAME: &str = "game::entity_part_state_tests::a_lone_mob_or_general_row_moves_under_a_new_id_and_a_ridden_pig_keeps_its_handle";
-    with_state_mod(NAME, |game| {
+    let name = test_name!(
+        a_lone_mob_or_general_row_moves_under_a_new_id_and_a_ridden_pig_keeps_its_handle
+    );
+    with_state_mod(&name, |game| {
         // A lone mob: rebuilt under a new id in the other level, its state with it.
         let cow = mob(game, "minecraft:cow", 41);
         assert_eq!(Charge::edit_state(game, cow, |_, n| *n = 7), Ok(()));
@@ -584,8 +598,8 @@ fn a_lone_mob_or_general_row_moves_under_a_new_id_and_a_ridden_pig_keeps_its_han
 #[test]
 #[ignore = "daily"]
 fn a_transfer_inside_an_aborted_action_leaves_the_state_with_the_entity() {
-    const NAME: &str = "game::entity_part_state_tests::a_transfer_inside_an_aborted_action_leaves_the_state_with_the_entity";
-    with_state_mod(NAME, |game| {
+    let name = test_name!(a_transfer_inside_an_aborted_action_leaves_the_state_with_the_entity);
+    with_state_mod(&name, |game| {
         let cow = mob(game, "minecraft:cow", 51);
         assert_eq!(Charge::edit_state(game, cow, |_, n| *n = 7), Ok(()));
         let moved = game.storage_scope(|game, _| {
@@ -744,10 +758,12 @@ fn a_transfer_inside_an_aborted_action_leaves_the_state_with_the_entity() {
 #[test]
 #[ignore = "daily"]
 fn entity_part_state_on_a_player_a_vanilla_family_or_an_unknown_type_refuses_the_load() {
-    const NAME: &str = "game::entity_part_state_tests::entity_part_state_on_a_player_a_vanilla_family_or_an_unknown_type_refuses_the_load";
+    let name = test_name!(
+        entity_part_state_on_a_player_a_vanilla_family_or_an_unknown_type_refuses_the_load
+    );
     const CHILD: &str = "SUNRISE_ENTITY_PART_STATE_KIND";
     if super::native_entity_refs::tests::run_fresh_cases(
-        NAME,
+        &name,
         CHILD,
         &["player", "boat", "minecart", "unknown"],
     ) {

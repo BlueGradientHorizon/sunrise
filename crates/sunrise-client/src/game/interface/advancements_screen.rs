@@ -152,7 +152,7 @@ struct TabState {
     hovered: Option<usize>,
 }
 #[derive(Default)]
-pub(super) struct AdvUi {
+pub(in crate::game) struct AdvUi {
     cache: Option<Cache>,
     /// The selected root in this screen, if present in its tabs.
     tab: Option<String>,
@@ -184,7 +184,7 @@ fn window(w: f32, h: f32) -> (f32, f32) {
 /// `ServerboundSeenAdvancementsPacket.openedTab`: `ClientAdvancements.setSelectedTab`
 /// with `tellServer` true reports the selected tab when opening the screen,
 /// picking a tab, or selecting a replacement after an update.
-pub(super) fn opened_tab(id: &str) -> sunrise_protocol::packets::play::SeenAdvancements {
+pub(in crate::game) fn opened_tab(id: &str) -> sunrise_protocol::packets::play::SeenAdvancements {
     sunrise_protocol::packets::play::SeenAdvancements {
         action: 0,
         tab: Some(id.to_owned()),
@@ -192,7 +192,7 @@ pub(super) fn opened_tab(id: &str) -> sunrise_protocol::packets::play::SeenAdvan
 }
 /// `ServerboundSeenAdvancementsPacket.closedScreen()` (`AdvancementsScreen.removed`):
 /// action 1, which carries no tab.
-pub(super) fn closed_screen() -> sunrise_protocol::packets::play::SeenAdvancements {
+pub(in crate::game) fn closed_screen() -> sunrise_protocol::packets::play::SeenAdvancements {
     sunrise_protocol::packets::play::SeenAdvancements {
         action: 1,
         tab: None,
@@ -200,7 +200,7 @@ pub(super) fn closed_screen() -> sunrise_protocol::packets::play::SeenAdvancemen
 }
 
 impl Game<'_> {
-    pub(super) fn open_advancements(&mut self, from_pause: bool) {
+    pub(in crate::game) fn open_advancements(&mut self, from_pause: bool) {
         self.load_advancements();
         self.adv_ui = AdvUi {
             cache: self.adv_ui.cache.take(),
@@ -225,7 +225,7 @@ impl Game<'_> {
             self.adv.selected_tab = None;
         }
     }
-    pub(super) fn close_advancements(&mut self) {
+    pub(in crate::game) fn close_advancements(&mut self) {
         // AdvancementsScreen.removed: the server hears the screen closed.
         self.send(sunrise_protocol::packets::play::Serverbound::SeenAdvancements(closed_screen()));
         if self.adv_ui.from_pause {
@@ -243,7 +243,7 @@ impl Game<'_> {
         self.adv.selected_tab = Some(id.clone());
     }
     /// Only the open screen listens to `onAdvancementsCleared` / `onAdvancementsUpdated`.
-    pub(super) fn remote_advancement_tabs_updated(&mut self, reset: bool) {
+    pub(in crate::game) fn remote_advancement_tabs_updated(&mut self, reset: bool) {
         if self.client.screen != Screen::Advancements {
             return;
         }
@@ -526,7 +526,7 @@ impl Game<'_> {
         }
         (title, desc, longest + 3.0 + 5.0)
     }
-    pub(super) fn draw_advancements(&mut self, batch: &mut HudBatch) {
+    pub(in crate::game) fn draw_advancements(&mut self, batch: &mut HudBatch) {
         sunrise_client::widgets::begin_screen(|| {
             sunrise_client::widgets::ScreenInfo::new(
                 "advancements",
@@ -1018,7 +1018,7 @@ impl Game<'_> {
     /// A left button press or release. Returns whether the screen itself
     /// handled the click (`AdvancementsScreen.mouseClicked` / `mouseReleased`:
     /// tabs and Done return `true`, blank space and releases return `false`).
-    pub(super) fn advancements_mouse(&mut self, pressed: bool, size: [u32; 2]) -> bool {
+    pub(in crate::game) fn advancements_mouse(&mut self, pressed: bool, size: [u32; 2]) -> bool {
         if !pressed {
             self.adv_ui.drag = None;
             self.adv_ui.scrolling = false;
@@ -1058,7 +1058,7 @@ impl Game<'_> {
     }
     /// `mouseDragged` with the left button: the first step starts
     /// scrolling, later ones move the tree.
-    pub(super) fn advancements_drag(&mut self) -> bool {
+    pub(in crate::game) fn advancements_drag(&mut self) -> bool {
         let Some(last) = self.adv_ui.drag else {
             return false;
         };
@@ -1075,7 +1075,7 @@ impl Game<'_> {
     /// `AdvancementsScreen.mouseScrolled`: returns `true` only when a tab is
     /// selected; with no selected tab vanilla returns `false` so NeoForge
     /// fires `MouseScrolled.Post`.
-    pub(super) fn advancements_scroll(&mut self, x: f32, y: f32) -> bool {
+    pub(in crate::game) fn advancements_scroll(&mut self, x: f32, y: f32) -> bool {
         if self.adv_view().tab.is_none() {
             return false;
         }

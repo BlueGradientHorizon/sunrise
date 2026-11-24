@@ -16,7 +16,7 @@ use sunrise_client::{
 impl Game<'_> {
     /// Draws the resolved standalone `model` under `draw`'s pose from the block sprite arrays.
     /// See `BlockEntityDrawContext::terrain_model`.
-    pub(super) fn native_draw_terrain_model(
+    pub(in crate::game) fn native_draw_terrain_model(
         &self,
         draw: &mut BlockEntityDraw,
         model: ModelRef,

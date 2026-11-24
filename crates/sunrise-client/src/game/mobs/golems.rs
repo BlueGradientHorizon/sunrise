@@ -54,7 +54,7 @@ impl Game<'_> {
     }
     /// `CarvedPumpkinBlock.canSpawnGolem`: a snow or iron golem base, or a
     /// copper block (`#minecraft:copper`) below.
-    pub(super) fn can_spawn_golem(&self, head: [i32; 3]) -> bool {
+    pub(in crate::game) fn can_spawn_golem(&self, head: [i32; 3]) -> bool {
         self.find_golem(head, true).is_some() || self.copper_golem_base(head)
     }
     /// The copper golem pattern ("^", "#"): a block of `#minecraft:copper` under the head.
@@ -68,7 +68,7 @@ impl Game<'_> {
             .is_some_and(|t| t.contains(name))
     }
     /// `CarvedPumpkinBlock.trySpawnGolem`, after a pumpkin was placed.
-    pub(super) fn check_golem_spawn(&mut self, head: [i32; 3]) -> Result<()> {
+    pub(in crate::game) fn check_golem_spawn(&mut self, head: [i32; 3]) -> Result<()> {
         if !self.is_golem_head(head) {
             return Ok(());
         }
@@ -96,7 +96,7 @@ impl Game<'_> {
     /// the built mob's box (the local player here): 5 for golems
     /// (`CarvedPumpkinBlock.spawnGolemInWorld`), 50 for the wither
     /// (`WitherSkullBlock.checkSpawn`).
-    pub(super) fn trigger_summoned(&mut self, id: Option<u32>, reach: f64) {
+    pub(in crate::game) fn trigger_summoned(&mut self, id: Option<u32>, reach: f64) {
         let Some(built) = id
             .and_then(|id| self.mobs.iter().find(|m| m.id == id))
             .cloned()
@@ -121,14 +121,14 @@ impl Game<'_> {
         }
     }
     /// Whether placing a golem head at `head` completes a golem.
-    pub(super) fn completes_golem(&self, head: [i32; 3]) -> bool {
+    pub(in crate::game) fn completes_golem(&self, head: [i32; 3]) -> bool {
         self.find_golem(head, true).is_some() || self.copper_golem_base(head)
     }
     /// `Level.setBlock` of the golem head `state` at `head`, then
     /// `CarvedPumpkinBlock.onPlace`. When the head completes a golem, onPlace
     /// builds it inside setBlock and the spot is air again by the time
     /// setBlock would update neighbours, so it skips them.
-    pub(super) fn set_golem_head(
+    pub(in crate::game) fn set_golem_head(
         &mut self,
         head: [i32; 3],
         state: sunrise_world::registry::BlockStateId,
@@ -144,7 +144,12 @@ impl Game<'_> {
     }
     /// `EntityType.create(level, TRIGGERED)` and `snapTo`: a built golem or
     /// wither has no spawn finalization and draws nothing from the level.
-    pub(super) fn create_triggered(&mut self, kind: &str, at: [f64; 3], yaw: f32) -> Option<u32> {
+    pub(in crate::game) fn create_triggered(
+        &mut self,
+        kind: &str,
+        at: [f64; 3],
+        yaw: f32,
+    ) -> Option<u32> {
         let t = self.res.mob_types().get(kind).cloned()?;
         self.server.next_entity += 1;
         let mut mob = sunrise_client::mobs::Mob::new(
@@ -165,7 +170,7 @@ impl Game<'_> {
     }
     /// `CarvedPumpkinBlock.clearPatternBlocks`: every cell of the match
     /// becomes air (flags 2) with its destroy event (2001).
-    pub(super) fn clear_pattern_blocks(&mut self, cells: &[[i32; 3]]) -> Result<()> {
+    pub(in crate::game) fn clear_pattern_blocks(&mut self, cells: &[[i32; 3]]) -> Result<()> {
         let air = self.world.air;
         for &p in cells {
             let state = self.world.block(p[0], p[1], p[2]);
@@ -183,7 +188,7 @@ impl Game<'_> {
     }
     /// `CarvedPumpkinBlock.updatePatternBlocks`: neighbours of every cell
     /// hear that air arrived.
-    pub(super) fn update_pattern_blocks(&mut self, cells: &[[i32; 3]]) -> Result<()> {
+    pub(in crate::game) fn update_pattern_blocks(&mut self, cells: &[[i32; 3]]) -> Result<()> {
         let air = self.world.air;
         for &p in cells {
             let pos = sunrise_core::position::BlockPos::new(p[0], p[1], p[2]);

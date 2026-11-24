@@ -28,7 +28,7 @@ impl Game<'_> {
     /// (the mob as `this`, its random sequence) is rolled and each stack goes
     /// in the slot `EquipmentUser.resolveSlot` picks, with the table's drop
     /// chance for that slot.
-    pub(super) fn equip_from_table(&mut self, id: u32, table: &Tag) {
+    pub(in crate::game) fn equip_from_table(&mut self, id: u32, table: &Tag) {
         let Some((name, chances)) = equipment_table(table) else {
             return;
         };
@@ -77,7 +77,7 @@ impl Game<'_> {
     }
     /// `EnchantmentsByCostWithDifficulty.enchant` on the stack the mob holds
     /// in a `finalize` slot: nothing is drawn when the slot is empty.
-    pub(super) fn enchant_item(&mut self, id: u32, slot: usize, special: f32) {
+    pub(in crate::game) fn enchant_item(&mut self, id: u32, slot: usize, special: f32) {
         let Some(stack) = self
             .mobs
             .iter()
@@ -103,7 +103,13 @@ impl Game<'_> {
     }
     /// `Pillager` / `Vindicator.applyRaidBuffs`: Quick Charge on a fresh
     /// crossbow after waves 3 and 5, Sharpness on a fresh axe.
-    pub(super) fn apply_raid_buffs(&mut self, id: u32, kind: RaiderType, wave: i32, odds: f32) {
+    pub(in crate::game) fn apply_raid_buffs(
+        &mut self,
+        id: u32,
+        kind: RaiderType,
+        wave: i32,
+        odds: f32,
+    ) {
         let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) else {
             return;
         };

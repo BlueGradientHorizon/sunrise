@@ -51,23 +51,26 @@ impl Group {
 }
 
 #[derive(Default)]
-pub(super) struct InstanceGroupStorage {
+pub(in crate::game) struct InstanceGroupStorage {
     next: u64,
     groups: Vec<Option<Group>>,
 }
 impl InstanceGroupStorage {
     #[cfg(test)]
-    pub(super) fn converted_bytes(&self) -> usize {
+    pub(in crate::game) fn converted_bytes(&self) -> usize {
         self.groups
             .iter()
             .flatten()
             .map(|g| g.converted_bytes)
             .sum()
     }
-    pub(super) fn clear(&mut self) {
+    pub(in crate::game) fn clear(&mut self) {
         self.groups.clear();
     }
-    pub(super) fn retire_disabled(&mut self, disabled: &std::collections::BTreeSet<String>) {
+    pub(in crate::game) fn retire_disabled(
+        &mut self,
+        disabled: &std::collections::BTreeSet<String>,
+    ) {
         for slot in &mut self.groups {
             if slot
                 .as_ref()
@@ -163,7 +166,7 @@ impl InstanceGroups for Game<'_> {
 }
 
 impl Game<'_> {
-    pub(super) fn instance_group_write(
+    pub(in crate::game) fn instance_group_write(
         &self,
         group: InstanceGroupRef,
         first: u32,
@@ -181,7 +184,7 @@ impl Game<'_> {
         group.len = group.len.max(end);
         Ok(())
     }
-    pub(super) fn instance_group_set_transform(
+    pub(in crate::game) fn instance_group_set_transform(
         &self,
         handle: InstanceGroupRef,
         transform: [f32; 12],
@@ -195,7 +198,7 @@ impl Game<'_> {
         group.rewrite(0..group.len);
         Ok(())
     }
-    pub(super) fn instance_group_set_len(
+    pub(in crate::game) fn instance_group_set_len(
         &self,
         group: InstanceGroupRef,
         len: u32,
@@ -211,7 +214,7 @@ impl Game<'_> {
         group.len = len as usize;
         Ok(())
     }
-    pub(super) fn instance_group_destroy(
+    pub(in crate::game) fn instance_group_destroy(
         &self,
         handle: InstanceGroupRef,
     ) -> Result<(), GroupError> {
@@ -220,7 +223,7 @@ impl Game<'_> {
         storage.groups[handle.fields().slot as usize] = None;
         Ok(())
     }
-    pub(super) fn draw_instance_group(
+    pub(in crate::game) fn draw_instance_group(
         &self,
         draw: &mut sunrise_client::world_geometry::WorldGeometry,
         handle: InstanceGroupRef,

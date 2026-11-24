@@ -32,7 +32,7 @@ struct MountedWidgetsInner {
 }
 
 /// Mounted widgets attached to the currently open screen during `Hooks::screen_init_post`.
-pub(super) struct MountedScreenWidgets {
+pub(in crate::game) struct MountedScreenWidgets {
     generation: Cell<u64>,
     next_id: Cell<u64>,
     inner: RefCell<MountedWidgetsInner>,
@@ -60,34 +60,34 @@ impl Drop for MountedScreenWidgets {
 }
 
 impl MountedScreenWidgets {
-    pub(super) fn generation(&self) -> u64 {
+    pub(in crate::game) fn generation(&self) -> u64 {
         self.generation.get()
     }
 
-    pub(super) fn is_empty(&self) -> bool {
+    pub(in crate::game) fn is_empty(&self) -> bool {
         self.inner.borrow().entries.is_empty()
     }
 
     #[cfg(test)]
-    pub(super) fn len(&self) -> usize {
+    pub(in crate::game) fn len(&self) -> usize {
         self.inner.borrow().entries.len()
     }
 
-    pub(super) fn has_focus(&self) -> bool {
+    pub(in crate::game) fn has_focus(&self) -> bool {
         self.inner.borrow().focused.is_some()
     }
 
-    pub(super) fn focused_index(&self) -> Option<usize> {
+    pub(in crate::game) fn focused_index(&self) -> Option<usize> {
         self.inner.borrow().focused
     }
 
     #[cfg(test)]
-    pub(super) fn dragging(&self) -> Option<(usize, i32)> {
+    pub(in crate::game) fn dragging(&self) -> Option<(usize, i32)> {
         self.inner.borrow().dragging
     }
 
     #[cfg(test)]
-    pub(super) fn is_disabled(&self, idx: usize) -> bool {
+    pub(in crate::game) fn is_disabled(&self, idx: usize) -> bool {
         self.inner
             .borrow()
             .entries
@@ -104,14 +104,14 @@ impl MountedScreenWidgets {
             .position(|slot| slot.as_ref().is_some_and(|entry| entry.id == id))
     }
 
-    pub(super) fn focused_id(&self) -> Option<ScreenWidgetId> {
+    pub(in crate::game) fn focused_id(&self) -> Option<ScreenWidgetId> {
         let inner = self.inner.borrow();
         let idx = inner.focused?;
         inner.entries.get(idx)?.as_ref().map(|entry| entry.id)
     }
 
     /// Bump the screen-widget generation, clear focus/drag state, and dispose all entries.
-    pub(super) fn clear(&self) {
+    pub(in crate::game) fn clear(&self) {
         self.generation.set(self.generation.get().wrapping_add(1));
         let (mut entries, focused) = {
             let mut inner = self.inner.borrow_mut();
@@ -139,15 +139,15 @@ impl MountedScreenWidgets {
 }
 
 /// One widget mounted on the active screen, owned by the engine with per-widget panic isolation.
-pub(super) struct MountedWidgetEntry {
-    pub(super) id: ScreenWidgetId,
-    pub(super) owner: CallbackOwner,
-    pub(super) disabled: bool,
-    pub(super) kind: MountedWidgetKind,
+pub(in crate::game) struct MountedWidgetEntry {
+    pub(in crate::game) id: ScreenWidgetId,
+    pub(in crate::game) owner: CallbackOwner,
+    pub(in crate::game) disabled: bool,
+    pub(in crate::game) kind: MountedWidgetKind,
 }
 
 /// Engine representation of each mounted widget variant.
-pub(super) enum MountedWidgetKind {
+pub(in crate::game) enum MountedWidgetKind {
     Button {
         state: ButtonState,
         on_press: Option<Box<ButtonPress>>,
@@ -448,7 +448,7 @@ impl MountedWidgetEntry {
 
 impl Game<'_> {
     /// Run `ScreenEvent.Init.Post` to mount widgets on the initialized screen and apply focus.
-    pub(super) fn init_screen_widgets(&mut self, view: &ScreenView<'_>) {
+    pub(in crate::game) fn init_screen_widgets(&mut self, view: &ScreenView<'_>) {
         if !mod_api::__private::listened(mod_api::HookId::ScreenInitPost) {
             return;
         }
@@ -535,14 +535,14 @@ impl Game<'_> {
     /// Clear and dispose all mounted widgets for the current screen without
     /// discarding `last_click` (same-instance resize rebuilds widgets while
     /// preserving `MouseHandler.LastClick`).
-    pub(super) fn clear_screen_widgets(&mut self) {
+    pub(in crate::game) fn clear_screen_widgets(&mut self) {
         self.screen_state.widgets.clear();
         sunrise_client::preedit::reset();
         self.client.ime_area = None;
     }
 
     /// Remove focus from any currently focused mounted widget.
-    pub(super) fn clear_mounted_widget_focus(&mut self) {
+    pub(in crate::game) fn clear_mounted_widget_focus(&mut self) {
         self.set_mounted_widget_focus(None);
     }
 
@@ -595,7 +595,7 @@ impl Game<'_> {
     }
 
     /// All visible, active mounted widgets as unified focus/pad targets.
-    pub(super) fn mounted_widget_targets(&self) -> Vec<Target> {
+    pub(in crate::game) fn mounted_widget_targets(&self) -> Vec<Target> {
         let mut inner = self.screen_state.widgets.inner.borrow_mut();
         let mut out = Vec::new();
         let mut disabled = Vec::new();
@@ -616,7 +616,7 @@ impl Game<'_> {
     }
 
     /// Synchronize with the selected child, not whichever widget overlaps its bounds.
-    pub(super) fn sync_mounted_focus(&mut self, target: Target) {
+    pub(in crate::game) fn sync_mounted_focus(&mut self, target: Target) {
         let idx = match target.kind {
             Kind::Mounted { id, .. } => self
                 .screen_state
@@ -631,7 +631,7 @@ impl Game<'_> {
     /// and execute screen transitions synchronously (`Gui.setScreen` / `Button.onPress`).
     /// If the screen's widget generation changed during `f`, the extracted entry is disposed
     /// instead of restored onto the new screen.
-    pub(super) fn with_mounted_widget<R>(
+    pub(in crate::game) fn with_mounted_widget<R>(
         &mut self,
         idx: usize,
         f: impl FnOnce(&mut Self, &mut MountedWidgetEntry) -> R,
@@ -681,11 +681,15 @@ impl Game<'_> {
     /// Draw every visible mounted widget inside the receiving screen's
     /// Pre-guarded contents pass, before Foreground and tooltips
     /// (`Screen.extractRenderState`).
-    pub(super) fn draw_mounted_screen_widgets(&self, batch: &mut HudBatch) {
+    pub(in crate::game) fn draw_mounted_screen_widgets(&self, batch: &mut HudBatch) {
         self.draw_mounted_screen_widgets_at(batch, Instant::now());
     }
 
-    pub(super) fn draw_mounted_screen_widgets_at(&self, batch: &mut HudBatch, now: Instant) {
+    pub(in crate::game) fn draw_mounted_screen_widgets_at(
+        &self,
+        batch: &mut HudBatch,
+        now: Instant,
+    ) {
         let len = self.screen_state.widgets.inner.borrow().entries.len();
         if len == 0 {
             return;
@@ -834,7 +838,7 @@ impl Game<'_> {
     /// Dispatch a mouse click to the first hit mounted child in insertion order.
     /// A hit consumes the click independently of whether the child takes focus
     /// (`ContainerEventHandler.mouseClicked`). A miss leaves focus alone.
-    pub(super) fn mounted_widget_mouse_clicked(
+    pub(in crate::game) fn mounted_widget_mouse_clicked(
         &mut self,
         mouse: [f32; 2],
         button: i32,
@@ -845,7 +849,7 @@ impl Game<'_> {
     }
 
     /// Controller focus names the child; coincident bounds are only a pointer concern.
-    pub(super) fn activate_mounted_widget(
+    pub(in crate::game) fn activate_mounted_widget(
         &mut self,
         id: ScreenWidgetId,
         (x, y): (f32, f32),
@@ -1010,7 +1014,7 @@ impl Game<'_> {
     }
 
     /// Dispatch a mouse release to the mounted widget currently being dragged.
-    pub(super) fn mounted_widget_mouse_released(
+    pub(in crate::game) fn mounted_widget_mouse_released(
         &mut self,
         mouse: [f32; 2],
         button: i32,
@@ -1043,7 +1047,7 @@ impl Game<'_> {
     }
 
     /// Dispatch pointer dragging to the mounted widget currently being dragged.
-    pub(super) fn mounted_widget_mouse_dragged(
+    pub(in crate::game) fn mounted_widget_mouse_dragged(
         &mut self,
         mouse: [f32; 2],
         button: i32,
@@ -1082,7 +1086,7 @@ impl Game<'_> {
     }
 
     /// Dispatch a mouse wheel scroll to visible mounted custom widgets under `mouse`.
-    pub(super) fn mounted_widget_mouse_scrolled(
+    pub(in crate::game) fn mounted_widget_mouse_scrolled(
         &mut self,
         mouse: [f32; 2],
         scroll: [f64; 2],
@@ -1153,7 +1157,7 @@ impl Game<'_> {
     /// Tab/Shift+Tab and arrow traversal are handled by the unified screen
     /// focus path (`key_focus_key`), and Escape is never swallowed so vanilla
     /// `Screen.keyPressed`'s `shouldCloseOnEsc` always wins.
-    pub(super) fn mounted_widget_key_pressed(
+    pub(in crate::game) fn mounted_widget_key_pressed(
         &mut self,
         key: KeyCode,
         repeat: bool,
@@ -1274,7 +1278,11 @@ impl Game<'_> {
     }
 
     /// Dispatch a key release to the focused mounted custom widget.
-    pub(super) fn mounted_widget_key_released(&mut self, key: KeyCode, modifiers: u32) -> bool {
+    pub(in crate::game) fn mounted_widget_key_released(
+        &mut self,
+        key: KeyCode,
+        modifiers: u32,
+    ) -> bool {
         let Some(idx) = self.screen_state.widgets.focused_index() else {
             return false;
         };
@@ -1301,7 +1309,7 @@ impl Game<'_> {
     }
 
     /// Dispatch a typed or IME-committed character to the focused mounted widget.
-    pub(super) fn mounted_widget_char_typed(&mut self, c: char, modifiers: u32) -> bool {
+    pub(in crate::game) fn mounted_widget_char_typed(&mut self, c: char, modifiers: u32) -> bool {
         let Some(idx) = self.screen_state.widgets.focused_index() else {
             return false;
         };
@@ -1356,7 +1364,7 @@ impl Game<'_> {
     /// Only an editable, visible, active built-in `TextField` handles preedit;
     /// custom `ScreenWidget`s have no preedit callback and return `false` even
     /// if they return `true` from `captures_input()`.
-    pub(super) fn mounted_widget_preedit(&self, _event: Option<&PreeditEvent>) -> bool {
+    pub(in crate::game) fn mounted_widget_preedit(&self, _event: Option<&PreeditEvent>) -> bool {
         let inner = self.screen_state.widgets.inner.borrow();
         let Some(idx) = inner.focused else {
             return false;
@@ -1381,7 +1389,7 @@ impl Game<'_> {
     /// Read and optionally apply a `TextEdit` rewrite from
     /// `screen_char_typed_pre` for a focused mounted built-in `TextField`.
     /// Custom `ScreenWidget`s own their own state and return `None`.
-    pub(super) fn mounted_focused_text_edit(
+    pub(in crate::game) fn mounted_focused_text_edit(
         &mut self,
         edited: Option<&TextEdit>,
     ) -> Option<TextEdit> {
@@ -1423,7 +1431,7 @@ impl Game<'_> {
 
     /// Whether the focused mounted widget captures text input (`Screen.isInputCaptured` /
     /// `EditBox.canConsumeInput`).
-    pub(super) fn mounted_widget_captures_input(&self) -> bool {
+    pub(in crate::game) fn mounted_widget_captures_input(&self) -> bool {
         let inner = self.screen_state.widgets.inner.borrow();
         let Some(idx) = inner.focused else {
             return false;

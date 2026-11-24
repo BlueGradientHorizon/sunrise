@@ -10,7 +10,7 @@ use sunrise_client::{
 };
 use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_gameplay::lan::mob_players::guest_view;
-pub(super) use sunrise_gameplay::lan::mob_players::{
+pub(in crate::game) use sunrise_gameplay::lan::mob_players::{
     GuestViews, Present, acts_on_player, guest_bounds, omen_of, player_for,
 };
 use sunrise_protocol::packets::play::{self, Clientbound as C};
@@ -18,7 +18,7 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
 impl Game<'_> {
     /// How mobs see each guest in play (`player_view` with the guest swapped
     /// in).
-    pub(super) fn lan_guest_views(&mut self) -> GuestViews {
+    pub(in crate::game) fn lan_guest_views(&mut self) -> GuestViews {
         let Some(host) = self.lan.as_ref() else {
             return Vec::new();
         };
@@ -44,7 +44,7 @@ impl Game<'_> {
     /// The guest `conn`'s real identity — the uuid its lent view carries and
     /// its entity id — when the guest is a player the tick can name: a fake
     /// guest resolves as none, as the write handle refuses it (#1077).
-    pub(super) fn guest_identity(&self, conn: u32) -> Option<([i32; 4], u32)> {
+    pub(in crate::game) fn guest_identity(&self, conn: u32) -> Option<([i32; 4], u32)> {
         let guest = self.lan.as_ref()?.hub.guest(conn)?;
         if guest.is_fake() {
             return None;
@@ -56,13 +56,13 @@ impl Game<'_> {
 
     /// Runs `f` as each guest in play here, for what strikes every player in
     /// an area (`Level.getEntities`), not only the window's own.
-    pub(super) fn each_guest_hit(&mut self, f: impl FnMut(&mut Self)) {
+    pub(in crate::game) fn each_guest_hit(&mut self, f: impl FnMut(&mut Self)) {
         self.each_guest_hit_except(None, f);
     }
 
     /// [`Self::each_guest_hit`] leaving out the guest `except` (the one a
     /// firework rocket is attached to, which it hurts on its own).
-    pub(super) fn each_guest_hit_except(
+    pub(in crate::game) fn each_guest_hit_except(
         &mut self,
         except: Option<u32>,
         mut f: impl FnMut(&mut Self),
@@ -83,7 +83,7 @@ impl Game<'_> {
     }
 
     /// Mob events aimed at a guest, run as that guest (`guest_hit_by`).
-    pub(super) fn lan_guest_mob_events(&mut self, events: &mut Vec<(u32, u32, MobEvent)>) {
+    pub(in crate::game) fn lan_guest_mob_events(&mut self, events: &mut Vec<(u32, u32, MobEvent)>) {
         if events.is_empty() {
             return;
         }
@@ -94,7 +94,7 @@ impl Game<'_> {
 
     /// One mob event, with the guest swapped in. A hit knows the mob that
     /// swung, so nothing guesses it from where the hit came from.
-    pub(super) fn guest_mob_event(&mut self, mob: u32, e: MobEvent) {
+    pub(in crate::game) fn guest_mob_event(&mut self, mob: u32, e: MobEvent) {
         if matches!(
             e,
             MobEvent::AttackPlayer(..)
@@ -115,7 +115,7 @@ impl Game<'_> {
     /// tripwires, detector rails): `Entity.checkInsideBlocks` and
     /// `Level.getEntities` see every player in the level, but not spectators
     /// (`Entity.isIgnoringBlockTriggers`).
-    pub(super) fn lan_block_trigger_boxes(&self) -> Vec<([f64; 3], [f64; 3])> {
+    pub(in crate::game) fn lan_block_trigger_boxes(&self) -> Vec<([f64; 3], [f64; 3])> {
         let Some(host) = self.lan.as_ref() else {
             return Vec::new();
         };
@@ -131,7 +131,7 @@ impl Game<'_> {
             .collect()
     }
     /// The same guests' cast fishing hooks, for `GameLevel::trigger_projectiles`.
-    pub(super) fn lan_hook_triggers(&self, out: &mut Vec<(Aabb, bool)>) {
+    pub(in crate::game) fn lan_hook_triggers(&self, out: &mut Vec<(Aabb, bool)>) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
@@ -146,7 +146,7 @@ impl Game<'_> {
     }
     /// The same guests' feet and whether they stand on the ground, for the
     /// blocks that also ask that (`BigDripleafBlock.canEntityTilt`).
-    pub(super) fn lan_guest_feet(&self) -> Vec<([f64; 3], bool)> {
+    pub(in crate::game) fn lan_guest_feet(&self) -> Vec<([f64; 3], bool)> {
         let Some(host) = self.lan.as_ref() else {
             return Vec::new();
         };
@@ -160,7 +160,12 @@ impl Game<'_> {
 
     /// A projectile that hit a guest: its hit runs as theirs. False when
     /// `id` is not a guest.
-    pub(super) fn lan_projectile_hit(&mut self, p: &Projectile, id: u32, at: Vec3) -> bool {
+    pub(in crate::game) fn lan_projectile_hit(
+        &mut self,
+        p: &Projectile,
+        id: u32,
+        at: Vec3,
+    ) -> bool {
         let Some(host) = self.lan.as_ref() else {
             return false;
         };
@@ -188,7 +193,7 @@ impl Game<'_> {
     /// their client. A hurt marks the velocity (Entity.markHurt), which goes
     /// out once the guest's server copy has travelled (`guest_server_tick`);
     /// a push with no hurt goes out at once.
-    pub(super) fn guest_hit_by<R>(
+    pub(in crate::game) fn guest_hit_by<R>(
         &mut self,
         conn: u32,
         f: impl FnOnce(&mut Self) -> R,
@@ -210,7 +215,7 @@ impl Game<'_> {
     /// A player's melee hit on a guest (Player.causeExtraKnockback on a
     /// ServerPlayer): a hurt that marked the velocity sends it at once, and
     /// the server's copy goes back to the velocity it had before the hit.
-    pub(super) fn guest_struck_by<R>(
+    pub(in crate::game) fn guest_struck_by<R>(
         &mut self,
         conn: u32,
         f: impl FnOnce(&mut Self) -> R,
@@ -229,7 +234,7 @@ impl Game<'_> {
     }
 
     /// ClientboundSetEntityMotionPacket to a guest about themselves.
-    pub(super) fn send_guest_motion(&self, conn: u32, velocity: Option<Vec3>) {
+    pub(in crate::game) fn send_guest_motion(&self, conn: u32, velocity: Option<Vec3>) {
         if let (Some(v), Some(g)) = (
             velocity,
             self.lan.as_ref().and_then(|host| host.hub.guest(conn)),

@@ -9,8 +9,7 @@ use std::sync::{
 };
 use std::time::{Duration, Instant};
 
-const NAME: &str =
-    "game::payload_transport::tests::integrated_memory_delivers_registered_raw_payload_and_reply";
+const NAME: &str = "game::client_side::payload_transport::tests::integrated_memory_delivers_registered_raw_payload_and_reply";
 const CHANNEL: &str = "raw_probe:message";
 const WAIT_BUDGET: Duration = Duration::from_secs(60);
 

@@ -6,47 +6,49 @@ use super::*;
 
 /// CPU-only startup data, owned by one loader generation. No file reads or
 /// model baking are needed when the event loop installs this bundle.
-pub(super) struct GameCpuResources {
-    pub(super) painting_variants: paintings::PaintingVariants,
-    pub(super) frame_model: frames::FrameModel,
-    pub(super) glow_frame_model: frames::FrameModel,
-    pub(super) map_frame_model: frames::FrameModel,
-    pub(super) glow_map_frame_model: frames::FrameModel,
-    pub(super) armor_stand_assets: armor_stands::ArmorStandAssets,
-    pub(super) waypoint_styles: sunrise_client::locator_bar::WaypointStyles,
-    pub(super) boat_models: boats::BoatModels,
-    pub(super) cart_models: minecarts::CartModels,
-    pub(super) crystal_model: Option<sunrise_client::mobs::Part>,
-    pub(super) cushion_model: Option<sunrise_client::mobs::Part>,
-    pub(super) dragon_model: Option<sunrise_client::mobs::Part>,
-    pub(super) arrow_model: Option<sunrise_client::mobs::Part>,
-    pub(super) bee_stinger_model: Option<sunrise_client::mobs::Part>,
-    pub(super) trident_model: Option<sunrise_client::mobs::Part>,
-    pub(super) entity_models: EntityModels,
-    pub(super) creative_screen: Creative,
+pub(in crate::game) struct GameCpuResources {
+    pub(in crate::game) painting_variants: paintings::PaintingVariants,
+    pub(in crate::game) frame_model: frames::FrameModel,
+    pub(in crate::game) glow_frame_model: frames::FrameModel,
+    pub(in crate::game) map_frame_model: frames::FrameModel,
+    pub(in crate::game) glow_map_frame_model: frames::FrameModel,
+    pub(in crate::game) armor_stand_assets: armor_stands::ArmorStandAssets,
+    pub(in crate::game) waypoint_styles: sunrise_client::locator_bar::WaypointStyles,
+    pub(in crate::game) boat_models: boats::BoatModels,
+    pub(in crate::game) cart_models: minecarts::CartModels,
+    pub(in crate::game) crystal_model: Option<sunrise_client::mobs::Part>,
+    pub(in crate::game) cushion_model: Option<sunrise_client::mobs::Part>,
+    pub(in crate::game) dragon_model: Option<sunrise_client::mobs::Part>,
+    pub(in crate::game) arrow_model: Option<sunrise_client::mobs::Part>,
+    pub(in crate::game) bee_stinger_model: Option<sunrise_client::mobs::Part>,
+    pub(in crate::game) trident_model: Option<sunrise_client::mobs::Part>,
+    pub(in crate::game) entity_models: EntityModels,
+    pub(in crate::game) creative_screen: Creative,
 }
 
 /// Baked layers of entities that may first show up deep into a session. They come from the
 /// document parsed once at startup: parsing entity-models.json (2.4 MB) when the first one
 /// appeared stalled that frame by 40 ms of CPU and the file read.
 #[derive(Default)]
-pub(super) struct EntityModels {
+pub(in crate::game) struct EntityModels {
     /// LeashKnotModel.
-    pub(super) leash_knot: Option<sunrise_client::mobs::Part>,
+    pub(in crate::game) leash_knot: Option<sunrise_client::mobs::Part>,
     /// WindChargeModel.
-    pub(super) wind_charge: Option<sunrise_client::mobs::Part>,
+    pub(in crate::game) wind_charge: Option<sunrise_client::mobs::Part>,
     /// ShulkerBulletModel.
-    pub(super) shulker_bullet: Option<sunrise_client::mobs::Part>,
+    pub(in crate::game) shulker_bullet: Option<sunrise_client::mobs::Part>,
     /// SkullModel of the wither skull.
-    pub(super) wither_skull: Option<sunrise_client::mobs::Part>,
+    pub(in crate::game) wither_skull: Option<sunrise_client::mobs::Part>,
     /// EvokerFangsModel.
-    pub(super) evoker_fangs: Option<Arc<sunrise_client::mobs::Part>>,
+    pub(in crate::game) evoker_fangs: Option<Arc<sunrise_client::mobs::Part>>,
     /// BannerModel's pole and flag (a raid captain's banner).
-    pub(super) banner: Option<(sunrise_client::mobs::Part, sunrise_client::mobs::Part)>,
+    pub(in crate::game) banner: Option<(sunrise_client::mobs::Part, sunrise_client::mobs::Part)>,
 }
 
 impl EntityModels {
-    pub(super) fn load(document: Option<&sunrise_client::mobs::EntityModelDocument>) -> Self {
+    pub(in crate::game) fn load(
+        document: Option<&sunrise_client::mobs::EntityModelDocument>,
+    ) -> Self {
         let model = |key| document.and_then(|document| document.model(key));
         Self {
             leash_knot: model("minecraft:leash_knot#main"),
@@ -61,7 +63,7 @@ impl EntityModels {
 }
 
 impl GameCpuResources {
-    pub(super) fn load(
+    pub(in crate::game) fn load(
         resources: &sunrise_assets::resource_source::ResourceRoot,
         document: Option<&sunrise_client::mobs::EntityModelDocument>,
         model_library: Option<&sunrise_assets::resolve::ModelLibrary>,
@@ -177,28 +179,28 @@ impl GameCpuResources {
 }
 
 /// The data the background loader produces for `Game::new`.
-pub(super) struct Loaded {
-    pub(super) game_cpu: Option<GameCpuResources>,
+pub(in crate::game) struct Loaded {
+    pub(in crate::game) game_cpu: Option<GameCpuResources>,
     /// The one parsed `entity-models.json`, for the handoff `Game::new` does
     /// itself on the synchronous launch.
-    pub(super) entity_models: Option<Arc<sunrise_client::mobs::EntityModelDocument>>,
-    pub(super) renderer_cpu: Option<sunrise_client::gfx::PreparedTextures>,
-    pub(super) root: PathBuf,
-    pub(super) pack_error: Option<String>,
-    pub(super) resources: Arc<Resources>,
-    pub(super) rest_loader: Option<WorldRestLoader>,
+    pub(in crate::game) entity_models: Option<Arc<sunrise_client::mobs::EntityModelDocument>>,
+    pub(in crate::game) renderer_cpu: Option<sunrise_client::gfx::PreparedTextures>,
+    pub(in crate::game) root: PathBuf,
+    pub(in crate::game) pack_error: Option<String>,
+    pub(in crate::game) resources: Arc<Resources>,
+    pub(in crate::game) rest_loader: Option<WorldRestLoader>,
     /// The client reload listeners' prepared applies, staged by the loader
     /// thread; `start_game` runs them once the game exists.
-    pub(super) client_applies: Vec<client_reload::PreparedClientReload>,
-    pub(super) pack: PackResources,
+    pub(in crate::game) client_applies: Vec<client_reload::PreparedClientReload>,
+    pub(in crate::game) pack: PackResources,
     /// The menu bundle, for the synchronous launch; the loading screen receives
     /// it earlier through its own channel.
-    pub(super) gui: Option<UiResources>,
+    pub(in crate::game) gui: Option<UiResources>,
 }
 
 /// What the background loader publishes: the menu bundle as soon as it is
 /// ready, then the core bundle with a handle to the rest worker.
-pub(super) enum LoaderMsg {
+pub(in crate::game) enum LoaderMsg {
     Ui(UiResources, PathBuf),
     /// Clear the failed revision on the thread that owns settings, then acknowledge.
     ClearPackSelection {
@@ -209,7 +211,7 @@ pub(super) enum LoaderMsg {
 }
 
 impl LoaderMsg {
-    pub(super) fn done(result: Result<Loaded>) -> Self {
+    pub(in crate::game) fn done(result: Result<Loaded>) -> Self {
         Self::Done(result.map_err(
             |error| match error.downcast::<mods::DeclarationFailures>() {
                 Ok(refusals) => LoaderFailure::Declarations(*refusals),
@@ -220,7 +222,7 @@ impl LoaderMsg {
 }
 
 /// Only the startup report needs its error type preserved across threads.
-pub(super) enum LoaderFailure {
+pub(in crate::game) enum LoaderFailure {
     Declarations(mods::DeclarationFailures),
     Other(String),
 }
@@ -234,7 +236,7 @@ impl From<LoaderFailure> for Box<dyn std::error::Error> {
     }
 }
 
-pub(super) enum PendingWorldEntry {
+pub(in crate::game) enum PendingWorldEntry {
     Local {
         folder: String,
         name: Option<String>,
@@ -255,20 +257,20 @@ pub(super) enum PendingWorldEntry {
     StudioReplay(std::path::PathBuf),
 }
 
-pub(super) struct WorldRestLoader {
-    pub(super) progress: Progress,
-    pub(super) handle: JoinHandle<std::result::Result<(), String>>,
+pub(in crate::game) struct WorldRestLoader {
+    pub(in crate::game) progress: Progress,
+    pub(in crate::game) handle: JoinHandle<std::result::Result<(), String>>,
 }
 
 impl WorldRestLoader {
-    pub(super) fn ready(&self) -> Result<bool> {
+    pub(in crate::game) fn ready(&self) -> Result<bool> {
         // No time limit: the title stays usable while this loads, and a slow
         // disk or a debug build can take minutes. A failure ends the thread
         // and is reported by `finish`.
         Ok(self.handle.is_finished())
     }
 
-    pub(super) fn finish(self) -> Result<()> {
+    pub(in crate::game) fn finish(self) -> Result<()> {
         self.handle
             .join()
             .map_err(|_| "world resource loader panicked")?
@@ -276,7 +278,7 @@ impl WorldRestLoader {
     }
 }
 
-pub(super) fn write_report(game: &Game<'_>) -> Result<()> {
+pub(in crate::game) fn write_report(game: &Game<'_>) -> Result<()> {
     if let Some(path) = &game.options.report {
         let report = serde_json::json!({
             "frames": game.client.frames,
@@ -294,7 +296,7 @@ pub(super) fn write_report(game: &Game<'_>) -> Result<()> {
 
 /// The ordinary launch: load the resources on a worker while the window shows
 /// the loading screen, then swap in the game on the main thread.
-pub(super) fn run_loading(
+pub(in crate::game) fn run_loading(
     options: Options,
     settings: Settings,
     vanilla_root: PathBuf,

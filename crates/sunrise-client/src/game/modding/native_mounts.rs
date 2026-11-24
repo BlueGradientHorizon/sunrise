@@ -4,7 +4,7 @@
 use super::{Game, commands::Target, native_hooks::mob_kind};
 
 impl Game<'_> {
-    pub(super) fn retire_vehicle_registration(&self, target: Target) {
+    pub(in crate::game) fn retire_vehicle_registration(&self, target: Target) {
         match target {
             Target::Boat(id) => {
                 if let Some(boat) = self.boats.iter().find(|boat| boat.id == id) {
@@ -22,7 +22,7 @@ impl Game<'_> {
 
     /// Run effects before `Entity.setRemoved`. Keep the entity accessible to
     /// callbacks, but refuse another removal of it while the effects run.
-    pub(super) fn with_removal_preparation(
+    pub(in crate::game) fn with_removal_preparation(
         &mut self,
         target: Target,
         effects: impl FnOnce(&mut Self),
@@ -38,7 +38,7 @@ impl Game<'_> {
         Some(())
     }
 
-    pub(super) fn with_vehicle_removal_effects<R>(
+    pub(in crate::game) fn with_vehicle_removal_effects<R>(
         &mut self,
         target: Target,
         effects: impl FnOnce(&mut Self),
@@ -50,7 +50,7 @@ impl Game<'_> {
 
     /// `Entity.setRemoved` makes a vehicle invisible before notifying riders.
     /// The owning list is kept stable while callbacks run.
-    pub(super) fn with_destroying_vehicle<R>(
+    pub(in crate::game) fn with_destroying_vehicle<R>(
         &mut self,
         target: Target,
         action: impl FnOnce(&mut Self) -> R,
@@ -84,7 +84,7 @@ impl Game<'_> {
 
     /// The entity id of the acting player: a guest's while their action runs (kept with the
     /// action, as the hub is often out of `lan` then), else none (0).
-    pub(super) fn native_acting_entity(&self) -> u32 {
+    pub(in crate::game) fn native_acting_entity(&self) -> u32 {
         match self.server.lan_acting {
             Some(conn) => self.server.lan_acting_entity.unwrap_or_else(|| {
                 let guests = self.lan_guest_entities();
@@ -167,7 +167,7 @@ impl Game<'_> {
     }
 
     /// The acting player is about to board `vehicle`: false when a mod canceled it.
-    pub(super) fn native_may_board(&mut self, vehicle: u32) -> bool {
+    pub(in crate::game) fn native_may_board(&mut self, vehicle: u32) -> bool {
         // A fake player boards nothing: every boarding path asks here first.
         if self.fake_blocks(mod_api::FakeEffect::Ride) {
             return false;
@@ -176,13 +176,18 @@ impl Game<'_> {
     }
 
     /// The acting player is about to get off `vehicle`: false when a mod canceled it.
-    pub(super) fn native_may_leave(&mut self, vehicle: u32) -> bool {
+    pub(in crate::game) fn native_may_leave(&mut self, vehicle: u32) -> bool {
         self.native_mount_allowed(None, vehicle, false)
     }
 
     /// The non-player `rider` is about to board (`mounting`) or leave `vehicle`: false when a mod
     /// canceled it.
-    pub(super) fn native_mob_may_ride(&mut self, rider: u32, vehicle: u32, mounting: bool) -> bool {
+    pub(in crate::game) fn native_mob_may_ride(
+        &mut self,
+        rider: u32,
+        vehicle: u32,
+        mounting: bool,
+    ) -> bool {
         self.native_mount_allowed(Some(rider), vehicle, mounting)
     }
 }

@@ -11,7 +11,7 @@ use sunrise_mod_runtime::attachments::{
     observer::IndexedAttachmentObserver,
 };
 
-pub(super) type Indexes = HashMap<Dim, Arc<Mutex<AttachmentIndex<AttachmentHolder>>>>;
+pub(in crate::game) type Indexes = HashMap<Dim, Arc<Mutex<AttachmentIndex<AttachmentHolder>>>>;
 
 mod players;
 
@@ -69,7 +69,11 @@ impl Game<'_> {
     }
 
     /// Publish saved contents only when an authoritative entity owns their lifetime.
-    pub(super) fn bind_saved_entity_attachments(&mut self, id: u32, slot: &mut AttachmentLifetime) {
+    pub(in crate::game) fn bind_saved_entity_attachments(
+        &mut self,
+        id: u32,
+        slot: &mut AttachmentLifetime,
+    ) {
         if !self.native_authoritative() {
             return;
         }
@@ -92,7 +96,7 @@ impl Game<'_> {
     }
 
     /// Publish the dimension's saved maps before listeners observe its load.
-    pub(super) fn bind_dimension_attachments(&mut self, dim: Dim) {
+    pub(in crate::game) fn bind_dimension_attachments(&mut self, dim: Dim) {
         let Some(level) = self.level(dim.id()) else {
             return;
         };

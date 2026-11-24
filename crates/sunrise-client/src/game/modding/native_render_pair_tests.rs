@@ -157,7 +157,7 @@ fn events(heard: &Arc<Mutex<Heard>>) -> Vec<String> {
 #[ignore = "daily"]
 fn two_entities_are_asked_in_the_draw_queues_order() {
     if super::native_entity_refs::tests::run_fresh_cases(
-        "game::native_render_pair_tests::two_entities_are_asked_in_the_draw_queues_order",
+        "game::client_side::native_render_pair_tests::two_entities_are_asked_in_the_draw_queues_order",
         "SUNRISE_RENDER_PAIR_ORDER_CHILD",
         &["draw-order"],
     ) {
@@ -239,9 +239,9 @@ fn a_spectator_following_an_entity_submits_no_local_body() {
     });
 }
 
-pub(super) struct BodyWitness {
-    pub(super) id: u32,
-    pub(super) vertices: std::ops::Range<usize>,
+pub(in crate::game) struct BodyWitness {
+    pub(in crate::game) id: u32,
+    pub(in crate::game) vertices: std::ops::Range<usize>,
 }
 
 thread_local! {
@@ -250,7 +250,7 @@ thread_local! {
     static BODY_WITNESSES: std::cell::RefCell<Option<Vec<BodyWitness>>> = const { std::cell::RefCell::new(None) };
 }
 
-pub(super) fn witness_body(id: u32, start: usize, end: usize) {
+pub(in crate::game) fn witness_body(id: u32, start: usize, end: usize) {
     if start < end {
         BODY_WITNESSES.with_borrow_mut(|witnesses| {
             if let Some(witnesses) = witnesses {
@@ -263,14 +263,16 @@ pub(super) fn witness_body(id: u32, start: usize, end: usize) {
     }
 }
 
-pub(super) fn capture_body_witnesses<T>(draw: impl FnOnce() -> T) -> (T, Vec<BodyWitness>) {
+pub(in crate::game) fn capture_body_witnesses<T>(
+    draw: impl FnOnce() -> T,
+) -> (T, Vec<BodyWitness>) {
     BODY_WITNESSES.with_borrow_mut(|witnesses| *witnesses = Some(Vec::new()));
     let output = draw();
     let witnesses = BODY_WITNESSES.with_borrow_mut(|witnesses| witnesses.take().unwrap());
     (output, witnesses)
 }
 
-pub(super) fn submitted_bodies<T>(
+pub(in crate::game) fn submitted_bodies<T>(
     game: &mut Game<'_>,
     draw: impl FnOnce(&mut Game<'_>) -> T,
 ) -> (T, Vec<u32>) {
@@ -513,7 +515,7 @@ pub(in crate::game) fn run_entity_draw_order_after_client_packets() {
 #[ignore = "daily"]
 fn a_canceled_living_pre_skips_the_model_and_the_post_hook() {
     if super::native_entity_refs::tests::run_fresh_cases(
-        "game::native_render_pair_tests::a_canceled_living_pre_skips_the_model_and_the_post_hook",
+        "game::client_side::native_render_pair_tests::a_canceled_living_pre_skips_the_model_and_the_post_hook",
         "SUNRISE_RENDER_PAIR_CHILD",
         &["game"],
     ) {
@@ -600,7 +602,7 @@ fn zombie_frame(game: &mut Game<'_>, burning: bool, shadows: bool) -> usize {
 #[ignore = "daily"]
 fn a_canceled_pre_keeps_the_flames_and_the_shadow() {
     if super::native_entity_refs::tests::run_fresh_cases(
-        "game::native_render_pair_tests::a_canceled_pre_keeps_the_flames_and_the_shadow",
+        "game::client_side::native_render_pair_tests::a_canceled_pre_keeps_the_flames_and_the_shadow",
         "SUNRISE_RENDER_PAIR_CHILD",
         &["game"],
     ) {
@@ -626,7 +628,7 @@ fn a_canceled_pre_keeps_the_flames_and_the_shadow() {
 #[ignore = "daily"]
 fn a_canceled_pre_keeps_the_local_players_flames() {
     if super::native_entity_refs::tests::run_fresh_cases(
-        "game::native_render_pair_tests::a_canceled_pre_keeps_the_local_players_flames",
+        "game::client_side::native_render_pair_tests::a_canceled_pre_keeps_the_local_players_flames",
         "SUNRISE_RENDER_PAIR_CHILD",
         &["game"],
     ) {

@@ -11,7 +11,7 @@ impl Game<'_> {
     /// game's key-press path: `MultiPlayerGameMode.ensureHasSentCarriedItem` at the next tick's
     /// start at the latest, and before an attack, a use, an interact, a release, a drop and a
     /// continued block break.
-    pub(super) fn select_hotbar_slot(&mut self, slot: u8) -> Result<(), HotbarSlotError> {
+    pub(in crate::game) fn select_hotbar_slot(&mut self, slot: u8) -> Result<(), HotbarSlotError> {
         if slot > 8 {
             return Err(HotbarSlotError::OutOfRange { slot });
         }
@@ -27,7 +27,7 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-pub(super) mod hotbar_slot_tests {
+pub(in crate::game) mod hotbar_slot_tests {
     use super::*;
     use crate::game::native_entity_refs::tests::with_client_game;
     use crate::game::remote::tests::connect_menu_test;
@@ -189,7 +189,7 @@ pub(super) mod hotbar_slot_tests {
         const MODE: &str = "SUNRISE_HOTBAR_SLOT_THE_DEBUG_REQUESTS_FOLLOW_THE_CARRIED_SLOT_IN_THE_PING_THEN_SUBSCRIPTION_ORDER";
         if std::env::var_os(MODE).is_none() {
             crate::game::mods::tests::run_in_child(
-                "game::native_hotbar_slot::hotbar_slot_tests::the_debug_requests_follow_the_carried_slot_in_the_ping_then_subscription_order",
+                "game::client_side::native_hotbar_slot::hotbar_slot_tests::the_debug_requests_follow_the_carried_slot_in_the_ping_then_subscription_order",
                 MODE,
             );
             return;
@@ -232,7 +232,7 @@ pub(super) mod hotbar_slot_tests {
     #[ignore = "daily"]
     fn a_received_tick_sample_draws_the_full_and_method_bars() {
         crate::game::in_own_process(
-            "game::native_hotbar_slot::hotbar_slot_tests::a_received_tick_sample_draws_the_full_and_method_bars",
+            "game::client_side::native_hotbar_slot::hotbar_slot_tests::a_received_tick_sample_draws_the_full_and_method_bars",
             || {
                 with_client_game(|game| {
                     use sunrise_client::hud_layout::GuiDraw;
@@ -282,7 +282,7 @@ pub(super) mod hotbar_slot_tests {
         const MODE: &str = "SUNRISE_HOTBAR_SLOT_NO_DEBUG_REQUEST_GOES_OUT_BEFORE_THE_LOGIN";
         if std::env::var_os(MODE).is_none() {
             crate::game::mods::tests::run_in_child(
-                "game::native_hotbar_slot::hotbar_slot_tests::no_debug_request_goes_out_before_the_login",
+                "game::client_side::native_hotbar_slot::hotbar_slot_tests::no_debug_request_goes_out_before_the_login",
                 MODE,
             );
             return;

@@ -6,26 +6,26 @@ use std::rc::Rc;
 use sunrise_core::geometry::Aabb;
 
 #[derive(Clone, Copy)]
-pub(super) struct BuildingPlayer {
-    pub(super) conn: Option<u32>,
-    pub(super) dimension: Dim,
-    pub(super) bounds: Option<Aabb>,
-    pub(super) borrowed: bool,
+pub(in crate::game) struct BuildingPlayer {
+    pub(in crate::game) conn: Option<u32>,
+    pub(in crate::game) dimension: Dim,
+    pub(in crate::game) bounds: Option<Aabb>,
+    pub(in crate::game) borrowed: bool,
 }
 
 /// The hub's bodies, shared by the turns of one tick instead of built for each
 /// turn. A body is refreshed in place when its guest's turn (or anything that
 /// changes it) ends, so every holder sees it where it is now.
-pub(super) type HubBodies = Rc<Vec<Cell<BuildingPlayer>>>;
+pub(in crate::game) type HubBodies = Rc<Vec<Cell<BuildingPlayer>>>;
 
-pub(super) fn shared(players: impl IntoIterator<Item = BuildingPlayer>) -> HubBodies {
+pub(in crate::game) fn shared(players: impl IntoIterator<Item = BuildingPlayer>) -> HubBodies {
     Rc::new(players.into_iter().map(Cell::new).collect())
 }
 
 /// The players' boxes a guest's turn sees: the borrowed ancestor bodies, and
 /// the hub's bodies but for the actor.
 #[derive(Default)]
-pub(super) struct BuildingPlayers {
+pub(in crate::game) struct BuildingPlayers {
     ancestors: Vec<BuildingPlayer>,
     actor: Option<u32>,
     hub: HubBodies,
@@ -34,7 +34,7 @@ pub(super) struct BuildingPlayers {
 impl BuildingPlayers {
     /// Refresh hub-owned bodies, preserve live ancestor bodies held outside
     /// the hub, and omit the actor (GameLevel.player_box supplies that body).
-    pub(super) fn for_turn(
+    pub(in crate::game) fn for_turn(
         &self,
         actor: u32,
         outer: Option<BuildingPlayer>,
@@ -67,7 +67,7 @@ impl BuildingPlayers {
         }
     }
 
-    pub(super) fn boxes(&self, dimension: Dim) -> Vec<([f64; 3], [f64; 3])> {
+    pub(in crate::game) fn boxes(&self, dimension: Dim) -> Vec<([f64; 3], [f64; 3])> {
         // Hub conns are unique, so only the ancestors can already hold one.
         let hub =
             self.hub.iter().map(Cell::get).filter(|p| {

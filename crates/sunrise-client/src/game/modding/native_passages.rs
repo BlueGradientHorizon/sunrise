@@ -42,12 +42,12 @@ pub(crate) struct Passages {
     /// holds at most the live passages and those told before their removal.
     dirty: FxHashMap<PassageId, Dirty>,
     /// A client's copy: what its server told it of, kept with the chunk.
-    pub(super) held: FxHashMap<PassageId, Passage>,
+    pub(in crate::game) held: FxHashMap<PassageId, Passage>,
     /// A client's crossing that waits for the server's position packet
     /// (`native_passage_cross.rs`).
-    pub(super) crossing: Option<PassageId>,
+    pub(in crate::game) crossing: Option<PassageId>,
     /// The server's refusal of the client's last crossing, until the next.
-    pub(super) refused: Option<(PassageId, mod_api::PassageCrossRefusal)>,
+    pub(in crate::game) refused: Option<(PassageId, mod_api::PassageCrossRefusal)>,
 }
 
 #[derive(Default)]
@@ -110,7 +110,7 @@ impl Passages {
     }
 
     /// The server's passage `id`, if level `key` holds it.
-    pub(super) fn find(&self, key: DimensionKey, id: PassageId) -> Option<Passage> {
+    pub(in crate::game) fn find(&self, key: DimensionKey, id: PassageId) -> Option<Passage> {
         let &(at, chunk) = self.index.get(&id).filter(|(at, _)| *at == key)?;
         let list = self.levels.get(&at)?.chunks.get(&chunk)?;
         list.iter().find(|(held, _)| *held == id).map(|(_, p)| *p)
@@ -120,7 +120,7 @@ impl Passages {
 impl Game<'_> {
     /// `LevelRef::register_passage`: checks `passage`, numbers it and keeps it under its
     /// chunk; the clients holding that chunk hear of it in `flush_passages`.
-    pub(super) fn level_register_passage(
+    pub(in crate::game) fn level_register_passage(
         &mut self,
         level: LevelRef,
         passage: Passage,
@@ -162,7 +162,7 @@ impl Game<'_> {
     /// `LevelRef::remove_passage`: true when `id` was one of the level's passages. The
     /// clients holding its chunk hear it is gone in `flush_passages`, unless they were never
     /// told of it.
-    pub(super) fn level_remove_passage(&mut self, level: LevelRef, id: PassageId) -> bool {
+    pub(in crate::game) fn level_remove_passage(&mut self, level: LevelRef, id: PassageId) -> bool {
         if self.native_level_world_result(level).is_err() {
             return false;
         }
@@ -235,7 +235,12 @@ impl Game<'_> {
 
     /// `chunk` of `level` went to player `uuid` (the hub's `chunk_sent`): its passages go
     /// after it, if it has any and the player still tracks it there.
-    pub(super) fn send_chunk_passages(&mut self, level: LevelRef, uuid: u128, chunk: [i32; 2]) {
+    pub(in crate::game) fn send_chunk_passages(
+        &mut self,
+        level: LevelRef,
+        uuid: u128,
+        chunk: [i32; 2],
+    ) {
         let Some(list) = self
             .passages
             .levels
@@ -272,7 +277,7 @@ impl Game<'_> {
     /// A `sunrise:passage_sync` payload the server sent the window. Each passage is checked
     /// as the server checks a registration, and kept only for a chunk the window holds and
     /// within a level's 256; the refused ones are logged and returned with their number.
-    pub(super) fn remote_passage_sync(&mut self, data: &[u8]) -> Vec<(u64, HeldRefusal)> {
+    pub(in crate::game) fn remote_passage_sync(&mut self, data: &[u8]) -> Vec<(u64, HeldRefusal)> {
         let message = match sunrise_protocol::passage_sync::decode(data) {
             Ok(message) => message,
             Err(e) => {
@@ -317,7 +322,7 @@ impl Game<'_> {
     }
 
     /// The window forgot chunk `(x, z)`: the passages of that chunk go with it.
-    pub(super) fn forget_chunk_passages(&mut self, x: i32, z: i32) {
+    pub(in crate::game) fn forget_chunk_passages(&mut self, x: i32, z: i32) {
         if !self.passages.held.is_empty() {
             self.passages.held.retain(|_, p| p.chunk() != [x, z]);
         }

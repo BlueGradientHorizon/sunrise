@@ -17,7 +17,7 @@ impl Game<'_> {
     /// `IShearable.isShearable` as live mob `index`'s entity parts answer it: the answering part's
     /// position in dispatch order and its answer, the first part to answer winning; none when no
     /// part answers. A type with no part costs one table lookup. Server-side.
-    pub(super) fn part_shearable(
+    pub(in crate::game) fn part_shearable(
         &self,
         index: usize,
         player: Option<PlayerRef>,
@@ -49,7 +49,7 @@ impl Game<'_> {
     /// `IShearable.onSheared` on mob `index`'s entity part `part` (as [`Self::part_shearable`]
     /// named it), then `spawnShearedDrop` for each drop it returns: one block above where the mob
     /// stands afterwards, nudged by the mob's own random as `Sheep.shear` nudges its wool.
-    pub(super) fn part_shear(
+    pub(in crate::game) fn part_shear(
         &mut self,
         index: usize,
         part: usize,
@@ -100,7 +100,7 @@ impl Game<'_> {
     /// `Bogged`), and a shearable mob fires `player_shear_entity`. `Some(consumed)` ends the
     /// interaction: a part's refusal (false), the hook's cancel or a part's shearing (true);
     /// none leaves the shearing to the species' own interaction.
-    pub(super) fn player_shear(&mut self, mut index: usize) -> Option<bool> {
+    pub(in crate::game) fn player_shear(&mut self, mut index: usize) -> Option<bool> {
         let shears = self.held().cloned()?;
         let player = self.native_acting_player();
         let part = self.part_shearable(index, player, &shears);
@@ -213,7 +213,7 @@ mod tests {
     fn entity_parts_decide_and_perform_a_dispensers_shearing() {
         use super::super::native_entity_refs::tests::{run_fresh_cases, with_game};
         if run_fresh_cases(
-            "game::part_shearing::tests::entity_parts_decide_and_perform_a_dispensers_shearing",
+            "game::server_side::part_shearing::tests::entity_parts_decide_and_perform_a_dispensers_shearing",
             "SUNRISE_PART_SHEARING_CHILD",
             &["valid"],
         ) {

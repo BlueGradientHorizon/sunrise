@@ -31,7 +31,7 @@ use sunrise_world::registry::BlockStateId;
 const TEXT_OVER_OUTLINE: f32 = 0.05;
 
 /// Atlas-resolved standalone geometry, indexed by model slot and resource generation.
-pub(super) struct StandaloneGeometry {
+pub(in crate::game) struct StandaloneGeometry {
     generation: u64,
     slots: Vec<Option<Vec<super::minecarts::PreparedModelFace>>>,
     translucent: Vec<bool>,
@@ -50,13 +50,13 @@ pub(super) struct StandaloneGeometry {
 }
 
 /// A block state's faces as vanilla draws it outside the terrain: default tints in the colour.
-pub(super) struct StateModel {
+pub(in crate::game) struct StateModel {
     faces: Vec<sunrise_client::models::catalog::BakedFace>,
     bounds: [[f32; 3]; 2],
 }
 
 /// Whether a resolved slot can take instances, and the local box used to cull copies.
-pub(super) struct InstanceSlot {
+pub(in crate::game) struct InstanceSlot {
     pub translucent: bool,
     /// A block state's model: drawn on the CPU route only, never as a GPU instance.
     pub state: bool,
@@ -82,7 +82,7 @@ fn face_bounds(faces: &[super::minecarts::PreparedModelFace]) -> [[f32; 3]; 2] {
 }
 
 impl StandaloneGeometry {
-    pub(super) fn new(pack: &super::PackResources, gui: &super::UiResources) -> Self {
+    pub(in crate::game) fn new(pack: &super::PackResources, gui: &super::UiResources) -> Self {
         let catalog = &pack.render.model_catalog;
         let mut slots = Vec::new();
         let mut translucent = Vec::new();
@@ -125,7 +125,7 @@ impl StandaloneGeometry {
         }
     }
 
-    pub(super) fn instance_slot(&self, slot: u32) -> Option<InstanceSlot> {
+    pub(in crate::game) fn instance_slot(&self, slot: u32) -> Option<InstanceSlot> {
         if let Some(state) = slot.checked_sub(self.states_from) {
             let model = self.states.get()?.get(state as usize)?.get()?;
             return Some(InstanceSlot {
@@ -143,7 +143,7 @@ impl StandaloneGeometry {
     }
 
     /// The slot of block state `state`, resolved with `faces` the first time.
-    pub(super) fn state_slot(
+    pub(in crate::game) fn state_slot(
         &self,
         state: u32,
         faces: impl FnOnce() -> Vec<sunrise_client::models::catalog::BakedFace>,
@@ -174,7 +174,7 @@ impl StandaloneGeometry {
     }
 
     /// The baked faces of a block state's slot.
-    pub(super) fn state_faces(
+    pub(in crate::game) fn state_faces(
         &self,
         slot: u32,
     ) -> Option<&[sunrise_client::models::catalog::BakedFace]> {
@@ -182,12 +182,15 @@ impl StandaloneGeometry {
         Some(&self.states.get()?.get(state as usize)?.get()?.faces)
     }
 
-    pub(super) fn faces(&self, slot: u32) -> Option<&[super::minecarts::PreparedModelFace]> {
+    pub(in crate::game) fn faces(
+        &self,
+        slot: u32,
+    ) -> Option<&[super::minecarts::PreparedModelFace]> {
         self.slots.get(slot as usize)?.as_deref()
     }
 
     /// The `fluid_box` look of fluid `slot`, from `resolve` the first time.
-    pub(super) fn fluid_look(
+    pub(in crate::game) fn fluid_look(
         &self,
         slot: u32,
         resolve: impl FnOnce()
@@ -201,12 +204,12 @@ impl StandaloneGeometry {
         *looks[at].get_or_insert_with(resolve)
     }
 
-    pub(super) fn generation(&self) -> u64 {
+    pub(in crate::game) fn generation(&self) -> u64 {
         self.generation
     }
 
     /// Vertices and per-slot index ranges for the generation's GPU buffer.
-    pub(super) fn prepared_upload(
+    pub(in crate::game) fn prepared_upload(
         &self,
     ) -> (
         Vec<sunrise_client::gfx::PreparedModelVertex>,
@@ -238,7 +241,7 @@ const VIEW_DISTANCE: f64 = 64.0;
 /// Each mod block entity's view distance (`BlockEntityRenderer.getViewDistance`), by block
 /// state, as the parts answered `native_block_entity_view_distance` once for each mod block;
 /// states with none keep [`VIEW_DISTANCE`]. `furthest` is how far block entities are gathered.
-pub(super) struct ViewDistances {
+pub(in crate::game) struct ViewDistances {
     by_state: FxHashMap<u32, f64>,
     furthest: f64,
 }
@@ -379,9 +382,9 @@ impl LitElement {
 }
 
 /// Where the draw's coordinate origin is in the level and how to look up its packed light.
-pub(super) struct LevelLight<'a> {
-    pub(super) origin: DVec3,
-    pub(super) light_at: &'a dyn Fn([i32; 3]) -> u8,
+pub(in crate::game) struct LevelLight<'a> {
+    pub(in crate::game) origin: DVec3,
+    pub(in crate::game) light_at: &'a dyn Fn([i32; 3]) -> u8,
 }
 
 impl LevelLight<'_> {
@@ -448,7 +451,7 @@ struct PreparedRecord {
 }
 
 /// Instance tint in the same bytes the CPU vertex colour uses.
-pub(super) fn prepared_tint(rgb: u32) -> [f32; 4] {
+pub(in crate::game) fn prepared_tint(rgb: u32) -> [f32; 4] {
     sunrise_client::hud_layout::multiply(
         u32::MAX,
         sunrise_client::mobs::render::abgr(rgb & 0xFF_FFFF),
@@ -458,7 +461,7 @@ pub(super) fn prepared_tint(rgb: u32) -> [f32; 4] {
 }
 
 /// An Iris pack (`pack_ids`) or one of Sunrise's own packs owns the CPU entity stream.
-pub(super) fn prepared_route(
+pub(in crate::game) fn prepared_route(
     iris_pack: bool,
     native_pack: bool,
     uploaded: Option<u64>,
@@ -467,7 +470,7 @@ pub(super) fn prepared_route(
     !iris_pack && !native_pack && uploaded == Some(generation)
 }
 
-pub(super) fn prepared_instance(
+pub(in crate::game) fn prepared_instance(
     pose: Mat4,
     origin: DVec3,
     camera: DVec3,
@@ -485,7 +488,7 @@ pub(super) fn prepared_instance(
 
 /// A part of a block entity's frame that turns by itself (`BlockEntityDraw::spin`).
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct Spin {
+pub(in crate::game) struct Spin {
     axis: Vec3,
     pivot: Vec3,
     degrees_per_tick: f32,
@@ -558,7 +561,7 @@ impl BlockEntityDraw {
     /// A frame drawn from `pose` (relative to the camera), lit by `light` and
     /// `lights`, adding to `vertices`; `block` is where `native_draw_item`'s
     /// owner stands. A mob's frame (`native_render_living_pre`) is made this way.
-    pub(super) fn posed(
+    pub(in crate::game) fn posed(
         partial: f32,
         game_time: i64,
         light: u32,
@@ -591,7 +594,7 @@ impl BlockEntityDraw {
 
     /// This frame on the client's animation clock (`Game::animation_time`),
     /// which turns its `spin` parts and `animation_time` reads.
-    pub(super) fn animated(mut self, time: f64) -> Self {
+    pub(in crate::game) fn animated(mut self, time: f64) -> Self {
         self.animation = time;
         self
     }
@@ -673,12 +676,12 @@ impl BlockEntityDraw {
         );
     }
     /// The vertices drawn in a level-less frame, with those it was made with first.
-    pub(super) fn into_vertices(self) -> Vec<Vertex> {
+    pub(in crate::game) fn into_vertices(self) -> Vec<Vertex> {
         self.into_vertices_with_light(None)
     }
 
     /// Finish a posed frame drawn at rest, sampling the level when supplied.
-    pub(super) fn into_vertices_with_light(
+    pub(in crate::game) fn into_vertices_with_light(
         mut self,
         level: Option<&LevelLight<'_>>,
     ) -> Vec<Vertex> {
@@ -687,7 +690,7 @@ impl BlockEntityDraw {
     }
 
     /// Place the vertices of a level-less scene, including any turning parts.
-    pub(super) fn into_placed(mut self, origin: Vec3) -> Vec<Vertex> {
+    pub(in crate::game) fn into_placed(mut self, origin: Vec3) -> Vec<Vertex> {
         self.finish_light(None);
         self.spins.retain(|(at, _)| *at <= self.vertices.len());
         place_geometry(
@@ -712,12 +715,12 @@ impl BlockEntityDraw {
         }
     }
     /// Track the pose from the entity's world origin, not its starting render translation.
-    pub(super) fn track_entity_local_light_pose(&mut self) {
+    pub(in crate::game) fn track_entity_local_light_pose(&mut self) {
         self.local_light_translation = Some(DVec3::ZERO);
     }
 
     /// Track normals from the rigid first-person view transform through listener draws.
-    pub(super) fn track_normal_pose(mut self) -> Self {
+    pub(in crate::game) fn track_normal_pose(mut self) -> Self {
         self.normal_pose = Some(ModelNormals::from_rotation(self.pose));
         self
     }
@@ -817,7 +820,7 @@ impl BlockEntityDraw {
         self.level_lit = true;
     }
     /// What is drawn next skips directional shading and draws full bright (`native_draw_unlit`).
-    pub(super) fn unlit(&mut self, on: bool) {
+    pub(in crate::game) fn unlit(&mut self, on: bool) {
         self.unlit = on;
     }
     /// The vertices from `start` of an element `unlit` covers: under `unlit` they lose their
@@ -833,7 +836,12 @@ impl BlockEntityDraw {
         }
     }
     /// Records one element and its fixed fallback only if there are vertices to relight.
-    pub(super) fn lit_since(&mut self, start: usize, centre: impl FnOnce() -> DVec3, ambient: u32) {
+    pub(in crate::game) fn lit_since(
+        &mut self,
+        start: usize,
+        centre: impl FnOnce() -> DVec3,
+        ambient: u32,
+    ) {
         if self.level_lit && self.vertices.len() > start {
             let pose = self.pose.as_dmat4();
             let translation = self
@@ -849,11 +857,11 @@ impl BlockEntityDraw {
     }
 
     /// Under `level_light`, the emitter writes only the face's intrinsic light floors.
-    pub(super) fn element_ambient(&self) -> u32 {
+    pub(in crate::game) fn element_ambient(&self) -> u32 {
         if self.level_lit { 0 } else { self.light }
     }
     /// The centre of the unit cell a model is drawn in, before posing.
-    pub(super) fn cell_centre() -> DVec3 {
+    pub(in crate::game) fn cell_centre() -> DVec3 {
         DVec3::splat(0.5)
     }
     fn apply(&mut self, m: Mat4) {
@@ -865,17 +873,17 @@ impl BlockEntityDraw {
         }
         self.pose *= m;
     }
-    pub(super) fn pose(&self) -> Mat4 {
+    pub(in crate::game) fn pose(&self) -> Mat4 {
         self.pose
     }
-    pub(super) fn normal_pose(&self) -> Option<ModelNormals> {
+    pub(in crate::game) fn normal_pose(&self) -> Option<ModelNormals> {
         self.normal_pose
     }
-    pub(super) fn vertices_mut(&mut self) -> &mut Vec<Vertex> {
+    pub(in crate::game) fn vertices_mut(&mut self) -> &mut Vec<Vertex> {
         &mut self.vertices
     }
     /// The light the helpers draw with (`native_draw_light`).
-    pub(super) fn light(&self) -> u32 {
+    pub(in crate::game) fn light(&self) -> u32 {
         self.light
     }
     fn quad(&mut self, corners: [[f32; 3]; 4], uv: [[f32; 2]; 4], sprite: Rect, tint: u32) {
@@ -1008,7 +1016,7 @@ struct KeptEntry {
 /// `SignTexts` keeps a sign's text, it is kept relative to the block and
 /// moved to the camera each frame.
 #[derive(Default)]
-pub(super) struct KeptGeometry {
+pub(in crate::game) struct KeptGeometry {
     entries: FxHashMap<[i32; 3], KeptEntry>,
     /// Game time of the last sweep of what is out of view.
     swept: i64,
@@ -1173,7 +1181,7 @@ impl KeptGeometry {
         self.entries.remove(&pos);
     }
     /// Forgets everything: the atlas's sprites moved.
-    pub(super) fn clear(&mut self) {
+    pub(in crate::game) fn clear(&mut self) {
         self.entries.clear();
     }
 }
@@ -1181,7 +1189,7 @@ impl KeptGeometry {
 impl Game<'_> {
     /// The client's mod animation clock: level-running texture ticks plus a phase that holds
     /// across pauses and freezes. Server time updates never change it.
-    pub(super) fn animation_time(&self) -> f64 {
+    pub(in crate::game) fn animation_time(&self) -> f64 {
         self.client.texture_ticks as f64 + self.clock.animation_phase()
     }
     /// The mod block entities within view distance of `camera` whose block's
@@ -1189,7 +1197,10 @@ impl Game<'_> {
     /// the template) leave out: where they are and their block's state, for
     /// `mod_block_entity_geometry`. From the per-chunk list of
     /// `BlockEntities::mods_near`, not a scan of every block entity.
-    pub(super) fn untemplated_mod_block_entities(&self, camera: DVec3) -> Vec<([i32; 3], u32)> {
+    pub(in crate::game) fn untemplated_mod_block_entities(
+        &self,
+        camera: DVec3,
+    ) -> Vec<([i32; 3], u32)> {
         self.world
             .block_entities
             .mods_near(camera.x, camera.z, self.view_distances().furthest)
@@ -1219,7 +1230,7 @@ impl Game<'_> {
     /// `BlockEntityRenderer.getViewDistance` to the camera (`shouldRender`) and with its bounds
     /// (`native_block_entity_render_bounding_box`) in the frustum. Ordinary (non-global)
     /// renderers require an eye-visible section, matching built-in block entities.
-    pub(super) fn mod_block_entity_geometry<'a>(
+    pub(in crate::game) fn mod_block_entity_geometry<'a>(
         &self,
         blocks: impl Iterator<Item = (&'a ([i32; 3], u32), bool)>,
         camera: DVec3,
@@ -1323,7 +1334,11 @@ impl Game<'_> {
         *out = draw.vertices;
     }
 
-    pub(super) fn prepared_copy_room(&self, already: u64, incoming: usize) -> Option<usize> {
+    pub(in crate::game) fn prepared_copy_room(
+        &self,
+        already: u64,
+        incoming: usize,
+    ) -> Option<usize> {
         let room = self
             .renderer
             .as_ref()
@@ -1373,21 +1388,21 @@ impl Game<'_> {
 #[allow(dead_code)]
 impl Game<'_> {
     /// `PoseStack.pushPose`: `pop` comes back to the pose as it is now.
-    pub(super) fn native_draw_push(&self, draw: &mut BlockEntityDraw) {
+    pub(in crate::game) fn native_draw_push(&self, draw: &mut BlockEntityDraw) {
         draw.push();
     }
     /// `PoseStack.popPose`; the block's own pose is never popped.
-    pub(super) fn native_draw_pop(&self, draw: &mut BlockEntityDraw) {
+    pub(in crate::game) fn native_draw_pop(&self, draw: &mut BlockEntityDraw) {
         draw.pop();
     }
     /// Moves what is drawn next by `by`, in blocks.
-    pub(super) fn native_draw_translate(&self, draw: &mut BlockEntityDraw, by: [f32; 3]) {
+    pub(in crate::game) fn native_draw_translate(&self, draw: &mut BlockEntityDraw, by: [f32; 3]) {
         draw.translate(by);
     }
     /// Turns what is drawn next by `degrees` about `axis` (counterclockwise
     /// seen from the axis' positive end, as `Axis.rotationDegrees`) through
     /// `pivot`, in blocks from the pose's origin: `[0.5; 3]` is the block's centre.
-    pub(super) fn native_draw_rotate_about(
+    pub(in crate::game) fn native_draw_rotate_about(
         &self,
         draw: &mut BlockEntityDraw,
         axis: [f32; 3],
@@ -1397,11 +1412,11 @@ impl Game<'_> {
         draw.rotate_about(axis, degrees, pivot);
     }
     /// Scales what is drawn next by `by` about the pose's origin.
-    pub(super) fn native_draw_scale(&self, draw: &mut BlockEntityDraw, by: [f32; 3]) {
+    pub(in crate::game) fn native_draw_scale(&self, draw: &mut BlockEntityDraw, by: [f32; 3]) {
         draw.scale(by);
     }
     /// What is drawn next turns by itself on the animation clock (`BlockEntityDraw::spin`).
-    pub(super) fn native_draw_spin(
+    pub(in crate::game) fn native_draw_spin(
         &self,
         draw: &mut BlockEntityDraw,
         axis: [f32; 3],
@@ -1412,7 +1427,7 @@ impl Game<'_> {
         draw.spin(axis, pivot, degrees_per_tick, phase);
     }
     /// What is drawn next stands still again, after `spin`.
-    pub(super) fn native_draw_still(&self, draw: &mut BlockEntityDraw) {
+    pub(in crate::game) fn native_draw_still(&self, draw: &mut BlockEntityDraw) {
         draw.still();
     }
     /// Keeps what this call drew, with neither `native_block_entity_submit` nor
@@ -1421,40 +1436,40 @@ impl Game<'_> {
     /// animation clock; other geometry stays as submitted. Do not bake frame-dependent
     /// values into kept vertices: item glint and time-dependent item models stop
     /// where they were, and neighboring blocks do not invalidate the cache.
-    pub(super) fn native_draw_keep(&self, draw: &mut BlockEntityDraw) {
+    pub(in crate::game) fn native_draw_keep(&self, draw: &mut BlockEntityDraw) {
         draw.keep();
     }
     /// The frame's partial tick, 0 to 1 (`BlockEntityRenderState`).
-    pub(super) fn native_draw_partial(&self, draw: &BlockEntityDraw) -> f32 {
+    pub(in crate::game) fn native_draw_partial(&self, draw: &BlockEntityDraw) -> f32 {
         draw.partial
     }
     /// The level's game time, for animations.
-    pub(super) fn native_draw_game_time(&self, draw: &BlockEntityDraw) -> i64 {
+    pub(in crate::game) fn native_draw_game_time(&self, draw: &BlockEntityDraw) -> i64 {
         draw.game_time
     }
     /// The frame on this client's animation clock: whole level ticks plus the animation phase,
     /// held through a tick freeze and carried on without a jump. This is what turns `spin` parts.
-    pub(super) fn native_draw_animation_time(&self, draw: &BlockEntityDraw) -> f64 {
+    pub(in crate::game) fn native_draw_animation_time(&self, draw: &BlockEntityDraw) -> f64 {
         draw.animation
     }
     /// The light the helpers draw with: the block's own
     /// (`LevelRenderer.getLightCoords`), 16 times sky light in bits 0..8 and
     /// 16 times block light in bits 8..16.
-    pub(super) fn native_draw_light(&self, draw: &BlockEntityDraw) -> u32 {
+    pub(in crate::game) fn native_draw_light(&self, draw: &BlockEntityDraw) -> u32 {
         draw.light
     }
     /// Lights what is drawn next with `light` (as `native_draw_light` reads it).
-    pub(super) fn native_draw_set_light(&self, draw: &mut BlockEntityDraw, light: u32) {
+    pub(in crate::game) fn native_draw_set_light(&self, draw: &mut BlockEntityDraw, light: u32) {
         draw.set_light(light);
     }
     /// Lights what is drawn next by the level at each element's centre
     /// (`BlockEntityDrawContext::level_light`).
-    pub(super) fn native_draw_level_light(&self, draw: &mut BlockEntityDraw) {
+    pub(in crate::game) fn native_draw_level_light(&self, draw: &mut BlockEntityDraw) {
         draw.level_light();
     }
     /// What is drawn next skips directional shading and draws full bright while `on`
     /// (`BlockEntityDrawContext::unlit`).
-    pub(super) fn native_draw_unlit(&self, draw: &mut BlockEntityDraw, on: bool) {
+    pub(in crate::game) fn native_draw_unlit(&self, draw: &mut BlockEntityDraw, on: bool) {
         draw.unlit(on);
     }
     /// Draws a quad with `corners` in blocks under `draw`'s pose, in a model
@@ -1463,7 +1478,7 @@ impl Game<'_> {
     /// texels of 16 per side) of `sprite` (`mymod:entity/screen`,
     /// `mymod:block/casing`, `block/stone`) times the 0xRRGGBB `tint`
     /// (0xFFFFFF for none). False for an unknown sprite.
-    pub(super) fn native_draw_quad(
+    pub(in crate::game) fn native_draw_quad(
         &self,
         draw: &mut BlockEntityDraw,
         sprite: &str,
@@ -1500,7 +1515,7 @@ impl Game<'_> {
     /// (`Font.width`): centre a line by starting it at minus half its width.
     /// Obfuscated glyphs change only when the block is drawn again, so kept
     /// text (`keep`) stands still. API @API:draw_text@.
-    pub(super) fn native_draw_text(
+    pub(in crate::game) fn native_draw_text(
         &self,
         draw: &mut BlockEntityDraw,
         text: &Text,
@@ -1569,7 +1584,11 @@ impl Game<'_> {
     }
     /// The width of `text` in font pixels, as `draw_text` draws it, styles
     /// included (`Font.width`), to lay a line out before drawing it.
-    pub(super) fn native_draw_text_width(&self, _draw: &BlockEntityDraw, text: &Text) -> f32 {
+    pub(in crate::game) fn native_draw_text_width(
+        &self,
+        _draw: &BlockEntityDraw,
+        text: &Text,
+    ) -> f32 {
         self.gui.atlas.font.width_text(text)
     }
 
@@ -1579,7 +1598,7 @@ impl Game<'_> {
     /// element's are (`FaceBakery`), times the 0xRRGGBB `tint`. A turned box
     /// is drawn under a turned pose (`BlockEntityDraw::rotate_about`). False
     /// when a face's sprite is unknown; that face is left out.
-    pub(super) fn native_draw_cube(
+    pub(in crate::game) fn native_draw_cube(
         &self,
         draw: &mut BlockEntityDraw,
         from: [f32; 3],
@@ -1622,7 +1641,7 @@ impl Game<'_> {
     /// an entity's place: a block's baked model, with its default tints. A
     /// moving part that is no block is a standalone model
     /// (`native_draw_model`). False for an unknown block or property.
-    pub(super) fn native_draw_block(
+    pub(in crate::game) fn native_draw_block(
         &self,
         draw: &mut BlockEntityDraw,
         block: &str,
@@ -1662,7 +1681,7 @@ impl Game<'_> {
     /// Block state `state` as one model: what `native_draw_block` draws, the blockstate file's
     /// parts for its properties at seed 42, each tinted face holding the block's default tint
     /// (no position) in its colour. Resolved once per state in this generation.
-    pub(super) fn native_block_state_model(
+    pub(in crate::game) fn native_block_state_model(
         &self,
         id: BlockStateId,
     ) -> Result<ModelRef, ModelError> {
@@ -1706,7 +1725,7 @@ impl Game<'_> {
 
     /// The baked faces a slot draws through the terrain materials: a standalone model's, or a
     /// block state's from `native_block_state_model`.
-    pub(super) fn model_faces(
+    pub(in crate::game) fn model_faces(
         &self,
         slot: u32,
     ) -> Option<&[sunrise_client::models::catalog::BakedFace]> {
@@ -1720,7 +1739,7 @@ impl Game<'_> {
     /// Resolve a registered standalone model once in `client_setup` and again in
     /// `client_resources_reloaded`, not each frame. Resource-pack overrides and other
     /// namespaces use the normal shared model store; no resource is read or baked here.
-    pub(super) fn native_model(&self, id: &Identifier) -> Result<ModelRef, ModelError> {
+    pub(in crate::game) fn native_model(&self, id: &Identifier) -> Result<ModelRef, ModelError> {
         self.pack.render.model(id)
     }
 
@@ -1729,7 +1748,7 @@ impl Game<'_> {
     /// index are multiplied by `tint` (`0xAARRGGBB`, the same as `WorldQuad::color`;
     /// `0xFFFFFFFF` for none), alpha included. Faces with no tint index stay opaque.
     /// A stale generation or absent slot returns an error without appending geometry.
-    pub(super) fn native_draw_model(
+    pub(in crate::game) fn native_draw_model(
         &self,
         draw: &mut BlockEntityDraw,
         model: ModelRef,
@@ -1766,7 +1785,7 @@ impl Game<'_> {
     /// `draw.scale([1.0, -1.0, -1.0])` then `draw.translate([0.0, -1.501,
     /// 0.0])` first, as `LivingEntityRenderer` does. False for an unknown
     /// sprite. API @API:model_layers@.
-    pub(super) fn native_draw_model_part(
+    pub(in crate::game) fn native_draw_model_part(
         &self,
         draw: &mut BlockEntityDraw,
         part: &ModelPart,
@@ -1789,7 +1808,7 @@ impl Game<'_> {
     /// for a layer neither has. A vanilla layer no mob has (a player's, a
     /// chest's) is read from the resources each call, so slow. API
     /// @API:model_layers@.
-    pub(super) fn bake_layer(&self, layer: &str) -> Option<ModelPart> {
+    pub(in crate::game) fn bake_layer(&self, layer: &str) -> Option<ModelPart> {
         if let Some(definition) = model_layers::registered(layer) {
             return Some(definition.bake_root());
         }
@@ -1816,7 +1835,7 @@ impl Game<'_> {
     /// client's copy of a block entity has no item slots (`entity.items` is
     /// empty there): send the stacks you draw in
     /// `native_block_entity_update_tag` and read them from `entity.nbt`.
-    pub(super) fn native_draw_item(
+    pub(in crate::game) fn native_draw_item(
         &self,
         draw: &mut BlockEntityDraw,
         stack: &ItemStack,
@@ -1844,7 +1863,11 @@ impl Game<'_> {
     /// Property `key` of block state `state` (a machine's `facing`, from the
     /// `state` `native_block_entity_submit` gets), if it has one: no lookup in
     /// the world, so cheap each frame.
-    pub(super) fn block_state_property(&self, state: BlockStateId, key: &str) -> Option<&str> {
+    pub(in crate::game) fn block_state_property(
+        &self,
+        state: BlockStateId,
+        key: &str,
+    ) -> Option<&str> {
         self.pack
             .assets
             .registry
@@ -1855,7 +1878,7 @@ impl Game<'_> {
     }
     /// The block `state` is a state of: its name, as `GameLevel`'s helper of
     /// the same name gives it for the hooks that get a state in the world.
-    pub(super) fn native_state_block(&self, state: BlockStateId) -> Option<&str> {
+    pub(in crate::game) fn native_state_block(&self, state: BlockStateId) -> Option<&str> {
         self.pack.assets.registry.state(state).map(|s| &*s.name)
     }
 }

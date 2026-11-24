@@ -10,7 +10,7 @@ thread_local! {
 
 /// Selectors read by slot_position; item contents and scroll do not move slots.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(super) struct SlotInputs {
+pub(in crate::game) struct SlotInputs {
     count: usize,
     craft_size: usize,
     creative_inventory: bool,
@@ -36,14 +36,14 @@ impl Game<'_> {
         })
     }
 
-    pub(super) fn container_layout(
+    pub(in crate::game) fn container_layout(
         &self,
         batch: &sunrise_client::hud::HudBatch,
     ) -> ContainerLayout {
         self.build_container_layout(batch, self.container_layout_inputs(batch))
     }
 
-    pub(super) fn build_container_layout(
+    pub(in crate::game) fn build_container_layout(
         &self,
         batch: &sunrise_client::hud::HudBatch,
         mut inputs: ContainerLayout,
@@ -83,7 +83,7 @@ impl Game<'_> {
     /// draws, the book and effect panels beside it, the creative tab rows and
     /// every slot's hover box. The build calls it when it makes the layout;
     /// nothing else does.
-    pub(super) fn container_layout_inputs(
+    pub(in crate::game) fn container_layout_inputs(
         &self,
         batch: &sunrise_client::hud::HudBatch,
     ) -> ContainerLayout {

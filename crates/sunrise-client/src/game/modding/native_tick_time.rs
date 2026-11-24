@@ -6,7 +6,7 @@ impl Game<'_> {
     /// `MinecraftServer.haveTime`: the current server tick has not reached the
     /// moment the next one is due. A client, and a server outside a scheduled
     /// tick, always has time, as NeoForge's client `LevelTickEvent.hasTime` does.
-    pub(super) fn server_has_time(&self) -> bool {
+    pub(in crate::game) fn server_has_time(&self) -> bool {
         !self.is_logical_server()
             || self
                 .server

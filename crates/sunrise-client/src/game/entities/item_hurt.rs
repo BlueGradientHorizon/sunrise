@@ -53,7 +53,7 @@ impl Game<'_> {
     }
 
     /// Block contact damage during the tick, while the item belongs to its mover.
-    pub(super) fn hurt_moving_item(
+    pub(in crate::game) fn hurt_moving_item(
         &mut self,
         item: &mut ItemEntity,
         damage_type: &str,

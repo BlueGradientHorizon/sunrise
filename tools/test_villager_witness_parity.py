@@ -60,8 +60,8 @@ def main(argv=None):
     executed = {}
     for package, group, count in [
         ('sunrise-client-lib', 'mobs::villager_brain::reputation_witness_tests', 1),
-        ('sunrise-client', 'game::villagers::witness_tests', 4),
-        ('sunrise-client', 'game::lan::merchant_packet_tests', 1),
+        ('sunrise-client', 'game::server_side::villagers::witness_tests', 4),
+        ('sunrise-client', 'game::server_side::lan::merchant_packet_tests', 1),
     ]:
         if package not in artifacts:
             source = (lab.ROOT / 'crates/sunrise-client/src' / ('client_lib.rs' if package == 'sunrise-client-lib' else 'lib.rs')).resolve()

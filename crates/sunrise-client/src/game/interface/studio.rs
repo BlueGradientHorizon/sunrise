@@ -14,22 +14,22 @@ use sunrise_client::{
 /// Sunrise extra (docs/layers.md: the replay editor) on top of the platform's replay
 /// (`replay.rs`); the engine only asks it whether the free camera flies.
 #[derive(Default)]
-pub(super) struct Studio {
-    pub(super) freecam: sunrise_client::studio::StudioFreecam,
-    pub(super) timeline: sunrise_client::studio::TimelineUi,
-    pub(super) topbar: sunrise_client::studio::TopBarUi,
-    pub(super) rmb_down: bool,
-    pub(super) camera_track_dirty: bool,
+pub(in crate::game) struct Studio {
+    pub(in crate::game) freecam: sunrise_client::studio::StudioFreecam,
+    pub(in crate::game) timeline: sunrise_client::studio::TimelineUi,
+    pub(in crate::game) topbar: sunrise_client::studio::TopBarUi,
+    pub(in crate::game) rmb_down: bool,
+    pub(in crate::game) camera_track_dirty: bool,
 }
 
 /// Studio's editor runs. It is a Sunrise extra (docs/layers.md: the replay editor), so a build
 /// without `sunrise-extras` (sunrise-plain) plays replays without it: no free camera, path,
 /// timeline or top bar, and no editor commands or keys.
-pub(super) const EDITOR: bool = cfg!(feature = "sunrise-extras");
+pub(in crate::game) const EDITOR: bool = cfg!(feature = "sunrise-extras");
 
 impl Studio {
     /// The free camera flies, apart from the player.
-    pub(super) fn flying(&self) -> bool {
+    pub(in crate::game) fn flying(&self) -> bool {
         self.freecam.active
     }
 }
@@ -52,12 +52,12 @@ pub const HELP: &[&str] = &[
 
 impl Game<'_> {
     /// Studio is up (its bars, its camera path, its mouse): a replay plays or the free camera flies.
-    pub(super) fn studio_up(&self) -> bool {
+    pub(in crate::game) fn studio_up(&self) -> bool {
         self.replay.playing() || self.client.studio.flying()
     }
 
     /// Studio's editor words of `/studio` (`freecam`, `keyframe`, `path`).
-    pub(super) fn studio_editor_command(&mut self, words: &[&str]) -> bool {
+    pub(in crate::game) fn studio_editor_command(&mut self, words: &[&str]) -> bool {
         match words[0] {
             "freecam" => match words.get(1).copied() {
                 Some("on") => {
@@ -169,7 +169,7 @@ impl Game<'_> {
     }
 
     /// Apply a menu action from the Studio top bar.
-    pub(super) fn handle_studio_topbar_action(
+    pub(in crate::game) fn handle_studio_topbar_action(
         &mut self,
         action: sunrise_client::studio::TopBarAction,
     ) {
@@ -264,7 +264,7 @@ impl Game<'_> {
     }
 
     /// Apply an action from the replay timeline HUD.
-    pub(super) fn handle_studio_timeline_action(
+    pub(in crate::game) fn handle_studio_timeline_action(
         &mut self,
         action: sunrise_client::studio::TimelineAction,
     ) {
@@ -369,7 +369,7 @@ impl Game<'_> {
     }
 
     /// Add a bookmark at the replay playhead and save it in the `.mcpr` archive.
-    pub(super) fn add_studio_marker(&mut self) {
+    pub(in crate::game) fn add_studio_marker(&mut self) {
         let Some(replay) = self
             .replay
             .driver
@@ -390,7 +390,7 @@ impl Game<'_> {
     }
 
     /// Saves the free camera's path into the replay playing, when it changed.
-    pub(super) fn save_studio_camera_track(&mut self) -> std::io::Result<()> {
+    pub(in crate::game) fn save_studio_camera_track(&mut self) -> std::io::Result<()> {
         if self.client.studio.camera_track_dirty
             && let Some(driver) = self
                 .replay
@@ -405,7 +405,7 @@ impl Game<'_> {
     }
 
     /// A replay opened: the timeline shows it and the free camera takes its saved path.
-    pub(super) fn studio_replay_opened(&mut self, driver: &ReplayDriver) {
+    pub(in crate::game) fn studio_replay_opened(&mut self, driver: &ReplayDriver) {
         self.client.studio.timeline.duration_ms = u64::from(driver.duration_ms());
         self.client.studio.timeline.current_time_ms = 0;
         self.client.studio.timeline.playing = !driver.is_paused();
@@ -416,7 +416,7 @@ impl Game<'_> {
 
     /// The replay moved on: a camera locked to its path follows it, and the timeline shows where
     /// it is.
-    pub(super) fn studio_replay_advanced(&mut self) {
+    pub(in crate::game) fn studio_replay_advanced(&mut self) {
         if self.client.studio.freecam.locked_to_path
             && let Some(position) = self
                 .replay
@@ -448,7 +448,7 @@ impl Game<'_> {
     }
 
     /// The replay closes: its camera path is saved (a failure is only logged).
-    pub(super) fn studio_replay_closing(&mut self) {
+    pub(in crate::game) fn studio_replay_closing(&mut self) {
         if let Err(error) = self.save_studio_camera_track() {
             log::warn!("Studio: could not save camera path: {error}");
         }
@@ -456,7 +456,7 @@ impl Game<'_> {
     }
 
     /// The replay closed: the timeline empties and the free camera lands.
-    pub(super) fn studio_replay_closed(&mut self) {
+    pub(in crate::game) fn studio_replay_closed(&mut self) {
         self.client.studio.timeline.current_time_ms = 0;
         self.client.studio.timeline.playing = false;
         self.client.studio.timeline.markers.clear();
@@ -469,7 +469,7 @@ impl Game<'_> {
 /// What the engine's frame, render and window code hand to Studio.
 impl Game<'_> {
     /// The top bar and the timeline over the HUD, while Studio is up in play.
-    pub(super) fn draw_studio_bars(&mut self, batch: &mut super::HudBatch) {
+    pub(in crate::game) fn draw_studio_bars(&mut self, batch: &mut super::HudBatch) {
         if !EDITOR || self.ui.hide_gui || self.client.screen != Screen::Playing || !self.studio_up()
         {
             return;
@@ -489,7 +489,7 @@ impl Game<'_> {
     }
 
     /// The camera path among the debug lines, while Studio is up.
-    pub(super) fn studio_camera_path(&self, gizmos: &mut sunrise_client::gizmos::Gizmos) {
+    pub(in crate::game) fn studio_camera_path(&self, gizmos: &mut sunrise_client::gizmos::Gizmos) {
         if EDITOR && self.studio_up() {
             sunrise_client::studio::render_camera_path(
                 &self.client.studio.freecam.track,
@@ -501,7 +501,7 @@ impl Game<'_> {
     }
 
     /// The pointer moved while the timeline's playhead or a keyframe is dragged: Studio took it.
-    pub(super) fn studio_mouse_dragged(&mut self, width: f32) -> bool {
+    pub(in crate::game) fn studio_mouse_dragged(&mut self, width: f32) -> bool {
         if !EDITOR
             || self.client.screen != Screen::Playing
             || !(self.client.studio.timeline.dragging_playhead
@@ -522,7 +522,7 @@ impl Game<'_> {
 
     /// A mouse button while Studio is up: true when Studio took it (its bars, the right button's
     /// mouse look, every click while a replay plays).
-    pub(super) fn studio_mouse_input(
+    pub(in crate::game) fn studio_mouse_input(
         &mut self,
         pressed: bool,
         button: winit::event::MouseButton,
@@ -619,7 +619,7 @@ impl Game<'_> {
     }
 
     /// The free camera flies by the movement keys, once per frame.
-    pub(super) fn studio_fly(&mut self, elapsed: Duration) {
+    pub(in crate::game) fn studio_fly(&mut self, elapsed: Duration) {
         if !self.client.studio.flying()
             || self.client.screen != Screen::Playing
             || self.dialog_open()
@@ -642,7 +642,7 @@ impl Game<'_> {
     }
 
     /// A key pressed while a replay plays: Studio's shortcuts, and nothing else reaches play.
-    pub(super) fn studio_key(&mut self, key: winit::keyboard::KeyCode) {
+    pub(in crate::game) fn studio_key(&mut self, key: winit::keyboard::KeyCode) {
         use winit::keyboard::KeyCode;
         match key {
             KeyCode::Escape => {

@@ -14,7 +14,7 @@ use sunrise_client::world_geometry::{self, ModelBatch, WorldGeometry};
 
 impl Game<'_> {
     /// A camera-space quad in solid `argb`, of the atlas's white texel.
-    pub(super) fn native_camera_quad(
+    pub(in crate::game) fn native_camera_quad(
         &self,
         draw: &mut CameraQuads,
         corners: [[f32; 3]; 4],
@@ -24,7 +24,7 @@ impl Game<'_> {
     }
     /// A camera-space quad of sprite `name`, sampled as `ScreenEffects::build` samples it; false
     /// for an unknown sprite or a coordinate that is not finite.
-    pub(super) fn native_camera_sprite(
+    pub(in crate::game) fn native_camera_sprite(
         &self,
         draw: &mut CameraQuads,
         name: &str,
@@ -73,7 +73,7 @@ impl Game<'_> {
     }
     /// One view's geometry, the last view's gone first. `title` views draw no world: the
     /// title and connect screens have no mod geometry, so none outlives leaving a world.
-    pub(super) fn fill_world_geometry(
+    pub(in crate::game) fn fill_world_geometry(
         &mut self,
         title: bool,
         camera: [f64; 3],
@@ -130,7 +130,7 @@ impl Game<'_> {
     /// (unless `faded_alpha`) and the backdrop's follow the player's text background opacity.
     /// Refused whole, before any layout, for a position that is not finite; glyphs a refused
     /// label rasterized still upload.
-    pub(super) fn native_world_name_tag(
+    pub(in crate::game) fn native_world_name_tag(
         &self,
         draw: &mut WorldGeometry,
         at: [f64; 3],
@@ -184,7 +184,7 @@ impl Game<'_> {
     }
     /// Submit unlit ARGB world lines atomically. Invalid coordinates or widths,
     /// or a batch exceeding the view's fixed capacity, leave the batch unchanged.
-    pub(super) fn native_world_draw_lines(
+    pub(in crate::game) fn native_world_draw_lines(
         &self,
         draw: &mut WorldGeometry,
         lines: &[WorldLine],
@@ -192,7 +192,7 @@ impl Game<'_> {
         draw.lines(lines)
     }
     /// Submit unlit, alpha-blended world quads atomically, using the white atlas texel.
-    pub(super) fn native_world_draw_quads(
+    pub(in crate::game) fn native_world_draw_quads(
         &self,
         draw: &mut WorldGeometry,
         quads: &[WorldQuad],
@@ -201,7 +201,7 @@ impl Game<'_> {
     }
     /// Submit quads drawn by a mod pipeline atomically: the handle is checked against the
     /// published pipelines once, then the batch is validated and queued or refused whole.
-    pub(super) fn native_world_draw_pipeline_quads(
+    pub(in crate::game) fn native_world_draw_pipeline_quads(
         &self,
         draw: &mut WorldGeometry,
         pipeline: RenderPipelineRef,
@@ -217,11 +217,11 @@ impl Game<'_> {
     }
     /// Queued counts and fixed capacities, shared by both depth modes and all listeners.
     /// Capacity is allocated during setup, never grown during submission.
-    pub(super) fn native_world_draw_usage(&self, draw: &WorldGeometry) -> WorldDrawUsage {
+    pub(in crate::game) fn native_world_draw_usage(&self, draw: &WorldGeometry) -> WorldDrawUsage {
         draw.usage()
     }
     /// Resolve `model` once and accept every copy, or leave the view unchanged.
-    pub(super) fn native_world_draw_model_instances(
+    pub(in crate::game) fn native_world_draw_model_instances(
         &self,
         draw: &mut WorldGeometry,
         model: ModelRef,
@@ -237,7 +237,7 @@ impl Game<'_> {
             .reserve(instances.len().min(16_384));
         self.draw_validated_model_instances(draw, model, instances)
     }
-    pub(super) fn draw_validated_model_instances(
+    pub(in crate::game) fn draw_validated_model_instances(
         &self,
         draw: &mut WorldGeometry,
         model: ModelRef,
@@ -245,7 +245,7 @@ impl Game<'_> {
     ) -> Result<(), InstanceError> {
         self.draw_cached_model_instances(draw, model, instances, None)
     }
-    pub(super) fn draw_cached_model_instances(
+    pub(in crate::game) fn draw_cached_model_instances(
         &self,
         draw: &mut WorldGeometry,
         model: ModelRef,
@@ -344,7 +344,7 @@ impl Game<'_> {
     /// with a colour alpha below `0xFF`, of a translucent model or of a block state go through
     /// the terrain materials (`terrain_model::draw_model`), after them; the renderer sorts their
     /// quads far to near.
-    pub(super) fn commit_model_instances(
+    pub(in crate::game) fn commit_model_instances(
         &mut self,
         draw: &mut WorldGeometry,
         camera: DVec3,
@@ -637,7 +637,7 @@ mod tests {
     #[ignore = "daily"]
     fn a_tinted_block_state_carries_its_default_tint_in_the_baked_colour() {
         crate::game::in_own_process(
-            "game::native_custom_geometry::tests::a_tinted_block_state_carries_its_default_tint_in_the_baked_colour",
+            "game::client_side::native_custom_geometry::tests::a_tinted_block_state_carries_its_default_tint_in_the_baked_colour",
             || {
                 super::super::native_entity_refs::tests::with_client_game(|game| {
                     let colours = |name: &str| {

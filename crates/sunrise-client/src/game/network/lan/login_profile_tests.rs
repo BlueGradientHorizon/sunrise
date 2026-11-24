@@ -59,7 +59,7 @@ fn answer(extra: usize) -> Vec<AccountProperty> {
 #[ignore = "daily"]
 fn a_login_sends_the_properties_its_listeners_leave_when_they_fit() {
     if run_fresh_cases(
-        "game::lan::login_profile_tests::a_login_sends_the_properties_its_listeners_leave_when_they_fit",
+        "game::server_side::lan::login_profile_tests::a_login_sends_the_properties_its_listeners_leave_when_they_fit",
         "SUNRISE_LOGIN_PROFILE_CASE",
         &["edit"],
     ) {

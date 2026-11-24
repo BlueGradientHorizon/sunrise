@@ -85,7 +85,7 @@ fn track_block(game: &mut Game<'_>, uuid: u128, color: i32, position: [i32; 3]) 
 #[ignore = "daily"]
 fn spectated_locator_uses_camera_entity_for_identity_and_distance() {
     in_own_process(
-        "game::locator_bar::tests::spectated_locator_uses_camera_entity_for_identity_and_distance",
+        "game::client_side::locator_bar::tests::spectated_locator_uses_camera_entity_for_identity_and_distance",
         || {
             with_client_game(|game| {
                 let _server = connect(game, Vec3::new(0.0, 64.0, 0.0));
@@ -211,7 +211,7 @@ fn spectated_locator_uses_camera_entity_for_identity_and_distance() {
 #[ignore = "daily"]
 fn block_waypoints_use_live_non_player_eyes_within_manhattan_three() {
     in_own_process(
-        "game::locator_bar::tests::block_waypoints_use_live_non_player_eyes_within_manhattan_three",
+        "game::client_side::locator_bar::tests::block_waypoints_use_live_non_player_eyes_within_manhattan_three",
         || {
             with_client_game(|game| {
                 let _server = connect(game, Vec3::new(100.0, 64.0, 0.0));

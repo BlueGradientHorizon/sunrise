@@ -1285,7 +1285,7 @@ fn leap_trace(mod_goal: bool) -> Vec<[u64; 7]> {
 #[ignore = "daily"]
 fn a_mod_leap_goal_flies_and_lands_as_the_engine_leap_does() {
     if run_fresh_cases(
-        "game::native_goal_ticks::tests::a_mod_leap_goal_flies_and_lands_as_the_engine_leap_does",
+        "game::server_side::native_goal_ticks::tests::a_mod_leap_goal_flies_and_lands_as_the_engine_leap_does",
         "SUNRISE_GOAL_DELTA_MOVEMENT_CHILD",
         &["valid"],
     ) {

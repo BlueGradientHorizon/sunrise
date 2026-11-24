@@ -11,7 +11,7 @@ impl Game<'_> {
     /// `ItemUtils.createFilledResult(itemStack, player,
     /// getEmptySuccessItem(itemStack, player))` — a survival bucket becomes an
     /// empty one, a creative one stays.
-    pub(super) fn bucket_emptied(&mut self, item: &str) {
+    pub(in crate::game) fn bucket_emptied(&mut self, item: &str) {
         self.award_stat("used", item, 1);
         if !self.creative {
             *self.held_mut() = Some(ItemStack::new("minecraft:bucket", 1));
@@ -22,7 +22,7 @@ impl Game<'_> {
     /// bucket: the block outline or a source fluid, whichever is nearer. A
     /// waterlogged block is a block hit (its outline is the block's, its
     /// fluid a source); flowing fluid has no shape to pick.
-    pub(super) fn bucket_hit(&self) -> Option<Hit> {
+    pub(in crate::game) fn bucket_hit(&self) -> Option<Hit> {
         let origin = self.aim().map_or([0.0; 3], |(origin, _)| origin);
         let distance = |p: [f64; 3]| {
             (p[0] - origin[0]).powi(2) + (p[1] - origin[1]).powi(2) + (p[2] - origin[2]).powi(2)
@@ -41,7 +41,7 @@ impl Game<'_> {
     /// fluid, or the block beside the clicked face otherwise. Without a part's
     /// answer only water fills a vanilla container. `SolidBucketItem` instead
     /// places like a block item, into a replaceable clicked block.
-    pub(super) fn bucket_target(&mut self, content: BucketContent, hit: &Hit) -> [i32; 3] {
+    pub(in crate::game) fn bucket_target(&mut self, content: BucketContent, hit: &Hit) -> [i32; 3] {
         let [x, y, z] = hit.pos;
         let clicked = self.world.block(x, y, z);
         if content == BucketContent::Powder {
@@ -73,7 +73,7 @@ impl Game<'_> {
     /// which on a dedicated server refuses a non-operator inside the spawn
     /// protection radius (at the block the bucket's own ray met), then
     /// `player.mayUseItemAt` (adventure mode's `can_place_on`).
-    pub(super) fn bucket_use_refused(&self, pos: [i32; 3]) -> bool {
+    pub(in crate::game) fn bucket_use_refused(&self, pos: [i32; 3]) -> bool {
         self.server
             .lan_acting_spawn_protection
             .is_some_and(|radius| self.spawn_protects(radius, self.dim.id(), pos))

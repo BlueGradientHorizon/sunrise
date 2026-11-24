@@ -792,7 +792,7 @@ fn a_carried_body_stops_at_a_wall_and_the_collider_goes_on() {
 #[ignore = "daily"]
 fn a_collider_on_a_collider_passes_the_displacement_on() {
     crate::game::in_own_process(
-        "game::native_colliders_tests::a_collider_on_a_collider_passes_the_displacement_on",
+        "game::server_side::native_colliders_tests::a_collider_on_a_collider_passes_the_displacement_on",
         || {
             with_world(|game| {
                 let (c1, c1_ref) = stand_with_id(game, [8.0, 70.0, 8.0]);

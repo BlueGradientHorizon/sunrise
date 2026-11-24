@@ -9,7 +9,8 @@ use super::native_entity_refs::tests::{run_fresh_cases, with_client_game};
 use crate::game::native_hooks::particle_count_tests::frame_scene;
 use sunrise_assets::resource_source::{Resource, ResourceSource};
 
-const NAME: &str = "game::text_expression_tests::a_packs_text_draws_its_expression_uniforms";
+const NAME: &str =
+    "game::client_side::text_expression_tests::a_packs_text_draws_its_expression_uniforms";
 const CASE: &str = "SUNRISE_TEXT_EXPRESSION_CASE";
 
 /// A pack whose text covers the whole frame with one triangle of each glyph's (a vertex's index

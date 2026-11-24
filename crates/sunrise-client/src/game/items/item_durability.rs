@@ -7,7 +7,7 @@ use sunrise_client::motion::MotionEvent;
 impl Game<'_> {
     /// Run equipment continuations with the acting player installed on the real host.
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn hurt_player_equipment(
+    pub(in crate::game) fn hurt_player_equipment(
         &mut self,
         source: sunrise_world::damage_source::DamageTypeId,
         amount: f32,
@@ -242,7 +242,7 @@ impl Game<'_> {
             }
         }
     }
-    pub(super) fn damage_held(&mut self, amount: u32) {
+    pub(in crate::game) fn damage_held(&mut self, amount: u32) {
         self.damage_held_in_slot(
             amount,
             sunrise_core::equipment_slot::EquipmentSlot::MainHand,
@@ -250,7 +250,7 @@ impl Game<'_> {
     }
     /// Hurt the acting hand's stack through ordinary wear/criterion/break handling,
     /// reporting its break in the caller's explicit equipment slot.
-    pub(super) fn damage_held_in_slot(
+    pub(in crate::game) fn damage_held_in_slot(
         &mut self,
         amount: u32,
         break_slot: sunrise_core::equipment_slot::EquipmentSlot,
@@ -263,7 +263,7 @@ impl Game<'_> {
 
     /// Apply wear and its ordinary break effects, returning the pre-wear stack
     /// on a break. Mining reports that snapshot only after the block's drops.
-    pub(super) fn apply_held_damage(
+    pub(in crate::game) fn apply_held_damage(
         &mut self,
         amount: u32,
         break_slot: sunrise_core::equipment_slot::EquipmentSlot,
@@ -298,7 +298,7 @@ impl Game<'_> {
     }
     /// `ItemStack.hurtWithoutBreaking`: Unbreaking applies, but the stack stops at
     /// one point of durability left instead of breaking.
-    pub(super) fn hurt_held_without_breaking(&mut self, amount: u32) {
+    pub(in crate::game) fn hurt_held_without_breaking(&mut self, amount: u32) {
         if self.creative {
             return;
         }

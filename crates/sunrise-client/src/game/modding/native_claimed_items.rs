@@ -11,7 +11,7 @@ use std::sync::Arc;
 pub(crate) const RAYCAST_MAX: f32 = 1024.0;
 
 /// Client input captured by a main-hand item behavior, not a living entity's item use.
-pub(super) struct ActiveClientItemUse {
+pub(in crate::game) struct ActiveClientItemUse {
     mod_id: &'static str,
     mod_index: usize,
     behavior: Arc<dyn ClientItemUseBehavior>,
@@ -25,12 +25,12 @@ pub(super) struct ActiveClientItemUse {
 
 impl Game<'_> {
     /// The first block along the view within `distance` (at most 1024), in loaded chunks only; `None` on a miss.
-    pub(super) fn raycast(&self, distance: f32) -> Option<mod_api::Hit> {
+    pub(in crate::game) fn raycast(&self, distance: f32) -> Option<mod_api::Hit> {
         let (d, hit) = self.view_hit()?;
         (d <= distance.clamp(0.0, RAYCAST_MAX)).then_some(hit)
     }
     /// The first block along the view within `RAYCAST_MAX`, in loaded chunks only, and its distance; `None` on a miss.
-    pub(super) fn view_hit(&self) -> Option<(f32, mod_api::Hit)> {
+    pub(in crate::game) fn view_hit(&self) -> Option<(f32, mod_api::Hit)> {
         self.player.as_ref()?;
         let eye = self.eye_position()?;
         let dir = super::view_vector(self.yaw, self.pitch);

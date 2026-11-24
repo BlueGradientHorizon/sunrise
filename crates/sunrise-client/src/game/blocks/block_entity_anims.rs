@@ -28,10 +28,10 @@ use sunrise_core::{
 /// The handle of the local player among a bell's gathered entities.
 const PLAYER: u64 = u64::MAX;
 
-pub(super) use sunrise_gameplay::container_openers::recheck_opener_count;
+pub(in crate::game) use sunrise_gameplay::container_openers::recheck_opener_count;
 
 /// What a client tick of the animated block entities shares between them.
-pub(super) struct AnimTick {
+pub(in crate::game) struct AnimTick {
     /// The conduits' frame blocks, copied when the first of them ticks.
     frames: Option<std::collections::HashSet<String>>,
 }
@@ -100,12 +100,20 @@ impl Game<'_> {
     /// on both halves of a double chest (`CompoundContainer`). True when the
     /// count went from 0 to 1 or back to 0: the only moments the container
     /// plays its open or close sound.
-    pub(super) fn container_opener_event(&mut self, key: (i32, i32, i32), open: bool) -> bool {
+    pub(in crate::game) fn container_opener_event(
+        &mut self,
+        key: (i32, i32, i32),
+        open: bool,
+    ) -> bool {
         // Spectators never count as openers.
         !self.spectator() && self.container_openers_changed(key, open)
     }
     /// `container_opener_event` for a player who is not a spectator (a guest).
-    pub(super) fn container_openers_changed(&mut self, key: (i32, i32, i32), open: bool) -> bool {
+    pub(in crate::game) fn container_openers_changed(
+        &mut self,
+        key: (i32, i32, i32),
+        open: bool,
+    ) -> bool {
         // Declared containers use their own counter, even on a lid-bearing template.
         if self.mod_menu_at(key).is_some() {
             return false;
@@ -252,7 +260,7 @@ impl Game<'_> {
     }
     /// `ShulkerBoxBlock.canOpen`: a closed box opens only when its lid has
     /// room to rise (`level.noCollision` of the half-open lid box).
-    pub(super) fn shulker_can_open(&self, pos: [i32; 3]) -> bool {
+    pub(in crate::game) fn shulker_can_open(&self, pos: [i32; 3]) -> bool {
         let state = self.world.block(pos[0], pos[1], pos[2]).0;
         let Some(Ticker::Shulker { facing }) = self.be_anims.ticker(state) else {
             return true;
@@ -358,7 +366,7 @@ impl Game<'_> {
     }
 
     /// The server tickers of the bells and conduits, which a server runs in its block-entity pass.
-    pub(super) fn tick_block_entity_servers(&mut self) {
+    pub(in crate::game) fn tick_block_entity_servers(&mut self) {
         self.tick_conduit_servers();
         self.tick_bell_servers();
     }
@@ -378,7 +386,7 @@ impl Game<'_> {
     /// The start of a client tick of the animated block entities: forgets the state of those
     /// gone (no longer the object that owned it), and of decorated pots whose block is gone. A
     /// pot is no block entity here and has no ticker, so its wobble lives with its block.
-    pub(super) fn begin_block_entity_anims(&mut self) -> AnimTick {
+    pub(in crate::game) fn begin_block_entity_anims(&mut self) -> AnimTick {
         let world = &self.world;
         self.be_anims.retain_owned(
             |p, g| world.block_entities.generation(&(p[0], p[1], p[2])) == Some(g),
@@ -388,7 +396,7 @@ impl Game<'_> {
     }
     /// The client ticker of the animated block entity at `pos` (`ClientLevel.tickBlockEntities`),
     /// in the ticker list's order with every other client ticker.
-    pub(super) fn tick_block_entity_anim(
+    pub(in crate::game) fn tick_block_entity_anim(
         &mut self,
         pos: [i32; 3],
         ticker: Ticker,
@@ -492,7 +500,7 @@ impl Game<'_> {
         }
     }
     /// The end of the tick: the lids' collision snapshot.
-    pub(super) fn finish_block_entity_anims(&mut self) {
+    pub(in crate::game) fn finish_block_entity_anims(&mut self) {
         // The lids' grown boxes collide and push in their turns (`tick_block_entity_anim`): a
         // client of a server owns its own player's position, so the server's
         // `moveCollidedEntities` alone would be undone by the client's next
@@ -665,7 +673,7 @@ impl Game<'_> {
         });
     }
     /// `Entity.isInRain`: rain at the block position or at the top of the box.
-    pub(super) fn in_rain(&mut self, at: Vec3, top: f64) -> bool {
+    pub(in crate::game) fn in_rain(&mut self, at: Vec3, top: f64) -> bool {
         // A server's client has no live biome features to ask: it answers from
         // the chunks and the weather it was sent.
         if self.remote.is_some() {
@@ -677,7 +685,7 @@ impl Game<'_> {
     /// [`Self::in_rain`] read without the level access (no snapshot, no flushes): a server's
     /// client asks the chunks and weather it was sent, single player the side's read-only
     /// `Level.isRainingAt`.
-    pub(super) fn rain_falls_on(&self, at: Vec3, top: f64) -> bool {
+    pub(in crate::game) fn rain_falls_on(&self, at: Vec3, top: f64) -> bool {
         use sunrise_client::motion::SideLevel;
         let (p, up) = rain_positions(at, top);
         if self.remote.is_some() {
@@ -810,7 +818,7 @@ impl Game<'_> {
     /// which `/data get block` and the chunk save read; the cooldown an entry
     /// started runs out, and every 2400 ticks `triggerCooldown` sends its
     /// block event.
-    pub(super) fn tick_end_gateway(&mut self, pos: (i32, i32, i32)) {
+    pub(in crate::game) fn tick_end_gateway(&mut self, pos: (i32, i32, i32)) {
         let key = [pos.0, pos.1, pos.2];
         let initial = self.gateway_loaded(key);
         let server = self.be_anims.gateway_servers.entry(key).or_insert(initial);
@@ -833,7 +841,7 @@ impl Game<'_> {
         }
     }
     /// Whether the gateway at `pos` can be entered (`!isCoolingDown`).
-    pub(super) fn gateway_available(&self, pos: [i32; 3]) -> bool {
+    pub(in crate::game) fn gateway_available(&self, pos: [i32; 3]) -> bool {
         self.be_anims
             .gateway_servers
             .get(&pos)
@@ -845,7 +853,7 @@ impl Game<'_> {
 
     /// `EndGatewayBlock.entityInside` on the server: whether the gateway at
     /// `pos` let the entity in (`triggerCooldown`, with its block event).
-    pub(super) fn gateway_enter(&mut self, pos: [i32; 3]) -> bool {
+    pub(in crate::game) fn gateway_enter(&mut self, pos: [i32; 3]) -> bool {
         let initial = self.gateway_loaded(pos);
         let entered = self
             .be_anims
@@ -895,7 +903,7 @@ impl Game<'_> {
     }
     /// The renderer's view of the block entity at `pos`, with a decorated
     /// pot's saved `sherds` (back, left, right, front).
-    pub(super) fn block_anim(&self, pos: [i32; 3], partial: f32) -> BlockAnim {
+    pub(in crate::game) fn block_anim(&self, pos: [i32; 3], partial: f32) -> BlockAnim {
         let state = self.world.block(pos[0], pos[1], pos[2]);
         // A replacement may draw before its first ConduitBlockEntity.clientTick.
         if matches!(self.be_anims.ticker(state.0), Some(Ticker::Conduit))
@@ -925,18 +933,18 @@ impl Game<'_> {
             .block_anim(pos, self.world.game_time, partial, sherds)
     }
     /// The client chest ticker, also used when replaying a moved chest.
-    pub(super) fn tick_chest_lid(&mut self, pos: [i32; 3]) {
+    pub(in crate::game) fn tick_chest_lid(&mut self, pos: [i32; 3]) {
         self.be_anims.chests.entry(pos).or_default().tick();
     }
     /// `ChestLidController.getOpenness(partial)` at `pos`.
-    pub(super) fn chest_lid(&self, pos: [i32; 3], partial: f32) -> f32 {
+    pub(in crate::game) fn chest_lid(&self, pos: [i32; 3], partial: f32) -> f32 {
         self.be_anims.lid(pos, partial)
     }
     /// `SkullBlockRenderer.getPlayerSkin`: the skin sprite of the profile of
     /// the player head at `pos`. The skin download is started here; while it
     /// is in flight (or when it cannot be got) the profile's default skin
     /// stands in. A head with no profile answers None: `SKIN_BY_TYPE`.
-    pub(super) fn skull_skin_at(&self, pos: [i32; 3]) -> Option<String> {
+    pub(in crate::game) fn skull_skin_at(&self, pos: [i32; 3]) -> Option<String> {
         let Some(BlockEntity::Skull(skull)) =
             self.world.block_entities.get(&(pos[0], pos[1], pos[2]))
         else {

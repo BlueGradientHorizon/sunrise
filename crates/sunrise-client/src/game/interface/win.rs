@@ -13,7 +13,7 @@ use winit::keyboard::KeyCode;
 
 /// What closing the screen does (`WinScreen.onFinished`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum Finish {
+pub(in crate::game) enum Finish {
     /// `PERFORM_RESPAWN` sent to the server.
     RemoteRespawn,
     /// Back to Credits & Attribution.
@@ -21,14 +21,14 @@ pub(super) enum Finish {
     /// Back to the game (`sunrise-ctl credits`).
     Closed,
 }
-pub(super) struct Win {
+pub(in crate::game) struct Win {
     screen: WinScreen,
     finish: Finish,
     /// The last drawn frame, for the scroll's game-time delta.
     frame: Instant,
 }
 impl Game<'_> {
-    pub(super) fn open_win_screen(&mut self, poem: bool, finish: Finish) {
+    pub(in crate::game) fn open_win_screen(&mut self, poem: bool, finish: Finish) {
         let screen = WinScreen::new(
             poem,
             &self.pack.source,
@@ -45,16 +45,16 @@ impl Game<'_> {
         self.capture(false);
     }
     /// Stop the scroll `scroll` pixels in (`sunrise-ctl credits ... SCROLL`).
-    pub(super) fn hold_win_screen(&mut self, scroll: f32) {
+    pub(in crate::game) fn hold_win_screen(&mut self, scroll: f32) {
         if let Some(win) = self.client.win.as_mut() {
             win.screen.hold(scroll);
         }
     }
     /// `WinScreen.isPauseScreen`: only the credits without the poem pause.
-    pub(super) fn win_screen_pauses(&self) -> bool {
+    pub(in crate::game) fn win_screen_pauses(&self) -> bool {
         self.client.win.as_ref().is_some_and(|w| !w.screen.poem)
     }
-    pub(super) fn draw_win_screen(&mut self, batch: &mut HudBatch) {
+    pub(in crate::game) fn draw_win_screen(&mut self, batch: &mut HudBatch) {
         let Some(win) = self.client.win.as_mut() else {
             self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
             self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
@@ -91,7 +91,7 @@ impl Game<'_> {
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
     }
     /// `WinScreen.keyPressed` / `keyReleased`; Escape closes it (`onClose`).
-    pub(super) fn win_key(&mut self, code: KeyCode, pressed: bool) -> Result<bool> {
+    pub(in crate::game) fn win_key(&mut self, code: KeyCode, pressed: bool) -> Result<bool> {
         if code == KeyCode::Escape && pressed {
             self.close_win_screen()?;
             return Ok(true);
@@ -106,7 +106,7 @@ impl Game<'_> {
         Ok(false)
     }
     /// `WinScreen.tick`: done once everything has rolled past the top.
-    pub(super) fn tick_win_screen(&mut self) -> Result<()> {
+    pub(in crate::game) fn tick_win_screen(&mut self) -> Result<()> {
         let height = self.gui_size().1;
         if self
             .client
@@ -119,7 +119,7 @@ impl Game<'_> {
         Ok(())
     }
     /// `WinScreen.respawn` (`onFinished`) and `removed`: the credits music stops.
-    pub(super) fn close_win_screen(&mut self) -> Result<()> {
+    pub(in crate::game) fn close_win_screen(&mut self) -> Result<()> {
         let Some(win) = self.client.win.take() else {
             return Ok(());
         };

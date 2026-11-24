@@ -54,7 +54,7 @@ impl Game<'_> {
         self.native_nonliving_invulnerable(id, kind, source, vanilla)
     }
     /// A player's body, where it is kept now.
-    pub(super) fn native_player_body(
+    pub(in crate::game) fn native_player_body(
         &self,
         t: Target,
     ) -> Option<&sunrise_client::motion::PlayerMotion> {
@@ -64,7 +64,7 @@ impl Game<'_> {
             _ => None,
         }
     }
-    pub(super) fn native_player_body_mut(
+    pub(in crate::game) fn native_player_body_mut(
         &mut self,
         t: Target,
     ) -> Option<&mut sunrise_client::motion::PlayerMotion> {
@@ -82,7 +82,10 @@ impl Game<'_> {
     /// keeps no such field yet), the other kinds in the saved `Invulnerable`
     /// tag of their entity data (#916) — the tag the item damage path
     /// already refuses by.
-    pub(super) fn entity_permanently_invulnerable(&self, entity: EntityRef) -> Option<bool> {
+    pub(in crate::game) fn entity_permanently_invulnerable(
+        &self,
+        entity: EntityRef,
+    ) -> Option<bool> {
         match self.native_entity_target(entity)? {
             Target::Mob(id) => Some(self.mobs.iter().find(|m| m.id == id)?.invulnerable_flag),
             t @ (Target::Player | Target::Guest(_)) => {
@@ -95,7 +98,7 @@ impl Game<'_> {
     /// [`entity_permanently_invulnerable`](Self::entity_permanently_invulnerable):
     /// a mob's flag (saved with it), a player's body, the saved tag for the
     /// other kinds. False where the entity is gone.
-    pub(super) fn entity_set_invulnerable(
+    pub(in crate::game) fn entity_set_invulnerable(
         &mut self,
         entity: EntityRef,
         invulnerable: bool,
@@ -151,7 +154,7 @@ impl Game<'_> {
     /// cooldown — and the saved `invulnerable_time` tag for the other kinds.
     /// Counted down by the base tick; `isTemporarilyInvulnerable` is it above
     /// zero. None for a stale handle or a kind that keeps none.
-    pub(super) fn entity_invulnerable_time(&self, entity: EntityRef) -> Option<i32> {
+    pub(in crate::game) fn entity_invulnerable_time(&self, entity: EntityRef) -> Option<i32> {
         match self.native_entity_target(entity)? {
             Target::Mob(id) => Some(self.mobs.iter().find(|m| m.id == id)?.invulnerable_time),
             t @ (Target::Player | Target::Guest(_)) => {
@@ -163,7 +166,11 @@ impl Game<'_> {
     /// `Entity.setInvulnerableTime` (#916): the write side of
     /// [`native_entity_invulnerable_time`](Self::native_entity_invulnerable_time).
     /// False where the entity is gone or keeps no such field.
-    pub(super) fn entity_set_invulnerable_time(&mut self, entity: EntityRef, ticks: i32) -> bool {
+    pub(in crate::game) fn entity_set_invulnerable_time(
+        &mut self,
+        entity: EntityRef,
+        ticks: i32,
+    ) -> bool {
         let ticks = ticks.max(0);
         match self.native_entity_target(entity) {
             Some(Target::Mob(id)) => match self.mobs.iter_mut().find(|m| m.id == id) {
@@ -187,7 +194,7 @@ impl Game<'_> {
     /// A non-mob kind's saved invulnerability (#916), the one parse of its
     /// entity data: the `Invulnerable` flag and the `invulnerable_time`
     /// window. `(false, 0)` where its data has neither.
-    pub(super) fn saved_invulnerability(&self, id: u32) -> (bool, i32) {
+    pub(in crate::game) fn saved_invulnerability(&self, id: u32) -> (bool, i32) {
         use sunrise_core::nbt::Tag;
         match self.persist.raw.get(&id) {
             Some(Tag::Compound(map)) => (
@@ -311,7 +318,7 @@ impl Game<'_> {
     /// is stale; `false` means the hurt was refused, including for a kind that
     /// cannot be hurt or an unregistered damage type. Stale direct/causing
     /// handles are treated as absent sources.
-    pub(super) fn entity_hurt(
+    pub(in crate::game) fn entity_hurt(
         &mut self,
         entity: EntityRef,
         damage_type: &str,
@@ -334,7 +341,7 @@ impl Game<'_> {
     /// `#bypasses_invulnerability` gets past. None for a stale handle or a
     /// kind with no such decision (the player's paths answer their refusals
     /// at hurt time).
-    pub(super) fn entity_invulnerable_to_damage(
+    pub(in crate::game) fn entity_invulnerable_to_damage(
         &self,
         entity: EntityRef,
         damage_type: &str,
@@ -387,7 +394,7 @@ impl Game<'_> {
     /// (`Player.canHarmPlayer`, `Team.allowFriendlyFire`,
     /// `DamageSource.doTeamsAllowDamage`): allies without friendly fire
     /// cannot. Entities without a team always can. None for a stale handle.
-    pub(super) fn entity_entities_team_damage_allowed(
+    pub(in crate::game) fn entity_entities_team_damage_allowed(
         &self,
         entity: EntityRef,
         source: EntityRef,
@@ -399,7 +406,7 @@ impl Game<'_> {
 
     /// The team an entity is on: a mob's own or its tamed owner's, the
     /// acting player's, a guest's by name.
-    pub(super) fn native_target_team(
+    pub(in crate::game) fn native_target_team(
         &self,
         t: Target,
     ) -> Option<Option<&sunrise_client_core::scoreboard::Team>> {
@@ -419,7 +426,10 @@ impl Game<'_> {
     /// `Entity.invulnerableTime` keeps open — a mob's own fields, a player's
     /// health, the saved tags for the other kinds (#916). None for a stale
     /// handle.
-    pub(super) fn entity_invulnerable_to_piercing_weapon(&self, entity: EntityRef) -> Option<bool> {
+    pub(in crate::game) fn entity_invulnerable_to_piercing_weapon(
+        &self,
+        entity: EntityRef,
+    ) -> Option<bool> {
         match self.native_entity_target(entity)? {
             Target::Mob(id) => Some(self.mobs.iter().find(|m| m.id == id)?.is_invulnerable()),
             t @ (Target::Player | Target::Guest(_)) => {
@@ -440,7 +450,7 @@ impl Game<'_> {
     /// `LivingEntity.damageCooldownTime`: 20 after a hit, counting down;
     /// while it is above 10 a hit does only what it deals beyond the last
     /// one. Mobs and players.
-    pub(super) fn entity_damage_cooldown_time(&self, entity: EntityRef) -> Option<i32> {
+    pub(in crate::game) fn entity_damage_cooldown_time(&self, entity: EntityRef) -> Option<i32> {
         match self.native_entity_target(entity)? {
             Target::Mob(id) => Some(self.mobs.iter().find(|m| m.id == id)?.invulnerable),
             t => Some(self.native_player_body(t)?.health.hurt.cooldown),
@@ -448,7 +458,7 @@ impl Game<'_> {
     }
     /// Sets `LivingEntity.damageCooldownTime`, as mods do to let rapid hits
     /// through (0). Mobs and players.
-    pub(super) fn entity_set_damage_cooldown_time(
+    pub(in crate::game) fn entity_set_damage_cooldown_time(
         &mut self,
         entity: EntityRef,
         ticks: i32,

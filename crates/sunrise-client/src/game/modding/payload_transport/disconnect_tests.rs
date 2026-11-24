@@ -15,7 +15,7 @@ use sunrise_protocol::{
     packets::{configuration as cfg, play},
 };
 
-const NAME: &str = "game::payload_transport::disconnect_tests::a_payload_handler_disconnects_once_and_the_poll_logs_out_once";
+const NAME: &str = "game::client_side::payload_transport::disconnect_tests::a_payload_handler_disconnects_once_and_the_poll_logs_out_once";
 const CHANNEL: &str = "disconnect_probe:kick";
 const PLAYERS: [&str; 2] = ["SenderOne", "SenderTwo"];
 const REASONS: [&str; 2] = [

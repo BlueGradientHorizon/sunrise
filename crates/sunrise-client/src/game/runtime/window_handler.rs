@@ -10,7 +10,7 @@ impl Game<'_> {
     /// and pad at this computer don't reach the game (`locks_out`, `poll_pads`), the window's
     /// focus stays as the run found it (`held_focus`) and its pointer grab stays inside the game
     /// (`internal_grab`).
-    pub(super) fn scripted_run(&self) -> bool {
+    pub(in crate::game) fn scripted_run(&self) -> bool {
         self.screenshot_sequence.is_some()
             || self.client.tick_script.playing()
             || self.repro.replaying()
@@ -110,7 +110,7 @@ fn held_modifiers(
 impl Game<'_> {
     /// winit's `window_event`. The control socket and the pad menu call it too, with the
     /// input they make up.
-    pub(super) fn handle_window_event(
+    pub(in crate::game) fn handle_window_event(
         &mut self,
         event_loop: &dyn EventLoopCtl,
         id: WindowId,
@@ -120,7 +120,7 @@ impl Game<'_> {
         self.handle_window_event_with_sample(event_loop, id, event, origin, None);
     }
 
-    pub(super) fn handle_window_event_with_sample(
+    pub(in crate::game) fn handle_window_event_with_sample(
         &mut self,
         event_loop: &dyn EventLoopCtl,
         id: WindowId,
@@ -140,7 +140,7 @@ impl Game<'_> {
         });
     }
 
-    pub(super) fn handle_window_event_as(
+    pub(in crate::game) fn handle_window_event_as(
         &mut self,
         event_loop: &dyn EventLoopCtl,
         id: WindowId,
@@ -279,7 +279,7 @@ impl Game<'_> {
     }
 
     /// The loop ended: close the pads' output, save the world.
-    pub(super) fn shut_down(&mut self) {
+    pub(in crate::game) fn shut_down(&mut self) {
         self.client.client_quit.set(ClientQuit::Stopping);
         self.close_client_tasks();
         if self.error.is_none()
@@ -302,7 +302,7 @@ impl Game<'_> {
 
     /// winit's `about_to_wait`: what happens between frames (stop requests, the closing
     /// save, world entry, the control socket, pads), then the next frame.
-    pub(super) fn idle(&mut self, event_loop: &dyn EventLoopCtl) {
+    pub(in crate::game) fn idle(&mut self, event_loop: &dyn EventLoopCtl) {
         let quit_requested = match self.client.client_quit.get() {
             ClientQuit::Running => sunrise_threads::stop_requests() > 0,
             ClientQuit::Requested => true,

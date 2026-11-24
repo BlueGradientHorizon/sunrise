@@ -12,7 +12,7 @@ use sunrise_items::items::ItemStack;
 impl Game<'_> {
     /// Whether vanilla could make an item entity of `stack`: not empty
     /// (`ItemStack.isEmpty`) and of an item the registry has.
-    pub(super) fn stack_spawns(&self, stack: &ItemStack) -> bool {
+    pub(in crate::game) fn stack_spawns(&self, stack: &ItemStack) -> bool {
         stack.count > 0
             && &*stack.item != "minecraft:air"
             && self.res.items().get(&stack.item).is_some()
@@ -45,7 +45,7 @@ impl Game<'_> {
     /// empty stack or an unknown item, with the `block_drops` rule off, on a client,
     /// for a stale handle, a level not in place, once the entity ids run out (the level random is
     /// not drawn from), or an item a mod kept out (`native_entity_join_level`).
-    pub(super) fn level_pop_resource(
+    pub(in crate::game) fn level_pop_resource(
         &mut self,
         level: LevelRef,
         pos: [i32; 3],
@@ -75,7 +75,7 @@ impl Game<'_> {
     /// spawned, for an empty stack or an unknown item, a value that isn't
     /// finite, on a client, for a stale handle, a level not in place, or an
     /// item a mod kept out (`native_entity_join_level`).
-    pub(super) fn level_spawn_item(
+    pub(in crate::game) fn level_spawn_item(
         &mut self,
         level: LevelRef,
         x: f64,
@@ -91,7 +91,7 @@ impl Game<'_> {
     /// deltaX, deltaY, deltaZ)`, and the same `pickup_delay` ticks before it
     /// can be picked up (`ItemEntity.setPickupDelay`). None in the same
     /// cases, and for a motion that isn't finite.
-    pub(super) fn level_spawn_item_with_motion(
+    pub(in crate::game) fn level_spawn_item_with_motion(
         &mut self,
         level: LevelRef,
         x: f64,
@@ -135,7 +135,7 @@ impl Game<'_> {
     /// one out (`native_entity_join_level`). False, with no orbs, for 0, a
     /// value that isn't finite, on a client, for a stale handle or a level
     /// not in place.
-    pub(super) fn level_award_experience(
+    pub(in crate::game) fn level_award_experience(
         &mut self,
         level: LevelRef,
         x: f64,

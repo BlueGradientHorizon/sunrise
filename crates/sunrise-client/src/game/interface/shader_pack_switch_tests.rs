@@ -4,7 +4,8 @@
 use super::native_entity_refs::tests::{run_fresh_cases, with_client_game};
 use crate::game::native_hooks::particle_count_tests::frame_scene;
 
-const NAME: &str = "game::shader_pack_switch_tests::a_packs_separate_ao_reaches_the_terrain";
+const NAME: &str =
+    "game::client_side::shader_pack_switch_tests::a_packs_separate_ao_reaches_the_terrain";
 const CASE: &str = "SUNRISE_SHADER_PACK_SWITCH_CASE";
 
 const VERTEX: &str = "#version 120\nvarying vec4 glcolor;\nvoid main() {\n    gl_Position = ftransform();\n    glcolor = gl_Color;\n}\n";

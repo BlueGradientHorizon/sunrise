@@ -19,7 +19,7 @@ const SLOTS: usize = 27;
 
 impl Game<'_> {
     /// Lend `PlayerEnderChestContainer.getItem` over the live or saved slots.
-    pub(super) fn player_ender_chest(
+    pub(in crate::game) fn player_ender_chest(
         &self,
         player: PlayerRef,
         read: &mut dyn for<'a> FnMut(InventoryView<'a>),
@@ -49,7 +49,7 @@ impl Game<'_> {
     }
 
     /// `PlayerEnderChestContainer.setItem`, in the player's turn.
-    pub(super) fn player_set_ender_chest_slot(
+    pub(in crate::game) fn player_set_ender_chest_slot(
         &mut self,
         player: PlayerRef,
         slot: u32,
@@ -84,7 +84,7 @@ impl Game<'_> {
     /// `PlayerEnderChestContainer`, with no active chest. Inside the player's own turn their
     /// ender chest is in `Game` and their record holds the outer player's, so the menu waits
     /// for the turn's end (`open_turn_ender_menus`), as a block's menu the turn opened does.
-    pub(super) fn player_open_ender_chest(
+    pub(in crate::game) fn player_open_ender_chest(
         &mut self,
         player: PlayerRef,
         title: Text,

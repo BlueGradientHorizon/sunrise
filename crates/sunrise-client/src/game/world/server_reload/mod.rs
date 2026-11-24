@@ -13,19 +13,19 @@ use mod_api::{
 };
 use sunrise_client::datapack::DataStore;
 
-pub(super) type PreparedReload = PreparedStep<Box<DataStore>>;
+pub(in crate::game) type PreparedReload = PreparedStep<Box<DataStore>>;
 
 use mod_api::__private::reload::PreparedStep;
 
 /// Everything one successful reload publishes: its apply steps, then the
 /// retained listeners' store.
-pub(super) struct PreparedServerReload {
-    pub(super) steps: Vec<PreparedReload>,
-    pub(super) retained: Vec<RetainedEntry>,
-    pub(super) loot: std::sync::Arc<mod_api::GlobalLootModifierManager>,
+pub(in crate::game) struct PreparedServerReload {
+    pub(in crate::game) steps: Vec<PreparedReload>,
+    pub(in crate::game) retained: Vec<RetainedEntry>,
+    pub(in crate::game) loot: std::sync::Arc<mod_api::GlobalLootModifierManager>,
 }
 impl PreparedServerReload {
-    pub(super) fn bind_loot(&self, world: &super::PreparedWorldReload) {
+    pub(in crate::game) fn bind_loot(&self, world: &super::PreparedWorldReload) {
         if let Some(tables) = &world.tables {
             self.loot.bind_from(&tables.loot_modifier_manager);
         }
@@ -54,7 +54,7 @@ impl PackStack {
 }
 
 impl Game<'_> {
-    pub(super) fn prepare_server_reload(
+    pub(in crate::game) fn prepare_server_reload(
         &self,
         stack: &PackStack,
     ) -> Result<PreparedServerReload, ReloadStageError> {
@@ -86,7 +86,7 @@ impl Game<'_> {
             loot,
         })
     }
-    pub(super) fn apply_server_reload(
+    pub(in crate::game) fn apply_server_reload(
         &mut self,
         prepared: PreparedServerReload,
         stack: &PackStack,
@@ -110,7 +110,7 @@ impl Game<'_> {
         self.server.structure_templates.clear();
     }
     /// The retained server reload listeners of the last successful reload.
-    pub(super) fn reload_resources(&self) -> &dyn ServerReloadResources {
+    pub(in crate::game) fn reload_resources(&self) -> &dyn ServerReloadResources {
         &self.reload_resources
     }
 }

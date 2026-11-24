@@ -13,7 +13,7 @@ use sunrise_protocol::entity_data::{PaintingHolder, Value};
 
 /// `Mth.rotLerp(alpha, from, to)`: `from` turned `alpha` of the way to `to` by
 /// the shorter arc (`wrapDegrees` of the difference).
-pub(super) fn rot_lerp(alpha: f32, from: f32, to: f32) -> f32 {
+pub(in crate::game) fn rot_lerp(alpha: f32, from: f32, to: f32) -> f32 {
     let mut d = (to - from) % 360.0;
     if d >= 180.0 {
         d -= 360.0;
@@ -25,7 +25,7 @@ pub(super) fn rot_lerp(alpha: f32, from: f32, to: f32) -> f32 {
 
 /// One `LinearInterpolationHandler` step of a yaw with `steps` ticks left:
 /// a `1 / steps` share of the way to `target`, so the last step lands on it.
-pub(super) fn lerp_yaw_step(yaw: f32, target: f32, steps: u32) -> f32 {
+pub(in crate::game) fn lerp_yaw_step(yaw: f32, target: f32, steps: u32) -> f32 {
     if steps == 0 {
         yaw
     } else {
@@ -37,7 +37,7 @@ impl Game<'_> {
     /// `handleAddEntity` for an object type; false when `kind` isn't one.
     /// Hanging entities come at their block, with their direction as the
     /// spawn data (`Direction.from3DDataValue`).
-    pub(super) fn spawn_remote_object(
+    pub(in crate::game) fn spawn_remote_object(
         &mut self,
         id: i32,
         kind: &str,
@@ -179,7 +179,7 @@ impl Game<'_> {
     }
 
     /// `handleSetEntityData` for an object: what changes how it looks.
-    pub(super) fn remote_object_data(&mut self, id: i32, values: &[(u8, i32, Value)]) {
+    pub(in crate::game) fn remote_object_data(&mut self, id: i32, values: &[(u8, i32, Value)]) {
         if self.text_displays.contains_key(&id) {
             // ItemDisplay.DATA_ITEM_STACK, read with the server's registries.
             let item = values
@@ -358,7 +358,7 @@ impl Game<'_> {
 
     /// `handleSetEquipment` for an armor stand (`EquipmentSlot` ordinals,
     /// its storage order).
-    pub(super) fn remote_object_equipment(
+    pub(in crate::game) fn remote_object_equipment(
         &mut self,
         id: i32,
         slots: &[(u8, Option<sunrise_protocol::item::Stack>)],
@@ -378,7 +378,12 @@ impl Game<'_> {
     }
 
     /// A move's rotation and ground state for an object.
-    pub(super) fn turn_remote_object(&mut self, id: i32, yaw: Option<f32>, on_ground: bool) {
+    pub(in crate::game) fn turn_remote_object(
+        &mut self,
+        id: i32,
+        yaw: Option<f32>,
+        on_ground: bool,
+    ) {
         let id = id as u32;
         // The boat the player drives turns here (isLocalInstanceAuthoritative).
         let driven = self.riding.filter(|&id| self.controls_boat(id));
@@ -401,7 +406,7 @@ impl Game<'_> {
     }
 
     /// `MinecartTNT.handleEntityEvent(70)`: the client's fuse starts at 80.
-    pub(super) fn remote_cart_primed(&mut self, id: u32) {
+    pub(in crate::game) fn remote_cart_primed(&mut self, id: u32) {
         if let Some(i) = self
             .carts
             .iter()
@@ -415,7 +420,7 @@ impl Game<'_> {
     /// the entity's last sent one, if it has a move in progress. A minecart
     /// on `NewMinecartBehavior` is moved by `lerp_cart` (true when it did)
     /// instead.
-    pub(super) fn tick_remote_objects(
+    pub(in crate::game) fn tick_remote_objects(
         &mut self,
         mut step: impl FnMut(u32, Vec3) -> Vec3,
         mut turn: impl FnMut(u32, f32) -> f32,
@@ -527,7 +532,7 @@ impl Game<'_> {
 
     /// The boats, minecarts, armor stands, item frames and paintings in the
     /// level (a server's client: the ones it was sent), for `status`.
-    pub(super) fn objects_status(&self) -> Vec<serde_json::Value> {
+    pub(in crate::game) fn objects_status(&self) -> Vec<serde_json::Value> {
         use serde_json::json;
         let at = |p: Vec3| [p.x, p.y, p.z];
         let mut out = Vec::new();
@@ -578,7 +583,7 @@ impl Game<'_> {
     /// remove the old level's entities one by one. An orb kept here follows
     /// the player (`ExperienceOrb.tick` on the client) and is never
     /// `playerTouch`ed.
-    pub(super) fn clear_remote_objects(&mut self) {
+    pub(in crate::game) fn clear_remote_objects(&mut self) {
         self.text_displays.clear();
         self.client.interactions.clear();
         self.ominous_spawners.clear();
@@ -593,7 +598,7 @@ impl Game<'_> {
         self.pick_section_clear();
     }
 
-    pub(super) fn remove_remote_object(&mut self, id: u32) {
+    pub(in crate::game) fn remove_remote_object(&mut self, id: u32) {
         self.text_displays.shift_remove(&(id as i32));
         self.client.interactions.remove(&(id as i32));
         self.ominous_spawners.retain(|s| s.id != id);

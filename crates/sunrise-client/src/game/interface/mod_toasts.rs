@@ -11,15 +11,15 @@ use sunrise_client::{
 };
 use sunrise_client_lib::api_text::to_engine;
 
-pub(super) struct Pending {
-    pub(super) toast: SystemToast,
+pub(in crate::game) struct Pending {
+    pub(in crate::game) toast: SystemToast,
     kind: Option<Identifier>,
     icon: Option<Icon>,
 }
 
-pub(super) struct Entry {
-    pub(super) request: Pending,
-    pub(super) layout: SystemToastLayout,
+pub(in crate::game) struct Entry {
+    pub(in crate::game) request: Pending,
+    pub(in crate::game) layout: SystemToastLayout,
 }
 
 enum Icon {
@@ -60,7 +60,7 @@ impl Game<'_> {
         Ok(())
     }
 
-    pub(super) fn admit_mod_toasts(&mut self) {
+    pub(in crate::game) fn admit_mod_toasts(&mut self) {
         // Take one snapshot before invoking listeners. A request from toast_add is
         // for the next update, not a recursive add or part of this snapshot.
         for mut request in std::mem::take(self.client.toast_manager.pending_mod.get_mut()) {
@@ -92,7 +92,7 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn draw_mod_toast(&self, batch: &mut HudBatch, entry: &Entry, slot: usize) {
+    pub(in crate::game) fn draw_mod_toast(&self, batch: &mut HudBatch, entry: &Entry, slot: usize) {
         let atlas = &self.gui.atlas;
         let [x, y] = entry
             .request

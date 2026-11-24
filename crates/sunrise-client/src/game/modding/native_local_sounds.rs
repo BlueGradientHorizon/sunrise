@@ -29,12 +29,12 @@ impl Change {
 
 /// Client mods' sounds: those asked for since the last audio update, the changes asked of
 /// them, and each started one's engine instance by its handle.
-pub(super) struct ModSounds {
+pub(in crate::game) struct ModSounds {
     /// The last handle given; handles are never reused.
     last: Cell<u64>,
     /// Sounds asked for (`play_local_sound`), with their handle and the ticks each
     /// waits, until the next audio update plays them (`apply_mod_sounds`).
-    pub(super) queued: RefCell<Vec<(u64, SoundPlay, u32)>>,
+    pub(in crate::game) queued: RefCell<Vec<(u64, SoundPlay, u32)>>,
     /// Stops, fades, moves and pitch changes asked for since the last audio update, in order.
     changes: RefCell<Vec<(u64, Change)>>,
     /// Each started sound's engine instance, until the engine lets it go.
@@ -52,17 +52,17 @@ impl Default for ModSounds {
 }
 impl ModSounds {
     /// Queues `sound` to start at the next audio update, `after` ticks from then.
-    pub(super) fn queue(&self, sound: &SoundPlay, after: u32) -> SoundRef {
+    pub(in crate::game) fn queue(&self, sound: &SoundPlay, after: u32) -> SoundRef {
         let id = self.last.get() + 1;
         self.last.set(id);
         self.queued.borrow_mut().push((id, sound.clone(), after));
         sound_ref(id)
     }
-    pub(super) fn pending_checkpoint(&self) -> (usize, usize) {
+    pub(in crate::game) fn pending_checkpoint(&self) -> (usize, usize) {
         (self.queued.borrow().len(), self.changes.borrow().len())
     }
 
-    pub(super) fn discard_pending_since(&self, (plays, changes): (usize, usize)) {
+    pub(in crate::game) fn discard_pending_since(&self, (plays, changes): (usize, usize)) {
         self.queued.borrow_mut().truncate(plays);
         self.changes.borrow_mut().truncate(changes);
         // Do not rewind `last`: a mod might have retained a handle to a discarded play.
@@ -71,7 +71,7 @@ impl ModSounds {
     /// Forgets every mod sound: the queued plays, the changes asked of them and the started
     /// ones' instances, as a level change stops every sound. Their handles read `Stopped`;
     /// handles are still never reused.
-    pub(super) fn clear(&mut self) {
+    pub(in crate::game) fn clear(&mut self) {
         self.queued.get_mut().clear();
         self.changes.get_mut().clear();
         self.started.clear();
@@ -83,7 +83,7 @@ impl Game<'_> {
     /// and fades, and forgets the instances the engine let go. A play stopped (or faded to 0 at
     /// once) before this update never reaches the engine. Called from the audio update
     /// (`tick_sound_engine`), before the engine's own tick.
-    pub(super) fn apply_mod_sounds(&mut self) {
+    pub(in crate::game) fn apply_mod_sounds(&mut self) {
         let sounds = &mut self.client.mod_sounds;
         let stopped: Vec<u64> = sounds
             .changes
@@ -122,7 +122,7 @@ impl Game<'_> {
     }
     /// For a client mod: where its sound is. A stop or a fade to 0 at once asked since the last
     /// audio update already reads `Stopped`. None on a server.
-    pub(super) fn sound_state(&self, sound: SoundRef) -> Option<SoundState> {
+    pub(in crate::game) fn sound_state(&self, sound: SoundRef) -> Option<SoundState> {
         if !self.native_window() {
             return None;
         }
@@ -156,7 +156,7 @@ impl Game<'_> {
     /// For a client mod: stops its sound for good at the next audio update. A waiting sound
     /// never starts and a looping one never repeats. False, changing nothing, for a sound that
     /// is already over, and on a server.
-    pub(super) fn sound_stop(&self, sound: SoundRef) -> bool {
+    pub(in crate::game) fn sound_stop(&self, sound: SoundRef) -> bool {
         self.change_mod_sound(sound, Change::Stop)
     }
     /// For a client mod: from the next audio update, its sound's volume moves to `volume` (at
@@ -168,7 +168,7 @@ impl Game<'_> {
     /// a fade up from a `SoundPlay` at volume 0 fades it in. A later fade replaces one in
     /// progress. False, changing nothing, for a volume that isn't a number at or above 0, a sound
     /// that is already over, and on a server.
-    pub(super) fn sound_fade(&self, sound: SoundRef, volume: f32, ticks: u32) -> bool {
+    pub(in crate::game) fn sound_fade(&self, sound: SoundRef, volume: f32, ticks: u32) -> bool {
         if !volume.is_finite() || volume < 0.0 {
             return false;
         }
@@ -178,7 +178,7 @@ impl Game<'_> {
     /// within 30 million of the origin): the same instance, not restarted. False, changing
     /// nothing, for a position that isn't finite or is out of range, a sound that is already
     /// over, and on a server.
-    pub(super) fn sound_move_to(&self, sound: SoundRef, position: [f64; 3]) -> bool {
+    pub(in crate::game) fn sound_move_to(&self, sound: SoundRef, position: [f64; 3]) -> bool {
         if !position
             .iter()
             .all(|v| v.is_finite() && v.abs() <= 30_000_000.0)
@@ -190,7 +190,7 @@ impl Game<'_> {
     /// For a client mod: from the next audio update, its sound plays at `pitch` (at or above
     /// 0, as `SoundPlay`'s): the same instance, not restarted. False, changing nothing, for a
     /// pitch that isn't a number at or above 0, a sound that is already over, and on a server.
-    pub(super) fn sound_set_pitch(&self, sound: SoundRef, pitch: f32) -> bool {
+    pub(in crate::game) fn sound_set_pitch(&self, sound: SoundRef, pitch: f32) -> bool {
         if !pitch.is_finite() || pitch < 0.0 {
             return false;
         }
@@ -213,7 +213,7 @@ impl Game<'_> {
     /// For a client mod: every sound event the client's resources have
     /// (`SoundManager.getAvailableSounds`), sorted. It builds a new list each call: ask from
     /// setup or a settings screen, not every frame. Empty on a server.
-    pub(super) fn sound_events(&self) -> Vec<Identifier> {
+    pub(in crate::game) fn sound_events(&self) -> Vec<Identifier> {
         if !self.native_window() {
             return Vec::new();
         }
@@ -227,7 +227,7 @@ impl Game<'_> {
     /// (`SoundEngine.getAvailableSoundDevices`). Listing them probes every device (tens of
     /// milliseconds on some systems): ask from a settings screen, not every frame. Empty on a
     /// server and where sound is off.
-    pub(super) fn audio_devices(&self) -> Vec<String> {
+    pub(in crate::game) fn audio_devices(&self) -> Vec<String> {
         if !self.native_window() {
             return Vec::new();
         }
@@ -236,7 +236,7 @@ impl Game<'_> {
     /// For a client mod: the output device the options ask for (`Options.soundDevice`), empty
     /// for the system's default. The sound plays on the default when that one can't be opened.
     /// Changing it keeps every mod sound playing, with its handle. Empty on a server.
-    pub(super) fn audio_device(&self) -> String {
+    pub(in crate::game) fn audio_device(&self) -> String {
         if !self.native_window() {
             return String::new();
         }

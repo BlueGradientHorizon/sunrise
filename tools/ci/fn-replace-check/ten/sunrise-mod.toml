@@ -26,7 +26,7 @@ helper = "src/mixins/head.rs"
 
 [[native.mixin]]
 id = "head2"
-target = "sunrise_client::game::lan::Game<'_>::world_spawn_position"
+target = "sunrise_client::game::server_side::lan::Game<'_>::world_spawn_position"
 kind = "HEAD"
 helper = "src/mixins/head.rs"
 
@@ -50,13 +50,13 @@ helper = "src/mixins/head.rs"
 
 [[native.mixin]]
 id = "head6"
-target = "sunrise_client::game::shield::Game<'_>::player_blocking"
+target = "sunrise_client::game::server_side::shield::Game<'_>::player_blocking"
 kind = "HEAD"
 helper = "src/mixins/head.rs"
 
 [[native.mixin]]
 id = "head7"
-target = "sunrise_client::game::respawn_anchor::Game<'_>::beds_destroy_on_use"
+target = "sunrise_client::game::server_side::respawn_anchor::Game<'_>::beds_destroy_on_use"
 kind = "HEAD"
 helper = "src/mixins/head.rs"
 
@@ -68,6 +68,6 @@ helper = "src/mixins/head.rs"
 
 [[native.mixin]]
 id = "head9"
-target = "sunrise_client::game::native_level_refs::Game<'_>::chunk_forced"
+target = "sunrise_client::game::server_side::native_level_refs::Game<'_>::chunk_forced"
 kind = "HEAD"
 helper = "src/mixins/head.rs"

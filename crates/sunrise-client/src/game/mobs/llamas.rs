@@ -71,7 +71,7 @@ impl Game<'_> {
     }
     /// `AbstractChestedHorse.mobInteract` and `AbstractHorse.mobInteract` for
     /// llamas and trader llamas. Returns whether the click was used.
-    pub(super) fn interact_llama(&mut self, index: usize, item: &str) -> bool {
+    pub(in crate::game) fn interact_llama(&mut self, index: usize, item: &str) -> bool {
         let m = &self.mobs[index];
         if !m.alive() || Some(m.id) == self.riding {
             return false;

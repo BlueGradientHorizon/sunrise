@@ -22,7 +22,7 @@ impl Game<'_> {
     /// Run a player sleep write in the authoritative body. An acting player's
     /// hub record is displaced until its turn ends; only inactive guests enter
     /// another turn, in the level already in place. Fake players never sleep.
-    pub(super) fn native_player_sleep_write(
+    pub(in crate::game) fn native_player_sleep_write(
         &mut self,
         target: Target,
         write: impl FnOnce(&mut Self) -> bool,
@@ -49,7 +49,7 @@ impl Game<'_> {
     /// counted from 0 again the tick after the glide ends. Players (including
     /// inactive guests) and mobs read their own stored body counter. None
     /// for an armor stand or the dragon.
-    pub(super) fn living_gliding_ticks(&self, living: LivingRef) -> Option<i32> {
+    pub(in crate::game) fn living_gliding_ticks(&self, living: LivingRef) -> Option<i32> {
         match self.native_living_read_target(living)? {
             Target::Player => Some(self.player.as_ref()?.fall_fly_ticks),
             Target::Guest(conn) => Some(
@@ -72,7 +72,7 @@ impl Game<'_> {
     /// Paper's `LivingEntity#isGliding`). The player in place and the guests
     /// answer from their fall-flying flag, a mob from its own. None for an
     /// armor stand or the dragon: the game keeps no glide for them.
-    pub(super) fn living_is_gliding(&self, living: LivingRef) -> Option<bool> {
+    pub(in crate::game) fn living_is_gliding(&self, living: LivingRef) -> Option<bool> {
         match self.native_living_read_target(living)? {
             Target::Player => Some(self.player.as_ref()?.fall_flying),
             Target::Guest(conn) => Some(self.command_guest(conn)?.fall_flying),
@@ -89,7 +89,7 @@ impl Game<'_> {
     /// `LivingEntity.startFallFlying`: sets the glide flag, so the next tick glides.
     /// The raw flag write: the caller owns the canGlide checks. True for a player, a
     /// guest or a mob; false for an armor stand or the dragon.
-    pub(super) fn living_start_gliding(&mut self, living: LivingRef) -> bool {
+    pub(in crate::game) fn living_start_gliding(&mut self, living: LivingRef) -> bool {
         match self.native_living_target(living) {
             Some(Target::Player) => {
                 let Some(p) = self.player.as_mut() else {
@@ -119,7 +119,7 @@ impl Game<'_> {
     /// learn it with the entity's next flag sync, as they do when a glide
     /// ends on its own. True for a player, a guest or a mob; false for an
     /// armor stand or the dragon.
-    pub(super) fn living_stop_gliding(&mut self, living: LivingRef) -> bool {
+    pub(in crate::game) fn living_stop_gliding(&mut self, living: LivingRef) -> bool {
         match self.native_living_target(living) {
             Some(Target::Player) => {
                 let Some(p) = self.player.as_mut() else {
@@ -148,7 +148,7 @@ impl Game<'_> {
     /// player in place, a guest, or a villager or wandering trader asleep in
     /// its bed. Other mobs never sleep. None for an armor stand or the
     /// dragon.
-    pub(super) fn living_is_sleeping(&self, living: LivingRef) -> Option<bool> {
+    pub(in crate::game) fn living_is_sleeping(&self, living: LivingRef) -> Option<bool> {
         match self.native_living_read_target(living)? {
             Target::Player => Some(self.sleeping.is_some()),
             Target::Guest(conn) => Some(self.command_guest(conn)?.sleeping),
@@ -166,7 +166,7 @@ impl Game<'_> {
     /// as the block position it lies at. A guest keeps the bed it last slept
     /// in while it sleeps, a villager or wandering trader its own. None for
     /// an awake entity, another mob, an armor stand or the dragon.
-    pub(super) fn living_sleeping_pos(&self, living: LivingRef) -> Option<[i32; 3]> {
+    pub(in crate::game) fn living_sleeping_pos(&self, living: LivingRef) -> Option<[i32; 3]> {
         match self.native_living_read_target(living)? {
             Target::Player => self.sleeping,
             Target::Guest(conn) => {
@@ -187,7 +187,11 @@ impl Game<'_> {
     /// inside or outside their own turn, in the level in place. False for
     /// a guest in another level, a fake player, another
     /// mob, an armor stand or the dragon, or a bed without a sleep shape.
-    pub(super) fn living_start_sleeping(&mut self, living: LivingRef, pos: [i32; 3]) -> bool {
+    pub(in crate::game) fn living_start_sleeping(
+        &mut self,
+        living: LivingRef,
+        pos: [i32; 3],
+    ) -> bool {
         match self.native_living_target(living) {
             Some(target @ (Target::Player | Target::Guest(_))) => {
                 self.native_player_sleep_write(target, |game| game.lie_in_bed(pos))
@@ -233,7 +237,7 @@ impl Game<'_> {
     /// entity slept; false for a fake player, another mob, an armor stand
     /// or the dragon. Normal server guests in the level in place use the
     /// same wake-up path; guests in another level are refused.
-    pub(super) fn living_stop_sleeping(&mut self, living: LivingRef) -> bool {
+    pub(in crate::game) fn living_stop_sleeping(&mut self, living: LivingRef) -> bool {
         match self.native_living_target(living) {
             Some(target @ (Target::Player | Target::Guest(_))) => {
                 self.native_player_sleep_write(target, |game| {
@@ -275,7 +279,11 @@ impl Game<'_> {
     /// are supported; guests in another level, fake players, mobs, armor
     /// stands and the dragon are refused. This only
     /// changes the sleeping position/pose, not bed occupancy.
-    pub(super) fn living_set_sleeping_pos(&mut self, living: LivingRef, pos: [i32; 3]) -> bool {
+    pub(in crate::game) fn living_set_sleeping_pos(
+        &mut self,
+        living: LivingRef,
+        pos: [i32; 3],
+    ) -> bool {
         let Some(target) = self.native_living_target(living) else {
             return false;
         };
@@ -293,7 +301,7 @@ impl Game<'_> {
     /// another level, fake players, mobs, armor stands and the dragon are
     /// refused. This does not run the wake-up animation
     /// or move the player; use `stop_sleeping` to stand beside the bed.
-    pub(super) fn living_clear_sleeping_pos(&mut self, living: LivingRef) -> bool {
+    pub(in crate::game) fn living_clear_sleeping_pos(&mut self, living: LivingRef) -> bool {
         let Some(target) = self.native_living_target(living) else {
             return false;
         };
@@ -310,7 +318,7 @@ impl Game<'_> {
     /// own jump state. The guests' jump is their client's, and a mob has no
     /// jump controller in the game's own AI, so both read false. None for
     /// an armor stand or the dragon.
-    pub(super) fn living_is_jumping(&self, living: LivingRef) -> Option<bool> {
+    pub(in crate::game) fn living_is_jumping(&self, living: LivingRef) -> Option<bool> {
         match self.native_living_read_target(living)? {
             Target::Player => Some(self.player.as_ref()?.jumping),
             Target::Guest(_) => Some(false),
@@ -322,7 +330,11 @@ impl Game<'_> {
     /// jumps, as their own key does. False for a guest outside its turn,
     /// whose client holds its own jump, a mob, an armor stand or the
     /// dragon.
-    pub(super) fn living_set_is_jumping(&mut self, living: LivingRef, jumping: bool) -> bool {
+    pub(in crate::game) fn living_set_is_jumping(
+        &mut self,
+        living: LivingRef,
+        jumping: bool,
+    ) -> bool {
         match self.native_living_target(living) {
             Some(Target::Player) => {
                 let Some(p) = self.player.as_mut() else {
@@ -340,7 +352,7 @@ impl Game<'_> {
     /// trapdoor above a ladder. A spectator never climbs; a gliding entity
     /// ignores blocks tagged to glide through, such as vines. None for an
     /// armor stand or the dragon.
-    pub(super) fn living_is_climbing(&self, living: LivingRef) -> Option<bool> {
+    pub(in crate::game) fn living_is_climbing(&self, living: LivingRef) -> Option<bool> {
         let target = self.native_living_read_target(living)?;
         let (position, spectator, gliding) = match target {
             Target::Player => {
@@ -372,7 +384,7 @@ impl Game<'_> {
         Some(climbing::on_climbable(&mut world, &self.motion.climbing).unwrap_or(false))
     }
     /// The climbing decision for a mob currently lent out of the game's list.
-    pub(super) fn native_mob_is_climbing(&self, mob: &sunrise_client::mobs::Mob) -> bool {
+    pub(in crate::game) fn native_mob_is_climbing(&self, mob: &sunrise_client::mobs::Mob) -> bool {
         let mut world = FlagClimbing {
             world: &self.world,
             context: &self.loop_context,
@@ -387,7 +399,7 @@ impl Game<'_> {
     /// Whether the entity is a baby (`LivingEntity.isBaby`): a mob answers
     /// from its age, negative until it grows up. A player, an armor stand
     /// and the dragon are never babies.
-    pub(super) fn living_baby(&self, living: LivingRef) -> Option<bool> {
+    pub(in crate::game) fn living_baby(&self, living: LivingRef) -> Option<bool> {
         match self.native_living_read_target(living)? {
             Target::Mob(id) => Some(
                 self.mobs

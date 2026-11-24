@@ -8,7 +8,7 @@ use sunrise_world::entity_move::MoverType;
 impl Game<'_> {
     /// `Entity.setDeltaMovement` on the local player. `false`, with the velocity unchanged,
     /// with no player of its own and for a value that is not finite.
-    pub(super) fn set_local_player_velocity(&mut self, velocity: [f64; 3]) -> bool {
+    pub(in crate::game) fn set_local_player_velocity(&mut self, velocity: [f64; 3]) -> bool {
         let velocity = Vec3::new(velocity[0], velocity[1], velocity[2]);
         match self.player.as_mut() {
             Some(body) if velocity.is_finite() => {
@@ -21,7 +21,7 @@ impl Game<'_> {
 
     /// Sets the local player's fall-flying flag, so the next tick's glide detection sends
     /// `START_FALL_FLYING` as a jump-started glide does. `false` with no player of its own.
-    pub(super) fn start_local_player_gliding(&mut self) -> bool {
+    pub(in crate::game) fn start_local_player_gliding(&mut self) -> bool {
         match self.player.as_mut() {
             Some(body) => {
                 body.fall_flying = true;
@@ -33,7 +33,7 @@ impl Game<'_> {
 
     /// The local player's on-ground flag, which this tick's jump decision reads and its move
     /// then sets again from the collision. `false` with no player of its own.
-    pub(super) fn set_local_player_on_ground(&mut self, on_ground: bool) -> bool {
+    pub(in crate::game) fn set_local_player_on_ground(&mut self, on_ground: bool) -> bool {
         match self.player.as_mut() {
             Some(body) => {
                 body.ground.on_ground = on_ground;
@@ -50,7 +50,7 @@ impl Game<'_> {
             && self.client.screen != super::Screen::Dead
     }
 
-    pub(super) fn player_reset_fall_distance(
+    pub(in crate::game) fn player_reset_fall_distance(
         &mut self,
         player: PlayerRef,
     ) -> Result<bool, LevelWriteError> {
@@ -64,7 +64,7 @@ impl Game<'_> {
         Ok(true)
     }
 
-    pub(super) fn move_local_player_by(
+    pub(in crate::game) fn move_local_player_by(
         &mut self,
         delta: [f64; 3],
     ) -> Result<Option<[f64; 3]>, LevelWriteError> {

@@ -60,9 +60,9 @@ pub(in crate::game) struct RuntimeTable {
     last_generation: u32,
     cap: usize,
     #[cfg(test)]
-    pub(super) fail_open_after_publication: bool,
+    pub(in crate::game) fail_open_after_publication: bool,
     #[cfg(test)]
-    pub(super) fail_erase: bool,
+    pub(in crate::game) fail_erase: bool,
 }
 
 impl Default for RuntimeTable {

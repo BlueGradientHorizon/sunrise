@@ -2,7 +2,7 @@
 use super::*;
 use mod_api::__private::game::RegistrationContextNew;
 impl Game<'_> {
-    pub(super) fn prepare_professions(
+    pub(in crate::game) fn prepare_professions(
         &self,
         root: &std::path::Path,
         items: &Items,
@@ -109,7 +109,10 @@ impl Game<'_> {
 mod tests;
 
 impl Game<'_> {
-    pub(super) fn resolve_loaded_profession(&mut self, mob: &mut sunrise_client::mobs::Mob) {
+    pub(in crate::game) fn resolve_loaded_profession(
+        &mut self,
+        mob: &mut sunrise_client::mobs::Mob,
+    ) {
         self.stations().professions.resolve_loaded(mob);
         if let sunrise_client::mobs::villager::ProfessionState::Unresolved(id) =
             &mob.extra.profession
@@ -124,7 +127,7 @@ impl Game<'_> {
 }
 
 impl Game<'_> {
-    pub(super) fn install_profession_save_snapshots(&self) {
+    pub(in crate::game) fn install_profession_save_snapshots(&self) {
         let table = self.stations().professions.clone();
         self.save.install_profession_snapshot(table.clone());
         self.levels.install_profession_save_snapshots(table);

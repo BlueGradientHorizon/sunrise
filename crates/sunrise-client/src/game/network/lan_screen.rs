@@ -17,7 +17,7 @@ use sunrise_client::{
 use sunrise_protocol::packets::play::{self, Serverbound as S};
 use winit::keyboard::KeyCode;
 
-pub(super) struct WorldOptions {
+pub(in crate::game) struct WorldOptions {
     remote: bool,
     gamemaster: bool,
     default_mode: i32,
@@ -55,7 +55,7 @@ enum View {
     GameRules,
 }
 #[derive(Clone, Copy, PartialEq)]
-pub(super) struct Snapshot {
+pub(in crate::game) struct Snapshot {
     default_mode: i32,
     personal_mode: i32,
     cheats: bool,
@@ -113,7 +113,7 @@ fn labelled(key: &str, value: Text) -> Text {
 
 impl WorldOptions {
     /// No button keeps the focus a click gave it.
-    pub(super) fn clear_click_focus(&mut self) {
+    pub(in crate::game) fn clear_click_focus(&mut self) {
         self.focused_button = None;
     }
     /// Vanilla 26.3 WorldOptionsScreen.generalOptions: guests see difficulty,
@@ -579,7 +579,7 @@ fn port_error(value: &str) -> Option<&'static str> {
     }
 }
 impl Game<'_> {
-    pub(super) fn remote_world_options_permission(&mut self, permission: bool) {
+    pub(in crate::game) fn remote_world_options_permission(&mut self, permission: bool) {
         if let Some(o) = self.world_options.as_mut() {
             let lost = o.gamemaster && !permission;
             o.gamemaster = permission;
@@ -588,20 +588,30 @@ impl Game<'_> {
             }
         }
     }
-    pub(super) fn remote_world_options_difficulty(&mut self, difficulty: u8, locked: bool) {
+    pub(in crate::game) fn remote_world_options_difficulty(
+        &mut self,
+        difficulty: u8,
+        locked: bool,
+    ) {
         if let Some(o) = self.world_options.as_mut() {
             o.server_difficulty(difficulty, locked);
         }
     }
     #[cfg(test)]
-    pub(super) fn test_open_remote_rules(&mut self, entries: Vec<play::GameRuleEntry>) -> bool {
+    pub(in crate::game) fn test_open_remote_rules(
+        &mut self,
+        entries: Vec<play::GameRuleEntry>,
+    ) -> bool {
         self.world_options = Some(tests::options(true, false));
         self.world_options.as_mut().unwrap().view = View::GameRules;
         self.remote_world_options_rules(entries);
         self.world_options.as_ref().unwrap().rules.is_some()
     }
 
-    pub(super) fn remote_world_options_rules(&mut self, entries: Vec<play::GameRuleEntry>) {
+    pub(in crate::game) fn remote_world_options_rules(
+        &mut self,
+        entries: Vec<play::GameRuleEntry>,
+    ) {
         let Some(o) = self
             .world_options
             .as_mut()
@@ -632,7 +642,7 @@ impl Game<'_> {
         }
         o.rules = Some(RulesScreen::new(&rules));
     }
-    pub(super) fn open_world_options(&mut self) {
+    pub(in crate::game) fn open_world_options(&mut self) {
         let hint = sunrise_client::lan::available_port();
         let mut port = EditBox::new(0.0, 0.0, 150.0, 20.0);
         port.message = super::screen_info::tr("lanServer.port", &[]);
@@ -685,7 +695,7 @@ impl Game<'_> {
         self.set_screen(Screen::WorldOptions);
     }
 
-    pub(super) fn close_world_options(&mut self) {
+    pub(in crate::game) fn close_world_options(&mut self) {
         self.world_options = None;
         self.set_screen(Screen::Paused);
     }
@@ -716,7 +726,7 @@ impl Game<'_> {
 
     /// Escape: the question and RestrictionsScreen return to the options
     /// (their onClose), which close; the game rules ask first.
-    pub(super) fn world_options_escape(&mut self) {
+    pub(in crate::game) fn world_options_escape(&mut self) {
         match self.world_options.as_mut() {
             Some(o) if o.view == View::GameRules => {
                 if o.rules.is_none() {
@@ -768,7 +778,7 @@ impl Game<'_> {
         self.sync_rules();
     }
 
-    pub(super) fn draw_world_options(&mut self, batch: &mut HudBatch) {
+    pub(in crate::game) fn draw_world_options(&mut self, batch: &mut HudBatch) {
         let Some(view) = self.world_options.as_ref().map(|o| o.view) else {
             self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
             self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
@@ -1124,7 +1134,7 @@ impl Game<'_> {
     }
 
     /// The mouse wheel over the screen (ScrollableLayout, 10 pixels a step).
-    pub(super) fn world_options_scroll(&mut self, delta: f32) -> bool {
+    pub(in crate::game) fn world_options_scroll(&mut self, delta: f32) -> bool {
         let (w, h) = self.gui_size();
         let stick_scroll = self.pad_stick_scroll();
         match self.world_options.as_mut() {
@@ -1194,7 +1204,7 @@ impl Game<'_> {
 
     /// The pointer moved while a list's scrollbar is held: the game rules'
     /// list follows it (AbstractSelectionList.mouseDragged).
-    pub(super) fn world_options_drag(&mut self) -> bool {
+    pub(in crate::game) fn world_options_drag(&mut self) -> bool {
         let h = self.gui_size().1;
         if let Some(o) = self.world_options.as_mut()
             && o.view == View::GameRules
@@ -1207,7 +1217,7 @@ impl Game<'_> {
     }
 
     /// The button came up: a held scrollbar lets go (onRelease).
-    pub(super) fn world_options_release(&mut self) -> bool {
+    pub(in crate::game) fn world_options_release(&mut self) -> bool {
         if let Some(o) = self.world_options.as_mut()
             && let Some(rules) = o.rules.as_mut()
         {
@@ -1216,7 +1226,7 @@ impl Game<'_> {
         false
     }
 
-    pub(super) fn world_options_click(&mut self) -> bool {
+    pub(in crate::game) fn world_options_click(&mut self) -> bool {
         let Some(mut o) = self.world_options.take() else {
             return false;
         };
@@ -1358,7 +1368,7 @@ impl Game<'_> {
         self.system_message(message);
     }
 
-    pub(super) fn world_options_key(
+    pub(in crate::game) fn world_options_key(
         &mut self,
         key: KeyCode,
         shortcut: Option<sunrise_client::clipboard::EditShortcut>,
@@ -1644,7 +1654,7 @@ impl Game<'_> {
         false
     }
     /// Whether a World Options text box has focus (the port or a game rule box).
-    pub(super) fn world_options_typing(&self) -> bool {
+    pub(in crate::game) fn world_options_typing(&self) -> bool {
         self.world_options.as_ref().is_some_and(|o| {
             o.rules.as_ref().is_some_and(|r| r.typing())
                 || (o.port.focused && o.view == View::Options)
@@ -1652,7 +1662,7 @@ impl Game<'_> {
     }
     /// Digits typed into the port field (the keyboard, or a controller's
     /// on-screen keyboard), and its backspace.
-    pub(super) fn world_options_text(&mut self, text: Option<&str>) {
+    pub(in crate::game) fn world_options_text(&mut self, text: Option<&str>) {
         if let Some(rules) = self
             .world_options
             .as_mut()
@@ -1707,7 +1717,7 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn apply_world_options(&mut self, before: &Snapshot, wanted: &Snapshot) {
+    pub(in crate::game) fn apply_world_options(&mut self, before: &Snapshot, wanted: &Snapshot) {
         if self.external_server() {
             if self.ui.registries.permission >= 2 {
                 if wanted.difficulty != before.difficulty {

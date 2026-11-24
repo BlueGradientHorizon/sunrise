@@ -52,7 +52,7 @@ fn is_player() -> bool {
 }
 
 impl Game<'_> {
-    pub(super) fn run_boat_authority_fixture(&mut self, directory: &Path) -> Result<()> {
+    pub(in crate::game) fn run_boat_authority_fixture(&mut self, directory: &Path) -> Result<()> {
         let cases: Vec<Case> =
             serde_json::from_str(&std::fs::read_to_string(directory.join("inputs.json"))?)?;
         let mut output = Vec::new();

@@ -3,7 +3,7 @@
 use super::*;
 
 /// CPU mip chains for the block sprites and world border.
-pub(super) fn prepare_renderer_textures(
+pub(in crate::game) fn prepare_renderer_textures(
     pack: &PackResources,
 ) -> sunrise_client::gfx::PreparedTextures {
     let assets = &pack.render;
@@ -23,7 +23,7 @@ pub(super) fn prepare_renderer_textures(
 }
 
 /// Upload pack textures and create the renderer on the window's device.
-pub(super) fn build_renderer(
+pub(in crate::game) fn build_renderer(
     window: Arc<Window>,
     offscreen: bool,
     pack: &PackResources,
@@ -132,7 +132,7 @@ pub(super) fn build_renderer(
 /// The loading screen's renderer: one atlas (the boot screen's until the
 /// pack's GUI atlas is ready) over one opaque white block-sprite layer, an
 /// empty border texture and the title panorama once the menu bundle is ready.
-pub(super) fn loading_renderer(
+pub(in crate::game) fn loading_renderer(
     window: Arc<Window>,
     offscreen: bool,
     atlas: Option<&sunrise_client::hud::HudAtlas>,
@@ -190,7 +190,7 @@ pub(super) fn loading_renderer(
     Ok(renderer)
 }
 
-pub(super) fn loading_frame(hud: &HudBatch) -> Frame<'_> {
+pub(in crate::game) fn loading_frame(hud: &HudBatch) -> Frame<'_> {
     Frame {
         weather: &[],
         weather_time: sunrise_client::weather::Time::new(0, 0.0),
@@ -283,7 +283,7 @@ pub(super) fn loading_frame(hud: &HudBatch) -> Frame<'_> {
 /// old `run` did after loading. The launching path hands over its live
 /// settings. `None` means a harness or dedicated run finished here instead.
 #[allow(clippy::too_many_arguments)]
-pub(super) fn start_game<'a>(
+pub(in crate::game) fn start_game<'a>(
     res: &'a Arc<Resources>,
     pack: PackResources,
     gui: UiResources,
@@ -417,7 +417,7 @@ pub(super) fn start_game<'a>(
 }
 
 impl Game<'_> {
-    pub(super) fn apply_pending_client_start(
+    pub(in crate::game) fn apply_pending_client_start(
         &mut self,
         pending: initial_client_models::PendingClientStart,
         renderer: Result<Option<Renderer>>,

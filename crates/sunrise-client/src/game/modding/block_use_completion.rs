@@ -2,7 +2,7 @@ use super::*;
 
 impl Game<'_> {
     /// The game mode's item-phase trigger is separate from item-internal triggers.
-    pub(super) fn finish_item_block_use(
+    pub(in crate::game) fn finish_item_block_use(
         &mut self,
         hit: Option<&Hit>,
         original: &ItemStack,
@@ -15,7 +15,7 @@ impl Game<'_> {
 
     /// Run one block use with an isolated original stack, restoring the outer
     /// operation even when a listener unwinds. Replacements never edit this value.
-    pub(super) fn with_block_use_original<R>(
+    pub(in crate::game) fn with_block_use_original<R>(
         &mut self,
         hand: Hand,
         action: impl FnOnce(&mut Self) -> R,
@@ -32,7 +32,7 @@ impl Game<'_> {
     }
 
     /// Apply an engine in-place edit to the acting hand and its operation original.
-    pub(super) fn edit_block_use_stack(&mut self, edit: impl Fn(&mut Option<ItemStack>)) {
+    pub(in crate::game) fn edit_block_use_stack(&mut self, edit: impl Fn(&mut Option<ItemStack>)) {
         edit(self.held_mut());
         if let Some((hand, original)) = self.server.block_use_original.last_mut()
             && *hand == self.hand
@@ -47,7 +47,7 @@ impl Game<'_> {
     /// Listener hand replacements and whole replacements by the action (such as
     /// a bucket becoming a water bucket) do not change the reported original.
     /// This matches vanilla passing the same stack object it read before the action.
-    pub(super) fn finish_block_use(&mut self, pos: [i32; 3], _hand: Hand) {
+    pub(in crate::game) fn finish_block_use(&mut self, pos: [i32; 3], _hand: Hand) {
         let stack = self
             .server
             .block_use_original

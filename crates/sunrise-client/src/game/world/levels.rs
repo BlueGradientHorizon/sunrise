@@ -49,22 +49,22 @@ use sunrise_world::level::{LevelEvent, Ticks};
 const BUILTIN_LEVEL_ORDER: [Dim; 3] = [Dim::Overworld, Dim::Nether, Dim::End];
 
 /// A borrowed counting view: no resident-table scans and no allocation for gauges.
-pub(super) struct EntityCountView<'a> {
-    pub(super) fixed: [(&'static str, usize); 19],
-    pub(super) mobs: &'a [Mob],
-    pub(super) projectiles: &'a [sunrise_client::projectiles::Projectile],
-    pub(super) general: &'a super::general::GeneralRows,
-    pub(super) others: &'a [commands::OtherEntity],
+pub(in crate::game) struct EntityCountView<'a> {
+    pub(in crate::game) fixed: [(&'static str, usize); 19],
+    pub(in crate::game) mobs: &'a [Mob],
+    pub(in crate::game) projectiles: &'a [sunrise_client::projectiles::Projectile],
+    pub(in crate::game) general: &'a super::general::GeneralRows,
+    pub(in crate::game) others: &'a [commands::OtherEntity],
 }
 impl EntityCountView<'_> {
-    pub(super) fn total(&self) -> usize {
+    pub(in crate::game) fn total(&self) -> usize {
         self.fixed.iter().map(|(_, n)| n).sum::<usize>()
             + self.projectiles.len()
             + self.mobs.len()
             + self.general.len()
             + self.others.len()
     }
-    pub(super) fn registry_counts(&self) -> Vec<(String, u32)> {
+    pub(in crate::game) fn registry_counts(&self) -> Vec<(String, u32)> {
         let mut counts = std::collections::BTreeMap::<String, u32>::new();
         for &(id, n) in &self.fixed {
             if n > 0 {
@@ -132,12 +132,12 @@ macro_rules! entity_count_view {
         }
     };
 }
-pub(super) use entity_count_view;
+pub(in crate::game) use entity_count_view;
 
 /// Server ticks a custom level stays loaded with no player or ticket holding
 /// it, before it is saved and closed. Built-in levels (Overworld, Nether, End)
 /// stay open until server shutdown and only unload unticketed chunks while idle.
-pub(super) const IDLE_TICKS: u32 = 300;
+pub(in crate::game) const IDLE_TICKS: u32 = 300;
 
 /// What one server tick's idle check asks for a parked level.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -205,8 +205,8 @@ fn custom_close_still_eligible(
 }
 
 /// A level that is not in place: every per-level field of `Game`.
-pub(super) struct Parked {
-    pub(super) world: World,
+pub(in crate::game) struct Parked {
+    pub(in crate::game) world: World,
     streaming: Streaming,
     locator: Option<Arc<VanillaTerrain>>,
     save: Arc<SaveDir>,
@@ -216,7 +216,7 @@ pub(super) struct Parked {
     random_tick_sections: RandomTickSections,
     level_events: Vec<LevelEvent>,
     /// Entity portal processes and cooldowns belong to this level's entities.
-    pub(super) portal_states: HashMap<u32, sunrise_client::nether_portal::PortalState>,
+    pub(in crate::game) portal_states: HashMap<u32, sunrise_client::nether_portal::PortalState>,
     falling: sunrise_client::join_seq::JoinList<FallingBlock, false>,
     paintings: sunrise_client::join_seq::JoinList<sunrise_client::entities::Painting>,
     item_frames: sunrise_client::join_seq::JoinList<sunrise_client::entities::ItemFrame>,
@@ -224,8 +224,8 @@ pub(super) struct Parked {
     cushions: sunrise_client::join_seq::JoinList<sunrise_client::entities::Cushion>,
     others: sunrise_client::join_seq::ResidentList<commands::OtherEntity>,
     fangs: super::fangs::FangState,
-    pub(super) boats: sunrise_client::join_seq::JoinList<boats::Boat, false>,
-    pub(super) carts: sunrise_client::join_seq::JoinList<minecarts::Minecart, false>,
+    pub(in crate::game) boats: sunrise_client::join_seq::JoinList<boats::Boat, false>,
+    pub(in crate::game) carts: sunrise_client::join_seq::JoinList<minecarts::Minecart, false>,
     jukebox_sounds: HashMap<(i32, i32, i32), u64>,
     bolts: sunrise_client::join_seq::ResidentList<lightning::Bolt>,
     crystals: sunrise_client::join_seq::JoinList<dragon::Crystal>,
@@ -238,7 +238,7 @@ pub(super) struct Parked {
     tnts: sunrise_client::join_seq::JoinList<tnt::PrimedTnt>,
     general: super::general::GeneralStore,
     hoppers: HashMap<(i32, i32, i32), machines::HopperState>,
-    pub(super) mobs: sunrise_client::join_seq::JoinList<Mob>,
+    pub(in crate::game) mobs: sunrise_client::join_seq::JoinList<Mob>,
     /// The entity ids of the level's fence knots (`knot_ids`).
     knot_ids: HashMap<[i32; 3], u32>,
     broken_knots: Vec<[i32; 3]>,
@@ -258,13 +258,13 @@ pub(super) struct Parked {
     lan_states: sunrise_client::lan::entity::States,
     /// Only the per-level parts of these are used (`swap_level`).
     anims: BlockEntityAnims,
-    pub(super) raiding: Raiding,
+    pub(in crate::game) raiding: Raiding,
     sculk: SculkState,
     creaking: CreakingState,
     /// Natural spawning's candidate cache: each level keeps its own players' squares.
     spawn_scratch: super::natural_spawning::SpawnScratch,
     /// Server ticks since a player was last in the level.
-    pub(super) idle: u32,
+    pub(in crate::game) idle: u32,
     /// The level's own world border (`ServerLevel.getWorldBorder`), and what its players were
     /// last told of it (`LanHost::border_sent`).
     border: sunrise_client::worldborder::WorldBorder,
@@ -283,7 +283,7 @@ impl Parked {
 
 impl Game<'_> {
     /// Resolve through the exact owner, never by trying dimension swaps.
-    pub(super) fn locate_server_resident_owner(
+    pub(in crate::game) fn locate_server_resident_owner(
         &self,
         at: Location,
     ) -> Option<SourceEntity<(Target, bool)>> {
@@ -363,7 +363,7 @@ impl Game<'_> {
     /// occurs, including when the visitor unwinds. Logical visibility is a caller
     /// policy, just as for the underlying owner resolver. The visitor must not
     /// call entity lookup or recursively enter this seam.
-    pub(super) fn with_resident_slot<R>(
+    pub(in crate::game) fn with_resident_slot<R>(
         &mut self,
         dimension: &mod_api::DimensionKey,
         id: std::num::NonZeroU32,
@@ -465,7 +465,7 @@ impl Game<'_> {
     }
     /// `ServerLevel.getEntity(UUID)`: search this level's admitted entities, not unloaded
     /// saves or tracking entries. A departure can overlap a replacement with the same UUID.
-    pub(super) fn level_target_by_uuid(&self, dim: Dim, uuid: [i32; 4]) -> Option<Target> {
+    pub(in crate::game) fn level_target_by_uuid(&self, dim: Dim, uuid: [i32; 4]) -> Option<Target> {
         let dimension = dim.key();
         let mut table = self.resident_entities.table.borrow_mut();
         let mut after = None;
@@ -506,7 +506,7 @@ impl Game<'_> {
     }
 
     /// Find the canonical level without swapping or probing physical families.
-    pub(super) fn resident_target_dimension(&self, target: Target) -> Option<Dim> {
+    pub(in crate::game) fn resident_target_dimension(&self, target: Target) -> Option<Dim> {
         let id = self.resident_target_id(target)?;
         let found = match self.server_resident_entity(id) {
             EntityLookup::Found { location, value }
@@ -529,7 +529,7 @@ impl Game<'_> {
     }
 
     /// A new epoch invalidates every old producer before rebinding retained levels.
-    pub(super) fn reset_entity_residency(&mut self) {
+    pub(in crate::game) fn reset_entity_residency(&mut self) {
         let table = self.resident_entities.table.get_mut();
         table.reset();
         let journal = table.producer();
@@ -547,7 +547,7 @@ impl Game<'_> {
 /// tick rate manager's answer for this server tick, asked once before the
 /// levels (`MinecraftServer.tickServer`); `None` outside `tick_server`.
 #[derive(Clone, Copy)]
-pub(super) struct Pass {
+pub(in crate::game) struct Pass {
     pub first: bool,
     pub last: bool,
     pub running: Option<bool>,
@@ -582,7 +582,7 @@ pub(in crate::game) fn server_tick_phases(levels: &[Dim]) -> impl Iterator<Item 
 }
 
 /// How long a server tick took and what it spent the time in.
-pub(super) struct TickTiming {
+pub(in crate::game) struct TickTiming {
     pub wall_ms: f32,
     pub cpu_ms: Option<f32>,
     /// Spans recorded inside the tick only, in observation order.
@@ -591,8 +591,8 @@ pub(super) struct TickTiming {
 
 /// The levels not in place, by dimension.
 #[derive(Default)]
-pub(super) struct Levels {
-    pub(super) parked: HashMap<Dim, Parked>,
+pub(in crate::game) struct Levels {
+    pub(in crate::game) parked: HashMap<Dim, Parked>,
     /// The levels whose open the mods heard (`native_level_load`), each to
     /// be told closed once.
     heard_open: Vec<Dim>,
@@ -600,7 +600,7 @@ pub(super) struct Levels {
     /// of the next server tick.
     requested_saves: Vec<Dim>,
     /// The levels mods opened while the server runs, and the requests waiting to be applied.
-    pub(super) runtime: super::runtime_levels::RuntimeTable,
+    pub(in crate::game) runtime: super::runtime_levels::RuntimeTable,
     /// The entities that travelled to another level lately: the id each had, to the id it
     /// arrived with and when. A kill credit recorded under the old id follows it there.
     travels: HashMap<u32, (u32, i64)>,
@@ -635,7 +635,7 @@ impl Levels {
     }
 
     /// Drop a save of `dim` still waiting for a tick: its level is gone.
-    pub(super) fn cancel_requested_save(&mut self, dim: Dim) {
+    pub(in crate::game) fn cancel_requested_save(&mut self, dim: Dim) {
         self.requested_saves.retain(|saved| *saved != dim);
     }
 
@@ -718,27 +718,27 @@ impl Levels {
     }
 
     /// Clear every parked level and dimensions recorded as heard open.
-    pub(super) fn clear(&mut self) {
+    pub(in crate::game) fn clear(&mut self) {
         self.parked.clear();
         self.heard_open.clear();
         self.requested_saves.clear();
         self.runtime.clear();
     }
 
-    pub(super) fn abort_parked_generation(&mut self) {
+    pub(in crate::game) fn abort_parked_generation(&mut self) {
         for level in self.parked.values_mut() {
             level.streaming.abort_generation();
         }
     }
 
     /// A parked level, without opening or loading it.
-    pub(super) fn parked_world(&self, dim: Dim) -> Option<&World> {
+    pub(in crate::game) fn parked_world(&self, dim: Dim) -> Option<&World> {
         self.parked.get(&dim).map(|level| &level.world)
     }
 
     /// The world of the level not in place whose dimension is `dimension`
     /// (`minecraft:the_nether`), found without collecting the parked levels.
-    pub(super) fn parked_world_of(&self, dimension: &str) -> Option<&World> {
+    pub(in crate::game) fn parked_world_of(&self, dimension: &str) -> Option<&World> {
         self.parked
             .iter()
             .find(|(dim, _)| dim.id() == dimension)
@@ -747,7 +747,7 @@ impl Levels {
 
     /// The world of the level not in place whose dimension is `dimension`, to
     /// change.
-    pub(super) fn parked_world_mut_of(&mut self, dimension: &str) -> Option<&mut World> {
+    pub(in crate::game) fn parked_world_mut_of(&mut self, dimension: &str) -> Option<&mut World> {
         self.parked
             .iter_mut()
             .find(|(dim, _)| dim.id() == dimension)
@@ -755,7 +755,7 @@ impl Levels {
     }
 
     /// The streaming of the level not in place whose dimension is `dimension`.
-    pub(super) fn parked_streaming_of(&self, dimension: &str) -> Option<&Streaming> {
+    pub(in crate::game) fn parked_streaming_of(&self, dimension: &str) -> Option<&Streaming> {
         self.parked
             .iter()
             .find(|(dim, _)| dim.id() == dimension)
@@ -763,12 +763,18 @@ impl Levels {
     }
 
     /// A parked level's existing generator query worker, without switching levels.
-    pub(super) fn parked_locator_of(&self, dimension: &str) -> Option<Arc<VanillaTerrain>> {
+    pub(in crate::game) fn parked_locator_of(
+        &self,
+        dimension: &str,
+    ) -> Option<Arc<VanillaTerrain>> {
         self.parked_of(dimension)?.locator.clone()
     }
 
     /// The streaming of the level not in place whose dimension is `dimension`, to change.
-    pub(super) fn parked_streaming_of_mut(&mut self, dimension: &str) -> Option<&mut Streaming> {
+    pub(in crate::game) fn parked_streaming_of_mut(
+        &mut self,
+        dimension: &str,
+    ) -> Option<&mut Streaming> {
         self.parked
             .iter_mut()
             .find(|(dim, _)| dim.id() == dimension)
@@ -778,7 +784,11 @@ impl Levels {
     /// `ServerChunkCache.tick` of the parked levels that `tick` names: their `UNKNOWN` tickets
     /// purged (`TicketStorage.purgeStaleTickets`) when `purge`, then their recent FULL lookups
     /// forgotten (`clearCache`).
-    pub(super) fn tick_parked_chunk_caches(&mut self, purge: bool, tick: impl Fn(Dim) -> bool) {
+    pub(in crate::game) fn tick_parked_chunk_caches(
+        &mut self,
+        purge: bool,
+        tick: impl Fn(Dim) -> bool,
+    ) {
         for (&dim, level) in &mut self.parked {
             if tick(dim) {
                 if purge {
@@ -791,7 +801,7 @@ impl Levels {
 
     /// `ServerLevel.setChunkForced`: force a column in an already open level without changing the acting
     /// player's level; the same queue and load barrier serve the active level.
-    pub(super) fn force_parked_chunk(
+    pub(in crate::game) fn force_parked_chunk(
         &mut self,
         dimension: &str,
         x: i32,
@@ -806,20 +816,20 @@ impl Levels {
         )
     }
 
-    pub(super) fn parked_anims(&self, dim: Dim) -> Option<&BlockEntityAnims> {
+    pub(in crate::game) fn parked_anims(&self, dim: Dim) -> Option<&BlockEntityAnims> {
         self.parked.get(&dim).map(|level| &level.anims)
     }
 
     /// The worlds of the levels not in place.
     /// A parked level's world border.
-    pub(super) fn parked_border(
+    pub(in crate::game) fn parked_border(
         &self,
         dim: Dim,
     ) -> Option<&sunrise_client::worldborder::WorldBorder> {
         self.parked.get(&dim).map(|level| &level.border)
     }
 
-    pub(super) fn install_profession_save_snapshots(
+    pub(in crate::game) fn install_profession_save_snapshots(
         &self,
         table: Arc<sunrise_client::mobs::villager::ResolvedProfessions>,
     ) {
@@ -835,30 +845,30 @@ impl Levels {
             .filter_map(|level| level.locator.as_ref())
     }
 
-    pub(super) fn parked_worlds(&self) -> impl Iterator<Item = &World> {
+    pub(in crate::game) fn parked_worlds(&self) -> impl Iterator<Item = &World> {
         self.parked.values().map(|level| &level.world)
     }
 
     /// The streamers of the levels not in place.
-    pub(super) fn parked_streamings(
+    pub(in crate::game) fn parked_streamings(
         &self,
     ) -> impl Iterator<Item = &sunrise_client::streaming::Streaming> {
         self.parked.values().map(|level| &level.streaming)
     }
 
     /// The level not in place, in `dim`.
-    pub(super) fn parked_mut(&mut self, dim: Dim) -> Option<&mut Parked> {
+    pub(in crate::game) fn parked_mut(&mut self, dim: Dim) -> Option<&mut Parked> {
         self.parked.get_mut(&dim)
     }
 
     /// A parked level by its exact dimension identity, without swapping it in.
-    pub(super) fn parked_of(&self, dimension: &str) -> Option<&Parked> {
+    pub(in crate::game) fn parked_of(&self, dimension: &str) -> Option<&Parked> {
         self.parked
             .iter()
             .find(|(dim, _)| dim.id() == dimension)
             .map(|(_, level)| level)
     }
-    pub(super) fn parked_mut_of(&mut self, dimension: &str) -> Option<&mut Parked> {
+    pub(in crate::game) fn parked_mut_of(&mut self, dimension: &str) -> Option<&mut Parked> {
         self.parked
             .iter_mut()
             .find(|(dim, _)| dim.id() == dimension)
@@ -883,7 +893,7 @@ impl Levels {
     }
 
     /// The entities of a parked level, counted as `Game::entity_count` counts the one in place.
-    pub(super) fn parked_entity_count(&self, dim: Dim) -> Option<usize> {
+    pub(in crate::game) fn parked_entity_count(&self, dim: Dim) -> Option<usize> {
         let l = self.parked.get(&dim)?;
         Some(
             l.mobs.iter().filter(|m| !m.removed).count()
@@ -904,11 +914,11 @@ impl Levels {
     }
 
     /// The mobs of a parked level.
-    pub(super) fn parked_mobs(&self, dim: Dim) -> Option<&[Mob]> {
+    pub(in crate::game) fn parked_mobs(&self, dim: Dim) -> Option<&[Mob]> {
         self.parked.get(&dim).map(|level| &*level.mobs)
     }
 
-    pub(super) fn parked_perf_views(
+    pub(in crate::game) fn parked_perf_views(
         &self,
     ) -> impl Iterator<Item = (Dim, &World, EntityCountView<'_>)> {
         self.parked.iter().map(|(&dim, level)| {
@@ -922,7 +932,7 @@ impl Levels {
 
     /// A parked level's loose entities, for `sunrise-report`: items, experience orbs,
     /// projectiles, minecarts and boats.
-    pub(super) fn parked_entity_counts(&self, dim: Dim) -> Option<[usize; 5]> {
+    pub(in crate::game) fn parked_entity_counts(&self, dim: Dim) -> Option<[usize; 5]> {
         self.parked.get(&dim).map(|l| {
             [
                 l.dropped.len(),
@@ -935,7 +945,7 @@ impl Levels {
     }
 
     /// The levels that are not in place, by dimension.
-    pub(super) fn parked_dims(&self) -> Vec<Dim> {
+    pub(in crate::game) fn parked_dims(&self) -> Vec<Dim> {
         self.parked.keys().copied().collect()
     }
 }
@@ -1036,7 +1046,7 @@ impl Game<'_> {
 
     /// `MinecraftServer.createLevels`: open the built-in levels in registry
     /// order before `prepare_levels`, which waits for their saved tickets.
-    pub(super) fn open_builtin_levels(&mut self) -> Result<()> {
+    pub(in crate::game) fn open_builtin_levels(&mut self) -> Result<()> {
         if self.options.execution_role.is_client() {
             return Ok(());
         }
@@ -1087,7 +1097,7 @@ impl Game<'_> {
     /// (`ChunkLoadCounter`). The first tick finds them ticking and unpacks
     /// their saved block and fluid ticks at the saved game time
     /// (`startTickingChunk`), not at whichever tick they finish streaming in.
-    pub(super) fn prepare_levels(&mut self) -> Result<()> {
+    pub(in crate::game) fn prepare_levels(&mut self) -> Result<()> {
         if self.options.execution_role.is_client() {
             return Ok(());
         }
@@ -1125,7 +1135,7 @@ impl Game<'_> {
 
     /// A level that opens after startup restores its saved command and portal
     /// tickets at once. Mod tickets still wait for validation after `level_load`.
-    pub(super) fn open_runtime_level(&self, dim: Dim) -> Result<Parked> {
+    pub(in crate::game) fn open_runtime_level(&self, dim: Dim) -> Result<Parked> {
         let mut level = self.open_level(dim)?;
         Self::load_saved_level_tickets(&level.save, &mut level.streaming, &mut level.tickets);
         Ok(level)
@@ -1274,7 +1284,7 @@ impl Game<'_> {
     /// Put `target`'s level in place, opening it first if it is not loaded.
     /// The level that was in place is kept with the others; the shared
     /// clock and weather go with the swap.
-    pub(super) fn enter_level(&mut self, target: Dim) -> Result<()> {
+    pub(in crate::game) fn enter_level(&mut self, target: Dim) -> Result<()> {
         // A client holds no levels.
         if self.options.execution_role.is_client() {
             return Ok(());
@@ -1305,7 +1315,7 @@ impl Game<'_> {
     /// Follow the direct mount of a travelling player through complete source objects.
     /// A later player in the same travelling stack finds no source root: the first
     /// arrival already moved it, keeping every id that the guests' mounts name.
-    pub(super) fn parked_vehicle_root(&self, from: Dim, mut id: u32) -> Option<u32> {
+    pub(in crate::game) fn parked_vehicle_root(&self, from: Dim, mut id: u32) -> Option<u32> {
         let p = self.levels.parked.get(&from)?;
         for _ in 0..=p.mobs.len() + p.persist.off_level.len() + 1 {
             let mob = p
@@ -1337,7 +1347,7 @@ impl Game<'_> {
     /// Move the source tree's object memory and take its Mob descendants in
     /// canonical postorder. The caller owns the extracted root and admits it last.
     /// Transfer removal preserves lifetimes; residency is decided in the destination.
-    pub(super) fn move_entity_memory(&mut self, from: Dim, root: u32) -> Vec<Mob> {
+    pub(in crate::game) fn move_entity_memory(&mut self, from: Dim, root: u32) -> Vec<Mob> {
         let Some(p) = self.levels.parked.get_mut(&from) else {
             return Vec::new();
         };
@@ -1402,7 +1412,7 @@ impl Game<'_> {
     /// An already-owned body changes level, never construction identity.
     /// `PersistentEntitySectionManager.addEntityUuid` decides its residency:
     /// a body whose UUID an earlier arrival took is retained off-level.
-    pub(super) fn admit_transferred_object(&mut self, mut object: persist::OffLevel) {
+    pub(in crate::game) fn admit_transferred_object(&mut self, mut object: persist::OffLevel) {
         let id = match &mut object {
             persist::OffLevel::Mob(mob) => {
                 self.rebind_transferred_entity(mob.id, mob);
@@ -1433,7 +1443,7 @@ impl Game<'_> {
 
     /// Far terrain for a client in `dim`: the level in place may be another
     /// one, the server ticking its levels in turn.
-    pub(super) fn lod_source_in(
+    pub(in crate::game) fn lod_source_in(
         &self,
         dim: Dim,
     ) -> Option<Arc<dyn sunrise_client::streaming::LodSource>> {
@@ -1448,7 +1458,7 @@ impl Game<'_> {
     /// (`execute in`, `execute at` a player in another level), opening it if
     /// nobody is in it; returns the level to put back afterwards. Only a
     /// server holds other levels.
-    pub(super) fn enter_command_level(&mut self, dim: Dim) -> Option<Dim> {
+    pub(in crate::game) fn enter_command_level(&mut self, dim: Dim) -> Option<Dim> {
         if self.options.execution_role.is_client() || dim == self.dim {
             return None;
         }
@@ -1469,7 +1479,7 @@ impl Game<'_> {
     /// the next ones only their level. Connection player ticks follow all
     /// levels. While `paused`, the network runs but player bodies do not.
     /// `ServerTickStart` and `ServerTickEnd` bracket the whole tick.
-    pub(super) fn tick_server(&mut self, paused: bool) -> Result<()> {
+    pub(in crate::game) fn tick_server(&mut self, paused: bool) -> Result<()> {
         self.with_residency_tick(|game| game.tick_server_body(paused))
     }
 
@@ -1690,13 +1700,13 @@ impl Game<'_> {
     }
 
     /// `tick_server` as a server thread runs it, timed whenever spans are on.
-    pub(super) fn tick_server_timed(&mut self, paused: bool) -> Result<()> {
+    pub(in crate::game) fn tick_server_timed(&mut self, paused: bool) -> Result<()> {
         self.tick_server_spans(paused, |_| {}).map(|_| ())
     }
 
     /// Return the time in `tick_server` itself, and hand its detailed timing to `record`
     /// while spans are on. The recording and thread-work bookkeeping are outside that time.
-    pub(super) fn tick_server_spans(
+    pub(in crate::game) fn tick_server_spans(
         &mut self,
         paused: bool,
         record: impl FnOnce(TickTiming),
@@ -1755,7 +1765,7 @@ impl Game<'_> {
     /// than two seconds behind skips the ticks it missed: that returns how far
     /// behind it was, for the overload warning, and how long the thread blocked on
     /// workers or slept (`MinecraftServer.waitForTasks`'s idle time).
-    pub(super) fn wait_for_next_server_tick(
+    pub(in crate::game) fn wait_for_next_server_tick(
         &mut self,
         next: &mut Instant,
         paused: bool,
@@ -1787,7 +1797,7 @@ impl Game<'_> {
     /// The levels this server tick runs, in `MinecraftServer.levels` order
     /// (the Overworld, the Nether, the End): every level with a player in
     /// it, forced chunks or a `/pregen` task, or the Overworld while idle.
-    pub(super) fn levels_to_tick(&self) -> Vec<Dim> {
+    pub(in crate::game) fn levels_to_tick(&self) -> Vec<Dim> {
         let guests = self
             .lan
             .as_ref()
@@ -1831,7 +1841,7 @@ impl Game<'_> {
     }
 
     /// A loading-only ticket needs chunk work, not an active simulation.
-    pub(super) fn has_spawn_tickets(&self, dim: Dim) -> bool {
+    pub(in crate::game) fn has_spawn_tickets(&self, dim: Dim) -> bool {
         if self.lan.as_ref().is_some_and(|host| {
             host.hub
                 .lan
@@ -1853,7 +1863,7 @@ impl Game<'_> {
     }
 
     /// The portal tickets of `dim`'s level (`placePortalTicket`, or saved).
-    pub(super) fn portal_tickets_in(&self, dim: Dim) -> &[PortalTicket] {
+    pub(in crate::game) fn portal_tickets_in(&self, dim: Dim) -> &[PortalTicket] {
         if dim == self.dim {
             self.tickets.portal_tickets()
         } else {
@@ -1869,7 +1879,7 @@ impl Game<'_> {
     /// keeps `FULL` (level 33), so the outer block-ticking ring is a ticking
     /// chunk too; and at least the chunks its expiry waits for
     /// (`portal_ticket_can_expire`).
-    pub(super) fn portal_ticket_areas(&self) -> Vec<((i32, i32), i32)> {
+    pub(in crate::game) fn portal_ticket_areas(&self) -> Vec<((i32, i32), i32)> {
         let block_ticking = i32::from(sunrise_client::ticket_levels::BLOCK_TICKING);
         self.tickets
             .portal_tickets()
@@ -1909,7 +1919,7 @@ impl Game<'_> {
     /// Count the parked levels' empty ticks: unload unticketed chunks from
     /// idle built-in levels while keeping them open until server shutdown, and
     /// save and close idle custom levels after [`IDLE_TICKS`].
-    pub(super) fn close_idle_levels(&mut self) -> Result<()> {
+    pub(in crate::game) fn close_idle_levels(&mut self) -> Result<()> {
         let saving_enabled = !self.saving_disabled();
         let active = self.active_levels();
         let unload_chunks = self
@@ -1977,7 +1987,7 @@ impl Game<'_> {
     /// Save the parked custom level `dim` and drop it: the mods hear its chunks
     /// and the level unload. A level a mod opened at run time stays known, and
     /// opens again when entered, as any other custom level.
-    pub(super) fn close_parked_level(&mut self, dim: Dim) -> Result<()> {
+    pub(in crate::game) fn close_parked_level(&mut self, dim: Dim) -> Result<()> {
         debug_assert!(
             !dim.is_builtin(),
             "built-in levels stay open until server shutdown"
@@ -2008,7 +2018,7 @@ impl Game<'_> {
     }
 
     /// The mods hear `dim`'s level open (`LevelEvent.Load`), on a server.
-    pub(super) fn native_level_opened(&mut self, dim: Dim) {
+    pub(in crate::game) fn native_level_opened(&mut self, dim: Dim) {
         if self.remote.is_some()
             || self.options.execution_role.is_client()
             || self.levels.has_heard_open(dim)
@@ -2046,7 +2056,7 @@ impl Game<'_> {
     /// Every level still open closes with the server, however it ends
     /// (`MinecraftServer.stopServer`'s `level.close()` loop), in vanilla's
     /// order of its levels: the Overworld, the Nether, the End.
-    pub(super) fn native_levels_closing(&mut self) {
+    pub(in crate::game) fn native_levels_closing(&mut self) {
         for dim in Dim::all() {
             self.native_level_closed(dim);
         }
@@ -2055,7 +2065,7 @@ impl Game<'_> {
     /// Run the requested level save passes. `level_save` fires after a pass even if an
     /// individual record failed and was reported. A failed awaited flush ends the pass with
     /// an error and no hook. Reopen levels as needed, then restore the active one.
-    pub(super) fn run_requested_saves(&mut self) {
+    pub(in crate::game) fn run_requested_saves(&mut self) {
         if Self::admit_entity_save().is_err() {
             return;
         }
@@ -2079,7 +2089,7 @@ impl Game<'_> {
 
     /// Save every parked level (`MinecraftServer.saveAllChunks`); the level
     /// in place is the caller's to save.
-    pub(super) fn save_parked_levels(&mut self, wait: bool) -> Result<()> {
+    pub(in crate::game) fn save_parked_levels(&mut self, wait: bool) -> Result<()> {
         if self.levels.parked.is_empty() {
             return Ok(());
         }
@@ -2200,7 +2210,7 @@ impl Game<'_> {
 impl Game<'_> {
     /// Rebind only an already-owning transfer, before installing it in this level.
     /// Memory still belongs to the parked source until the caller moves it.
-    pub(super) fn rebind_transferred_entity(
+    pub(in crate::game) fn rebind_transferred_entity(
         &mut self,
         id: u32,
         entity: &mut impl sunrise_mod_runtime::attachments::HasAttachmentLifetime,
@@ -2295,7 +2305,7 @@ mod tests {
         use mod_api::{RuntimeGenerator, RuntimeLevel};
         use sunrise_client::save::LevelShape;
         crate::game::in_own_process(
-            "game::levels::tests::an_idle_level_closes_after_reporting_a_record_failure",
+            "game::server_side::levels::tests::an_idle_level_closes_after_reporting_a_record_failure",
             || {
                 mod_platform::testing::with_mods(Vec::new().into(), || {
                     with_game(|game| {
@@ -3551,7 +3561,7 @@ mod request_save_tests {
 
 impl Game<'_> {
     /// `Game::tick` as a server runs it for its first level: no window lead, which only the window's `Game` has.
-    pub(super) fn tick_server_first(&mut self) -> Result<()> {
+    pub(in crate::game) fn tick_server_first(&mut self) -> Result<()> {
         self.expire_client_cracks();
         if self.agent.hold_server {
             return Ok(());
@@ -3562,7 +3572,7 @@ impl Game<'_> {
     }
 
     /// A server's tick of its first level: the clock, functions, autosave and weather it owns, then the level.
-    pub(super) fn tick_first_level(&mut self) -> Result<()> {
+    pub(in crate::game) fn tick_first_level(&mut self) -> Result<()> {
         // Only a server ticks its own world from here: its players are guests, swapped in for
         // their turns (`as_guest`), and the window's player is a client of it.
         self.ticks += 1;

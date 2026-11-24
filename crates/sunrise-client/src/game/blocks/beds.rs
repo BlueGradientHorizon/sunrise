@@ -14,7 +14,7 @@ use sunrise_world::registry::BlockStateId;
 
 impl Game<'_> {
     /// `BedRule.canSleep` of the current dimension's bed rule.
-    pub(super) fn bed_can_sleep_now(&self) -> bool {
+    pub(in crate::game) fn bed_can_sleep_now(&self) -> bool {
         self.dimension_type()
             .bed_rule
             .can_sleep
@@ -23,7 +23,11 @@ impl Game<'_> {
     /// What `CanContinueSleepingEvent.getProblem` holds for a sleeper: its bed gone
     /// (`checkBedExists`), or for a player (`Player.tick`) a bed rule that no longer lets
     /// them sleep.
-    pub(super) fn sleep_problem(&self, bed_exists: bool, player: bool) -> Option<SleepProblem> {
+    pub(in crate::game) fn sleep_problem(
+        &self,
+        bed_exists: bool,
+        player: bool,
+    ) -> Option<SleepProblem> {
         if !bed_exists {
             Some(SleepProblem::NotPossibleHere)
         } else if player && !self.bed_can_sleep_now() {
@@ -34,7 +38,7 @@ impl Game<'_> {
     }
     /// `setBlockAndUpdate(head, state.setValue(OCCUPIED, occupied))`, when
     /// the block at `head` is still a bed and not already so.
-    pub(super) fn set_bed_occupied(&mut self, head: [i32; 3], occupied: bool) {
+    pub(in crate::game) fn set_bed_occupied(&mut self, head: [i32; 3], occupied: bool) {
         let registry = &self.pack.assets.registry;
         let Some(mut state) = registry
             .state(self.world.block(head[0], head[1], head[2]))
@@ -57,7 +61,7 @@ impl Game<'_> {
 
     /// `LivingEntity.startSleeping` for the player in place (the host, or
     /// a guest during its turn): the bed it lies in is occupied.
-    pub(super) fn occupy_bed(&mut self, head: [i32; 3]) {
+    pub(in crate::game) fn occupy_bed(&mut self, head: [i32; 3]) {
         self.set_bed_occupied(head, true);
         if !self.server.player_beds.contains(&(self.dim, head)) {
             self.server.player_beds.push((self.dim, head));
@@ -79,7 +83,7 @@ impl Game<'_> {
     /// this level nobody sleeps in any more are free again. Runs in each
     /// level's tick, after the players' packets and sleep ticks, never inside
     /// a guest's turn.
-    pub(super) fn free_left_beds(&mut self) {
+    pub(in crate::game) fn free_left_beds(&mut self) {
         let dim = self.dim;
         let left: Vec<[i32; 3]> = self
             .server
@@ -106,7 +110,7 @@ impl Game<'_> {
 
     /// The levels with a bed a player marked occupied: they tick until the
     /// bed is freed.
-    pub(super) fn player_bed_levels(&self) -> impl Iterator<Item = Dim> + '_ {
+    pub(in crate::game) fn player_bed_levels(&self) -> impl Iterator<Item = Dim> + '_ {
         self.server.player_beds.iter().map(|(d, _)| *d)
     }
 
@@ -114,7 +118,7 @@ impl Game<'_> {
     /// leaves (`ServerPlayer.disconnect` stops its sleep), so no bed is
     /// saved occupied by a player who is not in it when the world opens
     /// again. Each bed is freed in its own level.
-    pub(super) fn free_player_beds(&mut self) -> Result<()> {
+    pub(in crate::game) fn free_player_beds(&mut self) -> Result<()> {
         if self.server.player_beds.is_empty() {
             return Ok(());
         }
@@ -144,7 +148,7 @@ impl Game<'_> {
     /// lies on, measured from the head's own y - a straw bed's head from its
     /// foot's - or `None` when there is no such shape, in which case the
     /// player does not lie down at all.
-    pub(super) fn sleep_height(&self, head: [i32; 3]) -> Option<f64> {
+    pub(in crate::game) fn sleep_height(&self, head: [i32; 3]) -> Option<f64> {
         let state = self.world.block(head[0], head[1], head[2]);
         if !self.is_bed(state) {
             return None;
@@ -173,7 +177,7 @@ impl Game<'_> {
         )
     }
     /// Where the sleeper lies (`setPosToBed`), when the bed gives it a shape.
-    pub(super) fn sleeping_position(&self, head: [i32; 3]) -> Option<Vec3> {
+    pub(in crate::game) fn sleeping_position(&self, head: [i32; 3]) -> Option<Vec3> {
         self.sleep_height(head)
             .map(|height| pos_to_bed(head, height))
     }

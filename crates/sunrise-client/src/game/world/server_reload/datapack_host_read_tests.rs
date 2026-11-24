@@ -24,7 +24,7 @@ impl Hooks for SyncedRegistryMod {
 fn native_datapack_host_reads_enforce_level_session_and_generation() {
     // The mock server and client each use a process-wide registry publication.
     if run_fresh_cases(
-        "game::server_reload::tests::datapack_publication_tests::datapack_host_read_tests::native_datapack_host_reads_enforce_level_session_and_generation",
+        "game::server_side::server_reload::tests::datapack_publication_tests::datapack_host_read_tests::native_datapack_host_reads_enforce_level_session_and_generation",
         "SUNRISE_DATAPACK_HOST_READ_CHILD",
         &["host-reads"],
     ) {

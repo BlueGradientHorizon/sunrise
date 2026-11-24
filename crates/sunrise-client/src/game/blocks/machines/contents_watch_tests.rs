@@ -173,7 +173,7 @@ fn take(watcher: &Watcher) -> Vec<Notice> {
 #[ignore = "daily"]
 fn keyed_observers_route_source_data_without_global_or_self_duplicates() {
     with_watches(
-        "game::machines::contents_watch_tests::keyed_observers_route_source_data_without_global_or_self_duplicates",
+        "game::server_side::machines::contents_watch_tests::keyed_observers_route_source_data_without_global_or_self_duplicates",
         |game, level, watcher| {
             let observer = game.block_entity(level, OBSERVER).unwrap();
             let barrel = game.block_entity(level, SOURCE).unwrap();
@@ -238,7 +238,7 @@ fn keyed_observers_route_source_data_without_global_or_self_duplicates() {
 #[ignore = "daily"]
 fn watches_journal_nested_changes_and_preserve_explicit_abort_notices() {
     with_watches(
-        "game::machines::contents_watch_tests::watches_journal_nested_changes_and_preserve_explicit_abort_notices",
+        "game::server_side::machines::contents_watch_tests::watches_journal_nested_changes_and_preserve_explicit_abort_notices",
         |game, level, watcher| {
             let observer = game.block_entity(level, OBSERVER).unwrap();
             let source = game.block_entity(level, SOURCE).unwrap();
@@ -315,7 +315,7 @@ fn watches_journal_nested_changes_and_preserve_explicit_abort_notices() {
 #[ignore = "daily"]
 fn watch_dispatch_snapshots_membership_and_guards_the_source_not_the_observer() {
     with_watches(
-        "game::machines::contents_watch_tests::watch_dispatch_snapshots_membership_and_guards_the_source_not_the_observer",
+        "game::server_side::machines::contents_watch_tests::watch_dispatch_snapshots_membership_and_guards_the_source_not_the_observer",
         |game, level, watcher| {
             let observer = game.block_entity(level, OBSERVER).unwrap();
             let other = game.block_entity(level, OTHER).unwrap();
@@ -364,7 +364,7 @@ fn watch_dispatch_snapshots_membership_and_guards_the_source_not_the_observer() 
 #[ignore = "daily"]
 fn observer_unload_reload_requires_explicit_reregistration_and_replacement_retires_it() {
     with_watches(
-        "game::machines::contents_watch_tests::observer_unload_reload_requires_explicit_reregistration_and_replacement_retires_it",
+        "game::server_side::machines::contents_watch_tests::observer_unload_reload_requires_explicit_reregistration_and_replacement_retires_it",
         |game, level, watcher| {
             let observer = game.block_entity(level, OBSERVER).unwrap();
             observer.watch_contents(game, source_pos(), true).unwrap();

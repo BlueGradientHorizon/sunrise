@@ -31,7 +31,7 @@ impl Game<'_> {
     /// whether or not there was room. A client of a server leaves the placing
     /// to the server. Whether the food went in; None when this isn't a
     /// campfire use, so the item's own use runs.
-    pub(super) fn use_on_campfire(&mut self, pos: [i32; 3]) -> Result<Option<bool>> {
+    pub(in crate::game) fn use_on_campfire(&mut self, pos: [i32; 3]) -> Result<Option<bool>> {
         // `ServerPlayerGameMode.useItemOn`'s `suppressUsingBlock`: sneaking
         // with a stack in either hand never reaches the block's `useItemOn`,
         // so the food stays in the hand and the item's own use (eating)
@@ -91,7 +91,7 @@ impl Game<'_> {
     /// when no recipe takes it any more) drops at the block's corner
     /// (`Containers.dropItemStack` at its integer position), then the clients
     /// see the slot empty and a `block_change` goes out.
-    pub(super) fn tick_campfire(&mut self, pos: Pos) -> Result<()> {
+    pub(in crate::game) fn tick_campfire(&mut self, pos: Pos) -> Result<()> {
         let state = self.world.block(pos.0, pos.1, pos.2);
         let lit = self
             .pack
@@ -151,14 +151,18 @@ impl Game<'_> {
     /// turned to `Direction.from2DDataValue((i + facing) % 4)`, laid flat
     /// (90° about X), at a corner and three eighths of its size, drawn as a
     /// FIXED item seeded by the block's position plus the slot.
-    pub(super) fn campfire_geometry(&self, camera: glam::DVec3, out: &mut Vec<Vertex>) {
+    pub(in crate::game) fn campfire_geometry(&self, camera: glam::DVec3, out: &mut Vec<Vertex>) {
         self.campfire_items(camera, |d| {
             self.submit_item_world(d.state, d.pose, d.light, out);
         });
     }
 
     /// The items [`Self::campfire_geometry`] draws, in `CampfireRenderer.submit`'s order.
-    pub(super) fn campfire_items(&self, camera: glam::DVec3, mut draw: impl FnMut(BlockItemDraw)) {
+    pub(in crate::game) fn campfire_items(
+        &self,
+        camera: glam::DVec3,
+        mut draw: impl FnMut(BlockItemDraw),
+    ) {
         let _items = sunrise_client::spans::raw_flight_guard("block_entity_items");
         let reach = Reach::Default;
         sunrise_client::spans::note_block_entity_item_visits(|| {
@@ -224,7 +228,7 @@ impl Game<'_> {
 
     /// `Containers.dropItemStack(level, x, y, z, stack)` at the block's
     /// integer position.
-    pub(super) fn campfire_drop(&mut self, pos: Pos, stack: ItemStack) {
+    pub(in crate::game) fn campfire_drop(&mut self, pos: Pos, stack: ItemStack) {
         let at = BlockPos::new(pos.0, pos.1, pos.2);
         for piece in
             sunrise_world::level::removal::drop_item_stack(&mut self.world.random, at, stack.count)

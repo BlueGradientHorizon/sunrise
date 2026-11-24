@@ -8,7 +8,12 @@ use sunrise_world::registry::BlockStateId;
 impl Game<'_> {
     /// Record that the falling block `id` (`join`) of `state` ended its tick still falling,
     /// when a part listens to its state.
-    pub(super) fn note_falling_tick(&mut self, id: u32, join: JoinSeq, state: BlockStateId) {
+    pub(in crate::game) fn note_falling_tick(
+        &mut self,
+        id: u32,
+        join: JoinSeq,
+        state: BlockStateId,
+    ) {
         if super::api_values::block_state::block_listens(mod_api::HookId::FallingTick, state) {
             self.server.ordered.falling_ticked.push((id, join));
         }
@@ -16,7 +21,7 @@ impl Game<'_> {
 
     /// Deliver the recorded falling ticks in order, each to the parts of the falling block's
     /// state as it is now; one gone since is skipped.
-    pub(super) fn deliver_falling_ticks(&mut self) {
+    pub(in crate::game) fn deliver_falling_ticks(&mut self) {
         if self.server.ordered.falling_ticked.is_empty() {
             return;
         }

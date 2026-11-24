@@ -108,7 +108,7 @@ fn in_child(group: &str) -> bool {
     let result = std::process::Command::new(std::env::current_exe().unwrap())
         .args([
             "--exact",
-            &format!("game::container_loot::tests::{group}"),
+            &format!("game::server_side::container_loot::tests::{group}"),
             "--include-ignored",
             "--nocapture",
         ])

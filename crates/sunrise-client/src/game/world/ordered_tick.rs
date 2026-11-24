@@ -18,15 +18,15 @@ use sunrise_core::random::RandomSource as _;
 
 /// Progress through this level tick's ordered entity turns.
 #[derive(Default, Clone)]
-pub(super) struct OrderedTicks {
+pub(in crate::game) struct OrderedTicks {
     /// Joins at or above this started after the tick began; they tick next tick.
     /// The general rows' pass (`general/tick.rs`) shares the same cutoff.
     pub(in crate::game) born: JoinSeq,
     /// The last join number ticked, if any: later ones are still to come.
-    pub(super) done: Option<JoinSeq>,
+    pub(in crate::game) done: Option<JoinSeq>,
     /// Joins below this have had their spawn packet; the ones above joined
     /// since (a summoned falling block, a lit TNT) and tick after it goes out.
-    pub(super) announced: JoinSeq,
+    pub(in crate::game) announced: JoinSeq,
     /// For each batch of another kind, in tick order (see [`Batch`]): the
     /// lowest join number among it and every batch after it.
     suffix_min: [JoinSeq; Batch::COUNT],
@@ -37,24 +37,24 @@ pub(super) struct OrderedTicks {
     /// entries are rebuilt from the live lists every time.
     pending_buf: Vec<(JoinSeq, Pending)>,
     /// Stand turns that belong after a shulker's turn, kept in join order.
-    pub(super) armor_stands: std::collections::VecDeque<JoinSeq>,
+    pub(in crate::game) armor_stands: std::collections::VecDeque<JoinSeq>,
     /// The falling blocks (id, join) that ended a tick still falling with a part listening to
     /// `falling_tick`, delivered after the pass.
-    pub(super) falling_ticked: Vec<(u32, JoinSeq)>,
+    pub(in crate::game) falling_ticked: Vec<(u32, JoinSeq)>,
     /// Only consecutive falling ticks without mod callbacks may defer compaction.
-    pub(super) defer_landings: bool,
+    pub(in crate::game) defer_landings: bool,
     /// The terminal slots awaiting compaction at the end of that run.
-    pub(super) landed: sunrise_core::fast_hash::FxHashSet<JoinSeq>,
-    pub(super) landing_time: sunrise_client::spans::SpanTotal,
+    pub(in crate::game) landed: sunrise_core::fast_hash::FxHashSet<JoinSeq>,
+    pub(in crate::game) landing_time: sunrise_client::spans::SpanTotal,
     /// Whether the entity tick hooks are heard this tick, and which types are told alone: the
     /// server's unsimulated entities of those types are told at their place in this order
     /// (game/modding/native_ticks.rs).
-    pub(super) told: super::native_ticks::Told,
+    pub(in crate::game) told: super::native_ticks::Told,
 }
 
 /// The batches of the other kinds, in the order they tick.
 #[derive(Clone, Copy)]
-pub(super) enum Batch {
+pub(in crate::game) enum Batch {
     ArmorStands,
     Boats,
     Carts,
@@ -87,13 +87,13 @@ enum Pending {
 }
 
 /// The lowest join number in a batch, or none when it is empty.
-pub(super) fn first_join<T: Joined>(list: &[T]) -> Option<JoinSeq> {
+pub(in crate::game) fn first_join<T: Joined>(list: &[T]) -> Option<JoinSeq> {
     list.iter().map(Joined::join_seq).min()
 }
 
 impl Game<'_> {
     /// A level tick starts: what has joined so far ticks this tick.
-    pub(super) fn begin_ordered_ticks(&mut self) {
+    pub(in crate::game) fn begin_ordered_ticks(&mut self) {
         let _span = sunrise_client::spans::guard("ordered_ticks");
         let pending_buf = std::mem::take(&mut self.server.ordered.pending_buf);
         let landed = std::mem::take(&mut self.server.ordered.landed);
@@ -139,7 +139,7 @@ impl Game<'_> {
     }
 
     /// Ticks each ordered entity that joined before `cut` and has not ticked yet.
-    pub(super) fn run_ordered_ticks(&mut self, cut: JoinSeq, late: bool) -> Result<()> {
+    pub(in crate::game) fn run_ordered_ticks(&mut self, cut: JoinSeq, late: bool) -> Result<()> {
         let _span = sunrise_client::spans::guard("ordered_ticks");
         let mut first_error = None;
         let mut followed = None;
@@ -491,7 +491,7 @@ impl Game<'_> {
 
     /// Before a batch ticks, run the ordered entities that joined before
     /// everything still to tick in the batches from this one on.
-    pub(super) fn ordered_before(&mut self, batch: Batch) -> Result<()> {
+    pub(in crate::game) fn ordered_before(&mut self, batch: Batch) -> Result<()> {
         let cut = self.server.ordered.suffix_min[batch as usize];
         if cut == JoinSeq::MAX {
             return Ok(());
@@ -502,7 +502,7 @@ impl Game<'_> {
 
 impl Game<'_> {
     #[cfg(test)]
-    pub(super) fn orb_moved(&mut self, i: usize, step: sunrise_client::entities::OrbMove) {
+    pub(in crate::game) fn orb_moved(&mut self, i: usize, step: sunrise_client::entities::OrbMove) {
         let o = &self.orbs[i];
         let effect = self
             .body_motion(&game_side!(self))

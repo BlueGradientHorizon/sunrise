@@ -7,7 +7,7 @@ use mod_api::{ChunkRef, EntityRef, LevelReadError, LevelRef, PlayerRef};
 
 impl Game<'_> {
     /// `ServerLevel.players`: the online players of an open server level, each once.
-    pub(super) fn level_visit_online_players(
+    pub(in crate::game) fn level_visit_online_players(
         &self,
         level: LevelRef,
         visit: &mut dyn FnMut(PlayerRef) -> ControlFlow<()>,
@@ -21,7 +21,7 @@ impl Game<'_> {
 
     /// `ChunkMap.TrackedEntity.seenBy`: the players of the level in place whose tracker holds
     /// the entity, other than the entity itself.
-    pub(super) fn entity_trackers(&self, entity: EntityRef) -> Option<Vec<PlayerRef>> {
+    pub(in crate::game) fn entity_trackers(&self, entity: EntityRef) -> Option<Vec<PlayerRef>> {
         let target = self.native_entity_target(entity)?;
         if self.target_level(target).key() != self.dim.key() {
             return None;
@@ -39,7 +39,7 @@ impl Game<'_> {
 
     /// `ChunkMap.getPlayers(pos, false)`: the players the chunk was sent to and is
     /// inside the view of.
-    pub(super) fn chunk_watchers(&self, chunk: ChunkRef) -> Option<Vec<PlayerRef>> {
+    pub(in crate::game) fn chunk_watchers(&self, chunk: ChunkRef) -> Option<Vec<PlayerRef>> {
         self.native_level_world(chunk.level())?;
         let dimension = chunk.level().dimension_id();
         let [x, z] = chunk.pos();

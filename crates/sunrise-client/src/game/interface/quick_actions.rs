@@ -37,13 +37,13 @@ impl Game<'_> {
     }
 
     /// `key.quickActions`: only open if the tag names a dialog.
-    pub(super) fn has_quick_actions(&self) -> bool {
+    pub(in crate::game) fn has_quick_actions(&self) -> bool {
         self.quick_actions_dialog().is_some()
     }
 
     /// `getQuickActionsDialog().ifPresent(showDialog(holder, gui.screen()))`.
     /// Returns whether a dialog screen actually opened.
-    pub(super) fn open_quick_actions(&mut self) -> bool {
+    pub(in crate::game) fn open_quick_actions(&mut self) -> bool {
         let Some(dialog) = self.quick_actions_dialog() else {
             return false;
         };

@@ -6,7 +6,7 @@ use super::*;
 /// The window system ended the event loop with a failure (on Linux, a compositor dropping the
 /// connection after a protocol error) while fullscreen was on: the next start opens windowed, so a
 /// fullscreen the system can't show doesn't crash every launch (#2904).
-pub(super) fn leave_fullscreen_after(
+pub(in crate::game) fn leave_fullscreen_after(
     result: &std::result::Result<(), EventLoopError>,
     settings: &mut Settings,
 ) {
@@ -19,7 +19,7 @@ pub(super) fn leave_fullscreen_after(
     }
 }
 
-pub(super) fn run_event_loop(mut game: Game<'_>) -> Result<()> {
+pub(in crate::game) fn run_event_loop(mut game: Game<'_>) -> Result<()> {
     if game.options.headless {
         // No display to open winit's loop on: the game's own loop.
         game.run_headless();
@@ -47,55 +47,56 @@ pub(super) fn run_event_loop(mut game: Game<'_>) -> Result<()> {
 }
 
 /// The loading screen's state while the worker loads the resources.
-pub(super) struct Loading {
-    pub(super) window: Option<Arc<Window>>,
-    pub(super) renderer: Option<Renderer>,
+pub(in crate::game) struct Loading {
+    pub(in crate::game) window: Option<Arc<Window>>,
+    pub(in crate::game) renderer: Option<Renderer>,
     /// The boot screen's atlas, until the pack's GUI atlas replaces it.
-    pub(super) boot: sunrise_client::hud::HudAtlas,
-    pub(super) gui: Option<UiResources>,
-    pub(super) settings: Settings,
-    pub(super) fullscreen: sunrise_client::window::FullscreenState,
-    pub(super) video_modes: sunrise_client::window::VideoModeList,
-    pub(super) options: Option<Options>,
-    pub(super) vanilla_root: PathBuf,
-    pub(super) pack_error: Option<String>,
-    pub(super) started: Instant,
-    pub(super) panorama_rotation: sunrise_client::gfx::panorama::Rotation,
-    pub(super) progress: Progress,
+    pub(in crate::game) boot: sunrise_client::hud::HudAtlas,
+    pub(in crate::game) gui: Option<UiResources>,
+    pub(in crate::game) settings: Settings,
+    pub(in crate::game) fullscreen: sunrise_client::window::FullscreenState,
+    pub(in crate::game) video_modes: sunrise_client::window::VideoModeList,
+    pub(in crate::game) options: Option<Options>,
+    pub(in crate::game) vanilla_root: PathBuf,
+    pub(in crate::game) pack_error: Option<String>,
+    pub(in crate::game) started: Instant,
+    pub(in crate::game) panorama_rotation: sunrise_client::gfx::panorama::Rotation,
+    pub(in crate::game) progress: Progress,
     /// The bar as drawn, easing toward `progress` (`LoadingOverlay.currentProgress`).
-    pub(super) bar: f32,
-    pub(super) receiver: Receiver<LoaderMsg>,
-    pub(super) loaded: Option<std::result::Result<Loaded, super::resource_loader::LoaderFailure>>,
+    pub(in crate::game) bar: f32,
+    pub(in crate::game) receiver: Receiver<LoaderMsg>,
+    pub(in crate::game) loaded:
+        Option<std::result::Result<Loaded, super::resource_loader::LoaderFailure>>,
     /// The loader's `Done` arrived: its channel closing afterwards is expected.
-    pub(super) delivered: bool,
-    pub(super) handle: Option<JoinHandle<()>>,
-    pub(super) shown: bool,
+    pub(in crate::game) delivered: bool,
+    pub(in crate::game) handle: Option<JoinHandle<()>>,
+    pub(in crate::game) shown: bool,
     /// When the menu bundle arrived (`set_ui`), and whether a title frame with
     /// it was presented since: the world renderer waits for that frame
     /// (`ready_for_handoff`).
-    pub(super) ui_at: Option<Instant>,
-    pub(super) title_drawn: bool,
-    pub(super) menu: startup_menu::StartupMenu,
-    pub(super) error: Option<Box<dyn std::error::Error>>,
+    pub(in crate::game) ui_at: Option<Instant>,
+    pub(in crate::game) title_drawn: bool,
+    pub(in crate::game) menu: startup_menu::StartupMenu,
+    pub(in crate::game) error: Option<Box<dyn std::error::Error>>,
 }
 /// How long the handoff waits for the first title frame before building the
 /// world renderer anyway (a hidden window may never be asked to redraw).
-pub(super) const TITLE_FRAME_WAIT: Duration = Duration::from_secs(1);
+pub(in crate::game) const TITLE_FRAME_WAIT: Duration = Duration::from_secs(1);
 impl Loading {
     /// Reconstitute the main-thread error without erasing declaration refusals.
-    pub(super) fn take_worker_result(&mut self) -> Option<Result<Loaded>> {
+    pub(in crate::game) fn take_worker_result(&mut self) -> Option<Result<Loaded>> {
         self.loaded.take().map(|result| result.map_err(Into::into))
     }
 
     /// The world renderer is built on the main thread, so building it before
     /// the title is on the screen holds the title back by that build. Wait for
     /// one title frame first, unless a world is waiting to open.
-    pub(super) fn ready_for_handoff(&self) -> bool {
+    pub(in crate::game) fn ready_for_handoff(&self) -> bool {
         self.title_drawn
             || self.menu.pending.is_some()
             || self.ui_at.is_none_or(|at| at.elapsed() >= TITLE_FRAME_WAIT)
     }
-    pub(super) fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+    pub(in crate::game) fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_some() {
             return;
         }
@@ -193,7 +194,7 @@ impl Loading {
 
         self.window = Some(window);
     }
-    pub(super) fn window_event(
+    pub(in crate::game) fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,
         id: WindowId,
@@ -210,7 +211,7 @@ impl Loading {
     }
     /// The menu bundle arrived: rebuild the loading screen with the real atlas
     /// and title panorama.
-    pub(super) fn set_ui(&mut self, gui: UiResources, root: PathBuf) {
+    pub(in crate::game) fn set_ui(&mut self, gui: UiResources, root: PathBuf) {
         log::info!(
             "Sunrise: loading the title artwork after {} ms",
             self.started.elapsed().as_millis()
@@ -250,7 +251,7 @@ impl Loading {
         // The title frame's wait starts once its renderer is built.
         self.ui_at = Some(Instant::now());
     }
-    pub(super) fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+    pub(in crate::game) fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         // The loop may run once more after exit(): keep the first error, the
         // one that ended loading.
         if self.error.is_some() {
@@ -277,7 +278,7 @@ impl Loading {
         }
         event_loop.set_control_flow(ControlFlow::Poll);
     }
-    pub(super) fn draw(&mut self) {
+    pub(in crate::game) fn draw(&mut self) {
         let Some(size) = self
             .renderer
             .as_ref()
@@ -311,7 +312,7 @@ impl Loading {
             );
         }
     }
-    pub(super) fn finish(&mut self, mut loaded: Loaded) -> Result<Option<Game<'static>>> {
+    pub(in crate::game) fn finish(&mut self, mut loaded: Loaded) -> Result<Option<Game<'static>>> {
         let handoff_at = Instant::now();
         let mut options = self.options.take().ok_or("loading already finished")?;
         options.resources = loaded.root.clone();
@@ -416,7 +417,7 @@ impl Loading {
 
 /// The application: the loading screen until the resources are ready, then
 /// the game itself, on the same event loop and window.
-pub(super) enum App {
+pub(in crate::game) enum App {
     Loading(Box<Loading>),
     Ready(Box<Game<'static>>),
 }
@@ -494,7 +495,7 @@ impl ApplicationHandler for App {
 /// manifest is `sunrise-resources.json`): without them, say where they were
 /// looked for and how to get them, before a window or a loader starts. `get` is
 /// the page a hook sends the player to (`sunrise_hooks::engine::get_the_game`).
-pub(super) fn preflight_resources(
+pub(in crate::game) fn preflight_resources(
     root: &std::path::Path,
     get: Option<sunrise_hooks::GetTheGame>,
     dedicated: bool,
@@ -575,7 +576,7 @@ pub(super) fn preflight_resources(
 /// ("resetting fullscreen mode") so a start that died on the display mode can
 /// come back; the resource packs are rolled back only when their load fails
 /// (`rollbackResourcePacks`), not here. True when the last start was unclean.
-pub(super) fn unclean_start_recovery(settings: &mut Settings) -> bool {
+pub(in crate::game) fn unclean_start_recovery(settings: &mut Settings) -> bool {
     // Vanilla's field defaults true: only an explicit `false` is an unclean
     // start; an options file that never had the key is not one.
     let unclean = matches!(

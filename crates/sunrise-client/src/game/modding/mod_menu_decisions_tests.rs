@@ -947,7 +947,7 @@ fn a_mod_quick_move_is_one_action_and_a_refusal_leaves_no_prefix() {
 fn a_panicking_live_quick_move_rolls_back_and_disables_only_its_callback() {
     // The log sink is process-global.
     if super::native_entity_refs::tests::run_fresh_cases(
-        "game::mod_menu_decisions_tests::a_panicking_live_quick_move_rolls_back_and_disables_only_its_callback",
+        "game::client_side::mod_menu_decisions_tests::a_panicking_live_quick_move_rolls_back_and_disables_only_its_callback",
         "SUNRISE_TEST_LIVE_QUICK_MOVE_PANIC_CHILD",
         &["panic"],
     ) {

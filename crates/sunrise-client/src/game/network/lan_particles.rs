@@ -17,7 +17,7 @@ use sunrise_protocol::{
 use sunrise_world::registry::BlockStateId;
 
 /// An explosion packet a guest's turn put off (`lan_explode`).
-pub(super) struct LanExplosion {
+pub(in crate::game) struct LanExplosion {
     center: [f64; 3],
     small: bool,
     radius: f32,
@@ -27,7 +27,7 @@ pub(super) struct LanExplosion {
 }
 
 /// A particle request awaiting delivery to players in its level.
-pub(super) struct QueuedParticle {
+pub(in crate::game) struct QueuedParticle {
     pub dimension: &'static str,
     pub options: ParticleOptions,
     pub state: Option<BlockStateId>,
@@ -42,7 +42,7 @@ pub(super) struct QueuedParticle {
 
 /// `PowderSnowBlock.entityInside`'s server roll. The branch and both float
 /// draws follow Java's `getKnownMovement`/`randomBetween` order.
-pub(super) fn powder_snow_velocity(
+pub(in crate::game) fn powder_snow_velocity(
     known: Vec3,
     random: &mut impl RandomSource,
 ) -> Option<[f64; 3]> {
@@ -70,7 +70,7 @@ fn send_native_nearby(
 }
 
 /// Resolve and decode a custom envelope once, before any effect can spawn it.
-pub(super) fn decode_mod_particle(name: &str, bytes: &[u8]) -> Option<ParticleOptions> {
+pub(in crate::game) fn decode_mod_particle(name: &str, bytes: &[u8]) -> Option<ParticleOptions> {
     match mod_api::__private::decode_particle_stream(name, bytes) {
         Ok(Some(value)) => ParticleOptions::typed(value),
         Ok(None) => Some(ParticleOptions::named(name)),
@@ -82,7 +82,7 @@ pub(super) fn decode_mod_particle(name: &str, bytes: &[u8]) -> Option<ParticleOp
 }
 
 /// A protocol or mob-event listener as the API's plain particle data.
-pub(super) fn particle_position_source(source: &NetworkPositionSource) -> PositionSource {
+pub(in crate::game) fn particle_position_source(source: &NetworkPositionSource) -> PositionSource {
     match source {
         NetworkPositionSource::Block(pos) => PositionSource::Block(*pos),
         NetworkPositionSource::Entity { id, y_offset } => PositionSource::Entity {
@@ -103,7 +103,11 @@ fn rgb(c: [f32; 4]) -> [f32; 3] {
 
 /// `ServerLevel.sendParticles` of one soul particle moving by `velocity`
 /// (Soul Speed's `spawn_particles`): sent to the players within 32 blocks.
-pub(super) fn send_soul_particle(host: &super::lan::LanHost, at: [f64; 3], velocity: [f64; 3]) {
+pub(in crate::game) fn send_soul_particle(
+    host: &super::lan::LanHost,
+    at: [f64; 3],
+    velocity: [f64; 3],
+) {
     let Some(id) = host
         .hub
         .registry_id("minecraft:particle_type", "minecraft:soul")
@@ -132,7 +136,7 @@ pub(super) fn send_soul_particle(host: &super::lan::LanHost, at: [f64; 3], veloc
 
 impl Game<'_> {
     /// A snowflake from a vehicle (`PowderSnowBlock.entityInside`), to every player around.
-    pub(super) fn lan_snowflake(&self, at: [f64; 3], velocity: [f64; 3]) {
+    pub(in crate::game) fn lan_snowflake(&self, at: [f64; 3], velocity: [f64; 3]) {
         if let Some(host) = self.lan.as_ref() {
             send_snowflake_particle(host, at, velocity);
         }
@@ -141,7 +145,7 @@ impl Game<'_> {
 
 /// `PowderSnowBlock.entityInside`'s `ServerLevel.sendParticles` of one
 /// snowflake (`count` 1, no spread, `RandomizationType.ALTERNATIVE`).
-pub(super) fn send_snowflake_particle(
+pub(in crate::game) fn send_snowflake_particle(
     host: &super::lan::LanHost,
     at: [f64; 3],
     velocity: [f64; 3],
@@ -173,7 +177,7 @@ pub(super) fn send_snowflake_particle(
 }
 
 /// `ServerLevel.sendParticles`: sends a `ClientboundLevelParticlesPacket` to each player within 32 blocks.
-pub(super) fn send_hub_level_particles(
+pub(in crate::game) fn send_hub_level_particles(
     hub: &Hub,
     options: &ParticleOptions,
     at: [f64; 3],
@@ -236,7 +240,7 @@ pub(super) fn send_hub_level_particles(
 impl Game<'_> {
     /// `SonicBoom.tick` uses `ServerLevel.sendParticles` for each ray point.
     /// Keep the local event's rendering; connected players receive one at rest.
-    pub(super) fn lan_sonic_boom(&self, options: &ParticleOptions, at: [f64; 3]) {
+    pub(in crate::game) fn lan_sonic_boom(&self, options: &ParticleOptions, at: [f64; 3]) {
         let (Some(host), Some(particle)) = (&self.lan, self.network_particle(options, None)) else {
             return;
         };
@@ -264,7 +268,7 @@ impl Game<'_> {
     /// `ServerLevel.sendParticles` of a mob's particles: a packet to each
     /// player within 32 blocks. The window draws its own copy. `state` is the
     /// block of a block particle.
-    pub(super) fn lan_level_particles(
+    pub(in crate::game) fn lan_level_particles(
         &self,
         options: &ParticleOptions,
         at: [f64; 3],
@@ -282,7 +286,13 @@ impl Game<'_> {
     /// `LivingEntity.checkFallDamage`'s `ServerLevel.sendParticles` of the
     /// landing block's crumbs: drawn in this window, when it has one, and
     /// sent to each player within 32 blocks.
-    pub(super) fn landing_dust(&mut self, state: BlockStateId, at: Vec3, count: i32, speed: f64) {
+    pub(in crate::game) fn landing_dust(
+        &mut self,
+        state: BlockStateId,
+        at: Vec3,
+        count: i32,
+        speed: f64,
+    ) {
         let at = [at.x, at.y, at.z];
         if self.serving.is_none() && self.options.dedicated.is_none() {
             let block = [
@@ -331,7 +341,7 @@ impl Game<'_> {
     }
 
     /// Shared block callback for any entity family that applies block effects.
-    pub(super) fn entity_powder_snow_particles(
+    pub(in crate::game) fn entity_powder_snow_particles(
         &mut self,
         previous: Vec3,
         position: Vec3,
@@ -353,7 +363,7 @@ impl Game<'_> {
     }
 
     /// `PowderSnowBlock.entityInside` for an entity with known movement.
-    pub(super) fn powder_snow_particle(
+    pub(in crate::game) fn powder_snow_particle(
         &mut self,
         block: BlockPos,
         position: Vec3,
@@ -369,7 +379,7 @@ impl Game<'_> {
     }
 
     /// Locally draw the level's own particle, then send it to LAN players.
-    pub(super) fn snowflake_particle(&mut self, at: [f64; 3], velocity: [f64; 3]) {
+    pub(in crate::game) fn snowflake_particle(&mut self, at: [f64; 3], velocity: [f64; 3]) {
         let options = ParticleOptions::simple(ParticleType::Snowflake);
         if self.options.execution_role.is_client() {
             self.particles.add(&options, at, velocity);
@@ -390,7 +400,7 @@ impl Game<'_> {
     /// network id and the data it carries (`state` for the block particles).
     /// None while not serving, or for a particle whose data isn't sent from
     /// here (items, trails).
-    pub(super) fn network_particle(
+    pub(in crate::game) fn network_particle(
         &self,
         options: &ParticleOptions,
         state: Option<BlockStateId>,
@@ -400,7 +410,7 @@ impl Game<'_> {
 
     /// The options a server's particle stands for (None for a type or data
     /// this client doesn't draw).
-    pub(super) fn received_particle(
+    pub(in crate::game) fn received_particle(
         &mut self,
         p: &Particle,
         at: [f64; 3],
@@ -497,7 +507,7 @@ impl Game<'_> {
     /// `ClientPacketListener.handleParticleEvent`: no count is one particle
     /// moving by speed times spread; otherwise each is spread and sped up by
     /// gaussians on each axis.
-    pub(super) fn remote_level_particles(&mut self, p: &play::LevelParticles) {
+    pub(in crate::game) fn remote_level_particles(&mut self, p: &play::LevelParticles) {
         let Some(options) = self.received_particle(&p.particle, p.pos) else {
             return;
         };
@@ -519,7 +529,7 @@ impl Game<'_> {
     /// `ClientPacketListener.handleExplosion`: the blast's particles (its
     /// block particles as the packet lists them) and its sound, when the
     /// packet carries it, then the player's push.
-    pub(super) fn remote_explode(&mut self, p: &play::Explode) {
+    pub(in crate::game) fn remote_explode(&mut self, p: &play::Explode) {
         if p.play_sound {
             let pitch = (1.0
                 + (self.particles.random().next_float() - self.particles.random().next_float())
@@ -584,7 +594,7 @@ impl Game<'_> {
     /// the players (a guest's turn through `as_guest`, a host's hit on a
     /// guest) the packet waits for the turn to end so that it reaches every
     /// player, the guest too.
-    pub(super) fn lan_send_particles(&mut self, request: QueuedParticle) {
+    pub(in crate::game) fn lan_send_particles(&mut self, request: QueuedParticle) {
         if self.lan.is_none() {
             if self.serving.is_some() || self.options.dedicated.is_some() {
                 self.creatures.lan_particles.push(request);
@@ -634,7 +644,7 @@ impl Game<'_> {
     /// (`skip_hooks` or active `asking_level_sound`) skip re-dispatching the hooks and undergo
     /// registry validation only. Returns the sound ready for pure packet delivery, or `None` if
     /// canceled/dropped.
-    pub(super) fn resolve_native_sound(
+    pub(in crate::game) fn resolve_native_sound(
         &mut self,
         mut sound: super::creatures::NativeSound,
     ) -> Option<super::creatures::NativeSound> {
@@ -682,7 +692,10 @@ impl Game<'_> {
 
     /// Pure packet delivery for a native sound that has already passed `resolve_native_sound`
     /// (runs no mod hooks and does not touch `self.creatures.lan_sounds`).
-    pub(super) fn send_resolved_native_sound(&self, sound: &super::creatures::NativeSound) {
+    pub(in crate::game) fn send_resolved_native_sound(
+        &self,
+        sound: &super::creatures::NativeSound,
+    ) {
         let Some(host) = &self.lan else { return };
         let packet = host.hub.sound_packet(
             &sound.sound,
@@ -727,7 +740,7 @@ impl Game<'_> {
     /// Each is asked of the mods first (`play_level_sound_at_entity` when
     /// bound to an entity, `_at_position` otherwise). One at a position also
     /// goes wrapped to its level's viewers (`Hub::send_viewed_sound`).
-    pub(super) fn flush_native_sounds(&mut self) {
+    pub(in crate::game) fn flush_native_sounds(&mut self) {
         if self.lan.is_none() {
             return;
         }
@@ -742,7 +755,7 @@ impl Game<'_> {
     /// `BucketItem.emptyContents` where water evaporates: `sendParticles(
     /// LARGE_SMOKE, x, y, z, 8, 1, 1, 1, 0, ALTERNATIVE)` from the block's
     /// corner, so each puff lands inside the block. The window draws its own.
-    pub(super) fn evaporation_smoke(&mut self, pos: [i32; 3]) {
+    pub(in crate::game) fn evaporation_smoke(&mut self, pos: [i32; 3]) {
         let options = ParticleOptions::simple(ParticleType::LargeSmoke);
         let at = pos.map(f64::from);
         for _ in 0..8 {
@@ -767,7 +780,7 @@ impl Game<'_> {
     }
 
     /// The particles guests' turns put off.
-    pub(super) fn flush_lan_particles(&mut self) {
+    pub(in crate::game) fn flush_lan_particles(&mut self) {
         for request in std::mem::take(&mut self.creatures.lan_particles) {
             self.lan_send_particles(request);
         }
@@ -778,7 +791,7 @@ impl Game<'_> {
     /// creative player, whom nothing hurt), and the blast's `effects`. The
     /// sound reaches them on its own (the level's sounds), and so does a hurt
     /// player's push (the motion they are sent).
-    pub(super) fn lan_explode(
+    pub(in crate::game) fn lan_explode(
         &mut self,
         center: [f64; 3],
         small: bool,
@@ -818,7 +831,7 @@ impl Game<'_> {
     }
 
     /// The explosions guests' turns put off.
-    pub(super) fn flush_lan_explosions(&mut self) {
+    pub(in crate::game) fn flush_lan_explosions(&mut self) {
         for e in std::mem::take(&mut self.creatures.lan_explosions) {
             self.lan_explode(
                 e.center,
@@ -835,7 +848,7 @@ impl Game<'_> {
     /// no block particles, and for each player it pushed the push
     /// (`ServerExplosion.hitPlayers`), which only that client applies, as
     /// nothing hurt them.
-    pub(super) fn lan_wind_burst(
+    pub(in crate::game) fn lan_wind_burst(
         &self,
         center: [f64; 3],
         radius: f32,
@@ -940,7 +953,7 @@ pub(in crate::game) mod tests {
             native_entity_refs::tests::with_client_game,
         };
         in_own_process(
-            "game::lan_particles::tests::received_block_particles_follow_the_provider_matrix",
+            "game::server_side::lan_particles::tests::received_block_particles_follow_the_provider_matrix",
             || {
                 with_client_game(|game| {
                     let _server = logged_client(game);

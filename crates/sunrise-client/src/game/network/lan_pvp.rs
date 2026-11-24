@@ -23,7 +23,7 @@ use sunrise_core::geometry::{Aabb, Vec3};
 /// snowballs, eggs and mods' thrown types, which break on them
 /// (`Player.hurtServer` takes no 0 damage). Pearls, potions and wind charges
 /// fly past players as before.
-pub(super) fn meets_players(kind: &ProjectileKind) -> bool {
+pub(in crate::game) fn meets_players(kind: &ProjectileKind) -> bool {
     matches!(
         kind,
         ProjectileKind::Arrow { .. }
@@ -35,7 +35,7 @@ pub(super) fn meets_players(kind: &ProjectileKind) -> bool {
 
 /// Who a player's attack lands on: a player by connection.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum Victim {
+pub(in crate::game) enum Victim {
     Guest(u32),
 }
 
@@ -47,7 +47,7 @@ impl Victim {
 }
 
 /// The attacker's side of the hit.
-pub(super) struct Strike {
+pub(in crate::game) struct Strike {
     /// The attacking guest, kept after their turn through `as_guest` ends.
     attacker: Option<u32>,
     /// The attacker's creative mode: their hit passes the victim's
@@ -89,7 +89,7 @@ const PVP_SOURCE: HurtSource<'static> = HurtSource {
 #[cfg(test)]
 impl Strike {
     /// A plain blow by guest `attacker`, for the tests that land one.
-    pub(super) fn test_blow(attacker: u32) -> Self {
+    pub(in crate::game) fn test_blow(attacker: u32) -> Self {
         Self {
             attacker: Some(attacker),
             creative: false,
@@ -123,7 +123,7 @@ struct SweepDamage {
 /// A sweep attack's reach to the other players (`Player.doSweepAttack`),
 /// worked out as the attacker.
 #[derive(Clone)]
-pub(super) struct Sweep {
+pub(in crate::game) struct Sweep {
     /// The attacking guest (none: the host).
     attacker: Option<u32>,
     /// The attacker's creative mode: their hit passes the victim's
@@ -138,9 +138,9 @@ pub(super) struct Sweep {
     knockback: (f64, f64),
     team: Option<sunrise_client::scoreboard::Team>,
     /// The target's box grown by (1, 0.25, 1).
-    pub(super) hit_box: Aabb,
+    pub(in crate::game) hit_box: Aabb,
     /// The entity id of the player the sweep started from, which it spares.
-    pub(super) skip: Option<i32>,
+    pub(in crate::game) skip: Option<i32>,
     /// The weapon's `minecraft:ignite` (Fire Aspect) on each swept player, in
     /// seconds (`doPostAttackEffects` after a sweep hit lands).
     ignite: f32,
@@ -149,14 +149,14 @@ pub(super) struct Sweep {
 impl Strike {
     /// Whether it has extra knockback, which stops the attacker's sprint
     /// once it lands (Player.causeExtraKnockback).
-    pub(super) fn stops_sprint(&self) -> bool {
+    pub(in crate::game) fn stops_sprint(&self) -> bool {
         self.knockback.0 > 0.0
     }
 }
 
 impl Game<'_> {
     /// Whether the player a hit landed on stands on the ground.
-    pub(super) fn pvp_victim_on_ground(&self, victim: Victim) -> bool {
+    pub(in crate::game) fn pvp_victim_on_ground(&self, victim: Victim) -> bool {
         let Some(host) = self.lan.as_ref() else {
             return false;
         };
@@ -170,7 +170,7 @@ impl Game<'_> {
     }
 
     /// The player `id` that guest `conn` attacks, if it is one.
-    pub(super) fn pvp_victim(&self, conn: u32, id: i32) -> Option<Victim> {
+    pub(in crate::game) fn pvp_victim(&self, conn: u32, id: i32) -> Option<Victim> {
         let host = self.lan.as_ref()?;
         host.hub
             .guests
@@ -181,7 +181,7 @@ impl Game<'_> {
 
     /// `Player.attack`'s `causeFoodExhaustion(0.1F)`, charged to the attacker
     /// (the host, or a guest swapped in) only once the hit hurt the victim.
-    pub(super) fn pvp_exhaustion(&mut self) {
+    pub(in crate::game) fn pvp_exhaustion(&mut self) {
         if let Some(p) = self.player.as_mut()
             && !self.creative
         {
@@ -191,7 +191,7 @@ impl Game<'_> {
 
     /// The attacker's side of `Player.attack` (the host, or a guest swapped
     /// in): the damage, the charge reset and the swing.
-    pub(super) fn pvp_strike(&mut self, victim: u32) -> Option<Strike> {
+    pub(in crate::game) fn pvp_strike(&mut self, victim: u32) -> Option<Strike> {
         let p = self.player.as_ref()?;
         let from = [p.position.x, p.position.y, p.position.z];
         let (amount, scale, crit, magic) =
@@ -230,7 +230,7 @@ impl Game<'_> {
 
     /// The held weapon's `minecraft:ignite` (Fire Aspect) seconds on a player
     /// victim (`EnchantmentHelper.doPostAttackEffects`).
-    pub(super) fn weapon_ignite_seconds(&mut self) -> f32 {
+    pub(in crate::game) fn weapon_ignite_seconds(&mut self) -> f32 {
         let Some(held) = self.held().cloned() else {
             return 0.0;
         };
@@ -251,7 +251,7 @@ impl Game<'_> {
     }
 
     /// The guests by connection, with their entity ids.
-    pub(super) fn lan_guest_entities(&self) -> Vec<(u32, u32)> {
+    pub(in crate::game) fn lan_guest_entities(&self) -> Vec<(u32, u32)> {
         self.lan.as_ref().map_or_else(Vec::new, |host| {
             host.hub
                 .guests
@@ -262,7 +262,11 @@ impl Game<'_> {
     }
 
     /// The player a player's projectile hit, when it hit one.
-    pub(super) fn projectile_pvp_victim(&self, p: &Projectile, hit: Hit) -> Option<Victim> {
+    pub(in crate::game) fn projectile_pvp_victim(
+        &self,
+        p: &Projectile,
+        hit: Hit,
+    ) -> Option<Victim> {
         if p.owner != Some(Who::Player) || !meets_players(&p.kind) {
             return None;
         }
@@ -331,7 +335,7 @@ impl Game<'_> {
     /// hurt refuses it when the `pvp` game rule or their teams forbid it
     /// (`ServerPlayer.canHarmPlayer`; `AbstractArrow.onHitEntity` then turns
     /// the arrow back).
-    pub(super) fn projectile_hits_player(
+    pub(in crate::game) fn projectile_hits_player(
         &mut self,
         p: &Projectile,
         hit: Hit,
@@ -374,7 +378,7 @@ impl Game<'_> {
 
     /// `AbstractArrow.onHitEntity`: an arrow that hurt a player tells its owner, a player other
     /// than the one hit, with `PLAY_ARROW_HIT_SOUND`, unless the arrow is silent.
-    pub(super) fn arrow_hit_sound_to_shooter(&self, p: &Projectile) {
+    pub(in crate::game) fn arrow_hit_sound_to_shooter(&self, p: &Projectile) {
         let (Some(host), Some(shooter)) = (self.lan.as_ref(), p.guest) else {
             return;
         };
@@ -392,7 +396,7 @@ impl Game<'_> {
         );
     }
 
-    pub(super) fn player_attacker(&self, conn: Option<u32>) -> Option<(u32, Text)> {
+    pub(in crate::game) fn player_attacker(&self, conn: Option<u32>) -> Option<(u32, Text)> {
         match conn {
             Some(conn) => {
                 let g = self.lan.as_ref()?.hub.guest(conn)?;
@@ -404,7 +408,7 @@ impl Game<'_> {
 
     /// The hit landing on the victim with its extra knockback, then the
     /// attacker's attack sound. Whether the victim was hurt.
-    pub(super) fn pvp_land(&mut self, victim: Victim, s: &Strike) -> bool {
+    pub(in crate::game) fn pvp_land(&mut self, victim: Victim, s: &Strike) -> bool {
         let Some(host) = self.lan.as_ref() else {
             return false;
         };
@@ -555,7 +559,7 @@ impl Game<'_> {
     /// the victim's thorns dealt back to the attacker (`ServerPlayer.die`'s
     /// `awardKillScore` waits for the death itself, in
     /// [`guest_award_kill_score`](Self::guest_award_kill_score)).
-    pub(super) fn pvp_aftermath(
+    pub(in crate::game) fn pvp_aftermath(
         &mut self,
         victim: Victim,
         attacker: Option<u32>,
@@ -587,7 +591,7 @@ impl Game<'_> {
     /// `createWitherRose(killer)`: the killer's kill counts and `player_kills`,
     /// and the rose a wither's kill leaves where they fell. A mob credits no
     /// score.
-    pub(super) fn guest_award_kill_score(&mut self, victim: u32, at: [f64; 3]) {
+    pub(in crate::game) fn guest_award_kill_score(&mut self, victim: u32, at: [f64; 3]) {
         let Some(id) = self
             .guest_combat_record(victim)
             .and_then(|c| c.kill_credit(self.world.game_time))
@@ -629,7 +633,7 @@ impl Game<'_> {
     /// damage (`1 + ratio * baseDamage`, plus the enchantments against a
     /// player, scaled by the attack strength) and who hits. The box is set
     /// by the caller.
-    pub(super) fn player_sweep(&mut self, base: f32, scale: f32) -> Sweep {
+    pub(in crate::game) fn player_sweep(&mut self, base: f32, scale: f32) -> Sweep {
         let from = self
             .player
             .as_ref()
@@ -673,7 +677,7 @@ impl Game<'_> {
     /// A sweep from a mob hit reaches the other players. Inside a guest's
     /// turn the host holds the other players (`as_guest`), so it waits for
     /// the turn to end.
-    pub(super) fn sweep_other_players(&mut self, sweep: Sweep) {
+    pub(in crate::game) fn sweep_other_players(&mut self, sweep: Sweep) {
         if let Some(collect) = self.combat.sweeps.as_mut() {
             collect.push(sweep);
         } else if self.server.lan_acting.is_some() {
@@ -684,7 +688,7 @@ impl Game<'_> {
     }
 
     /// The sweeps guests' turns put off.
-    pub(super) fn flush_sweeps(&mut self) {
+    pub(in crate::game) fn flush_sweeps(&mut self) {
         for sweep in std::mem::take(&mut self.creatures.sweeps) {
             self.sweep_other_players(sweep);
         }
@@ -694,7 +698,7 @@ impl Game<'_> {
     /// closer than 3 blocks (`distanceToSqr < 9`) and not an ally
     /// (`isAlliedTo`), is hurt (`ServerPlayer.canHarmPlayer`: the `pvp` rule)
     /// and pushed 0.4 along the attacker's yaw.
-    pub(super) fn sweep_players(&mut self, sweep: &Sweep) {
+    pub(in crate::game) fn sweep_players(&mut self, sweep: &Sweep) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };

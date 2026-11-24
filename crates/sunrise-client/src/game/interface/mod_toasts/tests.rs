@@ -13,7 +13,7 @@ const OPTIONS_MARKER: u32 = 0xFF5D_3E5D;
 #[ignore = "daily"]
 fn client_toasts_share_the_draw_list_and_admit_replacements_before_updating() {
     in_own_process(
-        "game::mod_toasts::tests::client_toasts_share_the_draw_list_and_admit_replacements_before_updating",
+        "game::client_side::mod_toasts::tests::client_toasts_share_the_draw_list_and_admit_replacements_before_updating",
         || {
             let seen = Arc::new(Mutex::new(Vec::new()));
             let mods = vec![ModEntry::new(

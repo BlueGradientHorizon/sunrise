@@ -35,12 +35,12 @@ fn consumed_snapshot(stack: &ItemStack) -> Option<mod_api::ItemStack> {
 }
 
 /// `EntityEvent.USE_ITEM_COMPLETE`: the server finished the player's use.
-pub(super) const USE_ITEM_COMPLETE_EVENT: i8 = 9;
+pub(in crate::game) const USE_ITEM_COMPLETE_EVENT: i8 = 9;
 
 impl Game<'_> {
     /// The consuming player, including the local player outside a guest action.
     /// Before a world is published the handle is stale, but the effect still runs.
-    pub(super) fn consuming_player_entity(&self) -> mod_api::EntityRef {
+    pub(in crate::game) fn consuming_player_entity(&self) -> mod_api::EntityRef {
         mod_api::EntityRef::new(
             self.native_lifecycle
                 .epoch()
@@ -54,13 +54,13 @@ impl Game<'_> {
     }
 
     /// `stack.get(DataComponents.CONSUMABLE)`: item prototype, data patch or wire patch.
-    pub(super) fn consumable(&self, stack: &ItemStack) -> Option<ItemConsumable> {
+    pub(in crate::game) fn consumable(&self, stack: &ItemStack) -> Option<ItemConsumable> {
         sunrise_client::item_sync::consumable(stack, self.items())
     }
 
     /// `ServerPlayer.completeUsingItem`: the player's own client is told
     /// first, and completes the use itself (eating the food there too).
-    pub(super) fn send_use_item_complete(&mut self) {
+    pub(in crate::game) fn send_use_item_complete(&mut self) {
         if self.server.lan_acting.is_some() {
             self.server
                 .guest_entity_events
@@ -68,7 +68,7 @@ impl Game<'_> {
         }
     }
     /// `Consumable.emitParticlesAndSounds(user.getRandom(), user, stack, count)`.
-    pub(super) fn emit_consume(
+    pub(in crate::game) fn emit_consume(
         &mut self,
         consumable: &ItemConsumable,
         stack: &ItemStack,
@@ -78,7 +78,7 @@ impl Game<'_> {
     }
     /// `LivingEntity.completeUsingItem` for a consumable: `Consumable.onConsume`,
     /// then `ItemStack.applyAfterUseComponentSideEffects`' use remainder.
-    pub(super) fn finish_consuming(
+    pub(in crate::game) fn finish_consuming(
         &mut self,
         info: &ItemInfo,
         consumable: &ItemConsumable,
@@ -137,7 +137,7 @@ impl Game<'_> {
     }
     /// `ItemStack.applyAfterUseComponentSideEffects` uses the stack captured
     /// before the item handler, even when that handler changes the hand.
-    pub(super) fn apply_after_use_components(&mut self, stack: &ItemStack) {
+    pub(in crate::game) fn apply_after_use_components(&mut self, stack: &ItemStack) {
         self.apply_use_remainder(stack);
         self.apply_use_cooldown(stack);
     }
@@ -161,7 +161,7 @@ impl Game<'_> {
             .map(|p| [p.position.x, p.position.y, p.position.z])
     }
     /// `TeleportRandomlyConsumeEffect.apply` for the local player.
-    pub(super) fn teleport_randomly(
+    pub(in crate::game) fn teleport_randomly(
         &mut self,
         teleport: &TeleportConsume,
         consumed: &ItemStack,
@@ -176,7 +176,7 @@ impl Game<'_> {
     }
     /// Apply the paused fox item use with the full host, then leave its tick
     /// continuation to the owning mob loop. Callback writes and apply share a transaction.
-    pub(super) fn apply_fox_consumption(
+    pub(in crate::game) fn apply_fox_consumption(
         &mut self,
         decision: &sunrise_client::mobs::fox::Consumption,
     ) -> bool {
@@ -321,7 +321,7 @@ impl Game<'_> {
     }
 
     /// Specialized player drinks have already applied their built-in component listener.
-    pub(super) fn apply_drink_effects(&mut self, stack: &ItemStack) {
+    pub(in crate::game) fn apply_drink_effects(&mut self, stack: &ItemStack) {
         if let Some(consumable) = self.consumable(stack) {
             self.apply_consumable_effects(stack, &consumable.effects, None);
         }
@@ -329,7 +329,7 @@ impl Game<'_> {
 
     /// A witch or trader applied its ordinary drink behavior during AI. The
     /// owning game now runs the list with the living host, before clearing the hand.
-    pub(super) fn finish_mob_drink(&mut self, id: u32, stack: &ItemStack) {
+    pub(in crate::game) fn finish_mob_drink(&mut self, id: u32, stack: &ItemStack) {
         let usage = MobConsumption::Drink(stack);
         if !self
             .mobs
@@ -374,7 +374,7 @@ impl Game<'_> {
 
     /// `LivingEntity.randomTeleport(x, y, z, true, avoid)`: down to the first
     /// block entities can teleport onto, inside the border, in a loaded chunk.
-    pub(super) fn random_teleport(&mut self, target: Vec3, avoid: Option<&str>) -> bool {
+    pub(in crate::game) fn random_teleport(&mut self, target: Vec3, avoid: Option<&str>) -> bool {
         let [min_x, min_z, max_x, max_z] = self.border.bounds();
         // WorldBorder.clampVec3ToBound (Mth.clamp, 1.0E-5F inside the far edge).
         let clamp = |v: f64, low: f64, high: f64| if v < low { low } else { v.min(high) };
@@ -491,7 +491,7 @@ impl Game<'_> {
     }
     /// `LivingEntity.handleEntityEvent(46)` for the entity the packet names:
     /// this player, or a mob the client is drawing.
-    pub(super) fn entity_teleport_particles(&mut self, id: i32) {
+    pub(in crate::game) fn entity_teleport_particles(&mut self, id: i32) {
         if self.remote.as_ref().is_some_and(|r| r.entity_id == id) {
             self.portal_particles();
             return;
@@ -535,7 +535,7 @@ impl Game<'_> {
         }
     }
     /// `LivingEntity.stopRiding`.
-    pub(super) fn stop_riding(&mut self) {
+    pub(in crate::game) fn stop_riding(&mut self) {
         let Some(id) = self.riding else {
             return;
         };
@@ -583,7 +583,7 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn stop_riding_from_removed_vehicle(&mut self, vehicle: u32, y: f64) {
+    pub(in crate::game) fn stop_riding_from_removed_vehicle(&mut self, vehicle: u32, y: f64) {
         if self.native_may_leave(vehicle) && self.riding == Some(vehicle) {
             self.dismount_removed_vehicle(y);
             self.release_removed_vehicle(vehicle);

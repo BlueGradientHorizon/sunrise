@@ -6,7 +6,7 @@ use crate::game::collision_source::Mover;
 use sunrise_client::{collisions::SceneCollisions, motion::BodyContact};
 use sunrise_core::geometry::{Aabb, Vec3};
 
-pub(super) struct CartLanding {
+pub(in crate::game) struct CartLanding {
     id: u32,
     kind: CartKind,
     at: Vec3,
@@ -16,7 +16,7 @@ pub(super) struct CartLanding {
 impl Game<'_> {
     /// `Entity.move` resets a ray-clipped fall, then `checkFallDamage` uses the
     /// current position, supporting block and the body's last water contact.
-    pub(super) fn cart_move_fall(
+    pub(in crate::game) fn cart_move_fall(
         &self,
         c: &Minecart,
         from: Vec3,
@@ -43,7 +43,7 @@ impl Game<'_> {
 
     /// Run `Block.fallOn`, including `MinecartTNT.causeFallDamage`, before the
     /// landing game event. A removed cart cannot resolve block restitution.
-    pub(super) fn finish_cart_landing(
+    pub(in crate::game) fn finish_cart_landing(
         &mut self,
         landing: Option<CartLanding>,
         effect: BodyContact,
@@ -72,7 +72,7 @@ impl Game<'_> {
 
     /// Entity.move for a cart: collisions zero the blocked components, the world border's walls
     /// among them (`CollisionGetter.borderCollision`, asked for every entity).
-    pub(super) fn move_cart(&mut self, c: &mut Minecart, delta: Vec3) -> bool {
+    pub(in crate::game) fn move_cart(&mut self, c: &mut Minecart, delta: Vec3) -> bool {
         // The cart's own move is a self move (#2414: vanilla's
         // `AbstractMinecart.move` passes SELF for its own tick); PR 1a
         // records the movement unchanged.

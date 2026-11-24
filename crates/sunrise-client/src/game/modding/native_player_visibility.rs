@@ -30,7 +30,7 @@ impl Game<'_> {
         }
     }
     /// The connection of a player a client stands behind, in their turn or out of it.
-    pub(super) fn player_connection(&self, player: PlayerRef) -> Result<u32, Refusal> {
+    pub(in crate::game) fn player_connection(&self, player: PlayerRef) -> Result<u32, Refusal> {
         if !self.is_logical_server() {
             return Err(Refusal::Client);
         }
@@ -48,7 +48,7 @@ impl Game<'_> {
     }
     /// `ackBlockChangesUpTo` for a connected player: the hub's pending ack, sent after the
     /// next tick's block changes.
-    pub(super) fn player_ack_block_changes(
+    pub(in crate::game) fn player_ack_block_changes(
         &mut self,
         player: PlayerRef,
         sequence: i32,
@@ -62,7 +62,7 @@ impl Game<'_> {
         Ok(())
     }
     /// `Player.sendBlockChange`: one `BlockUpdate` to that player's client, now.
-    pub(super) fn player_show_block(
+    pub(in crate::game) fn player_show_block(
         &mut self,
         player: PlayerRef,
         pos: [i32; 3],
@@ -88,7 +88,7 @@ impl Game<'_> {
         Ok(())
     }
     /// `ServerPlayer.broadcastToPlayer` of `target` for `viewer` (`lan::player_shown`).
-    pub(super) fn player_sees(
+    pub(in crate::game) fn player_sees(
         &self,
         viewer: PlayerRef,
         target: PlayerRef,

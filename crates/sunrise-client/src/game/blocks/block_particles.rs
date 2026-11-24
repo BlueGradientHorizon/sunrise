@@ -12,12 +12,12 @@ impl Game<'_> {
     /// 0's `colorAsTerrainParticle` (white when the block has none).
     /// `HoneyBlock.showSlideParticles` (entity event 53): five honey block
     /// particles at the entity.
-    pub(super) fn honey_slide_particles(&mut self, at: [f64; 3]) {
+    pub(in crate::game) fn honey_slide_particles(&mut self, at: [f64; 3]) {
         self.honey_entity_particles(at, 53);
     }
 
     /// `HoneyBlock.showParticles`: the crumb count of entity event 53 or 54.
-    pub(super) fn honey_entity_particles(&mut self, at: [f64; 3], event: i8) {
+    pub(in crate::game) fn honey_entity_particles(&mut self, at: [f64; 3], event: i8) {
         let Some(count) = sunrise_client::landing::honey_particle_count(event) else {
             return;
         };
@@ -48,7 +48,7 @@ impl Game<'_> {
     /// `BlockStateModelSet.getParticleMaterial`: the sprite of the model's
     /// `particle` texture, else its first face (entity-rendered blocks may
     /// have a particle texture without faces, and faces without one).
-    pub(super) fn block_particle_sprite(
+    pub(in crate::game) fn block_particle_sprite(
         pack: &PackResources,
         state: BlockStateId,
     ) -> Option<String> {
@@ -78,7 +78,7 @@ impl Game<'_> {
 
     /// `ClientLevel.addDestroyBlockEffect`: decide using the destroyed state, not the block
     /// that now occupies `pos`, then add the default burst per outline box unless handled.
-    pub(super) fn destroy_particles(&mut self, pos: [i32; 3], state: BlockStateId) {
+    pub(in crate::game) fn destroy_particles(&mut self, pos: [i32; 3], state: BlockStateId) {
         if self.settings.extras.hide_block_particles || self.res.facts().is_air(state) {
             return;
         }
@@ -98,7 +98,12 @@ impl Game<'_> {
 
     /// `ClientLevel.addBreakingBlockEffects`' particle step, called after the sound with a
     /// non-air state and the hit face. Only visible blocks have hit particles.
-    pub(super) fn crack_particle(&mut self, pos: [i32; 3], face: [i32; 3], state: BlockStateId) {
+    pub(in crate::game) fn crack_particle(
+        &mut self,
+        pos: [i32; 3],
+        face: [i32; 3],
+        state: BlockStateId,
+    ) {
         let facts = self.res.facts().get(state);
         if self.settings.extras.hide_block_particles || facts.render_shape == RenderShape::Invisible
         {
@@ -114,7 +119,7 @@ impl Game<'_> {
     }
 
     /// Raw `ClientLevel.addBreakingParticles`: one crumb on the given face, with no sound or hook.
-    pub(super) fn add_breaking_particle(
+    pub(in crate::game) fn add_breaking_particle(
         &mut self,
         pos: [i32; 3],
         state: BlockStateId,
@@ -142,7 +147,7 @@ impl Game<'_> {
     }
     /// Resolve the three vanilla providers of `BlockParticleOption`. Render shape is
     /// a falling-dust gate, not a terrain or marker gate.
-    pub(super) fn block_provider_options(
+    pub(in crate::game) fn block_provider_options(
         &self,
         ty: ParticleType,
         state: BlockStateId,
@@ -197,7 +202,7 @@ impl Game<'_> {
         Some(options.with_source(&block.name))
     }
 
-    pub(super) fn particle_sprite(
+    pub(in crate::game) fn particle_sprite(
         &self,
         state: BlockStateId,
         pos: [i32; 3],
@@ -228,7 +233,7 @@ impl Game<'_> {
         )
     }
     /// `BlockTransformer.TransformParticle.send`: its level event.
-    pub(super) fn transform_particle(&mut self, particle: &str, pos: [i32; 3]) {
+    pub(in crate::game) fn transform_particle(&mut self, particle: &str, pos: [i32; 3]) {
         let source = self
             .server
             .lan_acting_uuid
@@ -245,7 +250,10 @@ impl Game<'_> {
 impl Game<'_> {
     /// The block's first up face (or any face) and its fixed tint, for block
     /// models drawn as entities (falling blocks, carried blocks).
-    pub(super) fn falling_block_face_sprite(&self, state: BlockStateId) -> Option<(String, u32)> {
+    pub(in crate::game) fn falling_block_face_sprite(
+        &self,
+        state: BlockStateId,
+    ) -> Option<(String, u32)> {
         let pack = &self.pack;
         let models = pack
             .render

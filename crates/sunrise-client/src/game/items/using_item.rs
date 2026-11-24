@@ -5,12 +5,12 @@ use super::*;
 
 /// Captured item and whether Start or Tick has overridden the remaining duration.
 #[derive(Default)]
-pub(super) struct UseStart {
-    pub(super) ticks_set: bool,
-    pub(super) item: Option<ItemStack>,
+pub(in crate::game) struct UseStart {
+    pub(in crate::game) ticks_set: bool,
+    pub(in crate::game) item: Option<ItemStack>,
 }
 impl UseStart {
-    pub(super) fn of(item: ItemStack) -> Self {
+    pub(in crate::game) fn of(item: ItemStack) -> Self {
         Self {
             ticks_set: false,
             item: Some(item),
@@ -22,7 +22,7 @@ impl Game<'_> {
     /// `Consumable.startConsuming` for a held consumable: food needs
     /// `Player.canEat` (`Consumable.canConsume`), anything else is always
     /// consumed. The right click is held for `consume_seconds`.
-    pub(super) fn start_eating(&mut self, info: &sunrise_client::items::ItemInfo) -> bool {
+    pub(in crate::game) fn start_eating(&mut self, info: &sunrise_client::items::ItemInfo) -> bool {
         let Some(stack) = self.held().cloned() else {
             return false;
         };
@@ -56,7 +56,7 @@ impl Game<'_> {
     /// (`SoundSource.RECORDS`, volume `range / 16`), `INSTRUMENT_PLAY` is
     /// posted, the used statistic counts and the horn is on cooldown as long.
     /// A horn whose instrument is unknown fails, which still ends the click.
-    pub(super) fn use_instrument(&mut self, stack: &ItemStack) {
+    pub(in crate::game) fn use_instrument(&mut self, stack: &ItemStack) {
         let Some(instrument) = self.res.items().instrument(stack) else {
             return;
         };
@@ -76,7 +76,7 @@ impl Game<'_> {
     /// `SolidBucketItem.useOn`'s `BucketItem.getEmptySuccessItem`: a placed
     /// powder snow bucket leaves an empty bucket in that hand, unless the player
     /// has infinite materials. The client predicts the same as the server does.
-    pub(super) fn consume_placed(&mut self, placed: &ItemStack) {
+    pub(in crate::game) fn consume_placed(&mut self, placed: &ItemStack) {
         if self.creative {
             return;
         }
@@ -89,14 +89,14 @@ impl Game<'_> {
             *self.stack_in_mut(slot) = Some(ItemStack::new("minecraft:bucket", 1));
         }
     }
-    pub(super) fn tick_using(&mut self) {
+    pub(in crate::game) fn tick_using(&mut self) {
         let Some(hand) = self.used_hand() else {
             return;
         };
         self.with_hand(hand, Self::tick_used_item);
     }
     /// `LivingEntity.updatingUsingItem` for the item in use, its hand acting.
-    pub(super) fn tick_used_item(&mut self) {
+    pub(in crate::game) fn tick_used_item(&mut self) {
         let Some((slot, ticks)) = self.using else {
             return;
         };
@@ -236,7 +236,7 @@ impl Game<'_> {
     }
     /// `BundleItem.onUseTick`: the first tick and then every second tick
     /// from the 11th on drops a stack. `updateUsingItem` owns completion.
-    pub(super) fn tick_bundle(&mut self, slot: usize, ticks: u32) {
+    pub(in crate::game) fn tick_bundle(&mut self, slot: usize, ticks: u32) {
         const USE_DURATION: i32 = 200;
         let remaining = item_use::ticks_left(self.use_duration, ticks);
         if remaining == USE_DURATION || (remaining < USE_DURATION - 10 && remaining % 2 == 0) {
@@ -249,7 +249,12 @@ impl Game<'_> {
     /// when its hand changed), a spyglass stops scoping, and a mod's own
     /// release follows. A mod's `Stop` may skip the release. `stopUsingItem`
     /// ends the use after it.
-    pub(super) fn release_used_item(&mut self, stack: &ItemStack, ticks: u32, hand_changed: bool) {
+    pub(in crate::game) fn release_used_item(
+        &mut self,
+        stack: &ItemStack,
+        ticks: u32,
+        hand_changed: bool,
+    ) {
         let canceled = !hand_changed && !self.use_item_stopped(stack, ticks);
         let (release, spyglass) = item_use::release_parts(canceled, hand_changed);
         match &*stack.item {
@@ -265,7 +270,7 @@ impl Game<'_> {
     }
     /// Ends the current use through [`Self::stop_using_item`]. With no stack left in
     /// the use's slot there is nothing to vibrate, but the use still ends.
-    pub(super) fn stop_active_item_use(&mut self) {
+    pub(in crate::game) fn stop_active_item_use(&mut self) {
         match self.use_start.item.clone().or_else(|| {
             self.using
                 .and_then(|(slot, _)| self.stack_in(slot))
@@ -302,7 +307,7 @@ impl Game<'_> {
     /// its remaining ticks are cleared), and when the use effects of the stack
     /// ask for it, `ItemStack.causeUseVibration` sends an `ITEM_INTERACT_FINISH`
     /// game event from the player, at its feet.
-    pub(super) fn stop_using_item(&mut self, stack: &ItemStack) {
+    pub(in crate::game) fn stop_using_item(&mut self, stack: &ItemStack) {
         self.using = None;
         self.use_start = Default::default();
         self.use_vibration(stack, "minecraft:item_interact_finish");
@@ -311,7 +316,7 @@ impl Game<'_> {
     /// `event` game event (`ITEM_INTERACT_START` when the use begins,
     /// `ITEM_INTERACT_FINISH` when it ends) from the player, at its feet, when
     /// the stack's use effects ask for interaction vibrations (the default).
-    pub(super) fn use_vibration(&mut self, stack: &ItemStack, event: &'static str) {
+    pub(in crate::game) fn use_vibration(&mut self, stack: &ItemStack, event: &'static str) {
         if !self.use_vibrates(stack) {
             return;
         }
@@ -325,7 +330,7 @@ impl Game<'_> {
 
 impl Game<'_> {
     /// Whether the use effects of `stack` ask for interaction vibrations.
-    pub(super) fn use_vibrates(&self, stack: &ItemStack) -> bool {
+    pub(in crate::game) fn use_vibrates(&self, stack: &ItemStack) -> bool {
         item_use::interact_vibrations(
             stack,
             self.items().get(&stack.item).map(|i| i.interact_vibrations),

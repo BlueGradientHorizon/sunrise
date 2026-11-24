@@ -8,8 +8,7 @@ use crate::game::native_hooks::particle_count_tests::frame_scene;
 use sunrise_assets::resource_source::{Resource, ResourceSource};
 use sunrise_client::gfx::ScreenshotRequest;
 
-const NAME: &str =
-    "game::pack_clouds_frame_tests::a_packs_clouds_draw_with_and_without_improved_transparency";
+const NAME: &str = "game::client_side::pack_clouds_frame_tests::a_packs_clouds_draw_with_and_without_improved_transparency";
 const CASE: &str = "SUNRISE_PACK_CLOUDS_FRAME_CASE";
 
 /// Vanilla's includes `oit.glsl` pulls in, which the pack's fragment stage includes.

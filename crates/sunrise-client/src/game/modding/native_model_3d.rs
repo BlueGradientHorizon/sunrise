@@ -21,7 +21,7 @@ fn view_pose(view: Gui3dView) -> Mat4 {
 
 impl Game<'_> {
     /// Draws `subject` as `view` says into `batch`. See `DrawContext::model_3d`.
-    pub(super) fn native_model_3d(
+    pub(in crate::game) fn native_model_3d(
         &self,
         batch: &mut HudBatch,
         subject: Gui3dSubject<'_>,

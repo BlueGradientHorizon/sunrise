@@ -20,14 +20,14 @@ use sunrise_core::nbt::Tag;
 
 /// A `TimerQueue` event.
 #[derive(Clone, Debug, PartialEq)]
-pub(super) struct Scheduled {
+pub(in crate::game) struct Scheduled {
     /// `ns:function`, or `#ns:tag` for a function tag.
     pub id: String,
     pub time: i64,
     pub seq: u64,
 }
 #[derive(Default)]
-pub(super) struct FnState {
+pub(in crate::game) struct FnState {
     pub store: DataStore,
     packs: Vec<Arc<DataPack>>,
     /// Enabled pack ids, in load order (later overrides earlier).
@@ -45,7 +45,7 @@ pub(super) struct FnState {
 }
 /// What a function reported through `return`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum Outcome {
+pub(in crate::game) enum Outcome {
     NoReturn,
     Value(i32),
     Fail,
@@ -83,25 +83,25 @@ impl PreparedFunctionCall {
 /// The world's pack stack: the built-in pack (unless disabled), the packs
 /// of `<world>/datapacks` and the resources root's feature packs, with the
 /// enabled ids from `datapacks.json` (`PackRepository.reload`).
-pub(super) struct PackStack {
+pub(in crate::game) struct PackStack {
     pub builtin: Option<DataPack>,
-    pub(super) content: DataPack,
+    pub(in crate::game) content: DataPack,
     pub packs: Vec<Arc<DataPack>>,
     pub enabled: Vec<String>,
     /// The feature flags the stack was selected for: the incoming world's, also on its first
     /// open, before `self.level` holds them (what `neoforge:feature_flags_enabled` reads).
-    pub(super) features: Vec<String>,
+    pub(in crate::game) features: Vec<String>,
 }
 impl PackStack {
     /// The enabled packs in `enabled` (the selected) order, later overriding
     /// earlier: `PackRepository.openAllSelected` keeps the selected order.
-    pub(super) fn enabled_packs(&self) -> impl Iterator<Item = &DataPack> {
+    pub(in crate::game) fn enabled_packs(&self) -> impl Iterator<Item = &DataPack> {
         self.enabled
             .iter()
             .filter_map(|id| self.packs.iter().find(|p| &p.id == id).map(Arc::as_ref))
     }
 }
-pub(super) fn pack_stack(
+pub(in crate::game) fn pack_stack(
     world_root: &std::path::Path,
     resources: &std::path::Path,
     builtin_source: &sunrise_assets::resource_source::ResourceSource,
@@ -123,10 +123,10 @@ pub(super) fn pack_stack(
     }
 }
 
-pub(super) struct OverlayFiles {
-    pub(super) files: Vec<(String, Vec<Vec<u8>>)>,
-    pub(super) read_errors: std::collections::BTreeMap<String, String>,
-    pub(super) priority_layers: Vec<sunrise_world::loot::RecipePriorityLayer>,
+pub(in crate::game) struct OverlayFiles {
+    pub(in crate::game) files: Vec<(String, Vec<Vec<u8>>)>,
+    pub(in crate::game) read_errors: std::collections::BTreeMap<String, String>,
+    pub(in crate::game) priority_layers: Vec<sunrise_world::loot::RecipePriorityLayer>,
 }
 
 /// The files the content tables load from: the world's enabled packs
@@ -136,7 +136,7 @@ pub(super) struct OverlayFiles {
 /// later contribution overrides an earlier one, as packs do. `Game` builds
 /// its tables through here on a world's first open and on `/reload`, so the
 /// mods are asked once per load.
-pub(super) fn overlay_files(
+pub(in crate::game) fn overlay_files(
     stack: &PackStack,
     contributed: Vec<(String, Vec<u8>)>,
 ) -> OverlayFiles {
@@ -182,7 +182,7 @@ impl FnState {
     }
 
     /// The highest enabled world pack providing this data resource.
-    pub(super) fn data_resource(
+    pub(in crate::game) fn data_resource(
         &self,
         name: &str,
     ) -> Option<sunrise_assets::resource_source::Resource> {
@@ -195,7 +195,7 @@ impl FnState {
 
     /// Enabled pack ids, in load order (later overrides earlier).
     #[cfg(test)]
-    pub(super) fn enabled(&self) -> &[String] {
+    pub(in crate::game) fn enabled(&self) -> &[String] {
         &self.enabled
     }
     /// The level function files compile at (`ServerFunctionLibrary`'s
@@ -214,7 +214,7 @@ impl Game<'_> {
         self.server.world_root.join("datapacks.json")
     }
     /// Discover and load the data packs of the world (once, or on `/reload`).
-    pub(super) fn ensure_datapacks(&mut self) {
+    pub(in crate::game) fn ensure_datapacks(&mut self) {
         if self.fns.loaded || self.server.world_root.as_os_str().is_empty() {
             return;
         }
@@ -222,7 +222,7 @@ impl Game<'_> {
             log::warn!("Sunrise: {}", error.diagnostic());
         }
     }
-    pub(super) fn open_world_datapacks(
+    pub(in crate::game) fn open_world_datapacks(
         &mut self,
         enabled_features: &[String],
     ) -> Result<PackStack, ReloadStageError> {
@@ -232,7 +232,7 @@ impl Game<'_> {
         self.reload_datapacks(false, enabled_features)
     }
 
-    pub(super) fn reload_datapacks(
+    pub(in crate::game) fn reload_datapacks(
         &mut self,
         run_load: bool,
         enabled_features: &[String],
@@ -356,7 +356,7 @@ impl Game<'_> {
     /// Macro lines are parsed
     /// only after substitution, but ordinary lines in a macro file still
     /// have to compile (`CommandFunction.fromLines`).
-    pub(super) fn admit_store(&mut self, mut store: DataStore, stack: &PackStack) {
+    pub(in crate::game) fn admit_store(&mut self, mut store: DataStore, stack: &PackStack) {
         // The installed candidate already selected and checked the same winners
         // gameplay uses, including the native contributions.
         if let Some(tables) = &self.world_tables {
@@ -467,7 +467,7 @@ impl Game<'_> {
         let json = serde_json::json!({"enabled": self.fns.enabled, "disabled": disabled});
         let _ = std::fs::write(self.datapack_settings_path(), json.to_string());
     }
-    pub(super) fn sync_function_registries(&mut self, stack: &PackStack) {
+    pub(in crate::game) fn sync_function_registries(&mut self, stack: &PackStack) {
         self.sync_schedule_registry();
         self.sync_enchantment_registries();
         let reg = &mut self.ui.registries;
@@ -576,7 +576,7 @@ impl Game<'_> {
             });
         }
     }
-    pub(super) fn save_schedule(&self) {
+    pub(in crate::game) fn save_schedule(&self) {
         if !self.fns.loaded || self.remote.is_some() {
             return;
         }
@@ -619,7 +619,7 @@ impl Game<'_> {
     /// `ServerFunctionManager.tick`: the `#minecraft:load` functions after a
     /// reload, then the `#minecraft:tick` ones, before the levels tick (and
     /// before the game time moves on).
-    pub(super) fn tick_functions(&mut self) {
+    pub(in crate::game) fn tick_functions(&mut self) {
         if self.remote.is_some() {
             return;
         }
@@ -637,7 +637,7 @@ impl Game<'_> {
     }
     /// `ServerLevel.tickTime`'s `getScheduledEvents().tick`: the scheduled
     /// functions due at the game time this tick has just reached.
-    pub(super) fn run_scheduled_functions(&mut self) {
+    pub(in crate::game) fn run_scheduled_functions(&mut self) {
         self.ensure_datapacks();
         if self.remote.is_some() {
             return;
@@ -682,7 +682,7 @@ impl Game<'_> {
 
     /// The function branch of advancement rewards: resolve the optional function
     /// and execute it as the rewarded player, with suppressed output and GAMEMASTER permission.
-    pub(super) fn run_advancement_reward_function(&mut self, id: &str) {
+    pub(in crate::game) fn run_advancement_reward_function(&mut self, id: &str) {
         self.ensure_datapacks();
         let Some(function) = self.fns.store.functions.get(id).cloned() else {
             return;
@@ -858,7 +858,7 @@ impl Game<'_> {
 
     /// `FunctionCommand.decorateOutputIfNeeded`: consume only this invocation's
     /// prepared call before its body can invoke another function.
-    pub(super) fn cmd_function(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game) fn cmd_function(&mut self, ctx: &Context) -> R<i32> {
         let source = self
             .server
             .command_source
@@ -1034,7 +1034,7 @@ impl Game<'_> {
         Some(tasks)
     }
     /// `return <value>` and `return fail` (`return run` is a chain).
-    pub(super) fn cmd_return(&mut self, id: &str, ctx: &Context) -> R<i32> {
+    pub(in crate::game) fn cmd_return(&mut self, id: &str, ctx: &Context) -> R<i32> {
         if id == "return.fail" {
             self.finish_return(None);
             self.exec.callback = Some(Some((false, 0)));
@@ -1047,7 +1047,7 @@ impl Game<'_> {
         self.finish_return(Some(value));
         Ok(value)
     }
-    pub(super) fn cmd_schedule(&mut self, id: &str, ctx: &Context) -> R<i32> {
+    pub(in crate::game) fn cmd_schedule(&mut self, id: &str, ctx: &Context) -> R<i32> {
         if id == "schedule.clear" {
             let Some(Arg::Resource(name)) = ctx.get("function").cloned() else {
                 return Ok(0);
@@ -1124,7 +1124,7 @@ impl Game<'_> {
         Ok((tick_time.rem_euclid(i64::from(i32::MAX))) as i32)
     }
     /// ReloadCommand: the message, then the (asynchronous) reload; returns 0.
-    pub(super) fn cmd_reload(&mut self) -> R<i32> {
+    pub(in crate::game) fn cmd_reload(&mut self) -> R<i32> {
         self.feedback(Text::translate("commands.reload.success", &[]));
         self.reload_datapacks(true, &self.level.enabled_features.clone())
             .map_err(Self::reload_failure)?;
@@ -1271,7 +1271,7 @@ impl Game<'_> {
             })
             .unwrap_or_default()
     }
-    pub(super) fn cmd_datapack(&mut self, id: &str, ctx: &Context) -> R<i32> {
+    pub(in crate::game) fn cmd_datapack(&mut self, id: &str, ctx: &Context) -> R<i32> {
         let name = match ctx.get("name") {
             Some(Arg::Str(n)) => Some(n.clone()),
             _ => None,
@@ -1609,7 +1609,7 @@ mod tests {
     #[ignore = "daily"]
     fn mob_entity_membership_follows_world_pack_reload() {
         crate::game::in_own_process(
-            "game::functions::tests::mob_entity_membership_follows_world_pack_reload",
+            "game::server_side::functions::tests::mob_entity_membership_follows_world_pack_reload",
             || {
                 crate::game::native_entity_refs::tests::with_game(|game| {
                     let world = tempfile::tempdir().unwrap();
@@ -1710,7 +1710,7 @@ mod tests {
     #[ignore = "daily"]
     fn functions_name_mod_commands_from_the_first_world_open() {
         crate::game::in_own_process(
-            "game::functions::tests::functions_name_mod_commands_from_the_first_world_open",
+            "game::server_side::functions::tests::functions_name_mod_commands_from_the_first_world_open",
             || {
                 use std::sync::{
                     Arc,

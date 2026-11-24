@@ -19,13 +19,13 @@ use sunrise_world::{
     registry::BlockStateId,
 };
 
-pub(super) struct JournalLevelWrite<'g, 'a> {
+pub(in crate::game) struct JournalLevelWrite<'g, 'a> {
     game: &'g mut Game<'a>,
     level: LevelRef,
 }
 
 impl<'g, 'a> JournalLevelWrite<'g, 'a> {
-    pub(super) fn new(game: &'g mut Game<'a>, level: LevelRef) -> Option<Self> {
+    pub(in crate::game) fn new(game: &'g mut Game<'a>, level: LevelRef) -> Option<Self> {
         (game.level_in_place(level) && game.has_level_transaction()).then_some(Self { game, level })
     }
 
@@ -36,7 +36,12 @@ impl<'g, 'a> JournalLevelWrite<'g, 'a> {
         }
     }
 
-    pub(super) fn write_block(&mut self, pos: [i32; 3], state: BlockStateId, flags: i32) -> bool {
+    pub(in crate::game) fn write_block(
+        &mut self,
+        pos: [i32; 3],
+        state: BlockStateId,
+        flags: i32,
+    ) -> bool {
         let [x, y, z] = pos;
         if self.game.server.world_debug
             || !(-30_000_000..30_000_000).contains(&x)
@@ -285,7 +290,7 @@ impl LevelWriteHost for JournalLevelWrite<'_, '_> {
     }
 }
 
-pub(super) enum PendingWrite {
+pub(in crate::game) enum PendingWrite {
     BlockTick(super::Dim, BlockPos, BlockId, i32),
     FluidTick(super::Dim, BlockPos, FluidKind, i32),
     /// A level or entity-bound sound. `seed` is the caller's (`ServerLevel.playSeededSound`), or
@@ -331,7 +336,7 @@ pub(super) enum PendingWrite {
 }
 
 impl Game<'_> {
-    pub(super) fn level_removal_write(
+    pub(in crate::game) fn level_removal_write(
         &mut self,
         pos: [i32; 3],
         moved: bool,
@@ -354,7 +359,7 @@ impl Game<'_> {
     /// Run `f` with `level` in place, temporarily swapping in a parked level and restoring the
     /// active level on exit (including unwind). Never opens an unloaded level from disk; returns
     /// `None` if `level` is neither active nor parked.
-    pub(super) fn with_effect_level<R>(
+    pub(in crate::game) fn with_effect_level<R>(
         &mut self,
         level: super::Dim,
         f: impl FnOnce(&mut Self) -> R,
@@ -397,7 +402,7 @@ impl Game<'_> {
     /// For transactional sounds, `play_level_sound_at_*` hooks run synchronously here inside the
     /// open transaction so listeners can edit/cancel the sound and have their own writes journaled;
     /// only the resolved packet record is deferred to commit.
-    pub(super) fn emit_level_effect(&mut self, write: PendingWrite) {
+    pub(in crate::game) fn emit_level_effect(&mut self, write: PendingWrite) {
         if self.has_level_transaction() {
             let write = match write {
                 PendingWrite::Sound { sound, seed } => match self.resolve_native_sound(sound) {
@@ -415,7 +420,7 @@ impl Game<'_> {
         self.publish_level_effect(write, false);
     }
 
-    pub(super) fn commit_level_write(&mut self, write: PendingWrite) {
+    pub(in crate::game) fn commit_level_write(&mut self, write: PendingWrite) {
         self.publish_level_effect(write, true);
     }
 
@@ -541,7 +546,7 @@ impl Game<'_> {
     }
 
     /// A part that refuses or falls through does not keep its tentative writes.
-    pub(super) fn journalled_place_liquid(
+    pub(in crate::game) fn journalled_place_liquid(
         &mut self,
         level: LevelRef,
         write: &FluidWrite,

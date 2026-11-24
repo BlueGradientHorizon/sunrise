@@ -7,7 +7,13 @@ use super::*;
 /// How far `room` right of a window `image` wide moves the window, its left edge at `left`, and
 /// the book open beside it, its visible left extent (including tabs) at `book`, on a screen `width` wide: half the room,
 /// rounded down, when the book, the window and the room all fit across the screen; else nothing.
-pub(super) fn room_shift(width: f32, left: f32, image: f32, book: Option<f32>, room: f32) -> f32 {
+pub(in crate::game) fn room_shift(
+    width: f32,
+    left: f32,
+    image: f32,
+    book: Option<f32>,
+    room: f32,
+) -> f32 {
     if !room.is_finite() || room <= 0.0 {
         return 0.0;
     }
@@ -24,7 +30,7 @@ impl Game<'_> {
     /// The room the mods ask right of the open container screen's window (`screen_room`), asked
     /// once a frame: 0 when no mod listens, for the creative inventory, a merchant's or a
     /// beacon's screen, and while the recipe book covers the window of a narrow screen.
-    pub(super) fn mod_room(&self, batch: &HudBatch) -> f32 {
+    pub(in crate::game) fn mod_room(&self, batch: &HudBatch) -> f32 {
         let kind = self.station.as_ref().map(|s| s.kind);
         if self.client.screen != Screen::Inventory
             || matches!(
@@ -68,7 +74,7 @@ impl Game<'_> {
 
     /// How far the mods' room moves the open container screen's window, and the recipe book
     /// open beside it, left (`room_shift`).
-    pub(super) fn screen_room_shift(&self, batch: &HudBatch) -> f32 {
+    pub(in crate::game) fn screen_room_shift(&self, batch: &HudBatch) -> f32 {
         let room = self.mod_room(batch);
         if room <= 0.0 {
             return 0.0;

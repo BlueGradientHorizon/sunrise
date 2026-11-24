@@ -40,7 +40,7 @@ mod redirect_tests;
 /// [`mobs::part_goals::GoalHost`], the snapshot and the player view ride on
 /// it) and the game host behind the tick, for the reads that are the level's
 /// own. The writes apply to the mob itself.
-pub(super) struct GoalCx<'a, 'w> {
+pub(in crate::game) struct GoalCx<'a, 'w> {
     m: &'a mut Mob,
     w: &'a MobWorld<'w>,
     host: &'a dyn Host,
@@ -944,7 +944,7 @@ impl Game<'_> {
     /// Dispatch a target change against the mob tick's scoped read view. The
     /// game has lent its mob list to the tick, so using `Game` itself as the
     /// host here would make the actor and other mob handles unresolvable.
-    pub(super) fn native_mob_change_target_in_tick(
+    pub(in crate::game) fn native_mob_change_target_in_tick(
         &self,
         mob: &mut Mob,
         world: &MobWorld<'_>,
@@ -1017,7 +1017,7 @@ impl Game<'_> {
     }
 }
 
-pub(super) mod generated {
+pub(in crate::game) mod generated {
     // The mob tick's read view (#1077), as the game generates it: the
     // snapshot-backed reads forward to the context's own methods, every other
     // backend read answers its typed refusal.

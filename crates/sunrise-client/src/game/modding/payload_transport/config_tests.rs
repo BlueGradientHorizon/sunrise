@@ -9,7 +9,8 @@ use std::sync::{
 };
 use std::time::{Duration, Instant};
 
-const NAME: &str = "game::payload_transport::config_tests::tcp_configuration_reply_precedes_finish";
+const NAME: &str =
+    "game::client_side::payload_transport::config_tests::tcp_configuration_reply_precedes_finish";
 static NETWORK_ENTERED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 const CHANNEL: &str = "raw_probe:message";

@@ -48,7 +48,7 @@ impl Hooks for Probe {
 #[ignore = "daily"]
 fn the_active_stack_survives_a_partial_contact_and_consumption_removes_the_entity() {
     crate::game::in_own_process(
-        "game::item_contact_tests::the_active_stack_survives_a_partial_contact_and_consumption_removes_the_entity",
+        "game::server_side::item_contact_tests::the_active_stack_survives_a_partial_contact_and_consumption_removes_the_entity",
         the_active_stack_survives_a_partial_contact_and_consumption_removes_the_entity_isolated,
     );
 }
@@ -191,7 +191,7 @@ impl Hooks for BounceProbe {
 #[ignore = "daily"]
 fn item_restitution_uses_the_legacy_contact_on_both_simulating_sides() {
     crate::game::in_own_process(
-        "game::item_contact_tests::item_restitution_uses_the_legacy_contact_on_both_simulating_sides",
+        "game::server_side::item_contact_tests::item_restitution_uses_the_legacy_contact_on_both_simulating_sides",
         || {
             use crate::game::native_entity_refs::tests::{with_client_game, with_game};
             let part = BounceProbe::default();
@@ -354,7 +354,7 @@ fn item_restitution_uses_the_legacy_contact_on_both_simulating_sides() {
 fn tnt_cart_fall_dispatches_restitution_only_if_the_cart_survives() {
     use crate::game::minecarts::{CartKind, Minecart};
     crate::game::in_own_process(
-        "game::item_contact_tests::tnt_cart_fall_dispatches_restitution_only_if_the_cart_survives",
+        "game::server_side::item_contact_tests::tnt_cart_fall_dispatches_restitution_only_if_the_cart_survives",
         || {
             let part = BounceProbe::default();
             let mods: mod_api::Mods =
@@ -463,7 +463,7 @@ fn tnt_cart_fall_dispatches_restitution_only_if_the_cart_survives() {
 #[ignore = "daily"]
 fn item_support_survives_idle_then_clears_on_an_airborne_move() {
     crate::game::in_own_process(
-        "game::item_contact_tests::item_support_survives_idle_then_clears_on_an_airborne_move",
+        "game::server_side::item_contact_tests::item_support_survives_idle_then_clears_on_an_airborne_move",
         || {
             crate::game::native_entity_refs::tests::with_game(|game| {
                 let air = game.res.facts().air;
@@ -590,7 +590,7 @@ impl Hooks for StepProbe {
 #[ignore = "daily"]
 fn step_on_edits_grounded_bodies_before_inside_effects_and_settle() {
     crate::game::in_own_process(
-        "game::item_contact_tests::step_on_edits_grounded_bodies_before_inside_effects_and_settle",
+        "game::server_side::item_contact_tests::step_on_edits_grounded_bodies_before_inside_effects_and_settle",
         || {
             use crate::game::native_entity_refs::tests::{with_client_game, with_game};
             use sunrise_client::motion::{MotionWorld, PlayerMotion};
@@ -789,7 +789,7 @@ impl Hooks for StepWrites {
 #[ignore = "daily"]
 fn step_on_hurts_the_stepping_body_and_guards_its_block_writes() {
     crate::game::in_own_process(
-        "game::item_contact_tests::step_on_hurts_the_stepping_body_and_guards_its_block_writes",
+        "game::server_side::item_contact_tests::step_on_hurts_the_stepping_body_and_guards_its_block_writes",
         || {
             use crate::game::native_entity_refs::tests::{with_client_game, with_game};
             let part = StepWrites::default();
@@ -940,7 +940,7 @@ impl Hooks for LivingFloor {
 #[ignore = "daily"]
 fn step_on_can_hurt_only_living_bodies_on_the_same_block() {
     crate::game::in_own_process(
-        "game::item_contact_tests::step_on_can_hurt_only_living_bodies_on_the_same_block",
+        "game::server_side::item_contact_tests::step_on_can_hurt_only_living_bodies_on_the_same_block",
         || {
             let part = LivingFloor::default();
             let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
@@ -1085,7 +1085,7 @@ impl<const ORDER: u8> Hooks for StepAnswer<ORDER> {
 #[ignore = "daily"]
 fn step_on_refuses_only_the_invalid_part_outputs() {
     crate::game::in_own_process(
-        "game::item_contact_tests::step_on_refuses_only_the_invalid_part_outputs",
+        "game::server_side::item_contact_tests::step_on_refuses_only_the_invalid_part_outputs",
         || {
             let mods: mod_api::Mods = vec![
                 mod_api::ModEntry::new("a_before", Box::new(StepAnswer::<ACCEPT_BEFORE>(None))),
@@ -1189,7 +1189,7 @@ fn with_heated_game(test: impl FnOnce(&mut Game<'_>)) {
 #[ignore = "daily"]
 fn contact_hurt_uses_the_world_damage_type_tags_and_death_message() {
     crate::game::in_own_process(
-        "game::item_contact_tests::contact_hurt_uses_the_world_damage_type_tags_and_death_message",
+        "game::server_side::item_contact_tests::contact_hurt_uses_the_world_damage_type_tags_and_death_message",
         || {
             use crate::game::native_entity_refs::tests::fixture_root;
             with_heated_game(|game| {
@@ -1267,7 +1267,7 @@ fn contact_hurt_uses_the_world_damage_type_tags_and_death_message() {
 #[ignore = "daily"]
 fn contact_hurt_uses_the_player_creative_and_frost_walker_bypass_tag() {
     crate::game::in_own_process(
-        "game::item_contact_tests::contact_hurt_uses_the_player_creative_and_frost_walker_bypass_tag",
+        "game::server_side::item_contact_tests::contact_hurt_uses_the_player_creative_and_frost_walker_bypass_tag",
         || {
             use crate::game::native_entity_refs::tests::fixture_root;
             use sunrise_client::motion::{MotionWorld, PlayerMotion};
@@ -1365,7 +1365,7 @@ fn contact_hurt_uses_the_player_creative_and_frost_walker_bypass_tag() {
 #[ignore = "daily"]
 fn contact_hurt_uses_the_orbs_level_fall_immunity_tag() {
     crate::game::in_own_process(
-        "game::item_contact_tests::contact_hurt_uses_the_orbs_level_fall_immunity_tag",
+        "game::server_side::item_contact_tests::contact_hurt_uses_the_orbs_level_fall_immunity_tag",
         || {
             use sunrise_client::{
                 entities::ExperienceOrb, items::EntityTypeTags, join_seq::JoinSeq,

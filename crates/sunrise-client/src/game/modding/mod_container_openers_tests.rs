@@ -37,7 +37,7 @@ mod tests {
     #[ignore = "daily"]
     fn a_replacement_reusing_the_block_menu_window_is_not_announced_twice() {
         if run_fresh_cases(
-            "game::mod_container_openers_tests::tests::a_replacement_reusing_the_block_menu_window_is_not_announced_twice",
+            "game::server_side::mod_container_openers_tests::tests::a_replacement_reusing_the_block_menu_window_is_not_announced_twice",
             "SUNRISE_GUEST_MENU_REENTRY_CASE",
             &["window_wrap"],
         ) {
@@ -105,7 +105,7 @@ mod tests {
     #[ignore = "daily"]
     fn a_shulker_close_sounds_at_its_centre_when_the_listener_replaces_it() {
         if run_fresh_cases(
-            "game::mod_container_openers_tests::tests::a_shulker_close_sounds_at_its_centre_when_the_listener_replaces_it",
+            "game::server_side::mod_container_openers_tests::tests::a_shulker_close_sounds_at_its_centre_when_the_listener_replaces_it",
             "SUNRISE_GUEST_MENU_REENTRY_CASE",
             &["shulker_close"],
         ) {

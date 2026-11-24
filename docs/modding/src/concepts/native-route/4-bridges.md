@@ -23,7 +23,7 @@ source = "src/runtime.rs"
 [[native.bridge]]
 id = "ticks"
 kind = "GET_MUT"
-target = "sunrise_client::game::server_state::ServerState"
+target = "sunrise_client::game::server_side::ServerState"
 member = "ticks_until_autosave"
 
 [[native.mixin]]

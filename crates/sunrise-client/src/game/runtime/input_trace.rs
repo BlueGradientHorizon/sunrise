@@ -16,7 +16,7 @@ use winit::{
     keyboard::PhysicalKey,
 };
 
-pub(super) use sunrise_client_gameplay::input_trace::{
+pub(in crate::game) use sunrise_client_gameplay::input_trace::{
     HELP, InputOrigin, InputTrace, TraceEvent, TraceKind, is_read_only, is_session_command,
     redact_command,
 };
@@ -24,7 +24,7 @@ pub(super) use sunrise_client_gameplay::input_trace::{
 impl Game<'_> {
     /// An agent's control line: input unless it only reads, which still counts
     /// as the agent watching.
-    pub(super) fn note_socket_line(&mut self, line: &str) {
+    pub(in crate::game) fn note_socket_line(&mut self, line: &str) {
         if is_read_only(line) || is_session_command(line) {
             self.input_trace.agent_activity();
             return;
@@ -47,7 +47,7 @@ impl Game<'_> {
 
     /// Record an input event and, when a person steps into an agent's run, tell
     /// every watcher once.
-    pub(super) fn note_input(&mut self, origin: InputOrigin, kind: TraceKind) {
+    pub(in crate::game) fn note_input(&mut self, origin: InputOrigin, kind: TraceKind) {
         if !self.tracing_input() {
             return;
         }
@@ -73,7 +73,7 @@ impl Game<'_> {
 
     /// Keep the window events that are input. Agent-made window events are left
     /// out: the control-socket line that caused them is recorded instead.
-    pub(super) fn trace_window_event(
+    pub(in crate::game) fn trace_window_event(
         &mut self,
         origin: InputOrigin,
         event: &WindowEvent,

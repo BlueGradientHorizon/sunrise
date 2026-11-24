@@ -3,13 +3,13 @@
 use super::Game;
 
 impl Game<'_> {
-    pub(super) fn remove_entity(&mut self, id: i32) {
+    pub(in crate::game) fn remove_entity(&mut self, id: i32) {
         self.remove_entities(&[id]);
     }
 
     /// `ClientboundRemoveEntitiesPacket`: a packet's ids go together, the big
     /// entity lists filtered once (#13007), each id's own cleanup in order.
-    pub(super) fn remove_entities(&mut self, ids: &[i32]) {
+    pub(in crate::game) fn remove_entities(&mut self, ids: &[i32]) {
         let removed: sunrise_client::fast_hash::FxHashSet<u32> =
             ids.iter().map(|&id| id as u32).collect();
         let mut vehicles = sunrise_client::fast_hash::FxHashSet::default();

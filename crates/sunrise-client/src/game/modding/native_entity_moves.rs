@@ -16,14 +16,14 @@ use sunrise_world::entity_move::MoverType;
 
 /// `Level.isInSpawnableBounds` and `/tp`'s limits: 30,000,000 blocks out,
 /// 20,000,000 up or down.
-pub(super) fn in_bounds([x, y, z]: [f64; 3]) -> bool {
+pub(in crate::game) fn in_bounds([x, y, z]: [f64; 3]) -> bool {
     (-30_000_000.0..30_000_000.0).contains(&x)
         && (-30_000_000.0..30_000_000.0).contains(&z)
         && (-20_000_000.0..20_000_000.0).contains(&y)
 }
 
 /// `Direction.fromYRot`: the horizontal direction a yaw faces.
-pub(super) fn facing(yaw: f32) -> &'static str {
+pub(in crate::game) fn facing(yaw: f32) -> &'static str {
     const BY_2D: [&str; 4] = ["south", "west", "north", "east"];
     BY_2D[((f64::from(yaw) / 90.0 + 0.5).floor() as i32 & 3) as usize]
 }
@@ -34,7 +34,7 @@ impl Game<'_> {
     /// `rotation` (yaw, pitch in degrees) it also turns. False for a position
     /// outside the world's bounds, for wall-mounted entities or dragon parts, or when the
     /// requested rotation cannot be stored.
-    pub(super) fn entity_teleport_to(
+    pub(in crate::game) fn entity_teleport_to(
         &mut self,
         entity: EntityRef,
         pos: [f64; 3],
@@ -54,7 +54,7 @@ impl Game<'_> {
     /// level it is `entity_teleport_to` with the motion kept. False for what
     /// `entity_teleport_to` refuses, a dimension that isn't registered, and
     /// kinds that cannot change level here (`teleport_target_across`).
-    pub(super) fn entity_teleport_to_level(
+    pub(in crate::game) fn entity_teleport_to_level(
         &mut self,
         entity: EntityRef,
         dimension: &str,
@@ -127,7 +127,7 @@ impl Game<'_> {
     /// through the `entity_move` hook. How far it moved; None for a stale handle, on a client,
     /// for an entity outside the entity walk, and for an unknown cause and for a delta that is
     /// not finite or beyond 64 blocks on an axis. A player is moved by `move_player_by`.
-    pub(super) fn entity_move_by(
+    pub(in crate::game) fn entity_move_by(
         &mut self,
         entity: EntityRef,
         delta: [f64; 3],
@@ -158,7 +158,12 @@ impl Game<'_> {
     /// `setXRot`): the pitch wraps and is clamped to -90..90. False for kinds
     /// whose rotation Sunrise does not fully store, or an unavailable player.
     /// Does not teleport or dismount.
-    pub(super) fn entity_set_rotation(&mut self, entity: EntityRef, yaw: f32, pitch: f32) -> bool {
+    pub(in crate::game) fn entity_set_rotation(
+        &mut self,
+        entity: EntityRef,
+        yaw: f32,
+        pitch: f32,
+    ) -> bool {
         let Some(t) = self.native_entity_target(entity) else {
             return false;
         };
@@ -208,7 +213,7 @@ impl Game<'_> {
     }
     /// The yaw of the entity's head (`Entity.getYHeadRot`): a mob's or a
     /// player's own, zero for the kinds without a head.
-    pub(super) fn entity_head_yaw(&self, entity: EntityRef) -> Option<f32> {
+    pub(in crate::game) fn entity_head_yaw(&self, entity: EntityRef) -> Option<f32> {
         let t = self.native_entity_target(entity)?;
         if let Some(g) = self.native_target_guest(t) {
             return Some(g.head_yaw);
@@ -221,7 +226,7 @@ impl Game<'_> {
     /// The yaw of the entity's body (`LivingEntity.yBodyRot`) in degrees as
     /// vanilla keeps it, not normalized: mobs only, None for players and every
     /// other kind, and for a stale handle.
-    pub(super) fn entity_body_yaw(&self, entity: EntityRef) -> Option<f32> {
+    pub(in crate::game) fn entity_body_yaw(&self, entity: EntityRef) -> Option<f32> {
         match self.native_entity_target(entity)? {
             Target::Mob(id) => Some(self.mobs.iter().find(|m| m.id == id)?.body_yaw),
             // The dragon's flight yaw also drives its body and part poses.
@@ -232,7 +237,7 @@ impl Game<'_> {
     /// Turns a mob's head to `yaw` (`Entity.setYHeadRot`); its body follows
     /// as its AI turns it. Players' heads can turn too; false for other kinds
     /// or an unavailable player.
-    pub(super) fn entity_set_head_yaw(&mut self, entity: EntityRef, yaw: f32) -> bool {
+    pub(in crate::game) fn entity_set_head_yaw(&mut self, entity: EntityRef, yaw: f32) -> bool {
         if !yaw.is_finite() {
             return false;
         }
@@ -264,20 +269,20 @@ impl Game<'_> {
     }
     /// The horizontal direction the entity faces (`Entity.getDirection`):
     /// `north`, `south`, `east` or `west`.
-    pub(super) fn entity_direction(&self, entity: EntityRef) -> Option<&'static str> {
+    pub(in crate::game) fn entity_direction(&self, entity: EntityRef) -> Option<&'static str> {
         let t = self.native_entity_target(entity)?;
         Some(facing(self.target_rotation(t)[0]))
     }
     /// The entity's width and height (`Entity.getBbWidth`, `getBbHeight`):
     /// its box's, so a baby's or a scaled entity's own.
-    pub(super) fn entity_dimensions(&self, entity: EntityRef) -> Option<[f64; 2]> {
+    pub(in crate::game) fn entity_dimensions(&self, entity: EntityRef) -> Option<[f64; 2]> {
         let [min, max] = self.entity_bounding_box(entity)?;
         Some([max[0] - min[0], max[1] - min[1]])
     }
     /// Adds `delta` to the entity's velocity (`Entity.push`,
     /// `addDeltaMovement`). False for an unavailable player, an entity
     /// Sunrise doesn't simulate, or a value that isn't finite.
-    pub(super) fn entity_push(&mut self, entity: EntityRef, delta: [f64; 3]) -> bool {
+    pub(in crate::game) fn entity_push(&mut self, entity: EntityRef, delta: [f64; 3]) -> bool {
         if !delta.iter().all(|v| v.is_finite()) {
             return false;
         }
@@ -306,7 +311,7 @@ impl Game<'_> {
     }
     /// Update the resolved player's body, in place for its own turn or in its guest record.
     /// The resolver already excludes displaced outer players. Send to the owning client only.
-    pub(super) fn write_player_velocity(
+    pub(in crate::game) fn write_player_velocity(
         &mut self,
         target: Target,
         change: impl FnOnce(Vec3) -> Option<Vec3>,
@@ -323,7 +328,7 @@ impl Game<'_> {
     }
 
     /// Put back a player's own random after a copy of it drew for them.
-    pub(super) fn write_player_random(
+    pub(in crate::game) fn write_player_random(
         &mut self,
         target: Target,
         random: sunrise_core::random::EntityRandom,

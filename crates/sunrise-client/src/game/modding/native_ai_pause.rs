@@ -16,7 +16,7 @@ use mod_api::{EntityRef, MobAiPauseRefusal, MobRef};
 impl Game<'_> {
     /// Whether a mod paused the mob's AI step. None for a stale or held-out
     /// handle, anything but a mob, the dragon, or on a client.
-    pub(super) fn mob_ai_paused(&self, mob: MobRef) -> Option<bool> {
+    pub(in crate::game) fn mob_ai_paused(&self, mob: MobRef) -> Option<bool> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
@@ -26,7 +26,7 @@ impl Game<'_> {
 
     /// Pauses or resumes the mob's AI step while `aiStep`'s physics runs on.
     /// Refused, with nothing changed, as `MobAiPauseRefusal` names.
-    pub(super) fn mob_set_ai_paused(
+    pub(in crate::game) fn mob_set_ai_paused(
         &mut self,
         mob: MobRef,
         paused: bool,

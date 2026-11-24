@@ -8,14 +8,14 @@ mod hit_tests;
 
 impl Game<'_> {
     /// `Player.getAttackStrengthScale(0.5)`.
-    pub(super) fn attack_strength_scale(&self) -> f32 {
+    pub(in crate::game) fn attack_strength_scale(&self) -> f32 {
         self.attack_strength_scale_at(0.5)
             .expect("finite partial tick")
     }
 
     /// `Player.getAttackStrengthScale(partial)` for the player in place.
     /// Returns `None` for a non-finite partial tick; finite partials are not restricted.
-    pub(super) fn attack_strength_scale_at(&self, partial: f32) -> Option<f32> {
+    pub(in crate::game) fn attack_strength_scale_at(&self, partial: f32) -> Option<f32> {
         if !partial.is_finite() {
             return None;
         }
@@ -25,7 +25,7 @@ impl Game<'_> {
 
     /// Sets the player in place's `attackStrengthTicker` to the fewest ticks for which
     /// `getAttackStrengthScale(0.5)` is 1.0 with the main hand's attack speed.
-    pub(super) fn charge_attack_fully(&mut self) {
+    pub(in crate::game) fn charge_attack_fully(&mut self) {
         let delay = sunrise_client::attack_strength::delay(self.main_hand_attack_speed());
         // The cast saturates: with no attack speed the delay is infinite and no ticker reaches it.
         self.server.attack_ticks = (delay - 0.5).ceil() as u32;
@@ -33,7 +33,7 @@ impl Game<'_> {
 
     /// `Player.isSweepAttack`: a charged, grounded sword hit below the movement
     /// limit, which `native_sweep_attack` may force or stop for the hit on `target`.
-    pub(super) fn sweep_attack_position(
+    pub(in crate::game) fn sweep_attack_position(
         &mut self,
         scale: f32,
         crit: bool,
@@ -63,7 +63,7 @@ impl Game<'_> {
     /// `Player.doSweepAttack` after a successful hit, in vanilla's order: the
     /// sweep sound, the victims around `target` (its box, and the mob that
     /// was hit, when there is one) and then the arc.
-    pub(super) fn sweep_attack(
+    pub(in crate::game) fn sweep_attack(
         &mut self,
         at: [f64; 3],
         from: Option<[f64; 3]>,
@@ -100,7 +100,7 @@ impl Game<'_> {
     /// its entity id; `crit`: whether `melee_damage` decided the hit critical,
     /// mods' `critical_hit` included), the `sweep` decided before the hit
     /// (`sweep_before_hit`) around the target's box `area` and the strong or weak sound.
-    pub(super) fn attack_effects(
+    pub(in crate::game) fn attack_effects(
         &mut self,
         area: Aabb,
         sweep: Option<[f64; 3]>,
@@ -143,7 +143,7 @@ impl Game<'_> {
 
     /// `critical_hit` around the box `area` of entity `id` (`magic`: the
     /// enchanted hit instead of the crit).
-    pub(super) fn area_critical_hit(&mut self, id: i32, area: Aabb, magic: bool) {
+    pub(in crate::game) fn area_critical_hit(&mut self, id: i32, area: Aabb, magic: bool) {
         let (feet, size) = (area.bottom_center(), area.size());
         self.critical_hit(
             self.server.lan_acting,
@@ -158,7 +158,7 @@ impl Game<'_> {
     /// `Player.canCriticalAttack` for a living target at attack strength
     /// `scale`: falling, off the ground, not in water, not on a ladder, not blind (mobility
     /// restricted), not riding, not sprinting.
-    pub(super) fn critical_attack(&self, scale: f32) -> bool {
+    pub(in crate::game) fn critical_attack(&self, scale: f32) -> bool {
         let player = self.player.as_ref();
         let falling = player.is_some_and(|p| {
             !p.ground.on_ground
@@ -172,7 +172,7 @@ impl Game<'_> {
     }
 
     /// Player.attack with the attack-strength charge, crits and knockback.
-    pub(super) fn attack(&mut self) -> bool {
+    pub(in crate::game) fn attack(&mut self) -> bool {
         if self.spectator() {
             return false;
         }
@@ -268,7 +268,7 @@ impl Game<'_> {
 
     /// `Player.attack` on a named general row. A plain `Entity` declines `hurtServer`,
     /// so the blow spends the charge and plays the no-damage sound, and hurts nothing.
-    pub(super) fn strike_general_row(&mut self, id: u32, kind: &str) {
+    pub(in crate::game) fn strike_general_row(&mut self, id: u32, kind: &str) {
         let ((_, scale, _, _), admitted) = self.melee_damage_with_admission(kind, false, Some(id));
         // Player.onAttack: the blow starts the attack strength again, hurt or not.
         self.server.attack_ticks = 0;
@@ -287,7 +287,7 @@ impl Game<'_> {
 impl Game<'_> {
     /// `Player.attack` on a mob: the damage, knockback, sweep, particles and
     /// sounds.
-    pub(super) fn attack_mob(&mut self, index: usize) {
+    pub(in crate::game) fn attack_mob(&mut self, index: usize) {
         let attack = self.attack_of(self.player.as_ref().map_or(0, |p| p.entity_id));
         let target_kind = self.mobs[index].kind.id.clone();
         let target_kind = format!("minecraft:{}", target_kind.trim_start_matches("minecraft:"));
@@ -500,7 +500,7 @@ impl Game<'_> {
     /// strength and whether it is a critical hit): the weapon and effects
     /// scaled by the attack strength, a mace's smash, the critical hit, then
     /// enchantments.
-    pub(super) fn melee_damage(
+    pub(in crate::game) fn melee_damage(
         &mut self,
         target_kind: &str,
         living: bool,
@@ -511,7 +511,7 @@ impl Game<'_> {
     }
     /// Player.attack admits its hurt/tail before the item's damage bonus. Keep
     /// that predicate with the one damage evaluation, including its RNG draws.
-    pub(super) fn melee_damage_with_admission(
+    pub(in crate::game) fn melee_damage_with_admission(
         &mut self,
         target_kind: &str,
         living: bool,

@@ -18,7 +18,7 @@ impl Game<'_> {
     /// For a server mod: the player's collision exclusions, in place of the last ones (the
     /// guest's, which its moves are checked against, and its body's). Refused for a stale handle,
     /// an entity that isn't a player, and boxes the set refuses; the set there was stays.
-    pub(super) fn entity_set_collision_exclusions(
+    pub(in crate::game) fn entity_set_collision_exclusions(
         &mut self,
         entity: EntityRef,
         boxes: &[[f64; 6]],
@@ -57,7 +57,7 @@ impl Game<'_> {
 
     /// For a client mod: the local player's collision exclusions, in place of the last ones.
     /// Refused with no player of its own, and for boxes the set refuses; the set there was stays.
-    pub(super) fn set_collision_exclusions(
+    pub(in crate::game) fn set_collision_exclusions(
         &mut self,
         boxes: &[[f64; 6]],
     ) -> Result<(), CollisionExclusionsError> {

@@ -6,7 +6,7 @@ use crate::game::host::draw::GameDrawContext;
 impl Game<'_> {
     /// The frame shows the title's panorama, not a level: the title screen, or a
     /// LevelLoadingScreen (Reason.OTHER), which draws it too.
-    pub(super) fn shows_panorama(&self) -> bool {
+    pub(in crate::game) fn shows_panorama(&self) -> bool {
         // The two cases that always had one: the title screen and waiting on
         // a server. Left exactly as they were.
         self.title.is_some() || self.remote_loading() || self.screen_wants_panorama()
@@ -21,7 +21,7 @@ impl Game<'_> {
     ///
     /// Only in a menu: in a world the panorama would replace the world the
     /// player is standing in, which is not what any of these screens want.
-    pub(super) fn screen_wants_panorama(&self) -> bool {
+    pub(in crate::game) fn screen_wants_panorama(&self) -> bool {
         use sunrise_client::screen_draw::Backdrop;
         if self.player.is_some() {
             return false;
@@ -33,7 +33,7 @@ impl Game<'_> {
             .is_some_and(|p| p.backdrop == Backdrop::Panorama)
     }
     /// Draw the presentation retained by the existing load tracker, if one matched at entry.
-    pub(super) fn draw_dimension_transition_screen(
+    pub(in crate::game) fn draw_dimension_transition_screen(
         &self,
         batch: &mut HudBatch,
         tracker: &sunrise_client::level_loading::LevelLoadTracker,
@@ -63,7 +63,7 @@ impl Game<'_> {
         false
     }
     /// `LevelLoadingScreen.extractBackground`.
-    pub(super) fn draw_level_loading_background(
+    pub(in crate::game) fn draw_level_loading_background(
         &self,
         batch: &mut HudBatch,
         reason: sunrise_client::level_loading::Reason,
@@ -87,7 +87,7 @@ impl Game<'_> {
     /// pack's own chain), then the server's `LocalPlayer.postEffects`, then the
     /// active spectated entity's chain, then `extra`. Reuses unchanged `String`
     /// slots in `out` without deduplicating repeated effect IDs.
-    pub(super) fn sync_requested_post_effects<'a>(
+    pub(in crate::game) fn sync_requested_post_effects<'a>(
         &self,
         out: &mut Vec<String>,
         extra: impl IntoIterator<Item = &'a str>,
@@ -120,14 +120,14 @@ impl Game<'_> {
         }
         out.truncate(len);
     }
-    pub(super) fn requested_post_effects(&self) -> Vec<String> {
+    pub(in crate::game) fn requested_post_effects(&self) -> Vec<String> {
         let mut out = Vec::new();
         self.sync_requested_post_effects(&mut out, std::iter::empty());
         out
     }
     /// `Screen.extractBlurredBackground` over the panorama or the world and
     /// HUD, when `menuBackgroundBlurriness` is at least 1.
-    pub(super) fn menu_blur(&self) -> Option<f32> {
+    pub(in crate::game) fn menu_blur(&self) -> Option<f32> {
         let blurred = self.remote_loading()
             || self.title.as_ref().is_some_and(|t| {
                 matches!(self.client.screen, Screen::Options | Screen::Win)
@@ -147,7 +147,11 @@ impl Game<'_> {
     /// `Screen.renderTransparentBackground`: draws the translucent dark background
     /// behind an in-game screen (inventory, containers, creative, books, signs, editors),
     /// giving native mods a chance to suppress it (`Flow::Cancel`) or apply menu blur / tiled background.
-    pub(super) fn render_transparent_background(&self, screen: &str, batch: &mut HudBatch) {
+    pub(in crate::game) fn render_transparent_background(
+        &self,
+        screen: &str,
+        batch: &mut HudBatch,
+    ) {
         let mut canceled = false;
         self.native_screen_transparent_background(screen, batch, &mut canceled);
         if !canceled {
@@ -165,7 +169,7 @@ impl Game<'_> {
         self.draw_deferred_subtitles(batch);
     }
     /// `LevelExtractor` / `LevelRenderer`: the world border wall this frame.
-    pub(super) fn border_draw(
+    pub(in crate::game) fn border_draw(
         &mut self,
         camera: [f64; 3],
         partial: f32,
@@ -218,14 +222,14 @@ impl Game<'_> {
     /// (`publish_screen_regions`): empty when Pre cancelled the drawing.
     /// This is a notice; mounted children draw
     /// inside the Pre-guarded contents pass (`draw_screen_phase`).
-    pub(super) fn draw_screen_with_post_hook(&self, batch: &mut HudBatch) {
+    pub(in crate::game) fn draw_screen_with_post_hook(&self, batch: &mut HudBatch) {
         if let Some(view) = self.screen_render_view(batch) {
             self.screen_render_end(batch, &view);
         }
     }
     /// `ScreenEvent.Render.Pre` for the open screen: whether it draws.
     /// Background and Foreground are reported by the screen while drawing.
-    pub(super) fn draw_screen_with_pre_hook(&self, batch: &mut HudBatch) -> bool {
+    pub(in crate::game) fn draw_screen_with_pre_hook(&self, batch: &mut HudBatch) -> bool {
         match self.screen_render_view(batch) {
             Some(view) => self.screen_render_begin(batch, &view),
             None => true,
@@ -233,14 +237,14 @@ impl Game<'_> {
     }
     /// `draw_screen_with_post_hook` for the title's own screen, once a frame,
     /// after it has drawn and before the toasts.
-    pub(super) fn draw_title_screen_with_post_hook(&self, batch: &mut HudBatch) {
+    pub(in crate::game) fn draw_title_screen_with_post_hook(&self, batch: &mut HudBatch) {
         if let Some(view) = self.title_screen_render_view(batch) {
             self.screen_render_end(batch, &view);
         }
     }
     /// Draw mounted widgets belonging to the topmost active overlay screen
     /// (`overlay_id`) inside that overlay's own draw pass, before tooltips.
-    pub(super) fn draw_overlay_mounted_widgets(
+    pub(in crate::game) fn draw_overlay_mounted_widgets(
         &self,
         batch: &mut HudBatch,
         overlay_id: &'static str,
@@ -250,7 +254,7 @@ impl Game<'_> {
         }
     }
     /// `draw_screen_with_pre_hook` for the title's own screens.
-    pub(super) fn draw_title_screen_with_pre_hook(&self, batch: &mut HudBatch) -> bool {
+    pub(in crate::game) fn draw_title_screen_with_pre_hook(&self, batch: &mut HudBatch) -> bool {
         match self.title_screen_render_view(batch) {
             Some(view) => self.screen_render_begin(batch, &view),
             None => true,
@@ -260,7 +264,10 @@ impl Game<'_> {
     /// playing with no screen, nor while the server pack prompt or a book
     /// hides the open screen (`hud_layers` draws `Playing` then), and None
     /// with no mod listening to a render hook, so nothing is built then.
-    pub(super) fn screen_render_view(&self, batch: &HudBatch) -> Option<mod_api::ScreenView<'_>> {
+    pub(in crate::game) fn screen_render_view(
+        &self,
+        batch: &HudBatch,
+    ) -> Option<mod_api::ScreenView<'_>> {
         let screen = self.client.screen;
         if screen == Screen::Playing
             || self.server_packs.prompt.is_some()
@@ -277,7 +284,7 @@ impl Game<'_> {
     /// when a screen of the game's own is over the title (Options draws and
     /// fires its own), nor while a dialog, a prompt or a connect or load
     /// hides it, and None with no mod listening to a render hook.
-    pub(super) fn title_screen_render_view(
+    pub(in crate::game) fn title_screen_render_view(
         &self,
         batch: &HudBatch,
     ) -> Option<mod_api::ScreenView<'_>> {
@@ -296,12 +303,12 @@ impl Game<'_> {
     /// Dispatch at the boundary reported by the screen that owns the drawing.
     /// No view or layout is built unless this particular phase has a listener.
     /// A mod's own screen: all of it is what the mods draw in its phases.
-    pub(super) fn draw_mod_screen(&self, batch: &mut HudBatch) {
+    pub(in crate::game) fn draw_mod_screen(&self, batch: &mut HudBatch) {
         use sunrise_client::screen_draw::RenderPhase;
         self.draw_screen_phase(batch, RenderPhase::Background);
         self.draw_screen_phase(batch, RenderPhase::Foreground);
     }
-    pub(super) fn draw_screen_phase(
+    pub(in crate::game) fn draw_screen_phase(
         &self,
         batch: &mut HudBatch,
         phase: sunrise_client::screen_draw::RenderPhase,
@@ -333,7 +340,9 @@ impl Game<'_> {
 }
 
 /// `view` with no regions: a cancelled render drew nothing beside the panel.
-pub(super) fn without_regions<'a>(view: &mod_api::ScreenView<'a>) -> mod_api::ScreenView<'a> {
+pub(in crate::game) fn without_regions<'a>(
+    view: &mod_api::ScreenView<'a>,
+) -> mod_api::ScreenView<'a> {
     mod_api::ScreenView::from(mod_api::__private::built::ScreenView {
         id: view.id,
         mod_screen: view.mod_screen,

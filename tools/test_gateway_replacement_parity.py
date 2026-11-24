@@ -15,7 +15,7 @@ except ImportError:
     import lab
     import test_rust_parity as base
 
-TEST = 'game::block_entity_anims::tests::replacing_a_gateway_discards_its_old_cooldown'
+TEST = 'game::server_side::block_entity_anims::tests::replacing_a_gateway_discards_its_old_cooldown'
 
 
 def main():

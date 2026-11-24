@@ -13,11 +13,11 @@ use sunrise_core::random::RandomSource;
 use sunrise_world::blocking_rules::{BlockingRules, DamageReduction, ItemDamageFunction};
 
 /// `Inventory.SLOT_OFFHAND`: the `using` slot of an off-hand item.
-pub(super) const OFFHAND_SLOT: usize = 40;
+pub(in crate::game) const OFFHAND_SLOT: usize = 40;
 
 /// `LivingEntity.getItemBlockingWith`'s delay: an item that blocks attacks blocks once it has been
 /// used for `BlocksAttacks.blockDelayTicks` (`Math.round(seconds * 20)`) ticks.
-pub(super) fn block_delay_passed(
+pub(in crate::game) fn block_delay_passed(
     component: &sunrise_client::items::BlocksAttacks,
     ticks: u32,
 ) -> bool {
@@ -27,7 +27,7 @@ pub(super) fn block_delay_passed(
 impl Game<'_> {
     /// `AbstractArrow.onHitEntity` on the player: a piercing arrow passes item blocking, whoever
     /// shot it, because `applyItemBlocking` reads the direct entity's pierce level.
-    pub(super) fn arrow_hits_player(
+    pub(in crate::game) fn arrow_hits_player(
         &mut self,
         amount: f32,
         p: &sunrise_client::projectiles::Projectile,
@@ -40,14 +40,14 @@ impl Game<'_> {
         )
     }
     /// The stack in an inventory slot, the off hand at `OFFHAND_SLOT`.
-    pub(super) fn stack_in(&self, slot: usize) -> Option<&ItemStack> {
+    pub(in crate::game) fn stack_in(&self, slot: usize) -> Option<&ItemStack> {
         if slot == OFFHAND_SLOT {
             self.offhand.as_ref()
         } else {
             self.inventory.get(slot)?.as_ref()
         }
     }
-    pub(super) fn stack_in_mut(&mut self, slot: usize) -> &mut Option<ItemStack> {
+    pub(in crate::game) fn stack_in_mut(&mut self, slot: usize) -> &mut Option<ItemStack> {
         if slot == OFFHAND_SLOT {
             &mut self.offhand
         } else {
@@ -57,7 +57,7 @@ impl Game<'_> {
     /// The stack's `blocks_attacks`: its own component, else its item's, as the stack's item
     /// parts allow (`shield_block`): a stack they grant the ability to blocks with the
     /// component's defaults when it has none, and one they deny it blocks with nothing.
-    pub(super) fn blocks_attacks(
+    pub(in crate::game) fn blocks_attacks(
         &self,
         stack: &ItemStack,
     ) -> Option<std::borrow::Cow<'_, sunrise_client::items::BlocksAttacks>> {
@@ -75,7 +75,7 @@ impl Game<'_> {
     }
     /// `ShieldItem.use` (ItemUtils.startUsingInstantly) for the hand at `slot`;
     /// false when that hand holds no blocking item or it is on cooldown.
-    pub(super) fn raise_shield(&mut self, slot: usize) -> bool {
+    pub(in crate::game) fn raise_shield(&mut self, slot: usize) -> bool {
         let Some(stack) = self.stack_in(slot) else {
             return false;
         };
@@ -89,7 +89,7 @@ impl Game<'_> {
     }
     /// `LivingEntity.getItemBlockingWith` and the inputs of `applyItemBlocking`
     /// for an attack from `from` (`DamageSource.getSourcePosition`).
-    pub(super) fn player_blocking(
+    pub(in crate::game) fn player_blocking(
         &self,
         from: Option<[f64; 3]>,
         damage_type: &str,
@@ -144,7 +144,7 @@ impl Game<'_> {
     }
     /// After a hurt with the shield raised: `hurtBlockingItem`, `onBlocked`
     /// and, for melee from a mob, `blockUsingItem`. `source` is the hit's.
-    pub(super) fn after_block(
+    pub(in crate::game) fn after_block(
         &mut self,
         outcome: BlockOutcome,
         (attacker, projectile): (Option<u32>, bool),

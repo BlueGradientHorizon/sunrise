@@ -17,7 +17,7 @@ use sunrise_client::{
     },
 };
 use sunrise_core::{geometry::Aabb, position::BlockPos, random::RandomSource};
-pub(super) use sunrise_gameplay::potent_sulfur::PassMobs;
+pub(in crate::game) use sunrise_gameplay::potent_sulfur::PassMobs;
 use sunrise_gameplay::potent_sulfur::{
     EFFECT_APPLICATION_FREQUENCY_TICKS, EFFECT_DURATION_IN_TICKS, Geyser, PARTICLE_FREQUENCY_TICKS,
     SOUND_FREQUENCY_TICKS, geyser_positional, launch_area, nearby_living_area,
@@ -77,7 +77,7 @@ impl Game<'_> {
     /// `pos`: a wet block gives nausea; a dormant one counts down, then gives
     /// nausea; an erupting one pushes entities, then counts down; a continuous
     /// one pushes entities. A dry block has no ticker.
-    pub(super) fn tick_potent_sulfur(&mut self, pos: Pos) -> Result<()> {
+    pub(in crate::game) fn tick_potent_sulfur(&mut self, pos: Pos) -> Result<()> {
         let Some((state, geyser)) = self.potent_sulfur_state(pos) else {
             return Ok(());
         };
@@ -421,7 +421,7 @@ impl Game<'_> {
     /// erupting or continuous one shows its plume every second (from its last
     /// eruption event), plays its sound every two, and pushes the local
     /// player.
-    pub(super) fn client_tick_potent_sulfur(&mut self, pos: Pos) {
+    pub(in crate::game) fn client_tick_potent_sulfur(&mut self, pos: Pos) {
         let Some((_, geyser)) = self.potent_sulfur_state(pos) else {
             return;
         };
@@ -478,7 +478,7 @@ impl Game<'_> {
     /// `PotentSulfurBlock.triggerEvent`: the eruption block event stamps the
     /// game time the plume counts from; false when `pos` holds no potent
     /// sulfur block entity.
-    pub(super) fn potent_sulfur_eruption_event(&mut self, pos: Pos) -> bool {
+    pub(in crate::game) fn potent_sulfur_eruption_event(&mut self, pos: Pos) -> bool {
         let time = self.world.game_time;
         match self.world.block_entities.get_mut(&pos) {
             Some(BlockEntity::PotentSulfur(sulfur)) => {

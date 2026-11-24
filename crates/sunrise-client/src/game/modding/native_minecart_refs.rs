@@ -39,13 +39,13 @@ impl Game<'_> {
 
     /// Narrows an entity to a minecart of any kind, or None for another kind of
     /// entity, a stale handle, a client, or an entity held out of storage.
-    pub(super) fn minecart(&self, entity: EntityRef) -> Option<MinecartRef> {
+    pub(in crate::game) fn minecart(&self, entity: EntityRef) -> Option<MinecartRef> {
         let cart = MinecartRef::new(entity);
         self.native_minecart_index(cart).map(|_| cart)
     }
 
     /// Which `AbstractMinecart` subclass the cart is.
-    pub(super) fn minecart_kind(&self, cart: MinecartRef) -> Option<MinecartKind> {
+    pub(in crate::game) fn minecart_kind(&self, cart: MinecartRef) -> Option<MinecartKind> {
         Some(match self.native_minecart(cart)?.kind {
             CartKind::Rideable => MinecartKind::Rideable,
             CartKind::Chest => MinecartKind::Chest,
@@ -61,49 +61,57 @@ impl Game<'_> {
     /// 0.4 (0.2 in water), or with the `minecart_improvements` experiment the
     /// `max_minecart_speed` rule over 20 (halved in water). A furnace minecart
     /// takes half of that, three quarters in water (`MinecartFurnace`).
-    pub(super) fn minecart_max_speed(&self, cart: MinecartRef) -> Option<f64> {
+    pub(in crate::game) fn minecart_max_speed(&self, cart: MinecartRef) -> Option<f64> {
         Some(self.cart_max_speed(self.native_minecart(cart)?))
     }
 
     /// `AbstractMinecart.isOnRails`.
-    pub(super) fn minecart_is_on_rails(&self, cart: MinecartRef) -> Option<bool> {
+    pub(in crate::game) fn minecart_is_on_rails(&self, cart: MinecartRef) -> Option<bool> {
         Some(self.native_minecart(cart)?.on_rails)
     }
 
     /// `AbstractMinecart.isFlipped`.
-    pub(super) fn minecart_flipped(&self, cart: MinecartRef) -> Option<bool> {
+    pub(in crate::game) fn minecart_flipped(&self, cart: MinecartRef) -> Option<bool> {
         Some(self.native_minecart(cart)?.flipped)
     }
 
     /// `AbstractMinecart.setFlipped`; saved as `FlippedRotation`, not synced.
-    pub(super) fn minecart_set_flipped(&mut self, cart: MinecartRef, flipped: bool) -> bool {
+    pub(in crate::game) fn minecart_set_flipped(
+        &mut self,
+        cart: MinecartRef,
+        flipped: bool,
+    ) -> bool {
         self.native_minecart_edit(cart, None, |c| c.flipped = flipped)
     }
 
     /// `VehicleEntity.getDamage`, the wobble damage (`DATA_ID_DAMAGE`).
-    pub(super) fn minecart_damage(&self, cart: MinecartRef) -> Option<f32> {
+    pub(in crate::game) fn minecart_damage(&self, cart: MinecartRef) -> Option<f32> {
         Some(self.native_minecart(cart)?.damage)
     }
 
     /// `VehicleEntity.setDamage`: synced to clients. The tick counts it down
     /// only while positive.
-    pub(super) fn minecart_set_damage(&mut self, cart: MinecartRef, damage: f32) -> bool {
+    pub(in crate::game) fn minecart_set_damage(&mut self, cart: MinecartRef, damage: f32) -> bool {
         self.native_minecart_edit(cart, None, |c| c.damage = damage)
     }
 
     /// `VehicleEntity.getHurtTime`, the wobble ticks (`DATA_ID_HURT`).
-    pub(super) fn minecart_hurt_time(&self, cart: MinecartRef) -> Option<i32> {
+    pub(in crate::game) fn minecart_hurt_time(&self, cart: MinecartRef) -> Option<i32> {
         Some(self.native_minecart(cart)?.hurt_time)
     }
 
     /// `VehicleEntity.setHurtTime`: synced to clients.
-    pub(super) fn minecart_set_hurt_time(&mut self, cart: MinecartRef, ticks: i32) -> bool {
+    pub(in crate::game) fn minecart_set_hurt_time(
+        &mut self,
+        cart: MinecartRef,
+        ticks: i32,
+    ) -> bool {
         self.native_minecart_edit(cart, None, |c| c.hurt_time = ticks)
     }
 
     /// `AbstractMinecart.customDisplayBlockState`: the block the cart shows in
     /// place of its kind's default, None (inner) when it has none.
-    pub(super) fn minecart_custom_display_block(
+    pub(in crate::game) fn minecart_custom_display_block(
         &self,
         cart: MinecartRef,
     ) -> Option<Option<BlockStateId>> {
@@ -118,7 +126,7 @@ impl Game<'_> {
     /// Sets the block the cart shows, or with None its kind's default again:
     /// saved as `DisplayState` and synced to clients. False for a state the
     /// registry doesn't know, as the loader drops one that does not decode.
-    pub(super) fn minecart_set_custom_display_block(
+    pub(in crate::game) fn minecart_set_custom_display_block(
         &mut self,
         cart: MinecartRef,
         state: Option<BlockStateId>,
@@ -132,18 +140,22 @@ impl Game<'_> {
 
     /// `AbstractMinecart.getDisplayOffset`, in sixteenths of a block: the set
     /// offset, else the kind's default.
-    pub(super) fn minecart_display_offset(&self, cart: MinecartRef) -> Option<i32> {
+    pub(in crate::game) fn minecart_display_offset(&self, cart: MinecartRef) -> Option<i32> {
         Some(display_offset(self.native_minecart(cart)?) as i32)
     }
 
     /// `AbstractMinecart.setDisplayOffset`, in sixteenths of a block: saved as
     /// `DisplayOffset` (only off the kind's default) and synced to clients.
-    pub(super) fn minecart_set_display_offset(&mut self, cart: MinecartRef, offset: i32) -> bool {
+    pub(in crate::game) fn minecart_set_display_offset(
+        &mut self,
+        cart: MinecartRef,
+        offset: i32,
+    ) -> bool {
         self.native_minecart_edit(cart, None, |c| c.custom_offset = Some(offset))
     }
 
     /// `MinecartFurnace`'s fuel ticks; None for another kind of cart.
-    pub(super) fn minecart_fuel(&self, cart: MinecartRef) -> Option<i32> {
+    pub(in crate::game) fn minecart_fuel(&self, cart: MinecartRef) -> Option<i32> {
         let cart = self.native_minecart(cart)?;
         (cart.kind == CartKind::Furnace).then_some(cart.fuel)
     }
@@ -151,14 +163,14 @@ impl Game<'_> {
     /// Sets a furnace minecart's fuel ticks, any int as vanilla's field holds
     /// it (saved as a short, the low 16 bits). False for another kind of cart.
     /// The lit flag (`DATA_ID_FUEL`) follows with fuel above zero.
-    pub(super) fn minecart_set_fuel(&mut self, cart: MinecartRef, fuel: i32) -> bool {
+    pub(in crate::game) fn minecart_set_fuel(&mut self, cart: MinecartRef, fuel: i32) -> bool {
         self.native_minecart_edit(cart, Some(CartKind::Furnace), |c| c.fuel = fuel)
     }
 
     /// A furnace minecart's push (`MinecartFurnace.push`): the way its fuel drives it on rails,
     /// x and z; its y part stays between ticks and sets the push's length. None for another
     /// kind of cart.
-    pub(super) fn minecart_push(&self, cart: MinecartRef) -> Option<[f64; 3]> {
+    pub(in crate::game) fn minecart_push(&self, cart: MinecartRef) -> Option<[f64; 3]> {
         let cart = self.native_minecart(cart)?;
         (cart.kind == CartKind::Furnace).then_some([cart.push.x, cart.push.y, cart.push.z])
     }
@@ -166,7 +178,7 @@ impl Game<'_> {
     /// Sets a furnace minecart's push, as a player's click with fuel sets it toward them
     /// (`MinecartFurnace.interact`): a cart a mod drives runs that way while it has fuel. False
     /// for another kind of cart or a push that isn't finite.
-    pub(super) fn minecart_set_push(&mut self, cart: MinecartRef, push: [f64; 3]) -> bool {
+    pub(in crate::game) fn minecart_set_push(&mut self, cart: MinecartRef, push: [f64; 3]) -> bool {
         if !push.iter().all(|v| v.is_finite()) {
             return false;
         }
@@ -178,7 +190,7 @@ impl Game<'_> {
 
     /// `MinecartTNT`'s fuse ticks, -1 when it is not primed; None for another
     /// kind of cart.
-    pub(super) fn minecart_fuse(&self, cart: MinecartRef) -> Option<i32> {
+    pub(in crate::game) fn minecart_fuse(&self, cart: MinecartRef) -> Option<i32> {
         let cart = self.native_minecart(cart)?;
         (cart.kind == CartKind::Tnt).then_some(cart.fuse)
     }
@@ -186,7 +198,7 @@ impl Game<'_> {
     /// `MinecartTNT.primeFuse(null)`: an 80 tick fuse, the primed sound and
     /// entity event 70 for clients. False for another kind of cart, or with
     /// the `tnt_explodes` rule off.
-    pub(super) fn minecart_prime_fuse(&mut self, cart: MinecartRef) -> bool {
+    pub(in crate::game) fn minecart_prime_fuse(&mut self, cart: MinecartRef) -> bool {
         let Some(index) = self.native_minecart_index(cart) else {
             return false;
         };
@@ -204,19 +216,23 @@ impl Game<'_> {
     }
 
     /// `MinecartHopper.isEnabled`; None for another kind of cart.
-    pub(super) fn minecart_hopper_enabled(&self, cart: MinecartRef) -> Option<bool> {
+    pub(in crate::game) fn minecart_hopper_enabled(&self, cart: MinecartRef) -> Option<bool> {
         let cart = self.native_minecart(cart)?;
         (cart.kind == CartKind::Hopper).then_some(cart.enabled)
     }
 
     /// `MinecartHopper.setEnabled`: saved as `Enabled`, not synced.
-    pub(super) fn minecart_set_hopper_enabled(&mut self, cart: MinecartRef, enabled: bool) -> bool {
+    pub(in crate::game) fn minecart_set_hopper_enabled(
+        &mut self,
+        cart: MinecartRef,
+        enabled: bool,
+    ) -> bool {
         self.native_minecart_edit(cart, Some(CartKind::Hopper), |c| c.enabled = enabled)
     }
 
     /// A command block minecart's command (`MinecartCommandBlock.getCommandBlock().getCommand()`).
     /// None for another kind of cart.
-    pub(super) fn minecart_command(&self, cart: MinecartRef) -> Option<String> {
+    pub(in crate::game) fn minecart_command(&self, cart: MinecartRef) -> Option<String> {
         let cart = self.native_minecart(cart)?;
         (cart.kind == CartKind::CommandBlock).then(|| cart.command.command.clone())
     }
@@ -226,7 +242,11 @@ impl Game<'_> {
     /// synced command and last output follow, so clients' editors show the new command. The
     /// output and its tracking are kept, and no chat note is sent. An activator rail then runs
     /// the new command. False for another kind of cart.
-    pub(super) fn minecart_set_command(&mut self, cart: MinecartRef, command: &str) -> bool {
+    pub(in crate::game) fn minecart_set_command(
+        &mut self,
+        cart: MinecartRef,
+        command: &str,
+    ) -> bool {
         let Some(id) = self
             .native_minecart(cart)
             .filter(|c| c.kind == CartKind::CommandBlock)
@@ -336,7 +356,7 @@ mod tests {
     #[ignore = "daily"]
     fn minecart_handles_narrow_read_and_write_by_kind() {
         if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::native_minecart_refs::tests::minecart_handles_narrow_read_and_write_by_kind",
+            "game::server_side::native_minecart_refs::tests::minecart_handles_narrow_read_and_write_by_kind",
             "SUNRISE_MINECART_HANDLES_CASE",
             &["handles"],
         ) {

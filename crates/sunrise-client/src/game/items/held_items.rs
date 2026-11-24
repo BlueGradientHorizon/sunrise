@@ -5,18 +5,18 @@ use super::*;
 
 impl Game<'_> {
     /// The stack in the hand that acts (`getItemInHand(hand)`).
-    pub(super) fn held(&self) -> Option<&ItemStack> {
+    pub(in crate::game) fn held(&self) -> Option<&ItemStack> {
         self.stack_in(self.held_slot())
     }
 
-    pub(super) fn held_mut(&mut self) -> &mut Option<ItemStack> {
+    pub(in crate::game) fn held_mut(&mut self) -> &mut Option<ItemStack> {
         self.stack_in_mut(self.held_slot())
     }
 
     /// The slot of the hand that acts: the selected one, or `OFFHAND_SLOT`.
     /// `LivingEntity.canGlide`: some worn piece, or a stack in a hand, glides
     /// there (`canGlideUsing` walks every `EquipmentSlot`: `gliding_slots`).
-    pub(super) fn glider_worn(&self) -> bool {
+    pub(in crate::game) fn glider_worn(&self) -> bool {
         super::glide_wear::gliding_slots(
             self.res.items(),
             &self.armor,
@@ -32,7 +32,7 @@ impl Game<'_> {
     /// random), and
     /// `ItemStack.hurtAndBreak` takes `points` of its durability (Unbreaking
     /// may save it). Callers skip creative.
-    pub(super) fn wear_glider(&mut self, points: u32) {
+    pub(in crate::game) fn wear_glider(&mut self, points: u32) {
         // Every 20th glide tick only, so collecting the candidates here is fine.
         let mut pieces: Vec<usize> = super::glide_wear::gliding_slots(
             self.res.items(),
@@ -86,7 +86,7 @@ impl Game<'_> {
             .any(|s| immune.is_some_and(|t| t.contains(&*s.item)))
     }
 
-    pub(super) fn held_slot(&self) -> usize {
+    pub(in crate::game) fn held_slot(&self) -> usize {
         match self.hand {
             Hand::Main => self.selected,
             Hand::Off => shield::OFFHAND_SLOT,
@@ -94,12 +94,16 @@ impl Game<'_> {
     }
 
     /// `LivingEntity.getUsedItemHand`: the hand of the item in use.
-    pub(super) fn used_hand(&self) -> Option<Hand> {
+    pub(in crate::game) fn used_hand(&self) -> Option<Hand> {
         item_use::hand_of(self.using)
     }
 
     /// Run `f` with `hand` acting (`held`, `consume_held`, `swing_arm`).
-    pub(super) fn with_hand<T>(&mut self, hand: Hand, f: impl FnOnce(&mut Self) -> T) -> T {
+    pub(in crate::game) fn with_hand<T>(
+        &mut self,
+        hand: Hand,
+        f: impl FnOnce(&mut Self) -> T,
+    ) -> T {
         let prior = std::mem::replace(&mut self.hand, hand);
         let out = f(self);
         self.hand = prior;
@@ -107,14 +111,17 @@ impl Game<'_> {
     }
 
     /// Inventory.add: returns the stack that did not fit.
-    pub(super) fn add_stack_to_inventory(&mut self, mut stack: ItemStack) -> Option<ItemStack> {
+    pub(in crate::game) fn add_stack_to_inventory(
+        &mut self,
+        mut stack: ItemStack,
+    ) -> Option<ItemStack> {
         self.insert_stack_into_inventory(&mut stack)
             .then_some(stack)
     }
 
     /// Consumes the fitted count, leaving the offered item and components in `stack`.
     /// Returns true if some of the count remains.
-    pub(super) fn insert_stack_into_inventory(&mut self, stack: &mut ItemStack) -> bool {
+    pub(in crate::game) fn insert_stack_into_inventory(&mut self, stack: &mut ItemStack) -> bool {
         let max = self
             .res
             .items()
@@ -124,7 +131,7 @@ impl Game<'_> {
     }
 
     /// `insert_stack_into_inventory` with `max` the stack's own maximum.
-    pub(super) fn insert_stack_up_to(&mut self, stack: &mut ItemStack, max: u32) -> bool {
+    pub(in crate::game) fn insert_stack_up_to(&mut self, stack: &mut ItemStack, max: u32) -> bool {
         let tutorial_item = matches!(
             self.client.tutorial.step,
             tutorial::Step::FindTree | tutorial::Step::PunchTree | tutorial::Step::CraftPlanks
@@ -147,7 +154,7 @@ impl Game<'_> {
 
 /// The item of the stack in `selected` (`Player.tick`'s main-hand item), borrowed: a guest's
 /// tick compares it with the last one and clones it only when it changed.
-pub(super) fn held_attack_item(
+pub(in crate::game) fn held_attack_item(
     inventory: &[Option<ItemStack>],
     selected: usize,
 ) -> Option<&Arc<str>> {

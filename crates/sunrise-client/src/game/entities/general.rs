@@ -330,7 +330,7 @@ fn data_nesting(tag: &Tag, passengers_key: &sunrise_core::nbt::JavaString) -> u3
 /// The encoded NBT size of a tag, as its writer emits it (name payloads
 /// included, strings counted as their UTF-8 bytes): the measure the
 /// quarantine record bound applies.
-pub(super) fn nbt_size(tag: &Tag) -> u64 {
+pub(in crate::game) fn nbt_size(tag: &Tag) -> u64 {
     match tag {
         Tag::End => 1,
         Tag::Byte(_) => 1,
@@ -513,7 +513,7 @@ impl GeneralTypeCatalog {
     }
 
     /// The type's standing box at `at`, shared by server queries and client culling.
-    pub(super) fn bounds(&self, slot: usize, at: Vec3) -> Aabb {
+    pub(in crate::game) fn bounds(&self, slot: usize, at: Vec3) -> Aabb {
         let (width, height) = self.dimensions(slot);
         let half = width / 2.0;
         Aabb::new(
@@ -553,7 +553,7 @@ impl GeneralTypeCatalog {
     }
 
     /// The type's local passenger point, defaulting to the top center of its box.
-    pub(super) fn passenger_attachment(&self, slot: usize) -> [f64; 3] {
+    pub(in crate::game) fn passenger_attachment(&self, slot: usize) -> [f64; 3] {
         let entry = &self.entries[slot];
         entry
             .passenger_attachment
@@ -705,19 +705,19 @@ pub struct RiderIndex {
     mounts: u64,
     /// Each vehicle's first general rider. Places at and above `length` are
     /// foreign vehicles, with no corresponding general row.
-    pub(super) first_child: Vec<Option<usize>>,
+    pub(in crate::game) first_child: Vec<Option<usize>>,
     /// Each rider's next sibling's place on the same vehicle.
-    pub(super) next_sibling: Vec<Option<usize>>,
+    pub(in crate::game) next_sibling: Vec<Option<usize>>,
     /// Each vehicle's latest rider of the ongoing rebuild.
     last_child: Vec<Option<usize>>,
     /// A general row or foreign vehicle's place by id.
     places: FxHashMap<u32, usize>,
     boarded: Vec<(usize, u32)>,
-    pub(super) ticked: Vec<bool>,
-    pub(super) pending: Vec<(usize, Option<u32>)>,
-    pub(super) foreign_parents: Vec<(usize, i64, usize)>,
+    pub(in crate::game) ticked: Vec<bool>,
+    pub(in crate::game) pending: Vec<(usize, Option<u32>)>,
+    pub(in crate::game) foreign_parents: Vec<(usize, i64, usize)>,
     /// General vehicles a mob rides, from the mob riders' pass of the same tick.
-    pub(super) mob_vehicles: sunrise_client::fast_hash::FxHashSet<u32>,
+    pub(in crate::game) mob_vehicles: sunrise_client::fast_hash::FxHashSet<u32>,
 }
 
 impl RiderIndex {
@@ -783,7 +783,7 @@ impl RiderIndex {
 
 impl Game<'_> {
     /// A general entity row in the active level. Removal hides it before the sweep.
-    pub(super) fn general_row(&self, id: u32) -> Option<&GeneralRow> {
+    pub(in crate::game) fn general_row(&self, id: u32) -> Option<&GeneralRow> {
         if !self.persist.removals.is_empty() && self.persist.removals.contains(&Target::General(id))
         {
             return None;
@@ -793,7 +793,7 @@ impl Game<'_> {
 
     /// The owning row through its removal callback, before the physical sweep. Through the rider
     /// index's place map while it is current (a miss then is final), else by scan.
-    pub(super) fn general_object(&self, id: u32) -> Option<&GeneralRow> {
+    pub(in crate::game) fn general_object(&self, id: u32) -> Option<&GeneralRow> {
         let store = &self.resident_entities.general;
         if store.rows.is_empty() {
             return None;
@@ -805,7 +805,10 @@ impl Game<'_> {
         store.rows.iter().find(|row| row.id == id)
     }
 
-    pub(super) fn general_passengers(&self, vehicle: u32) -> impl Iterator<Item = &GeneralRow> {
+    pub(in crate::game) fn general_passengers(
+        &self,
+        vehicle: u32,
+    ) -> impl Iterator<Item = &GeneralRow> {
         let store = &self.resident_entities.general;
         let fresh = store.riders.is_fresh(&store.rows, store.mount_writes);
         // The vehicle's sibling chain while the index is current, else every row.
@@ -834,7 +837,11 @@ impl Game<'_> {
     }
 
     /// Change a general row's seat. The caller owns mount notifications.
-    pub(super) fn set_general_mount(&mut self, id: u32, mount: Option<(u32, i64)>) -> bool {
+    pub(in crate::game) fn set_general_mount(
+        &mut self,
+        id: u32,
+        mount: Option<(u32, i64)>,
+    ) -> bool {
         if self.persist.removals.contains(&Target::General(id)) {
             return false;
         }
@@ -878,14 +885,14 @@ impl Game<'_> {
 
     /// A general row and its passengers. A dimension transfer includes live
     /// objects even when their `EntityType` does not serialize to disk.
-    pub(super) fn general_tree_nbt(&mut self, id: u32, transferring: bool) -> Option<Tag> {
+    pub(in crate::game) fn general_tree_nbt(&mut self, id: u32, transferring: bool) -> Option<Tag> {
         let mut tag = self.general_own_nbt(id, transferring)?;
         self.put_passengers_for(&mut tag, id, transferring);
         Some(tag)
     }
 
     /// A general row's own compound with its attachments, before its passengers.
-    pub(super) fn general_own_nbt(&mut self, id: u32, transferring: bool) -> Option<Tag> {
+    pub(in crate::game) fn general_own_nbt(&mut self, id: u32, transferring: bool) -> Option<Tag> {
         let mut tag = self.general_row_record(id, transferring)?.to_tag();
         crate::game::persist::write_attachments(&mut tag, id, &self.entity_attachments);
         Some(tag)
@@ -965,7 +972,11 @@ impl Game<'_> {
 
     /// A retained object in the destination must not cause mixed transfer to
     /// drop a general row after the source tree has already been removed.
-    pub(super) fn general_transfer_conflicts(&self, root: u32, destination: super::Dim) -> bool {
+    pub(in crate::game) fn general_transfer_conflicts(
+        &self,
+        root: u32,
+        destination: super::Dim,
+    ) -> bool {
         !self.resident_entities.general.rows.is_empty()
             && self
                 .vehicle_tree_ids(root)
@@ -1107,7 +1118,7 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn load_general_passenger(
+    pub(in crate::game) fn load_general_passenger(
         &mut self,
         tag: &Tag,
         mount: Option<u32>,
@@ -1180,7 +1191,7 @@ impl Game<'_> {
     /// Read one spawner passenger without its riders. The spawner loads
     /// those separately and resolves UUID residency in preorder, not with
     /// the saved general tree's structural checks.
-    pub(super) fn decode_general_spawn_passenger(
+    pub(in crate::game) fn decode_general_spawn_passenger(
         tag: &Tag,
         kind: &str,
     ) -> Option<(usize, GeneralEntityRecord)> {
@@ -1227,7 +1238,7 @@ impl Game<'_> {
     }
 
     /// Publish one validated record; the caller owns its passenger traversal.
-    pub(super) fn insert_general_row(
+    pub(in crate::game) fn insert_general_row(
         &mut self,
         slot: usize,
         record: GeneralEntityRecord,

@@ -26,14 +26,18 @@ impl Game<'_> {
 
     /// Find a block entity in a loaded chunk of an open level, or on a client in
     /// the level it shows.
-    pub(super) fn block_entity(&self, level: LevelRef, pos: [i32; 3]) -> Option<BlockEntityRef> {
+    pub(in crate::game) fn block_entity(
+        &self,
+        level: LevelRef,
+        pos: [i32; 3],
+    ) -> Option<BlockEntityRef> {
         let world = self.native_level_read_world(level)?;
         world_block_entity(world, level, pos)
     }
 
     /// `block_entity`, also for a block entity temporarily taken out by an engine operation:
     /// its generation stays in place while it is out.
-    pub(super) fn block_entity_identity(
+    pub(in crate::game) fn block_entity_identity(
         &self,
         level: LevelRef,
         pos: [i32; 3],
@@ -85,7 +89,7 @@ impl Game<'_> {
     /// Opens a block entity's menu for a connected player (`ServerPlayer.openMenu`).
     /// Returns Stale for an invalidated entity; Ok(false) for a wrong-level player,
     /// non-provider, cancelled open, or an unconnected player such as a fake player.
-    pub(super) fn player_open_menu(
+    pub(in crate::game) fn player_open_menu(
         &mut self,
         player: PlayerRef,
         entity: BlockEntityRef,
@@ -120,7 +124,10 @@ impl Game<'_> {
     }
 
     /// The block entity's type (`BlockEntity.getType`).
-    pub(super) fn block_entity_kind(&self, entity: BlockEntityRef) -> Option<BlockEntityTypeKey> {
+    pub(in crate::game) fn block_entity_kind(
+        &self,
+        entity: BlockEntityRef,
+    ) -> Option<BlockEntityTypeKey> {
         let (world, block_entity) = self.native_block_entity_target(entity)?;
         let [x, y, z] = entity.fields().position;
         let block = &self.pack.assets.registry.state(world.block(x, y, z))?.name;
@@ -128,26 +135,29 @@ impl Game<'_> {
     }
 
     /// The block entity's position.
-    pub(super) fn block_entity_position(&self, entity: BlockEntityRef) -> Option<[i32; 3]> {
+    pub(in crate::game) fn block_entity_position(
+        &self,
+        entity: BlockEntityRef,
+    ) -> Option<[i32; 3]> {
         self.native_block_entity_target(entity)?;
         Some(entity.fields().position)
     }
 
     /// The block entity's level.
-    pub(super) fn block_entity_level(&self, entity: BlockEntityRef) -> Option<LevelRef> {
+    pub(in crate::game) fn block_entity_level(&self, entity: BlockEntityRef) -> Option<LevelRef> {
         self.native_block_entity_target(entity)?;
         Some(entity.fields().level)
     }
 
     /// The data saved without identity or position metadata
     /// (`BlockEntity.saveWithoutMetadata`).
-    pub(super) fn block_entity_data(&self, entity: BlockEntityRef) -> Option<Compound> {
+    pub(in crate::game) fn block_entity_data(&self, entity: BlockEntityRef) -> Option<Compound> {
         let world = self.native_level_read_world(entity.fields().level)?;
         world_block_entity_data(world, self.pack.assets.registry, self.res.items(), entity)
     }
 
     /// The resident lock, independent of the block entity's synthesized save payload.
-    pub(super) fn block_entity_lock(&self, entity: BlockEntityRef) -> Option<&Compound> {
+    pub(in crate::game) fn block_entity_lock(&self, entity: BlockEntityRef) -> Option<&Compound> {
         let (world, _) = self.native_block_entity_target(entity)?;
         let [x, y, z] = entity.fields().position;
         match world.block_lock((x, y, z))? {
@@ -157,7 +167,7 @@ impl Game<'_> {
     }
 
     /// Change the lock through the same storage used by container opening and saving.
-    pub(super) fn block_entity_set_lock(
+    pub(in crate::game) fn block_entity_set_lock(
         &mut self,
         entity: BlockEntityRef,
         lock: Option<Compound>,
@@ -191,7 +201,7 @@ impl Game<'_> {
     }
 
     /// A loaded block entity of the server level in place, when a write may change it.
-    pub(super) fn native_block_entity_write_key(
+    pub(in crate::game) fn native_block_entity_write_key(
         &self,
         entity: BlockEntityRef,
     ) -> Option<(i32, i32, i32)> {
@@ -221,7 +231,10 @@ impl Game<'_> {
 
     /// A snapshot of a mod block entity's menu data slots, on the server or in the
     /// client's copy. None for a stale/missing/vanilla entity. Item storage is separate.
-    pub(super) fn block_entity_data_slots(&self, entity: BlockEntityRef) -> Option<Vec<i32>> {
+    pub(in crate::game) fn block_entity_data_slots(
+        &self,
+        entity: BlockEntityRef,
+    ) -> Option<Vec<i32>> {
         let (_, BlockEntity::Mod(block_entity)) = self.native_block_entity_target(entity)? else {
             return None;
         };
@@ -231,7 +244,7 @@ impl Game<'_> {
     /// Set a mod block entity's menu data slot silently in the current transaction.
     /// Ok(false) for a vanilla entity, invalid slot or equal value; Stale for an invalidated
     /// or unwritable handle. Notification is explicit; this does not resize slots.
-    pub(super) fn block_entity_set_data_slot(
+    pub(in crate::game) fn block_entity_set_data_slot(
         &mut self,
         entity: BlockEntityRef,
         slot: u32,
@@ -257,7 +270,7 @@ impl Game<'_> {
 
     /// Sizes a mod block entity's transient menu data using the same silent
     /// write and journal as scalar data-slot writes.
-    pub(super) fn block_entity_set_data_slots(
+    pub(in crate::game) fn block_entity_set_data_slots(
         &mut self,
         entity: BlockEntityRef,
         values: Vec<i32>,
@@ -307,7 +320,7 @@ impl Game<'_> {
     }
 
     /// Read a configured mod holder's declared internal item slot, without automation policy.
-    pub(super) fn block_entity_item_slot(
+    pub(in crate::game) fn block_entity_item_slot(
         &self,
         entity: BlockEntityRef,
         slot: u32,
@@ -324,7 +337,7 @@ impl Game<'_> {
     }
 
     /// Replace internal storage under the existing transaction; external ITEMS routing is separate.
-    pub(super) fn block_entity_set_item_slot(
+    pub(in crate::game) fn block_entity_set_item_slot(
         &mut self,
         entity: BlockEntityRef,
         tx: &TransactionContext,
@@ -389,7 +402,7 @@ impl Game<'_> {
     /// nested too deep, no change, or data the entity cannot load. Stale or unwritable
     /// handles return BlockEntityError::Stale. Inside a transaction an
     /// abort puts the block entity, its name, `lock`, loot table roll and attachments back.
-    pub(super) fn block_entity_merge_data(
+    pub(in crate::game) fn block_entity_merge_data(
         &mut self,
         entity: BlockEntityRef,
         data: Compound,
@@ -400,7 +413,7 @@ impl Game<'_> {
     /// Replaces the saved payload, retaining identity and position metadata.
     /// Uses the same transactional load and client update path as `merge_data`.
     /// Ok(false) for unsupported data or no change; Stale for an invalidated handle.
-    pub(super) fn block_entity_replace_data(
+    pub(in crate::game) fn block_entity_replace_data(
         &mut self,
         entity: BlockEntityRef,
         data: Compound,
@@ -454,7 +467,7 @@ impl Game<'_> {
 
     /// `BlockEntity.setChanged`: notify at once, including inside a transaction. An abort
     /// restores storage, not notifications already delivered to observers or comparators.
-    pub(super) fn block_entity_set_changed(
+    pub(in crate::game) fn block_entity_set_changed(
         &mut self,
         entity: BlockEntityRef,
     ) -> Result<bool, BlockEntityError> {
@@ -466,7 +479,7 @@ impl Game<'_> {
     }
 
     /// Register a generation-bound observer in its level's keyed contents index.
-    pub(super) fn block_entity_watch_contents(
+    pub(in crate::game) fn block_entity_watch_contents(
         &mut self,
         entity: BlockEntityRef,
         source: mod_api::BlockPos,
@@ -499,7 +512,7 @@ impl Game<'_> {
     /// clears them with None. Applied at once, to the queries that follow, and the block's
     /// neighbours are notified; clients get them with the block entity update. Inside a
     /// transaction an abort puts the old ones back.
-    pub(super) fn block_entity_set_shapes(
+    pub(in crate::game) fn block_entity_set_shapes(
         &mut self,
         entity: BlockEntityRef,
         shapes: Option<BlockEntityShapes>,
@@ -560,7 +573,7 @@ impl Game<'_> {
     /// has none or isn't nameable (chests, barrels, furnaces, hoppers, brewing stands,
     /// banners, beacons, enchanting tables, command blocks...), or for a stale handle or a
     /// client.
-    pub(super) fn block_entity_name(&self, entity: BlockEntityRef) -> Option<String> {
+    pub(in crate::game) fn block_entity_name(&self, entity: BlockEntityRef) -> Option<String> {
         let (world, block_entity) = self.native_block_entity_target(entity)?;
         let [x, y, z] = entity.fields().position;
         match block_entity {
@@ -578,7 +591,10 @@ impl Game<'_> {
     /// its level, not spectators nor fake players, then the acting player for a menu
     /// their action opened, which the hub records when the action ends. None for a
     /// stale handle or a client.
-    pub(super) fn block_entity_viewers(&self, entity: BlockEntityRef) -> Option<Vec<PlayerRef>> {
+    pub(in crate::game) fn block_entity_viewers(
+        &self,
+        entity: BlockEntityRef,
+    ) -> Option<Vec<PlayerRef>> {
         if !self.is_logical_server() {
             return None;
         }
@@ -631,7 +647,7 @@ impl Game<'_> {
     /// `components` sets `CustomName`. Plain text only. Clients get a block entity update.
     /// Ok(false) for an entity that is not nameable; Stale for an invalidated or
     /// unwritable handle. Inside a transaction an abort puts the name back.
-    pub(super) fn block_entity_set_name(
+    pub(in crate::game) fn block_entity_set_name(
         &mut self,
         entity: BlockEntityRef,
         name: Option<&str>,
@@ -760,7 +776,7 @@ fn save_with_metadata(
     Some(data)
 }
 
-pub(super) fn save_without_metadata(
+pub(in crate::game) fn save_without_metadata(
     world: &World,
     pos: (i32, i32, i32),
     entity: &BlockEntity,
@@ -771,7 +787,7 @@ pub(super) fn save_without_metadata(
 }
 
 /// The saved block entity's payload, with its world identity and position removed.
-pub(super) fn block_entity_payload(mut data: Compound) -> Compound {
+pub(in crate::game) fn block_entity_payload(mut data: Compound) -> Compound {
     for key in ["id", "x", "y", "z"] {
         data.remove(&key.into());
     }
@@ -811,7 +827,7 @@ fn mod_item_slots(
     Ok(slots)
 }
 
-pub(super) fn part_snapshot(
+pub(in crate::game) fn part_snapshot(
     world: &World,
     level: Option<LevelRef>,
     authoritative: bool,
@@ -857,7 +873,7 @@ pub(super) fn part_snapshot(
 
 /// The handle of the loaded block entity at `pos`, without loading a chunk or taking one
 /// temporarily absent from the resident table.
-pub(super) fn world_block_entity(
+pub(in crate::game) fn world_block_entity(
     world: &World,
     level: LevelRef,
     pos: [i32; 3],
@@ -867,7 +883,7 @@ pub(super) fn world_block_entity(
 }
 
 /// Construct a handle after the caller has checked that the entry is resident.
-pub(super) fn block_entity_handle(
+pub(in crate::game) fn block_entity_handle(
     world: &World,
     level: LevelRef,
     pos: [i32; 3],
@@ -880,7 +896,7 @@ pub(super) fn block_entity_handle(
 }
 
 /// Read a resident entity's saved data after the caller has resolved its level to `world`.
-pub(super) fn world_block_entity_data(
+pub(in crate::game) fn world_block_entity_data(
     world: &World,
     registry: &sunrise_world::registry::BlockRegistry,
     items: &crate::items::Items,
@@ -1023,7 +1039,7 @@ mod tests {
     fn retained_handles_reject_replacements_and_rollback_restores_identity() {
         use super::super::native_entity_refs::tests::{run_fresh_cases, with_game};
         if run_fresh_cases(
-            "game::native_block_entity_refs::tests::retained_handles_reject_replacements_and_rollback_restores_identity",
+            "game::server_side::native_block_entity_refs::tests::retained_handles_reject_replacements_and_rollback_restores_identity",
             "SUNRISE_RETAINED_HANDLES_CHILD",
             &["holder"],
         ) {
@@ -1170,7 +1186,7 @@ mod tests {
     fn player_opens_provider_and_refuses_non_provider() {
         use mod_api::*;
         if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::native_block_entity_refs::tests::player_opens_provider_and_refuses_non_provider",
+            "game::server_side::native_block_entity_refs::tests::player_opens_provider_and_refuses_non_provider",
             "SUNRISE_BE_MENU_CASE",
             &[
                 "provider",
@@ -1555,7 +1571,7 @@ mod tests {
         use super::super::native_entity_refs::tests::{run_fresh_cases, with_game_at};
         use mod_api::BlockUpdateFlags;
         if run_fresh_cases(
-            "game::native_block_entity_refs::tests::writes_merge_data_name_and_roll_back_with_a_transaction",
+            "game::server_side::native_block_entity_refs::tests::writes_merge_data_name_and_roll_back_with_a_transaction",
             "SUNRISE_VANILLA_BE_REGISTRY_CHILD",
             &["vanilla"],
         ) {

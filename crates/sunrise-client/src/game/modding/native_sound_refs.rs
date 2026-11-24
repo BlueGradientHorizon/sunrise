@@ -18,7 +18,7 @@ use sunrise_core::random::RandomSource;
 
 impl Game<'_> {
     /// Where `player` is reached now: the window's own player or a guest.
-    pub(super) fn native_player_sound_target(&self, player: PlayerRef) -> Option<Target> {
+    pub(in crate::game) fn native_player_sound_target(&self, player: PlayerRef) -> Option<Target> {
         if self.player(player.uuid()) != Some(player) {
             return None;
         }
@@ -29,7 +29,7 @@ impl Game<'_> {
     }
     /// Whether the server's registry has `sound`, when it is a vanilla
     /// event; a mod's goes by name.
-    pub(super) fn native_sound_known(&self, sound: &str) -> bool {
+    pub(in crate::game) fn native_sound_known(&self, sound: &str) -> bool {
         !sound.starts_with("minecraft:")
             || self.lan.as_ref().is_none_or(|host| {
                 host.hub
@@ -40,7 +40,7 @@ impl Game<'_> {
     /// `StopSoundCommand` for one player: their client stops the playing
     /// sounds that match `sound` (an event id) and `source`; `None` matches
     /// any. True means accepted, not delivered.
-    pub(super) fn player_stop_sound(
+    pub(in crate::game) fn player_stop_sound(
         &mut self,
         player: PlayerRef,
         sound: Option<&str>,
@@ -69,7 +69,7 @@ impl Game<'_> {
     /// player, for them only, under `source`'s volume slider. The seed is the
     /// level random's `nextLong`, drawn when the sound publishes. True means
     /// accepted, not delivered.
-    pub(super) fn player_play_sound(
+    pub(in crate::game) fn player_play_sound(
         &mut self,
         player: PlayerRef,
         sound: &str,
@@ -109,7 +109,7 @@ impl Game<'_> {
     /// the players within range (16 blocks, times the volume above 1) of
     /// where it is now, the entity's own player too. True means queued, not
     /// heard; false for an entity outside the level in place.
-    pub(super) fn entity_play_bound_sound(
+    pub(in crate::game) fn entity_play_bound_sound(
         &mut self,
         entity: EntityRef,
         sound: &str,
@@ -121,7 +121,7 @@ impl Game<'_> {
     }
     /// `ServerLevel.playSeededSound(except, entity, sound, source, volume, pitch, seed)`:
     /// [`Self::entity_play_bound_sound`] leaving out `except`'s client, with the caller's seed.
-    pub(super) fn entity_play_seeded_bound_sound(
+    pub(in crate::game) fn entity_play_seeded_bound_sound(
         &mut self,
         entity: EntityRef,
         sound: &str,
@@ -173,7 +173,7 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-pub(super) mod tests {
+pub(in crate::game) mod tests {
     use super::super::lan::LanSettings;
     use super::super::native_entity_refs::tests::with_game;
     use mod_api::__private::game::*;

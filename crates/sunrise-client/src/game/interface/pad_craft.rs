@@ -121,13 +121,13 @@ impl Seen<'_> {
 /// A crafting book's recipe by what stays the same when the book is rebuilt: its recipe id, and
 /// its display id among the entries that share the id. Its index in the book can move.
 #[derive(Clone, Debug, PartialEq)]
-pub(super) struct RecipeKey {
-    pub(super) id: String,
-    pub(super) display: i32,
+pub(in crate::game) struct RecipeKey {
+    pub(in crate::game) id: String,
+    pub(in crate::game) display: i32,
 }
 
 /// A craft under way.
-pub(super) struct DirectCraft {
+pub(in crate::game) struct DirectCraft {
     recipe: RecipeKey,
     /// The window it started in: another one ends it.
     menu: i32,
@@ -176,7 +176,7 @@ impl DirectCraft {
 
     /// The end of a craft while the server can still answer: no new craft starts, the one in
     /// flight finishes, and `step` returns the grid before it says `Stop`.
-    pub(super) fn stop(&mut self) {
+    pub(in crate::game) fn stop(&mut self) {
         self.holding = false;
         let in_flight = self.placed || matches!(self.answer, Some((Answer::Placed, _)));
         self.asked = self.done + u32::from(in_flight);
@@ -309,7 +309,7 @@ impl Game<'_> {
 
     /// The pad can direct-craft here, with nothing carried: the inventory's guide says so on a
     /// recipe. Whether the recipe can be made isn't checked, as that counts the inventory.
-    pub(super) fn direct_craft_usable(&self) -> bool {
+    pub(in crate::game) fn direct_craft_usable(&self) -> bool {
         self.pad.in_use
             && self.carried.is_none()
             && self.mod_recipe_screen()
@@ -318,7 +318,7 @@ impl Game<'_> {
 
     /// This press is another LT + A on the running craft's recipe: it asks for one more craft
     /// rather than ending the craft.
-    pub(super) fn direct_craft_takes_press(&self, button: gamepad::Button) -> bool {
+    pub(in crate::game) fn direct_craft_takes_press(&self, button: gamepad::Button) -> bool {
         button == gamepad::Button::South
             && self.pad.edges.is_held(gamepad::Button::LeftTrigger)
             && self.client.screen == super::Screen::Inventory
@@ -335,7 +335,7 @@ impl Game<'_> {
     /// Refused with an item carried, on a book other than crafting, when the recipe can't be made,
     /// where it isn't allowed, or while another recipe's craft is still finishing (one request at
     /// a time); a refused press is plain A's.
-    pub(super) fn direct_craft_start(&mut self, entry: usize) -> bool {
+    pub(in crate::game) fn direct_craft_start(&mut self, entry: usize) -> bool {
         let now = Instant::now();
         let repeat_delay = self.settings.controller.repeat_delay;
         let repeat_at = now + Duration::from_secs_f32(repeat_delay);
@@ -371,19 +371,19 @@ impl Game<'_> {
 
     /// Anything that ends a running craft while the server can still answer; a click or key
     /// behind it goes on to the screen.
-    pub(super) fn direct_craft_stop(&mut self) {
+    pub(in crate::game) fn direct_craft_stop(&mut self) {
         self.pad.menu.stop_craft();
     }
 
     /// The server said a placement can't be made.
-    pub(super) fn direct_craft_refused(&mut self) {
+    pub(in crate::game) fn direct_craft_refused(&mut self) {
         if let Some(craft) = &mut self.pad.menu.craft {
             craft.refused();
         }
     }
 
     /// Once per poll: the running craft's next step, when the last one has been answered.
-    pub(super) fn direct_craft_poll(&mut self) {
+    pub(in crate::game) fn direct_craft_poll(&mut self) {
         let Some(mut craft) = self.pad.menu.craft.take() else {
             return;
         };

@@ -256,7 +256,7 @@ fn frame(game: &mut Game<'_>, alpha: f64) -> Vec<Vertex> {
 /// In a child process running only `test`: the registrations are kept once per process.
 fn in_scene(test: &str, check: impl FnOnce(&mut Game<'_>, &Scene)) {
     if super::native_entity_refs::tests::run_fresh_cases(
-        &format!("game::native_general_renderers_tests::{test}"),
+        &format!("game::client_side::native_general_renderers_tests::{test}"),
         "SUNRISE_GENERAL_RENDERERS_CHILD",
         &["native"],
     ) {
@@ -622,7 +622,7 @@ fn spawn_row(server: &mut Game<'_>, position: [f64; 3]) -> u32 {
 fn integrated_scene(test: &str, place: fn(&mut Game<'_>, [f64; 3]) -> u32) {
     const CASE: &str = "SUNRISE_GENERAL_RENDERER_TARGET";
     if super::native_entity_refs::tests::run_fresh_cases(
-        &format!("game::native_general_renderers_tests::{test}"),
+        &format!("game::client_side::native_general_renderers_tests::{test}"),
         CASE,
         &["game"],
     ) {

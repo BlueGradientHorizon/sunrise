@@ -226,7 +226,7 @@ fn place(game: &mut Game<'_>, level: LevelRef, pos: [i32; 3], block: &str) {
 #[ignore = "daily"]
 fn explicit_notices_observe_tentative_writes_and_survive_abort() {
     with_changes(
-        "game::machines::contents_changed_tests::explicit_notices_observe_tentative_writes_and_survive_abort",
+        "game::server_side::machines::contents_changed_tests::explicit_notices_observe_tentative_writes_and_survive_abort",
         NoticeAction::Observe,
         |game, level, changes| {
             let pos = [0, 64, 0];
@@ -299,7 +299,7 @@ fn explicit_notices_observe_tentative_writes_and_survive_abort() {
 #[ignore = "daily"]
 fn a_self_write_does_not_reenter_but_another_backing_block_notifies() {
     with_changes(
-        "game::machines::contents_changed_tests::a_self_write_does_not_reenter_but_another_backing_block_notifies",
+        "game::server_side::machines::contents_changed_tests::a_self_write_does_not_reenter_but_another_backing_block_notifies",
         NoticeAction::Write,
         |game, level, changes| {
             let source = [0, 64, 0];
@@ -389,7 +389,7 @@ fn a_self_write_does_not_reenter_but_another_backing_block_notifies() {
 #[ignore = "daily"]
 fn a_panicking_part_does_not_leave_its_contents_notice_guarded() {
     with_changes(
-        "game::machines::contents_changed_tests::a_panicking_part_does_not_leave_its_contents_notice_guarded",
+        "game::server_side::machines::contents_changed_tests::a_panicking_part_does_not_leave_its_contents_notice_guarded",
         NoticeAction::Panic,
         |game, level, changes| {
             let pos = [0, 64, 0];
@@ -448,7 +448,7 @@ fn a_panicking_part_does_not_leave_its_contents_notice_guarded() {
 #[ignore = "daily"]
 fn a_double_container_notifies_each_backing_block_once() {
     with_changes(
-        "game::machines::contents_changed_tests::a_double_container_notifies_each_backing_block_once",
+        "game::server_side::machines::contents_changed_tests::a_double_container_notifies_each_backing_block_once",
         NoticeAction::Observe,
         |game, level, changes| {
             let base = game
@@ -519,7 +519,7 @@ fn a_double_container_notifies_each_backing_block_once() {
 #[ignore = "daily"]
 fn a_native_types_payload_notifications_observe_each_write_before_commit() {
     with_changes(
-        "game::machines::contents_changed_tests::a_native_types_payload_notifications_observe_each_write_before_commit",
+        "game::server_side::machines::contents_changed_tests::a_native_types_payload_notifications_observe_each_write_before_commit",
         NoticeAction::Observe,
         |game, level, changes| {
             let pos = [0, 64, 0];
@@ -560,7 +560,7 @@ fn a_native_types_payload_notifications_observe_each_write_before_commit() {
 #[ignore = "daily"]
 fn a_crafter_notices_its_source_but_not_a_vehicles_placeholder() {
     with_changes(
-        "game::machines::contents_changed_tests::a_crafter_notices_its_source_but_not_a_vehicles_placeholder",
+        "game::server_side::machines::contents_changed_tests::a_crafter_notices_its_source_but_not_a_vehicles_placeholder",
         NoticeAction::Observe,
         |game, level, changes| {
             use crate::game::minecarts::{CartKind, Minecart};
@@ -620,7 +620,7 @@ fn a_crafter_notices_its_source_but_not_a_vehicles_placeholder() {
 #[ignore = "daily"]
 fn notices_come_in_first_write_order_once_each_whatever_the_journal_keeps() {
     with_changes(
-        "game::machines::contents_changed_tests::notices_come_in_first_write_order_once_each_whatever_the_journal_keeps",
+        "game::server_side::machines::contents_changed_tests::notices_come_in_first_write_order_once_each_whatever_the_journal_keeps",
         NoticeAction::Observe,
         |game, level, changes| {
             let (a, b) = ([0, 64, 0], [2, 64, 0]);
@@ -668,7 +668,7 @@ fn notices_come_in_first_write_order_once_each_whatever_the_journal_keeps() {
 #[ignore = "daily"]
 fn default_items_notifies_for_committed_mod_container_writes() {
     with_changes(
-        "game::machines::contents_changed_tests::default_items_notifies_for_committed_mod_container_writes",
+        "game::server_side::machines::contents_changed_tests::default_items_notifies_for_committed_mod_container_writes",
         NoticeAction::Observe,
         |game, level, changes| {
             use sunrise_core::{position::ChunkPos, ticks::TickTypeId};
@@ -753,7 +753,7 @@ fn default_items_notifies_for_committed_mod_container_writes() {
 #[ignore = "daily"]
 fn a_mod_reads_the_open_transaction_its_depth_and_the_root_commits_phase() {
     with_changes(
-        "game::machines::contents_changed_tests::a_mod_reads_the_open_transaction_its_depth_and_the_root_commits_phase",
+        "game::server_side::machines::contents_changed_tests::a_mod_reads_the_open_transaction_its_depth_and_the_root_commits_phase",
         NoticeAction::Lifecycle,
         |game, level, _| {
             let pos = [0, 64, 0];
@@ -815,7 +815,7 @@ fn a_mod_reads_the_open_transaction_its_depth_and_the_root_commits_phase() {
 #[ignore = "daily"]
 fn a_notice_that_opens_a_transaction_keeps_the_root_closing_phase() {
     with_changes(
-        "game::machines::contents_changed_tests::a_notice_that_opens_a_transaction_keeps_the_root_closing_phase",
+        "game::server_side::machines::contents_changed_tests::a_notice_that_opens_a_transaction_keeps_the_root_closing_phase",
         NoticeAction::NestedLifecycle,
         |game, level, _| {
             let pos = [0, 64, 0];
@@ -850,7 +850,7 @@ fn a_notice_that_opens_a_transaction_keeps_the_root_closing_phase() {
 #[ignore = "daily"]
 fn a_panicking_root_commit_notice_leaves_the_phase_none() {
     with_changes(
-        "game::machines::contents_changed_tests::a_panicking_root_commit_notice_leaves_the_phase_none",
+        "game::server_side::machines::contents_changed_tests::a_panicking_root_commit_notice_leaves_the_phase_none",
         NoticeAction::Panic,
         |game, level, changes| {
             let pos = [0, 64, 0];
@@ -939,7 +939,7 @@ fn a_panicking_root_commit_notice_leaves_the_phase_none() {
 #[ignore = "daily"]
 fn bookshelf_abort_restores_items_flags_and_last_slot_but_keeps_issued_effects() {
     with_changes(
-        "game::machines::contents_changed_tests::bookshelf_abort_restores_items_flags_and_last_slot_but_keeps_issued_effects",
+        "game::server_side::machines::contents_changed_tests::bookshelf_abort_restores_items_flags_and_last_slot_but_keeps_issued_effects",
         NoticeAction::Observe,
         |game, level, changes| {
             use sunrise_core::{position::ChunkPos, ticks::TickTypeId};

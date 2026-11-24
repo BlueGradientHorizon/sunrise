@@ -22,10 +22,10 @@ use sunrise_core::geometry::Vec3;
 use sunrise_perf_format::v1::StopReason;
 
 /// Where the server puts the answer to a request the window waits for.
-pub(super) type Reply<T> = SyncSender<T>;
+pub(in crate::game) type Reply<T> = SyncSender<T>;
 
 /// Work the window hands its server thread between two ticks (`MinecraftServer.execute`).
-pub(super) enum OwnerRequest {
+pub(in crate::game) enum OwnerRequest {
     /// `IntegratedServer.publishServer`.
     Publish(LanSettings, Reply<Result<u16, String>>),
     /// `IntegratedServer.unpublishServer`: whether it was published.
@@ -69,7 +69,7 @@ pub(super) enum OwnerRequest {
 }
 
 /// The agent-control asks, answered on the server thread in the owner's level.
-pub(super) enum ControlRequest {
+pub(in crate::game) enum ControlRequest {
     /// `simulation blocks`: the server's own blocks in a box.
     Blocks {
         lo: [i32; 3],
@@ -133,7 +133,7 @@ pub(super) enum ControlRequest {
 
 impl Game<'_> {
     /// Answers one request of the window, on the server thread.
-    pub(super) fn serve_owner_request(&mut self, request: OwnerRequest) {
+    pub(in crate::game) fn serve_owner_request(&mut self, request: OwnerRequest) {
         match request {
             OwnerRequest::Publish(settings, reply) => {
                 let _ = reply.send(self.publish(settings));

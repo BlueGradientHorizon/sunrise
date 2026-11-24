@@ -9,7 +9,7 @@ impl Game<'_> {
     /// `ServerLevel.mayInteract` for the player whose turn it is: a player
     /// under spawn protection or outside the world border may not change the
     /// block (`ServerPlayer.mayInteract`). The fire goes out either way.
-    pub(super) fn may_interact_at(&self, pos: BlockPos) -> bool {
+    pub(in crate::game) fn may_interact_at(&self, pos: BlockPos) -> bool {
         self.border
             .geometry()
             .is_within_bounds(f64::from(pos.x), f64::from(pos.z), 0.0)
@@ -25,7 +25,7 @@ impl Game<'_> {
     /// runBefore EXTINGUISH, `LayeredCauldronBlock.entityInside`) change
     /// first, then the hiss plays once, as vanilla plays it when the move
     /// left `wasOnFire && !isOnFire()`.
-    pub(super) fn block_extinguish_player(&mut self, events: &[MotionEvent]) {
+    pub(in crate::game) fn block_extinguish_player(&mut self, events: &[MotionEvent]) {
         let mut out = false;
         for event in events {
             match event {
@@ -47,7 +47,7 @@ impl Game<'_> {
     /// in the cauldron at `pos` (`mayInteract`): the fill level drops
     /// (`lowerFillLevel`, a `block_change` with no source). A server's
     /// cauldron is the server's.
-    pub(super) fn cauldron_extinguish(&mut self, pos: BlockPos) {
+    pub(in crate::game) fn cauldron_extinguish(&mut self, pos: BlockPos) {
         if self.remote.is_some() || !self.may_interact_at(pos) {
             return;
         }

@@ -10,7 +10,7 @@ use mod_api::SceneView;
 use sunrise_client::{block_entity_render::diffuse_lights, hud::HudBatch};
 use sunrise_world::level::data::state_flags;
 /// Prepared scene data. Entity fields remain borrowed for the duration of the draw.
-pub(super) struct SceneBlock<'a> {
+pub(in crate::game) struct SceneBlock<'a> {
     pub pos: [i32; 3],
     pub state: sunrise_world::registry::BlockStateId,
     pub entity: Option<&'a mod_api::SceneBlockEntity>,
@@ -18,22 +18,22 @@ pub(super) struct SceneBlock<'a> {
 
 /// A quad in the scene's blocks, before it is seen: its corners, UVs in the
 /// atlas, ABGR colour, and its outward normal.
-pub(super) struct ProjectedQuad {
+pub(in crate::game) struct ProjectedQuad {
     depth: f32,
-    pub(super) corners: [[f32; 3]; 4],
-    pub(super) uv: [[f32; 2]; 4],
-    pub(super) color: u32,
+    pub(in crate::game) corners: [[f32; 3]; 4],
+    pub(in crate::game) uv: [[f32; 2]; 4],
+    pub(in crate::game) color: u32,
 }
 
-pub(super) struct SceneQuad {
-    pub(super) corners: [Vec3; 4],
-    pub(super) uv: [[f32; 2]; 4],
-    pub(super) color: u32,
-    pub(super) normal: Vec3,
+pub(in crate::game) struct SceneQuad {
+    pub(in crate::game) corners: [Vec3; 4],
+    pub(in crate::game) uv: [[f32; 2]; 4],
+    pub(in crate::game) color: u32,
+    pub(in crate::game) normal: Vec3,
     /// Dropped when it faces away: block model faces, and the quads a block
     /// entity marks for culling as `entity.wgsl` does (`CULL_BACK`,
     /// `SHADED_CULL_W`). Other quads draw both sides, as in the world.
-    pub(super) cull: bool,
+    pub(in crate::game) cull: bool,
 }
 
 /// The GUI transform of `view` in the box `rect` (x0, y0, x1, y1): the view's
@@ -42,7 +42,7 @@ pub(super) struct SceneQuad {
 /// up the screen's up; `yaw` turns it counterclockwise seen from above, and
 /// `pitch` tilts its top towards the viewer. The GUI's y runs down and its z
 /// towards the viewer, so the point reflection keeps the picture unmirrored.
-pub(super) fn scene_matrix(rect: [f32; 4], view: SceneView) -> Mat4 {
+pub(in crate::game) fn scene_matrix(rect: [f32; 4], view: SceneView) -> Mat4 {
     let middle = Vec3::new((rect[0] + rect[2]) / 2.0, (rect[1] + rect[3]) / 2.0, 0.0);
     Mat4::from_translation(middle)
         * Mat4::from_scale(Vec3::splat(-view.scale))
@@ -60,13 +60,13 @@ fn step(direction: sunrise_assets::model::Direction) -> [i32; 3] {
 /// How bright a face is with `normal` (world space, unit), as blocks are
 /// shaded: 1 for the top, 0.5 underneath, 0.8 north and south, 0.6 east and
 /// west, in between for a slanted face.
-pub(super) fn face_shade(normal: Vec3) -> f32 {
+pub(in crate::game) fn face_shade(normal: Vec3) -> f32 {
     let up = if normal.y > 0.0 { 1.0 } else { 0.5 };
     (normal.x * normal.x * 0.6 + normal.y * normal.y * up + normal.z * normal.z * 0.8).min(1.0)
 }
 
 /// `color` (ABGR) with its red, green and blue times `shade`.
-pub(super) fn shaded(color: u32, shade: f32) -> u32 {
+pub(in crate::game) fn shaded(color: u32, shade: f32) -> u32 {
     let ch = |s: u32| (((color >> s & 255) as f32 * shade) as u32).min(255) << s;
     (color & 0xFF00_0000) | ch(0) | ch(8) | ch(16)
 }
@@ -85,7 +85,7 @@ impl Game<'_> {
     /// the scene is seen and sorted (a living scene's entities and particles,
     /// `native_scene_live`); a scene of blocks alone passes none. Nothing is
     /// drawn when a quad seen through the view isn't finite. API 422.
-    pub(super) fn draw_scene_quads(
+    pub(in crate::game) fn draw_scene_quads(
         &self,
         batch: &mut HudBatch,
         rect: [f32; 4],
@@ -223,7 +223,7 @@ impl Game<'_> {
 /// `quads` seen through `m`: the faces turned away dropped (those that cull), the rest far to
 /// near, for the faces that let others show through. None when a quad does not stay finite:
 /// a mod's view or position may overflow, and nothing may be drawn then.
-pub(super) fn project_quads(quads: Vec<SceneQuad>, m: Mat4) -> Option<Vec<ProjectedQuad>> {
+pub(in crate::game) fn project_quads(quads: Vec<SceneQuad>, m: Mat4) -> Option<Vec<ProjectedQuad>> {
     let mut seen: Vec<ProjectedQuad> = quads
         .into_iter()
         .filter(|q| !q.cull || m.transform_vector3(q.normal).z > 0.0)

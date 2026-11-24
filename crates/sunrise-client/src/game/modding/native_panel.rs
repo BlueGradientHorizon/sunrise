@@ -41,10 +41,10 @@ const SEARCH_LENGTH: usize = 50;
 /// one of the panel's items before the press becomes a drag. Vanilla's
 /// screens have no drag threshold (`AbstractContainerScreen` drags from the
 /// first move); a few pixels keep a click with a shaky hand a click.
-pub(super) const DRAG_THRESHOLD: f32 = 4.0;
+pub(in crate::game) const DRAG_THRESHOLD: f32 = 4.0;
 
 /// The browser's overlay selected while painting its contents.
-pub(super) enum BrowserTooltip {
+pub(in crate::game) enum BrowserTooltip {
     Text(String),
     Stack(ItemStack),
     Fluid(mod_api::FluidStack),
@@ -60,26 +60,26 @@ pub(super) enum BrowserTooltip {
 /// focus loss, and that menu closing or being replaced cancel it. Its
 /// release is the panel's whatever happened, and never reaches a screen.
 #[derive(Clone, Debug)]
-pub(super) struct Held {
+pub(in crate::game) struct Held {
     /// Whose panel the item is on.
-    pub(super) owner: Owner,
+    pub(in crate::game) owner: Owner,
     /// The item's index in the mod's list, as the mod sent it, and as a stack.
-    pub(super) index: usize,
-    pub(super) sent: BrowserStack,
-    pub(super) stack: ItemStack,
+    pub(in crate::game) index: usize,
+    pub(in crate::game) sent: BrowserStack,
+    pub(in crate::game) stack: ItemStack,
     /// Where the press went down, in GUI pixels.
-    pub(super) from: (f32, f32),
+    pub(in crate::game) from: (f32, f32),
     /// Whether it has become a drag.
-    pub(super) dragging: bool,
+    pub(in crate::game) dragging: bool,
     /// The menu open when it went down (`ScreenState::screen_instance`).
-    pub(super) menu: u64,
+    pub(in crate::game) menu: u64,
     /// Cancelled: it draws nothing and its release sends nothing.
-    pub(super) cancelled: bool,
+    pub(in crate::game) cancelled: bool,
 }
 
 /// What the release of a `Held` press does.
 #[derive(Clone, Debug, PartialEq)]
-pub(super) enum Release {
+pub(in crate::game) enum Release {
     /// It never became a drag: the item's left click.
     Click(usize),
     /// A drag let go off the panel, at this point.
@@ -91,15 +91,15 @@ pub(super) enum Release {
 
 /// The game as a `Held` press's release finds it.
 #[derive(Clone, Copy, Debug)]
-pub(super) struct Now<'a> {
+pub(in crate::game) struct Now<'a> {
     /// The open menu (`ScreenState::screen_instance`).
-    pub(super) menu: u64,
+    pub(in crate::game) menu: u64,
     /// Whose panel shows, if one does.
-    pub(super) owner: Option<&'a Owner>,
+    pub(in crate::game) owner: Option<&'a Owner>,
     /// Whether the release is over the panel; None when it has no room.
-    pub(super) on_panel: Option<bool>,
+    pub(in crate::game) on_panel: Option<bool>,
     /// The item at the pressed index of the shown list.
-    pub(super) at_index: Option<&'a BrowserStack>,
+    pub(in crate::game) at_index: Option<&'a BrowserStack>,
 }
 
 impl Held {
@@ -110,7 +110,7 @@ impl Held {
     }
     /// The pointer is at `cursor` with the button still held: true once the
     /// press is a drag, which it stays until its release.
-    pub(super) fn moved(&mut self, cursor: (f32, f32)) -> bool {
+    pub(in crate::game) fn moved(&mut self, cursor: (f32, f32)) -> bool {
         let (dx, dy) = (cursor.0 - self.from.0, cursor.1 - self.from.1);
         self.dragging |= dx * dx + dy * dy >= DRAG_THRESHOLD * DRAG_THRESHOLD;
         self.dragging
@@ -123,7 +123,7 @@ impl Held {
     /// The button came up at `cursor`, with the game as `now` finds it. The
     /// release point counts as a last move. A click needs the pressed item
     /// still at its index; a drop sends the item as it was pressed.
-    pub(super) fn release(mut self, cursor: (f32, f32), now: Now<'_>) -> Release {
+    pub(in crate::game) fn release(mut self, cursor: (f32, f32), now: Now<'_>) -> Release {
         let Some(on_panel) = now.on_panel else {
             return Release::Cancel;
         };
@@ -162,7 +162,7 @@ fn browser_overlay(
 
 /// Whose panel it is: a native mod's id.
 #[derive(Clone, Debug, PartialEq)]
-pub(super) enum Owner {
+pub(in crate::game) enum Owner {
     Native(String),
 }
 impl Owner {
@@ -175,17 +175,17 @@ impl Owner {
 /// What a mod shows on the panel: its items, and the recipes shown in
 /// their place.
 #[derive(Clone, Debug, PartialEq)]
-pub(super) struct Shown {
-    pub(super) owner: Owner,
+pub(in crate::game) struct Shown {
+    pub(in crate::game) owner: Owner,
     /// Which change the panel is from, so the game converts it once.
-    pub(super) version: u64,
-    pub(super) items: Vec<BrowserStack>,
-    pub(super) recipes: Option<RecipePage>,
+    pub(in crate::game) version: u64,
+    pub(in crate::game) items: Vec<BrowserStack>,
+    pub(in crate::game) recipes: Option<RecipePage>,
 }
 
 /// The panel's state in the game.
 #[derive(Default)]
-pub(super) struct Panel {
+pub(in crate::game) struct Panel {
     /// A native mod's panel: the last one to show something.
     native: Option<Shown>,
     /// The last native change.
@@ -195,7 +195,7 @@ pub(super) struct Panel {
     /// The mod's items as stacks; `None` for an item the game doesn't have.
     stacks: Vec<Option<ItemStack>>,
     page: usize,
-    pub(super) search: Option<EditBox>,
+    pub(in crate::game) search: Option<EditBox>,
     /// The search text the mod last heard.
     sent: String,
     /// A search text the panel's owner set (`panel_search`), cut to the box's
@@ -203,27 +203,27 @@ pub(super) struct Panel {
     pending: Option<(Owner, String)>,
     /// Only while dispatching Search: an empty reply still needs an editable field.
     searching: bool,
-    pub(super) recipes_settings_return: Option<Screen>,
+    pub(in crate::game) recipes_settings_return: Option<Screen>,
     /// The recipes shown instead of the items.
-    pub(super) recipes: Option<super::native_panel_recipes::Pages>,
-    pub(super) transfer_warning: Option<(&'static str, &'static str)>,
+    pub(in crate::game) recipes: Option<super::native_panel_recipes::Pages>,
+    pub(in crate::game) transfer_warning: Option<(&'static str, &'static str)>,
     /// The mods that asked for another look than the recipe book's.
     styles: std::collections::BTreeMap<String, PanelStyle>,
     /// A left press on an item, until its release: a click or a drag.
-    pub(super) held: Option<Held>,
+    pub(in crate::game) held: Option<Held>,
 }
 
 impl Panel {
     /// The item being dragged off `owner`'s panel on menu `menu`, if a drag
     /// is on.
-    pub(super) fn dragged(&self, owner: &Owner, menu: u64) -> Option<&ItemStack> {
+    pub(in crate::game) fn dragged(&self, owner: &Owner, menu: u64) -> Option<&ItemStack> {
         (self.held.as_ref())
             .filter(|held| held.live_on(menu) && held.dragging && held.owner == *owner)
             .map(|held| &held.stack)
     }
     /// Cancels the held press (Escape, focus loss, its menu closing): true
     /// when it was a drag. Its release stays the panel's.
-    pub(super) fn cancel_press(&mut self) -> bool {
+    pub(in crate::game) fn cancel_press(&mut self) -> bool {
         let Some(held) = self.held.as_mut().filter(|held| !held.cancelled) else {
             return false;
         };
@@ -233,7 +233,7 @@ impl Panel {
     }
     /// A button went down anywhere. A left one means the held press's
     /// release never came, so it is forgotten; another cancels it.
-    pub(super) fn other_press(&mut self, left: bool) {
+    pub(in crate::game) fn other_press(&mut self, left: bool) {
         if left {
             self.held = None;
         } else {
@@ -242,12 +242,12 @@ impl Panel {
     }
     /// A mod's screen hook vetoed the held press's release: the press and
     /// its dragged item go, and nothing is sent.
-    pub(super) fn release_vetoed(&mut self) {
+    pub(in crate::game) fn release_vetoed(&mut self) {
         self.held = None;
     }
     /// The pointer moved to `cursor` with menu `menu` open: true while a
     /// press is held. A press from another menu is cancelled.
-    pub(super) fn press_moved(&mut self, cursor: (f32, f32), menu: u64) -> bool {
+    pub(in crate::game) fn press_moved(&mut self, cursor: (f32, f32), menu: u64) -> bool {
         let Some(held) = self.held.as_mut() else {
             return false;
         };
@@ -259,7 +259,7 @@ impl Panel {
         true
     }
     /// `panel_style`.
-    pub(super) fn set_style(&mut self, mod_id: &str, style: PanelStyle) {
+    pub(in crate::game) fn set_style(&mut self, mod_id: &str, style: PanelStyle) {
         match style {
             PanelStyle::RecipeBook => self.styles.remove(mod_id),
             _ => self.styles.insert(mod_id.to_owned(), style),
@@ -270,7 +270,12 @@ impl Panel {
     /// draws mod `mod_id`'s search box (`deliver_search`). The box itself
     /// doesn't change here. False, and nothing queued, unless the caller is
     /// `mod_id` and owns the panel; a later call replaces an earlier one.
-    pub(super) fn set_search(&mut self, caller: Option<&str>, mod_id: &str, text: &str) -> bool {
+    pub(in crate::game) fn set_search(
+        &mut self,
+        caller: Option<&str>,
+        mod_id: &str,
+        text: &str,
+    ) -> bool {
         let Some(shown) = self.native.as_ref() else {
             return false;
         };
@@ -323,11 +328,11 @@ impl Panel {
         }
     }
     /// What the panel shows: a native mod's, one `on`.
-    pub(super) fn shown(&self, on: impl Fn(&str) -> bool) -> Option<&Shown> {
+    pub(in crate::game) fn shown(&self, on: impl Fn(&str) -> bool) -> Option<&Shown> {
         self.native.as_ref().filter(|s| on(s.owner.native_id()))
     }
     /// `panel_items`.
-    pub(super) fn show_items(&mut self, mod_id: &str, mut items: Vec<BrowserStack>) {
+    pub(in crate::game) fn show_items(&mut self, mod_id: &str, mut items: Vec<BrowserStack>) {
         items.truncate(ITEMS);
         if let Some(shown) = self.native_of(mod_id, !items.is_empty()) {
             shown.items = items;
@@ -336,7 +341,7 @@ impl Panel {
         }
     }
     /// `native_panel_recipes`.
-    pub(super) fn show_recipes(&mut self, mod_id: &str, page: Option<RecipePage>) {
+    pub(in crate::game) fn show_recipes(&mut self, mod_id: &str, page: Option<RecipePage>) {
         let filtering = mod_id == "recipes" && !self.sent.is_empty();
         if let Some(shown) = self.native_of(mod_id, page.is_some()) {
             let returning_to_search = filtering && shown.recipes.is_some() && page.is_none();
@@ -384,16 +389,16 @@ impl Panel {
 }
 
 /// Where the panel's parts are this frame.
-pub(super) struct Layout {
+pub(in crate::game) struct Layout {
     /// The panel's whole area, for clicks that hit none of its parts.
-    pub(super) area: [f32; 4],
+    pub(in crate::game) area: [f32; 4],
     /// The grid's top left corner, its columns and rows.
-    pub(super) grid: (f32, f32),
-    pub(super) columns: usize,
-    pub(super) rows: usize,
+    pub(in crate::game) grid: (f32, f32),
+    pub(in crate::game) columns: usize,
+    pub(in crate::game) rows: usize,
     /// The page arrows' row.
-    pub(super) arrows_y: f32,
-    pub(super) search: [f32; 4],
+    pub(in crate::game) arrows_y: f32,
+    pub(in crate::game) search: [f32; 4],
     settings: Option<[f32; 4]>,
     /// The classic look: its page buttons always show and wrap around.
     classic: bool,
@@ -416,7 +421,7 @@ impl Layout {
     fn per_page(&self) -> usize {
         self.columns * self.rows
     }
-    pub(super) fn width(&self) -> f32 {
+    pub(in crate::game) fn width(&self) -> f32 {
         self.columns as f32 * SLOT
     }
     fn slot(&self, n: usize) -> (f32, f32) {
@@ -426,7 +431,7 @@ impl Layout {
         )
     }
     /// The page arrows: backward, then forward.
-    pub(super) fn arrows(&self) -> [(f32, f32); 2] {
+    pub(in crate::game) fn arrows(&self) -> [(f32, f32); 2] {
         [
             (self.grid.0, self.arrows_y),
             (self.grid.0 + self.width() - 12.0, self.arrows_y),
@@ -524,7 +529,7 @@ fn icon_tint(on: bool, hovered: bool) -> u32 {
     }
 }
 
-pub(super) fn inside(p: (f32, f32), [x, y, w, h]: [f32; 4]) -> bool {
+pub(in crate::game) fn inside(p: (f32, f32), [x, y, w, h]: [f32; 4]) -> bool {
     p.0 >= x && p.1 >= y && p.0 < x + w && p.1 < y + h
 }
 
@@ -533,7 +538,7 @@ pub(super) fn inside(p: (f32, f32), [x, y, w, h]: [f32; 4]) -> bool {
 /// one per notch, down forward and up back, stopping at both ends (it never
 /// wraps, even in the classic look); `None` when the pointer is off the
 /// panel, and the screen underneath hears the notch.
-pub(super) fn wheel_turn(
+pub(in crate::game) fn wheel_turn(
     cursor: (f32, f32),
     area: [f32; 4],
     page: usize,
@@ -629,7 +634,7 @@ impl Game<'_> {
             .shown(|id| !self.mods.code_disabled(&self.settings.mods.disabled, id))
     }
     /// The player did `event` on `owner`'s panel.
-    pub(super) fn panel_event(&mut self, owner: &Owner, event: BrowserEvent) {
+    pub(in crate::game) fn panel_event(&mut self, owner: &Owner, event: BrowserEvent) {
         let Owner::Native(id) = owner;
         self.native_panel_event(id, &event);
     }
@@ -892,7 +897,10 @@ impl Game<'_> {
     }
     /// Draw the browser's contents once, leaving its tooltip for the screen's
     /// overlay phase. The carried stack belongs to the enclosing screen.
-    pub(super) fn draw_mod_browser(&mut self, batch: &mut HudBatch) -> Option<BrowserTooltip> {
+    pub(in crate::game) fn draw_mod_browser(
+        &mut self,
+        batch: &mut HudBatch,
+    ) -> Option<BrowserTooltip> {
         let owner = self.browser_sync()?;
         let mut layout = self.browser_layout(batch)?;
         // A search text the owner set (`panel_search`) goes into its box only
@@ -988,7 +996,7 @@ impl Game<'_> {
         })
     }
 
-    pub(super) fn draw_mod_browser_tooltip(
+    pub(in crate::game) fn draw_mod_browser_tooltip(
         &mut self,
         batch: &mut HudBatch,
         tooltip: BrowserTooltip,
@@ -1023,7 +1031,7 @@ impl Game<'_> {
     /// A mouse press on a container screen: true when the panel took it
     /// (its search box, page arrows, items or empty space; a click there
     /// never throws the carried stack).
-    pub(super) fn mod_browser_press(&mut self, right: bool) -> bool {
+    pub(in crate::game) fn mod_browser_press(&mut self, right: bool) -> bool {
         // A left press whose release never came (the pointer left the window)
         // ends here; a right press cancels the held one.
         self.client.panel.other_press(!right);
@@ -1128,7 +1136,7 @@ impl Game<'_> {
     /// drag once it is `DRAG_THRESHOLD` away, and is cancelled once its menu
     /// is no longer the open one. True while a press is held: neither the
     /// menu nor its slots hear the move.
-    pub(super) fn mod_browser_drag_move(&mut self) -> bool {
+    pub(in crate::game) fn mod_browser_drag_move(&mut self) -> bool {
         let menu = self.screen_state.screen_instance;
         self.client.panel.press_moved(self.client.cursor, menu)
     }
@@ -1140,7 +1148,7 @@ impl Game<'_> {
     /// changed hands, or the item no longer at its index). The release is
     /// the panel's either way: no screen hears it, no slot click, no throw,
     /// no quick craft.
-    pub(super) fn mod_browser_release(&mut self) -> bool {
+    pub(in crate::game) fn mod_browser_release(&mut self) -> bool {
         if self.client.panel.held.is_none() {
             return false;
         }
@@ -1174,32 +1182,32 @@ impl Game<'_> {
 
     /// A mod's screen hook vetoed the left release of a held press: the
     /// dragged item goes away and nothing is sent.
-    pub(super) fn mod_browser_release_vetoed(&mut self) {
+    pub(in crate::game) fn mod_browser_release_vetoed(&mut self) {
         self.client.panel.release_vetoed();
     }
 
     /// A button went down (`left` or another): a held press whose release
     /// never came is forgotten, or cancelled by another button.
-    pub(super) fn mod_browser_other_press(&mut self, left: bool) {
+    pub(in crate::game) fn mod_browser_other_press(&mut self, left: bool) {
         self.client.panel.other_press(left);
     }
 
     /// Escape: cancels a held press. True when that was a drag over its own
     /// menu, and the screen stays open.
-    pub(super) fn mod_browser_drag_escape(&mut self) -> bool {
+    pub(in crate::game) fn mod_browser_drag_escape(&mut self) -> bool {
         let dragging = self.mod_browser_dragging();
         self.client.panel.cancel_press();
         dragging
     }
 
     /// The window lost the focus: a held press is cancelled.
-    pub(super) fn mod_browser_focus_lost(&mut self) {
+    pub(in crate::game) fn mod_browser_focus_lost(&mut self) {
         self.client.panel.cancel_press();
     }
 
     /// Whether an item is being dragged off the panel over the menu it was
     /// pressed on: the screen's slots show no tooltip under it.
-    pub(super) fn mod_browser_dragging(&self) -> bool {
+    pub(in crate::game) fn mod_browser_dragging(&self) -> bool {
         let menu = self.screen_state.screen_instance;
         (self.client.panel.held.as_ref()).is_some_and(|held| held.live_on(menu) && held.dragging)
     }
@@ -1208,7 +1216,7 @@ impl Game<'_> {
     /// the pointer is over the panel, which turns one page (`wheel_turn`;
     /// its recipe pages too) and keeps the notch from the screen
     /// underneath. With no panel shown, `browser_sync` returns at once.
-    pub(super) fn mod_browser_wheel(&mut self, d: f32) -> bool {
+    pub(in crate::game) fn mod_browser_wheel(&mut self, d: f32) -> bool {
         let Some(owner) = self.browser_sync() else {
             return false;
         };
@@ -1236,13 +1244,13 @@ impl Game<'_> {
     }
 
     /// Whether keys go to the panel's search box.
-    pub(super) fn mod_browser_typing(&self) -> bool {
+    pub(in crate::game) fn mod_browser_typing(&self) -> bool {
         matches!(self.client.screen, Screen::Inventory | Screen::Creative)
             && self.client.panel.of.is_some()
             && self.client.panel.search.as_ref().is_some_and(|s| s.focused)
     }
     /// A key press while the search box has focus.
-    pub(super) fn mod_browser_key(
+    pub(in crate::game) fn mod_browser_key(
         &mut self,
         key: winit::keyboard::KeyCode,
         shortcut: Option<sunrise_client::clipboard::EditShortcut>,
@@ -1262,7 +1270,7 @@ impl Game<'_> {
         handled
     }
     /// Text typed (or one backspace) into the search box (`sunrise-ctl type`).
-    pub(super) fn mod_browser_text(&mut self, text: Option<&str>, backspace: bool) {
+    pub(in crate::game) fn mod_browser_text(&mut self, text: Option<&str>, backspace: bool) {
         let Some(search) = self.client.panel.search.as_mut() else {
             return;
         };
@@ -1293,7 +1301,7 @@ impl Game<'_> {
         }
     }
     /// The container screen closed: the search box lets go of the keys.
-    pub(super) fn mod_browser_closed(&mut self) {
+    pub(in crate::game) fn mod_browser_closed(&mut self) {
         self.client.panel.transfer_warning = None;
         // Closing the screen cancels a press on the panel; its release stays
         // the panel's.
@@ -1302,7 +1310,7 @@ impl Game<'_> {
             search.focused = false;
         }
     }
-    pub(super) fn mod_browser_back(&mut self) -> bool {
+    pub(in crate::game) fn mod_browser_back(&mut self) -> bool {
         let Some(owner) = self.browser_sync() else {
             return false;
         };
@@ -1313,7 +1321,7 @@ impl Game<'_> {
         self.panel_event(&owner, BrowserEvent::Back);
         true
     }
-    pub(super) fn close_transferred_recipe(&mut self) {
+    pub(in crate::game) fn close_transferred_recipe(&mut self) {
         if let Some(owner) = self.browser_sync()
             && owner.native_id() == "recipes"
             && self.client.panel.recipes.is_some()
@@ -1324,7 +1332,7 @@ impl Game<'_> {
     }
     /// The item under the pointer on a container screen, for the mods' keys
     /// (the `Key` event): the panel's, else a slot's.
-    pub(super) fn mod_browser_pointed(&mut self) -> Option<BrowserStack> {
+    pub(in crate::game) fn mod_browser_pointed(&mut self) -> Option<BrowserStack> {
         let batch = self.browser_batch()?;
         let stack = match self
             .browser_sync()
@@ -1347,7 +1355,7 @@ impl Game<'_> {
     }
     /// A key `key` (`key.keyboard.r`) went down: over an item on a container
     /// screen, a native mod's panel hears it as a `Key` event.
-    pub(super) fn native_panel_key(&mut self, key: &str) {
+    pub(in crate::game) fn native_panel_key(&mut self, key: &str) {
         if !matches!(self.client.screen, Screen::Inventory | Screen::Creative)
             || self.title.is_some()
             || self.mod_browser_typing()
@@ -1366,7 +1374,7 @@ impl Game<'_> {
 
 /// A mod's item as a stack: an item the game has, its components read as
 /// `/give` reads them (ones it can't read are left out).
-pub(super) fn browser_stack(
+pub(in crate::game) fn browser_stack(
     items: &sunrise_client::items::Items,
     s: &BrowserStack,
 ) -> Option<ItemStack> {

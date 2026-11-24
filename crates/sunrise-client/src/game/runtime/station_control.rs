@@ -4,7 +4,7 @@ use super::{Game, Screen};
 use serde_json::{Value, json};
 use sunrise_client::{Result, items::ItemStack};
 
-pub(super) const HELP: &[&str] = &[
+pub(in crate::game) const HELP: &[&str] = &[
     "xp LEVELS                      add (or remove) experience levels",
     "setblock X Y Z BLOCK           place a block's default state (with its block entity)",
     "use X Y Z                      open the block's menu as if right-clicked",
@@ -64,7 +64,7 @@ impl Game<'_> {
         }
         self.client.cursor = saved;
     }
-    pub(super) fn gui_origin(&self) -> Result<(f32, f32)> {
+    pub(in crate::game) fn gui_origin(&self) -> Result<(f32, f32)> {
         let size = self
             .renderer
             .as_ref()
@@ -76,7 +76,7 @@ impl Game<'_> {
         )))
     }
     /// Commands not known to control.rs; None when unknown here too.
-    pub(super) fn station_command(&mut self, words: &[&str]) -> Result<Option<Value>> {
+    pub(in crate::game) fn station_command(&mut self, words: &[&str]) -> Result<Option<Value>> {
         let arg = |i: usize| {
             words
                 .get(i)

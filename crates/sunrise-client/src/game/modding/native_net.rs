@@ -5,17 +5,17 @@ mod packet_hold;
 use mod_api::{SendPacketError, ServerboundPlayPacket};
 use std::collections::HashMap;
 #[derive(Default)]
-pub(super) struct NativeNet {
-    pub(super) holds: std::cell::RefCell<packet_hold::Holds>,
-    pub(super) placement: super::native_book_placement::State,
-    pub(super) book_connections:
+pub(in crate::game) struct NativeNet {
+    pub(in crate::game) holds: std::cell::RefCell<packet_hold::Holds>,
+    pub(in crate::game) placement: super::native_book_placement::State,
+    pub(in crate::game) book_connections:
         HashMap<u32, sunrise_client::recipe_book::settings_connection::Connection>,
-    pub(super) book_view: sunrise_client::recipe_book::settings_sync::ClientView,
-    pub(super) book_request: u64,
-    pub(super) book_ready: bool,
-    pub(super) book_retry_at: Option<std::time::Instant>,
+    pub(in crate::game) book_view: sunrise_client::recipe_book::settings_sync::ClientView,
+    pub(in crate::game) book_request: u64,
+    pub(in crate::game) book_ready: bool,
+    pub(in crate::game) book_retry_at: Option<std::time::Instant>,
     /// A mod's `disconnect` (its reason, if any), carried out at the end of the frame.
-    pub(super) leave: Option<super::native_disconnect::LeaveRequest>,
+    pub(in crate::game) leave: Option<super::native_disconnect::LeaveRequest>,
 }
 
 impl Game<'_> {
@@ -25,7 +25,7 @@ impl Game<'_> {
     /// comes only from ChatScreen). An error when the player isn't in a
     /// server's play state or the Chat option blocks the message. API
     /// 404.
-    pub(super) fn send_chat(&mut self, message: &str) -> Result<(), String> {
+    pub(in crate::game) fn send_chat(&mut self, message: &str) -> Result<(), String> {
         let Some(remote) = self.remote.as_ref() else {
             return Err("not connected to a server".into());
         };
@@ -50,7 +50,7 @@ impl Game<'_> {
     /// player edits and sends it, or presses Escape. The box keeps its limit
     /// (256 characters) and its character filter. An error with no player in a
     /// world, or while another screen is open. API @API:open_chat@.
-    pub(super) fn open_chat(&mut self, text: &str) -> Result<(), String> {
+    pub(in crate::game) fn open_chat(&mut self, text: &str) -> Result<(), String> {
         if self.player.is_none() {
             return Err("no player in a world".into());
         }
@@ -65,7 +65,7 @@ impl Game<'_> {
     /// exact physical protocol incarnation. Registered and engine-reserved
     /// channels require their payload/service API; unrelated plugin payloads
     /// retain vanilla's discard-codec limit. No local effects are applied. API 409.
-    pub(super) fn send_packet(
+    pub(in crate::game) fn send_packet(
         &mut self,
         packet: ServerboundPlayPacket,
     ) -> Result<(), SendPacketError> {
@@ -94,7 +94,7 @@ mod tests {
     #[ignore = "daily"]
     fn mod_packets_require_joined_player_and_physical_transport() {
         if run_fresh_cases(
-            "game::native_net::tests::mod_packets_require_joined_player_and_physical_transport",
+            "game::client_side::native_net::tests::mod_packets_require_joined_player_and_physical_transport",
             "SUNRISE_PACKET_GUARD_CHILD",
             &["guards"],
         ) {

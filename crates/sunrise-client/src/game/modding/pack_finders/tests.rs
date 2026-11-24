@@ -226,7 +226,7 @@ fn live_pack_rediscovery_can_read_a_registered_client_setting() {
     use mod_api::{HostSide, Registrar, RegistrationContext, SettingSpec};
 
     if run_fresh_cases(
-        "game::pack_finders::tests::live_pack_rediscovery_can_read_a_registered_client_setting",
+        "game::server_side::pack_finders::tests::live_pack_rediscovery_can_read_a_registered_client_setting",
         "SUNRISE_PACK_DISCOVERY_CHILD",
         &["client"],
     ) {

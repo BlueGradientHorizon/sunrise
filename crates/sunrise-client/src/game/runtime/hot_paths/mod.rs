@@ -31,7 +31,7 @@ pub use fanout::{HotPathsMods, note_hot_paths_listener_call};
 pub use views::hot_paths_next_block_entity;
 
 /// Where the measured workloads report.
-pub(super) struct Recorder {
+pub(in crate::game) struct Recorder {
     out: std::io::BufWriter<std::fs::File>,
     only: Vec<String>,
 }
@@ -97,7 +97,7 @@ impl Recorder {
 
 impl Game<'_> {
     /// Run the workloads and write their lines to `output`.
-    pub(super) fn hot_paths(&mut self, output: &str) -> Result<()> {
+    pub(in crate::game) fn hot_paths(&mut self, output: &str) -> Result<()> {
         assert!(
             !self.options.execution_role.is_client(),
             "the benchmark requires a server Game"

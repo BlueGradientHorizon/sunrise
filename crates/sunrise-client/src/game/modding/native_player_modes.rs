@@ -15,7 +15,7 @@ impl Game<'_> {
     /// single-player owner's 4 with commands allowed. A displaced connected
     /// player keeps their permission level even while their body is unavailable.
     /// None for a stale or unavailable player.
-    pub(super) fn player_permission_level(&self, player: PlayerRef) -> Option<u8> {
+    pub(in crate::game) fn player_permission_level(&self, player: PlayerRef) -> Option<u8> {
         let read = self
             .player_handle_read(player)
             .or_else(|| self.online_player_record(player).map(PlayerRead::Guest))?;
@@ -30,12 +30,15 @@ impl Game<'_> {
     }
     /// `Player.hasInfiniteMaterials`: the `instabuild` ability, which
     /// creative mode gives.
-    pub(super) fn player_has_infinite_materials(&self, player: PlayerRef) -> Option<bool> {
+    pub(in crate::game) fn player_has_infinite_materials(&self, player: PlayerRef) -> Option<bool> {
         self.player_is_creative(player)
     }
     /// `Player.canUseGameMasterBlocks`: creative and a permission level of
     /// at least 2, as command blocks, structure blocks and jigsaws ask.
-    pub(super) fn player_can_use_game_master_blocks(&self, player: PlayerRef) -> Option<bool> {
+    pub(in crate::game) fn player_can_use_game_master_blocks(
+        &self,
+        player: PlayerRef,
+    ) -> Option<bool> {
         let creative = self.player_is_creative(player)?;
         Some(creative && self.player_permission_level(player)? >= 2)
     }
@@ -43,7 +46,10 @@ impl Game<'_> {
     /// player last left (`previousPlayerGameType`, saved with the player), or
     /// `Some(None)` when they never changed mode. None for a stale or
     /// unavailable player.
-    pub(super) fn player_previous_game_mode(&self, player: PlayerRef) -> Option<Option<GameMode>> {
+    pub(in crate::game) fn player_previous_game_mode(
+        &self,
+        player: PlayerRef,
+    ) -> Option<Option<GameMode>> {
         Some(match self.player_handle_read(player)? {
             // The acting player's own: a guest's turn swaps theirs in.
             PlayerRead::Acting { .. } => self.previous_mode,
@@ -54,7 +60,10 @@ impl Game<'_> {
     /// blocks as with sneak held, as vanilla reads it from the shift-key
     /// flag (the same read as `EntityRef::is_shift_key_down`). None for a
     /// stale or unavailable player.
-    pub(super) fn player_is_secondary_use_active(&self, player: PlayerRef) -> Option<bool> {
+    pub(in crate::game) fn player_is_secondary_use_active(
+        &self,
+        player: PlayerRef,
+    ) -> Option<bool> {
         self.entity_is_shift_key_down(player.entity())
     }
     /// `Player.mayUseItemAt(pos, face, stack)`: the game's own check for an
@@ -62,7 +71,7 @@ impl Game<'_> {
     /// `mayBuild` as the handle reads it. None for a stale or unavailable
     /// player, and for a guest in another level than the one in place, whose
     /// blocks it can't test.
-    pub(super) fn player_may_use_item_at(
+    pub(in crate::game) fn player_may_use_item_at(
         &self,
         player: PlayerRef,
         pos: [i32; 3],
@@ -80,7 +89,11 @@ impl Game<'_> {
     /// `ServerPlayer.canHarmPlayer(other)`: the `pvp` rule and the two
     /// players' teams, as an attack, an arrow or a trident asks them
     /// (`player_may_harm`). None when either handle is stale or unavailable.
-    pub(super) fn player_can_harm(&self, player: PlayerRef, other: PlayerRef) -> Option<bool> {
+    pub(in crate::game) fn player_can_harm(
+        &self,
+        player: PlayerRef,
+        other: PlayerRef,
+    ) -> Option<bool> {
         self.player_handle_read(player)?;
         self.player_handle_read(other)?;
         let attacker = self.native_target_team(self.native_entity_target(player.entity())?)?;

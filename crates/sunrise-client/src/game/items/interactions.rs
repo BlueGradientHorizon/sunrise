@@ -8,7 +8,7 @@ use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_protocol::entity_data::Value;
 
 /// `Interaction`'s synced data and box (`DATA_WIDTH`, `DATA_HEIGHT`, `DATA_RESPONSE`).
-pub(super) struct RemoteInteraction {
+pub(in crate::game) struct RemoteInteraction {
     pub join: sunrise_client::join_seq::JoinSeq,
     pub position: Vec3,
     pub previous: Vec3,
@@ -130,13 +130,17 @@ impl RemoteInteraction {
 impl Game<'_> {
     /// An `Interaction` keeps `Entity`'s no-op interpolation handler: the
     /// server's position replaces its own at once.
-    pub(super) fn move_remote_interaction(&mut self, id: i32, position: [f64; 3]) {
+    pub(in crate::game) fn move_remote_interaction(&mut self, id: i32, position: [f64; 3]) {
         if let Some(i) = self.client.interactions.get_mut(&id) {
             i.position = Vec3::new(position[0], position[1], position[2]);
             self.pick_section_move(id as u32, position);
         }
     }
-    pub(super) fn remote_interaction_data(&mut self, id: i32, values: &[(u8, i32, Value)]) -> bool {
+    pub(in crate::game) fn remote_interaction_data(
+        &mut self,
+        id: i32,
+        values: &[(u8, i32, Value)],
+    ) -> bool {
         let Some(i) = self.client.interactions.get_mut(&id) else {
             return false;
         };
@@ -273,14 +277,14 @@ pub(in crate::game) mod tests {
 }
 
 /// Whether an entity id names `minecraft:interaction`.
-pub(super) fn is_interaction(kind: &str) -> bool {
+pub(in crate::game) fn is_interaction(kind: &str) -> bool {
     matches!(kind, "minecraft:interaction" | "interaction")
 }
 
 /// `Interaction.PlayerAction`: the player and the game time of the last
 /// attack or use, as `PlayerAction.CODEC` saves it.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct PlayerAction {
+pub(in crate::game) struct PlayerAction {
     pub player: [i32; 4],
     pub timestamp: i64,
 }
@@ -310,7 +314,7 @@ impl PlayerAction {
 /// A server `Interaction`'s saved settings
 /// (`Interaction.readAdditionalSaveData` / `addAdditionalSaveData`).
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct InteractionState {
+pub(in crate::game) struct InteractionState {
     pub width: f32,
     pub height: f32,
     pub response: bool,

@@ -50,7 +50,7 @@ fn brainless_villager_wakes_before_damage_listeners() {
     use sunrise_core::{nbt::Tag, position::ChunkPos};
 
     if run_fresh_cases(
-        "game::native_damage_tests::brainless_villager_wakes_before_damage_listeners",
+        "game::server_side::native_damage_tests::brainless_villager_wakes_before_damage_listeners",
         "SUNRISE_TEST_BRAINLESS_VILLAGER_DAMAGE",
         &["brainless"],
     ) {
@@ -765,7 +765,7 @@ fn projectile_killing_hit_posts_before_its_follow_up() {
     };
 
     if run_fresh_cases(
-        "game::native_damage_tests::projectile_killing_hit_posts_before_its_follow_up",
+        "game::server_side::native_damage_tests::projectile_killing_hit_posts_before_its_follow_up",
         "SUNRISE_PROJECTILE_ORDER_CHILD",
         &["fireball"],
     ) {
@@ -831,7 +831,7 @@ fn mounted_fall_posts_before_the_next_rider() {
     use sunrise_protocol::packets::play::MoveVehicleRequest;
 
     if run_fresh_cases(
-        "game::native_damage_tests::mounted_fall_posts_before_the_next_rider",
+        "game::server_side::native_damage_tests::mounted_fall_posts_before_the_next_rider",
         "SUNRISE_MOUNTED_FALL_ORDER_CHILD",
         &["horse"],
     ) {
@@ -1206,7 +1206,7 @@ impl Hooks for PufferfishProbe {
 fn borrowed_pufferfish_posts_before_poison_and_the_next_sting() {
     use super::native_entity_refs::tests::run_fresh_cases;
     if run_fresh_cases(
-        "game::native_damage_tests::borrowed_pufferfish_posts_before_poison_and_the_next_sting",
+        "game::server_side::native_damage_tests::borrowed_pufferfish_posts_before_poison_and_the_next_sting",
         "SUNRISE_BORROWED_PUFFERFISH_CHILD",
         &["sting"],
     ) {
@@ -1363,7 +1363,7 @@ fn borrowed_bee_posts_at_both_server_ai_hurts() {
 
     const CASE: &str = "SUNRISE_BORROWED_BEE_DAMAGE_CHILD";
     if run_fresh_cases(
-        "game::native_damage_tests::borrowed_bee_posts_at_both_server_ai_hurts",
+        "game::server_side::native_damage_tests::borrowed_bee_posts_at_both_server_ai_hurts",
         CASE,
         &["expiry", "snapshot"],
     ) {
@@ -1550,7 +1550,7 @@ fn borrowed_mod_effect_posts_before_the_next_action() {
     use std::sync::atomic::Ordering::Relaxed;
 
     if run_fresh_cases(
-        "game::native_damage_tests::borrowed_mod_effect_posts_before_the_next_action",
+        "game::server_side::native_damage_tests::borrowed_mod_effect_posts_before_the_next_action",
         "SUNRISE_BORROWED_EFFECT_DAMAGE_CHILD",
         &["effect"],
     ) {
@@ -1796,7 +1796,7 @@ fn borrowed_mob_landing_posts_before_the_travel_tail() {
     use super::native_entity_refs::tests::run_fresh_cases;
     const CASE: &str = "SUNRISE_MOB_LANDING_DAMAGE_CHILD";
     if run_fresh_cases(
-        "game::native_damage_tests::borrowed_mob_landing_posts_before_the_travel_tail",
+        "game::server_side::native_damage_tests::borrowed_mob_landing_posts_before_the_travel_tail",
         CASE,
         &["stone", "farmland"],
     ) {
@@ -1888,7 +1888,7 @@ fn a_dolphin_goal_move_posts_before_the_next_goal() {
 
     const CASE: &str = "SUNRISE_DOLPHIN_GOAL_DAMAGE_CHILD";
     if run_fresh_cases(
-        "game::native_damage_tests::a_dolphin_goal_move_posts_before_the_next_goal",
+        "game::server_side::native_damage_tests::a_dolphin_goal_move_posts_before_the_next_goal",
         CASE,
         &["follow", "breath", "pig-target-breath"],
     ) {
@@ -2239,7 +2239,7 @@ fn ordinary_guest_move_settles_fall_before_resuming() {
     use sunrise_world::entity_move::MoverType;
 
     if run_fresh_cases(
-        "game::native_damage_tests::ordinary_guest_move_settles_fall_before_resuming",
+        "game::server_side::native_damage_tests::ordinary_guest_move_settles_fall_before_resuming",
         "SUNRISE_ORDINARY_GUEST_LANDING_CHILD",
         &["honey"],
     ) {

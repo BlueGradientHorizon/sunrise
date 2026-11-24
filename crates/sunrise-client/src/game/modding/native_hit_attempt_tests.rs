@@ -33,7 +33,7 @@ fn base_allow_does_not_override_worn_immunity() {
     use super::native_entity_refs::tests::{prepare_entity_ticking_neighborhood, run_fresh_cases};
 
     if run_fresh_cases(
-        "game::native_hit_attempt_tests::base_allow_does_not_override_worn_immunity",
+        "game::server_side::native_hit_attempt_tests::base_allow_does_not_override_worn_immunity",
         "SUNRISE_TEST_WORN_IMMUNITY",
         &["base_allow"],
     ) {

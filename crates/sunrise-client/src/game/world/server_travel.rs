@@ -19,7 +19,7 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
 
 /// Why an entity changes level (`entity_travel_to_dimension`'s `cause`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum TravelCause {
+pub(in crate::game) enum TravelCause {
     NetherPortal,
     EndPortal,
     EndGateway,
@@ -29,7 +29,7 @@ pub(super) enum TravelCause {
 
 impl TravelCause {
     /// The name a mod is told.
-    pub(super) fn id(self) -> &'static str {
+    pub(in crate::game) fn id(self) -> &'static str {
         match self {
             Self::NetherPortal => "nether_portal",
             Self::EndPortal => "end_portal",
@@ -39,7 +39,7 @@ impl TravelCause {
     }
 
     /// The portal a plan goes through.
-    pub(super) fn of_plan(plan: &Plan) -> Self {
+    pub(in crate::game) fn of_plan(plan: &Plan) -> Self {
         if plan.end {
             Self::EndPortal
         } else {
@@ -50,7 +50,7 @@ impl TravelCause {
 
 /// A trip under way: the player is in the destination's level, whose
 /// chunks are loading around `target`.
-pub(super) struct Trip {
+pub(in crate::game) struct Trip {
     conn: u32,
     dim: Dim,
     /// The level the player came from: the vehicle it rides waits there
@@ -91,11 +91,11 @@ pub(super) struct Trip {
     hold: bool,
     /// The level the player left for another one: the mods are told they
     /// changed dimension when the trip ends (`tell_mods_changed_dimension`).
-    pub(super) left: Option<Dim>,
+    pub(in crate::game) left: Option<Dim>,
 }
 
 #[derive(Clone, Copy)]
-pub(super) enum SpawnAction {
+pub(in crate::game) enum SpawnAction {
     Replace { was_death: bool },
     EndExit,
 }
@@ -225,7 +225,7 @@ fn take_vehicle<
 
 /// `TeleportCommand` into another level for a server's player: where, and
 /// the rotation it sets (none keeps the player's).
-pub(super) struct LevelTeleport {
+pub(in crate::game) struct LevelTeleport {
     pub conn: u32,
     pub dim: Dim,
     pub at: [f64; 3],
@@ -242,7 +242,7 @@ enum LevelTeleportKind {
 
 /// A teleport a command made inside a level: told to the mods once it has
 /// reached the hub (`native_player_teleported`).
-pub(super) struct TeleportNote {
+pub(in crate::game) struct TeleportNote {
     pub conn: u32,
     pub uuid: u128,
     pub name: String,
@@ -256,11 +256,11 @@ const WIDTH: f64 = 0.6;
 const HEIGHT: f64 = 1.8;
 
 impl Trip {
-    pub(super) fn is(&self, conn: u32) -> bool {
+    pub(in crate::game) fn is(&self, conn: u32) -> bool {
         self.conn == conn
     }
 
-    pub(super) fn spawn_destination_areas(
+    pub(in crate::game) fn spawn_destination_areas(
         &self,
         dim: Dim,
     ) -> impl Iterator<Item = ((i32, i32), i32)> {
@@ -288,7 +288,7 @@ impl Trip {
 }
 
 impl Game<'_> {
-    pub(super) fn gateway_source_chunks(&self) -> Vec<(i32, i32)> {
+    pub(in crate::game) fn gateway_source_chunks(&self) -> Vec<(i32, i32)> {
         self.server
             .server_trips
             .iter()
@@ -299,7 +299,7 @@ impl Game<'_> {
     /// A server player's `tp` inside their level, where the chunks round `target` have not loaded: vanilla loads
     /// them before the player arrives, so the player is held as a trip holds them (their body is left alone, their
     /// client's moves ignored) until the chunks are lit, then placed there again (#15727).
-    pub(super) fn hold_for_chunks(&mut self, conn: u32, target: Vec3) {
+    pub(in crate::game) fn hold_for_chunks(&mut self, conn: u32, target: Vec3) {
         // The arrival the player was waiting for elsewhere is abandoned.
         self.server.server_trips.retain(|t| !t.is(conn));
         let (cx, cz) = (
@@ -387,7 +387,7 @@ impl Game<'_> {
     }
     /// Whether the server leaves the player's body alone until arrival. A player whose
     /// End exit is still being resolved hasn't traveled yet and ticks in the source level.
-    pub(super) fn on_server_trip(&self, conn: u32) -> bool {
+    pub(in crate::game) fn on_server_trip(&self, conn: u32) -> bool {
         self.server
             .server_trips
             .iter()
@@ -401,7 +401,7 @@ impl Game<'_> {
 
     /// Whether a vehicle waits in `dim` for its rider to arrive elsewhere:
     /// that level stays open until it has moved.
-    pub(super) fn vehicle_waits_in(&self, dim: Dim) -> bool {
+    pub(in crate::game) fn vehicle_waits_in(&self, dim: Dim) -> bool {
         self.server
             .server_trips
             .iter()
@@ -412,7 +412,7 @@ impl Game<'_> {
     /// the trips into this level, then `Entity.handlePortal` for each player
     /// in it (Nether portals count up their transition time, End portals
     /// take them at once).
-    pub(super) fn tick_server_travel(&mut self) {
+    pub(in crate::game) fn tick_server_travel(&mut self) {
         if self.lan.is_none() {
             return;
         }
@@ -455,7 +455,12 @@ impl Game<'_> {
     /// destination (`getPortalDestination`, `Entity.teleportToPortalDestination`)
     /// after the camera goes back to the player, or says `spectator.cannot_teleport`
     /// when it has none. Returns whether the block was a portal (`CONSUME`).
-    pub(super) fn spectator_use_portal(&mut self, conn: u32, gi: usize, pos: [i32; 3]) -> bool {
+    pub(in crate::game) fn spectator_use_portal(
+        &mut self,
+        conn: u32,
+        gi: usize,
+        pos: [i32; 3],
+    ) -> bool {
         let name = self.block_name(pos);
         let name = name.trim_start_matches("minecraft:");
         if !matches!(name, "nether_portal" | "end_portal" | "end_gateway") {
@@ -558,7 +563,7 @@ impl Game<'_> {
 
     /// Whether this guest's dimension change may start
     /// (`entity_may_travel`).
-    pub(super) fn server_player_travel_allowed(
+    pub(in crate::game) fn server_player_travel_allowed(
         &mut self,
         conn: u32,
         target: Dim,
@@ -574,7 +579,12 @@ impl Game<'_> {
     /// `EntityTravelToDimensionEvent`: whether the entity `id` (the network
     /// id its handle names) may travel to the level `to`, asked before
     /// anything of it moves. Only a server asks, and only when a mod listens.
-    pub(super) fn entity_may_travel(&mut self, id: u32, to: Dim, cause: TravelCause) -> bool {
+    pub(in crate::game) fn entity_may_travel(
+        &mut self,
+        id: u32,
+        to: Dim,
+        cause: TravelCause,
+    ) -> bool {
         self.entity_tree_may_travel(id, to, cause, &mut Vec::new())
     }
 
@@ -660,7 +670,7 @@ impl Game<'_> {
     }
 
     /// `Entity.handlePortal` for one player, whose portal state is in place.
-    pub(super) fn handle_server_portal(&mut self, conn: u32) {
+    pub(in crate::game) fn handle_server_portal(&mut self, conn: u32) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
@@ -1006,7 +1016,7 @@ impl Game<'_> {
 
     /// Both PlayerList.respawn and an ordinary End exit use the same spawn search. Its
     /// chunks must load before either the replacement or the teleport moves the player.
-    pub(super) fn queue_spawn_trip(&mut self, conn: u32, action: SpawnAction) {
+    pub(in crate::game) fn queue_spawn_trip(&mut self, conn: u32, action: SpawnAction) {
         if self.server.server_trips.iter().any(|t| {
             t.is(conn)
                 && t.spawn_search
@@ -1469,7 +1479,7 @@ impl Game<'_> {
 
     /// Tells the mods of the teleports a command made inside a level, with
     /// each player's state swapped in: where the move has reached the hub.
-    pub(super) fn flush_teleport_notes(&mut self) {
+    pub(in crate::game) fn flush_teleport_notes(&mut self) {
         for note in std::mem::take(&mut self.server.teleport_notes) {
             let TeleportNote {
                 conn,
@@ -1494,7 +1504,7 @@ impl Game<'_> {
     /// (`ServerPlayer.teleport` from TeleportCommand): a Respawn packet
     /// keeping all data and the teleport, with no portal sound. The server
     /// leaves the body alone until the level has loaded around it.
-    pub(super) fn run_level_teleports(&mut self) {
+    pub(in crate::game) fn run_level_teleports(&mut self) {
         if self.lan.is_none() {
             return;
         }
@@ -1503,7 +1513,7 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn apply_direct_level_teleport(&mut self, teleport: LevelTeleport) {
+    pub(in crate::game) fn apply_direct_level_teleport(&mut self, teleport: LevelTeleport) {
         self.apply_level_teleport(teleport, LevelTeleportKind::Direct);
     }
 
@@ -1645,7 +1655,12 @@ impl Game<'_> {
     /// from the level `left` to the one in place, `to`, with their state
     /// swapped in so that the helpers reach them. Nothing is heard when they
     /// did not leave a level, or ended where they started.
-    pub(super) fn tell_mods_changed_dimension(&mut self, conn: u32, left: Option<Dim>, to: Dim) {
+    pub(in crate::game) fn tell_mods_changed_dimension(
+        &mut self,
+        conn: u32,
+        left: Option<Dim>,
+        to: Dim,
+    ) {
         let Some(from) = left.filter(|from| *from != to) else {
             return;
         };
@@ -1664,7 +1679,7 @@ impl Game<'_> {
 
     /// The hub's view of the server for packets sent outside its own tick.
     #[cfg(test)]
-    pub(super) fn server_ctx(&mut self) -> TickCtx<'_> {
+    pub(in crate::game) fn server_ctx(&mut self) -> TickCtx<'_> {
         let spawn = self.world_spawn_position();
         let clock_rate = self.network_clock_rate();
         TickCtx {

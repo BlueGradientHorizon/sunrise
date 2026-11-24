@@ -82,7 +82,7 @@ impl Game<'_> {
         }
     }
     /// A hotbar key as a spectator (`SpectatorGui.onHotbarSelected`).
-    pub(super) fn spectator_hotbar_key(&mut self, slot: i32) {
+    pub(in crate::game) fn spectator_hotbar_key(&mut self, slot: i32) {
         let now = self.spectator_now();
         let menu = self.spectator_menu_if_needed();
         let outcome = self
@@ -92,7 +92,7 @@ impl Game<'_> {
         self.spectator_outcome(outcome);
     }
     /// `key.spectatorHotbar`: opens the menu, or uses the selected item.
-    pub(super) fn spectator_action_key(&mut self) {
+    pub(in crate::game) fn spectator_action_key(&mut self) {
         let now = self.spectator_now();
         let menu = self.spectator_menu_if_needed();
         let outcome = self.client.spectator_gui.on_action_key(now, menu);
@@ -103,12 +103,16 @@ impl Game<'_> {
         (!self.client.spectator_gui.is_menu_active()).then(|| self.new_spectator_menu())
     }
     /// `MouseHandler.onScroll` in spectator mode with the menu up.
-    pub(super) fn spectator_scroll(&mut self, wheel: i32) {
+    pub(in crate::game) fn spectator_scroll(&mut self, wheel: i32) {
         let now = self.spectator_now();
         self.client.spectator_gui.on_mouse_scrolled(wheel, now);
     }
     /// `Hud.extractHotbar` for a spectator, and `extractAction`'s prompt.
-    pub(super) fn draw_spectator_hotbar(&mut self, batch: &mut HudBatch, show_action: bool) {
+    pub(in crate::game) fn draw_spectator_hotbar(
+        &mut self,
+        batch: &mut HudBatch,
+        show_action: bool,
+    ) {
         let (w, h) = (batch.width as i32, batch.height as i32);
         let now = self.spectator_now();
         let labels: Vec<Text> = (1..=9)
@@ -143,7 +147,7 @@ mod tests {
     #[ignore = "daily"]
     fn an_unlisted_player_is_a_teleport_target_only_on_their_team_page() {
         in_own_process(
-            "game::spectator::tests::an_unlisted_player_is_a_teleport_target_only_on_their_team_page",
+            "game::client_side::spectator::tests::an_unlisted_player_is_a_teleport_target_only_on_their_team_page",
             || {
                 with_client_game(|game| {
                     let (mut peer, _writer) = crate::game::remote::tests::connect_menu_test(game);

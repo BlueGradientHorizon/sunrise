@@ -17,7 +17,7 @@ enum RidingRead<'a> {
 
 impl Game<'_> {
     /// The dismount search with a vehicle or passenger lent out of `self.mobs`.
-    pub(super) fn scoped_mob_dismount_location(
+    pub(in crate::game) fn scoped_mob_dismount_location(
         &self,
         vehicle: Option<&Mob>,
         vehicle_id: u32,
@@ -64,7 +64,7 @@ impl Game<'_> {
     }
 
     /// The id of the entity `t` rides, if it rides one.
-    pub(super) fn native_vehicle_id(&self, t: Target) -> Option<u32> {
+    pub(in crate::game) fn native_vehicle_id(&self, t: Target) -> Option<u32> {
         match t {
             Target::Player => self.riding,
             Target::Guest(conn) => self.command_guest(conn)?.vehicle,
@@ -83,14 +83,14 @@ impl Game<'_> {
     }
 
     /// What the entity rides (`Entity.getVehicle`), if its vehicle has a handle.
-    pub(super) fn entity_vehicle(&self, entity: EntityRef) -> Option<EntityRef> {
+    pub(in crate::game) fn entity_vehicle(&self, entity: EntityRef) -> Option<EntityRef> {
         match self.riding_read(entity)? {
             RidingRead::Server(target) => self.entity(self.native_vehicle_id(target)?),
             RidingRead::Client(remote) => self.entity(remote.passenger_vehicle(entity.id())?),
         }
     }
     /// Whether the entity rides another object, even one without a handle.
-    pub(super) fn entity_is_passenger(&self, entity: EntityRef) -> Option<bool> {
+    pub(in crate::game) fn entity_is_passenger(&self, entity: EntityRef) -> Option<bool> {
         let vehicle = match self.riding_read(entity)? {
             RidingRead::Server(target) => self.native_vehicle_id(target),
             RidingRead::Client(remote) => remote.passenger_vehicle(entity.id()),
@@ -100,7 +100,7 @@ impl Game<'_> {
     /// The lowest vehicle under the entity (`Entity.getRootVehicle`): the
     /// entity itself when it rides nothing. Off-level intermediaries are traversed;
     /// an off-level root or a cycle returns no handle, never a descendant substitute.
-    pub(super) fn entity_root_vehicle(&self, entity: EntityRef) -> Option<EntityRef> {
+    pub(in crate::game) fn entity_root_vehicle(&self, entity: EntityRef) -> Option<EntityRef> {
         match self.riding_read(entity)? {
             RidingRead::Server(target) => {
                 self.entity(self.native_root_vehicle_id(entity.id(), target)?)
@@ -113,7 +113,7 @@ impl Game<'_> {
     }
 
     /// Follow full object links, returning no root for a cycle without allocating a visited set.
-    pub(super) fn native_root_vehicle_id(&self, id: u32, target: Target) -> Option<u32> {
+    pub(in crate::game) fn native_root_vehicle_id(&self, id: u32, target: Target) -> Option<u32> {
         let mut root = id;
         let mut next = self.native_vehicle_id(target);
         for _ in 0..=self.riding_link_limit() {
@@ -127,7 +127,7 @@ impl Game<'_> {
     }
     /// The number of objects that could themselves have a mount, bounding a
     /// walk of valid links. Only mobs, general rows and players can be riders.
-    pub(super) fn riding_link_limit(&self) -> usize {
+    pub(in crate::game) fn riding_link_limit(&self) -> usize {
         self.mobs.len()
             + self.persist.off_level.len()
             + self.resident_entities.general.rows.len()
@@ -136,7 +136,7 @@ impl Game<'_> {
     }
 
     /// A live portal root carries a direct or indirect mount through complete objects.
-    pub(super) fn vehicle_tree_contains_mount(&self, root: u32, mount: u32) -> bool {
+    pub(in crate::game) fn vehicle_tree_contains_mount(&self, root: u32, mount: u32) -> bool {
         // A retained mob has no handle: its own object is its target.
         let target = self
             .entity(mount)
@@ -151,7 +151,7 @@ impl Game<'_> {
     }
 
     /// The entities riding this one (`Entity.getPassengers`), in `addPassenger`'s order.
-    pub(super) fn entity_passengers(&self, entity: EntityRef) -> Option<Vec<EntityRef>> {
+    pub(in crate::game) fn entity_passengers(&self, entity: EntityRef) -> Option<Vec<EntityRef>> {
         Some(match self.riding_read(entity)? {
             RidingRead::Server(_) => self
                 .seated_passengers(entity.id())
@@ -169,7 +169,7 @@ impl Game<'_> {
         })
     }
     /// Whether any object rides the entity, even one without a handle.
-    pub(super) fn entity_is_vehicle(&self, entity: EntityRef) -> Option<bool> {
+    pub(in crate::game) fn entity_is_vehicle(&self, entity: EntityRef) -> Option<bool> {
         Some(match self.riding_read(entity)? {
             RidingRead::Server(_) => self.has_seated_passengers(entity.id()),
             RidingRead::Client(remote) => remote.has_passengers(entity.id()),
@@ -178,7 +178,10 @@ impl Game<'_> {
     /// Every entity riding this one, at any depth (`Entity.getIndirectPassengers`): each
     /// passenger in boarding order, followed by those riding it. Traverse off-level
     /// intermediaries but return only resident handles.
-    pub(super) fn entity_indirect_passengers(&self, entity: EntityRef) -> Option<Vec<EntityRef>> {
+    pub(in crate::game) fn entity_indirect_passengers(
+        &self,
+        entity: EntityRef,
+    ) -> Option<Vec<EntityRef>> {
         self.native_entity_target(entity)?;
         let mut all: Vec<EntityRef> = Vec::new();
         // This vector allocates only when a retained, unrepresentable object is
@@ -234,7 +237,7 @@ impl Game<'_> {
     }
     /// The overrides of `getControllingPassenger` on `mob`: whether the player `rider`, its
     /// first passenger, steers it.
-    pub(super) fn native_player_controls(&self, mob: &Mob, rider: Target) -> bool {
+    pub(in crate::game) fn native_player_controls(&self, mob: &Mob, rider: Target) -> bool {
         let species = mob.species();
         match species {
             Species::Pig | Species::Strider => {
@@ -251,7 +254,10 @@ impl Game<'_> {
     /// player in a boat, a player on a mount that is ready for one, or a mob on a mob with AI
     /// unless `#non_controlling_rider` names it. `None` when nothing steers it, or for a stale
     /// handle.
-    pub(super) fn entity_controlling_passenger(&self, entity: EntityRef) -> Option<LivingRef> {
+    pub(in crate::game) fn entity_controlling_passenger(
+        &self,
+        entity: EntityRef,
+    ) -> Option<LivingRef> {
         let vehicle = self.native_entity_target(entity)?;
         let first_id = self.first_seated_passenger(entity.id())?.1;
         let first = self.entity(first_id)?;
@@ -278,7 +284,7 @@ impl Game<'_> {
     }
     /// Whether both entities share a root vehicle (`Entity.isPassengerOfSameVehicle`): true for
     /// an entity and itself, false for two entities riding nothing. `None` for a stale handle.
-    pub(super) fn entity_is_passenger_of_same_vehicle(
+    pub(in crate::game) fn entity_is_passenger_of_same_vehicle(
         &self,
         entity: EntityRef,
         other: EntityRef,
@@ -301,7 +307,7 @@ impl Game<'_> {
     /// there it is the top of the box. Reads only: no `mob_ride` or dismount veto is asked and
     /// the passenger's pose stays. `None` for a stale handle, a passenger other than a player
     /// or a mob, a player with no motion state, or a vehicle whose box Sunrise does not keep.
-    pub(super) fn entity_dismount_location(
+    pub(in crate::game) fn entity_dismount_location(
         &self,
         vehicle: EntityRef,
         passenger: LivingRef,
@@ -353,7 +359,7 @@ impl Game<'_> {
     /// The live holder of a mob's or boat's lead (`Leashable.getLeashHolder`), or `Unleashed`
     /// when no lead exists. `None` means an entity that takes no lead, or that the entity,
     /// holder or saved holder is unavailable, stale or in a parked level. Does not load a level.
-    pub(super) fn entity_leash_holder(&self, entity: EntityRef) -> Option<LeashHolder> {
+    pub(in crate::game) fn entity_leash_holder(&self, entity: EntityRef) -> Option<LeashHolder> {
         match self.native_entity_target(entity)? {
             Target::Mob(id) => {
                 let mob = self.mobs.iter().find(|m| m.id == id)?;
@@ -377,7 +383,11 @@ impl Game<'_> {
     /// there, neither `canBeLeashed` nor the distance is asked: a holder too far away snaps
     /// the lead on the next tick. False for a stale handle, the entity itself, a holder other
     /// than a player, mob or boat, or an entity that takes no lead.
-    pub(super) fn entity_leash_to(&mut self, entity: EntityRef, holder: EntityRef) -> bool {
+    pub(in crate::game) fn entity_leash_to(
+        &mut self,
+        entity: EntityRef,
+        holder: EntityRef,
+    ) -> bool {
         let (Some(target), Some(by)) = (
             self.native_entity_target(entity),
             self.native_entity_target(holder),
@@ -401,7 +411,11 @@ impl Game<'_> {
     /// Ties the mob's or boat's lead to the fence at `pos`, as `entity_leash_to` does to
     /// an entity; the knot is there while a lead hangs on it. False for a stale handle, an
     /// entity that takes no lead, or no fence at `pos`.
-    pub(super) fn entity_leash_to_knot(&mut self, entity: EntityRef, pos: [i32; 3]) -> bool {
+    pub(in crate::game) fn entity_leash_to_knot(
+        &mut self,
+        entity: EntityRef,
+        pos: [i32; 3],
+    ) -> bool {
         let Some(target) = self.native_entity_target(entity) else {
             return false;
         };
@@ -432,12 +446,16 @@ impl Game<'_> {
     /// (`Leashable.dropLeash`), and is gone without it (`removeLeash`). A mob's removal is heard
     /// by `entity_unleash`. False when no holder has the lead, for a stale handle, or for an
     /// entity that takes no lead. A holder still unresolved from a save is left alone.
-    pub(super) fn entity_detach_leash(&mut self, entity: EntityRef, drop_lead: bool) -> bool {
+    pub(in crate::game) fn entity_detach_leash(
+        &mut self,
+        entity: EntityRef,
+        drop_lead: bool,
+    ) -> bool {
         self.native_entity_target(entity)
             .is_some_and(|target| self.detach_leash(target, drop_lead))
     }
     /// Attempts one mount, shared by handle writes and the ride command.
-    pub(super) fn start_riding_target(
+    pub(in crate::game) fn start_riding_target(
         &mut self,
         rider: Target,
         vehicle: Target,
@@ -447,7 +465,7 @@ impl Game<'_> {
     }
 
     /// `start_riding_target` with its refusal named (`StartRidingRefusal`).
-    pub(super) fn try_start_riding_target(
+    pub(in crate::game) fn try_start_riding_target(
         &mut self,
         rider: Target,
         vehicle: Target,
@@ -459,7 +477,7 @@ impl Game<'_> {
     /// `try_start_riding_target`, where `onto_player` admits a player vehicle for a mob rider:
     /// only `entity_ride_player` passes true, so every other call keeps refusing one, as
     /// vanilla's `startRiding` callers and `/ride` do.
-    pub(super) fn try_start_riding_with(
+    pub(in crate::game) fn try_start_riding_with(
         &mut self,
         rider: Target,
         vehicle: Target,
@@ -725,7 +743,7 @@ impl Game<'_> {
     /// General rows use the same admission and cancellable mount notifications
     /// as players and mobs. Only the explicit `entity_ride_player` route lets a
     /// mob ride a player; force does not make unsaved vehicles eligible.
-    pub(super) fn entity_start_riding(
+    pub(in crate::game) fn entity_start_riding(
         &mut self,
         entity: EntityRef,
         vehicle: EntityRef,
@@ -743,7 +761,7 @@ impl Game<'_> {
     /// Gets the entity off its vehicle (`Entity.stopRiding`), where the
     /// vehicle lets it out, as `/ride ... dismount` does. False when it rode
     /// nothing, a mod's `mob_ride` hook kept it on, or for a stale handle.
-    pub(super) fn entity_stop_riding(&mut self, entity: EntityRef) -> bool {
+    pub(in crate::game) fn entity_stop_riding(&mut self, entity: EntityRef) -> bool {
         let Some(t) = self.native_entity_target(entity) else {
             return false;
         };
@@ -764,7 +782,7 @@ impl Game<'_> {
         }
         stopped
     }
-    pub(super) fn dismount_general(&mut self, id: u32, vehicle: u32) {
+    pub(in crate::game) fn dismount_general(&mut self, id: u32, vehicle: u32) {
         if self.native_mob_may_ride(id, vehicle, false)
             && self.native_vehicle_id(Target::General(id)) == Some(vehicle)
         {
@@ -776,7 +794,7 @@ impl Game<'_> {
     /// `Entity.setRemoved`: stop each direct passenger in list order, not
     /// the reverse order of `ejectPassengers`. A callback can move a later
     /// passenger, so check each edge again before asking it to stop riding.
-    pub(super) fn dismount_removed_passengers(&mut self, vehicle: u32, y: f64) {
+    pub(in crate::game) fn dismount_removed_passengers(&mut self, vehicle: u32, y: f64) {
         let passengers = self.seated_passengers(vehicle);
         let own = self
             .player
@@ -812,7 +830,7 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn dismount_general_passengers(&mut self, vehicle: u32) {
+    pub(in crate::game) fn dismount_general_passengers(&mut self, vehicle: u32) {
         let mut passengers: Vec<_> = self
             .general_passengers(vehicle)
             .map(|row| (row.vehicle_order, row.id))
@@ -828,7 +846,7 @@ impl Game<'_> {
     /// Gets every passenger off the entity (`Entity.ejectPassengers`), last
     /// first as vanilla walks the list, so `mob_ride` hears them in its
     /// order. False when nothing rode it, or for a stale handle.
-    pub(super) fn entity_eject_passengers(&mut self, entity: EntityRef) -> bool {
+    pub(in crate::game) fn entity_eject_passengers(&mut self, entity: EntityRef) -> bool {
         let Some(passengers) = self.entity_passengers(entity) else {
             return false;
         };

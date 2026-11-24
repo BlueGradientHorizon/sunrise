@@ -35,7 +35,7 @@ thread_local! {
 }
 
 /// Record a line if a fixture case is running.
-pub(super) fn record(line: impl FnOnce() -> String) {
+pub(in crate::game) fn record(line: impl FnOnce() -> String) {
     LOG.with(|log| {
         if let Some(lines) = log.borrow_mut().as_mut() {
             lines.push(line());
@@ -43,15 +43,15 @@ pub(super) fn record(line: impl FnOnce() -> String) {
     });
 }
 /// Start recording level and game event lines (another fixture's case).
-pub(super) fn start_recording() {
+pub(in crate::game) fn start_recording() {
     LOG.with(|log| *log.borrow_mut() = Some(Vec::new()));
 }
 /// The lines recorded since `start_recording`; recording stops.
-pub(super) fn stop_recording() -> Vec<String> {
+pub(in crate::game) fn stop_recording() -> Vec<String> {
     LOG.with(|log| log.borrow_mut().take()).unwrap_or_default()
 }
 /// `Level.levelEvent` lines for the level events the behaviour library reported.
-pub(super) fn record_events(events: &[sunrise_world::level::LevelEvent]) {
+pub(in crate::game) fn record_events(events: &[sunrise_world::level::LevelEvent]) {
     for event in events {
         if let sunrise_world::level::LevelEvent::LevelEvent { id, pos, data, .. } = event {
             record(|| format!("L {id} {},{},{} {data}", pos.x, pos.y, pos.z));
@@ -113,7 +113,7 @@ enum Target {
 
 impl Game<'_> {
     /// Run every case of `spec` ("CASES,OUTPUT") and write the results.
-    pub(super) fn dispense_fixture(&mut self, spec: &str) -> Result<()> {
+    pub(in crate::game) fn dispense_fixture(&mut self, spec: &str) -> Result<()> {
         assert!(
             !self.options.execution_role.is_client(),
             "fixture requires a server Game"

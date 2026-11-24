@@ -15,7 +15,7 @@ use sunrise_client::{
 use sunrise_core::geometry::Vec3;
 
 impl Game<'_> {
-    pub(super) fn fixture_special_attack(&mut self, op: &Value) -> Result<Vec<String>> {
+    pub(in crate::game) fn fixture_special_attack(&mut self, op: &Value) -> Result<Vec<String>> {
         let kind = op["target"]
             .as_str()
             .ok_or("special attack target missing")?;

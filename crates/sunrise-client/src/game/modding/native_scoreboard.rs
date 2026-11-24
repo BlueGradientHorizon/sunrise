@@ -31,7 +31,7 @@ fn api_render_type(render: sb::RenderType) -> ObjectiveRenderType {
 }
 
 /// A text as the API holds it; one too deep for the API is refused by name, never flattened.
-pub(super) fn api_text(text: &EngineText) -> Result<mod_api::Text, TextFormError> {
+pub(in crate::game) fn api_text(text: &EngineText) -> Result<mod_api::Text, TextFormError> {
     use super::api_values::TryIntoApi;
     text.try_into_api()
 }
@@ -111,7 +111,7 @@ impl Game<'_> {
 
     /// The key a holder has on the board, for a read: a player's name, a non-player entity's
     /// UUID if it has one yet (no score can exist before), or the name as given.
-    pub(super) fn score_holder_key(&self, holder: &ScoreHolder) -> Option<String> {
+    pub(in crate::game) fn score_holder_key(&self, holder: &ScoreHolder) -> Option<String> {
         match holder {
             ScoreHolder::Name(name) => Some(name.clone()),
             ScoreHolder::Player(player) => self.player_name(*player).map(str::to_owned),
@@ -123,7 +123,7 @@ impl Game<'_> {
 
     /// The key and the display name of a holder, for a write; a non-player entity that has no
     /// UUID yet gets one, as its name is asked for.
-    pub(super) fn score_holder_for_write(
+    pub(in crate::game) fn score_holder_for_write(
         &mut self,
         holder: &ScoreHolder,
     ) -> Option<(String, Option<Comp>)> {
@@ -161,7 +161,7 @@ impl Game<'_> {
     }
 
     /// `Scoreboard.getObjective`.
-    pub(super) fn objective(&self, name: &str) -> Option<ObjectiveRef> {
+    pub(in crate::game) fn objective(&self, name: &str) -> Option<ObjectiveRef> {
         if self.remote.is_some() {
             return None;
         }
@@ -169,7 +169,7 @@ impl Game<'_> {
     }
 
     /// `Scoreboard.getObjectives`.
-    pub(super) fn objectives(&self) -> Vec<ObjectiveRef> {
+    pub(in crate::game) fn objectives(&self) -> Vec<ObjectiveRef> {
         if self.remote.is_some() {
             return Vec::new();
         }
@@ -182,7 +182,7 @@ impl Game<'_> {
     }
 
     /// `Scoreboard.addObjective`.
-    pub(super) fn add_objective(
+    pub(in crate::game) fn add_objective(
         &mut self,
         name: &str,
         criteria: &str,
@@ -217,7 +217,10 @@ impl Game<'_> {
     }
 
     /// `Scoreboard.getDisplayObjective`.
-    pub(super) fn display_slot_objective(&self, slot: DisplaySlot) -> Option<ObjectiveRef> {
+    pub(in crate::game) fn display_slot_objective(
+        &self,
+        slot: DisplaySlot,
+    ) -> Option<ObjectiveRef> {
         if self.remote.is_some() {
             return None;
         }
@@ -225,7 +228,7 @@ impl Game<'_> {
     }
 
     /// `Scoreboard.setDisplayObjective`.
-    pub(super) fn set_display_slot(
+    pub(in crate::game) fn set_display_slot(
         &mut self,
         slot: DisplaySlot,
         objective: Option<ObjectiveRef>,
@@ -251,17 +254,17 @@ impl Game<'_> {
     }
 
     /// `Objective.getName`.
-    pub(super) fn objective_name(&self, objective: ObjectiveRef) -> Option<String> {
+    pub(in crate::game) fn objective_name(&self, objective: ObjectiveRef) -> Option<String> {
         self.objective_state(objective).map(|o| o.name.clone())
     }
 
     /// `Objective.getCriteria`.
-    pub(super) fn objective_criteria(&self, objective: ObjectiveRef) -> Option<String> {
+    pub(in crate::game) fn objective_criteria(&self, objective: ObjectiveRef) -> Option<String> {
         self.objective_state(objective).map(|o| o.criteria.clone())
     }
 
     /// `Objective.getDisplayName`.
-    pub(super) fn objective_display_name(
+    pub(in crate::game) fn objective_display_name(
         &self,
         objective: ObjectiveRef,
     ) -> Result<EngineText, ObjectiveError> {
@@ -271,7 +274,7 @@ impl Game<'_> {
     }
 
     /// `Objective.getRenderType`.
-    pub(super) fn objective_render_type(
+    pub(in crate::game) fn objective_render_type(
         &self,
         objective: ObjectiveRef,
     ) -> Option<ObjectiveRenderType> {
@@ -280,7 +283,7 @@ impl Game<'_> {
     }
 
     /// `Objective.numberFormat`.
-    pub(super) fn objective_number_format(
+    pub(in crate::game) fn objective_number_format(
         &self,
         objective: ObjectiveRef,
     ) -> Result<Option<NumberFormat>, ObjectiveError> {
@@ -295,13 +298,19 @@ impl Game<'_> {
     }
 
     /// `Objective.displayAutoUpdate`.
-    pub(super) fn objective_display_auto_update(&self, objective: ObjectiveRef) -> Option<bool> {
+    pub(in crate::game) fn objective_display_auto_update(
+        &self,
+        objective: ObjectiveRef,
+    ) -> Option<bool> {
         self.objective_state(objective)
             .map(|o| o.display_auto_update)
     }
 
     /// The display slots that show the objective, in id order.
-    pub(super) fn objective_slots(&self, objective: ObjectiveRef) -> Option<Vec<DisplaySlot>> {
+    pub(in crate::game) fn objective_slots(
+        &self,
+        objective: ObjectiveRef,
+    ) -> Option<Vec<DisplaySlot>> {
         let name = &self.objective_state(objective)?.name;
         Some(
             DisplaySlot::all()
@@ -311,7 +320,7 @@ impl Game<'_> {
     }
 
     /// `Scoreboard.getPlayerScoreInfo`'s value.
-    pub(super) fn objective_score(
+    pub(in crate::game) fn objective_score(
         &self,
         objective: ObjectiveRef,
         holder: ScoreHolder,
@@ -322,7 +331,10 @@ impl Game<'_> {
     }
 
     /// `Scoreboard.listPlayerScores`.
-    pub(super) fn objective_scores(&self, objective: ObjectiveRef) -> Option<Vec<ScoreEntry>> {
+    pub(in crate::game) fn objective_scores(
+        &self,
+        objective: ObjectiveRef,
+    ) -> Option<Vec<ScoreEntry>> {
         let name = &self.objective_state(objective)?.name;
         Some(
             self.score
@@ -335,7 +347,7 @@ impl Game<'_> {
     }
 
     /// `ScoreAccess.locked`.
-    pub(super) fn objective_score_locked(
+    pub(in crate::game) fn objective_score_locked(
         &self,
         objective: ObjectiveRef,
         holder: ScoreHolder,
@@ -346,7 +358,7 @@ impl Game<'_> {
     }
 
     /// `Objective.setDisplayName`.
-    pub(super) fn objective_set_display_name(
+    pub(in crate::game) fn objective_set_display_name(
         &mut self,
         objective: ObjectiveRef,
         name: EngineText,
@@ -359,7 +371,7 @@ impl Game<'_> {
     }
 
     /// `Objective.setRenderType`.
-    pub(super) fn objective_set_render_type(
+    pub(in crate::game) fn objective_set_render_type(
         &mut self,
         objective: ObjectiveRef,
         render_type: ObjectiveRenderType,
@@ -374,7 +386,7 @@ impl Game<'_> {
     }
 
     /// `Objective.setNumberFormat`.
-    pub(super) fn objective_set_number_format(
+    pub(in crate::game) fn objective_set_number_format(
         &mut self,
         objective: ObjectiveRef,
         format: Option<NumberFormat>,
@@ -388,7 +400,7 @@ impl Game<'_> {
     }
 
     /// `Objective.setDisplayAutoUpdate`.
-    pub(super) fn objective_set_display_auto_update(
+    pub(in crate::game) fn objective_set_display_auto_update(
         &mut self,
         objective: ObjectiveRef,
         auto: bool,
@@ -403,7 +415,7 @@ impl Game<'_> {
     }
 
     /// `ScoreAccess.set`.
-    pub(super) fn objective_set_score(
+    pub(in crate::game) fn objective_set_score(
         &mut self,
         objective: ObjectiveRef,
         holder: ScoreHolder,
@@ -417,7 +429,7 @@ impl Game<'_> {
     }
 
     /// `ScoreAccess.add`.
-    pub(super) fn objective_add_score(
+    pub(in crate::game) fn objective_add_score(
         &mut self,
         objective: ObjectiveRef,
         holder: ScoreHolder,
@@ -431,7 +443,7 @@ impl Game<'_> {
     }
 
     /// `Scoreboard.resetSinglePlayerScore`.
-    pub(super) fn objective_reset_score(
+    pub(in crate::game) fn objective_reset_score(
         &mut self,
         objective: ObjectiveRef,
         holder: ScoreHolder,
@@ -450,7 +462,7 @@ impl Game<'_> {
     }
 
     /// `ScoreAccess.lock` and `unlock`.
-    pub(super) fn objective_set_score_locked(
+    pub(in crate::game) fn objective_set_score_locked(
         &mut self,
         objective: ObjectiveRef,
         holder: ScoreHolder,
@@ -477,7 +489,7 @@ impl Game<'_> {
     }
 
     /// `Scoreboard.removeObjective`.
-    pub(super) fn objective_remove(&mut self, objective: ObjectiveRef) -> bool {
+    pub(in crate::game) fn objective_remove(&mut self, objective: ObjectiveRef) -> bool {
         let Ok(name) = self.objective_for_write(objective) else {
             return false;
         };
@@ -488,7 +500,9 @@ impl Game<'_> {
 
     /// What this client has been sent of the scoreboard; None outside a logged-in client world.
     /// A text the API cannot hold refuses the whole snapshot by name.
-    pub(super) fn client_scoreboard(&self) -> Result<Option<ClientScoreboard>, TextFormError> {
+    pub(in crate::game) fn client_scoreboard(
+        &self,
+    ) -> Result<Option<ClientScoreboard>, TextFormError> {
         if self.native_session().is_none() {
             return Ok(None);
         }

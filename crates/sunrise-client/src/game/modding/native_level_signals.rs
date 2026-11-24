@@ -10,7 +10,7 @@ use sunrise_world::{level::signal_access::SignalAccess, registry::BlockStateId};
 /// Created for the game's current level (`self.level(self.dim.id())` or after
 /// `level_in_place` confirms the level matches `self.world`). No mutable world,
 /// random source, entity snapshots or transaction is needed by a signal read.
-pub(super) struct ReadLevel<'g, 'a> {
+pub(in crate::game) struct ReadLevel<'g, 'a> {
     pub game: &'g Game<'a>,
     pub level: mod_api::LevelRef,
 }
@@ -19,7 +19,7 @@ super::native_tags::impl_tags!(ReadLevel<'_, '_>, level, level.game.native_tag_i
 
 /// The output side passed to Parts is opposite SignalGetter's input direction.
 /// Both the shared view and the write context apply the same output bound.
-pub(super) fn adjust_signal(
+pub(in crate::game) fn adjust_signal(
     direction: Direction,
     vanilla: i32,
     fire: impl FnOnce(Direction, &mut i32),
@@ -30,7 +30,7 @@ pub(super) fn adjust_signal(
 }
 
 /// Block-entity-driven sources, shared by the read and write views.
-pub(super) fn block_entity_signal(
+pub(in crate::game) fn block_entity_signal(
     world: &World,
     registry: &sunrise_world::registry::BlockRegistry,
     items: &Items,
@@ -189,7 +189,7 @@ impl SignalAccess for ReadLevel<'_, '_> {
 }
 
 impl ReadLevel<'_, '_> {
-    pub(super) fn capability_site(
+    pub(in crate::game) fn capability_site(
         &self,
         at: mod_api::BlockSide,
     ) -> Option<mod_api::BlockCapabilitySite> {

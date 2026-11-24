@@ -6,24 +6,24 @@ use sunrise_client::keymapping::toggle_index;
 use winit::keyboard::KeyCode;
 
 impl Game<'_> {
-    pub(super) fn set_mapping_held(&mut self, name: &str, down: bool) {
+    pub(in crate::game) fn set_mapping_held(&mut self, name: &str, down: bool) {
         if let Some(slot) = VanillaMappingSlot::by_name(name) {
             self.client.vanilla_mappings.state_mut(slot).is_down = down;
         }
     }
 
-    pub(super) fn queue_mapping_click(&mut self, name: &str) {
+    pub(in crate::game) fn queue_mapping_click(&mut self, name: &str) {
         if let Some(slot) = VanillaMappingSlot::by_name(name) {
             self.client.vanilla_mappings.click(slot);
         }
     }
 
-    pub(super) fn consume_mapping_click(&mut self, name: &str) -> bool {
+    pub(in crate::game) fn consume_mapping_click(&mut self, name: &str) -> bool {
         VanillaMappingSlot::by_name(name)
             .is_some_and(|slot| self.client.vanilla_mappings.consume_click(slot))
     }
 
-    pub(super) fn pending_mapping_clicks(&self, name: &str) -> u32 {
+    pub(in crate::game) fn pending_mapping_clicks(&self, name: &str) -> u32 {
         VanillaMappingSlot::by_name(name).map_or(0, |slot| {
             self.client.vanilla_mappings.pending_clicks(slot) as u32
         })

@@ -12,7 +12,7 @@ impl Game<'_> {
     /// False for a target in another level. None for a stale or unavailable
     /// living entity or target, one outside the level in place, or on a
     /// client.
-    pub(super) fn living_has_line_of_sight(
+    pub(in crate::game) fn living_has_line_of_sight(
         &self,
         living: LivingRef,
         target: EntityRef,
@@ -42,7 +42,7 @@ impl Game<'_> {
     /// own state still answers where its `getDefaultDimensions` reads it: a
     /// digging sniffer or an emerging warden is low in every pose. None for
     /// a stale or unavailable handle.
-    pub(super) fn living_dimensions_for_pose(
+    pub(in crate::game) fn living_dimensions_for_pose(
         &self,
         living: LivingRef,
         pose: Pose,
@@ -121,7 +121,7 @@ impl Game<'_> {
     /// True when the entity moved. False when no spot was found, for a
     /// non-finite point, a fake player, a player in another level, an armor
     /// stand or the dragon, a stale handle, or on a client.
-    pub(super) fn living_random_teleport(
+    pub(in crate::game) fn living_random_teleport(
         &mut self,
         living: LivingRef,
         at: [f64; 3],

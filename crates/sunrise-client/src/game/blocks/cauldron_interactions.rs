@@ -11,9 +11,9 @@ use std::{cell::RefCell, collections::BTreeSet, sync::Arc};
 use sunrise_client::cauldron::interactions::Dispatcher;
 
 #[derive(Clone)]
-pub(super) struct Callback {
-    pub(super) handler: Arc<dyn mod_api::Interaction>,
-    pub(super) owner: &'static str,
+pub(in crate::game) struct Callback {
+    pub(in crate::game) handler: Arc<dyn mod_api::Interaction>,
+    pub(in crate::game) owner: &'static str,
     guard: Option<RetainedCallback>,
 }
 impl Callback {
@@ -28,17 +28,17 @@ impl Callback {
         }
     }
 }
-pub(super) type Table = Dispatcher<Callback>;
+pub(in crate::game) type Table = Dispatcher<Callback>;
 thread_local! {
     static TABLE: RefCell<Arc<Table>> = RefCell::new(Arc::new(Table::default()));
 }
-pub(super) fn snapshot() -> Arc<Table> {
+pub(in crate::game) fn snapshot() -> Arc<Table> {
     TABLE.with_borrow(Arc::clone)
 }
-pub(super) fn clear() {
+pub(in crate::game) fn clear() {
     install(Arc::new(Table::default()));
 }
-pub(super) fn install(table: Arc<Table>) {
+pub(in crate::game) fn install(table: Arc<Table>) {
     TABLE.with_borrow_mut(|old| *old = table);
 }
 
@@ -276,7 +276,10 @@ impl mod_api::CauldronInteractions for Registrar<'_> {
     }
 }
 impl Game<'_> {
-    pub(super) fn prepare_cauldron_interactions(&self, items: &Items) -> Result<Arc<Table>> {
+    pub(in crate::game) fn prepare_cauldron_interactions(
+        &self,
+        items: &Items,
+    ) -> Result<Arc<Table>> {
         let mut registrar = Registrar::new(items, self.pack.assets.registry);
         Self::native_register_cauldron_interaction(
             &mod_api::RegistrationContext::new(),
@@ -285,7 +288,7 @@ impl Game<'_> {
         registrar.finish()
     }
     /// Invoke a mod's authoritative cauldron interaction on the server.
-    pub(super) fn use_mod_cauldron(
+    pub(in crate::game) fn use_mod_cauldron(
         &mut self,
         pos: [i32; 3],
         under_water: bool,

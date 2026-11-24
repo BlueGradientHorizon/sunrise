@@ -218,7 +218,7 @@ mod tests {
     fn resource_stacks_and_listings_cover_every_pack_and_namespace() {
         use std::collections::BTreeMap;
         use sunrise_assets::resource_source::{Resource, ResourceSource};
-        let name = "game::native_resources::tests::resource_stacks_and_listings_cover_every_pack_and_namespace";
+        let name = "game::server_side::native_resources::tests::resource_stacks_and_listings_cover_every_pack_and_namespace";
         let flag = "SUNRISE_RESOURCE_STACK_CASE";
         if super::super::native_entity_refs::tests::run_fresh_cases(
             name,

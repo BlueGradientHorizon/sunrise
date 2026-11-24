@@ -15,7 +15,7 @@ use sunrise_core::geometry::Vec3;
 const PICK_RADIUS: f64 = 1.0;
 
 /// `#minecraft:redirectable_projectile`: a ghast's fireball and both wind charges.
-pub(super) fn redirectable(p: &Projectile) -> bool {
+pub(in crate::game) fn redirectable(p: &Projectile) -> bool {
     !p.stuck
         && matches!(
             p.kind,
@@ -32,7 +32,7 @@ pub(super) fn redirectable(p: &Projectile) -> bool {
 /// to 0.1 (`AbstractHurtingProjectile.onDeflection` by an attack). A wind
 /// charge in its first five ticks refuses (`WindCharge.deflect`): false, and
 /// nothing changes.
-pub(super) fn aim_deflect(
+pub(in crate::game) fn aim_deflect(
     p: &mut Projectile,
     look: Option<Vec3>,
     owner: Option<Who>,
@@ -49,7 +49,7 @@ pub(super) fn aim_deflect(
 
 /// A projectile a player's blow reaches under the vanilla default tag: a redirectable
 /// projectile or a shulker bullet (`ShulkerBullet.isPickable` is `true`).
-pub(super) fn attackable(p: &Projectile) -> bool {
+pub(in crate::game) fn attackable(p: &Projectile) -> bool {
     redirectable(p) || matches!(p.kind, ProjectileKind::ShulkerBullet { .. })
 }
 
@@ -109,7 +109,7 @@ impl Game<'_> {
         self.is_redirectable_projectile_type("minecraft:firework_rocket")
     }
     /// The pickable projectile under the crosshair within entity reach.
-    pub(super) fn redirectable_hit(&self) -> Option<(usize, f64)> {
+    pub(in crate::game) fn redirectable_hit(&self) -> Option<(usize, f64)> {
         if let Some(hit) = self.cached_entity_pick() {
             let (entity, distance, _) = hit?;
             let index = self
@@ -136,7 +136,7 @@ impl Game<'_> {
     /// player its owner, its acceleration power back to 0.1
     /// (`onDeflection` by an attack), and the no-damage sound. True when a
     /// projectile was turned.
-    pub(super) fn attack_redirectable(&mut self) -> bool {
+    pub(in crate::game) fn attack_redirectable(&mut self) -> bool {
         let Some((i, t)) = self.redirectable_hit() else {
             return false;
         };
@@ -168,7 +168,7 @@ impl Game<'_> {
     /// `ShulkerBullet.hurtServer` from a player's blow: the hurt sound, fifteen crit
     /// particles (`sendParticles`, spread 0.2) and `destroy`. The blow is
     /// `Player.attack` on a target that is not a mob: its sounds, then the swing.
-    pub(super) fn hit_shulker_bullet(&mut self, i: usize) {
+    pub(in crate::game) fn hit_shulker_bullet(&mut self, i: usize) {
         let ((_, _, _, magic), admitted) = self.melee_damage_with_admission(
             "minecraft:shulker_bullet",
             false,
@@ -211,7 +211,7 @@ impl Game<'_> {
 
     /// `ShulkerBullet.hurtServer`'s sound (unless silent) and fifteen crit particles
     /// (`sendParticles`, spread 0.2) at the bullet, before it is discarded.
-    pub(super) fn shulker_bullet_hurt(&mut self, at: [f64; 3], silent: bool) {
+    pub(in crate::game) fn shulker_bullet_hurt(&mut self, at: [f64; 3], silent: bool) {
         if !silent {
             self.audio
                 .play("minecraft:entity.shulker_bullet.hurt", Some(at), 1.0, 1.0);
@@ -225,7 +225,7 @@ impl Game<'_> {
     }
     /// `Player.canInteractWithEntity(box, 3.0)` as the server checks an
     /// attack packet: the projectile's box within the reach plus 3 of the eyes.
-    pub(super) fn within_interaction_range(&self, i: usize) -> bool {
+    pub(in crate::game) fn within_interaction_range(&self, i: usize) -> bool {
         let (Some(eye), Some(p)) = (self.eye_position(), self.creatures.projectiles.get(i)) else {
             return false;
         };
@@ -242,7 +242,11 @@ impl Game<'_> {
 
     /// `Entity.getLookAngle` of a projectile's owner: the host, the guest who
     /// threw it, or a mob; none when the owner is not here.
-    pub(super) fn owner_look(&self, owner: Option<Who>, guest: Option<u32>) -> Option<Vec3> {
+    pub(in crate::game) fn owner_look(
+        &self,
+        owner: Option<Who>,
+        guest: Option<u32>,
+    ) -> Option<Vec3> {
         let (pitch, yaw) = match (owner?, guest) {
             (Who::Player, Some(conn)) => {
                 let lan = self.lan.as_ref()?;
@@ -267,7 +271,7 @@ impl Game<'_> {
     /// ticks) the blow goes on as an ordinary attack, which a projectile does
     /// not take: `hurtOrSimulate` fails and `PLAYER_ATTACK_NODAMAGE` plays,
     /// the same sound. Either way the swing follows. True when it turned.
-    pub(super) fn deflect(&mut self, i: usize) -> bool {
+    pub(in crate::game) fn deflect(&mut self, i: usize) -> bool {
         self.reset_attack_strength();
         let turned = self.turn_projectile(i);
         self.swing_arm();

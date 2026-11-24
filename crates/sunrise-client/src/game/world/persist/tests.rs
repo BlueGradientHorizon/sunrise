@@ -1188,7 +1188,7 @@ fn an_orb_saves_its_live_fire_and_air_over_the_loaded_ones() {
 #[ignore = "daily"]
 fn an_orb_saves_its_live_portal_cooldown() {
     if crate::game::native_entity_refs::tests::run_fresh_cases(
-        "game::persist::tests::an_orb_saves_its_live_portal_cooldown",
+        "game::server_side::persist::tests::an_orb_saves_its_live_portal_cooldown",
         "SUNRISE_ORB_PERSISTENCE_CHILD",
         &["orb"],
     ) {

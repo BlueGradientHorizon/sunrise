@@ -9,13 +9,13 @@ use mod_api::{DragonPhase, DragonRef, EntityRef, LivingRef, MobRef};
 
 impl Game<'_> {
     /// The dragon an entity handle names now.
-    pub(super) fn native_dragon(&self, entity: EntityRef) -> Option<&Dragon> {
+    pub(in crate::game) fn native_dragon(&self, entity: EntityRef) -> Option<&Dragon> {
         let Target::Dragon(id) = self.native_entity_target(entity)? else {
             return None;
         };
         self.dragon.as_ref().filter(|d| d.id == id)
     }
-    pub(super) fn native_dragon_mut(&mut self, entity: EntityRef) -> Option<&mut Dragon> {
+    pub(in crate::game) fn native_dragon_mut(&mut self, entity: EntityRef) -> Option<&mut Dragon> {
         let Target::Dragon(id) = self.native_entity_target(entity)? else {
             return None;
         };
@@ -24,13 +24,13 @@ impl Game<'_> {
 
     /// The entity as the ender dragon, or None for another kind, a stale
     /// handle or a client.
-    pub(super) fn dragon(&self, entity: EntityRef) -> Option<DragonRef> {
+    pub(in crate::game) fn dragon(&self, entity: EntityRef) -> Option<DragonRef> {
         self.native_dragon(entity)?;
         Some(DragonRef::new(entity))
     }
 
     /// `EnderDragonPhaseManager.getCurrentPhase`.
-    pub(super) fn dragon_phase(&self, dragon: DragonRef) -> Option<DragonPhase> {
+    pub(in crate::game) fn dragon_phase(&self, dragon: DragonRef) -> Option<DragonPhase> {
         Some(self.native_dragon(dragon.entity())?.native_phase())
     }
 
@@ -40,7 +40,11 @@ impl Game<'_> {
     /// nothing, as in vanilla (a strafing dragon keeps its player). No
     /// random draw. False for a stale handle or a client. The new phase
     /// runs from the dragon's next tick.
-    pub(super) fn dragon_set_phase(&mut self, dragon: DragonRef, phase: DragonPhase) -> bool {
+    pub(in crate::game) fn dragon_set_phase(
+        &mut self,
+        dragon: DragonRef,
+        phase: DragonPhase,
+    ) -> bool {
         let Some(d) = self.native_dragon_mut(dragon.entity()) else {
             return false;
         };
@@ -59,13 +63,13 @@ impl Game<'_> {
     /// `EnderDragonFight.aliveCrystals`: the crystals the last scan found
     /// (every 100 ticks). None for a stale handle, a client, or a dragon
     /// outside the End or whose fight is not loaded.
-    pub(super) fn dragon_alive_crystals(&self, dragon: DragonRef) -> Option<i32> {
+    pub(in crate::game) fn dragon_alive_crystals(&self, dragon: DragonRef) -> Option<i32> {
         Some(self.native_dragon_fight(dragon)?.alive_crystals)
     }
 
     /// `EnderDragonFight.hasPreviouslyKilledDragon`. None as
     /// `alive_crystals` is.
-    pub(super) fn dragon_previously_killed(&self, dragon: DragonRef) -> Option<bool> {
+    pub(in crate::game) fn dragon_previously_killed(&self, dragon: DragonRef) -> Option<bool> {
         Some(self.native_dragon_fight(dragon)?.previously_killed)
     }
 
@@ -88,7 +92,7 @@ impl Game<'_> {
     /// `Mob.getTarget` for the dragon: the mob or player a mod set, None once
     /// it is no longer a valid target. The dragon's flight never sets or
     /// reads it.
-    pub(super) fn native_dragon_target(&self, entity: EntityRef) -> Option<LivingRef> {
+    pub(in crate::game) fn native_dragon_target(&self, entity: EntityRef) -> Option<LivingRef> {
         let target = self.entity(self.native_dragon(entity)?.target?)?;
         self.native_dragon_valid_target(self.native_entity_target(target)?)
             .then(|| self.living(target))?
@@ -97,7 +101,7 @@ impl Game<'_> {
     /// `Mob.setTarget` for the dragon; None clears it. An invalid target is
     /// refused (false, unchanged) where vanilla stores None. False too for a
     /// stale handle or a target that is not a mob or a player.
-    pub(super) fn native_dragon_set_target(
+    pub(in crate::game) fn native_dragon_set_target(
         &mut self,
         entity: EntityRef,
         target: Option<LivingRef>,

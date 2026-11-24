@@ -20,13 +20,13 @@ use mod_api::{
 use sunrise_client::{datapack::DataPack, settings::Settings};
 
 /// One client reload step: a mod's apply action or model publication.
-pub(super) type PreparedClientReload = PreparedStep<()>;
+pub(in crate::game) type PreparedClientReload = PreparedStep<()>;
 
 /// The registration context of the first load: no game or published assets
 /// exist yet, so [`published`](ClientReloadListenerContext::published) is
 /// `None` while process, mod-roster, settings, math-profile, and local text
 /// queries return real values. Later reloads pass `&Game` directly.
-pub(super) struct StartupReloadContext<'a> {
+pub(in crate::game) struct StartupReloadContext<'a> {
     settings: Option<&'a Settings>,
 }
 
@@ -75,7 +75,9 @@ impl Game<'_> {
     /// Registers a later reload's client listeners through the game
     /// (`native_add_client_reload_listeners`), gated on the hook being
     /// listened to.
-    pub(super) fn register_client_reload_listeners(&self) -> mod_api::ClientListenerRegistry {
+    pub(in crate::game) fn register_client_reload_listeners(
+        &self,
+    ) -> mod_api::ClientListenerRegistry {
         let mut listeners = <mod_api::ClientListenerRegistry as mod_api::__private::game::ClientReloadListenersOrder>::new();
         if mod_api::__private::listened(HookId::AddClientReloadListeners) {
             self.native_add_client_reload_listeners(&mut listeners);
@@ -87,7 +89,7 @@ impl Game<'_> {
 /// Registers the first load's client listeners: no game exists yet, so
 /// [`StartupReloadContext`] answers the process/mod/settings facts known on
 /// the loader thread and leaves `published()` as `None`.
-pub(super) fn register_startup_client_reload_listeners(
+pub(in crate::game) fn register_startup_client_reload_listeners(
     settings: Option<&Settings>,
 ) -> mod_api::ClientListenerRegistry {
     let mut listeners = <mod_api::ClientListenerRegistry as mod_api::__private::game::ClientReloadListenersOrder>::new();
@@ -103,7 +105,7 @@ pub(super) fn register_startup_client_reload_listeners(
 /// Prepare listeners against the merged asset view, running the model build
 /// at the model manager's position in their order. The models travel separately
 /// so renderer preflight can use them without publishing them.
-pub(super) fn stage_client_reload<V, E: From<ReloadStageError>>(
+pub(in crate::game) fn stage_client_reload<V, E: From<ReloadStageError>>(
     root: &sunrise_assets::resource_source::ResourceSource,
     listeners: mod_api::ClientListenerRegistry,
     build_models: impl FnOnce() -> Result<V, E>,
@@ -134,7 +136,7 @@ thread_local! {
 impl Game<'_> {
     /// Publish the models in order with the mod listener actions on the game-owning
     /// thread, before the resources-reloaded notice.
-    pub(super) fn apply_client_reload(
+    pub(in crate::game) fn apply_client_reload(
         &mut self,
         prepared: Vec<PreparedClientReload>,
         publish_models: impl FnOnce(&mut Self),

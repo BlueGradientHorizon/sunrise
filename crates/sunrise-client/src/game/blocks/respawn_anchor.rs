@@ -25,7 +25,7 @@ use sunrise_world::{
 /// `ServerPlayer.RespawnConfig`: a respawn point other than the world spawn
 /// that the game resolves through its block (a respawn anchor).
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct RespawnConfig {
+pub(in crate::game) struct RespawnConfig {
     pub dim: Dim,
     pub pos: [i32; 3],
     pub yaw: f32,
@@ -35,11 +35,11 @@ pub(super) struct RespawnConfig {
 
 /// A respawn point as a player's save keeps it (`respawn`): dimension,
 /// block, yaw, pitch and whether it is forced.
-pub(super) type SavedRespawn = (String, [i32; 3], f32, f32, bool);
+pub(in crate::game) type SavedRespawn = (String, [i32; 3], f32, f32, bool);
 
 impl RespawnConfig {
     /// `RespawnData.of`: the yaw wrapped to [-180, 180).
-    pub(super) fn wrapped(dim: Dim, pos: [i32; 3], yaw: f32, forced: bool) -> Self {
+    pub(in crate::game) fn wrapped(dim: Dim, pos: [i32; 3], yaw: f32, forced: bool) -> Self {
         Self {
             dim,
             pos,
@@ -49,7 +49,7 @@ impl RespawnConfig {
         }
     }
     /// `SetSpawnCommand`: the forced literal, with its already parsed angles.
-    pub(super) fn forced(dim: Dim, pos: [i32; 3], yaw: f32, pitch: f32) -> Self {
+    pub(in crate::game) fn forced(dim: Dim, pos: [i32; 3], yaw: f32, pitch: f32) -> Self {
         Self {
             dim,
             pos,
@@ -62,7 +62,9 @@ impl RespawnConfig {
     /// in a level the world lacks resolves as no point at all
     /// (`findRespawnPositionAndUseSpawnBlock` falls to `TeleportTransition.createDefault`),
     /// and the save keeps it as it was ([`Self::kept`]).
-    pub(super) fn from_saved((dim, pos, yaw, pitch, forced): &SavedRespawn) -> Option<Self> {
+    pub(in crate::game) fn from_saved(
+        (dim, pos, yaw, pitch, forced): &SavedRespawn,
+    ) -> Option<Self> {
         Dim::exists(dim).then(|| Self {
             dim: Dim::from_id(dim),
             pos: *pos,
@@ -74,14 +76,17 @@ impl RespawnConfig {
     /// What the save keeps of a point once play is done with it: `saved` while play left
     /// unchanged the point loaded from it (one in a missing level stays as saved), else the
     /// point play set or cleared.
-    pub(super) fn kept(saved: Option<SavedRespawn>, now: Option<Self>) -> Option<SavedRespawn> {
+    pub(in crate::game) fn kept(
+        saved: Option<SavedRespawn>,
+        now: Option<Self>,
+    ) -> Option<SavedRespawn> {
         if now == saved.as_ref().and_then(Self::from_saved) {
             saved
         } else {
             now.map(|c| c.saved())
         }
     }
-    pub(super) fn saved(&self) -> SavedRespawn {
+    pub(in crate::game) fn saved(&self) -> SavedRespawn {
         (
             self.dim.id().to_owned(),
             self.pos,
@@ -113,7 +118,7 @@ fn respawn_offsets() -> impl Iterator<Item = [i32; 3]> {
 }
 
 /// What a right click with an item does to an anchor before `useWithoutItem`.
-pub(super) enum AnchorUse {
+pub(in crate::game) enum AnchorUse {
     /// Glowstone charged it.
     Charged,
     /// `PASS`: the off hand's glowstone charges it instead.
@@ -123,7 +128,7 @@ pub(super) enum AnchorUse {
 }
 
 impl Game<'_> {
-    pub(super) fn is_anchor(&self, state: BlockStateId) -> bool {
+    pub(in crate::game) fn is_anchor(&self, state: BlockStateId) -> bool {
         &*self.res.facts().get(state).name == "minecraft:respawn_anchor"
     }
     fn anchor_charges(&self, state: BlockStateId) -> i32 {
@@ -142,7 +147,7 @@ impl Game<'_> {
     }
     /// `RespawnAnchorBlock.canSetSpawn`: the `respawn_anchor_works` attribute
     /// (only the Nether's dimension type sets it).
-    pub(super) fn anchor_works(&self) -> bool {
+    pub(in crate::game) fn anchor_works(&self) -> bool {
         self.dimension_type().respawn_anchor_works
     }
     /// `RespawnAnchorBlock.charge`: one more charge, the block change and the sound.
@@ -169,14 +174,14 @@ impl Game<'_> {
     /// `RespawnAnchorBlock.useItemOn`'s test: `held` is glowstone
     /// (`isRespawnFuel`) and the block at `pos` is an anchor that takes another
     /// charge (`canBeCharged`).
-    pub(super) fn anchor_takes(&self, pos: [i32; 3], held: Option<&ItemStack>) -> bool {
+    pub(in crate::game) fn anchor_takes(&self, pos: [i32; 3], held: Option<&ItemStack>) -> bool {
         let state = self.world.block(pos[0], pos[1], pos[2]);
         held.is_some_and(|s| &*s.item == "minecraft:glowstone")
             && self.is_anchor(state)
             && self.anchor_charges(state) < 4
     }
     /// `RespawnAnchorBlock.useItemOn` with `held` in the hand that acts.
-    pub(super) fn use_respawn_anchor(
+    pub(in crate::game) fn use_respawn_anchor(
         &mut self,
         pos: [i32; 3],
         held: Option<&ItemStack>,
@@ -205,7 +210,7 @@ impl Game<'_> {
     /// The mods' say on a server player's respawn point about to be set to
     /// `pos` in `dim` (`ServerPlayer.setRespawnPosition`, NeoForge's
     /// `PlayerSetSpawnEvent`): true when one canceled.
-    pub(super) fn spawn_point_change(
+    pub(in crate::game) fn spawn_point_change(
         &mut self,
         dim: Dim,
         pos: Option<[i32; 3]>,
@@ -234,7 +239,7 @@ impl Game<'_> {
     /// `/spawnpoint` sets it: the point becomes `config`, or none for None,
     /// unless a mod cancels the change (the answer is false then). A point
     /// replaces the fallback spawn, which the world spawn then stands for.
-    pub(super) fn set_respawn_point(&mut self, config: Option<RespawnConfig>) -> bool {
+    pub(in crate::game) fn set_respawn_point(&mut self, config: Option<RespawnConfig>) -> bool {
         let (dim, pos, forced) =
             config.map_or((self.dim, None, false), |c| (c.dim, Some(c.pos), c.forced));
         if self.spawn_point_change(dim, pos, forced) {
@@ -248,7 +253,7 @@ impl Game<'_> {
     }
     /// `RespawnAnchorBlock.useWithoutItem` on a charged anchor: outside the
     /// Nether it explodes; inside, it becomes the respawn point.
-    pub(super) fn respawn_anchor_used(&mut self, pos: [i32; 3]) -> Result<()> {
+    pub(in crate::game) fn respawn_anchor_used(&mut self, pos: [i32; 3]) -> Result<()> {
         let state = self.world.block(pos[0], pos[1], pos[2]);
         if !self.anchor_works() {
             return self.explode_anchor(pos, state);
@@ -335,7 +340,7 @@ impl Game<'_> {
         self.block_explosion(center, in_water.then_some(pos))
     }
     /// `StrawBedBlock.destroyBed`: the break sound, then the bed is air.
-    pub(super) fn destroy_straw_bed(&mut self, head: [i32; 3]) -> Result<()> {
+    pub(in crate::game) fn destroy_straw_bed(&mut self, head: [i32; 3]) -> Result<()> {
         let center = [
             f64::from(head[0]) + 0.5,
             f64::from(head[1]) + 0.5,
@@ -351,13 +356,13 @@ impl Game<'_> {
     }
     /// `BedRule.destroyOnUse` of the dimension's `bed_rule` and
     /// `straw_bed_rule`: true in the Nether and the End.
-    pub(super) fn beds_destroy_on_use(&self) -> bool {
+    pub(in crate::game) fn beds_destroy_on_use(&self) -> bool {
         self.dimension_type().bed_rule.destroy_on_use
     }
     /// `AbstractBedBlock.useWithoutItem` where the bed rule destroys on use
     /// (the bed's head at `head`): `BedBlock.destroyOnUse` removes both
     /// halves and explodes; `StrawBedBlock` just falls apart.
-    pub(super) fn destroy_bed_on_use(&mut self, head: [i32; 3]) -> Result<()> {
+    pub(in crate::game) fn destroy_bed_on_use(&mut self, head: [i32; 3]) -> Result<()> {
         let state = self.world.block(head[0], head[1], head[2]);
         let name = self.res.facts().get(state).name.clone();
         let center = [
@@ -398,7 +403,7 @@ impl Game<'_> {
     /// `Level.explode(null, badRespawnPointExplosion(center), calculator,
     /// center, 5, true, ExplosionInteraction.BLOCK)` (beds and anchors):
     /// `water_at` is the block that resists like water.
-    pub(super) fn block_explosion(
+    pub(in crate::game) fn block_explosion(
         &mut self,
         center: [f64; 3],
         water_at: Option<[i32; 3]>,
@@ -430,10 +435,10 @@ impl Game<'_> {
     }
     /// `BlockState.getCollisionShape(level, pos)`: the shape under the empty
     /// collision context.
-    pub(super) fn block_collision_shape(&self, p: [i32; 3]) -> VoxelShape {
+    pub(in crate::game) fn block_collision_shape(&self, p: [i32; 3]) -> VoxelShape {
         self.block_collision_shape_in(&self.world, p)
     }
-    pub(super) fn block_collision_shape_in(
+    pub(in crate::game) fn block_collision_shape_in(
         &self,
         world: &sunrise_client::world::World,
         p: [i32; 3],
@@ -456,7 +461,7 @@ impl Game<'_> {
     }
     /// `DismountHelper.canDismountTo(level, entity, box)`: no block collides
     /// with the box and it is inside the world border.
-    pub(super) fn can_dismount_to(&self, bounds: Aabb) -> bool {
+    pub(in crate::game) fn can_dismount_to(&self, bounds: Aabb) -> bool {
         let mut scene = SceneCollisions {
             world: &self.world,
             binding: self.collision,
@@ -470,7 +475,7 @@ impl Game<'_> {
         let (lz, hz) = (bounds.min(Axis::Z), bounds.max(Axis::Z) - 1.0e-5);
         self.border.contains(lo, lz) && self.border.contains(hi, hz)
     }
-    pub(super) fn named_block_in_tag(&self, tag: &str, block: &str) -> bool {
+    pub(in crate::game) fn named_block_in_tag(&self, tag: &str, block: &str) -> bool {
         self.res
             .items()
             .block_tags
@@ -500,7 +505,7 @@ impl Game<'_> {
     }
     /// `RespawnAnchorBlock.findStandUpPosition`: a safe spot around the
     /// anchor, else any spot.
-    pub(super) fn anchor_stand_up(&self, pos: [i32; 3]) -> Option<Vec3> {
+    pub(in crate::game) fn anchor_stand_up(&self, pos: [i32; 3]) -> Option<Vec3> {
         for check in [true, false] {
             for d in respawn_offsets() {
                 let p = [pos[0] + d[0], pos[1] + d[1], pos[2] + d[2]];
@@ -513,18 +518,23 @@ impl Game<'_> {
     }
     /// `AbstractBedBlock.findStandUpPosition` for a player beside the bed
     /// whose head is at `pos`, facing `forward`, set from `yaw`.
-    pub(super) fn bed_stand_up(&self, pos: [i32; 3], forward: [i32; 3], yaw: f32) -> Option<Vec3> {
+    pub(in crate::game) fn bed_stand_up(
+        &self,
+        pos: [i32; 3],
+        forward: [i32; 3],
+        yaw: f32,
+    ) -> Option<Vec3> {
         self.stand_up_level()
             .bed_stand_up(StandUpType::PLAYER, pos, forward, yaw)
     }
-    pub(super) fn is_bed(&self, state: BlockStateId) -> bool {
+    pub(in crate::game) fn is_bed(&self, state: BlockStateId) -> bool {
         self.res.facts().get(state).name.ends_with("_bed")
     }
     /// `LivingEntity.stopSleeping`: when the block at `head` is still a bed,
     /// stand at `AbstractBedBlock.findStandUpPosition` (else 0.1 above the
     /// block over the head), turned toward the bed's bottom centre with a
     /// level pitch.
-    pub(super) fn bed_wake_pose(&self, head: [i32; 3], yaw: f32) -> Option<(Vec3, f32)> {
+    pub(in crate::game) fn bed_wake_pose(&self, head: [i32; 3], yaw: f32) -> Option<(Vec3, f32)> {
         let state = self.world.block(head[0], head[1], head[2]);
         if !self.is_bed(state) {
             return None;
@@ -536,7 +546,7 @@ impl Game<'_> {
         Some((stand, look_at_yaw(stand, head)))
     }
     /// The bed's `facing`, as a step.
-    pub(super) fn bed_forward(&self, state: BlockStateId) -> [i32; 3] {
+    pub(in crate::game) fn bed_forward(&self, state: BlockStateId) -> [i32; 3] {
         let facing = self.pack.assets.registry.state(state);
         bed_forward(
             facing
@@ -547,7 +557,7 @@ impl Game<'_> {
     /// `BedRule.canSetSpawn` of the bed's rule attribute (`bed_rule`,
     /// `straw_bed_rule`): only the Overworld's beds set the spawn, straw
     /// beds never.
-    pub(super) fn bed_sets_spawn(&self, state: BlockStateId) -> bool {
+    pub(in crate::game) fn bed_sets_spawn(&self, state: BlockStateId) -> bool {
         let straw = &*self.res.facts().get(state).name == "minecraft:straw_bed";
         let facts = self.dimension_type();
         let rule = if straw {
@@ -559,7 +569,7 @@ impl Game<'_> {
     }
     /// `AbstractBedBlock.getSleptInBedStatType`: the statistic sleeping in this
     /// bed counts as, which a straw bed overrides.
-    pub(super) fn slept_in_bed_stat(&self, state: BlockStateId) -> &'static str {
+    pub(in crate::game) fn slept_in_bed_stat(&self, state: BlockStateId) -> &'static str {
         if &*self.res.facts().get(state).name == "minecraft:straw_bed" {
             "sleep_in_straw_bed"
         } else {
@@ -570,7 +580,7 @@ impl Game<'_> {
     /// dimension: position and angles, using an anchor's charge; a bed's
     /// stand-up spot. A forced point (`spawnpoint`) not handled by the anchor
     /// or bed rule holds if the spawn column is clear.
-    pub(super) fn find_respawn_and_use(
+    pub(in crate::game) fn find_respawn_and_use(
         &mut self,
         c: RespawnConfig,
         consume: bool,

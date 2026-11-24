@@ -5,7 +5,7 @@ use sunrise_core::{geometry::Vec3, position::BlockPos};
 
 impl Game<'_> {
     /// The common block-state callbacks before projectile-specific breaking.
-    pub(super) fn projectile_block_impact(
+    pub(in crate::game) fn projectile_block_impact(
         &mut self,
         projectile: &ProjectileHitter,
         pos: [i32; 3],
@@ -25,7 +25,7 @@ impl Game<'_> {
     /// `TargetBlock.onProjectileHit`: a target block takes its power from
     /// where the projectile landed and resets after 20 ticks for an arrow, 8
     /// for any other projectile. A player's shot counts as a target hit.
-    pub(super) fn target_block_hit(
+    pub(in crate::game) fn target_block_hit(
         &mut self,
         p: &ProjectileHitter,
         pos: [i32; 3],

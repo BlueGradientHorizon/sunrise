@@ -12,7 +12,7 @@ use sunrise_protocol::entity_data::{PaintingHolder, PaintingVariant, Value, seri
 use {sunrise_core::nbt::Tag, sunrise_world::registry::BlockStateId};
 
 /// Allocate once: a native summon may need its id before the tracking tick.
-pub(super) fn assign_entity_id(next: &mut u32, id: &mut u32) -> u32 {
+pub(in crate::game) fn assign_entity_id(next: &mut u32, id: &mut u32) -> u32 {
     if *id == 0 {
         *next += 1;
         *id = *next;
@@ -22,14 +22,14 @@ pub(super) fn assign_entity_id(next: &mut u32, id: &mut u32) -> u32 {
 
 impl Game<'_> {
     /// `Entity.nextEntityId`: the id a new entity takes from the one counter.
-    pub(super) fn take_entity_id(&mut self) -> u32 {
+    pub(in crate::game) fn take_entity_id(&mut self) -> u32 {
         self.server.next_entity += 1;
         self.server.next_entity
     }
     /// Whether the id counter is within [`ENTITY_ID_HEADROOM`] of the end: then a mod's spawn is
     /// refused and the tick spawns nothing of its own, named once in the log. Ids already handed
     /// out are never taken back, so a stale handle never names a later entity.
-    pub(super) fn entity_ids_exhausted(&mut self) -> bool {
+    pub(in crate::game) fn entity_ids_exhausted(&mut self) -> bool {
         let exhausted = self.server.next_entity >= u32::MAX - ENTITY_ID_HEADROOM;
         if exhausted && !self.native_lifecycle.ids_exhausted_told {
             self.native_lifecycle.ids_exhausted_told = true;
@@ -45,7 +45,7 @@ impl Game<'_> {
 
 /// The ids kept back below `u32::MAX`: far more than one tick hands out (a whole ender dragon
 /// takes nine in a row) and the provisional ids a natural spawn pass counts down from the end.
-pub(super) const ENTITY_ID_HEADROOM: u32 = 1 << 24;
+pub(in crate::game) const ENTITY_ID_HEADROOM: u32 = 1 << 24;
 
 fn add_state<'a>(
     out: &'a mut States,
@@ -143,7 +143,7 @@ impl Game<'_> {
     /// tracking pass kept back (`TrackingBatch::held`) is sent up to each
     /// start's bundle or stop's removal before the mods hear it, so what a
     /// listener sends the player follows that packet; the rest after the last.
-    pub(super) fn run_native_tracking(&mut self) {
+    pub(in crate::game) fn run_native_tracking(&mut self) {
         let batches = match self.lan.as_mut() {
             Some(host) => std::mem::take(&mut host.hub.native_tracking),
             None => return,
@@ -208,7 +208,7 @@ impl Game<'_> {
     }
 
     /// One start or stop of tracking, told to the mods.
-    pub(super) fn tell_tracking(
+    pub(in crate::game) fn tell_tracking(
         &mut self,
         player: u128,
         name: &str,
@@ -224,7 +224,7 @@ impl Game<'_> {
 
     /// Who rides what (`Entity.getPassengers`): the players in their vehicles and
     /// mobs on mobs.
-    pub(super) fn lan_riding(&mut self, guests: &[(u32, i32)], riding: &mut Riding) {
+    pub(in crate::game) fn lan_riding(&mut self, guests: &[(u32, i32)], riding: &mut Riding) {
         riding.clear();
         // Players arrive in boarding order; the first rider drives.
         for &(vehicle, guest) in guests {
@@ -289,7 +289,7 @@ impl Game<'_> {
 
     /// Boats, minecarts, armor stands, item frames, paintings and the
     /// entities kept unsimulated, as guests track them.
-    pub(super) fn lan_object_states(
+    pub(in crate::game) fn lan_object_states(
         &mut self,
         out: &mut States,
         drain_minecart_steps: bool,
@@ -798,7 +798,7 @@ impl Game<'_> {
     /// own UUID (`Entity.getUUID`), the one `/data`, saves and UUID
     /// selectors use, so a client can name it back (the crosshair UUID that
     /// `ClientSuggestionProvider.getSelectedEntities` suggests).
-    pub(super) fn lan_entity_uuids(&mut self, states: &mut States) {
+    pub(in crate::game) fn lan_entity_uuids(&mut self, states: &mut States) {
         // A bare state is never paired: its UUID is never read.
         for e in states.as_mut_slice().iter_mut().filter(|e| !e.bare) {
             e.uuid = ints_uuid(self.uuid_for(e.id as u32));
@@ -814,7 +814,7 @@ impl Game<'_> {
     /// ServerEntity.sendChanges clears needsSync once it has looked, and
     /// SteppedInterpolationTracker.updateTracking clears syncPosition: once the states for the
     /// tracking pass are taken.
-    pub(super) fn lan_syncs_looked(&mut self) {
+    pub(in crate::game) fn lan_syncs_looked(&mut self) {
         self.persist.sync_body_position.clear();
         for m in &mut self.mobs {
             m.needs_sync = false;
@@ -833,7 +833,7 @@ impl Game<'_> {
 
     /// Gives the entities Sunrise keeps without an id one (`Entity.id`, from
     /// the same counter as the rest) before they are first tracked.
-    pub(super) fn lan_assign_ids(&mut self) {
+    pub(in crate::game) fn lan_assign_ids(&mut self) {
         // LeashFenceKnotEntity: the tie made the knot of a fence post
         // (game/leads.rs `tie_knot`); the tracker shows that same entity.
         // `notifyLeasheeRemoved` discards it once the last lead is gone.

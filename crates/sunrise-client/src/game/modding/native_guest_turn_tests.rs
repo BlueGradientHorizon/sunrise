@@ -647,7 +647,7 @@ fn velocity_writes_send_only_the_owning_player_the_replacement_motion() {
     use sunrise_protocol::{buf::Reader, packets::play::Clientbound};
 
     if super::native_entity_refs::tests::run_fresh_cases(
-        "game::native_guest_turn_tests::velocity_writes_send_only_the_owning_player_the_replacement_motion",
+        "game::server_side::native_guest_turn_tests::velocity_writes_send_only_the_owning_player_the_replacement_motion",
         "SUNRISE_PLAYER_VELOCITY_CHILD",
         &["players"],
     ) {
@@ -1443,7 +1443,7 @@ fn tick_advancement_notice_precedes_recipe_reward() {
     use std::sync::Mutex;
 
     if run_fresh_cases(
-        "game::native_guest_turn_tests::tick_advancement_notice_precedes_recipe_reward",
+        "game::server_side::native_guest_turn_tests::tick_advancement_notice_precedes_recipe_reward",
         "SUNRISE_ADVANCEMENT_ORDER_CHILD",
         &["first", "reload"],
     ) {
@@ -1895,9 +1895,12 @@ fn told_since(game: &super::Game<'_>, before: usize) -> bool {
 }
 
 fn with_command_guests(name: &str, body: impl FnOnce(&mut super::Game<'_>)) {
-    crate::game::in_own_process(&format!("game::native_guest_turn_tests::{name}"), || {
-        with_guests(body);
-    });
+    crate::game::in_own_process(
+        &format!("game::server_side::native_guest_turn_tests::{name}"),
+        || {
+            with_guests(body);
+        },
+    );
 }
 
 /// `withPermission(level)`: the line is checked at the level the mod gives, whatever the

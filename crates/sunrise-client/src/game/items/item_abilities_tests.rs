@@ -93,7 +93,7 @@ const SHEARING: &[&str] = &[ability::SHEARS_HARVEST, ability::SHEARS_CARVE];
 #[ignore = "daily"]
 fn parts_grant_and_deny_the_abilities_vanilla_asks_of_an_item() {
     crate::game::in_own_process(
-        "game::item_abilities_tests::parts_grant_and_deny_the_abilities_vanilla_asks_of_an_item",
+        "game::server_side::item_abilities_tests::parts_grant_and_deny_the_abilities_vanilla_asks_of_an_item",
         parts_grant_and_deny_the_abilities_vanilla_asks_of_an_item_isolated,
     );
 }

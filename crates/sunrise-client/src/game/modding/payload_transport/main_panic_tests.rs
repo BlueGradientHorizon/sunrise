@@ -53,7 +53,7 @@ fn a_panicking_main_payload_refunds_its_journal_and_preserves_unrelated_delivery
     use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game};
 
     super::tests::require_resources();
-    const NAME: &str = "game::payload_transport::main_panic_tests::a_panicking_main_payload_refunds_its_journal_and_preserves_unrelated_delivery";
+    const NAME: &str = "game::client_side::payload_transport::main_panic_tests::a_panicking_main_payload_refunds_its_journal_and_preserves_unrelated_delivery";
     if run_fresh_cases(NAME, "SUNRISE_MAIN_PAYLOAD_PANIC_CHILD", &["main"]) {
         return;
     }

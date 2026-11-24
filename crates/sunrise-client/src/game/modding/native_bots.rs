@@ -74,7 +74,7 @@ impl Game<'_> {
     /// guest out of reach inside another player's hook, where the hub is taken out), dead, a
     /// spectator or riding, an input that is not a number, and when the movement code fails.
     /// API @API:player_bots@.
-    pub(super) fn player_simulate_move(
+    pub(in crate::game) fn player_simulate_move(
         &mut self,
         player: mod_api::PlayerRef,
         input: PlayerInput,
@@ -211,7 +211,7 @@ impl Game<'_> {
     /// server another level than the one in place, on a client a level it neither shows nor
     /// views, a box that isn't a box (not numbers, or min past max), and one over about a
     /// million blocks. API @API:player_bots@.
-    pub(super) fn level_collision_boxes(
+    pub(in crate::game) fn level_collision_boxes(
         &self,
         level: mod_api::LevelRef,
         aabb: [f64; 6],
@@ -227,7 +227,7 @@ impl Game<'_> {
     /// Whether any block collision shape is in `aabb`, the block half of
     /// `CollisionGetter.noCollision` negated: `level_collision_boxes`'s walk, stopped at the
     /// first shape. None as for that.
-    pub(super) fn level_has_collisions(
+    pub(in crate::game) fn level_has_collisions(
         &self,
         level: mod_api::LevelRef,
         aabb: [f64; 6],
@@ -478,7 +478,7 @@ mod tests {
             static HITS: Cell<u32> = const { Cell::new(0) };
         }
         crate::game::in_own_process(
-            "game::native_bots::tests::guest_movement_preview_uses_the_guests_damage_immunity",
+            "game::server_side::native_bots::tests::guest_movement_preview_uses_the_guests_damage_immunity",
             || {
                 with_game(|game| {
                     open_to_lan(game);

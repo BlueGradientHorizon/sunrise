@@ -7,7 +7,11 @@ use winit::event::KeyEvent;
 impl Game<'_> {
     /// Runs `f` with `user_input` saying whether it handles input, then restores it, so a
     /// frame drawn while a key is handled reads false.
-    pub(super) fn with_user_input<R>(&mut self, input: bool, f: impl FnOnce(&mut Self) -> R) -> R {
+    pub(in crate::game) fn with_user_input<R>(
+        &mut self,
+        input: bool,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
         let was = self.client.user_input.replace(input);
         let result = f(self);
         self.client.user_input.set(was);
@@ -18,13 +22,13 @@ impl Game<'_> {
     /// pasting into its own field. None at any other moment (a tick, a frame, a packet),
     /// so no mod reads the clipboard without the player doing something, and None on a
     /// server.
-    pub(super) fn clipboard_text(&self) -> Option<String> {
+    pub(in crate::game) fn clipboard_text(&self) -> Option<String> {
         (self.native_window() && self.client.user_input.get()).then(|| self.clipboard.text())
     }
     /// Puts `text` on the clipboard (`KeyboardHandler.setClipboard`) on the same terms as
     /// `clipboard_text` reads it. False, with nothing copied, at any other moment or
     /// on a server; empty text copies nothing, as vanilla's.
-    pub(super) fn set_clipboard_text(&self, text: &str) -> bool {
+    pub(in crate::game) fn set_clipboard_text(&self, text: &str) -> bool {
         if !self.native_window() || !self.client.user_input.get() {
             return false;
         }
@@ -34,7 +38,7 @@ impl Game<'_> {
     /// `InputWithModifiers.isSelectAll`/`isCopy`/`isPaste`/`isCut` of a key
     /// press (or repeat): the keyboard's modifier state, or a modifier key an
     /// agent holds.
-    pub(super) fn edit_shortcut(&self, event: &KeyEvent) -> Option<EditShortcut> {
+    pub(in crate::game) fn edit_shortcut(&self, event: &KeyEvent) -> Option<EditShortcut> {
         if event.state != ElementState::Pressed {
             return None;
         }
@@ -44,7 +48,10 @@ impl Game<'_> {
         ))
     }
 
-    pub(super) fn edit_shortcut_for_letter(&self, letter: Option<char>) -> Option<EditShortcut> {
+    pub(in crate::game) fn edit_shortcut_for_letter(
+        &self,
+        letter: Option<char>,
+    ) -> Option<EditShortcut> {
         let m = self.client.modifiers;
         let held = |keys: [KeyCode; 2]| keys.iter().any(|k| self.client.physical_keys.contains(k));
         clipboard::edit_shortcut(
@@ -59,7 +66,7 @@ impl Game<'_> {
     /// elsewhere), held on the keyboard or by an agent. It reads the physical
     /// keys, never `keys`: a latched sprint or sneak toggle puts Control or
     /// Shift in `keys` without the key being down.
-    pub(super) fn has_control_down_with_quirk(&self) -> bool {
+    pub(in crate::game) fn has_control_down_with_quirk(&self) -> bool {
         let held = |keys: [KeyCode; 2]| keys.iter().any(|k| self.client.physical_keys.contains(k));
         if cfg!(target_os = "macos") {
             self.client.modifiers.super_key() || held([KeyCode::SuperLeft, KeyCode::SuperRight])
@@ -71,7 +78,7 @@ impl Game<'_> {
     /// Whether the held keys let a key's text through to the focused field
     /// (`clipboard::types_text`): not with the edit modifier, unless it is
     /// part of AltGr.
-    pub(super) fn types_text(&self) -> bool {
+    pub(in crate::game) fn types_text(&self) -> bool {
         let held = |keys: [KeyCode; 2]| keys.iter().any(|k| self.client.physical_keys.contains(k));
         let edit = if cfg!(target_os = "macos") {
             held([KeyCode::SuperLeft, KeyCode::SuperRight])
@@ -88,7 +95,7 @@ impl Game<'_> {
     /// a search box, the anvil's name, the title screens' and the options'
     /// fields, the LAN port, a dialog's input, the command box and the edit
     /// screens of the jigsaw, structure and test blocks.
-    pub(super) fn text_input_focused(&self) -> bool {
+    pub(in crate::game) fn text_input_focused(&self) -> bool {
         self.mounted_widget_captures_input()
             || (self.client.screen == Screen::Chat && self.title.is_none())
             || self.client.sign_edit.is_some()
@@ -108,7 +115,7 @@ impl Game<'_> {
     }
     /// A shortcut in an append-only field limited to `max_chars` characters
     /// (an `EditBox` with `setMaxLength`). True when the value changed.
-    pub(super) fn append_shortcut(
+    pub(in crate::game) fn append_shortcut(
         selection: &mut clipboard::AppendSelection,
         board: &mut clipboard::SystemClipboard,
         id: clipboard::FieldId,
@@ -121,7 +128,7 @@ impl Game<'_> {
         })
     }
     /// Shortcuts on the title, world creation and server screens.
-    pub(super) fn title_shortcut(&mut self, shortcut: EditShortcut) {
+    pub(in crate::game) fn title_shortcut(&mut self, shortcut: EditShortcut) {
         let Some(title) = self.title.as_mut() else {
             return;
         };
@@ -144,7 +151,7 @@ impl Game<'_> {
     }
     /// Typing or a backspace in a title-screen field. A field that still only
     /// appends replaces a Select All selection before the edit.
-    pub(super) fn title_edit(&mut self, typed: Option<&str>, backspace: bool) {
+    pub(in crate::game) fn title_edit(&mut self, typed: Option<&str>, backspace: bool) {
         let Some(title) = self.title.as_mut() else {
             return;
         };
@@ -164,7 +171,7 @@ impl Game<'_> {
         }
     }
     /// Shortcuts in the creative inventory's search box (an `EditBox` of 50).
-    pub(super) fn creative_search_shortcut(&mut self, shortcut: EditShortcut) {
+    pub(in crate::game) fn creative_search_shortcut(&mut self, shortcut: EditShortcut) {
         if self
             .creative_screen
             .search
@@ -176,14 +183,14 @@ impl Game<'_> {
     /// A backspace in the creative search box: with Ctrl, the whole word
     /// before the caret (`EditBox.deleteWords(-1)`), otherwise one character.
     /// A selection is what it deletes, as in `EditBox.keyPressed`.
-    pub(super) fn creative_search_backspace(&mut self, ctrl: bool) {
+    pub(in crate::game) fn creative_search_backspace(&mut self, ctrl: bool) {
         self.creative_screen
             .search
             .key(KeyCode::Backspace, ctrl, false);
         self.creative_screen.scroll = 0.0;
     }
     /// Typing in the creative search box.
-    pub(super) fn creative_search_edit(&mut self, typed: Option<&str>) {
+    pub(in crate::game) fn creative_search_edit(&mut self, typed: Option<&str>) {
         if let Some(text) = typed {
             self.creative_screen.search.insert_text(text);
             self.creative_screen.scroll = 0.0;
@@ -192,7 +199,7 @@ impl Game<'_> {
 }
 
 /// `CreativeModeInventoryScreen`'s search box: `setMaxLength(50)`.
-pub(super) const CREATIVE_SEARCH_CHARS: usize = 50;
+pub(in crate::game) const CREATIVE_SEARCH_CHARS: usize = 50;
 
 #[cfg(test)]
 mod tests {

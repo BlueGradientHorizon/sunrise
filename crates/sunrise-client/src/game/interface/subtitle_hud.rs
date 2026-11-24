@@ -11,14 +11,14 @@ use sunrise_client::{
 };
 
 #[derive(Default)]
-pub(super) struct SubtitleState {
+pub(in crate::game) struct SubtitleState {
     overlay: RefCell<SubtitleOverlay>,
-    pub(super) deferred: Cell<bool>,
+    pub(in crate::game) deferred: Cell<bool>,
 }
 impl Game<'_> {
     /// Feed the sounds the engine reported since the last tick
     /// (`SoundEventListener.onPlaySound`) while the overlay listens.
-    pub(super) fn tick_subtitles(&mut self) {
+    pub(in crate::game) fn tick_subtitles(&mut self) {
         let mut overlay = self.client.subtitles.overlay.borrow_mut();
         let listening = overlay.listening();
         self.audio.record_heard = listening;
@@ -33,13 +33,13 @@ impl Game<'_> {
         }
     }
     /// Consume a paint scheduled by the original subtitle layer, without dispatching it again.
-    pub(super) fn draw_deferred_subtitles(&self, batch: &mut HudBatch) {
+    pub(in crate::game) fn draw_deferred_subtitles(&self, batch: &mut HudBatch) {
         if self.client.subtitles.deferred.take() {
             self.draw_subtitles(batch);
         }
     }
 
-    pub(super) fn draw_subtitles(&self, batch: &mut HudBatch) {
+    pub(in crate::game) fn draw_subtitles(&self, batch: &mut HudBatch) {
         let v = &self.client.view;
         let frame = SubtitleFrame {
             show: self.settings.show_subtitles,

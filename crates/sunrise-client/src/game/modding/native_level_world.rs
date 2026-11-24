@@ -38,7 +38,7 @@ fn weather_flags((rain, thunder): (f32, f32)) -> (bool, bool) {
 }
 
 /// `Level.isRainingAt` over `world`, the column of the level in dimension `dim`.
-pub(super) fn rain_at(
+pub(in crate::game) fn rain_at(
     world: &World,
     facts: &sunrise_client::blocks::BlockFacts,
     biomes: &sunrise_client::biome::Biomes,
@@ -113,7 +113,7 @@ impl LevelAccess for RainView<'_> {
 
 impl Game<'_> {
     /// `Level.getSkyDarken`: the same dimension, time and weather calculation used by gameplay.
-    pub(super) fn sky_darken_in(&self, world: &World, dimension: Dim) -> i32 {
+    pub(in crate::game) fn sky_darken_in(&self, world: &World, dimension: Dim) -> i32 {
         // A client of a server has the environment its server's type made for the level it is
         // in; a parked level keeps the client's own for its dimension.
         let environment = match self
@@ -143,7 +143,7 @@ impl Game<'_> {
     }
 
     /// `Level.getSkyDarken` for an active or parked level, without switching dimensions.
-    pub(super) fn level_get_sky_darken(&self, level: LevelRef) -> Option<i32> {
+    pub(in crate::game) fn level_get_sky_darken(&self, level: LevelRef) -> Option<i32> {
         let world = self.native_level_read_world(level)?;
         if level.dimension() == self.native_level_key() {
             return Some(self.sky_darken());
@@ -160,7 +160,10 @@ impl Game<'_> {
             })
     }
     /// Dimension shape of a loaded server level, including parked levels.
-    pub(super) fn level_dimension_shape(&self, level: LevelRef) -> Option<LevelDimensionShape> {
+    pub(in crate::game) fn level_dimension_shape(
+        &self,
+        level: LevelRef,
+    ) -> Option<LevelDimensionShape> {
         let shape = self.native_level_world(level)?.shape;
         Some(LevelDimensionShape::new(
             shape.min_y,
@@ -172,7 +175,10 @@ impl Game<'_> {
     }
 
     /// The level's dimension type with its gameplay attributes, from the facts the game uses.
-    pub(super) fn level_dimension_type(&self, level: LevelRef) -> Option<LevelDimensionType> {
+    pub(in crate::game) fn level_dimension_type(
+        &self,
+        level: LevelRef,
+    ) -> Option<LevelDimensionType> {
         use sunrise_world::dimension_type::{CardinalLight, Skybox};
         use sunrise_world::worldgen::value_provider::IntProvider;
         self.native_level_read_world(level)?;
@@ -227,25 +233,25 @@ impl Game<'_> {
     }
 
     /// The sea level the game uses for the level (`Dim::sea_level`). None as the host call says.
-    pub(super) fn level_sea_level(&self, level: LevelRef) -> Option<i32> {
+    pub(in crate::game) fn level_sea_level(&self, level: LevelRef) -> Option<i32> {
         self.native_level_world(level)?;
         Some(Dim::sea_level_of_id(level.dimension_id()))
     }
 
     /// The world's seed (`WorldOptions.seed`), as `/seed` shows it.
-    pub(super) fn level_seed(&self, level: LevelRef) -> Option<i64> {
+    pub(in crate::game) fn level_seed(&self, level: LevelRef) -> Option<i64> {
         self.native_level_world(level)?;
         Some(self.level.seed)
     }
     /// The difficulty (`Level.getDifficulty`): `peaceful`, `easy`, `normal`
     /// or `hard`, as `/difficulty` names it.
-    pub(super) fn level_difficulty(&self, level: LevelRef) -> Option<&'static str> {
+    pub(in crate::game) fn level_difficulty(&self, level: LevelRef) -> Option<&'static str> {
         self.native_level_world(level)?;
         DIFFICULTIES.get(usize::from(self.ui.difficulty)).copied()
     }
     /// `ServerLevel.getCurrentDifficultyAt(pos)` in the level the handle names, in place or
     /// parked.
-    pub(super) fn level_local_difficulty(
+    pub(in crate::game) fn level_local_difficulty(
         &self,
         level: LevelRef,
         pos: [i32; 3],
@@ -255,7 +261,7 @@ impl Game<'_> {
         Some(super::creatures::local_difficulty_in(world, at).into())
     }
     /// Read a registered boolean game rule.
-    pub(super) fn level_game_rule_bool(
+    pub(in crate::game) fn level_game_rule_bool(
         &self,
         level: LevelRef,
         key: BoolGameRuleKey,
@@ -266,7 +272,7 @@ impl Game<'_> {
             .bool_slot(mod_api::__private::game_rule_bool_slot(key)?)
     }
     /// Read a registered integer game rule.
-    pub(super) fn level_game_rule_int(
+    pub(in crate::game) fn level_game_rule_int(
         &self,
         level: LevelRef,
         key: mod_api::IntGameRuleKey,
@@ -278,7 +284,7 @@ impl Game<'_> {
     }
     /// Game rule `rule` (`minecraft:keep_inventory` or `keep_inventory`), as
     /// `/gamerule` queries it: None for an unknown rule.
-    pub(super) fn level_game_rule(
+    pub(in crate::game) fn level_game_rule(
         &self,
         level: LevelRef,
         rule: &str,
@@ -289,7 +295,7 @@ impl Game<'_> {
     /// `/gamerule <rule> <value>` from a mod: the world's rule changes, `game_rule_changed`
     /// fires with no actor and the clients get the rules. The rule already at `value` is true
     /// with nothing fired; an unknown rule, a value of the other kind or out of range is false.
-    pub(super) fn level_set_game_rule(
+    pub(in crate::game) fn level_set_game_rule(
         &mut self,
         level: LevelRef,
         rule: &str,
@@ -313,7 +319,7 @@ impl Game<'_> {
     }
     /// `/time set <time>` in the level a handle names, on its default clock: `time_skip`
     /// (cause `mod`) may keep the old time; the clock's partial tick restarts.
-    pub(super) fn level_set_clock_time(&mut self, level: LevelRef, time: i64) -> bool {
+    pub(in crate::game) fn level_set_clock_time(&mut self, level: LevelRef, time: i64) -> bool {
         if time < 0 || self.native_level_world(level).is_none() {
             return false;
         }
@@ -336,7 +342,7 @@ impl Game<'_> {
         true
     }
     /// `DimensionType.defaultClock` of a level the server has open, as a handle.
-    pub(super) fn level_clock(&self, level: LevelRef) -> Option<mod_api::WorldClockRef> {
+    pub(in crate::game) fn level_clock(&self, level: LevelRef) -> Option<mod_api::WorldClockRef> {
         self.world_clock_name(mod_api::WorldClockRef::new(level))
             .map(|_| mod_api::WorldClockRef::new(level))
     }
@@ -348,7 +354,7 @@ impl Game<'_> {
         self.dimension_type_of(dim).default_clock.clone()
     }
     /// `ServerClockManager.setTotalTicks`: the total, its fraction of a tick restarted.
-    pub(super) fn world_clock_set_total_ticks(
+    pub(in crate::game) fn world_clock_set_total_ticks(
         &mut self,
         clock: mod_api::WorldClockRef,
         ticks: i64,
@@ -362,7 +368,7 @@ impl Game<'_> {
         true
     }
     /// `ServerClockManager.setRate`.
-    pub(super) fn world_clock_set_rate(
+    pub(in crate::game) fn world_clock_set_rate(
         &mut self,
         clock: mod_api::WorldClockRef,
         rate: f32,
@@ -378,7 +384,7 @@ impl Game<'_> {
         true
     }
     /// `ServerClockManager.setPaused`.
-    pub(super) fn world_clock_set_paused(
+    pub(in crate::game) fn world_clock_set_paused(
         &mut self,
         clock: mod_api::WorldClockRef,
         paused: bool,
@@ -393,7 +399,7 @@ impl Game<'_> {
     /// Every game rule the world has (`GameRules`) with its current value, by `minecraft:` id
     /// (`max_minecart_speed` only with minecart improvements): None for a stale handle and on
     /// a client.
-    pub(super) fn level_game_rules(
+    pub(in crate::game) fn level_game_rules(
         &self,
         level: LevelRef,
     ) -> Result<Vec<(String, GameRuleValue)>, LevelReadError> {
@@ -408,7 +414,7 @@ impl Game<'_> {
     /// `getThunderLevel` at partial tick 1.0): both 0 in a level with no weather.
     /// Reads any open server level or the client's current synchronized level;
     /// None for a stale handle, an unavailable level or a client not logged in.
-    pub(super) fn level_weather(&self, level: LevelRef) -> Option<(f32, f32)> {
+    pub(in crate::game) fn level_weather(&self, level: LevelRef) -> Option<(f32, f32)> {
         let world = self.native_level_read_world(level)?;
         Some(weather_for_world(
             world,
@@ -416,7 +422,7 @@ impl Game<'_> {
         ))
     }
     /// Whether it rains (`Level.isRaining`: a rain level above 0.2).
-    pub(super) fn level_is_raining(&self, level: LevelRef) -> Option<bool> {
+    pub(in crate::game) fn level_is_raining(&self, level: LevelRef) -> Option<bool> {
         let world = self.native_level_world(level)?;
         Some(
             weather_flags(weather_for_world(
@@ -430,7 +436,11 @@ impl Game<'_> {
     /// it rains there and `pos` is under open sky in a biome that rains. None for a stale
     /// handle, on a client, and where `pos` is not loaded or outside the world's height; a
     /// read never loads a chunk.
-    pub(super) fn level_is_raining_at(&self, level: LevelRef, pos: [i32; 3]) -> Option<bool> {
+    pub(in crate::game) fn level_is_raining_at(
+        &self,
+        level: LevelRef,
+        pos: [i32; 3],
+    ) -> Option<bool> {
         let world = self.native_level_world(level)?;
         if !world.is_loaded_at(pos[0], pos[1], pos[2]) {
             return None;
@@ -447,12 +457,12 @@ impl Game<'_> {
     }
     /// `LevelReader.enabledFeatures` of the level a handle names. Every level of a world shares
     /// the world's flags. None for a stale handle and on a client.
-    pub(super) fn level_enabled_features(&self, level: LevelRef) -> Option<FeatureFlags> {
+    pub(in crate::game) fn level_enabled_features(&self, level: LevelRef) -> Option<FeatureFlags> {
         self.native_level_world(level)?;
         Some(FeatureFlags::new(self.enabled_feature_ids().clone()))
     }
     /// Whether it thunders (`Level.isThundering`: a thunder level above 0.9).
-    pub(super) fn level_is_thundering(&self, level: LevelRef) -> Option<bool> {
+    pub(in crate::game) fn level_is_thundering(&self, level: LevelRef) -> Option<bool> {
         let world = self.native_level_world(level)?;
         Some(
             weather_flags(weather_for_world(

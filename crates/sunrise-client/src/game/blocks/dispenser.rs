@@ -23,7 +23,7 @@ use sunrise_core::{
     position::BlockPos,
     random::RandomSource,
 };
-pub(super) use sunrise_gameplay::dispense_rules::{
+pub(in crate::game) use sunrise_gameplay::dispense_rules::{
     CLICK, Dispensed, FAIL, Pos, Slot, body_equipment_species, equip_sound, mob_set_slot,
     mob_slot_item, offset, tipped_effect,
 };
@@ -80,7 +80,7 @@ enum Target {
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct DispenseSource {
+pub(in crate::game) struct DispenseSource {
     dim: Dim,
     pos: Pos,
     holder: Option<BlockEntityIdentity>,
@@ -108,7 +108,7 @@ impl Game<'_> {
             .cloned()
     }
     /// The same block with other properties (`withProperty`).
-    pub(super) fn with_props(
+    pub(in crate::game) fn with_props(
         &self,
         state: BlockStateId,
         props: &[(&str, &str)],
@@ -145,7 +145,7 @@ impl Game<'_> {
             f64::from(p.2) + 0.5,
         ]
     }
-    pub(super) fn pos_of(p: Pos) -> BlockPos {
+    pub(in crate::game) fn pos_of(p: Pos) -> BlockPos {
         BlockPos::new(p.0, p.1, p.2)
     }
 
@@ -153,7 +153,7 @@ impl Game<'_> {
 
     /// The dispenser level events: 1000 click, 1001 fail, 1002 launch, 1004
     /// firework shoot, 1018 blaze shoot and 2000 smoke shot out of the front.
-    pub(super) fn dispenser_event(&mut self, id: i32, pos: Pos, data: i32) {
+    pub(in crate::game) fn dispenser_event(&mut self, id: i32, pos: Pos, data: i32) {
         super::dispense_fixture::record(|| format!("L {id} {},{},{} {data}", pos.0, pos.1, pos.2));
         let c = Self::center(pos);
         match id {
@@ -281,7 +281,12 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn spawn_dispensed(&mut self, pos: Pos, facing: Direction, stack: ItemStack) {
+    pub(in crate::game) fn spawn_dispensed(
+        &mut self,
+        pos: Pos,
+        facing: Direction,
+        stack: ItemStack,
+    ) {
         let spawn = self.prepared_dispensed(pos, facing, stack);
         self.commit_dispensed(pos, facing, spawn, false);
     }
@@ -306,7 +311,7 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn commit_dispensed(
+    pub(in crate::game) fn commit_dispensed(
         &mut self,
         pos: Pos,
         facing: Direction,
@@ -325,7 +330,12 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn commit_dispense_feedback(&mut self, pos: Pos, facing: Direction, event: i32) {
+    pub(in crate::game) fn commit_dispense_feedback(
+        &mut self,
+        pos: Pos,
+        facing: Direction,
+        event: i32,
+    ) {
         self.dispenser_event(event, pos, 0);
         self.dispenser_event(2000, pos, data_value(facing));
     }
@@ -349,7 +359,7 @@ impl Game<'_> {
     /// return this remainder in its answer with `CLICK`; the caller plays the
     /// answer's event and smoke once. A client, another dimension or an unloaded
     /// chunk keeps the input stack unchanged.
-    pub(super) fn dispense_default(
+    pub(in crate::game) fn dispense_default(
         &mut self,
         dimension: &str,
         pos: [i32; 3],
@@ -370,7 +380,7 @@ impl Game<'_> {
     }
     /// `dispense_with_remainder`: `consume_with_remainder` for a mod's dispense answer, in the
     /// level in place; `stack` unchanged off it, as `dispense_default` keeps it.
-    pub(super) fn dispense_with_remainder(
+    pub(in crate::game) fn dispense_with_remainder(
         &mut self,
         dimension: &str,
         pos: [i32; 3],
@@ -389,7 +399,7 @@ impl Game<'_> {
     }
     /// `DefaultDispenseItemBehavior.addToInventoryOrDispense` for a mod's dispense helper, in the
     /// level in place: refuses a client, another dimension or an unloaded chunk.
-    pub(super) fn dispense_add_remainder(
+    pub(in crate::game) fn dispense_add_remainder(
         &mut self,
         dimension: &str,
         pos: [i32; 3],
@@ -406,7 +416,7 @@ impl Game<'_> {
         Ok(())
     }
     /// `new DefaultDispenseItemBehavior().dispense(..)` including its events.
-    pub(super) fn dispense_default_in_level(
+    pub(in crate::game) fn dispense_default_in_level(
         &mut self,
         pos: Pos,
         facing: Direction,
@@ -424,7 +434,7 @@ impl Game<'_> {
     /// dispenser (`insertItem`) or drops what does not fit with the dispenser click and smoke.
     /// Journals each slot write and defers dropped items and level events while a storage
     /// transaction is open.
-    pub(super) fn add_to_inventory_or_dispense(
+    pub(in crate::game) fn add_to_inventory_or_dispense(
         &mut self,
         pos: Pos,
         facing: Direction,
@@ -504,7 +514,7 @@ impl Game<'_> {
     }
     /// `DefaultDispenseItemBehavior.consumeWithRemainder`: the remainder goes
     /// into the dispenser (`insertItem`) or is dropped.
-    pub(super) fn consume_with_remainder(
+    pub(in crate::game) fn consume_with_remainder(
         &mut self,
         pos: Pos,
         facing: Direction,
@@ -528,7 +538,7 @@ impl Game<'_> {
 
     /// `DispenserBlock.getDispenseMethod(..).dispense(source, stack)`: the replacement
     /// for the slot, or `Break` when the slot must not be written at all.
-    pub(super) fn dispense_item(
+    pub(in crate::game) fn dispense_item(
         &mut self,
         pos: Pos,
         facing: Direction,
@@ -755,14 +765,20 @@ impl Game<'_> {
     }
     /// `EntityType.getYOffset(level, pos, false, box)`: [`Self::drop_offset_from`] without
     /// `movedUp`.
-    pub(super) fn drop_offset(&self, width: f64, height: f64, p: Pos) -> f64 {
+    pub(in crate::game) fn drop_offset(&self, width: f64, height: f64, p: Pos) -> f64 {
         self.drop_offset_from(width, height, p, false)
     }
     /// `EntityType.getYOffset(level, pos, movedUp, box)`: the entity box set on
     /// top of the block (`setPos(x + 0.5, y + 1, z + 0.5)`) falls one block
     /// against the collision shapes overlapping that block, or, `moved_up`, two
     /// blocks against those of the block and the one under it.
-    pub(super) fn drop_offset_from(&self, width: f64, height: f64, p: Pos, moved_up: bool) -> f64 {
+    pub(in crate::game) fn drop_offset_from(
+        &self,
+        width: f64,
+        height: f64,
+        p: Pos,
+        moved_up: bool,
+    ) -> f64 {
         use sunrise_world::{
             block_collision_scan::BlockCollisionScan, collision_context::CollisionContext,
         };
@@ -808,7 +824,12 @@ impl Game<'_> {
         1.0 + amount
     }
     /// `EntityType.spawn(.., pos, reason, tryMoveDown, false)` for a mob.
-    pub(super) fn spawn_mob_at(&mut self, kind: &str, p: Pos, try_move_down: bool) -> Option<u32> {
+    pub(in crate::game) fn spawn_mob_at(
+        &mut self,
+        kind: &str,
+        p: Pos,
+        try_move_down: bool,
+    ) -> Option<u32> {
         let name = if kind.contains(':') {
             kind.to_owned()
         } else {
@@ -1021,7 +1042,7 @@ impl Game<'_> {
         true
     }
     /// After `EntityType.spawn` / `MobBucketItem.spawn`: `mob.playAmbientSound()`.
-    pub(super) fn mob_ambient(&mut self, id: u32) -> Result<()> {
+    pub(in crate::game) fn mob_ambient(&mut self, id: u32) -> Result<()> {
         if self.dragon_spawn_ambient(id) {
             return Ok(());
         }
@@ -1044,7 +1065,7 @@ impl Game<'_> {
     /// data can make it persistent, not the spawn: `spawn_mob_at` creates a
     /// persistent mob. A tadpole's setter does nothing: its `fromBucket` is
     /// always true.
-    pub(super) fn mob_placed(&mut self, id: u32, stack: &ItemStack) -> Result<()> {
+    pub(in crate::game) fn mob_placed(&mut self, id: u32, stack: &ItemStack) -> Result<()> {
         if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
             m.persistent = false;
             sunrise_client::entity_nbt::apply_item_components(m, stack);
@@ -1155,7 +1176,7 @@ impl Game<'_> {
 
     /// `ProjectileItem.asProjectile` and `Projectile.spawnProjectileUsingShoot`:
     /// one of `stack` fired from `at` along `dir`.
-    pub(super) fn shoot_projectile_item(
+    pub(in crate::game) fn shoot_projectile_item(
         &mut self,
         at: Vec3,
         dir: [f64; 3],
@@ -1510,7 +1531,7 @@ impl Game<'_> {
         Ok((Some(stack), event))
     }
     /// `CampfireBlock.canLight || CandleBlock.canLight || CandleCakeBlock.canLight`.
-    pub(super) fn can_light(&self, state: BlockStateId, name: &str) -> bool {
+    pub(in crate::game) fn can_light(&self, state: BlockStateId, name: &str) -> bool {
         let lit = self.prop(state, "lit");
         let waterlogged = self.prop(state, "waterlogged");
         let dry_unlit = lit.as_deref() == Some("false") && waterlogged.as_deref() == Some("false");
@@ -1873,7 +1894,7 @@ impl Game<'_> {
     /// `LootTable.getRandomItems` of `table` in the context of `parent`: the
     /// draws come from `parent`'s server random sequence when it names one (a
     /// nested `loot_table` entry shares its parent's context), else the level's.
-    pub(super) fn sequence_loot(
+    pub(in crate::game) fn sequence_loot(
         &mut self,
         parent: &str,
         table: &str,
@@ -1889,7 +1910,7 @@ impl Game<'_> {
     }
     /// `Entity.spawnAtLocation(level, stack, offset)`: an item at the entity's
     /// feet plus the offset, moving as `new ItemEntity` makes it.
-    pub(super) fn spawn_at_location(
+    pub(in crate::game) fn spawn_at_location(
         &mut self,
         at: Vec3,
         y_offset: f64,
@@ -1898,7 +1919,12 @@ impl Game<'_> {
         self.spawn_item_own(stack, [at.x, at.y + y_offset, at.z], 10)
     }
     /// `MushroomCow.shear`: `player` is who sheared it, none for a dispenser.
-    pub(super) fn shear_mooshroom(&mut self, index: usize, player: Option<u128>, tool: &ItemStack) {
+    pub(in crate::game) fn shear_mooshroom(
+        &mut self,
+        index: usize,
+        player: Option<u128>,
+        tool: &ItemStack,
+    ) {
         let old = self.mobs[index].clone();
         let at = old.position;
         let height = f64::from(old.height());
@@ -1960,7 +1986,7 @@ impl Game<'_> {
     }
     /// `ShearsDispenseItemBehavior.tryShearEntity`: the first live, ready
     /// `Shearable` in the block is sheared (an entity part's `IShearable` answer comes first).
-    pub(super) fn shear_entity(&mut self, target: Pos) -> Result<bool> {
+    pub(in crate::game) fn shear_entity(&mut self, target: Pos) -> Result<bool> {
         let shears = ItemStack::new("minecraft:shears", 1);
         for t in self.targets_at(target) {
             // Entity.shearOffAllLeashConnections comes first, for any entity.

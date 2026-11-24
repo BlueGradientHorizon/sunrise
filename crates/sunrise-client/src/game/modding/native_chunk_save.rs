@@ -5,7 +5,7 @@ use sunrise_client::streaming::{ProtoSave, ProtoSnapshot};
 
 impl Game<'_> {
     /// Bind the existing world's identity and immutable resources, before workers start.
-    pub(super) fn bind_chunk_disk_worker(
+    pub(in crate::game) fn bind_chunk_disk_worker(
         &self,
         save: &sunrise_client::save::SaveDir,
         dim: super::Dim,
@@ -29,7 +29,7 @@ impl Game<'_> {
     }
 
     /// Observe the exact full-chunk save copies on the server thread.
-    pub(super) fn native_full_chunk_snapshots(&mut self, chunks: &[Arc<Chunk>]) {
+    pub(in crate::game) fn native_full_chunk_snapshots(&mut self, chunks: &[Arc<Chunk>]) {
         if self.remote.is_some() || mod_api::__private::mods().is_empty() {
             return;
         }
@@ -38,7 +38,7 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn native_late_full_chunk_snapshot(&mut self, chunk: &Chunk) {
+    pub(in crate::game) fn native_late_full_chunk_snapshot(&mut self, chunk: &Chunk) {
         if self.remote.is_none() && !mod_api::__private::mods().is_empty() {
             self.native_full_chunk_snapshot(chunk);
         }
@@ -49,7 +49,7 @@ impl Game<'_> {
     }
 
     /// The proto stays checked out until its immutable save record is submitted.
-    pub(super) fn native_proto_snapshots(&mut self, protos: &[ProtoSave]) {
+    pub(in crate::game) fn native_proto_snapshots(&mut self, protos: &[ProtoSave]) {
         if self.remote.is_some() || mod_api::__private::mods().is_empty() {
             return;
         }
@@ -79,7 +79,7 @@ impl Game<'_> {
     /// is open, so tentative state is never captured: unloads, and the plan
     /// that causes them, are deferred until it closes (the design's "defer
     /// unload when the gate refuses"). Never defers without a listener.
-    pub(super) fn defer_chunk_disk_save(&mut self) -> bool {
+    pub(in crate::game) fn defer_chunk_disk_save(&mut self) -> bool {
         if self.options.execution_role.is_client()
             || !mod_api::__private::listened(mod_api::HookId::ChunkDataSave)
         {
@@ -90,7 +90,7 @@ impl Game<'_> {
 
     /// `ChunkMap.saveChunksEagerly`: snapshot only while the tick and writer
     /// have room. NBT encoding, compression and durable writes stay on workers.
-    pub(super) fn save_chunks_eagerly(&mut self) {
+    pub(in crate::game) fn save_chunks_eagerly(&mut self) {
         self.save_chunks_eagerly_at(Instant::now());
     }
 

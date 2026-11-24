@@ -49,7 +49,7 @@ impl Game<'_> {
         self.announce_item_entity(id, position, false)
     }
 
-    pub(super) fn join_removal_item(&mut self, id: u32, position: [f64; 3]) {
+    pub(in crate::game) fn join_removal_item(&mut self, id: u32, position: [f64; 3]) {
         self.announce_item_entity(id, position, true);
     }
 

@@ -180,7 +180,7 @@ fn wire() -> Vec<i64> {
 #[ignore = "daily"]
 fn spawn_packet_stores_the_border_adjusted_compass_target() {
     if run_fresh_cases(
-        "game::item_draw::spawn_border_tests::spawn_packet_stores_the_border_adjusted_compass_target",
+        "game::client_side::item_draw::spawn_border_tests::spawn_packet_stores_the_border_adjusted_compass_target",
         "SUNRISE_SPAWN_BORDER_CASE",
         &["spawn-border"],
     ) {
@@ -344,7 +344,7 @@ fn spawn_packet_stores_the_border_adjusted_compass_target() {
 #[ignore = "daily"]
 fn a_predicted_block_moves_the_compass_height_until_acknowledged() {
     if run_fresh_cases(
-        "game::item_draw::spawn_border_tests::a_predicted_block_moves_the_compass_height_until_acknowledged",
+        "game::client_side::item_draw::spawn_border_tests::a_predicted_block_moves_the_compass_height_until_acknowledged",
         "SUNRISE_SPAWN_BORDER_CASE",
         &["spawn-border-prediction"],
     ) {

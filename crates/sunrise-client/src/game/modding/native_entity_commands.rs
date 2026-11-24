@@ -18,7 +18,7 @@ impl Game<'_> {
     /// included: that level is parked while the hook runs), and on a client.
     /// During a guest's turn, displaced outer players are excluded, as in
     /// `native_run_command`.
-    pub(super) fn entity_run_command(
+    pub(in crate::game) fn entity_run_command(
         &mut self,
         entity: mod_api::EntityRef,
         line: &str,
@@ -30,7 +30,7 @@ impl Game<'_> {
     }
 
     /// The entity command's outcome and source feedback, also delivered to the player when audible.
-    pub(super) fn entity_run_command_with_output(
+    pub(in crate::game) fn entity_run_command_with_output(
         &mut self,
         entity: mod_api::EntityRef,
         line: &str,
@@ -175,7 +175,7 @@ mod tests {
 
     fn with_command_guests(name: &str, body: impl FnOnce(&mut Game<'_>)) {
         crate::game::in_own_process(
-            &format!("game::native_entity_commands::tests::{name}"),
+            &format!("game::server_side::native_entity_commands::tests::{name}"),
             || {
                 with_guests(body);
             },

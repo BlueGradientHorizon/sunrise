@@ -24,7 +24,7 @@ use sunrise_mod_runtime::attachments::{Attachments, Holder};
 use sunrise_protocol::collider_sync::{self, Message};
 
 /// The save key of an entity's collider, beside its attachments.
-pub(super) const SAVE_KEY: &str = "SunriseCollider";
+pub(in crate::game) const SAVE_KEY: &str = "SunriseCollider";
 
 /// A server entity's collider, with the form the save writes.
 pub(in crate::game) struct ColliderEntry {
@@ -103,7 +103,7 @@ impl EntityMaps {
     }
 
     /// Writes the entity's collider into its saved compound.
-    pub(super) fn write_collider(&self, root: &mut Compound, id: u32) {
+    pub(in crate::game) fn write_collider(&self, root: &mut Compound, id: u32) {
         match self.colliders.get(&id) {
             Some(entry) => {
                 root.insert(SAVE_KEY.into(), Tag::Compound(entry.saved.clone()));
@@ -183,14 +183,14 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn entity_collider(&self, entity: EntityRef) -> Option<Collider> {
+    pub(in crate::game) fn entity_collider(&self, entity: EntityRef) -> Option<Collider> {
         let id = self.collider_holder(entity).ok()?;
         self.entity_attachments
             .collider(id)
             .map(|entry| entry.state.to_api())
     }
 
-    pub(super) fn entity_set_collider(
+    pub(in crate::game) fn entity_set_collider(
         &mut self,
         entity: EntityRef,
         collider: Option<Collider>,
@@ -232,7 +232,7 @@ impl Game<'_> {
         Ok(())
     }
 
-    pub(super) fn entity_set_collider_transform(
+    pub(in crate::game) fn entity_set_collider_transform(
         &mut self,
         entity: EntityRef,
         rotation: [f32; 4],
@@ -260,7 +260,7 @@ impl Game<'_> {
     }
 
     /// Reads the collider a saved entity carried. A malformed one is dropped with a log line.
-    pub(super) fn load_saved_collider(&mut self, id: u32, tag: &Tag) {
+    pub(in crate::game) fn load_saved_collider(&mut self, id: u32, tag: &Tag) {
         let Some(saved) = tag.get(SAVE_KEY) else {
             return;
         };
@@ -295,7 +295,7 @@ impl Game<'_> {
     /// Every entity in the vehicle stack the entity `id` is in: its root vehicle and each
     /// passenger at any depth, `id` and the vehicles under it included
     /// (`Entity.isPassengerOfSameVehicle`). On a client, the riding graph its server told.
-    pub(super) fn vehicle_stack(&self, id: u32) -> Vec<u32> {
+    pub(in crate::game) fn vehicle_stack(&self, id: u32) -> Vec<u32> {
         if self.is_logical_server() {
             let Some(epoch) = self.native_lifecycle.epoch() else {
                 return vec![id];
@@ -521,7 +521,7 @@ impl Game<'_> {
 
     /// Sends what changed this tick to the clients that track each entity and have the
     /// channel, except those whose whole collider `fresh` is about to send.
-    pub(super) fn flush_collider_sync(&mut self, fresh: &HashSet<(u128, u32)>) {
+    pub(in crate::game) fn flush_collider_sync(&mut self, fresh: &HashSet<(u128, u32)>) {
         let changes = std::mem::take(&mut self.server.collider_changes);
         for change in changes {
             let senders = self.lan.as_ref().map_or_else(Vec::new, |host| {
@@ -545,7 +545,7 @@ impl Game<'_> {
     }
 
     /// The whole collider of the entity `id` to one player who started tracking it.
-    pub(super) fn send_collider_snapshot(
+    pub(in crate::game) fn send_collider_snapshot(
         &mut self,
         sender: &sunrise_client::lan::conn::PlayerSender,
         id: u32,
@@ -591,7 +591,7 @@ impl Game<'_> {
     }
 
     /// A `sunrise:collider_sync` payload the server sent the window.
-    pub(super) fn remote_collider_sync(&mut self, data: &[u8]) {
+    pub(in crate::game) fn remote_collider_sync(&mut self, data: &[u8]) {
         let message = match collider_sync::decode(data) {
             Ok(message) => message,
             Err(e) => return log::debug!("Sunrise: a bad collider sync: {e}"),
@@ -613,7 +613,7 @@ impl Game<'_> {
     }
 
     /// A client forgets the collider of an entity the server stopped showing it.
-    pub(super) fn forget_client_collider(&mut self, id: i32) {
+    pub(in crate::game) fn forget_client_collider(&mut self, id: i32) {
         if let Some(remote) = self.remote.as_mut() {
             remote.colliders.remove(&(id as u32));
         }
@@ -621,7 +621,9 @@ impl Game<'_> {
 
     /// The holders a flush sends whole collider snapshots for: the entities players started
     /// to track. Marks the pairs so the change flush skips them.
-    pub(super) fn fresh_collider_pairs(snapshots: &[(u128, Holder)]) -> HashSet<(u128, u32)> {
+    pub(in crate::game) fn fresh_collider_pairs(
+        snapshots: &[(u128, Holder)],
+    ) -> HashSet<(u128, u32)> {
         snapshots
             .iter()
             .filter_map(|(player, holder)| match holder {

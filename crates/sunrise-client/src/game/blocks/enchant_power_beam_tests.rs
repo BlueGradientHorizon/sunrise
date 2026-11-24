@@ -120,7 +120,7 @@ fn with_query_probe(
 #[ignore = "daily"]
 fn enchant_power_query_uses_the_supplied_states_tag_default() {
     with_query_probe(
-        "game::enchant_power_beam_tests::enchant_power_query_uses_the_supplied_states_tag_default",
+        "game::client_side::enchant_power_beam_tests::enchant_power_query_uses_the_supplied_states_tag_default",
         ExecutionRole::IntegratedServer,
         false,
         |game, calls| {
@@ -143,7 +143,7 @@ fn enchant_power_query_uses_the_supplied_states_tag_default() {
 #[ignore = "daily"]
 fn enchant_power_query_reads_the_named_server_level_and_refuses_cycles() {
     with_query_probe(
-        "game::enchant_power_beam_tests::enchant_power_query_reads_the_named_server_level_and_refuses_cycles",
+        "game::client_side::enchant_power_beam_tests::enchant_power_query_reads_the_named_server_level_and_refuses_cycles",
         ExecutionRole::IntegratedServer,
         true,
         |game, calls| {
@@ -204,7 +204,7 @@ fn enchant_power_query_reads_the_named_server_level_and_refuses_cycles() {
 #[ignore = "daily"]
 fn enchant_power_query_reads_the_logged_in_client_level() {
     with_query_probe(
-        "game::enchant_power_beam_tests::enchant_power_query_reads_the_logged_in_client_level",
+        "game::client_side::enchant_power_beam_tests::enchant_power_query_reads_the_logged_in_client_level",
         ExecutionRole::Client,
         false,
         |game, calls| {
@@ -237,7 +237,7 @@ pub(in crate::game) fn place(game: &mut Game<'_>, offset: [i32; 3], block: &str)
 #[ignore = "daily"]
 fn block_parts_answer_the_enchanting_power_and_the_beam_colour() {
     if run_fresh_cases(
-        "game::enchant_power_beam_tests::block_parts_answer_the_enchanting_power_and_the_beam_colour",
+        "game::client_side::enchant_power_beam_tests::block_parts_answer_the_enchanting_power_and_the_beam_colour",
         "SUNRISE_ENCHANT_OFFER_CHILD",
         &["offers"],
     ) {
@@ -327,7 +327,7 @@ fn enchant_particles_share_native_power_and_rebuild_only_on_parts_reload() {
 
     const CHILD: &str = "SUNRISE_ENCHANT_PARTICLES_CHILD";
     if run_fresh_cases(
-        "game::enchant_power_beam_tests::enchant_particles_share_native_power_and_rebuild_only_on_parts_reload",
+        "game::client_side::enchant_power_beam_tests::enchant_particles_share_native_power_and_rebuild_only_on_parts_reload",
         CHILD,
         &["vanilla", "parts"],
     ) {

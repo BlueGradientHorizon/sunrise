@@ -7,13 +7,13 @@ use sunrise_core::{
 };
 
 #[derive(Clone, Copy)]
-pub(super) enum LootTarget {
+pub(in crate::game) enum LootTarget {
     Block((i32, i32, i32)),
     Cart(u32),
     Boat(u32),
 }
 impl Game<'_> {
-    pub(super) fn loot_inventory_item(
+    pub(in crate::game) fn loot_inventory_item(
         &mut self,
         key: (i32, i32, i32),
         index: usize,
@@ -28,7 +28,7 @@ impl Game<'_> {
     }
     /// A hopper cart's tick owns its metadata while its resident row is lent out.
     /// Publish only a pending inventory for this access, then recover the result.
-    pub(super) fn unpack_ticked_cart_loot(
+    pub(in crate::game) fn unpack_ticked_cart_loot(
         &mut self,
         cart: &mut super::minecarts::Minecart,
     ) -> bool {
@@ -63,7 +63,11 @@ impl Game<'_> {
     }
     /// Consumes metadata before callbacks, so reentrant access cannot roll twice.
     /// A player context is captured from the admitted actor, also during as_guest.
-    pub(super) fn unpack_loot(&mut self, target: LootTarget, player: Option<mod_api::PlayerRef>) {
+    pub(in crate::game) fn unpack_loot(
+        &mut self,
+        target: LootTarget,
+        player: Option<mod_api::PlayerRef>,
+    ) {
         let (pending, pos) = match target {
             LootTarget::Block(key) => {
                 let Some(pending) = take_block_pending(&mut self.world, key) else {
@@ -250,7 +254,7 @@ impl Game<'_> {
 }
 
 /// Consume the sole block-owned marker before any callback or inventory mutation.
-pub(super) fn take_block_pending(
+pub(in crate::game) fn take_block_pending(
     world: &mut sunrise_client::world::World,
     key: (i32, i32, i32),
 ) -> Option<PendingContainerLoot> {
@@ -336,7 +340,11 @@ fn unpack_slots<R: RandomSource + Clone>(
 
 impl super::GameLevel<'_> {
     /// Null-player accesses inside world behavior (comparator, destruction).
-    pub(super) fn unpack_loot(&mut self, target: LootTarget, player: Option<mod_api::PlayerRef>) {
+    pub(in crate::game) fn unpack_loot(
+        &mut self,
+        target: LootTarget,
+        player: Option<mod_api::PlayerRef>,
+    ) {
         debug_assert!(player.is_none());
         if let LootTarget::Cart(id) = target {
             let Some(i) = self.carts.iter().position(|c| c.id == id) else {
@@ -457,14 +465,14 @@ mod tests;
 
 impl super::GameLevel<'_> {
     /// The other lists stay shared while carts can be mutated by inventory reads.
-    pub(super) fn entities(&self) -> super::entity::EntityLists<'_> {
+    pub(in crate::game) fn entities(&self) -> super::entity::EntityLists<'_> {
         super::entity::EntityLists {
             carts: &*self.carts,
             ..self.other_entities
         }
     }
     /// Detector rails prioritize command carts, then read the first container.
-    pub(super) fn detector_rail_signal(
+    pub(in crate::game) fn detector_rail_signal(
         &mut self,
         pos: sunrise_core::position::BlockPos,
         powered: bool,

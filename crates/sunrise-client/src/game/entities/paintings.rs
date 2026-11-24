@@ -10,7 +10,7 @@ use sunrise_core::{
     random::RandomSource,
 };
 
-pub(super) use sunrise_gameplay::painting_variants::{
+pub(in crate::game) use sunrise_gameplay::painting_variants::{
     PaintingVariants, Variant, frame_coexists, painting_coexists, painting_facing,
 };
 /// Whether the camera, at the origin of `corners`' space, is on the side of the quad
@@ -23,7 +23,7 @@ fn faces_camera(corners: &[glam::DVec3; 4], normal: glam::DVec3) -> bool {
 impl Game<'_> {
     /// `HangingEntity.survives`: no block collision in the box, solid blocks
     /// (or diodes) behind it and no conflicting hanging entity overlapping it.
-    pub(super) fn painting_survives(&self, p: &Painting) -> bool {
+    pub(in crate::game) fn painting_survives(&self, p: &Painting) -> bool {
         let (lo, hi) = p.bounds();
         let bounds = Aabb::new(
             Vec3::new(lo[0], lo[1], lo[2]),
@@ -59,7 +59,7 @@ impl Game<'_> {
     /// `Painting.create` finds a surviving variant (and the stack's
     /// `painting/variant`, if any, also survives). The random pick and
     /// spawn are the server's.
-    pub(super) fn painting_fits(&self, hit: &Hit, stack: &ItemStack) -> bool {
+    pub(in crate::game) fn painting_fits(&self, hit: &Hit, stack: &ItemStack) -> bool {
         if &*stack.item != "minecraft:painting" {
             return false;
         }
@@ -105,7 +105,7 @@ impl Game<'_> {
         true
     }
     /// `HangingEntityItem.useOn` for a painting against `hit`'s face.
-    pub(super) fn place_painting(&mut self, hit: &Hit, stack: &ItemStack) -> bool {
+    pub(in crate::game) fn place_painting(&mut self, hit: &Hit, stack: &ItemStack) -> bool {
         if &*stack.item != "minecraft:painting" {
             return false;
         }
@@ -218,7 +218,7 @@ impl Game<'_> {
         true
     }
     /// The painting under the crosshair within reach and its distance.
-    pub(super) fn painting_hit(&self) -> Option<(usize, f64)> {
+    pub(in crate::game) fn painting_hit(&self) -> Option<(usize, f64)> {
         if let Some(hit) = self.cached_entity_pick() {
             let (entity, distance, _) = hit?;
             let index = self.paintings.iter().position(|f| f.id == entity.id())?;
@@ -243,7 +243,7 @@ impl Game<'_> {
     }
     /// `BlockAttachedEntity.hurtServer` -> `kill` and `dropItem`. False when a mod kept it
     /// (`native_hanging_break`): it stays at `index`.
-    pub(super) fn break_painting(&mut self, index: usize, by_player: bool) -> bool {
+    pub(in crate::game) fn break_painting(&mut self, index: usize, by_player: bool) -> bool {
         self.break_painting_by(
             index,
             by_player,
@@ -251,7 +251,7 @@ impl Game<'_> {
         )
     }
     /// `BlockAttachedEntity.kill`: `ENTITY_DIE` at the painting, then `dropItem`.
-    pub(super) fn break_painting_by(
+    pub(in crate::game) fn break_painting_by(
         &mut self,
         index: usize,
         by_player: bool,
@@ -277,7 +277,7 @@ impl Game<'_> {
     }
     /// `BlockAttachedEntity.tick`: a painting whose `survives()` failed is
     /// `discard()`ed and drops its item, with no game event.
-    pub(super) fn discard_painting(&mut self, index: usize) -> bool {
+    pub(in crate::game) fn discard_painting(&mut self, index: usize) -> bool {
         let Some((p, at)) = self.remove_painting(index, false) else {
             return false;
         };
@@ -331,7 +331,7 @@ impl Game<'_> {
         );
     }
     /// BlockAttachedEntity.tick: check survival every 100 ticks.
-    pub(super) fn tick_paintings(&mut self) {
+    pub(in crate::game) fn tick_paintings(&mut self) {
         // ServerLevel.tick: only entities in entity-ticking chunks tick.
         let ticking = self.entity_ticking_area();
         let mut i = 0;
@@ -357,7 +357,12 @@ impl Game<'_> {
     }
     /// PaintingRenderer: the variant on the front, the back texture behind and
     /// on the edges.
-    pub(super) fn painting_geometry(&self, camera: glam::DVec3, alpha: f64, out: &mut Vec<Vertex>) {
+    pub(in crate::game) fn painting_geometry(
+        &self,
+        camera: glam::DVec3,
+        alpha: f64,
+        out: &mut Vec<Vertex>,
+    ) {
         let sprites = &self.gui.atlas.sprites;
         let partial = alpha as f32;
         for p in &self.paintings {

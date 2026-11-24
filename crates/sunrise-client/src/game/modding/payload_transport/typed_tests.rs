@@ -14,7 +14,8 @@ use std::sync::{
 use std::time::{Duration, Instant};
 use sunrise_protocol::packets::{configuration as cfg, play};
 
-const NAME: &str = "game::payload_transport::typed_tests::typed_payloads_follow_the_raw_routes";
+const NAME: &str =
+    "game::client_side::payload_transport::typed_tests::typed_payloads_follow_the_raw_routes";
 const UP: &str = "typed_probe:up";
 const OTHER: &str = "typed_probe:other";
 const DOWN: &str = "typed_probe:down";

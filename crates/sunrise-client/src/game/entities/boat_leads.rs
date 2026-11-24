@@ -40,7 +40,7 @@ fn center(b: &Boat) -> Vec3 {
     )
 }
 /// A boat as a lead's holder (`HolderState`), with its id.
-pub(super) fn boat_state(b: &Boat) -> (u32, HolderState) {
+pub(in crate::game) fn boat_state(b: &Boat) -> (u32, HolderState) {
     (
         b.id,
         HolderState {
@@ -60,7 +60,7 @@ fn distance(a: Vec3, b: Vec3) -> f64 {
 impl Game<'_> {
     /// The player whose lead this is: the lead's `leash_player`, else the
     /// local player.
-    pub(super) fn boat_leash_player(&self, b: &Boat) -> Option<[i32; 4]> {
+    pub(in crate::game) fn boat_leash_player(&self, b: &Boat) -> Option<[i32; 4]> {
         b.leash_player.or(self.level.player_uuid)
     }
     fn boat_holder(&self, holder: Holder, player: Option<[i32; 4]>) -> Held {
@@ -187,7 +187,7 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn release_stored_boat_leash(&mut self, i: usize, drop: bool) {
+    pub(in crate::game) fn release_stored_boat_leash(&mut self, i: usize, drop: bool) {
         let (holder, id) = (self.boats[i].leash, self.boats[i].id);
         let at = self.boats.update(i, |b| Self::take_boat_leash(b, drop));
         self.notify_knot_leashee_removed(holder, id);
@@ -197,7 +197,7 @@ impl Game<'_> {
     }
 
     /// `AbstractBoat.remove`: a boat that is destroyed drops its lead.
-    pub(super) fn drop_removed_boat_lead(&mut self, i: usize) {
+    pub(in crate::game) fn drop_removed_boat_lead(&mut self, i: usize) {
         let (holder, id, at) = self.boats.update(i, |b| {
             let holder = b.leash;
             let had_pending = b.leash_pending.take().is_some();
@@ -212,7 +212,7 @@ impl Game<'_> {
     }
 
     /// Release a boat already extracted by a fixture.
-    pub(super) fn boat_removed(&mut self, b: &Boat) {
+    pub(in crate::game) fn boat_removed(&mut self, b: &Boat) {
         self.notify_knot_leashee_removed(b.leash, b.id);
         if b.leash.is_some() || b.leash_pending.is_some() {
             self.drop_lead_item(b.position.components());
@@ -220,7 +220,7 @@ impl Game<'_> {
     }
 
     /// `Leashable.tickLeash` for a boat, at the end of `Entity.baseTick`.
-    pub(super) fn tick_boat_leash(&mut self, b: &mut Boat) {
+    pub(in crate::game) fn tick_boat_leash(&mut self, b: &mut Boat) {
         b.age += 1;
         if let Some(pending) = b.leash_pending {
             self.restore_boat_leash(b, pending);
@@ -339,7 +339,7 @@ impl Game<'_> {
     }
 
     /// The `leash` tag of a boat about to be saved.
-    pub(super) fn write_boat_leash(&mut self, tag: &mut Tag, index: usize) {
+    pub(in crate::game) fn write_boat_leash(&mut self, tag: &mut Tag, index: usize) {
         let Tag::Compound(map) = tag else { return };
         map.remove(&"leash".into());
         let b = &self.boats[index];
@@ -371,7 +371,7 @@ impl Game<'_> {
     }
 
     /// The boat with this UUID (`ServerLevel.getEntity`).
-    pub(super) fn boat_by_uuid(&self, uuid: [i32; 4]) -> Option<u32> {
+    pub(in crate::game) fn boat_by_uuid(&self, uuid: [i32; 4]) -> Option<u32> {
         self.persist
             .uuids
             .iter()
@@ -388,7 +388,7 @@ impl Game<'_> {
 
     /// The fence post of the leash knot with this UUID (`ServerLevel.getEntity`):
     /// a summoned or loaded `minecraft:leash_knot`, which sits on its block.
-    pub(super) fn knot_by_uuid(&self, uuid: [i32; 4]) -> Option<[i32; 3]> {
+    pub(in crate::game) fn knot_by_uuid(&self, uuid: [i32; 4]) -> Option<[i32; 3]> {
         self.others
             .iter()
             .find(|o| o.kind == "minecraft:leash_knot" && self.persist.uuid_of(o.id) == Some(uuid))
@@ -400,7 +400,7 @@ impl Game<'_> {
 
     /// The boats on the acting player's lead within 32 blocks of a point
     /// (`Leashable.leashableInArea`).
-    pub(super) fn player_led_boats(&mut self, around: glam::DVec3) -> Vec<usize> {
+    pub(in crate::game) fn player_led_boats(&mut self, around: glam::DVec3) -> Vec<usize> {
         (0..self.boats.len())
             .filter(|&i| {
                 let c = center(&self.boats[i]);
@@ -413,7 +413,7 @@ impl Game<'_> {
     }
 
     /// The boats whose lead hangs on `holder`.
-    pub(super) fn boats_on(&self, holder: Holder) -> Vec<usize> {
+    pub(in crate::game) fn boats_on(&self, holder: Holder) -> Vec<usize> {
         (0..self.boats.len())
             .filter(|&i| self.boats[i].leash == Some(holder))
             .collect()
@@ -429,7 +429,7 @@ impl Game<'_> {
     /// The acting player's boats on a lead go to `to` (`Entity.interact` of a
     /// sneak click on a mob, `LeadItem.bindPlayerMobs`, the knot's
     /// `interact`), the ones in reach of `at`. Whether any did.
-    pub(super) fn tie_player_boats(&mut self, at: glam::DVec3, to: Holder) -> bool {
+    pub(in crate::game) fn tie_player_boats(&mut self, at: glam::DVec3, to: Holder) -> bool {
         let knot_id = match to {
             Holder::Knot(fence) => self.server.knot_ids.get(&fence).copied(),
             _ => None,
@@ -454,7 +454,7 @@ impl Game<'_> {
 
     /// `LeashFenceKnotEntity.interact`: the boats on the knot go back on the
     /// acting player's lead. Whether any did.
-    pub(super) fn take_knot_boats(&mut self, knot: [i32; 3]) -> bool {
+    pub(in crate::game) fn take_knot_boats(&mut self, knot: [i32; 3]) -> bool {
         let me = self.acting_player_uuid();
         let player = self.player_center();
         let mut any = false;
@@ -470,7 +470,7 @@ impl Game<'_> {
     }
 
     /// `Leashable.dropLeash` for each boat in `list`.
-    pub(super) fn drop_boat_leashes(&mut self, list: &[usize]) {
+    pub(in crate::game) fn drop_boat_leashes(&mut self, list: &[usize]) {
         let ids: Vec<_> = list.iter().map(|&i| self.boats[i].id).collect();
         for id in ids {
             if let Some(i) = self.boats.iter().position(|boat| boat.id == id) {
@@ -481,7 +481,7 @@ impl Game<'_> {
 
     /// `Entity.interact`'s lead part for the boat at `i`; whether it took
     /// the click.
-    pub(super) fn interact_boat_leash(&mut self, i: usize) -> bool {
+    pub(in crate::game) fn interact_boat_leash(&mut self, i: usize) -> bool {
         let item = self.held().map(|s| s.item.to_string());
         let c = center(&self.boats[i]);
         let at = [c.x, c.y, c.z];
@@ -555,7 +555,7 @@ impl Game<'_> {
 
     /// The leads on boats that hang on a player or a mob, for the entity
     /// tracker: the holder's entity id (`ClientboundSetEntityLinkPacket`).
-    pub(super) fn boat_leash_link(&self, b: &Boat, guests: &[(u128, i32)]) -> Option<i32> {
+    pub(in crate::game) fn boat_leash_link(&self, b: &Boat, guests: &[(u128, i32)]) -> Option<i32> {
         match b.leash? {
             Holder::Player => {
                 let uuid = self.boat_leash_player(b);

@@ -47,20 +47,20 @@ impl Game<'_> {
     /// running, so a mod never names its id and can't reach another mod's
     /// files; a world's `serverconfig/` is read only through
     /// `config_loading`.
-    pub(super) fn config_files() -> &'static dyn ConfigFiles {
+    pub(in crate::game) fn config_files() -> &'static dyn ConfigFiles {
         &CONFIG_FILES
     }
-    pub(super) fn data_files() -> &'static dyn ConfigFiles {
+    pub(in crate::game) fn data_files() -> &'static dyn ConfigFiles {
         &DATA_FILES
     }
 
-    pub(super) fn world_data_files(&self) -> &dyn ConfigFiles {
+    pub(in crate::game) fn world_data_files(&self) -> &dyn ConfigFiles {
         self
     }
     /// Whether a mod with the `sunrise-mod.toml` id `id` is installed: a
     /// native or content package (Fabric's `FabricLoader.isModLoaded`,
     /// NeoForge's `ModList.isLoaded`). The list is fixed at startup.
-    pub(super) fn is_loaded(id: &str) -> bool {
+    pub(in crate::game) fn is_loaded(id: &str) -> bool {
         mod_api::__private::loaded_mods().get(id).is_some()
     }
 }
@@ -535,7 +535,7 @@ mod tests {
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
         }
         if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::native_config_files::tests::a_mod_saves_its_config_through_the_game_and_the_reload_hears_it",
+            "game::server_side::native_config_files::tests::a_mod_saves_its_config_through_the_game_and_the_reload_hears_it",
             "SUNRISE_CONFIG_FILES_CHILD",
             &["game"],
         ) {
@@ -807,7 +807,7 @@ mod tests {
         use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game};
         use crate::game::world_loading::WorldRequest;
         if run_fresh_cases(
-            "game::native_config_files::tests::world_bulk_files_survive_save_reload_backup_and_world_deletion",
+            "game::server_side::native_config_files::tests::world_bulk_files_survive_save_reload_backup_and_world_deletion",
             "SUNRISE_BULK_FILES_CHILD",
             &["game"],
         ) {

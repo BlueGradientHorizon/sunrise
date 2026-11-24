@@ -19,9 +19,9 @@ const ARROW: &str = "minecraft:arrow";
 
 /// What `getProjectile` returned: the ammunition and, while it is still the
 /// stack found in the inventory, the slot it is taken from.
-pub(super) struct Ammo {
-    pub(super) stack: ItemStack,
-    pub(super) slot: Option<usize>,
+pub(in crate::game) struct Ammo {
+    pub(in crate::game) stack: ItemStack,
+    pub(in crate::game) slot: Option<usize>,
 }
 
 /// `ProjectileWeaponItem.ARROW_ONLY`: `stack.is(ItemTags.ARROWS)`, the loaded
@@ -33,7 +33,7 @@ fn is_arrow(items: &Items, stack: &ItemStack) -> bool {
 /// `Player.getProjectile`: what `weapon` supports in the off hand, then in
 /// the main hand (`getHeldProjectile`; crossbows also take firework rockets
 /// there), else the first arrows in the inventory. The slot of the stack.
-pub(super) fn projectile_slot(
+pub(in crate::game) fn projectile_slot(
     weapon: &str,
     hands: [(usize, Option<&ItemStack>); 2],
     inventory: &[Option<ItemStack>],
@@ -75,7 +75,7 @@ fn charge_sounds(
 }
 
 impl Game<'_> {
-    pub(super) fn charge_ticks(stack: &ItemStack) -> u32 {
+    pub(in crate::game) fn charge_ticks(stack: &ItemStack) -> u32 {
         // crossbow_charge_time: 1.25 s, minus 0.25 s per Quick Charge level.
         let seconds = 1.25 - 0.25 * stack.enchantment_level("minecraft:quick_charge") as f32;
         (seconds.max(0.0) * 20.0).floor() as u32
@@ -105,13 +105,13 @@ impl Game<'_> {
         }
     }
     /// `Player.getProjectile` for `weapon` (`projectile_slot`).
-    pub(super) fn projectile_slot(&self, weapon: &str) -> Option<usize> {
+    pub(in crate::game) fn projectile_slot(&self, weapon: &str) -> Option<usize> {
         let hands = [OFFHAND_SLOT, self.selected].map(|slot| (slot, self.stack_in(slot)));
         projectile_slot(weapon, hands, &self.inventory, world_items!(self))
     }
     /// `Player.getProjectile` for `weapon`, as `LivingGetProjectileEvent` leaves
     /// it: a creative player without arrows has `hasInfiniteMaterials`' arrow.
-    pub(super) fn get_projectile(&mut self, weapon: &ItemStack) -> Option<Ammo> {
+    pub(in crate::game) fn get_projectile(&mut self, weapon: &ItemStack) -> Option<Ammo> {
         let slot = self.projectile_slot(&weapon.item);
         let vanilla = match slot {
             Some(i) => self.stack_in(i).cloned(),
@@ -144,7 +144,12 @@ impl Game<'_> {
     }
     /// `AbstractSkeleton.performRangedAttack`'s `getProjectile`: the arrow
     /// `mob` shot becomes the replaced ammunition's (`ProjectileUtil.getMobArrow`).
-    pub(super) fn mob_bow_ammo(&mut self, mob: u32, weapon: &ItemStack, arrow: &mut Projectile) {
+    pub(in crate::game) fn mob_bow_ammo(
+        &mut self,
+        mob: u32,
+        weapon: &ItemStack,
+        arrow: &mut Projectile,
+    ) {
         if !mod_api::__private::listened(mod_api::HookId::LivingGetProjectile) {
             return;
         }
@@ -181,7 +186,7 @@ impl Game<'_> {
             .unwrap_or_else(|| ItemStack::new(ARROW, 1))
     }
     /// `ProjectileUtil.getMobArrow`: `arrow` carries `ammo`'s item and effect.
-    pub(super) fn arrow_from_ammo(ammo: &ItemStack, arrow: &mut Projectile) {
+    pub(in crate::game) fn arrow_from_ammo(ammo: &ItemStack, arrow: &mut Projectile) {
         if let ProjectileKind::Arrow { effect, .. } = &mut arrow.kind {
             if &*ammo.item == "minecraft:spectral_arrow" {
                 *effect = Some(("minecraft:glowing", 200));
@@ -200,7 +205,7 @@ impl Game<'_> {
     /// charging `weapon` (pillagers and piglins: `Monster.getProjectile`). The
     /// replaced ammunition is what the crossbow holds; none leaves it uncharged
     /// and returns false (`tryLoadProjectiles`).
-    pub(super) fn mob_crossbow_ammo(&mut self, mob: u32, weapon: &ItemStack) -> bool {
+    pub(in crate::game) fn mob_crossbow_ammo(&mut self, mob: u32, weapon: &ItemStack) -> bool {
         let Some(shooter) = self.mobs.iter().find(|m| m.id == mob) else {
             return false;
         };
@@ -230,7 +235,7 @@ impl Game<'_> {
         loaded
     }
     /// `CrossbowItem.use`: shoot when charged, else start charging.
-    pub(super) fn use_crossbow(&mut self, stack: &ItemStack) -> bool {
+    pub(in crate::game) fn use_crossbow(&mut self, stack: &ItemStack) -> bool {
         if &*stack.item != CROSSBOW {
             return false;
         }
@@ -246,7 +251,7 @@ impl Game<'_> {
         true
     }
     /// `CrossbowItem.onUseTick` for the charge in progress.
-    pub(super) fn tick_crossbow(&mut self, slot: usize, ticks: u32, stack: &ItemStack) {
+    pub(in crate::game) fn tick_crossbow(&mut self, slot: usize, ticks: u32, stack: &ItemStack) {
         // getUseDuration - the ticks left, as a mod's Start or Tick left them.
         let held = self.ticks_held(stack, ticks);
         self.using = Some((slot, ticks + 1));

@@ -64,7 +64,7 @@ pub(in crate::game) use entities::{Announcement, ArrivalRollback};
 mod scratch;
 
 /// A notice names the container that received the write, not a replacement at its position.
-pub(super) struct QuickMoveNotice {
+pub(in crate::game) struct QuickMoveNotice {
     dim: Dim,
     holder: BlockEntityIdentity,
 }
@@ -85,7 +85,7 @@ type Pos = (i32, i32, i32);
 /// A level-local save follows that level's block writes. A transaction save follows the
 /// dimension-keyed owner journal (e.g. an entity's equipment), even through a different level.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub(super) enum SaveChunkScope {
+pub(in crate::game) enum SaveChunkScope {
     Level,
     Transaction,
 }
@@ -98,7 +98,7 @@ type ComposterRandoms =
 /// The open transactions, innermost last, and which close is running, if any: what
 /// `transaction_lifecycle` reads.
 #[derive(Default)]
-pub(super) struct OpenTransactions {
+pub(in crate::game) struct OpenTransactions {
     levels: Vec<Level>,
     pub(in crate::game) attachment_query_scopes: AttachmentQueryScopes,
     // A live, non-ZST address distinguishes journal instances.
@@ -141,14 +141,14 @@ impl OpenTransactions {
         TransactionFrame::new(journal, self.next_frame, self.levels.len())
     }
 
-    pub(super) fn push_retained_original(
+    pub(in crate::game) fn push_retained_original(
         &mut self,
         slot: std::sync::Arc<std::sync::Mutex<super::original_player::OriginalAttachmentSlot>>,
     ) {
         self.retained_original_attachments.push(slot);
     }
 
-    pub(super) fn pop_retained_original(&mut self) {
+    pub(in crate::game) fn pop_retained_original(&mut self) {
         self.retained_original_attachments.pop();
     }
 
@@ -162,7 +162,7 @@ impl OpenTransactions {
         }
     }
 
-    pub(super) fn level_frame(&mut self, dim: super::Dim) -> Option<&mut Level> {
+    pub(in crate::game) fn level_frame(&mut self, dim: super::Dim) -> Option<&mut Level> {
         entities::open_in(self, dim)
     }
 
@@ -178,7 +178,12 @@ impl OpenTransactions {
         self.last_mut()
     }
 
-    pub(super) fn journal_modifier_changes(&mut self, dim: Dim, id: u32, changes: ModifierChanges) {
+    pub(in crate::game) fn journal_modifier_changes(
+        &mut self,
+        dim: Dim,
+        id: u32,
+        changes: ModifierChanges,
+    ) {
         if let Some(level) = self.last_mut() {
             level
                 .modifier_changes
@@ -188,7 +193,7 @@ impl OpenTransactions {
         }
     }
 
-    pub(super) fn keep_explicit_modifier_write(
+    pub(in crate::game) fn keep_explicit_modifier_write(
         &mut self,
         dim: Dim,
         mob: u32,
@@ -234,7 +239,7 @@ impl OpenTransactions {
         }
     }
 
-    pub(super) fn mark_scoped_menu_write(
+    pub(in crate::game) fn mark_scoped_menu_write(
         &mut self,
         dim: Dim,
         chunk: (i32, i32),
@@ -250,7 +255,7 @@ impl OpenTransactions {
     }
 
     /// Keep the first write to each field of a live general-entity subject.
-    pub(super) fn journal_general_entity(
+    pub(in crate::game) fn journal_general_entity(
         &mut self,
         join: crate::join_seq::JoinSeq,
     ) -> Option<&mut KeptGeneralEntity> {
@@ -298,9 +303,9 @@ struct KeptBlock {
     strict: bool,
 }
 
-pub(super) type RemovedRow = (Box<BlockEntity>, u64);
+pub(in crate::game) type RemovedRow = (Box<BlockEntity>, u64);
 
-pub(super) fn take_replay_row(world: &mut World, pos: Pos) -> Option<RemovedRow> {
+pub(in crate::game) fn take_replay_row(world: &mut World, pos: Pos) -> Option<RemovedRow> {
     let generation = world.block_entities.generation(&pos);
     world
         .block_entities
@@ -309,7 +314,7 @@ pub(super) fn take_replay_row(world: &mut World, pos: Pos) -> Option<RemovedRow>
         .map(|(row, generation)| (Box::new(row), generation))
 }
 
-pub(super) struct BlockStep {
+pub(in crate::game) struct BlockStep {
     pos: Pos,
     to: BlockStateId,
     replay: BlockReplay,
@@ -317,14 +322,14 @@ pub(super) struct BlockStep {
     removed: Option<Option<RemovedRow>>,
 }
 
-pub(super) struct StrictBlockStep {
-    pub(super) to: BlockStateId,
+pub(in crate::game) struct StrictBlockStep {
+    pub(in crate::game) to: BlockStateId,
     // Before the first replacement on this cell; swapped for the new row at commit.
-    pub(super) row: Option<Option<RemovedRow>>,
-    pub(super) clear_connection_group: bool,
+    pub(in crate::game) row: Option<Option<RemovedRow>>,
+    pub(in crate::game) clear_connection_group: bool,
 }
 
-pub(super) type StrictBlockSteps = indexmap::IndexMap<Pos, StrictBlockStep>;
+pub(in crate::game) type StrictBlockSteps = indexmap::IndexMap<Pos, StrictBlockStep>;
 
 #[derive(Clone, Copy)]
 struct BlockReplay {
@@ -359,15 +364,15 @@ fn merge_block_update_flags(earlier: i32, later: i32) -> i32 {
 
 /// Before-images of the fields a general-entity scope wrote, at one depth.
 #[derive(Default)]
-pub(super) struct KeptGeneralEntity {
-    pub(super) velocity: Option<Vec3>,
-    pub(super) rotation: Option<[f32; 2]>,
-    pub(super) fall_distance: Option<f64>,
+pub(in crate::game) struct KeptGeneralEntity {
+    pub(in crate::game) velocity: Option<Vec3>,
+    pub(in crate::game) rotation: Option<[f32; 2]>,
+    pub(in crate::game) fall_distance: Option<f64>,
 }
 
 /// One journal, either an open frame or a level-local batch split from one at close.
 #[derive(Default)]
-pub(super) struct Level {
+pub(in crate::game) struct Level {
     frame: Option<TransactionFrame>,
     parent_attachment_query_scope: u64,
     dimension: Option<super::Dim>,
@@ -439,7 +444,7 @@ pub(super) struct Level {
     mount_drags: HashMap<MountClickWindow, QuickCraftDrag>,
     /// Mount window identities to reconcile once the outermost transaction has settled.
     mount_replies: indexmap::IndexSet<MountClickWindow>,
-    pub(super) menu_click_active: Option<u32>,
+    pub(in crate::game) menu_click_active: Option<u32>,
     /// Each native window's slots before the first write, by menu generation.
     native_menu_slots: HashMap<u64, Vec<Option<ItemStack>>>,
     menu_data: MenuDataJournal,
@@ -461,7 +466,7 @@ pub(super) struct Level {
     /// levels written.
     save_chunks: indexmap::IndexSet<(Dim, (i32, i32), SaveChunkScope)>,
     /// New map data and its reserved IDs. Neither enters the saved map table until root commit.
-    pub(super) new_maps: BTreeMap<i32, MapData>,
+    pub(in crate::game) new_maps: BTreeMap<i32, MapData>,
     /// What the root commit does, in order.
     after: Vec<After>,
     /// Internal decide/fire/apply state for menu actions.
@@ -498,7 +503,7 @@ struct KeptSlot {
 /// (`lan_acting.is_none()`) or one guest record in `lan.hub.guests` (a real online guest shared
 /// across dimensions, or a per-level connectionless fake player), keyed by its unique `conn` id.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub(super) enum PlayerBodyKey {
+pub(in crate::game) enum PlayerBodyKey {
     Host,
     Guest(u32),
 }
@@ -507,7 +512,7 @@ pub(super) enum PlayerBodyKey {
 /// dimension, whereas player-owned attachment maps are keyed by the specific player body
 /// regardless of which level is swapped in. Retained originals have their own journal.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub(super) enum AttachmentKey {
+pub(in crate::game) enum AttachmentKey {
     Level(Dim, Holder),
     Player(PlayerBodyKey),
 }
@@ -632,7 +637,7 @@ struct KeptMenus {
 }
 
 /// What a write tells the world, at the root commit.
-pub(super) enum After {
+pub(in crate::game) enum After {
     /// Reserved raw bytes publish only when their connection incarnation is still live.
     Payload(super::payload_transport::Deferred),
     /// A mod's validated vanilla packet, bound to its physical protocol incarnation.
@@ -789,7 +794,7 @@ impl After {
 }
 
 /// Effects shared by transactional interaction contexts.
-pub(super) enum DeferredEffect {
+pub(in crate::game) enum DeferredEffect {
     CustomStat {
         player: u128,
         key: &'static str,
@@ -815,7 +820,7 @@ pub(super) enum DeferredEffect {
 
 impl Level {
     /// Keep the first snapshot for this stream. `None` names the frame's own level.
-    pub(super) fn keep_level_random(
+    pub(in crate::game) fn keep_level_random(
         &mut self,
         owner: Option<LevelRef>,
         before: impl FnOnce() -> LegacyRandom,
@@ -832,7 +837,7 @@ impl Level {
         }
     }
 
-    pub(super) fn keep_bulk_block(&mut self, pos: Pos, state: u32) {
+    pub(in crate::game) fn keep_bulk_block(&mut self, pos: Pos, state: u32) {
         self.blocks
             .entry(pos)
             .and_modify(|kept| kept.strict = true)
@@ -843,7 +848,7 @@ impl Level {
             });
     }
 
-    pub(super) fn keep_connection_group(&mut self, pos: Pos, group: Option<u64>) {
+    pub(in crate::game) fn keep_connection_group(&mut self, pos: Pos, group: Option<u64>) {
         self.connection_groups.entry(pos).or_insert(group);
     }
 
@@ -924,13 +929,13 @@ impl Level {
 
     /// Keeps chested mob `id`'s item list's length, `len`, before `entity_slots` grows it, if
     /// this transaction hasn't yet.
-    pub(super) fn keep_mob_length(&mut self, dim: Dim, id: u32, len: usize) {
+    pub(in crate::game) fn keep_mob_length(&mut self, dim: Dim, id: u32, len: usize) {
         self.mob_lengths.entry((dim, id)).or_insert(len);
     }
 
     /// Keep a resolved equipment row at its first write in this transaction.
     /// `mob_gear` is absent for a stand; a mob's overlay may itself be absent.
-    pub(super) fn keep_equipment(
+    pub(in crate::game) fn keep_equipment(
         &mut self,
         dim: Dim,
         id: u32,
@@ -950,7 +955,7 @@ impl Level {
     }
 }
 
-pub(super) enum StorageSettlement {
+pub(in crate::game) enum StorageSettlement {
     Committed(Option<scratch::Scratch>),
     Aborted,
     Refused,
@@ -958,13 +963,13 @@ pub(super) enum StorageSettlement {
 
 /// RAII guard for one open transaction frame. Dropping it without `close` aborts this frame
 /// and any nested frames still open inside it.
-pub(super) struct StorageScope<'a, 'g> {
-    pub(super) game: &'a mut Game<'g>,
+pub(in crate::game) struct StorageScope<'a, 'g> {
+    pub(in crate::game) game: &'a mut Game<'g>,
     frame: Option<TransactionFrame>,
 }
 
 impl StorageScope<'_, '_> {
-    pub(super) fn close(mut self, commit: bool) -> Option<StorageSettlement> {
+    pub(in crate::game) fn close(mut self, commit: bool) -> Option<StorageSettlement> {
         self.frame
             .take()
             .and_then(|frame| self.game.close_storage_frame(frame, commit))
@@ -1055,14 +1060,14 @@ impl<'g> Game<'g> {
         self.close_storage_transaction(commit)
     }
     /// An engine batch opens a frame only when it has a callback to journal.
-    pub(super) fn storage_scope_guard(&mut self, open: bool) -> StorageScope<'_, 'g> {
+    pub(in crate::game) fn storage_scope_guard(&mut self, open: bool) -> StorageScope<'_, 'g> {
         let frame = open.then(|| self.open_storage_transaction());
         StorageScope { game: self, frame }
     }
 
     /// The trident tick opens a frame at contact, then closes it after applying the
     /// decision. The same guard aborts an open frame if dispatch or apply unwinds.
-    pub(super) fn with_late_storage_scope<R>(
+    pub(in crate::game) fn with_late_storage_scope<R>(
         &mut self,
         f: impl FnOnce(&mut Self, &mut Option<TransactionFrame>) -> R,
     ) -> R {
@@ -1129,7 +1134,7 @@ impl<'g> Game<'g> {
         }
     }
     /// Runs an API scope and reports actual settlement, not just the callback's intent.
-    pub(super) fn scoped_storage<T>(
+    pub(in crate::game) fn scoped_storage<T>(
         &mut self,
         f: impl for<'loan> FnOnce(&'loan mut Self, &'loan TransactionContext) -> Option<T>,
     ) -> Result<Option<T>, TransactionScopeError> {
@@ -1153,7 +1158,7 @@ impl<'g> Game<'g> {
         self.transactions.last().and_then(|level| level.frame)
     }
     /// Whether `tx` is the live loan for this game's innermost open transaction.
-    pub(super) fn transaction_context_is_current(&self, tx: &TransactionContext) -> bool {
+    pub(in crate::game) fn transaction_context_is_current(&self, tx: &TransactionContext) -> bool {
         self.current_storage_frame()
             .is_some_and(|frame| frame.matches(tx))
     }
@@ -1165,12 +1170,12 @@ impl<'g> Game<'g> {
             None => TransactionLifecycle::Open,
         }
     }
-    pub(super) fn current_transaction_is_here(&self) -> bool {
+    pub(in crate::game) fn current_transaction_is_here(&self) -> bool {
         self.transactions
             .last()
             .is_some_and(|frame| frame.dimension == Some(self.dim))
     }
-    pub(super) fn has_level_transaction(&self) -> bool {
+    pub(in crate::game) fn has_level_transaction(&self) -> bool {
         self.transactions
             .iter()
             .any(|level| level.dimension == Some(self.dim))
@@ -1523,7 +1528,7 @@ impl<'g> Game<'g> {
     }
     /// Aborts abandoned frames before the next operation can join them. Call only when
     /// there is no caller-owned frame; the tick start also uses this as a backstop.
-    pub(super) fn abort_open_transactions(&mut self) {
+    pub(in crate::game) fn abort_open_transactions(&mut self) {
         while !self.transactions.is_empty() {
             let _ = self.close_storage_transaction(false);
         }
@@ -1535,7 +1540,7 @@ impl<'g> Game<'g> {
 
     /// `ComposterWrapper.transactionalRandom`: snapshot only the position's private owner,
     /// including its initial state on a first access that later aborts.
-    pub(super) fn take_composter_random(
+    pub(in crate::game) fn take_composter_random(
         &mut self,
         pos: [i32; 3],
     ) -> sunrise_core::random::LegacyRandom {
@@ -1564,7 +1569,7 @@ impl<'g> Game<'g> {
         random
     }
 
-    pub(super) fn put_composter_random(
+    pub(in crate::game) fn put_composter_random(
         &mut self,
         pos: [i32; 3],
         random: sunrise_core::random::LegacyRandom,
@@ -1577,7 +1582,7 @@ impl<'g> Game<'g> {
     }
 
     /// Retire only an unloading chunk's cached owners and their pending savepoints.
-    pub(super) fn forget_composter_chunk(
+    pub(in crate::game) fn forget_composter_chunk(
         &mut self,
         dimension: mod_api::DimensionKey,
         chunk: [i32; 2],
@@ -1589,7 +1594,7 @@ impl<'g> Game<'g> {
         }
     }
 
-    pub(super) fn clear_composter_randoms(&mut self) {
+    pub(in crate::game) fn clear_composter_randoms(&mut self) {
         self.transactions.composter_epoch = None;
         self.transactions.composter_randoms.clear();
         for level in &mut self.transactions.levels {
@@ -1597,7 +1602,7 @@ impl<'g> Game<'g> {
         }
     }
     /// Keeps a pot's saved item and loot metadata until its level commits.
-    pub(super) fn journal_saved_pot(&mut self, pos: Pos) {
+    pub(in crate::game) fn journal_saved_pot(&mut self, pos: Pos) {
         self.transactions.writes = self.transactions.writes.wrapping_add(1);
         if let Some(level) = entities::open_in(&mut self.transactions, self.dim) {
             level
@@ -1611,7 +1616,7 @@ impl<'g> Game<'g> {
     }
 
     /// An unseeded pot loot table may draw from either the level or a named stream.
-    pub(super) fn journal_block_loot_random(&mut self) {
+    pub(in crate::game) fn journal_block_loot_random(&mut self) {
         self.journal_level_random();
         if let Some(level) = self.transactions.last_mut() {
             level
@@ -1622,7 +1627,7 @@ impl<'g> Game<'g> {
 
     /// Keeps the block entity at `pos` as it is, with its attachments and a hopper's
     /// cooldown, if a transaction is open and hasn't yet.
-    pub(super) fn journal_block_entity(&mut self, pos: Pos) {
+    pub(in crate::game) fn journal_block_entity(&mut self, pos: Pos) {
         self.transactions.writes = self.transactions.writes.wrapping_add(1);
         let Some(level) = entities::open_in(&mut self.transactions, self.dim) else {
             return;
@@ -1643,7 +1648,7 @@ impl<'g> Game<'g> {
     }
     /// Hides the block entity from tentative reads. The first-write journal can undo all edits;
     /// the removed row itself still contains the edits that matter to removal at commit.
-    pub(super) fn journal_remove_block_entity(&mut self, pos: Pos) {
+    pub(in crate::game) fn journal_remove_block_entity(&mut self, pos: Pos) {
         self.journal_block_entity(pos);
         let Some(level) = entities::open_in(&mut self.transactions, self.dim) else {
             self.world.block_entities.remove(&pos);
@@ -1680,7 +1685,7 @@ impl<'g> Game<'g> {
     /// journal holds one stack however large the entity's saved data is. A slot past the end of
     /// the entity's slot list (a mod's list shorter than its container) is a write that grows
     /// the list: the entity is kept whole instead, length and all.
-    pub(super) fn journal_block_entity_slot(&mut self, pos: Pos, slot: usize) {
+    pub(in crate::game) fn journal_block_entity_slot(&mut self, pos: Pos, slot: usize) {
         self.transactions.writes = self.transactions.writes.wrapping_add(1);
         let entity = self.world.block_entities.get(&pos);
         // Claiming an opaque row changes the saved compound as well as the slot.
@@ -1702,7 +1707,7 @@ impl<'g> Game<'g> {
     }
     /// Keeps `holder`'s attachment map as it is, if a transaction is open and hasn't yet: a
     /// block entity's with the rest of it, any other's alone.
-    pub(super) fn journal_attachments(&mut self, holder: Holder) {
+    pub(in crate::game) fn journal_attachments(&mut self, holder: Holder) {
         let dim = self.dim;
         let level = if matches!(holder, Holder::BlockEntity(_)) {
             entities::open_in(&mut self.transactions, dim)
@@ -1772,7 +1777,7 @@ impl<'g> Game<'g> {
     }
     /// Keeps the inventory of `uuid`, whose state is acting in `Game` now, on its first
     /// write in the open frame.
-    pub(super) fn journal_player(&mut self, uuid: u128) {
+    pub(in crate::game) fn journal_player(&mut self, uuid: u128) {
         let Some(level) = self.transactions.player_write() else {
             return;
         };
@@ -1794,7 +1799,7 @@ impl<'g> Game<'g> {
         );
     }
     /// The same journal for a player resolved to their own parked record at `index`.
-    pub(super) fn journal_parked_player(&mut self, index: usize) {
+    pub(in crate::game) fn journal_parked_player(&mut self, index: usize) {
         let Some(level) = self.transactions.player_write() else {
             return;
         };
@@ -1815,7 +1820,7 @@ impl<'g> Game<'g> {
 
     /// Save the guest's inventory and current cursor wherever their turn lent
     /// them. A suspended guest cannot be re-entered to take this snapshot.
-    pub(super) fn journal_guest_inventory(&mut self, conn: u32) {
+    pub(in crate::game) fn journal_guest_inventory(&mut self, conn: u32) {
         let owner = JournaledPlayer::Guest(conn);
         if self
             .transactions
@@ -1883,7 +1888,7 @@ impl<'g> Game<'g> {
     }
     /// Keeps the saved player extra NBT (`level.player_extra`) of `uuid`, whose state is
     /// acting in `Game` now, on its first write in the open frame.
-    pub(super) fn journal_player_extra(&mut self, uuid: u128) {
+    pub(in crate::game) fn journal_player_extra(&mut self, uuid: u128) {
         let Some(level) = self.transactions.player_write() else {
             return;
         };
@@ -1897,7 +1902,7 @@ impl<'g> Game<'g> {
             .or_insert_with(|| self.level.player_extra.clone());
     }
     /// The same journal for a player resolved to their own parked record at `index`.
-    pub(super) fn journal_parked_player_extra(&mut self, index: usize) {
+    pub(in crate::game) fn journal_parked_player_extra(&mut self, index: usize) {
         let Some(level) = self.transactions.player_write() else {
             return;
         };
@@ -1908,7 +1913,7 @@ impl<'g> Game<'g> {
             .or_insert_with(|| guest.saved.clone());
     }
     /// Called with the target player's body swapped in, before set_health changes it.
-    pub(super) fn journal_player_health(&mut self) {
+    pub(in crate::game) fn journal_player_health(&mut self) {
         let body = self.acting_player_body();
         let Some(level) = self.transactions.last_mut() else {
             return;
@@ -1931,7 +1936,7 @@ impl<'g> Game<'g> {
             guest,
         });
     }
-    pub(super) fn journal_mob_health(&mut self, id: u32) {
+    pub(in crate::game) fn journal_mob_health(&mut self, id: u32) {
         let dim = self.dim;
         let Some(level) = self.transactions.last_mut() else {
             return;
@@ -1949,7 +1954,7 @@ impl<'g> Game<'g> {
     }
     /// Writes one mob effect, or any active effect when `effect` is `None`. In a transaction,
     /// keep the effect lists and use the same health journal as `set_health` and `set_absorption`.
-    pub(super) fn mutate_mob_effects<R>(
+    pub(in crate::game) fn mutate_mob_effects<R>(
         &mut self,
         id: u32,
         effect: Option<&'static str>,
@@ -1998,7 +2003,7 @@ impl<'g> Game<'g> {
         Some(result)
     }
     /// Keeps `player`'s menu storage as it is, if a transaction is open and hasn't yet.
-    pub(super) fn journal_menus(&mut self, player: mod_api::PlayerRef) {
+    pub(in crate::game) fn journal_menus(&mut self, player: mod_api::PlayerRef) {
         self.transactions.player_writes = self.transactions.player_writes.wrapping_add(1);
         self.transactions.writes = self.transactions.writes.wrapping_add(1);
         let Some(level) = self.transactions.last() else {
@@ -2040,7 +2045,7 @@ impl<'g> Game<'g> {
             }
         }
     }
-    pub(super) fn journal_menu_click(&mut self, conn: u32) {
+    pub(in crate::game) fn journal_menu_click(&mut self, conn: u32) {
         let Some(level) = self.transactions.last_mut() else {
             return;
         };
@@ -2070,14 +2075,18 @@ impl<'g> Game<'g> {
             });
     }
 
-    pub(super) fn journal_mount_drag(&mut self, window: MountClickWindow, before: QuickCraftDrag) {
+    pub(in crate::game) fn journal_mount_drag(
+        &mut self,
+        window: MountClickWindow,
+        before: QuickCraftDrag,
+    ) {
         if let Some(level) = self.transactions.last_mut() {
             level.mount_drags.entry(window).or_insert(before);
         }
     }
 
     /// On both commit and abort, defer a window's reply if any storage remains tentative.
-    pub(super) fn settle_mount_replies(
+    pub(in crate::game) fn settle_mount_replies(
         &mut self,
         replies: impl IntoIterator<Item = MountClickWindow>,
     ) {
@@ -2091,7 +2100,7 @@ impl<'g> Game<'g> {
     }
 
     /// Keeps entity `id`'s inventory as it is, if a transaction is open and hasn't yet.
-    pub(super) fn journal_entity(&mut self, id: u32) {
+    pub(in crate::game) fn journal_entity(&mut self, id: u32) {
         self.transactions.writes = self.transactions.writes.wrapping_add(1);
         if self.transactions.is_empty() {
             return;
@@ -2107,7 +2116,7 @@ impl<'g> Game<'g> {
     /// Keeps the scoreboard as it is, if a transaction is open and hasn't yet: a copy of the
     /// whole board, taken on the transaction's first scoreboard write and never otherwise, so a
     /// transaction that writes none pays nothing. An abort puts it back.
-    pub(super) fn journal_scoreboard(&mut self) {
+    pub(in crate::game) fn journal_scoreboard(&mut self) {
         let Some(level) = self.transactions.last_mut() else {
             return;
         };
@@ -2117,7 +2126,7 @@ impl<'g> Game<'g> {
     }
     /// Keeps the slots at their first write. Equipment collection records any
     /// actual modifier edits separately; a quiet edit does not run it.
-    pub(super) fn journal_equipment(&mut self, id: u32) {
+    pub(in crate::game) fn journal_equipment(&mut self, id: u32) {
         let dim = self.dim;
         let Some(level) = self.transactions.last_mut() else {
             return;
@@ -2133,7 +2142,7 @@ impl<'g> Game<'g> {
     }
     /// `drop_plain` by the player whose state is in `Game` now, `uuid`: at once, or at the root
     /// commit inside a transaction.
-    pub(super) fn drop_after_commit(&mut self, uuid: u128, stack: ItemStack) {
+    pub(in crate::game) fn drop_after_commit(&mut self, uuid: u128, stack: ItemStack) {
         match self.transactions.last_mut() {
             Some(level) => level.after.push(After::PlayerDrop(uuid, stack)),
             None => {
@@ -2145,7 +2154,7 @@ impl<'g> Game<'g> {
     /// storage quietly, records the prior group so abort restores it silently, and defers
     /// remesh + client sync to root commit. Returns `false` if unloaded, out of height, or
     /// unchanged.
-    pub(super) fn journal_set_connection_group(
+    pub(in crate::game) fn journal_set_connection_group(
         &mut self,
         pos: [i32; 3],
         group: Option<u64>,
@@ -2170,11 +2179,15 @@ impl<'g> Game<'g> {
     /// Sets the block at `pos` to `state`. In a transaction, stored only, keeping the old
     /// state, and set with its updates at the root commit; otherwise at once
     /// (`Level.setBlock`).
-    pub(super) fn journal_set_block(&mut self, pos: [i32; 3], state: BlockStateId) -> bool {
+    pub(in crate::game) fn journal_set_block(
+        &mut self,
+        pos: [i32; 3],
+        state: BlockStateId,
+    ) -> bool {
         self.journal_set_block_flags(pos, state, sunrise_world::level::flags::UPDATE_ALL, false)
     }
     /// The root commit replays one write per position with the combined update flags.
-    pub(super) fn journal_set_block_flags(
+    pub(in crate::game) fn journal_set_block_flags(
         &mut self,
         pos: [i32; 3],
         state: BlockStateId,
@@ -2231,7 +2244,7 @@ impl<'g> Game<'g> {
     /// Hide a replaced block entity from staged reads, without dropping its
     /// contents until the real write. Fluid pickup/pour instead rolls its own
     /// drops against the old entity before journalling the removal.
-    pub(super) fn journal_block_replacement(&mut self, pos: Pos) {
+    pub(in crate::game) fn journal_block_replacement(&mut self, pos: Pos) {
         self.journal_remove_block_entity(pos);
         let Some(level) = entities::open_in(&mut self.transactions, self.dim) else {
             return;
@@ -2247,12 +2260,12 @@ impl<'g> Game<'g> {
             replay.replay_removal = true;
         }
     }
-    pub(super) fn journal_level_random(&mut self) {
+    pub(in crate::game) fn journal_level_random(&mut self) {
         self.journal_active_level_random(LegacyRandom::clone);
     }
 
     /// Keep an engine or restricted-writer draw from the stream currently in place.
-    pub(super) fn journal_active_level_random(
+    pub(in crate::game) fn journal_active_level_random(
         &mut self,
         before: impl FnOnce(&LegacyRandom) -> LegacyRandom,
     ) {
@@ -2270,7 +2283,7 @@ impl<'g> Game<'g> {
             frame.keep_level_random(owner, || before(&self.world.random));
         }
     }
-    pub(super) fn journal_orb_merge(
+    pub(in crate::game) fn journal_orb_merge(
         &mut self,
         join: crate::join_seq::JoinSeq,
         fields: (i32, u32, i32),
@@ -2280,7 +2293,7 @@ impl<'g> Game<'g> {
             level.orbs.entry((dim, join)).or_insert(fields);
         }
     }
-    pub(super) fn journal_station_click(
+    pub(in crate::game) fn journal_station_click(
         &mut self,
         conn: u32,
         owner: decision::MenuId,
@@ -2304,7 +2317,7 @@ impl<'g> Game<'g> {
         }
     }
     /// Mark a written chunk unsaved at commit, without issuing any notice.
-    pub(super) fn journal_chunk_save(&mut self, chunk: (i32, i32), scope: SaveChunkScope) {
+    pub(in crate::game) fn journal_chunk_save(&mut self, chunk: (i32, i32), scope: SaveChunkScope) {
         let dim = self.dim;
         let level = match scope {
             SaveChunkScope::Level => entities::open_in(&mut self.transactions, dim),
@@ -2315,12 +2328,12 @@ impl<'g> Game<'g> {
         }
     }
     /// Queue a reusable interaction effect for the outermost successful commit.
-    pub(super) fn defer_effect(&mut self, effect: DeferredEffect) {
+    pub(in crate::game) fn defer_effect(&mut self, effect: DeferredEffect) {
         self.after_commit(After::Effect(effect));
     }
     /// Collect committed implicit `setChanged` notices while the callback runs without opening
     /// a transaction. Direct calls to `BlockEntityRef::set_changed` remain immediate.
-    pub(super) fn collect_quick_move_notices<R>(
+    pub(in crate::game) fn collect_quick_move_notices<R>(
         &mut self,
         dispatch: impl FnOnce(&mut Self) -> R,
     ) -> (R, Vec<QuickMoveNotice>) {
@@ -2338,7 +2351,7 @@ impl<'g> Game<'g> {
 
     /// Release accepted writes after source settlement, in their original levels and only to
     /// the same storage rows. Don't enqueue the notices in an enclosing quick move again.
-    pub(super) fn publish_quick_move_notices(&mut self, notices: Vec<QuickMoveNotice>) {
+    pub(in crate::game) fn publish_quick_move_notices(&mut self, notices: Vec<QuickMoveNotice>) {
         for QuickMoveNotice { dim, holder } in notices {
             let back = self.enter_command_level(dim);
             if self.dim == dim {
@@ -2392,13 +2405,13 @@ impl<'g> Game<'g> {
     }
 
     /// Journal a container notice already bound to the row that received the write.
-    pub(super) fn after_holder_changed(&mut self, holder: BlockEntityIdentity) {
+    pub(in crate::game) fn after_holder_changed(&mut self, holder: BlockEntityIdentity) {
         let [x, y, z] = holder.position;
         self.after_commit(self.container_change_effect((x, y, z), Some(holder)));
     }
 
     /// Runs `after` at once, or at the root commit inside a transaction.
-    pub(super) fn after_commit(&mut self, after: After) {
+    pub(in crate::game) fn after_commit(&mut self, after: After) {
         let after = match after {
             After::Changed(pos) => self.container_change_effect(pos, None),
             after => after,
@@ -3479,7 +3492,7 @@ mod tests {
         use sunrise_client::lan::{PlayerSender, conn::transaction_packets::Scope};
 
         if run_fresh_cases(
-            "game::transactions::tests::packet_refusal_rolls_back_the_child_and_reaches_the_transaction_caller",
+            "game::server_side::transactions::tests::packet_refusal_rolls_back_the_child_and_reaches_the_transaction_caller",
             "SUNRISE_TRANSACTION_PACKET_REFUSAL_CHILD",
             &["run"],
         ) {
@@ -3527,7 +3540,7 @@ mod tests {
         };
         use std::sync::Mutex;
         if run_fresh_cases(
-            "game::transactions::tests::cauldron_stat_listener_observes_committed_state_and_can_cancel",
+            "game::server_side::transactions::tests::cauldron_stat_listener_observes_committed_state_and_can_cancel",
             "SUNRISE_CAULDRON_STAT_CHILD",
             &["run"],
         ) {
@@ -4116,7 +4129,7 @@ mod tests {
     #[ignore = "daily"]
     fn an_aborted_transaction_puts_back_what_it_and_its_committed_children_changed() {
         let Some(root) = super::super::native_entity_refs::tests::declared_part_root(
-            "game::transactions::tests::an_aborted_transaction_puts_back_what_it_and_its_committed_children_changed",
+            "game::server_side::transactions::tests::an_aborted_transaction_puts_back_what_it_and_its_committed_children_changed",
         ) else {
             return;
         };
@@ -4666,7 +4679,7 @@ mod mod_capability_tests {
     fn a_chemical_moves_between_two_mods_parts_and_an_abort_puts_it_back() {
         use super::super::native_entity_refs::tests::{declared_part_root, with_game_at};
         let Some(root) = declared_part_root(
-            "game::transactions::mod_capability_tests::a_chemical_moves_between_two_mods_parts_and_an_abort_puts_it_back",
+            "game::server_side::transactions::mod_capability_tests::a_chemical_moves_between_two_mods_parts_and_an_abort_puts_it_back",
         ) else {
             return;
         };

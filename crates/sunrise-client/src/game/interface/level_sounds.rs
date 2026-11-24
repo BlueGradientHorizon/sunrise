@@ -9,7 +9,7 @@ use super::Game;
 use super::native_hooks::level_sound_playable;
 
 /// A sound the server's level is about to play, as vanilla asked for it.
-pub(super) struct LevelSound<'a> {
+pub(in crate::game) struct LevelSound<'a> {
     pub name: &'a str,
     pub at: [f64; 3],
     pub volume: f32,
@@ -44,7 +44,7 @@ impl<'a> LevelSound<'a> {
 
 /// A sound bound to an entity (`level.playSound(except, entity, ...)`),
 /// waiting for the end of the tick to be asked of the mods and sent.
-pub(super) struct BoundSound {
+pub(in crate::game) struct BoundSound {
     pub name: String,
     pub at: [f64; 3],
     pub volume: f32,
@@ -56,7 +56,7 @@ pub(super) struct BoundSound {
 }
 
 /// A sound after the mods: what goes in the packet.
-pub(super) struct HeardSound<'a> {
+pub(in crate::game) struct HeardSound<'a> {
     pub name: Cow<'a, str>,
     pub source: SoundSource,
     pub volume: f32,
@@ -72,7 +72,11 @@ fn listened() -> bool {
 impl Game<'_> {
     /// `ClientLevel.playSeededSound`: ask this client's mods before playback.
     /// A packet reaches this independently of the server's level event.
-    pub(super) fn play_client_level_sound(&mut self, mut sound: LevelSound<'_>, seed: i64) {
+    pub(in crate::game) fn play_client_level_sound(
+        &mut self,
+        mut sound: LevelSound<'_>,
+        seed: i64,
+    ) {
         let entity = match sound.emitter {
             Some(id) => {
                 let Some(state) = self.remote_sound_entity_state(id as i32) else {
@@ -115,7 +119,7 @@ impl Game<'_> {
 
     /// A client-local level request without a packet seed. LocalPlayer.playSound
     /// asks AtEntity but still creates a positional, not entity-bound, instance.
-    pub(super) fn play_client_local_sound(&mut self, sound: LevelSound<'_>) {
+    pub(in crate::game) fn play_client_local_sound(&mut self, sound: LevelSound<'_>) {
         let seed = self.audio.next_sound_seed();
         let at = sound.at;
         if let Some(heard) = self.ask_level_sound(self.dim.id(), sound) {
@@ -131,7 +135,12 @@ impl Game<'_> {
     }
 
     /// `LocalPlayer.playSound`, including inherited step, fall and consume sounds.
-    pub(super) fn play_client_player_sound(&mut self, name: &str, volume: f32, pitch: f32) {
+    pub(in crate::game) fn play_client_player_sound(
+        &mut self,
+        name: &str,
+        volume: f32,
+        pitch: f32,
+    ) {
         let Some(player) = self.player.as_ref() else {
             return;
         };
@@ -150,7 +159,7 @@ impl Game<'_> {
     /// them of the mods (`play_level_sound_at_entity`) after the tick's
     /// other sounds, and sends them to the players around but the one on
     /// connection `except`.
-    pub(super) fn play_bound_sound(
+    pub(in crate::game) fn play_bound_sound(
         &mut self,
         sound: LevelSound<'_>,
         emitter: u32,
@@ -174,7 +183,7 @@ impl Game<'_> {
     }
 
     /// The tick's bound sounds, in the order they played, for the players.
-    pub(super) fn send_bound_sounds(&mut self) {
+    pub(in crate::game) fn send_bound_sounds(&mut self) {
         for s in std::mem::take(&mut self.server.bound_sounds) {
             let sound = LevelSound {
                 name: &s.name,
@@ -189,7 +198,7 @@ impl Game<'_> {
     }
 
     /// A synchronous level sound, not captured again at the end of the tick.
-    pub(super) fn play_immediate_level_sound(&mut self, sound: LevelSound<'_>) {
+    pub(in crate::game) fn play_immediate_level_sound(&mut self, sound: LevelSound<'_>) {
         self.audio
             .play_unshared(sound.name, Some(sound.at), sound.volume, sound.pitch);
         self.send_level_sound(sound, None);
@@ -198,7 +207,7 @@ impl Game<'_> {
     /// `Level.playSound`'s packet for the players near the sound's position in
     /// the level in place, but the player on connection `except`, once the
     /// mods allowed it.
-    pub(super) fn send_level_sound(&mut self, sound: LevelSound<'_>, except: Option<u32>) {
+    pub(in crate::game) fn send_level_sound(&mut self, sound: LevelSound<'_>, except: Option<u32>) {
         let at = sound.at;
         let dimension = self.dim.id();
         let Some(heard) = self.ask_level_sound(dimension, sound) else {
@@ -222,7 +231,7 @@ impl Game<'_> {
     /// otherwise. None when a mod cancels it or leaves it unplayable (a volume
     /// or pitch that isn't finite and at least 0). With no listener, the sound
     /// as asked, borrowed.
-    pub(super) fn ask_level_sound<'a>(
+    pub(in crate::game) fn ask_level_sound<'a>(
         &mut self,
         dimension: &str,
         sound: LevelSound<'a>,

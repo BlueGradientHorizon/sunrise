@@ -22,7 +22,7 @@ fn in_bounds(at: [f64; 3]) -> bool {
 
 /// Whether level event `id` can play with `data`: the events that carry a
 /// block state (2001, 2014, 3008) need `data` to be one of the `states`.
-pub(super) fn level_event_data_ok(id: i32, data: i32, states: usize) -> bool {
+pub(in crate::game) fn level_event_data_ok(id: i32, data: i32, states: usize) -> bool {
     !matches!(id, 2001 | 2014 | 3008) || usize::try_from(data).is_ok_and(|d| d < states)
 }
 
@@ -34,7 +34,12 @@ impl GameLevel<'_> {
     /// the behaviour raises. False off an authoritative server, or for an
     /// event that carries a block state (see `level_level_event`)
     /// when `data` isn't one.
-    pub(super) fn native_level_event(&mut self, id: i32, pos: [i32; 3], data: i32) -> bool {
+    pub(in crate::game) fn native_level_event(
+        &mut self,
+        id: i32,
+        pos: [i32; 3],
+        data: i32,
+    ) -> bool {
         if !self.native_authoritative || !level_event_data_ok(id, data, self.facts.states.len()) {
             return false;
         }
@@ -55,7 +60,7 @@ impl Game<'_> {
     /// block with state id `data`). No player is left out, the acting one
     /// included. False for an event that carries a block state (2001, 2014,
     /// 3008) when `data` isn't one.
-    pub(super) fn level_level_event(
+    pub(in crate::game) fn level_level_event(
         &mut self,
         level: LevelRef,
         id: i32,
@@ -78,7 +83,7 @@ impl Game<'_> {
     }
     /// Plays the break effect of `state` at `pos` (`Level.levelEvent(2001, pos,
     /// Block.getId(state))`); the state's id is resolved here, never by the mod.
-    pub(super) fn level_block_break_effect(
+    pub(in crate::game) fn level_block_break_effect(
         &mut self,
         level: LevelRef,
         pos: [i32; 3],
@@ -89,7 +94,7 @@ impl Game<'_> {
     /// Plays level event `id` for every player on the server
     /// (`ServerLevel.globalLevelEvent`), or for the players near `pos` when the
     /// `global_sound_events` rule is off. Refuses what `level_level_event` refuses.
-    pub(super) fn level_global_level_event(
+    pub(in crate::game) fn level_global_level_event(
         &mut self,
         level: LevelRef,
         id: i32,
@@ -112,7 +117,7 @@ impl Game<'_> {
     }
     /// Sends game event `event` (`minecraft:block_change`...) from `at`, as
     /// `Level.gameEvent(event, at, context)`, with validated source and state.
-    pub(super) fn level_game_event(
+    pub(in crate::game) fn level_game_event(
         &mut self,
         level: LevelRef,
         event: &str,
@@ -133,7 +138,7 @@ impl Game<'_> {
     /// `block`. False for an unresolved block key, a position outside the
     /// build height (it could never reach a block), a parked level, a stale
     /// handle or a client.
-    pub(super) fn level_block_event(
+    pub(in crate::game) fn level_block_event(
         &mut self,
         level: LevelRef,
         pos: [i32; 3],
@@ -162,7 +167,7 @@ impl Game<'_> {
     /// `source`. Refused, with nothing exploded, for another level, a stale
     /// `source` or one in another level, once the entity ids are exhausted, and as
     /// `native_explode` refuses.
-    pub(super) fn level_explode(
+    pub(in crate::game) fn level_explode(
         &mut self,
         level: LevelRef,
         source: Option<EntityRef>,
@@ -193,7 +198,7 @@ impl Game<'_> {
     /// `visual_only` it only flashes and sounds (`setVisualOnly`). The
     /// `lightning_strike` hook hears it first with the cause `mod` and may
     /// cancel it. False for a chunk that isn't loaded or a canceled strike.
-    pub(super) fn level_strike_lightning(
+    pub(in crate::game) fn level_strike_lightning(
         &mut self,
         level: LevelRef,
         at: [f64; 3],

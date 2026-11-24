@@ -11,7 +11,7 @@ impl Game<'_> {
         self.client_tasks.executor(crash::current_native_mod()?)
     }
 
-    pub(super) fn close_client_tasks(&mut self) {
+    pub(in crate::game) fn close_client_tasks(&mut self) {
         self.client_tasks.close();
         self.pending_client_tasks.clear();
     }
@@ -110,7 +110,7 @@ mod tests {
         }
 
         if run_fresh_cases(
-            "game::client_executor::tests::closing_window_during_pending_save_discards_pending_and_late_client_tasks",
+            "game::client_side::client_executor::tests::closing_window_during_pending_save_discards_pending_and_late_client_tasks",
             "SUNRISE_CLIENT_EXECUTOR_CLOSE_DURING_SAVE_CHILD",
             &["close"],
         ) {

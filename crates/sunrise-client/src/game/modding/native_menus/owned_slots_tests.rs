@@ -605,7 +605,7 @@ fn owned_click_prediction_applies_caps_and_the_server_corrects_an_override() {
 #[ignore = "daily"]
 fn closing_discards_owned_slots_unless_the_listener_returns_their_contents() {
     if run_fresh_cases(
-        "game::native_menus::owned_slots_tests::closing_discards_owned_slots_unless_the_listener_returns_their_contents",
+        "game::server_side::native_menus::owned_slots_tests::closing_discards_owned_slots_unless_the_listener_returns_their_contents",
         "SUNRISE_OWNED_MENU_CLOSE_CASE",
         &["close"],
     ) {

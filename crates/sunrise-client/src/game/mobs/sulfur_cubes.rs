@@ -38,7 +38,7 @@ fn block_light(light: u32, emission: u8) -> u32 {
 
 impl Game<'_> {
     /// The swallowed block replaces the opaque core and precedes the shell.
-    pub(super) fn sulfur_cube_body_geometry(
+    pub(in crate::game) fn sulfur_cube_body_geometry(
         &self,
         mob: &Mob,
         alpha: f32,
@@ -97,7 +97,7 @@ impl Game<'_> {
         self.spawn_item(item, at, [0.0, 0.2, 0.0], 10);
     }
     /// `SulfurCube.mobInteract`. Returns whether the click was used.
-    pub(super) fn interact_sulfur_cube(&mut self, index: usize, item: &str) -> bool {
+    pub(in crate::game) fn interact_sulfur_cube(&mut self, index: usize, item: &str) -> bool {
         let m = &self.mobs[index];
         if m.species() != Species::SulfurCube || !m.alive() {
             return false;
@@ -223,7 +223,7 @@ impl Game<'_> {
     /// body `collectEquipmentChanges` last took) explodes, with its fuse:
     /// their cached `explosionData`, which `primeWhenOnPoweredPosition` may
     /// use this tick although the body has changed since.
-    pub(super) fn sulfur_cubes_adopted_explosive(&self) -> Vec<(u32, i32)> {
+    pub(in crate::game) fn sulfur_cubes_adopted_explosive(&self) -> Vec<(u32, i32)> {
         self.mobs
             .iter()
             .filter(|m| m.species() == Species::SulfurCube)
@@ -236,7 +236,7 @@ impl Game<'_> {
     /// Only the cubes `primable` names (an adopted explosive body when the
     /// tick started) can: `canExplode` and `primeTime` both read the cached
     /// `explosionData`, so the fuse is that body's, not the live one's.
-    pub(super) fn sulfur_cube_power_priming(&mut self, primable: &[(u32, i32)]) {
+    pub(in crate::game) fn sulfur_cube_power_priming(&mut self, primable: &[(u32, i32)]) {
         if !self
             .ui
             .rules
@@ -275,7 +275,7 @@ impl Game<'_> {
     /// explosive cube with a block lights its fuse (with `tnt_explodes`, as
     /// `primeTime` asks), called after the hit's hurt, which the priming
     /// leaves as it is, so its knock and the fuse both go ahead.
-    pub(super) fn burning_arrow_primes(&mut self, p: &Projectile, who: Who) {
+    pub(in crate::game) fn burning_arrow_primes(&mut self, p: &Projectile, who: Who) {
         if !p.arrow.as_ref().is_some_and(|a| a.on_fire())
             || !self
                 .ui
@@ -293,7 +293,7 @@ impl Game<'_> {
     }
     /// `SulfurCubeSearchForItemsGoal` and `pickUpItem`: an adult with nothing
     /// inside hops to a block it can swallow within 8 and takes it in.
-    pub(super) fn sulfur_cube_pickups(&mut self) {
+    pub(in crate::game) fn sulfur_cube_pickups(&mut self) {
         let griefing = self
             .ui
             .rules

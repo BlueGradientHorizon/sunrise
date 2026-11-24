@@ -74,7 +74,7 @@ impl Game<'_> {
     /// feet, its last tick's place, its velocity and its look carried through, and the
     /// server is told the passage and where the feet were; a payload a mod cancels moves
     /// nothing. Until the server's position packet, the next crossing waits.
-    pub(super) fn cross_passage(&mut self, passage: PassageId) -> Result<(), Error> {
+    pub(in crate::game) fn cross_passage(&mut self, passage: PassageId) -> Result<(), Error> {
         if self.remote.is_none() {
             return Err(Error::Unavailable);
         }
@@ -131,13 +131,13 @@ impl Game<'_> {
     }
 
     /// `ClientHost::last_passage_refusal`.
-    pub(super) fn last_passage_refusal(&self) -> Option<(PassageId, Refusal)> {
+    pub(in crate::game) fn last_passage_refusal(&self) -> Option<(PassageId, Refusal)> {
         self.passages.refused
     }
 
     /// The server refused the window's crossing of passage `id`: the reason is kept for
     /// the mods, and the position packet that follows puts the player back.
-    pub(super) fn remote_passage_refused(&mut self, id: u64, reason: u8) {
+    pub(in crate::game) fn remote_passage_refused(&mut self, id: u64, reason: u8) {
         let Some(why) = refusal_named(reason) else {
             log::debug!("Sunrise: a passage refusal this build does not know: {reason}");
             return;

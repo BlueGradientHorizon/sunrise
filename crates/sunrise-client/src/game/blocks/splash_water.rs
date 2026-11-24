@@ -20,7 +20,7 @@ impl Game<'_> {
     /// (`minecraft:douses_fire` and the others, read from the data pack's
     /// `tags/potion`) and the stack has no custom effects of its own
     /// (`isPotionWithoutCustomEffects`). A stack with no potion is in no tag.
-    pub(super) fn potion_in_tag(&self, stack: &ItemStack, tag: &str) -> bool {
+    pub(in crate::game) fn potion_in_tag(&self, stack: &ItemStack, tag: &str) -> bool {
         stack.custom_potion_effects().is_empty()
             && stack.potion().is_some_and(|potion| {
                 self.res
@@ -37,7 +37,7 @@ impl Game<'_> {
     /// face it hit, the cell behind that (the block it hit) and the four
     /// horizontal neighbours of the cell in front. `hit` is the block and
     /// `face` the face it was hit on.
-    pub(super) fn potion_hit_block(
+    pub(in crate::game) fn potion_hit_block(
         &mut self,
         stack: &ItemStack,
         hit: [i32; 3],
@@ -118,7 +118,12 @@ impl Game<'_> {
     /// (`Enderman.hurtServer`); one in `#extinguishes_entities` puts out
     /// those that burn; one in `#rehydrates_axolotls` refills the air of
     /// the axolotls in the box.
-    pub(super) fn affect_entities_around(&mut self, stack: &ItemStack, at: Vec3, by_player: bool) {
+    pub(in crate::game) fn affect_entities_around(
+        &mut self,
+        stack: &ItemStack,
+        at: Vec3,
+        by_player: bool,
+    ) {
         let hurts = self.potion_in_tag(stack, "minecraft:hurts_water_sensitive_entities");
         let extinguishes = self.potion_in_tag(stack, "minecraft:extinguishes_entities");
         // The potion's box is 0.25 wide and high.

@@ -215,8 +215,7 @@ fn boat_with_rider(game: &mut Game<'_>) -> (EntityRef, EntityRef) {
 #[test]
 #[ignore = "daily"]
 fn a_spawn_then_abort_leaves_no_entity_map_or_hook() {
-    const NAME: &str =
-        "game::transaction_entities_tests::a_spawn_then_abort_leaves_no_entity_map_or_hook";
+    const NAME: &str = "game::server_side::transaction_entities_tests::a_spawn_then_abort_leaves_no_entity_map_or_hook";
     with_observer(NAME, |game| {
         let (mobs, next) = (game.mobs.len(), game.server.next_entity);
         let pig = game.storage_scope(|game, _| {
@@ -241,7 +240,7 @@ fn a_spawn_then_abort_leaves_no_entity_map_or_hook() {
 #[test]
 #[ignore = "daily"]
 fn a_mob_removed_in_a_transaction_leaves_once_at_the_root_commit() {
-    const NAME: &str = "game::transaction_entities_tests::a_mob_removed_in_a_transaction_leaves_once_at_the_root_commit";
+    const NAME: &str = "game::server_side::transaction_entities_tests::a_mob_removed_in_a_transaction_leaves_once_at_the_root_commit";
     with_observer(NAME, |game| {
         let pig = summon(game, "minecraft:pig", "{}").unwrap();
         game.native_joins_flush(false, 0);
@@ -282,7 +281,8 @@ fn a_mob_removed_in_a_transaction_leaves_once_at_the_root_commit() {
 #[test]
 #[ignore = "daily"]
 fn a_spawn_joins_at_the_root_commit() {
-    const NAME: &str = "game::transaction_entities_tests::a_spawn_joins_at_the_root_commit";
+    const NAME: &str =
+        "game::server_side::transaction_entities_tests::a_spawn_joins_at_the_root_commit";
     with_observer(NAME, |game| {
         let pig = game.storage_scope(|game, _| {
             let pig = summon(game, "minecraft:pig", "{}").unwrap();
@@ -299,8 +299,7 @@ fn a_spawn_joins_at_the_root_commit() {
 #[test]
 #[ignore = "daily"]
 fn a_join_cancelled_at_commit_leaves_a_stale_handle() {
-    const NAME: &str =
-        "game::transaction_entities_tests::a_join_cancelled_at_commit_leaves_a_stale_handle";
+    const NAME: &str = "game::server_side::transaction_entities_tests::a_join_cancelled_at_commit_leaves_a_stale_handle";
     with_observer(NAME, |game| {
         assert_eq!(
             summon(game, "minecraft:sheep", "{}"),
@@ -330,8 +329,7 @@ fn a_join_cancelled_at_commit_leaves_a_stale_handle() {
 #[test]
 #[ignore = "daily"]
 fn a_thrown_spawn_joins_at_the_call_or_the_root_commit() {
-    const NAME: &str =
-        "game::transaction_entities_tests::a_thrown_spawn_joins_at_the_call_or_the_root_commit";
+    const NAME: &str = "game::server_side::transaction_entities_tests::a_thrown_spawn_joins_at_the_call_or_the_root_commit";
     with_observer(NAME, |game| {
         use mod_api::{EntitySpawn, Identifier, SpawnBody};
         let level = game.level(game.dim.id()).unwrap();
@@ -365,7 +363,7 @@ fn a_thrown_spawn_joins_at_the_call_or_the_root_commit() {
 #[test]
 #[ignore = "daily"]
 fn outside_a_transaction_joins_and_leaves_are_told_at_the_call() {
-    const NAME: &str = "game::transaction_entities_tests::outside_a_transaction_joins_and_leaves_are_told_at_the_call";
+    const NAME: &str = "game::server_side::transaction_entities_tests::outside_a_transaction_joins_and_leaves_are_told_at_the_call";
     with_observer(NAME, |game| {
         let next = game.server.next_entity;
         let boat = summon(game, "minecraft:oak_boat", "{}").unwrap();
@@ -388,8 +386,7 @@ fn outside_a_transaction_joins_and_leaves_are_told_at_the_call() {
 #[test]
 #[ignore = "daily"]
 fn a_removal_then_abort_keeps_the_row_map_and_rider() {
-    const NAME: &str =
-        "game::transaction_entities_tests::a_removal_then_abort_keeps_the_row_map_and_rider";
+    const NAME: &str = "game::server_side::transaction_entities_tests::a_removal_then_abort_keeps_the_row_map_and_rider";
     with_observer(NAME, |game| {
         let (boat, cow) = boat_with_rider(game);
         let pig = summon(game, "minecraft:pig", "{}").unwrap();
@@ -431,8 +428,7 @@ fn a_removal_then_abort_keeps_the_row_map_and_rider() {
 #[test]
 #[ignore = "daily"]
 fn a_removal_then_commit_runs_each_effect_once() {
-    const NAME: &str =
-        "game::transaction_entities_tests::a_removal_then_commit_runs_each_effect_once";
+    const NAME: &str = "game::server_side::transaction_entities_tests::a_removal_then_commit_runs_each_effect_once";
     with_observer(NAME, |game| {
         let (boat, cow) = boat_with_rider(game);
         game.storage_scope(|game, _| {
@@ -455,7 +451,7 @@ fn a_removal_then_commit_runs_each_effect_once() {
 #[ignore = "daily"]
 fn a_killed_mobs_oozing_spawns_only_at_commit() {
     const NAME: &str =
-        "game::transaction_entities_tests::a_killed_mobs_oozing_spawns_only_at_commit";
+        "game::server_side::transaction_entities_tests::a_killed_mobs_oozing_spawns_only_at_commit";
     with_observer(NAME, |game| {
         let zombie = summon(game, "minecraft:zombie", "{}").unwrap();
         let at = game.mobs.iter().position(|m| m.id == zombie).unwrap();
@@ -478,8 +474,7 @@ fn a_killed_mobs_oozing_spawns_only_at_commit() {
 #[test]
 #[ignore = "daily"]
 fn a_nested_commit_goes_with_its_parents_abort() {
-    const NAME: &str =
-        "game::transaction_entities_tests::a_nested_commit_goes_with_its_parents_abort";
+    const NAME: &str = "game::server_side::transaction_entities_tests::a_nested_commit_goes_with_its_parents_abort";
     with_observer(NAME, |game| {
         let (boat, cow) = boat_with_rider(game);
         let pig = game.storage_scope(|game, _| {
@@ -504,7 +499,8 @@ fn a_nested_commit_goes_with_its_parents_abort() {
 #[test]
 #[ignore = "daily"]
 fn a_nested_abort_takes_back_only_its_own() {
-    const NAME: &str = "game::transaction_entities_tests::a_nested_abort_takes_back_only_its_own";
+    const NAME: &str =
+        "game::server_side::transaction_entities_tests::a_nested_abort_takes_back_only_its_own";
     with_observer(NAME, |game| {
         let (boat, cow) = boat_with_rider(game);
         let (kept, dropped) = game.storage_scope(|game, _| {
@@ -538,8 +534,7 @@ fn a_nested_abort_takes_back_only_its_own() {
 #[test]
 #[ignore = "daily"]
 fn a_spawned_then_removed_entity_never_joins_or_leaves() {
-    const NAME: &str =
-        "game::transaction_entities_tests::a_spawned_then_removed_entity_never_joins_or_leaves";
+    const NAME: &str = "game::server_side::transaction_entities_tests::a_spawned_then_removed_entity_never_joins_or_leaves";
     with_observer(NAME, |game| {
         let kept = game.storage_scope(|game, _| {
             let boat = summon(game, "minecraft:oak_boat", "{}").unwrap();
@@ -560,8 +555,7 @@ fn a_spawned_then_removed_entity_never_joins_or_leaves() {
 #[test]
 #[ignore = "daily"]
 fn another_writer_sees_the_spawn_and_its_writes_roll_back() {
-    const NAME: &str =
-        "game::transaction_entities_tests::another_writer_sees_the_spawn_and_its_writes_roll_back";
+    const NAME: &str = "game::server_side::transaction_entities_tests::another_writer_sees_the_spawn_and_its_writes_roll_back";
     with_observer(NAME, |game| {
         let witness = summon(game, "minecraft:cow", "{}").unwrap();
         let pig = game.storage_scope(|game, _| {
@@ -583,7 +577,7 @@ fn another_writer_sees_the_spawn_and_its_writes_roll_back() {
 #[test]
 #[ignore = "daily"]
 fn ids_never_go_back_and_a_stale_handle_names_no_later_entity() {
-    const NAME: &str = "game::transaction_entities_tests::ids_never_go_back_and_a_stale_handle_names_no_later_entity";
+    const NAME: &str = "game::server_side::transaction_entities_tests::ids_never_go_back_and_a_stale_handle_names_no_later_entity";
     with_observer(NAME, |game| {
         let (aborted, handle) = game.storage_scope(|game, _| {
             let aborted = summon(game, "minecraft:pig", "{}").unwrap();
@@ -601,8 +595,7 @@ fn ids_never_go_back_and_a_stale_handle_names_no_later_entity() {
 #[test]
 #[ignore = "daily"]
 fn late_id_kinds_spawned_then_aborted_are_removed() {
-    const NAME: &str =
-        "game::transaction_entities_tests::late_id_kinds_spawned_then_aborted_are_removed";
+    const NAME: &str = "game::server_side::transaction_entities_tests::late_id_kinds_spawned_then_aborted_are_removed";
     with_observer(NAME, |game| {
         let counts = |game: &Game<'_>| {
             [
@@ -639,8 +632,7 @@ fn late_id_kinds_spawned_then_aborted_are_removed() {
 #[test]
 #[ignore = "daily"]
 fn a_traveller_arriving_inside_an_aborted_action_stays() {
-    const NAME: &str =
-        "game::transaction_entities_tests::a_traveller_arriving_inside_an_aborted_action_stays";
+    const NAME: &str = "game::server_side::transaction_entities_tests::a_traveller_arriving_inside_an_aborted_action_stays";
     with_observer(NAME, |game| {
         game.enter_level(Dim::Nether).unwrap();
         game.world
@@ -677,7 +669,8 @@ fn a_traveller_arriving_inside_an_aborted_action_stays() {
 #[test]
 #[ignore = "daily"]
 fn an_aborted_spawn_is_in_no_tracking_pass() {
-    const NAME: &str = "game::transaction_entities_tests::an_aborted_spawn_is_in_no_tracking_pass";
+    const NAME: &str =
+        "game::server_side::transaction_entities_tests::an_aborted_spawn_is_in_no_tracking_pass";
     with_observer(NAME, |game| {
         // Above the guest's fixed entity id.
         game.server.next_entity = 100;
@@ -712,7 +705,8 @@ struct Fixture {
 #[test]
 #[ignore = "daily"]
 fn exhausted_ids_refuse_every_mod_spawn() {
-    const NAME: &str = "game::transaction_entities_tests::exhausted_ids_refuse_every_mod_spawn";
+    const NAME: &str =
+        "game::server_side::transaction_entities_tests::exhausted_ids_refuse_every_mod_spawn";
     let rows: [(&str, Spawn); 14] = [
         ("summon", |game, _| {
             summon(game, "minecraft:pig", "{}").is_some()
@@ -826,7 +820,8 @@ fn exhausted_ids_refuse_every_mod_spawn() {
 #[test]
 #[ignore = "daily"]
 fn exhausted_ids_stop_the_tick_spawners() {
-    const NAME: &str = "game::transaction_entities_tests::exhausted_ids_stop_the_tick_spawners";
+    const NAME: &str =
+        "game::server_side::transaction_entities_tests::exhausted_ids_stop_the_tick_spawners";
     with_observer(NAME, |game| {
         game.server.next_entity = u32::MAX - ENTITY_ID_HEADROOM - 1;
         game.tick_spawners();
@@ -841,8 +836,7 @@ fn exhausted_ids_stop_the_tick_spawners() {
 #[test]
 #[ignore = "daily"]
 fn an_aborted_spawn_puts_back_the_raw_record_it_wrote_over() {
-    const NAME: &str =
-        "game::transaction_entities_tests::an_aborted_spawn_puts_back_the_raw_record_it_wrote_over";
+    const NAME: &str = "game::server_side::transaction_entities_tests::an_aborted_spawn_puts_back_the_raw_record_it_wrote_over";
     with_observer(NAME, |game| {
         // Crystals are kept as raw records by kind and position: a second one at the same place
         // writes over the first's.
@@ -867,7 +861,8 @@ fn an_aborted_spawn_puts_back_the_raw_record_it_wrote_over() {
 #[test]
 #[ignore = "daily"]
 fn a_held_join_keeps_loaded_from_disk() {
-    const NAME: &str = "game::transaction_entities_tests::a_held_join_keeps_loaded_from_disk";
+    const NAME: &str =
+        "game::server_side::transaction_entities_tests::a_held_join_keeps_loaded_from_disk";
     with_observer(NAME, |game| {
         let fresh = game.storage_scope(|game, _| {
             let fresh = summon(game, "minecraft:pig", "{}").unwrap();
@@ -891,7 +886,7 @@ fn a_held_join_keeps_loaded_from_disk() {
 #[test]
 #[ignore = "daily"]
 fn commit_tells_the_joins_before_the_effects_of_the_removals() {
-    const NAME: &str = "game::transaction_entities_tests::commit_tells_the_joins_before_the_effects_of_the_removals";
+    const NAME: &str = "game::server_side::transaction_entities_tests::commit_tells_the_joins_before_the_effects_of_the_removals";
     with_observer(NAME, |game| {
         let zombie = summon(game, "minecraft:zombie", "{}").unwrap();
         let at = game.mobs.iter().position(|m| m.id == zombie).unwrap();
@@ -918,7 +913,7 @@ fn commit_tells_the_joins_before_the_effects_of_the_removals() {
 #[test]
 #[ignore = "daily"]
 fn a_pending_boat_removal_is_hidden_from_selectors_until_it_commits() {
-    const NAME: &str = "game::transaction_entities_tests::a_pending_boat_removal_is_hidden_from_selectors_until_it_commits";
+    const NAME: &str = "game::server_side::transaction_entities_tests::a_pending_boat_removal_is_hidden_from_selectors_until_it_commits";
     with_observer(NAME, |game| {
         let boat = summon(game, "minecraft:oak_boat", "{}").unwrap();
         let handle = game.entity(boat).unwrap();
@@ -956,7 +951,7 @@ fn a_pending_boat_removal_is_hidden_from_selectors_until_it_commits() {
 #[test]
 #[ignore = "daily"]
 fn a_spawn_a_join_listener_makes_during_the_commit_joins_once_after_it() {
-    const NAME: &str = "game::transaction_entities_tests::a_spawn_a_join_listener_makes_during_the_commit_joins_once_after_it";
+    const NAME: &str = "game::server_side::transaction_entities_tests::a_spawn_a_join_listener_makes_during_the_commit_joins_once_after_it";
     with_observer(NAME, |game| {
         let (a, b) = game.storage_scope(|game, _| {
             let a = summon(game, "minecraft:pig", "{}").unwrap();
@@ -988,7 +983,7 @@ fn a_spawn_a_join_listener_makes_during_the_commit_joins_once_after_it() {
 #[test]
 #[ignore = "daily"]
 fn a_transaction_covers_its_own_level_and_another_levels_spawn_is_told_at_once() {
-    const NAME: &str = "game::transaction_entities_tests::a_transaction_covers_its_own_level_and_another_levels_spawn_is_told_at_once";
+    const NAME: &str = "game::server_side::transaction_entities_tests::a_transaction_covers_its_own_level_and_another_levels_spawn_is_told_at_once";
     with_observer(NAME, |game| {
         game.enter_level(Dim::Nether).unwrap();
         game.world
@@ -1021,7 +1016,7 @@ fn a_transaction_covers_its_own_level_and_another_levels_spawn_is_told_at_once()
 #[test]
 #[ignore = "daily"]
 fn a_level_holds_its_spawns_for_its_own_transaction_under_another_levels() {
-    const NAME: &str = "game::transaction_entities_tests::a_level_holds_its_spawns_for_its_own_transaction_under_another_levels";
+    const NAME: &str = "game::server_side::transaction_entities_tests::a_level_holds_its_spawns_for_its_own_transaction_under_another_levels";
     with_observer(NAME, |game| {
         let pig = game.storage_scope(|game, _| {
             // As a command run `in` the nether that opens a transaction of its own does.
@@ -1056,7 +1051,7 @@ fn a_level_holds_its_spawns_for_its_own_transaction_under_another_levels() {
 #[test]
 #[ignore = "daily"]
 fn a_nested_commit_from_a_join_listener_tells_its_join_before_its_removal() {
-    const NAME: &str = "game::transaction_entities_tests::a_nested_commit_from_a_join_listener_tells_its_join_before_its_removal";
+    const NAME: &str = "game::server_side::transaction_entities_tests::a_nested_commit_from_a_join_listener_tells_its_join_before_its_removal";
     with_observer(NAME, |game| {
         // A boat, not a mob: a mob reads as removed by its flag, not by the pending list.
         let d = summon(game, "minecraft:oak_boat", "{}").unwrap();
@@ -1094,7 +1089,7 @@ fn a_nested_commit_from_a_join_listener_tells_its_join_before_its_removal() {
 #[test]
 #[ignore = "daily"]
 fn a_level_commit_told_inside_another_levels_commit_keeps_its_own_batch() {
-    const NAME: &str = "game::transaction_entities_tests::a_level_commit_told_inside_another_levels_commit_keeps_its_own_batch";
+    const NAME: &str = "game::server_side::transaction_entities_tests::a_level_commit_told_inside_another_levels_commit_keeps_its_own_batch";
     with_observer(NAME, |game| {
         game.set_allow_commands(true);
         game.build_registries();
@@ -1134,7 +1129,7 @@ fn a_level_commit_told_inside_another_levels_commit_keeps_its_own_batch() {
 #[test]
 #[ignore = "daily"]
 fn a_block_break_at_the_commit_never_announces_a_mob_the_transaction_removed() {
-    const NAME: &str = "game::transaction_entities_tests::a_block_break_at_the_commit_never_announces_a_mob_the_transaction_removed";
+    const NAME: &str = "game::server_side::transaction_entities_tests::a_block_break_at_the_commit_never_announces_a_mob_the_transaction_removed";
     with_observer(NAME, |game| {
         // A poppy the pour of water breaks: `level_place_fluid` makes its drops at the call and
         // `After::FluidWrite` spawns them at the root commit (`commit_fluid_write`, `flush_spill`),
@@ -1179,7 +1174,7 @@ fn a_block_break_at_the_commit_never_announces_a_mob_the_transaction_removed() {
 #[ignore = "daily"]
 fn an_exhausted_level_pop_draws_nothing_from_the_level_random() {
     use sunrise_core::random::RandomSource;
-    const NAME: &str = "game::transaction_entities_tests::an_exhausted_level_pop_draws_nothing_from_the_level_random";
+    const NAME: &str = "game::server_side::transaction_entities_tests::an_exhausted_level_pop_draws_nothing_from_the_level_random";
     with_observer(NAME, |game| {
         let level = game.level(game.dim.id()).unwrap();
         game.server.next_entity = u32::MAX - ENTITY_ID_HEADROOM;
@@ -1195,7 +1190,7 @@ fn an_exhausted_level_pop_draws_nothing_from_the_level_random() {
 #[ignore = "daily"]
 fn a_parked_levels_pending_removal_is_hidden_from_another_level_until_it_aborts() {
     use sunrise_client::join_seq::residency::table::EntityLookup;
-    const NAME: &str = "game::transaction_entities_tests::a_parked_levels_pending_removal_is_hidden_from_another_level_until_it_aborts";
+    const NAME: &str = "game::server_side::transaction_entities_tests::a_parked_levels_pending_removal_is_hidden_from_another_level_until_it_aborts";
     with_observer(NAME, |game| {
         game.enter_level(Dim::Nether).unwrap();
         game.enter_level(Dim::Overworld).unwrap();
@@ -1252,7 +1247,7 @@ fn a_parked_levels_pending_removal_is_hidden_from_another_level_until_it_aborts(
 #[test]
 #[ignore = "daily"]
 fn each_spawn_in_a_transaction_is_constructed_at_its_own_call_and_joins_at_the_commit() {
-    const NAME: &str = "game::transaction_entities_tests::each_spawn_in_a_transaction_is_constructed_at_its_own_call_and_joins_at_the_commit";
+    const NAME: &str = "game::server_side::transaction_entities_tests::each_spawn_in_a_transaction_is_constructed_at_its_own_call_and_joins_at_the_commit";
     with_observer(NAME, |game| {
         let (a, b) = game.storage_scope(|game, _| {
             let a = summon(game, "minecraft:pig", "{}").unwrap();

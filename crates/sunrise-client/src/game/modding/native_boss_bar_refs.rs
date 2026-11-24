@@ -52,7 +52,7 @@ impl Game<'_> {
     /// None. Saved bars are there from the world's start, as vanilla's
     /// `CustomBossEvents`. Boss bars of mobs and raids are not custom boss
     /// events.
-    pub(super) fn boss_bar(&self, id: &str) -> Option<BossBarRef> {
+    pub(in crate::game) fn boss_bar(&self, id: &str) -> Option<BossBarRef> {
         let id = Identifier::parse(id).ok()?;
         let id = format!("{}:{}", id.namespace(), id.path());
         self.boss_bar_handle(self.boss_bar_state_by_id(&id)?)
@@ -66,7 +66,7 @@ impl Game<'_> {
     }
 
     /// Every custom boss bar, in the order `/bossbar list` shows them.
-    pub(super) fn boss_bars(&self) -> Vec<BossBarRef> {
+    pub(in crate::game) fn boss_bars(&self) -> Vec<BossBarRef> {
         if self.remote.is_some() {
             return Vec::new();
         }
@@ -80,7 +80,7 @@ impl Game<'_> {
 
     /// `/bossbar add`: a new bar, visible, white, `progress`, at 0 of 100, with
     /// nobody added. None if the id is taken or invalid, or outside a server.
-    pub(super) fn create_boss_bar(&mut self, id: &str, name: Text) -> Option<BossBarRef> {
+    pub(in crate::game) fn create_boss_bar(&mut self, id: &str, name: Text) -> Option<BossBarRef> {
         let epoch = self.native_lifecycle.epoch()?;
         let id = Identifier::parse(id).ok()?;
         let id = format!("{}:{}", id.namespace(), id.path());
@@ -93,39 +93,43 @@ impl Game<'_> {
     }
 
     /// The bar's id (`CustomBossEvent.customId`), or None for a stale handle.
-    pub(super) fn boss_bar_id(&self, bar: BossBarRef) -> Option<String> {
+    pub(in crate::game) fn boss_bar_id(&self, bar: BossBarRef) -> Option<String> {
         self.boss_bar_state(bar).map(|b| b.id.clone())
     }
 
     /// `BossEvent.getName`.
-    pub(super) fn boss_bar_name(&self, bar: BossBarRef) -> Option<Text> {
+    pub(in crate::game) fn boss_bar_name(&self, bar: BossBarRef) -> Option<Text> {
         self.boss_bar_state(bar).map(|b| comp_text(&b.name))
     }
 
     /// `ServerBossEvent.setName`: viewers are sent the new name.
-    pub(super) fn boss_bar_set_name(&mut self, bar: BossBarRef, name: Text) -> bool {
+    pub(in crate::game) fn boss_bar_set_name(&mut self, bar: BossBarRef, name: Text) -> bool {
         self.boss_bar_edit(bar, |b| b.name = name.component())
     }
 
     /// `BossEvent.getColor`.
-    pub(super) fn boss_bar_color(&self, bar: BossBarRef) -> Option<BossBarColor> {
+    pub(in crate::game) fn boss_bar_color(&self, bar: BossBarRef) -> Option<BossBarColor> {
         let b = self.boss_bar_state(bar)?;
         Some(BossBarColor::from_name(&b.color).unwrap_or(BossBarColor::White))
     }
 
     /// `ServerBossEvent.setColor`.
-    pub(super) fn boss_bar_set_color(&mut self, bar: BossBarRef, color: BossBarColor) -> bool {
+    pub(in crate::game) fn boss_bar_set_color(
+        &mut self,
+        bar: BossBarRef,
+        color: BossBarColor,
+    ) -> bool {
         self.boss_bar_edit(bar, |b| b.color = color.name().to_owned())
     }
 
     /// `BossEvent.getOverlay`.
-    pub(super) fn boss_bar_overlay(&self, bar: BossBarRef) -> Option<BossBarOverlay> {
+    pub(in crate::game) fn boss_bar_overlay(&self, bar: BossBarRef) -> Option<BossBarOverlay> {
         let b = self.boss_bar_state(bar)?;
         Some(BossBarOverlay::from_name(&b.style).unwrap_or(BossBarOverlay::Progress))
     }
 
     /// `ServerBossEvent.setOverlay`.
-    pub(super) fn boss_bar_set_overlay(
+    pub(in crate::game) fn boss_bar_set_overlay(
         &mut self,
         bar: BossBarRef,
         overlay: BossBarOverlay,
@@ -134,43 +138,55 @@ impl Game<'_> {
     }
 
     /// `BossEvent.shouldDarkenScreen`.
-    pub(super) fn boss_bar_darken_screen(&self, bar: BossBarRef) -> Option<bool> {
+    pub(in crate::game) fn boss_bar_darken_screen(&self, bar: BossBarRef) -> Option<bool> {
         self.boss_bar_state(bar).map(|b| b.darken)
     }
 
     /// `ServerBossEvent.setDarkenScreen`.
-    pub(super) fn boss_bar_set_darken_screen(&mut self, bar: BossBarRef, darken: bool) -> bool {
+    pub(in crate::game) fn boss_bar_set_darken_screen(
+        &mut self,
+        bar: BossBarRef,
+        darken: bool,
+    ) -> bool {
         self.boss_bar_edit(bar, |b| b.darken = darken)
     }
 
     /// `BossEvent.shouldPlayBossMusic`.
-    pub(super) fn boss_bar_play_boss_music(&self, bar: BossBarRef) -> Option<bool> {
+    pub(in crate::game) fn boss_bar_play_boss_music(&self, bar: BossBarRef) -> Option<bool> {
         self.boss_bar_state(bar).map(|b| b.music)
     }
 
     /// `ServerBossEvent.setPlayBossMusic`.
-    pub(super) fn boss_bar_set_play_boss_music(&mut self, bar: BossBarRef, music: bool) -> bool {
+    pub(in crate::game) fn boss_bar_set_play_boss_music(
+        &mut self,
+        bar: BossBarRef,
+        music: bool,
+    ) -> bool {
         self.boss_bar_edit(bar, |b| b.music = music)
     }
 
     /// `BossEvent.shouldCreateWorldFog`.
-    pub(super) fn boss_bar_create_world_fog(&self, bar: BossBarRef) -> Option<bool> {
+    pub(in crate::game) fn boss_bar_create_world_fog(&self, bar: BossBarRef) -> Option<bool> {
         self.boss_bar_state(bar).map(|b| b.fog)
     }
 
     /// `ServerBossEvent.setCreateWorldFog`.
-    pub(super) fn boss_bar_set_create_world_fog(&mut self, bar: BossBarRef, fog: bool) -> bool {
+    pub(in crate::game) fn boss_bar_set_create_world_fog(
+        &mut self,
+        bar: BossBarRef,
+        fog: bool,
+    ) -> bool {
         self.boss_bar_edit(bar, |b| b.fog = fog)
     }
 
     /// `CustomBossEvent.value`.
-    pub(super) fn boss_bar_value(&self, bar: BossBarRef) -> Option<i32> {
+    pub(in crate::game) fn boss_bar_value(&self, bar: BossBarRef) -> Option<i32> {
         self.boss_bar_state(bar).map(|b| b.value)
     }
 
     /// `CustomBossEvent.setValue`: stored as given, as vanilla does; only the
     /// progress shown is kept between empty and full.
-    pub(super) fn boss_bar_set_value(&mut self, bar: BossBarRef, value: i32) -> bool {
+    pub(in crate::game) fn boss_bar_set_value(&mut self, bar: BossBarRef, value: i32) -> bool {
         let Some(id) = self.boss_bar_id(bar) else {
             return false;
         };
@@ -179,13 +195,13 @@ impl Game<'_> {
     }
 
     /// `CustomBossEvent.max`.
-    pub(super) fn boss_bar_max(&self, bar: BossBarRef) -> Option<i32> {
+    pub(in crate::game) fn boss_bar_max(&self, bar: BossBarRef) -> Option<i32> {
         self.boss_bar_state(bar).map(|b| b.max)
     }
 
     /// `CustomBossEvent.setMax`: stored as given, and the value is kept. Only
     /// `/bossbar set max` limits it to 1 or more.
-    pub(super) fn boss_bar_set_max(&mut self, bar: BossBarRef, max: i32) -> bool {
+    pub(in crate::game) fn boss_bar_set_max(&mut self, bar: BossBarRef, max: i32) -> bool {
         let Some(id) = self.boss_bar_id(bar) else {
             return false;
         };
@@ -194,18 +210,18 @@ impl Game<'_> {
     }
 
     /// `ServerBossEvent.isVisible`.
-    pub(super) fn boss_bar_visible(&self, bar: BossBarRef) -> Option<bool> {
+    pub(in crate::game) fn boss_bar_visible(&self, bar: BossBarRef) -> Option<bool> {
         self.boss_bar_state(bar).map(|b| b.visible)
     }
 
     /// `ServerBossEvent.setVisible`: a hidden bar is taken off its players'
     /// screens and keeps them.
-    pub(super) fn boss_bar_set_visible(&mut self, bar: BossBarRef, visible: bool) -> bool {
+    pub(in crate::game) fn boss_bar_set_visible(&mut self, bar: BossBarRef, visible: bool) -> bool {
         self.boss_bar_edit(bar, |b| b.visible = visible)
     }
 
     /// `ServerBossEvent.getPlayers`: the bar's players who are online.
-    pub(super) fn boss_bar_players(&self, bar: BossBarRef) -> Option<Vec<PlayerRef>> {
+    pub(in crate::game) fn boss_bar_players(&self, bar: BossBarRef) -> Option<Vec<PlayerRef>> {
         let b = self.boss_bar_state(bar)?;
         Some(
             b.players
@@ -217,7 +233,11 @@ impl Game<'_> {
 
     /// `CustomBossEvent.addPlayer`. False for a stale bar or an offline or
     /// stale player. The bar is kept for the player across sessions.
-    pub(super) fn boss_bar_add_player(&mut self, bar: BossBarRef, player: PlayerRef) -> bool {
+    pub(in crate::game) fn boss_bar_add_player(
+        &mut self,
+        bar: BossBarRef,
+        player: PlayerRef,
+    ) -> bool {
         if self.player(player.uuid()) != Some(player) {
             return false;
         }
@@ -231,7 +251,11 @@ impl Game<'_> {
 
     /// `CustomBossEvent.removePlayer`. False for a stale bar or an offline or
     /// stale player.
-    pub(super) fn boss_bar_remove_player(&mut self, bar: BossBarRef, player: PlayerRef) -> bool {
+    pub(in crate::game) fn boss_bar_remove_player(
+        &mut self,
+        bar: BossBarRef,
+        player: PlayerRef,
+    ) -> bool {
         if self.player(player.uuid()) != Some(player) {
             return false;
         }
@@ -241,7 +265,7 @@ impl Game<'_> {
 
     /// `/bossbar remove` (`CustomBossEvents.remove`): the bar's viewers lose it
     /// and its handle goes stale.
-    pub(super) fn boss_bar_remove(&mut self, bar: BossBarRef) -> bool {
+    pub(in crate::game) fn boss_bar_remove(&mut self, bar: BossBarRef) -> bool {
         let Some(id) = self.boss_bar_id(bar) else {
             return false;
         };

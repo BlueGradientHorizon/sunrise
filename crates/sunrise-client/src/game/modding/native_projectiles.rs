@@ -23,13 +23,13 @@ pub(in crate::game) mod impact_probe;
 
 /// The hit target state an independent projectile decided against before a hook.
 #[derive(PartialEq)]
-pub(super) enum ImpactTarget {
+pub(in crate::game) enum ImpactTarget {
     Block(sunrise_world::registry::BlockStateId),
     Entity(mod_api::EntityRef, [f64; 3]),
 }
 
 /// A projectile's impact in one tick of `tick_projectiles`.
-pub(super) struct Impact {
+pub(in crate::game) struct Impact {
     /// Where the projectile was in the tick's list.
     pub index: Option<usize>,
     /// The original flight's keep decision, once section movement has been accounted for.
@@ -46,7 +46,7 @@ pub(super) struct Impact {
     pub events: Range<usize>,
 }
 
-pub(super) struct ProjectileHit {
+pub(in crate::game) struct ProjectileHit {
     pub projectile: Projectile,
     pub hit: Hit,
     /// An ordinary (not deferred) block arrow finished its first tick already;
@@ -54,10 +54,10 @@ pub(super) struct ProjectileHit {
     pub shot_after_hit: bool,
 }
 
-pub(super) type ProjectileShot = (Option<Who>, Option<u32>, [f64; 3]);
+pub(in crate::game) type ProjectileShot = (Option<Who>, Option<u32>, [f64; 3]);
 
 /// A notified hit still waiting to be applied after the intervening callbacks.
-pub(super) struct PendingImpact {
+pub(in crate::game) struct PendingImpact {
     keep: bool,
     canceled: bool,
     target: Option<ImpactTarget>,
@@ -69,7 +69,7 @@ fn projectile_type(p: &Projectile) -> &'static str {
 }
 
 /// Events produced by applying the contact, not the arrow's earlier flight.
-pub(super) fn projectile_impact_event(event: &ArrowEvent) -> bool {
+pub(in crate::game) fn projectile_impact_event(event: &ArrowEvent) -> bool {
     matches!(
         event,
         ArrowEvent::Block { .. }
@@ -103,7 +103,7 @@ impl Drop for ProjectileDispatch<'_, '_> {
 impl Game<'_> {
     /// Snapshot the hit precondition so listener writes can invalidate its
     /// application without rerunning the collision decision.
-    pub(super) fn native_impact_target(&self, hit: Hit) -> Option<ImpactTarget> {
+    pub(in crate::game) fn native_impact_target(&self, hit: Hit) -> Option<ImpactTarget> {
         let (entity, block, _, _) = self.pearl_hit(hit);
         if let Some(id) = entity {
             let entity = self.entity(id)?;
@@ -120,7 +120,7 @@ impl Game<'_> {
     /// Dispatch a hit for a projectile ticked outside the shared projectile list.
     /// The caller checks the server opt-in gate and exposes the live projectile
     /// before calling; misses never dispatch.
-    pub(super) fn native_separate_projectile_impact(
+    pub(in crate::game) fn native_separate_projectile_impact(
         &mut self,
         projectile: u32,
         kind: &str,
@@ -157,7 +157,7 @@ impl Game<'_> {
 
     /// Guard just the dispatch: normal completion returns the still-owned pass
     /// to its caller, which restores explicitly at the established tick boundary.
-    pub(super) fn with_projectile_dispatch(
+    pub(in crate::game) fn with_projectile_dispatch(
         &mut self,
         pass: &mut JoinList<Projectile, false>,
         fire: impl FnOnce(&mut Self),
@@ -174,7 +174,7 @@ impl Game<'_> {
     /// server thread or a dedicated server, never a client) and a mod asked to hear their impacts
     /// (`native_hears_projectile_impacts`). Without one, the tick keeps no copy
     /// of its projectiles: it costs nothing.
-    pub(super) fn native_hears_impacts(&self) -> bool {
+    pub(in crate::game) fn native_hears_impacts(&self) -> bool {
         if self.serving.is_none() && self.options.dedicated.is_none() {
             return false;
         }
@@ -206,7 +206,7 @@ impl Game<'_> {
     }
 
     /// `ProjectileImpactEvent` for a player's trident, once its tick has exposed the owner.
-    pub(super) fn native_trident_impact(
+    pub(in crate::game) fn native_trident_impact(
         &mut self,
         trident: u32,
         guest: Option<u32>,
@@ -323,12 +323,16 @@ impl Game<'_> {
 
     /// An explicitly removed owner is already gone to simulation, even while its row
     /// waits for the root transaction and the level's ordinary removal sweep.
-    pub(super) fn projectile_removal_pending(&self, id: u32) -> bool {
+    pub(in crate::game) fn projectile_removal_pending(&self, id: u32) -> bool {
         let target = Target::Projectile(id);
         self.removal_pending(&target) || self.persist.removals.contains(&target)
     }
 
-    pub(super) fn native_projectile_impact_canceled(&mut self, p: &Projectile, hit: Hit) -> bool {
+    pub(in crate::game) fn native_projectile_impact_canceled(
+        &mut self,
+        p: &Projectile,
+        hit: Hit,
+    ) -> bool {
         let (entity, entity_kind, block, face, at) = match hit {
             Hit::Block { pos, at, face } => (None, String::new(), pos, face, at),
             Hit::Entity { who, at } => {
@@ -359,7 +363,7 @@ impl Game<'_> {
     /// Hand back the owning rows (including terminal impacts) while mods run. A veto
     /// alone replays the flight; all other captured contacts keep their row until the
     /// apply boundary (or, for an explicit discard, the removal sweep).
-    pub(super) fn native_settle_impacts(
+    pub(in crate::game) fn native_settle_impacts(
         &mut self,
         projectiles: &mut JoinList<Projectile, false>,
         impacts: Vec<Impact>,
@@ -478,7 +482,7 @@ impl Game<'_> {
 
     /// Tell the actual contact in tick order, once earlier hits have had a chance to break
     /// the vehicle. A listener-invalidated contact never asks the world for another hit.
-    pub(super) fn apply_vehicle_wind_impact(
+    pub(in crate::game) fn apply_vehicle_wind_impact(
         &mut self,
         mut p: Projectile,
         mut hit: Hit,
@@ -543,7 +547,7 @@ impl Game<'_> {
     }
 
     /// Recheck and apply the captured response after the earlier callbacks.
-    pub(super) fn apply_captured_impact(
+    pub(in crate::game) fn apply_captured_impact(
         &mut self,
         snapshot: Projectile,
         hit: Hit,
@@ -589,7 +593,7 @@ impl Game<'_> {
 
     /// `AbstractArrow.tick` resumes after a refused contact or after publishing
     /// the accepted hit and `PROJECTILE_LAND`. A discarded arrow is already done.
-    pub(super) fn finish_deferred_arrow_tick(&mut self, id: u32, join: JoinSeq) {
+    pub(in crate::game) fn finish_deferred_arrow_tick(&mut self, id: u32, join: JoinSeq) {
         if self.projectile_removal_pending(id) {
             return;
         }
@@ -746,7 +750,7 @@ mod nested_spawn_tests {
     #[ignore = "daily"]
     fn impact_handoff_balances_the_active_owner() {
         if !run_fresh_cases(
-            "game::native_projectiles::nested_spawn_tests::impact_handoff_balances_the_active_owner",
+            "game::server_side::native_projectiles::nested_spawn_tests::impact_handoff_balances_the_active_owner",
             CASE,
             &["active-owner"],
         ) {
@@ -758,7 +762,7 @@ mod nested_spawn_tests {
     #[ignore = "daily"]
     fn impact_handoff_balances_the_parked_owner() {
         if !run_fresh_cases(
-            "game::native_projectiles::nested_spawn_tests::impact_handoff_balances_the_parked_owner",
+            "game::server_side::native_projectiles::nested_spawn_tests::impact_handoff_balances_the_parked_owner",
             CASE,
             &["parked-owner"],
         ) {
@@ -770,7 +774,7 @@ mod nested_spawn_tests {
     #[ignore = "daily"]
     fn impact_exposure_retains_the_existing_spawn_buffer_for_the_next_pass() {
         if run_fresh_cases(
-            "game::native_projectiles::nested_spawn_tests::impact_exposure_retains_the_existing_spawn_buffer_for_the_next_pass",
+            "game::server_side::native_projectiles::nested_spawn_tests::impact_exposure_retains_the_existing_spawn_buffer_for_the_next_pass",
             CASE,
             &["spawn-buffer"],
         ) {
