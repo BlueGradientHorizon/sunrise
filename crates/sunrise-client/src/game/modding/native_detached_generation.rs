@@ -51,6 +51,10 @@ fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
     }
 }
 
+/// Open detached chunk generators handed out by `LevelRef::detached_generator`, keyed by level.
+pub(super) type DetachedGenerators =
+    std::cell::RefCell<std::collections::HashMap<Dim, Arc<DetachedGeneratorState>>>;
+
 /// Shared lifecycle + bounded idle-worker pool for one dimension's detached generator handles.
 pub(super) struct DetachedGeneratorState {
     open: AtomicBool,
@@ -290,6 +294,13 @@ impl Game<'_> {
             state.close();
         }
     }
+
+    /// Close all `DetachedChunkGenerator` handles across every dimension and drop pooled workers.
+    pub(super) fn close_all_detached_generators(&mut self) {
+        for (_, state) in self.detached_generators.borrow_mut().drain() {
+            state.close();
+        }
+    }
 }
 
 #[cfg(test)]
@@ -420,7 +431,8 @@ mod tests {
             assert_eq!(before, (game.world.chunks.len(), game.streaming.pending()));
 
             // Closing the level immediately invalidates handles and drops all pooled workers.
-            game.native_levels_closing();
+            let dim = game.dim;
+            game.close_detached_generators_for_dim(dim);
             assert_eq!(
                 generator
                     .generate_chunk([4, -3], GenerationStage::Biomes)
