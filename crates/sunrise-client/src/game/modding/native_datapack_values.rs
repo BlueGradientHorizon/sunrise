@@ -497,7 +497,9 @@ impl LevelAccess for ReadOnlyLevel<'_> {
 
 /// Read-only `FeatureWorld + PlacementContext` view over a live level (server active/parked or
 /// client level) for evaluating `BlockPredicate::test` and `BlockStateProvider::get_state`.
-struct DatapackReadWorld<'a> {
+struct DatapackReadWorld<'a, 'g> {
+    game: &'a Game<'g>,
+    level: LevelRef,
     world: &'a World,
     behaviours: &'a Behaviours,
     registry: &'static BlockRegistry,
@@ -507,10 +509,9 @@ struct DatapackReadWorld<'a> {
     block_tags: &'a HashMap<String, HashSet<String>>,
     dimension: LevelDimension,
     sea_level: i32,
-    blockers: Vec<Aabb>,
 }
 
-impl FeatureWorld for DatapackReadWorld<'_> {
+impl FeatureWorld for DatapackReadWorld<'_, '_> {
     type Error = PlacementQueryError;
 
     fn block(&mut self, position: [i32; 3]) -> Result<BlockStateId, Self::Error> {
@@ -527,7 +528,7 @@ impl FeatureWorld for DatapackReadWorld<'_> {
     }
 }
 
-impl PlacementContext for DatapackReadWorld<'_> {
+impl PlacementContext for DatapackReadWorld<'_, '_> {
     fn block_registry(&self) -> Option<&'static BlockRegistry> {
         Some(self.registry)
     }
@@ -568,22 +569,9 @@ impl PlacementContext for DatapackReadWorld<'_> {
     }
 
     fn unobstructed_block(&mut self, position: [i32; 3]) -> Result<bool, PlacementQueryError> {
-        let cell = Aabb::new(
-            Vec3::new(
-                f64::from(position[0]),
-                f64::from(position[1]),
-                f64::from(position[2]),
-            ),
-            Vec3::new(
-                f64::from(position[0]) + 1.0,
-                f64::from(position[1]) + 1.0,
-                f64::from(position[2]) + 1.0,
-            ),
-        );
         Ok(self
-            .blockers
-            .iter()
-            .all(|blocker| !cell.intersects(*blocker)))
+            .game
+            .is_datapack_block_unobstructed(self.level, self.world, position))
     }
 
     fn biome_identity(&mut self, position: [i32; 3]) -> Result<BiomeId, PlacementQueryError> {
@@ -648,7 +636,7 @@ impl PlacementContext for DatapackReadWorld<'_> {
     }
 }
 
-impl Game<'_> {
+impl<'g> Game<'g> {
     /// Active decoded vanilla-value table for this side (server or client).
     fn active_datapack_vanilla_values(&self) -> Option<&DatapackVanillaValues> {
         if self.is_logical_server() {
@@ -788,7 +776,7 @@ impl Game<'_> {
         &'a self,
         level: LevelRef,
         table: &'a DatapackVanillaValues,
-    ) -> Result<DatapackReadWorld<'a>, DatapackValueError> {
+    ) -> Result<DatapackReadWorld<'a, 'g>, DatapackValueError> {
         let world = self
             .native_level_read_world(level)
             .ok_or(DatapackValueError::Unavailable)?;
@@ -806,12 +794,9 @@ impl Game<'_> {
                 .and_then(|r| r.tags.as_ref())
                 .map_or(&self.items().block_tags, |tags| &tags.block_tags)
         };
-        let blockers = if std::ptr::eq(world, &self.world) {
-            self.live_building_blockers()
-        } else {
-            Vec::new()
-        };
         Ok(DatapackReadWorld {
+            game: self,
+            level,
             world,
             behaviours: self.res.behaviours(),
             registry: self.pack.assets.registry,
@@ -821,31 +806,116 @@ impl Game<'_> {
             block_tags,
             dimension,
             sea_level,
-            blockers,
         })
     }
 
-    fn live_building_blockers(&self) -> Vec<Aabb> {
-        let mut boxes = Vec::new();
-        if !self.spectator()
-            && let Some(p) = self.player.as_ref()
+    /// `EntityGetter.isUnobstructed(null, Shapes.block().move(pos))`: lazily checks every live
+    /// non-spectator player (including LAN guests and dedicated-server players) and every
+    /// `blocksBuilding` entity in `level` (active or parked), without allocating on unobstructed
+    /// cells.
+    fn is_datapack_block_unobstructed(
+        &self,
+        level: LevelRef,
+        world: &World,
+        position: [i32; 3],
+    ) -> bool {
+        let cell = Aabb::new(
+            Vec3::new(
+                f64::from(position[0]),
+                f64::from(position[1]),
+                f64::from(position[2]),
+            ),
+            Vec3::new(
+                f64::from(position[0]) + 1.0,
+                f64::from(position[1]) + 1.0,
+                f64::from(position[2]) + 1.0,
+            ),
+        );
+        let mut cell_shape: Option<sunrise_core::geometry::VoxelShape> = None;
+        let mut obstructs = |blocker: Aabb| {
+            if !blocker.intersects(cell) {
+                return false;
+            }
+            let shape = cell_shape.get_or_insert_with(|| {
+                sunrise_core::geometry::VoxelShape::block().moved(Vec3::new(
+                    f64::from(position[0]),
+                    f64::from(position[1]),
+                    f64::from(position[2]),
+                ))
+            });
+            sunrise_client::mobs::spawn_selection::blocks_spawn_shape(shape, cell, blocker)
+        };
+
+        let dim_id = level.dimension_id();
+        let dim = Dim::from_id(dim_id);
+        let is_active = std::ptr::eq(world, &self.world);
+
+        if is_active
+            && !self.lan_acting_fake
+            && !self.spectator()
+            && self.player.as_ref().is_some_and(|p| obstructs(p.bounds()))
         {
-            let w = f64::from(p.dimensions.width) / 2.0;
-            boxes.push(Aabb::new(
-                Vec3::new(p.position.x - w, p.position.y, p.position.z - w),
-                Vec3::new(
-                    p.position.x + w,
-                    p.position.y + f64::from(p.dimensions.height),
-                    p.position.z + w,
-                ),
-            ));
+            return false;
         }
-        for mob in &self.mobs {
-            if !mob.removed {
-                boxes.push(mob.bounds());
+        if self.is_logical_server() {
+            if self.lan_acting.is_some() {
+                if self.lan_building_boxes.iter(dim).any(&mut obstructs) {
+                    return false;
+                }
+            } else if let Some(host) = self.lan.as_ref()
+                && host
+                    .hub
+                    .guests
+                    .simulation_iter()
+                    .filter(|g| g.dimension == dim_id && g.loaded && !g.dead && !g.spectator())
+                    .any(|g| obstructs(g.bounds()))
+            {
+                return false;
             }
         }
-        boxes
+
+        if is_active {
+            let remote = (!self.is_logical_server())
+                .then_some(self.remote.as_ref())
+                .flatten();
+            let mob_obstructs = self.mobs.iter().any(|mob| {
+                if mob.removed {
+                    return false;
+                }
+                if &*mob.kind.id == "minecraft:player"
+                    && remote
+                        .is_some_and(|r| r.remote_player_info_game_mode(mob.id as i32) == Some(3))
+                {
+                    return false;
+                }
+                obstructs(mob.bounds())
+            });
+            if mob_obstructs
+                || self
+                    .dragon
+                    .as_ref()
+                    .is_some_and(|dragon| obstructs(dragon.body_bounds()))
+            {
+                return false;
+            }
+            let entities = crate::game::entity::entity_lists_of!(self);
+            return !entities
+                .non_mob_building_blocker_boxes(
+                    self.carts
+                        .iter()
+                        .map(crate::game::minecarts::Minecart::bounds),
+                    &self.crystals,
+                )
+                .any(obstructs);
+        }
+
+        if self.is_logical_server()
+            && let Some(parked) = self.levels.parked_of(dim_id)
+        {
+            return !parked.any_building_blocker(obstructs);
+        }
+
+        true
     }
 
     pub(super) fn datapack_int_provider_sample(
@@ -1545,6 +1615,91 @@ mod tests {
                         tags_idx < snapshot_idx,
                         "UpdateTags ({tags_idx}) must arrive before datapack snapshot ({snapshot_idx})"
                     );
+                    // 7b. UnobstructedPredicate checks non-mob blocksBuilding entities, LAN/dedicated
+                    //     players, and parked dimensions lazily.
+                    let unobstructed_file =
+                        pack.join("data/ubm_test/ubm_test/bone_meal_rule/unobstructed.json");
+                    write(
+                        &unobstructed_file,
+                        r##"{
+                            "blocks_to_grow": 1,
+                            "increase": 1,
+                            "vegetation": {"id":"minecraft:stone"},
+                            "ground_state": {"id":"minecraft:stone"},
+                            "predicate": {"type":"minecraft:unobstructed"},
+                            "spread_sources": "minecraft:stone",
+                            "tag_targets": "#ubm_test:reload_added",
+                            "single_target": "minecraft:cactus",
+                            "variant": {"type":"ubm_test:random_tick"}
+                        }"##,
+                    );
+                    assert!(game.run_command("reload"));
+                    let mut unobstructed = None;
+                    level
+                        .datapack_read(
+                            game,
+                            "ubm_test:bone_meal_rule",
+                            "ubm_test:unobstructed",
+                            &mut |entry| {
+                                unobstructed = entry
+                                    .get("predicate")
+                                    .and_then(DatapackValue::as_block_predicate);
+                            },
+                        )
+                        .unwrap();
+                    let unobstructed = unobstructed.unwrap();
+                    assert_eq!(unobstructed.test(game, level, [10, 65, 10]), Ok(true));
+                    // Non-marker armor stand blocks building; marker armor stand does not.
+                    game.armor_stands
+                        .push(sunrise_client::entities::ArmorStand::new(
+                            9001,
+                            Vec3::new(10.5, 65.0, 10.5),
+                            0.0,
+                        ));
+                    assert_eq!(unobstructed.test(game, level, [10, 65, 10]), Ok(false));
+                    let mut marker = sunrise_client::entities::ArmorStand::new(
+                        9002,
+                        Vec3::new(12.5, 65.0, 12.5),
+                        0.0,
+                    );
+                    marker.marker = true;
+                    game.armor_stands.push(marker);
+                    assert_eq!(unobstructed.test(game, level, [12, 65, 12]), Ok(true));
+                    // LAN guest blocks building even when self.player is None (dedicated server).
+                    let saved_player = game.player.take();
+                    game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                        guest.dimension = game.dim.id().to_owned();
+                        guest.loaded = true;
+                        guest.dead = false;
+                        guest.position = [14.5, 65.0, 14.5];
+                        guest.game_mode = 0;
+                    });
+                    assert_eq!(unobstructed.test(game, level, [14, 65, 14]), Ok(false));
+                    game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                        guest.game_mode = 3;
+                    });
+                    assert_eq!(unobstructed.test(game, level, [14, 65, 14]), Ok(true));
+                    game.player = saved_player;
+                    // Parked server dimension entities are checked lazily too.
+                    let back = game.dim;
+                    game.enter_level(Dim::Nether).unwrap();
+                    game.armor_stands
+                        .push(sunrise_client::entities::ArmorStand::new(
+                            9003,
+                            Vec3::new(16.5, 65.0, 16.5),
+                            0.0,
+                        ));
+                    game.enter_level(back).unwrap();
+                    let parked_nether = LevelRef::new(level.epoch(), Dim::Nether.key());
+                    assert_eq!(
+                        unobstructed.test(game, parked_nether, [16, 65, 16]),
+                        Ok(false)
+                    );
+                    assert_eq!(
+                        unobstructed.test(game, parked_nether, [18, 65, 18]),
+                        Ok(true)
+                    );
+
                     // Clean up LAN host before switching this fixture Game to client mode.
                     game.lan = None;
 
