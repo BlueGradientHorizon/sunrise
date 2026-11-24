@@ -309,17 +309,15 @@ fn a_library_whose_crates_another_mod_changed_is_refused_beside_its_dependent() 
     let scratch = Scratch::new();
     let native = scratch.new_mod(
         "native",
-        &library(
-            "pub fn magic() -> u32 { arrayvec::ArrayVec::<u32, 1>::new().capacity() as u32 + 1728 }",
-        ),
+        &library("pub fn magic() -> u32 { ascii::AsciiChar::A as u32 + 1663 }"),
         "",
-        "arrayvec = { version = \"0.7\", default-features = false }\n",
+        "ascii = { version = \"1\", default-features = false }\n",
     );
     let pad = scratch.new_mod(
         "pad",
-        &library("pub fn room() -> usize { arrayvec::ArrayVec::<u8, 4>::new().capacity() }"),
+        &library("pub fn room() -> usize { ascii::AsciiChar::B as usize }"),
         "",
-        "arrayvec = \"0.7\"\n",
+        "ascii = \"1\"\n",
     );
     // Each library's own build pins its crates in its Cargo.lock.
     for library in [&native, &pad] {
