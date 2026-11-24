@@ -105,6 +105,23 @@ impl Frontend {
         name: &str,
         meta: Span,
     ) -> Result<Option<VariableReference>> {
+        // A constant expression inside a function sees the names declared there first: a
+        // `const` local (made a module constant) names its constant, as a global one does.
+        let enclosing_constant = ctx
+            .enclosing
+            .and_then(|enclosing| enclosing.lookup(name))
+            .and_then(|var| var.constant);
+        if let Some((constant, ty)) = enclosing_constant {
+            let span = ctx.module.constants.get_span(constant);
+            let expr = ctx.add_expression(Expression::Constant(constant), span)?;
+            return Ok(Some(VariableReference {
+                expr,
+                load: false,
+                mutable: false,
+                constant: Some((constant, ty)),
+                entry_arg: None,
+            }));
+        }
         if let Some(var) = ctx.symbol_table.lookup(name).cloned() {
             return Ok(Some(var));
         }

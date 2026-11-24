@@ -111,6 +111,9 @@ members would take a location past `u32` (each taking the next after its `layout
 is a parse error at its declaration, not an overflow.
 An integer literal whose bit pattern does not fit in 32 bits is a parse error at the literal, not
 lowered to its low 32 bits (GLSL 4.60 §4.1.3).
+A constant expression inside a function (an array size, a `case` label) names the `const` locals
+in scope there, the innermost declaration of a name first, as a global `const` is named (GLSL
+4.60 §4.3.3).
 The HLSL backend writes an ordinary level-zero texture sample as `SampleLevel(..., 0.0)`, while
 comparison textures keep `SampleCmpLevelZero`; HLSL has no ordinary `SampleLevelZero` method.
 The shared interpolation defaults also compile with `glsl-in` alone, without needing the
