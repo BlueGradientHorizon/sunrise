@@ -388,6 +388,9 @@ pub struct Guest {
     /// `Entity.tickCount` carried while the same player is between bodies.
     /// A respawn clears it; a teleport or level change restores it to the new body.
     pub carried_tick_count: Option<i32>,
+    /// The same ServerPlayer keeps its body yaw across level travel. A
+    /// replacement body, including one after death, starts at zero.
+    pub carried_body_yaw: Option<f32>,
     /// The accepted hit follows the same living body through a full teleport restore.
     pub carried_hit: Option<std::sync::Arc<crate::health::AcceptedHit>>,
     pub carried_last_hurt_mob: Option<(u32, i32)>,
@@ -602,9 +605,16 @@ impl Guest {
         self.ip_address = address.ip().to_string();
     }
 
+    /// `ServerPlayer.nextContainerCounter`: advance the window counter to `counter % 100 + 1`
+    /// and return it. Every open takes its window id from here.
+    pub fn next_container_counter(&mut self) -> i32 {
+        self.next_window = self.next_window % 100 + 1;
+        self.next_window
+    }
+
     /// Allocate the next protocol window and a non-reusable menu identity.
     pub fn next_menu_window(&mut self) -> i32 {
-        self.next_window = self.next_window % 100 + 1;
+        self.next_container_counter();
         self.menu_generation = menu_generation();
         self.inactive_inventory_carried = self.carried.take();
         self.open_carried_sent = Some((self.next_window, None));
@@ -899,6 +909,7 @@ impl Guest {
             loaded_body: None,
             carried_attributes: None,
             carried_tick_count: None,
+            carried_body_yaw: None,
             carried_last_hurt_mob: None,
             carried_hit: None,
             saved_vehicle: None,
@@ -1183,8 +1194,11 @@ impl Guest {
     pub fn is_sunrise(&self) -> bool {
         self.brand == "sunrise"
     }
-    /// `Player.getDesiredPose`: sleeping, gliding, then the body's own pose
-    /// (swimming, crawling, crouching) once its server tick has run.
+    /// The pose the server shows of this player: in bed or gliding as its
+    /// client announced, before the body's own tick has taken it; else the
+    /// body's own pose (`Entity.getPose`) once its server tick has run
+    /// (swimming, crawling, crouching); else crouching while the shift key is
+    /// held and it isn't flying.
     pub fn pose(&self) -> Pose {
         if self.sleeping {
             Pose::Sleeping
@@ -1217,6 +1231,7 @@ impl Guest {
         self.travel_vetoed = false;
         if !restore_all {
             self.carried_tick_count = None;
+            self.carried_body_yaw = Some(0.0);
             self.carried_hit = None;
             self.carried_last_hurt_mob = None;
             self.death_canceled = false;
@@ -1226,6 +1241,7 @@ impl Guest {
         self.carried_attributes = Some(m.carried_attributes(restore_all));
         if restore_all {
             self.carried_tick_count = Some(m.health.tick_count);
+            self.carried_body_yaw = Some(m.body_yaw);
             self.carried_hit = m.health.accepted_hit.take();
             self.carried_last_hurt_mob = m.health.last_hurt_mob.take();
         } else {
@@ -2181,7 +2197,7 @@ fn network_stack_projecting(
                 sunrise_protocol::item::component::WRITABLE_BOOK_CONTENT,
                 sunrise_protocol::item::Component::WritableBook {
                     pages: d.writable_pages.clone(),
-                    filtered: Vec::new(),
+                    filtered: d.writable_filtered.clone(),
                 },
             ));
         }

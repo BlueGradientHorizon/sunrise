@@ -131,14 +131,26 @@ pub struct GoalSelector {
     /// that only ticks the running goals tries no start.
     brain_starters: usize,
 }
-/// Where a goal tick paused for a game-owned move. Public, with
-/// [`GoalSelector::tick_until_movement_pause`], because `ai::server_ai_step`, a replaceable
-/// function, calls it: a replacement copy of that function is compiled outside this crate.
+/// Where a goal tick paused for a game-owned move. Public, with [`GoalPause`], [`GoalBreed`], and
+/// [`GoalSelector::tick_until_pause`], because `ai::server_ai_step`, a replaceable function,
+/// calls it: a replacement copy of that function is compiled outside this crate.
 #[derive(Debug)]
 pub struct GoalMovementPause {
     pub(super) movement: super::living::TravelPause,
     slot: usize,
     pub(super) force: bool,
+}
+
+#[derive(Debug)]
+pub struct GoalBreed {
+    next: usize,
+    force: bool,
+}
+
+#[derive(Debug)]
+pub enum GoalPause {
+    Movement(GoalMovementPause),
+    Breed(Box<MobEvent>, GoalBreed),
 }
 
 impl GoalSelector {
@@ -266,18 +278,19 @@ impl GoalSelector {
             }
         }
     }
-    pub fn tick_until_movement_pause(
+    pub fn tick_until_pause(
         &mut self,
         m: &mut Mob,
         cx: &mut Cx,
         force: bool,
-    ) -> Option<GoalMovementPause> {
+        breed: bool,
+    ) -> Option<GoalPause> {
         if force {
             self.prepare_tick(m, cx);
         } else {
             self.start_goals(m, cx, true);
         }
-        self.tick_from(m, cx, force, 0)
+        self.tick_from(m, cx, force, 0, breed)
     }
 
     fn tick_from(
@@ -286,20 +299,43 @@ impl GoalSelector {
         cx: &mut Cx,
         force: bool,
         start: usize,
-    ) -> Option<GoalMovementPause> {
+        breed: bool,
+    ) -> Option<GoalPause> {
         for (slot, g) in self.goals.iter_mut().enumerate().skip(start) {
-            if g.running
-                && (force || g.goal.every_tick())
-                && let Some(movement) = g.goal.tick_until_movement_pause(m, cx)
-            {
-                return Some(GoalMovementPause {
+            if !g.running || !(force || g.goal.every_tick()) {
+                continue;
+            }
+            let before = cx.events.len();
+            if let Some(movement) = g.goal.tick_until_movement_pause(m, cx) {
+                return Some(GoalPause::Movement(GoalMovementPause {
                     movement,
                     slot,
                     force,
-                });
+                }));
+            }
+            if breed
+                && cx.events.len() > before
+                && matches!(cx.events.last(), Some(MobEvent::Breed { .. }))
+            {
+                return Some(GoalPause::Breed(
+                    Box::new(cx.events.pop().unwrap()),
+                    GoalBreed {
+                        next: slot + 1,
+                        force,
+                    },
+                ));
             }
         }
         None
+    }
+
+    pub(super) fn resume_after_birth(
+        &mut self,
+        m: &mut Mob,
+        cx: &mut Cx,
+        paused: GoalBreed,
+    ) -> Option<GoalPause> {
+        self.tick_from(m, cx, paused.force, paused.next, true)
     }
 
     pub(super) fn resume_movement(
@@ -307,9 +343,13 @@ impl GoalSelector {
         m: &mut Mob,
         cx: &mut Cx,
         paused: GoalMovementPause,
-    ) -> Option<GoalMovementPause> {
+        breed: bool,
+    ) -> Option<GoalPause> {
         if let ControlFlow::Break(movement) = paused.movement.resume(m, cx.w, cx.level, cx.events) {
-            return Some(GoalMovementPause { movement, ..paused });
+            return Some(GoalPause::Movement(GoalMovementPause {
+                movement,
+                ..paused
+            }));
         }
         if m.removed {
             return None;
@@ -321,7 +361,7 @@ impl GoalSelector {
             .iter_mut()
             .position(|g| g.goal.after_movement(m, cx))
             .map_or(paused.slot, |slot| slot + 1);
-        self.tick_from(m, cx, paused.force, next)
+        self.tick_from(m, cx, paused.force, next, breed)
     }
 
     pub fn stop_all(&mut self, m: &mut Mob, cx: &mut Cx) {
@@ -1712,7 +1752,7 @@ impl MeleeAttack {
     }
     /// `FoxMeleeAttackGoal.checkAndPerformAttack`, which replaces the base method without
     /// calling it: when `canPerformAttack` holds, `resetAttackCooldown`, the strike, then
-    /// the bite `sound`. Sunrise's fox swings as well, as it did before this was split out.
+    /// the bite `sound`. It has no `swingForAttack`: a fox's strike doesn't swing (#4733).
     fn fox_check_and_perform_attack(
         &mut self,
         sound: &'static str,
@@ -1723,7 +1763,6 @@ impl MeleeAttack {
     ) {
         if self.can_perform_attack(m, who, t, cx.w) {
             self.reset_attack_cooldown(m);
-            m.swing();
             super::ai::do_hurt_target(m, who, cx);
             let at = [m.position.x, m.position.y, m.position.z];
             cx.events.push(MobEvent::Sound(sound, at, 1.0, 1.0));
@@ -2702,8 +2741,14 @@ impl Goal for Breed {
                 cx.w,
                 equine.is_some() || parent_variant.is_some(),
             );
-            m.extra.in_love = 0;
-            m.extra.age = 6000;
+            // NeoForge Animal.spawnChildFromBreeding / Fox.FoxBreedGoal.breed:
+            // when a baby_entity_spawn listener is present on a live-baby route, defer the
+            // initiating parent's cooldown until Game::breed so an uncanceled empty slot does
+            // not leave the parent cooled down.
+            if !cx.w.asks_live_birth(m.species()) {
+                m.extra.in_love = 0;
+                super::finalize::set_age(m, 6000, Some(cx.w));
+            }
             // TurtleBreedGoal.breed: the mother carries an egg, not a baby.
             if m.species() == Species::Turtle {
                 m.extra.flag = true;
@@ -3459,7 +3504,7 @@ mod breeding_variant_tests {
                     }
                 )));
                 assert_eq!(parent.extra.egg_time, 8313);
-                assert_eq!(parent.extra.age, 5999);
+                assert_eq!(parent.extra.age, if asks_baby_spawn { 0 } else { 5999 });
             }
         }));
     }
@@ -4760,6 +4805,70 @@ mod check_and_perform_attack_tests {
         });
         assert!(ran, "vanilla data is missing");
         assert_eq!(bites, [1, 0]);
+    }
+
+    /// Whether `test` of this module runs here: in the test process, it reruns `test` alone in
+    /// a fresh child process, asserts the child passed and returns false; in that child, true.
+    /// The prepared-resource world writes process-wide tables (the block palette, the item
+    /// tables), which no other test of the shared process may see.
+    fn in_fresh_process(test: &str) -> bool {
+        const CHILD: &str = "SUNRISE_TEST_MELEE_ATTACK_CHILD";
+        let module = module_path!().split_once("::").unwrap().1;
+        let name = format!("{module}::{test}");
+        if std::env::var_os(CHILD).is_some_and(|value| value == name.as_str()) {
+            return true;
+        }
+        let out = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([&name, "--exact", "--include-ignored", "--test-threads=1"])
+            .env(CHILD, &name)
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            out.status.success() && stdout.contains("test result: ok. 1 passed;"),
+            "{name} failed in its own process:\n{stdout}{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        false
+    }
+
+    /// `FoxMeleeAttackGoal.checkAndPerformAttack` has no `swingForAttack`: a fox's strike
+    /// resets the cooldown, hurts its target and bites, but doesn't swing (#4733). The world
+    /// is built in a fresh child process.
+    #[test]
+    #[ignore = "daily"]
+    fn a_foxs_strike_hurts_and_bites_without_a_swing() {
+        if !in_fresh_process("a_foxs_strike_hurts_and_bites_without_a_swing") {
+            return;
+        }
+        let mut outcome = None;
+        let ran = with_test_world(&[], |w, types| {
+            let kind = Arc::new(types.types["minecraft:fox"].clone());
+            let mut world = w.clone();
+            world.player = Some(test_player(Vec3::new(1.5, 64.0, 0.5)));
+            let mut m = Mob::new(1, kind, Vec3::new(0.5, 64.0, 0.5), 0.0);
+            m.ai.target = Some(Who::Player);
+            let mut goal = MeleeAttack::new(1.2, true).bite("entity.fox.bite");
+            let mut fixture = crate::health::TestLevel::new(0);
+            let mut events = Vec::new();
+            let mut cx = Cx {
+                w: &world,
+                level: &mut fixture.level(),
+                events: &mut events,
+            };
+            goal.tick(&mut m, &mut cx);
+            let hits = events
+                .iter()
+                .filter(|e| matches!(e, MobEvent::AttackPlayer(..)))
+                .count();
+            let bites = events
+                .iter()
+                .filter(|e| matches!(e, MobEvent::Sound("entity.fox.bite", ..)))
+                .count();
+            outcome = Some((goal.until_attack, hits, bites, m.ai.swinging));
+        });
+        assert!(ran, "prepared mob resources required");
+        assert_eq!(outcome, Some((20, 1, 1, false)));
     }
 }
 

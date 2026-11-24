@@ -129,13 +129,34 @@ fn main() -> ExitCode {
         Some("native-layout") => return native_build::layout(&args[1..]),
         Some("internals") => internals::run(&args[1..]),
         Some("pin") => pin_args(&args[1..]).and_then(|build| {
+            // The project's own manifest first: a content mod pins no build, and offline it must
+            // hear that rather than a lookup failure.
+            pinned_manifest(Path::new("."))?;
             // Resolved once: the report and the manifest name the same build, even when a Nightly
             // is published in between.
             let requested = build.unwrap_or(sunrise_release_sign::NIGHTLY);
             let sunrise = resolve_build(requested)?;
-            sdk_cmds::pin_report(entry, Path::new("."), &sunrise)
-                .and_then(|()| repin(Path::new("."), &sdk_fetch::fetch_build, requested, &sunrise))
-                .map(|()| println!("Run `cargo sunrise-mod check`."))
+            let project = Path::new(".");
+            // The lock names the SDK's local packages, so it moves with the pin: a release
+            // refuses a lock Cargo would change. A linked lock would be rewritten outside the
+            // project, so it is refused before the pin moves.
+            let lock = std::fs::symlink_metadata(project.join("Cargo.lock")).ok();
+            if lock.as_ref().is_some_and(|lock| lock.is_symlink()) {
+                return Err("Cargo.lock is a link; pin follows it with the project's own file".into());
+            }
+            sdk_cmds::pin_report(entry, project, &sunrise)
+                .and_then(|()| repin(project, &sdk_fetch::fetch_build, requested, &sunrise))?;
+            if lock.is_some() {
+                sdk_fetch::fetch_pinned(project, &sunrise)
+                    .and_then(|_| dev::native_sdk(&dev::cache_dir()?, &sunrise))
+                    .and_then(|sdk| dev::refresh_lock(&sdk.rust, project))
+                    .map_err(|e| {
+                        format!("Cargo.lock did not follow the new pin: {e}\nRun `cargo sunrise-mod pin {sunrise}` again once that is fixed.")
+                    })?;
+                println!("Updated Cargo.lock to the new SDK");
+            }
+            println!("Run `cargo sunrise-mod check`.");
+            Ok(())
         }),
         None | Some("--help" | "-h") => {
             print!("{}", help::short());
@@ -387,15 +408,26 @@ fn pin_args(args: &[String]) -> Result<Option<&str>, String> {
     Ok(build)
 }
 
-/// Repins a native mod. Declared internals are checked against the new build before writing.
-/// `Cargo.toml` names the SDK by path, so the next command fetches the new one.
-fn repin(dir: &Path, fetch: FetchSdk, requested: &str, sunrise: &str) -> Result<(), String> {
+/// The manifest `pin` works on, read before any build is resolved: its path and text, and the
+/// refusal of a content mod, which pins no game build.
+fn pinned_manifest(dir: &Path) -> Result<(PathBuf, String, Manifest), String> {
     let path = dir.join(MANIFEST);
     let text = bounded::read(&path, bounded::MAX_MANIFEST)?;
     let manifest = Manifest::parse(&text)?;
-    let Some(native) = manifest.native.as_ref() else {
+    if manifest.native.is_none() {
         return Err(format!("{MANIFEST}: a content mod pins no game build"));
-    };
+    }
+    Ok((path, text, manifest))
+}
+
+/// Repins a native mod. Declared internals are checked against the new build before writing.
+/// `Cargo.toml` names the SDK by path, so the next command fetches the new one.
+fn repin(dir: &Path, fetch: FetchSdk, requested: &str, sunrise: &str) -> Result<(), String> {
+    let (path, text, manifest) = pinned_manifest(dir)?;
+    let native = manifest
+        .native
+        .as_ref()
+        .expect("pinned_manifest checked the pin");
     // The new build's SDK must exist and verify before anything is written; the mixins revision
     // is the SDK's own unless the manifest pins one.
     fetch(dir, sunrise).map_err(|e| sdk_fetch::named(requested, sunrise, e))?;

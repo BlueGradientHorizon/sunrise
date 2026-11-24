@@ -32,7 +32,10 @@ A failed proposal is not a cancellation or replacement. Later eligible listeners
 accepted event state, not the original request. [Staged registration](load-phases.md#registration-and-setup)
 discards the failed callback's declarations. On a journaled action its failed writes do not join
 the action; this is not a rollback of arbitrary external or mod-owned side effects. A failed
-[chunk-disk job](../how-to/chunk-data-load.md) cannot publish that job's edits.
+[chunk-disk job](../how-to/world/chunk-data.md) cannot publish that job's edits, while the other
+listeners' accepted edits still can. An attachment codec refusal rejects only that operation and
+does not disable the listener; an error encoding or writing the disk record itself is separate,
+and can keep that record from being saved.
 
 ## Listener priority and cancellation
 
@@ -80,8 +83,11 @@ exceptions, including these:
   `Host`. Generation must not depend on which worker reaches your code first.
 - **Rendering:** startup can register meshing and tint callbacks that later run on workers without
   a host. Answer from the inputs and immutable registration data, not mutable render state.
-- **Loading and chunk I/O:** data callbacks may run on a loader thread. Chunk-disk callbacks get a
-  restricted job-local view, not live chunks. See [Load phases and access](load-phases.md).
+- **Chunk-disk callbacks:** `chunk_data_load` and `chunk_data_save` run on the owning server
+  thread. `host.job()` borrows the captured `ChunkDiskContext`, and the restricted host edits only
+  its job-local [attachment store](../how-to/world/chunk-data.md#saving-chunk_data_save), never the live chunk.
+- **Loading and chunk I/O:** data callbacks may run on a loader thread. See
+  [Load phases and access](load-phases.md).
 
 For ordinary shared state, use synchronized mod fields or publish immutable snapshots. A lock
 makes access safe; it does not make an order-dependent algorithm deterministic.
@@ -98,7 +104,11 @@ owning level. `LevelRandomHost` adds a loan of the live random stream; `LevelTic
 scheduling, and `LevelWriteHost` permits local writes and effects. `HitHost` lends hit-scoped
 operations, not block writes; at `living_incoming_damage`, `living_damage_pre` and
 `living_damage_post` it also lends read-only `LivingView`s of the victim and the causing entity
-(`host.victim()`, `host.causing()`), whose attachments it reads but never writes. Random draws
+(`host.victim()`, `host.causing()`), whose attachments it reads but never writes. The causing
+entity is the one the hit's source names, where the game has it at hand: a melee attacker, Thorns'
+wearer, a projectile's shooter or owner, an explosion's igniter, a stinging pufferfish, or a
+parked guest read from its hub record (read-only, no random). A victim that caused its own hit is
+read through `victim()`; `causing()` answers `None` then. Random draws
 from a live stream are not undone by an abort; see [Randomness](randomness.md#borrow-the-live-level-stream).
 
 Reads such as collision, light, signals and block entities use the owning side's available data.

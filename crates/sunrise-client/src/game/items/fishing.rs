@@ -1,7 +1,10 @@
 //! Fishing: `FishingRodItem.use` (cast / reel in), the `FishingHook` (flight,
 //! bobbing, lure and bite timers, open water, hooking mobs, retrieving the
 //! `gameplay/fishing` loot) and `FishingHookRenderer` (bobber and line).
-use super::{Game, billboard_axes, creatures::ProjectileHitter, lan_mobs::guest_bounds};
+use super::{
+    Game, billboard_axes, creatures::ProjectileHitter, item_abilities::ability,
+    lan_mobs::guest_bounds,
+};
 use std::sync::Arc;
 use sunrise_client::advancements::EntityView;
 use sunrise_client::lan::entity::States;
@@ -519,9 +522,14 @@ impl Game<'_> {
             .get(&stack.item)
             .is_some_and(|i| i.is("minecraft:fishing_rod"))
     }
+    /// Whether `stack` holds a cast line as a rod does (`fishing_rod_cast`).
+    fn casts(&self, stack: &ItemStack) -> bool {
+        self.stack_can_perform(stack, ability::FISHING_ROD_CAST, self.is_rod(stack))
+    }
+    /// `FishingHook.shouldStopFishing`: a hand still holds a casting stack.
     fn holds_rod(&self) -> bool {
-        self.held().is_some_and(|s| self.is_rod(s))
-            || self.offhand.as_ref().is_some_and(|s| self.is_rod(s))
+        self.held().is_some_and(|s| self.casts(s))
+            || self.offhand.as_ref().is_some_and(|s| self.casts(s))
     }
     /// `FishingRodItem.use`.
     pub(super) fn use_fishing_rod(&mut self, stack: &ItemStack) -> bool {
@@ -1611,7 +1619,7 @@ impl Game<'_> {
         }
     }
     pub(super) fn main_hand_rod(&self) -> bool {
-        self.held().is_some_and(|s| self.is_rod(s))
+        self.held().is_some_and(|s| self.casts(s))
     }
     /// The hook's position this frame.
     fn hook_position(&self, alpha: f64) -> Option<glam::DVec3> {

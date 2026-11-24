@@ -91,9 +91,14 @@ impl Game<'_> {
             return false;
         };
         let plan = self.prepare_knockback_credit(id as i32, source.attacker, self.combat.attack());
+        // The projectile's shooter, the hit's causing entity.
+        let shooter = self.combat.attack().attacker;
+        let decision = crate::game::entity::causer_decision!(self, shooter);
         let mut credit = plan.lend(&mut self.last_hurt_by_player);
-        let hurt = self.mobs[index].damage_projectile(
-            crate::game::entity::damage_level_of!(self, self.combat.attack(), &mut credit, None),
+        let (victim, lend) =
+            crate::game::entity::victim_and_causer!(self, index, shooter, decision);
+        let hurt = victim.damage_projectile(
+            crate::game::entity::damage_level_of!(self, self.combat.attack(), &mut credit, lend),
             amount,
             source,
             aim,
@@ -292,29 +297,25 @@ impl Game<'_> {
                     }),
                 None => None,
             };
-            let direct = match d.kind {
-                DamageKind::Arrow => Some(LootEntity {
-                    kind: "minecraft:arrow".into(),
+            let projectile = match d.kind {
+                DamageKind::Arrow => Some("minecraft:arrow"),
+                DamageKind::Fireball => Some("minecraft:fireball"),
+                DamageKind::WitherSkull => Some("minecraft:wither_skull"),
+                DamageKind::Fireworks => Some("minecraft:firework_rocket"),
+                _ => None,
+            };
+            let direct = match projectile {
+                Some(kind) => Some(LootEntity {
+                    kind: kind.into(),
                     ..LootEntity::default()
                 }),
-                DamageKind::Fireball => Some(LootEntity {
-                    kind: "minecraft:fireball".into(),
-                    ..LootEntity::default()
-                }),
-                DamageKind::WitherSkull => Some(LootEntity {
-                    kind: "minecraft:wither_skull".into(),
-                    ..LootEntity::default()
-                }),
-                DamageKind::Fireworks => Some(LootEntity {
-                    kind: "minecraft:firework_rocket".into(),
-                    ..LootEntity::default()
-                }),
-                _ => source.clone(),
+                None => source.clone(),
             };
             LootDamage {
                 kind: source_damage_type(d).into(),
                 source,
                 direct,
+                is_direct: projectile.is_none(),
             }
         });
         let vehicle = m

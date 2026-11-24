@@ -3,19 +3,20 @@ use super::*;
 /// The block entity type ID for the block it sits in (a chest-like container
 /// is a chest, trapped chest or barrel).
 pub fn block_entity_id<'a>(e: &'a crate::containers::BlockEntity, block: &'a str) -> &'a str {
-    let block = crate::block_entity_types::factory_block(block);
-    match (e, block) {
-        (
-            crate::containers::BlockEntity::Chest(_),
-            "minecraft:trapped_chest"
-            | "minecraft:barrel"
-            | "minecraft:dropper"
-            | "minecraft:ender_chest",
-        ) => block,
-        (crate::containers::BlockEntity::Chest(_), b) if b.ends_with("shulker_box") => {
-            "minecraft:shulker_box"
-        }
+    match e {
+        crate::containers::BlockEntity::Chest(_) => chest_backed_id(e.id(), block),
         _ => e.id(),
+    }
+}
+/// The type ID of a chest-backed container whose own ID is `id`, for the block it sits in.
+pub fn chest_backed_id<'a>(id: &'a str, block: &'a str) -> &'a str {
+    match crate::block_entity_types::factory_block(block) {
+        block @ ("minecraft:trapped_chest"
+        | "minecraft:barrel"
+        | "minecraft:dropper"
+        | "minecraft:ender_chest") => block,
+        b if b.ends_with("shulker_box") => "minecraft:shulker_box",
+        _ => id,
     }
 }
 /// A live block entity's `current` encoding over the `original` NBT it was loaded from:
@@ -67,7 +68,6 @@ pub fn overlay_block_entity_source(
     );
     merge_block_entity(original, &loaded, current, items_are_payload)
 }
-
 /// `block_entity_nbt::overlay`, then a container that now holds items loses its
 /// loot table (vanilla clears it when the loot is generated into the container).
 pub(super) fn merge_block_entity(

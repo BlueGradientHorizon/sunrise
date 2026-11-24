@@ -71,9 +71,11 @@ impl Game<'_> {
     pub(in crate::game) fn client_chunk_unload(&mut self, x: i32, z: i32, level_stays: bool) {
         self.forget_chunk_passages(x, z);
         if mod_api::__private::listened(mod_api::HookId::ClientChunkUnload)
-            && let Some(dimension) = self.client_chunk_dimension()
+            && let Some(level) = self.native_client_level()
         {
-            self.native_client_chunk_unload(&dimension, [x, z]);
+            // LevelEvent.Unload may already have been posted, but the columns
+            // still belong to the installed level until they are released.
+            self.native_client_chunk_unload(level.dimension_id(), [x, z]);
         }
         if level_stays && let Some(level) = self.native_client_level() {
             self.notify_chunk_block_entities_unloaded(level, (x, z));
@@ -162,6 +164,24 @@ impl Game<'_> {
             pending,
             format.has_skylight,
         );
+        // Heightmap.Types.MOTION_BLOCKING has stream ID 4; the last occurrence
+        // wins, as in ClientboundLevelChunkPacketData's EnumMap codec.
+        let words = p
+            .chunk
+            .heightmaps
+            .iter()
+            .rev()
+            .find_map(|(kind, words)| (*kind == 4).then_some(words.as_slice()));
+        // LevelChunk.replaceWithPacketData reads the map after the sections. Do it
+        // before either streaming replacement path so it doesn't depend on mesh changes.
+        if let Some(remote) = &self.remote {
+            chunk.adopt_packet_motion_blocking(
+                previous.map(Arc::as_ref),
+                [remote.dimension.min_y, remote.dimension.height],
+                words,
+                &self.pack.assets.properties,
+            );
+        }
         self.supersede_group_predictions(&chunk);
         // A column sent again while it is resident (a bulk edit): only what changed is lit and meshed again.
         if resident {

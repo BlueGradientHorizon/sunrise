@@ -468,6 +468,31 @@ pub enum RaidStatus {
     Stopped,
 }
 
+/// The world clock a level follows (`WorldClock`, a `minecraft:world_clock` registry entry): the
+/// one its dimension type names as `default_clock`, shared by every level of that dimension type
+/// and saved with the world (`ServerClockManager`). `level.clock(host)` makes one; its writes are
+/// `ServerClockManager`'s `setTotalTicks`, `setRate` and `setPaused`. A paused clock is a fixed
+/// time. A handle resolves again on each call, through its level: `false` once the level is gone,
+/// for a handle of an earlier open, and on a client.
+#[derive(sunrise_mod_api_macros::Wire, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+// exhaustive: its fields are private, so mods cannot build or destructure it
+pub struct WorldClockRef {
+    pub(crate) level: LevelRef,
+}
+
+impl WorldClockRef {
+    /// Create a handle for the game.
+    // hidden: a game-side helper, not part of the mod surface
+    #[doc(hidden)]
+    pub fn new(level: LevelRef) -> Self {
+        Self { level }
+    }
+    /// The level whose default clock this is.
+    pub fn level(self) -> LevelRef {
+        self.level
+    }
+}
+
 /// A chunk position in an open level. A handle may be kept after unloading;
 /// reads resolve it again, returning `false` or `None` when it is no longer loaded.
 #[derive(sunrise_mod_api_macros::Wire, Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -1276,22 +1301,6 @@ impl TickId {
     }
 }
 
-/// The world phases (`world_lifecycle`'s `phase`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-/// The phase names are the hook log's stable vocabulary (the Debug text
-/// the mixins write); keep them despite the shared prefix.
-#[allow(clippy::enum_variant_names)]
-#[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
-pub enum WorldPhase {
-    /// The open failed; `error_text` is the engine's own error text.
-    WorldOpenFailed,
-    /// World close final.
-    WorldCloseFinal,
-    /// The server loop or final save failed; `error_text` carries the error.
-    WorldCloseFailed,
-}
-
 /// The tick phases carry whether the world runs, including frozen steps.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
@@ -1309,18 +1318,17 @@ pub enum ServerTickPhase {
     },
 }
 
-/// Context for every world lifecycle phase.
-/// `authority` is the server role. LocalAuthoritative and RemoteClient never
-/// fire. `epoch` identifies the open attempt, including failed opens;
-/// the same epoch identifies its ready, final-close, or failed-close event.
-/// `tick` counts non-paused server ticks since the world opened.
+/// Context carried by server tick notifications (`server_tick`) and world-read queries.
+/// `authority` is the server role. `LocalAuthoritative` and `RemoteClient` never
+/// fire. `epoch` identifies the world open attempt, and `tick` counts non-paused
+/// server ticks since the world opened.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]
 pub struct LifecycleContext {
-    /// The server role that fired the phase.
+    /// The server role that owns the world.
     pub authority: Authority,
-    /// Identifies the open attempt this phase belongs to.
+    /// Identifies the world open attempt.
     pub epoch: WorldEpoch,
     /// Non-paused server ticks since the world opened.
     pub tick: TickId,
@@ -1698,6 +1706,20 @@ pub trait LevelHost {
     fn is_raining_at(&self, _pos: [i32; 3]) -> bool {
         unimplemented!("LevelHost::is_raining_at")
     }
+    /// `Level.isRaining`: whether it rains in this level (its rain level is above 0.2),
+    /// wherever a position is. Both sides answer for the level the view belongs to. None in a
+    /// callback whose level view has no weather: the friction and hit hooks have none.
+    fn is_raining(&self) -> Option<bool> {
+        None
+    }
+    /// `Level.getSkyDarken`: how much the sky light is dimmed this tick, 0 to 11, from the
+    /// time of day, rain and thunder. With [`Self::raw_brightness`] it gives
+    /// `LevelReader.getMaxLocalRawBrightness(pos)`, which `SaplingBlock.randomTick` tests
+    /// (`>= 9`). Both sides answer for the level the view belongs to. None where
+    /// [`Self::is_raining`] is None.
+    fn sky_darken(&self) -> Option<i32> {
+        None
+    }
     /// `LevelReader.enabledFeatures`: the feature flags the world enables.
     fn enabled_features(&self) -> FeatureFlags {
         unimplemented!("LevelHost::enabled_features")
@@ -1757,7 +1779,7 @@ pub trait LevelRandomHost: LevelHost {
     fn container_signal(&mut self, _pos: [i32; 3]) -> Option<i32> {
         None
     }
-    /// The holders' server-owned attachments; `TYPE.get(host, holder)` reads one through it.
+    /// The holders' server-owned attachments; `key.get_in(level, holder, read)` reads one through it.
     fn attachments(&mut self) -> &mut dyn AttachmentStore {
         unimplemented!("LevelRandomHost::attachments")
     }
@@ -1779,10 +1801,19 @@ pub trait LevelRandomHost: LevelHost {
 /// A sound is queued at the call, and its seed is drawn then from the level's sound-seed
 /// stream, never from the level's [draw stream](LevelRandomHost::lend_random). An entity's
 /// own stream (`Entity.getRandom`) advances in listener order, so the hit's continuation sees
-/// the draws. A hit lends its attacker where the game applies a melee hit (the attacking player or mob,
-/// for player → mob, mob → mob and mob → player) and no entity at any other damage site
-/// (environment, projectiles, explosions, potions and the like); any other entity, a stale
-/// handle and a call on a client answer `None` or `false`.
+/// the draws. A hit lends the entity its source names as its causing entity, where the game
+/// has it at hand: the attacking player or mob of a melee hit (player → mob, mob → mob and
+/// mob → player) or of Thorns, the shooter or owner of a projectile, a firework rocket, evoker
+/// fangs, a wither skull, a thrown trident or a wind charge, the igniter or owner of an
+/// explosion, and a pufferfish stinging a mob inside its own tick. A guest that is not in place
+/// is lent from its hub record, for its reads only (no random, no sound); the integrated owner
+/// displaced by another player's turn is not lent. Other damage lends none: damage with no
+/// causing entity (environment, fall, fire, drowning) and the sites that do not lend theirs (a
+/// thrown potion's or an effect cloud's owner, among others). When the victim caused its own
+/// hit (a player's own TNT hurting that player), the source names the victim and nothing else is
+/// lent: [`causing`](Self::causing) answers `None` and the listener reads the entity through
+/// [`victim`](Self::victim). Any other entity, a stale handle and a call on a client answer
+/// `None` or `false`.
 pub trait HitHost: LevelRandomHost {
     /// `Level.playSound(null, x, y, z, sound, source, volume, pitch)`: plays sound event
     /// `sound` at `at` for every player in this level within range (16 blocks, times the
@@ -1840,10 +1871,12 @@ pub trait HitHost: LevelRandomHost {
         unimplemented!("HitHost::victim")
     }
     /// The hit's causing entity (`DamageSource.getEntity`), at the same three hooks, when the
-    /// hit already lends that entity (the attacking player or mob it lends for the entity's own
-    /// random) and the source names it: None where the source names another entity or none
-    /// (a wither skull whose shooter was removed), for a removed entity, at a damage site that
-    /// lends no entity, for a non-living causer and for a causer in another level.
+    /// hit lends that entity (see [`HitHost`]: a melee attacker, a projectile's shooter, an
+    /// explosion's igniter, a parked guest's record...) and the source names it: None where the
+    /// source names another entity or none (a wither skull whose shooter was removed), where it
+    /// names the victim itself (read that through [`Self::victim`]), for a removed entity, at a
+    /// damage site that lends no entity, for a non-living causer and for a causer in another
+    /// level.
     fn causing(&self) -> Option<LivingView<'_>> {
         unimplemented!("HitHost::causing")
     }
