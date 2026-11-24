@@ -108,10 +108,33 @@ impl Game<'_> {
     /// tells the client, or `doCloseContainer` for a provider that skips the client's close.
     /// Either way the old menu's `removed` runs and the mods hear it close.
     pub(super) fn close_for_open(&mut self, conn: u32, replace: MenuReplace) {
+        self.journal_merchant_replacement(conn);
         match replace {
             MenuReplace::CloseFirst => self.guest_close_menus_and_tell(conn),
             MenuReplace::InPlace => self.guest_close_all(conn),
         }
+    }
+    /// `ServerPlayer.containerCounter`: the window id the player's last opened menu took.
+    pub(super) fn player_container_counter(&self, player: mod_api::PlayerRef) -> Option<i32> {
+        if !self.is_logical_server() {
+            return None;
+        }
+        Some(self.online_player_record(player)?.next_window)
+    }
+    /// `ServerPlayer.nextContainerCounter` with no menu after it: the counter moves as an open
+    /// moves it, and nothing opens or closes.
+    pub(super) fn player_next_container_counter(
+        &mut self,
+        player: mod_api::PlayerRef,
+    ) -> Option<i32> {
+        if !self.is_logical_server() {
+            return None;
+        }
+        let conn = self.online_player_record(player)?.conn;
+        self.lan
+            .as_mut()?
+            .hub
+            .update_guest(conn, |guest| guest.next_container_counter())
     }
     /// `ServerPlayer.openMenu(provider, extraDataWriter)` for a content mod menu type and no
     /// block: the type's container slots show empty and their clicks reach the mods, as
@@ -139,8 +162,8 @@ impl Game<'_> {
         let id = mod_api::__private::menu_key_id(menu).ok_or(OpenMenuError::NotModMenu)?;
         let kind =
             sunrise_client::containers::mod_menu_type(&id).ok_or(OpenMenuError::NotModMenu)?;
-        if kind.owned_slots.is_some() && (!kind.results.is_empty() || kind.crafting.is_some()) {
-            return Err(OpenMenuError::OwnedSlotsWithResults);
+        if kind.owned_slots.is_some() && kind.crafting.is_some() {
+            return Err(OpenMenuError::OwnedSlotsWithCrafting);
         }
         if extra.len() > menu_extra::MAX_DATA {
             return Err(OpenMenuError::TooLarge);
@@ -327,8 +350,7 @@ pub(super) fn open_menu_of(host: &LanHost, conn: u32) -> Option<(i32, &str, Opti
             .map(|p| [p.0, p.1, p.2]);
         return Some((m.window, menu, pos));
     }
-    let play = play?;
-    let (window, menu, pos) = if let Some(gm) = &play.merchant {
+    let (window, menu, pos) = if let Some(gm) = menus.and_then(|m| m.merchant.as_ref()) {
         (gm.window, "minecraft:merchant", None)
     } else if let Some((window, _, _, pos)) = menus.and_then(|m| m.crafting.table.as_ref()) {
         (*window, "minecraft:crafting", Some(*pos))
@@ -338,16 +360,15 @@ pub(super) fn open_menu_of(host: &LanHost, conn: u32) -> Option<(i32, &str, Opti
             super::lan_stations::menu_of(st.kind)?.0,
             Some(st.pos),
         )
-    } else if let Some(l) = &play.lectern {
+    } else if let Some(l) = play.and_then(|p| p.lectern.as_ref()) {
         (
             l.window,
             "minecraft:lectern",
             Some([l.key.0, l.key.1, l.key.2]),
         )
-    } else if let Some(m) = &play.mount_window {
-        (m.window, MOUNT_MENU, None)
     } else {
-        return None;
+        let m = play.and_then(|p| p.mount_window.as_ref())?;
+        (m.window, MOUNT_MENU, None)
     };
     Some((window, menu, pos))
 }
@@ -480,6 +501,23 @@ impl Game<'_> {
                         self.lan_place_back(gi, vec![item]);
                     }
                 }
+                NativeMenuEvent::ReturnProcessingInputs {
+                    conn,
+                    items,
+                    drop_instead,
+                } => {
+                    if let Some(gi) = self.guest_index(conn) {
+                        let dead = self
+                            .lan
+                            .as_ref()
+                            .is_some_and(|host| host.hub.guests[gi].dead);
+                        if drop_instead || dead {
+                            self.drop_guest_items(gi, items);
+                        } else {
+                            self.lan_place_back(gi, items);
+                        }
+                    }
+                }
                 NativeMenuEvent::Closed {
                     uuid,
                     window,
@@ -507,6 +545,10 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
+#[path = "native_menus/container_counter_tests.rs"]
+mod container_counter_tests;
+
+#[cfg(test)]
 #[path = "native_menus/owned_slots_tests.rs"]
 mod owned_slots_tests;
 
@@ -516,7 +558,7 @@ mod tests {
     use super::super::native_entity_refs::tests::with_game;
     use super::super::native_item_places::tests::{guest, open_to_lan};
     use super::*;
-    use mod_api::{HostTransaction, ItemPlace, ItemResource, ServerHost};
+    use mod_api::{HostTransaction, ItemPlace, ItemResource, ServerHost, TransactionError};
     use std::sync::{Arc, mpsc};
     use sunrise_client::lan::{Out, PlayerSender};
     use sunrise_protocol::{
@@ -605,29 +647,29 @@ mod tests {
                         let mut inner_restored = None;
                         let host: &mut dyn ServerHost = game;
                         let aborted = host.transaction(|host, tx| {
-                            assert_eq!(place.extract(host, tx, &resource, 1), 1);
+                            assert_eq!(place.extract(host, tx, &resource, 1), Ok(1));
                             let inner = host.transaction(|host, tx| {
-                                assert_eq!(place.extract(host, tx, &resource, 1), 1);
+                                assert_eq!(place.extract(host, tx, &resource, 1), Ok(1));
                                 Err::<(), ()>(())
                             });
-                            assert_eq!(inner, Err(()));
+                            assert_eq!(inner, Err(TransactionError::Aborted(())));
                             inner_restored =
                                 place.with_stack(host, |stack| stack.project()).flatten();
-                            assert_eq!(place.extract(host, tx, &resource, 1), 1);
+                            assert_eq!(place.extract(host, tx, &resource, 1), Ok(1));
                             Err::<(), ()>(())
                         });
-                        assert_eq!(aborted, Err(()));
+                        assert_eq!(aborted, Err(TransactionError::Aborted(())));
                         restored.push((
                             inner_restored,
                             place.with_stack(host, |stack| stack.project()).flatten(),
                         ));
                         // Player and menu writes share the ender snapshot, not competing copies.
                         let aborted = host.transaction(|host, tx| {
-                            assert_eq!(place.extract(host, tx, &resource, 1), 1);
-                            assert_eq!(menu.cursor().insert(host, tx, &resource, 1), 1);
+                            assert_eq!(place.extract(host, tx, &resource, 1), Ok(1));
+                            assert_eq!(menu.cursor().insert(host, tx, &resource, 1), Ok(1));
                             Err::<(), ()>(())
                         });
-                        assert_eq!(aborted, Err(()));
+                        assert_eq!(aborted, Err(TransactionError::Aborted(())));
                         assert_eq!(
                             place.with_stack(host, |stack| stack.project()).flatten(),
                             Some(stack.clone().try_into_api().unwrap())
@@ -636,13 +678,13 @@ mod tests {
                         // A committed child lends its first snapshot to the parent.
                         let aborted = host.transaction(|host, _| {
                             host.transaction(|host, tx| {
-                                assert_eq!(place.extract(host, tx, &resource, 1), 1);
+                                assert_eq!(place.extract(host, tx, &resource, 1), Ok(1));
                                 Ok::<_, ()>(())
                             })
                             .unwrap();
                             Err::<(), ()>(())
                         });
-                        assert_eq!(aborted, Err(()));
+                        assert_eq!(aborted, Err(TransactionError::Aborted(())));
                         assert_eq!(
                             place.with_stack(host, |stack| stack.project()).flatten(),
                             Some(stack.clone().try_into_api().unwrap())
@@ -979,9 +1021,8 @@ mod tests {
                 .try_into_api()
                 .unwrap();
             let slot = ItemPlace::MenuSlot { menu, slot: 4 };
-            let written = host.transaction(|host, tx| {
-                Ok::<_, ()>(slot.insert(host, tx, &ItemResource::of(&diamond), 3))
-            });
+            let written =
+                host.transaction(|host, tx| slot.insert(host, tx, &ItemResource::of(&diamond), 3));
             assert_eq!(written, Ok(3));
             assert!(sent(&rx).is_empty(), "nothing before the tick's sync");
 
@@ -2240,26 +2281,29 @@ mod tests {
                                 .hub
                                 .resend_menu(1, window, &game.world);
                         };
-                        let abort = game.transaction_open();
-                        assert_eq!(menu.set_data_slot(game, 0, i32::MAX), Ok(true));
-                        assert!(sent(&rx).is_empty());
-                        resend(game);
-                        assert_eq!(
-                            updates(sent(&rx)),
-                            snapshot,
-                            "a resend cannot see the pending write"
-                        );
-                        game.transaction_close(&abort, false);
+                        game.storage_scope(|game, _| {
+                            assert_eq!(menu.set_data_slot(game, 0, i32::MAX), Ok(true));
+                            assert!(sent(&rx).is_empty());
+                            resend(game);
+                            assert_eq!(
+                                updates(sent(&rx)),
+                                snapshot,
+                                "a resend cannot see the pending write"
+                            );
+                            ((), false)
+                        });
                         assert_eq!(menu.set_data_slot(game, 0, -80_000), Ok(false));
                         assert!(sent(&rx).is_empty());
 
-                        let capture = game.transaction_open();
-                        game.transactions.last_mut().unwrap().packets =
-                            Some(sunrise_client::lan::conn::transaction_packets::Scope::begin());
-                        assert_eq!(menu.set_data_slot(game, 0, 100_000), Ok(true));
-                        resend(game);
-                        assert!(sent(&rx).is_empty());
-                        game.transaction_close(&capture, true);
+                        game.storage_scope(|game, _| {
+                            game.transactions.last_mut().unwrap().packets = Some(
+                                sunrise_client::lan::conn::transaction_packets::Scope::begin(),
+                            );
+                            assert_eq!(menu.set_data_slot(game, 0, 100_000), Ok(true));
+                            resend(game);
+                            assert!(sent(&rx).is_empty());
+                            ((), true)
+                        });
                         assert_eq!(
                             updates(sent(&rx)),
                             [
@@ -2275,18 +2319,20 @@ mod tests {
                         );
 
                         let host = game as &mut dyn ServerHost;
-                        let committed: Result<(), ()> = host.transaction(|host, _| {
-                            assert_eq!(menu.set_data_slot(host, 0, 1), Ok(true));
-                            let nested: Result<(), ()> = host.transaction(|host, _| {
-                                assert_eq!(menu.set_data_slot(host, 0, i32::MIN), Ok(true));
-                                assert_eq!(menu.set_data_slot(host, 1, 5), Ok(true));
+                        let committed: Result<(), TransactionError<()>> =
+                            host.transaction(|host, _| {
+                                assert_eq!(menu.set_data_slot(host, 0, 1), Ok(true));
+                                let nested: Result<(), TransactionError<()>> =
+                                    host.transaction(|host, _| {
+                                        assert_eq!(menu.set_data_slot(host, 0, i32::MIN), Ok(true));
+                                        assert_eq!(menu.set_data_slot(host, 1, 5), Ok(true));
+                                        Ok(())
+                                    });
+                                assert_eq!(nested, Ok(()));
+                                assert_eq!(menu.set_data_slot(host, 1, 0), Ok(true));
+                                assert!(sent(&rx).is_empty());
                                 Ok(())
                             });
-                            assert_eq!(nested, Ok(()));
-                            assert_eq!(menu.set_data_slot(host, 1, 0), Ok(true));
-                            assert!(sent(&rx).is_empty());
-                            Ok(())
-                        });
                         assert_eq!(committed, Ok(()));
                         assert_eq!(
                             updates(sent(&rx)),
@@ -2336,7 +2382,7 @@ mod tests {
                             .hub
                             .guests
                             .update(0, |g| g.next_window = window - 1);
-                        let replaced: Result<(), ()> =
+                        let replaced: Result<(), TransactionError<()>> =
                             (game as &mut dyn ServerHost).transaction(|host, _| {
                                 assert_eq!(menu.set_data_slot(host, 0, 900), Ok(true));
                                 assert_eq!(show(host, vec![5, 6]), Ok(Some(window)));
@@ -2460,22 +2506,24 @@ mod tests {
                     );
                     let menu = player.container_menu(game).unwrap();
                     let host: &mut dyn ServerHost = game;
-                    let committed: Result<(), ()> = host.transaction(|host, _| {
-                        assert_eq!(menu.set_data_slot(host, LAST, i32::MAX), Ok(true));
-                        assert!(sent(&rx).is_empty());
-                        Ok(())
-                    });
+                    let committed: Result<(), mod_api::TransactionError<()>> =
+                        host.transaction(|host, _| {
+                            assert_eq!(menu.set_data_slot(host, LAST, i32::MAX), Ok(true));
+                            assert!(sent(&rx).is_empty());
+                            Ok(())
+                        });
                     assert_eq!(committed, Ok(()));
                     assert!(updates().eq([DataSlot {
                         window,
                         index: u16::MAX,
                         value: i32::MAX,
                     }]));
-                    let committed: Result<(), ()> = host.transaction(|host, _| {
-                        assert_eq!(menu.set_data_slot(host, OVERFLOW, i32::MIN), Ok(true));
-                        assert!(sent(&rx).is_empty());
-                        Ok(())
-                    });
+                    let committed: Result<(), mod_api::TransactionError<()>> =
+                        host.transaction(|host, _| {
+                            assert_eq!(menu.set_data_slot(host, OVERFLOW, i32::MIN), Ok(true));
+                            assert!(sent(&rx).is_empty());
+                            Ok(())
+                        });
                     assert_eq!(committed, Ok(()));
                     assert!(sent(&rx).is_empty(), "unencodable index sent a delta");
 

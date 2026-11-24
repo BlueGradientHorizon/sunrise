@@ -47,10 +47,31 @@ fn check_log_template(template: &str, native_log: bool) -> Result<(), String> {
     Ok(())
 }
 
+/// Add the SDK entry and give Cargo the same checked root used for generation.
+fn stage_library(
+    dest: &Path,
+    manifest: &mut toml::Table,
+    id: &str,
+    entry: &str,
+) -> Result<PathBuf, String> {
+    let lib = manifest
+        .entry("lib")
+        .or_insert_with(|| toml::Table::new().into())
+        .as_table_mut()
+        .ok_or(tr("Invalid lib table"))?;
+    let root = prebuilt::stage_entry(dest, lib.get("path"), id, entry)?;
+    lib.insert("path".into(), root.display().to_string().into());
+    lib.insert(
+        "crate-type".into(),
+        vec![toml::Value::String("dylib".into())].into(),
+    );
+    Ok(dest.join(root))
+}
+
 /// `out` is the mods folder's staging folder, rewritten every build; `target_dir` is cargo's build
 /// folder, kept between builds of the same game build (see `prebuilt::compile`).
 #[allow(clippy::too_many_arguments)]
-pub fn compile(
+pub(super) fn stage_and_cargo(
     rust: &dyn Toolchain,
     game: &Path,
     out: &Path,
@@ -59,7 +80,8 @@ pub fn compile(
     declared: &[Vec<dependencies::Dependency>],
     resolution: &dependencies::Resolution,
     options: Options<'_>,
-) -> Result<(PathBuf, Vec<PathBuf>), String> {
+    check_only: bool,
+) -> Result<Option<(PathBuf, Vec<PathBuf>)>, String> {
     let sdk = prebuilt::identity(game)?;
     let template = api::template(&game.join(super::api_route::TEMPLATE))?;
     check_log_template(&template, sdk.native_log)?;
@@ -129,6 +151,8 @@ pub fn compile(
     // Each mod's staged folder and library root, for the shared registry library.
     let mut mod_dirs = BTreeMap::new();
     let mut mod_roots = BTreeMap::new();
+    // Each mod's source digest and the native mods it links, by mod id.
+    let mut sources: BTreeMap<String, (String, Vec<String>)> = BTreeMap::new();
     let packages: BTreeMap<_, _> = projects
         .iter()
         .map(|project| {
@@ -200,40 +224,26 @@ pub fn compile(
                     );
                 }
                 wrapper_deps.insert(format!("mod_{position}"), dependency.into());
-                let lib = manifest
-                    .entry("lib")
-                    .or_insert_with(|| toml::Table::new().into())
-                    .as_table_mut()
-                    .ok_or(tr("Invalid lib table"))?;
-                lib.insert(
-                    "crate-type".into(),
-                    vec![toml::Value::String("dylib".into())].into(),
-                );
-                let root = dest.join(
-                    lib.get("path")
-                        .and_then(toml::Value::as_str)
-                        .unwrap_or("src/lib.rs"),
-                );
-                let entry = root
-                    .parent()
-                    .ok_or(tr("Invalid library root"))?
-                    .join("__sunrise_entry.rs");
-                fs::write(
-                    &entry,
-                    prebuilt::library_entry(
+                let source =
+                    super::source_digest(bundle).ok_or(tr("Could not hash native mod inputs"))?;
+                let linked = targets
+                    .iter()
+                    .filter(|target| target.package.is_some())
+                    .map(|target| target.dependency.id.clone())
+                    .collect();
+                sources.insert(id.clone(), (source, linked));
+                // The identity is written once cargo has resolved the graph it names.
+                let root = stage_library(
+                    &dest,
+                    &mut manifest,
+                    id,
+                    &prebuilt::library_entry(
                         &template,
                         &[&bundle.manifest],
-                        sdk.commit(),
-                        id,
-                        &bundle.manifest.version.to_string(),
+                        prebuilt::IDENTITY_MARKER,
                         &[],
                     ),
-                )
-                .map_err(|e| e.to_string())?;
-                let mut source = fs::read_to_string(&root).map_err(|e| e.to_string())?;
-                prebuilt::check_entry_root(&source, id)?;
-                source.push_str("\n#[allow(unsafe_code)]\n#[path = \"__sunrise_entry.rs\"] mod __sunrise_entry;\n");
-                fs::write(&root, source).map_err(|e| e.to_string())?;
+                )?;
                 mod_dirs.insert(id.clone(), dest.clone());
                 mod_roots.insert(id.clone(), root);
             }
@@ -386,8 +396,7 @@ pub fn compile(
         .as_ref()
         .map(|patch| patch.installs.as_slice())
         .unwrap_or(&[]);
-    let mut entry =
-        prebuilt::library_entry(&template, &[], sdk.commit(), "sunrise_patch", "0", installs);
+    let mut entry = prebuilt::library_entry(&template, &[], prebuilt::IDENTITY_MARKER, installs);
     entry.push_str(prebuilt::PATCH_HOST_LINK);
     fs::write(out.join("src/lib.rs"), entry).map_err(|e| e.to_string())?;
     let mut manifest = toml::toml! { [package] name = "sunrise_patch" version = "0.0.0" edition = "2024" [lib] crate-type = ["dylib"] [workspace] resolver = "2" };
@@ -495,6 +504,42 @@ pub fn compile(
     }
     let resolved = super::read_lock(out)?;
     plan.check_resolved(&super::registry_lock::RegistryLock::parse(&resolved)?)?;
+    // One workspace unifies the crates.io graph of the whole install set: another mod can move a
+    // version or enable a feature under a mod whose files did not change, so each library's
+    // identity names its graph as cargo just resolved it, after its source digest.
+    let graphs = super::registry_inventory::graphs(rust, out, &mod_dirs)?;
+    let mut identities = super::library_record::Identities::default();
+    let fill = |path: &Path, identity: &str| -> Result<(), String> {
+        let entry = fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        fs::write(path, entry.replace(prebuilt::IDENTITY_MARKER, identity))
+            .map_err(|e| format!("{}: {e}", path.display()))
+    };
+    for &index in &resolution.order {
+        let manifest = &projects[index].bundle.manifest;
+        let (source, linked) = &sources[&manifest.id];
+        let identity = identities.next(
+            sdk.commit(),
+            &manifest.id,
+            &manifest.version.to_string(),
+            &format!("{source}+{}", graphs[&manifest.id]),
+            linked.iter().map(String::as_str),
+        );
+        fill(
+            &mod_roots[&manifest.id].with_file_name("__sunrise_entry.rs"),
+            &identity,
+        )?;
+    }
+    let identity = identities.next(
+        sdk.commit(),
+        "sunrise_patch",
+        "0",
+        "none",
+        patch
+            .iter()
+            .flat_map(|patch| &patch.bundles)
+            .map(|bundle| bundle.manifest.id.as_str()),
+    );
+    fill(&out.join("src/lib.rs"), &identity)?;
     let mut game_names = plan.game.game_package_names();
     for registry in patches.values() {
         for name in registry.as_table().expect("validated SDK patches").keys() {
@@ -502,7 +547,7 @@ pub fn compile(
         }
     }
     super::crates::check_game_graph_names(out, &resolved, &game_names)?;
-    let inventory = metadata.inventory(&super::registry_lock::RegistryLock::default(), links)?;
+    let inventory = metadata.inventory(&plan, links)?;
     if inventory.added_crates > 0 && !options.consent.is_some_and(|ask| ask(&inventory)) {
         return Err(crate::host::tr("The mods' crates.io dependencies were not compiled: the plan's \"registry\" field is false or the question was declined. \"registry\": true approves compiling them; their build scripts and proc macros then run on this computer").into());
     }
@@ -527,7 +572,7 @@ pub fn compile(
         keep_unchanged_times(out, &previous).map_err(|e| e.to_string())?;
         fs::remove_dir_all(&previous).map_err(|e| e.to_string())?;
     }
-    let mut command = super::cargo(rust, out, "build");
+    let mut command = super::cargo(rust, out, if check_only { "check" } else { "build" });
     command
         .args([
             "--workspace",
@@ -553,7 +598,11 @@ pub fn compile(
     let messages = out.join("cargo-messages.jsonl");
     let result = super::run_checked(
         command,
-        tr("Compiling registry mod libraries"),
+        if check_only {
+            tr("Checking native mod libraries")
+        } else {
+            tr("Compiling registry mod libraries")
+        },
         |_| {},
         Some(fs::File::create(&messages).map_err(|e| e.to_string())?),
         None,
@@ -600,6 +649,9 @@ pub fn compile(
         );
         return Err(super::advised(error, blocked, libraries));
     }
+    if check_only {
+        return Ok(None);
+    }
     let binary = game.join("bin").join(if cfg!(windows) {
         "sunrise-client.exe"
     } else {
@@ -611,13 +663,8 @@ pub fn compile(
         let project = &projects[index];
         let library = release.join(prebuilt::dylib_name(&project.crate_name()));
         super::library_record::validate_exports(&library, &project.bundle.manifest.id)?;
-        super::library_record::stamp(
-            &library,
-            sdk.commit(),
-            &project.bundle.manifest.id,
-            &project.bundle.manifest.version.to_string(),
-            false,
-        )?;
+        let id = &project.bundle.manifest.id;
+        super::library_record::stamp(&library, id, identities.recorded(id), false)?;
         runtime.push(library);
     }
     if shared.is_some() {
@@ -628,7 +675,12 @@ pub fn compile(
     }
     let library = release.join(prebuilt::dylib_name("sunrise_patch"));
     super::library_record::validate_exports(&library, "sunrise_patch")?;
-    super::library_record::stamp(&library, sdk.commit(), "sunrise_patch", "0", true)?;
+    super::library_record::stamp(
+        &library,
+        "sunrise_patch",
+        identities.recorded("sunrise_patch"),
+        true,
+    )?;
     runtime.push(library);
     for library in outputs.runtime(
         &metadata.runtime_packages()?,
@@ -651,7 +703,7 @@ pub fn compile(
             runtime.push(library);
         }
     }
-    Ok((binary, runtime))
+    Ok(Some((binary, runtime)))
 }
 
 /// Gives each file under `staged` whose bytes equal the file at the same place under `previous`
@@ -716,6 +768,29 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn registry_staging_inserts_the_implicit_library_root() {
+        let stage = tempfile::tempdir().unwrap();
+        let src = stage.path().join("src");
+        fs::create_dir(&src).unwrap();
+        fs::write(src.join("lib.rs"), "pub fn library() {}\n").unwrap();
+        let mut manifest = toml::toml! { [package] name = "example" version = "1.0.0" };
+
+        let root = stage_library(stage.path(), &mut manifest, "example", "// generated\n").unwrap();
+        let configured = manifest["lib"]["path"].as_str().unwrap();
+        assert_eq!(stage.path().join(configured), root);
+        assert_eq!(root, src.join("lib.rs"));
+        assert!(
+            fs::read_to_string(root)
+                .unwrap()
+                .contains("mod __sunrise_entry;")
+        );
+        assert_eq!(
+            fs::read_to_string(src.join("__sunrise_entry.rs")).unwrap(),
+            "// generated\n"
+        );
+    }
 
     #[test]
     fn forwarding_sdk_requires_one_logger_slot_in_its_template() {
@@ -975,7 +1050,7 @@ mod tests {
         let resolution = dependencies::resolve(&inputs).unwrap();
         let rust = crate::rust::tests::system(required("SUNRISE_TEST_REGISTRY_RUST"));
         let approve = std::env::var_os("SUNRISE_TEST_REGISTRY_DECLINE").is_none();
-        let result = compile(
+        let result = stage_and_cargo(
             &rust,
             &game,
             &out,
@@ -991,9 +1066,10 @@ mod tests {
                 adapter: &adapter,
                 mixins: &crate::MixinsIdentity::resolve([&bundle], None).unwrap(),
             },
+            false,
         );
         if approve {
-            let (binary, _) = result.unwrap();
+            let (binary, _) = result.unwrap().unwrap();
             assert!(binary.is_file());
             eprintln!("compiled wrapper {}", binary.display());
         } else {

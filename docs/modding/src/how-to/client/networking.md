@@ -64,6 +64,94 @@ Those handlers still cannot borrow a host directly; use queued work for that. In
 them), and `client_packet_send` neither sees nor can cancel the acknowledgement.
 No packet inspection or editing beyond the existing `ClientPacket` view is provided.
 
+## Login handshakes
+
+`player_handshake` runs on the server thread after the normal protocol and
+transfer checks, but before the login hello, authentication, or admission.
+There is no player or authenticated profile yet. Status pings don't fire it.
+
+```rust,ignore
+fn player_handshake(
+    &self,
+    _host: &mut dyn ServerHost,
+    event: &mut PlayerHandshakeEvent<'_>,
+) -> Flow {
+    match event.requested_host.as_str() {
+        "old.example" => *event.requested_host = "new.example".into(),
+        "closed.example" => {
+            event.cancelled = true;
+            *event.reason = Some(Text::literal("This address is closed."));
+        }
+        _ => {}
+    }
+    Flow::Continue
+}
+```
+
+The requested host is untrusted text, including any suffix after a NUL. Each
+listener sees the last accepted rewrite. Login doesn't route by host; the
+final value is what `PlayerRef::virtual_host` reports for the player. The vanilla limit of 255 UTF-16
+code units applies to decoding the packet, not to the rewrite. Each listener
+gets its own copy of the requested port, protocol version and peer IP, so no
+listener changes what the next one reads. The peer IP is the numeric
+transport address without a port, or `None` for an integrated server's
+memory connection. A rewrite does not change the peer IP or bypass
+authentication or admission.
+
+Cancellation sends a login disconnect and closes the connection without
+processing a login hello. The client gets the standard localized
+"Disconnected" text if you leave `reason` unset or it fails Text serialization
+validation.
+
+## Reporting the client identity
+
+Implement `Hooks::client_identity` to choose the brand and any extra configuration
+payloads for a particular server. The hook runs on the network thread once per
+join that reaches initial configuration. The read-only `ClientIdentityHost`
+borrows the original target through `host.server_address()`: a typed address keeps
+its original spelling, before SRV or DNS resolution, and a transfer supplies the
+new destination. The Host exposes no game state or connection operations. An
+integrated single-player connection sends only `vanilla`, without calling the hook.
+Returning from play to configuration on the same connection does not repeat it.
+
+```rust,ignore
+use mod_api::{ClientIdentity, ClientIdentityEvent, ClientIdentityHost, ClientIdentityPayload, Identifier};
+
+// In your Hooks implementation:
+fn client_identity(
+    &self,
+    host: &dyn ClientIdentityHost,
+    _: &mut ClientIdentityEvent,
+) -> Option<ClientIdentity> {
+    if host.server_address() != "example.org:25565" {
+        return None;
+    }
+    let channel = Identifier::parse("example:hello").ok()?;
+    Some(ClientIdentity::new(
+        "example-client",
+        vec![ClientIdentityPayload::new(channel, vec![1, 0])],
+    ))
+}
+```
+
+`None` leaves the decision to the next listener. The first `Some` (by listener
+priority, then dependency order) replaces the whole identity, including any
+extras. If nobody answers, the Sunrise layer's identity is used; if it has none,
+the client sends `vanilla` with no extras. The brand is protocol data, not
+display text. It goes on `minecraft:brand` after login acknowledgement, followed
+by the extra payloads in list order, then client information. Supply an empty
+list to send only the brand.
+
+Use only channels that your server expects before negotiation. Reserved or
+transport-owned channels, including `minecraft:brand`, cannot appear in the extra
+list. Each extra body is sent as-is, with a limit of 32,767 bytes
+(`ServerboundCustomPayloadPacket.MAX_PAYLOAD_SIZE`). The vanilla string limits
+apply to the brand (`BrandPayload.write` / `FriendlyByteBuf.writeUtf`) and to
+channel identifiers (`Identifier.STREAM_CODEC` / `ByteBufCodecs.STRING_UTF8`).
+Rejected channels or encoding errors fail the join. The identity is not a Wire
+record; use registered configuration payload handlers for negotiated traffic.
+Play packet hooks and holds do not intercept these packets.
+
 ## Configuration tasks before play
 
 The server's `register_configuration_tasks` hook (version 3) runs once per
@@ -154,7 +242,7 @@ when another implementation requires a specific byte format.
 
 Use owned string fields such as `String`, `Cow<'static, str>`, `Box<str>`, or `Arc<str>`, not static strings or interned level keys: the network codec never
 interns incoming text. The registrar also refuses Wire forms that allocate outside the shared
-budget, such as `Identifier`, `SpawnerKey`, `CustomSpawners`, `ModelPart` and JSON values,
+budget, such as `Identifier`, `SpawnerKey`, `CustomSpawners`, JSON values and `Text`,
 even in nested fields. Send bounded owned fields and convert explicitly where you need those types.
 
 Derive `Wire` for the value, register it in `Hooks::register`, and keep the token the
@@ -234,6 +322,11 @@ fn register(r: &mut dyn Registrar) {
   The fingerprint describes the negotiated encoding, not what a field or variant means.
   If you reorder fields or variants that have the same encoding, or reuse a position for a
   different meaning, bump the registrar's application version even if the fingerprint is unchanged.
+- **Ask before sending.** On a client, `ClientHost::has_channel(&id)` (NeoForge's `hasChannel`) is
+  the test `send_payload_to_server` makes before it queues anything, for the connection's current
+  phase: true means the send won't return `UnsupportedPeer`, so a mod can tell a server that has
+  its optional channel from one that doesn't. It is false with no connection and for a channel
+  declared for the other phase or direction.
 - **Named errors.** `PayloadSendError::StaleToken` for a token the registrar did not hand out
   as it claims (forged, from another load, read as another type, or its mod off);
   `EncodeFailed` for a value the peer could not decode (a bound or the allocation budget),
@@ -311,3 +404,58 @@ anything a handler counts on (inventories, state changes): keep those `Reliable`
   watermark and the 250 ms limit bound what piles up behind it, not what is stuck in it. The
   engine adds no loss concealment: carry a sequence number in your payload and let your codec
   conceal gaps.
+
+## Sending vanilla play packets
+
+`ClientHost::send_packet` submits an owned `ServerboundPlayPacket`. The game validates the
+body and reserves outgoing credit. Publication waits for the current root transaction to
+commit; rollback, disconnect or a protocol change cancels it. Submission applies no local
+prediction or inventory effects, and the server still checks reach, permissions and state.
+
+Build common packet bodies with these portable associated constructors. Each returns
+`Result<ServerboundPlayPacket, PacketBuildError>`:
+
+| Constructor | Values |
+| --- | --- |
+| `use_item` | hand (0 main, 1 off), sequence, yaw, pitch |
+| `use_item_on` | hand, block position, face (0 down, 1 up, 2 north, 3 south, 4 west, 5 east), relative cursor, inside, world border, sequence |
+| `player_action` | action, block position, direction, sequence |
+| `interact` | entity network ID, hand, hit location, sneaking |
+| `attack` | entity network ID; vanilla 26.3 uses a separate attack packet |
+| `pick_item_from_block` | block position, include data |
+| `pick_item_from_entity` | entity network ID, include data |
+| `sign_update` | block position, front side, four lines |
+| `move_player_pos` | position, on ground, horizontal collision |
+| `move_player_pos_rot` | position, yaw, pitch, on ground, horizontal collision |
+| `move_player_rot` | yaw, pitch, on ground, horizontal collision |
+| `move_player_status_only` | on ground, horizontal collision |
+
+Player actions follow vanilla 26.3: 0 start destroy, 1 change destroy direction, 2 abort,
+3 stop destroy, 4 drop all, 5 drop one, 6 release use, 7 swap offhand, 8 stab.
+Entity IDs are network IDs, not Sunrise entity handles. Angles are degrees. Sequence
+numbers and the corresponding client state remain the caller's responsibility.
+
+The builders refuse non-finite positions, cursors and angles, unknown action/hand/direction
+values, unrepresentable packed block positions and sign lines longer than 384 UTF-16 code
+units. `PacketBuildError` identifies the packet and field. Interaction locations use vanilla's
+lossy compressed-vector codec, including its clamping of large finite values.
+
+`ClientHost::container_click(&ContainerClickRequest)` builds a container click from plain
+carried/changed-slot `ItemStack`s. It needs the host because the packet carries hashed stacks.
+The host uses the connection's item/component registry and the game's existing component
+codecs and hashes. Submit the returned packet with `send_packet`; construction applies no
+local menu effects. The request contains container/state IDs, slot, button, click type,
+changed slots and carried stack. Click types are 0 pickup, 1 quick move, 2 swap, 3 clone,
+4 throw, 5 quick craft and 6 pickup all.
+
+Container limits are signed 32-bit container/state IDs, signed 16-bit slots, a signed-byte
+button, at most 128 distinct changed slots, and the hashed component codec's count bounds.
+The host refuses components it cannot encode or hash rather than silently omitting them.
+No menu, reach, state or editor checks are replicated. Without a client connection, construction
+returns `PacketBuildError::Unavailable`. `validate_container_click_limits` is also available
+for preflighting the ID, slot and changed-slot-count wire limits.
+
+For chat and commands, call `send_chat`; the game owns signing. There are no typed builders
+for chat, signed commands, chat sessions, login/configuration, keep-alive, pong or custom
+payload packets. Registered and engine-reserved custom-payload channels use their payload
+or service API.

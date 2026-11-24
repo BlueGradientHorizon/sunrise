@@ -144,6 +144,27 @@ pub fn enabled_listened(hook: HookId) -> bool {
     crate::runtime::enabled_listened(hook)
 }
 
+/// A live listener query bound to the creating thread's installed dispatch table.
+// no wire: a process-local view of the installed dispatch table, never sent.
+pub struct EnabledListeners {
+    installed: Option<&'static crate::runtime::Installed>,
+    hook: HookId,
+}
+
+impl EnabledListeners {
+    pub fn capture(hook: HookId) -> Self {
+        Self {
+            installed: crate::runtime::installed(),
+            hook,
+        }
+    }
+
+    pub fn any(&self) -> bool {
+        self.installed
+            .is_some_and(|installed| crate::runtime::has_enabled_listener(installed, self.hook))
+    }
+}
+
 /// Whether any part subscribed to the scoped entity hook `hook` is attached to
 /// entity type `kind`, so a family's walk can resolve its rows' slots once per
 /// pass instead of naming each row's type.
@@ -798,9 +819,3 @@ impl EffectiveDependencies {
 }
 
 include!(concat!(env!("OUT_DIR"), "/mod_api_exports_private.rs"));
-
-/// How many listeners this thread has entered. A scoped
-/// resource that must not outlive one listener compares it between operations.
-pub fn listener_serial() -> u64 {
-    crate::runtime::listener_serial()
-}

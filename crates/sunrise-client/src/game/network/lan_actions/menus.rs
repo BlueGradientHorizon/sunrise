@@ -520,7 +520,18 @@ impl Game<'_> {
             self.guest_drop_carried(gi);
         } else if let Some(host) = self.lan.as_mut() {
             let returned = host.hub.take_closed_menu_cursors(conn).collect();
+            // Inputs of a processing menu the hub closed itself keep the drop decision made
+            // when it closed (a dead player's drop), even though this removal is live.
+            let (to_return, to_drop) = host.hub.take_closed_processing_inputs(conn);
             self.lan_place_back(gi, returned);
+            if let Some(gi) = self.guest_index(conn) {
+                self.lan_place_back(gi, to_return);
+            }
+            if !to_drop.is_empty()
+                && let Some(gi) = self.guest_index(conn)
+            {
+                self.drop_guest_items(gi, to_drop);
+            }
         }
         // Overflow listeners can open a menu. Remember the window we will
         // retire now, not the one that was open before returning cursors.
@@ -542,14 +553,10 @@ impl Game<'_> {
             // Returning queued cursors and closing a container can both call
             // listeners that remove another player, shifting the guest list.
             if let Some(gi) = self.guest_index(conn)
-                && let Some(carried) =
+                && let Some(closed) =
                     self.with_own_record(gi, |host, _| host.hub.container_closed(conn, window))
             {
-                if removal.drops_items() {
-                    self.drop_guest_items(gi, vec![carried]);
-                } else {
-                    self.lan_place_back(gi, vec![carried]);
-                }
+                self.settle_closed_hub_menu(conn, closed, removal);
             }
         }
         self.lan_merchant_removed(conn, None, removal);
@@ -559,6 +566,32 @@ impl Game<'_> {
         // `PlayerContainerEvent.Close`, after the menu's `removed`.
         self.player_menu_closing(conn);
         retired_window
+    }
+
+    /// `AbstractContainerMenu.removed` for a window the hub detached: the cursor, then a
+    /// processing menu's non-result inputs (`clearContainer`), each through
+    /// `dropOrPlaceInInventory`. A killed or disconnected player drops them; otherwise they go
+    /// back to the inventory, dropping what does not fit. A processing menu's results are
+    /// already discarded.
+    pub(super) fn settle_closed_hub_menu(
+        &mut self,
+        conn: u32,
+        closed: sunrise_client::lan::containers::ClosedHubMenu,
+        removal: MenuRemoval,
+    ) {
+        let carried: Vec<_> = closed.carried.into_iter().collect();
+        for stacks in [carried, closed.processing_inputs] {
+            // Returning stacks can call listeners that remove another player, shifting the
+            // guest list.
+            let Some(gi) = self.guest_index(conn).filter(|_| !stacks.is_empty()) else {
+                continue;
+            };
+            if removal.drops_items() {
+                self.drop_guest_items(gi, stacks);
+            } else {
+                self.lan_place_back(gi, stacks);
+            }
+        }
     }
 
     /// `ContainerEntity`'s `Container.stopOpen` when a vehicle menu closes
@@ -665,9 +698,7 @@ impl Game<'_> {
         if !self.container_menu_valid(g) {
             return false;
         }
-        let Some(p) = host.play.get(&conn) else {
-            return true;
-        };
+        let p = host.play.get(&conn);
         let menus = host.menus.get(&conn);
         menus
             .and_then(|m| m.crafting.table.as_ref())
@@ -675,15 +706,13 @@ impl Game<'_> {
             && menus
                 .and_then(|m| m.station.as_ref())
                 .is_none_or(|s| self.lan_station_valid(g, s))
-            && p.lectern
-                .as_ref()
+            && p.and_then(|p| p.lectern.as_ref())
                 .is_none_or(|l| self.lan_lectern_valid(g, l.key))
-            && p.merchant
-                .as_ref()
+            && menus
+                .and_then(|m| m.merchant.as_ref())
                 .and_then(|m| m.merchant.mob)
                 .is_none_or(|id| self.lan_merchant_valid(g, id))
-            && p.mount_window
-                .as_ref()
+            && p.and_then(|p| p.mount_window.as_ref())
                 .is_none_or(|m| self.lan_mount_valid(g, m.mob))
     }
 
@@ -721,10 +750,10 @@ impl Game<'_> {
         if let Some(menus) = host.menus.get(&conn) {
             windows.extend(menus.crafting.table.as_ref().map(|t| t.0));
             windows.extend(menus.station.as_ref().map(|s| s.window));
+            windows.extend(menus.merchant.as_ref().map(|m| m.window));
         }
         if let Some(p) = host.play.get(&conn) {
             windows.extend(p.lectern.as_ref().map(|l| l.window));
-            windows.extend(p.merchant.as_ref().map(|m| m.window));
             windows.extend(p.mount_window.as_ref().map(|m| m.window));
         }
         if let Some(host) = self.lan.as_mut() {

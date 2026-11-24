@@ -69,7 +69,7 @@ impl Game<'_> {
         if use_item.or(true)
             && let Some(hit) = block_hit
             && let Some(held) = self.held().cloned()
-            && let Some(answer) = self.item_use_first(hit, self.hand, &held)
+            && let Ok(Some(answer)) = self.item_use_first(hit, self.hand, &held)
             && answer != Answer::Pass
         {
             if matches!(answer, Answer::Success | Answer::SuccessServer) {
@@ -206,7 +206,9 @@ impl Game<'_> {
                 let sign_consumes = self.sign_consumes_click(hit.pos);
                 use sunrise_world::level::{InteractionResult, UseBranch};
                 let item_result = match block_answer {
-                    Some(answer) => native_hooks::block_use_result(answer),
+                    Some(answer) => {
+                        native_hooks::block_use_result(answer, mod_api::LogicalSide::Server)
+                    }
                     None => self.with_level(|b, level, ticks| {
                         b.block_use_item_on(level, ticks, state, block_hit, player, item.as_deref())
                     }),
@@ -252,7 +254,8 @@ impl Game<'_> {
                             })
                     });
                     let result = if let Some(answer) = answer {
-                        native_hooks::block_use_result(answer).unwrap_or(InteractionResult::Pass)
+                        native_hooks::block_use_result(answer, mod_api::LogicalSide::Server)
+                            .unwrap_or(InteractionResult::Pass)
                     } else {
                         empty_template_ran = true;
                         let player = self.use_context();
@@ -634,9 +637,11 @@ impl Game<'_> {
             face,
             hit: Vec3::new(hit.point[0], hit.point[1], hit.point[2]),
             inside: hit.inside,
-            yaw: self.yaw,
-            pitch: self.pitch,
-            sneaking: self.held_mapping(Mapping::Sneak),
+            source: sunrise_world::level::PlacementSource::Player {
+                yaw: self.yaw,
+                pitch: self.pitch,
+                sneaking: self.held_mapping(Mapping::Sneak),
+            },
             item: stack.item.to_string(),
             can_use_game_master_blocks: self.can_use_game_master_blocks(),
         };
@@ -781,7 +786,19 @@ impl Game<'_> {
                     Some(living) => self.entity_sound_source(living.entity())?,
                     None => mod_api::SoundSource::Players,
                 };
-                self.native_queue_sound(level, sound, at, source, 1.0, 1.0, None)?;
+                if !self.native_queue_sound(super::native_level_effects::NativeSoundRequest {
+                    level,
+                    sound,
+                    at,
+                    source,
+                    volume: 1.0,
+                    pitch: 1.0,
+                    except: None,
+                    entity: None,
+                    seed: None,
+                }) {
+                    return None;
+                }
                 true
             }
             ConsumeEffect::Native { kind, data, .. } => {

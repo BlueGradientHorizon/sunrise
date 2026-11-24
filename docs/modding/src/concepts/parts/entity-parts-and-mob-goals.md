@@ -96,6 +96,12 @@ Clearing a fox's target ends defending without changing its trusted entities. An
 target controls its creepy flag and attacking speed modifier; clearing it also clears its stared-at
 flag. A zombified piglin schedules its first anger sound and next alert when it acquires a target
 from none, not when switching between targets. Targeting a player does not count as player damage.
+A goal moves its own mob with `set_delta_movement([x, y, z])` and `add_delta_movement([x, y, z])`
+(`Entity.setDeltaMovement` and `addDeltaMovement`, in blocks a tick), and reads the current value with
+`delta_movement()`, as `LeapAtTargetGoal` and `DolphinJumpGoal` do. The write applies at once, inside the
+mob's AI step, so the travel that follows in the same tick uses it, and clients see it through ordinary motion
+tracking. A component that is not finite (in the delta or the sum) answers false and leaves the velocity
+unchanged; nothing is clamped.
 
 
 ## Part state
@@ -107,20 +113,31 @@ attachment codec and kept by transactions, through the same calls and rules as
 [block entity Part state](block-entity-types.md#part-state).
 
 ```rust,ignore
+struct Robot {
+    charge: AttachmentKey<u32>,
+}
 impl EntityPartState for Robot {
     type Data = u32;
-    const DATA: &'static AttachmentType<u32> = &CHARGE;
+    fn state_key(&self) -> &AttachmentKey<u32> {
+        &self.charge
+    }
 }
-r.entity_part_with_state("mymod:robot", Robot)?;
+// Inside Hooks::register(&self, r: &mut dyn Registrar, _) (returns `()`):
+if let Ok(charge) = r.register_attachment_type(
+    AttachmentDescriptor::new("mymod:charge", || 0).serialize(CHARGE_CODEC),
+) {
+    let _ = r.entity_part_with_state("mymod:robot", Robot { charge });
+}
 
-let full = Robot::edit_state(host, robot, |_, charge| {
+let full = self.edit_state(host, robot, |_, _tx, charge| {
     *charge += 1;
     *charge >= 100
 })?;
 ```
 
-- `state` and `state_existing` read a snapshot and insert nothing; `edit_state` runs in a nested
-  transaction of its own, as for block entities.
+- `state` and `state_existing` lend a snapshot value and insert nothing. `edit_state` lends the
+  mutable draft and transaction context in a nested transaction, as for block entities. If the transaction cannot open, it returns
+  `PartStateError::Unavailable` without calling the edit closure.
 - Every call checks the handle first:
   - a handle of another world open, or of an entity that was removed (or whose removal waits for
     the root commit), unloaded or moved under a new id, gives `PartStateError::Stale`, and

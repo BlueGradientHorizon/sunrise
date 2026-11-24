@@ -16,7 +16,8 @@ use mod_api::{
     AttributeModifier, AttributeOperation, Direction, EntityRef, EquipmentSlot, Identifier,
     ItemStackView, LivingRef, ModifierLifetime,
 };
-use sunrise_client::items::ItemStack;
+use sunrise_client::health::{Attack, DamageLevel, HitEffects, Hurting, Knock, NO_ATTACK};
+use sunrise_client::items::{EntityTypeTags, ItemStack};
 use sunrise_client::mobs::{
     Mob,
     finalize::{self, EquipmentRead},
@@ -139,15 +140,181 @@ fn api_modifier(m: &Modifier) -> Option<AttributeModifier> {
 impl Game<'_> {
     /// What a living handle names now: a player, a mob, an armor stand or the dragon.
     pub(super) fn native_living_target(&self, living: LivingRef) -> Option<Target> {
-        match self.native_entity_target(living.entity())? {
-            t @ (Target::Player
-            | Target::Guest(_)
-            | Target::Mob(_)
-            | Target::Stand(_)
-            | Target::Dragon(_)) => Some(t),
-            _ => None,
+        self.native_entity_target(living.entity())
+            .filter(|t| t.is_living())
+    }
+    /// A direct, non-damaging call to the short `LivingEntity.knockback` entry.
+    pub(super) fn living_knockback(
+        &mut self,
+        living: LivingRef,
+        strength: f64,
+        [x, z]: [f64; 2],
+    ) -> bool {
+        if ![strength, x, z].into_iter().all(f64::is_finite) {
+            return false;
+        }
+        let Some(target) = self.native_living_target(living) else {
+            return false;
+        };
+        const SOURCE: mod_api::HurtSource<'static> = mod_api::HurtSource {
+            damage_type: "minecraft:generic",
+            causing: 0,
+            direct: 0,
+            position: None,
+        };
+        let knock = Knock { strength, x, z };
+        let id = living.id();
+        match target {
+            Target::Player | Target::Guest(_) => self
+                .player_knockback_from_mod(living, target, knock, SOURCE)
+                .is_some(),
+            Target::Mob(_) => {
+                let Some(i) = self.mob_index.find(&self.mobs, id) else {
+                    return false;
+                };
+                let plan = self.prepare_knockback_credit(id as i32, None, &NO_ATTACK);
+                let mut credit = plan.lend(&mut self.last_hurt_by_player);
+                let level =
+                    crate::game::entity::damage_level_of!(self, &NO_ATTACK, &mut credit, None);
+                self.mobs[i].knockback(
+                    level,
+                    strength,
+                    x,
+                    z,
+                    &sunrise_client::mobs::Damage::of(sunrise_client::mobs::DamageKind::Generic),
+                    0.0,
+                )
+            }
+            Target::Stand(id) => self.knock_back_armor_stand(id, knock, SOURCE, &NO_ATTACK),
+            Target::Dragon(_) => {
+                let resistance = self.dragon_knockback_resistance();
+                let plan = self.prepare_knockback_credit(id as i32, None, &NO_ATTACK);
+                let mut credit = plan.lend(&mut self.last_hurt_by_player);
+                let level =
+                    crate::game::entity::damage_level_of!(self, &NO_ATTACK, &mut credit, None);
+                level.through_short_knockback(|level| {
+                    self.dragon
+                        .as_mut()
+                        .is_some_and(|d| d.knockback(level, knock, SOURCE, resistance))
+                })
+            }
+            _ => false,
         }
     }
+
+    /// Lend the victim's own body and level to the player path without switching turns or levels.
+    fn player_knockback_from_mod(
+        &mut self,
+        living: LivingRef,
+        target: Target,
+        knock: Knock,
+        source: mod_api::HurtSource<'_>,
+    ) -> Option<()> {
+        let id = living.id();
+        // The hook's attacker falls back to the victim's `getLastHurtByMob`, resolved in any
+        // level; the source stays unattributed and kill credit is planned on its own.
+        let remembered = self
+            .living_last_attacker(living)
+            .map(|attacker| self.last_attacker_attack(attacker.id()));
+        let attack = remembered.as_ref().unwrap_or(&NO_ATTACK);
+        let hub = &self.lan.as_ref()?.hub;
+        let player = match target {
+            Target::Player => {
+                hub.guest(self.lan_acting?)?;
+                self.player.as_ref()?
+            }
+            Target::Guest(conn) => hub.guest(conn)?.motion.as_deref()?,
+            _ => return None,
+        };
+        let mut random = player.random.clone();
+        let plan = self.prepare_knockback_credit(id as i32, None, attack);
+        let dimension = self.resident_target_dimension(target).unwrap_or(self.dim);
+        let mut credit = plan.lend(&mut self.last_hurt_by_player);
+        let world = if dimension == self.dim {
+            &mut self.world
+        } else {
+            &mut self.levels.parked_mut(dimension)?.world
+        };
+        let mut level = DamageLevel::of(
+            world,
+            self.pack.assets.registry,
+            Some(world_items!(self)),
+            Some(&self.pack.block_registries),
+            &self.damage_hooks,
+        )
+        .attacked_by(attack)
+        .with_knockback_credit(&mut credit)
+        .with_effects(HitEffects::new(
+            &mut self.creatures.lan_sounds,
+            Some(hub),
+            dimension.id(),
+            self.native_lifecycle.epoch(),
+            None,
+        ));
+        let velocity = level.through_short_knockback(|level| {
+            super::creatures::knockback::player_knockback_velocity(
+                player,
+                &mut random,
+                level,
+                knock,
+                source,
+            )
+        });
+        // The retries drew from the victim's own random, landed or not.
+        self.write_player_random(target, random);
+        let velocity = velocity?;
+        self.write_player_velocity(target, |_| Some(velocity))
+            .then_some(())
+    }
+
+    /// [`Self::attack_of`] for a remembered attacker, which may be a mob in another loaded
+    /// level: its main-hand stack is read there.
+    fn last_attacker_attack(&self, attacker: u32) -> Attack {
+        let mut attack = self.attack_of(attacker as i32);
+        if let Some((_, mob)) = self.mob_in_other_level(attacker)
+            && !mod_api::__private::mods().is_empty()
+        {
+            attack.held[0] = mob.extra.main_hand_stack().cloned();
+        }
+        attack
+    }
+
+    pub(super) fn knock_back_armor_stand(
+        &mut self,
+        id: u32,
+        mut knock: Knock,
+        source: mod_api::HurtSource<'_>,
+        attack: &Attack,
+    ) -> bool {
+        let Some(index) = self.armor_stands.iter().position(|stand| stand.id == id) else {
+            return false;
+        };
+        let resistance = self.armor_stands[index]
+            .live
+            .read(
+                &self.motion.attributes,
+                "minecraft:armor_stand",
+                "minecraft:knockback_resistance",
+                sunrise_world::attribute_map::ValueKind::Computed,
+                Vec::new,
+            )
+            .unwrap_or(0.0);
+        let plan = self.prepare_knockback_credit(id as i32, None, attack);
+        let mut credit = plan.lend(&mut self.last_hurt_by_player);
+        let level = crate::game::entity::damage_level_of!(self, attack, &mut credit, None);
+        let pushed = Hurting::ArmorStand(id as i32, source);
+        if level.through_short_knockback(|level| level.knockback_canceled(pushed, &mut knock)) {
+            return false;
+        }
+        let stand = &mut self.armor_stands[index];
+        knock.apply(
+            &mut stand.velocity,
+            resistance,
+            stand.ground.on_ground,
+            level.random(),
+        )
+    }
+
     /// The entity as a living entity (vanilla's `LivingEntity`: a mob, a
     /// player, an armor stand or the dragon), or None for another kind or a
     /// stale handle.
@@ -278,7 +445,20 @@ impl Game<'_> {
         attribute: &str,
         base: f64,
     ) -> bool {
-        base.is_finite() && self.native_living_write(living, attribute, AttributeWrite::Base(base))
+        base.is_finite()
+            && self.native_living_write(
+                living,
+                attribute,
+                AttributeWrite::Base(self.mod_base_in_range(attribute, base)),
+            )
+    }
+
+    /// A mod's base clamped to the attribute's range, which `/attribute base set` and the entity's own code skip.
+    pub(in crate::game) fn mod_base_in_range(&self, attribute: &str, base: f64) -> f64 {
+        self.motion
+            .attributes
+            .definition(attribute)
+            .map_or(base, |d| d.sanitize(base))
     }
 
     fn native_living_add_modifier(
@@ -418,35 +598,12 @@ impl Game<'_> {
         name: &str,
         kind: sunrise_world::attribute_map::ValueKind,
     ) -> Option<f64> {
-        let catalog = &self.motion.attributes;
-        let player = match target {
-            Target::Player => self.player.as_ref()?,
-            Target::Guest(conn) => self.command_guest(conn)?.motion.as_deref()?,
-            Target::Mob(id) => {
-                let m = self.mobs.iter().find(|m| m.id == id && !m.removed)?;
-                return m.extra.live.read(catalog, &m.kind.id, name, kind, || {
-                    sunrise_client::entity_nbt::attribute_entries(m)
-                        .into_iter()
-                        .map(|(_, entry)| entry)
-                        .collect()
-                });
-            }
-            Target::Stand(id) => {
-                let a = self.armor_stands.iter().find(|a| a.id == id)?;
-                return a
-                    .live
-                    .read(catalog, "minecraft:armor_stand", name, kind, Vec::new);
-            }
-            Target::Dragon(id) => {
-                let d = self.dragon.as_ref().filter(|d| d.id == id)?;
-                return d
-                    .live
-                    .read(catalog, "minecraft:ender_dragon", name, kind, Vec::new);
-            }
-            _ => return None,
-        };
-        let key = player.attributes.key(name)?;
-        player.attributes.value(Some(key), kind).ok()
+        super::native_living_body::body_attribute(
+            self.native_living_body(target)?,
+            &self.motion.attributes,
+            name,
+            kind,
+        )
     }
 
     /// `Entity.canUsePortal`: the decision the game's own portal trip runs —
@@ -516,24 +673,18 @@ impl Game<'_> {
         }
     }
 
-    /// `LivingEntity.canBreatheUnderwater`: the species' own breath — a
-    /// fish's, an axolotl's, a construct's (`breathes_water`, the
-    /// `#can_breathe_under_water` tag); a player answers false (no player
-    /// kind is in the tag). The tag read only, not the whole drown
-    /// decision: the air tick itself also keeps the air up behind Water
-    /// Breathing, the conduit's power and a player's invulnerability,
-    /// which this read does not carry. None for a stale handle, an armor
-    /// stand or the dragon.
+    /// Membership in the live `#can_breathe_under_water` tag for a mob.
+    /// The tag read only, not the whole drown decision. None for a stale handle,
+    /// an armor stand or the dragon.
     pub(super) fn living_can_breathe_underwater(&self, living: LivingRef) -> Option<bool> {
         match self.native_living_read_target(living)? {
-            Target::Mob(id) => Some(
-                self.mobs
-                    .iter()
-                    .find(|m| m.id == id && !m.removed)?
-                    .kind
-                    .flags
-                    .breathes_water,
-            ),
+            Target::Mob(id) => {
+                let mob = self.mobs.iter().find(|m| m.id == id && !m.removed)?;
+                Some(self.items().entity_type_tags.has_bit(
+                    mob.kind.flags.entity_tag_slot,
+                    EntityTypeTags::CAN_BREATHE_UNDER_WATER,
+                ))
+            }
             Target::Player | Target::Guest(_) => Some(false),
             _ => None,
         }
@@ -565,28 +716,8 @@ impl Game<'_> {
     /// resolves: the hub is out for their action, and other players'
     /// handles read `None` until it is back.
     pub(super) fn living_health(&self, living: LivingRef) -> Option<f32> {
-        match self.native_living_read_target(living)? {
-            Target::Player => Some(self.player.as_ref()?.health.health()),
-            Target::Guest(conn) => Some(self.command_guest(conn)?.health),
-            Target::Mob(id) => self
-                .mobs
-                .iter()
-                .find(|m| m.id == id && !m.removed)
-                .map(|m| m.health),
-            // An armor stand carries the fixed 20 the game gives it: lava
-            // does not hurt it and splash water reads the very field.
-            Target::Stand(id) => self
-                .armor_stands
-                .iter()
-                .find(|a| a.id == id)
-                .map(|a| a.health),
-            Target::Dragon(id) => self
-                .dragon
-                .as_ref()
-                .filter(|d| d.id == id)
-                .map(|d| d.health),
-            _ => None,
-        }
+        let target = self.native_living_read_target(living)?;
+        super::native_living_body::body_health(self.native_living_body(target)?)
     }
     /// The entity's maximum health (`LivingEntity.getMaxHealth`; Paper's
     /// `Damageable#getMaxHealth`). Players and guests read their attribute
@@ -595,23 +726,7 @@ impl Game<'_> {
     /// 200) until live attribute maps cover them.
     pub(super) fn living_max_health(&self, living: LivingRef) -> Option<f32> {
         let target = self.native_living_read_target(living)?;
-        match target {
-            Target::Player | Target::Guest(_) => self
-                .native_target_attribute(
-                    target,
-                    "minecraft:max_health",
-                    sunrise_world::attribute_map::ValueKind::Computed,
-                )
-                .map(|max| max as f32),
-            Target::Mob(id) => self
-                .mobs
-                .iter()
-                .find(|m| m.id == id && !m.removed)
-                .map(|m| m.attrs.max_health),
-            Target::Stand(_) => Some(20.0),
-            Target::Dragon(_) => Some(super::dragon::MAX_HEALTH),
-            _ => None,
-        }
+        super::native_living_body::body_max_health(self.native_living_body(target)?)
     }
     /// Whether the entity is alive (`LivingEntity.isAlive`; Paper's
     /// `Entity#isDead` is its inverse). A dying mob, mid death
@@ -780,6 +895,37 @@ impl Game<'_> {
         }
     }
 
+    pub(super) fn living_last_hurt_mob(&self, living: LivingRef) -> Option<(EntityRef, i32)> {
+        let (id, timestamp) = self.living_last_hurt_record(living)?;
+        let target = self.entity(id)?;
+        self.last_hurt_target_alive(id)
+            .then_some((target, timestamp))
+    }
+
+    /// The holder's `lastHurtMob` id and `lastHurtMobTimestamp`, its target unresolved.
+    pub(in crate::game) fn living_last_hurt_record(&self, living: LivingRef) -> Option<(u32, i32)> {
+        match self.native_living_target(living)? {
+            Target::Player => self.player.as_ref()?.health.last_hurt_mob,
+            Target::Guest(conn) => {
+                let guest = self.command_guest(conn)?;
+                match &guest.motion {
+                    Some(body) => body.health.last_hurt_mob,
+                    None => guest.carried_last_hurt_mob,
+                }
+            }
+            Target::Mob(id) => {
+                let (_, join) = self.last_hurt_living_target(id)?;
+                self.mobs[self.mobs.locate(join)?].last_hurt_mob
+            }
+            Target::Stand(id) => {
+                let (_, join) = self.last_hurt_living_target(id)?;
+                self.armor_stands[self.armor_stands.locate(join)?].last_hurt_mob
+            }
+            Target::Dragon(id) => self.dragon.as_ref().filter(|d| d.id == id)?.last_hurt_mob,
+            _ => None,
+        }
+    }
+
     /// `EntityReference.getEntity` for a kill credit, which looks through
     /// every level (`getEntityInAnyDimension`): the entity `id` in the level
     /// in place, else [`Self::credited_elsewhere`].
@@ -820,45 +966,14 @@ impl Game<'_> {
         target: Target,
         slot: EquipmentSlot,
     ) -> Option<EquipmentRead<'_>> {
-        let stack = match target {
-            Target::Player => player_slot(
-                &self.inventory,
-                self.selected,
-                &self.armor,
-                &self.offhand,
-                &self.equipment,
-                slot,
-            ),
-            Target::Guest(conn) => {
-                let g = self.command_guest(conn)?;
-                player_slot(
-                    &g.inventory,
-                    g.selected,
-                    &g.armor,
-                    &g.offhand,
-                    &g.equipment,
-                    slot,
-                )
-            }
+        let body = match target {
+            // A removed mob still lends what it wears.
             Target::Mob(id) => {
-                let mob = self.mobs.iter().find(|m| m.id == id)?;
-                return finalize::equipment_slot(mob, slot);
+                sunrise_client::health::LivingBody::Mob(self.mobs.iter().find(|m| m.id == id)?)
             }
-            Target::Stand(id) => self
-                .armor_stands
-                .iter()
-                .find(|a| a.id == id)?
-                .equipment
-                .get(slot as usize),
-            Target::Dragon(id) => self
-                .dragon
-                .as_ref()
-                .filter(|d| d.id == id)?
-                .equipment
-                .get(slot as usize),
-            _ => None,
-        }?;
-        Some(EquipmentRead::resident(stack))
+            target => self.native_living_body(target)?,
+        };
+        super::native_living_body::body_equipment(body, slot)
     }
 
     /// Lend the stack in `slot` (`LivingEntity.getItemBySlot`).
@@ -927,7 +1042,9 @@ impl Game<'_> {
         if broken.is_some() {
             let event =
                 sunrise_client::mobs::item_break::equipment_break_event(world_equipment_slot(slot));
-            self.entity_broadcast_event(living.entity(), event as u8);
+            // Non-player equipment writes above are unjournaled and take effect immediately; keep
+            // the coupled break event on the same immediate side of the rollback boundary.
+            self.broadcast_entity_event_immediate(living.entity(), event as u8);
         }
         broken
     }
@@ -1306,6 +1423,35 @@ pub(in crate::game) mod tests {
     use super::super::api_values::TryIntoApi;
     use super::*;
     use sunrise_core::geometry::Vec3;
+
+    /// The mod API keeps a written base in range; vanilla's own `setBaseValue` (`/attribute base set`) does not.
+    #[test]
+    #[ignore = "daily"]
+    fn a_mod_base_write_stays_in_range_and_a_vanilla_one_does_not() {
+        super::super::native_entity_refs::tests::with_game(|game| {
+            for (id, entity) in [(55, "minecraft:pig"), (56, "minecraft:slime")] {
+                let ty = game.res.mob_types().get(entity).unwrap().clone();
+                game.mobs.push(Mob::new(id, ty, Vec3::ZERO, 0.0));
+                let living = game.living(game.entity(id).unwrap()).unwrap();
+                assert!(game.living_set_attribute_base(living, "minecraft:max_health", 2000.0));
+                assert_eq!(
+                    game.living_attribute_base(living, "minecraft:max_health"),
+                    Some(1024.0),
+                    "{entity}: the mod's write"
+                );
+                let write = AttributeWrite::Base(2000.0);
+                assert_eq!(
+                    game.write_attribute(Target::Mob(id), "minecraft:max_health", write),
+                    Some(true)
+                );
+                assert_eq!(
+                    game.living_attribute_base(living, "minecraft:max_health"),
+                    Some(2000.0),
+                    "{entity}: /attribute base set"
+                );
+            }
+        });
+    }
 
     #[test]
     #[ignore = "daily"]
@@ -2090,22 +2236,25 @@ pub(in crate::game) mod tests {
             let initial = (player.health(game), mob.health(game));
             let dirty = game.player.as_ref().unwrap().health.data.is_dirty();
             let events = game.player.as_ref().unwrap().events.len();
-            let outer = game.transaction_open();
-            assert!(player.set_health(game, 12.0));
-            assert!(mob.set_health(game, 8.0));
-            let inner = game.transaction_open();
-            assert!(player.set_health(game, 0.0));
-            assert!(mob.set_health(game, 0.0));
-            game.transaction_close(&inner, false);
-            assert_eq!(
-                (player.health(game), mob.health(game)),
-                (Some(12.0), Some(8.0))
-            );
-            let inner = game.transaction_open();
-            assert!(player.set_health(game, 0.0));
-            assert!(mob.set_health(game, 0.0));
-            game.transaction_close(&inner, true);
-            game.transaction_close(&outer, false);
+            game.storage_scope(|game, _| {
+                assert!(player.set_health(game, 12.0));
+                assert!(mob.set_health(game, 8.0));
+                game.storage_scope(|game, _| {
+                    assert!(player.set_health(game, 0.0));
+                    assert!(mob.set_health(game, 0.0));
+                    ((), false)
+                });
+                assert_eq!(
+                    (player.health(game), mob.health(game)),
+                    (Some(12.0), Some(8.0))
+                );
+                game.storage_scope(|game, _| {
+                    assert!(player.set_health(game, 0.0));
+                    assert!(mob.set_health(game, 0.0));
+                    ((), true)
+                });
+                ((), false)
+            });
             assert_eq!((player.health(game), mob.health(game)), initial);
             assert_eq!(game.player.as_ref().unwrap().health.data.is_dirty(), dirty);
             assert_eq!(game.player.as_ref().unwrap().events.len(), events);
@@ -2113,18 +2262,20 @@ pub(in crate::game) mod tests {
             assert!(!game.player.as_ref().unwrap().health.dead);
             assert!(!game.mobs[0].removed);
             game.mobs[0].needs_sync = true;
-            let abort = game.transaction_open();
-            assert!(mob.set_health(game, 0.0));
-            game.transaction_close(&abort, false);
+            game.storage_scope(|game, _| {
+                assert!(mob.set_health(game, 0.0));
+                ((), false)
+            });
             assert_eq!(mob.health(game), initial.1);
             assert!(
                 game.mobs[0].needs_sync,
                 "abort preserves preexisting sync dirtiness"
             );
-            let commit = game.transaction_open();
-            assert!(player.set_health(game, 0.0));
-            assert!(mob.set_health(game, 0.0));
-            game.transaction_close(&commit, true);
+            game.storage_scope(|game, _| {
+                assert!(player.set_health(game, 0.0));
+                assert!(mob.set_health(game, 0.0));
+                ((), true)
+            });
             assert_eq!(
                 (player.health(game), mob.health(game)),
                 (Some(0.0), Some(0.0))
@@ -2141,17 +2292,20 @@ pub(in crate::game) mod tests {
             let guest = game.player(12).unwrap();
             let living = LivingRef::new(guest.entity());
             let before = living.health(game).unwrap();
-            let tx = game.transaction_open();
-            assert!(living.set_health(game, before - 2.0));
-            let inner = game.transaction_open();
-            assert!(living.set_health(game, 0.0));
-            assert_eq!(living.health(game), Some(0.0));
-            game.transaction_close(&inner, false);
-            assert_eq!(living.health(game), Some(before - 2.0));
-            let inner = game.transaction_open();
-            assert!(living.set_health(game, 0.0));
-            game.transaction_close(&inner, true);
-            game.transaction_close(&tx, false);
+            game.storage_scope(|game, _| {
+                assert!(living.set_health(game, before - 2.0));
+                game.storage_scope(|game, _| {
+                    assert!(living.set_health(game, 0.0));
+                    assert_eq!(living.health(game), Some(0.0));
+                    ((), false)
+                });
+                assert_eq!(living.health(game), Some(before - 2.0));
+                game.storage_scope(|game, _| {
+                    assert!(living.set_health(game, 0.0));
+                    ((), true)
+                });
+                ((), false)
+            });
             assert_eq!(living.health(game), Some(before));
         });
     }
@@ -3073,17 +3227,13 @@ pub(in crate::game) mod tests {
 
             // The melee goal's own reach: beside it, yes; a stride away, no.
             // The freeze tick's decision, and a freeze-immune wearable on it.
-            // The air tick's gate: a zombie drowns.
+            // A zombie's type is in the vanilla water-breathing tag.
             {
                 let host: &dyn Host = game;
                 assert_eq!(near.in_melee_range(host, beside), Some(true));
                 assert_eq!(near.in_melee_range(host, far), Some(false));
                 assert_eq!(near.can_freeze(host), Some(true));
-                // The air tick's gate: whatever the species table holds for it.
-                assert_eq!(
-                    near.can_breathe_underwater(host),
-                    Some(game.mobs[0].kind.flags.breathes_water)
-                );
+                assert_eq!(near.can_breathe_underwater(host), Some(true));
             }
             game.mobs[0].extra.equipment.set(
                 sunrise_items::equipment::FEET,

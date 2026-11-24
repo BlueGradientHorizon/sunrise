@@ -423,6 +423,10 @@ impl<T: Joined> ResidentList<T> {
     pub fn id_assigned(&self, index: usize) {
         self.0.id_assigned(index);
     }
+    /// Write stamp advancing whenever the list mutates.
+    pub fn stamp(&self) -> ListStamp {
+        self.0.stamp()
+    }
     /// Find an owner using the same lookup as the joined entity lists.
     pub fn locate(&self, join: JoinSeq) -> Option<usize> {
         self.0.locate(join)
@@ -851,20 +855,6 @@ impl<T: sunrise_mod_runtime::attachments::HasAttachmentLifetime, const DIRECT: b
         entity.attachment_lifetime().retire();
         entity
     }
-}
-
-impl<T: sunrise_mod_runtime::attachments::HasAttachmentLifetime> JoinList<T, false> {
-    /// Audited state edit; debug assertions detect a changed bound registration.
-    pub fn update<R>(&mut self, index: usize, edit: impl FnOnce(&mut T) -> R) -> R {
-        self.written();
-        checked_edit(&mut self.0[index], edit)
-    }
-    pub fn for_each_mut(&mut self, mut edit: impl FnMut(&mut T)) {
-        self.written();
-        for entity in &mut self.0 {
-            checked_edit(entity, &mut edit);
-        }
-    }
     /// Store a tick clone without dropping the owner's lifetime slot.
     pub fn store_back(&mut self, index: usize, entity: T) -> bool
     where
@@ -880,6 +870,34 @@ impl<T: sunrise_mod_runtime::attachments::HasAttachmentLifetime> JoinList<T, fal
         };
         store_back(&mut self.0[index], entity);
         true
+    }
+}
+
+impl<T: sunrise_mod_runtime::attachments::HasAttachmentLifetime> JoinList<T, false> {
+    /// Audited state edit; debug assertions detect a changed bound registration.
+    pub fn update<R>(&mut self, index: usize, edit: impl FnOnce(&mut T) -> R) -> R {
+        self.written();
+        checked_edit(&mut self.0[index], edit)
+    }
+    /// Edit one entity while lending the other rows read-only, with the same
+    /// registration check as [`Self::update`].
+    pub fn update_with_rest<R>(
+        &mut self,
+        index: usize,
+        edit: impl FnOnce(&mut T, &[T], &[T]) -> R,
+    ) -> R {
+        self.written();
+        let (before, at_and_after) = self.0.split_at_mut(index);
+        let (at, after) = at_and_after
+            .split_first_mut()
+            .expect("a valid entity index");
+        checked_edit(at, |at| edit(at, before, after))
+    }
+    pub fn for_each_mut(&mut self, mut edit: impl FnMut(&mut T)) {
+        self.written();
+        for entity in &mut self.0 {
+            checked_edit(entity, &mut edit);
+        }
     }
 }
 

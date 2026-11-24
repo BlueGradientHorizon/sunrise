@@ -24,6 +24,8 @@ pub const CRATE: &str = "sunrise_patched";
 pub struct Patch {
     pub rlibs: Vec<(String, PathBuf)>,
     pub installs: Vec<String>,
+    /// The mods whose libraries the patched crates link.
+    pub mods: Vec<String>,
 }
 
 fn install_expression(target: &str, mods: &[&str], install: &str) -> String {
@@ -146,6 +148,7 @@ pub fn build(
     sdk: &Identity,
     mixins: &MixinsIdentity,
     rustc: impl Fn(&str) -> std::process::Command,
+    check_only: bool,
 ) -> Result<Option<Patch>, String> {
     let Some(prepared) = prepare(rust, game, out, projects, sdk, mixins)? else {
         return Ok(None);
@@ -153,7 +156,8 @@ pub fn build(
     // The patched crates, against the prebuilt game and the mods.
     let mut compiled = Vec::new();
     for name in &prepared.names {
-        let rlib = out.join(format!("lib{name}.rlib"));
+        let extension = if check_only { "rmeta" } else { "rlib" };
+        let rlib = out.join(format!("lib{name}.{extension}"));
         let mut hash = sha2::Sha256::new();
         use sha2::Digest;
         hash.update(sdk.commit());
@@ -182,6 +186,9 @@ pub fn build(
         .arg("-o")
         .arg(&rlib)
         .arg(prepared.dir.join(name).join("src/lib.rs"));
+        if check_only {
+            cmd.arg("--emit=metadata");
+        }
         game_cfg(&mut cmd, sdk);
         // An `@` file, one argument per line: an extern per SDK crate passes Windows'
         // 32,767-character command-line limit.
@@ -206,6 +213,11 @@ pub fn build(
     prepared.log()?;
     Ok(Some(Patch {
         rlibs: compiled,
+        mods: prepared
+            .bundles
+            .iter()
+            .map(|bundle| bundle.manifest.id.clone())
+            .collect(),
         installs: prepared.installs,
     }))
 }

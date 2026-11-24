@@ -13,7 +13,7 @@ use mod_api::item::menu::AnvilCraftInputs;
 use sunrise_client::{
     containers::BlockEntity,
     items::ItemStack,
-    menu::{GrindstoneTakeEdits, Kind, Menu},
+    menu::{GrindstoneTakeEdits, Kind, Menu, QuickCraftDrag},
 };
 use sunrise_core::random::RandomSource;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
@@ -39,6 +39,8 @@ pub(super) struct GuestLectern {
     pub(super) window: i32,
     state: i32,
     pub(super) key: (i32, i32, i32),
+    /// Persistent quick-craft (drag) state across rebuilt lectern menus.
+    drag: QuickCraftDrag,
     /// The book and page the client was last sent (`broadcastChanges`).
     sent: Option<(Option<ItemStack>, i32)>,
 }
@@ -387,6 +389,7 @@ impl Game<'_> {
                 window,
                 state: 0,
                 key,
+                drag: QuickCraftDrag::default(),
                 sent: None,
             });
         }
@@ -460,13 +463,13 @@ impl Game<'_> {
         click: Option<super::lan_pickup::Click>,
         op: impl FnOnce(&mut Menu, &sunrise_client::menu::Env),
     ) -> bool {
-        let Some(key) = self
+        let Some((key, drag)) = self
             .lan
             .as_ref()
             .and_then(|host| host.play.get(&conn))
             .and_then(|p| p.lectern.as_ref())
             .filter(|l| l.window == window)
-            .map(|l| l.key)
+            .map(|l| (l.key, l.drag.clone()))
         else {
             return false;
         };
@@ -483,16 +486,29 @@ impl Game<'_> {
         if let Some(gi) = guest
             && let Some(mut menu) = self.lectern_menu(key)
         {
+            menu.set_quick_craft_state(drag);
             // Player.mayBuild: survival and creative.
             let may_build = self
                 .lan
                 .as_ref()
                 .is_some_and(|host| matches!(host.hub.guests[gi].game_mode, 0 | 1));
-            self.guest_menu_op_decided(gi, &mut menu, click, None, |menu, env| {
-                menu.may_build = may_build;
-                op(menu, env);
-            });
-            self.lectern_menu_done(key, &menu);
+            if self
+                .guest_menu_op_decided(gi, &mut menu, click, None, |menu, env| {
+                    menu.may_build = may_build;
+                    op(menu, env);
+                })
+                .is_some()
+            {
+                self.lectern_menu_done(key, &menu);
+                if let Some(gl) = self
+                    .lan
+                    .as_mut()
+                    .and_then(|host| host.play.get_mut(&conn))
+                    .and_then(|p| p.lectern.as_mut())
+                {
+                    gl.drag = menu.quick_craft_state();
+                }
+            }
         }
         self.lan_send_lectern(conn, true);
         true

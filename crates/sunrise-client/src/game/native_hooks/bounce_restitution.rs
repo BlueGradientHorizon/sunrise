@@ -77,7 +77,7 @@ impl StepOnView<'_> {
                         v.iter().all(|v| v.is_finite())
                     }
                     mod_api::EntityWrite::StuckIn(v) => v.iter().all(|v| v.is_finite()),
-                    mod_api::EntityWrite::Hurt { amount } => amount.is_finite(),
+                    mod_api::EntityWrite::Hurt { amount, .. } => amount.is_finite(),
                     _ => true,
                 };
                 let valid = event.movement.iter().all(|v| v.is_finite())

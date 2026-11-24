@@ -179,14 +179,18 @@ Non-finite edits are ignored; there is no veto. Keep movement answers consistent
 on replay.
 
 `LevelRandomSide::Client` lends a read-only level. Only the server arm accepts writes, and it
-lends the same level random host as `fall_on`. `event.write_entity(EntityWrite::Hurt { amount })` applies damage to the stepping body through its own damage path, before the inside scan.
+lends the same level random host as `fall_on`. `event.write_entity(EntityWrite::Hurt { damage_type, amount })` applies damage to the stepping body through its own damage path, before the inside scan.
+For a magma-like Part, check `level.entity_type_is_living(event.kind) == Some(true)` and
+`!event.stepping_carefully` before requesting damage. The entity-type read is available on both
+sides and includes living mod types. Damage itself is not limited to living bodies: other Parts
+can still hurt dropped items.
 Use `bounds` to test overlap with a surface that is smaller than the block. `event.request(LandingWrite::…)`
 queues a write at `pos`. The `fall_on` drain applies the ordered block writes after the entity batch,
 only if the block still holds the contacted state. An invalid state or non-finite movement or damage
-refuses that Part's outputs. Other Parts' accepted writes and movement edits remain. This replaces `Hooks::block_step_on`, the former server-only notice.
+refuses that Part's outputs. Other Parts' accepted writes and movement edits remain.
 
-Boats and minecarts do not take damage from `EntityWrite::Hurt` in `step_on` or `entity_inside` yet
-([#4177](https://github.com/sunrise-org/sunrise/issues/4177)).
+Boats, minecarts, armor stands and projectiles ignore `EntityWrite::Hurt` from both `step_on`
+and `fall_on`. Experience orbs accept it only from `step_on`.
 
 ## Landing writes
 
@@ -207,7 +211,7 @@ state and vanilla's movement-affecting position (which can differ from the legac
 `event.fall_distance` is the distance stored after fall handling, so a body that has just landed can report zero.
 
 `BlockPart::fall_on` runs at vanilla's landing moment on a read-only level random host.
-Hook version 2 exposes writable `event.distance` and `event.damage_multiplier`, not calculated
+The event exposes writable `event.distance` and `event.damage_multiplier`, not calculated
 damage. Vanilla blocks supply their own pair: hay uses 0.2, beds 0.5, slime 0,
 and pointed dripstone adds 2.5 to distance and uses 2.0. Other blocks start at 1.0.
 The engine applies `floor((distance + 1e-6 - safe_fall_distance) * damage_multiplier * fall_damage_multiplier_attribute)`.
@@ -226,10 +230,29 @@ preserves the requested resource-drop flag.
 
 ## Inside-block effects
 
-`BlockPart::entity_inside` runs on the server as the entity's sweep reaches the block.
-Use `event.run_before` or `event.run_after` to schedule an `EntityWrite` around an
-`InsideEffect`. `EntityWrite::Hurt { amount }` requests `minecraft:generic` damage without a causing or direct entity.
-The write applies to players, mobs, and dropped items; projectiles ignore it.
+`BlockPart::entity_inside` (version 4) runs on the server as the entity's sweep reaches the block.
+Use `event.run_before` or `event.run_after` to queue an owned closure around an `InsideEffect` slot.
+The closure receives a short-lived `&mut InsideEntityView` when the sweep flushes, even if no
+`event.apply` was requested for that slot. Built-in effects use the same ordered slots, and
+later callbacks stop when the entity dies. A dropped item sweeps once, after `step_on`.
+
+```rust,ignore
+event.run_after(InsideEffect::FireIgnite, |entity| {
+    entity.hurt("minecraft:hot_floor", 1.0);
+});
+```
+
+When migrating a v2 `EntityWrite::Hurt`, use the same registered damage-type ID you used for
+`r.damage_type_key`. `hurt_with_source` can additionally take typed handles for the direct
+entity and the causing entity (for example, a projectile and its shooter). An absent damage
+type or stale source handle makes that hurt return `false`. Players, mobs and dropped items
+use their live hurt path; a projectile's hurt path can mark it hurt for sync and still return
+`false`.
+
+`BlockPart::step_on` still queues `EntityWrite`, not closures. Its `EntityWrite::Hurt` still
+takes a `DamageTypeKey` requested in `register`, and has no direct or causing entity.
+Experience orbs accept hurt from `step_on` only. Neither callback adds a hurt path for armor
+stands or vehicles.
 
 ## Storage changes
 
@@ -255,12 +278,12 @@ state, never saved. Unloading the source does not cancel watches of its position
 
 The backing contents are already written, before dirty/comparator updates. The default `ITEMS`
 and item `STORAGE` handlers coalesce their implicit notice per backing block at root commit,
-for vanilla containers and engine-managed mod slots. In contract version 5, notices committed
-inside `menu_quick_move` wait until that hook's accepted source remainder is in place (or until
-it finishes without one). If the original backing container was removed or replaced, neither
-its replacement nor watchers receive that notice. Explicit `BlockEntityRef::set_changed`
-notifies immediately, even inside a transaction and for unchanged contents; abort does not
-retract it. Each Part runs in its own transaction. Keep using `host.transaction` for additional writes:
+for vanilla containers and engine-managed mod slots. During `menu_quick_move`, implicit notices
+publish only after a committed move settles its source slot (including when the source is
+emptied), and never after an unhandled or refused move. If the original backing container was
+removed or replaced, neither its replacement nor watchers receive that notice. Explicit
+`BlockEntityRef::set_changed` notifies immediately, even inside a transaction and for
+unchanged contents; abort does not retract it. Each Part runs in its own transaction. Keep using `host.transaction` for additional writes:
 a successful nested transaction merges into the Part's frame, but a panic in that Part discards
 its writes without undoing the backing change that raised the notice. The next Part can still
 run, and only the panicking callback is disabled for the session.
@@ -322,3 +345,24 @@ of vanilla's `HalfTransparentBlock` class (glass among them) or `LeavesBlock` cl
 template's class. A fluid with no overlay sprite, such as lava, draws its flowing sprite whatever the answer.
 
 With no part answering either method, nothing is asked, the tables are empty and fluids draw exactly as vanilla's.
+
+## Hit and destroy particles
+
+`add_hit_effects` and `add_destroy_effects` are client `BlockPart` methods, like NeoForge's
+`IClientBlockExtensions` methods of the same names. Return `Flow::Cancel` if your part handled
+these particles (including choosing to add none). `Flow::Continue` permits the usual effect.
+With no part answering, the block state's normal terrain-particle flag decides.
+
+A hit callback sees a non-air block with a visible render shape, after the optional mining sound.
+It gets the hit face, position and state. A destroy callback receives the non-air state that was
+destroyed, even when the position is already air or contains another block. An invisible block
+can still handle destruction. Both callbacks receive the client level's random; neither controls
+sounds.
+
+Use `event.level.add_breaking_particles(host, pos, state, face)` for a normal hit crumb from an
+explicit state and position, or `event.level.add_terrain_particle(host, state, source_pos, at,
+velocity)` for an individual piece of debris. The debris uses the supplied state's material and
+samples its tint at `source_pos`, which can differ from the spawn point. These helpers don't
+redispatch the hit or destroy Part or play a sound, but can ask block tint sources. Read the
+supplied state's outline with `event.level.block_shape` if you need to sample it. The hit helper
+uses the same random stream as `event.random`.

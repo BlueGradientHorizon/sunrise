@@ -38,8 +38,7 @@ impl Menu {
         eq: usize,
         stack: &ItemStack,
     ) -> bool {
-        let tags = &env.enchantments.entity_tags;
-        let data = equippable_in_slot(env.items, tags, stack, ARMOR_SLOTS[eq], "minecraft:player");
+        let data = equippable_in_slot(env.items, stack, ARMOR_SLOTS[eq], "minecraft:player");
         match (can_equip, env.player_entity_id) {
             (Some(parts), Some(player)) if parts.listens(&stack.item) => parts.can_equip(
                 stack,
@@ -55,9 +54,8 @@ impl Menu {
     /// A mount's equipment slot `slot` (`body`, `saddle`): `LivingEntity.isEquippableInSlot`
     /// for the mount the menu belongs to.
     pub(super) fn mount_may_place(&self, env: &Env, slot: &str, stack: &ItemStack) -> bool {
-        let tags = &env.enchantments.entity_tags;
         (self.state.mount.as_deref())
-            .is_some_and(|mount| equippable_in_slot(env.items, tags, stack, slot, mount))
+            .is_some_and(|mount| equippable_in_slot(env.items, stack, slot, mount))
     }
 }
 

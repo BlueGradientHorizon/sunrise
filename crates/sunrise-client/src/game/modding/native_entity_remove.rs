@@ -168,6 +168,7 @@ impl Game<'_> {
         };
         mob.removed = true;
         let position = mob.position;
+        self.last_hurt_by_player.remove(&id);
         self.dismount_mob(id);
         self.dismount_removed_passengers(id, position.y);
         if self.has_seated_passengers(id)
@@ -316,6 +317,7 @@ mod tests {
 
         with_game(|game| {
             game.others.push(OtherEntity {
+                size_answer: None,
                 attachment_lifetime: Default::default(),
                 knot_check: None,
                 eye: None,
@@ -426,6 +428,7 @@ mod tests {
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
             game.others.push(OtherEntity {
+                size_answer: None,
                 attachment_lifetime: Default::default(),
                 knot_check: None,
                 eye: None,
@@ -580,6 +583,7 @@ mod tests {
                 pos: [0, 64, 0],
                 facing: 2,
                 variant: "minecraft:kebab".into(),
+                asset: None,
                 width: 1,
                 height: 1,
                 check_interval: 0,
@@ -618,6 +622,7 @@ mod tests {
 
         with_game(|game| {
             game.others.push(OtherEntity {
+                size_answer: None,
                 attachment_lifetime: Default::default(),
                 knot_check: None,
                 eye: None,

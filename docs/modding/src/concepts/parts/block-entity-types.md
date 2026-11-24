@@ -58,13 +58,12 @@ Block entity types can only be declared by a package's code, not by content file
 A `side = "server"` package whose Part on such a type listens to a client hook is refused like any other
 client-side Part.
 
-The Part's state (`block_entity_part_with_state`) is a key the attaching package declared with
-`register_attachment_type`, which accepts any namespace that package owns (its manifest namespaces
-or a content package it serves via `served_by`). It is saved in the block entity's
-attachment compound under that package's id, not under the owner's. A Part reaches the owner's state only through an
-attachment the owner declared (the public attachment API); a key nobody declared is refused at load, naming the
-package. When the attaching package is removed, what it saved stays in the block entity, unread (the saved
-attachment compound keeps entries it does not know on save), and is read again if the package comes back.
+The Part's state (`block_entity_part_with_state`) uses an issued `AttachmentKey<T>` from
+`register_attachment_type`, in a namespace the registering package owns or serves. A dependent
+package can obtain the same key with `attachment_key`; lookup does not declare a new attachment.
+The value is saved in the block entity's attachment compound under the key's `(namespace, name)`.
+When the package is removed, its saved entry remains unread and can be decoded if the package
+returns.
 
 ## Removal side effects
 
@@ -96,33 +95,45 @@ table. The game owns the values: one per block entity, in its attachment map, sa
 chunk through the attachment codec and kept by transactions.
 
 ```rust,ignore
-static PROGRESS: AttachmentType<u32> = AttachmentType {
-    namespace: "mymod", name: "press_progress", default: || 0,
-    codec: Some(PROGRESS_CODEC), copy_on_death: false, sync: false,
-};
+struct Press {
+    progress: AttachmentKey<u32>,
+}
 impl BlockEntityPartState for Press {
     type Data = u32;
-    const DATA: &'static AttachmentType<u32> = &PROGRESS;
+    fn state_key(&self) -> &AttachmentKey<u32> {
+        &self.progress
+    }
 }
-r.block_entity_part_with_state(&press, Press)?;
+// Inside Hooks::register(&self, r: &mut dyn Registrar, _) (returns `()`):
+if let Ok(progress) = r.register_attachment_type(
+    AttachmentDescriptor::new("mymod:press_progress", || 0).serialize(PROGRESS_CODEC),
+) {
+    let _ = r.block_entity_part_with_state(&press, Press { progress });
+}
 
 // In its tick (or a menu hook), get the live handle from the view, then edit through the Host:
 let Some(entity) = event.subject.with_view(|view| view.handle()) else {
     return;
 };
-let done = Press::edit_state(event.subject.host(), entity, |_, progress| {
+let done = self.edit_state(event.subject.host(), entity, |_, _tx, progress| {
     *progress += 1;
     *progress >= 200
 });
 ```
 
-- `Press::state(host, entity)` and `state_existing` read a snapshot through `&dyn Host` and never
-  insert the default. `edit_state` takes `&mut dyn ServerHost` and runs in a nested transaction
-  of its own. The closure gets a copy and the host, and no store borrow is held while it runs. The
-  result is stored when the closure returns.
-- Every call checks the handle first. A handle from another level gives `PartStateError::OtherLevel`.
-  A removed, replaced or unloaded block entity gives `Stale`. After a reload the saved value is read
-  under the new handle.
+- `self.state(host, entity, |value| *value)` reads the counter from a snapshot through
+  `&dyn Host`, lending a default without inserting it when absent. `state_existing` lends
+  `Option<&T>` instead. `state_in` and `state_existing_in` do the same through `&dyn LevelHost`.
+- `edit_state` takes `&mut dyn ServerHost` and opens a nested transaction. The closure gets the
+  host, its `&TransactionContext`, and a mutable draft of the value. No store borrow is held
+  while it runs. The draft is encoded and stored through that journal when the closure returns.
+  `PartStateError::Unavailable` means the transaction could not open and the closure did not run.
+  If the edit closure returns a `Result`, that result is its output, not a commit vote. To make
+  a failed storage call abort the whole edit, propagate its error in an enclosing `host.transaction`.
+- Every call checks the key and handle first. A stale key from a prior installation gives
+  `PartStateError::Attachment { error: AttachmentError::StaleKey, .. }`. A handle from another
+  level gives `PartStateError::OtherLevel`. A removed, replaced or unloaded block entity gives
+  `Stale`. After a reload the saved value is read under the new handle.
 - An edit stores nothing, and its transaction aborts with everything the closure wrote, in these
   cases:
   - the closure panics and the panic unwinds. A panic that aborts
@@ -135,15 +146,16 @@ let done = Press::edit_state(event.subject.host(), entity, |_, progress| {
 - An undecodable saved value refuses before the closure runs and keeps its bytes.
 - A transaction that aborts puts back the values, the chunk's unsaved mark and any block entity it
   removed, with its attachment map still bound. Handles of block entities made inside it stay
-  `Stale`. Removed block entities retire only when the outermost transaction commits. No save runs
-  while a value may still be tentative, and a chunk unload waits until no transaction is open.
+  `Stale`. Removed block entities retire only when the outermost transaction commits. For the
+  gameplay entry points that defer saving and unloading during an open action savepoint, see
+  [saving chunk attachments](../../how-to/world/chunk-data.md#saving-chunk_data_save).
 - No size or depth limit of its own applies to a value. A saved value follows the chunk's NBT rules:
   vanilla 26.3 reads region files with `NbtAccounter.unlimitedHeap`, an unbounded byte budget and
   depth 512. The 2 MiB quota of a chunk packet's block entity data is a network limit and does not
   cap saved state.
-- Registration refuses a declaration that syncs, copies on death, lies outside the mod's namespaces
-  or reuses a key with a type of another Rust type name. The refusal names the Part, the key,
-  the type and the reason.
+- Registration reports `PartStateRefusal::Sync` for a synced key, `CopyOnDeath` for a key that
+  copies on death, or `StaleKey` if the key was not issued in the active registration pass.
+  The refusal names the Part, the key, the type and the reason.
 - Values without a codec last for the session. Part state is server-side for now. A client reads the
   default, because nothing is sent to it yet.
 - Part registration and state errors are local values, not `Wire` records.
@@ -251,3 +263,55 @@ depth 512), or unwinding panics also keep the original data.
 Callbacks are registered at startup and frozen with the block registry snapshot. A data-pack
 `/reload` keeps that registry and its existing callbacks; it does not register replacement code.
 A newly prepared registry receives its own callback snapshot.
+
+## Load callback
+
+Use `block_entity_on_load` to initialize a mod block entity after attachment and
+saved-data application, before it ticks. The hook fires for fresh placement,
+saved chunk loads and client chunk reception. It corresponds to NeoForge's
+`IBlockEntityExtension.onLoad`.
+
+The event supplies `event.subject: BlockEntitySideScope<'_>`: match
+`BlockEntitySideScope::Server(scope)` for a mutable `BlockEntityView` and `&mut dyn ServerHost`
+sequentially, or `BlockEntitySideScope::Client(scope)` for a read-only `BlockEntityReadView`
+and `&mut dyn ClientHost` sequentially. Both views already see the applied saved data. Dispatch
+is keyed by the block entity type ID.
+
+- The hook fires once per attached identity, on each logical side. Writing a
+  payload to an existing identity does not fire it again.
+- Unloading and loading a chunk creates new identities and delivers new notices.
+  Vanilla block entities do not receive this hook.
+- Notices are drained before block entity ticking. Each drain handles only the
+  notices pending when it begins; a listener's replacement block queues a notice
+  for a later drain.
+- If a pre-tick drain replaces the entity about to tick, that tick waits. The
+  replacement receives its own notice before ticking.
+- Worlds without subscribers collect no notices.
+
+## Mod container openers
+
+A declared mod block entity with a container menu uses the server's
+`ContainerOpenersCounter`. Non-spectator players increment it when their menu
+opens, and decrement it when the menu closes, including disconnects. Copper
+golems count too. Each block entity owns its own counter. Native menus do not
+count simply because they carry a position; a combined container counts both
+block entities.
+
+`mod_container_viewers` version 2 reports the previous and current counts
+synchronously at these moments. The counter rechecks users in range five ticks
+after the first open, then every five ticks while open; these rechecks report
+counts even when unchanged. Open and close callbacks can therefore occur in the
+same tick. The player is in place during their open or close callback; a recheck
+has no acting player. Removing or replacing the block entity drops its pending
+recheck without a viewer notice or a game event. A guest's open menu belongs to
+that block entity instance, not its position: closing or rechecking the old menu
+does not affect a replacement's count or viewer list.
+
+A zero-to-positive transition posts `minecraft:container_open`; a
+positive-to-zero transition posts `minecraft:container_close`. The opening or
+closing entity is the source. A recheck has no entity source. These game events
+reach vibration listeners just as vanilla container events do.
+
+A mod can update its block state or play its own sound from the viewer callback.
+Use `previous == 0 && viewers > 0` for an open edge and
+`previous > 0 && viewers == 0` for a close edge.

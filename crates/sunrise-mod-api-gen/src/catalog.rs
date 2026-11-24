@@ -51,7 +51,7 @@ pub enum HostAccess {
     Hit,
 }
 
-/// A hook fired in a load phase, which takes that phase's context instead of a host.
+/// A hook with a restricted phase context instead of a game or level host.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PhaseContext {
@@ -73,6 +73,8 @@ pub enum PhaseContext {
     ClientReloadListener,
     /// The client setup hook after initial resources load.
     ClientSetup,
+    /// Initial client configuration, with only the join target available.
+    ClientIdentity,
     /// Repository discovery before any world is opened.
     PackDiscovery,
 }
@@ -195,6 +197,8 @@ pub struct Hook {
     /// result, including its cancellation, rolls back; later listeners still run.
     pub output_validator: Option<String>,
     pub scope: Option<PartScope>,
+    /// Additional Part trait this global hook also dispatches to (same `HookId` and event).
+    pub part: Option<PartKind>,
     pub host: Option<HostAccess>,
     pub context: Option<PhaseContext>,
     pub counterparts: Counterparts,
@@ -358,6 +362,7 @@ struct ModApiEntry {
     out: Option<String>,
     scope: Option<PartKind>,
     key: Option<String>,
+    part: Option<PartKind>,
     answered_by: Option<AnsweredBy>,
     owner: Option<String>,
     collect_validator: Option<String>,
@@ -394,6 +399,41 @@ impl Hook {
             (Some(kind), Some(key)) => Some(PartScope { kind, key }),
             _ => return Err(CatalogError::ScopeNeedsKey(name)),
         };
+        if let Some(part_kind) = api.part {
+            if part_kind != PartKind::Item {
+                let kind_name = match part_kind {
+                    PartKind::Block => "block",
+                    PartKind::BlockEntity => "block_entity",
+                    PartKind::Item => "item",
+                    PartKind::Menu => "menu",
+                    PartKind::Effect => "effect",
+                    PartKind::Fluid => "fluid",
+                    PartKind::Entity => "entity",
+                };
+                return Err(CatalogError::InvalidHook {
+                    hook: name,
+                    error: format!(
+                        "part = \"{kind_name}\" is not supported; only part = \"item\" is implemented"
+                    ),
+                });
+            }
+            if scope.is_some()
+                || api.contract != Contract::Cancel
+                || api.answered_by.is_some()
+                || api.owner.is_some()
+                || api.collect_validator.is_some()
+                || api.output_validator.is_some()
+                || entry.context.is_some()
+                || entry.event_per_listener
+            {
+                return Err(CatalogError::InvalidHook {
+                    hook: name,
+                    error:
+                        "part requires a plain global cancel hook without scope or phase context"
+                            .into(),
+                });
+            }
+        }
         if matches!(
             (api.contract, &api.out),
             (Contract::Listen, Some(_))
@@ -518,14 +558,18 @@ impl Hook {
             return Err(CatalogError::InvalidContract(name));
         }
         if let Some(validator) = &api.output_validator
-            && (api.contract != Contract::Cancel
+            && (!matches!(api.contract, Contract::Cancel | Contract::Listen)
                 || scope.is_some()
                 || entry.event_per_listener
+                || (api.contract == Contract::Listen
+                    && (api.staged_surface.is_some()
+                        || api.owner.is_some()
+                        || entry.context.is_some()))
                 || syn::parse_str::<syn::Path>(validator).is_err())
         {
             return Err(CatalogError::InvalidHook {
                 hook: name.clone(),
-                error: "output_validator is a path on a global cancel hook with shared outputs"
+                error: "output_validator is a path on a global cancel or plain global listen hook with shared outputs"
                     .into(),
             });
         }
@@ -550,6 +594,7 @@ impl Hook {
             inert: entry.inert,
             output_validator: api.output_validator,
             scope,
+            part: api.part,
             host: entry.host,
             context: entry.context,
             counterparts,
@@ -830,6 +875,7 @@ impl Declared {
                             "out",
                             "scope",
                             "key",
+                            "part",
                             "answered_by",
                             "owner",
                             "collect_validator",
@@ -1000,6 +1046,7 @@ impl Hook {
             inert: None,
             output_validator: None,
             scope: None,
+            part: None,
             host: None,
             context: None,
             counterparts: Counterparts::default(),
@@ -1443,6 +1490,38 @@ mod tests {
                 .contains("invalid catalog-order")
         );
         fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn part_option_requires_a_plain_global_cancel_hook() {
+        let parsed = Hook::parse(hook(
+            "stacked",
+            json!({"mod_api": {"contract": "cancel", "out": "canceled", "part": "item"}}),
+        ))
+        .unwrap();
+        assert_eq!(parsed.part, Some(PartKind::Item));
+        assert!(parsed.scope.is_none());
+
+        for bad in [
+            json!({"mod_api": {"contract": "cancel", "out": "canceled", "part": "item", "scope": "item", "key": "stack"}}),
+            json!({"mod_api": {"contract": "listen", "part": "item"}}),
+            json!({"mod_api": {"contract": "collect", "out": "drops", "part": "item"}}),
+            json!({"mod_api": {"contract": "cancel", "out": "canceled", "part": "item", "isolate": true}}),
+        ] {
+            assert!(Hook::parse(hook("bad", bad)).is_err());
+        }
+        for kind in ["block", "block_entity", "menu", "effect", "fluid", "entity"] {
+            let err = Hook::parse(hook(
+                "bad_part_kind",
+                json!({"mod_api": {"contract": "cancel", "out": "canceled", "part": kind}}),
+            ))
+            .unwrap_err()
+            .to_string();
+            assert!(
+                err.contains(kind),
+                "expected unsupported part kind {kind:?} to be named in error: {err}"
+            );
+        }
     }
 }
 

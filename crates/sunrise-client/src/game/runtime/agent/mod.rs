@@ -279,7 +279,7 @@ enum AttackAim {
     /// Clicked: the command's click waits in the attack click queue behind `ahead` others,
     /// a player's queued before it.
     Clicked { ahead: u32 },
-    /// The queue was dropped with the click in it (a screen opened, an item in use).
+    /// The click was discarded: keybinds were skipped, or an item in use drained it.
     Dropped,
     /// The entity the pick held when the tick's input took the click (and dropped it unless
     /// that is the ID).
@@ -501,6 +501,7 @@ impl Game<'_> {
             Screen::Social => "social",
             Screen::ServerLinks => "server-links",
             Screen::ConfirmLink => "confirm-link",
+            Screen::DemoIntro => "demo-intro",
             Screen::DialogWarning => "dialog-warning",
             Screen::CommandBlock => "command-block",
             Screen::BlockEditor => "block-editor",
@@ -1862,6 +1863,8 @@ impl Game<'_> {
                 self.start_task("wait", TaskKind::Wait { until_tick }, reply, timeout)
             }
             "stop" => {
+                // A cancelled `attack ID` must not leave its queued click to fire later.
+                self.finish_agent_attack_input(false);
                 let cancelled = self.agent.task.take().map(|t| {
                     let _ = t.reply.send(
                         json!({ "error": "cancelled by stop", "cancelled": true }).to_string(),
@@ -2035,27 +2038,41 @@ impl Game<'_> {
         picked != *id
     }
 
-    /// The tick's keybinds are done, `left` attack clicks still queued: a command's click still
-    /// waiting with none left was dropped with the queue.
-    pub(in crate::game) fn agent_attack_clicks_left(&mut self, left: u32) {
+    /// Resolve a queued `attack ID` click that keybinds didn't take or whose task is ending.
+    /// If keybinds ran, an empty mapping means the click was drained (while using an item).
+    pub(in crate::game) fn finish_agent_attack_input(&mut self, keybinds_ran: bool) {
+        if keybinds_ran && self.remote_attack_clicks_queued() != 0 {
+            return;
+        }
         if let Some(Task {
             kind: TaskKind::Attack { aimed, .. },
             ..
         }) = self.agent.task.as_mut()
             && matches!(aimed, Some(AttackAim::Clicked { .. }))
-            && left == 0
         {
             *aimed = Some(AttackAim::Dropped);
+            if !keybinds_ran {
+                // ToggleKeyMapping.release keeps pending clicks. Retire just the command's
+                // click, not the player's, before it can act without its target check.
+                self.consume_mapping_click("key.attack");
+            }
         }
     }
 
     /// Advance the running agent task; reply when it ends.
     pub(super) fn advance_agent(&mut self) {
         self.advance_glide();
+        let timed_out = self
+            .agent
+            .task
+            .as_ref()
+            .is_some_and(|task| Instant::now() >= task.deadline);
+        if timed_out {
+            self.finish_agent_attack_input(false);
+        }
         let Some(mut task) = self.agent.task.take() else {
             return;
         };
-        let timed_out = Instant::now() >= task.deadline;
         let result = self.step_task(&mut task.kind, timed_out);
         match result {
             Some(value) => {

@@ -209,6 +209,14 @@ impl Game<'_> {
     ) -> sunrise_client::text::Text {
         sunrise_client::stations::hover_name_in(&self.loop_context, &self.pack.names, stack)
     }
+    /// `ItemStack.getItemName` as a component: the name a mod item's Part gives the stack, else
+    /// vanilla's, without the custom name or a book's title. The Part is asked at most once.
+    pub(in crate::game) fn stack_item_name_text(
+        &self,
+        stack: &ItemStack,
+    ) -> sunrise_client::text::Text {
+        sunrise_client::stations::item_name_in(&self.loop_context, &self.pack.names, stack)
+    }
     /// `ItemStack.isBarVisible`, `getBarWidth`, `getBarColor`, before client-only hooks.
     pub(in crate::game) fn item_resource_bar(&self, stack: &ItemStack) -> Option<mod_api::ItemBar> {
         use super::api_values::TryIntoApi;
@@ -603,7 +611,7 @@ mod enchantment_conflict_tests {
 }
 
 #[cfg(test)]
-mod item_resource_property_tests {
+pub(in crate::game) mod item_resource_property_tests {
     fn engine(resource: &mod_api::ItemResource, count: u32) -> sunrise_items::items::ItemStack {
         super::super::api_values::stack_value(&resource.to_stack(count).unwrap()).unwrap()
     }
@@ -618,6 +626,10 @@ mod item_resource_property_tests {
     #[test]
     #[ignore = "daily"]
     fn effective_resource_properties_match_vanilla() {
+        run_effective_resource_properties_match_vanilla();
+    }
+
+    pub(in crate::game) fn run_effective_resource_properties_match_vanilla() {
         let inputs = std::env::var("SUNRISE_ITEM_PROPERTIES_CASES")
             .map(|path| std::fs::read_to_string(path).unwrap())
             .unwrap_or_else(|_| {
@@ -696,6 +708,10 @@ mod item_resource_property_tests {
     #[test]
     #[ignore = "daily"]
     fn item_resource_changed_defaults_and_consumption() {
+        run_item_resource_changed_defaults_and_consumption();
+    }
+
+    pub(in crate::game) fn run_item_resource_changed_defaults_and_consumption() {
         use mod_api::{ComponentId, ItemResource, Tag};
         use serde_json::json;
         use std::{fs, path::Path};
@@ -1254,18 +1270,4 @@ pub(in crate::game) fn stack_can_be_hurt_by(
         .get(stack.item.as_ref())
         .and_then(|components| components.get("minecraft:damage_resistant"));
     sunrise_client::item_damage::stack_can_be_hurt_by(default, catalog, stack, name)
-}
-
-pub(in crate::game) const ITEM_ENVIRONMENT_DAMAGE: [&str; 4] = [
-    "minecraft:on_fire",
-    "minecraft:lava",
-    "minecraft:in_fire",
-    "minecraft:cactus",
-];
-
-pub(in crate::game) fn item_damage_resolver<'a>(
-    models: &'a sunrise_assets::item_model::ItemModels,
-    catalog: &'a sunrise_world::damage_source::Catalog,
-) -> impl Fn(&ItemStack, &str) -> bool + 'a {
-    move |stack, damage| stack_can_be_hurt_by(models, catalog, stack, damage).unwrap_or(true)
 }

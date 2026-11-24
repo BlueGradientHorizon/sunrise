@@ -16,8 +16,8 @@ pub(crate) struct Installed {
     pub(crate) recipe_book_filters: HashMap<String, crate::RecipeBookFilterLook>,
     pub(crate) game_rule_categories: Vec<String>,
     pub(crate) game_rules: Vec<crate::GameRuleDecl>,
-    pub(crate) attachment_types: HashMap<String, HashMap<String, bool>>,
-    pub(crate) attachment_owners: HashMap<String, HashMap<String, &'static str>>,
+    pub(crate) attachment_types:
+        HashMap<&'static str, HashMap<&'static str, crate::RegisteredAttachment>>,
     pub(crate) custom_stats: Vec<String>,
     pub(crate) custom_stat_owners: Vec<&'static str>,
     pub(crate) entity_tick_each: crate::parts::EntityTickEach,
@@ -45,7 +45,7 @@ pub(crate) struct Installed {
     pub(crate) fluids: OnceLock<sunrise_mod_runtime::registry_keys::Names>,
     pub(crate) resolved_items: OnceLock<sunrise_mod_runtime::registry_keys::Names>,
     pub(crate) resolved_game_events: OnceLock<sunrise_mod_runtime::registry_keys::Names>,
-    pub(crate) resolved_entity_types: OnceLock<sunrise_mod_runtime::registry_keys::Names>,
+    pub(crate) resolved_entity_types: OnceLock<sunrise_mod_runtime::registry_keys::EntityTypes>,
     /// Attribute suppliers from the accepted core tables, paired with this installation's keys.
     pub(crate) entity_type_defaults:
         std::sync::RwLock<Option<Arc<crate::entity::entity_type_defaults::Suppliers>>>,
@@ -58,12 +58,19 @@ pub(crate) struct Installed {
     pub(crate) consume_effects: Vec<crate::parts::RegisteredConsumeEffect>,
     pub(crate) arm_poses: Vec<crate::client::arm_pose::PoseInfo>,
     pub(crate) structure_types: Vec<crate::world::structure_type::StructureTypeInfo>,
+    pub(crate) pool_element_types: Vec<crate::world::pool_element::PoolElementTypeInfo>,
+    pub(crate) structure_processor_types:
+        Vec<crate::world::structure_processor::StructureProcessorTypeInfo>,
     pub(crate) feature_types: Vec<crate::world::feature_type::FeatureTypeInfo>,
+    pub(crate) placement_modifier_types:
+        Vec<crate::world::placement_modifier::PlacementModifierTypeInfo>,
     pub(crate) loot_modifier_serializers:
         Vec<crate::parts::loot_modifiers::LootModifierSerializerInfo>,
     pub(crate) loot_function_types: Vec<crate::parts::loot_types::LootFunctionTypeInfo>,
     pub(crate) loot_condition_types: Vec<crate::parts::loot_types::LootConditionTypeInfo>,
     pub(crate) dimensions: Vec<crate::world::dimension::DimensionInfo>,
+    /// The world clocks the mods registered, as `namespace:path` ids.
+    pub(crate) world_clocks: Vec<Box<str>>,
     pub(crate) chunk_generators: Vec<crate::world::chunk_generator::ChunkGeneratorInfo>,
     pub(crate) biome_sources: Vec<crate::world::biome_source::BiomeSourceInfo>,
     /// Loading warnings for each owning mod, in registration order.

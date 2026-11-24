@@ -1,6 +1,6 @@
 use super::Game;
 use super::api_values::{TryIntoApi, TryIntoEngine};
-use mod_api::{AttachmentAccess, BlockPos, Direction};
+use mod_api::{AttachmentAccess, AttachmentError, Attachments, BlockPos, Direction, Holder};
 use {
     sunrise_mod_runtime::attachments::{ATTACHMENTS_KEY, attachment_compound},
     sunrise_world::level::Ticks,
@@ -10,7 +10,6 @@ fn world_attachments(
     world: &mut sunrise_client::world::World,
     holder: mod_api::Holder,
 ) -> Result<&mut mod_api::Attachments, mod_api::AttachmentError> {
-    use mod_api::{AttachmentError, Holder};
     if holder == Holder::Level {
         return Ok(&mut world.attachments);
     }
@@ -27,19 +26,78 @@ fn world_attachments(
                 .and_then(|e| e.block_entity_sources.iter().find(|(p, _)| *p == pos))
                 .and_then(|(_, tag)| tag.get(ATTACHMENTS_KEY)),
         )?;
-        let map = world
+        return world
             .block_entities
             .attachments_mut(pos)
-            .ok_or(AttachmentError::MissingHolder)?;
-        world.modified.insert((x >> 4, z >> 4));
-        return Ok(map);
+            .ok_or(AttachmentError::MissingHolder);
     }
     let Holder::Chunk([x, z]) = holder else {
         return Err(AttachmentError::MissingHolder);
     };
-    let map = world.chunks.attachments_mut(&(x, z))?;
-    world.modified.insert((x, z));
-    Ok(map)
+    world.chunks.attachments_mut(&(x, z))
+}
+
+fn world_attachment_ref(
+    world: &sunrise_client::world::World,
+    holder: Holder,
+) -> Result<Option<&Attachments>, AttachmentError> {
+    match holder {
+        Holder::Level => Ok(Some(&world.attachments)),
+        Holder::Chunk([x, z]) => world.chunks.attachments(&(x, z)),
+        Holder::BlockEntity([x, y, z]) => {
+            let pos = (x, y, z);
+            let chunk = world
+                .chunks
+                .get(&(x >> 4, z >> 4))
+                .ok_or(AttachmentError::MissingHolder)?;
+            attachment_compound(
+                chunk
+                    .saved
+                    .as_ref()
+                    .and_then(|extras| {
+                        extras
+                            .block_entity_sources
+                            .iter()
+                            .find(|(at, _)| *at == pos)
+                    })
+                    .and_then(|(_, tag)| tag.get(ATTACHMENTS_KEY)),
+            )?;
+            if world.block_entities.generation(&pos).is_none() {
+                return Err(AttachmentError::MissingHolder);
+            }
+            Ok(world.block_entities.attachments(pos))
+        }
+        _ => Err(AttachmentError::MissingHolder),
+    }
+}
+
+fn world_attachment_changed(
+    world: &mut sunrise_client::world::World,
+    holder: Holder,
+    persist: bool,
+    sync: bool,
+) {
+    if sync {
+        world.attachment_syncs.insert(holder);
+    }
+    if persist {
+        match holder {
+            Holder::Chunk([x, z]) => {
+                world.modified.insert((x, z));
+            }
+            Holder::BlockEntity([x, _, z]) => {
+                world.modified.insert((x >> 4, z >> 4));
+            }
+            _ => {}
+        }
+    }
+}
+
+enum LocalAttachmentSlot {
+    Entity(u32),
+    ActingPlayer,
+    Guest(u32),
+    World,
 }
 
 /// The entity families whose saved maps bind an owning lifetime
@@ -138,7 +196,6 @@ impl Game<'_> {
             self.initialize_entity_on_access(holder);
         }
         if self.native_authoritative() {
-            self.world.attachment_syncs.insert(holder);
             return self.attachment_map_quiet(holder, access);
         }
         let Some(remote) = self.remote.as_mut() else {
@@ -148,6 +205,36 @@ impl Game<'_> {
         self.bind_remote_attachment(holder);
         let remote = self.remote.as_mut().unwrap();
         Ok(remote.attachments.get_mut(&holder).unwrap())
+    }
+
+    pub(super) fn attachment_map_read(
+        &mut self,
+        holder: Holder,
+    ) -> Result<Option<&Attachments>, AttachmentError> {
+        if !self.native_authoritative() {
+            if self.client_attachment_entity_exists(holder) {
+                self.initialize_entity_on_access(holder);
+            }
+            let remote = self.remote.as_ref().ok_or(AttachmentError::MissingHolder)?;
+            return Ok(remote.attachments.get(&holder).map(|resident| &**resident));
+        }
+        match self.resolve_attachment_slot(holder)? {
+            LocalAttachmentSlot::Entity(id) => Ok(self.entity_attachments.get(&id)),
+            LocalAttachmentSlot::ActingPlayer => Ok(Some(&self.player_state.attachments)),
+            LocalAttachmentSlot::Guest(conn) => {
+                let guests = &self
+                    .lan
+                    .as_ref()
+                    .ok_or(AttachmentError::MissingHolder)?
+                    .hub
+                    .guests;
+                let index = guests
+                    .connection_index(conn)
+                    .ok_or(AttachmentError::MissingHolder)?;
+                Ok(Some(&guests[index].attachments))
+            }
+            LocalAttachmentSlot::World => world_attachment_ref(&self.world, holder),
+        }
     }
 
     /// `attachment_map` without recording the holder for the sync. Inside a transaction, the
@@ -216,10 +303,52 @@ impl Game<'_> {
     /// their state is (swapped in for a guest's turn, or kept beside), the world's others.
     pub(super) fn attachment_slot(
         &mut self,
-        holder: mod_api::Holder,
+        holder: Holder,
         access: AttachmentAccess,
-    ) -> Result<&mut mod_api::Attachments, mod_api::AttachmentError> {
-        use mod_api::AttachmentError;
+    ) -> Result<&mut Attachments, AttachmentError> {
+        match self.resolve_attachment_slot(holder)? {
+            LocalAttachmentSlot::Entity(id) => {
+                if access == AttachmentAccess::Store {
+                    if self
+                        .persist
+                        .removals
+                        .contains(&super::commands::Target::Painting(id))
+                    {
+                        return Err(AttachmentError::MissingHolder);
+                    }
+                    if self.entity_initialization.active != Some(holder) {
+                        self.entity_attachments.entry(id).or_default();
+                        self.bind_resident_entity_attachments(id)?;
+                    }
+                }
+                Ok(self.entity_attachments.entry(id).or_default())
+            }
+            LocalAttachmentSlot::ActingPlayer => {
+                if access == AttachmentAccess::Store
+                    && let Some(conn) = self.lan_acting
+                {
+                    self.bind_player_attachments(conn, true);
+                }
+                Ok(&mut self.player_state.attachments)
+            }
+            LocalAttachmentSlot::Guest(conn) => {
+                if access == AttachmentAccess::Store {
+                    self.bind_player_attachments(conn, true);
+                }
+                Ok(self
+                    .lan
+                    .as_mut()
+                    .and_then(|host| host.hub.guests.attachments_mut(conn))
+                    .ok_or(AttachmentError::MissingHolder)?)
+            }
+            LocalAttachmentSlot::World => world_attachments(&mut self.world, holder),
+        }
+    }
+
+    fn resolve_attachment_slot(
+        &mut self,
+        holder: Holder,
+    ) -> Result<LocalAttachmentSlot, AttachmentError> {
         if let mod_api::Holder::Entity(id) = holder {
             if self.entity_initialization.active != Some(holder) {
                 use super::entity_residency::SlotAccess;
@@ -250,6 +379,7 @@ impl Game<'_> {
                             Kind::Trident => "trident",
                             Kind::Spawner => "spawner",
                             Kind::Cloud => "cloud",
+                            Kind::Bolt => "bolt",
                             Kind::Cushion => "cushion",
                             Kind::Knot => "knot",
                             Kind::Player => "player",
@@ -273,21 +403,7 @@ impl Game<'_> {
                     .get(&id)
                     .and_then(|tag| tag.get(ATTACHMENTS_KEY)),
             )?;
-            if access == AttachmentAccess::Store
-                && self
-                    .persist
-                    .removals
-                    .contains(&super::commands::Target::Painting(id))
-            {
-                return Err(AttachmentError::MissingHolder);
-            }
-            if access == AttachmentAccess::Store
-                && self.entity_initialization.active != Some(holder)
-            {
-                self.entity_attachments.entry(id).or_default();
-                self.bind_resident_entity_attachments(id)?;
-            }
-            return Ok(self.entity_attachments.entry(id).or_default());
+            return Ok(LocalAttachmentSlot::Entity(id));
         }
         if let mod_api::Holder::Player(uuid) = holder {
             let cloning = self.cloning_guest(uuid).map(|guest| guest.conn);
@@ -304,12 +420,7 @@ impl Game<'_> {
             }
             self.initialize_entity_on_access(holder);
             if self.lan_acting_uuid == Some(uuid) {
-                if access == AttachmentAccess::Store
-                    && let Some(conn) = self.lan_acting
-                {
-                    self.bind_player_attachments(conn, true);
-                }
-                return Ok(&mut self.player_state.attachments);
+                return Ok(LocalAttachmentSlot::ActingPlayer);
             }
             let conn = cloning
                 .or_else(|| {
@@ -325,16 +436,9 @@ impl Game<'_> {
             if self.lan_guest_swaps.contains(&conn) {
                 return Err(AttachmentError::MissingHolder);
             }
-            if access == AttachmentAccess::Store {
-                self.bind_player_attachments(conn, true);
-            }
-            return Ok(self
-                .lan
-                .as_mut()
-                .and_then(|host| host.hub.guests.attachments_mut(conn))
-                .ok_or(AttachmentError::MissingHolder)?);
+            return Ok(LocalAttachmentSlot::Guest(conn));
         }
-        world_attachments(&mut self.world, holder)
+        Ok(LocalAttachmentSlot::World)
     }
 }
 
@@ -758,6 +862,23 @@ impl mod_api::AttachmentHost for Game<'_> {
     ) -> Result<(), mod_api::AttachmentError> {
         mod_api::__private::validate_attachment_use(namespace, name, sync)
     }
+    fn validate_attachment_key(
+        &self,
+        write: &mod_api::AttachmentStoreKey<'_>,
+    ) -> Result<(), mod_api::AttachmentError> {
+        mod_api::__private::validate_attachment_key(write)
+    }
+    fn read_attachments(
+        &mut self,
+        holder: Holder,
+    ) -> Result<Option<&Attachments>, AttachmentError> {
+        self.attachment_map_read(holder)
+    }
+    fn attachment_changed(&mut self, holder: Holder, persist: bool, sync: bool) {
+        if self.native_authoritative() {
+            world_attachment_changed(&mut self.world, holder, persist, sync);
+        }
+    }
     fn attachments(
         &mut self,
         holder: mod_api::Holder,
@@ -776,6 +897,24 @@ impl mod_api::AttachmentHost for super::GameLevel<'_> {
     ) -> Result<(), mod_api::AttachmentError> {
         mod_api::__private::validate_attachment_use(namespace, name, sync)
     }
+    fn validate_attachment_key(
+        &self,
+        write: &mod_api::AttachmentStoreKey<'_>,
+    ) -> Result<(), mod_api::AttachmentError> {
+        mod_api::__private::validate_attachment_key(write)
+    }
+    fn read_attachments(
+        &mut self,
+        holder: Holder,
+    ) -> Result<Option<&Attachments>, AttachmentError> {
+        if !self.native_authoritative {
+            return Err(AttachmentError::MissingHolder);
+        }
+        world_attachment_ref(self.world, holder)
+    }
+    fn attachment_changed(&mut self, holder: Holder, persist: bool, sync: bool) {
+        world_attachment_changed(self.world, holder, persist, sync);
+    }
     fn attachments(
         &mut self,
         holder: mod_api::Holder,
@@ -784,7 +923,6 @@ impl mod_api::AttachmentHost for super::GameLevel<'_> {
         if !self.native_authoritative {
             return Err(mod_api::AttachmentError::MissingHolder);
         }
-        self.world.attachment_syncs.insert(holder);
         world_attachments(self.world, holder)
     }
 }
@@ -884,6 +1022,23 @@ impl mod_api::AttachmentHost for super::native_hooks::HitLevel<'_> {
     ) -> Result<(), mod_api::AttachmentError> {
         mod_api::__private::validate_attachment_use(namespace, name, sync)
     }
+    fn validate_attachment_key(
+        &self,
+        write: &mod_api::AttachmentStoreKey<'_>,
+    ) -> Result<(), mod_api::AttachmentError> {
+        mod_api::__private::validate_attachment_key(write)
+    }
+    fn read_attachments(
+        &mut self,
+        holder: Holder,
+    ) -> Result<Option<&Attachments>, AttachmentError> {
+        self.0.attachments_read(holder).map(Some)
+    }
+    fn attachment_changed(&mut self, holder: Holder, _: bool, sync: bool) {
+        if sync {
+            self.0.attachment_sync_queued(holder);
+        }
+    }
     fn attachments(
         &mut self,
         holder: mod_api::Holder,
@@ -891,6 +1046,34 @@ impl mod_api::AttachmentHost for super::native_hooks::HitLevel<'_> {
     ) -> Result<&mut mod_api::Attachments, mod_api::AttachmentError> {
         let _ = access;
         self.0.attachments(holder)
+    }
+    /// The hit's victim and causing entity lend their maps for reading only.
+    fn read_only_attachments(
+        &self,
+        holder: mod_api::Holder,
+    ) -> Option<Result<Option<&mod_api::Attachments>, mod_api::AttachmentError>> {
+        use mod_api::__private::LivingParty;
+        let body = [LivingParty::Victim, LivingParty::Causing]
+            .into_iter()
+            .find_map(|party| {
+                self.party_body(party)
+                    .filter(|&body| super::native_living_body::body_holder(body) == Some(holder))
+            })?;
+        let reads = self.0.reads()?;
+        Some(Ok(match (holder, body) {
+            (mod_api::Holder::Entity(id), _) => {
+                reads.entity_attachments.and_then(|maps| maps.get(&id))
+            }
+            // A parked guest's map is its hub row's; the player in place's is the game's.
+            (mod_api::Holder::Player(uuid), sunrise_client::health::LivingBody::Player(player)) => {
+                match player.attachments {
+                    Some(map) => Some(map),
+                    None if reads.player_uuid == Some(uuid) => reads.player_attachments,
+                    None => None,
+                }
+            }
+            _ => None,
+        }))
     }
 }
 
@@ -955,6 +1138,123 @@ impl mod_api::HitHost for super::native_hooks::HitLevel<'_> {
             .2
             .next_int_bound(bound)
             .ok()
+    }
+    fn victim(&self) -> Option<mod_api::LivingView<'_>> {
+        mod_api::LivingView::new(self, mod_api::__private::LivingParty::Victim)
+    }
+    fn causing(&self) -> Option<mod_api::LivingView<'_>> {
+        mod_api::LivingView::new(self, mod_api::__private::LivingParty::Causing)
+    }
+}
+
+impl super::native_hooks::HitLevel<'_> {
+    /// The body `party` names in this hit: the victim the hurt code lends, or the causer its
+    /// site lends when it is the hook's causing entity
+    /// ([`DamageLevel::causing_body`](sunrise_client::health::DamageLevel::causing_body)).
+    fn party_body(
+        &self,
+        party: mod_api::__private::LivingParty,
+    ) -> Option<sunrise_client::health::LivingBody<'_>> {
+        let body = match party {
+            mod_api::__private::LivingParty::Victim => self.0.victim(),
+            mod_api::__private::LivingParty::Causing => self.0.causing_body(),
+            _ => None,
+        }?;
+        Some(match body {
+            // A lent attacking player is the player in place, whose UUID the reads know.
+            sunrise_client::health::LivingBody::Player(mut p) if p.uuid.is_none() => {
+                p.uuid = self.0.reads().and_then(|reads| reads.player_uuid);
+                sunrise_client::health::LivingBody::Player(p)
+            }
+            body => body,
+        })
+    }
+}
+
+/// A hit's victim and causer, read through the same functions as the `LivingRef` reads.
+impl mod_api::__private::LivingReads for super::native_hooks::HitLevel<'_> {
+    fn living_entity(&self, party: mod_api::__private::LivingParty) -> Option<mod_api::EntityRef> {
+        let reads = self.0.reads()?;
+        let id = match self.party_body(party)? {
+            sunrise_client::health::LivingBody::Mob(m) => m.id,
+            sunrise_client::health::LivingBody::Player(p) => u32::try_from(p.id).ok()?,
+            sunrise_client::health::LivingBody::Stand(s)
+            | sunrise_client::health::LivingBody::Dragon(s) => s.id,
+        };
+        Some(mod_api::EntityRef::new(reads.epoch, id))
+    }
+    fn living_kind(
+        &self,
+        party: mod_api::__private::LivingParty,
+    ) -> Option<mod_api::EntityTypeKey> {
+        let keys = self.0.reads()?.living_types;
+        super::native_living_body::body_kind(self.party_body(party)?, keys)
+    }
+    fn living_holder(&self, party: mod_api::__private::LivingParty) -> Option<mod_api::Holder> {
+        super::native_living_body::body_holder(self.party_body(party)?)
+    }
+    fn living_health(&self, party: mod_api::__private::LivingParty) -> Option<f32> {
+        super::native_living_body::body_health(self.party_body(party)?)
+    }
+    fn living_absorption(&self, party: mod_api::__private::LivingParty) -> Option<f32> {
+        super::native_living_body::body_absorption(self.party_body(party)?)
+    }
+    fn living_max_health(&self, party: mod_api::__private::LivingParty) -> Option<f32> {
+        super::native_living_body::body_max_health(self.party_body(party)?)
+    }
+    fn living_effect(
+        &self,
+        party: mod_api::__private::LivingParty,
+        effect: mod_api::EffectKey,
+    ) -> Option<mod_api::ActiveEffect> {
+        let def = mod_api::__private::effect_index(effect)
+            .and_then(sunrise_client_core::potions::effect_by_index)?;
+        super::native_living_body::body_effect(self.party_body(party)?, def.index)
+    }
+    fn living_effects(
+        &self,
+        party: mod_api::__private::LivingParty,
+    ) -> Option<Vec<mod_api::ActiveEffect>> {
+        super::native_living_body::body_effects(self.party_body(party)?)
+    }
+    fn living_potion_affected(
+        &self,
+        party: mod_api::__private::LivingParty,
+        effect: mod_api::EffectKey,
+    ) -> bool {
+        mod_api::__private::effect_index(effect)
+            .and_then(sunrise_client_core::potions::effect_by_index)
+            .zip(self.party_body(party))
+            .is_some_and(|(def, body)| {
+                super::native_living_body::body_potion_affected(body, def.index)
+            })
+    }
+    fn living_attribute_value(
+        &self,
+        party: mod_api::__private::LivingParty,
+        id: &str,
+    ) -> Option<f64> {
+        super::native_living_body::body_attribute(
+            self.party_body(party)?,
+            self.0.reads()?.attributes,
+            id,
+            sunrise_world::attribute_map::ValueKind::Computed,
+        )
+    }
+    fn living_hand_item(
+        &self,
+        party: mod_api::__private::LivingParty,
+        hand: mod_api::Hand,
+        read: &mut dyn for<'a> FnMut(mod_api::ItemStackView<'a>),
+    ) -> Option<()> {
+        let stack = super::native_living_body::body_equipment(
+            self.party_body(party)?,
+            super::native_living_refs::hand_slot(hand),
+        )?;
+        super::native_living_refs::lend_equipment(stack, read)
+    }
+    fn living_no_ai(&self, party: mod_api::__private::LivingParty) -> Option<bool> {
+        super::native_living_body::body_no_ai(self.party_body(party)?)
     }
 }
 
@@ -1556,6 +1856,7 @@ mod attachment_membership_tests {
                 pos: [0, 64, 0],
                 facing: 2,
                 variant: "minecraft:kebab".into(),
+                asset: None,
                 width: 1,
                 height: 1,
                 check_interval: 0,

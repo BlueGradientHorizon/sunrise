@@ -126,7 +126,7 @@ slot_keys!(registries;
         crate::content::registry_keys::ENCHANTMENTS.read().ok()?.as_ref()?.identifiers.get(id).copied()
     };
     EntityTypeKey => as_entity_type_key, "entity_type", |id: &crate::Identifier| {
-        crate::content::registry_keys::resolved_entity_types().get()?.identifiers.get(id).copied()
+        crate::content::registry_keys::resolved_entity_types().get()?.names().identifiers.get(id).copied()
     };
     FluidKey => as_fluid_key, "fluid", |id: &crate::Identifier| {
         crate::parts::resolved_fluids().get()?.identifiers.get(id).copied()
@@ -280,17 +280,6 @@ impl Wire for crate::ModelRef {
     }
 }
 impl Wire for crate::BakedModelKey {
-    layout_fields!("generation" => u64, "slot" => u32);
-    const MIN: usize = 12;
-    fn put(&self, out: &mut Writer) {
-        out.put(&self.0);
-        out.put(&self.1);
-    }
-    fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
-        Self::from_parts(input.take()?, input.take()?).map_err(WireError::Invalid)
-    }
-}
-impl Wire for crate::RenderPipelineRef {
     layout_fields!("generation" => u64, "slot" => u32);
     const MIN: usize = 12;
     fn put(&self, out: &mut Writer) {

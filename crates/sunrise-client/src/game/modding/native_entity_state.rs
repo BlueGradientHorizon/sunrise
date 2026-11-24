@@ -9,6 +9,7 @@
 //! Ticks lived (`Entity.tickCount`) are read for players, mobs, items, orbs and minecarts.
 use super::{Game, commands::Target};
 use mod_api::EntityRef;
+use sunrise_client::join_seq::residency::table::EntityLookup;
 use sunrise_client::mobs::{Mob, Species, sync};
 use sunrise_client::motion::PlayerMotion;
 use sunrise_client::pose::Pose;
@@ -91,6 +92,42 @@ impl Game<'_> {
             Body::Player(p) => p.shift_key_down,
             _ => false,
         })
+    }
+    /// `LivingEntity.getMainArm`: `Avatar`'s `DATA_PLAYER_MAIN_HAND` (a server sets it from the
+    /// player's `ClientInformation`; a client's own player draws with its Main Hand option, and
+    /// another player is a mob that keeps what the server sent), `Mob`'s left-handed flag and
+    /// `ArmorStand`'s right arm. The dragon's left-handed draw is not kept, so it reads right.
+    /// The mob read uses its resident row without a separate pass over the mob list.
+    pub(super) fn entity_main_arm(&self, entity: EntityRef) -> Option<mod_api::MainHand> {
+        let (target, location) = if self.is_logical_server() {
+            self.native_entity_target_with_location(entity)?
+        } else {
+            let target = self.native_client_entity_target(entity)?;
+            let location = match (target, self.server_resident_entity(entity.id())) {
+                (Target::Mob(_), EntityLookup::Found { location, .. }) => Some(location),
+                _ => None,
+            };
+            (target, location)
+        };
+        let left = match target {
+            Target::Player if !self.is_logical_server() => self.settings.main_hand_left,
+            Target::Player => return self.guest_main_arm(self.lan_acting?),
+            Target::Guest(conn) => return self.guest_main_arm(conn),
+            Target::Mob(_) => self.mobs[self.mobs.locate(location?.join)?].main_arm_left(),
+            Target::Stand(_) | Target::Dragon(_) => false,
+            _ => return None,
+        };
+        Some(if left {
+            mod_api::MainHand::Left
+        } else {
+            mod_api::MainHand::Right
+        })
+    }
+    /// A server's player's main arm, from the Main Hand its client last reported.
+    fn guest_main_arm(&self, conn: u32) -> Option<mod_api::MainHand> {
+        Some(super::lan::main_hand(
+            self.command_guest(conn)?.info.main_hand,
+        ))
     }
     /// Whether the entity crouches (`Entity.isCrouching`: the crouching
     /// pose).
@@ -237,6 +274,20 @@ impl Game<'_> {
                     self.stack_can_be_hurt_by(&item.stack, "minecraft:in_fire") == Some(false),
                 )
             }
+            Some(Body::Other(Target::Projectile(id))) => {
+                let p = self.creatures.projectiles.iter().find(|p| p.id == id)?;
+                match p.arrow.as_ref() {
+                    Some(a) => (a.fire_ticks, false),
+                    None => (
+                        p.fire_ticks,
+                        matches!(
+                            p.kind,
+                            sunrise_client::projectiles::ProjectileKind::WitherSkull { .. }
+                                | sunrise_client::projectiles::ProjectileKind::ShulkerBullet { .. }
+                        ),
+                    ),
+                }
+            }
             _ => (0, self.client_tracked_player_fire_immunity(entity)?),
         };
         let synced = !self.is_logical_server()
@@ -328,7 +379,7 @@ impl Game<'_> {
     }
 
     /// The ticks the entity burns for (`Entity.getRemainingFireTicks`):
-    /// players, mobs, armor stands and items.
+    /// players, mobs, armor stands, items and projectiles.
     pub(super) fn entity_fire_ticks(&self, entity: EntityRef) -> Option<i32> {
         match self.native_entity_body(entity)? {
             Body::Player(p) => Some(p.fire_ticks),
@@ -338,6 +389,10 @@ impl Game<'_> {
             }
             Body::Other(Target::Item(id)) => {
                 Some(self.dropped.iter().find(|i| i.id == id)?.fire_ticks)
+            }
+            Body::Other(Target::Projectile(id)) => {
+                let p = self.creatures.projectiles.iter().find(|p| p.id == id)?;
+                Some(p.arrow.as_ref().map_or(p.fire_ticks, |a| a.fire_ticks))
             }
             Body::Other(_) => None,
         }
@@ -472,6 +527,19 @@ impl Game<'_> {
                         true
                     })
             }
+            Some(Target::Projectile(id)) => {
+                let Some(i) = self.creatures.projectiles.iter().position(|p| p.id == id) else {
+                    return false;
+                };
+                self.creatures.projectiles.update(i, |p| {
+                    if let Some(a) = p.arrow.as_mut() {
+                        a.fire_ticks = ticks;
+                    } else {
+                        p.fire_ticks = ticks;
+                    }
+                });
+                true
+            }
             _ => false,
         }
     }
@@ -603,10 +671,15 @@ impl Game<'_> {
             _ => None,
         }
     }
-    /// Returns the mob's no-gravity flag (`Entity.isNoGravity`).
+    /// Returns the mob's or dropped item's no-gravity flag (`Entity.isNoGravity`).
     pub(super) fn entity_no_gravity(&self, entity: EntityRef) -> Option<bool> {
         match self.native_entity_body(entity)? {
             Body::Mob(m) => Some(m.no_gravity),
+            Body::Other(Target::Item(id)) => self
+                .dropped
+                .iter()
+                .find(|i| i.id == id)
+                .map(|i| i.no_gravity),
             _ => None,
         }
     }
@@ -618,9 +691,13 @@ impl Game<'_> {
             _ => None,
         }
     }
-    /// Ticks the entity has lived (`Entity.tickCount`): players, mobs, item
-    /// entities, experience orbs and minecarts. Wraps as vanilla's `int` does.
+    /// Ticks the entity has lived (`Entity.tickCount`): on a server, living entities, item
+    /// entities, experience orbs and minecarts; on a client, every entity of the level it
+    /// shows ([`Self::client_entity_tick_count`]). Wraps as vanilla's `int` does.
     pub(super) fn entity_tick_count(&self, entity: EntityRef) -> Option<i32> {
+        if !self.is_logical_server() {
+            return self.client_entity_tick_count(entity);
+        }
         Some(match self.native_entity_target(entity)? {
             Target::Player => self.player.as_ref()?.health.tick_count,
             Target::Guest(conn) => {
@@ -633,11 +710,29 @@ impl Game<'_> {
                     .unwrap_or(0)
             }
             Target::Mob(id) => self.mobs.iter().find(|m| m.id == id)?.age as i32,
+            Target::Stand(id) => self.armor_stands.iter().find(|s| s.id == id)?.tick_count,
+            Target::Dragon(id) => self.dragon.as_ref().filter(|d| d.id == id)?.ticks,
             Target::Item(id) => self.dropped.iter().find(|i| i.id == id)?.ticks as i32,
             Target::Orb(id) => self.orbs.iter().find(|o| o.id == id)?.ticks as i32,
             Target::Cart(id) => self.carts.iter().find(|c| c.id == id)?.tick_count,
             _ => return None,
         })
+    }
+    /// `Entity.tickCount` of a client's own copy: the local player's, or that of an entity the
+    /// server added to the level the client shows, whatever its kind, counted by the client's
+    /// entity pass (`Entity.commonTick`) since the client added it.
+    fn client_entity_tick_count(&self, entity: EntityRef) -> Option<i32> {
+        let (remote, id) = self.native_client_entity_context(entity)?;
+        // The local player from its admission (Login, Respawn), before the server's first
+        // teleport gives it a body.
+        if id == remote.entity_id {
+            return remote.has_logical_player.then_some(remote.own_tick_count);
+        }
+        remote
+            .entities
+            .get(&id)
+            .map(|tracked| tracked.tick_count)
+            .or_else(|| remote.general.rows.get(&id).map(|row| row.age as i32))
     }
     /// Sets the mob's persistent glowing tag (`Entity.setGlowingTag`). Returns false for players and guests.
     pub(super) fn entity_set_glowing(&mut self, entity: EntityRef, glowing: bool) -> bool {
@@ -650,16 +745,27 @@ impl Game<'_> {
             true
         })
     }
-    /// Sets the mob's no-gravity flag (`Entity.setNoGravity`). Returns false for players and guests.
+    /// Sets the mob's or dropped item's no-gravity flag (`Entity.setNoGravity`). Returns false
+    /// for players and guests.
     pub(super) fn entity_set_no_gravity(&mut self, entity: EntityRef, no_gravity: bool) -> bool {
-        let Some(Target::Mob(id)) = self.native_entity_target(entity) else {
-            return false;
-        };
-        self.mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
-            m.no_gravity = no_gravity;
-            m.needs_sync = true;
-            true
-        })
+        match self.native_entity_target(entity) {
+            Some(Target::Mob(id)) => self.mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
+                m.no_gravity = no_gravity;
+                m.needs_sync = true;
+                true
+            }),
+            Some(Target::Item(id)) => {
+                self.dropped
+                    .iter_mut()
+                    .find(|i| i.id == id)
+                    .is_some_and(|i| {
+                        i.no_gravity = no_gravity;
+                        i.needs_sync = true;
+                        true
+                    })
+            }
+            _ => false,
+        }
     }
     /// Sets the entity's shared invisibility flag (`Entity.setInvisible`). Returns false for players and guests.
     pub(super) fn entity_set_invisible(&mut self, entity: EntityRef, invisible: bool) -> bool {
@@ -798,6 +904,52 @@ mod tests {
         });
     }
 
+    /// `Entity.setNoGravity` and `Entity.isNoGravity` reach a live dropped item, not only a
+    /// mob; a kind that is neither still refuses both, as does a stale handle (#5011, #3938
+    /// item 47).
+    #[test]
+    #[ignore = "daily"]
+    fn no_gravity_reads_and_writes_a_live_dropped_item() {
+        use super::super::native_entity_refs::tests::with_game;
+        use mod_api::WorldEpoch;
+        use sunrise_client::entities::ArmorStand;
+        use sunrise_client::items::ItemStack;
+        use sunrise_core::geometry::Vec3;
+
+        with_game(|game| {
+            game.options.dedicated = Some(Vec::new());
+            game.spawn_item(
+                ItemStack {
+                    item: "minecraft:stone".into(),
+                    count: 1,
+                    damage: 0,
+                    extra: None,
+                },
+                [0.0; 3],
+                [0.0; 3],
+                0,
+            );
+            let item = game.entity(game.dropped[0].id).unwrap();
+            assert_eq!(item.no_gravity(game), Some(false));
+
+            assert!(item.set_no_gravity(game, true));
+            assert!(game.dropped[0].no_gravity);
+            assert!(game.dropped[0].needs_sync);
+            assert_eq!(item.no_gravity(game), Some(true));
+
+            // A kind that is neither an item nor a mob keeps refusing both: the new arm
+            // widened the match for items alone.
+            game.armor_stands.push(ArmorStand::new(43, Vec3::ZERO, 0.0));
+            let stand = game.entity(43).unwrap();
+            assert_eq!(stand.no_gravity(game), None);
+            assert!(!stand.set_no_gravity(game, true));
+
+            let stale = EntityRef::new(WorldEpoch::new(item.epoch().get() + 1), item.id());
+            assert_eq!(stale.no_gravity(game), None);
+            assert!(!stale.set_no_gravity(game, true));
+        });
+    }
+
     fn with_player(test: impl FnOnce(&mut Game<'_>, EntityRef)) {
         use super::super::native_entity_refs::tests::with_game;
         use sunrise_core::geometry::Vec3;
@@ -915,6 +1067,38 @@ mod tests {
             let item = game.entity(game.dropped[0].id).unwrap();
             assert_eq!(item.fire_ticks(game), Some(19));
 
+            let mut snowball = sunrise_client::projectiles::Projectile::new(
+                sunrise_client::projectiles::ProjectileKind::Snowball,
+                Vec3::ZERO,
+                None,
+            );
+            snowball.id = 45;
+            snowball.fire_ticks = 159;
+            game.creatures.projectiles.push(snowball);
+            let proj = game.entity(45).unwrap();
+            assert_eq!(proj.fire_ticks(game), Some(159));
+            assert_eq!(proj.is_on_fire(game), Some(true));
+            assert!(proj.set_remaining_fire_ticks(game, 40));
+            assert_eq!(proj.fire_ticks(game), Some(40));
+
+            let mut arrow = sunrise_client::projectiles::Projectile::new(
+                sunrise_client::projectiles::ProjectileKind::Arrow {
+                    base_damage: 2.0,
+                    critical: false,
+                    effect: None,
+                },
+                Vec3::ZERO,
+                None,
+            );
+            arrow.id = 46;
+            arrow.arrow.as_mut().unwrap().fire_ticks = 80;
+            game.creatures.projectiles.push(arrow);
+            let arrow_ref = game.entity(46).unwrap();
+            assert_eq!(arrow_ref.fire_ticks(game), Some(80));
+            assert_eq!(arrow_ref.is_on_fire(game), Some(true));
+            assert!(arrow_ref.clear_fire(game));
+            assert_eq!(arrow_ref.fire_ticks(game), Some(0));
+
             game.boats.push(super::super::boats::Boat::new(
                 44,
                 "oak".into(),
@@ -992,6 +1176,7 @@ mod tests {
             assert_eq!(item.tick_count(game), Some(77));
 
             game.orbs.push(ExperienceOrb {
+                size_answer: None,
                 attachment_lifetime: Default::default(),
                 fall_distance: 0.0,
                 rotation: [0.0, 0.0],
@@ -1087,6 +1272,7 @@ mod tests {
             );
             let item = game.dropped[0].id;
             game.orbs.push(ExperienceOrb {
+                size_answer: None,
                 attachment_lifetime: Default::default(),
                 fall_distance: 0.0,
                 rotation: [0.0, 0.0],
@@ -1158,6 +1344,7 @@ mod tests {
             game.next_entity += 1;
             let falling = game.next_entity;
             game.falling.push(FallingBlock {
+                size_answer: None,
                 ground: Default::default(),
                 fire_ticks: 0,
                 sync_velocity: false,
@@ -1166,6 +1353,7 @@ mod tests {
                 join: Default::default(),
                 id: falling,
                 state,
+                blocks_building: true,
                 start_pos: BlockPos::default(),
                 position: Vec3::ZERO,
                 previous: Vec3::ZERO,
@@ -1339,6 +1527,7 @@ mod tests {
             game.next_entity += 1;
             let id = game.next_entity;
             game.falling.push(FallingBlock {
+                size_answer: None,
                 ground: Default::default(),
                 fire_ticks: 0,
                 sync_velocity: false,
@@ -1347,6 +1536,7 @@ mod tests {
                 join: Default::default(),
                 id,
                 state,
+                blocks_building: true,
                 start_pos: BlockPos::default(),
                 position: Vec3::ZERO,
                 previous: Vec3::ZERO,
@@ -1820,5 +2010,147 @@ mod tests {
         assert_eq!(max_air(Some(Species::Dolphin)), 4800);
         assert_eq!(max_air(Some(Species::Axolotl)), 6000);
         assert_eq!(max_air(Some(Species::Zombie)), 300);
+    }
+
+    // `EntityRef::main_arm` (`LivingEntity.getMainArm`) on a client and on a server.
+    use super::super::native_entity_refs::tests::{run_fresh_cases, with_client_game};
+    use super::super::native_guest_turn_tests::with_guests;
+    use mod_api::MainHand;
+    use sunrise_protocol::entity_data::{Value, serializer};
+    use sunrise_protocol::packets::play::{self, Clientbound as C};
+
+    /// A client reads every entity it tracks as the server sent it: a mob's left-handed flag
+    /// (`Mob.DATA_MOB_FLAGS_ID`) and another player's main hand (`Avatar.DATA_PLAYER_MAIN_HAND`);
+    /// its own player follows its Main Hand option. An entity that isn't living, and one the
+    /// client doesn't track, has none.
+    #[test]
+    #[ignore = "daily"]
+    fn a_client_reads_the_main_arm_the_server_sent() {
+        if run_fresh_cases(
+            "game::native_entity_state::tests::a_client_reads_the_main_arm_the_server_sent",
+            "SUNRISE_TEST_CLIENT_MAIN_ARM_CASE",
+            &["client"],
+        ) {
+            return;
+        }
+        use super::super::native_client_session::tests::logged_client;
+        use sunrise_client::motion::PlayerMotion;
+        use sunrise_core::geometry::Vec3;
+        mod_platform::testing::with_mods(Default::default(), || {
+            with_client_game(|game| {
+                let _server = logged_client(game);
+                game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+                let types = game.remote.as_ref().unwrap().builtin.clone();
+                let kind = |name: &str| {
+                    types
+                        .get("minecraft:entity_type")
+                        .unwrap()
+                        .id(name)
+                        .unwrap()
+                };
+                game.handle_packet(C::PlayerInfoUpdate(play::PlayerInfoUpdate {
+                    actions: 1,
+                    entries: vec![play::PlayerInfo {
+                        uuid: 132,
+                        name: Some("Remote".into()),
+                        ..Default::default()
+                    }],
+                }))
+                .unwrap();
+                for (id, name) in [
+                    (31, "minecraft:zombie"),
+                    (32, "minecraft:player"),
+                    (33, "minecraft:experience_orb"),
+                ] {
+                    game.handle_packet(C::AddEntity(play::AddEntity {
+                        id,
+                        uuid: 100 + id as u128,
+                        kind: kind(name),
+                        position: [2.0, 64.0, 3.0],
+                        velocity: [0.0; 3],
+                        pitch: 0,
+                        yaw: 0,
+                        head_yaw: 0,
+                        data: 0,
+                    }))
+                    .unwrap();
+                }
+                let (zombie, player, orb) = (
+                    game.entity(31).unwrap(),
+                    game.entity(32).unwrap(),
+                    game.entity(33).unwrap(),
+                );
+                let local = game.local_player().unwrap().entity();
+                let read = |game: &Game<'_>, entity: EntityRef| {
+                    let host: &dyn mod_api::ClientHost = game;
+                    entity.main_arm(host)
+                };
+                assert_eq!(read(game, zombie), Some(MainHand::Right));
+                assert_eq!(read(game, player), Some(MainHand::Right));
+                for left in [true, false] {
+                    // No AI 1, left-handed 2, aggressive 4; HumanoidArm 0 is the left arm.
+                    let flags = if left { 2 | 4 } else { 4 };
+                    game.handle_packet(C::SetEntityData(play::SetEntityData {
+                        id: 31,
+                        values: vec![(15, serializer::BYTE, Value::Byte(flags))],
+                    }))
+                    .unwrap();
+                    game.handle_packet(C::SetEntityData(play::SetEntityData {
+                        id: 32,
+                        values: vec![(15, serializer::HUMANOID_ARM, Value::Id(i32::from(!left)))],
+                    }))
+                    .unwrap();
+                    game.settings.main_hand_left = left;
+                    let arm = if left {
+                        MainHand::Left
+                    } else {
+                        MainHand::Right
+                    };
+                    assert_eq!(read(game, zombie), Some(arm), "the mob");
+                    assert_eq!(read(game, player), Some(arm), "the other player");
+                    assert_eq!(read(game, local), Some(arm), "the local player");
+                }
+                assert_eq!(read(game, orb), None, "not a living entity");
+                assert_eq!(read(game, EntityRef::new(local.epoch(), 99)), None);
+            });
+        });
+    }
+
+    /// A server reads a player's main arm from the Main Hand its client reported, and a mob's
+    /// from its left-handed flag.
+    #[test]
+    #[ignore = "daily"]
+    fn a_server_reads_the_reported_main_hand_and_the_left_handed_flag() {
+        if run_fresh_cases(
+            "game::native_entity_state::tests::a_server_reads_the_reported_main_hand_and_the_left_handed_flag",
+            "SUNRISE_TEST_SERVER_MAIN_ARM_CASE",
+            &["server"],
+        ) {
+            return;
+        }
+        with_guests(|game| {
+            let (a, b) = (game.player(12).unwrap(), game.player(13).unwrap());
+            let host = game.lan.as_mut().unwrap();
+            host.hub.update_guest(12, |g| g.info.main_hand = 0).unwrap();
+            let read = |game: &Game<'_>, entity: EntityRef| {
+                let host: &dyn mod_api::ServerHost = game;
+                entity.main_arm(host)
+            };
+            assert_eq!(read(game, a.entity()), Some(MainHand::Left));
+            assert_eq!(read(game, b.entity()), Some(MainHand::Right));
+            let zombie = game
+                .res
+                .mob_types()
+                .get("minecraft:zombie")
+                .unwrap()
+                .clone();
+            let at = sunrise_core::geometry::Vec3::ZERO;
+            game.mobs
+                .push(sunrise_client::mobs::Mob::new(500, zombie, at, 0.0));
+            let mob = game.entity(500).unwrap();
+            assert_eq!(read(game, mob), Some(MainHand::Right));
+            game.mobs.last_mut().unwrap().extra.left_handed = true;
+            assert_eq!(read(game, mob), Some(MainHand::Left));
+        });
     }
 }

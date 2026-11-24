@@ -3,10 +3,11 @@
 use super::Game;
 use mod_api::__private::game::*;
 use mod_api::{
-    BlockEntityDataError, BlockEntityError, BlockEntityItemError, BlockEntityRef,
+    BlockEntityAt, BlockEntityDataError, BlockEntityError, BlockEntityItemError, BlockEntityRef,
     BlockEntityShapes, BlockEntityShapesError, BlockEntityTypeKey, LevelRef, PlayerRef,
-    Transaction,
+    TransactionContext,
 };
+use sunrise_client::block_entities::TakenType;
 use sunrise_client::{
     block_entity_nbt,
     containers::{BlockEntity, ModBlockEntity},
@@ -125,6 +126,58 @@ impl Game<'_> {
         let [x, y, z] = entity.fields().position;
         let block = &self.pack.assets.registry.state(world.block(x, y, z))?.name;
         mod_api::__private::block_entity_type_key(save::block_entity_id(block_entity, block))
+    }
+
+    /// The block entities of an open server level, moving pistons' included, in the box
+    /// `min..max` and the build height, read from loaded chunks only (`ServerChunkCache.getChunkNow`,
+    /// `LevelChunk.getBlockEntities`). None for reversed bounds, a stale handle or a client.
+    pub(super) fn level_block_entities(
+        &self,
+        level: LevelRef,
+        min: [i32; 3],
+        max: [i32; 3],
+    ) -> Option<Vec<BlockEntityAt>> {
+        let world = self.native_level_world(level)?;
+        // The level's moving pistons as its ticks hold them now, not the copy collision reads.
+        let ticks = if level.dimension() == self.dim.key() {
+            &self.block_ticks
+        } else {
+            self.levels.parked_block_ticks_of(level.dimension_id())?
+        };
+        let registry = self.pack.assets.registry;
+        Some(
+            world
+                .block_entities_in_box(min, max)?
+                .into_iter()
+                .filter_map(|(x, y, z)| {
+                    let pos = (x, y, z);
+                    let block = || registry.state(world.block(x, y, z)).map(|s| &*s.name);
+                    let id = match world.block_entities.taken_type(&pos) {
+                        // Taken out: it keeps its own type, whatever stands there now.
+                        Some(TakenType::Mod(kind)) => {
+                            return Some(BlockEntityAt::new([x, y, z], kind?));
+                        }
+                        Some(TakenType::Vanilla(id)) => id,
+                        Some(TakenType::Container(id)) => save::chest_backed_id(id, block()?),
+                        None => save::block_entity_id(world.block_entities.get(&pos)?, block()?),
+                    };
+                    let kind = mod_api::__private::block_entity_type_key(id)?;
+                    Some(BlockEntityAt::new([x, y, z], kind))
+                })
+                .chain(
+                    ticks
+                        .moving_pistons
+                        .iter()
+                        .map(|(pos, _)| [pos.x, pos.y, pos.z])
+                        .filter(|&pos| world.in_box(min, max, pos) && world.loaded(pos[0], pos[2]))
+                        .filter_map(|pos| {
+                            let kind =
+                                mod_api::__private::block_entity_type_key("minecraft:piston")?;
+                            Some(BlockEntityAt::new(pos, kind))
+                        }),
+                )
+                .collect(),
+        )
     }
 
     /// The block entity's position.
@@ -327,12 +380,12 @@ impl Game<'_> {
     pub(super) fn block_entity_set_item_slot(
         &mut self,
         entity: BlockEntityRef,
-        tx: &Transaction,
+        tx: &TransactionContext,
         slot: u32,
         stack: Option<ItemStack>,
     ) -> Result<bool, BlockEntityItemError> {
-        if !self.transaction_holds(tx) {
-            return Ok(false);
+        if !self.transaction_context_is_current(tx) {
+            return Err(BlockEntityItemError::InvalidContext);
         }
         let key = self
             .native_block_entity_write_key(entity)
@@ -375,7 +428,10 @@ impl Game<'_> {
                 *block_entity.item_slot_mut(index).unwrap() = stack;
             });
         }
-        self.journal_chunk_save((key.0 >> 4, key.2 >> 4));
+        self.journal_chunk_save(
+            (key.0 >> 4, key.2 >> 4),
+            super::transactions::SaveChunkScope::Level,
+        );
         Ok(true)
     }
 
@@ -910,6 +966,7 @@ mod tests {
     use super::*;
     use mod_api::HostTransaction;
     use mod_api::ServerHost;
+    use mod_api::TransactionError;
     use std::sync::Arc;
     use sunrise_client::{chunk::Chunk, containers::ModBlockEntityFields, lan::menu::Slots};
     use sunrise_world::registry::BlockStateId;
@@ -1070,7 +1127,7 @@ mod tests {
             });
             assert_eq!(original.set_data_slots(game, vec![7]), Ok(true));
             let mut tentative = None;
-            let _: Result<(), ()> = game.transaction(|game, _| {
+            let _: Result<(), ()> = game.storage_transaction(|game, _| {
                 game.journal_block_entity(pos);
                 game.world
                     .block_entities
@@ -1639,17 +1696,17 @@ mod tests {
 
             // An abort puts back data and name; a commit keeps them.
             let host: &mut dyn ServerHost = game;
-            let aborted: Result<(), ()> = host.transaction(|host, _| {
+            let aborted: Result<(), TransactionError<()>> = host.transaction(|host, _| {
                 assert!(chest.merge_data(host, compound(stick)).unwrap());
                 assert!(chest.set_name(host, Some("Gone")).unwrap());
                 assert!(chest.set_changed(host).unwrap());
                 Err(())
             });
-            assert_eq!(aborted, Err(()));
+            assert_eq!(aborted, Err(TransactionError::Aborted(())));
             assert_eq!((slot3(game), chest.name(game)), (None, None));
             assert!(game.transactions.is_empty());
             let host: &mut dyn ServerHost = game;
-            let committed: Result<(), ()> = host.transaction(|host, _| {
+            let committed: Result<(), TransactionError<()>> = host.transaction(|host, _| {
                 assert!(chest.merge_data(host, compound(stick)).unwrap());
                 assert!(chest.set_name(host, Some("Kept")).unwrap());
                 Ok(())
@@ -1661,11 +1718,12 @@ mod tests {
             );
 
             // Replacement uses the same journal and restores the original payload on abort.
-            let aborted: Result<(), ()> = (game as &mut dyn ServerHost).transaction(|host, _| {
-                assert!(chest.replace_data(host, compound("{}")).unwrap());
-                Err(())
-            });
-            assert_eq!(aborted, Err(()));
+            let aborted: Result<(), TransactionError<()>> = (game as &mut dyn ServerHost)
+                .transaction(|host, _| {
+                    assert!(chest.replace_data(host, compound("{}")).unwrap());
+                    Err(())
+                });
+            assert_eq!(aborted, Err(TransactionError::Aborted(())));
             assert_eq!(
                 (slot3(game), chest.name(game)),
                 (Some(3), Some("Kept".to_owned()))
@@ -1729,7 +1787,7 @@ mod tests {
             let before = game.world.block_entity_extras(key);
 
             let host: &mut dyn ServerHost = game;
-            let aborted: Result<(), ()> = host.transaction(|host, _| {
+            let aborted: Result<(), TransactionError<()>> = host.transaction(|host, _| {
                 assert!(
                     chest
                         .set_lock(host, Some(compound("{items:\"minecraft:stick\"}")))
@@ -1738,12 +1796,12 @@ mod tests {
                 assert!(chest.merge_data(host, table.clone()).unwrap());
                 Err(())
             });
-            assert_eq!(aborted, Err(()));
+            assert_eq!(aborted, Err(TransactionError::Aborted(())));
             assert_eq!(game.world.block_entity_extras(key), before);
             assert!(game.world.block_lock(key).is_none());
 
             let host: &mut dyn ServerHost = game;
-            let committed: Result<(), ()> = host.transaction(|host, _| {
+            let committed: Result<(), TransactionError<()>> = host.transaction(|host, _| {
                 assert!(chest.merge_data(host, lock.clone()).unwrap());
                 assert!(chest.merge_data(host, table.clone()).unwrap());
                 Ok(())
