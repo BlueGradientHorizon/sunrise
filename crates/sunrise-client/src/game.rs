@@ -1119,8 +1119,12 @@ mod native_chunk_queries;
 #[cfg(test)]
 #[path = "game/modding/native_chunk_relight_tests.rs"]
 mod native_chunk_relight_tests;
+#[path = "game/modding/native_chunk_requests.rs"]
+mod native_chunk_requests;
 #[path = "game/modding/native_chunk_save.rs"]
 mod native_chunk_save;
+#[path = "game/modding/native_chunk_snapshot.rs"]
+mod native_chunk_snapshot;
 #[path = "game/modding/native_claimed_items.rs"]
 mod native_claimed_items;
 #[path = "game/modding/native_client_particles.rs"]
@@ -1187,6 +1191,8 @@ mod native_datafix_tests;
 mod native_datapack_refs;
 #[path = "game/modding/native_death_weapon.rs"]
 mod native_death_weapon;
+#[path = "game/modding/native_detached_generation.rs"]
+mod native_detached_generation;
 #[path = "game/modding/native_dimensions.rs"]
 mod native_dimensions;
 #[path = "game/modding/native_disconnect.rs"]
@@ -1689,6 +1695,8 @@ mod native_ride_player;
 pub(crate) mod native_rotate;
 #[path = "game/modding/native_rule_tests.rs"]
 mod native_rule_tests;
+#[path = "game/modding/native_saved_chunks.rs"]
+mod native_saved_chunks;
 #[path = "game/modding/native_scene.rs"]
 mod native_scene;
 #[path = "game/modding/native_scene_live.rs"]
@@ -4301,6 +4309,12 @@ struct Game<'a> {
     spawn_policies: HashMap<mod_api::DimensionKey, natural_spawning::SpawnPolicy>,
     /// The passages mods registered in each level, and a client's copy (`native_passages.rs`).
     passages: native_passages::Passages,
+    /// Non-blocking server chunk load/generation requests (`native_chunk_requests.rs`).
+    async_chunk_requests: native_chunk_requests::AsyncChunkRequests,
+    /// Open-state flags for `SavedChunkReader` handles per dimension (`native_saved_chunks.rs`).
+    saved_chunk_readers: std::cell::RefCell<HashMap<Dim, Arc<std::sync::atomic::AtomicBool>>>,
+    /// Open detached chunk generators handed out by `LevelRef::detached_generator`.
+    detached_generators: native_detached_generation::DetachedGenerators,
     /// PauseScreen.showPauseMenu (false after F3+Escape).
     pause_menu: bool,
     pause_focus: Option<u8>,
@@ -5959,7 +5973,21 @@ impl Game<'_> {
                 dragon: (self.dimension_type().has_ender_dragon_fight
                     && self.fight.arena_watched())
                 .then_some((0, 0)),
-                viewed: self.viewed_tickets(),
+                viewed: {
+                    let mut viewed = self.viewed_tickets();
+                    if self.streaming.has_async_requests() {
+                        viewed.extend(self.streaming.async_requests().map(|center| {
+                            sunrise_client::ticket_levels::ViewedTicket {
+                                center,
+                                radius: 0,
+                                ticking: false,
+                            }
+                        }));
+                        viewed.sort_unstable();
+                        viewed.dedup();
+                    }
+                    viewed
+                },
                 view_distance: self.settings.render_distance.clamp(2, 32),
                 simulation_distance: self.settings.simulation_distance.max(2),
             }
@@ -14401,6 +14429,9 @@ impl<'a> Game<'a> {
             spawn_counts: HashMap::new(),
             spawn_policies: HashMap::new(),
             passages: Default::default(),
+            async_chunk_requests: Default::default(),
+            saved_chunk_readers: Default::default(),
+            detached_generators: Default::default(),
             pause_menu: true,
             pause_focus: None,
             death_focus: None,
