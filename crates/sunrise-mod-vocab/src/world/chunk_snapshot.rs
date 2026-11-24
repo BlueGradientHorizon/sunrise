@@ -49,6 +49,7 @@ pub trait ChunkSnapshotBackend: Send + Sync + 'static {
 /// live chunk's next block, biome, or light edit to any still-shared section to copy that section
 /// before mutating it.
 // no wire: in-process immutable handle sharing reference-counted section allocations for workers.
+// exhaustive: opaque handle with private backend field; constructed only by the engine.
 #[derive(Clone)]
 pub struct ChunkSnapshot {
     backend: Arc<dyn ChunkSnapshotBackend>,
@@ -153,6 +154,7 @@ impl ChunkSnapshot {
 
 /// Borrowed view of one 16x16x16 vertical section inside a [`ChunkSnapshot`].
 // no wire: borrowed section view into an in-process `ChunkSnapshot`.
+// exhaustive: opaque borrowed view with private fields; constructed only via `ChunkSnapshot::section`.
 #[derive(Clone, Copy)]
 pub struct SectionSnapshot<'a> {
     backend: &'a dyn ChunkSnapshotBackend,
