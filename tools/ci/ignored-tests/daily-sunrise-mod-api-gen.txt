@@ -26,6 +26,16 @@ sunrise-mod-api-gen patch::tests::a_method_moves_into_a_trait_of_its_own_type li
 sunrise-mod-api-gen patch::tests::refusals_are_named lib daily slow
 sunrise-mod-api-gen patch::tests::support_modules_and_bridges_land_in_the_mirror_their_rows_name lib daily slow
 sunrise-mod-api-gen replace::tests::trait_installers_compile_with_warnings_denied lib daily child-process
+sunrise-mod-api-gen replace_resolve_tests::bare_crate_name_requires_extern_crate_self_and_compiles_with_same_named_extern lib daily child-process
+sunrise-mod-api-gen replace_resolve_tests::cfg_gated_local_and_foreign_pathbuf_refused_and_compiles_both_cfgs lib daily child-process
+sunrise-mod-api-gen replace_resolve_tests::duplicate_foreign_format_with_block_local_trait_stages_cleanly lib daily child-process
+sunrise-mod-api-gen replace_resolve_tests::final_declaration_visibility_handles_hidden_and_public_globs_and_private_string lib daily child-process
+sunrise-mod-api-gen replace_resolve_tests::foreign_type_alias_and_test_only_prelude_string_refused_and_compile lib daily child-process
+sunrise-mod-api-gen replace_resolve_tests::namespace_and_definition_identity_fixtures lib daily child-process
+sunrise-mod-api-gen replace_resolve_tests::owner_controls_and_compiled_dispatch_with_same_spelled_decoy_owner lib daily child-process
+sunrise-mod-api-gen replace_resolve_tests::per_slot_reader_and_cell_identity_matches_staged_methods_and_installers lib daily child-process
+sunrise-mod-api-gen replace_resolve_tests::unrelated_restricted_cfg_or_block_local_traits_never_admit_foreign_traits lib daily child-process
+sunrise-mod-api-gen replace_resolve_tests::valid_visibilities_formatting_aliases_and_cross_crate_reexport_bind_and_compile lib daily child-process
 sunrise-mod-api-gen retained_knockback_entries_apply_hook_edits_cancel_and_delegate_once test:knockback_entries daily child-process
 sunrise-mod-api-gen surface::tests::the_real_tree_exports lib daily slow
 sunrise-mod-api-gen tests::fragment_hooks_generate lib daily slow

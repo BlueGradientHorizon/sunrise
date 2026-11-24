@@ -169,6 +169,7 @@ fn binding_of(
 }
 
 #[test]
+#[ignore = "daily"]
 fn cfg_gated_local_and_foreign_pathbuf_refused_and_compiles_both_cfgs() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
@@ -206,6 +207,7 @@ mod subject {
 }
 
 #[test]
+#[ignore = "daily"]
 fn foreign_type_alias_and_test_only_prelude_string_refused_and_compile() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
@@ -250,6 +252,7 @@ mod prelude_subject {
 }
 
 #[test]
+#[ignore = "daily"]
 fn bare_crate_name_requires_extern_crate_self_and_compiles_with_same_named_extern() {
     let dir = tempfile::tempdir().unwrap();
     let out = dir.path().join("rustc-out");
@@ -334,6 +337,7 @@ mod subject {
 }
 
 #[test]
+#[ignore = "daily"]
 fn final_declaration_visibility_handles_hidden_and_public_globs_and_private_string() {
     let dir = tempfile::tempdir().unwrap();
     let out = dir.path().join("rustc-out");
@@ -494,6 +498,7 @@ pub mod subject {
 }
 
 #[test]
+#[ignore = "daily"]
 fn namespace_and_definition_identity_fixtures() {
     let dir = tempfile::tempdir().unwrap();
     let out = dir.path().join("rustc-out");
@@ -609,6 +614,7 @@ mod subject {
 }
 
 #[test]
+#[ignore = "daily"]
 fn owner_controls_and_compiled_dispatch_with_same_spelled_decoy_owner() {
     // Controls: explicit missing path refused, local/explicit precedence, nested pass-through parent.
     assert_eq!(
@@ -750,6 +756,7 @@ fn main() {
 }
 
 #[test]
+#[ignore = "daily"]
 fn unrelated_restricted_cfg_or_block_local_traits_never_admit_foreign_traits() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
@@ -887,6 +894,7 @@ mod local_unsafe_and_cfg {
 }
 
 #[test]
+#[ignore = "daily"]
 fn duplicate_foreign_format_with_block_local_trait_stages_cleanly() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
@@ -939,6 +947,7 @@ fn non_ancestor_restricted_visibility_is_refused() {
 }
 
 #[test]
+#[ignore = "daily"]
 fn valid_visibilities_formatting_aliases_and_cross_crate_reexport_bind_and_compile() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
@@ -1098,6 +1107,7 @@ mod self_import_dep {
 }
 
 #[test]
+#[ignore = "daily"]
 fn per_slot_reader_and_cell_identity_matches_staged_methods_and_installers() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path().join("paired");
