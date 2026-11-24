@@ -238,7 +238,7 @@ fn render_stage_quads(stage: usize, quads: &[Vertex]) -> Option<[[u8; 3]; 3]> {
     });
     let _ = gpu.device.poll(wgpu::PollType::wait_indefinitely());
     rx.recv().unwrap().unwrap();
-    let mapped = slice.get_mapped_range();
+    let mapped = slice.get_mapped_range().unwrap();
     let sample = |x: usize, y: usize| -> [u8; 3] {
         let base = y * stride as usize + x * 4;
         [mapped[base], mapped[base + 1], mapped[base + 2]]

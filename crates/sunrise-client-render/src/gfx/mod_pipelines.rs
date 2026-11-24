@@ -1197,14 +1197,14 @@ mod tests {
             primitives.pipelines.pipelines[0]
                 .as_ref()
                 .unwrap()
-                .1
+                .texture
                 .is_some()
         );
         assert!(
             primitives.pipelines.pipelines[3]
                 .as_ref()
                 .unwrap()
-                .1
+                .texture
                 .is_none()
         );
         let mut vertices = Vec::new();

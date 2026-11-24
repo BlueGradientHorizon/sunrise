@@ -47,6 +47,7 @@ pub trait PackPostExt: Sized {
     );
     /// Runs the pack over the world drawn into `world` (colour) and `world_depth`, then draws
     /// the result onto `screen`. Fails once the device is lost (`lost`).
+    #[cfg(test)]
     #[allow(clippy::too_many_arguments)]
     fn run(
         &mut self,
