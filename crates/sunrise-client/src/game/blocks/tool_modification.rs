@@ -5,15 +5,17 @@ use sunrise_client::items::ItemStack;
 use sunrise_world::registry::BlockStateId;
 
 impl Game<'_> {
-    /// [`Self::mod_tool_modification`] for this player's `stack` doing `ability` to the block
-    /// `hit` names, `state` being vanilla's answer: what the block becomes, `None` when nothing
-    /// does or the action was cancelled. Without a listener, `state` stands.
+    /// [`Self::mod_tool_modification`] for `stack` doing `ability` to the block `hit` names,
+    /// held by this player (`by_player`) or by none (a dispenser), `state` being vanilla's
+    /// answer: what the block becomes, `None` when nothing does or the action was cancelled.
+    /// Without a listener, `state` stands.
     pub(in crate::game) fn hit_tool_modification(
         &self,
         hit: &Hit,
         stack: &ItemStack,
         ability: mod_api::ToolAbility,
         state: Option<BlockStateId>,
+        by_player: bool,
     ) -> Option<BlockStateId> {
         let block = self.world.block(hit.pos[0], hit.pos[1], hit.pos[2]);
         if !mod_api::__private::listened(mod_api::HookId::BlockToolModification)
@@ -25,7 +27,7 @@ impl Game<'_> {
             return state;
         }
         let tool = mod_api::ToolUse::from(mod_api::__private::built::ToolUse {
-            player: self.player.is_some().then(|| self.own_entity_id() as u32),
+            player: (by_player && self.player.is_some()).then(|| self.own_entity_id() as u32),
             hand: self.hand,
             pos: hit.pos,
             face: hit.face,
@@ -39,30 +41,34 @@ impl Game<'_> {
         if cancel { None } else { state }
     }
 
-    /// `FlintAndSteelItem.useOn` / `FireChargeItem.useOn`'s `getToolModifiedState(context,
-    /// FIRESTARTER_LIGHT)`: the lit state of the campfire, candle or candle cake `hit` names
+    /// `FlintAndSteelItem.useOn` / `FireChargeItem.useOn`'s (and the flint and steel dispense
+    /// behaviour's) `getToolModifiedState(context, FIRESTARTER_LIGHT)`: when `stack` answers
+    /// `firestarter_light`, the lit state of the campfire, candle or candle cake `hit` names
     /// (`canLight`), then the block's parts and `block_tool_modification`. `None` places fire
-    /// at the face instead.
+    /// at the face instead. `by_player` as [`Self::hit_tool_modification`] takes it.
     pub(in crate::game) fn fire_starter_lit(
         &self,
         hit: &Hit,
         stack: &ItemStack,
+        by_player: bool,
     ) -> sunrise_client::Result<Option<BlockStateId>> {
         let clicked = self.world.block(hit.pos[0], hit.pos[1], hit.pos[2]);
         let name = self.res.facts().get(clicked).name.clone();
-        let vanilla = if self.can_light(clicked, &name) {
-            let registry = self.pack.assets.registry;
-            let mut state = registry
-                .state(clicked)
-                .cloned()
-                .ok_or("missing lit block state")?;
-            state.properties.insert("lit".into(), "true".into());
-            Some(registry.resolve(&state)?)
-        } else {
-            None
-        };
+        let lights = super::item_abilities::ability::FIRESTARTER_LIGHT;
+        let vanilla =
+            if self.stack_can_perform(stack, lights, true) && self.can_light(clicked, &name) {
+                let registry = self.pack.assets.registry;
+                let mut state = registry
+                    .state(clicked)
+                    .cloned()
+                    .ok_or("missing lit block state")?;
+                state.properties.insert("lit".into(), "true".into());
+                Some(registry.resolve(&state)?)
+            } else {
+                None
+            };
         let light = mod_api::ToolAbility::FirestarterLight;
-        Ok(self.hit_tool_modification(hit, stack, light, vanilla))
+        Ok(self.hit_tool_modification(hit, stack, light, vanilla, by_player))
     }
 
     /// What the tool action `tool` makes of the block `block`: `state` starts with vanilla's

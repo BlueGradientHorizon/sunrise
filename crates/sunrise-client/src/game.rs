@@ -10107,7 +10107,7 @@ impl Game<'_> {
             if !self.may_build() && !self.can_place_on_in_adventure(hit.pos) {
                 return Ok(UseResult::Fail);
             }
-            if let Some(lit) = self.fire_starter_lit(&hit, stack)? {
+            if let Some(lit) = self.fire_starter_lit(&hit, stack, true)? {
                 self.level_set(hit.pos, lit)?;
                 let sound = if item == "fire_charge" {
                     "minecraft:item.firecharge.use"

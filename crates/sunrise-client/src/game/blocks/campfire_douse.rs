@@ -64,7 +64,13 @@ impl Game<'_> {
         stack: &ItemStack,
         unlit: sunrise_world::registry::BlockStateId,
     ) -> Option<sunrise_world::registry::BlockStateId> {
-        self.hit_tool_modification(hit, stack, mod_api::ToolAbility::ShovelDouse, Some(unlit))
+        self.hit_tool_modification(
+            hit,
+            stack,
+            mod_api::ToolAbility::ShovelDouse,
+            Some(unlit),
+            true,
+        )
     }
 
     /// `CampfireBlock.useItemOn` with `held` in the hand that acts, the block

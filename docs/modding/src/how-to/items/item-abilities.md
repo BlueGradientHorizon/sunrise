@@ -24,17 +24,17 @@ The game asks these abilities at the following action sites; `host.items().item_
 | Ability | Consumers |
 | --- | --- |
 | `brush_brush` | Brushing a scute off an armadillo. |
-| `firestarter_light` | Priming TNT. |
-| `fishing_rod_cast` | A cast line staying out while a hand holds the stack, and the line drawn from that hand. |
+| `firestarter_light` | Priming TNT; lighting a campfire, candle or candle cake, by hand or from a dispenser. |
+| `fishing_rod_cast` | A cast line staying out while a hand holds the stack, and the line drawn from that hand, for this player and others. |
 | `shears_carve` | Pumpkin carving. |
 | `shears_dig` | A mined block wearing the stack as shears wear (every block but fire). |
 | `shears_disarm` | Disarming a tripwire before breaking it. |
-| `shears_harvest` | Shearing sheep, mooshrooms, snow golems and bogged; dispenser shearing; harvesting bee nest honeycombs. |
-| `shears_remove_armor` | Shearing a saddle, a llama's carpet, a happy ghast's harness or a sulfur cube's block off. |
+| `shears_harvest` | Shearing sheep, mooshrooms, snow golems, copper golems and bogged; cutting the leads of a mob, a boat or a knot; dispenser shearing; harvesting bee nest honeycombs. |
+| `shears_remove_armor` | Shearing a saddle, a llama's carpet, a happy ghast's harness, a sulfur cube's block or a wolf's armor off. |
 | `shears_trim` | Cropping the tip of kelp, weeping, twisting or cave vines so it stops growing. |
 | `shield_block` | Raising a blocking item and blocking attacks. |
 | `shovel_douse` | Putting out a lit campfire. |
-| `spyglass_scope` | The zoom, overlay and slower look of the item in use, on the client and the server. |
+| `spyglass_scope` | The zoom, overlay and slower look of the item in use, and an avatar holding it to the eye, on the client and the server. |
 | `sword_sweep` | A charged, grounded hit sweeping its neighbours, on the client and the server. |
 | `trident_throw` | A trident's throw: a denial stops it; a grant gives no other item a throw. |
 

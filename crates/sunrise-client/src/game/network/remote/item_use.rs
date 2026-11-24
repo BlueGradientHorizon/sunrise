@@ -30,7 +30,8 @@ impl Game<'_> {
         {
             return true;
         }
-        if let Ok(Some(lit_state)) = self.with_hand(hand, |g| g.fire_starter_lit(hit, stack)) {
+        if let Ok(Some(lit_state)) = self.with_hand(hand, |g| g.fire_starter_lit(hit, stack, true))
+        {
             let pos = sunrise_core::position::BlockPos::new(hit.pos[0], hit.pos[1], hit.pos[2]);
             self.predict_blocks(&[(pos, lit_state)], seq);
             let at = [

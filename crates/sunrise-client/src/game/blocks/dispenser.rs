@@ -1464,6 +1464,19 @@ impl Game<'_> {
             }
             return Ok((self.hurt_and_break(stack, 1), CLICK));
         }
+        // getToolModifiedState(FIRESTARTER_LIGHT) on a hit at the target's centre, from the
+        // dispenser's side, with no player.
+        let hit = super::Hit {
+            pos: [target.0, target.1, target.2],
+            face: facing.opposite().normal(),
+            point: [
+                f64::from(target.0) + 0.5,
+                f64::from(target.1) + 0.5,
+                f64::from(target.2) + 0.5,
+            ],
+            inside: false,
+        };
+        let lit = self.fire_starter_lit(&hit, &stack, false)?;
         if self
             .with_level(|b, level, ticks| b.fire_can_be_placed_at(level, ticks, target_pos, facing))
         {
@@ -1479,10 +1492,8 @@ impl Game<'_> {
                 None,
                 None,
             );
-        } else if self.can_light(state, &name) {
-            if let Some(lit) = self.with_props(state, &[("lit", "true")]) {
-                self.level_set([target.0, target.1, target.2], lit)?;
-            }
+        } else if let Some(lit) = lit {
+            self.level_set([target.0, target.1, target.2], lit)?;
             self.post_block_game_event(
                 "minecraft:block_change",
                 [target.0, target.1, target.2],

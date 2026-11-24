@@ -12,17 +12,19 @@ pub trait Hooks {
     /// vanilla checks the item for an action: a raised item blocking attacks
     /// (`shield_block`: a granted stack blocks as a bare
     /// `blocks_attacks` component does, a denied one never blocks nor is raised);
-    /// shearing a sheep, mooshroom, snow golem or bogged, a dispenser's shears
-    /// and a bee nest's honeycombs (`shears_harvest`); carving a pumpkin
-    /// (`shears_carve`); shearing a mob's saddle, carpet, harness or body block off
+    /// shearing a sheep, mooshroom, snow golem, copper golem or bogged, cutting a
+    /// mob's, boat's or knot's leads, a dispenser's shears and a bee nest's
+    /// honeycombs (`shears_harvest`); carving a pumpkin (`shears_carve`); shearing a
+    /// mob's saddle, carpet, harness, body block or wolf armor off
     /// (`shears_remove_armor`); cropping a growing plant's tip (`shears_trim`);
     /// disarming a broken tripwire (`shears_disarm`); a mined block's wear as shears
-    /// wear (`shears_dig`); brushing an armadillo (`brush_brush`); priming TNT
+    /// wear (`shears_dig`); brushing an armadillo (`brush_brush`); priming TNT and
+    /// lighting a campfire, candle or candle cake, by hand or from a dispenser
     /// (`firestarter_light`); putting out a campfire (`shovel_douse`); a cast line
-    /// staying out and drawn from the hand (`fishing_rod_cast`); a trident's throw
+    /// staying out and drawn from the hand, a player's or another's (`fishing_rod_cast`); a trident's throw
     /// (`trident_throw`, a trident's own use, so only a denial counts); a charged
-    /// grounded hit sweeping (`sword_sweep`); and the spyglass's zoom, overlay and
-    /// view (`spyglass_scope`, of the item in use). It decides whether the stack may do the action,
+    /// grounded hit sweeping (`sword_sweep`); and the spyglass's zoom, overlay, view
+    /// and held-to-the-eye pose (`spyglass_scope`, of the item in use). It decides whether the stack may do the action,
     /// not what the action does to the world or the tool (`block_tool_modification`
     /// is the block's side of a tool action; item wear is its own). Only the
     /// `ItemPart`s attached to `stack`'s item are asked, on both sides, so the

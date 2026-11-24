@@ -258,8 +258,11 @@ fn without_parts_the_vanilla_item_checks_stand() {
     });
 }
 
-/// The abilities [`Lights`] heard `block_tool_modification` ask.
-static HEARD: std::sync::Mutex<Vec<mod_api::ToolAbility>> = std::sync::Mutex::new(Vec::new());
+/// The abilities [`Lights`] heard `block_tool_modification` ask, and whether a player acted.
+static HEARD: std::sync::Mutex<Vec<(mod_api::ToolAbility, bool)>> =
+    std::sync::Mutex::new(Vec::new());
+/// What `host.items().item_abilities()` answered [`Lights`].
+static LISTED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
 /// Where [`Lights`] takes every tool's answer away.
 const REFUSED: [i32; 3] = [6, 64, 8];
 
@@ -277,10 +280,14 @@ impl Hooks for Lights {
     }
     fn block_tool_modification(
         &self,
-        _: &dyn Host,
+        host: &dyn Host,
         event: &mut mod_api::BlockToolModificationEvent<'_>,
     ) -> mod_api::Flow {
-        HEARD.lock().unwrap().push(event.tool.ability);
+        HEARD
+            .lock()
+            .unwrap()
+            .push((event.tool.ability, event.tool.player.is_some()));
+        *LISTED.lock().unwrap() = host.items().item_abilities();
         if event.tool.pos == REFUSED {
             *event.final_state = None;
         }
@@ -300,8 +307,9 @@ fn grounded(game: &mut Game<'_>) {
 
 /// A part granting a blaze rod `sword_sweep` and `shears_trim` sweeps and trims with it, one
 /// denying a diamond sword `sword_sweep` stops its sweep on the server and the client, a fire
-/// starter lighting a campfire asks `block_tool_modification` with `FirestarterLight`, and
-/// the host lists the fourteen abilities.
+/// starter lighting a campfire by hand or from a dispenser asks `block_tool_modification` with
+/// `FirestarterLight`, a fire charge denied `firestarter_light` lights nothing, and the host
+/// lists the fourteen abilities.
 #[test]
 #[ignore = "daily"]
 fn parts_answer_the_abilities_at_every_site() {
@@ -325,6 +333,11 @@ fn parts_answer_the_abilities_at_every_site_isolated() {
                 item: "minecraft:diamond_sword",
                 grants: &[],
                 denies: &[ability::SWORD_SWEEP],
+            },
+            Abilities {
+                item: "minecraft:fire_charge",
+                grants: &[],
+                denies: &[ability::FIRESTARTER_LIGHT],
             },
         ])),
     )]
@@ -385,20 +398,36 @@ fn parts_answer_the_abilities_at_every_site_isolated() {
             HEARD.lock().unwrap().clear();
             let flint = ItemStack::new("minecraft:flint_and_steel", 1);
             let lit = game
-                .fire_starter_lit(&hit([6, 64, 6]), &flint)
+                .fire_starter_lit(&hit([6, 64, 6]), &flint, true)
                 .unwrap()
                 .unwrap();
             assert_eq!(registry.state(lit).unwrap().properties["lit"], "true");
-            assert_eq!(game.fire_starter_lit(&hit(REFUSED), &flint).unwrap(), None);
+            assert_eq!(
+                game.fire_starter_lit(&hit(REFUSED), &flint, true).unwrap(),
+                None
+            );
+            // Denied `firestarter_light`, a fire charge lights nothing; the listener still hears.
+            let charge = ItemStack::new("minecraft:fire_charge", 1);
+            assert_eq!(
+                game.fire_starter_lit(&hit([6, 64, 6]), &charge, true)
+                    .unwrap(),
+                None
+            );
+            // A dispenser's flint and steel lights through the same hook, with no player.
+            game.world.set(10, 64, 6, unlit).unwrap();
+            let _ = game
+                .dispense_item((9, 64, 6), Direction::East, flint)
+                .unwrap();
+            let dispensed = registry.state(game.world.block(10, 64, 6)).unwrap();
+            assert_eq!(dispensed.properties["lit"], "true");
+            let light = mod_api::ToolAbility::FirestarterLight;
             assert_eq!(
                 *HEARD.lock().unwrap(),
-                [mod_api::ToolAbility::FirestarterLight; 2]
+                [(light, true), (light, true), (light, true), (light, false)]
             );
 
-            let mut listed = game.item_abilities();
-            listed.sort();
             assert_eq!(
-                listed,
+                *LISTED.lock().unwrap(),
                 [
                     "brush_brush",
                     "firestarter_light",
