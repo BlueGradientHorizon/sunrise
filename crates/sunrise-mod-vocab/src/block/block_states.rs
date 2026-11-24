@@ -2,8 +2,9 @@
 //! Queries consume owned API block states, never world numeric IDs. Both sides read the
 //! game's published tables and borrow their property definitions.
 use crate::{
-    BlockKey, BlockMetadata, BlockSoundType, BlockState, BlockStateError, BlockStateRange, Host,
-    LevelReadError, PushReaction, host::block_states::BlockStatesBackend,
+    BlockKey, BlockLanding, BlockMetadata, BlockSoundType, BlockState, BlockStateError,
+    BlockStateRange, Host, LevelReadError, PathType, PushReaction, StateCollision,
+    host::block_states::BlockStatesBackend,
 };
 
 // no wire: borrows a name and values from the host's state definition.
@@ -248,10 +249,19 @@ impl BlockStatesBackend for NoBlockTables {
     fn block_state_friction(&self, _: BlockState) -> Option<f32> {
         None
     }
+    fn block_state_collision(&self, _: BlockState) -> Option<StateCollision> {
+        None
+    }
     fn block_state_speed_factor(&self, _: BlockState) -> Option<f32> {
         None
     }
     fn block_state_jump_factor(&self, _: BlockState) -> Option<f32> {
+        None
+    }
+    fn block_state_landing(&self, _: BlockState) -> Option<BlockLanding> {
+        None
+    }
+    fn block_state_path_type(&self, _: BlockState) -> Option<PathType> {
         None
     }
     fn block_state_is_solid_render(&self, _: BlockState) -> Option<bool> {
@@ -446,6 +456,26 @@ impl BlockStates<'_> {
     /// `block_jump_factor` hook's. None as for `replaceable`.
     pub fn jump_factor(&self, state: BlockState) -> Option<f32> {
         self.backend.block_state_jump_factor(state)
+    }
+    /// The state's collision boxes with an empty collision context, in block-local
+    /// coordinates (`[min_x, min_y, min_z, max_x, max_y, max_z]`; a box may leave the cell, as a
+    /// fence's reaches y 1.5), and whether they hold at every position ([`StateCollision`]).
+    /// None as for `replaceable`.
+    pub fn collision(&self, state: BlockState) -> Option<StateCollision> {
+        self.backend.block_state_collision(state)
+    }
+    /// The bounce restitution and fall-distance reduction `state`'s block declares
+    /// (`BlockBehaviour.Properties`): 0.75 and 0.5 for beds and the shelf mushroom, a bounce of 1.0
+    /// for slime, 0 for most blocks. Not what a block part's `bounce_restitution` answers or a
+    /// custom `fallOn` does (hay's lighter fall damage). None as for `replaceable`.
+    pub fn landing(&self, state: BlockState) -> Option<BlockLanding> {
+        self.backend.block_state_landing(state)
+    }
+    /// The state's walking path type (`WalkNodeEvaluator.getPathTypeFromState`) after the block
+    /// parts' `isPathfindable` answers, without per-position overrides or neighbour rules.
+    /// None as for `replaceable`.
+    pub fn path_type(&self, state: BlockState) -> Option<PathType> {
+        self.backend.block_state_path_type(state)
     }
     /// `BlockState.isSolidRender()`: whether the state is a full, occluding cube for rendering
     /// and light (stone yes; glass, leaves and slabs no). This is not redstone conduction.

@@ -19,15 +19,9 @@ impl Game<'_> {
         world: &sunrise_client::world::World,
         pos: [i32; 3],
     ) -> Vec<[f64; 6]> {
-        self.block_collision_shape_in(world, pos)
-            .boxes()
-            .iter()
-            .map(|bounds| {
-                let min = bounds.min_position();
-                let max = bounds.max_position();
-                [min.x, min.y, min.z, max.x, max.y, max.z]
-            })
-            .collect()
+        crate::game::native_block_tables::voxel_shape_boxes(
+            &self.block_collision_shape_in(world, pos),
+        )
     }
     /// The areas the game itself draws beside the open screen's window: the
     /// container build's, or the frame's own arithmetic with no build yet.
