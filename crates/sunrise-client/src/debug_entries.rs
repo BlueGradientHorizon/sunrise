@@ -891,7 +891,10 @@ mod tests {
             );
 
             let groups: Vec<_> = mod_lines(&entries, &host, &selection, true, false).collect();
-            assert_eq!(groups, [("memory".into(), vec!["Tick cost: 3 ms".to_owned()])]);
+            assert_eq!(
+                groups,
+                [("memory".into(), vec!["Tick cost: 3 ms".to_owned()])]
+            );
             assert_eq!(current_native_mod(), None);
         });
     }
