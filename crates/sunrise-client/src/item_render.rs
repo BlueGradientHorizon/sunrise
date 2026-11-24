@@ -2712,8 +2712,8 @@ mod tests {
     }
     #[test]
     fn a_stack_whose_copies_do_not_spread_draws_once_in_its_pose() {
-        let pose = Mat4::from_translation(glam::Vec3::new(1.0, 2.0, 3.0))
-            * Mat4::from_rotation_y(0.7);
+        let pose =
+            Mat4::from_translation(glam::Vec3::new(1.0, 2.0, 3.0)) * Mat4::from_rotation_y(0.7);
         let amount = rendered_amount(8);
         for depth in [0.0625, 0.5] {
             assert_eq!(dropped_copy_poses(pose, amount, 42, depth, false), [pose]);
