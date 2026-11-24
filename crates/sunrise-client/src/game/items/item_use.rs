@@ -282,15 +282,19 @@ impl Game<'_> {
         let hand = hand_of(Some((slot, 0))).unwrap_or(self.hand);
         self.native_living_entity_use_item_finish(stack, None, hand, 0, &mut result);
         let before = self.creative_stacks();
-        if !self.creative && stack.count == 1 && self.consumable(stack).is_some() {
-            if self.stack_in(slot) != Some(stack) {
-                return;
+        'write: {
+            if !self.creative && stack.count == 1 && self.consumable(stack).is_some() {
+                // A listener replaced the used-up stack: its stack stays, and only the
+                // hand write is skipped. `stopUsingItem` still ends the use below.
+                if self.stack_in(slot) != Some(stack) {
+                    break 'write;
+                }
+                *self.stack_in_mut(slot) = None;
+                self.player_item_destroyed(stack, Some(hand));
             }
-            *self.stack_in_mut(slot) = None;
-            self.player_item_destroyed(stack, Some(hand));
+            *self.stack_in_mut(slot) = result.filter(|s| s.count > 0);
+            self.remote_synced_since(&before);
         }
-        *self.stack_in_mut(slot) = result.filter(|s| s.count > 0);
-        self.remote_synced_since(&before);
         self.stopped_using(stack, None, hand, 0);
     }
     /// What `Item.finishUsingItem` leaves in the hand on a server's client: a
