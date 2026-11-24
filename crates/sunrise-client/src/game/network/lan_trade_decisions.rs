@@ -657,7 +657,7 @@ impl Game<'_> {
                 pitch,
             });
         } else {
-            self.audio.play(sound, Some(at), 1.0, pitch);
+            self.play_audio(sound, Some(at), 1.0, pitch);
         }
     }
 

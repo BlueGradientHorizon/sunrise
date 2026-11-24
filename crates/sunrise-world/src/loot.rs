@@ -1226,6 +1226,40 @@ impl LootData {
         *random = c.random;
         items
     }
+    /// One loot condition tested with no table around it, as an advancement's `player`
+    /// predicate does: `entity` is `this_entity`, `place` the level and origin. A parameter the
+    /// caller lacks (a damage source, a tool, a block state) makes the conditions that read it
+    /// fail, as a context without it does. `random` is advanced by the draws.
+    pub fn condition_holds<R: RandomSource + Clone>(
+        &self,
+        condition: &Value,
+        entity: Option<&LootEntity>,
+        place: LootPlace,
+        random: &mut R,
+    ) -> bool {
+        let facts = entity.map(|this| EntityFacts {
+            this,
+            damage: None,
+            player: None,
+            attacker: None,
+        });
+        let mut c = Context {
+            query: query::current_query(),
+            place: Some(Arc::new(place)),
+            data: self,
+            local_bindings: None,
+            random: random.clone(),
+            biome: None,
+            visited: Vec::new(),
+            luck: 0.0,
+            open_water: None,
+            entity: facts,
+            enchanted_level: None,
+        };
+        let holds = c.condition(condition);
+        *random = c.random;
+        holds
+    }
     /// LootTable.getRandomItems with an empty context (a trial spawner's
     /// reward): the stacks after the stack splitter. `random` is the table's
     /// random sequence (or the level random) and is advanced.
@@ -1370,6 +1404,30 @@ struct Context<'a, R> {
     /// Asked for a death's enchantment levels; None for every other roll.
     enchanted_level: Option<&'a mut EnchantedLevel<'a, R>>,
 }
+/// A range predicate written as `{min?, max?}`, not as a single provider.
+/// `TimeCheck.test`'s ticks: the named clock's total in `place`'s level, modulo the condition's
+/// period. `None` when the level has no such clock or the period is zero: the check never holds.
+pub fn time_check_ticks(place: Option<&LootPlace>, condition: &Value) -> Option<i64> {
+    let total = place?
+        .level
+        .as_ref()?
+        .clocks
+        .get(condition["clock"].as_str()?)
+        .copied()?;
+    match condition["period"].as_i64() {
+        Some(0) => None,
+        Some(period) => Some(total.wrapping_rem(period)),
+        None => Some(total),
+    }
+}
+
+fn is_line(range: &Value) -> bool {
+    range.as_object().is_some_and(|o| !o.contains_key("type"))
+}
+/// A line with neither bound.
+fn is_open_range(range: &Value) -> bool {
+    is_line(range) && range["min"].is_null() && range["max"].is_null()
+}
 type Sink<'s, R> = dyn FnMut(&mut Context<'_, R>, LootStack) + 's;
 
 #[derive(Clone, Copy)]
@@ -1507,6 +1565,25 @@ impl<R: RandomSource> Context<'_, R> {
             _ => 0.,
         }
     }
+    /// `IntRangePredicate.test`: a bare provider is a point, an object with no `type` a line
+    /// whose bounds are providers read lowest first.
+    fn int_in_range(&mut self, range: &Value, input: i32) -> bool {
+        if is_line(range) {
+            (range["min"].is_null() || input >= self.int(&range["min"]))
+                && (range["max"].is_null() || input <= self.int(&range["max"]))
+        } else {
+            input == self.int(range)
+        }
+    }
+    /// `FloatRangePredicate.test`, as `int_in_range`.
+    fn float_in_range(&mut self, range: &Value, input: f32) -> bool {
+        if is_line(range) {
+            (range["min"].is_null() || input >= self.float(&range["min"]))
+                && (range["max"].is_null() || input <= self.float(&range["max"]))
+        } else {
+            input == self.float(range)
+        }
+    }
     fn condition(&mut self, c: &Value) -> bool {
         self.condition_with_bindings(c, self.local_bindings)
     }
@@ -1611,6 +1688,42 @@ impl<R: RandomSource> Context<'_, R> {
                             };
                             direct == want
                         })
+                }
+                // WeatherCheck: the level's rain and thunder (false without a level).
+                "minecraft:weather_check" => {
+                    let Some(level) = self.place.as_deref().and_then(|p| p.level.as_ref()) else {
+                        return false;
+                    };
+                    let (raining, thundering) = (level.raining, level.thundering);
+                    c["raining"].as_bool().is_none_or(|want| want == raining)
+                        && c["thundering"]
+                            .as_bool()
+                            .is_none_or(|want| want == thundering)
+                }
+                // TimeCheck: the clock's total ticks, modulo the period, in the range. A clock
+                // the level does not have never matches.
+                "minecraft:time_check" => {
+                    let Some(time) = time_check_ticks(self.place.as_deref(), c) else {
+                        return false;
+                    };
+                    self.int_in_range(&c["value"], time as i32)
+                }
+                "minecraft:int_value_check" => {
+                    let range = &c["test"];
+                    // A range with no bound holds without reading the value, as `Line.test` does.
+                    if is_open_range(range) {
+                        return true;
+                    }
+                    let input = self.int(&c["value"]);
+                    self.int_in_range(range, input)
+                }
+                "minecraft:float_value_check" => {
+                    let range = &c["test"];
+                    if is_open_range(range) {
+                        return true;
+                    }
+                    let input = self.float(&c["value"]);
+                    self.float_in_range(range, input)
                 }
                 "minecraft:random_chance" => {
                     let chance = self.float(&c["chance"]);

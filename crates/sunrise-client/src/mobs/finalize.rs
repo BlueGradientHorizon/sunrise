@@ -25,7 +25,7 @@ use super::{
 use crate::{
     enchant::Enchantments,
     items::{ItemStack, Items},
-    living_attributes::EquipmentDelta,
+    living_attributes::EquipmentDeltas,
 };
 use serde_json::Value;
 use std::{borrow::Cow, fs, path::Path, sync::Arc};
@@ -1422,21 +1422,21 @@ pub fn detect_equipment_updates(
     if m.extra.equipment.is_empty() && !m.extra.live.has_worn() {
         return None;
     }
-    let mut changed = EquipmentSlot::ALL.into_iter().filter_map(|slot| {
-        let change = changed_equipment_slot(m, slot)?;
-        Some((slot, change.current))
-    });
-    let first = changed.next();
-    if let Some((slot, _)) = first.as_ref()
-        && notify()
-    {
-        return Some(*slot);
+    let mut deltas = EquipmentDeltas::default();
+    let mut notify = Some(notify);
+    let mut first = None;
+    for slot in EquipmentSlot::ALL {
+        let Some(change) = changed_equipment_slot(m, slot) else {
+            continue;
+        };
+        if first.is_none() {
+            first = Some(slot);
+            if notify.take().is_some_and(|notify| notify()) {
+                return first;
+            }
+        }
+        deltas.set(slot, change.current.map(|read| read.project().into_owned()));
     }
-    let deltas = first
-        .into_iter()
-        .chain(changed)
-        .map(|(slot, current)| (slot, current.map(|read| read.project().into_owned())))
-        .collect();
     finish_equipment_tick(m, catalog, items, deltas);
     None
 }
@@ -1454,7 +1454,7 @@ pub fn finish_equipment_tick(
     m: &mut Mob,
     catalog: &Arc<Catalog>,
     items: &Items,
-    deltas: Vec<EquipmentDelta>,
+    deltas: EquipmentDeltas,
 ) {
     super::armor::prepare(m, catalog);
     if deltas.is_empty() && !m.extra.live.has_pending_equipment() {

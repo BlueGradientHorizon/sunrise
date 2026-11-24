@@ -7,39 +7,27 @@ pub mod tests {
     use crate::parts::tests::*;
     use crate::*;
 
-    /// The types mods name to `entity_tick_each` are told one at a time, every type once a mod
-    /// names them all, and a type that is not a namespaced id refuses the registration.
-    #[test]
-    fn entity_tick_each_names_the_declared_types() {
-        let mut registrar = crate::parts::PartRegistrar::new("first");
-        registrar.entity_tick_each("minecraft:zombie");
-        registrar.mod_id = "second";
-        registrar.entity_tick_each("mymod:golem");
-        registrar.entity_tick_each("minecraft:zombie");
-        registrar.entity_tick_each("Zombie");
-        assert_eq!(registrar.refused.len(), 1);
-        let each = mod_vocab::__private::EntityTickEach::of(&registrar.entity_tick_each);
-        assert!(each.names("minecraft:zombie") && each.names("mymod:golem"));
-        assert!(!each.names("minecraft:item") && !each.all());
-        registrar.entity_tick_each_entity();
-        let every = mod_vocab::__private::EntityTickEach::of(&registrar.entity_tick_each);
-        assert!(every.all() && every.names("minecraft:item"));
-        assert!(!mod_vocab::__private::EntityTickEach::of(&[]).any());
-    }
-
     #[test]
     pub(crate) fn entity_parts_refuse_unnamespaced_ids_and_doubles() {
         struct Once;
         #[mod_api::sunrise_part]
         impl super::EntityPart for Once {
-            fn register_goals(&self, event: &mut crate::RegisterGoalsEvent<'_, '_>) {
+            fn register_goals(
+                &self,
+                _host: &dyn Host,
+                event: &mut crate::RegisterGoalsEvent<'_, '_>,
+            ) {
                 let _ = event;
             }
         }
         struct Twice;
         #[mod_api::sunrise_part]
         impl super::EntityPart for Twice {
-            fn register_goals(&self, event: &mut crate::RegisterGoalsEvent<'_, '_>) {
+            fn register_goals(
+                &self,
+                _host: &dyn Host,
+                event: &mut crate::RegisterGoalsEvent<'_, '_>,
+            ) {
                 let _ = event;
             }
         }
@@ -233,21 +221,5 @@ impl EntitiesRegistrar for PartRegistrar {
         provider: NativeCapabilityProvider,
     ) {
         self.capability(name, ProviderTarget::Entity(kind), before_game, provider);
-    }
-
-    fn entity_tick_each(&mut self, entity: &str) {
-        if crate::Identifier::parse_namespaced(entity).is_none() {
-            let message = format!(
-                "mod {} entity_tick_each {entity:?}: lowercase resource-id namespace and path required",
-                self.mod_id
-            );
-            self.refused.push(message);
-            return;
-        }
-        self.entity_tick_each.push(Some(entity.to_owned()));
-    }
-
-    fn entity_tick_each_entity(&mut self) {
-        self.entity_tick_each.push(None);
     }
 }

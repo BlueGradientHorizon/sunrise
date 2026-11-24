@@ -10,9 +10,35 @@ impl Game<'_> {
     /// edits persist if this server saves the player.
     pub(in crate::game) fn native_departing_guest_logout(
         &mut self,
-        mut guest: Box<Guest>,
+        guest: Box<Guest>,
     ) -> Box<Guest> {
-        let (conn, uuid, name) = (guest.conn, guest.uuid, guest.name.clone());
+        let (uuid, name) = (guest.uuid, guest.name.clone());
+        self.with_relisted_departing_guest(guest, |game| game.native_player_logged_out(uuid, &name))
+    }
+
+    /// `PlayerContainerEvent.Close` for the menu a departing guest held when their level could
+    /// not be entered: told once, with no live menu handle (the level and its storage are
+    /// unavailable), before the tracked menu is forgotten.
+    pub(in crate::game) fn native_departing_guest_menu_closed(
+        &mut self,
+        guest: Box<Guest>,
+        window: i32,
+        generation: u64,
+    ) -> Box<Guest> {
+        let conn = guest.conn;
+        self.with_relisted_departing_guest(guest, |game| {
+            game.player_menu_closing(conn, window, generation)
+        })
+    }
+
+    /// Run `tell` with the departing guest listed in join order and reachable as online
+    /// (`Hub::departing`), then take them out again.
+    fn with_relisted_departing_guest(
+        &mut self,
+        mut guest: Box<Guest>,
+        tell: impl FnOnce(&mut Self),
+    ) -> Box<Guest> {
+        let conn = guest.conn;
         let Some(host) = self.lan.as_mut() else {
             return guest;
         };
@@ -26,7 +52,7 @@ impl Game<'_> {
             .map_or(0, |i| i + 1);
         host.hub.guests.insert(at, *guest);
         host.hub.departing = Some(conn);
-        self.native_player_logged_out(uuid, &name);
+        tell(self);
         let Some(host) = self.lan.as_mut() else {
             unreachable!("LanHost dropped inside a tick; closes are deferred")
         };

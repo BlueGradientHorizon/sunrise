@@ -4617,8 +4617,15 @@ pub(crate) mod tests {
             fall: key("block.stone.fall"),
         };
         let step = |context: &LoopContext, kind: &str, cause| {
+            let world = crate::world::World::new(sunrise_world::registry::BlockStateId(0), 0);
             let answer = crate::block_sounds::native_sound_type(
-                context,
+                crate::motion::FrictionLevel {
+                    context,
+                    world: &world,
+                    registry: crate::test_fixtures::air_registry(),
+                    side: crate::motion::dry_side(),
+                    coefficient: &|_| None,
+                },
                 sunrise_core::position::BlockPos::new(0, 0, 0),
                 sunrise_world::registry::BlockStateId(0),
                 Some((1, kind)),

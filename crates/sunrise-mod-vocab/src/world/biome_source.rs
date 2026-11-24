@@ -34,13 +34,20 @@ pub(crate) struct BiomeSourceInfo {
     pub(crate) id: Box<str>,
     pub(crate) biomes: Vec<BiomeKey>,
     pub(crate) source: Arc<dyn BiomeSource>,
+    /// The registering mod's callback owner: sampling the source runs under it.
+    pub(crate) owner: crate::callback_owner::CallbackOwner,
 }
 
 /// Registered biome sources for the hidden game integration boundary: each id,
 /// its possible biomes and the source.
 // hidden: the game's startup adapter reads the registered sources; mods declare them through the registrar.
 #[doc(hidden)]
-pub fn biome_source_declarations() -> Vec<(String, Vec<BiomeKey>, Arc<dyn BiomeSource>)> {
+pub fn biome_source_declarations() -> Vec<(
+    String,
+    Vec<BiomeKey>,
+    Arc<dyn BiomeSource>,
+    crate::callback_owner::CallbackOwner,
+)> {
     crate::parts::installed_biome_source_list()
         .iter()
         .map(|info| {
@@ -48,6 +55,7 @@ pub fn biome_source_declarations() -> Vec<(String, Vec<BiomeKey>, Arc<dyn BiomeS
                 info.id.to_string(),
                 info.biomes.clone(),
                 info.source.clone(),
+                info.owner.clone(),
             )
         })
         .collect()

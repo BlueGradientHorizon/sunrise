@@ -399,7 +399,7 @@ pub(super) mod tests {
         impl ChunkGenerator for RemoteOnly {
             type Worker = ();
             fn worker(&self) {}
-            fn proto(&self, _: &mut (), _: i32, _: i32) -> Proto {
+            fn proto(&self, _: &mut (), _: i32, _: i32) -> Result<Proto, String> {
                 panic!("a remote level never generates locally")
             }
             fn finish(&self, _: Proto) -> Chunk {

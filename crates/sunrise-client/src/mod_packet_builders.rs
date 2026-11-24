@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use sunrise_protocol::{
     ids,
     item::{Hashed, Stack},
-    packets::play::{self, ContainerClick, Serverbound, SignLines, pack_move_player_flags},
+    packets::play::{self, ContainerClick, Serverbound, pack_move_player_flags},
     registry::{Builtin, Dynamic, SyncedNames},
 };
 
@@ -167,17 +167,24 @@ pub fn encode_play_packet(
         PlayPacketRequest::SignUpdate { pos, front, lines } => {
             let p = "sign_update";
             check_block_pos(p, *pos)?;
-            if let Some(i) = SignLines::first_oversize_line(lines) {
+            let packet = Serverbound::SignUpdate(play::SignUpdate {
+                pos: *pos,
+                lines: lines.clone(),
+                front: *front,
+            });
+            // The protocol's own validation finds the oversize line, once; no other field of
+            // this packet can fail it.
+            if let Some(i) = packet
+                .validate()
+                .err()
+                .and_then(|error| error.oversize_sign_line())
+            {
                 return Err(PacketBuildError::SignLineTooLong {
                     packet: p.into(),
                     field: format!("lines[{i}]"),
                 });
             }
-            Serverbound::SignUpdate(play::SignUpdate {
-                pos: *pos,
-                lines: lines.clone(),
-                front: *front,
-            })
+            packet
         }
         PlayPacketRequest::MovePlayerPos {
             pos,

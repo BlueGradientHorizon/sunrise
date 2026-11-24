@@ -88,9 +88,10 @@ value, including line breaks, without clipping or flattening them, and marks eve
 line with the registering mod's ID (`\t<mod id> | ` for headers, `\t\t<mod id> | ` for system
 details, including error text). That includes entries from the mod named in the crash itself.
 
-Callbacks run and appear in registration order on clients and dedicated servers, on a worker
-thread away from the crashing thread. The report waits for each callback to finish, so read your
-own diagnostic state and don't wait for locks the game thread may hold.
+Callbacks run and appear in registration order on clients and dedicated servers. A report is
+built after the panicking thread has unwound, as vanilla builds it outside the throw, and the
+callbacks run then, on the thread that builds it: the locks the panicking code held are released.
+Read your own diagnostic state, and keep a callback cheap.
 
 A failed callback's entry begins with `~~ERROR~~`. A panic logs the mod's ID, queues an error
 toast, and disables only that callback for the session. Other failures are reported on each

@@ -120,7 +120,12 @@ impl ChunkAccess for Filling<'_> {
 impl ChunkGenerator for ModTerrain {
     type Worker = ();
     fn worker(&self) {}
-    fn proto(&self, _: &mut (), cx: i32, cz: i32) -> crate::streaming::Proto {
+    fn proto(
+        &self,
+        _: &mut (),
+        cx: i32,
+        cz: i32,
+    ) -> std::result::Result<crate::streaming::Proto, String> {
         let mut chunk = Chunk::with_layout(cx, cz, self.shape.column());
         if let ResolvedBiomeSource::Fixed(source) = self.source.as_ref() {
             let biome = self.biome_ids[&source.biome];
@@ -140,9 +145,11 @@ impl ChunkGenerator for ModTerrain {
                 for qz in 0..4 {
                     for qx in 0..4 {
                         // The bound source has holders to sample and the non-noise router is constant.
+                        // A registered source's failure (its code panicked, or its mod is off)
+                        // fails the column: nothing of it is published.
                         let name = resolver
                             .sample(&mut context, [west + qx, bottom + qy, north + qz])
-                            .expect("bound biome source with a constant router");
+                            .map_err(|error| error.to_string())?;
                         chunk.set_biome_cell(qx, qy, qz, self.biome_ids[name]);
                     }
                 }
@@ -156,7 +163,7 @@ impl ChunkGenerator for ModTerrain {
         for s in &mut chunk.sections {
             Arc::make_mut(s).compact();
         }
-        Box::new(chunk)
+        Ok(Box::new(chunk))
     }
     fn light_view(&self, proto: &crate::streaming::Proto) -> Option<Chunk> {
         proto.downcast_ref::<Chunk>().cloned()
@@ -234,8 +241,8 @@ mod tests {
         fn possible_biomes(&self) -> &[String] {
             &self.0
         }
-        fn noise_biome(&self, quart: [i32; 3], seed: i64) -> u16 {
-            u16::from(quart == [13, 5 + seed as i32, -7])
+        fn noise_biome(&self, quart: [i32; 3], seed: i64) -> Result<u16, String> {
+            Ok(u16::from(quart == [13, 5 + seed as i32, -7]))
         }
     }
 
@@ -337,7 +344,47 @@ mod tests {
     }
 
     fn chunk(terrain: &ModTerrain, x: i32, z: i32) -> Chunk {
-        terrain.finish(terrain.proto(&mut (), x, z))
+        terrain.finish(terrain.proto(&mut (), x, z).unwrap())
+    }
+
+    /// A registered source whose code fails (as a panic caught under its owner reports).
+    struct Broken(Vec<String>);
+    impl ModBiomeSource for Broken {
+        fn possible_biomes(&self) -> &[String] {
+            &self.0
+        }
+        fn noise_biome(&self, _: [i32; 3], _: i64) -> Result<u16, String> {
+            Err("mod broken_pack: panicked".into())
+        }
+    }
+
+    #[test]
+    fn a_failing_biome_source_fails_its_column_while_a_healthy_one_publishes() {
+        let mut sources = sources(&["minecraft:plains", "minecraft:desert"]);
+        sources.insert(
+            "test:broken".to_owned(),
+            Arc::new(Broken(vec!["minecraft:plains".to_owned()])) as _,
+        );
+        let build = |source: &str| {
+            let stem = json!({"type": "test:pocket", "generator": {"type": "test:slab", "biome_source": {"type": source}}});
+            for_stem(
+                "test:pocket",
+                &stem,
+                &generators(),
+                &sources,
+                registry(),
+                biome_id,
+                LevelShape::OVERWORLD,
+                2,
+            )
+            .unwrap()
+            .unwrap()
+        };
+        let broken = build("test:broken");
+        let error = broken.proto(&mut (), 0, 0).err().expect("the column fails");
+        assert!(error.contains("panicked"), "{error}");
+        let healthy = build("test:oasis");
+        assert!(healthy.proto(&mut (), 0, 0).is_ok());
     }
 
     #[test]

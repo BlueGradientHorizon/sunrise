@@ -40,7 +40,7 @@ pub trait Hooks {
         neoforge = "MobSpawnEvent.SpawnPlacementCheck",
         cancellable = false,
         event_per_listener = true,
-        version = 2
+        version = 3
     )]
     fn mob_spawn_placement_check(
         dimension: &str,

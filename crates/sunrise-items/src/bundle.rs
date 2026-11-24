@@ -1,15 +1,16 @@
 //! `BundleContents.Mutable`: what a bundle takes in and gives back, by
 //! weight. The menus (`menu`, `lan::menu`) run `BundleItem`'s click
 //! overrides on it.
-use crate::item_data::BundleSelected;
+use crate::item_data::{BundleSelected, StackData};
 use crate::items::{ItemStack, Items};
 use crate::properties::ItemBar;
 use std::collections::HashSet;
+use std::sync::OnceLock;
 use sunrise_core::nbt::Tag;
 
 /// A bundle weight: vanilla's `Fraction`, exact and kept reduced.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct Weight {
+pub(crate) struct Weight {
     n: i128,
     d: i128,
 }
@@ -86,13 +87,33 @@ pub(crate) fn max_stack(items: &Items, stack: &ItemStack) -> u32 {
         .max(1) as u32
 }
 
-/// The stack's effective `minecraft:bundle_contents`: its own component patch
-/// (including an explicitly empty list), `None` when removed with
+/// The exact weight of a contents list, resolved once (`BundleContents` computes `weight` in its
+/// constructor and keeps it in the component). A [`StackData`] holds it for its own list and drops
+/// it when it is handed out for editing (`ItemStack::data_mut`) or cloned, so the bar and
+/// the menus read a weight that matches the list and cycles in the component graph are found
+/// once, where the list is resolved.
+#[derive(Default)]
+pub(crate) struct WeightCache(OnceLock<Option<Weight>>);
+
+impl Clone for WeightCache {
+    fn clone(&self) -> Self {
+        Self::default()
+    }
+}
+
+impl std::fmt::Debug for WeightCache {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("WeightCache")
+    }
+}
+
+/// The component data that holds the stack's effective `minecraft:bundle_contents`: its own
+/// patch (including an explicitly empty list), `None` when removed with
 /// `!minecraft:bundle_contents`, otherwise the item prototype's default.
-pub fn contents_of<'a>(items: &'a Items, stack: &'a ItemStack) -> Option<&'a [ItemStack]> {
+fn effective<'a>(items: &'a Items, stack: &'a ItemStack) -> Option<&'a StackData> {
     if let Some(data) = stack.data() {
         if data.sets_component("minecraft:bundle_contents") {
-            return Some(&data.bundle_contents);
+            return Some(data);
         }
         if data.other("!minecraft:bundle_contents").is_some() {
             return None;
@@ -101,7 +122,20 @@ pub fn contents_of<'a>(items: &'a Items, stack: &'a ItemStack) -> Option<&'a [It
     let prototype = items.get(&stack.item)?.component_prototype.data()?;
     prototype
         .sets_component("minecraft:bundle_contents")
-        .then_some(&prototype.bundle_contents[..])
+        .then_some(prototype)
+}
+
+/// The stack's effective `minecraft:bundle_contents` (see [`effective`]).
+pub fn contents_of<'a>(items: &'a Items, stack: &'a ItemStack) -> Option<&'a [ItemStack]> {
+    effective(items, stack).map(|data| &data.bundle_contents[..])
+}
+
+/// The resolved weight of `data`'s contents: `None` for a cycle or an overflow.
+fn resolved_weight(items: &Items, data: &StackData) -> Option<Weight> {
+    *data
+        .bundle_weight
+        .0
+        .get_or_init(|| contents_weight(items, &data.bundle_contents))
 }
 
 /// `BundleContents.getWeight`: a nested bundle weighs its contents plus
@@ -166,7 +200,7 @@ fn contents_weight(items: &Items, inside: &[ItemStack]) -> Option<Weight> {
 /// effective component. Missing or empty contents show no bar.
 pub(crate) fn stack_bar(items: &Items, stack: &ItemStack) -> Option<ItemBar> {
     // BundleItem.getWeightSafe draws a full bar when the weight is invalid.
-    let Weight { n, d } = contents_weight(items, contents_of(items, stack)?).unwrap_or(Weight::ONE);
+    let Weight { n, d } = resolved_weight(items, effective(items, stack)?).unwrap_or(Weight::ONE);
     if n <= 0 {
         return None;
     }
@@ -177,22 +211,47 @@ pub(crate) fn stack_bar(items: &Items, stack: &ItemStack) -> Option<ItemBar> {
     Some(ItemBar { width, color })
 }
 
-/// `BundleItem.onDestroyed` (`ItemStack.onDestroyed` for a bundle): the stack
-/// is emptied and every stack it held comes back as its own item copy, which
-/// `ItemUtils.onContainerDestroyed` drops where the entity lay.
-pub fn destroyed(stack: &mut ItemStack) -> Vec<ItemStack> {
-    let Some(data) = stack.extra.as_deref_mut() else {
-        return Vec::new();
+/// `BundleItem.onDestroyed` (`ItemStack.onDestroyed` for a bundle): the stack's effective contents
+/// (its own, or its item's default) come back as their own item copies, which
+/// `ItemUtils.onContainerDestroyed` drops where the entity lay, and the stack is left with an
+/// effective empty component and no selected index.
+pub fn destroyed(items: &Items, stack: &mut ItemStack) -> Vec<ItemStack> {
+    let spilled = match contents_of(items, stack) {
+        Some(inside) if !inside.is_empty() => inside.to_vec(),
+        _ => return Vec::new(),
     };
-    if data.bundle_contents.is_empty() {
-        return Vec::new();
-    }
-    // `set(BUNDLE_CONTENTS, BundleContents.EMPTY)`: no contents and no
-    // selected index left.
-    let spilled = std::mem::take(&mut data.bundle_contents);
-    data.bundle_selected = BundleSelected(-1);
-    stack.tidy();
+    // `set(BUNDLE_CONTENTS, BundleContents.EMPTY)`.
+    write_contents(items, stack, Vec::new(), -1);
     spilled
+}
+
+/// Writes `inside` and the selected index as the bundle's component, keeping an explicitly empty
+/// list when the item's prototype would otherwise show its default contents again.
+fn write_contents(items: &Items, bundle: &mut ItemStack, inside: Vec<ItemStack>, selected: i32) {
+    let explicit_empty = inside.is_empty()
+        && !items
+            .get(&bundle.item)
+            .and_then(|info| info.component_prototype.data())
+            .is_some_and(|proto| {
+                proto.sets_component("minecraft:bundle_contents")
+                    && proto.bundle_contents.is_empty()
+            });
+    let data = bundle.data_mut();
+    data.set_other("!minecraft:bundle_contents", None);
+    data.set_other(
+        "minecraft:bundle_contents",
+        explicit_empty.then(|| Tag::List(Vec::new())),
+    );
+    data.bundle_contents = inside;
+    data.bundle_selected = BundleSelected(selected);
+    bundle.tidy();
+}
+
+/// A command's or an automation's edit of the bundle component: `inside` replaces the effective
+/// contents, with nothing selected, and an empty list stays empty instead of showing the item's
+/// default contents.
+pub fn set_contents(items: &Items, bundle: &mut ItemStack, inside: Vec<ItemStack>) {
+    write_contents(items, bundle, inside, -1);
 }
 
 /// `BundleContents.Mutable`.
@@ -314,11 +373,11 @@ impl Contents {
     }
     /// The bundle's contents; None when missing or when their weight is invalid.
     pub fn of(items: &Items, stack: &ItemStack) -> Option<Self> {
-        let inside = contents_of(items, stack)?;
-        let weight = contents_weight(items, inside)?;
+        let data = effective(items, stack)?;
+        let weight = resolved_weight(items, data)?;
         let selected = stack.data().map_or(-1, |d| d.bundle_selected.0);
         Some(Self {
-            items: inside.to_vec(),
+            items: data.bundle_contents.clone(),
             weight,
             selected,
         })
@@ -326,9 +385,8 @@ impl Contents {
 
     /// Remaining capacity for `offered` in a stack's bundle component, without cloning contents.
     pub fn room_in_stack(items: &Items, bundle: &ItemStack, offered: &ItemStack) -> Option<u32> {
-        let inside = contents_of(items, bundle)?;
         Weight::ONE
-            .sub(contents_weight(items, inside)?)?
+            .sub(resolved_weight(items, effective(items, bundle)?)?)?
             .how_many(item_weight(items, offered)?)
     }
 
@@ -444,39 +502,24 @@ impl Contents {
     /// `toImmutable`, written back into the bundle's component, preserving an
     /// explicitly empty patch when the item's prototype does not default to empty.
     pub fn store(self, items: &Items, bundle: &mut ItemStack) {
-        let explicit_empty = self.items.is_empty()
-            && !items
-                .get(&bundle.item)
-                .and_then(|info| info.component_prototype.data())
-                .is_some_and(|proto| {
-                    proto.sets_component("minecraft:bundle_contents")
-                        && proto.bundle_contents.is_empty()
-                });
-        let data = bundle.data_mut();
-        data.set_other("!minecraft:bundle_contents", None);
-        data.set_other(
-            "minecraft:bundle_contents",
-            explicit_empty.then(|| Tag::List(Vec::new())),
-        );
-        data.bundle_contents = self.items;
-        data.bundle_selected = BundleSelected(self.selected);
-        bundle.tidy();
+        write_contents(items, bundle, self.items, self.selected);
     }
 }
 
 /// `BundleItem.toggleSelectedItem`: select `index`, or nothing when it is the
-/// selected one already or outside the contents.
-pub fn toggle_selected(bundle: &mut ItemStack, index: i32) {
-    let Some(data) = bundle.extra.as_deref_mut() else {
+/// selected one already or outside the effective contents. The selection is kept beside the
+/// component, so inherited contents need no override of their own.
+pub fn toggle_selected(items: &Items, bundle: &mut ItemStack, index: i32) {
+    let Some(count) = contents_of(items, bundle).map(<[ItemStack]>::len) else {
         return;
     };
-    let inside = (0..data.bundle_contents.len() as i32).contains(&index);
-    let selected = if data.bundle_selected.0 != index && inside {
+    let current = bundle.data().map_or(-1, |d| d.bundle_selected.0);
+    let inside = (0..count as i32).contains(&index);
+    bundle.data_mut().bundle_selected = BundleSelected(if current != index && inside {
         index
     } else {
         -1
-    };
-    data.bundle_selected = BundleSelected(selected);
+    });
 }
 
 #[cfg(test)]

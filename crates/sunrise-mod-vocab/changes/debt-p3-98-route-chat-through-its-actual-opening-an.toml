@@ -1,7 +1,6 @@
 ids = [
     "hook:chat_recipient",
     "hook:client_chat",
-    "hook:command",
     "hook:screen_opening",
     "hook:screen_closing",
     "hook:screen_init_post",
@@ -14,7 +13,7 @@ migrate = """
 `handle:EntityRef::run_command_with_output`: Replace checks for public `/say` or `/me` lines in `CommandResult.feedback` with `CommandResult.success` for execution and `chat_recipient` for delivery attempts.
 `hook:chat_recipient`: Keep the listener signature and return `Flow::Cancel` to omit an eligible receiver's copy. The hook runs after the log, at each delivery, and sees resolved text. Distinguish nested broadcasts this listener sends from the triggering message.
 `hook:client_chat`: Handle direct and typed messages before signing. Return `Flow::Cancel` or clear the outgoing text to omit a send.
-`hook:command`: Handle direct as well as UI commands. The command has no leading slash; return `Flow::Cancel` if handled locally.
+The `command` hook no longer exists (see P3-24's `RegisterClientCommandsEvent` and `Command::executes_client`): register a client command with `Command::new(usage).executes_client(...)` in `Hooks::register_client_commands`; it handles direct and UI commands without a leading slash.
 `hook:screen_opening`: Treat an opening with the same chat ID as a new instance. `current` can be the foreground prompt; use the existing cancel or redirect reply for the requested replacement.
 `hook:screen_closing`: Run cleanup for the actual outgoing foreground, including when another instance with the same chat ID replaces it. A veto fires no Closing.
 `hook:screen_init_post`: Initialize on the accepted new chat instance, even when its ID is unchanged. Do not wait for the frame observer or expect a second Init.Post for the same transition.

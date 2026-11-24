@@ -2423,7 +2423,7 @@ fn mod_block_entity_items_claim_only_the_slots_written() {
         )
     };
     data.items.resize(2, None);
-    *data.item_slot_mut(0).unwrap() = Some(ItemStack::new("minecraft:stone", 2));
+    *data.item_slot_mut(0) = Some(ItemStack::new("minecraft:stone", 2));
     let encoded = encode(&data);
     assert_eq!(
         encoded.get("Items"),
@@ -2436,7 +2436,7 @@ fn mod_block_entity_items_claim_only_the_slots_written() {
     };
     assert_eq!(reloaded.items[0], data.items[0]);
     assert_eq!(encode(&reloaded), encoded);
-    *data.item_slot_mut(0).unwrap() = None;
+    *data.item_slot_mut(0) = None;
     // A tick reply replacing the mutable fields, including shrinking the
     // modeled vector to zero, cannot restore the old saved row for slot 0.
     let mut snapshot = (**data).clone();
@@ -2448,7 +2448,7 @@ fn mod_block_entity_items_claim_only_the_slots_written() {
         Some(&parse(r#"[{Slot:1b,raw:"retained"},{raw:"no slot"}]"#))
     );
     data.items.resize(2, None);
-    *data.item_slot_mut(1).unwrap() = None;
+    *data.item_slot_mut(1) = None;
     assert_eq!(
         encode(&data).get("Items"),
         Some(&parse(r#"[{raw:"no slot"}]"#))
@@ -2498,6 +2498,26 @@ fn mod_block_entity_round_trips_the_first_and_last_byte_indexed_slots() {
         panic!("expected mod block entity")
     };
     assert_eq!(reloaded.items, items);
+}
+
+/// A holder's capacity is its block's declaration, not the length of what it stores: a write
+/// reaches its slot and no further, so a first write into a holder declared at the Java-int
+/// maximum allocates the slots up to it, not the holder.
+#[test]
+fn a_slot_write_grows_a_mod_holder_only_to_that_slot() {
+    let saved = sunrise_core::nbt::parse_snbt(r#"{id:"gtmod:vault",x:0,y:0,z:0}"#)
+        .unwrap()
+        .0;
+    let (_, mut back) = decode_block_entity(&saved).expect("mod block entity");
+    let crate::containers::BlockEntity::Mod(m) = &mut back else {
+        panic!("not a mod's");
+    };
+    assert!(m.items.is_empty());
+    *m.item_slot_mut(2) = Some(crate::items::ItemStack::new("minecraft:stone", 1));
+    assert_eq!(m.items.len(), 3);
+    assert!(m.items[0].is_none() && m.items[1].is_none());
+    // Slots past the last written one read as empty without being allocated.
+    assert!(m.items.get(i32::MAX as usize - 1).is_none());
 }
 
 #[test]
@@ -2744,10 +2764,10 @@ fn mod_block_entity_extended_slots_round_trip_without_aliasing() {
     assert!(claimed.has_opaque_item_slot(0));
     assert!(claimed.has_opaque_item_slot(256));
     claimed.items.resize(257, None);
-    *claimed.item_slot_mut(0).unwrap() = Some(stone.clone());
+    *claimed.item_slot_mut(0) = Some(stone.clone());
     assert!(!claimed.has_opaque_item_slot(0));
     assert!(claimed.has_opaque_item_slot(256));
-    *claimed.item_slot_mut(256).unwrap() = Some(dirt.clone());
+    *claimed.item_slot_mut(256) = Some(dirt.clone());
     assert!(!claimed.has_opaque_item_slot(256));
     assert_eq!(
         block_entity_encode::encode(

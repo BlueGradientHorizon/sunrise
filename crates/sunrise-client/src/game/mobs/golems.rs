@@ -147,7 +147,7 @@ impl Game<'_> {
     pub(super) fn create_triggered(&mut self, kind: &str, at: [f64; 3], yaw: f32) -> Option<u32> {
         let t = self.res.mob_types().get(kind).cloned()?;
         self.next_entity += 1;
-        let mut mob = sunrise_client::mobs::Mob::new(
+        let mut mob = self.new_mob(
             self.next_entity,
             t,
             sunrise_core::geometry::Vec3::new(at[0], at[1], at[2]),
@@ -252,8 +252,7 @@ impl Game<'_> {
         if let Some(m) = id.and_then(|id| self.mobs.iter_mut().find(|m| m.id == id)) {
             m.extra.variant = weather;
             let p = [m.position.x, m.position.y, m.position.z];
-            self.audio
-                .play("minecraft:entity.copper_golem.spawn", Some(p), 1.0, 1.0);
+            self.play_audio("minecraft:entity.copper_golem.spawn", Some(p), 1.0, 1.0);
         }
         self.process_level_events()
     }

@@ -2543,7 +2543,7 @@ fn a_superflat_world_runs_its_structure_sets_on_flat_ground() {
     );
     // The layers: bedrock, two dirt and grass from the level's minimum Y, air above.
     let mut worker = terrain.worker();
-    let chunk = terrain.finish(terrain.proto(&mut worker, 3, 3));
+    let chunk = terrain.finish(terrain.proto(&mut worker, 3, 3).unwrap());
     let name = |y| {
         let id = chunk.block(3 * 16 + 5, y, 3 * 16 + 7);
         assets.registry.state(id).unwrap().name.clone()
@@ -2612,8 +2612,11 @@ fn a_decorated_superflat_world_without_structures_grows_its_features() {
         )
         .unwrap();
         let mut worker = terrain.worker();
-        let mut region: [_; 9] =
-            std::array::from_fn(|i| terrain.proto(&mut worker, 3 + i as i32 % 3, 3 + i as i32 / 3));
+        let mut region: [_; 9] = std::array::from_fn(|i| {
+            terrain
+                .proto(&mut worker, 3 + i as i32 % 3, 3 + i as i32 / 3)
+                .unwrap()
+        });
         terrain.decorate(&mut worker, &mut region);
         let [_, _, _, _, center, ..] = region;
         let chunk = terrain.finish(center);
@@ -2706,7 +2709,7 @@ fn a_superflat_world_keeps_its_strongholds_on_every_seed_and_leaves_null_layers_
     );
     let terrain = make(1234);
     let mut worker = terrain.worker();
-    let chunk = terrain.finish(terrain.proto(&mut worker, 3, 3));
+    let chunk = terrain.finish(terrain.proto(&mut worker, 3, 3).unwrap());
     let name = |y| {
         let id = chunk.block(3 * 16 + 5, y, 3 * 16 + 7);
         assets.registry.state(id).unwrap().name.clone()
@@ -6387,8 +6390,11 @@ fn content_root_generates_a_biome_modifier_ore() {
         };
         let terrain = crate::vanillagen::VanillaTerrain::new(terrain_resources, 1234).unwrap();
         let mut worker = terrain.worker();
-        let mut region: [Proto; 9] =
-            std::array::from_fn(|i| terrain.proto(&mut worker, i as i32 % 3 - 1, i as i32 / 3 - 1));
+        let mut region: [Proto; 9] = std::array::from_fn(|i| {
+            terrain
+                .proto(&mut worker, i as i32 % 3 - 1, i as i32 / 3 - 1)
+                .unwrap()
+        });
         terrain.decorate(&mut worker, &mut region);
         let [_, _, _, _, center, ..] = region;
         let chunk = terrain.finish(center);
@@ -7109,8 +7115,11 @@ fn a_feature_gives_a_mods_sign_its_block_entity() {
             terrain.add_mod_signs(&facts);
         }
         let mut worker = terrain.worker();
-        let mut region: [Proto; 9] =
-            std::array::from_fn(|i| terrain.proto(&mut worker, i as i32 % 3 - 1, i as i32 / 3 - 1));
+        let mut region: [Proto; 9] = std::array::from_fn(|i| {
+            terrain
+                .proto(&mut worker, i as i32 % 3 - 1, i as i32 / 3 - 1)
+                .unwrap()
+        });
         terrain.decorate(&mut worker, &mut region);
         let [_, _, _, _, center, ..] = region;
         let chunk = terrain.finish(center);
@@ -8524,6 +8533,7 @@ fn accept_declared_refuses_host_duplicates_of_served_content_and_keeps_served_re
     assert_eq!(mods[2].id, "horizon_java");
     // Served and host items with valid cross-layer remainders (both items and block items) survive.
     let base = tempfile::tempdir().unwrap();
+    std::fs::write(base.path().join("items.json"), "{}").unwrap();
     assert!(
         drop_dangling_remainders(base.path(), &mut mods)
             .unwrap()

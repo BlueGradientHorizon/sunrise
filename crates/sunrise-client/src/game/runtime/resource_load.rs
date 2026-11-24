@@ -183,6 +183,7 @@ pub(super) fn load_core(
     conditions: &sunrise_world::conditions::LoadConditions,
     emissive_sprites: &[mod_api::Answered<mod_api::EmissiveSpriteRegistration>],
     load_role: mods::LoadRole,
+    captured: sunrise_world::native_load_context::SettingsCapture,
     parallel: bool,
     progress: &Progress,
     launch_world: Option<&str>,
@@ -221,7 +222,7 @@ pub(super) fn load_core(
     };
     progress.set(1);
     let item_data =
-        Arc::new(mods::load_item_data(root, role, load_role.owning).map_err(|e| e.to_string())?);
+        Arc::new(mods::load_item_data(root, role, captured).map_err(|e| e.to_string())?);
     let registry = assets.registry;
     let entity_models_for_render = entity_models.clone();
     let (render, gameplay, visibility, biomes, environment, collision) = std::thread::scope(
@@ -780,9 +781,13 @@ pub(super) fn load_resources_for_mods_with_limit(
     };
     let inventory = sunrise_mod_package::enabled::EnabledMods::read(&root)?;
     let conditions = super::load_conditions::conditions_for_mods(mod_sources, &inventory)?;
+    // The generation's settings, captured once before its reload listeners register: they and
+    // the item data read this capture, never the files again.
+    let captured = mods::capture_load_settings(&root, role, load_role.owning)?;
     let (core, loaded_gui, resolved, client_applies) = loop {
-        let listeners = (!headless)
-            .then(|| client_reload::register_startup_client_reload_listeners(Some(settings)));
+        let listeners = (!headless).then(|| {
+            client_reload::register_startup_client_reload_listeners(Some(settings), &captured)
+        });
         let (ui, core) = std::thread::scope(|scope| {
             let core = |_unit: &()| {
                 // A failed pack starts core again from the game's own
@@ -797,6 +802,7 @@ pub(super) fn load_resources_for_mods_with_limit(
                             &conditions,
                             &emissive_sprites,
                             load_role,
+                            captured.clone(),
                             parallel,
                             progress,
                             early,

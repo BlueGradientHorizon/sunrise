@@ -8,14 +8,17 @@ pub trait Hooks {
     /// [`EntityPart::on_sheared`] in place of the species' own shearing, `Some(false)` leaves it
     /// unsheared (a player's click then does nothing), and `None` leaves it to the next part and
     /// then to the species. `shears` is a read-only view over the resident stack; call
-    /// `shears.project()` only when components or an owned snapshot are needed. Server-side.
+    /// `shears.project()` only when components or an owned snapshot are needed. Both sides ask it,
+    /// as `ShearsItem.interactLivingEntity` does (a client predicting a player's click answers
+    /// the same question the server does); `host` says which side asks, and a dispenser's ask is
+    /// the server's alone.
     #[hook(
         target = "sunrise_client::game::native_hooks::is_shearable::Game<'_>::native_is_shearable",
-        receiver = "read",
+        receiver = "write",
         dispatch = "direct",
-        side = "server",
-        host = "read",
+        side = "both",
         contract = "replace",
+        version = 2,
         out = "shearable",
         scope = "entity",
         key = "entity",

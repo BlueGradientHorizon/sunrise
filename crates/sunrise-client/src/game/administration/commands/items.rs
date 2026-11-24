@@ -433,7 +433,11 @@ impl Game<'_> {
             Slot::Contents(..) => None,
             Slot::ContentItem(parent, component, index) => {
                 let stack = self.slot_get(parent)?;
-                component.items(&stack).get(*index).cloned().flatten()
+                component
+                    .items(self.res.items(), &stack)
+                    .get(*index)
+                    .cloned()
+                    .flatten()
             }
             Slot::Guest(conn, slot) => self
                 .for_player(Target::Guest(*conn), |g| g.slot_get(slot))
@@ -500,7 +504,7 @@ impl Game<'_> {
     }
     fn block_slot_set(&mut self, p: [i32; 3], i: usize, stack: Option<ItemStack>) -> bool {
         let key = (p[0], p[1], p[2]);
-        let Some(size) = self.block_container_size(p).filter(|&size| i < size) else {
+        let Some(_) = self.block_container_size(p).filter(|&size| i < size) else {
             return false;
         };
         self.unpack_loot(crate::game::container_loot::LootTarget::Block(key), None);
@@ -542,10 +546,7 @@ impl Game<'_> {
                 c.items[i] = stack;
             }
             Some(BlockEntity::Mod(m)) => {
-                if m.items.len() < size {
-                    m.items.resize(size, None);
-                }
-                *m.item_slot_mut(i).unwrap() = stack;
+                *m.item_slot_mut(i) = stack;
             }
             Some(entity) => entity.slots_mut()[i] = stack,
             None => return false,
@@ -634,12 +635,12 @@ impl Game<'_> {
                 let Some(mut outer) = self.slot_get(parent) else {
                     return false;
                 };
-                let mut slots = component.items(&outer);
+                let mut slots = component.items(self.res.items(), &outer);
                 let Some(slot) = slots.get_mut(*index) else {
                     return false;
                 };
                 *slot = stack;
-                component.store(&mut outer, slots);
+                component.store(self.res.items(), &mut outer, slots);
                 self.slot_set(parent, Some(outer))
             }
             Slot::Guest(conn, slot) => self

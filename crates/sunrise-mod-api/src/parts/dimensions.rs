@@ -160,6 +160,7 @@ impl DimensionsRegistrar for PartRegistrar {
             id: id.into(),
             biomes,
             source,
+            owner: mod_vocab::__private::game::CallbackOwner::for_mod(self.mod_id),
         });
     }
 }

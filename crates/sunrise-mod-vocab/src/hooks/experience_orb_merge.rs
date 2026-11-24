@@ -21,7 +21,8 @@ pub trait Hooks {
 - Left alone, `into` adds `from`'s count. A mod that narrows `into` via `host.entity(into)` + `host.experience_orb(entity)` and writes `into` with `ExperienceOrbRef::set_value` / `set_count` here makes that write the merged orb: `from` is taken in without adding its count, so `into_value = 11, into_count = 1` pays 11 once.
 - The merge is refused, and `into` put back as it was (value, count and age), when the mod cancels, when `from` changed or left reach during the hook, or when the count would pass `i32::MAX` (`ExtraCodecs.POSITIVE_INT`). Neither orb is absorbed; a write the listener made to `from` itself is not undone.
 - `ExperienceOrbRef::set_value` and `set_age` write full live `i32` values (saving truncates `Value` and `Age` to `(short)` as vanilla `ExperienceOrb.addAdditionalSaveData` does); `set_count` accepts `1..=i32::MAX` and returns `Err(ExperienceOrbWriteError::InvalidCount)` otherwise without mutating the orb.
-- Version 2 adds `into_value`, `into_count` and `from_count`; rebuild listeners against this SDK."#]
+- Version 2 adds `into_value`, `into_count` and `from_count`; rebuild listeners against this SDK.
+- Version 3: a value written to `into` here is held live over the full signed `i32` range (a write of 40,000 stays 40,000 on the merged orb); only saving narrows `Value` to `(short)`, as `ExperienceOrb.addAdditionalSaveData` does. Version 2 refused a value outside a short during the merge."#]
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_experience_orb_merge",
         dispatch = "api_carrier",
@@ -29,7 +30,7 @@ pub trait Hooks {
         contract = "cancel",
         out = "canceled",
         cancellable = true,
-        version = 2,
+        version = 3,
         neoforge = "none (vanilla ExperienceOrb.tryMergeToExisting; NeoForge adds no event or extension for it)"
     )]
     fn experience_orb_merge(

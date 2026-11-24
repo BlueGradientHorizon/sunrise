@@ -145,6 +145,9 @@ pub struct StackData {
     pub pot_decorations: Option<Box<[Option<ItemStack>; 4]>>,
     /// `minecraft:bundle_contents`.
     pub bundle_contents: Vec<ItemStack>,
+    /// The resolved weight of `bundle_contents`, dropped whenever the data is handed out for
+    /// editing.
+    pub(crate) bundle_weight: crate::bundle::WeightCache,
     /// `BundleContents.selectedItem`: runtime only, never saved or sent.
     pub bundle_selected: BundleSelected,
     /// `minecraft:suspicious_stew_effects`: (effect id, duration).
@@ -203,6 +206,7 @@ impl StackData {
             pot_decorations,
             bundle_contents,
             bundle_selected,
+            bundle_weight: _,
             stew_effects,
             map_post_processing,
             other: preserved,
@@ -291,6 +295,7 @@ impl std::hash::Hash for StackData {
             pot_decorations,
             bundle_contents,
             bundle_selected: _,
+            bundle_weight: _,
             stew_effects,
             map_post_processing,
             other: preserved,
@@ -1034,7 +1039,10 @@ impl StackData {
                 "minecraft:firework_explosion" => replace_fields!(firework_explosion),
                 "minecraft:dyed_color" => replace_fields!(dyed_color),
                 "minecraft:pot_decorations" => replace_fields!(pot_decorations),
-                "minecraft:bundle_contents" => replace_fields!(bundle_contents, bundle_selected),
+                "minecraft:bundle_contents" => {
+                    replace_fields!(bundle_contents, bundle_selected);
+                    data.bundle_weight = Default::default();
+                }
                 "minecraft:suspicious_stew_effects" => replace_fields!(stew_effects),
                 "minecraft:map_post_processing" => replace_fields!(map_post_processing),
                 "minecraft:charged_projectiles" => replace_fields!(charged),
@@ -1281,7 +1289,9 @@ impl ItemStack {
     }
 
     pub fn data_mut(&mut self) -> &mut StackData {
-        self.extra.get_or_insert_with(Box::default)
+        let data = self.extra.get_or_insert_with(Box::default);
+        data.bundle_weight = Default::default();
+        data
     }
     /// Apply only the named component fields from a decoded snapshot of this same item.
     /// Unchanged fields keep their runtime data, including in nested stacks. The engine
@@ -2579,6 +2589,7 @@ fn decode_components_inner(
             .map(|v| v as u8),
         trim: seen.trim.and_then(trim::from_nbt),
         bundle_selected: BundleSelected::default(),
+        bundle_weight: Default::default(),
         other: Vec::new(),
         wire: Wire::default(),
     };
@@ -4240,6 +4251,7 @@ mod tests {
                 .map(|v| v.clamp(0, 4) as u8),
             trim: c.get("minecraft:trim").and_then(trim::from_nbt),
             bundle_selected: BundleSelected::default(),
+            bundle_weight: Default::default(),
             other: Vec::new(),
             wire: Wire::default(),
         };

@@ -275,8 +275,7 @@ impl Game<'_> {
                 TrialEvent::BlockUpdated => self.mark_block_entity_updated(key),
                 TrialEvent::LevelEvent(id, at, data) => self.level_event_at(id, at, data),
                 TrialEvent::Sound(name) => {
-                    self.audio
-                        .play(&format!("minecraft:{name}"), Some(center), 1.0, 1.0)
+                    self.play_audio(&format!("minecraft:{name}"), Some(center), 1.0, 1.0)
                 }
                 // Written with the state above.
                 TrialEvent::OminousSet(_) => {}
@@ -297,7 +296,7 @@ impl Game<'_> {
                         self.remove_mob_now(id, false);
                     }
                 }
-                TrialEvent::SoundAt(name, at, pitch) => self.audio.play(
+                TrialEvent::SoundAt(name, at, pitch) => self.play_audio(
                     &format!("minecraft:{name}"),
                     Some(at.map(|v| f64::from(v) + 0.5)),
                     1.0,

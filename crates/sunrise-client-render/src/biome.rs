@@ -214,6 +214,10 @@ pub struct Biomes {
     /// plains, but a chunk saves its name back unchanged. Shared by clones (recoloured
     /// copies keep the ids); a table rebuilt with other packs starts empty.
     placeholders: Arc<Mutex<Vec<String>>>,
+    /// Biomes a server's registry names that carry no data and this game does not define: each
+    /// has a slot after the others, plays as plains and keeps its key, so what reads the stored
+    /// biome reports the server's identity and never plains.
+    unresolved: Arc<BTreeSet<String>>,
     exhausted: Arc<std::sync::atomic::AtomicBool>,
 }
 /// The grass, foliage and dry foliage colormaps.
@@ -467,8 +471,43 @@ impl Biomes {
             files: Arc::new(files_by_name),
             info_noise: SimplexNoise::with_skipped_offsets(&mut LegacyRandom::new(2345), true),
             placeholders: Default::default(),
+            unresolved: Default::default(),
             exhausted: Default::default(),
         })
+    }
+    /// This table with a slot for each of `names` it lacks: a biome the server's registry names
+    /// without data. It renders as plains; its key is the server's.
+    pub fn with_unresolved<'a>(&self, names: impl IntoIterator<Item = &'a str>) -> Result<Self> {
+        let mut out = self.clone();
+        out.placeholders = Arc::default();
+        out.exhausted = Arc::default();
+        let mut keys = out.registered_keys.to_vec();
+        let mut unresolved = (*out.unresolved).clone();
+        let plains = out.get(out.id("minecraft:plains")).clone();
+        for name in names {
+            if out.index.contains_key(name) {
+                continue;
+            }
+            let key = parse_registered_biome_key(name)
+                .map_err(|error| format!("biome registry entry {name:?}: {error}"))?;
+            if out.list.len() >= usize::from(u16::MAX) {
+                break;
+            }
+            out.index.insert(name.to_owned(), out.list.len() as u16);
+            out.list.push(BiomeInfo {
+                name: name.to_owned(),
+                ..plains.clone()
+            });
+            keys.push(key);
+            unresolved.insert(name.to_owned());
+        }
+        out.registered_keys = keys.into();
+        out.unresolved = Arc::new(unresolved);
+        Ok(out)
+    }
+    /// Whether biome `name` is one a server's registry named without data this game has.
+    pub fn is_unresolved(&self, name: &str) -> bool {
+        self.unresolved.contains(name)
     }
     /// The built-in biomes with a world's data packs' biome files (id →
     /// JSON) over them, as `RegistryDataLoader` builds the registry: a file
@@ -536,9 +575,10 @@ impl Biomes {
     /// The built-in biomes alone: this table without what packs gave it.
     pub fn builtin_only(&self) -> Self {
         let mut out = self.clone();
-        if self.packs.is_empty() {
+        if self.packs.is_empty() && self.unresolved.is_empty() {
             return out;
         }
+        out.unresolved = Arc::default();
         out.list = self.builtin.to_vec();
         let builtin = out.list.len();
         out.index.retain(|_, id| usize::from(*id) < builtin);
@@ -818,10 +858,11 @@ pub fn gaussian_weights(
             let wx = weight(0, x);
             for y in 0..6 {
                 let wy = weight(1, y);
+                // A position far outside the world's grid saturates at the edge of `i32`.
                 let biome = biome_at_quart(
-                    integral[0] - 2 + x as i32,
-                    integral[1] - 2 + y as i32,
-                    integral[2] - 2 + z as i32,
+                    integral[0].saturating_add(x as i32 - 2),
+                    integral[1].saturating_add(y as i32 - 2),
+                    integral[2].saturating_add(z as i32 - 2),
                 );
                 let w = wx * wy * wz;
                 match weights.iter_mut().find(|(b, _)| *b == biome) {
@@ -975,6 +1016,7 @@ impl Biomes {
             list,
             info_noise: SimplexNoise::with_skipped_offsets(&mut LegacyRandom::new(2345), true),
             placeholders: Default::default(),
+            unresolved: Default::default(),
             exhausted: Default::default(),
             colormaps: Arc::new(maps),
             packs: BTreeMap::new(),
@@ -1086,6 +1128,16 @@ mod blend_tests {
         // The kernel sums to 16 per axis whatever the offset.
         assert!((weights[0].1 - 16f64.powi(3)).abs() < 1e-9);
         assert_eq!(blend_rgb(&weights, |_| [0.2, 0.4, 0.6]), [0.2, 0.4, 0.6]);
+    }
+
+    /// A camera far outside the representable quart grid samples without overflowing.
+    #[test]
+    fn a_position_beyond_the_grid_samples_the_edge_cells() {
+        for position in [[-1e30, 0.0, 1e30], [1e30, -1e30, 0.0]] {
+            let weights = gaussian_weights(position, |_, _, _| 4);
+            assert_eq!(weights.len(), 1);
+            assert_eq!(weights[0].0, 4);
+        }
     }
 
     #[test]

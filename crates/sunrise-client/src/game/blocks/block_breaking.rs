@@ -68,12 +68,11 @@ impl Game<'_> {
         // playRemoveOneSound, then Player.drop and playDropContentsSound at
         // the player's block.
         let pitch = 0.8 + self.world.random.next_float() * 0.4;
-        self.audio
-            .play(sunrise_client::bundle::REMOVE_ONE, Some(at), 0.8, pitch);
+        self.play_audio(sunrise_client::bundle::REMOVE_ONE, Some(at), 0.8, pitch);
         self.player_drop(removed);
         let block = BlockPos::containing(position);
         let pitch = 0.8 + self.world.random.next_float() * 0.4;
-        self.audio.play(
+        self.play_audio(
             sunrise_client::bundle::DROP_CONTENTS,
             Some([block.x, block.y, block.z].map(|v| f64::from(v) + 0.5)),
             0.8,

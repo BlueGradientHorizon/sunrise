@@ -872,8 +872,13 @@ impl Game<'_> {
         Self::fire_standalone_models(context, registrations);
     }
     /// A registered setting changed; notify its owner after publishing the new value.
-    pub(in crate::game) fn native_setting_changed(&mut self, mod_id: &str, key: &str) {
-        self.fire_setting_changed(mod_id, key);
+    pub(in crate::game) fn native_setting_changed(
+        &self,
+        mod_id: &str,
+        key: &str,
+        value: mod_api::SettingValue,
+    ) {
+        self.fire_setting_changed(mod_id, key, value);
     }
     /// The player did `event` on mod `mod_id`'s panel (`panel_items`):
     /// act on it when it is yours.
@@ -3556,13 +3561,13 @@ impl Game<'_> {
     pub(in crate::game) fn native_entity_join_level(
         &mut self,
         dimension: &str,
-        entity: u32,
         kind: &str,
         pos: [f64; 3],
         loaded_from_disk: bool,
+        subject: mod_api::EntityRef,
         canceled: &mut bool,
     ) {
-        self.fire_entity_join_level(dimension, entity, kind, pos, loaded_from_disk, canceled);
+        self.fire_entity_join_level(dimension, kind, pos, loaded_from_disk, subject, canceled);
     }
     /// An entity mounts or dismounts a vehicle (NeoForge's `EntityMountEvent`, posted from
     /// `Entity.startRiding` and `removeVehicle`): `entity` of type `kind` (`minecraft:player`,

@@ -138,7 +138,11 @@ fn random_of(level: &mut DamageLevel<'_>) -> (u64, Option<f64>) {
 struct ZombieBehaviors;
 #[mod_api::sunrise_part]
 impl EntityPart for ZombieBehaviors {
-    fn register_behaviors(&self, event: &mut RegisterBehaviorsEvent<'_, '_>) {
+    fn register_behaviors(
+        &self,
+        _: &dyn mod_api::Host,
+        event: &mut RegisterBehaviorsEvent<'_, '_>,
+    ) {
         if let Err(e) = event
             .behaviors
             .add(Activity::Idle, 5, 40, 80, &[], Probe::still_for(1))
@@ -161,7 +165,11 @@ macro_rules! plan_part {
         struct $name;
         #[mod_api::sunrise_part]
         impl EntityPart for $name {
-            fn register_behaviors(&self, event: &mut RegisterBehaviorsEvent<'_, '_>) {
+            fn register_behaviors(
+                &self,
+                _: &dyn mod_api::Host,
+                event: &mut RegisterBehaviorsEvent<'_, '_>,
+            ) {
                 for (id, add) in ADDS.lock().unwrap().iter() {
                     if *id == $id {
                         add(event.behaviors);
@@ -379,7 +387,7 @@ fn villager(game: &mut super::super::Game<'_>, id: u32, at: [f64; 3]) {
         .get("minecraft:villager")
         .unwrap()
         .clone();
-    let mut m = Mob::new(id, kind, Vec3::new(at[0], at[1], at[2]), 0.0);
+    let mut m = game.new_mob(id, kind, Vec3::new(at[0], at[1], at[2]), 0.0);
     m.ground.on_ground = true;
     game.mobs.push(m);
 }
@@ -712,7 +720,7 @@ fn a_villager_without_mod_behaviors_draws_what_a_parts_free_one_does() {
 fn mob_of(game: &mut super::super::Game<'_>, kind: &str, id: u32, at: [f64; 3]) {
     use sunrise_core::geometry::Vec3;
     let kind = game.res.mob_types().get(kind).unwrap().clone();
-    let mut m = Mob::new(id, kind, Vec3::new(at[0], at[1], at[2]), 0.0);
+    let mut m = game.new_mob(id, kind, Vec3::new(at[0], at[1], at[2]), 0.0);
     m.ground.on_ground = true;
     game.mobs.push(m);
 }
@@ -999,6 +1007,7 @@ fn warden_behaviors_join_after_vanilla_of_their_priority() {
         {
             let mut mobs = game.mobs.lift();
             mobs::warden::register(&mut mobs[0]);
+            mobs::warden::join_mod_behaviors(&mut mobs[0], &*game);
             game.mobs.restore(mobs, RestoreOrder::SurvivorsFirst);
         }
         let mut test_level = sunrise_client::health::TestLevel::new(0);

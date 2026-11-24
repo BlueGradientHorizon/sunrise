@@ -30,6 +30,9 @@ pub(in crate::game) enum CombatPlayer<'a> {
     Parked(&'a Guest),
 }
 
+/// The payload of a panic in a guest turn's exit work, restored around and handed back.
+type ExitFault = Box<dyn std::any::Any + Send>;
+
 impl Game<'_> {
     /// Resolve a recorded player entity id even when a nested turn has lent
     /// the acting slot to another body. A displaced guest's hub row still
@@ -122,7 +125,7 @@ impl Game<'_> {
         conn: u32,
         f: impl FnOnce(&mut Self) -> R,
     ) -> Result<R, TurnRefused> {
-        let result = self.with_guest_swap_at(gi, conn, self.dim, |game| {
+        let (result, exit_fault) = self.with_guest_swap_at(gi, conn, self.dim, |game| {
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 let dimension = (game.serving.is_some() || game.options.dedicated.is_some())
                     .then_some(game.dim.id());
@@ -139,9 +142,11 @@ impl Game<'_> {
             result
         })?;
         // The guest's progress and the outer player were restored before propagating a panic.
-        match result {
-            Ok(result) => Ok(result),
-            Err(payload) => std::panic::resume_unwind(payload),
+        // When the body and the turn's exit work both unwound, the body's fault is the one
+        // that propagates, as it would without the exit work.
+        match (result, exit_fault) {
+            (Ok(result), None) => Ok(result),
+            (Err(payload), _) | (Ok(_), Some(payload)) => std::panic::resume_unwind(payload),
         }
     }
 
@@ -271,7 +276,11 @@ impl Game<'_> {
         f: impl FnOnce(&mut Self) -> R,
     ) -> Option<R> {
         let i = self.guest_index(conn)?;
-        self.with_guest_swap_at(i, conn, outer_dimension, f).ok()
+        let (result, exit_fault) = self.with_guest_swap_at(i, conn, outer_dimension, f).ok()?;
+        if let Some(payload) = exit_fault {
+            std::panic::resume_unwind(payload);
+        }
+        Some(result)
     }
 
     fn with_guest_swap_at<R>(
@@ -280,16 +289,17 @@ impl Game<'_> {
         conn: u32,
         outer_dimension: Dim,
         f: impl FnOnce(&mut Self) -> R,
-    ) -> Result<R, TurnRefused> {
+    ) -> Result<(R, Option<ExitFault>), TurnRefused> {
         let mut f = Some(f);
         let mut result = None;
-        self.guest_turn(i, conn, outer_dimension, &mut |game| {
+        let exit_fault = self.guest_turn(i, conn, outer_dimension, &mut |game| {
             result = Some(f.take().unwrap()(game));
         })?;
-        Ok(result.unwrap())
+        Ok((result.unwrap(), exit_fault))
     }
 
-    /// Save and restore the outer player in this stack frame, even for nested turns.
+    /// Save and restore the outer player in this stack frame, even for nested turns. A panic of
+    /// the turn's exit work is returned, not resumed, so the caller can pick which fault goes on.
     /// Erase the callback type so the swap code is shared by all callers.
     fn guest_turn(
         &mut self,
@@ -297,7 +307,7 @@ impl Game<'_> {
         conn: u32,
         outer_dimension: Dim,
         run: &mut dyn FnMut(&mut Self),
-    ) -> Result<(), TurnRefused> {
+    ) -> Result<Option<ExitFault>, TurnRefused> {
         let spawn_protection = self.lan.as_ref().and_then(|host| {
             host.hub
                 .guests
@@ -636,8 +646,8 @@ impl Game<'_> {
             .unwrap_or_default();
         // The callbacks a turn ends with (combat, armor, food and sound) can reach a
         // mod and panic. The swap is still restored below and the guest's progress written
-        // back; the panic resumes at the end (#2240). `as_guest_at` catches a panic of the
-        // turn itself, so a panic here then goes on in place of that one.
+        // back; the panic is handed to the caller at the end (#2240). `as_guest_at` catches a panic of
+        // the turn itself and lets it go on in place of this one.
         let callbacks = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             if !turn_events.is_empty() {
                 self.record_combat(&turn_events);
@@ -1051,13 +1061,10 @@ impl Game<'_> {
                 self.lan_building_boxes
                     .for_turn(actor, None, building_players(host));
         }
-        if let Some(payload) = panic {
-            std::panic::resume_unwind(payload);
-        }
-        if !already_recorded {
+        if panic.is_none() && !already_recorded {
             self.interrupted_turns.retain(|&c| c != conn);
         }
-        Ok(())
+        Ok(panic)
     }
 
     /// `ServerLevel.broadcastDamageEvent` for a guest that took an unblocked hit.
@@ -1093,7 +1100,7 @@ impl Game<'_> {
         else {
             return;
         };
-        self.audio.play_unshared(sound, Some(at), 1.0, 1.0);
+        self.play_audio_unshared(sound, Some(at), 1.0, 1.0);
         self.send_level_sound(LevelSound::new(sound, at, 1.0, 1.0), Some(conn));
     }
 

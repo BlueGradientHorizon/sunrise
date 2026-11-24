@@ -732,3 +732,108 @@ fn wind_charges_retrace_only_after_gameplay_breaks_a_vehicle() {
         }
     });
 }
+
+/// A subscriber that was off when the tick began and is turned on by a section callback during
+/// it hears the flights that follow: the live loop asks `native_hears_impacts` at each flight,
+/// not once for the family.
+#[test]
+#[ignore = "daily"]
+fn a_subscriber_enabled_by_a_section_callback_hears_the_flights_after_it() {
+    struct Counter(Arc<Mutex<Vec<u32>>>);
+    #[mod_api::__subscriptions]
+    impl Hooks for Counter {
+        fn projectile_impact(
+            &self,
+            _: &mut dyn ServerHost,
+            event: &mut ProjectileImpactEvent<'_>,
+        ) -> Flow {
+            self.0.lock().unwrap().push(event.projectile);
+            Flow::Continue
+        }
+    }
+    struct Trigger(Arc<std::sync::atomic::AtomicUsize>);
+    #[mod_api::__subscriptions]
+    impl Hooks for Trigger {
+        fn entity_entering_section(
+            &self,
+            _: mod_api::HostSide<'_>,
+            _: &mut mod_api::EntityEnteringSectionEvent,
+        ) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            mod_api::__private::set_mod_enabled("reenabled-counter", true);
+        }
+    }
+    if run_fresh_cases(
+        "game::creatures::projectile_batch_tests::a_subscriber_enabled_by_a_section_callback_hears_the_flights_after_it",
+        "SUNRISE_PROJECTILE_REENABLE_CASE",
+        &["off"],
+    ) {
+        return;
+    }
+    let crossings = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let heard: Arc<Mutex<Vec<u32>>> = Arc::default();
+    let mods: mod_api::Mods = vec![
+        mod_api::ModEntry::new("reenabled-counter", Box::new(Counter(heard.clone()))),
+        mod_api::ModEntry::new("section-trigger", Box::new(Trigger(crossings.clone()))),
+    ]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        super::super::native_entity_refs::tests::with_game(|game| {
+            game.options.dedicated = Some(Vec::new());
+            for chunk in [(0, 0), (1, 0)] {
+                game.world
+                    .chunks
+                    .insert(chunk, Arc::new(Chunk::empty(chunk.0, chunk.1)));
+                game.block_ticks
+                    .add_empty_chunk(sunrise_core::position::ChunkPos::new(chunk.0, chunk.1))
+                    .unwrap();
+            }
+            game.build_registries();
+            game.set_allow_commands(true);
+            assert!(game.run_command("forceload add 0 0"));
+            assert!(game.run_command("forceload add 16 0"));
+            game.player = Some(
+                sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 8.5))
+                    .unwrap(),
+            );
+            crate::game::native_entity_refs::tests::bind_local_player(game, 7, 7);
+            game.next_entity = 100;
+            assert!(mod_api::__private::set_mod_enabled(
+                "reenabled-counter",
+                false
+            ));
+            let stone = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:stone")
+                .unwrap();
+            // Arrow 71 flies across into the next section (the trigger's callback turns the counter
+            // on); arrow 72 lands on a wall in the first section.
+            game.world.set(2, 64, 0, stone).unwrap();
+            for (id, start) in [(71, 14.5), (72, 0.5)] {
+                let mut arrow = Projectile::new(
+                    ProjectileKind::Arrow {
+                        base_damage: 2.0,
+                        critical: false,
+                        effect: None,
+                    },
+                    Vec3::new(start, 64.5, 0.5),
+                    None,
+                );
+                arrow.id = id;
+                arrow.velocity = Vec3::new(3.0, 0.0, 0.0);
+                game.creatures.projectiles.push(arrow);
+            }
+            game.native_joins_skip();
+            game.tick_projectiles().unwrap();
+        });
+    });
+    assert!(
+        crossings.load(Ordering::SeqCst) > 0,
+        "a section callback ran"
+    );
+    // The counter was off when the tick began and the callback switched it on: it hears the
+    // flight after the callback, and only that one.
+    assert_eq!(*heard.lock().unwrap(), [72]);
+}

@@ -1388,8 +1388,7 @@ impl Game<'_> {
         let at = [p.position.x, p.position.y, p.position.z];
         let mut random = sunrise_client::random_source::entity();
         let pitch = ((random.next_float() - random.next_float()) * 0.7 + 1.0) * 2.0;
-        self.audio
-            .play("minecraft:entity.item.pickup", Some(at), 0.2, pitch);
+        self.play_audio("minecraft:entity.item.pickup", Some(at), 0.2, pitch);
     }
     /// `PlayerAdvancements.award` once done: `AdvancementRewards.grant`,
     /// then toast and announcement.

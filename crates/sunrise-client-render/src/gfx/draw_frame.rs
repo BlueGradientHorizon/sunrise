@@ -134,8 +134,8 @@ impl Renderer {
         }
         self.update_lightmap(&mut encoder, frame);
         let views = self.views(frame);
-        let pose = frame.bob * frame.spin;
-        let transforms = views.frame_transforms(pose);
+        let pose = frame.posed_bob() * frame.spin;
+        let transforms = views.frame_transforms(pose, frame.view_transform);
         let view_proj = transforms.draw_view_proj;
         laps.lap("r_acquire");
         // TAA runs where the world post pass does, not under a shader pack's own.
@@ -182,7 +182,7 @@ impl Renderer {
         }
         let view = views.primary().view;
         // The hand's bob and view (`hand_globals`).
-        let hand_view = frame.bob * view;
+        let hand_view = frame.posed_bob() * view;
         let sun_angle = frame.sky.sun_angle.to_radians();
         // Celestial bodies rotate around the X axis; angle 0 = noon.
         let sun = Vec3::new(0.0, sun_angle.cos(), -sun_angle.sin());
@@ -349,7 +349,7 @@ impl Renderer {
             self.config.height.max(1) as f32,
             frame.depth_far,
         ));
-        let hand_view_proj = hand_projection * frame.bob * view;
+        let hand_view_proj = hand_projection * frame.posed_bob() * view;
         let hand_globals = Globals {
             view_proj: hand_view_proj.to_cols_array_2d(),
             ..globals

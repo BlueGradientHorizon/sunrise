@@ -11,11 +11,12 @@ spectated. It runs after vanilla's effects (such as sprinting and a drawn bow) a
 
 | `ComputeFovModifierEvent` field | Meaning |
 | --- | --- |
-| `player` | The camera player's inputs to the calculation (`FovPlayer`) |
-| `base` | The scale before any mod ran |
-| `modifier` | The scale to use; write it to change the field of view |
+| `player` | The camera player's handle: the local player or the spectated one |
+| `raw` | `getFieldOfViewModifier`'s product before its final lerp |
+| `effect_scale` | The Field of View Effects setting |
+| `modifier` | The scale to use, starting as `Mth.lerp(effect_scale, 1, raw)`; write it to change the field of view |
 
-A value that is not finite, or lies outside `0.01..=10`, falls back to `base`. The hook does not run when the
+A value that is not finite, or lies outside `0.01..=10`, falls back to the starting `modifier`. The hook does not run when the
 camera follows a non-player entity, or while the camera player is scoping with a spyglass in first person
 (`AbstractClientPlayer.getFieldOfViewModifier` returns `0.1` before `ComputeFovModifierEvent`). Use
 `client_tick_pre` or `client_tick_post` for state updates that must run even then.
@@ -37,7 +38,7 @@ the active hand, and inspect that hand's stack with `LivingRef::with_hand_item`.
 
 `host.gui_options().damage_tilt_strength` is the player's Damage Tilt accessibility option, 0 (off) to 1
 (vanilla's `Options.damageTiltStrength`): the factor vanilla's own hurt tilt takes. Scale a hurt shake
-(`camera_shake`) or a field-of-view punch by it, so a player who turned the tilt off for comfort doesn't get yours
+(`render_view_transform`) or a field-of-view punch by it, so a player who turned the tilt off for comfort doesn't get yours
 either.
 
 ## Name tags

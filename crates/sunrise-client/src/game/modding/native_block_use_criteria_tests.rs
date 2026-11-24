@@ -17,9 +17,14 @@ fn with_isolated_guests(name: &str, test: impl FnOnce(&mut Game<'_>)) {
 
 fn install(game: &mut Game<'_>) {
     game.build_registries();
-    game.world
-        .chunks
-        .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+    game.world.chunks.insert(
+        (0, 0),
+        Arc::new({
+            let mut chunk = Chunk::empty(0, 0);
+            chunk.lit = true; // a FULL read of a hand-made column finds it ready
+            chunk
+        }),
+    );
     let mut tree = a::Tree::default();
     for (id, trigger, conditions) in [
         (
@@ -330,6 +335,34 @@ fn block_use_resolves_saved_event_block_without_requiring_the_location_neighbour
             );
             assert!(!g.streaming.commanded().contains(&unlit));
             g.streaming = previous;
+        },
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn an_already_acting_guest_is_reached_in_their_own_level_and_the_outer_level_returns() {
+    use crate::game::{Dim, commands::Target};
+
+    with_isolated_guests(
+        "game::native_block_use_criteria_tests::an_already_acting_guest_is_reached_in_their_own_level_and_the_outer_level_returns",
+        |g| {
+            install(g);
+            let outer = g.dim;
+            assert_ne!(outer, Dim::Nether);
+            g.lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .update_guest(12, |guest| guest.dimension = Dim::Nether.id().to_owned())
+                .unwrap();
+            // A nested call: the guest's body is in place while the level is the outer one.
+            g.lan_acting = Some(12);
+            let seen = g.for_player(Target::Guest(12), |g| g.dim);
+            assert_eq!(seen, Some(Dim::Nether));
+            assert_eq!(g.dim, outer, "the outer level is restored");
+            assert_eq!(g.lan_acting, Some(12), "no second body swap came and went");
+            g.lan_acting = None;
         },
     );
 }

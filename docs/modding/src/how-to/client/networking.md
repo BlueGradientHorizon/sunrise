@@ -295,7 +295,7 @@ handler if you need to keep that channel's byte contract.
 
 The network codec never interns incoming text. Static strings and interned level keys are not
 accepted. The registrar also refuses Wire forms that allocate outside the shared budget, such as
-`SpawnerKey`, `CustomSpawners`, `ModelPart`, and JSON values, even in nested fields. Send bounded
+`CustomSpawners`, `ModelPart`, and JSON values, even in nested fields. Send bounded
 owned fields and convert explicitly where you need those types.
 
 Derive `Wire` for the value, register it in `Hooks::register`, and keep the token the

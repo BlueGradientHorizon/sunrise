@@ -515,7 +515,7 @@ impl Game<'_> {
             let sound = self
                 .remote_sound_name(&p.sound)
                 .unwrap_or_else(|| "minecraft:entity.generic.explode".to_owned());
-            self.audio.play(&sound, Some(p.center), 4.0, pitch);
+            self.play_audio(&sound, Some(p.center), 4.0, pitch);
         }
         if let Some(options) = self.received_particle(&p.particle, p.center) {
             let level = ParticleLevel::new(&self.world, self.res.facts(), self.collision);

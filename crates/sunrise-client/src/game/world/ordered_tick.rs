@@ -588,9 +588,8 @@ mod tests {
     /// A listener's calls, in order: the phase and the entities told.
     type Heard = std::sync::Arc<std::sync::Mutex<Vec<(&'static str, Vec<u32>)>>>;
 
-    /// Hears every entity tick, naming `named` to `entity_tick_each`.
+    /// Hears every entity tick.
     struct Displays {
-        named: &'static [&'static str],
         heard: Heard,
     }
 
@@ -612,21 +611,15 @@ mod tests {
             let entities = event.entities.to_vec();
             self.heard.lock().unwrap().push(("post", entities));
         }
-        fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-            for kind in self.named {
-                r.entity_tick_each(kind);
-            }
-        }
     }
 
     /// Two text displays, which the server keeps without simulating them, through a level's
     /// entity phase: their ids and what the listener heard.
-    fn display_ticks(named: &'static [&'static str]) -> (Vec<u32>, Vec<(&'static str, Vec<u32>)>) {
+    fn display_ticks() -> (Vec<u32>, Vec<(&'static str, Vec<u32>)>) {
         let heard = Heard::default();
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
             "display-ticks",
             Box::new(Displays {
-                named,
                 heard: heard.clone(),
             }),
         )]
@@ -652,19 +645,18 @@ mod tests {
                 game.begin_ordered_ticks();
                 game.run_ordered_ticks(sunrise_client::join_seq::JoinSeq::MAX, false)
                     .unwrap();
-                game.native_others_tick_family(game.ordered.told, game.ordered.born);
             });
         });
         let heard = std::mem::take(&mut *heard.lock().unwrap());
         (ids, heard)
     }
 
-    /// Displays of a type a mod named are told one by one at their place in the join order, each
+    /// Displays are told one by one at their place in the join order, each
     /// Pre right before its Post.
     #[test]
     #[ignore = "daily"]
-    fn named_displays_are_told_at_their_place_in_the_join_order() {
-        let (ids, heard) = display_ticks(&["minecraft:text_display"]);
+    fn displays_are_told_at_their_place_in_the_join_order() {
+        let (ids, heard) = display_ticks();
         assert_eq!(ids.len(), 2);
         assert_eq!(
             heard,
@@ -675,15 +667,6 @@ mod tests {
                 ("post", vec![ids[1]]),
             ]
         );
-    }
-
-    /// With no display type named, the displays are told once as a family; the walk itself
-    /// offers none of them.
-    #[test]
-    #[ignore = "daily"]
-    fn unnamed_displays_are_told_once_for_the_family() {
-        let (ids, heard) = display_ticks(&[]);
-        assert_eq!(heard, [("pre", ids.clone()), ("post", ids)]);
     }
 
     #[test]

@@ -1,5 +1,5 @@
 //! Native biome source adapter: the mods' `BiomeSource`s as the engine's.
-use mod_api::BiomeSource;
+use mod_api::{__private::game::CallbackOwner, BiomeSource};
 use std::sync::Arc;
 use sunrise_world::worldgen::mod_biome_sources::{
     ModBiomeSource, ModBiomeSources, install_mod_biome_sources,
@@ -9,24 +9,33 @@ use sunrise_world::worldgen::mod_biome_sources::{
 struct Adapter {
     biomes: Vec<String>,
     source: Arc<dyn BiomeSource>,
+    owner: CallbackOwner,
 }
 impl ModBiomeSource for Adapter {
     fn possible_biomes(&self) -> &[String] {
         &self.biomes
     }
-    fn noise_biome(&self, quart: [i32; 3], seed: i64) -> u16 {
-        self.source.noise_biome(quart, seed)
+    /// Sampling runs under the registering mod's owner: a panic poisons that source for the
+    /// session and is this cell's failure, not an unwind through the worker.
+    fn noise_biome(&self, quart: [i32; 3], seed: i64) -> Result<u16, String> {
+        self.owner.call("biome source", "noise_biome", || {
+            self.source.noise_biome(quart, seed)
+        })
     }
 }
 
 fn installed_biome_sources() -> ModBiomeSources {
     mod_api::__private::biome_source_declarations()
         .into_iter()
-        .map(|(id, biomes, source)| {
+        .map(|(id, biomes, source, owner)| {
             let biomes = biomes.into_iter().map(|biome| biome.to_string()).collect();
             (
                 id,
-                Arc::new(Adapter { biomes, source }) as Arc<dyn ModBiomeSource>,
+                Arc::new(Adapter {
+                    biomes,
+                    source,
+                    owner,
+                }) as Arc<dyn ModBiomeSource>,
             )
         })
         .collect()
@@ -92,8 +101,8 @@ mod tests {
             );
         }
         assert_eq!(LISTED.load(Ordering::Relaxed), 1);
-        assert_eq!(stripes.noise_biome([3, 9, -4], 0), 1);
-        assert_eq!(stripes.noise_biome([3, 9, -4], 1), 0);
+        assert_eq!(stripes.noise_biome([3, 9, -4], 0), Ok(1));
+        assert_eq!(stripes.noise_biome([3, 9, -4], 1), Ok(0));
     }
 
     /// Each source a mod may not register, and a dimension naming a source

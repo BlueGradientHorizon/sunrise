@@ -464,15 +464,20 @@ impl<G: ChunkGenerator> ChunkGenerator for Persistent<G> {
     fn idle(&self, worker: &mut G::Worker) {
         self.inner.idle(worker);
     }
-    fn proto(&self, worker: &mut G::Worker, x: i32, z: i32) -> crate::streaming::Proto {
-        let mut proto = self.inner.proto(worker, x, z);
+    fn proto(
+        &self,
+        worker: &mut G::Worker,
+        x: i32,
+        z: i32,
+    ) -> std::result::Result<crate::streaming::Proto, String> {
+        let mut proto = self.inner.proto(worker, x, z)?;
         if let Some(saved) = self
             .save
             .load_proto(x, z, self.registry.registry, &self.biomes)
         {
             self.inner.restore_proto(&mut proto, saved);
         }
-        proto
+        Ok(proto)
     }
     fn is_decorated(&self, proto: &crate::streaming::Proto) -> bool {
         self.inner.is_decorated(proto)

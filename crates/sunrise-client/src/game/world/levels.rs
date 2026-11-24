@@ -2087,6 +2087,15 @@ impl Game<'_> {
         // Vanilla saves the level's chunks before their unload hooks.
         self.native_chunks_loaded();
         self.abort_abandoned_transactions(0);
+        // Light still queued or in flight would be saved with the new blocks under the old
+        // light arrays marked on: a column it can reach is saved unlit and relit on reopen.
+        for key in self.streaming.columns_with_outstanding_light(&self.world) {
+            if let Some(chunk) = self.world.chunks.get_mut(&key) {
+                Arc::make_mut(chunk).lit = false;
+                // A close that fails leaves the level parked: it relights.
+                self.world.dirty_light.insert(key);
+            }
+        }
         if let Err(why) = self.save_level(true) {
             // Not saved: the level stays parked, and the level in place is the one before.
             self.enter_level(back)?;
@@ -2856,30 +2865,15 @@ mod tests {
         let root = PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         // Opening a world publishes the server's worldgen tables. Isolate that
         // publication from the other tests, even though the mod list is scoped.
-        const CHILD_HOME: &str = "SUNRISE_CHUNK_DISK_CONTEXT_TEST_HOME";
-        let Some(home) = std::env::var_os(CHILD_HOME).map(PathBuf::from) else {
-            let home = tempfile::tempdir().unwrap();
-            let status = std::process::Command::new(std::env::current_exe().unwrap())
-                .args([
-                    "--ignored",
-                    "--exact",
-                    "game::levels::tests::late_chunk_saves_use_their_opened_levels_disk_context",
-                    "--nocapture",
-                ])
-                .current_dir(home.path())
-                .env(CHILD_HOME, home.path())
-                .env("SUNRISE_TEST_RESOURCES", root.canonicalize().unwrap())
-                .env("SUNRISE_HOME", home.path().join("sunrise"))
-                .env("SUNRISE_LAUNCHER_HOME", home.path().join("launcher"))
-                .env("XDG_DATA_HOME", home.path().join("data"))
-                .env("XDG_CONFIG_HOME", home.path().join("config"))
-                .env("SUNRISE_LAUNCHER_NO_SELF_UPDATE", "1")
-                .env("SUNRISE_NO_AUDIO", "1")
-                .status()
-                .unwrap();
-            assert!(status.success() && home.path().join("passed").is_file());
+        if crate::game::native_entity_refs::tests::run_fresh_cases(
+            "game::levels::tests::late_chunk_saves_use_their_opened_levels_disk_context",
+            "SUNRISE_CHUNK_DISK_CONTEXT_TEST_CHILD",
+            &["1"],
+        ) {
             return;
-        };
+        }
+        // The fresh child runs in its own scratch home.
+        let home = std::env::current_dir().unwrap();
         let world = home.join("world");
         let seen = Arc::new(Mutex::new(Vec::new()));
         let mods = vec![ModEntry::new(
@@ -2923,7 +2917,6 @@ mod tests {
                 ],
             );
         });
-        std::fs::write(home.join("passed"), b"").unwrap();
     }
 
     /// `MinecraftServer.prepareLevels` activates each level's saved tickets and
@@ -3214,7 +3207,7 @@ mod tests {
                     seed: game.level.seed,
                     max_players: 2,
                     integrated: false,
-                    levels: game.level_shapes,
+                    levels: game.level_shapes.clone(),
                     level_seeds: game.levels.runtime.seeds(),
                 },
             )

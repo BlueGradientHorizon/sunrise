@@ -82,9 +82,10 @@ delivers it as a string (NeoForge's `ModIdArgument`). `resource:<registry>`, suc
 from a data pack, and delivers `CommandArgumentValue::Id`; any other id is refused
 with vanilla's `argument.resource.not_found` before the executor runs. Clients see it
 as vanilla's `minecraft:resource_key`, so unmodded clients complete it too. The registry
-must be a `namespace:path` resource location of at most 256 bytes, and the server takes at
-most 256 distinct registries; a usage past either is left out, with the reason in the log. Block positions are resolved and floored
-from the source's world, relative or local coordinates without loading chunks.
+must be a valid `namespace:path` resource location. An invalid registry name refuses the
+usage with a reason in the log. Registry names have no separate registration budget; the
+vanilla command-tree string frame applies on the wire. Block positions are resolved and
+floored from the source's world, relative or local coordinates without loading chunks.
 
 `id` is a free identifier: vanilla's `minecraft:resource_location` argument, lowercase letters,
 digits and `_ - . : /`, canonicalised to `namespace:path` with `minecraft` when the namespace is
@@ -195,8 +196,8 @@ argument's kind:
 ```rust,ignore
 use mod_api::{
     Command, CommandArgumentError, CommandArgumentKind, CommandArgumentType, CommandArgumentValue,
-    CommandSender, CommandSuggestion, Hooks, RegisterCommandsEvent, Registrar, RegistrationContext,
-    ServerHost, Text,
+    Hooks, RegisterCommandsEvent, Registrar, RegistrationContext, ServerHost, Suggestion,
+    SuggestionRequest, Text,
 };
 
 struct Machine;
@@ -216,16 +217,11 @@ impl CommandArgumentType for Machine {
         }
     }
 
-    fn suggest(
-        &self,
-        sender: Option<&CommandSender>,
-        prefix: &str,
-    ) -> Vec<CommandSuggestion> {
-        let _ = sender;
+    fn suggest(&self, request: &SuggestionRequest) -> Vec<Suggestion> {
         ["press", "furnace"]
             .into_iter()
-            .filter(|machine| machine.starts_with(prefix))
-            .map(CommandSuggestion::new)
+            .filter(|machine| machine.starts_with(request.prefix.as_str()))
+            .map(|machine| request.suggest(machine))
             .collect()
     }
 }
@@ -256,11 +252,11 @@ The server parses the argument with `parse` before calling the executor; a
 rejected value shows the returned `Text` and the executor does not run. A valid value arrives
 as `CommandArgumentValue::Custom { kind, value }`, where `kind` is `mymod:machine`
 and `value` is the canonical text `parse` returned. `suggest` is asked for the
-completions while the player types, with the sender: a provider that completes names
+completions while the player types, with the sender and the arguments before it: a type that completes names
 from a mod's own registry returns only the entries that sender may use, keyed by its
 UUID and compared with `sender.permission()`. The game keeps the answer as it comes
-and does not filter it, so a provider that ignores the sender offers everything to
-everyone. `sender` is `None` when no player asks: the console, and a client
+and does not filter it, so a type that ignores the sender offers everything to
+everyone. `request.sender` is `None` when no player asks: the console, and a client
 completing its own client commands before its own profile is known.
 
 For a fixed set of words, register `ChoiceArgument` (NeoForge's `EnumArgument`)
@@ -268,67 +264,40 @@ instead of writing a type: `r.register_command_argument("mode",
 ChoiceArgument::new(["low", "high"]))`. It refuses other words, listing the valid
 ones, and completes the choices that start with the typed text.
 
-### Suggestions from a provider declared on the argument
+### What `suggest` sees and how its answer is kept
 
-`suggest` sees the typed prefix and the sender, and nothing of the arguments before it.
-A type whose completions also depend on those arguments declares a `SuggestionProvider`
-instead: `CommandArgumentType::suggestion_provider` returns it, and the engine asks
-it for that argument and no other. `suggest` is not called for those arguments, and a
-mod that declares a provider needs no `tab_complete` for it.
+`suggest` takes a `SuggestionRequest`: `prefix` (the text typed for this argument), `arguments`
+(every argument parsed before it, each a `TypedArgument` with its name and the text the engine
+parsed) and `sender` (UUID, name and command level). It answers `Vec<Suggestion>`, the same type
+`tab_complete` uses, on server and client commands alike. Every request is answered from
+scratch; nothing is kept between two requests. A panic answers no suggestions and is logged
+against the argument type.
 
 ```rust,ignore
-use mod_api::{
-    CommandSuggestion, SuggestionProvider, SuggestionReply, SuggestionRequest, TypedArgument,
-};
-
-struct Warps;
-
-impl SuggestionProvider for Warps {
-    fn suggest(&self, request: &SuggestionRequest) -> SuggestionReply {
-        // `request.sender` is `None` for the console.
-        let level = request.sender.as_ref().map_or(0, |sender| sender.permission().level());
-        let world = request
-            .arguments
-            .iter()
-            .find(|argument| argument.name == "world")
-            .map_or("", |argument: &TypedArgument| argument.text.as_str());
-        let mut suggestions = Vec::new();
-        for warp in warps_of(level, world) {
-            if warp.starts_with(&request.prefix) {
-                suggestions.push(CommandSuggestion::with_tooltip(warp, "a warp"));
-            }
-        }
-        SuggestionReply::new(suggestions)
-    }
-}
-
-impl CommandArgumentType for WarpName {
-    // ...
-    fn suggestion_provider(&self) -> Option<Arc<dyn SuggestionProvider>> {
-        Some(Arc::new(Warps))
-    }
+fn suggest(&self, request: &SuggestionRequest) -> Vec<Suggestion> {
+    let level = request.sender.as_ref().map_or(0, |sender| sender.permission().level());
+    let world = request
+        .arguments
+        .iter()
+        .find(|argument| argument.name == "world")
+        .map_or("", |argument| argument.text.as_str());
+    warps_of(level, world)
+        .into_iter()
+        .filter(|warp| warp.starts_with(request.prefix.as_str()))
+        .map(|warp| request.suggest_with_tooltip(warp, "a warp"))
+        .collect()
 }
 ```
 
-The provider runs on the server, in the player's own command source: it sees the
-text typed for its argument, the arguments parsed before it (each a name and the text
-the engine parsed for it), and the sender's UUID, name and command level. Every
-request is answered from scratch; nothing is kept between two requests. An error or a
-panic answers no suggestions and is logged against the argument type. The provider
-proposes and the engine orders: it keeps the candidates that match the typed text by
-the game's own rule (at the start, or after each `.`, `_` or `/`) and sorts what it
-keeps, so a provider that returns everything still completes the same way.
-
-The engine caps a reply at 1,000 kept candidates and each text at the protocol's 32,767
-UTF-16 code units (a tooltip at 65,535 bytes of Java modified UTF-8). The cap counts the
-candidates the reply keeps, after the engine's own matching and drops, so a long list of
-non-matches before a match does not hide it. A candidate past a bound is dropped and
-named in the diagnostics; the others are kept, and the player's chat is never
-disconnected over it. No completion listener may add to, replace or erase a provider's
-answer: `tab_complete` is asked for ordinary completions only. A client never runs the
-provider: the argument's node carries `minecraft:ask_server`, so the client asks the
-server, exactly as for a `suggest`-only type, and a client command that names a type
-declaring one is refused by name.
+The type proposes and the engine orders: the merged list is sorted like Brigadier's. A reply
+keeps at most 1,000 candidates (`ServerSuggestionProvider.limitSuggestionCount`) and each text
+at the protocol's 32,767 UTF-16 code units (a tooltip at 65,535 bytes of Java modified UTF-8).
+The cap counts the candidates the reply keeps, so a list of dropped entries before a good one
+does not hide it. A candidate past a bound, with a range outside the prefix or splitting a
+character, equal to the text it replaces, or repeating an earlier one, is dropped and named in
+the diagnostics; the others are kept, and the player's chat is never disconnected over it.
+`tab_complete` still sees and may change the server's completions. A client that does not know
+the type asks the server (the node carries `minecraft:ask_server`).
 
 `CommandArgumentKind::Word` takes one word of ASCII letters, digits and `_ - . +`; the
 word ends at the first other character, a space included, so a value with `:` or `/`
@@ -346,23 +315,24 @@ command argument types the same way; they are available to `register_client_comm
 ### Completing one token of a greedy text
 
 A `Greedy` argument holds free text, and the tokens in it are yours to split. A completion
-replaces all of that text by default, so `suggest` names the token it completes with
-`CommandSuggestion::replacing_from`, a byte offset into the prefix:
+replaces all of that text by default, so the suggestion names the token it completes with
+`request.suggest_from(start, text)`, a byte offset into the prefix (or `Suggestion::with_range`):
 
 ```rust,ignore
 // `//replace 50%stone,50%dirt st` completes only the block being typed.
-fn suggest(&self, _: Option<&CommandSender>, prefix: &str) -> Vec<CommandSuggestion> {
+fn suggest(&self, request: &SuggestionRequest) -> Vec<Suggestion> {
+    let prefix = request.prefix.as_str();
     let start = prefix.rfind(' ').map_or(0, |space| space + 1);
     ["stone", "dirt"]
         .into_iter()
         .filter(|block| block.starts_with(&prefix[start..]))
-        .map(|block| CommandSuggestion::new(block).replacing_from(start))
+        .map(|block| request.suggest_from(start, block))
         .collect()
 }
 ```
 
 The offset reaches the player's client as the suggestion's range, so vanilla clients replace
-the same token in place and keep the text in front of it. An offset past the prefix, or inside
+the same token in place and keep the text in front of it. A range past the prefix, or inside
 a character, refuses that suggestion: the reason is logged with the type's id, the other
 suggestions stay, and nothing panics.
 
@@ -414,7 +384,7 @@ and the completions: a player below the level neither receives that literal in t
 command tree nor is offered it, and typing the path is refused. A root with one
 public usage keeps only the children the player may run, so `/warp` stays visible
 while `/warp admin` is absent for a non-operator. An operator level change sends the
-trees again (`/op`, `/deop`) and the completions follow from then on; a provider
+trees again (`/op`, `/deop`) and the completions follow from then on; a completer
 whose answers depend on its own policy calls `host.commands().refresh_commands()`
 after it changes them.
 
@@ -471,7 +441,7 @@ event.commands.push(mod_api::Command::new("count").executes_client(move |_, _| {
 The executor receives a `ClientHost` and a typed `CommandInvocation`. Return
 `Some(result)` on success or `None` to report failure locally. Use level zero and
 client-safe argument kinds; player, entity and dimension handles and custom
-argument types with a server suggestion provider are unavailable. The chat display
+argument types complete through the same `suggest`. The chat display
 combines local and server branches, but dispatch is separate: only an unknown local
 command or argument goes to the server.
 

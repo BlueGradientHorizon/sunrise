@@ -89,6 +89,9 @@ pub fn split_client_command_registration(
 /// others in its console handling), so a mod word merged under one of those is reached by players
 /// and functions but not from that console.
 ///
+/// A `resource:<registry>` usage requires a `namespace:path` registry name; an invalid name
+/// refuses the usage. There is no separate registration budget for registry names.
+///
 /// Side: server. Selector arguments use vanilla's source position, permissions,
 /// cardinality and selection order; `player`/`entity` require one result and
 /// `players`/`entities` require a nonempty result. Unresolvable entity handles are

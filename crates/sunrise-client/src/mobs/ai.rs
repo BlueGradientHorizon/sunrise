@@ -82,7 +82,7 @@ mod inside_walk_tests {
     }
 
     fn reset(kill: usize, panic: usize, enabled: bool) {
-        mod_api::__private::resolve_effects(["minecraft:wither"], |_| Some(0)).unwrap();
+        mod_api::__private::resolve_effects(["minecraft:wither"], |_| Some(0), |_| true).unwrap();
         CONTACTS.lock().unwrap().clear();
         KILL_AFTER.store(kill, Ordering::SeqCst);
         PANIC_AFTER.store(panic, Ordering::SeqCst);

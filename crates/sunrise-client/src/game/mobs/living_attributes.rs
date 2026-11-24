@@ -104,7 +104,7 @@ impl Game<'_> {
         join: sunrise_client::join_seq::JoinSeq,
         first: EquipmentSlot,
     ) {
-        let mut deltas = Vec::new();
+        let mut deltas = sunrise_client::living_attributes::EquipmentDeltas::default();
         for &slot in &EquipmentSlot::ALL[first as usize..] {
             let Some(i) = self
                 .mob_index
@@ -127,7 +127,7 @@ impl Game<'_> {
                     current.as_ref(),
                 );
             }
-            deltas.push((slot, current));
+            deltas.set(slot, current);
         }
         if let Some(i) = self
             .mob_index

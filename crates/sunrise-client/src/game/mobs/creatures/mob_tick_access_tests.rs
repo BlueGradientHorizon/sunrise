@@ -516,9 +516,8 @@ fn a_mob_outside_the_entity_tick_list_checks_no_despawn() {
 }
 
 /// What a tick listener heard: each call's phase and entities, and at a Post where the first
-/// of them stands. Names the types of `named` to `entity_tick_each`.
+/// of them stands.
 struct TickTiming {
-    named: &'static [&'static str],
     replace_cancels: bool,
     heard: Arc<Mutex<TickCalls>>,
 }
@@ -548,20 +547,14 @@ impl mod_api::Hooks for TickTiming {
         let mut heard = self.heard.lock().unwrap();
         heard.push(("post", event.entities.to_vec(), at));
     }
-    fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-        for kind in self.named {
-            r.entity_tick_each(kind);
-        }
-    }
 }
 
 /// The two pigs' tick hooks through the real creature pass; the first pig falls in its tick.
-fn pig_ticks(named: bool, replace_cancels: bool) -> TickCalls {
+fn pig_ticks(replace_cancels: bool) -> TickCalls {
     let heard = Arc::new(Mutex::new(Vec::new()));
     let mods: mod_api::Mods = vec![ModEntry::new(
         "mob-tick-timing",
         Box::new(TickTiming {
-            named: if named { &["minecraft:pig"] } else { &[] },
             replace_cancels,
             heard: heard.clone(),
         }),
@@ -620,10 +613,6 @@ struct TraderDrinkPost(Arc<Mutex<Vec<(bool, bool)>>>);
 
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for TraderDrinkPost {
-    fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-        r.entity_tick_each("minecraft:wandering_trader");
-    }
-
     fn entity_tick_post(&self, host: HostSide<'_>, event: &mut mod_api::EntityTickPostEvent<'_>) {
         let HostSide::Server(host) = host else {
             panic!("server fixture");
@@ -684,7 +673,7 @@ fn trader_milk_finishes_before_its_own_entity_tick_post() {
 #[test]
 #[ignore = "daily"]
 fn a_named_type_hears_each_entitys_own_pre_and_post() {
-    let heard = pig_ticks(true, false);
+    let heard = pig_ticks(false);
     let phases: Vec<_> = heard
         .iter()
         .map(|(phase, entities, _)| (*phase, entities.clone()))
@@ -706,7 +695,7 @@ fn a_named_type_hears_each_entitys_own_pre_and_post() {
 #[test]
 #[ignore = "daily"]
 fn a_named_pre_cannot_clear_an_earlier_turns_cancellation() {
-    let phases: Vec<_> = pig_ticks(true, true)
+    let phases: Vec<_> = pig_ticks(true)
         .into_iter()
         .map(|(phase, entities, _)| (phase, entities))
         .collect();
@@ -716,16 +705,29 @@ fn a_named_pre_cannot_clear_an_earlier_turns_cancellation() {
     );
 }
 
-/// With no type named, the mobs are told as one family: one Pre before the first tick, one
-/// Post after the last, as before.
+/// A listener of only `entity_tick_post` hears each mob's Post after that mob's own tick.
 #[test]
 #[ignore = "daily"]
-fn an_unnamed_family_hears_one_pre_and_one_post() {
-    let phases: Vec<_> = pig_ticks(false, false)
-        .into_iter()
-        .map(|(phase, entities, _)| (phase, entities))
-        .collect();
-    assert_eq!(phases, [("pre", vec![71, 72]), ("post", vec![71, 72])]);
+fn a_post_only_listener_hears_each_mob_after_its_own_tick() {
+    struct PostOnly(Arc<Mutex<Vec<Vec<u32>>>>);
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for PostOnly {
+        fn entity_tick_post(&self, _: HostSide<'_>, event: &mut mod_api::EntityTickPostEvent<'_>) {
+            self.0.lock().unwrap().push(event.entities.to_vec());
+        }
+    }
+    let heard = Arc::new(Mutex::new(Vec::new()));
+    let mods: mod_api::Mods = vec![ModEntry::new(
+        "post-only",
+        Box::new(PostOnly(heard.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_two_pigs(|game| {
+            game.tick_creature_entities().unwrap();
+        });
+    });
+    assert_eq!(*heard.lock().unwrap(), [vec![71], vec![72]]);
 }
 
 /// Two arrows of a type a mod names, on the server: each told alone, its Post right after its own
@@ -737,7 +739,6 @@ fn named_projectiles_hear_each_their_own_pre_and_post() {
     let mods: mod_api::Mods = vec![ModEntry::new(
         "projectile-tick-timing",
         Box::new(TickTiming {
-            named: &["minecraft:arrow"],
             replace_cancels: false,
             heard: heard.clone(),
         }),
@@ -780,7 +781,7 @@ fn named_projectiles_hear_each_their_own_pre_and_post() {
 }
 
 /// Moves pig 72 into a second arrow's path in the Post of the arrow `first` (an arrow named to
-/// `entity_tick_each`, so told alone).
+/// so told alone).
 struct MoveOnArrowPost {
     first: Arc<AtomicU32>,
 }
@@ -795,9 +796,6 @@ impl mod_api::Hooks for MoveOnArrowPost {
             let pig = host.entity(72).expect("the pig");
             assert!(pig.teleport_to(host, [4.0, 80.0, 5.5], None));
         }
-    }
-    fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-        r.entity_tick_each("minecraft:arrow");
     }
 }
 
@@ -865,10 +863,6 @@ fn named_mobs_and_projectiles_yield_only_for_subscribed_phase() {
         fn entity_tick_pre(&self, host: HostSide<'_>, event: &mut EntityTickPreEvent<'_>) {
             record(&self.0, &host, "pre", event.entities);
         }
-        fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-            r.entity_tick_each("minecraft:pig");
-            r.entity_tick_each("minecraft:arrow");
-        }
     }
 
     struct PostOnly(Recorded);
@@ -880,10 +874,6 @@ fn named_mobs_and_projectiles_yield_only_for_subscribed_phase() {
             event: &mut mod_api::EntityTickPostEvent<'_>,
         ) {
             record(&self.0, &host, "post", event.entities);
-        }
-        fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-            r.entity_tick_each("minecraft:pig");
-            r.entity_tick_each("minecraft:arrow");
         }
     }
 
@@ -995,9 +985,6 @@ fn mob_equipment_change_fires_before_post_and_skips_canceled_ticks() {
             for &id in event.entities {
                 self.log.lock().unwrap().push(("post", id, None, None));
             }
-        }
-        fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-            r.entity_tick_each("minecraft:pig");
         }
     }
 

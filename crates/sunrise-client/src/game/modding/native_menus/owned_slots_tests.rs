@@ -2111,3 +2111,68 @@ fn reentrant_open_during_travel_close_opens_after_change_level() {
         assert_eq!(replacement.container_id(game), None);
     });
 }
+
+/// A replacement the closing listener asks for while the player's menus close for a save stays
+/// unpublished through the save: nothing real can reach a transient slot the save omits. A
+/// leaving player never gets it; otherwise it publishes once the save is done.
+#[test]
+#[ignore = "daily"]
+fn an_open_asked_during_a_save_close_publishes_only_after_the_save_if_the_player_stays() {
+    for leaving in [true, false] {
+        with_owned_menu(false, |game, rx, key| {
+            open(game, key);
+            sent(&rx);
+            REOPEN_ON_REMOVED.set(true);
+            let hold = game.guest_close_menus_for_save(1);
+            assert!(
+                !sent(&rx).iter().any(|p| matches!(p, C::OpenScreen(_))),
+                "the replacement stays unpublished through the save"
+            );
+            if leaving {
+                game.discard_menu_opens(hold);
+            } else {
+                game.resume_menu_opens(hold);
+            }
+            let opened = sent(&rx)
+                .iter()
+                .filter(|p| matches!(p, C::OpenScreen(_)))
+                .count();
+            assert_eq!(opened, usize::from(!leaving));
+        });
+    }
+}
+
+/// A player leaves from a level the server cannot enter: owner cleanup still runs, and the
+/// listener that heard the menu open hears its matching close before the menu is forgotten.
+#[test]
+#[ignore = "daily"]
+fn a_departure_from_an_unenterable_level_still_closes_the_heard_menu() {
+    let previous_extra = crate::game::EXTRA_DIMS.read().unwrap().clone();
+    with_owned_menu(false, |game, rx, key| {
+        open(game, key);
+        sent(&rx);
+        crate::game::Dim::add_extra("test:unenterable");
+        let mut host = game.lan.take().unwrap();
+        let mut gone = host.hub.guests.remove(0);
+        gone.dimension = "test:unenterable".to_owned();
+        CLOSE_TRACE.with(|trace| trace.borrow_mut().clear());
+        RECORD_CLOSE.set(true);
+        game.lan = game.lan_process_events(
+            host,
+            [sunrise_client::lan::hub::HostEvent::Left(Box::new(gone))],
+            &[],
+            [0.5, 64.0, 0.5],
+        );
+        RECORD_CLOSE.set(false);
+        let trace = CLOSE_TRACE.with(|trace| trace.borrow().clone());
+        assert_eq!(
+            trace
+                .iter()
+                .filter(|t| **t == "player_container_close")
+                .count(),
+            1,
+            "one close for the open that was heard: {trace:?}"
+        );
+    });
+    *crate::game::EXTRA_DIMS.write().unwrap() = previous_extra;
+}

@@ -486,12 +486,9 @@ impl Codec<Tag> for OptionalCompoundTag {
         match v {
             Tag::End => Ok(()),
             Tag::Compound(_) => {
-                // The bytes must be readable under the peer's heap quota, not just small on wire.
-                let bytes = v
-                    .to_network_bytes()
-                    .map_err(|error| Error::new(format!("NBT: {error}")))?;
-                Tag::from_network_bytes(&bytes, None)
-                    .map(drop)
+                // Readable under the peer's heap quota, not just small on wire: summed in one
+                // walk of the tree, without encoding it or decoding a second copy.
+                nbt::network_heap_within(v, nbt::NETWORK_NBT_QUOTA)
                     .map_err(|error| Error::new(format!("NBT: {error}")))
             }
             _ => Err(Error::new("NBT: expected compound tag or end")),

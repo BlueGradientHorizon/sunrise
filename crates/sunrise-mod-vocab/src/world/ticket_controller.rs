@@ -56,20 +56,35 @@ pub type LoadingValidationCallback =
 #[derive(Clone)]
 // exhaustive: private fields keep callback ownership inside the binding.
 pub struct RegisteredTicketValidator {
-    callback: Arc<LoadingValidationCallback>,
+    /// Taken only by `Drop`, which retires it inside the owner's containment.
+    callback: Option<Arc<LoadingValidationCallback>>,
     owner: RetainedCallback,
+}
+
+impl Drop for RegisteredTicketValidator {
+    fn drop(&mut self) {
+        if let Some(callback) = self.callback.take() {
+            self.owner.dispose("TicketValidator::drop", callback);
+        }
+    }
 }
 
 impl RegisteredTicketValidator {
     pub(crate) fn new(callback: Arc<LoadingValidationCallback>, owner: RetainedCallback) -> Self {
-        Self { callback, owner }
+        Self {
+            callback: Some(callback),
+            owner,
+        }
     }
 
     fn validate(&self, host: &mut dyn ServerHost, level: LevelRef, rows: &mut Vec<ModTicket>) {
+        let Some(callback) = &self.callback else {
+            return;
+        };
         let mut validation = ControllerTickets::new(rows);
         if self
             .owner
-            .call(|| (self.callback)(host, level, &mut validation))
+            .call(|| callback(host, level, &mut validation))
             .is_ok()
         {
             validation.publish_removals();

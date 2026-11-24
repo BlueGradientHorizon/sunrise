@@ -493,7 +493,7 @@ impl Game<'_> {
         } else {
             "minecraft:item.mace.smash_air"
         };
-        self.audio.play(sound, Some(feet), 1.0, 1.0);
+        self.play_audio(sound, Some(feet), 1.0, 1.0);
         Some(fall)
     }
     /// What a server's guest does after their hit landed on another player:

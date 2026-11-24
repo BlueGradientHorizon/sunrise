@@ -70,8 +70,7 @@ impl Game<'_> {
         target: Option<(Aabb, mace::Spared)>,
         scale: f32,
     ) {
-        self.audio
-            .play("minecraft:entity.player.attack.sweep", from, 1.0, 1.0);
+        self.play_audio("minecraft:entity.player.attack.sweep", from, 1.0, 1.0);
         if let Some((area, mob)) = target {
             self.sweep_damage(area, mob, scale);
         }
@@ -114,16 +113,14 @@ impl Game<'_> {
         let player = self.player.as_ref();
         let from = player.map(|p| [p.position.x, p.position.y, p.position.z]);
         if full && player.is_some_and(|p| p.sprinting) {
-            self.audio
-                .play("minecraft:entity.player.attack.knockback", from, 1.0, 1.0);
+            self.play_audio("minecraft:entity.player.attack.knockback", from, 1.0, 1.0);
         }
         let crit = living.is_some() && crit;
         if let Some(at) = sweep {
             self.sweep_attack(at, from, Some((area, spared)), scale);
         }
         if crit {
-            self.audio
-                .play("minecraft:entity.player.attack.crit", from, 1.0, 1.0);
+            self.play_audio("minecraft:entity.player.attack.crit", from, 1.0, 1.0);
             if let Some(id) = living {
                 self.area_critical_hit(id, area, false);
             }
@@ -133,7 +130,7 @@ impl Game<'_> {
             } else {
                 "minecraft:entity.player.attack.weak"
             };
-            self.audio.play(sound, from, 1.0, 1.0);
+            self.play_audio(sound, from, 1.0, 1.0);
         }
         // Player.magicCrit: the enchantments added damage.
         if let Some(id) = magic {
@@ -306,8 +303,7 @@ impl Game<'_> {
         let player = self.player.as_ref();
         let from = player.map(|p| [p.position.x, p.position.y, p.position.z]);
         if knockback_attack {
-            self.audio
-                .play("minecraft:entity.player.attack.knockback", from, 1.0, 1.0);
+            self.play_audio("minecraft:entity.player.attack.knockback", from, 1.0, 1.0);
         }
         let old_health = self.mobs[index].health;
         let source = match from {
@@ -443,7 +439,7 @@ impl Game<'_> {
                 self.sweep_attack(at, from, Some(target), scale);
             }
             if crit || sweep.is_none() {
-                self.audio.play(sound, from, 1.0, 1.0);
+                self.play_audio(sound, from, 1.0, 1.0);
             }
             self.remember_player_target(Some(id));
             // The hurt or death sound the mob raised (getHurtSound / getDeathSound,
@@ -461,8 +457,7 @@ impl Game<'_> {
             for event in queued {
                 match event {
                     sunrise_client::mobs::MobEvent::Sound(s, at, volume, pitch) => {
-                        self.audio
-                            .play(&format!("minecraft:{s}"), Some(at), volume, pitch);
+                        self.play_audio(&format!("minecraft:{s}"), Some(at), volume, pitch);
                     }
                     sunrise_client::mobs::MobEvent::Infested { at, velocities } => {
                         infested.push((at, velocities))
@@ -490,8 +485,7 @@ impl Game<'_> {
                 p.cause_food_exhaustion(0.1);
             }
         } else {
-            self.audio
-                .play("minecraft:entity.player.attack.nodamage", from, 1.0, 1.0);
+            self.play_audio("minecraft:entity.player.attack.nodamage", from, 1.0, 1.0);
         }
     }
     /// `Player.attack`'s damage against `target_kind` (with the attack

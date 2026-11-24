@@ -10,7 +10,7 @@ use mod_api::{BlockEdit, BlockEditError, Heightmap};
 use std::sync::Arc;
 use sunrise_client::{
     block_edit::{BulkPublication, Run},
-    chunk::Chunk,
+    chunk::{Chunk, LevelShape},
     containers::BlockEntity,
     fast_hash::{FxHashMap, FxHashSet},
     world::World,
@@ -198,6 +198,18 @@ fn column_height(
     air: impl Fn(BlockStateId) -> bool,
     counts: impl Fn(HeightmapType, BlockStateId) -> bool,
 ) -> i32 {
+    // The chunk storage is padded past a shorter level (the Nether starts at 0, not -64): an
+    // empty column's bottom is the level's own minimum.
+    column_height_in_storage(world, h, (x, z), air, counts).max(world.shape.min_y)
+}
+
+fn column_height_in_storage(
+    world: &World,
+    h: Heightmap,
+    (x, z): (i32, i32),
+    air: impl Fn(BlockStateId) -> bool,
+    counts: impl Fn(HeightmapType, BlockStateId) -> bool,
+) -> i32 {
     if h == Heightmap::WorldSurface {
         return world.world_surface(x, z, air);
     }
@@ -225,6 +237,7 @@ fn column_height(
 pub(super) fn fill_column_blocks(
     air: BlockStateId,
     chunk: &Chunk,
+    level: LevelShape,
     x: i32,
     z: i32,
     base: i32,
@@ -232,7 +245,11 @@ pub(super) fn fill_column_blocks(
     above: u32,
     out: &mut Vec<BlockStateId>,
 ) {
-    let (bottom, top) = (chunk.min_y(), chunk.max_y());
+    // The chunk's storage may be taller than the level it belongs to.
+    let (bottom, top) = (
+        chunk.min_y().max(level.min_y),
+        chunk.max_y().min(level.max_y()),
+    );
     let per = i64::from(below) + i64::from(above);
     let y0 = i64::from(base) - i64::from(below);
     for y in y0..y0 + per {
@@ -1054,8 +1071,8 @@ mod tests {
         let w = columns_world();
         let chunk = w.chunks.get(&(0, 0)).unwrap();
         let mut out = Vec::new();
-        fill_column_blocks(w.air, chunk, 1, 1, 65, 2, 3, &mut out);
-        fill_column_blocks(w.air, chunk, 3, 3, 319, 2, 3, &mut out);
+        fill_column_blocks(w.air, chunk, w.shape, 1, 1, 65, 2, 3, &mut out);
+        fill_column_blocks(w.air, chunk, w.shape, 3, 3, 319, 2, 3, &mut out);
         let read: Vec<u32> = out.iter().map(|s| s.0).collect();
         // (`names` calls state 2 a chest: here it stands for leaves)
         let (leaves, stone, air) = (2, 1, 0);
@@ -1066,6 +1083,24 @@ mod tests {
                 air, air, stone, air, air, // (3, 3) from 317: stone at 319, nothing over 319
             ]
         );
+    }
+
+    /// The Nether's build range is 0..256 inside storage padded to the overworld's: a column
+    /// there starts at 0, reads air outside its range, and spans at most 256 rows.
+    #[test]
+    fn a_shorter_level_bounds_columns_by_its_own_range() {
+        let mut w = columns_world();
+        w.shape = LevelShape::NETHER;
+        assert_eq!(height(&w, Heightmap::OceanFloor, 5, 5), 0);
+        assert_eq!(height(&w, Heightmap::WorldSurface, 100, 100), 0);
+        let chunk = w.chunks.get(&(0, 0)).unwrap();
+        let mut out = Vec::new();
+        // Rows -2..=2: the two below the level read air, the rest are the stone below 60.
+        fill_column_blocks(w.air, chunk, w.shape, 1, 1, 1, 3, 2, &mut out);
+        let read: Vec<u32> = out.iter().map(|s| s.0).collect();
+        assert_eq!(read, [0, 0, 1, 1, 1]);
+        assert_eq!(column_span(0, 256, w.shape.height), Some(256));
+        assert_eq!(column_span(0, 257, w.shape.height), None);
     }
 
     #[test]

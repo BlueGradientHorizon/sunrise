@@ -1852,6 +1852,21 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// Speeds a mod stored as supplied, infinity and NaN included, come back as stored.
+    #[test]
+    fn non_finite_ability_speeds_round_trip() {
+        let dir = world("non-finite-speeds");
+        let mut g = guest();
+        g.abilities.flying_speed = f32::INFINITY;
+        g.abilities.walking_speed = f32::NAN;
+        save(&g, &dir, &Default::default());
+        let mut back = guest();
+        assert!(load(&mut back, &dir));
+        assert_eq!(back.abilities.flying_speed, f32::INFINITY);
+        assert!(back.abilities.walking_speed.is_nan());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn a_world_without_singleplayer_uuid_gives_the_owner_a_new_player_not_anothers() {
         // A world from a vanilla server: no `singleplayer_uuid`, and the players' files are other

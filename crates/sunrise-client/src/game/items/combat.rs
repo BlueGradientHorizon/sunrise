@@ -161,6 +161,9 @@ pub(super) struct CombatTracker {
     /// `blast_hit_list`'s ids as a set, so a walk's membership check stays
     /// constant time however large the list is.
     pub(super) blast_hit_ids: std::collections::HashSet<u32>,
+    /// The one list entry the blast is reaching now: while it is set, every pass that asks
+    /// [`Self::visits`] sees only that entity.
+    pub(super) blast_turn: Option<u32>,
     /// The blast's direct source is in water (`Explosion.getDirectSourceEntity`
     /// `.isInWater`): paintings, item frames and cushions ignore it
     /// (`BlockAttachedEntity.ignoreExplosion`).
@@ -202,7 +205,8 @@ impl CombatTracker {
     /// the walk, unless a listening `explosion_detonate` left a list, and
     /// then only what that list names is.
     pub(super) fn visits(&self, id: u32) -> bool {
-        self.blast_hit_list.is_none() || self.blast_hit_ids.contains(&id)
+        self.blast_turn.is_none_or(|turn| turn == id)
+            && (self.blast_hit_list.is_none() || self.blast_hit_ids.contains(&id))
     }
 
     /// The attack lent by the enclosing [`Game::with_attack`] (`damage_level_of!(game, game.combat.attack(), .., ..)`).
@@ -1123,8 +1127,7 @@ impl Game<'_> {
         if let Some(b) = self.mobs.iter_mut().find(|m| m.id == mob)
             && sunrise_client::mobs::bee::sting_landed(b)
         {
-            self.audio
-                .play("minecraft:entity.bee.sting", Some(from), 1.0, 1.0);
+            self.play_audio("minecraft:entity.bee.sting", Some(from), 1.0, 1.0);
         }
     }
     /// Whether a hit from a mob's tick on `target`, handled after the mob

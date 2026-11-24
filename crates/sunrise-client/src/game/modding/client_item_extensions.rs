@@ -1314,6 +1314,13 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn invalid_registrations_do_not_discard_valid_reload_entries() {
+        if crate::game::native_entity_refs::tests::run_fresh_cases(
+            "game::client_item_extensions::tests::invalid_registrations_do_not_discard_valid_reload_entries",
+            "SUNRISE_INVALID_REGISTRATIONS_CHILD",
+            &["case"],
+        ) {
+            return;
+        }
         use mod_api::{Hooks, RegisterClientItemExtensionsEvent, RegistrationContext};
         use std::sync::Mutex;
 
@@ -1631,6 +1638,13 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn client_item_extensions_can_draw_without_a_level() {
+        if crate::game::native_entity_refs::tests::run_fresh_cases(
+            "game::client_item_extensions::tests::client_item_extensions_can_draw_without_a_level",
+            "SUNRISE_DRAW_WITHOUT_LEVEL_CHILD",
+            &["case"],
+        ) {
+            return;
+        }
         mod_platform::testing::with_mods(
             vec![mod_api::ModEntry::new("reads_level", Box::new(Empty))].into(),
             || {

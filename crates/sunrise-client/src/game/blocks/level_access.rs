@@ -28,8 +28,15 @@ impl LevelAccess for GameLevel<'_> {
         placer: Option<u32>,
     ) -> Option<sunrise_world::level::data::BlockSound> {
         let cause = mod_api::BlockSoundCause::Place;
+        let level = sunrise_client::motion::FrictionLevel {
+            world: &*self.world,
+            registry: self.registry,
+            context: self.loop_context,
+            side: &self.side,
+            coefficient: &|_| None,
+        };
         let sound = sunrise_client::block_sounds::native_sound_type(
-            self.loop_context,
+            level,
             pos,
             state,
             placer.map(|id| (id, "minecraft:player")),

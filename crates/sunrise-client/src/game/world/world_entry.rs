@@ -521,6 +521,25 @@ impl Game<'_> {
                 view.ids.insert(STRUCTURES.to_owned(), holders);
                 bind_tags(STRUCTURES, &mut view)?;
             }
+            // Placed features are holders too: the decoded ones (the codecs live generation
+            // places with, not the source files) and their tags, for a downstream
+            // `neoforge:registered` or `neoforge:tag_empty`. Reload keeps the frozen owner's.
+            const PLACED: &str = "minecraft:worldgen/placed_feature";
+            let live = if reload {
+                self.res.behaviours().live_features()
+            } else {
+                sunrise_world::worldgen::live::LiveFeatures::new(&generator)
+                    .ok()
+                    .flatten()
+                    .map(Arc::new)
+            };
+            if let Some(ids) = live
+                .as_ref()
+                .and_then(|features| features.registry_ids(PLACED))
+            {
+                view.ids.insert(PLACED.to_owned(), ids.clone());
+                bind_tags(PLACED, &mut view)?;
+            }
         }
         let damage_tags: HashMap<_, HashSet<_>> = health
             .damage

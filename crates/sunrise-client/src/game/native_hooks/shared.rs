@@ -2445,6 +2445,8 @@ pub(super) fn knockback(level: DamageLevel<'_>, pushed: Hurting<'_>, knock: &mut
         off_metadata.map(|metadata| mod_api::ItemStackView::resident(metadata, &project_off));
     let kill_credit_main =
         credit_metadata.map(|metadata| mod_api::ItemStackView::resident(metadata, &project_credit));
+    // NeoForge `LivingEntity.knockback` posts `(float) strength` and widens the result back.
+    let mut strength = knock.strength as f32;
     HitLevel(level).native_living_knockback(mod_api::__private::LivingKnockbackCall {
         entity,
         kind,
@@ -2454,11 +2456,12 @@ pub(super) fn knockback(level: DamageLevel<'_>, pushed: Hurting<'_>, knock: &mut
         attacker_off,
         kill_credit,
         kill_credit_main,
-        strength: &mut knock.strength,
+        strength: &mut strength,
         x: &mut knock.x,
         z: &mut knock.z,
         canceled: &mut canceled,
     });
+    knock.strength = f64::from(strength);
     canceled
 }
 
@@ -3520,7 +3523,7 @@ impl Game<'_> {
         {
             return false;
         }
-        self.audio.play_button_click();
+        self.play_audio_button_click();
         true
     }
     /// The open mod screen's tooltip under the cursor.
@@ -3632,8 +3635,7 @@ impl Game<'_> {
             .iter()
             .filter(|(owner, _)| *owner == mod_id)
             .map(|(owner, spec)| {
-                let value =
-                    mod_settings::ui_setting_value(spec, self.native_settings.value(owner, spec));
+                let value = mod_settings::ui_setting_value(spec, self.live_setting(owner, spec));
                 NativeSetting {
                     key: spec.key.clone(),
                     label: spec.label.clone(),
@@ -3674,7 +3676,7 @@ impl Game<'_> {
             .is_err()
         {
             // Keep the Options > Mods widget aligned with the live store if persistence fails.
-            let live = self.native_settings.value(owner, spec);
+            let live = self.live_setting(owner, spec);
             if let Some(setting) = self
                 .settings
                 .mods

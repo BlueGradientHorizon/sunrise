@@ -93,7 +93,7 @@ impl Game<'_> {
             return;
         };
         match entity {
-            Some(entity) => self.audio.play_entity_seeded(
+            Some(entity) => self.play_audio_entity_seeded(
                 &heard.name,
                 heard.source.index(),
                 heard.volume,
@@ -101,7 +101,7 @@ impl Game<'_> {
                 seed,
                 entity,
             ),
-            None => self.audio.play_on_seeded(
+            None => self.play_audio_on_seeded(
                 heard.source.index(),
                 &heard.name,
                 Some(at),
@@ -118,7 +118,7 @@ impl Game<'_> {
         let seed = self.audio.next_sound_seed();
         let at = sound.at;
         if let Some(heard) = self.ask_level_sound(self.dim.id(), sound) {
-            self.audio.play_on_seeded(
+            self.play_audio_on_seeded(
                 heard.source.index(),
                 &heard.name,
                 Some(at),
@@ -155,8 +155,7 @@ impl Game<'_> {
         emitter: u32,
         except: Option<u32>,
     ) {
-        self.audio
-            .play_unshared(sound.name, Some(sound.at), sound.volume, sound.pitch);
+        self.play_audio_unshared(sound.name, Some(sound.at), sound.volume, sound.pitch);
         // Kept while the level's sounds are captured for others, as
         // `Audio.play` keeps the rest.
         if self.audio.capture.is_some() {
@@ -189,8 +188,7 @@ impl Game<'_> {
 
     /// A synchronous level sound, not captured again at the end of the tick.
     pub(super) fn play_immediate_level_sound(&mut self, sound: LevelSound<'_>) {
-        self.audio
-            .play_unshared(sound.name, Some(sound.at), sound.volume, sound.pitch);
+        self.play_audio_unshared(sound.name, Some(sound.at), sound.volume, sound.pitch);
         self.send_level_sound(sound, None);
     }
 
@@ -388,7 +386,7 @@ mod tests {
             seed: 0,
             max_players: 3,
             integrated: true,
-            levels: game.level_shapes,
+            levels: game.level_shapes.clone(),
             level_seeds: game.levels.runtime.seeds(),
         };
         let settings = LanSettings {
@@ -582,7 +580,7 @@ mod tests {
                     seed: 0,
                     max_players: 3,
                     integrated: true,
-                    levels: game.level_shapes,
+                    levels: game.level_shapes.clone(),
                     level_seeds: game.levels.runtime.seeds(),
                 };
                 let settings = LanSettings {

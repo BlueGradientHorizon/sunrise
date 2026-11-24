@@ -145,6 +145,9 @@ impl LootStackAccess for TestStack {
 }
 
 impl LootStackEditAccess for TestStack {
+    fn accepts_component(&self, id: &str, value: &Tag) -> bool {
+        id != "minecraft:trim" || matches!(value, Tag::Compound(_))
+    }
     fn as_view(&self) -> &dyn LootStackAccess {
         self
     }
@@ -560,5 +563,48 @@ fn ordinary_refusal_reports_each_time_and_keeps_prior_valid_edits() {
             .map(|stack| (stack.item_id.as_str(), stack.count))
             .collect::<Vec<_>>(),
         [("minecraft:stick", 9), ("minecraft:diamond", 19)]
+    );
+}
+
+/// A component patch the evaluator cannot encode or apply is refused before any mutation:
+/// an embedded `Tag::End` and a payload shape the modeled component rejects.
+#[test]
+fn unencodable_or_misshapen_component_patches_leave_the_candidate_unchanged() {
+    use crate::{LootStackEditError, LootStackEditor};
+    let mut stack = TestStack::new("minecraft:stick", 1);
+    let mut editor = LootStackEditor::new(
+        &mut stack,
+        |_| Err(TextFormError::Unavailable),
+        |_| Err(TextFormError::Unavailable),
+    );
+    let embedded_end = Tag::compound([("inner", Tag::End)]);
+    let end_in_list = Tag::List(vec![Tag::End]);
+    for bad in [
+        embedded_end.clone(),
+        end_in_list,
+        Tag::String("minecraft:quartz".into()),
+    ] {
+        let id = if matches!(bad, Tag::String(_)) {
+            "minecraft:trim"
+        } else {
+            "test:value"
+        };
+        assert_eq!(
+            editor.push_component(id, bad.clone()),
+            Err(LootStackEditError::InvalidPatch)
+        );
+        assert_eq!(
+            editor.set_components([(id.to_owned(), Some(bad))]),
+            Err(LootStackEditError::InvalidPatch)
+        );
+    }
+    assert_eq!(editor.view().components().len(), 0);
+    assert!(
+        editor
+            .push_component(
+                "minecraft:trim",
+                Tag::compound([("material", Tag::Byte(1))])
+            )
+            .is_ok()
     );
 }

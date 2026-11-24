@@ -59,8 +59,7 @@ impl Game<'_> {
                 }
                 // Each guest of a LAN host makes its own.
                 MobEvent::LocalSound(name, at, volume, pitch) => {
-                    self.audio
-                        .play_unshared(&format!("minecraft:{name}"), Some(at), volume, pitch)
+                    self.play_audio_unshared(&format!("minecraft:{name}"), Some(at), volume, pitch)
                 }
                 _ => {}
             }

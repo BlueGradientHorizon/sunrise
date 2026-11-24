@@ -9,9 +9,7 @@ pub trait Hooks {
     /// keeps without simulating them (displays, markers, interactions), whose tick is only told
     /// (not a player's own boat or cart, which ticks with the player); and on a client for the
     /// mobs, other players, projectiles, tridents and displays it ticks; `host` says which side.
-    /// Minecarts, boats and general rows are each told alone. Eligible types named at
-    /// registration with `entity_tick_each` (or requested through `entity_tick_each_entity`)
-    /// are also told alone. Other observed entities are told once per family. On the server,
+    /// Every observed entity is told alone, right before and after its own tick. On the server,
     /// player Pre runs before the observed parts of `ServerPlayer.tick`, not the connection
     /// body's `player_tick_pre`. The local client player is not yet observed here.
     /// Push an ID from `entities` onto `canceled` to skip that entity's observed tick work and

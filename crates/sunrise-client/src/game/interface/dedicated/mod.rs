@@ -1148,7 +1148,7 @@ impl Game<'_> {
             code_of_conducts,
             // DedicatedServer.serverLinks: `bug-report-link` as the only link
             // (ServerLinks.KnownLinkType.BUG_REPORT is id 0).
-            levels: self.level_shapes,
+            levels: self.level_shapes.clone(),
             sunrise_clients_only: props
                 .raw
                 .get(sunrise_client::lan::SUNRISE_CLIENTS_ONLY)
@@ -1182,7 +1182,7 @@ impl Game<'_> {
             view_distance: props.view_distance,
             simulation_distance: props.simulation_distance.clamp(2, 32),
             dimension: self.dim.id().to_owned(),
-            levels: self.level_shapes,
+            levels: self.level_shapes.clone(),
             level_seeds: self.levels.runtime.seeds(),
             seed: self.level.seed,
             max_players: props.max_players.max(0) as usize,
@@ -1315,6 +1315,8 @@ impl Game<'_> {
         // `/stop`, or a stop signal (the shutdown hook's `halt`): either way the players and levels are
         // saved below, after the wait `[transfer]` may make (transfer.rs).
         while !self.stop_now(&state) {
+            // `BlockableEventLoop.relayDelayCrash`: a worker's panic is reported on this thread.
+            sunrise_client::crash::relay_worker_panic();
             self.server_tick_deadline = Some(next + self.clock.tick_duration());
             let tick_start = Instant::now();
             if let Some(watchdog) = &watchdog {

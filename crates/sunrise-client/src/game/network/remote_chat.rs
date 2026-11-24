@@ -251,10 +251,20 @@ impl Game<'_> {
         // NeoForge fires ClientChatEvent here, before signing, for direct and UI sends.
         let outgoing;
         let content = if mod_api::__private::listened(mod_api::HookId::ClientChat) {
+            // A submission from inside a listener waits for the next event-loop wave: the
+            // hook is never re-entered synchronously, so a resend cannot recurse.
+            if self.native_client_commands.chat_dispatching {
+                self.native_client_commands
+                    .pending_chats
+                    .push(message.to_owned());
+                return Ok(());
+            }
             let (id, uuid) = (self.own_entity_id(), remote.profile);
             let mut text = message.to_owned();
             let mut cancel = false;
+            self.native_client_commands.chat_dispatching = true;
             self.native_client_chat(id, uuid, message, &mut text, &mut cancel);
+            self.native_client_commands.chat_dispatching = false;
             if cancel {
                 return Ok(());
             }
@@ -598,7 +608,7 @@ impl Game<'_> {
             KeyCode::ArrowLeft | KeyCode::ArrowRight => choice.arrow(key == KeyCode::ArrowLeft),
             KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Space => {
                 if let Some(button) = choice.pressed() {
-                    self.audio.play_button_click();
+                    self.play_audio_button_click();
                     self.answer_command_prompt(button == 0);
                     return true;
                 }
@@ -621,7 +631,7 @@ impl Game<'_> {
             .command_prompt_layout(prompt, self.gui_size())
             .pressed_at(self.cursor);
         if let Some(button) = pressed {
-            self.audio.play_button_click();
+            self.play_audio_button_click();
             self.answer_command_prompt(button == 0);
         }
         pressed.is_some()

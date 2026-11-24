@@ -126,8 +126,10 @@ armor stands and nonliving bodies that keep ground support, including items, boa
 It does not rerun collision detection. If there is no retained support, it reads the block at
 vanilla's feet offset.
 
-`living_travel` runs on the server, after the player's swim steering or at a
-mob's travel entry. It receives the loop context, not a `Host`, and lets a
+`living_travel` runs on both peers, after the player's swim steering or at a
+mob's travel entry: the client's own movement fires it too, so a mod installed
+on both sides predicts the edit or veto the server applies, and the server's
+position still wins. It receives the loop context, not a `Host`, and lets a
 listener change the input and velocity or cancel. `TravelMode` names the branch
 about to run, including species overrides: an allay or vex reports `Flying`, and
 a squid reports `VelocityOnly` in or out of water. A replacement does not change

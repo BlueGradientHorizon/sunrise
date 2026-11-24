@@ -435,6 +435,20 @@ mod tests {
                         ["close chat"]
                     );
 
+                    // Ordinary chat (Escape or a submit) dismisses the same way: one Closing, no
+                    // Opening to veto, so a vetoed Opening cannot leave the box open.
+                    assert!(game.begin_chat_screen("", false));
+                    probe.events.lock().unwrap().clear();
+                    *probe.answer.lock().unwrap() = Some(ScreenOpening::Cancel);
+                    game.close_chat(crate::game::chat::ChatExit::Done);
+                    game.observe_screen();
+                    assert_eq!(game.screen, Screen::Playing);
+                    assert!(game.ui.chat_screen.is_none());
+                    assert_eq!(
+                        std::mem::take(&mut *probe.events.lock().unwrap()),
+                        ["close chat"]
+                    );
+
                     // Untouched restored draft in bed also dismisses despite veto and preserves draft.
                     *probe.answer.lock().unwrap() = None;
                     game.ui.chat_draft = Some(ChatDraft {
@@ -472,7 +486,7 @@ mod tests {
                     probe.events.lock().unwrap().clear();
                     *probe.answer.lock().unwrap() = Some(ScreenOpening::Cancel);
                     game.tick_in_bed_chat();
-                    assert!(game.ui.in_bed_chat);
+                    assert!(!game.ui.in_bed_chat, "the transition is offered once");
                     assert_eq!(
                         game.ui.chat_screen.as_ref().unwrap().value(),
                         "saved draft!"
@@ -484,6 +498,7 @@ mod tests {
                     );
                     *probe.answer.lock().unwrap() = None;
                     game.tick_in_bed_chat();
+                    game.tick_in_bed_chat();
                     game.observe_screen();
                     assert_eq!(game.screen, Screen::Chat);
                     assert!(!game.ui.in_bed_chat);
@@ -491,11 +506,11 @@ mod tests {
                         game.ui.chat_screen.as_ref().unwrap().value(),
                         "saved draft!"
                     );
-                    assert!(!game.ui.chat_screen.as_ref().unwrap().is_draft());
-                    assert!(game.ui.chat_draft.is_none());
+                    assert_eq!(game.ui.chat_draft.as_ref().unwrap().text, "saved draft");
                     assert_eq!(
                         *probe.events.lock().unwrap(),
-                        ["chat->chat", "close chat", "init chat"]
+                        ["chat->chat"],
+                        "later awake ticks do not ask again"
                     );
 
                     // A redirect doesn't install the requested prefilled instance, even if

@@ -13,7 +13,9 @@ struct LiveSetting {
 }
 
 /// The game side's authoritative store for native mod settings registered through
-/// `SettingsRegistrar::register_setting`.
+/// `SettingsRegistrar::register_setting`. One store serves the whole instance settings root: a
+/// window and its integrated server share it ([`SharedSettings`]), so a write on either side
+/// compares, persists and reads through the same live values.
 ///
 /// Live values are initialized from the resource generation's `LoopContext`
 /// snapshot, updated atomically on Options > Mods writes and `set_setting`
@@ -30,9 +32,11 @@ pub(in crate::game) struct NativeSettings {
     /// notification superseded by a synchronous write inside an earlier
     /// callback is not delivered a second time.
     revision: u64,
-    /// Whether live values have been populated from a captured generation yet.
-    initialized: bool,
 }
+
+/// The instance's settings authority, shared by the window and its integrated server. Never
+/// hold its lock across a listener call: take what the call needs, release, then notify.
+pub(in crate::game) type SharedSettings = std::sync::Arc<std::sync::Mutex<NativeSettings>>;
 
 impl NativeSettings {
     fn next_revision(&mut self) -> u64 {
@@ -42,21 +46,23 @@ impl NativeSettings {
 
     /// Populate live values from a captured `LoopContext` snapshot.
     ///
-    /// On the first call (initial load), establishes the baseline values and
-    /// returns no change notifications. On subsequent calls (reloads), updates
-    /// live values from the same captured snapshot and returns the reload
-    /// batch revision plus each `(owner, key)` whose effective value changed
-    /// (comparing `Range` floats by bits so `-0.0` and `+0.0` are distinct).
+    /// Only the owners `covers` names are read from `context` (a server's capture holds the
+    /// server mods' settings alone, and must not reset another side's): a setting the store has
+    /// no value for yet takes the captured one as its baseline, with no change notification, and
+    /// one it has updates from the same snapshot, returning the reload batch revision plus each
+    /// `(owner, key)` whose effective value changed (comparing `Range` floats by bits so `-0.0`
+    /// and `+0.0` are distinct).
     pub(in crate::game) fn sync_from_loop_context(
         &mut self,
         context: &sunrise_world::native_load_context::LoopContext,
+        covers: impl Fn(&str) -> bool,
     ) -> (u64, Vec<(&'static str, &'static str)>) {
         let mut changed = Vec::new();
-        let notify = self.initialized;
-        self.initialized = true;
         let reload_revision = self.next_revision();
-        let mut next = BTreeMap::new();
         for (owner, spec) in mod_api::__private::settings() {
+            if !covers(owner) {
+                continue;
+            }
             let key = spec.key.as_str();
             let raw = context.setting(owner, key);
             let value = spec.read(raw);
@@ -65,13 +71,13 @@ impl NativeSettings {
             let previous_value = previous
                 .map(|entry| entry.value)
                 .unwrap_or_else(|| spec.default_value());
-            let entry_revision = if notify && !previous_value.exact_eq(value) {
+            let entry_revision = if previous.is_some() && !previous_value.exact_eq(value) {
                 changed.push(slot);
                 reload_revision
             } else {
                 previous.map_or(reload_revision, |entry| entry.revision)
             };
-            next.insert(
+            self.values.insert(
                 slot,
                 LiveSetting {
                     value,
@@ -79,7 +85,6 @@ impl NativeSettings {
                 },
             );
         }
-        self.values = next;
         (reload_revision, changed)
     }
 
@@ -98,7 +103,6 @@ impl NativeSettings {
             .map(|(registered_owner, spec)| (*registered_owner, spec.key.as_str()));
         let captured = sunrise_world::native_load_context::capture_registered_settings(root, keys);
         let owner_map = captured.get(owner);
-        let notify = self.initialized;
         let refresh_revision = self.next_revision();
         let mut changed = Vec::new();
         for (registered_owner, spec) in mod_api::__private::settings() {
@@ -113,7 +117,7 @@ impl NativeSettings {
             let previous_value = previous
                 .map(|entry| entry.value)
                 .unwrap_or_else(|| spec.default_value());
-            let entry_revision = if notify && !previous_value.exact_eq(value) {
+            let entry_revision = if previous.is_some() && !previous_value.exact_eq(value) {
                 changed.push(slot);
                 refresh_revision
             } else {
@@ -227,20 +231,24 @@ fn persist_setting(root: &Path, owner: &str, key: &str, value: &str) -> std::io:
         std::process::id(),
         WRITES.fetch_add(1, Ordering::Relaxed)
     );
+    write_via_temp(&owner_dir, &temp, value, key)
+}
+
+/// Write `value` to the new file `temp`, then rename it over `key`. A failed exclusive create
+/// means the name is not this write's: it returns without touching the file there.
+fn write_via_temp(owner_dir: &Dir, temp: &str, value: &str, key: &str) -> std::io::Result<()> {
     let mut options = OpenOptions::new();
     options
         .write(true)
         .create_new(true)
         .follow(FollowSymlinks::No);
-    let result = owner_dir
-        .open_with(&temp, &options)
-        .and_then(|mut file| {
-            file.write_all(value.as_bytes())
-                .and_then(|()| file.sync_all())
-        })
-        .and_then(|()| owner_dir.rename(&temp, &owner_dir, key));
+    let mut file = owner_dir.open_with(temp, &options)?;
+    let result = file
+        .write_all(value.as_bytes())
+        .and_then(|()| file.sync_all())
+        .and_then(|()| owner_dir.rename(temp, owner_dir, key));
     if result.is_err() {
-        let _ = owner_dir.remove_file(&temp);
+        let _ = owner_dir.remove_file(temp);
     }
     result
 }
@@ -330,7 +338,23 @@ impl Game<'_> {
     ) -> Result<SettingValue, SettingAccessError> {
         let (owner, spec) =
             mod_api::__private::setting_entry(key).ok_or(SettingAccessError::UnknownKey)?;
-        Ok(self.native_settings.value(owner, spec))
+        Ok(self.live_setting(owner, spec))
+    }
+
+    /// A registered setting's live value in the instance's shared store.
+    pub(in crate::game) fn live_setting(
+        &self,
+        owner: &'static str,
+        spec: &'static SettingSpec,
+    ) -> SettingValue {
+        self.settings_store().value(owner, spec)
+    }
+
+    /// The instance's settings store, locked: the guard must be gone before any listener runs.
+    fn settings_store(&self) -> std::sync::MutexGuard<'_, NativeSettings> {
+        self.native_settings
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     /// The storage root bound to the active resource generation (`Game::mod_data_root()`
@@ -410,10 +434,10 @@ impl Game<'_> {
         spec: &'static SettingSpec,
         value: SettingValue,
     ) -> Result<bool, SettingAccessError> {
-        let changed = self.native_settings.commit(root, owner, spec, value)?;
+        let changed = self.settings_store().commit(root, owner, spec, value)?;
         if changed {
             self.sync_native_setting_ui_row(owner, spec, value);
-            self.native_setting_changed(owner, spec.key.as_str());
+            self.native_setting_changed(owner, spec.key.as_str(), value);
         }
         Ok(changed)
     }
@@ -422,19 +446,28 @@ impl Game<'_> {
     /// `LoopContext` snapshot (single capture per reload) and notify owners of
     /// every value that changed on reload.
     pub(in crate::game) fn sync_native_settings_from_loop_context(&mut self) {
-        let was_initialized = self.native_settings.initialized;
-        let (reload_revision, changed) = self
-            .native_settings
-            .sync_from_loop_context(&self.loop_context);
-        if !was_initialized {
-            // Initial startup sync: align any Options > Mods rows built during
-            // `start_mods()` with the captured baseline without firing
-            // `setting_changed`.
-            for (owner, spec) in mod_api::__private::settings() {
-                let value = self.native_settings.value(owner, spec);
-                self.sync_native_setting_ui_row(owner, spec, value);
-            }
-            return;
+        // A server's capture covers the server mods' settings only.
+        let server_owners: Option<std::collections::BTreeSet<String>> =
+            self.options.execution_role.is_logical_server().then(|| {
+                sunrise_mod_package::enabled::EnabledMods::read(&self.options.resources)
+                    .map(|inventory| inventory.server_ids().map(str::to_owned).collect())
+                    .unwrap_or_default()
+            });
+        let (reload_revision, changed) = {
+            let loop_context = &self.loop_context;
+            self.native_settings
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .sync_from_loop_context(loop_context, |owner| {
+                    server_owners
+                        .as_ref()
+                        .is_none_or(|owners| owners.contains(owner))
+                })
+        };
+        // Align the Options > Mods rows with the store, firing nothing for a baseline.
+        for (owner, spec) in mod_api::__private::settings() {
+            let value = self.live_setting(owner, spec);
+            self.sync_native_setting_ui_row(owner, spec, value);
         }
         self.publish_reloaded_settings(reload_revision, changed);
     }
@@ -446,7 +479,8 @@ impl Game<'_> {
         if !self.options.execution_role.is_client() {
             return;
         }
-        let (refresh_revision, changed) = self.native_settings.refresh_owner_from_disk(root, owner);
+        let (refresh_revision, changed) =
+            self.settings_store().refresh_owner_from_disk(root, owner);
         self.publish_reloaded_settings(refresh_revision, changed);
     }
 
@@ -461,13 +495,17 @@ impl Game<'_> {
     ) {
         for &(owner, key) in &changed {
             if let Some(spec) = mod_api::__private::setting(owner, key) {
-                let value = self.native_settings.value(owner, spec);
+                let value = self.live_setting(owner, spec);
                 self.sync_native_setting_ui_row(owner, spec, value);
             }
         }
         for (owner, key) in changed {
-            if self.native_settings.revision_of(owner, key) == Some(batch_revision) {
-                self.native_setting_changed(owner, key);
+            let current = self.settings_store().revision_of(owner, key);
+            if current == Some(batch_revision)
+                && let Some(spec) = mod_api::__private::setting(owner, key)
+            {
+                let value = self.live_setting(owner, spec);
+                self.native_setting_changed(owner, key, value);
             }
         }
     }
@@ -497,7 +535,7 @@ impl Game<'_> {
 mod tests {
     use super::*;
     use mod_api::{
-        Hooks, HostSide, ModEntry, Registrar, RegistrationContext, SettingAccessError, SettingKey,
+        Hooks, ModEntry, Registrar, RegistrationContext, SettingAccessError, SettingKey,
         SettingSpec, SettingValue,
     };
     use std::sync::{
@@ -513,7 +551,6 @@ mod tests {
         color: OnceLock<SettingKey>,
         seen: Arc<Mutex<Vec<(String, SettingValue)>>>,
         panic_on_change: Arc<AtomicBool>,
-        write_mode_on_toggle: Arc<Mutex<Option<(SettingValue, bool)>>>,
     }
 
     impl RegisteredMod {
@@ -525,7 +562,6 @@ mod tests {
                 color: OnceLock::new(),
                 seen: Arc::new(Mutex::new(Vec::new())),
                 panic_on_change: Arc::new(AtomicBool::new(false)),
-                write_mode_on_toggle: Arc::new(Mutex::new(None)),
             }
         }
     }
@@ -560,34 +596,17 @@ mod tests {
 
         fn setting_changed(
             &self,
-            host: HostSide<'_>,
+            host: &dyn mod_api::Host,
             event: &mut mod_api::SettingChangedEvent<'_>,
         ) {
             if self.panic_on_change.load(Ordering::Relaxed) {
                 panic!("simulated setting_changed failure");
             }
-            let key = match event.key {
-                "on" => *self.toggle.get().unwrap(),
-                "scale" => *self.range.get().unwrap(),
-                "mode" => *self.choice.get().unwrap(),
-                "tint" => *self.color.get().unwrap(),
-                other => panic!("unexpected setting key {other}"),
-            };
-            let HostSide::Client(host) = host else {
-                panic!("expected a client callback")
-            };
-            let current = host.setting(key).unwrap();
+            let _ = host;
             self.seen
                 .lock()
                 .unwrap()
-                .push((event.key.to_owned(), current));
-            if event.key == "on"
-                && let Some((next_mode, expected_changed)) =
-                    self.write_mode_on_toggle.lock().unwrap().take()
-            {
-                let mode_key = *self.choice.get().unwrap();
-                assert_eq!(host.set_setting(mode_key, next_mode), Ok(expected_changed));
-            }
+                .push((event.key.to_owned(), event.value));
         }
     }
 
@@ -605,7 +624,7 @@ mod tests {
             );
         }
 
-        fn setting_changed(&self, _: HostSide<'_>, _: &mut mod_api::SettingChangedEvent<'_>) {
+        fn setting_changed(&self, _: &dyn mod_api::Host, _: &mut mod_api::SettingChangedEvent<'_>) {
             self.calls.fetch_add(1, Ordering::Relaxed);
         }
     }
@@ -634,6 +653,24 @@ mod tests {
             assert!(persist_setting(&root, "a", "link", "overwrite").is_err());
             assert_eq!(fs::read_to_string(root.join("b/secret")).unwrap(), "secret");
         }
+    }
+
+    #[test]
+    fn a_taken_temp_name_is_left_alone_and_the_setting_unwritten() {
+        let dir = tempfile::tempdir().unwrap();
+        let owner = Dir::open_ambient_dir(dir.path(), cap_std::ambient_authority()).unwrap();
+        fs::write(dir.path().join("on"), "true").unwrap();
+        fs::write(dir.path().join(".on.1-0.tmp"), "someone else's").unwrap();
+        assert!(write_via_temp(&owner, ".on.1-0.tmp", "false", "on").is_err());
+        assert_eq!(
+            fs::read_to_string(dir.path().join(".on.1-0.tmp")).unwrap(),
+            "someone else's"
+        );
+        assert_eq!(fs::read_to_string(dir.path().join("on")).unwrap(), "true");
+        // A free name writes the value and leaves no temp behind.
+        write_via_temp(&owner, ".on.1-1.tmp", "false", "on").unwrap();
+        assert_eq!(fs::read_to_string(dir.path().join("on")).unwrap(), "false");
+        assert!(!dir.path().join(".on.1-1.tmp").exists());
     }
 
     #[test]
@@ -668,8 +705,8 @@ mod tests {
                 ["many"],
                 registered_setting_keys(),
             );
-            let (_, initial) =
-                store.sync_from_loop_context(&load.captured_loop_context(LoopSide::Client));
+            let (_, initial) = store
+                .sync_from_loop_context(&load.captured_loop_context(LoopSide::Client), |_| true);
             assert!(initial.is_empty());
 
             // A large registration table retains keys through the initial load and live writes.
@@ -690,8 +727,8 @@ mod tests {
                 ["many"],
                 registered_setting_keys(),
             );
-            let (_, reload_changed) =
-                store.sync_from_loop_context(&reload.captured_loop_context(LoopSide::Client));
+            let (_, reload_changed) = store
+                .sync_from_loop_context(&reload.captured_loop_context(LoopSide::Client), |_| true);
             assert!(reload_changed.is_empty());
             assert_eq!(store.value("many", spec_1024), SettingValue::Toggle(true));
             assert_eq!(store.value("many", spec_1025), SettingValue::Toggle(true));
@@ -711,8 +748,10 @@ mod tests {
                 ["many"],
                 registered_setting_keys(),
             );
-            let (batch_rev, changed) =
-                store.sync_from_loop_context(&reload_two.captured_loop_context(LoopSide::Client));
+            let (batch_rev, changed) = store.sync_from_loop_context(
+                &reload_two.captured_loop_context(LoopSide::Client),
+                |_| true,
+            );
             assert_eq!(
                 changed,
                 vec![("many", "toggle_1024"), ("many", "toggle_1025")]
@@ -756,7 +795,6 @@ mod tests {
         let alpha = RegisteredMod::new();
         let alpha_seen = alpha.seen.clone();
         let alpha_panic = alpha.panic_on_change.clone();
-        let alpha_write_mode = alpha.write_mode_on_toggle.clone();
         let beta_calls = Arc::new(AtomicUsize::new(0));
         let beta = OtherMod {
             toggle: OnceLock::new(),
@@ -881,15 +919,12 @@ mod tests {
                 );
 
                 // External disk edit is ignored until reload or Options > Mods refresh,
-                // then picked up from a single LoopContext snapshot and notified.
-                // When the first callback synchronously overwrites another pending reloaded
-                // setting (`mode`), `set_setting` notifies `mode` once and reload does not
-                // fire a duplicate notification for the superseded transition.
+                // then picked up from a single LoopContext snapshot and each changed key is
+                // notified once, in registration order.
                 alpha_seen.lock().unwrap().clear();
                 fs::write(root.join("alpha/on"), "true").unwrap();
                 fs::write(root.join("alpha/mode"), "1").unwrap();
                 assert_eq!(game.setting_bool(alpha_on), Ok(false));
-                *alpha_write_mode.lock().unwrap() = Some((SettingValue::Choice(2), true));
                 let reload = LoadContext::new_with_registered(
                     DataLoadOrigin::ClientPreload,
                     Arc::new(LoadInputs::new(BTreeMap::new(), root.clone())),
@@ -899,54 +934,26 @@ mod tests {
                 game.loop_context = Arc::new(reload.captured_loop_context(LoopSide::Client));
                 game.sync_native_settings_from_loop_context();
                 assert_eq!(game.setting_bool(alpha_on), Ok(true));
-                assert_eq!(game.setting_choice(alpha_mode), Ok(2));
-                assert_eq!(fs::read_to_string(root.join("alpha/mode")).unwrap(), "2");
+                assert_eq!(game.setting_choice(alpha_mode), Ok(1));
                 assert_eq!(
                     *alpha_seen.lock().unwrap(),
                     vec![
                         ("on".to_owned(), SettingValue::Toggle(true)),
-                        ("mode".to_owned(), SettingValue::Choice(2)),
-                    ]
-                );
-
-                // Single-owner page refresh suppresses superseded pending notifications
-                // in the same way when the first callback synchronously writes `mode`.
-                alpha_seen.lock().unwrap().clear();
-                fs::write(root.join("alpha/on"), "false").unwrap();
-                fs::write(root.join("alpha/mode"), "0").unwrap();
-                *alpha_write_mode.lock().unwrap() = Some((SettingValue::Choice(1), true));
-                game.refresh_native_settings_owner(&root, "alpha");
-                assert_eq!(game.setting_bool(alpha_on), Ok(false));
-                assert_eq!(game.setting_choice(alpha_mode), Ok(1));
-                assert_eq!(fs::read_to_string(root.join("alpha/mode")).unwrap(), "1");
-                assert_eq!(
-                    *alpha_seen.lock().unwrap(),
-                    vec![
-                        ("on".to_owned(), SettingValue::Toggle(false)),
                         ("mode".to_owned(), SettingValue::Choice(1)),
                     ]
                 );
 
-                // A no-op write to the same reloaded value does not drop the reload's own
-                // single notification for `mode`.
+                // A single-owner page refresh notifies the same way.
                 alpha_seen.lock().unwrap().clear();
-                fs::write(root.join("alpha/on"), "true").unwrap();
+                fs::write(root.join("alpha/on"), "false").unwrap();
                 fs::write(root.join("alpha/mode"), "0").unwrap();
-                *alpha_write_mode.lock().unwrap() = Some((SettingValue::Choice(0), false));
-                let reload_noop = LoadContext::new_with_registered(
-                    DataLoadOrigin::ClientPreload,
-                    Arc::new(LoadInputs::new(BTreeMap::new(), root.clone())),
-                    [],
-                    registered_setting_keys(),
-                );
-                game.loop_context = Arc::new(reload_noop.captured_loop_context(LoopSide::Client));
-                game.sync_native_settings_from_loop_context();
-                assert_eq!(game.setting_bool(alpha_on), Ok(true));
+                game.refresh_native_settings_owner(&root, "alpha");
+                assert_eq!(game.setting_bool(alpha_on), Ok(false));
                 assert_eq!(game.setting_choice(alpha_mode), Ok(0));
                 assert_eq!(
                     *alpha_seen.lock().unwrap(),
                     vec![
-                        ("on".to_owned(), SettingValue::Toggle(true)),
+                        ("on".to_owned(), SettingValue::Toggle(false)),
                         ("mode".to_owned(), SettingValue::Choice(0)),
                     ]
                 );
@@ -983,5 +990,56 @@ mod tests {
                 assert_eq!(beta_calls.load(Ordering::Relaxed), 1);
             });
         });
+    }
+
+    /// A capture that does not cover an owner (a server's holds the server mods' settings) leaves
+    /// that owner's live values alone, so the other side's values are not reset to defaults.
+    #[test]
+    fn a_sync_leaves_the_owners_it_does_not_cover_alone() {
+        struct OneSetting;
+
+        #[mod_api::__subscriptions]
+        impl Hooks for OneSetting {
+            fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+                r.register_setting(SettingSpec::toggle("toggle_0000", "many.toggle", false))
+                    .unwrap();
+            }
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("settings");
+        fs::create_dir_all(root.join("many")).unwrap();
+        fs::write(root.join("many/toggle_0000"), "true").unwrap();
+        let mods: mod_api::Mods = vec![ModEntry::new("many", Box::new(OneSetting))].into();
+        mod_platform::testing::with_mods(mods.clone(), || {
+            mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
+            let capture = |_: ()| {
+                LoadContext::new_with_registered(
+                    DataLoadOrigin::ClientPreload,
+                    Arc::new(LoadInputs::new(BTreeMap::new(), root.clone())),
+                    ["many"],
+                    registered_setting_keys(),
+                )
+                .captured_loop_context(LoopSide::Client)
+            };
+            let mut store = NativeSettings::default();
+            store.sync_from_loop_context(&capture(()), |_| true);
+            let spec = mod_api::__private::setting("many", "toggle_0000").unwrap();
+            assert_eq!(store.value("many", spec), SettingValue::Toggle(true));
+
+            fs::write(root.join("many/toggle_0000"), "false").unwrap();
+            let (_, changed) = store.sync_from_loop_context(&capture(()), |owner| owner != "many");
+            assert!(changed.is_empty());
+            assert_eq!(store.value("many", spec), SettingValue::Toggle(true));
+            let (_, changed) = store.sync_from_loop_context(&capture(()), |_| true);
+            assert_eq!(changed, [("many", "toggle_0000")]);
+        });
+    }
+
+    /// The window and the integrated server it starts from its options share one store.
+    #[test]
+    fn options_clones_share_the_settings_authority() {
+        let options = crate::game::mods::ModsState::default();
+        let server = options.clone();
+        assert!(Arc::ptr_eq(&options.settings, &server.settings));
     }
 }

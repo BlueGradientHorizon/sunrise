@@ -423,7 +423,10 @@ impl Game<'_> {
                 0.0,
             ),
         );
-        self.view = view;
+        self.view = sunrise_client::camera::Camera {
+            placed_position: view.position,
+            ..view
+        };
         Some((
             glam::DVec3::from_array(view.position),
             view.y_rot,
@@ -463,6 +466,7 @@ impl Game<'_> {
             let view = self.align_view_with_angles(&source, partial, angles);
             (view, Some((source, angles)))
         };
+        view.placed_position = view.position;
         if run_hooks {
             let mut position = mod_api::CameraPosition::placed_at(view.position);
             self.native_camera_position(partial, &mut position);
@@ -471,6 +475,7 @@ impl Game<'_> {
             {
                 view = self.align_view_with_angles(&source, partial, angles);
             }
+            view.placed_position = view.position;
             for (coordinate, override_value) in view.position.iter_mut().zip(position.overrides()) {
                 if let Some(value) = override_value {
                     *coordinate = value;
@@ -791,6 +796,11 @@ impl Game<'_> {
             self.native_player_turn(self.own_entity_id(), self.own_uuid(), &mut xo, &mut yo);
             xo = finite_turn_delta("x", orig_x, xo);
             yo = finite_turn_delta("y", orig_y, yo);
+        }
+        // `Entity.turn` adds the delta to the yaw and to `yRotO`: refuse a turn whose result
+        // either sum cannot represent, as a whole, so the two never disagree.
+        if !turn_yaw_representable(self.yaw, self.rope_rot_old.0, xo) {
+            return;
         }
         let pitch_o = self.player_model.as_ref().map(|m| m.previous_head_pitch);
         let rotation = turn_rotation(self.yaw, self.pitch, pitch_o, xo, yo);
@@ -1750,6 +1760,13 @@ pub(super) fn emit_preview(
     batch.depth_glint_since(start, glint, clip);
 }
 
+/// Whether `Entity.turn`'s yaw delta (`xo`, 0.15 degrees a unit) leaves both the yaw and `yRotO`
+/// finite: arithmetic stays plain for any turn that does, with no angular cap.
+fn turn_yaw_representable(yaw: f32, old_yaw: f32, xo: f64) -> bool {
+    let delta = (xo as f32) * 0.15;
+    (yaw + delta).is_finite() && (old_yaw + delta).is_finite()
+}
+
 /// `Entity.turn` adds the turn to `xRotO` as well as to `xRot`, so the local
 /// player's `getXRot(partialTick)` follows the mouse every frame instead of
 /// easing in over a tick (#3844), while a change the tick made itself (the
@@ -1945,6 +1962,20 @@ mod preview_tests {
         // xRotO is clamped as xRot is.
         let old = rope_old_after_turn((0.0, 85.0), 0.0, 85.0, 0.0, 100.0);
         assert_eq!(old.1, 90.0);
+    }
+    /// Individually finite turns can overflow the old yaw while the current yaw still takes
+    /// them: such a turn is refused whole, and every turn that fits is plain arithmetic.
+    #[test]
+    fn a_turn_that_overflows_the_old_yaw_is_refused_whole() {
+        let big = f64::from(f32::MAX);
+        assert!(turn_yaw_representable(0.0, 0.0, big));
+        // The current yaw takes a second turn of the same size; the old yaw, already moved by
+        // one, would overflow.
+        let yaw = f32::MAX * 0.5;
+        let old = f32::MAX * 0.9;
+        assert!(!turn_yaw_representable(yaw, old, big));
+        assert!(turn_yaw_representable(yaw, old, 100.0));
+        assert!(turn_yaw_representable(yaw, old, -big));
     }
     #[test]
     fn preview_keeps_crossing_faces_depth_and_clips_without_dropping_faces() {

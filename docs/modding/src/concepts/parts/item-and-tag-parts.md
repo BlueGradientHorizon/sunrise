@@ -376,7 +376,7 @@ and in the client's click prediction (`HostSide::Client`), where the server stay
 `event.click` lends the cursor and the clicked slot for the call. Read them with `carried()` and
 `clicked()`, and change them with `set_carried`, `set_clicked` (a direct `Slot.set`, without take
 side effects) and `take_clicked` (a `Slot.safeTake`, with furnace experience, crafting remainders
-and take hooks). A Part answers like vanilla's override returns a boolean: `Flow::Cancel` takes
-the click, `Flow::Continue` goes on with its edits. The phase order, the global listener's
-`handled` rules and what refuses a click are in the hook's documentation
-(`Hooks::item_stacked_on_other`).
+and `item_smelted` when the removed count is nonzero). A Part answers like vanilla's override
+returns a boolean: `Flow::Cancel` takes the click, `Flow::Continue` goes on with its edits. The
+phase order, the global listener's `handled` rules and what refuses a click are in the hook's
+documentation (`Hooks::item_stacked_on_other`).

@@ -851,7 +851,12 @@ pub fn template_from_tag(t: &Tag) -> Result<Template> {
 }
 
 /// `ItemStack.MAP_CODEC`: strict compound admission against the active component registry.
-pub fn item_stack_from_tag_with(t: &Tag, is_native: impl Fn(&str) -> bool) -> Result<Template> {
+/// `has_item` resolves the outer item and every nested one (a bundle's contents, for example).
+pub fn item_stack_from_tag_with(
+    t: &Tag,
+    is_native: impl Fn(&str) -> bool,
+    has_item: &dyn Fn(&str) -> bool,
+) -> Result<Template> {
     if !matches!(t, Tag::Compound(_)) {
         return Err("argument.nbt.expected.compound".into());
     }
@@ -859,6 +864,7 @@ pub fn item_stack_from_tag_with(t: &Tag, is_native: impl Fn(&str) -> bool) -> Re
         t,
         Source {
             is_native: &is_native,
+            has_item: Some(has_item),
             effects: EffectSource::Preserve,
             ..Source::SAVED
         },

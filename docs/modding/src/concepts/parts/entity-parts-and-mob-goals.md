@@ -56,7 +56,7 @@ mob's two selectors beside the species' own, with the same priorities, flag lock
 struct ZombieGoals;
 #[mod_api::sunrise_part]
 impl EntityPart for ZombieGoals {
-    fn register_goals(&self, event: &mut RegisterGoalsEvent<'_, '_>) {
+    fn register_goals(&self, _host: &dyn Host, event: &mut RegisterGoalsEvent<'_, '_>) {
         // event.goals.mob().id() is "minecraft:zombie": branch as per-species code does.
         event.goals.add_goal(7, Stare::default());
         event.goals.add_target_goal(3, Remember::default());
@@ -167,6 +167,7 @@ hand and a dispenser's ask `is_shearable` first with an `IsShearableEvent` carry
 entity in `on_sheared` by pushing drops into `event.drops: &mut Vec<ItemStack>`, which the game spawns before
 damaging the shears. `Some(false)` keeps the entity unsheared, and `None` leaves it to the species (a sheep
 keeps shearing as vanilla's does).
+Both hooks run on both sides, as `ShearsItem.interactLivingEntity` does: their first parameter is a `HostSide`, a client predicting a player's click answers `is_shearable` and runs `on_sheared` on its copy of the mob, and the drops, the shears' damage and a dispenser's shearing stay the server's.
 
 ## Equipped durability
 

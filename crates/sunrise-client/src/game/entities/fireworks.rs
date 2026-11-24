@@ -840,7 +840,7 @@ impl Game<'_> {
         r.update_rotation(old_rotation);
         let at = [r.position.x, r.position.y, r.position.z];
         if r.life == 0 && !r.silent {
-            self.audio.play(
+            self.play_audio(
                 "minecraft:entity.firework_rocket.launch",
                 Some(at),
                 3.0,

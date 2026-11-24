@@ -64,6 +64,8 @@ fn first_open_conditions_see_static_tags_and_admitted_biomes() {
     };
     let registered =
         |id| json!({"type":"neoforge:registered","registry":"minecraft:worldgen/biome","value":id});
+    let registered_in =
+        |registry, id| json!({"type":"neoforge:registered","registry":registry,"value":id});
     let tag_empty =
         |registry, tag| json!({"type":"neoforge:tag_empty","registry":registry,"tag":tag});
     let not = |condition| json!({"type":"neoforge:not","value":condition});
@@ -95,7 +97,27 @@ fn first_open_conditions_see_static_tags_and_admitted_biomes() {
             "tags/worldgen/biome/disabled.json",
             json!({"values":["demo:disabled"]}),
         );
+        // A pack-added placed feature and its tag, read by downstream conditions.
+        write(
+            "worldgen/placed_feature/added.json",
+            json!({"feature":{"type":"minecraft:no_op","config":{}},"placement":[]}),
+        );
+        write(
+            "tags/worldgen/placed_feature/added_tag.json",
+            json!({"values":["demo:added"]}),
+        );
         for (id, condition) in [
+            (
+                "placed_feature",
+                registered_in("minecraft:worldgen/placed_feature", "demo:added"),
+            ),
+            (
+                "placed_feature_tag",
+                not(tag_empty(
+                    "minecraft:worldgen/placed_feature",
+                    "demo:added_tag",
+                )),
+            ),
             (
                 "static_tag",
                 not(tag_empty(
@@ -143,6 +165,8 @@ fn first_open_conditions_see_static_tags_and_admitted_biomes() {
             "demo:static_tag",
             "demo:known_biome",
             "demo:empty_biome_tag",
+            "demo:placed_feature",
+            "demo:placed_feature_tag",
         ] {
             assert!(
                 game.recipes().recipe(id).is_some(),

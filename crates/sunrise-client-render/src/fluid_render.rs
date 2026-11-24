@@ -198,19 +198,22 @@ fn overflows_toward(row: [f32; 4], point: [f32; 3], high: bool) -> bool {
 }
 
 fn align_span(start: f32, end: f32, [lo, hi]: [f32; 2]) -> Option<(f32, f32)> {
-    let next_start = start.floor() + 1.0;
-    if next_start <= start {
-        return (start >= lo && end <= hi).then_some((start, end));
-    }
-    let aligned_start = if lo <= start {
-        start
-    } else {
-        let cand = lo.ceil().max(next_start);
+    let aligned_start = if lo > start {
+        // The finite span begins past `start`: begin on the first block boundary inside it, so
+        // the overflowing prefix is never walked and a start too far out for a unit step to
+        // advance does not reject the finite tiles beyond it.
+        let cand = lo.ceil();
         // A unit step cannot reach past the exact integer range of f32.
         if cand > (1 << f32::MANTISSA_DIGITS) as f32 || cand >= end {
             return None;
         }
         cand
+    } else {
+        let next_start = start.floor() + 1.0;
+        if next_start <= start {
+            return (start >= lo && end <= hi).then_some((start, end));
+        }
+        start
     };
     let first_next = aligned_start.floor() + 1.0;
     let first_end = if first_next > aligned_start {
@@ -344,6 +347,20 @@ fn tiled_face(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn finite_tiles_beyond_an_unrepresentable_unit_step_are_kept() {
+        // At -2e7 a unit step rounds back to the same f32, yet the finite span starts at -0.5.
+        assert_eq!(-20_000_000.0_f32 + 1.0, -20_000_000.0);
+        let (start, end) = align_span(-20_000_000.0, 1.0, [-0.5, 1.0]).unwrap();
+        assert_eq!((start, end), (0.0, 1.0));
+        // A start that is itself inside the span and cannot advance still refuses a partial span.
+        assert_eq!(align_span(-20_000_000.0, 1.0, [-30_000_000.0, 0.5]), None);
+        assert_eq!(
+            align_span(-20_000_000.0, 1.0, [-30_000_000.0, 1.0]),
+            Some((-20_000_000.0, 1.0))
+        );
+    }
+
     #[test]
     fn source_tiling_is_outward_and_does_not_inset_geometry() {
         let bounds = [-1.25, 0.125, -0.25, 1.5, 1.125, 0.75];

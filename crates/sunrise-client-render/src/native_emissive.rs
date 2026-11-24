@@ -28,13 +28,15 @@ fn tile_file(name: &str) -> Option<&str> {
 ///
 /// Missing base sprites and missing or corrupt overlay textures are logged per registration and
 /// skipped without discarding other entries. When two registrations target the same base layer,
-/// the later registration replaces the earlier one (matching `TextureManager.register` and
-/// `SpriteSourceList`) with a warning naming both mods.
+/// the later valid registration replaces the earlier one (matching `TextureManager.register` and
+/// `SpriteSourceList`) with a warning naming both mods; a later one whose overlay cannot be
+/// read leaves the earlier answer standing. Only the overlays of the admitted rows (at most
+/// [`MAX`]) are loaded into texture layers.
 pub fn resolve_registered(
     registrations: &[Answered<EmissiveSpriteRegistration>],
     sprites: &mut Sprites,
 ) -> BTreeMap<u32, u32> {
-    let mut by_base: BTreeMap<u32, (u32, &'static str, String, String)> = BTreeMap::new();
+    let mut by_base: BTreeMap<u32, (&'static str, String, String)> = BTreeMap::new();
     for entry in registrations {
         let base_id = entry.answer.base.to_string();
         let overlay_id = entry.answer.overlay.to_string();
@@ -47,26 +49,18 @@ pub fn resolve_registered(
             );
             continue;
         };
-        let overlay_layer = match sprites.try_insert_texture_file(&overlay_id) {
-            Ok(layer) => layer,
-            Err(error) => {
-                log::warn!(
-                    "Sunrise: mod '{}' emissive overlay '{}' for '{}' skipped: {error}",
-                    entry.mod_id,
-                    overlay_id,
-                    base_id
-                );
-                continue;
-            }
-        };
-        if let Some((_, prev_mod, prev_base, prev_overlay)) = by_base.insert(
-            base_layer,
-            (
-                overlay_layer,
+        if let Err(error) = sprites.texture_file_readable(&overlay_id) {
+            log::warn!(
+                "Sunrise: mod '{}' emissive overlay '{}' for '{}' skipped: {error}",
                 entry.mod_id,
-                base_id.clone(),
-                overlay_id.clone(),
-            ),
+                overlay_id,
+                base_id
+            );
+            continue;
+        }
+        if let Some((prev_mod, prev_base, prev_overlay)) = by_base.insert(
+            base_layer,
+            (entry.mod_id, base_id.clone(), overlay_id.clone()),
         ) {
             log::warn!(
                 "Sunrise: mod '{}' emissive overlay '{}' for '{}' replaces '{}' registered by mod '{}' for '{}' (layer {})",
@@ -89,10 +83,21 @@ pub fn resolve_registered(
             dropped
         );
     }
+    // Only the overlays the admitted uniform rows reference get a texture layer.
     by_base
         .into_iter()
         .take(MAX)
-        .map(|(base, (overlay, _, _, _))| (base, overlay))
+        .filter_map(|(base, (mod_id, base_id, overlay_id))| {
+            match sprites.try_insert_texture_file(&overlay_id) {
+                Ok(overlay) => Some((base, overlay)),
+                Err(error) => {
+                    log::warn!(
+                        "Sunrise: mod '{mod_id}' emissive overlay '{overlay_id}' for '{base_id}' skipped: {error}"
+                    );
+                    None
+                }
+            }
+        })
         .collect()
 }
 
@@ -451,6 +456,10 @@ mod tests {
             &regs,
             &mut sprites,
         );
+        assert!(
+            !sprites.files.contains_key("mod_a:overlay/first"),
+            "a superseded overlay takes no texture layer"
+        );
         let second = sprites.files["mod_b:overlay/second"];
         let optifine_b = sprites.files["minecraft:block/b_e"];
         assert_eq!(
@@ -460,6 +469,32 @@ mod tests {
                 [layer_b, optifine_b | CUTOUT, 0, 0]
             ]
         );
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn a_later_invalid_replacement_keeps_the_earlier_valid_overlay() {
+        let root =
+            std::env::temp_dir().join(format!("sunrise-mod-emissive-bad-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        png(&root.join("assets/minecraft/textures/block/a.png"), 1);
+        png(&root.join("assets/mod_a/textures/overlay/first.png"), 5);
+        let mut sprites = Sprites::new(ResourceSource::directory(root.clone()));
+        let layer_a = sprites.insert("minecraft:block/a").unwrap();
+        let regs = test_registrations([
+            (
+                "mod_a",
+                vec![registration("minecraft:block/a", "mod_a:overlay/first")],
+            ),
+            (
+                "mod_b",
+                vec![registration("minecraft:block/a", "mod_b:overlay/missing")],
+            ),
+        ]);
+        let resolved = resolve_registered(&regs, &mut sprites);
+        let first = sprites.files["mod_a:overlay/first"];
+        assert_eq!(resolved, BTreeMap::from([(layer_a, first)]));
+        assert!(!sprites.files.contains_key("mod_b:overlay/missing"));
         std::fs::remove_dir_all(&root).unwrap();
     }
 

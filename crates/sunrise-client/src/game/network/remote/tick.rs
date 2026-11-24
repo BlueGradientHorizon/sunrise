@@ -1634,8 +1634,24 @@ impl Game<'_> {
         if let Some(player) = player {
             self.native_player_tick_pre(mod_api::__private::PlayerTickPreCall { player });
         }
+        // EntityTickEvent.Pre and Post bracket this player's own tick like any other entity's;
+        // a canceled Pre skips the tick (ClientLevel.tickNonPassenger), and then no Post follows.
+        let told = self.native_tick_told();
+        let mut tick_round = crate::game::native_ticks::TickRound::with_told(told);
+        let own = u32::try_from(self.own_entity_id()).ok();
+        let ticks = own.is_none_or(|id| {
+            self.native_tick_pre_one(&mut tick_round, id, crate::game::native_ticks::PLAYER)
+        });
         self.native_local_player_fit_sizes();
-        let result = self.tick_local_player(entity_collisions, sprint_window);
+        let result = if ticks {
+            let result = self.tick_local_player(entity_collisions, sprint_window);
+            if let Some(id) = own {
+                self.native_tick_post_one(&tick_round, id, crate::game::native_ticks::PLAYER);
+            }
+            result
+        } else {
+            Ok(None)
+        };
         // `EntityEvent.Size` for the pose the tick set.
         self.native_local_player_size();
         if let Some(player) = player {

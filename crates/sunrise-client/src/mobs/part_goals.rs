@@ -97,6 +97,15 @@ pub trait GoalHost {
         actor: &Mob,
         world: &MobWorld<'_>,
     ) -> Option<bool>;
+    /// The game time and the day time a brain built now starts at (`makeBrain` in a mob's
+    /// constructor).
+    fn brain_times(&self) -> (i64, i64);
+    /// `register_goals` of the mob's entity parts, asked with the game's read host
+    /// (`Mob.registerGoals`).
+    fn register_goals(&self, goals: &mut mod_api::GoalRegistrar<'_>);
+    /// `register_behaviors` of the mob's entity parts, asked with the game's read host
+    /// (`LivingEntity.makeBrain`).
+    fn register_behaviors(&self, behaviors: &mut mod_api::BehaviorRegistrar<'_>);
     /// Run `goal`'s `op` on the mob in hand with the tick's `MobWorld`, naming
     /// `mod_id`'s `part` in a panic. None where this side runs no mod goals.
     fn run_goal(
@@ -153,16 +162,10 @@ pub enum BehaviorOp {
     Stop,
 }
 
-/// Native catalog target for [`mod_api::EntityPart::register_goals`].
-#[inline(never)]
-pub fn native_register_goals(goals: &mut mod_api::GoalRegistrar<'_>) {
-    mod_api::dispatch_register_goals(goals);
-}
-
 /// Ask the installed entity parts for the mob's mod goals (#1077), right after
 /// the species' own `ai::register` — vanilla's `registerGoals` moment, which a
 /// mob loaded from a chunk passes through as a spawned one does.
-pub fn attach(m: &mut Mob) {
+pub fn attach(m: &mut Mob, host: &dyn GoalHost) {
     if !mod_api::__private::has_scoped_hook(mod_api::HookId::RegisterGoals) {
         return;
     }
@@ -175,7 +178,7 @@ pub fn attach(m: &mut Mob) {
         mob_entity: id,
     };
     let mut goals = mod_api::GoalRegistrar::new(&mut registrar);
-    native_register_goals(&mut goals);
+    host.register_goals(&mut goals);
 }
 
 /// The game's side of [`mod_api::GoalRegistrar`]: the mob's two selectors.

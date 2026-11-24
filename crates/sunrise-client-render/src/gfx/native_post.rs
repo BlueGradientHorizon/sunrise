@@ -1535,7 +1535,7 @@ pub fn frame_inputs(
     };
     let projection = view_projection(
         super::world_projection(frame.fov_degrees, aspect, frame.depth_far),
-        frame.bob,
+        frame.posed_bob(),
         frame.spin,
     );
     // A celestial body's direction at `angle` degrees (SkyRenderer: Y -90°, then X by the

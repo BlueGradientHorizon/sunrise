@@ -147,7 +147,7 @@ impl Game<'_> {
     /// `Level.isRainingAt`: it rains, the sky light is 15, nothing that stops
     /// motion is above, and the biome's precipitation there is rain.
     pub(super) fn raining_at(&self, p: BlockPos) -> bool {
-        self.weather_levels(1.0).0 > 0.2
+        sunrise_client::world::weather_flags(self.weather_levels(1.0)).0
             && self.world.light(p.x, p.y, p.z) >> 4 == 15
             && self.rain_height(p.x, p.z) <= p.y
             && precipitation_at(

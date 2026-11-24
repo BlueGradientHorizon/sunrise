@@ -350,14 +350,6 @@ impl Game<'_> {
                 .and_then(|g| self.score.board.players_team(&g.name)),
         };
         let harm = self.player_may_harm(team, s.team.as_ref());
-        if s.knockback_attack {
-            self.audio.play(
-                "minecraft:entity.player.attack.knockback",
-                Some(s.from),
-                1.0,
-                1.0,
-            );
-        }
         // Player.attack: the hurt (with its knockback away from the
         // attacker), then causeExtraKnockback along the attacker's yaw.
         // CombatTracker: the attacking player is the death message's killer.
@@ -472,7 +464,7 @@ impl Game<'_> {
         }
         // A critical hit a mod let sweep has both sounds (attackVisualEffects).
         if swept.is_none() || s.crit {
-            self.audio.play(sound, Some(s.from), 1.0, 1.0);
+            self.play_audio(sound, Some(s.from), 1.0, 1.0);
         }
         landed
     }

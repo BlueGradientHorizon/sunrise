@@ -77,7 +77,7 @@ impl Game<'_> {
         // where it lay, for adding to the level once its own tick is done.
         let mut destroyed: Vec<(ItemStack, Vec3)> = Vec::new();
         let item_type = sunrise_threads::work::entity_id(native_ticks::ITEM);
-        // Items a mod named (`entity_tick_each`) hear their Pre right before their own tick and
+        // Items hear their Pre right before their own tick and
         // their Post right after it, each alone, with the list given back for the call; their
         // part (`on_entity_item_update`) follows their Pre.
         let alone = round.alone_kind(native_ticks::ITEM);
@@ -108,7 +108,7 @@ impl Game<'_> {
                 continue;
             }
             if alone_pre || (alone && update_hook) {
-                let id = items[i].id;
+                let (id, join) = (items[i].id, items[i].join);
                 let given = self.give_items_back(items, &mut pass, i, round, |game, round| {
                     if native_ticks::place(&game.dropped, i, |item| item.id == id).is_some()
                         && (!alone_pre || game.native_tick_pre_one(round, id, native_ticks::ITEM))
@@ -117,6 +117,18 @@ impl Game<'_> {
                         && game.item_update_halts(k)
                     {
                         round.halt(id);
+                    }
+                    // `ServerLevel.tickNonPassenger` fires the Post after `tick()` even when the
+                    // tick removed the entity: a part that removed the item still hears it.
+                    if alone_post && !round.canceled(id) {
+                        game.native_item_removals_flush(|item| {
+                            if item.join > join {
+                                round.not_ticked(item.id);
+                            }
+                        });
+                        if !game.dropped.iter().any(|item| item.id == id) {
+                            game.native_tick_post_one(round, id, native_ticks::ITEM);
+                        }
                     }
                 });
                 (items, next) = (given.items, given.next);
@@ -319,6 +331,7 @@ impl Game<'_> {
                 let environment = item.environment_tick_with_hook(
                     &mut self.world,
                     self.res.facts(),
+                    self.res.items(),
                     registry,
                     &native_components::item_damage_resolver(
                         &self.pack.item_renderer.models,
@@ -359,7 +372,7 @@ impl Game<'_> {
                 if environment.should_play_lava_hurt_sound(item.ticks) {
                     // `Entity.lavaHurt` pitches the burn from `this.random`, the item's own.
                     let pitch = 2.0 + item.random.next_float() * 0.4;
-                    self.audio.play(
+                    self.play_audio(
                         "minecraft:entity.generic.burn",
                         Some([item.position.x, item.position.y, item.position.z]),
                         0.4,
@@ -803,7 +816,7 @@ impl Game<'_> {
         let mut orbs = self.orbs.lift();
         #[cfg(test)]
         crate::game::entity::taken_pass_tests::after_take(self);
-        let mut gained = 0;
+        let mut gained = 0i32;
         let mut taken = Vec::new();
         if let Some((min, max)) = bounds {
             orbs.retain_mut(|o| {
@@ -817,7 +830,7 @@ impl Game<'_> {
                     // ExperienceOrb.playerTouch: one orb every 2 ticks; a
                     // merged orb gives its value once per count.
                     self.xp_delay = 2;
-                    gained += o.points();
+                    gained = gained.saturating_add(o.value);
                     taken.push(o.clone());
                     o.count -= 1;
                     return o.count > 0;
@@ -827,7 +840,8 @@ impl Game<'_> {
         }
         self.orbs
             .restore(orbs, sunrise_client::join_seq::RestoreOrder::SurvivorsFirst);
-        if gained > 0 {
+        // ExperienceOrb.playerTouch repairs with the signed value, whatever it is.
+        if !taken.is_empty() {
             gained = self.mending(gained);
         }
         for o in taken {
@@ -836,7 +850,7 @@ impl Game<'_> {
             let mut r = random_source::create();
             let pitch = (r.next_float() - r.next_float()) * 0.35 + 0.9;
             let at = [o.position.x, o.position.y, o.position.z];
-            self.audio.play(
+            self.play_audio(
                 "minecraft:entity.experience_orb.pickup",
                 Some(at),
                 0.1,
@@ -848,7 +862,7 @@ impl Game<'_> {
             );
         }
         if gained > 0 {
-            self.give_experience_points(gained as i32);
+            self.give_experience_points(gained);
         }
     }
 
@@ -1079,15 +1093,24 @@ impl Game<'_> {
 
     /// `FurnaceResultSlot.checkTakeAchievements`: the player took from the output of the
     /// furnace at `pos`, which pops the experience of what it made at them
-    /// (`awardUsedRecipesAndPopExperience`) and forgets it.
-    pub(super) fn award_furnace_recipes(&mut self, pos: (i32, i32, i32), at: [f64; 3]) {
-        let used = match self.world.block_entities.get_mut(&pos) {
+    /// (`awardUsedRecipesAndPopExperience`) and forgets it. Returns the used recipes' ids, which
+    /// the caller awards to the extracting player (`ServerPlayer.awardRecipes`) in the body that
+    /// took the output.
+    #[must_use = "the used recipes are awarded to the extracting player"]
+    pub(super) fn award_furnace_recipes(
+        &mut self,
+        pos: (i32, i32, i32),
+        at: [f64; 3],
+    ) -> Vec<String> {
+        let (used, recipes) = match self.world.block_entities.get_mut(&pos) {
             Some(BlockEntity::Furnace(f)) => {
                 let used = f.recipe_experience(world_recipes!(self));
+                let mut recipes: Vec<String> = f.recipes_used.keys().cloned().collect();
+                recipes.sort();
                 f.recipes_used.clear();
-                used
+                (used, recipes)
             }
-            _ => return,
+            _ => return Vec::new(),
         };
         for (count, experience) in used {
             let xp = sunrise_client::containers::create_experience(
@@ -1097,6 +1120,7 @@ impl Game<'_> {
             );
             self.spawn_orbs(at, xp);
         }
+        recipes
     }
 }
 
@@ -1246,8 +1270,7 @@ mod expire_tests {
     use crate::game::{Dim, Game};
     use mod_api::{
         Compound, EntityLeaveLevelEvent, EntityTickPostEvent, EntityTickPreEvent, HostSide,
-        HostTransaction, ItemExpireEvent, ModEntry, Registrar, RegistrationContext, ServerHost,
-        Tag,
+        HostTransaction, ItemExpireEvent, ModEntry, ServerHost, Tag,
     };
     use std::sync::{
         Arc, Mutex,
@@ -1613,10 +1636,6 @@ mod expire_tests {
 
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for AloneDiscardListener {
-        fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
-            r.entity_tick_each("minecraft:item");
-        }
-
         fn entity_tick_pre(&self, _: HostSide<'_>, event: &mut EntityTickPreEvent<'_>) {
             let mut log = self.0.lock().unwrap();
             for &id in event.entities {
@@ -1667,7 +1686,7 @@ mod expire_tests {
 
     #[test]
     #[ignore = "daily"]
-    fn expiry_listener_discards_under_entity_tick_each_still_deliver_post_once() {
+    fn expiry_listener_discards_while_told_alone_still_deliver_post_once() {
         let log = Arc::new(Mutex::new(AloneDiscardLog::default()));
         let mods: mod_api::Mods = vec![ModEntry::new(
             "alone-discard-on-expiry",

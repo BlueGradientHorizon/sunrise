@@ -81,10 +81,7 @@ impl HeartHost for Host<'_> {
     fn create_mob(&mut self, kind: Arc<MobType>, at: Vec3) -> Mob {
         *self.next_entity += 1;
         // A new entity's random is its own (Mob::new seeds it).
-        let mut m = Mob::new(*self.next_entity, kind, at, 0.0);
-        let seed = i64::from(m.id);
-        sunrise_client::mobs::monster_brain::init(&mut m, seed);
-        m
+        Mob::new(*self.next_entity, kind, at, 0.0)
     }
     fn add_mob(&mut self, m: Mob) {
         self.added.push(m);
@@ -155,6 +152,12 @@ impl Game<'_> {
         };
         // The heart's additions go after every slot the index holds.
         self.mob_index = index;
+        // A creaking made during the tick is constructed now: its parts register with the
+        // game's read host, as vanilla's constructor runs `registerGoals` and `makeBrain`.
+        let mut added = added;
+        for mob in &mut added {
+            mob.attach_mod_parts(&*self);
+        }
         mobs.extend(added);
         self.mobs
             .restore(mobs, sunrise_client::join_seq::RestoreOrder::SurvivorsFirst);
@@ -166,8 +169,7 @@ impl Game<'_> {
             match e {
                 HeartEvent::SetBlock(at, state) => self.level_set(at, state)?,
                 HeartEvent::Sound(name, at, volume, pitch) => {
-                    self.audio
-                        .play(&format!("minecraft:{name}"), Some(at), volume, pitch)
+                    self.play_audio(&format!("minecraft:{name}"), Some(at), volume, pitch)
                 }
                 HeartEvent::Trail {
                     at,

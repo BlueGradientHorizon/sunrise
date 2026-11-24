@@ -541,7 +541,7 @@ impl Game<'_> {
         self.world.random.next_float();
         self.next_entity += 1;
         self.persist.uuids.insert(stand.id, uuid);
-        self.audio.play(
+        self.play_audio(
             "minecraft:entity.armor_stand.place",
             Some([foot.x, foot.y, foot.z]),
             0.75,
@@ -921,8 +921,7 @@ impl Game<'_> {
             let id = self.armor_stands[i].id;
             let (width, height) = stand_box(&self.armor_stands[i]);
             if !self.remove_armor_stand_after(id, |game| {
-                game.audio
-                    .play("minecraft:entity.armor_stand.break", Some(at), 1.0, 1.0);
+                game.play_audio("minecraft:entity.armor_stand.break", Some(at), 1.0, 1.0);
                 game.show_breaking_particles(at, f64::from(width), f64::from(height));
             }) {
                 return false;
@@ -933,8 +932,7 @@ impl Game<'_> {
         }
         if time - self.armor_stands[i].last_hit > 5 && !always_kills {
             // First hit: entity event 32, the wobble and the hit sound, then entity_damage.
-            self.audio
-                .play("minecraft:entity.armor_stand.hit", Some(at), 0.3, 1.0);
+            self.play_audio("minecraft:entity.armor_stand.hit", Some(at), 0.3, 1.0);
             self.stand_game_event("minecraft:entity_damage", at, by);
             self.armor_stands[i].last_hit = time;
             return true;
@@ -951,8 +949,7 @@ impl Game<'_> {
                     .set_loot_name("minecraft:custom_name", &name.component());
             }
             game.spawn_item(stand, center, [0.0; 3], 10);
-            game.audio
-                .play("minecraft:entity.armor_stand.break", Some(at), 1.0, 1.0);
+            game.play_audio("minecraft:entity.armor_stand.break", Some(at), 1.0, 1.0);
             game.armor_stand_death_drops(&a, damage_type, causing_id);
             for stack in a.equipment.into_iter().flatten() {
                 let r = &mut game.world.random;
@@ -1482,8 +1479,7 @@ impl Game<'_> {
         let id = a.id;
         let at = a.position.components();
         let removed = self.remove_armor_stand_after(id, |game| {
-            game.audio
-                .play("minecraft:entity.armor_stand.break", Some(at), 1.0, 1.0);
+            game.play_audio("minecraft:entity.armor_stand.break", Some(at), 1.0, 1.0);
             game.armor_stand_death_drops(&a, damage_type, causing);
             let (pos, drops) = broken_armor_stand_equipment(a);
             for stack in drops {

@@ -839,12 +839,6 @@ impl Game<'_> {
     fn slot_mut_at(&mut self, view: &View, slot: usize) -> Option<&mut Option<ItemStack>> {
         let (pos, i) = view.locate(slot)?;
         let entity = self.world.block_entities.get_mut(&pos)?;
-        // A mod's slots grow to its container's count when first used.
-        if let BlockEntity::Mod(m) = entity
-            && m.items.len() <= i
-        {
-            m.items.resize(view.len(), None);
-        }
         entity.slot_mut(i)
     }
     /// `BlockEntity.setChanged` for every block entity of a container.

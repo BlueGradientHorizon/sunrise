@@ -8,6 +8,8 @@ ids = [
     "type:LivingKnockbackEvent.attacker_off",
     "type:LivingKnockbackEvent.kill_credit_main",
     "type:LivingKnockbackEvent.entry",
+    "hook:living_knockback.strength",
+    "type:LivingKnockbackEvent.strength",
     "type:KnockbackEntry",
     "type:KnockbackEntry.Short",
     "type:KnockbackEntry.Full",
@@ -24,5 +26,6 @@ migrate = '''
 - `hook:living_knockback.attacker_main` and `type:LivingKnockbackEvent.attacker_main`: Read `event.attacker_main.as_ref()` as an optional `ItemStackView` borrow instead of an optional `&ItemStack`.
 - `hook:living_knockback.attacker_off` and `type:LivingKnockbackEvent.attacker_off`: Read `event.attacker_off.as_ref()` as an optional `ItemStackView` borrow instead of an optional `&ItemStack`.
 - `hook:living_knockback.kill_credit_main` and `type:LivingKnockbackEvent.kill_credit_main`: Read `event.kill_credit_main.as_ref()` as an optional `ItemStackView` borrow instead of an optional `&ItemStack`.
+- `hook:living_knockback.strength` and `type:LivingKnockbackEvent.strength`: The strength is an `f32`, as NeoForge's `LivingEntity.knockback` casts it to float before `CommonHooks.onLivingKnockBack` and widens the edited result afterward. Change `*event.strength = x as f64` style edits to `f32`; the listener sees `(strength as f32)`, so a neutral listener leaves the push unchanged at the float's precision. X and Z stay `f64`.
 - Read scalar metadata via `view.item()`, `view.count()`, `view.damage()`, or `view.damage_component()`. Call `view.project()` only for components or an owned `ItemStack`, and handle `None` on projection failure. Empty or unrepresentable stacks omit only the affected field, not the event.
 '''

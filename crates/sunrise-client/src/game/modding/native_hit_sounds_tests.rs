@@ -130,7 +130,7 @@ fn check(attacker: i32, expected_at: [f64; 3], hit: impl FnOnce(&mut super::Game
                     seed: 0,
                     max_players: 2,
                     integrated: true,
-                    levels: game.level_shapes,
+                    levels: game.level_shapes.clone(),
                     level_seeds: game.levels.runtime.seeds(),
                 },
             )

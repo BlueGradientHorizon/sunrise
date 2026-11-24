@@ -143,7 +143,8 @@ pub enum TextureAtlas {
 
 /// An atlas a client mod adds beside the game's (`RegisterTextureAtlasesEvent`), as
 /// `register_texture_atlases` declares it: its id and the atlas definition listing its sprites.
-/// Sunrise stitches its sprites into the GUI atlas, each under [`Self::sprite_name`].
+/// Sunrise stitches its sprites into a texture of their own, each under [`Self::sprite_name`], and
+/// the UVs of its sprites are local to that texture, not the shared GUI atlas.
 #[derive(Clone, Debug, PartialEq, Eq)]
 // exhaustive: mods submit declarations by value
 #[derive(sunrise_mod_api_macros::Wire)]
@@ -183,7 +184,9 @@ impl TextureAtlasRegistration {
 #[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]
 pub struct AtlasRegion {
-    /// `[u0, v0, u1, v1]`: the sprite's corners, from 0 to 1 across the atlas.
+    /// `[u0, v0, u1, v1]`: the sprite's corners, from 0 to 1 across the texture that holds it:
+    /// the shared GUI atlas, or the sprite's own atlas texture for one of a registered atlas
+    /// (`TextureAtlasRegistration`). Draw it by its name so the owning texture is selected.
     pub uv: [f32; 4],
     /// The sprite's size in its own pixels: the default resources' texture's size whatever the
     /// resolution of a pack that replaced it (the units vanilla's GUI code draws it in), the

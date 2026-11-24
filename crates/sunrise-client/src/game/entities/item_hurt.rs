@@ -42,7 +42,8 @@ impl Game<'_> {
         mark_item_hurt(item, amount);
         let at = item.position;
         self.post_item_damage(at, causing);
-        if let Some(contents) = self.dropped[index].hurt(0) {
+        let res = self.res.clone();
+        if let Some(contents) = self.dropped[index].hurt(res.items(), 0) {
             self.dropped.remove(index);
             self.spawn_destroyed_contents(contents.into_iter().map(|stack| (stack, at)).collect());
         }
@@ -70,7 +71,7 @@ impl Game<'_> {
         mark_item_hurt(item, amount);
         let at = item.position;
         self.post_item_damage(at, None);
-        if let Some(contents) = item.hurt(0) {
+        if let Some(contents) = item.hurt(self.res.items(), 0) {
             self.spawn_destroyed_contents(contents.into_iter().map(|stack| (stack, at)).collect());
         }
     }

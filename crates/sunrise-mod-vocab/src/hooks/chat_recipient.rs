@@ -11,7 +11,8 @@ pub trait Hooks {
     /// disconnects before their turn is not asked. The veto does not alter the signed body, or add
     /// an index or pending acknowledgement for the omitted copy. Whispers (`/msg`) are not public.
     /// A command run from this hook that sends public chat goes through the same delivery checks,
-    /// including this hook. A panicking listener is reported and is disabled for the session;
+    /// including this hook, once the running line has been offered to every recipient. A line
+    /// that repeats one that led to it (a relay answering its own answer) is not delivered. A panicking listener is reported and is disabled for the session;
     /// the other listeners' decisions still apply.
     /// Server-side.
     #[hook(

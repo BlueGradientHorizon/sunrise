@@ -692,6 +692,8 @@ impl WorldBiomeRegistry {
         for warning in warnings {
             log::warn!("Sunrise: data pack worldgen: {warning}");
         }
+        // The winning registry files' conditions run before the generation codecs see them.
+        inputs.admit_conditions(|file, kind, id| overlay.conditions.allows_id(file, kind, id));
         sunrise_client::vanillagen::add_passive_structure_templates(
             &mut inputs,
             stack.content.source(),
@@ -979,7 +981,7 @@ fn shapes_of(
             })
         })
         .collect();
-    shapes.extra = extra.leak();
+    shapes.extra = sunrise_client::chunk::ExtraLevels::new(extra);
     set_level_types(overrides, &shapes);
     shapes
 }
@@ -2348,7 +2350,7 @@ mod tests {
         let Some(Ok(ModLevel::Terrain(terrain))) = open(pocket) else {
             panic!("the pack's checkerboard needs no noise settings");
         };
-        let chunk = terrain.finish(terrain.proto(&mut (), 0, 0));
+        let chunk = terrain.finish(terrain.proto(&mut (), 0, 0).unwrap());
         assert_eq!(
             chunk.block(0, -64, 0),
             registry.default_state("minecraft:stone").unwrap()
@@ -2474,13 +2476,13 @@ mod tests {
         ) else {
             panic!("no-stage checkerboard must open without noise-settings bundle");
         };
-        let chunk0 = terrain.finish(terrain.proto(&mut (), 0, 0));
+        let chunk0 = terrain.finish(terrain.proto(&mut (), 0, 0).unwrap());
         assert_eq!(
             chunk0.block(0, -64, 0),
             registry.default_state("minecraft:stone").unwrap()
         );
         assert_eq!(biomes.name(chunk0.biome(0, 0, 0)), "minecraft:desert");
-        let chunk1 = terrain.finish(terrain.proto(&mut (), 1, 0));
+        let chunk1 = terrain.finish(terrain.proto(&mut (), 1, 0).unwrap());
         assert_eq!(biomes.name(chunk1.biome(0, 0, 0)), "minecraft:plains");
     }
 

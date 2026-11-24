@@ -91,7 +91,10 @@ pub trait ChunkGenerator: Send + Sync + 'static {
     /// caches the workers share, which only spare work for chunks generated
     /// next to each other in a run. Results do not change.
     fn all_idle(&self) {}
-    fn proto(&self, worker: &mut Self::Worker, x: i32, z: i32) -> Proto;
+    /// The neighbour-independent proto chunk of column `(x, z)`. An `Err` is a generation that
+    /// cannot finish (a mod's code failed): the column is not published and is not asked for
+    /// again.
+    fn proto(&self, worker: &mut Self::Worker, x: i32, z: i32) -> Result<Proto, String>;
     fn decorates(&self) -> bool {
         false
     }
@@ -317,6 +320,8 @@ pub enum Done {
     Generated(Chunk),
     /// A proto chunk, and whether it was decorated (loaded so from the save).
     Proto(i32, i32, Proto, bool),
+    /// A column whose generation failed, and why.
+    Failed(i32, i32, String),
     /// A decorated region, the region indices of its final chunks and what
     /// decoration wrote into them.
     Decorated(i32, i32, Box<[Proto; 9]>, Vec<usize>, FinalWrites),
@@ -567,6 +572,8 @@ pub struct Streaming {
     /// The centre and radius the sweep was last reset for.
     scan_area: ((i32, i32), i32),
     generating: FxHashSet<(i32, i32)>,
+    /// Columns whose generation failed: never published, never asked for again.
+    failed: FxHashSet<(i32, i32)>,
     generation_scan: GenerationScan,
     /// Proto chunks: `None` while checked out to a decoration or save job.
     protos: FxHashMap<(i32, i32), Option<Proto>>,
@@ -822,6 +829,7 @@ struct GenerationInputs<'a> {
     ranges: Ranges<'a>,
     world: &'a World,
     generating: &'a FxHashSet<(i32, i32)>,
+    failed: &'a FxHashSet<(i32, i32)>,
     protos: &'a FxHashMap<(i32, i32), Option<Proto>>,
     finishing: &'a FxHashSet<(i32, i32)>,
     decorates: bool,
@@ -846,6 +854,7 @@ impl GenerationScan {
         let missing = |&(_, x, z): &(i64, i32, i32)| {
             !input.world.chunks.contains_key(&(x, z))
                 && !input.generating.contains(&(x, z))
+                && !input.failed.contains(&(x, z))
                 && !input.protos.contains_key(&(x, z))
                 && !input.finishing.contains(&(x, z))
         };
@@ -895,6 +904,7 @@ impl GenerationScan {
                     if !input.ranges.requested(x, z, input.decorates)
                         || input.world.chunks.contains_key(&(x, z))
                         || input.generating.contains(&(x, z))
+                        || input.failed.contains(&(x, z))
                         || input.protos.contains_key(&(x, z))
                         || input.finishing.contains(&(x, z))
                     {
@@ -917,6 +927,7 @@ impl GenerationScan {
                         let (x, z) = (fx + dx, fz + dz);
                         if input.world.chunks.contains_key(&(x, z))
                             || input.generating.contains(&(x, z))
+                            || input.failed.contains(&(x, z))
                             || input.protos.contains_key(&(x, z))
                             || input.finishing.contains(&(x, z))
                         {
@@ -1098,11 +1109,13 @@ impl<G: ChunkGenerator> Jobs<G> {
                     generator.prepare_loaded(&mut *worker, &chunk);
                     Done::Generated(chunk)
                 }
-                None => {
-                    let proto = generator.proto(&mut *worker, x, z);
-                    let decorated = generator.is_decorated(&proto);
-                    Done::Proto(x, z, proto, decorated)
-                }
+                None => match generator.proto(&mut *worker, x, z) {
+                    Ok(proto) => {
+                        let decorated = generator.is_decorated(&proto);
+                        Done::Proto(x, z, proto, decorated)
+                    }
+                    Err(reason) => Done::Failed(x, z, reason),
+                },
             },
             Job::Decorate(x, z, mut region, finals, outer) => {
                 // The final chunks' proto chunks, made here: a
@@ -1269,6 +1282,7 @@ impl Streaming {
             scan_age: 0,
             scan_area: ((i32::MIN, i32::MIN), i32::MIN),
             generating: Default::default(),
+            failed: Default::default(),
             generation_scan: GenerationScan::default(),
             protos: Default::default(),
             light_views: Default::default(),
@@ -2098,6 +2112,12 @@ impl Streaming {
                         }
                     }
                 }
+                Done::Failed(x, z, reason) => {
+                    // Nothing of the column is published, and it is not asked for again.
+                    log::error!("Sunrise: generating chunk {x} {z} failed: {reason}");
+                    self.generating.remove(&(x, z));
+                    self.failed.insert((x, z));
+                }
                 Done::Decorated(x, z, region, finals, writes) => {
                     self.receive_decorated(x, z, *region, finals, writes, world)
                 }
@@ -2742,14 +2762,19 @@ impl Streaming {
             return;
         }
         let job = entry.remove();
+        // The job that covers a resend publishes its light and releases it, though a newer
+        // request has queued a replacement meanwhile (`ThreadedLevelLightEngine.waitForPendingTasks`
+        // waits only for the tasks queued at the call).
+        let covered = matches!(
+            world.chunk_resends.get(&(x, z)),
+            Some(&ChunkResend::WaitingLight { from_seq }) if seq >= from_seq
+        );
         if let Some(snapshot) = job.snapshot
-            && !world.dirty_light.contains(&(x, z))
+            && (covered || !world.dirty_light.contains(&(x, z)))
         {
             self.apply_lit(world, x, z, sections, snapshot);
-            if let Some(resend) = world.chunk_resends.get_mut(&(x, z))
-                && *resend == ChunkResend::WaitingLight
-            {
-                *resend = ChunkResend::Ready;
+            if covered {
+                world.chunk_resends.insert((x, z), ChunkResend::Ready);
             }
         }
         match self.lighting.values().filter_map(|job| job.snapshot).min() {
@@ -2830,8 +2855,22 @@ impl Streaming {
     /// light work already queued or running for `key` (`ThreadedLevelLightEngine.waitForPendingTasks`).
     /// Later light checks or edits do not move this marker once recorded.
     pub fn queue_chunk_resend(&self, world: &mut World, key: (i32, i32)) {
-        let state = if world.dirty_light.contains(&key) || self.has_active_column_light_job(key) {
-            ChunkResend::WaitingLight
+        let queued = world.dirty_light.contains(&key);
+        let running = self
+            .lighting
+            .get(&key)
+            .filter(|job| job.snapshot.is_some())
+            .map(|job| job.seq);
+        let state = if queued || running.is_some() {
+            ChunkResend::WaitingLight {
+                // Light queued after the running job needs a later one; with none, the
+                // running job is the work to wait for.
+                from_seq: if queued {
+                    self.sequence + 1
+                } else {
+                    running.unwrap_or_default()
+                },
+            }
         } else if world.light_edits.iter().any(|&((ex, _, ez), _, _)| {
             (ex >> 4).abs_diff(key.0) <= 1 && (ez >> 4).abs_diff(key.1) <= 1
         }) {
@@ -2844,15 +2883,25 @@ impl Streaming {
         world.chunk_resends.insert(key, state);
     }
 
-    fn has_active_column_light_job(&self, key: (i32, i32)) -> bool {
-        self.lighting
-            .get(&key)
-            .is_some_and(|job| job.snapshot.is_some())
-    }
-
     /// Whether a whole-column job for `key` was submitted and its result has not been taken.
     pub fn has_column_light_job(&self, key: (i32, i32)) -> bool {
         self.lighting.contains_key(&key)
+    }
+
+    /// The columns whose light is not settled: queued or running whole-column jobs and the
+    /// columns an unapplied edit can still reach (light spreads at most one column).
+    pub fn columns_with_outstanding_light(&self, world: &World) -> Vec<(i32, i32)> {
+        let mut columns: FxHashSet<(i32, i32)> = self.lighting.keys().copied().collect();
+        columns.extend(world.dirty_light.iter().copied());
+        for &((x, _, z), _, _) in &world.light_edits {
+            let (cx, cz) = (x >> 4, z >> 4);
+            for dz in -1..=1 {
+                for dx in -1..=1 {
+                    columns.insert((cx + dx, cz + dz));
+                }
+            }
+        }
+        columns.into_iter().collect()
     }
 
     /// Whether this level has light work still running or ready to schedule.
@@ -2882,6 +2931,7 @@ impl Streaming {
             },
             world,
             generating: &self.generating,
+            failed: &self.failed,
             protos: &self.protos,
             finishing: &self.finishing,
             decorates: self.decorates,
@@ -2911,6 +2961,8 @@ impl Streaming {
             })
             .collect();
         markers.sort_unstable();
+        // Jobs this pass submits or queues come after this one.
+        let base_sequence = self.sequence;
         let mut required = FxHashSet::default();
         let mut start = 0;
         for (through, key) in markers {
@@ -2923,7 +2975,9 @@ impl Streaming {
             world.chunk_resends.insert(
                 key,
                 if required.contains(&key) {
-                    ChunkResend::WaitingLight
+                    ChunkResend::WaitingLight {
+                        from_seq: base_sequence + 1,
+                    }
                 } else {
                     ChunkResend::Ready
                 },
@@ -3059,6 +3113,7 @@ impl Streaming {
             *queue = std::collections::BinaryHeap::from(saves);
         }
         self.generating.clear();
+        self.failed.clear();
         self.decorating = 0;
         self.decorating_finals.clear();
         self.finishing.clear();
@@ -4693,8 +4748,8 @@ mod tests {
         impl ChunkGenerator for Generator {
             type Worker = ();
             fn worker(&self) {}
-            fn proto(&self, _: &mut (), _: i32, _: i32) -> Proto {
-                Box::new(())
+            fn proto(&self, _: &mut (), _: i32, _: i32) -> Result<Proto, String> {
+                Ok(Box::new(()))
             }
             fn finish(&self, _: Proto) -> Chunk {
                 Chunk::empty(0, 0)
@@ -5064,7 +5119,7 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn resend_marker_waits_for_replacement_and_ignores_later_checks() {
+    fn resend_marker_is_released_by_its_covering_job_while_later_requests_pile_up() {
         use std::time::{Duration, Instant};
 
         let (mut world, mut streaming, _) = section_visibility::tests::fixture();
@@ -5075,40 +5130,38 @@ mod tests {
         }
         world.dirty_light.insert((0, 0));
         streaming.queue_chunk_resend(&mut world, (0, 0));
-        assert_eq!(
+        assert!(matches!(
             world.chunk_resends.get(&(0, 0)),
-            Some(&ChunkResend::WaitingLight)
-        );
+            Some(&ChunkResend::WaitingLight { .. })
+        ));
         streaming.update_light(&mut world);
         assert_eq!(streaming.order, 1);
         assert!(streaming.has_column_light_job((0, 0)));
 
-        // Re-dirty while the first job is still in flight so it must be discarded and replaced.
+        // Re-dirty while the covering job is still in flight: a relight added after the resend.
         let shared = Arc::clone(&streaming.shared);
         let mailbox = shared.done.done.lock().unwrap();
         world.dirty_light.insert((0, 0));
         streaming.update_light(&mut world);
         assert_eq!(streaming.order, 1);
-        assert_eq!(
+        assert!(matches!(
             world.chunk_resends.get(&(0, 0)),
-            Some(&ChunkResend::WaitingLight)
-        );
+            Some(&ChunkResend::WaitingLight { .. })
+        ));
         drop(mailbox);
 
+        // The covering job's light is published and the resend released, though the newer
+        // request has not run: later requests never extend the wait.
         let deadline = Instant::now() + Duration::from_secs(10);
         while streaming.order < 2 {
-            assert!(Instant::now() < deadline, "superseded job did not return");
+            assert!(Instant::now() < deadline, "covering job did not return");
             streaming.wait(Duration::from_millis(50));
             streaming.update_light(&mut world);
         }
-        assert!(!streaming.is_lit(0, 0), "superseded light was discarded");
-        assert_eq!(
-            world.chunk_resends.get(&(0, 0)),
-            Some(&ChunkResend::WaitingLight),
-            "resend waits until the replacement job applies"
-        );
+        assert!(streaming.is_lit(0, 0), "the covered light was published");
+        assert_eq!(world.chunk_resends.get(&(0, 0)), Some(&ChunkResend::Ready));
 
-        while streaming.has_column_light_job((0, 0)) {
+        while streaming.has_column_light_job((0, 0)) || world.dirty_light.contains(&(0, 0)) {
             assert!(Instant::now() < deadline, "replacement job did not finish");
             streaming.wait(Duration::from_millis(50));
             streaming.update_light(&mut world);
@@ -5384,6 +5437,7 @@ mod tests {
         extra: Vec<((i32, i32), i32)>,
         forced: HashSet<(i32, i32)>,
         generating: FxHashSet<(i32, i32)>,
+        failed: FxHashSet<(i32, i32)>,
         protos: FxHashMap<(i32, i32), Option<Proto>>,
         finishing: FxHashSet<(i32, i32)>,
         decorates: bool,
@@ -5398,6 +5452,7 @@ mod tests {
                 extra: Vec::new(),
                 forced: HashSet::new(),
                 generating: Default::default(),
+                failed: Default::default(),
                 protos: Default::default(),
                 finishing: Default::default(),
                 decorates,
@@ -5417,6 +5472,7 @@ mod tests {
                 },
                 world: &self.world,
                 generating: &self.generating,
+                failed: &self.failed,
                 protos: &self.protos,
                 finishing: &self.finishing,
                 decorates: self.decorates,

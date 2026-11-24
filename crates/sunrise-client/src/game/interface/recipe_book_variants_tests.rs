@@ -364,3 +364,85 @@ fn clicked_multi_display_recipe_sends_exact_ghost_and_ordinary_placement_sends_n
         .unwrap_or(0);
     assert_eq!(placed_count, 4);
 }
+
+/// A writable recipe-click listener that replaces the crafting window with a chest: the click's
+/// placement must not move the ingredients into the crafting grid it named, nor send a ghost.
+#[test]
+#[ignore = "daily"]
+fn a_recipe_click_listener_replacing_the_menu_stops_the_placement() {
+    use sunrise_protocol::packets::{play::Serverbound as S, recipes::PlaceRecipe};
+    struct Replacer;
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for Replacer {
+        fn player_recipe_book_click(
+            &self,
+            host: &mut dyn mod_api::ServerHost,
+            event: &mut mod_api::PlayerRecipeBookClickEvent<'_>,
+        ) {
+            let player = host.player(event.player).unwrap();
+            player
+                .open_chest_menu(
+                    host,
+                    1,
+                    mod_api::Text::literal("Replacement"),
+                    Vec::new(),
+                    mod_api::MenuReplace::InPlace,
+                )
+                .unwrap();
+        }
+    }
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new("replacer", Box::new(Replacer))].into();
+    mod_platform::testing::with_mods(mods, || {
+        crate::game::native_guest_turn_tests::with_guests(|game| {
+            let (tx, rx) = mpsc::channel();
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            let table = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:crafting_table")
+                .unwrap();
+            game.world.set(3, 64, 6, table).unwrap();
+            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                g.sender = PlayerSender::new(tx, Arc::default());
+                g.game_mode = 0;
+                g.recipe_book
+                    .recipes
+                    .insert("minecraft:crafting_table".into());
+                g.inventory[0] = Some(sunrise_client::items::ItemStack::new(
+                    "minecraft:oak_planks",
+                    4,
+                ));
+            });
+            game.lan_open_crafting(12, [3, 64, 6]);
+            let window = game
+                .lan
+                .as_ref()
+                .unwrap()
+                .menus
+                .get(&12)
+                .and_then(|m| m.crafting.table.as_ref().map(|(w, ..)| *w))
+                .expect("crafting table window open");
+            let _ = ghosts(&rx);
+            let display = world_stations!(game)
+                .recipe_index
+                .display_ids("minecraft:crafting_table")
+                .start;
+            game.lan_guest_packet(
+                12,
+                S::PlaceRecipe(PlaceRecipe {
+                    container: window,
+                    recipe: display,
+                    use_max: false,
+                }),
+            );
+            let planks = game.lan.as_ref().unwrap().hub.guests[0].inventory[0]
+                .as_ref()
+                .map(|s| s.count);
+            assert_eq!(planks, Some(4), "no ingredient left the inventory");
+            assert!(ghosts(&rx).is_empty(), "no ghost for the replaced menu");
+        });
+    });
+}

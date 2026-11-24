@@ -259,10 +259,10 @@ impl Game<'_> {
         let (played, start, middle) = charge_sounds(now, self.crossbow_sounds, sounds);
         self.crossbow_sounds = played;
         if let Some(sound) = start {
-            self.audio.play(sound, at, 0.5, 1.0);
+            self.play_audio(sound, at, 0.5, 1.0);
         }
         if let Some(sound) = middle {
-            self.audio.play(sound, at, 0.5, 1.0);
+            self.play_audio(sound, at, 0.5, 1.0);
         }
         let charged = stack.data().is_some_and(|d| !d.charged.is_empty());
         if now >= 1.0 && !charged {
@@ -309,7 +309,7 @@ impl Game<'_> {
                 self.consume_player_slot(i, debit);
             }
             let pitch = 1.0 / (self.world.random.next_float() * 0.5 + 1.0) + 0.2;
-            self.audio.play(sounds[2], at, 1.0, pitch);
+            self.play_audio(sounds[2], at, 1.0, pitch);
         }
     }
     /// `CrossbowItem.performShooting`.
@@ -423,8 +423,7 @@ impl Game<'_> {
                 .player
                 .as_ref()
                 .map_or(eye, |pl| [pl.position.x, pl.position.y, pl.position.z]);
-            self.audio
-                .play("minecraft:item.crossbow.shoot", Some(feet), 1.0, pitch);
+            self.play_audio("minecraft:item.crossbow.shoot", Some(feet), 1.0, pitch);
             self.damage_held(if rocket { 3 } else { 1 });
         }
         // CrossbowItem.performShooting: SHOT_CROSSBOW with the crossbow, which

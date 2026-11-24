@@ -95,10 +95,13 @@ pub trait PlayerInteractionBackendMut {
     /// `LevelRef::award_experience`. Indirect drops (such as a chest's contents) still spawn in
     /// the world. With `into_inventory`, the block's remaining item drops go to the player's
     /// inventory; overflow drops from them as in `Inventory.placeItemBackInInventory`.
-    /// Chained calls fire the break hooks without a fixed nesting limit. Listeners that break
-    /// again from `break_block` must guard their own reentry on a still-present block.
+    /// Chained calls fire the break hooks without a fixed nesting limit. A break of the same
+    /// block from inside its own `break_block` callback does not call it again: it removes the
+    /// block as a nested break and the outer call then does nothing more. The position is read
+    /// from the level (a column that is not resident is loaded to read it), and `break_block`
+    /// fires for what it holds, air included.
     /// True only if this call removed a block. False off the server, for a stale, dead or
-    /// out-of-level player, for air or an unloaded position, on a restriction or veto, or
+    /// out-of-level player, for air, on a restriction or veto, or
     /// if a listener already removed the block or completed a nested player break at that
     /// position in that level (even if a non-air block or fluid remains).
     fn player_destroy_block(

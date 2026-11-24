@@ -252,6 +252,34 @@ impl WorldgenOverrides {
         }
         self.omitted_biomes = omitted;
     }
+    /// Evaluates each winning registry file's conditions before any generation codec reads
+    /// it (`ResourceManagerRegistryLoadTask.load` through `ConditionalOps`): a file whose
+    /// conditions fail is dropped, an admitted one keeps only its `neoforge:value` payload.
+    /// `allows` gets the file, its registry folder (`worldgen/placed_feature`) and its id.
+    /// Biomes are admitted by their own load.
+    pub fn admit_conditions(&mut self, allows: impl Fn(&Value, &str, &str) -> bool) {
+        for (bundle, entries) in &mut self.entries {
+            let Some((kind, _)) = KINDS
+                .iter()
+                .find(|(kind, name)| name == bundle && *kind != "worldgen/biome")
+            else {
+                continue;
+            };
+            entries.retain(|id, json| {
+                let Ok(value) = serde_json::from_str::<Value>(json) else {
+                    return true;
+                };
+                if value.get("neoforge:conditions").is_none() {
+                    return true;
+                }
+                if !allows(&value, kind, id) {
+                    return false;
+                }
+                *json = crate::conditions::into_payload(value).to_string();
+                true
+            });
+        }
+    }
     /// The owning world's final, bound biome generation data (after modifiers).
     pub fn bind_biome_generation(&mut self, generation: super::biome::AdmittedBiomeGeneration) {
         self.admitted_biome_generation = Some(generation);
@@ -913,5 +941,35 @@ mod stem_sea_level_tests {
         assert_eq!(stem_sea_level(&flat, &read), None);
         let bad = json!({"generator": {"type": "minecraft:noise", "settings": {"sea_level": "x"}}});
         assert_eq!(stem_sea_level(&bad, &read), None);
+    }
+}
+
+#[cfg(test)]
+mod admit_conditions_tests {
+    use super::WorldgenOverrides;
+    use serde_json::json;
+
+    /// A winning placed feature whose conditions fail never reaches a codec; an admitted one is
+    /// its payload; a file with no conditions is untouched.
+    #[test]
+    fn a_condition_false_registry_file_is_dropped_before_any_codec() {
+        let mut o = WorldgenOverrides::default();
+        let never = json!({"neoforge:conditions":[{"type":"neoforge:never"}],"neoforge:value":{"feature":"a:x","placement":[]}});
+        let always = json!({"neoforge:conditions":[{"type":"neoforge:always"}],"neoforge:value":{"feature":"a:y","placement":[]}});
+        o.set("placed_features", "a:never", never.to_string());
+        o.set("placed_features", "a:always", always.to_string());
+        o.set("placed_features", "a:plain", r#"{"feature":"a:z"}"#.into());
+        o.admit_conditions(|file, kind, _| {
+            kind == "worldgen/placed_feature"
+                && file["neoforge:conditions"][0]["type"] == "neoforge:always"
+        });
+        let left: Vec<_> = o.entries("placed_features").collect();
+        assert_eq!(
+            left,
+            [
+                ("a:always", r#"{"feature":"a:y","placement":[]}"#),
+                ("a:plain", r#"{"feature":"a:z"}"#)
+            ]
+        );
     }
 }

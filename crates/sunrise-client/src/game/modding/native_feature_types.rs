@@ -4,7 +4,7 @@ use super::native_worldgen::WorkerResources;
 use mod_api::__private::game::CallbackOwner;
 use mod_api::{
     BlockKey, BlockMetadata, BlockState, BlockUpdateFlags, DatapackEntry, DatapackField,
-    FeatureContext, FeatureError, FeatureType, HeightmapType, RandomSource, TagKey,
+    FeatureContext, FeatureType, HeightmapType, RandomSource, TagKey,
 };
 use std::any::Any;
 use std::sync::Arc;
@@ -170,18 +170,14 @@ impl ModFeatureType for Adapter {
         random: &mut dyn ModFeatureRandom,
         origin: [i32; 3],
         config: &(dyn Any + Send + Sync),
-    ) -> Result<bool, FeatureError> {
+    ) -> Result<bool, String> {
         let Some(registry) = target.registry() else {
-            return Err(FeatureError::new(std::io::Error::other(
-                "this world has no block registry for mod features",
-            )));
+            return Err("this world has no block registry for mod features".to_owned());
         };
-        let config = config.downcast_ref::<DatapackEntry>().ok_or_else(|| {
-            FeatureError::new(std::io::Error::other(
-                "config was not decoded by this adapter",
-            ))
-        })?;
-        let worker = WorkerResources::get(registry).map_err(FeatureError::new)?;
+        let config = config
+            .downcast_ref::<DatapackEntry>()
+            .ok_or_else(|| "config was not decoded by this adapter".to_owned())?;
+        let worker = WorkerResources::get(registry).map_err(|error| error.to_string())?;
         let mut context = Placing {
             target,
             mod_id: self.owner.id(),
@@ -194,7 +190,10 @@ impl ModFeatureType for Adapter {
         // returned FeatureErrors. Only the mod's typed result reaches the placement caller.
         self.owner
             .call("feature type", "FeatureType::place", || {
-                self.inner.place(&mut context, origin)
+                // The error's text and its destructor run here, inside the retained boundary.
+                self.inner
+                    .place(&mut context, origin)
+                    .map_err(|error| mod_api::__private::game::error_chain(&error))
             })
             .unwrap_or(Ok(false))
     }

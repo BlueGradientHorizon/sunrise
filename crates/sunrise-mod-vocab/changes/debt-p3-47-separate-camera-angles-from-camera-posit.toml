@@ -28,6 +28,38 @@ ids = [
     "handle:ViewTransform::rotate_y",
     "handle:ViewTransform::rotate_z",
     "handle:ViewTransform::scale",
+    "hook:camera_pose.partial",
+    "hook:camera_pose.position",
+    "hook:camera_pose.yaw",
+    "hook:camera_pose.pitch",
+    "type:CameraPoseEvent.partial",
+    "type:CameraPoseEvent.position",
+    "type:CameraPoseEvent.yaw",
+    "type:CameraPoseEvent.pitch",
+    "hook:camera_shake.partial",
+    "hook:camera_shake.shake",
+    "type:CameraShakeEvent.partial",
+    "type:CameraShakeEvent.shake",
+    "type:Shake.pitch",
+    "type:Shake.yaw",
+    "type:Shake.roll",
+    "type:Shake.offset",
+    "hook:compute_camera_angles.partial",
+    "hook:compute_camera_angles.yaw",
+    "hook:compute_camera_angles.pitch",
+    "hook:compute_camera_angles.roll",
+    "type:ComputeCameraAnglesEvent.partial",
+    "type:ComputeCameraAnglesEvent.yaw",
+    "type:ComputeCameraAnglesEvent.pitch",
+    "type:ComputeCameraAnglesEvent.roll",
+    "hook:camera_position.partial",
+    "hook:camera_position.position",
+    "type:CameraPositionEvent.partial",
+    "type:CameraPositionEvent.position",
+    "hook:render_view_transform.partial",
+    "hook:render_view_transform.transform",
+    "type:RenderViewTransformEvent.partial",
+    "type:RenderViewTransformEvent.transform",
     "type:Camera",
     "type:Camera.roll",
     "type:ClientGuiOptions",
@@ -52,8 +84,9 @@ anchored to vanilla 26.3 and NeoForge:
   camera and its audio listener without moving the player or their eye. If a listener requests a new
   perspective, only explicitly pinned axes survive entity re-alignment, even if their value is
   unchanged. Position setters refuse non-finite writes; angle assignments are unfiltered like
-  NeoForge's setters. A panicking camera listener is reported and its pending outputs discarded;
-  later listeners continue from the last accepted output, and the listener can run next frame.
+  NeoForge's setters. A panicking camera listener is reported, its pending outputs discarded and it is
+  disabled for the session like any other hook listener; later listeners continue from the last
+  accepted output and the failed listener stays disabled on the next frame.
 - `render_view_transform` composes at vanilla `GameRenderer.renderLevel`'s `bobHurt` / `bobView`
   stage, even if a screen has input focus and the world still draws. A proposed transform and the
   affected frame matrices must have finite inverses. There are no artificial degree or offset

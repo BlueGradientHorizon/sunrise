@@ -34,7 +34,6 @@ const TEXT_OVER_OUTLINE: f32 = 0.05;
 pub(super) struct StandaloneGeometry {
     generation: u64,
     slots: Vec<Option<Vec<super::minecarts::PreparedModelFace>>>,
-    layer_sprites: FxHashMap<u32, Rect>,
     translucent: Vec<bool>,
     bounds: Vec<[[f32; 3]; 2]>,
     /// What each fluid draws as in a `fluid_box`, by fluid slot, resolved on its first box of
@@ -42,10 +41,8 @@ pub(super) struct StandaloneGeometry {
     fluid_looks: std::cell::RefCell<Vec<Option<Option<super::native_fluid_render::FluidBoxLook>>>>,
     /// The first slot past the baked store's: block state `n` is slot `states_from + n`.
     states_from: u32,
-    /// Block states resolved for standalone terrain or block-entity draws, once per generation.
-    states: std::cell::OnceCell<Box<[std::cell::OnceCell<Box<StateModel>>]>>,
-    /// How many block states the registry has: the table's size once a mod resolves one.
-    state_count: usize,
+    /// Every block state's model, bound when the generation is prepared so a draw only reads.
+    states: Box<[StateModel]>,
 }
 
 /// A block state's faces as vanilla draws it outside the terrain: default tints in the colour.
@@ -118,22 +115,71 @@ impl StandaloneGeometry {
             );
             slots[index] = Some(prepared);
         }
+        let states = (0..pack.assets.registry.len() as u32)
+            .map(|state| Self::bind_state(pack, &layer_sprites, BlockStateId(state)))
+            .collect();
         Self {
             generation: pack.render.generation,
             slots,
-            layer_sprites,
             translucent,
             bounds,
             fluid_looks: Default::default(),
             states_from: catalog.model_count(),
-            states: std::cell::OnceCell::new(),
-            state_count: pack.assets.registry.len(),
+            states,
+        }
+    }
+
+    /// Block state `id` as one model: the blockstate file's parts at `BLOCK_MODEL_SEED` with
+    /// each tinted face holding the block's default tint (no position) in its colour, bound to
+    /// its atlas regions.
+    fn bind_state(
+        pack: &super::PackResources,
+        layer_sprites: &FxHashMap<u32, Rect>,
+        id: BlockStateId,
+    ) -> StateModel {
+        use sunrise_client::models::catalog::BakedFace;
+        let mut faces = Vec::new();
+        let mut prepared = Vec::new();
+        let mut tints = FxHashMap::default();
+        let grass = pack.item_renderer.grass_color(0.5, 1.0) as u32;
+        let default_tint = |index| pack.context.tables.default_tint(id, index, grass);
+        if let Ok(models) = pack
+            .render
+            .model_catalog
+            .collect_seeded(id, Game::BLOCK_MODEL_SEED)
+        {
+            for face in models.iter().flat_map(|(_, model)| &model.faces) {
+                let mut quad = face.quad.clone();
+                if let Some(tint) = default_tint(quad.tint_index) {
+                    tints.insert(quad.tint_index, tint);
+                    let base = quad.color.map_or(u32::MAX, |v| v as u32);
+                    quad.color =
+                        Some(sunrise_client::hud_layout::multiply(base, 0xFF00_0000 | tint) as i32);
+                }
+                if let Some(&sprite) = layer_sprites.get(&face.layer) {
+                    prepared.push(super::minecarts::PreparedModelFace::new(&quad, sprite));
+                }
+                faces.push(BakedFace::new(
+                    quad,
+                    face.layer,
+                    face.opaque,
+                    face.translucent,
+                    None,
+                ));
+            }
+        }
+        let bounds = face_bounds(faces.iter().flat_map(|face| face.quad.positions));
+        StateModel {
+            faces,
+            prepared,
+            tints,
+            bounds,
         }
     }
 
     pub(super) fn instance_slot(&self, slot: u32) -> Option<InstanceSlot> {
         if let Some(state) = slot.checked_sub(self.states_from) {
-            let model = self.states.get()?.get(state as usize)?.get()?;
+            let model = self.states.get(state as usize)?;
             return Some(InstanceSlot {
                 translucent: false,
                 state: true,
@@ -148,22 +194,9 @@ impl StandaloneGeometry {
         })
     }
 
-    /// A state's seed-42 faces and atlas bindings, populated by its first consumer.
-    fn state_model(
-        &self,
-        state: BlockStateId,
-        build: impl FnOnce() -> StateModel,
-    ) -> Option<&StateModel> {
-        let index = state.0 as usize;
-        if index >= self.state_count {
-            return None;
-        }
-        let states = self.states.get_or_init(|| {
-            std::iter::repeat_with(Default::default)
-                .take(self.state_count)
-                .collect()
-        });
-        Some(states[index].get_or_init(|| Box::new(build())).as_ref())
+    /// A state's prepared seed-42 faces and atlas bindings.
+    fn state_model(&self, state: BlockStateId) -> Option<&StateModel> {
+        self.states.get(state.0 as usize)
     }
 
     /// The baked faces of a block state's slot.
@@ -172,7 +205,7 @@ impl StandaloneGeometry {
         slot: u32,
     ) -> Option<&[sunrise_client::models::catalog::BakedFace]> {
         let state = slot.checked_sub(self.states_from)?;
-        Some(&self.states.get()?.get(state as usize)?.get()?.faces)
+        Some(&self.states.get(state as usize)?.faces)
     }
 
     pub(super) fn faces(&self, slot: u32) -> Option<&[super::minecarts::PreparedModelFace]> {
@@ -1154,8 +1187,12 @@ impl KeptGeometry {
             e.start -= start;
             e.end -= start;
         }
+        // The scope drops quads only once it is full, so a draw that leaves room dropped none:
+        // only a complete extraction is retained. A full one may have been cut short, and a
+        // later frame with more room must extract it again.
+        let complete = draw.quad_scope().has_room();
         let vertices = &mut draw.vertices[start..];
-        let (spins, lit, cached) = if draw.kept {
+        let (spins, lit, cached) = if draw.kept && complete {
             // Keep the intrinsic floors, not the sampled light written into the frame.
             let entry = self.keep(
                 pos,
@@ -1678,8 +1715,8 @@ impl Game<'_> {
     /// Resolved block state `id` as one model: what `native_draw_block` draws
     /// for a `BlockState` lowered to `BlockStateId`, combining the blockstate
     /// file's parts at `BLOCK_MODEL_SEED` (42) with each tinted face holding
-    /// the block's default tint (no position) in its colour. Resolved once per
-    /// state in this generation.
+    /// the block's default tint (no position) in its colour. Bound when the generation is
+    /// prepared.
     pub(super) fn native_block_state_model(
         &self,
         id: BlockStateId,
@@ -1694,51 +1731,9 @@ impl Game<'_> {
         ))
     }
 
-    /// Share the same seeded state model for terrain submissions and block-entity draws.
+    /// Share the same prepared state model for terrain submissions and block-entity draws.
     fn resolved_block_model(&self, id: BlockStateId) -> Option<&StateModel> {
-        let geometry = &self.standalone_geometry;
-        geometry.state_model(id, || {
-            use sunrise_client::models::catalog::BakedFace;
-            let mut faces = Vec::new();
-            let mut prepared = Vec::new();
-            let mut tints = FxHashMap::default();
-            let default_tint = self.default_block_tint(id);
-            if let Ok(models) = self
-                .pack
-                .render
-                .model_catalog
-                .collect_seeded(id, Self::BLOCK_MODEL_SEED)
-            {
-                for face in models.iter().flat_map(|(_, model)| &model.faces) {
-                    let mut quad = face.quad.clone();
-                    if let Some(tint) = default_tint(quad.tint_index) {
-                        tints.insert(quad.tint_index, tint);
-                        let base = quad.color.map_or(u32::MAX, |v| v as u32);
-                        quad.color = Some(sunrise_client::hud_layout::multiply(
-                            base,
-                            0xFF00_0000 | tint,
-                        ) as i32);
-                    }
-                    if let Some(&sprite) = geometry.layer_sprites.get(&face.layer) {
-                        prepared.push(super::minecarts::PreparedModelFace::new(&quad, sprite));
-                    }
-                    faces.push(BakedFace::new(
-                        quad,
-                        face.layer,
-                        face.opaque,
-                        face.translucent,
-                        None,
-                    ));
-                }
-            }
-            let bounds = face_bounds(faces.iter().flat_map(|face| face.quad.positions));
-            StateModel {
-                faces,
-                prepared,
-                tints,
-                bounds,
-            }
-        })
+        self.standalone_geometry.state_model(id)
     }
 
     /// The baked faces a slot draws through the terrain materials: a standalone model's, or a
@@ -2649,7 +2644,11 @@ mod tests {
                 ),
             ] {
                 std::fs::write(&path, document).unwrap();
-                let listeners = game.register_client_reload_listeners();
+                let listeners = game.register_client_reload_listeners(
+                    &game
+                        .capture_candidate_settings(&game.options.resources)
+                        .unwrap(),
+                );
                 let error = super::super::packs::stage_pack(
                     bad_root.path(),
                     &[],
@@ -2685,7 +2684,11 @@ mod tests {
             let before = bytes(&surface.vertices);
             // Identical texture bytes still produce a new model generation.
             let old_generation = game.pack.render.generation;
-            let listeners = game.register_client_reload_listeners();
+            let listeners = game.register_client_reload_listeners(
+                &game
+                    .capture_candidate_settings(&game.options.resources)
+                    .unwrap(),
+            );
             let staged = super::super::packs::stage_pack(
                 &game.options.resources,
                 &[],
@@ -3311,6 +3314,13 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn block_draws_resolved_states_and_rejects_unknown_states() {
+        if crate::game::native_entity_refs::tests::run_fresh_cases(
+            "game::native_block_entity_draw::tests::block_draws_resolved_states_and_rejects_unknown_states",
+            "SUNRISE_BLOCK_DRAW_STATES_CHILD",
+            &["case"],
+        ) {
+            return;
+        }
         use super::super::api_values::TryIntoEngine;
         use super::super::host::draw::GameBlockEntityDrawContext;
         use mod_api::{BlockEntityDrawContext, BlockState, HostBlockStates, StateConstraint};
@@ -3957,6 +3967,50 @@ mod tests {
         // Drawn without keeping: forgotten.
         kept.forget(pos);
         assert!(kept.get(pos, KEY, entity.revision(), 3).is_none());
+    }
+
+    /// A block entity first submitted with room for one quad is drawn as that prefix once, but
+    /// not retained: the next frame with room extracts and draws all of it.
+    #[test]
+    fn a_crowded_first_frame_does_not_keep_its_prefix() {
+        use sunrise_client::gfx::EntityQuadCapacity;
+        let pos = [10, 64, 20];
+        let level = LevelLight {
+            origin: DVec3::from_array(pos.map(f64::from)),
+            light_at: &|_| 0,
+        };
+        let mut kept = KeptGeometry::default();
+        let revision = machine();
+        let submits = std::cell::Cell::new(0);
+        let mut frame = |quads: u64| {
+            let capacity = EntityQuadCapacity::from_max_buffer_size(
+                EntityQuadCapacity::VERTEX_QUAD_BYTES * quads,
+            );
+            let mut draw = draw().with_quad_budget(capacity, 0);
+            kept.render(
+                pos,
+                KEY,
+                revision,
+                &mut draw,
+                Vec3::ZERO,
+                &level,
+                || DEFAULT_BOUNDS,
+                |_, _| true,
+                |draw| {
+                    submits.set(submits.get() + 1);
+                    for _ in 0..2 {
+                        draw.quad(LIGHT_QUAD, [[0.0; 2]; 4], sprite(), 0xFFFFFF);
+                    }
+                    draw.keep();
+                },
+            );
+            draw.vertices.len() / 4
+        };
+        assert_eq!(frame(1), 1, "the crowded frame draws what fits");
+        assert_eq!(frame(8), 2, "an uncrowded one draws all of it");
+        assert_eq!(submits.get(), 2, "the prefix was extracted again, not kept");
+        assert_eq!(frame(1), 1);
+        assert_eq!(submits.get(), 2, "the complete extraction is kept");
     }
 
     #[test]

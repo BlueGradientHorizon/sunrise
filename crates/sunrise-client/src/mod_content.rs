@@ -99,11 +99,7 @@ pub fn drop_dangling_remainders(
 }
 
 fn builtin_item_keys(base: &Path) -> Result<BTreeSet<String>> {
-    let path = base.join("items.json");
-    if !path.exists() {
-        return Ok(BTreeSet::new());
-    }
-    match read_json(&path)? {
+    match read_json(&base.join("items.json"))? {
         J::Obj(entries) => Ok(entries.into_iter().map(|(id, _)| id).collect()),
         _ => Err("items.json is not an object".into()),
     }

@@ -325,6 +325,8 @@ impl Game<'_> {
                     // A later shutdown barrier must force the files again if this one failed.
                     *flush = None;
                     result?;
+                    // The unaffected columns were written; the save did not complete.
+                    self.entity_save_complete()?;
                     if !save.close {
                         self.message = Some((
                             sunrise_client::lang::get("commands.save.success"),

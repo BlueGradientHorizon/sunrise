@@ -284,7 +284,7 @@ impl Game<'_> {
             if self.ticks.saturating_sub(since) >= 600
                 && sunrise_client::ui::hovered(self.cursor, x, y, 150.0, 20.0)
             {
-                self.audio.play_button_click();
+                self.play_audio_button_click();
                 self.leave_server(None)?;
                 return Ok(true);
             }
@@ -294,7 +294,7 @@ impl Game<'_> {
             return Ok(false);
         };
         if sunrise_client::ui::hovered(self.cursor, x, y, 200.0, 20.0) {
-            self.audio.play_button_click();
+            self.play_audio_button_click();
             // ConnectScreen Cancel aborts the pending connection and returns to
             // its parent screen without calling Minecraft.disconnect.
             self.finish_leave_server(None)?;

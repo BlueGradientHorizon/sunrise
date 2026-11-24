@@ -444,7 +444,12 @@ impl Game<'_> {
         // The reload's mod listeners register here, on the thread that owns
         // the game, before the staging worker starts: each listener keeps its
         // registering mod for crash attribution.
-        let client_listeners = self.register_client_reload_listeners();
+        // The generation's settings are captured here, once, before registration: the listeners
+        // register over the capture and the apply builds its loop readers from it.
+        let captured = self
+            .capture_candidate_settings(&self.options.resources)
+            .map_err(|e| std::io::Error::other(e.to_string()))?;
+        let client_listeners = self.register_client_reload_listeners(&captured);
         let texture_atlases = super::client_reload::collect_texture_atlases();
         let emissive_sprites = super::client_reload::collect_emissive_sprites();
         super::mods::register_fluid_models(self.options.execution_role);
@@ -465,6 +470,10 @@ impl Game<'_> {
                 max_atlas_size,
                 progress,
             )
+            .map(|mut staged| {
+                staged.settings = Some(captured);
+                staged
+            })
             .map_err(|e| e.to_string())
         };
         #[cfg(test)]
@@ -537,10 +546,14 @@ impl Game<'_> {
             frame_models,
             sounds,
             language,
+            settings,
         } = staged;
         // All fallible preflight finishes before any listener or the game
         // publishes the candidate.
-        let loop_context = self.prepare_loop_context(&root)?;
+        let loop_context = match settings {
+            Some(captured) => self.prepare_loop_context_from(captured),
+            None => self.prepare_loop_context(&root)?,
+        };
         let professions = self.prepare_client_professions()?;
         let item_extensions =
             Self::prepare_client_item_extensions(&gui, &mut self.client_item_extension_owners);
@@ -880,6 +893,7 @@ pub(super) fn stage_pack_with_emissive(
                 frame_models,
                 sounds,
                 language,
+                settings: None,
             })
         },
     )
@@ -912,6 +926,9 @@ pub(super) struct StagedPack {
     /// The root's sound events and current language.
     pub sounds: sunrise_client::sound_events::SoundRegistry,
     pub language: lang::Language,
+    /// The settings capture the reload's listeners registered over, when the reload took one;
+    /// the apply builds the loop readers from it.
+    pub settings: Option<sunrise_world::native_load_context::SettingsCapture>,
 }
 
 /// A pack reload's stages, indexed by `progress`: the overlay draws how far

@@ -38,9 +38,11 @@ pub trait Hooks {
     /// `EntityJoinLevelEvent`): vanilla's `PersistentEntitySectionManager.addEntity`.
     /// `loaded_from_disk` is true for an entity coming back from saved entity storage,
     /// false for one added fresh (`addFreshEntity`: a drop, an orb, `/summon`,
-    /// an arrival through a portal). `entity` is its ID and `kind` its type
-    /// (`minecraft:item`). It is already in the level's lists, but `Host::entity`
-    /// finds it only in an accessible section. Set `canceled` to keep it out: it is taken
+    /// an arrival through a portal). `subject` is the joining entity's own handle
+    /// (NeoForge's `getEntity`) and `kind` its type (`minecraft:item`). It is already in the
+    /// level's lists, but `Host::entity` finds it only in an accessible section: `subject`
+    /// reads it, and the listener may veto it, before it is admitted, even into a hidden
+    /// section; discovery through the host is unchanged. Set `canceled` to keep it out: it is taken
     /// back out as if never added, and a `/summon` of it fails. Tells every
     /// kind in the game's entity lists (items, orbs, mobs, boats, minecarts,
     /// armor stands, primed TNT, falling blocks, projectiles, rockets,
@@ -82,10 +84,10 @@ pub trait Hooks {
     )]
     fn entity_join_level(
         dimension: &str,
-        entity: u32,
         kind: &str,
         pos: [f64; 3],
         loaded_from_disk: bool,
+        subject: EntityRef,
         canceled: &mut bool,
     );
 }

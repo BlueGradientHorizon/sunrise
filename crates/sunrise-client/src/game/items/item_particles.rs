@@ -116,7 +116,7 @@ impl Game<'_> {
             _ => return,
         };
         let pitch = 0.8 + self.world.random.next_float() * 0.4;
-        self.audio.play_unshared(&sound, Some(at), 0.8, pitch);
+        self.play_audio_unshared(&sound, Some(at), 0.8, pitch);
     }
     /// The slime ball, snowball and cobweb models behind `item_slime`,
     /// `item_snowball` and `item_cobweb`, resolved on first use.

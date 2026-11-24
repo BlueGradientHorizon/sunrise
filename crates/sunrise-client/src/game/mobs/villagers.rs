@@ -184,7 +184,7 @@ impl Game<'_> {
             start,
             &mut random,
             |random, at, yaw| {
-                let mut m = Mob::new(id, kind.clone(), at, yaw);
+                let mut m = self.new_mob(id, kind.clone(), at, yaw);
                 villager::finalize_summoned_golem(&mut m, random);
                 m
             },
@@ -197,8 +197,7 @@ impl Game<'_> {
         let sound = golem.kind.sounds[0];
         if !sound.is_empty() {
             let at = golem.center();
-            self.audio
-                .play(&format!("minecraft:{sound}"), Some(at), 1.0, 1.0);
+            self.play_audio(&format!("minecraft:{sound}"), Some(at), 1.0, 1.0);
         }
         self.mobs.push(golem);
         self.admit_new_mobs(self.mobs.len() - 1);
@@ -798,7 +797,7 @@ mod off_level_tests {
                 .unwrap()
                 .clone();
             let mut m = Mob::new(73, kind.clone(), Vec3::new(1.0, 80.0, 0.5), 0.0);
-            villager_brain::init(&mut m, 0, 0, 0);
+            villager_brain::init(&mut m, 0, 0, 0, None);
             let mut health = sunrise_client::health::TestLevel::new(0);
             for _ in 0..40 {
                 villager_brain::tick(

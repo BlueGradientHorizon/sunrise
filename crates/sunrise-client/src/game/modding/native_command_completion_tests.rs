@@ -1,6 +1,6 @@
 //! A mod command's path follows the sender's permission everywhere it is visible: the command tree
 //! a player receives keeps only the children they may run, the server's completions answer the same
-//! test, and a registered argument type is asked with the sender, so a provider that completes a
+//! test, and a registered argument type is asked with the sender, so a completer that completes a
 //! mod's own registry offers only what that sender may use (#4307).
 
 use super::Game;
@@ -36,17 +36,16 @@ impl mod_api::CommandArgumentType for WarpNames {
         Ok(input.to_owned())
     }
 
-    fn suggest(
-        &self,
-        sender: Option<&mod_api::CommandSender>,
-        prefix: &str,
-    ) -> Vec<mod_api::CommandSuggestion> {
-        let permission = sender.map_or(0, |sender| sender.permission().level());
+    fn suggest(&self, request: &mod_api::SuggestionRequest) -> Vec<mod_api::Suggestion> {
+        let permission = request
+            .sender
+            .as_ref()
+            .map_or(0, |sender| sender.permission().level());
         WARPS
             .into_iter()
             .filter(|(_, level)| *level <= permission)
-            .filter(|(name, _)| name.starts_with(prefix))
-            .map(|(name, _)| mod_api::CommandSuggestion::new(name))
+            .filter(|(name, _)| name.starts_with(request.prefix.as_str()))
+            .map(|(name, _)| request.suggest(name))
             .collect()
     }
 }
@@ -207,109 +206,8 @@ fn suggestions(game: &mut Game<'_>, rx: &mpsc::Receiver<Out>, command: &str) -> 
     panic!("no command suggestions packet for `{command}`");
 }
 
-/// A type whose arguments declare a suggestion provider: its own `suggest` must never answer.
-struct ProviderWarps;
-
-impl mod_api::CommandArgumentType for ProviderWarps {
-    fn kind(&self) -> mod_api::CommandArgumentKind {
-        mod_api::CommandArgumentKind::Word
-    }
-
-    fn parse(&self, input: &str) -> Result<String, mod_api::CommandArgumentError> {
-        Ok(input.to_owned())
-    }
-
-    fn suggest(
-        &self,
-        _: Option<&mod_api::CommandSender>,
-        _: &str,
-    ) -> Vec<mod_api::CommandSuggestion> {
-        panic!("`suggest` is not called for an argument that declares a provider")
-    }
-
-    fn suggestion_provider(&self) -> Option<Arc<dyn mod_api::SuggestionProvider>> {
-        Some(Arc::new(Warps))
-    }
-}
-
-/// The provider that owns its argument's completions: two candidates, one of which the typed text
-/// does not match.
-struct Warps;
-
-impl mod_api::SuggestionProvider for Warps {
-    fn suggest(&self, _: &mod_api::SuggestionRequest) -> mod_api::SuggestionReply {
-        mod_api::SuggestionReply::new([
-            mod_api::CommandSuggestion::with_tooltip("press", "the press"),
-            mod_api::CommandSuggestion::new("furnace"),
-        ])
-    }
-}
-
-/// A listener that would erase the answer of the argument being completed and put its own there:
-/// it must never see a provider's answer.
-struct ErasingCompletion;
-
-#[mod_api::__subscriptions]
-impl mod_api::Hooks for ErasingCompletion {
-    fn tab_complete(
-        &self,
-        _: &mut dyn mod_api::ServerHost,
-        event: &mut mod_api::TabCompleteEvent<'_, '_>,
-    ) {
-        event.suggestions.clear();
-        event
-            .suggestions
-            .push(mod_api::Suggestion::new(
-                (event.range[0], event.range[1]),
-                "erased",
-            ))
-            .unwrap();
-    }
-}
-
-/// The provider's answer reaches the player as the provider gave it, and the request never offers
-/// it to `tab_complete`; an ordinary argument still reaches the listener.
-#[test]
-#[ignore = "daily"]
-fn a_providers_answer_reaches_the_player_without_passing_through_the_completion_listener() {
-    let mods = vec![mod_api::ModEntry::new(
-        "erasing_completion",
-        Box::new(ErasingCompletion),
-    )]
-    .into();
-    mod_platform::testing::with_mods(mods, || {
-        let mut resources = None;
-        let (mut game, rx) = game_with_guest(&mut resources, "Alex");
-        let arguments: CommandArguments = std::collections::HashMap::from([(
-            "test:warp".to_owned(),
-            Arc::new(ProviderWarps) as Arc<dyn mod_api::CommandArgumentType>,
-        )]);
-        let (tree, _, problems) = command_tree(
-            &[
-                mod_api::Command::new("warp go <name:test:warp>"),
-                mod_api::Command::new("probe <value:word>"),
-            ],
-            &sunrise_client::command::Dispatcher::new(),
-            &arguments,
-        );
-        assert!(problems.is_empty(), "{problems:?}");
-        let mut dispatcher = (*game.ui.dispatcher.0).clone();
-        register_dispatcher(&mut dispatcher, &tree, MOD_COMMAND, &arguments);
-        game.ui.dispatcher.0 = Arc::new(dispatcher);
-        game.lan.as_mut().unwrap().hub.set_mod_commands(0, tree);
-        game.send_player_command_tree(2);
-        last_tree(&rx);
-
-        // The provider's argument: its matching candidate, its tooltip, and nothing the listener
-        // would have put there.
-        assert_eq!(suggestions(&mut game, &rx, "warp go pr"), ["press"]);
-        // A plain `word` argument: the listener still answers, so the hook is not gone.
-        assert_eq!(suggestions(&mut game, &rx, "probe "), ["erased"]);
-    });
-}
-
 struct OversizedAndMany {
-    provider: bool,
+    mixed: bool,
 }
 
 impl mod_api::CommandArgumentType for OversizedAndMany {
@@ -321,51 +219,37 @@ impl mod_api::CommandArgumentType for OversizedAndMany {
         Ok(input.to_owned())
     }
 
-    fn suggest(
-        &self,
-        _: Option<&mod_api::CommandSender>,
-        _: &str,
-    ) -> Vec<mod_api::CommandSuggestion> {
-        // Ordinary completions sort the whole result before the server's packet cap.
+    fn suggest(&self, request: &mod_api::SuggestionRequest) -> Vec<mod_api::Suggestion> {
+        if self.mixed {
+            return vec![
+                request.suggest("a".repeat(32768)),
+                request.suggest_with_tooltip("bad_tip", "b".repeat(65536)),
+                request.suggest_with_tooltip("bad_nul", "\0".repeat(32768)),
+                request.suggest_with_tooltip("ok_sibling", "valid tooltip"),
+                request.suggest_with_tooltip("z".repeat(32767), "y".repeat(65535)),
+            ];
+        }
+        // The whole result sorts before the server's packet cap.
         (0..1050)
             .rev()
-            .map(|i| mod_api::CommandSuggestion::new(format!("cand_{i:04}")))
+            .map(|i| request.suggest(format!("cand_{i:04}")))
             .collect()
-    }
-
-    fn suggestion_provider(&self) -> Option<Arc<dyn mod_api::SuggestionProvider>> {
-        self.provider.then(|| Arc::new(OversizedProvider) as _)
-    }
-}
-
-struct OversizedProvider;
-
-impl mod_api::SuggestionProvider for OversizedProvider {
-    fn suggest(&self, _: &mod_api::SuggestionRequest) -> mod_api::SuggestionReply {
-        use mod_api::CommandSuggestion as S;
-        mod_api::SuggestionReply::new([
-            S::new("a".repeat(32768)),
-            S::with_tooltip("bad_tip", "b".repeat(65536)),
-            S::with_tooltip("bad_nul", "\0".repeat(32768)),
-            S::with_tooltip("ok_sibling", "valid tooltip"),
-            S::with_tooltip("z".repeat(32767), "y".repeat(65535)),
-        ])
     }
 }
 
 #[test]
 #[ignore = "daily"]
-fn oversized_provider_entries_drop_individually_and_large_regular_replies_sort_before_truncation() {
+fn oversized_entries_drop_individually_and_large_regular_replies_sort_before_truncation() {
     let mut resources = None;
     let (mut game, rx) = game_with_guest(&mut resources, "Alex");
     let arguments: CommandArguments = std::collections::HashMap::from([
         (
             "test:mixed".to_owned(),
-            Arc::new(OversizedAndMany { provider: true }) as Arc<dyn mod_api::CommandArgumentType>,
+            Arc::new(OversizedAndMany { mixed: true }) as Arc<dyn mod_api::CommandArgumentType>,
         ),
         (
             "test:many".to_owned(),
-            Arc::new(OversizedAndMany { provider: false }) as Arc<dyn mod_api::CommandArgumentType>,
+            Arc::new(OversizedAndMany { mixed: false }) as Arc<dyn mod_api::CommandArgumentType>,
         ),
     ]);
     let (tree, _, problems) = command_tree(

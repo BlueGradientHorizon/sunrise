@@ -343,28 +343,26 @@ pub fn has_brain(s: Species) -> bool {
     )
 }
 
-/// Native catalog target for [`mod_api::EntityPart::register_behaviors`].
-#[inline(never)]
-pub fn native_register_behaviors(behaviors: &mut mod_api::BehaviorRegistrar<'_>) {
-    mod_api::dispatch_register_behaviors(behaviors);
-}
-
 /// Ask the installed entity parts for the mob's behaviors (#824), each into
 /// `backend` — the brain module's own, which knows its activities. The parts
 /// are named in a panic the way `register_goals` names them.
-pub fn attach(mob_id: &str, backend: &mut dyn BehaviorRegistrarBackend) {
+pub fn attach(
+    mob_id: &str,
+    backend: &mut dyn BehaviorRegistrarBackend,
+    host: &dyn super::part_goals::GoalHost,
+) {
     if !mod_api::__private::has_scoped_hook(mod_api::HookId::RegisterBehaviors) {
         return;
     }
     let mut registrar = mod_api::BehaviorRegistrar::new(backend, mob_id, "", "");
-    native_register_behaviors(&mut registrar);
+    host.register_behaviors(&mut registrar);
 }
 
 /// `register_behaviors` for a type with no brain (#824): every add refuses
 /// with the typed error, so the mod learns at construction that its behavior
 /// runs nowhere on this type. Asked beside `part_goals::attach` at every
 /// `Mob` construction.
-pub fn attach_refused(mob_id: &str) {
+pub fn attach_refused(mob_id: &str, host: &dyn super::part_goals::GoalHost) {
     struct Refused<'a>(&'a str);
     impl BehaviorRegistrarBackend for Refused<'_> {
         fn add_behavior(
@@ -377,16 +375,20 @@ pub fn attach_refused(mob_id: &str) {
             self.0
         }
     }
-    attach(mob_id, &mut Refused(mob_id));
+    attach(mob_id, &mut Refused(mob_id), host);
 }
 
 /// The construction-time half of #824, beside `part_goals::attach`: a type
 /// whose species has no brain gets its `register_behaviors` asked with a
-/// registrar that refuses every add. A brain-driven type registers at its
-/// brain's own construction instead, so nothing is asked or built twice.
-pub fn attach_at_construction(m: &Mob) {
-    if has_brain(m.species()) {
+/// registrar that refuses every add. A brain-driven type joins its behaviors to the brain the
+/// mob already has; a brain built later (the villager's, the breeze's and creaking's, at the
+/// first tick) asks where it is built, so nothing is asked or built twice.
+pub fn attach_at_construction(m: &mut Mob, host: &dyn super::part_goals::GoalHost) {
+    if !has_brain(m.species()) {
+        attach_refused(&m.kind.id, host);
         return;
     }
-    attach_refused(&m.kind.id);
+    super::animal_brain::join_mod_behaviors(m, host);
+    super::monster_brain::join_mod_behaviors(m, host);
+    super::warden::join_mod_behaviors(m, host);
 }

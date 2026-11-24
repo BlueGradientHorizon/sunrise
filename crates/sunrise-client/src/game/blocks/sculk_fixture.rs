@@ -136,7 +136,7 @@ fn parse(text: &str) -> Vec<Scenario> {
 /// appeared, and so does this.
 fn seed_fresh(m: &mut Mob, seed: i64) {
     m.random.set_seed(seed);
-    sunrise_client::mobs::warden::init_brain(m, seed);
+    sunrise_client::mobs::warden::init_brain(m, seed, None);
 }
 fn d(v: f64) -> String {
     format!("{:x}", v.to_bits())

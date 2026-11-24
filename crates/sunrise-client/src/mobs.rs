@@ -3888,9 +3888,9 @@ pub fn living_random() -> (LegacyRandom, [i32; 4]) {
 }
 impl Mob {
     /// A mob as its authoritative side builds it — spawned, or loaded from a
-    /// chunk (`Mob.finalizeSpawn` runs around it): the species' own goals, then
-    /// the goals every mod part attached to its type (#1077), vanilla's
-    /// `registerGoals` moment.
+    /// chunk (`Mob.finalizeSpawn` runs around it): the species' own goals. The
+    /// goals every mod part attached to its type (#1077) join at
+    /// [`Self::attach_mod_parts`], where the game constructs the mob.
     pub fn new(id: u32, kind: Arc<MobType>, position: Vec3, yaw: f32) -> Self {
         Self::with_random(id, kind, position, yaw, entity_random(id, position))
     }
@@ -3901,15 +3901,26 @@ impl Mob {
         yaw: f32,
         random: LegacyRandom,
     ) -> Self {
-        let mut mob = Self::remote_with_random(id, kind, position, yaw, random);
-        mob.attach_mod_parts();
-        mob
+        Self::remote_with_random(id, kind, position, yaw, random)
     }
-    /// Register the server-only goals and behaviors after the mob has its
-    /// runtime id. A deferred NBT load can read geometry before taking an id.
-    pub fn attach_mod_parts(&mut self) {
-        part_goals::attach(self);
-        mod_behaviors::attach_at_construction(self);
+    /// Register the server-only goals and behaviors after the mob has its runtime id, asking
+    /// the entity parts with `host`'s read host: the game does it where it constructs the mob,
+    /// as vanilla's `Mob` constructor runs `registerGoals` and `makeBrain`. A deferred NBT load
+    /// can read geometry before taking an id.
+    pub fn attach_mod_parts(&mut self, host: &dyn part_goals::GoalHost) {
+        part_goals::attach(self, host);
+        // `LivingEntity.makeBrain` runs in the constructor: a villager's, a breeze's and a
+        // creaking's brain are built here, with the parts' behaviors, as the others' are.
+        let seed = i64::from(self.id);
+        match self.species() {
+            Species::Villager => {
+                let (game_time, day_time) = host.brain_times();
+                villager_brain::init(self, game_time, day_time, seed, Some(host));
+            }
+            Species::Breeze | Species::Creaking => monster_brain::init(self, seed),
+            _ => {}
+        }
+        mod_behaviors::attach_at_construction(self, host);
     }
     /// The same construction without the mod parts' goals: a client's copy of
     /// a server's mob, from its spawn packet. The species' goals stand — the

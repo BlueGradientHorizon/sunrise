@@ -275,7 +275,7 @@ fn install_dedicated_holders(game: &mut Game<'_>, max_level: i32) {
         seed: 0,
         max_players: 2,
         integrated: false,
-        levels: game.level_shapes,
+        levels: game.level_shapes.clone(),
         level_seeds: game.levels.runtime.seeds(),
     };
     game.lan = Some(LanHost::for_test(Hub::new(

@@ -73,7 +73,7 @@ fn generated_chunks_survive_restart_substitution_added_regions_and_adoption() {
     original.write(world).unwrap();
     let terrain = make(original.layout("minecraft:overworld"));
     let mut worker = terrain.worker();
-    let old = terrain.finish(terrain.proto(&mut worker, 0, 0));
+    let old = terrain.finish(terrain.proto(&mut worker, 0, 0).unwrap());
     let old_biomes = fingerprint(&old);
     assert!(
         old_biomes
@@ -89,7 +89,7 @@ fn generated_chunks_survive_restart_substitution_added_regions_and_adoption() {
         .unwrap();
     let protos = (1..=2)
         .map(|x| {
-            let proto = terrain.proto(&mut worker, x, 0);
+            let proto = terrain.proto(&mut worker, x, 0).unwrap();
             let mut saved = terrain.saved_proto(&proto).unwrap();
             saved.decorated = x == 2;
             saved
@@ -112,7 +112,7 @@ fn generated_chunks_survive_restart_substitution_added_regions_and_adoption() {
         .unwrap();
     let terrain = make(unchanged.layout("minecraft:overworld"));
     let mut worker = terrain.worker();
-    let new = terrain.finish(terrain.proto(&mut worker, 0, 0));
+    let new = terrain.finish(terrain.proto(&mut worker, 0, 0).unwrap());
     assert_eq!(fingerprint(&new), old_biomes);
     // Removing A requires a recorded choice; after substitution all its cells use vanilla.
     assert!(open_with(world, &mods(&[]), &[]).is_err());
@@ -123,8 +123,8 @@ fn generated_chunks_survive_restart_substitution_added_regions_and_adoption() {
     let vanilla = make(None);
     let mut vanilla_worker = vanilla.worker();
     assert_eq!(
-        fingerprint(&terrain.finish(terrain.proto(&mut worker, 0, 0))),
-        fingerprint(&vanilla.finish(vanilla.proto(&mut vanilla_worker, 0, 0)))
+        fingerprint(&terrain.finish(terrain.proto(&mut worker, 0, 0).unwrap())),
+        fingerprint(&vanilla.finish(vanilla.proto(&mut vanilla_worker, 0, 0).unwrap()))
     );
     // The explicit opt-in takes B, while A's already saved column is still read verbatim.
     choose_with(world, &mods(&["beta"]), &[beta], false, true).unwrap();
@@ -134,7 +134,7 @@ fn generated_chunks_survive_restart_substitution_added_regions_and_adoption() {
     assert_eq!(adopted_layout.regions[0].id, "shared:desert");
     let terrain = make(Some(adopted_layout));
     let mut worker = terrain.worker();
-    let new = terrain.finish(terrain.proto(&mut worker, 0, 0));
+    let new = terrain.finish(terrain.proto(&mut worker, 0, 0).unwrap());
     assert!(
         fingerprint(&new)
             .iter()
@@ -154,7 +154,7 @@ fn generated_chunks_survive_restart_substitution_added_regions_and_adoption() {
                 .all(|biome| biome == "minecraft:ice_spikes")
         );
         let blocks = saved.column.clone();
-        let mut resumed = terrain.proto(&mut worker, x, 0);
+        let mut resumed = terrain.proto(&mut worker, x, 0).unwrap();
         terrain.restore_proto(&mut resumed, saved);
         assert_eq!(terrain.is_decorated(&resumed), decorated);
         let resumed = terrain.saved_proto(&resumed).unwrap();

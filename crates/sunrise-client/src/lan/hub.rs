@@ -5192,6 +5192,12 @@ impl Hub {
             // ServerPlayer.initInventoryMenu.
         });
         self.send_inventory(i);
+        // PlayerList.sendAllPlayerInfo: the replacement's held slot, which a respawn without
+        // keep_inventory resets while the client still holds the old selection.
+        let g = &self.guests[i];
+        g.send(&C::SetHeldSlot(play::SetHeldSlot {
+            slot: g.selected as i32,
+        }));
     }
 
     /// The level the players are in: the server holds one at a time, and the
@@ -5879,9 +5885,10 @@ mod tests {
         world
             .chunk_resends
             .insert((5, 0), crate::world::ChunkResend::Ready);
-        world
-            .chunk_resends
-            .insert((6, 0), crate::world::ChunkResend::WaitingLight);
+        world.chunk_resends.insert(
+            (6, 0),
+            crate::world::ChunkResend::WaitingLight { from_seq: 0 },
+        );
 
         // Shrinking the radius updates the tracking view immediately without waiting for
         // `update_view` to prune `sent_chunks`.
@@ -6820,6 +6827,52 @@ mod tests {
         hub.finish_respawn(0);
         assert!(hub.guests[0].menu.is_none());
         assert_eq!(hub.guests[0].recipe_book.custom.get("test:cooking"), flags);
+    }
+
+    /// `PlayerList.sendAllPlayerInfo`: a respawn sends the replacement's held slot, which the
+    /// client still holds the old selection of.
+    #[test]
+    fn a_respawn_sends_the_replacements_held_slot() {
+        let (mut hub, rx) = hub_with_a_guest();
+        let mut world = World::new(sunrise_world::registry::BlockStateId(0), 0);
+        let mut next_entity = 2;
+        let border = crate::worldborder::WorldBorder::default();
+        let ctx = TickCtx {
+            sea_level: 63,
+            world: &mut world,
+            entities: &[],
+            next_entity: &mut next_entity,
+            spawn: [0.5, 64.0, 0.5],
+            spawn_angle: [0.0; 2],
+            spawn_dimension: "minecraft:overworld",
+            difficulty: 2,
+            difficulty_locked: false,
+            clock_rate: 1.0,
+            tick_rate: 20.0,
+            tick_frozen: false,
+            tick_steps: Default::default(),
+            collision: None,
+            border: &border,
+            streaming: None,
+        };
+        hub.guests.update(0, |g| g.selected = 4);
+        hub.remove_player_for_respawn(0);
+        hub.begin_respawn(0, [0.5, 64.0, 0.5], None, false, &ctx);
+        hub.send_commands(0, hub.commands_packet(hub.guests[0].permission));
+        while rx.try_recv().is_ok() {}
+        hub.finish_respawn(0);
+        let mut held = Vec::new();
+        while let Ok(out) = rx.try_recv() {
+            let crate::lan::Out::Packet(body) = out else {
+                continue;
+            };
+            let mut r = sunrise_protocol::buf::Reader::new(&body);
+            let id = r.varint().unwrap();
+            if let C::SetHeldSlot(p) = C::decode(id, r.rest()).unwrap() {
+                held.push(p.slot);
+            }
+        }
+        assert_eq!(held, [hub.guests[0].selected as i32]);
     }
 
     /// `ServerGamePacketListenerImpl.forceSendPlayerSupportBlocks`: a client that says it stands

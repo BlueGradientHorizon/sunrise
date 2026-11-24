@@ -2499,7 +2499,7 @@ impl<'g> Game<'g> {
                     at,
                     volume,
                     pitch,
-                } => self.audio.play(sound, Some(at), volume, pitch),
+                } => self.play_audio(sound, Some(at), volume, pitch),
                 DeferredEffect::RestoreStatistics(player, values) => {
                     self.restore_player_statistics(player, *values);
                 }

@@ -12,6 +12,15 @@ ids = [
     "trait:ServerHost",
     "trait:prelude::RecipesServerHost",
     "method:prelude::RecipesServerHost::place_recipe_in_grid",
+    "hook:player_recipe_book_settings_change",
+    "handle:PlayerRef::set_recipe_book_settings",
+    "method:RecipeBooksRegistrar::recipe_book_type",
+    "method:RecipeBooksRegistrar::recipe_book_type_with_fields",
+    "method:RecipeBooksRegistrar::recipe_book_filter_look",
+    "method:MenusRegistrar::menu_recipe_book",
+    "type:RecipeBookPlacement.Nothing",
+    "type:RecipeBookPlacement.Ghost",
+    "type:RecipeBookPlacement.Grid",
 ]
 why = """
 Recipe-book clicks follow vanilla 26.3 ServerGamePacketListenerImpl.handlePlaceRecipe and RecipeBookMenu.handlePlacement: the general event observes both vanilla and mod books, before the live menu acts. ServerPlaceRecipe.testClearGrid preflights only inputs, while clearGrid clears the separate list, as AbstractFurnaceMenu.handlePlacement demonstrates. An unsuccessful placement sends the selected server display, and the client resolves each ghost slot independently as CraftingRecipeBookComponent.fillGhostRecipe, FurnaceRecipeBookComponent.fillGhostRecipe and GhostSlots.setSlot do. Recipe sources and linked containers resolve in order without truncation.
@@ -27,5 +36,5 @@ Keep `Hooks::player_recipe_book_click` with the same arguments and request hook_
 
 For RecipeBooksRegistrar::recipe_book_type, recipe_book_type_with_fields, recipe_book_filter_look and MenusRegistrar::menu_recipe_book, pass explicit nonempty `namespace:path` identifiers accepted by Identifier::parse_namespaced. `your_mod:kitchen/pot` is valid; `..:pot`, `:cooking`, `your_mod:` and whitespace padding are not. Remove workaround truncation/count checks for 1,024 books or 256-byte IDs, field names, sprites or tooltips. Each emitted NBT key must fit 65,535 modified UTF-8 bytes (NUL takes two bytes and a supplementary character six): use a shorter extension book ID or shorter explicit flat field name if it exceeds that width. A flat-field book's ID is not an NBT key. The separate Identifier.STREAM_CODEC 32,767-byte wire width and packet framing still apply. Representable existing names keep their save layout.
 
-Keep `PlayerRef::set_recipe_book_settings(host, &book, settings)`; false means the player or key is unavailable. Within a transaction, read the tentative value through the Host if needed, but expect client sync and `player_recipe_book_settings_change` only for each final changed pair at the outermost commit. An abort restores the original saved entry and sends no update. Keep `MenuPart::recipe_book_ghost` and request hook_version = 2 if pinned: provide ghosts for actual visible physical slots with no 256-ghost truncation; the last nonempty resolved display for a repeated slot wins, while an unresolved empty display does not erase an earlier ghost. Upgrade both peers for private book protocol version 2. Do not gate support on brand or wait for Busy/Resnapshot/Frame::Reply; use the negotiated settings snapshot, normal menu sync and the actual ghost response.
+Rebuild listeners of `Hooks::player_recipe_book_settings_change` against hook version 2: a set followed by a restore inside one transaction used to notify twice and now notifies nothing, because delivery happens only at outermost commit, once per changed pair. Keep `PlayerRef::set_recipe_book_settings(host, &book, settings)`; false means the player or key is unavailable. Within a transaction, read the tentative value through the Host if needed, but expect client sync and `player_recipe_book_settings_change` only for each final changed pair at the outermost commit. An abort restores the original saved entry and sends no update. Keep `MenuPart::recipe_book_ghost` and request hook_version = 2 if pinned: provide ghosts for actual visible physical slots with no 256-ghost truncation; the last nonempty resolved display for a repeated slot wins, while an unresolved empty display does not erase an earlier ghost. Upgrade both peers for private book protocol version 2. Do not gate support on brand or wait for Busy/Resnapshot/Frame::Reply; use the negotiated settings snapshot, normal menu sync and the actual ghost response.
 """

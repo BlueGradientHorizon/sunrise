@@ -422,6 +422,22 @@ impl Sprites {
         let bytes = self.source.read(&path)?;
         self.load(name, Lookup::File(&bytes))
     }
+    /// Whether `name` reads as a PNG, without adding a layer: what a caller checks before it
+    /// commits a texture slot to a file that may never be used.
+    pub fn texture_file_readable(&self, name: &str) -> Result<()> {
+        if self.files.contains_key(name) {
+            return Ok(());
+        }
+        let path = if name.contains(':') {
+            crate::atlas_sources::texture_resource(name, "textures")
+        } else {
+            name.to_owned()
+        };
+        let bytes = self.source.read(&path)?;
+        crate::hud::png_bytes_size(&bytes)
+            .map(|_| ())
+            .ok_or_else(|| format!("{name} is not a PNG").into())
+    }
     /// Load a sprite id or resource file only when its PNG fits the byte limit,
     /// including cached layers. The checked bytes are reused when decoding.
     pub fn try_insert_limited(&mut self, name: &str, max: u64) -> Result<u32> {

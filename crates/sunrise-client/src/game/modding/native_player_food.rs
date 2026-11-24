@@ -339,6 +339,34 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
+    fn a_listener_can_rewrite_a_zero_point_grant() {
+        struct GiveOne;
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for GiveOne {
+            fn player_xp_change(
+                &self,
+                _: &mut dyn mod_api::ServerHost,
+                event: &mut mod_api::PlayerXpChangeEvent<'_>,
+            ) -> mod_api::Flow {
+                event.amount = 1;
+                mod_api::Flow::Continue
+            }
+        }
+        let mods = vec![mod_api::ModEntry::new("give-one", Box::new(GiveOne))].into();
+        mod_platform::testing::with_mods(mods, || {
+            with_game(|game| {
+                let player = acting_player(game);
+                game.lan_acting_name = Some("ScoreProbe".into());
+                game.player_score = 0;
+                assert!(player.give_experience_points(game, 0));
+                assert_eq!(game.player_score, 1);
+                assert_eq!(game.experience.total, 1);
+            });
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
     fn a_stale_handle_gives_nothing() {
         with_game(|game| {
             let player = acting_player(game);

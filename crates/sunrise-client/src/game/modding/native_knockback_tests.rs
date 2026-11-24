@@ -189,7 +189,8 @@ fn the_bridge_names_the_attacker_and_what_it_holds() {
             assert_eq!(
                 knock,
                 Knock {
-                    strength: 0.8,
+                    // The listener saw and doubled the float `(float) 0.4`, widened after.
+                    strength: f64::from(0.4_f32 * 2.0),
                     x: -1.0,
                     z: 0.0
                 }

@@ -44,7 +44,7 @@ pub struct NativeClientHooks {
     pub ender_entity_teleport: fn(&LoopContext, u32, &str, [f64; 3], &mut [f64; 3], &mut bool),
     pub fluid_flow: fn(&LoopContext, &str, BlockPos, &mut [f64; 3]),
     pub sound_type: fn(
-        &LoopContext,
+        FrictionLevel<'_>,
         BlockPos,
         BlockStateId,
         Option<(u32, &str)>,
@@ -317,7 +317,7 @@ pub(crate) fn fluid_flow(context: &LoopContext, fluid: &str, pos: BlockPos, flow
 }
 
 pub(crate) fn sound_type(
-    context: &LoopContext,
+    level: FrictionLevel<'_>,
     pos: BlockPos,
     state: BlockStateId,
     entity: Option<(u32, &str)>,
@@ -325,7 +325,7 @@ pub(crate) fn sound_type(
     own: &BlockSoundType,
 ) -> Option<BlockSoundType> {
     let hooks = HOOKS.get()?;
-    (hooks.sound_type)(context, pos, state, entity, cause, own)
+    (hooks.sound_type)(level, pos, state, entity, cause, own)
 }
 
 /// Ask the installed adapter for the name the parts of `stack`'s item give it (`item_name`); with

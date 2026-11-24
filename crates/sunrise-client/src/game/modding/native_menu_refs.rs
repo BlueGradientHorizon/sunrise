@@ -584,10 +584,16 @@ impl Game<'_> {
                 return Ok(None);
             };
             let resource = ItemResource::of(stack);
-            return Ok(Some(if handler.is_valid(self, index, &resource) {
+            let handler_holds = if handler.is_valid(self, index, &resource) {
                 u32::try_from(handler.capacity_int(self, index, Some(&resource))).unwrap_or(0)
             } else {
                 0
+            };
+            // A click also applies the menu's own rules to the slot, so the probe does too.
+            let rules = self.backed_slot_rules(conn, slot, &resource, stack.count());
+            return Ok(Some(match rules {
+                Some((true, _, max)) => handler_holds.min(max),
+                _ => 0,
             }));
         }
         let Ok(stack) = stack_value(stack) else {
@@ -629,12 +635,30 @@ impl Game<'_> {
                 self.transaction(|game, tx| {
                     Err(handler.extract_at(game, tx, index, &resource, 1) == Ok(1))
                 });
+            let amount = handler.amount(self, index);
+            let rules = self.backed_slot_rules(conn, slot, &resource, amount);
             return Ok(match result {
-                Err(mod_api::TransactionError::Aborted(ok)) => Some(ok),
+                Err(mod_api::TransactionError::Aborted(ok)) => {
+                    Some(ok && rules.is_some_and(|(_, pickup, _)| pickup))
+                }
                 _ => None,
             });
         }
         Ok(self.menu_slot_gives(menu, slot))
+    }
+
+    /// The menu's own rules for backed slot `slot` ([`Self::place_menu_rules`]), the same answer a
+    /// click on it is admitted by. None when the menu is no longer backed.
+    fn backed_slot_rules(
+        &self,
+        conn: u32,
+        slot: usize,
+        resource: &ItemResource,
+        amount: u32,
+    ) -> Option<(bool, bool, u32)> {
+        let (_, _, locked) = self.menu_places_of(conn)?;
+        let size = self.lan.as_ref()?.hub.guest(conn)?.menu.as_ref()?.size;
+        Some(self.place_menu_rules(conn, size, locked, slot, resource, amount))
     }
 
     pub(super) fn menu_slot_gives_with_stack(
@@ -906,11 +930,21 @@ impl Game<'_> {
             return Some(self.carried.clone());
         }
         let guest = self.native_menu_guest(menu)?;
+        if Self::menu_cursor_retired(guest) {
+            return Some(None);
+        }
         Some(if self.lan_acting == Some(guest.conn) {
             self.carried.clone()
         } else {
             guest.carried.clone()
         })
+    }
+
+    /// Whether the guest's open menu has been removed: its cursor went back to the inventory's
+    /// own, which the closing handle must not read or edit (`AbstractContainerMenu.removed`
+    /// leaves the closing menu with no carried stack).
+    pub(super) fn menu_cursor_retired(guest: &Guest) -> bool {
+        guest.menu.as_ref().is_some_and(|open| open.removed)
     }
 }
 fn client_click_ops(
@@ -1542,7 +1576,7 @@ mod tests {
                 seed: 0,
                 max_players: 10,
                 integrated: true,
-                levels: game.level_shapes,
+                levels: game.level_shapes.clone(),
                 level_seeds: game.levels.runtime.seeds(),
             };
             let mut net = NetConfig::lan(0, "test".into(), 10);
@@ -1680,7 +1714,7 @@ mod tests {
                 seed: 0,
                 max_players: 10,
                 integrated: true,
-                levels: game.level_shapes,
+                levels: game.level_shapes.clone(),
                 level_seeds: game.levels.runtime.seeds(),
             };
             let mut net = NetConfig::lan(0, "test".into(), 10);

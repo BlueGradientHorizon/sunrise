@@ -179,7 +179,11 @@ fn panicking_client_reload_registration_discards_its_listener_and_edges() {
                 &[],
                 &[],
                 &game.mods,
-                game.register_client_reload_listeners(),
+                game.register_client_reload_listeners(
+                    &game
+                        .capture_candidate_settings(&game.options.resources)
+                        .unwrap(),
+                ),
                 &[],
                 &game.pack.assets,
                 &game.res,
@@ -830,11 +834,16 @@ fn client_reload_reads_real_assets_with_pack_overrides() {
             // The mod's packaged asset over nothing, with the real root's own
             // assets in the same view.
             let root = merged(&[]);
-            let ((), prepared) =
-                stage_client_reload(&root, game.register_client_reload_listeners(), || {
-                    Ok::<_, ReloadStageError>(())
-                })
-                .unwrap();
+            let ((), prepared) = stage_client_reload(
+                &root,
+                game.register_client_reload_listeners(
+                    &game
+                        .capture_candidate_settings(&game.options.resources)
+                        .unwrap(),
+                ),
+                || Ok::<_, ReloadStageError>(()),
+            )
+            .unwrap();
             assert!(live.lock().unwrap().is_empty(), "nothing published yet");
             apply_client_reload(prepared);
             assert_eq!(live.lock().unwrap().as_slice(), ["mod"]);
@@ -849,21 +858,30 @@ fn client_reload_reads_real_assets_with_pack_overrides() {
             );
             assert_eq!(packs.len(), 1);
             let root = merged(&packs);
-            let ((), prepared) =
-                stage_client_reload(&root, game.register_client_reload_listeners(), || {
-                    Ok::<_, ReloadStageError>(())
-                })
-                .unwrap();
+            let ((), prepared) = stage_client_reload(
+                &root,
+                game.register_client_reload_listeners(
+                    &game
+                        .capture_candidate_settings(&game.options.resources)
+                        .unwrap(),
+                ),
+                || Ok::<_, ReloadStageError>(()),
+            )
+            .unwrap();
             apply_client_reload(prepared);
             assert_eq!(live.lock().unwrap().as_slice(), ["mod", "pack"]);
             // A rejected prepare aborts the reload and keeps the previous state.
             reject.store(true, Ordering::Relaxed);
             let root = merged(&[]);
-            let Err(error) =
-                stage_client_reload(&root, game.register_client_reload_listeners(), || {
-                    Ok::<_, ReloadStageError>(())
-                })
-            else {
+            let Err(error) = stage_client_reload(
+                &root,
+                game.register_client_reload_listeners(
+                    &game
+                        .capture_candidate_settings(&game.options.resources)
+                        .unwrap(),
+                ),
+                || Ok::<_, ReloadStageError>(()),
+            ) else {
                 panic!("a failing listener stops the whole reload")
             };
             assert!(error.to_string().contains("client_test:hats"));
@@ -1169,7 +1187,11 @@ fn refused_client_context_keeps_pack_and_listeners() {
             &[],
             &[],
             &game.mods,
-            game.register_client_reload_listeners(),
+            game.register_client_reload_listeners(
+                &game
+                    .capture_candidate_settings(&game.options.resources)
+                    .unwrap(),
+            ),
             &[],
             &game.pack.assets,
             &game.res,
@@ -1253,7 +1275,12 @@ fn startup_client_reload_listener_context_reports_known_facts_and_no_published_a
     )]
     .into();
     mod_platform::testing::with_mods(mods, || {
-        let _ = register_startup_client_reload_listeners(Some(&settings));
+        let capture = sunrise_world::native_load_context::SettingsCapture::new(
+            std::path::Path::new(""),
+            [],
+            [],
+        );
+        let _ = register_startup_client_reload_listeners(Some(&settings), &capture);
     });
     let seen = observed.lock().unwrap().take().expect("startup hook fired");
     assert_eq!(seen.dist, Dist::Client);
@@ -1320,7 +1347,11 @@ fn client_completion_reads_published_resources_without_world_access() {
     with_client_game(|game| {
         mod_platform::testing::with_mods(mods, || {
             let version = game.block_sprites_version();
-            let _ = game.register_client_reload_listeners();
+            let _ = game.register_client_reload_listeners(
+                &game
+                    .capture_candidate_settings(&game.options.resources)
+                    .unwrap(),
+            );
             assert_eq!(*seen.lock().unwrap(), [version]);
             game.native_client_resources_reloaded();
             game.native_client_resources_reloaded();

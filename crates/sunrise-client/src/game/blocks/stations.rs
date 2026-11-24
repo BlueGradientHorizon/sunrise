@@ -1087,7 +1087,7 @@ impl Game<'_> {
             f64::from(pos[1]) + 0.5,
             f64::from(pos[2]) + 0.5,
         ];
-        self.audio.play(sound, Some(at), volume, pitch);
+        self.play_audio(sound, Some(at), volume, pitch);
     }
     pub(super) fn give_or_drop(&mut self, stack: ItemStack) {
         if let Some(rest) = self.add_stack_to_inventory(stack)
@@ -1148,7 +1148,7 @@ impl Game<'_> {
                 .in_source(mod_api::SoundSource::Players);
             let _ = self.queue_level_sound(dimension.id(), sound, None);
         } else {
-            self.audio.play(event, at, volume, 1.0);
+            self.play_audio(event, at, volume, 1.0);
         }
     }
     /// Whether the result slot may be taken (`mayPickup`).
@@ -1365,8 +1365,7 @@ impl Game<'_> {
                 Some(*flag)
             });
             if taken {
-                self.audio
-                    .play("minecraft:ui.stonecutter.select_recipe", None, 1.0, 1.0);
+                self.play_audio("minecraft:ui.stonecutter.select_recipe", None, 1.0, 1.0);
                 self.remote_station_button(index as i32);
                 return true;
             }

@@ -1,11 +1,10 @@
 //! Native worker adapters for API-owned structure behaviours.
 use super::native_worldgen::WorkerResources;
-use mod_api::__private::game::CallbackOwner;
+use mod_api::__private::game::{CallbackOwner, error_chain};
 use mod_api::{
     BiomeKey, BlockKey, BlockMetadata, BlockState, ChunkPos, GenerationContext, HeightmapType,
     NoiseBlock, NoiseColumn, PieceContext, RandomSource, StructurePiece, StructureType,
 };
-use std::error::Error;
 use std::sync::Arc;
 use sunrise_core::{
     bounding_box::BoundingBox,
@@ -221,20 +220,6 @@ impl GenerationContext for Start<'_> {
         );
         self.assembled.extend(pieces);
         Some(layout)
-    }
-}
-
-struct ErrorCauses<'a>(&'a mod_api::StructureError);
-impl std::fmt::Display for ErrorCauses<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)?;
-        // StructureError displays its immediate cause; don't print that cause twice.
-        let mut remaining = self.0.source().and_then(Error::source);
-        while let Some(cause) = remaining {
-            write!(f, ": {cause}")?;
-            remaining = cause.source();
-        }
-        Ok(())
     }
 }
 
@@ -478,7 +463,9 @@ impl ModStructureType for Adapter {
         let loaded = self
             .load_piece
             .call("structure type", "StructureType::load_piece", || {
-                self.inner.load_piece(metadata, tag)
+                self.inner
+                    .load_piece(metadata, tag)
+                    .map_err(|error| error_chain(&error))
             })
             .ok()?;
         let piece = match loaded {
@@ -488,7 +475,7 @@ impl ModStructureType for Adapter {
                     "mod {}: structure type {} failed to load saved piece: {}",
                     self.load_piece.id(),
                     self.id,
-                    ErrorCauses(&error),
+                    error,
                 );
                 return None;
             }
@@ -604,7 +591,9 @@ impl sunrise_world::worldgen::structure::legacy::LegacyPiece for ModPiece {
         if let Ok(Err(error)) =
             self.post_process
                 .call("structure piece", "StructurePiece::post_process", || {
-                    self.piece.post_process(&mut context)
+                    self.piece
+                        .post_process(&mut context)
+                        .map_err(|error| error_chain(&error))
                 })
         {
             log::error!(
@@ -613,7 +602,7 @@ impl sunrise_world::worldgen::structure::legacy::LegacyPiece for ModPiece {
                 self.id,
                 chunk.x,
                 chunk.z,
-                ErrorCauses(&error),
+                error,
             );
         }
         Ok(())
@@ -631,7 +620,9 @@ impl sunrise_world::worldgen::structure::legacy::LegacyPiece for ModPiece {
         if let Ok(Err(error)) =
             self.after_place
                 .call("structure type", "StructureType::after_place", || {
-                    self.ty.after_place(&mut context, pieces)
+                    self.ty
+                        .after_place(&mut context, pieces)
+                        .map_err(|error| error_chain(&error))
                 })
         {
             log::error!(
@@ -640,7 +631,7 @@ impl sunrise_world::worldgen::structure::legacy::LegacyPiece for ModPiece {
                 self.id,
                 chunk.x,
                 chunk.z,
-                ErrorCauses(&error),
+                error,
             );
         }
         Ok(())

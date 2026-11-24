@@ -8,7 +8,7 @@
 use super::{Bundle, MixinsIdentity, api, game_uses, prebuilt::Identity};
 use crate::host::trf;
 use crate::rust::Toolchain;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
 use sunrise_platform::mod_build::api_gen;
@@ -148,7 +148,7 @@ pub fn build(
     rustc: impl Fn(&str) -> std::process::Command,
     check_only: bool,
 ) -> Result<Option<Patch>, String> {
-    let Some(prepared) = prepare(rust, game, out, projects, sdk, mixins)? else {
+    let Some(prepared) = prepare(rust, game, out, projects, sdk, mixins, check_only)? else {
         return Ok(None);
     };
     // The patched crates, against the prebuilt game and the mods.
@@ -366,6 +366,7 @@ pub fn prepare<'a>(
     projects: &[api::Project<'a>],
     sdk: &Identity,
     mixins: &MixinsIdentity,
+    check_only: bool,
 ) -> Result<Option<Prepared<'a>>, String> {
     let bundles: Vec<&Bundle> = projects
         .iter()
@@ -422,7 +423,21 @@ pub fn prepare<'a>(
     let mut extras = extras(&bundles)?;
     extras.loops = loops;
     extras.linked = sdk_extern_names(sdk).map(str::to_owned).collect();
-    extras.lower_crate_cfg = Some(sdk.lower_crate_cfg().cloned().unwrap_or_default());
+    extras.lower_crate_cfg = Some(match sdk.lower_crate_cfg() {
+        Some(recorded) => recorded.clone(),
+        // A check only types the mods against the SDK, so an SDK that predates the lower
+        // crates' records takes the pinned compiler's cfg for each of them, as `build` does
+        // through the SDK's own tool.
+        None if check_only => {
+            let atoms = printed_cfg(rust, sdk)?;
+            index
+                .crates
+                .keys()
+                .map(|krate| (krate.clone(), atoms.clone()))
+                .collect()
+        }
+        None => BTreeMap::new(),
+    });
     let generated = api_gen::patch::generate(&source, CRATE, &targets, &extras, &index);
     let refusals: Vec<String> = match &generated {
         Ok(_) => Vec::new(),
@@ -531,15 +546,8 @@ pub fn prepare<'a>(
         // The tool plans against what the patch library compiles: this computer's cfg set under the
         // flags it is compiled with (the prebuilt game's target is this computer's,
         // `check_identity`), and the features the game was built with.
-        let mut print = super::prebuilt::rustc_with(rust, &[], "2024");
-        game_cfg(&mut print, sdk);
-        print.args(["--print", "cfg"]);
-        let printed = print.output().map_err(|e| e.to_string())?;
-        if !printed.status.success() {
-            return Err(String::from_utf8_lossy(&printed.stderr).into_owned());
-        }
         let mut cmd = super::apply(rust, tool, &workspace, &mods, &patched);
-        for option in build_cfg(&String::from_utf8_lossy(&printed.stdout)) {
+        for option in printed_cfg(rust, sdk)? {
             cmd.arg("--cfg").arg(option);
         }
         // The features are the game crate's: the tool decides `feature` predicates only in its
@@ -627,6 +635,18 @@ fn game_cfg(cmd: &mut std::process::Command, sdk: &Identity) {
     }
 }
 
+/// The pinned compiler's `--print cfg` for the SDK's target under the game's features.
+fn printed_cfg(rust: &dyn Toolchain, sdk: &Identity) -> Result<Vec<String>, String> {
+    let mut print = super::prebuilt::rustc_with(rust, &[], "2024");
+    game_cfg(&mut print, sdk);
+    print.args(["--print", "cfg", "--target", rust.target()]);
+    let printed = print.output().map_err(|e| e.to_string())?;
+    if !printed.status.success() {
+        return Err(String::from_utf8_lossy(&printed.stderr).into_owned());
+    }
+    Ok(build_cfg(&String::from_utf8_lossy(&printed.stdout)))
+}
+
 /// The cfg options of the build the patch library is compiled into, in rustc's `--cfg` spelling:
 /// what `rustc --print cfg` printed, which carries the game's features and the target's facts.
 /// The tool decides only the features and the target facts from it; flag-dependent options such as
@@ -642,6 +662,51 @@ fn build_cfg(printed: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod refusal_tests {
+    /// A retained SDK that predates the lower crates' cfg records is checked against the pinned
+    /// compiler's own cfg for its target and the game's features, so a lower-crate mixin target
+    /// is not refused for an empty cfg. Needs a real rustc.
+    #[test]
+    #[ignore = "daily"]
+    fn the_checks_lower_crate_cfg_is_the_pinned_compilers_for_the_sdks_features() {
+        let sysroot = std::process::Command::new("rustc")
+            .args(["--print", "sysroot"])
+            .output()
+            .unwrap();
+        let sysroot = String::from_utf8(sysroot.stdout).unwrap();
+        use crate::rust::Toolchain as _;
+        let rust = crate::rust::tests::system(sysroot.trim().into());
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("sunrise-prebuilt.json"),
+            serde_json::json!({
+                "package_format": sunrise_mod_package::sdk::PACKAGE_FORMAT,
+                "commit": "0123456789abcdef0123456789abcdef01234567",
+                "rustc": "release: 1",
+                "side": "client",
+                "target": rust.target(),
+                "registry_lock": "version = 4\n",
+                "registry_patches": {},
+                "native_links": [],
+                "facade_crates": [],
+                "game_features": ["audio"],
+                "slices": { "runtime": [], "api": [] }
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let sdk = crate::prebuilt::identity(dir.path()).unwrap();
+        assert!(sdk.lower_crate_cfg().is_none());
+        let printed = super::printed_cfg(&rust, &sdk).unwrap();
+        assert!(
+            printed.contains(&"feature=\"audio\"".to_owned()),
+            "{printed:?}"
+        );
+        assert!(
+            printed.iter().any(|atom| atom.starts_with("target_os=")),
+            "{printed:?}"
+        );
+    }
+
     /// A rebuild in the same folder starts with no applied-patch output, whether the last build
     /// left a folder, a file or a link there; a link's target is untouched.
     #[test]

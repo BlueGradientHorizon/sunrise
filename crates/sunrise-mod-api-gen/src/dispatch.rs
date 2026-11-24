@@ -401,7 +401,7 @@ pub(super) fn emit<'a>(
                     ),
                     "& str" if opener_routed => format!("menu_for_opener({key}, block)"),
                     "& str" => format!("{table}(|| Some({key}))"),
-                    "EntityRef" | "UnspawnedMobRef" if table == "entity" => {
+                    "EntityRef" | "MobRef" | "UnspawnedMobRef" if table == "entity" => {
                         entity_kind_param = true;
                         "entity(|| Some(__entity_kind))".to_owned()
                     }
@@ -1410,15 +1410,9 @@ pub(super) fn emit<'a>(
         } else {
             ""
         };
-        // Camera extraction and collision shape answers fail only the invocation, with
-        // the same per-listener scope and output rollback as other hooks.
-        let transient_answer = matches!(
-            name,
-            "compute_camera_angles"
-                | "camera_position"
-                | "render_view_transform"
-                | "collision_shape"
-        );
+        // Collision shape answers fail only the invocation, with the same
+        // per-listener scope and output rollback as other hooks.
+        let transient_answer = name == "collision_shape";
         let callback = if hook.independent_listener {
             format!("super::runtime::Callback::IndependentHook(HookId::{hook_id})")
         } else {
@@ -1507,7 +1501,8 @@ pub(super) fn emit<'a>(
                     | "register_configuration_tasks"
             ) {
                 // Let the existing journal see the unwind before invoke catches it.
-                let (host, _) = host.as_ref().unwrap();
+                let (host, host_param) = host.as_ref().unwrap();
+                let sided = host_param.ty == "HostSide";
                 let (commit, no_answer) =
                     if matches!(contract, Contract::Listen | Contract::Collect) && !answered_return
                     {
@@ -1515,8 +1510,28 @@ pub(super) fn emit<'a>(
                     } else {
                         (format!("Ok({expression})"), "Flow::Continue")
                     };
-                format!(
-                    "{{\
+                if sided {
+                    // A both-side host: the server's writes are one transaction; the client's
+                    // copy has no journal to commit, so its callback runs as it is.
+                    format!(
+                        "{{\
+                             use super::item::transaction::{{HostTransaction, TransactionError}};\
+                             match &mut {host} {{\
+                                 HostSide::Server(side) => match HostTransaction::transaction(&mut **side, |{host}, _| -> Result<_, core::convert::Infallible> {{ let mut {host} = HostSide::Server({host}); {commit} }}) {{\
+                                     Ok(answer) => answer,\
+                                     Err(TransactionError::Aborted(never)) => match never {{}},\
+                                     Err(error @ (TransactionError::InvalidContext | TransactionError::Unavailable | TransactionError::CommitRefused)) => {{\
+                                         log::warn!(\"mod {{}}: {name} callback refused: {{error:?}}\", {mod_id_expr});\
+                                         {restore_statement} {no_answer}\
+                                     }}\
+                                 }},\
+                                 HostSide::Client(side) => {{ let mut {host} = HostSide::Client(&mut **side); {expression} }}\
+                             }}\
+                         }}"
+                    )
+                } else {
+                    format!(
+                        "{{\
                          use super::item::transaction::{{HostTransaction, TransactionError}};\
                          match HostTransaction::transaction(&mut *{host}, |{host}, _| -> Result<_, core::convert::Infallible> {{ {commit} }}) {{\
                              Ok(answer) => answer,\
@@ -1527,7 +1542,8 @@ pub(super) fn emit<'a>(
                              }}\
                          }}\
                      }}"
-                )
+                    )
+                }
             } else {
                 expression
             }
@@ -2951,24 +2967,20 @@ mod runtime {{
     }}
 }}
 impl Owner {{
-    fn setting_changed(&self, _: generated::HostSide<'_>, _: &mut generated::SettingChangedEvent<'_>) {{
+    fn setting_changed(&self, _: &dyn generated::Host, _: &mut generated::SettingChangedEvent<'_>) {{
         if self.id == "a" {{ A.fetch_add(1, Ordering::Relaxed); }} else {{ B.fetch_add(1, Ordering::Relaxed); }}
     }}
 }}
 mod generated {{
-    pub enum HostSide<'a> {{ Client(&'a mut ()), Server(&'a mut ()) }}
-    impl HostSide<'_> {{
-        fn reborrow(&mut self) -> HostSide<'_> {{
-            match self {{ Self::Client(host) => HostSide::Client(host), Self::Server(host) => HostSide::Server(host) }}
-        }}
-    }}
+    pub trait Host {{}}
+    impl Host for () {{}}
     pub enum HookId {{ SettingChanged }}
-    pub struct SettingChangedEvent<'a> {{ pub mod_id: &'a str, pub key: &'a str }}
+    pub struct SettingChangedEvent<'a> {{ pub mod_id: &'a str, pub key: &'a str, pub value: u8 }}
     {function}
 }}
 fn main() {{
-    generated::dispatch_setting_changed(generated::HostSide::Client(&mut ()), "a", "toggle");
-    generated::dispatch_setting_changed(generated::HostSide::Server(&mut ()), "a", "toggle");
+    generated::dispatch_setting_changed(&(), "a", "toggle", 0);
+    generated::dispatch_setting_changed(&(), "a", "toggle", 0);
     assert_eq!(A.load(Ordering::Relaxed), 2);
     assert_eq!(B.load(Ordering::Relaxed), 0);
 }}

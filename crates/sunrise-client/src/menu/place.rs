@@ -142,6 +142,7 @@ pub(super) mod picker;
 use picker::Picker;
 #[path = "place/custom.rs"]
 mod custom;
+pub use custom::SlotCap;
 #[path = "place/custom_access.rs"]
 mod custom_access;
 #[path = "place/custom_plan.rs"]

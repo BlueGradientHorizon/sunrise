@@ -15,7 +15,7 @@ impl Game<'_> {
     /// registration slot and its answer, the first part to answer winning; none when no part
     /// answers. A type with no subscribed part costs one table lookup. Server-side.
     pub(super) fn part_shearable(
-        &self,
+        &mut self,
         index: usize,
         player: Option<PlayerRef>,
         shears: &ItemStack,
@@ -23,7 +23,8 @@ impl Game<'_> {
         if !self.mobs[index].alive() {
             return None;
         }
-        let kind = &self.mobs[index].kind.id;
+        let kind = std::sync::Arc::clone(&self.mobs[index].kind);
+        let kind = &kind.id;
         if !mod_api::__private::has_scoped_hook(mod_api::HookId::IsShearable)
             || !mod_api::__private::entity_part_hooked(
                 mod_api::HookId::IsShearable,
@@ -80,20 +81,85 @@ impl Game<'_> {
         let index = self.mobs.iter().position(|m| m.id == id && !m.removed);
         let at = index.map_or(at, |i| self.mobs[i].position);
         for stack in accepted {
-            self.spawn_at_location(at, 1.0, stack);
-            let Some(i) = index else { continue };
-            let r = &mut self.mobs[i].random;
-            let push = [
-                f64::from((r.next_float() - r.next_float()) * 0.1),
-                f64::from(r.next_float() * 0.05),
-                f64::from((r.next_float() - r.next_float()) * 0.1),
-            ];
-            if let Some(item) = self.just_spawned_item() {
-                let v = item.velocity;
-                item.velocity = Vec3::new(v.x + push[0], v.y + push[1], v.z + push[2]);
+            // `IShearable.spawnShearedDrop`: each species' own height; a mooshroom's drop has
+            // no pickup delay and the rest fall with `Sheep.shear`'s push, drawn from the mob's
+            // random only for an item that actually joined the level.
+            let species = index.map(|i| {
+                (
+                    self.mobs[i].species(),
+                    self.mobs[i].eye_height(),
+                    f64::from(self.mobs[i].height()),
+                )
+            });
+            match species {
+                Some((Species::SnowGolem, eye, _)) => {
+                    self.spawn_at_location(at, eye, stack);
+                }
+                Some((Species::Bogged, _, height)) => {
+                    self.spawn_at_location(at, height, stack);
+                }
+                Some((Species::Mooshroom, _, height)) => {
+                    self.spawn_item_own(stack, [at.x, at.y + height, at.z], 0);
+                }
+                _ => {
+                    self.spawn_at_location(at, 1.0, stack);
+                    let Some(i) = index else { continue };
+                    if self.just_spawned_item().is_none() {
+                        continue;
+                    }
+                    let r = &mut self.mobs[i].random;
+                    let push = [
+                        f64::from((r.next_float() - r.next_float()) * 0.1),
+                        f64::from(r.next_float() * 0.05),
+                        f64::from((r.next_float() - r.next_float()) * 0.1),
+                    ];
+                    if let Some(item) = self.just_spawned_item() {
+                        let v = item.velocity;
+                        item.velocity = Vec3::new(v.x + push[0], v.y + push[1], v.z + push[2]);
+                    }
+                }
             }
         }
         Ok(())
+    }
+
+    /// `ShearsItem.interactLivingEntity` on a client that predicts the click: both sides ask
+    /// `isShearable` and call `onSheared` (its drops are the server's alone to spawn, and the
+    /// shears are damaged there). True when a part sheared the mob, ending the click as the
+    /// server's SUCCESS does.
+    pub(in crate::game) fn predict_part_shear(&mut self, index: usize, hand: Hand) -> bool {
+        let Some(shears) = self.with_hand(hand, |g| g.held().cloned()) else {
+            return false;
+        };
+        if shears.item.as_ref() != "minecraft:shears" {
+            return false;
+        }
+        let player = self.native_acting_player();
+        let Some((part, true)) = self.part_shearable(index, player, &shears) else {
+            return false;
+        };
+        let (id, kind) = (
+            self.mobs[index].id,
+            std::sync::Arc::clone(&self.mobs[index].kind),
+        );
+        let (Some(entity), Ok(metadata)) = (
+            self.entity(id),
+            super::api_values::stack_read_metadata(&shears),
+        ) else {
+            return false;
+        };
+        let project = |metadata| super::api_values::project_stack(&shears, metadata).ok();
+        let view = mod_api::ItemStackView::resident(metadata, &project);
+        // The drops are the server's: this copy only changes itself.
+        let mut drops = Vec::new();
+        if self
+            .native_on_sheared(entity, player, view, &mut drops, part, &kind.id)
+            .is_err()
+        {
+            return false;
+        }
+        self.with_hand(hand, Game::swing_arm);
+        true
     }
 
     /// Shears in the acting player's hand on mob `index` (`ShearsItem.interactLivingEntity`):
@@ -163,7 +229,7 @@ mod tests {
     impl mod_api::EntityPart for LeatherCow {
         fn is_shearable(
             &self,
-            _: &dyn mod_api::Host,
+            _: mod_api::HostSide,
             event: &mut mod_api::IsShearableEvent<'_>,
         ) -> Option<bool> {
             assert!(event.player.is_none(), "a dispenser has no player");
@@ -171,11 +237,7 @@ mod tests {
             assert_eq!(event.shears.damage(), 7);
             Some(true)
         }
-        fn on_sheared(
-            &self,
-            _: &mut dyn mod_api::ServerHost,
-            event: &mut mod_api::OnShearedEvent<'_>,
-        ) {
+        fn on_sheared(&self, _: mod_api::HostSide, event: &mut mod_api::OnShearedEvent<'_>) {
             assert_eq!(event.shears.damage(), 7);
             let leather = mod_api::__private::item_key("minecraft:leather").unwrap();
             event
@@ -189,7 +251,7 @@ mod tests {
     impl mod_api::EntityPart for WoollySheep {
         fn is_shearable(
             &self,
-            _: &dyn mod_api::Host,
+            _: mod_api::HostSide,
             _: &mut mod_api::IsShearableEvent<'_>,
         ) -> Option<bool> {
             Some(false)

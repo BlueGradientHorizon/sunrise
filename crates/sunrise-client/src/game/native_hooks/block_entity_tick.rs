@@ -405,12 +405,7 @@ impl ResidentBlockEntity for ServerBlockEntityData<'_> {
             **changed = true;
         }
         let entity = self.edit(true);
-        if index >= entity.items.len() {
-            entity.items.resize(slots, None);
-        }
-        if let Some(dest) = entity.item_slot_mut(index) {
-            *dest = stack;
-        }
+        *entity.item_slot_mut(index) = stack;
         Ok(true)
     }
 

@@ -26,7 +26,7 @@ fn view<'a>(frame: &'a Frame<'_>, lights: bool) -> UniformFrameView<'a> {
         eye: frame.eye,
         eye_rotation: frame.eye_rotation,
         first_person: frame.first_person,
-        bob: frame.bob,
+        bob: frame.posed_bob(),
         spin: frame.spin,
         sky: SkyView {
             sun_angle: frame.sky.sun_angle,

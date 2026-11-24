@@ -1,5 +1,6 @@
 use super::super::native_structure_types::book_example;
 use super::*;
+use mod_api::FeatureError;
 use sunrise_core::random::LegacyRandom;
 use sunrise_world::registry::BlockStateId;
 use sunrise_world::worldgen::mod_features::ModFeatureRandom;
@@ -226,22 +227,11 @@ fn a_panicking_feature_preserves_its_work_and_disables_only_its_registration() {
 
     // Run the worldgen fixture in its own process.
     const CHILD: &str = "SUNRISE_FEATURE_PANIC_TEST_CHILD";
-    if std::env::var_os(CHILD).is_none() {
-        let output = std::process::Command::new(std::env::current_exe().unwrap())
-            .args([
-                "--ignored",
-                "--exact",
-                "game::native_feature_types::tests::a_panicking_feature_preserves_its_work_and_disables_only_its_registration",
-            ])
-            .env(CHILD, "1")
-            .output()
-            .unwrap();
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(
-            output.status.success() && stdout.contains("test result: ok. 1 passed;"),
-            "{stdout}{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
+    if crate::game::native_entity_refs::tests::run_fresh_cases(
+        "game::native_feature_types::tests::a_panicking_feature_preserves_its_work_and_disables_only_its_registration",
+        CHILD,
+        &["1"],
+    ) {
         return;
     }
 

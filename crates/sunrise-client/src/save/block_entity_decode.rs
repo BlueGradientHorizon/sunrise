@@ -155,7 +155,6 @@ pub fn decode_block_entity_replacing(
     block: &str,
     previous: Option<&crate::containers::BlockEntity>,
 ) -> Option<((i32, i32, i32), crate::containers::BlockEntity)> {
-    let slots = block_mod_item_slots(block);
     let mut decoded = decode_block_entity_with_history(tag, previous, Some(block))?;
     // Several vanilla types share a decoded representation (for example barrel
     // and chest). Membership belongs to the saved type, not that representation.
@@ -165,11 +164,9 @@ pub fn decode_block_entity_replacing(
             if crate::block_entity_types::valid(block, m.id()) != Some(true) {
                 return None;
             }
-            // Missing saved stacks are empty slots, not a shorter container.
-            // Keep any saved stacks past the declared size out of the menu but on disk.
-            if m.items.len() < slots {
-                m.items.resize(slots, None);
-            }
+            // Missing saved stacks are empty slots, whatever the declared capacity: `items` holds
+            // the slots up to the last one occupied, and a slot past it reads as empty.
+            // Any saved stacks past the declared size stay out of the menu but on disk.
             true
         }
         _ => crate::block_entity_types::valid(block, &saved_id)

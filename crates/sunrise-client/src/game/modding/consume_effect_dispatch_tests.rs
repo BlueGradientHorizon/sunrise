@@ -665,6 +665,94 @@ fn a_foreign_heal_listener_is_quarantined_without_disabling_the_consume_callback
     });
 }
 
+struct PanickingModeListener(std::sync::atomic::AtomicBool);
+#[mod_api::__subscriptions]
+impl Hooks for PanickingModeListener {
+    fn player_game_mode_changed(
+        &self,
+        _: &mut dyn ServerHost,
+        _: &mut mod_api::PlayerGameModeChangedEvent<'_>,
+    ) -> mod_api::Flow {
+        if self.0.swap(false, std::sync::atomic::Ordering::Relaxed) {
+            panic!("foreign mode listener");
+        }
+        mod_api::Flow::Continue
+    }
+}
+
+struct FeedbackMeal(Arc<std::sync::atomic::AtomicUsize>);
+#[mod_api::__subscriptions]
+impl Hooks for FeedbackMeal {
+    fn consume_effect(&self, host: &mut dyn ServerHost, _: &mut ConsumeEffectEvent<'_>) {
+        self.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let (sender, feedback) = std::sync::mpsc::channel();
+        let ran = host
+            .commands()
+            .run_command_with_feedback("gamemode creative guest12", sender);
+        let lines: Vec<String> = feedback
+            .try_iter()
+            .map(|f| match f.unwrap() {
+                mod_api::CommandFeedback::Success(t)
+                | mod_api::CommandFeedback::Failure(t)
+                | mod_api::CommandFeedback::System(t) => {
+                    format!("{t:?}")
+                }
+                _ => String::new(),
+            })
+            .collect();
+        let _ = (ran, lines);
+    }
+}
+
+/// `run_command_with_feedback` runs the console command inside `call_host`: a foreign listener's
+/// panic under it is attributed to that listener and quarantined, and the consume callback that
+/// issued the command is not disabled.
+#[test]
+#[ignore = "daily"]
+fn a_foreign_listener_panicking_under_a_feedback_command_does_not_disable_the_consume_callback() {
+    if crate::game::native_entity_refs::tests::run_fresh_cases(
+        "game::consume_effect_dispatch_tests::a_foreign_listener_panicking_under_a_feedback_command_does_not_disable_the_consume_callback",
+        "SUNRISE_CONSUME_FEEDBACK_CHILD",
+        &["feedback"],
+    ) {
+        return;
+    }
+    crate::entry::install_client_hooks();
+    let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let mods = vec![
+        ModEntry::new("feedback_meal", Box::new(FeedbackMeal(calls.clone()))),
+        ModEntry::new(
+            "mode_listener",
+            Box::new(PanickingModeListener(true.into())),
+        ),
+    ];
+    mod_platform::testing::with_mods(mods.into(), || {
+        with_guests(|game| {
+            game.as_guest(12, |game| {
+                let stack = ItemStack::new("minecraft:apple", 1);
+                let info = game.items().get(&stack.item).unwrap().clone();
+                let consumable = parse_consumable(&serde_json::json!({
+                    "on_consume_effects": [{"type": "feedback_meal:effect"}]
+                }))
+                .unwrap();
+                for _ in 0..2 {
+                    game.inventory[game.selected] = Some(stack.clone());
+                    game.finish_consuming(&info, &consumable, &stack);
+                }
+                assert_eq!(calls.load(std::sync::atomic::Ordering::Relaxed), 2);
+                assert_eq!(
+                    take_hook_panics(),
+                    [HookPanicReport {
+                        mod_id: "mode_listener",
+                        hook: "player_game_mode_changed",
+                    }]
+                );
+            })
+            .unwrap();
+        });
+    });
+}
+
 struct PanickingProjectileJoinListener(std::sync::atomic::AtomicBool);
 #[mod_api::__subscriptions]
 impl Hooks for PanickingProjectileJoinListener {

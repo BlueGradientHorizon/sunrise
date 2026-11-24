@@ -80,10 +80,10 @@ impl Hooks for Observer {
         event: &mut EntityJoinLevelEvent<'_>,
     ) -> Flow {
         let mut heard = HEARD.lock().unwrap();
-        heard.joined.push(event.entity);
-        heard.order.push((true, event.entity));
+        heard.joined.push(event.subject.id());
+        heard.order.push((true, event.subject.id()));
         if event.loaded_from_disk {
-            heard.from_disk.push(event.entity);
+            heard.from_disk.push(event.subject.id());
         }
         drop(heard);
         let pending = PENDING.lock().unwrap().take();
@@ -97,7 +97,7 @@ impl Hooks for Observer {
         }
         let answers = {
             let mut on_join = ON_JOIN.lock().unwrap();
-            (on_join.0 == Some(event.entity)).then(|| on_join.0.take())
+            (on_join.0 == Some(event.subject.id())).then(|| on_join.0.take())
         };
         if answers.is_some() {
             let removes = ON_JOIN.lock().unwrap().2.take();

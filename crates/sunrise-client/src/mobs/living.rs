@@ -3723,20 +3723,10 @@ mod tests {
         // Loading the fixture sizes the process-wide chunk palette.
         const CHILD: &str = "SUNRISE_MOB_TRAVEL_OVERFLOW_CHILD";
         if std::env::var_os(CHILD).is_none() {
-            let output = std::process::Command::new(std::env::current_exe().unwrap())
-                .args([
-                    "--ignored",
-                    "--exact",
-                    "mobs::living::tests::an_overflowing_block_speed_product_preserves_the_mobs_finite_velocity",
-                ])
-                .env(CHILD, "1")
-                .output()
-                .unwrap();
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            assert!(
-                output.status.success() && stdout.contains("test result: ok. 1 passed;"),
-                "{stdout}{}",
-                String::from_utf8_lossy(&output.stderr)
+            crate::fresh_process::run_in_fresh_process(
+                "mobs::living::tests::an_overflowing_block_speed_product_preserves_the_mobs_finite_velocity",
+                CHILD,
+                "1",
             );
             return;
         }

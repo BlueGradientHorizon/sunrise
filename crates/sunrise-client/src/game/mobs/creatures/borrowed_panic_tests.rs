@@ -195,7 +195,11 @@ impl mod_api::BlockPart for HealthyLanding {
 }
 #[mod_api::sunrise_part]
 impl mod_api::EntityPart for GoalPart {
-    fn register_goals(&self, event: &mut mod_api::RegisterGoalsEvent<'_, '_>) {
+    fn register_goals(
+        &self,
+        _: &dyn mod_api::Host,
+        event: &mut mod_api::RegisterGoalsEvent<'_, '_>,
+    ) {
         event.goals.add_target_goal(
             0,
             GoalSpec {
@@ -482,7 +486,7 @@ fn fixture_mob(game: &Game<'_>, id: u32, family: Family, output: Output) -> Mob 
         })
         .unwrap()
         .clone();
-    let mut mob = Mob::new(id, kind, Vec3::new(f64::from(id - 70), 80.0, 0.5), 0.0);
+    let mut mob = game.new_mob(id, kind, Vec3::new(f64::from(id - 70), 80.0, 0.5), 0.0);
     mob.no_ai = true;
     if output == Output::Push && id == 70 {
         mob.position.x = 1.2;
@@ -706,8 +710,10 @@ fn run_fixture(family: Family, output: Output, dim: Dim) {
                 "first callback entry"
             );
             if let Some(payload) = &unwind {
+                // Each entity is told its own Post right after its own tick (#1): the mob ahead of
+                // the panicking one finished, the panicking one (72) never reached its Post.
                 assert!(
-                    probe.posts.lock().unwrap().is_empty(),
+                    !probe.posts.lock().unwrap().contains(&72),
                     "aborted tick fired Post"
                 );
                 let token = payload

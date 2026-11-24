@@ -210,3 +210,53 @@ fn direct_chat_sends_through_play_without_the_chat_screen_gate() {
         });
     });
 }
+
+/// A `client_chat` listener that resends and cancels the original reaches the hook again
+/// only on the next event-loop wave, never from inside itself.
+#[test]
+#[ignore = "daily"]
+fn a_client_chat_listener_that_resends_is_not_reentered() {
+    use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game};
+    use mod_api::{ClientChatEvent, ClientHost, prelude::NetworkClientHost};
+    use sunrise_client::net::Session;
+    use sunrise_protocol::packets::play::Serverbound as S;
+
+    if run_fresh_cases(
+        "game::remote::tests::chat_event_tests::a_client_chat_listener_that_resends_is_not_reentered",
+        "SUNRISE_CHAT_RESEND_CASE",
+        &["resend"],
+    ) {
+        return;
+    }
+    struct Resender;
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for Resender {
+        fn client_chat(&self, host: &mut dyn ClientHost, event: &mut ClientChatEvent<'_>) -> Flow {
+            if event.original_message == "again" {
+                return Flow::Continue;
+            }
+            // Not a replacement through the event: a separate submission.
+            let _ = NetworkClientHost::send_chat(host, "again");
+            Flow::Cancel
+        }
+    }
+    let mods = vec![mod_api::ModEntry::new("resend_chat", Box::new(Resender))].into();
+    mod_platform::testing::with_mods(mods, || {
+        with_client_game(|game| {
+            let (client, _server) = Pipe::pair();
+            game.connect_local(client, "ChatTest").unwrap();
+            game.remote.as_mut().unwrap().joined = true;
+            let (session, mut peer, _keepalive) = Session::packet_hold_probe();
+            game.remote.as_mut().unwrap().session = session;
+            NetworkClientHost::send_chat(game, "original").unwrap();
+            assert_eq!(game.native_client_commands.pending_chats, ["again"]);
+            game.drain_pending_client_commands();
+            let (id, body) = peer.recv().unwrap();
+            let S::Chat(chat) = S::decode(id, &body).unwrap() else {
+                panic!("expected the resent chat packet")
+            };
+            assert_eq!(chat.message, "again");
+            assert!(game.native_client_commands.pending_chats.is_empty());
+        });
+    });
+}

@@ -334,8 +334,7 @@ impl Game<'_> {
         // On a server its own copy does this and sends the sound.
         if tick.resonate && self.remote.is_none() {
             // The server's copy plays the resonance for everyone.
-            self.audio
-                .play("minecraft:block.bell.resonate", Some(centre), 1.0, 1.0);
+            self.play_audio("minecraft:block.bell.resonate", Some(centre), 1.0, 1.0);
         }
         if let Some((particles, glow)) = tick.ended {
             for (p, color) in particles.into_iter().filter(|_| self.renderer.is_some()) {
@@ -621,7 +620,7 @@ impl Game<'_> {
                 } else {
                     "minecraft:block.conduit.deactivate"
                 };
-                self.audio.play(sound, Some(centre), 1.0, 1.0);
+                self.play_audio(sound, Some(centre), 1.0, 1.0);
             }
             if let Some(frames) = check.frames {
                 self.conduit_apply_effects(pos, frames);
@@ -630,11 +629,10 @@ impl Game<'_> {
         }
         let (ambient, short) = conduit.ambient(time, &mut self.world.random);
         if ambient {
-            self.audio
-                .play("minecraft:block.conduit.ambient", Some(centre), 1.0, 1.0);
+            self.play_audio("minecraft:block.conduit.ambient", Some(centre), 1.0, 1.0);
         }
         if short {
-            self.audio.play(
+            self.play_audio(
                 "minecraft:block.conduit.ambient.short",
                 Some(centre),
                 1.0,
@@ -762,8 +760,7 @@ impl Game<'_> {
             Damage::of(DamageKind::Magic),
         );
         self.finish_mob_damage_at(index);
-        self.audio
-            .play("minecraft:block.conduit.attack.target", Some(at), 1.0, 1.0);
+        self.play_audio("minecraft:block.conduit.attack.target", Some(at), 1.0, 1.0);
     }
     /// `ConduitBlockEntity.selectNewTarget`: one of the enemies in water or
     /// rain whose box meets the conduit's block inflated by 8.

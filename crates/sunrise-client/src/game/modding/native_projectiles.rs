@@ -623,7 +623,7 @@ impl Game<'_> {
     /// `p`, as it was before its tick, flown that tick through what it hit
     /// (`Projectile::tick_through`, `arrows::tick_through`): the projectile after
     /// it, whether it stays, and the arrow events it made.
-    fn native_projectile_through(
+    pub(super) fn native_projectile_through(
         &self,
         mut p: Projectile,
     ) -> (Projectile, bool, Vec<(Vec3, ArrowEvent)>) {

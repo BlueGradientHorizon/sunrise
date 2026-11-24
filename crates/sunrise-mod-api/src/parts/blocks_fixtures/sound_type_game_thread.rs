@@ -7,7 +7,7 @@ pub fn sound_type_game_thread() {
     }
     #[mod_api::sunrise_part]
     impl BlockPart for Answer {
-        fn sound_type(&self, _: &dyn LoopContext, event: &mut SoundTypeEvent<'_>) {
+        fn sound_type(&self, _: crate::LevelSide<'_>, event: &mut SoundTypeEvent<'_>) {
             let player = |(_, kind): (u32, &str)| kind == "minecraft:player";
             if self.players_only && !event.entity.is_some_and(player)
                 || self.at_y.is_some_and(|y| event.pos.y != y)
@@ -20,7 +20,7 @@ pub fn sound_type_game_thread() {
     struct EditUnusedPlace(SoundEventKey);
     #[mod_api::sunrise_part]
     impl BlockPart for EditUnusedPlace {
-        fn sound_type(&self, _: &dyn LoopContext, event: &mut SoundTypeEvent<'_>) {
+        fn sound_type(&self, _: crate::LevelSide<'_>, event: &mut SoundTypeEvent<'_>) {
             if event.cause == BlockSoundCause::Step {
                 event.sound.place = self.0.clone();
             }
@@ -29,7 +29,7 @@ pub fn sound_type_game_thread() {
     struct PanicAfterEdit;
     #[mod_api::sunrise_part]
     impl BlockPart for PanicAfterEdit {
-        fn sound_type(&self, _: &dyn LoopContext, event: &mut SoundTypeEvent<'_>) {
+        fn sound_type(&self, _: crate::LevelSide<'_>, event: &mut SoundTypeEvent<'_>) {
             event.sound.volume = 42.0;
             panic!("block sound test panic");
         }

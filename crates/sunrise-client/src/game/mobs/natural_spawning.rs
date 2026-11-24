@@ -24,7 +24,7 @@ use sunrise_client::{
 use sunrise_core::{
     geometry::{Aabb, COLLISION_EPSILON, Vec3, VoxelShape},
     position::BlockPos,
-    random::{LegacyRandom, LevelRandom, RandomSource, WorldgenRandom, XoroshiroRandom},
+    random::{LegacyRandom, RandomSource, WorldgenRandom, XoroshiroRandom},
 };
 use sunrise_world::dimension_type::DimensionFacts;
 use {
@@ -362,6 +362,9 @@ pub(super) struct GameLevel<'g, 'a> {
     /// The mob a listened position check created and lent, which the spawn
     /// that follows takes rather than creating it again ([`Checked`]).
     checked: std::cell::RefCell<Option<Checked>>,
+    /// The configured entity a spawner loaded before its position check, kept for its
+    /// finalization and admission.
+    configured: std::cell::RefCell<Option<Configured>>,
 }
 /// The mob a listened `mob_spawn_position_check` created for its lend, held
 /// until the spawn takes it, and the provisional count before it was
@@ -370,6 +373,28 @@ pub(super) struct GameLevel<'g, 'a> {
 struct Checked {
     mob: Mob,
     provisional: u32,
+}
+/// A spawner's configured entity loaded once before its position check: the tree, the
+/// provisional id of its root, the provisional count before it was loaded (a refused check gives
+/// it back), and the entity and position it was loaded for.
+struct Configured {
+    tree: super::persist::SpawnTree,
+    key: u32,
+    provisional: u32,
+    id: String,
+    position: [f64; 3],
+}
+impl GameLevel<'_, '_> {
+    /// The configured tree loaded for `entity` at `position`, when the spawner loaded one.
+    pub(super) fn take_configured(
+        &self,
+        entity: &str,
+        position: [f64; 3],
+    ) -> Option<(super::persist::SpawnTree, u32)> {
+        let configured = self.configured.take()?;
+        (configured.id == entity && configured.position == position)
+            .then_some((configured.tree, configured.key))
+    }
 }
 const SCANNED_QUERIES: u32 = 8;
 struct PendingMob {
@@ -524,7 +549,8 @@ impl GameLevel<'_, '_> {
             None => {
                 let kind = self.game.res.mob_types().get(r.entity)?.clone();
                 let [x, y, z] = r.position;
-                Mob::new(self.provisional_id(), kind, Vec3::new(x, y, z), r.yaw)
+                self.game
+                    .new_mob(self.provisional_id(), kind, Vec3::new(x, y, z), r.yaw)
             }
         };
         // No group data is threaded through the pack yet: each member starts
@@ -552,14 +578,9 @@ impl GameLevel<'_, '_> {
                 }
             }
         }
-        let vanilla = spawn_selection::max_cluster_size(r.species);
-        let cluster_size = self.game.spawn_cluster_size(&mut mob, vanilla);
         self.record_pending(&mob);
         pending.push(mob);
-        Some(Spawned {
-            school: true,
-            cluster_size,
-        })
+        Some(Spawned { school: true })
     }
 }
 
@@ -630,7 +651,7 @@ impl sunrise_client::mobs::finalize::FinalizeLevel for PassLevel<'_, '_, '_> {
             return None;
         }
         let t = t.clone();
-        Some(Mob::new(
+        Some(self.l.game.new_mob(
             self.l.provisional_id(),
             t,
             sunrise_core::geometry::Vec3::ZERO,
@@ -757,6 +778,31 @@ impl NaturalLevel for GameLevel<'_, '_> {
         }
         // An earlier check's mob that no spawn took is not this one.
         self.checked.take();
+        if !pending.fresh
+            && let Some(configured) = self.configured.borrow_mut().as_mut()
+            && configured.id == entity
+            && configured.position == at
+            && let Some((mob, _)) = configured.tree.root_mob_mut()
+        {
+            // The mob the spawner loaded from its entity data, as the level will have it.
+            let level = self.level_ref();
+            self.game
+                .lend_unspawned(entity, at, Some(mob), |handle, _| {
+                    self.game.native_mob_spawn_position_check(
+                        mod_api::__private::MobSpawnPositionCheckCall {
+                            dimension: self.game.dim.id(),
+                            kind: entity,
+                            reason,
+                            pos: at,
+                            level,
+                            spawner: self.spawner,
+                            mob: handle,
+                            result: &mut result,
+                        },
+                    );
+                });
+            return result;
+        }
         let provisional = self.provisional.get();
         let mut mob = pending
             .fresh
@@ -764,7 +810,7 @@ impl NaturalLevel for GameLevel<'_, '_> {
             .flatten()
             .map(|kind| {
                 let [x, y, z] = at;
-                Mob::new(
+                self.game.new_mob(
                     self.provisional_id(),
                     kind.clone(),
                     Vec3::new(x, y, z),
@@ -796,6 +842,26 @@ impl NaturalLevel for GameLevel<'_, '_> {
         if let Some(refused) = self.checked.take() {
             self.provisional.set(refused.provisional);
         }
+        if let Some(refused) = self.configured.take() {
+            self.provisional.set(refused.provisional);
+        }
+    }
+    fn load_configured(&self, entity: &Compound, id: &str, at: [f64; 3], yaw: f32) -> bool {
+        // An earlier spawn's tree that nothing took is not this one.
+        self.configured.take();
+        let provisional = self.provisional.get();
+        let Some((tree, key)) = self.game.load_configured_entity(self, entity, at, yaw) else {
+            self.provisional.set(provisional);
+            return false;
+        };
+        *self.configured.borrow_mut() = Some(Configured {
+            tree,
+            key,
+            provisional,
+            id: id.to_owned(),
+            position: at,
+        });
+        true
     }
     fn potential_spawns(&self, category: Category, pos: [i32; 3], entries: &mut Vec<SpawnEntry>) {
         let mut canceled = false;
@@ -1074,6 +1140,7 @@ impl<'a> Game<'a> {
             costed: spawn_cost_types(world_biomes!(self)),
             spawner: None,
             checked: Default::default(),
+            configured: Default::default(),
         }
     }
     /// Gives a spawn pass's provisional mobs (the `u32::MAX - n` ids
@@ -1127,7 +1194,7 @@ impl<'a> Game<'a> {
         created: Vec<Mob>,
         rides: Vec<(u32, u32)>,
         persistent: bool,
-    ) {
+    ) -> Vec<u32> {
         let _save_lease = sunrise_client::join_seq::visibility::PassLease::enter();
         let mut pending = pending;
         let mut created = created;
@@ -1135,6 +1202,7 @@ impl<'a> Game<'a> {
             m.persistent = persistent;
         }
         self.resolve_spawn_ids([&mut pending, &mut created], &rides);
+        let ids = pending.iter().map(|m| m.id).collect();
         for mob in pending {
             self.mobs.push(mob);
             self.admit_new_mobs(self.mobs.len() - 1);
@@ -1143,6 +1211,7 @@ impl<'a> Game<'a> {
             self.mobs.push(mob);
             self.admit_new_mobs(self.mobs.len() - 1);
         }
+        ids
     }
     /// Every player in the level in place: the local player, and the LAN
     /// guests or server players in it.
@@ -1346,10 +1415,9 @@ impl<'a> Game<'a> {
             &mut self.world.random,
             sunrise_core::random::LevelRandom::for_level(LegacyRandom::new(0)),
         );
-        let mut pending = Vec::new();
         let last_state;
-        let extras = {
-            let level = self.natural_level();
+        {
+            let mut level = self.natural_level();
             laps.lap("sn_level");
             let counted: Vec<Counted> = self
                 .mobs
@@ -1394,34 +1462,71 @@ impl<'a> Game<'a> {
                     if !level.can_spawn_in_chunk(chunk.0, chunk.1) {
                         continue;
                     }
-                    let mut spawn = |l: &GameLevel, r: &SpawnRequest, rng: &mut LevelRandom| {
-                        l.finalize_spawned(r, &mut pending, rng)
-                    };
                     sunrise_threads::work::set_chunk(chunk.0, chunk.1);
-                    spawn_selection::spawn_for_chunk(
-                        &level,
-                        &mut random,
-                        &mut state,
-                        &categories,
-                        chunk,
-                        &mut spawn,
-                        &mut |_| {},
-                    );
+                    // NaturalSpawner.spawnForChunk.
+                    for &category in &categories {
+                        if !state.can_spawn_local(category, chunk.0, chunk.1) {
+                            continue;
+                        }
+                        let Some(start) = spawn_selection::random_position_within(
+                            &level,
+                            &mut random,
+                            category,
+                            chunk,
+                            &mut |_| {},
+                        ) else {
+                            continue;
+                        };
+                        let Some(mut pass) = spawn_selection::PositionPass::start(
+                            &level, &mut state, category, chunk, start,
+                        ) else {
+                            continue;
+                        };
+                        while pass.advance(&level, &mut random, &mut state, &mut |_| {}) {
+                            let attempt = pass.attempt();
+                            let mut pending = Vec::new();
+                            let Some(spawned) = level.finalize_spawned(
+                                &attempt.request(),
+                                &mut pending,
+                                &mut random,
+                            ) else {
+                                continue;
+                            };
+                            // `addFreshEntityWithPassengers`: the mob joins the level before the
+                            // spawn state counts it and the group is compared with its limit, so
+                            // what the join's listeners do and every later attempt see it.
+                            let created = std::mem::take(&mut *level.spawned.borrow_mut());
+                            let rides = std::mem::take(&mut *level.rides.borrow_mut());
+                            drop(level);
+                            std::mem::swap(&mut self.world.random, &mut random);
+                            let ids = self.add_spawned(pending, created, rides, false);
+                            std::mem::swap(&mut self.world.random, &mut random);
+                            level = self.natural_level();
+                            pass.joined(&level, &mut state, spawned.school, &mut |_| {});
+                            let [id] = ids[..] else { unreachable!() };
+                            let size = self.spawn_cluster_size(
+                                mod_api::MobRef::new(mod_api::EntityRef::new(
+                                    self.lend_epoch(),
+                                    id,
+                                )),
+                                &attempt.entity,
+                                pass.vanilla_limit(),
+                            );
+                            if pass.finish(&mut state, size) {
+                                break;
+                            }
+                        }
+                    }
                 }
             }
             scratch.spawn_buffers = state.into_parts().1;
-            let created = std::mem::take(&mut *level.spawned.borrow_mut());
-            let rides = std::mem::take(&mut *level.rides.borrow_mut());
-            (created, rides)
-        };
+        }
         sunrise_threads::work::clear_work();
         spawn_selection::attempt_counters(true);
         laps.lap("sn_attempts");
         self.world.random = random;
         // ServerChunkCache.lastSpawnState, for the debug overlay.
         self.spawn_counts.insert(self.dim, last_state);
-        let (created, rides) = extras;
-        self.add_spawned(pending, created, rides, false);
         self.spawn_scratch = scratch;
         laps.lap("sn_finalize");
     }
@@ -2264,6 +2369,7 @@ mod tests {
                     (2, 2),
                     [40, 64, 40],
                     &mut spawn,
+                    &mut |_, _, vanilla| vanilla,
                     &mut |_| {},
                 );
                 assert!(natural.checked.borrow().is_none(), "no created mob is left");
@@ -2420,10 +2526,9 @@ mod tests {
             let (configured, heard) =
                 with_checks(Some(SpawnCheck::Default), Vec::new, || tick(game, helmet()));
             assert!(!configured.0.is_empty());
-            for (hook, expected) in [
-                ("position", Err(mod_api::UnspawnedMobError::Unsupported)),
-                ("finalize", Ok(false)),
-            ] {
+            // The configured entity is loaded before the position check, so the check reads the
+            // equipment its data gave, as the finalization does.
+            for (hook, expected) in [("position", Ok(false)), ("finalize", Ok(false))] {
                 let event = heard.iter().find(|h| h.hook == hook).unwrap();
                 let (kind, position, head) = event.mob.as_ref().unwrap();
                 assert_eq!(*kind, Ok(mod_api::Identifier::parse(SULFUR_CUBE).unwrap()));
@@ -2479,6 +2584,16 @@ mod tests {
                             .to_vec(),
                     ),
                 ),
+                (
+                    "equipment".into(),
+                    Tag::compound([(
+                        "head",
+                        Tag::compound([
+                            ("id", Tag::String("minecraft:iron_helmet".into())),
+                            ("count", Tag::Int(1)),
+                        ]),
+                    )]),
+                ),
             ]
             .into();
             game.carts.update(0, |cart| {
@@ -2501,6 +2616,10 @@ mod tests {
                 );
                 assert_eq!(event.cart, Some((Some(cart_kind.into()), Some(position))));
             }
+            // The configured entity's equipment is readable in the position check, on the
+            // minecart path too: the tree the spawner loaded is the one lent.
+            let event = heard.iter().find(|h| h.hook == "position").unwrap();
+            assert_eq!(event.mob.as_ref().unwrap().2, Ok(false), "a helmet is worn");
         });
     }
 
@@ -3133,7 +3252,7 @@ mod tests {
         });
     }
 
-    /// Answers the group size limit of a type, reading the mob it is lent.
+    /// Doubles the group size limit of a type, reading the mob it is lent.
     struct ZombieClusters;
     #[mod_api::sunrise_part]
     impl mod_api::EntityPart for ZombieClusters {
@@ -3141,27 +3260,27 @@ mod tests {
             &self,
             host: &dyn mod_api::Host,
             event: &mut mod_api::SpawnClusterSizeEvent,
-        ) -> Option<u32> {
-            assert_eq!(
-                event.mob.kind(host).unwrap().to_string(),
-                "minecraft:zombie"
+        ) {
+            assert!(
+                event.mob.entity().kind(host).is_some(),
+                "the mob is resident"
             );
-            Some(event.vanilla * 2)
+            event.size = event.vanilla * 2;
         }
     }
-    /// A second part on the same type: asked only when the first does not answer.
+    /// A second part on the same type: it sees the size the first left and adds one.
     struct LaterClusters;
     #[mod_api::sunrise_part]
     impl mod_api::EntityPart for LaterClusters {
         fn spawn_cluster_size(
             &self,
             _: &dyn mod_api::Host,
-            _: &mut mod_api::SpawnClusterSizeEvent,
-        ) -> Option<u32> {
-            Some(9)
+            event: &mut mod_api::SpawnClusterSizeEvent,
+        ) {
+            event.size += 1;
         }
     }
-    /// A part that leaves the limit to vanilla.
+    /// A part that leaves the size alone.
     struct SilentClusters;
     #[mod_api::sunrise_part]
     impl mod_api::EntityPart for SilentClusters {}
@@ -3175,38 +3294,41 @@ mod tests {
         }
     }
 
-    /// The parts of the new mob's type answer the natural-spawn group size limit: a part's answer
-    /// replaces vanilla's for its type (the first part to answer wins), a part that does not
-    /// answer, and a type with no part, leave it to vanilla.
+    /// The parts of the new mob's type edit one signed size in turn: the second sees the first's
+    /// answer (4 doubled, then one more), a part that leaves it alone and a type with no part
+    /// keep vanilla's. The mob they are told of is resident, so the first part reads it.
     #[test]
     #[ignore = "daily"]
-    fn entity_parts_answer_the_spawn_cluster_size() {
+    fn entity_parts_compose_on_the_spawn_cluster_size() {
         use super::super::native_entity_refs::tests::with_game;
         let entries = vec![mod_api::ModEntry::new("clusters", Box::new(ClusterMod))];
         mod_platform::testing::with_mods(entries.into(), || {
             with_game(|game| {
                 game.resolve_parts().unwrap();
-                let mob = |id: &str| {
-                    let kind = game.res.mob_types().get(id).unwrap().clone();
-                    Mob::new(1, kind, Vec3::ZERO, 0.0)
+                let ids: Vec<(&str, u32)> =
+                    ["minecraft:zombie", "minecraft:skeleton", "minecraft:cow"]
+                        .into_iter()
+                        .map(|kind| {
+                            let id = game
+                                .spawn_mob(
+                                    kind,
+                                    [8.5, 64.0, 8.5],
+                                    false,
+                                    super::super::creatures::SpawnSite::Plain,
+                                )
+                                .unwrap();
+                            (kind, id)
+                        })
+                        .collect();
+                let game: &Game<'_> = game;
+                let ask = |kind: &str| {
+                    let (_, id) = ids.iter().find(|(k, _)| *k == kind).unwrap();
+                    let mob = mod_api::MobRef::new(mod_api::EntityRef::new(game.lend_epoch(), *id));
+                    game.spawn_cluster_size(mob, kind, 4)
                 };
-                let ask = |id: &str| game.spawn_cluster_size(&mut mob(id), 4);
-                assert_eq!(ask("minecraft:zombie"), Some(8));
-                assert_eq!(ask("minecraft:skeleton"), None);
-                assert_eq!(ask("minecraft:cow"), None);
-                // Unsubscribed entity types must not lend the mob or expire an open standalone lend.
-                let mut cow = mob("minecraft:cow");
-                let mut skeleton = mob("minecraft:skeleton");
-                let host: &Game<'_> = game;
-                host.lend_unspawned("minecraft:pig", [0.0; 3], None, |outer, _| {
-                    assert_eq!(host.spawn_cluster_size(&mut cow, 4), None);
-                    assert_eq!(host.spawn_cluster_size(&mut skeleton, 4), None);
-                    assert_eq!(
-                        outer.kind(host).unwrap().to_string(),
-                        "minecraft:pig",
-                        "unsubscribed types must not lend or expire an outer unspawned lend"
-                    );
-                });
+                assert_eq!(ask("minecraft:zombie"), 9);
+                assert_eq!(ask("minecraft:skeleton"), 4);
+                assert_eq!(ask("minecraft:cow"), 4);
             })
         });
     }

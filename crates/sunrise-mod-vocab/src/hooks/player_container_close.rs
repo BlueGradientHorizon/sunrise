@@ -7,8 +7,9 @@ pub trait Hooks {
     /// transfer, before `containerMenu` resets to the player's inventory menu):
     /// they closed it, walked out of reach, died, changed level, or another menu
     /// opened. On disconnect, `PlayerList.remove` posts `player_logged_out`
-    /// before `Player.remove` closes the menu. Once for each open; not told
-    /// when the server stops. `menu`
+    /// before `Player.remove` closes the menu. Once for each open; also told
+    /// when the server stops, as each remaining player's menu closes before the player is saved,
+    /// and a menu a listener opens during that close or save is not published. `menu`
     /// is the closing menu handle, still valid during this call with the same
     /// support boundary as `player_container_open` (`None` for crafting tables,
     /// merchants, workstations, lecterns and mount inventories), and stale once

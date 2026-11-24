@@ -4,17 +4,23 @@ pub trait Hooks {
     /// Shears `entity` (NeoForge's `IShearable.onSheared`): called on the part whose
     /// [`EntityPart::is_shearable`] said `Some(true)`, once the shear hooks let it through.
     /// Change the entity and play its sound here, and append drops to `event.drops`: the game
-    /// spawns each as `spawnShearedDrop` does (one block above the entity's feet, with a small
-    /// random push), posts the shear game event and damages the shears. `shears` is a read-only
+    /// spawns each as `IShearable.spawnShearedDrop` does (a snow golem's at its eye height, a
+    /// bogged's and a mooshroom's at the top of its box, a mooshroom's with no pickup delay, any
+    /// other one block above its feet with a small random push drawn only once the item joined), posts the shear game event and damages the shears. `shears` is a read-only
     /// view over the resident stack; call `shears.project()` only when components or an owned
-    /// snapshot are needed. Server-side.
+    /// snapshot are needed. Both sides run it
+    /// (`ShearsItem.interactLivingEntity` calls `onSheared` on both): a client predicting the click
+    /// changes its copy of the entity and plays its sound, and the `drops` it fills are discarded
+    /// there, since only the server spawns drops, damages the shears and shears for a dispenser
+    /// (`host` says which side runs).
     #[hook(
         target = "sunrise_client::game::native_hooks::on_sheared::Game<'_>::native_on_sheared",
         receiver = "write",
         dispatch = "direct",
-        side = "server",
+        side = "both",
         contract = "collect",
         out = "drops",
+        version = 2,
         scope = "entity",
         key = "entity",
         neoforge = "IShearable.onSheared"

@@ -215,7 +215,6 @@ sunrise-client game::client_reload::tests::initial_load_stages_and_applies_clien
 sunrise-client game::client_reload::tests::only_the_first_local_client_is_the_client_start lib daily resources
 sunrise-client game::client_reload::tests::refused_client_context_keeps_pack_and_listeners lib daily resources
 sunrise-client game::client_reload::tests::the_lifecycle_moments_fire_once_each_in_order lib daily resources
-sunrise-client game::client_reload::texture_atlases::tests::a_mod_atlas_sprite_is_stitched_into_the_gui_atlas_until_a_reload_drops_it lib daily resources
 sunrise-client game::clipboard::tests::a_mod_reaches_the_clipboard_only_while_input_is_handled lib daily resources
 sunrise-client game::clone_block_ticks_tests::a_strict_clone_copies_the_pending_block_ticks_of_its_source lib daily resources
 sunrise-client game::clone_block_ticks_tests::copied_block_ticks_keep_order_priority_and_dedup lib daily resources
@@ -980,6 +979,8 @@ sunrise-client game::melee::hit_tests::a_creative_player_hurts_an_invulnerable_m
 sunrise-client game::melee::hit_tests::a_hit_that_deals_no_damage_has_no_knockback_anger_or_exhaustion lib daily resources
 sunrise-client game::melee::hit_tests::the_melee_knockback_scales_with_the_attackers_attack_knockback lib daily resources
 sunrise-client game::memory::tests::a_servers_report_names_its_entities_and_players_and_leaves_the_rest_unattributed lib daily resources
+sunrise-client game::mending_pick_tests::a_negative_orb_with_no_piece_to_mend_is_handed_back_unchanged lib daily resources
+sunrise-client game::mending_pick_tests::a_zero_or_negative_orb_spends_itself_on_a_picked_piece_and_repairs_nothing lib daily resources
 sunrise-client game::mending_pick_tests::mending_pick_data_pack_effect lib daily resources
 sunrise-client game::mending_pick_tests::mending_pick_head_effect_excludes_chestplate lib daily resources
 sunrise-client game::mending_pick_tests::mending_pick_redefined_mending_without_effect lib daily resources
@@ -1085,7 +1086,6 @@ sunrise-client game::native_block_entity_refs::tests::retained_handles_reject_re
 sunrise-client game::native_block_entity_refs::tests::viewers_follow_open_menus_per_level_and_leave_out_fake_players lib daily resources
 sunrise-client game::native_block_entity_refs::tests::writes_merge_data_name_and_roll_back_with_a_transaction lib daily resources
 sunrise-client game::native_block_entity_transform_tests::structure_transform_survives_real_datapack_reload_with_its_registry lib daily resources
-sunrise-client game::native_block_sounds::tests::a_block_part_answers_the_sound_type_a_block_plays lib daily resources
 sunrise-client game::native_block_sprites::block_tint_color_tests::a_tinted_face_takes_its_colour_where_it_stands lib daily resources
 sunrise-client game::native_block_sprites::texture_atlas_stitched_tests::a_client_mod_finds_its_sprites_each_time_an_atlas_is_stitched lib daily resources
 sunrise-client game::native_block_states::crafting_remainder_tests::crafting_remainder_part_override_and_default lib daily resources
@@ -1433,7 +1433,6 @@ sunrise-client game::native_hooks::block_landing::landing_crossing_tests::landin
 sunrise-client game::native_hooks::book_screen::lifecycle_tests::authoritative_custom_book_rebuilds_cached_geometry_without_observe_screen lib daily resources
 sunrise-client game::native_hooks::book_screen::lifecycle_tests::entering_inventory_requests_catalogue_for_preinstalled_bound_screen lib daily resources
 sunrise-client game::native_hooks::camera_type::camera_type_tests::a_client_mod_picks_the_camera_type_f5_cycles_to lib daily resources
-sunrise-client game::native_hooks::camera_type::camera_type_tests::shared_camera_pose_requests_apply_before_frame_consumers lib daily resources
 sunrise-client game::native_hooks::can_be_connected_to_tests::the_block_beside_a_fence_answers_whether_it_connects lib daily resources
 sunrise-client game::native_hooks::client_chunk_hooks_tests::a_client_tells_a_chunk_packet_and_its_forget_once lib daily resources
 sunrise-client game::native_hooks::client_chunk_hooks_tests::every_route_that_frees_a_column_tells_its_unload lib daily resources
@@ -1955,7 +1954,7 @@ sunrise-client game::native_worldgen::tests::fresh_game_lifetimes_keep_worker_an
 sunrise-client game::natural_spawning::tests::alive_player_near_tests_guests_where_they_stand lib daily resources
 sunrise-client game::natural_spawning::tests::authoritative_world_border_gates_positions_and_whole_chunks lib daily resources
 sunrise-client game::natural_spawning::tests::end_spawning_reads_the_level_range_not_the_widened_column lib daily resources
-sunrise-client game::natural_spawning::tests::entity_parts_answer_the_spawn_cluster_size lib daily resources
+sunrise-client game::natural_spawning::tests::entity_parts_compose_on_the_spawn_cluster_size lib daily resources
 sunrise-client game::natural_spawning::tests::finalize_spawn_cancels_pin_the_draws_and_the_outcome lib daily resources
 sunrise-client game::natural_spawning::tests::finalize_spawn_is_told_only_where_vanilla_finalizes lib daily resources
 sunrise-client game::natural_spawning::tests::jockeys_finalize_with_the_parents_reason lib daily resources
@@ -2019,7 +2018,7 @@ sunrise-client game::pad::parity_tests::the_mouse_letting_go_leaves_what_the_pad
 sunrise-client game::pad::parity_tests::the_pads_attack_and_use_reach_the_vanilla_key_mappings lib daily resources
 sunrise-client game::pandas::nested_spawn_tests::lifted_mob_callback_keeps_nested_spawns_until_the_next_pass lib daily resources
 sunrise-client game::pandas::pickup_tests::a_panda_that_takes_a_thrown_item_credits_the_thrower lib daily resources
-sunrise-client game::part_shearing::tests::entity_parts_decide_and_perform_a_dispensers_shearing lib daily resources
+sunrise-client game::part_shearing::tests::entity_parts_decide_and_perform_a_dispensers_shearing lib daily child-process
 sunrise-client game::passengers::content_seat_tests::content_seats_keep_independent_offsets lib daily resources
 sunrise-client game::passengers::nested_vehicle_discard_tests::canceled_dismount_keeps_callback_reposition_for_later_removed_vehicle_dismount lib daily resources
 sunrise-client game::passengers::nested_vehicle_discard_tests::destroyed_vehicle_is_already_invisible_inside_dismount_callback lib daily resources

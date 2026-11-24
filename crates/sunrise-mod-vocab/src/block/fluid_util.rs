@@ -252,6 +252,16 @@ pub fn try_place_fluid(
     None
 }
 
+/// Why [`dispense_container`]'s source-level transaction did not commit its transfer.
+enum Refused {
+    /// The container neither picked up nor placed any fluid.
+    NothingMoved,
+    /// The scratch loan could not open or its stack failed write validation.
+    NotRun,
+    /// The remainder could not be routed, or a commit was refused.
+    Remainder,
+}
+
 /// NeoForge's `DispenseFluidContainer`: a dispenser's answer for a fluid container, which a
 /// container's [`dispense_item`](crate::ItemPart::dispense_item) part returns (it is no default:
 /// vanilla's buckets keep their own behaviours). `event.stack` runs in a lent two-slot copy whose
@@ -265,8 +275,10 @@ pub fn try_place_fluid(
 /// sounds, and game events (including a pickup through `FLUIDS`), as well as the waterlogging
 /// tick and any ticks scheduled by a `place_liquid` Part through its
 /// [`LevelWriteHost`](crate::LevelWriteHost).
-/// Without a transaction in the dispenser's level, those effects publish before the helper
-/// inserts or prepares an overflow remainder, and before the dispenser's click and smoke.
+/// Those effects publish once, at the outermost commit, after the slot result and any
+/// overflow remainder are routed, and before the dispenser's click and smoke. A refused
+/// remainder or commit rolls the transfer back and leaves the dispenser's stack as it was,
+/// without a default dispense.
 /// A single container is replaced in place (the first slot, else
 /// the second when the first was emptied); when both slots remain populated, the first slot
 /// stays in the dispenser slot and the second slot's remainder goes into the original dispenser,
@@ -276,7 +288,7 @@ pub fn try_place_fluid(
 /// ([`LevelRef::dispense_default`]). The detached
 /// remainder retains its count until the active slot is written. Return None unchanged (no
 /// override) where the dispenser's level isn't open, transactions are unavailable, or stack
-/// validation fails; do not call `dispense_default` again.
+/// validation fails before anything runs; do not call `dispense_default` again.
 pub fn dispense_container(
     host: &mut dyn ServerHost,
     event: &DispenseItemEvent<'_>,
@@ -286,30 +298,49 @@ pub fn dispense_container(
     let [dx, dy, dz] = event.facing.normal();
     let front = [x.wrapping_add(dx), y.wrapping_add(dy), z.wrapping_add(dz)];
     let side = Some(event.facing.opposite());
-    // The loan owns the transfer scope. Closing it publishes the transfer before we
-    // route or prepare overflow, unless the caller's source-level scope still owns both.
-    let moved = host.scratch_slots(event.stack.clone(), |host, _tx, copy| {
-        // The container's handler sees one container at a time, whatever the stack.
-        let one = ItemPlace::OneByOne(Box::new(copy.clone()));
-        let item = one.capability(host, &ITEM_FLUIDS).ok_or(())?;
-        let transferred = try_pickup_fluid(host, &item, None, level, front, side).is_some()
-            || try_place_fluid(host, &item, None, level, front, false).is_some();
-        transferred.then_some(()).ok_or(())
-    });
-    let left = match moved {
-        Ok(((), (first, None))) => first,
-        Ok(((), (None, Some(changed)))) => Some(changed),
-        Ok(((), (Some(first), Some(changed)))) => {
-            backend_mut_of(host)?
-                .dispense_add_remainder(event.dimension, event.pos, event.facing, changed)
-                .ok()?;
-            Some(first)
+    // One source-level transaction owns the transfer, the slot result and the remainder's
+    // routing: a refusal anywhere rolls all three back, and nothing publishes before the last.
+    let routed = host.transaction(|host, _tx| {
+        let moved = host.scratch_slots(event.stack.clone(), |host, _tx, copy| {
+            // The container's handler sees one container at a time, whatever the stack.
+            let one = ItemPlace::OneByOne(Box::new(copy.clone()));
+            let item = one.capability(host, &ITEM_FLUIDS).ok_or(())?;
+            let transferred = try_pickup_fluid(host, &item, None, level, front, side).is_some()
+                || try_place_fluid(host, &item, None, level, front, false).is_some();
+            transferred.then_some(()).ok_or(())
+        });
+        match moved {
+            Ok(((), (first, None))) => Ok(first),
+            Ok(((), (None, Some(changed)))) => Ok(Some(changed)),
+            Ok(((), (Some(first), Some(changed)))) => {
+                backend_mut_of(host)
+                    .ok_or(Refused::Remainder)?
+                    .dispense_add_remainder(event.dimension, event.pos, event.facing, changed)
+                    .map_err(|_| Refused::Remainder)?;
+                Ok(Some(first))
+            }
+            Err(ScratchError::Aborted(())) => Err(Refused::NothingMoved),
+            Err(ScratchError::Unavailable | ScratchError::Stack(_)) => Err(Refused::NotRun),
+            Err(ScratchError::CommitRefused) => Err(Refused::Remainder),
         }
-        Err(ScratchError::Aborted(())) => level
+    });
+    let left = match routed {
+        Ok(left) => left,
+        // Where neither moves anything, one container is dispensed as it is.
+        Err(TransactionError::Aborted(Refused::NothingMoved)) => level
             .dispense_default(host, event.pos, event.facing, event.stack.clone())
             .ok()?,
-        Err(ScratchError::Unavailable | ScratchError::CommitRefused | ScratchError::Stack(_)) => {
-            return None;
+        // Nothing ran, so there is no override to report.
+        Err(
+            TransactionError::Aborted(Refused::NotRun)
+            | TransactionError::Unavailable
+            | TransactionError::InvalidContext,
+        ) => return None,
+        // A refused remainder or commit rolled the transfer back: the dispenser keeps its
+        // stack, and the default behaviour does not run (NeoForge `DispenseFluidContainer.execute`
+        // falls back to it only when no fluid transferred).
+        Err(TransactionError::Aborted(Refused::Remainder) | TransactionError::CommitRefused) => {
+            Some(event.stack.clone())
         }
     };
     Some((left, 1000))

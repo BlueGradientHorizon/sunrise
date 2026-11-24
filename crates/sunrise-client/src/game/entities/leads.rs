@@ -242,8 +242,7 @@ impl Game<'_> {
         }
     }
     pub(super) fn lead_sound(&mut self, sound: &str, at: [f64; 3]) {
-        self.audio
-            .play(&format!("minecraft:item.lead.{sound}"), Some(at), 1.0, 1.0);
+        self.play_audio(&format!("minecraft:item.lead.{sound}"), Some(at), 1.0, 1.0);
     }
     /// `Leashable.canHaveALeashAttachedTo` for the mob at `index` and a
     /// holder whose box centre is `center`: within the species' snapping
@@ -684,8 +683,7 @@ impl Game<'_> {
             self.drop_boat_leashes(&boats);
             if dropped {
                 self.lead_game_event("minecraft:shear", at);
-                self.audio
-                    .play("minecraft:item.shears.snip", Some(at), 1.0, 1.0);
+                self.play_audio("minecraft:item.shears.snip", Some(at), 1.0, 1.0);
                 self.damage_held_tool();
                 return Some(LeashInteraction::WithItem);
             }
@@ -769,8 +767,7 @@ impl Game<'_> {
                 self.break_leash_used(id, true);
             }
             self.drop_boat_leashes(&existing_boats);
-            self.audio
-                .play("minecraft:item.shears.snip", Some(at), 1.0, 1.0);
+            self.play_audio("minecraft:item.shears.snip", Some(at), 1.0, 1.0);
             self.damage_held_tool();
             return true;
         }

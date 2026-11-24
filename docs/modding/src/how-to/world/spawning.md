@@ -361,12 +361,15 @@ See [the `finalize_spawn` contract](https://github.com/sunrise-org/sunrise/blob/
 
 ## Changing how large a spawn group grows
 
-A natural spawn adds mobs of one type to a group until it reaches the type's limit
-(`Mob.getMaxSpawnClusterSize`). `EntityPart::spawn_cluster_size` runs only at that check in
-`NaturalSpawner.spawnCategoryForPosition`, like NeoForge's `SpawnClusterSizeEvent`. The part gets the
-read-only host and the event's two fields: the finalized mob (`event.mob`) and the vanilla limit
-(`event.vanilla`). Return `Some(limit)` to replace it, or `None` to leave it to the next part and then
-to vanilla. The first part to answer wins.
+A natural spawn adds mobs of one type to a group until its count reaches the type's limit
+(`Mob.getMaxSpawnClusterSize`). `EntityPart::spawn_cluster_size` runs at that comparison in
+`NaturalSpawner.spawnCategoryForPosition`, like NeoForge's `SpawnClusterSizeEvent`: after the mob was
+finalized, added to the level with its passengers and counted by the spawn state. The part gets the read-only host and the
+event: the mob (`event.mob`), the vanilla limit (`event.vanilla`, an `i32`) and one signed
+`event.size: i32` that starts at the vanilla limit. Every part of the type edits it in dispatch
+order and sees what the parts before it left, so two parts compose (one doubles, the next adds one). The
+group stops growing once its count reaches the final size, so a size of 0 or less ends it with the mob just
+spawned.
 
 ```rust,ignore
 struct ZombiePacks;
@@ -376,13 +379,13 @@ impl mod_api::EntityPart for ZombiePacks {
         &self,
         _: &dyn mod_api::Host,
         event: &mut mod_api::SpawnClusterSizeEvent,
-    ) -> Option<u32> {
-        Some(event.vanilla * 2)
+    ) {
+        event.size = event.vanilla * 2;
     }
 }
 ```
 
-Only natural spawning's packs ask it: vanilla has no group limit anywhere else. A type with no part keeps vanilla's limit and costs nothing. The mob is the same `UnspawnedMobRef` as `finalize_spawn`'s, finalized and not in a level, and the call runs on replayed ticks like `finalize_spawn`, so an answer must be a pure function of its inputs. Attach the part with `r.entity_part("minecraft:zombie", ZombiePacks)` as [entity parts](../../concepts/parts/entity-parts-and-mob-goals.md) describe.
+Only natural spawning's packs ask it: vanilla has no group limit anywhere else. A type with no part keeps vanilla's limit and costs nothing. The mob (`event.mob`) is a `MobRef` to a mob already in the level, so it reads and changes like any resident mob, and the call runs on replayed ticks like `finalize_spawn`, so an answer must be a pure function of its inputs. Attach the part with `r.entity_part("minecraft:zombie", ZombiePacks)` as [entity parts](../../concepts/parts/entity-parts-and-mob-goals.md) describe.
 
 ## Keeping or removing a mob
 
@@ -402,7 +405,7 @@ The wither and the ender dragon override `checkDespawn` in vanilla, so the event
 
 ## Adding or removing a custom spawner
 
-The level's custom spawners (for the Overworld: wandering trader, patrols, cats, village sieges, and phantoms; other dimensions start empty as in vanilla `MinecraftServer#createLevels`) are a list a mod edits once per server level when it opens, in `modify_custom_spawners`. Remove a built-in with `remove(SpawnerKind::...)`, or append an owned `CustomSpawner` (a struct implementing `CustomSpawner` or a `FnMut(&mut dyn ServerHost, LevelRef, bool) + Send + 'static` closure) with `add`. The level owns each registered spawner for its lifetime, ticks every entry in one ordered walk (including `Phantom` before mod-appended spawners) once per eligible server tick (outside debug worlds, with `spawn_mobs` enabled) inside a server transaction, and drops it when the level unloads or the world closes.
+The level's custom spawners (for the Overworld: wandering trader, patrols, cats, village sieges, and phantoms; other dimensions start empty as in vanilla `MinecraftServer#createLevels`) are a list a mod edits once per server level when it opens, in `modify_custom_spawners`. The listener gets the level (`event.level`) and an editor over the ordered list (`event.spawners`): read every entry, built-in or a mod's, with `entries`, `get` and `position`; take one out with `remove(SpawnerKind::...)` or `remove_at`; put an owned `CustomSpawner` (a struct implementing `CustomSpawner` or a `FnMut(&mut dyn ServerHost, LevelRef, bool) + Send + 'static` closure) at any place with `insert` (0 is before the built-ins) or at the end with `add`; reorder with `move_entry`. Edits are staged and applied after every listener ran, and a listener that panics has its edits undone, so another mod's instance it removed is still in the level. The level owns each registered spawner for its lifetime, ticks every entry in one ordered walk (including `Phantom` before mod-appended spawners) once per eligible server tick (outside debug worlds, with `spawn_mobs` enabled) inside a server transaction, and drops it when the level unloads or the world closes.
 
 The callback's `spawn_enemies` is the chunk source's stored setting. The server samples `spawn_mobs && spawn_monsters` at startup, on difficulty updates, and when `spawn_monsters` is set (`MinecraftServer#updateMobSpawningFlags`). Changing only `spawn_mobs` changes whether the pass runs, not the stored setting. Peaceful is not a separate filter on that setting.
 

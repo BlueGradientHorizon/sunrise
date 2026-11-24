@@ -5,16 +5,25 @@ impl ItemEntity {
         &mut self,
         mut world: &World,
         facts: &BlockFacts,
+        items: &Items,
         registry: &sunrise_world::registry::BlockRegistry,
         can_be_hurt_by: &dyn Fn(&ItemStack, &str) -> bool,
     ) -> ItemEnvironmentTick {
-        self.environment_tick_inner(&mut world, facts, registry, can_be_hurt_by, |_, _| false)
+        self.environment_tick_inner(
+            &mut world,
+            facts,
+            items,
+            registry,
+            can_be_hurt_by,
+            |_, _| false,
+        )
     }
     /// As `environment_tick`, allowing the caller to decide each actual damage attempt.
     pub fn environment_tick_with_hook(
         &mut self,
         mut world: &mut World,
         facts: &BlockFacts,
+        items: &Items,
         registry: &sunrise_world::registry::BlockRegistry,
         can_be_hurt_by: &dyn Fn(&ItemStack, &str) -> bool,
         mut invulnerable: impl FnMut(&mut World, &str) -> bool,
@@ -22,6 +31,7 @@ impl ItemEntity {
         self.environment_tick_inner(
             &mut world,
             facts,
+            items,
             registry,
             can_be_hurt_by,
             |world, damage| invulnerable(world, damage),
@@ -31,6 +41,7 @@ impl ItemEntity {
         &mut self,
         world: &mut W,
         facts: &BlockFacts,
+        items: &Items,
         registry: &sunrise_world::registry::BlockRegistry,
         can_be_hurt_by: &dyn Fn(&ItemStack, &str) -> bool,
         mut invulnerable: impl FnMut(&mut W, &str) -> bool,
@@ -52,7 +63,7 @@ impl ItemEntity {
                 && can_be_hurt_by(&self.stack, "minecraft:on_fire")
                 && !invulnerable(world, "minecraft:on_fire")
             {
-                spilled.extend(self.hurt(1).unwrap_or_default());
+                spilled.extend(self.hurt(items, 1).unwrap_or_default());
             }
             self.fire_ticks -= 1;
         }
@@ -74,7 +85,7 @@ impl ItemEntity {
                 if can_be_hurt_by(&self.stack, "minecraft:lava")
                     && !invulnerable(world, "minecraft:lava")
                 {
-                    spilled.extend(self.hurt(4).unwrap_or_default());
+                    spilled.extend(self.hurt(items, 4).unwrap_or_default());
                     lava_hurt = true;
                 }
             }
@@ -85,7 +96,7 @@ impl ItemEntity {
             if can_be_hurt_by(&self.stack, "minecraft:in_fire")
                 && !invulnerable(world, "minecraft:in_fire")
             {
-                spilled.extend(self.hurt(fire_damage as i32).unwrap_or_default());
+                spilled.extend(self.hurt(items, fire_damage as i32).unwrap_or_default());
             }
         }
         // CactusBlock.entityInside: `entity.hurt(cactus, 1.0)`. An item has no
@@ -96,7 +107,7 @@ impl ItemEntity {
             && can_be_hurt_by(&self.stack, "minecraft:cactus")
             && !invulnerable(world, "minecraft:cactus")
         {
-            spilled.extend(self.hurt(1).unwrap_or_default());
+            spilled.extend(self.hurt(items, 1).unwrap_or_default());
         }
         ItemEnvironmentTick {
             alive: self.health > 0,

@@ -386,14 +386,14 @@ impl Game<'_> {
                 // A client's bolt draws the pitches from its own random. Here one
                 // bolt stands for both copies, and both randoms are unseeded.
                 let pitch = 0.8 + b.random.next_float() * 0.2;
-                self.audio.play(
+                self.play_audio(
                     "minecraft:entity.lightning_bolt.thunder",
                     Some(b.at),
                     10000.0,
                     pitch,
                 );
                 let pitch = 0.5 + b.random.next_float() * 0.2;
-                self.audio.play(
+                self.play_audio(
                     "minecraft:entity.lightning_bolt.impact",
                     Some(b.at),
                     2.0,
@@ -641,8 +641,7 @@ impl Game<'_> {
                     if !b.converted.contains(&m.id) {
                         b.converted.push(m.id);
                         m.extra.variant = 1 - m.extra.variant.min(1);
-                        self.audio
-                            .play("minecraft:entity.mooshroom.convert", Some(at), 2.0, 1.0);
+                        self.play_audio("minecraft:entity.mooshroom.convert", Some(at), 2.0, 1.0);
                     }
                     continue;
                 }

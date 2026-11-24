@@ -412,8 +412,7 @@ pub fn compatibility_for(meta: &serde_json::Value, current: Format) -> crate::pa
 /// Whether an `overlays.entries[]` item applies to the current format
 /// (OverlayMetadataSection: `formats` as an int, `[min, max]` or
 /// `{min_inclusive, max_inclusive}`, or `min_format`/`max_format`).
-fn overlay_applies(entry: &serde_json::Value) -> bool {
-    let current = RESOURCE_FORMAT;
+fn overlay_applies(entry: &serde_json::Value, current: Format) -> bool {
     if let (Some(min), Some(max)) = (
         format_of(&entry["min_format"]),
         format_of(&entry["max_format"]),
@@ -442,11 +441,25 @@ fn overlay_applies(entry: &serde_json::Value) -> bool {
     }
 }
 fn overlays_of(meta: &serde_json::Value, configs: &sunrise_polytone::pack::Configs) -> Vec<String> {
+    overlay_directories(meta, |e| {
+        sunrise_polytone::pack::overlay_active(e, configs, overlay_applies(e, RESOURCE_FORMAT))
+    })
+}
+/// The overlay directories of a data pack's metadata that apply to the data pack format.
+pub(crate) fn data_overlays(meta: &serde_json::Value) -> Vec<String> {
+    overlay_directories(meta, |e| {
+        overlay_applies(e, sunrise_core::version::DATA_PACK_FORMAT)
+    })
+}
+fn overlay_directories(
+    meta: &serde_json::Value,
+    active: impl Fn(&serde_json::Value) -> bool,
+) -> Vec<String> {
     meta["overlays"]["entries"]
         .as_array()
         .into_iter()
         .flatten()
-        .filter(|e| sunrise_polytone::pack::overlay_active(e, configs, overlay_applies(e)))
+        .filter(|e| active(e))
         .filter_map(|e| e["directory"].as_str().map(str::to_owned))
         // OverlayMetadataSection's DIR_VALIDATOR: one folder of the pack, `[-_a-zA-Z0-9.]+`.
         .filter(|d| {

@@ -1,6 +1,6 @@
-pub use world::custom_spawners::{CustomSpawner, CustomSpawners, SpawnerKind};
+pub use world::custom_spawners::{CustomSpawner, CustomSpawnersEditor, SpawnerEntry, SpawnerKind};
 mod __private {
     pub use crate::world::custom_spawners::{
-        CustomSpawnerStep, CustomSpawnersCheckpoint, RegisteredCustomSpawner,
+        CustomSpawnerStep, CustomSpawners, CustomSpawnersCheckpoint, RegisteredCustomSpawner,
     };
 }

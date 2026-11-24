@@ -198,8 +198,8 @@ struct NoTerrain;
 impl ChunkGenerator for NoTerrain {
     type Worker = ();
     fn worker(&self) {}
-    fn proto(&self, _: &mut (), _: i32, _: i32) -> Proto {
-        Box::new(())
+    fn proto(&self, _: &mut (), _: i32, _: i32) -> std::result::Result<Proto, String> {
+        Ok(Box::new(()))
     }
     fn finish(&self, _: Proto) -> Chunk {
         Chunk::empty(0, 0)
@@ -1833,7 +1833,7 @@ impl Game<'_> {
         let r = self.remote.as_ref()?;
         r.level_player_name(id as i32, &r.player_uuid(id)?)
     }
-    pub(super) fn remote_player_uuid(&self, id: u32) -> Option<u128> {
+    pub(in crate::game) fn remote_player_uuid(&self, id: u32) -> Option<u128> {
         let remote = self.remote.as_ref()?;
         if self.player_model.as_ref().is_some_and(|m| m.id == id) {
             Some(remote.profile)
@@ -2582,17 +2582,12 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn named_remote_players_are_told_one_by_one() {
-        use mod_api::{
-            EntityTickPostEvent, EntityTickPreEvent, Hooks, HostSide, ModEntry, Mods, Registrar,
-        };
+        use mod_api::{EntityTickPostEvent, EntityTickPreEvent, Hooks, HostSide, ModEntry, Mods};
         use std::sync::{Arc, Mutex};
         type Calls = Arc<Mutex<Vec<(bool, Vec<u32>)>>>;
         struct Named(Calls);
         #[mod_api::__subscriptions]
         impl Hooks for Named {
-            fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
-                r.entity_tick_each("minecraft:player");
-            }
             fn entity_tick_pre(&self, _: HostSide<'_>, event: &mut EntityTickPreEvent<'_>) {
                 self.0.lock().unwrap().push((true, event.entities.to_vec()));
             }
@@ -2616,10 +2611,6 @@ pub(in crate::game) mod tests {
                 game.connect_local(client, "avatar-tick-client").unwrap();
                 let remote = game.remote.as_mut().unwrap();
                 let kind = remote.player_type.as_ref().unwrap().clone();
-                assert!(
-                    !kind.flags.tick_alone,
-                    "render model does not select tick routing"
-                );
                 for id in [66, 67] {
                     remote.level_players.insert(id, id as u128);
                     game.mobs.push(sunrise_client::mobs::Mob::new(

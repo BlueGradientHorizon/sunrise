@@ -23,7 +23,7 @@ pub trait Hooks {
         side = "server",
         contract = "collect",
         out = "blocks",
-        version = 2,
+        version = 3,
         neoforge = "ExplosionEvent.Detonate"
     )]
     fn explosion_detonate(

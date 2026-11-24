@@ -307,7 +307,19 @@ impl Game<'_> {
                 }
             };
             if removed {
-                self.record_item_pickup(&slot, &kind, before, &captured, thrower);
+                // The count the inventory took, from the captured original and what Post left
+                // of it, before asking whether the entity is still alive (`ItemEntity.playerTouch`).
+                let left = told.as_ref().filter(|s| s.count > 0);
+                let taken = before.saturating_sub(left.map_or(0, |s| s.count));
+                if taken > 0 {
+                    self.record_item_pickup(
+                        &slot,
+                        &kind,
+                        taken,
+                        left.unwrap_or(&captured),
+                        thrower,
+                    );
+                }
                 if let PickupSlot::Lifted { index, .. } = &mut slot
                     && present
                 {
@@ -345,12 +357,18 @@ impl Game<'_> {
                     self.native_take_item(item, feet);
                 }
                 PickupSlot::Resident { taken, .. } => {
-                    if let Some(at) = self.dropped.iter().position(|d| d.id == id)
-                        && !keeps_replacement(&self.dropped[at])
-                    {
-                        self.remove_dropped(at);
+                    // The take packet shrinks the entity's stack by its amount and removes it
+                    // only when empty (`handleTakeItemEntity`): a replacement Pre installed
+                    // survives it, so it is told as an animation of nothing taken from it.
+                    let mut amount = before;
+                    if let Some(at) = self.dropped.iter().position(|d| d.id == id) {
+                        if keeps_replacement(&self.dropped[at]) {
+                            amount = 0;
+                        } else {
+                            self.remove_dropped(at);
+                        }
                     }
-                    taken.push((id, before));
+                    taken.push((id, amount));
                 }
             }
             return;
@@ -419,8 +437,7 @@ impl Game<'_> {
         // `ClientPacketListener.random`, the listener's own stream, never the level's.
         let mut random = sunrise_client::random_source::create();
         let pitch = ((random.next_float() - random.next_float()) * 0.7 + 1.0) * 2.0;
-        self.audio
-            .play("minecraft:entity.item.pickup", Some(feet), 0.2, pitch);
+        self.play_audio("minecraft:entity.item.pickup", Some(feet), 0.2, pitch);
     }
 
     /// Runs `notice` with the lifted `items[index]` lent back into `self.dropped`

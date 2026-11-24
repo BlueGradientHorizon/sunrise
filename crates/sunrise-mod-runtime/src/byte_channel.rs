@@ -114,7 +114,12 @@ struct State<T> {
     revocable_pending_bytes: usize,
     pending_epoch: u64,
     held_bytes: usize,
-    queue: LinkedList<(T, usize)>,
+    /// Each value with its charge and whether it was sent past the unpublished revocable
+    /// reservations (`try_send_excluding_revocable`).
+    queue: LinkedList<(T, usize, bool)>,
+    /// The charge of the queued values sent that way: their own class of credit, refunded at
+    /// dequeue, so publishing revocable permits later cannot make the next one look full.
+    bypass_bytes: usize,
     stats: Stats,
     senders: usize,
     receiver_alive: bool,
@@ -170,6 +175,7 @@ pub fn channel<T>(capacity: usize) -> Result<(Sender<T>, Receiver<T>), InvalidCa
             pending_epoch: 0,
             held_bytes: 0,
             queue: LinkedList::new(),
+            bypass_bytes: 0,
             stats: Stats {
                 reserved_bytes: 0,
                 peak_reserved_bytes: 0,
@@ -237,7 +243,7 @@ impl<T> Sender<T> {
         // reserve before close and publish its record after close.
         state.stats.reserved_bytes = reserved;
         state.stats.peak_reserved_bytes = state.stats.peak_reserved_bytes.max(reserved);
-        state.queue.push_back((value, charge));
+        state.queue.push_back((value, charge, false));
         state.stats.queued_items += 1;
         self.0.ready.notify_one();
         if oversized {
@@ -304,9 +310,10 @@ impl<T> Sender<T> {
         state.stats.reserved_bytes -= revoked;
         self.0.refunded(&state);
     }
-    /// Enqueue against published, held, and non-revocable credit only, ignoring
+    /// Enqueue against the capacity of its own class (replies sent this way), ignoring
     /// unpublished revocable reservations so excluded replies still drain while
-    /// revocable permits are held. Real published backlog stays bounded by capacity.
+    /// revocable permits are held, and ignoring ordinary credit published later. Each class
+    /// stays bounded by capacity until its values dequeue.
     pub fn try_send_excluding_revocable(
         &self,
         value: T,
@@ -319,14 +326,15 @@ impl<T> Sender<T> {
         let Some(charge) = owned_bytes.checked_add(message_overhead::<T>()) else {
             return Err(TrySendError::Full(value));
         };
-        let active_bytes = state.stats.reserved_bytes - state.revocable_pending_bytes;
-        if charge > self.0.capacity.saturating_sub(active_bytes) {
+        // Its own class of credit: the queued replies sent this way, whatever published since.
+        if charge > self.0.capacity.saturating_sub(state.bypass_bytes) {
             return Err(TrySendError::Full(value));
         }
         let Some(next_reserved) = state.stats.reserved_bytes.checked_add(charge) else {
             return Err(TrySendError::Full(value));
         };
-        state.queue.push_back((value, charge));
+        state.queue.push_back((value, charge, true));
+        state.bypass_bytes += charge;
         state.stats.reserved_bytes = next_reserved;
         state.stats.peak_reserved_bytes = state
             .stats
@@ -336,6 +344,18 @@ impl<T> Sender<T> {
         drop(state);
         self.0.ready.notify_one();
         Ok(())
+    }
+    /// Whether a value of `owned_bytes` would be admitted by [`Self::reserve`] were the
+    /// unpublished revocable reservations not held: a refusal that holds alone cause.
+    pub fn fits_without_revocable(&self, owned_bytes: usize) -> bool {
+        let state = self.0.lock();
+        let Some(charge) = owned_bytes.checked_add(message_overhead::<T>()) else {
+            return false;
+        };
+        state.receiver_alive
+            && (state.stats.reserved_bytes - state.revocable_pending_bytes)
+                .checked_add(charge)
+                .is_some_and(|bytes| bytes <= self.0.capacity)
     }
     pub fn stats(&self) -> Stats {
         self.0.lock().stats
@@ -354,7 +374,7 @@ impl<T> Permit<T> {
             }
             state.revocable_pending_bytes -= self.charge;
         }
-        state.queue.push_back((value, self.charge));
+        state.queue.push_back((value, self.charge, false));
         state.pending_bytes -= self.charge;
         state.stats.queued_items += 1;
         self.charge = 0;
@@ -391,7 +411,7 @@ impl<T> Permit<T> {
             if permit.epoch.is_some() {
                 state.revocable_pending_bytes -= permit.charge;
             }
-            state.queue.push_back((value, permit.charge));
+            state.queue.push_back((value, permit.charge, false));
             state.pending_bytes -= permit.charge;
             state.stats.queued_items += 1;
             permit.charge = 0;
@@ -452,14 +472,20 @@ impl<T> Receiver<T> {
     }
 
     fn pop(&self, state: &mut State<T>) -> Option<T> {
-        let (value, charge) = state.queue.pop_front()?;
+        let (value, charge, bypass) = state.queue.pop_front()?;
+        if bypass {
+            state.bypass_bytes -= charge;
+        }
         state.stats.reserved_bytes -= charge;
         state.stats.queued_items -= 1;
         self.0.refunded(state);
         Some(value)
     }
     fn pop_owned(&self, state: &mut State<T>) -> Option<OwnedReceipt<T>> {
-        let (value, charge) = state.queue.pop_front()?;
+        let (value, charge, bypass) = state.queue.pop_front()?;
+        if bypass {
+            state.bypass_bytes -= charge;
+        }
         state.stats.queued_items -= 1;
         state.held_bytes += charge;
         Some(OwnedReceipt {
@@ -864,6 +890,48 @@ mod tests {
     }
 
     #[test]
+    fn held_pressure_is_told_from_a_backlog_of_ordinary_credit() {
+        let charge = message_overhead::<u32>() + 16;
+        let (tx, _rx) = channel::<u32>(charge * 2).unwrap();
+        let held = tx.reserve_revocable(16).unwrap();
+        let held_too = tx.reserve_revocable(16).unwrap();
+        // Full, but only the holds fill it: the ordinary send would fit without them.
+        assert!(matches!(tx.reserve(16), Err(ReserveError::Full)));
+        assert!(tx.fits_without_revocable(16));
+        drop((held, held_too));
+        let _ordinary = tx.reserve(16).unwrap();
+        let _more = tx.reserve(16).unwrap();
+        // Ordinary credit fills it: no refusal here is the holds' doing.
+        assert!(!tx.fits_without_revocable(16));
+    }
+
+    #[test]
+    fn publishing_held_permits_does_not_exhaust_the_excluding_sends_credit() {
+        let charge = message_overhead::<u32>() + 16;
+        let (tx, rx) = channel::<u32>(charge * 2).unwrap();
+        let first = tx.reserve_revocable(16).unwrap();
+        let second = tx.reserve_revocable(16).unwrap();
+        tx.try_send_excluding_revocable(1, 16).unwrap();
+        // Publishing the permits fills the ordinary credit on top of the queued reply.
+        first.publish(2).unwrap();
+        second.publish(3).unwrap();
+        // Neither class alone is exhausted, so the next reply is still admitted.
+        tx.try_send_excluding_revocable(4, 16).unwrap();
+        assert_eq!(
+            tx.try_send_excluding_revocable(5, 16),
+            Err(TrySendError::Full(5))
+        );
+        // FIFO is untouched, and dequeuing refunds each class.
+        assert_eq!(
+            [rx.recv(), rx.recv(), rx.recv(), rx.recv()],
+            [Ok(1), Ok(2), Ok(3), Ok(4)]
+        );
+        assert_eq!(tx.stats().reserved_bytes, 0);
+        tx.try_send_excluding_revocable(6, 16).unwrap();
+        tx.try_send_excluding_revocable(7, 16).unwrap();
+    }
+
+    #[test]
     fn revocable_permits_can_be_revoked_and_do_not_block_excluding_sends() {
         let charge = message_overhead::<u32>() + 16;
         let (tx, rx) = channel::<u32>(charge * 2).unwrap();
@@ -873,16 +941,18 @@ mod tests {
         assert!(matches!(tx.reserve_revocable(0), Err(ReserveError::Full)));
         assert_eq!(tx.try_send(9, 0), Err(TrySendError::Full(9)));
 
-        // Non-revocable credit takes one slot, revocable credit takes the second;
-        // excluding revocable reservations leaves room for one published reply.
+        // Replies sent this way have their own capacity, unaffected by the permits held
+        // (either kind) or published later: two fit, a third is refused.
         tx.try_send_excluding_revocable(10, 16).unwrap();
+        tx.try_send_excluding_revocable(11, 16).unwrap();
         assert_eq!(
-            tx.try_send_excluding_revocable(11, 16),
-            Err(TrySendError::Full(11))
+            tx.try_send_excluding_revocable(12, 16),
+            Err(TrySendError::Full(12))
         );
-        // Temporary overshoot from the excluded send must not underflow reserve().
+        // The overshoot must not underflow reserve().
         assert!(matches!(tx.reserve(0), Err(ReserveError::Full)));
         assert_eq!(rx.recv(), Ok(10));
+        assert_eq!(rx.recv(), Ok(11));
         assert_eq!(tx.stats().reserved_bytes, charge * 2);
 
         // Revoking refunds only revocable credit without disturbing non-revocable permits.

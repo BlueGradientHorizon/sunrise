@@ -435,7 +435,13 @@ fn villager_events(
                 child.extra.bed = Some(bed);
                 let seed = spawn_seed(index);
                 child.random.set_seed(seed);
-                sunrise_client::mobs::villager_brain::init(&mut child, w.game_time, day_time, seed);
+                sunrise_client::mobs::villager_brain::init(
+                    &mut child,
+                    w.game_time,
+                    day_time,
+                    seed,
+                    None,
+                );
                 born.push(child);
             }
             _ => i += 1,
@@ -1124,11 +1130,12 @@ pub fn main() -> sunrise_client::Result<()> {
                     world.game_time,
                     s.time,
                     spec.seed,
+                    None,
                 );
             }
             if m.species() == Species::Warden {
                 // As for villagers: the sensors delayed again, the RunOne seeded.
-                sunrise_client::mobs::warden::init_brain(&mut m, spec.seed);
+                sunrise_client::mobs::warden::init_brain(&mut m, spec.seed, None);
             }
             // The same for the sniffer's and the happy ghast's brains.
             if sunrise_client::mobs::animal_brain::kind_of(&m).is_some() {

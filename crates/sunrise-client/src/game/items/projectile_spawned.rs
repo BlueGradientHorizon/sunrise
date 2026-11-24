@@ -274,7 +274,7 @@ impl Game<'_> {
             SpawnedEffect::AllOf | SpawnedEffect::Inert => None,
         });
         if let Some((sound, at, volume, pitch)) = sound {
-            self.audio.play_on(
+            self.play_audio_on(
                 mod_api::SoundSource::Neutral as usize,
                 sound,
                 Some(at),

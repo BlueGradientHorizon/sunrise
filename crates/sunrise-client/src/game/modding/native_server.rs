@@ -123,15 +123,6 @@ fn usage_nodes(
                 let Some(argument) = custom.get(kind) else {
                     return Err(format!("`{usage}`: unknown kind `{kind}`"));
                 };
-                // A declared provider answers on the server alone: whoever types the argument asks
-                // the server, and no mod code runs in a client. A client tree has no server behind
-                // it, so it refuses the usage by name rather than run the provider locally.
-                if client && declares_provider(kind, argument) {
-                    return Err(format!(
-                        "`{usage}`: argument type `{kind}` declares a suggestion provider, which \
-                         only a server command can offer; a client command completes without one"
-                    ));
-                }
                 let declared =
                     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| argument.kind()))
                         .map_err(|_| format!("`{usage}`: argument type `{kind}` panicked"))?;
@@ -201,9 +192,9 @@ pub(super) fn command_tree(
     command_tree_for(commands, BaseTree::Merged(vanilla), custom, false, None)
 }
 
-/// Build the client's local tree and its executor slots. Server handle kinds and argument
-/// types with a server suggestion provider are unavailable to client commands. No root is
-/// left out: the chat tree takes each one's missing children (`register_command_nodes`).
+/// Build the client's local tree and its executor slots. Server handle kinds are unavailable
+/// to client commands. No root is left out: the chat tree takes each one's missing children
+/// (`register_command_nodes`).
 pub(super) fn client_command_tree(
     commands: &[mod_api::Command],
     custom: &CommandArguments,
@@ -262,23 +253,6 @@ fn base_root(
         at = child;
     }
     Ok(true)
-}
-
-/// Whether `argument` declares a suggestion provider, read once per tree. A panic is logged and
-/// counts as no provider, as `argument_type` reads it when it builds the node.
-fn declares_provider(kind: &str, argument: &Arc<dyn mod_api::CommandArgumentType>) -> bool {
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        argument.suggestion_provider()
-    })) {
-        Ok(provider) => provider.is_some(),
-        Err(_) => {
-            eprintln!(
-                "mod command argument type {kind} panicked declaring its suggestion provider; \
-                 its arguments complete by `suggest`"
-            );
-            false
-        }
-    }
 }
 
 // Executable paths (including argument names) mapped to the input registration slot.
@@ -2619,7 +2593,7 @@ impl Game<'_> {
                 argument.range,
             );
             let value = self.resolve_client_safe_argument(
-                ty.as_ref(),
+                ty,
                 argument.value,
                 |coordinates| coordinates.position(position, rotation),
                 rotation,
@@ -2737,8 +2711,16 @@ impl Game<'_> {
     /// Dispatch one event-loop wave. The next submissions retain this wave's executor
     /// ancestry but cannot run until the event loop returns again.
     pub(in crate::game) fn drain_pending_client_commands(&mut self) {
-        if self.native_client_commands.active_chain.is_some() {
+        if self.native_client_commands.active_chain.is_some()
+            || self.native_client_commands.chat_dispatching
+        {
             return;
+        }
+        for message in std::mem::take(&mut self.native_client_commands.pending_chats) {
+            if self.remote.is_none() {
+                break;
+            }
+            let _ = self.send_chat(&message);
         }
         let pending = std::mem::take(&mut self.native_client_commands.pending_commands);
         for item in pending {
@@ -2827,7 +2809,7 @@ impl Game<'_> {
                     dimension_value(&id, |dimension| self.level(dimension))?
                 }
                 other => self.resolve_client_safe_argument(
-                    ty.as_ref(),
+                    ty,
                     other,
                     |coordinates| self.resolve_coords(coordinates),
                     self.source_rotation(),
@@ -3661,7 +3643,7 @@ mod tests {
                 "{name}: the type comes from the parsed node"
             );
             positional_value(
-                ty.as_ref(),
+                ty,
                 coordinates,
                 coordinates.position(origin, rotation),
                 rotation,
@@ -3733,15 +3715,11 @@ mod tests {
             }
         }
 
-        fn suggest(
-            &self,
-            _: Option<&mod_api::CommandSender>,
-            prefix: &str,
-        ) -> Vec<mod_api::CommandSuggestion> {
+        fn suggest(&self, request: &mod_api::SuggestionRequest) -> Vec<mod_api::Suggestion> {
             ["press", "furnace"]
                 .into_iter()
-                .filter(|machine| machine.starts_with(prefix))
-                .map(mod_api::CommandSuggestion::new)
+                .filter(|machine| machine.starts_with(request.prefix.as_str()))
+                .map(|machine| request.suggest(machine))
                 .collect()
         }
     }
@@ -3758,26 +3736,13 @@ mod tests {
             }
             Ok(input.into())
         }
-        fn suggest(
-            &self,
-            _: Option<&mod_api::CommandSender>,
-            prefix: &str,
-        ) -> Vec<mod_api::CommandSuggestion> {
-            match prefix {
+        fn suggest(&self, request: &mod_api::SuggestionRequest) -> Vec<mod_api::Suggestion> {
+            match request.prefix.as_str() {
                 "panic" => panic!("completer"),
-                "text" => vec![mod_api::CommandSuggestion::new("a".repeat(32768))],
-                "tip" => vec![mod_api::CommandSuggestion::with_tooltip(
-                    "ok",
-                    "a".repeat(65536),
-                )],
-                "unicode" => vec![mod_api::CommandSuggestion::with_tooltip(
-                    "ok",
-                    "\0".repeat(32768),
-                )],
-                _ => vec![mod_api::CommandSuggestion::with_tooltip(
-                    "a".repeat(32767),
-                    "a".repeat(65535),
-                )],
+                "text" => vec![request.suggest("a".repeat(32768))],
+                "tip" => vec![request.suggest_with_tooltip("ok", "a".repeat(65536))],
+                "unicode" => vec![request.suggest_with_tooltip("ok", "\0".repeat(32768))],
+                _ => vec![request.suggest_with_tooltip("a".repeat(32767), "a".repeat(65535))],
             }
         }
     }
@@ -3821,11 +3786,7 @@ mod tests {
             fn parse(&self, _: &str) -> Result<String, mod_api::CommandArgumentError> {
                 unreachable!()
             }
-            fn suggest(
-                &self,
-                _: Option<&mod_api::CommandSender>,
-                _: &str,
-            ) -> Vec<mod_api::CommandSuggestion> {
+            fn suggest(&self, _: &mod_api::SuggestionRequest) -> Vec<mod_api::Suggestion> {
                 unreachable!()
             }
         }
@@ -3962,16 +3923,13 @@ mod tests {
             Ok(input.trim().to_owned())
         }
 
-        fn suggest(
-            &self,
-            _: Option<&mod_api::CommandSender>,
-            prefix: &str,
-        ) -> Vec<mod_api::CommandSuggestion> {
+        fn suggest(&self, request: &mod_api::SuggestionRequest) -> Vec<mod_api::Suggestion> {
+            let prefix = request.prefix.as_str();
             let start = prefix.rfind(' ').map_or(0, |space| space + 1);
             ["stone", "dirt"]
                 .into_iter()
                 .filter(|block| block.starts_with(&prefix[start..]))
-                .map(|block| mod_api::CommandSuggestion::new(block).replacing_from(start))
+                .map(|block| request.suggest_from(start, block))
                 .collect()
         }
     }
@@ -4026,14 +3984,10 @@ mod tests {
             Ok(input.to_owned())
         }
 
-        fn suggest(
-            &self,
-            _: Option<&mod_api::CommandSender>,
-            prefix: &str,
-        ) -> Vec<mod_api::CommandSuggestion> {
+        fn suggest(&self, request: &mod_api::SuggestionRequest) -> Vec<mod_api::Suggestion> {
             vec![
-                mod_api::CommandSuggestion::new("stone").replacing_from(0),
-                mod_api::CommandSuggestion::new("dirt").replacing_from(prefix.len() + 1),
+                request.suggest_from(0, "stone"),
+                request.suggest_from(request.prefix.len() + 1, "dirt"),
             ]
         }
     }

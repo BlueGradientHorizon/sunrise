@@ -767,8 +767,7 @@ impl Game<'_> {
                 .iter()
                 .position(|s| *s == "neutral")
                 .unwrap_or(0);
-            self.audio
-                .play_on(neutral, "minecraft:event.raid.horn", Some(at), 64.0, 1.0);
+            self.play_audio_on(neutral, "minecraft:event.raid.horn", Some(at), 64.0, 1.0);
             self.audio.capture = capture;
         }
         let Some(host) = self.lan.as_ref() else {
@@ -866,7 +865,7 @@ impl Game<'_> {
     ) -> Option<u32> {
         let t = self.res.mob_types().get(kind).cloned()?;
         self.next_entity += 1;
-        let mut mob = Mob::new(self.next_entity, t, Vec3::new(at[0], at[1], at[2]), 0.0);
+        let mut mob = self.new_mob(self.next_entity, t, Vec3::new(at[0], at[1], at[2]), 0.0);
         if leader {
             raider::set_patrol_leader(&mut mob, true);
             if reason == raider::Reason::Patrol {

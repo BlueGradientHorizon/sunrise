@@ -534,6 +534,11 @@ impl From<LootStackEditError> for String {
 // hidden: mutates the evaluator's existing signed loot candidate in place.
 #[doc(hidden)]
 pub trait LootStackEditAccess: LootStackAccess {
+    /// Whether the component `id` takes `value` as a payload the candidate can apply: a
+    /// component the evaluator models into typed fields refuses a shape it would drop.
+    fn accepts_component(&self, _id: &str, _value: &Tag) -> bool {
+        true
+    }
     fn as_view(&self) -> &dyn LootStackAccess;
     fn set_item_id(&mut self, id: &str);
     fn set_count(&mut self, count: i32);
@@ -573,19 +578,39 @@ fn validate_component_id(id: &str) -> Result<(), LootStackEditError> {
         .ok_or(LootStackEditError::InvalidPatch)
 }
 
-fn validate_component_patch(id: &str, value: Option<&Tag>) -> Result<(), LootStackEditError> {
+fn validate_component_patch(
+    accepts: &dyn Fn(&str, &Tag) -> bool,
+    id: &str,
+    value: Option<&Tag>,
+) -> Result<(), LootStackEditError> {
     let base = id.strip_prefix('!').unwrap_or(id);
     validate_component_id(base)?;
     if let Some(tag) = value
-        && (matches!(tag, Tag::End)
-            || !sunrise_core::nbt::within_depth(
+        && (contains_end(tag)
+            || !sunrise_core::nbt::within_write_depth(
                 tag,
                 sunrise_core::nbt::Limits::default().max_depth,
-            ))
+            )
+            || (id == base && !accepts(base, tag)))
     {
         return Err(LootStackEditError::InvalidPatch);
     }
     Ok(())
+}
+
+/// Whether a `Tag::End` appears at the root or inside any list or compound: it has no
+/// encoding there.
+fn contains_end(root: &Tag) -> bool {
+    let mut work = vec![root];
+    while let Some(tag) = work.pop() {
+        match tag {
+            Tag::End => return true,
+            Tag::List(values) => work.extend(values),
+            Tag::Compound(values) => work.extend(values.values()),
+            _ => {}
+        }
+    }
+    false
 }
 
 struct ValidatedLootStack {
@@ -605,6 +630,7 @@ struct ValidatedLootStack {
 fn validate_loot_stack(
     stack: LootStack,
     encode_name: NameEncoding,
+    accepts: &dyn Fn(&str, &Tag) -> bool,
 ) -> Result<ValidatedLootStack, LootStackEditError> {
     let item_id =
         crate::__private::item_key_id(stack.item).ok_or(LootStackEditError::UnknownItem)?;
@@ -628,7 +654,7 @@ fn validate_loot_stack(
         names.push((id.clone(), encoded));
     }
     for (id, value) in &stack.components {
-        validate_component_patch(id, value.as_ref())?;
+        validate_component_patch(accepts, id, value.as_ref())?;
     }
     Ok(ValidatedLootStack {
         item_id,
@@ -700,7 +726,9 @@ impl<'a> LootStackEditor<'a> {
     /// Validate and replace the entire candidate stack.
     /// If any field in `stack` is invalid, the current candidate is left unchanged.
     pub fn replace(&mut self, stack: LootStack) -> Result<(), LootStackEditError> {
-        let validated = validate_loot_stack(stack, self.encode_name)?;
+        let validated = validate_loot_stack(stack, self.encode_name, &|id, tag| {
+            self.stack.accepts_component(id, tag)
+        })?;
         apply_validated_loot_stack(self.stack, validated);
         Ok(())
     }
@@ -866,7 +894,11 @@ impl<'a> LootStackEditor<'a> {
 
     /// Validate and append a component value patch in stored order, without reordering duplicates.
     pub fn push_component(&mut self, id: &str, value: Tag) -> Result<(), LootStackEditError> {
-        validate_component_patch(id, Some(&value))?;
+        validate_component_patch(
+            &|id, tag| self.stack.accepts_component(id, tag),
+            id,
+            Some(&value),
+        )?;
         self.stack.push_component(id.to_owned(), Some(value));
         Ok(())
     }
@@ -884,7 +916,11 @@ impl<'a> LootStackEditor<'a> {
         id: &str,
         value: Option<Tag>,
     ) -> Result<(), LootStackEditError> {
-        validate_component_patch(id, value.as_ref())?;
+        validate_component_patch(
+            &|id, tag| self.stack.accepts_component(id, tag),
+            id,
+            value.as_ref(),
+        )?;
         self.stack.push_component(id.to_owned(), value);
         Ok(())
     }
@@ -897,7 +933,11 @@ impl<'a> LootStackEditor<'a> {
         let validated: Vec<_> = components
             .into_iter()
             .map(|(id, value)| {
-                validate_component_patch(&id, value.as_ref())?;
+                validate_component_patch(
+                    &|id, tag| self.stack.accepts_component(id, tag),
+                    &id,
+                    value.as_ref(),
+                )?;
                 Ok((id, value))
             })
             .collect::<Result<_, LootStackEditError>>()?;
@@ -919,6 +959,10 @@ impl<'a> LootStackEditor<'a> {
 // hidden: lends the evaluator's active generated loot list without cloning it.
 #[doc(hidden)]
 pub trait LootListAccess: std::any::Any {
+    /// As [`LootStackEditAccess::accepts_component`], for a stack not yet in the list.
+    fn accepts_component(&self, _id: &str, _value: &Tag) -> bool {
+        true
+    }
     fn len(&self) -> usize;
     fn is_empty(&self) -> bool {
         self.len() == 0
@@ -1008,7 +1052,9 @@ impl<'a> LootList<'a> {
     /// Validate and append an explicitly constructed [`LootStack`] to the end of the list.
     /// If `stack` is invalid, the list is left unchanged.
     pub fn push(&mut self, stack: LootStack) -> Result<(), LootStackEditError> {
-        let validated = validate_loot_stack(stack, self.encode_name)?;
+        let validated = validate_loot_stack(stack, self.encode_name, &|id, tag| {
+            self.list.accepts_component(id, tag)
+        })?;
         let slot = self.list.push_empty(validated.item_id);
         apply_validated_loot_stack(slot, validated);
         Ok(())
@@ -1021,7 +1067,9 @@ impl<'a> LootList<'a> {
         if index > self.list.len() {
             return Ok(false);
         }
-        let validated = validate_loot_stack(stack, self.encode_name)?;
+        let validated = validate_loot_stack(stack, self.encode_name, &|id, tag| {
+            self.list.accepts_component(id, tag)
+        })?;
         let Some(slot) = self.list.insert_empty(index, validated.item_id) else {
             return Ok(false);
         };

@@ -1397,9 +1397,10 @@ impl Game<'_> {
             })
             .map(|g| (g.conn, super::Dim::from_id(&g.dimension)))
             .collect();
+        let mut holds = Vec::new();
         for (conn, dim) in open {
             if self.enter_level(dim).is_ok() {
-                self.guest_close_menus_for_save(conn);
+                holds.push(self.guest_close_menus_for_save(conn));
             }
         }
         if let Err(e) = self.enter_level(back) {
@@ -1423,6 +1424,10 @@ impl Game<'_> {
                 return;
             };
             host.hub.guests.insert(i, g);
+        }
+        // These players are leaving: a menu a closing listener asked for never opens.
+        for hold in holds {
+            self.discard_menu_opens(hold);
         }
     }
     /// Save a guest when they leave or the world closes (after
@@ -2407,6 +2412,7 @@ impl Game<'_> {
                             if tell_logout {
                                 guest = self.native_departing_guest_logout(guest);
                             }
+                            let held = guest.menu.as_ref().map(|menu| menu.window);
                             if let Some(menu) = guest.menu.as_mut()
                                 && let Some(closed) = menu.native_removed(
                                     guest.uuid,
@@ -2416,6 +2422,13 @@ impl Game<'_> {
                                 )
                             {
                                 self.deliver_menu_removed(closed);
+                            }
+                            // The Open a listener heard gets its matching Close before the
+                            // tracked menu is forgotten below.
+                            if let Some(window) = held {
+                                let generation = guest.menu_generation;
+                                guest = self
+                                    .native_departing_guest_menu_closed(guest, window, generation);
                             }
                         } else {
                             let (conn, uuid, name, carrier) = (
@@ -3280,7 +3293,7 @@ impl Game<'_> {
         let force = host.hub.config.force_game_mode;
         let root = self.world_root.clone();
         let in_place = host.hub.config.dimension.clone();
-        let levels = host.hub.config.levels;
+        let levels = host.hub.config.levels.clone();
         let owner = host.owner.as_mut();
         let Some((known, name)) = host.hub.update_guest(conn, |g| {
             // PlayerList.loadPlayerData: the owner gets the world's player file,
@@ -5457,7 +5470,7 @@ pub(in crate::game) mod tests {
                     seed: 0,
                     max_players: 3,
                     integrated: true,
-                    levels: game.level_shapes,
+                    levels: game.level_shapes.clone(),
                     level_seeds: game.levels.runtime.seeds(),
                 };
                 game.lan_host(settings, net, config).unwrap();
@@ -5726,7 +5739,7 @@ pub(in crate::game) mod tests {
                 seed: 0,
                 max_players: 2,
                 integrated: true,
-                levels: game.level_shapes,
+                levels: game.level_shapes.clone(),
                 level_seeds: game.levels.runtime.seeds(),
             };
             game.lan_host(settings, net, config).unwrap();
@@ -5975,7 +5988,7 @@ pub(in crate::game) mod tests {
                 seed: 0,
                 max_players: 2,
                 integrated: true,
-                levels: game.level_shapes,
+                levels: game.level_shapes.clone(),
                 level_seeds: game.levels.runtime.seeds(),
             };
             game.lan_host(settings, net, config).unwrap();

@@ -1,12 +1,12 @@
 // exports: none (reached inside the crate only)
-//! Crash report lines a mod adds (NeoForge's `CrashReportCallables`), computed when a report is
-//! written rather than when they are registered.
+//! Crash report lines a mod adds (NeoForge's `CrashReportCallables`), computed while a report is
+//! built, after the panicking thread has unwound.
 use super::*;
 
-/// A crash report line a mod computes when the report is written: NeoForge's
-/// `ISystemReportExtender`, `ICrashReportHeader`, or a `registerCrashCallable` supplier with its
-/// active check. The report asks it once, in registration order on a worker, while the game may
-/// have stopped mid-tick: read the mod's own state, and don't wait on anything the game holds.
+/// A crash report line a mod computes: NeoForge's `ISystemReportExtender`, `ICrashReportHeader`,
+/// or a `registerCrashCallable` supplier with its active check. It is asked in registration order
+/// when a report is built, on the thread that builds it after the panicking thread has unwound,
+/// as vanilla builds a report outside the throw. Read the mod's own state, and keep it cheap.
 pub trait CrashSection: Send + Sync + 'static {
     /// The full text to include in the report, or `None` to omit this entry.
     fn value(&self) -> Option<String>;
@@ -18,7 +18,7 @@ pub trait CrashSectionsRegistrar {
     /// run and written after Sunrise's own lines in registration order, even if the crash is
     /// attributed to the registering mod. Continuation lines in multiline labels, values and
     /// errors are prefixed with `\t\t<mod id> | ` so they stay attributed to the registering mod.
-    /// The report waits for each callback to finish. A failed entry starts with `~~ERROR~~`
+    /// A failed entry starts with `~~ERROR~~`
     /// without preventing later entries from running. A panic logs the mod, queues an error toast,
     /// and disables only this registration for the rest of the session.
     fn crash_section(&mut self, label: &str, section: Arc<dyn CrashSection>);

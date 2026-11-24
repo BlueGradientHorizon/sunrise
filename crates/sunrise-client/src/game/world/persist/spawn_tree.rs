@@ -125,7 +125,6 @@ impl SpawnTree {
                 Node::Mob(mut mob) => {
                     game.next_entity += 1;
                     mob.id = game.next_entity;
-                    mob.attach_mod_parts();
                     let id = game.install_loaded_mob(
                         (*mob, uuid),
                         tag,

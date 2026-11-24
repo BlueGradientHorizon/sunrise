@@ -18,8 +18,11 @@
 //!
 //! A listener runs synchronously after the new section is filed. Crossings from nested writes
 //! wait for the current event's listeners to return, then are told in write order before the
-//! owning boundary releases its rows. Listeners should defer moving or removing the crossing entity
-//! itself until its write completes.
+//! owning boundary releases its rows. Each crossing carries the placement of the move that filed
+//! it: a read of that entity while it is told answers that placement, and a later move, or the
+//! entity's removal, neither rewrites nor deletes a crossing already filed (the no-reentry rule
+//! rules out telling it at its write). Listeners should defer moving or removing the crossing
+//! entity itself until its write completes.
 //!
 //! Section entry order (`EntitySection` keeps its entities in the order they entered it, which
 //! a chunk's save follows) does not depend on a listener: a server boundary that knows both
@@ -63,12 +66,15 @@ pub(super) fn crossed(from: [f64; 3], to: [f64; 3]) -> bool {
     section_of(from) != section_of(to)
 }
 
-/// A section change a boundary found: the entity, its old and its new section.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// A section change a boundary found: the entity, its old and its new section, and where it
+/// was put by the move that filed it. A crossing queued behind a listener keeps its own
+/// placement: a later move or removal of the entity neither rewrites nor deletes it.
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct Crossing {
     pub(super) id: u32,
     pub(super) old: [i32; 3],
     pub(super) new: [i32; 3],
+    pub(super) at: [f64; 3],
 }
 
 /// Where a boundary is: the world open and the level the entity is in.
@@ -155,18 +161,21 @@ impl EntitySections {
         if old == new {
             return false;
         }
-        self.queue.push_back(Crossing { id, old, new });
+        self.queue.push_back(Crossing {
+            id,
+            old,
+            new,
+            at: to,
+        });
         true
     }
 
     /// `id` is gone (removed, or respawned as a new entity under the same id): it is filed
     /// again where it next appears, untold.
     pub(super) fn forget(&mut self, id: u32) {
+        // Crossings already filed stay queued: each was a committed move (`onMove` posts at
+        // the filed move, before any later removal).
         self.filed.remove(&id);
-        // A nested listener may have queued a crossing immediately before it
-        // removed this entity.  Do not deliver that stale write on the next
-        // boundary (the hook never fires for an entity being removed).
-        self.queue.retain(|crossing| crossing.id != id);
     }
 
     /// Claim dispatch until the queue runs out; never re-enter a listener's dispatch.
@@ -339,7 +348,21 @@ fn tell_live(sections: &std::cell::RefCell<EntitySections>, writer: SectionWrite
     }
     for crossing in std::iter::from_fn(|| sections.borrow_mut().queue.pop_front()) {
         let entity = EntityRef::new(writer.entity.epoch(), crossing.id);
-        let mut host = LiveSectionHost::new((entity == writer.entity).then_some(writer));
+        // The crossing's own placement is what a read of that entity answers.
+        let at = SectionWriter {
+            entity,
+            position: crossing.at,
+            ..if entity == writer.entity {
+                writer
+            } else {
+                SectionWriter {
+                    residency: EntityResidency::Gone,
+                    player: None,
+                    ..writer
+                }
+            }
+        };
+        let mut host = LiveSectionHost::new(Some(at));
         let host = if server {
             mod_api::HostSide::Server(&mut host)
         } else {
@@ -700,12 +723,20 @@ impl Game<'_> {
         while let Some(c) = self.native_lifecycle.entity_sections.queue.pop_front() {
             if let Some(epoch) = self.native_lifecycle.epoch() {
                 let chunk_changed = c.old[0] != c.new[0] || c.old[2] != c.new[2];
+                // Reads of the crossing entity answer where this move put it, not where a
+                // later queued move has since put it.
+                let lent = self
+                    .native_lifecycle
+                    .entity_sections
+                    .write_position
+                    .replace((c.id, c.at));
                 self.native_entity_entering_section(
                     EntityRef::new(epoch, c.id),
                     c.old,
                     c.new,
                     chunk_changed,
                 );
+                self.native_lifecycle.entity_sections.write_position = lent;
             }
         }
         self.native_lifecycle.entity_sections.end_telling();

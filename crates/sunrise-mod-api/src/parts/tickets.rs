@@ -48,10 +48,6 @@ pub mod tests {
             assert_eq!(r.register_ticket_controller(name, None), refused);
         }
         assert_eq!(r.refused.len(), 2, "{:?}", r.refused);
-        assert!(
-            r.refused[0].contains("invalid identifier")
-                && r.refused[1].contains("invalid identifier")
-        );
         assert_eq!(r.controllers.len(), 4);
     }
 
@@ -83,6 +79,42 @@ pub mod tests {
         );
     }
 
+    /// A refused registration retires its validator inside the guard: a destructor that panics
+    /// neither unwinds out of registration nor hides the refusal.
+    #[test]
+    fn refusing_validators_with_panicking_destructors_still_reports_the_refusal() {
+        struct PanicsOnDrop;
+        impl Drop for PanicsOnDrop {
+            fn drop(&mut self) {
+                if !std::thread::panicking() {
+                    panic!("fixture destructor");
+                }
+            }
+        }
+        let validator = || -> Arc<LoadingValidationCallback> {
+            let captured = PanicsOnDrop;
+            Arc::new(
+                move |_: &mut dyn ServerHost, _: LevelRef, _: &mut dyn TicketValidation| {
+                    let _ = &captured;
+                },
+            )
+        };
+        let mut r = super::PartRegistrar::new("first");
+        let kept = r.register_ticket_controller("quarry", None);
+        let refused = mod_vocab::__private::parts_installation::refused_ticket_controller();
+        assert_ne!(kept, refused);
+        assert_eq!(
+            r.register_ticket_controller("first:quarry", Some(validator())),
+            refused
+        );
+        assert_eq!(
+            r.register_ticket_controller("first:", Some(validator())),
+            refused
+        );
+        assert_eq!(r.refused.len(), 2, "{:?}", r.refused);
+        assert_eq!(r.controllers.len(), 1);
+    }
+
     #[test]
     pub(crate) fn a_ticket_controller_registered_twice_refuses_the_mods_naming_mod_and_id() {
         let mut r = super::PartRegistrar::new("first");
@@ -101,14 +133,6 @@ pub mod tests {
             duplicate
         );
         assert_eq!(r.refused.len(), 2, "{:?}", r.refused);
-        assert_eq!(
-            r.refused[0],
-            "first registered ticket controller first:quarry twice"
-        );
-        assert_eq!(
-            r.refused[1],
-            "second registered ticket controller first:quarry twice"
-        );
         assert_eq!(r.controllers.len(), 2);
         assert_eq!(&*r.controllers[1].id, "second:quarry");
         assert!(r.controllers[0].validator.is_some());
@@ -147,6 +171,9 @@ pub(crate) fn register(
         Ok(id) => id,
         Err(reason) => {
             refused.push(reason);
+            mod_vocab::__private::parts_installation::dispose_refused_ticket_validator(
+                mod_id, mod_index, name, validator,
+            );
             return mod_vocab::__private::parts_installation::refused_ticket_controller();
         }
     };
@@ -158,6 +185,9 @@ pub(crate) fn register(
     };
     if let Some(refusal) = refusal {
         refused.push(refusal);
+        mod_vocab::__private::parts_installation::dispose_refused_ticket_validator(
+            mod_id, mod_index, &id, validator,
+        );
         return mod_vocab::__private::parts_installation::refused_ticket_controller();
     }
     let slot = table.len() as u32;

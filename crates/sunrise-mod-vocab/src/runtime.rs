@@ -508,7 +508,6 @@ pub(crate) fn invoke_without_disabling<T>(
         report_callback_panic(installed(), hook, mod_id, None, false, payload);
     })
 }
-
 #[cold]
 pub(crate) fn report_output_refusal(mod_id: &str, hook: &str, field: &str) {
     log::warn!(

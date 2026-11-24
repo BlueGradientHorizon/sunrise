@@ -72,6 +72,23 @@ fn a_command_tree_with_a_cycle_is_refused() {
         node(1, "b", vec![], Some(1)),
     ];
     assert!(read(redirects).is_err());
+    // The root index must name a root node: an empty tree, an out-of-range index and a
+    // non-root entry are refused.
+    let read_root = |nodes: Vec<CommandNode>, root: i32| {
+        let mut w = Writer::new();
+        Commands::write(&Commands { nodes, root }, &mut w);
+        Commands::read(&mut Reader::new(&w.data))
+    };
+    assert!(read_root(Vec::new(), 0).is_err());
+    assert!(read_root(vec![node(0, "", vec![], None)], 1).is_err());
+    assert!(read_root(vec![node(0, "", vec![], None)], -1).is_err());
+    assert!(
+        read_root(
+            vec![node(0, "", vec![1], None), node(1, "a", vec![], None)],
+            1
+        )
+        .is_err()
+    );
     // A long chain is fine and checked without recursing.
     let mut chain: Vec<_> = (1..=100_000).map(|i| node(1, "x", vec![i], None)).collect();
     chain[0].kind = 0;

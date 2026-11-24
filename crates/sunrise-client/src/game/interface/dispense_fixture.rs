@@ -864,8 +864,7 @@ impl Game<'_> {
                 // The hurt sound the mob raised, where it stands.
                 for event in std::mem::take(&mut self.mobs[index].outbox) {
                     if let sunrise_client::mobs::MobEvent::Sound(s, at, volume, pitch) = event {
-                        self.audio
-                            .play(&format!("minecraft:{s}"), Some(at), volume, pitch);
+                        self.play_audio(&format!("minecraft:{s}"), Some(at), volume, pitch);
                     }
                 }
                 if hurt {

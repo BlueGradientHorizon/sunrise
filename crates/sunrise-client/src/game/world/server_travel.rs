@@ -1795,7 +1795,7 @@ mod tests {
                 _: &mut dyn ServerHost,
                 event: &mut EntityJoinLevelEvent<'_>,
             ) -> Flow {
-                self.0.lock().unwrap().push(event.entity);
+                self.0.lock().unwrap().push(event.subject.id());
                 Flow::Continue
             }
         }

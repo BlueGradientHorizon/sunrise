@@ -911,15 +911,24 @@ fn overlay_value(original: &Tag, loaded: &Tag, current: &Tag) -> Tag {
             overlay(original, loaded, current, false)
         }
         (Tag::List(o), Tag::List(l), Tag::List(c)) if keyed_by_slot(c) && keyed_by_slot(l) => {
-            let slot = |t: &Tag| int(t.get("Slot"));
+            // A row's identity is its whole `Slot` tag, type and value: an `Int` row and a
+            // `Byte` row that coerce to one number are different rows, and a row takes the
+            // first earlier row of its own identity that no other row took.
+            fn take<'a>(list: &'a [Tag], used: &mut [bool], slot: Option<&Tag>) -> Option<&'a Tag> {
+                let at = (0..list.len()).find(|&i| !used[i] && list[i].get("Slot") == slot)?;
+                used[at] = true;
+                Some(&list[at])
+            }
+            let (mut taken_original, mut taken_loaded) =
+                (vec![false; o.len()], vec![false; l.len()]);
             Tag::List(
                 c.iter()
                     .map(|cv| {
-                        let s = slot(cv);
-                        fn find(list: &[Tag], slot: Option<i32>) -> Option<&Tag> {
-                            list.iter().find(|t| int(t.get("Slot")) == slot)
-                        }
-                        match (find(o, s), find(l, s)) {
+                        let slot = cv.get("Slot");
+                        match (
+                            take(o, &mut taken_original, slot),
+                            take(l, &mut taken_loaded, slot),
+                        ) {
                             (Some(ov), Some(lv)) => overlay_value(ov, lv, cv),
                             _ => cv.clone(),
                         }
@@ -944,6 +953,35 @@ mod tests {
     }
     fn canon(s: &str) -> Tag {
         canonical(&snbt(s)).expect("known type")
+    }
+
+    /// An opaque `Slot:-128` Int row before the modeled `Slot:-128b` row is a different row: the
+    /// overlay keeps the modeled stack's own original form and leaves the opaque row as it was.
+    #[test]
+    fn rows_that_coerce_to_one_slot_stay_distinct_rows() {
+        let original = snbt(
+            r#"{Items:[{Slot:-128,id:"minecraft:bedrock",count:1},{Slot:-128b,id:"minecraft:stone",count:1,note:"kept"}]}"#,
+        );
+        let loaded = snbt(
+            r#"{Items:[{Slot:-128,id:"minecraft:bedrock",count:1},{Slot:-128b,id:"minecraft:stone",count:1}]}"#,
+        );
+        let current = snbt(
+            r#"{Items:[{Slot:-128,id:"minecraft:bedrock",count:1},{Slot:-128b,id:"minecraft:stone",count:1},{Slot:1b,id:"minecraft:dirt",count:1}]}"#,
+        );
+        let saved = overlay(&original, &loaded, &current, false);
+        let Some(Tag::List(rows)) = saved.get("Items") else {
+            panic!("Items list");
+        };
+        assert_eq!(rows.len(), 3);
+        assert_eq!(
+            rows[0],
+            snbt(r#"{Slot:-128,id:"minecraft:bedrock",count:1}"#)
+        );
+        assert_eq!(
+            rows[1],
+            snbt(r#"{Slot:-128b,id:"minecraft:stone",count:1,note:"kept"}"#),
+            "the modeled row keeps its own original, not the opaque row's"
+        );
     }
 
     #[test]

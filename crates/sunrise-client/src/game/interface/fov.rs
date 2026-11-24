@@ -20,7 +20,7 @@ pub(super) fn studio_draws_hand(studio_freecam: bool, ordinary_hand_visible: boo
 use sunrise_client::{
     camera::{
         BobState, CameraFluid, FovPlayer, UseItem, bob_matrix, field_of_view_modifier,
-        spinning_effect_matrix,
+        raw_field_of_view_modifier, spinning_effect_matrix,
     },
     fog::{FogType, fog_type},
     hud::HudBatch,
@@ -94,13 +94,26 @@ impl Game<'_> {
             using,
         })
     }
+    /// The handle of the player entity `id` the camera follows, when it is a player this
+    /// client knows by uuid (a detached spectated snapshot has none).
+    fn camera_player_ref(&self, id: u32) -> Option<mod_api::PlayerRef> {
+        let epoch = self.native_lifecycle.epoch()?;
+        Some(mod_api::__private::game::player_ref(
+            mod_api::EntityRef::new(epoch, id),
+            self.remote_player_uuid(id)?,
+        ))
+    }
     /// `Camera.tick`: the eye height and the field-of-view modifier ease
     /// halfway toward the camera player's each tick.
     pub(super) fn tick_fov(&mut self) {
         let first_person = self.camera_type.is_first_person();
         let effect = self.fov_effect_scale();
-        let (fov_player, eye) = match self.camera_subject() {
-            Some(cam) if !cam.is_local_player => (cam.fov_player, Some(cam.camera.eye_height)),
+        let (fov_player, eye, who) = match self.camera_subject() {
+            Some(cam) if !cam.is_local_player => (
+                cam.fov_player,
+                Some(cam.camera.eye_height),
+                self.camera_player_ref(cam.entity_id),
+            ),
             _ => (
                 self.fov_player(),
                 self.player.as_ref().map(|p| {
@@ -110,18 +123,22 @@ impl Game<'_> {
                         p.dimensions.eye_height
                     }
                 }),
+                self.local_player(),
             ),
         };
         let target = fov_player.map_or(1.0, |player| {
-            let base = field_of_view_modifier(&player, first_person, effect);
             // AbstractClientPlayer.getFieldOfViewModifier returns 0.1 before
             // Mth.lerp / ComputeFovModifierEvent when scoping in first person.
-            if first_person && matches!(player.using, Some((UseItem::Spyglass, _))) {
-                return base;
-            }
-            let mut modifier = base;
-            self.native_compute_fov_modifier(&player, base, &mut modifier);
-            valid_fov_modifier(modifier, base)
+            let Some(raw) = raw_field_of_view_modifier(&player, first_person) else {
+                return field_of_view_modifier(&player, first_person, effect);
+            };
+            let interpolated = field_of_view_modifier(&player, first_person, effect);
+            let Some(who) = who else {
+                return interpolated;
+            };
+            let mut modifier = interpolated;
+            self.native_compute_fov_modifier(who, raw, effect, &mut modifier);
+            valid_fov_modifier(modifier, interpolated)
         });
         self.view.tick(eye, target);
     }
@@ -287,15 +304,14 @@ impl Game<'_> {
             .player
             .as_ref()
             .map(|p| [p.position.x, p.position.y, p.position.z]);
-        self.audio.play("minecraft:item.spyglass.use", at, 1.0, 1.0);
+        self.play_audio("minecraft:item.spyglass.use", at, 1.0, 1.0);
         self.award_stat("used", "minecraft:spyglass", 1);
         self.start_using_item();
     }
     /// `SpyglassItem.releaseUsing` / `finishUsingItem` (after 1200 ticks).
     pub(super) fn stop_spyglass(&mut self) {
         let at = self.eye_position();
-        self.audio
-            .play("minecraft:item.spyglass.stop_using", at, 1.0, 1.0);
+        self.play_audio("minecraft:item.spyglass.stop_using", at, 1.0, 1.0);
     }
     /// `Hud.extractCameraOverlays`: the spyglass scope, its size easing
     /// towards 1.125 by half the frame's game ticks and reset to 0.5 while
