@@ -1553,6 +1553,8 @@ mod native_place_feature;
 #[cfg(test)]
 #[path = "game/modding/native_place_feature_tests.rs"]
 mod native_place_feature_tests;
+#[path = "game/modding/native_placement_modifiers.rs"]
+mod native_placement_modifiers;
 #[cfg(test)]
 #[path = "game/modding/native_placement_state_tests.rs"]
 mod native_placement_state_tests;
@@ -1731,6 +1733,8 @@ mod native_spectator_shader_tests;
 mod native_state_shapes;
 #[path = "game/modding/native_structure_placement.rs"]
 mod native_structure_placement;
+#[path = "game/modding/native_structure_processors.rs"]
+mod native_structure_processors;
 #[path = "game/modding/native_structure_types.rs"]
 mod native_structure_types;
 #[path = "game/modding/native_structures.rs"]
@@ -9195,11 +9199,13 @@ impl Game<'_> {
             return false;
         };
         let sword = self.held().is_some_and(|s| {
-            self.res
+            let sword = self
+                .res
                 .items()
                 .item_tags
                 .get("minecraft:swords")
-                .is_some_and(|tag| tag.contains(&*s.item))
+                .is_some_and(|tag| tag.contains(&*s.item));
+            self.stack_can_perform(s, item_abilities::ability::SWORD_SWEEP, sword)
         });
         let vanilla = p.is_sweep_attack(scale, crit, sword);
         let (mut sweeping, mut canceled) = (vanilla, false);
@@ -10112,15 +10118,8 @@ impl Game<'_> {
             if !self.may_build() && !self.can_place_on_in_adventure(hit.pos) {
                 return Ok(UseResult::Fail);
             }
-            let name = self.res.facts().get(clicked).name.clone();
-            if self.can_light(clicked, &name) {
-                let registry = self.pack.assets.registry;
-                let mut state = registry
-                    .state(clicked)
-                    .cloned()
-                    .ok_or("missing lit block state")?;
-                state.properties.insert("lit".into(), "true".into());
-                self.level_set(hit.pos, registry.resolve(&state)?)?;
+            if let Some(lit) = self.fire_starter_lit(&hit, stack, true)? {
+                self.level_set(hit.pos, lit)?;
                 let sound = if item == "fire_charge" {
                     "minecraft:item.firecharge.use"
                 } else {
@@ -14520,6 +14519,14 @@ pub(crate) fn run_with(
         {
             log::warn!("Mod pool element types already installed; keeping the first table");
         }
+        // Their structure processor types, before any world decodes its processor lists.
+        if sunrise_world::worldgen::structure::mod_processors::install_mod_structure_processor_types(
+            native_structure_processors::installed_structure_processor_types(),
+        )
+        .is_err()
+        {
+            log::warn!("Mod structure processor types already installed; keeping the first table");
+        }
         // Their feature types, before any world decodes its configured features.
         if sunrise_world::worldgen::mod_features::install_mod_feature_types(
             native_feature_types::installed_feature_types(),
@@ -14527,6 +14534,14 @@ pub(crate) fn run_with(
         .is_err()
         {
             log::warn!("Mod feature types already installed; keeping the first table");
+        }
+        // Their placement modifier types, before any world decodes its placed features.
+        if sunrise_world::worldgen::placement::mod_placements::install_mod_placement_modifier_types(
+            native_placement_modifiers::installed_placement_modifier_types(),
+        )
+        .is_err()
+        {
+            log::warn!("Mod placement modifier types already installed; keeping the first table");
         }
         // The levels they registered, below the data packs of every world opened.
         if sunrise_world::worldgen::overrides::install_mod_dimensions(
