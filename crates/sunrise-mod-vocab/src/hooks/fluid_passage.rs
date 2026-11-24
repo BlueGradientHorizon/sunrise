@@ -25,7 +25,7 @@ pub trait Hooks {
         dispatch = "flat",
         side = "server",
         contract = "listen",
-        neoforge = "none (NeoForge has no such event; FlowingFluid.canPassThrough is only patched for the fluid type)",
+        neoforge = "none (NeoForge has no such event)",
         target = "sunrise_client::game::native_hooks::fluid_passage::GameLevel<'_>::native_fluid_passage"
     )]
     fn fluid_passage(

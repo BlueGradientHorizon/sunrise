@@ -436,42 +436,41 @@ pub(super) fn encode_full(
             );
             let mut saved = match source {
                 Some(original) => {
-                    let items_are_payload = matches!(e, crate::containers::BlockEntity::Mod(_))
-                        && !block_has_mod_item_slots(&block);
-                    let loaded =
-                        decode_block_entity_with_history(original, None, !items_are_payload)
-                            .map_or_else(
-                                || current.clone(),
-                                |(q, e)| {
-                                    // External name removal must win over the source overlay.
-                                    let custom_name = (!matches!(
-                                        e,
-                                        crate::containers::BlockEntity::Banner(_)
-                                            | crate::containers::BlockEntity::Sign(_)
-                                            | crate::containers::BlockEntity::Mod(_)
-                                    ))
-                                    .then(|| {
-                                        original
-                                            .get("CustomName")
-                                            .and_then(crate::block_entity_nbt::component)
-                                    })
-                                    .flatten();
-                                    block_entity_encode::encode_with(
-                                        q,
-                                        &e,
-                                        &block,
-                                        block_entity_encode::DataFields {
-                                            lock,
-                                            custom_name: custom_name.as_ref(),
-                                            pending: PendingContainerLoot::from_tag(original)
-                                                .as_ref(),
-                                            hopper_cooldown,
-                                        },
-                                        items,
-                                        |_| None,
-                                    )
-                                },
-                            );
+                    let mod_item_slots = block_mod_item_slots(&block);
+                    let items_are_payload =
+                        matches!(e, crate::containers::BlockEntity::Mod(_)) && mod_item_slots == 0;
+                    let loaded = decode_block_entity_with_history(original, None, Some(&block))
+                        .map_or_else(
+                            || current.clone(),
+                            |(q, e)| {
+                                // External name removal must win over the source overlay.
+                                let custom_name = (!matches!(
+                                    e,
+                                    crate::containers::BlockEntity::Banner(_)
+                                        | crate::containers::BlockEntity::Sign(_)
+                                        | crate::containers::BlockEntity::Mod(_)
+                                ))
+                                .then(|| {
+                                    original
+                                        .get("CustomName")
+                                        .and_then(crate::block_entity_nbt::component)
+                                })
+                                .flatten();
+                                block_entity_encode::encode_with(
+                                    q,
+                                    &e,
+                                    &block,
+                                    block_entity_encode::DataFields {
+                                        lock,
+                                        custom_name: custom_name.as_ref(),
+                                        pending: PendingContainerLoot::from_tag(original).as_ref(),
+                                        hopper_cooldown,
+                                    },
+                                    items,
+                                    |_| None,
+                                )
+                            },
+                        );
                     merge_block_entity(original, &loaded, &current, items_are_payload)
                 }
                 None => current,
@@ -671,6 +670,113 @@ const GENERATED_KEYS: [&str; 14] = [
 pub fn decode(root: &NamedTag, registry: &BlockRegistry, biomes: &Biomes) -> Option<Chunk> {
     decode_with(root, registry, biomes, None, ColumnLayout::VANILLA)
 }
+/// Decode a full chunk for read-only inspection (`SavedChunkReader`):
+/// - Rejects missing, non-string, or non-full `Status` (matching vanilla 26.3
+///   `SerializableChunkData.parse`, which rejects missing/empty `Status`).
+/// - Rejects records whose `xPos`/`zPos` do not match `expected_pos` (returns `Err`).
+/// - Bounds section `Y` with checked arithmetic against `shape`'s actual section range
+///   (`min_section..min_section + section_count`), preventing signed overflow panics on
+///   malformed NBT.
+/// - Skips block-entity and scheduled-tick decoding (read-only snapshots only expose blocks,
+///   biomes, heightmaps, and light).
+pub fn decode_readonly_full(
+    root: &NamedTag,
+    expected_pos: (i32, i32),
+    registry: &BlockRegistry,
+    biomes: &Biomes,
+    shape: LevelShape,
+) -> std::result::Result<Option<Chunk>, String> {
+    let tag = &root.tag;
+    let Some(status) = text(tag.get("Status")) else {
+        return Err("missing or non-string chunk Status".into());
+    };
+    if status != "minecraft:full" && status != "full" {
+        return Ok(None);
+    }
+    let Some(Tag::Int(x)) = tag.get("xPos") else {
+        return Err("missing or non-int chunk xPos".into());
+    };
+    let Some(Tag::Int(z)) = tag.get("zPos") else {
+        return Err("missing or non-int chunk zPos".into());
+    };
+    if (*x, *z) != expected_pos {
+        return Err(format!(
+            "saved chunk coordinates ({x}, {z}) do not match requested ({}, {})",
+            expected_pos.0, expected_pos.1
+        ));
+    }
+    let layout = shape.column();
+    let min_section = i64::from(shape.min_y >> 4);
+    let max_section_excl = min_section + i64::from(shape.section_count() as i32);
+    let mut chunk = Chunk::with_layout(*x, *z, layout);
+    let Some(air) = registry.default_state("minecraft:air").map(|id| id.0) else {
+        return Err("missing minecraft:air in block registry".into());
+    };
+    if let Some(Tag::List(sections)) = tag.get("sections") {
+        for section in sections {
+            let Some(y) = number(section.get("Y")) else {
+                continue;
+            };
+            if y < min_section || y >= max_section_excl {
+                continue;
+            }
+            let Some(y_blocks) = i32::try_from(y).ok().and_then(|sy| sy.checked_mul(16)) else {
+                continue;
+            };
+            let Some(si) = layout.section_index(y_blocks) else {
+                continue;
+            };
+            if let Some(states) = section.get("block_states")
+                && let Some(Tag::List(palette)) = states.get("palette")
+            {
+                let palette: Vec<u32> = palette
+                    .iter()
+                    .map(|p| registry.saved_state_id(p).map_or(air, |id| id.0))
+                    .collect();
+                let target = Arc::make_mut(&mut chunk.sections[si]);
+                let data = match states.get("data") {
+                    Some(Tag::LongArray(data)) => {
+                        Some(data.iter().map(|&w| w as u64).collect::<Vec<_>>())
+                    }
+                    _ => None,
+                };
+                if let Ok(blocks) =
+                    PalettedContainer::from_packed(block_strategy(), palette, data.as_deref())
+                {
+                    target.blocks = blocks;
+                }
+            }
+            if let Some(b) = section.get("biomes")
+                && let Some(Tag::List(palette)) = b.get("palette")
+            {
+                let ids: Vec<u16> = palette
+                    .iter()
+                    .map(|p| match p {
+                        Tag::String(s) => biomes.saved_id(&s.to_string_lossy()),
+                        _ => 0,
+                    })
+                    .collect();
+                let data = match b.get("data") {
+                    Some(Tag::LongArray(data)) => {
+                        Some(data.iter().map(|&w| w as u64).collect::<Vec<_>>())
+                    }
+                    _ => None,
+                };
+                let palette: Vec<u32> = ids.iter().map(|&id| u32::from(id)).collect();
+                let target = Arc::make_mut(&mut chunk.sections[si]);
+                if let Ok(container) =
+                    PalettedContainer::from_packed(BIOME_STRATEGY, palette.clone(), data.as_deref())
+                {
+                    target.biomes = container;
+                } else if let Some(&first) = palette.first() {
+                    target.biomes = PalettedContainer::new(BIOME_STRATEGY, first);
+                }
+            }
+        }
+    }
+    Ok(Some(chunk))
+}
+
 /// Only full chunks load here; partially generated ones (vanilla's world
 /// border of proto chunks) resume generation through `decode_proto`.
 pub fn decode_with(
