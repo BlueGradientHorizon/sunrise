@@ -395,8 +395,8 @@ fn check_archive(
 ///
 /// `source` is the digest of the mod's files; a library built with crates.io dependencies adds
 /// `+<graph>`, the digest of the crates.io packages it is compiled with as that build resolved
-/// them (version, source and enabled features), since one build unifies them across every mod it
-/// compiles. `dependencies` names each native mod the library
+/// them (version, source and the features of each compilation unit, target and host apart), since
+/// one build unifies them across every mod it compiles. `dependencies` names each native mod the library
 /// links, as `<id>=<SHA-256 of that library's identity>`, sorted and joined by `,`, or `none`: a
 /// library built against another build of a dependency, or of a dependency's own dependency, has
 /// another identity, so the loader refuses the pair before any of their code runs.
@@ -435,7 +435,11 @@ impl<'a> LibraryIdentity<'a> {
         }
         self.dependencies
             .split(',')
-            .map(|dependency| dependency.split_once('='))
+            .map(|dependency| {
+                dependency
+                    .split_once('=')
+                    .filter(|(id, digest)| !id.is_empty() && crate::index::hex64(digest).is_ok())
+            })
             .collect()
     }
 }
@@ -622,6 +626,32 @@ pub fn verify_archive_identity(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_dependency_list_needs_an_id_and_a_sha256_per_entry() {
+        let digest = "a".repeat(64);
+        let dependencies = |list: &str| {
+            let identity = format!("build mod 1 rust source {list} unwind");
+            LibraryIdentity::parse(&identity)
+                .unwrap()
+                .dependencies()
+                .map(|pairs| pairs.len())
+        };
+        assert_eq!(dependencies("none"), Some(0));
+        assert_eq!(
+            dependencies(&format!("base={digest},other={digest}")),
+            Some(2)
+        );
+        for malformed in [
+            "base".to_owned(),
+            format!("={digest}"),
+            "base=".to_owned(),
+            format!("base={digest}=x"),
+            format!("base={}", &digest[1..]),
+        ] {
+            assert_eq!(dependencies(&malformed), None, "{malformed}");
+        }
+    }
 
     #[test]
     fn the_right_extension_does_not_make_a_library_fit_the_wrong_architecture() {
