@@ -1338,17 +1338,16 @@ impl Hub {
         });
     }
 
-    /// `PlayerList.isOp`: on a dedicated server, any entry of the operator
-    /// list, a level-0 one too; on an integrated server, the owner while the
-    /// world allows commands (its entry's level above 0), an operator the host
-    /// gave a level, and everyone while the world is open to LAN with
-    /// commands (`allowCommandsForAllPlayers`).
+    /// `PlayerList.isOp`: an entry of the operator list, a level-0 one too, or
+    /// the integrated server's owner while the world allows commands (the
+    /// owner's entry is kept at level 0 while it does not). Opening a world to
+    /// LAN with commands raises the guests' permission level; it does not make
+    /// them operators.
     pub fn is_op(&self, uuid: u128) -> bool {
-        if self.config.integrated {
-            self.config.guest_commands || self.ops.get(&uuid).is_some_and(|&level| level > 0)
-        } else {
-            self.ops.contains_key(&uuid)
+        if self.config.integrated && self.singleplayer_owner == Some(uuid) {
+            return self.ops.get(&uuid).is_some_and(|&level| level > 0);
         }
+        self.ops.contains_key(&uuid)
     }
 
     /// Whether a player of `permission` sees the player `uuid`: not one a
