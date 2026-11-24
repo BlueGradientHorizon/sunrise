@@ -1302,5 +1302,13 @@
     "path": "crates/sunrise-client/src/item_sync.rs",
     "reason": "run by tools/test_item_wire_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_item_wire_parity.py records the vanilla 26.3 tooltip_style wire witness into .local and runs this test against it through SUNRISE_TOOLTIP_STYLE_WIRE_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client-lib",
+    "target": "lib",
+    "test": "mobs::ai::burn_and_rose_tests::a_mob_loaded_in_lava_burns_on_its_first_tick",
+    "path": "crates/sunrise-client/src/mobs/ai.rs",
+    "reason": "run by tools/test_first_tick_lava_burn_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_first_tick_lava_burn_parity.py records the vanilla 26.3 first-tick lava burn witness into .local and runs this test against it through SUNRISE_FIRST_TICK_LAVA_BURN_WITNESS, so no recorded vanilla data is committed."
   }
 ]

@@ -8724,6 +8724,7 @@ def groups():
         from .item_honey_bounce_corpus import item_honey_bounce
         from .item_merge_corpus import stack_limit_merges
         from .conduit_table_entity_corpus import conduit_table_entities
+        from .first_tick_lava_burn_corpus import GROUP as FIRST_TICK_LAVA_BURN, first_tick_lava_burn
     except ImportError:
         from frame_map_corpus import frame_maps, treasure_map_copies
         from allay_damage_corpus import allay_player_damage
@@ -8738,6 +8739,7 @@ def groups():
         from item_honey_bounce_corpus import item_honey_bounce
         from item_merge_corpus import stack_limit_merges
         from conduit_table_entity_corpus import conduit_table_entities
+        from first_tick_lava_burn_corpus import GROUP as FIRST_TICK_LAVA_BURN, first_tick_lava_burn
     result = [
         ('setup', group_setup()),
         ('guest container close event', guest_close_events()),
@@ -8827,6 +8829,7 @@ def groups():
         ('seed sync proof', seed_sync_proof(cmd, setup)),
         ('animal signed InLove', animal_signed_in_love()),
         ('mob fire resistance damage', mob_fire_resistance_damage()),
+        (FIRST_TICK_LAVA_BURN, first_tick_lava_burn(cmd, setup)),
         ('armor stand climbing', armor_stand_climbing()),
         ('painting saved ground', painting_saved_ground()),
         ('mob armor damage', mob_armor_damage()),

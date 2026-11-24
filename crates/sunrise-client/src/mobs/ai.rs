@@ -2783,7 +2783,8 @@ fn base_tick(
         m.fire_ticks = 0;
     }
     let burning = m.fire_ticks > 0;
-    if burning && m.fire_ticks % 20 == 0 && !m.fluids.in_lava {
+    // `Entity.isInLava` is false on the first tick, so a mob loaded in lava burns then.
+    if burning && m.fire_ticks % 20 == 0 && (m.first_tick || !m.fluids.in_lava) {
         m.damage(level, 1.0, Damage::of(DamageKind::OnFire));
         hurt_teleports(m, w, events);
         if m.hurt_needs_owner() {
@@ -7992,6 +7993,120 @@ mod burn_and_rose_tests {
             }
             world.set(0, 64, 0, state).unwrap();
         }
+    }
+
+    /// Vanilla 26.3 witness recorded by `tools/test_first_tick_lava_burn_parity.py`: a NoAI pig in lava or dry air on its first and later ticks.
+    #[test]
+    #[ignore = "run by tools/test_first_tick_lava_burn_parity.py"]
+    fn a_mob_loaded_in_lava_burns_on_its_first_tick() {
+        let path = std::env::var("SUNRISE_FIRST_TICK_LAVA_BURN_WITNESS").expect(
+            "run through tools/test_first_tick_lava_burn_parity.py, which records the witness",
+        );
+        let witness = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+            panic!(
+                "missing witness {path} ({err}); run through tools/test_first_tick_lava_burn_parity.py"
+            )
+        });
+        struct Row {
+            in_lava: bool,
+            initial_fire: i32,
+            initial_absorption_bits: u32,
+            ticks: usize,
+            hurt_time: i32,
+            fire: i32,
+            health_bits: u32,
+            absorption_bits: u32,
+        }
+        let mut rows = Vec::new();
+        for line in witness.lines() {
+            if line.is_empty() || line.starts_with('#') || line.starts_with("in_lava\t") {
+                continue;
+            }
+            let mut cols = line.split('\t');
+            let in_lava = match cols.next().unwrap() {
+                "0" => false,
+                "1" => true,
+                other => panic!("unexpected in_lava flag {other} in {line}"),
+            };
+            let initial_fire: i32 = cols.next().unwrap().parse().unwrap();
+            let initial_absorption_bits: u32 =
+                u32::from_str_radix(cols.next().unwrap(), 16).unwrap();
+            let ticks: usize = cols.next().unwrap().parse().unwrap();
+            let hurt_time: i32 = cols.next().unwrap().parse().unwrap();
+            let fire: i32 = cols.next().unwrap().parse().unwrap();
+            let health_bits: u32 = u32::from_str_radix(cols.next().unwrap(), 16).unwrap();
+            let absorption_bits: u32 = u32::from_str_radix(cols.next().unwrap(), 16).unwrap();
+            assert!(
+                cols.next().is_none(),
+                "unexpected trailing column in {line}"
+            );
+            rows.push(Row {
+                in_lava,
+                initial_fire,
+                initial_absorption_bits,
+                ticks,
+                hurt_time,
+                fire,
+                health_bits,
+                absorption_bits,
+            });
+        }
+        assert!(!rows.is_empty(), "empty 26.3 witness");
+        let ran = crate::mobs::world::with_built_test_world(
+            &[],
+            build_with("minecraft:lava"),
+            |w, types| {
+                for row in &rows {
+                    let kind = Arc::new(types.types["minecraft:pig"].clone());
+                    let pos = if row.in_lava {
+                        Vec3::new(0.5, 64.0, 0.5)
+                    } else {
+                        Vec3::new(2.5, 64.0, 2.5)
+                    };
+                    let mut m = Mob::new(1, kind, pos, 0.0);
+                    register(&mut m);
+                    m.no_ai = true;
+                    m.persistent = true;
+                    m.fire_ticks = row.initial_fire;
+                    m.absorption = f32::from_bits(row.initial_absorption_bits);
+                    assert!(m.first_tick);
+                    let (mut lr, mut events) = (crate::health::TestLevel::new(0), Vec::new());
+                    for _ in 0..row.ticks {
+                        events.clear();
+                        assert!(tick(&mut m, w, &mut lr.level(), &mut events));
+                    }
+                    assert_eq!(
+                        m.hurt_time, row.hurt_time,
+                        "lava:{} Fire:{} abs:{:08x} ticks:{}",
+                        row.in_lava, row.initial_fire, row.initial_absorption_bits, row.ticks
+                    );
+                    assert_eq!(
+                        m.fire_ticks, row.fire,
+                        "lava:{} Fire:{} abs:{:08x} ticks:{}",
+                        row.in_lava, row.initial_fire, row.initial_absorption_bits, row.ticks
+                    );
+                    assert_eq!(
+                        m.health.to_bits(),
+                        row.health_bits,
+                        "lava:{} Fire:{} abs:{:08x} ticks:{}",
+                        row.in_lava,
+                        row.initial_fire,
+                        row.initial_absorption_bits,
+                        row.ticks
+                    );
+                    assert_eq!(
+                        m.absorption.to_bits(),
+                        row.absorption_bits,
+                        "lava:{} Fire:{} abs:{:08x} ticks:{}",
+                        row.in_lava,
+                        row.initial_fire,
+                        row.initial_absorption_bits,
+                        row.ticks
+                    );
+                }
+            },
+        );
+        assert!(ran, "vanilla data is missing");
     }
 
     /// `LavaCauldronBlock.entityInside`: a pig in a lava cauldron is set alight and takes lava's
