@@ -1,4 +1,4 @@
-//! Native mods' world primitives (`native_world_primitives`, docs/native-mods.md): lines, boxes,
+//! Native mods' world primitives (`native_world_primitives`, docs/modding/src/how-to/native-mods.md): lines, boxes,
 //! beams and text a mod hands the game each frame, drawn here with Sunrise's own pipelines in
 //! the world pass at the stages they were given (`render_level_stage`), the last one after the
 //! entities and before the first-person hand. They draw

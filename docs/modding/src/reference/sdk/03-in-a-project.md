@@ -53,7 +53,7 @@ Wherever a build is given (`new --sunrise`, `pin`, `sdk diff`, `check --build`),
 | A Stable tag such as `26.3-0.1.0` | That release's build. |
 | A Dev tag `dev-YYYY-MM-DD-<short sha>` | That Dev build's; the build must start with the short SHA. |
 | 40 hex digits | That build. |
-| 7 to 39 hex digits | The one SDK whose build id starts with them, among the releases listed: this repository's 100 newest on GitHub, or a folder base's entries. Another URL base takes the full sha only. |
+| 7 to 39 hex digits | The one SDK whose build id starts with them, among the releases listed: this repository's 100 newest on GitHub, or a folder base's entries. Another URL base has no listing, so it has no short-SHA lookup; it still serves release names and full SHAs. |
 
 A release name is read from `<base>/<name>/sdk.json`. A Stable or Dev release's `sdk.json` must match its
 `SHA256SUMS`, signed with Sunrise's release key for exactly that tag (a Dev build's `SHA256SUMS.v2.sig`), so a mirror
