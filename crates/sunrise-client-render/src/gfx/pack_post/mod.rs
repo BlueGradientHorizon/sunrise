@@ -307,6 +307,9 @@ mod work_group_fold_tests;
 mod forced_flip_tests;
 
 #[cfg(test)]
+mod flip_only_tests;
+
+#[cfg(test)]
 mod weather_depth_tests;
 
 #[cfg(test)]

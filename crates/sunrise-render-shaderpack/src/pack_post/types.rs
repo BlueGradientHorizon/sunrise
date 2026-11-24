@@ -372,6 +372,12 @@ pub enum Pipeline {
         render: [f32; 2],
         local: [u32; 3],
     },
+    /// A composite-style program whose fragment stage writes no buffer and no image: it draws
+    /// nothing, and only its compute stages (2.6) and forced flips (6.1.6) run at its place in
+    /// the chain. `storage`: its fragment stage binds storage buffers, and so is left out.
+    NoDraw {
+        storage: bool,
+    },
 }
 
 #[derive(Clone)]
@@ -465,6 +471,9 @@ impl Pass {
         match &self.pipeline {
             Pipeline::Render(p) => p.get().expect("compiled with its pack"),
             Pipeline::Compute { .. } => unreachable!("a compute pass draws nothing"),
+            Pipeline::NoDraw { .. } => {
+                unreachable!("a pass of compute stages and flips draws nothing")
+            }
         }
     }
 }

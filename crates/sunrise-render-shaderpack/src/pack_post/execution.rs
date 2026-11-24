@@ -620,6 +620,10 @@ impl PackPost {
                 self.dispatch(device, queue, encoder, pass, size);
                 continue;
             }
+            if matches!(pass.pipeline, Pipeline::NoDraw { .. }) {
+                self.main ^= pass.flip;
+                continue;
+            }
             let stale = pass.mipmaps & self.mipped & !self.mips_valid;
             for b in (0..BUFFERS).filter(|b| stale & 1 << b != 0) {
                 self.mipmap(encoder, b);
@@ -2235,6 +2239,12 @@ impl PackPost {
             pass.compute = compute;
             if matches!(pass.pipeline, Pipeline::Compute { .. }) {
                 self.dispatch(device, queue, encoder, pass, size);
+                continue;
+            }
+            if matches!(pass.pipeline, Pipeline::NoDraw { .. }) {
+                if let Some(t) = &mut self.shadow_targets {
+                    t.main ^= pass.flip;
+                }
                 continue;
             }
             let group = self.bind(device, queue, encoder, pass, size);

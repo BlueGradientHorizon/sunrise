@@ -1294,6 +1294,18 @@ pub fn build_pass(
             write_mask: wgpu::ColorWrites::empty(),
         })];
     } else if !final_pass && writes.is_empty() && !sink {
+        // It draws nothing a later program could see: its compute stages and forced flips are
+        // all it does, and the caller drops it when it has neither.
+        if geometry.is_none() {
+            let flip = mask(&p.flips);
+            return Some(no_draw(
+                device,
+                p.name,
+                p.group,
+                flip,
+                !interface.buffers.is_empty(),
+            ));
+        }
         notes.push(format!("{}: writes no buffer; skipped", p.name));
         return None;
     }
@@ -1509,6 +1521,57 @@ pub fn build_pass(
         image_copies,
         snapshots: 0,
     })
+}
+
+/// A pass that draws nothing (`Pipeline::NoDraw`): it runs the compute stages its caller adds,
+/// then flips `flip`. `storage`: its fragment stage binds storage buffers.
+fn no_draw(device: &wgpu::Device, name: String, group: Group, flip: u16, storage: bool) -> Pass {
+    Pass {
+        ubo: device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some(&name),
+            size: 16,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        }),
+        layout: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some(&name),
+            entries: &[],
+        }),
+        block: Vec::new(),
+        initial_block: Vec::new(),
+        uniforms: Vec::new(),
+        name,
+        group,
+        pipeline: Pipeline::NoDraw { storage },
+        sky_parts: None,
+        water_mask: None,
+        polygon_offset: None,
+        samplers: Vec::new(),
+        writes: Vec::new(),
+        flip,
+        depth_linear: [0.0; 4],
+        shadow_reads: 0,
+        shadow_copies: 0,
+        written: 0,
+        mipmaps: 0,
+        draw: false,
+        atlas: None,
+        material_maps: false,
+        paged: false,
+        ids: false,
+        groups: HashMap::new(),
+        portal_groups: HashMap::new(),
+        copies: 0,
+        reads: 0,
+        buffers: false,
+        images: Vec::new(),
+        compute: Vec::new(),
+        sink: false,
+        geometry: 0,
+        viewport: None,
+        image_copies: 0,
+        snapshots: 0,
+    }
 }
 
 /// The pack's images a pass both samples and stores.
@@ -2145,6 +2208,21 @@ impl PackPost {
                     polygon_offset_next.get(),
                 )?
             };
+            // A program whose fragment stage writes nothing keeps its compute stages and its
+            // forced flips; with neither, nothing of it is left.
+            if let Pipeline::NoDraw { storage } = pass.pipeline {
+                if pass.flip == 0 && computes.is_empty() {
+                    notes.push(format!("{}: writes no buffer; skipped", pass.name));
+                    return None;
+                }
+                if storage {
+                    notes.push(format!(
+                        "{}: writes no buffer; its fragment stage, which binds storage buffers, \
+                         is left out",
+                        pass.name
+                    ));
+                }
+            }
             pass.compute.append(&mut computes);
             // A shadow program with geometry draws into its buffers' "main" side in place, the
             // side `shadowcolorimgN` binds, and wgpu binds a texture one way per pass.
