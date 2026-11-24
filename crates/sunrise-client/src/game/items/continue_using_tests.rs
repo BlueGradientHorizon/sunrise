@@ -47,7 +47,7 @@ fn eating(body: impl FnOnce(&mut Game<'_>)) {
             game.creative = false;
             game.build_registries();
             game.screen = Screen::Playing;
-            game.right = true;
+            game.set_mapping_held("key.use", true);
             assert!(game.start_using_item());
             for _ in 0..5 {
                 game.tick_using();

@@ -47,7 +47,7 @@ fn eating(body: impl FnOnce(&mut Game<'_>)) {
             game.creative = false;
             game.build_registries();
             game.screen = Screen::Playing;
-            game.right = true;
+            game.set_mapping_held("key.use", true);
             assert!(game.start_using_item());
             for _ in 0..5 {
                 game.tick_using();
@@ -80,7 +80,7 @@ fn a_part_hears_each_stop_of_its_items_use_once() {
             // A release: the ticks of the use that were left.
             eating(|game| {
                 let left = game.use_duration - 5;
-                game.right = false;
+                game.set_mapping_held("key.use", false);
                 game.tick_using();
                 assert!(game.using.is_none());
                 assert_eq!(heard(), [(true, None, true, left)]);
