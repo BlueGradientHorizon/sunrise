@@ -1033,20 +1033,23 @@ pub enum ModifierOperation {
 
 impl MobEffect {
     /// The checks a declaration's attribute modifiers pass at load: each
-    /// attribute and id a `namespace:path`, and one modifier per attribute
+    /// attribute and id a `namespace:path` (`Identifier`'s rules, which refuse
+    /// the namespace `..`), and one modifier per attribute
     /// (vanilla keys its templates by attribute). JSON has no infinite or NaN
     /// amount: one out of `f64`'s range fails to parse. Whether the attribute
     /// exists is the game's check, which knows the mods' attributes.
     fn check_attribute_modifiers(&self) -> Result<(), String> {
+        let identifier =
+            |id: &str| sunrise_core::identifier::Identifier::parse_namespaced(id).is_some();
         for (i, modifier) in self.attribute_modifiers.iter().enumerate() {
             let entry = format!("attribute_modifiers[{i}]");
-            if !namespaced_id(&modifier.attribute) {
+            if !identifier(&modifier.attribute) {
                 return Err(format!(
                     "{entry}: attribute {:?} is an attribute id (namespace:path)",
                     modifier.attribute
                 ));
             }
-            if !namespaced_id(&modifier.id) {
+            if !identifier(&modifier.id) {
                 return Err(format!(
                     "{entry}: id {:?} is a modifier id (namespace:path)",
                     modifier.id
@@ -3537,6 +3540,16 @@ capabilities = ["registries"]
                 "modifier-id",
                 entry("minecraft:movement_speed", "Ruby:A", "1", "add_value"),
                 "attribute_modifiers[0]: id \"Ruby:A\" is a modifier id",
+            ),
+            (
+                "modifier-id-dot-dot",
+                entry("minecraft:movement_speed", "..:stun", "1", "add_value"),
+                "attribute_modifiers[0]: id \"..:stun\" is a modifier id",
+            ),
+            (
+                "modifier-attribute-dot-dot",
+                entry("..:speed", "ruby:a", "1", "add_value"),
+                "attribute_modifiers[0]: attribute \"..:speed\" is an attribute id",
             ),
             (
                 "modifier-amount",
