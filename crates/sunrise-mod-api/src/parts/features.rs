@@ -216,6 +216,7 @@ impl FeaturesRegistrar for PartRegistrar {
                     | crate::DatapackFieldKind::Map { .. }
                     | crate::DatapackFieldKind::Record { .. }
                     | crate::DatapackFieldKind::Optional { .. }
+                    | crate::DatapackFieldKind::Dispatch { .. }
             )
         }) {
             // A feature config is a flat record of scalars: nested kinds (and the references
