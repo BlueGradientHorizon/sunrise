@@ -649,7 +649,20 @@ impl<T: Send + Sync + 'static> AttachmentKey<T> {
 
     /// Queue the current value on `holder` for synchronization to clients that see it, or a
     /// removal marker if the value is absent. A live key with no sync codec does nothing.
-    pub fn sync_data(&self, host: &mut dyn Host, holder: Holder) -> Result<(), AttachmentError> {
+    ///
+    /// Server-only: client hooks cannot queue attachment sync packets.
+    ///
+    /// ```compile_fail
+    /// use mod_vocab::{AttachmentKey, ClientHost, Holder};
+    /// fn client_cannot_sync(host: &mut dyn ClientHost, key: &AttachmentKey<u32>) {
+    ///     let _ = key.sync_data(host, Holder::Level);
+    /// }
+    /// ```
+    pub fn sync_data(
+        &self,
+        host: &mut dyn ServerHost,
+        holder: Holder,
+    ) -> Result<(), AttachmentError> {
         self.live()?.sync_data(host.attachments(), holder)
     }
 
