@@ -69,6 +69,48 @@ fn pack_terrain_normals_stream_from_start() {
 
 #[test]
 #[ignore = "daily"]
+fn pack_terrain_normals_flat_from_start() {
+    run_daily("pack_terrain_normals_flat_from_start", &[], fixture_pending);
+}
+
+#[test]
+#[ignore = "daily"]
+fn pack_terrain_normals_pending_packed() {
+    run_daily(
+        "pack_terrain_normals_pending_packed",
+        &[],
+        fixture_pending_packed,
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn pack_terrain_normals_pending_post_only() {
+    run_daily(
+        "pack_terrain_normals_pending_post_only",
+        &[
+            ("SUNRISE_FLAT_DRAWS", "0"),
+            ("SUNRISE_SHADER_PACK_WITHOUT", "vertex-storage"),
+        ],
+        fixture_pending_post_only,
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn pack_terrain_normals_pending_refused() {
+    run_daily(
+        "pack_terrain_normals_pending_refused",
+        &[
+            ("SUNRISE_FLAT_DRAWS", "0"),
+            ("SUNRISE_SHADER_PACK_WITHOUT", "vertex-storage"),
+        ],
+        fixture_pending_refused,
+    );
+}
+
+#[test]
+#[ignore = "daily"]
 fn pack_terrain_normals_pages_from_start() {
     run_daily(
         "pack_terrain_normals_pages_from_start",
@@ -571,31 +613,25 @@ fn room_for_the_stream(renderer: &Renderer) -> u32 {
     buffers - 5
 }
 
-/// Without flat draws, a renderer made with a `shaders/` pack picked (`Renderer::new`'s
-/// `pack_starts_wide`) starts in the layout that pack's per-section terrain draws in: with the
-/// normal stream in both arenas on a device taken to read no storage in vertex shaders
-/// (`SUNRISE_SHADER_PACK_WITHOUT=vertex-storage`), with the section arena's pages storage where
-/// vertex shaders read it. The game loads the pack on a thread of its own (`load_shader_pack`)
-/// and draws without it until `poll_shader_pack` runs it: the frames drawn meanwhile keep that
-/// layout, so no section is dropped, neither then nor once the pack runs, and both lists draw
-/// with the pack at once.
-fn fixture_pending(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    std::fs::create_dir_all(out)?;
-    let mut renderer = renderer(window, (true, true))?;
-    assert!(!renderer.flat_draws(), "SUNRISE_FLAT_DRAWS=0");
-    let stream = std::env::var("SUNRISE_SHADER_PACK_WITHOUT").as_deref() == Ok("vertex-storage");
-    let hud = HudBatch::scratch([320, 180]);
-    let mut result = serde_json::Map::new();
-    let layout = |renderer: &Renderer| {
-        let (normals, translucent, _) = renderer.section_arena_normals();
-        (renderer.section_arena_pages(), normals, translucent)
-    };
-    let start = layout(&renderer);
-    // Storage pages where per-section terrain reads them, else the stream in both arenas.
-    assert_eq!((start.0.0, start.1, start.2), (!stream, stream, stream));
-    renderer.upload(SECTION, &mesh(false));
-    // The pack, written as `pack` writes it, then loaded as the game loads it.
-    let folder = out.join("pack-normal");
+/// The layouts the sections are in: the section arena's pages (storage, page size), its
+/// normal stream, the translucent arena's stream, whether translucent quads have that arena
+/// (`translucent_split`), and whether solid quads take the compact layout (`packed_layout`).
+type Layout = ((bool, u64), bool, bool, bool, bool);
+
+fn layout(renderer: &Renderer) -> Layout {
+    let (normals, translucent, _) = renderer.section_arena_normals();
+    (
+        renderer.section_arena_pages(),
+        normals,
+        translucent,
+        renderer.translucent_split(),
+        renderer.packed_layout()[0],
+    )
+}
+
+/// Writes a pack in `folder` whose solid and translucent terrain write `gl_Normal` as
+/// `pack` writes it, and `extra` (name, source) files beside them.
+fn write_normal_pack(folder: &Path, extra: &[(&str, &str)]) -> std::io::Result<()> {
     let shaders = folder.join("shaders");
     std::fs::create_dir_all(&shaders)?;
     for name in ["gbuffers_terrain", "gbuffers_water"] {
@@ -609,6 +645,77 @@ fn fixture_pending(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::e
         )?;
     }
     std::fs::write(shaders.join("shaders.properties"), "shadow.enabled=false\n")?;
+    for (name, source) in extra {
+        std::fs::write(shaders.join(name), source)?;
+    }
+    Ok(())
+}
+
+/// Polls the pack `load_shader_pack` builds until it runs (whether it does), or is refused (why).
+fn poll(renderer: &mut Renderer) -> Result<bool, String> {
+    loop {
+        if let Some((_, _, _, report)) = renderer.poll_shader_pack() {
+            return report.map(|r| r.is_some()).map_err(|e| e.reason);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+}
+
+/// Draws `frames` frames, each leaving every section where it was (`take_dropped_sections`)
+/// and the layouts as `want`.
+fn frames_keep(
+    renderer: &mut Renderer,
+    hud: &HudBatch,
+    out: &Path,
+    name: &str,
+    frames: usize,
+    want: Layout,
+) {
+    for frame in 0..frames {
+        shoot(
+            renderer,
+            hud,
+            0.0,
+            0.0,
+            &out.join(format!("{name}-{frame}.png")),
+        );
+        assert!(
+            !renderer.take_dropped_sections(),
+            "{name} frame {frame}: the sections stay"
+        );
+        assert_eq!(
+            layout(renderer),
+            want,
+            "{name} frame {frame}: the layout stays"
+        );
+    }
+}
+
+/// A renderer made with a `shaders/` pack picked (`Renderer::new`'s `pack_starts_wide`)
+/// starts in the layout that pack's terrain draws in: flat (pages storage, no translucent
+/// arena) where flat draws are on; per section, the stream in both arenas on a device taken to
+/// read no storage in vertex shaders (`SUNRISE_SHADER_PACK_WITHOUT=vertex-storage`), else the
+/// pages storage. The game loads the pack on a thread of its own (`load_shader_pack`) and draws
+/// without it until `poll_shader_pack` runs it: the frames drawn meanwhile keep that layout, so
+/// no section is dropped, neither then nor once the pack runs, and both lists draw with the pack
+/// at once.
+fn fixture_pending(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    std::fs::create_dir_all(out)?;
+    let mut renderer = renderer(window, (true, true))?;
+    let flat = renderer.flat_draws();
+    let stream = std::env::var("SUNRISE_SHADER_PACK_WITHOUT").as_deref() == Ok("vertex-storage");
+    let hud = HudBatch::scratch([320, 180]);
+    let mut result = serde_json::Map::new();
+    let start = layout(&renderer);
+    // Storage pages flat or per section, translucent quads in the section arena that pages
+    // are read from; else the stream in both arenas, translucent quads in an arena of their own.
+    assert_eq!(
+        (start.0.0, start.1, start.2, start.3),
+        (!stream, stream, stream, stream)
+    );
+    renderer.upload(SECTION, &mesh(false));
+    let folder = out.join("pack-normal");
+    write_normal_pack(&folder, &[])?;
     let post = read_pack(&mut renderer, &folder);
     renderer.load_shader_pack(
         0,
@@ -617,32 +724,11 @@ fn fixture_pending(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::e
         "normal".into(),
         std::time::Instant::now(),
     );
-    // Frames while it builds, before the game polls it.
-    for frame in 0..3 {
-        shoot(
-            &mut renderer,
-            &hud,
-            0.0,
-            0.0,
-            &out.join(format!("pending-{frame}.png")),
-        );
-        assert!(
-            !renderer.take_dropped_sections(),
-            "pending frame {frame}: the sections stay"
-        );
-        assert_eq!(
-            layout(&renderer),
-            start,
-            "pending frame {frame}: the layout stays"
-        );
-    }
-    let report = loop {
-        if let Some((_, _, _, report)) = renderer.poll_shader_pack() {
-            break report;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(10));
-    };
-    report.unwrap().expect("the pack runs");
+    // A frame runs the compact layout as the pack will (`follow_packed_layout`): flat draws
+    // take it, per-section ones don't. Then frames while it builds, before the game polls it.
+    let want = (start.0, start.1, start.2, start.3, flat);
+    frames_keep(&mut renderer, &hud, out, "pending", 3, want);
+    assert!(poll(&mut renderer).unwrap(), "the pack runs");
     let south = [channel(0), channel(0), channel(-1), 255];
     for translucent in [false, true] {
         let name = if translucent { "translucent" } else { "solid" };
@@ -664,10 +750,147 @@ fn fixture_pending(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::e
             !renderer.take_dropped_sections(),
             "{name}: running the pack kept the sections"
         );
-        assert_eq!(layout(&renderer), start, "{name}: the layout stays");
+        assert_eq!(layout(&renderer), want, "{name}: the layout stays");
         result.insert(name.into(), format!("{pixel:?}").into());
     }
     finish(out, result)
+}
+
+/// On a device with flat draws, turned off (`set_flat_draws(false)`), and no pack picked:
+/// solid quads start in the compact layout, translucent ones in an arena of their own. A pack
+/// loaded meanwhile draws terrain per section from the pages, which reads no compact records
+/// and holds translucent quads in the section arena: the first frame drawn while it builds lays
+/// the sections out so (none uploaded yet), the sections uploaded then are laid out as the pack
+/// reads them, and none is dropped once it runs.
+fn fixture_pending_packed(
+    window: Arc<Window>,
+    out: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    std::fs::create_dir_all(out)?;
+    let mut renderer = renderer(window, (false, false))?;
+    renderer.set_flat_draws(false)?;
+    let hud = HudBatch::scratch([320, 180]);
+    let mut result = serde_json::Map::new();
+    shoot(&mut renderer, &hud, 0.0, 0.0, &out.join("start.png"));
+    renderer.take_dropped_sections();
+    let start = layout(&renderer);
+    assert!(start.4, "no pack: solid quads compact");
+    let folder = out.join("pack-normal");
+    write_normal_pack(&folder, &[])?;
+    let post = read_pack(&mut renderer, &folder);
+    renderer.load_shader_pack(
+        0,
+        post,
+        Vec::new(),
+        "normal".into(),
+        std::time::Instant::now(),
+    );
+    // Per section from the pages, which the section arena holds the translucent quads beside.
+    let want = (start.0, false, false, false, false);
+    frames_keep(&mut renderer, &hud, out, "pending", 1, want);
+    // Uploaded while the pack builds.
+    renderer.upload(SECTION, &mesh(false));
+    frames_keep(&mut renderer, &hud, out, "pending-uploaded", 2, want);
+    assert!(poll(&mut renderer).unwrap(), "the pack runs");
+    frames_keep(&mut renderer, &hud, out, "running", 1, want);
+    let pixel = shoot(&mut renderer, &hud, 0.0, 0.0, &out.join("solid.png"));
+    assert_eq!(pixel, [channel(0), channel(0), channel(-1), 255]);
+    result.insert("solid".into(), format!("{pixel:?}").into());
+    finish(out, result)
+}
+
+/// A pack whose programs draw no terrain and no shadow pass (a `composite` alone), loaded
+/// mid-session where per-section terrain would read the normal stream: the frames while it
+/// builds, and once it runs, keep the layout without a pack's terrain; no section is dropped.
+fn fixture_pending_post_only(
+    window: Arc<Window>,
+    out: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    std::fs::create_dir_all(out)?;
+    let mut renderer = renderer(window, (false, false))?;
+    let hud = HudBatch::scratch([320, 180]);
+    shoot(&mut renderer, &hud, 0.0, 0.0, &out.join("start.png"));
+    renderer.upload(SECTION, &mesh(false));
+    renderer.take_dropped_sections();
+    let start = layout(&renderer);
+    assert!(!start.1, "no pack: no stream");
+    let folder = out.join("pack-composite");
+    let shaders = folder.join("shaders");
+    std::fs::create_dir_all(&shaders)?;
+    std::fs::write(
+        shaders.join("composite.vsh"),
+        "#version 120\nvoid main() { gl_Position = ftransform(); }\n",
+    )?;
+    std::fs::write(
+        shaders.join("composite.fsh"),
+        "#version 120\nvoid main() { gl_FragData[0] = vec4(0.2, 0.6, 1.0, 1.0); }\n",
+    )?;
+    let post = read_pack(&mut renderer, &folder);
+    assert!(post.terrain.is_none() && post.shadow.is_none());
+    renderer.load_shader_pack(
+        0,
+        post,
+        Vec::new(),
+        "composite".into(),
+        std::time::Instant::now(),
+    );
+    frames_keep(&mut renderer, &hud, out, "pending", 3, start);
+    assert!(poll(&mut renderer).unwrap(), "the pack runs");
+    frames_keep(&mut renderer, &hud, out, "running", 2, start);
+    finish(out, serde_json::Map::new())
+}
+
+/// A pack the device refuses once built (`colortex0` in an integer format and no `final` to
+/// draw it, `PackPost::new`'s refusal), on a renderer made with a `shaders/` pack picked where
+/// per-section terrain reads the normal stream: the frames while it builds keep the stream; the
+/// refusal leaves the dimension without a pack, and the next frame lays the sections out as
+/// without one, the stream dropped.
+fn fixture_pending_refused(
+    window: Arc<Window>,
+    out: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    std::fs::create_dir_all(out)?;
+    let mut renderer = renderer(window, (true, true))?;
+    let hud = HudBatch::scratch([320, 180]);
+    let start = layout(&renderer);
+    assert!(
+        start.1 && start.2,
+        "a pack picked: the stream from the start"
+    );
+    renderer.upload(SECTION, &mesh(false));
+    let folder = out.join("pack-refused");
+    write_normal_pack(
+        &folder,
+        &[
+            (
+                "composite.vsh",
+                "#version 120\nvoid main() { gl_Position = ftransform(); }\n",
+            ),
+            (
+                "composite.fsh",
+                "#version 330 compatibility\n/* RENDERTARGETS: 0 */\n/*\nconst int colortex0Format = RGBA32UI;\n*/\n\
+                 layout(location = 0) out uvec4 o;\nvoid main() { o = uvec4(0u, 200u, 0u, 255u); }\n",
+            ),
+        ],
+    )?;
+    let post = read_pack(&mut renderer, &folder);
+    renderer.load_shader_pack(
+        0,
+        post,
+        Vec::new(),
+        "refused".into(),
+        std::time::Instant::now(),
+    );
+    frames_keep(&mut renderer, &hud, out, "pending", 2, start);
+    assert!(poll(&mut renderer).is_err(), "the device refuses the pack");
+    shoot(&mut renderer, &hud, 0.0, 0.0, &out.join("refused.png"));
+    assert!(
+        renderer.take_dropped_sections(),
+        "laid out again without a pack"
+    );
+    let (normals, translucent, _) = renderer.section_arena_normals();
+    assert!(!normals && !translucent, "no pack runs: no stream");
+    finish(out, serde_json::Map::new())
 }
 
 /// The shadow pass of a pack whose per-section terrain reads the normal stream (vertex storage

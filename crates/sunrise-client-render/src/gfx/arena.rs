@@ -730,7 +730,8 @@ impl Arena {
     }
     /// A page far larger than its ranges in use, and the capacity a page of them
     /// gets (`grown`: twice theirs, or `PAGE_BYTES` more; at least the first
-    /// page's): one of `SHRINK_MIN_BYTES` or more, with ranges in use (an empty
+    /// page's): one of `SHRINK_MIN_BYTES` or more (its normal stream counted,
+    /// `vertex_bytes`), with ranges in use (an empty
     /// one is `trim`'s), that this halves or makes `PAGE_BYTES` smaller. In
     /// system memory too (`open_page` makes the new one in video memory). None
     /// while a page is closing; the page it leads to is not oversized until its
@@ -749,7 +750,7 @@ impl Arena {
                 .next_multiple_of(GRAIN)
                 .min(self.page_limit);
             let smaller = 2 * capacity <= p.capacity || capacity + saving <= p.capacity;
-            (p.capacity * self.stride >= SHRINK_MIN_BYTES && used > 0 && smaller)
+            (p.capacity * self.vertex_bytes() >= SHRINK_MIN_BYTES && used > 0 && smaller)
                 .then_some((i as u32, capacity))
         })
     }

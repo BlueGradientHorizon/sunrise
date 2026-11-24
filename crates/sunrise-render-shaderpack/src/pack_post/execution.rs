@@ -198,6 +198,17 @@ impl PackPost {
             && (self.shadow_terrain.is_some() || self.shadow_water.is_some())
     }
 
+    /// Whether programs of the pack draw the game's sections with the terrain geometry it was
+    /// built with (`World::terrain`): solid, cutout or translucent terrain, or the shadow pass's
+    /// (`has_shadow`). Terrain the pack leaves undrawn (`has_terrain`'s `terrain_undrawn`) is
+    /// drawn by none of them.
+    pub fn draws_sections(&self) -> bool {
+        self.terrain.is_some()
+            || self.terrain_cutout.is_some()
+            || self.water.is_some()
+            || self.has_shadow()
+    }
+
     /// Whether the pack draws the sky (disc, sunset, stars, void) itself.
     /// What the world's background is when the pack draws the sky: colortex0's clear colour
     /// (`None`: the fog colour, its default).

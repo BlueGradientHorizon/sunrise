@@ -169,6 +169,10 @@ impl Renderer {
     pub fn section_arena_pages(&self) -> (bool, u64) {
         (self.arena_storage, self.arena.page_vertices())
     }
+    /// Whether translucent quads have an arena of their own (`follow_translucent_layout`).
+    pub fn translucent_split(&self) -> bool {
+        self.translucent_arena.is_some()
+    }
     /// Whether the section arena's pages, and the translucent arena's where it has one, have a
     /// normal stream (`follow_arena_layout`), and the bytes of the section arena's pages.
     pub fn section_arena_normals(&self) -> (bool, bool, u64) {

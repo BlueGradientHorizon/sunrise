@@ -198,6 +198,7 @@ impl Renderer {
             .filter(|_| flat)
             .map(|f| f.draw_layout.clone());
         let terrain = self.pack_atlas.is_some();
+        let draws_sections = PackLoading::draws_of(&pack, terrain);
         let clouds = self.cloud_bindings.clone();
         let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let cancelled = cancel.clone();
@@ -243,6 +244,7 @@ impl Renderer {
                     label,
                     started,
                     _cancel: CancelOnDrop(cancel),
+                    draws: draws_sections,
                 });
             }
             Err(e) => {

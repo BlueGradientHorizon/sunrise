@@ -201,3 +201,33 @@ fn normal_stream_counts_in_the_move_budgets() {
     assert_eq!(arena.sparsest_from(5 * GRAIN * 32), Some(first));
     assert_eq!(arena.sparsest_from(5 * GRAIN * 32 + 1), None);
 }
+
+/// A page shrinks (`oversized`) from `SHRINK_MIN_BYTES` (64 MiB) of it, its normal stream
+/// counted: 2097152 vertices of 32 bytes are 64 MiB with the stream, 48 MiB without. Holding
+/// one range, it moves into a page of the first page's size (2^18 vertices).
+#[test]
+#[ignore = "daily"]
+fn normal_stream_counts_toward_a_shrink() {
+    let _gpu = crate::gfx::test_gpu::lock();
+    let adapter = crate::gfx::test_gpu::adapter().expect("the arena's normal stream needs a GPU");
+    let (device, _queue) = pollster::block_on(adapter.request_device(&Default::default())).unwrap();
+    // `oversized` looks at the counts only: a small buffer stands in for the page.
+    let buffer = try_create(&device, "Stand-in page", 4, wgpu::BufferUsages::VERTEX).unwrap();
+    let capacity = 2_097_152;
+    let page = || Page {
+        buffer: buffer.clone(),
+        sources: None,
+        normals: None,
+        capacity,
+        free: FreeList(BTreeMap::from([(GRAIN, capacity - GRAIN)])),
+        host: false,
+    };
+    let mut with = Arena::translucent(&device, 24, 1 << 18).with_normals(true);
+    with.page_limit = LARGE_PAGE_BYTES / 24 / GRAIN * GRAIN;
+    with.pages = vec![Some(page())];
+    assert_eq!(with.oversized(), Some((0, 1 << 18)));
+    let mut without = Arena::translucent(&device, 24, 1 << 18);
+    without.page_limit = with.page_limit;
+    without.pages = vec![Some(page())];
+    assert_eq!(without.oversized(), None);
+}
