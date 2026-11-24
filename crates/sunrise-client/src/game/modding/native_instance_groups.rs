@@ -369,6 +369,7 @@ mod tests {
         let owned = Group {
             generation: 2,
             owner: Some("group-owner"),
+            submitted: false,
             model: mod_api::__private::built::model_ref(1, 0),
             copies: vec![copy],
             len: 1,

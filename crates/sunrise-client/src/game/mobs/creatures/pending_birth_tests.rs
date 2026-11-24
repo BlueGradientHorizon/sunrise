@@ -1088,6 +1088,7 @@ fn fox_breeding_rejects_non_fox_and_trusts_breeders_on_replaced_fox() {
                 criteria: vec![Criterion {
                     name: "pre_snap".into(),
                     trigger: "minecraft:bred_animals".into(),
+                    player: None,
                     conditions: serde_json::json!({
                         "child": {
                             "minecraft:flags": {"is_baby": false},
@@ -1709,7 +1710,10 @@ fn mob_split_constructs_all_children_before_any_join_and_cleans_up_on_unwind() {
             _: &mut dyn ServerHost,
             event: &mut EntityJoinLevelEvent<'_>,
         ) -> Flow {
-            self.trace.lock().unwrap().push(("join", event.entity));
+            self.trace
+                .lock()
+                .unwrap()
+                .push(("join", event.subject.id()));
             Flow::Continue
         }
     }
@@ -2027,7 +2031,10 @@ fn split_and_detached_construction_precede_admission() {
             _: &mut dyn ServerHost,
             event: &mut EntityJoinLevelEvent<'_>,
         ) -> Flow {
-            self.calls.lock().unwrap().push(("join", event.entity));
+            self.calls
+                .lock()
+                .unwrap()
+                .push(("join", event.subject.id()));
             Flow::Continue
         }
     }

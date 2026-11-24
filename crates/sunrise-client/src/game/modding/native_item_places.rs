@@ -3480,7 +3480,7 @@ pub(super) mod tests {
                 let slot = r
                     .register_attachment_type(AttachmentDescriptor::new(
                         "crafted_map_fixture:slot",
-                        Vec::<Option<(ItemResource, u32)>>::new,
+                        StackList::<ItemResource>::new,
                     ))
                     .unwrap();
                 *self.slot.lock().unwrap() = Some(slot.clone());

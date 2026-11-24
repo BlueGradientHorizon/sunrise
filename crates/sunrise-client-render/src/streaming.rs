@@ -265,20 +265,7 @@ impl<G: ChunkGenerator> LodSource for G {
     }
 }
 /// The generator's saving, for the streamer (which doesn't know its type).
-/// Read-only access to checked-out generation state.
-pub trait ProtoAccess: Send + Sync {
-    fn status(&self, proto: &Proto) -> Option<sunrise_world::chunk_status::ChunkStatus>;
-    fn block(&self, proto: &Proto, pos: [i32; 3]) -> Option<u32>;
-}
-impl<G: ChunkGenerator> ProtoAccess for G {
-    fn status(&self, proto: &Proto) -> Option<sunrise_world::chunk_status::ChunkStatus> {
-        self.proto_status(proto)
-    }
-    fn block(&self, proto: &Proto, pos: [i32; 3]) -> Option<u32> {
-        self.proto_block(proto, pos)
-    }
-}
-trait Saves: LodSource + ProtoAccess {
+trait Saves: LodSource {
     fn accept_loaded_chunk(&self, chunk: &mut Chunk);
     fn accept_loaded_proto(&self, proto: &mut Proto, saved: crate::chunk::SavedProto) -> bool;
     fn save_protos_on_owner(&self) -> bool;

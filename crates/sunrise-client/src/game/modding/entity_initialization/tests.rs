@@ -529,7 +529,7 @@ fn player_construction_precedes_disk_load_and_clone() {
         ServerHost,
     };
     use sunrise_client::{lan::playerdata, save::write_dat};
-    use sunrise_mod_runtime::attachments::{ATTACHMENTS_KEY, Attachments};
+    use sunrise_mod_runtime::attachments::ATTACHMENTS_KEY;
 
     const PLAYER: Holder = Holder::Player(12);
     const FLAG: &str = "SUNRISE_PLAYER_CONSTRUCTION_CASE";
@@ -671,14 +671,30 @@ fn player_construction_precedes_disk_load_and_clone() {
             with_guests(|game| {
                 game.options.dedicated = Some(Vec::new());
                 game.world_root = game.save.root.clone();
-                let mut saved = Attachments::default();
-                saved_key.set(&mut saved, Holder::Level, 7).unwrap();
-                copied_key.set(&mut saved, Holder::Level, 8).unwrap();
+                let mut saved = sunrise_mod_runtime::attachments::Attachments::default();
+                let saved_raw = sunrise_mod_runtime::attachments::AttachmentType {
+                    namespace: "constructing",
+                    name: "saved",
+                    default: || 0i32,
+                    codec: Some(mod_api::AttachmentCodec { encode, decode }),
+                    copy_on_death: false,
+                    sync_codec: None,
+                };
+                let copied_raw = sunrise_mod_runtime::attachments::AttachmentType {
+                    namespace: "constructing",
+                    name: "copied",
+                    default: || 0i32,
+                    codec: Some(mod_api::AttachmentCodec { encode, decode }),
+                    copy_on_death: true,
+                    sync_codec: None,
+                };
+                saved_raw.set(&mut saved, Holder::Level, 7).unwrap();
+                copied_raw.set(&mut saved, Holder::Level, 8).unwrap();
                 playerdata::directory(&game.world_root);
                 write_dat(
                     &playerdata::path(&game.world_root, 12),
                     Tag::compound([
-                        (ATTACHMENTS_KEY, Tag::Compound(saved.to_nbt())),
+                        (ATTACHMENTS_KEY, Tag::Compound(saved.try_to_nbt().unwrap())),
                         ("XpLevel", Tag::Int(19)),
                     ]),
                 )

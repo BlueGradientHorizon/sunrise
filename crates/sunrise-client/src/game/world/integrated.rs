@@ -807,7 +807,14 @@ impl Game<'_> {
         self.native_lifecycle_world_ready();
         // Hand the local connection pipe to the client only after `server_started`,
         // so a failed or panicking startup never hands out a live pipe.
-        let _ = ready.send(Ok((pipe, world_name)));
+        let _ = ready.send(Ok((
+            pipe,
+            world_name,
+            self.world_biomes_base
+                .as_ref()
+                .expect("world is open")
+                .clone(),
+        )));
         if let (Some(script), Some(output)) = (
             std::env::var_os("SUNRISE_COMMAND_SCRIPT"),
             std::env::var_os("SUNRISE_COMMAND_OUTPUT"),

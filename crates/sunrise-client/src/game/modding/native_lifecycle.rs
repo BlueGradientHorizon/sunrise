@@ -904,7 +904,7 @@ mod tests {
         assert!(lifecycle.world_open_ready().is_none());
         assert!(lifecycle.server_tick_start(true).is_none());
 
-        lifecycle.begin_open(Authority::IntegratedServer);
+        lifecycle.begin_open(Some(Authority::IntegratedServer));
         assert!(lifecycle.is_opening());
         lifecycle.world_open_ready().unwrap();
         assert!(!lifecycle.is_opening());
@@ -912,7 +912,7 @@ mod tests {
         assert!(!lifecycle.retire());
         assert!(lifecycle.epoch().is_none());
 
-        lifecycle.begin_open(Authority::IntegratedServer);
+        lifecycle.begin_open(Some(Authority::IntegratedServer));
         lifecycle.world_open_ready().unwrap();
         lifecycle.begin_close();
         assert!(!lifecycle.is_opening());

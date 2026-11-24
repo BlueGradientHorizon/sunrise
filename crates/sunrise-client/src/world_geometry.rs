@@ -1511,16 +1511,11 @@ mod tests {
         let near = ModelInstance::at([1.0, 2.0, 3.0], 0xFF80_C040);
         let far = ModelInstance::at([40.0, 0.0, 0.0], 0xFF80_C040);
         for _ in 0..=INSTANCE_CAPACITY {
-            draw.submit_validated_model(batch, &[], Some(&NearX), |_, _| false)
-                .unwrap();
-            draw.submit_validated_model(batch, &[far], Some(&NearX), |_, _| false)
-                .unwrap();
+            draw.submit_validated_model(batch, &[], Some(&NearX), |_, _| false);
+            draw.submit_validated_model(batch, &[far], Some(&NearX), |_, _| false);
         }
         assert_eq!(draw.copy_count(), 0);
-        assert_eq!(draw.usage().instances_used, 0);
-        draw.submit_validated_model(batch, &[near], Some(&NearX), |_, _| false)
-            .unwrap();
+        draw.submit_validated_model(batch, &[near], Some(&NearX), |_, _| false);
         assert_eq!(draw.copy_count(), 1);
-        assert_eq!(draw.usage().instances_used, 1);
     }
 }

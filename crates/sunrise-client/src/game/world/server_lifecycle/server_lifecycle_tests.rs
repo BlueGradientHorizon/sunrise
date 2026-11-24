@@ -29,7 +29,6 @@ fn in_child(test: &str) -> bool {
 struct PanicAt {
     stopping: bool,
     config_unloading: bool,
-    prepare_error: bool,
     logout: bool,
 }
 
@@ -307,7 +306,6 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
             let panic_at = PanicAt {
                 stopping: case == "stopping-panic",
                 config_unloading: config_panic,
-                prepare_error,
                 logout: case == "config-unloading-logout-panic",
             };
             // Panic latches are per installed mod and hook, not per world. Each case needs
@@ -876,13 +874,12 @@ fn datapack_dimensions_open_prepare_save_and_close_in_creation_order() {
                         .lock()
                         .unwrap()
                         .push(format!("load:{}", e.dimension));
-                    self.listed_at_load.lock().unwrap().push(
-                        host.levels()
-                            .list_levels()
-                            .into_iter()
-                            .map(|level| level.dimension_id().to_owned())
-                            .collect(),
-                    );
+                    let mut levels = Vec::new();
+                    let _ = host.levels().visit_levels(&mut |level| {
+                        levels.push(level.dimension_id().to_owned());
+                        std::ops::ControlFlow::Continue(())
+                    });
+                    self.listed_at_load.lock().unwrap().push(levels);
                 }
                 fn create_spawn_position(
                     &self,
@@ -983,13 +980,12 @@ fn datapack_dimensions_open_prepare_save_and_close_in_creation_order() {
                         assert_eq!(game.level.world_spawn, Some([32, 73, 16]));
                         // Switching the active level must not put it first in saves or close.
                         game.enter_level(Dim::Nether).unwrap();
-                        assert_eq!(
-                            game.native_list_levels()
-                                .into_iter()
-                                .map(|level| level.dimension_id())
-                                .collect::<Vec<_>>(),
-                            order
-                        );
+                        let mut visited = Vec::new();
+                        let _ = game.native_visit_levels(&mut |level| {
+                            visited.push(level.dimension_id());
+                            std::ops::ControlFlow::Continue(())
+                        });
+                        assert_eq!(visited, order);
                         let listed = listed_at_load.lock().unwrap();
                         assert_eq!(listed.len(), order.len());
                         for (i, levels) in listed.iter().enumerate() {

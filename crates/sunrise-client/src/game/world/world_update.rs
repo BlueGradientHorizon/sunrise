@@ -232,7 +232,6 @@ impl Game<'_> {
                     .filter(|key| self.world.modified.contains(key))
                     .filter_map(|key| self.world.chunks.get(key)),
             );
-            self.native_full_chunk_snapshots(&chunks);
             let (entities, refused_entities) = self.unloading_entity_snapshots(keys);
             let mut counts = Vec::new();
             if mod_api::__private::listened(mod_api::HookId::EntitiesUnload) {
@@ -267,7 +266,6 @@ impl Game<'_> {
         }
         let (commit, protos) = self.streaming.prepare_commit(&mut self.world, &mut plan);
         let unloaded_columns = plan.unloading_columns();
-        self.native_proto_snapshots(&protos);
         self.streaming.submit_protos(protos);
         let (mut uploads, unloaded) = sunrise_client::spans::time("streaming", || {
             self.streaming.complete_commit(&mut self.world, commit)

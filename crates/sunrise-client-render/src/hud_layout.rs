@@ -935,7 +935,6 @@ impl ResolvedGuiQuad {
         region: Option<[i32; 4]>,
         blend: Blend,
     ) {
-        let start = batch.vertices.len();
         if let Some([sw, sh, u, v]) = region {
             let r = &mut self.rect;
             let [_, _, w, h] = self.dst;

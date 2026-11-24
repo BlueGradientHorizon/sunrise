@@ -7,9 +7,6 @@ use super::datapack_registry::{
     DatapackDecodeError, DatapackEntry, DatapackRegistryDeclaration, DatapackValue,
     datapack_registry_directory, decode_datapack_entry, valid_namespaced,
 };
-use super::datapack_snapshot::{
-    MAX_SNAPSHOT_BYTES, MAX_SNAPSHOT_ENTRIES, MAX_SNAPSHOT_REGISTRIES, snapshot_size,
-};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Why a local candidate was refused. A load error leaves the whole candidate unpublished;

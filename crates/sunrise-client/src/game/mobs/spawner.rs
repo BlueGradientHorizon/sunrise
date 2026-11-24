@@ -310,9 +310,6 @@ impl Game<'_> {
             }
             // TrialSpawner.spawnMob sets persistence after finalization.
             mob.persistent |= r.trial;
-            if event.veto_admission {
-                return None;
-            }
             // Shulker.finalizeSpawn faces it south.
             if mob.species() == sunrise_client::mobs::Species::Shulker {
                 mob.yaw = 0.0;

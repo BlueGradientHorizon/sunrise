@@ -612,7 +612,6 @@ pub fn resume_after_register_behaviors(
     index: usize,
     w: &MobWorld,
     level: &mut super::DamageLevel<'_>,
-    was_on_fire: bool,
     stage: super::ai::BrainStage,
     events: &mut Vec<super::MobEvent>,
     movement: &mut Option<super::ai::MobMovement>,
@@ -621,15 +620,8 @@ pub fn resume_after_register_behaviors(
         return super::ai::TickProgress::Complete(false);
     }
     tick_with(mobs, index, w, level, events, |m, w, level, events| {
-        let progress = super::ai::resume_after_register_behaviors(
-            m,
-            w,
-            level,
-            was_on_fire,
-            stage,
-            events,
-            Some(movement),
-        );
+        let progress =
+            super::ai::resume_after_register_behaviors(m, w, level, stage, events, Some(movement));
         if matches!(progress, super::ai::TickProgress::Complete(_)) {
             super::neutral_anger::after_tick(m, w.game_time);
         }
@@ -643,7 +635,6 @@ pub fn resume_after_equipment(
     index: usize,
     w: &MobWorld,
     level: &mut super::DamageLevel<'_>,
-    was_on_fire: bool,
     events: &mut Vec<super::MobEvent>,
     movement: &mut Option<super::ai::MobMovement>,
 ) -> super::ai::TickProgress {
@@ -651,8 +642,7 @@ pub fn resume_after_equipment(
         return super::ai::TickProgress::Complete(false);
     }
     tick_with(mobs, index, w, level, events, |m, w, level, events| {
-        let progress =
-            super::ai::resume_after_equipment(m, w, level, was_on_fire, events, Some(movement));
+        let progress = super::ai::resume_after_equipment(m, w, level, events, Some(movement));
         if matches!(progress, super::ai::TickProgress::Complete(_)) {
             super::neutral_anger::after_tick(m, w.game_time);
         }

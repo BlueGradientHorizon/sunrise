@@ -33,7 +33,7 @@ mod tests {
     #[ignore = "daily"]
     fn panicking_hud_draw_discards_quads_and_reservations_before_next_listener() {
         use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game};
-        use mod_api::{ClientHost, Corner, Hooks, ModEntry, RenderGuiPostEvent};
+        use mod_api::{ClientHost, Hooks, ModEntry, RenderGuiPostEvent};
 
         const NAME: &str = "game::native_hooks::render_gui_post::tests::panicking_hud_draw_discards_quads_and_reservations_before_next_listener";
         if run_fresh_cases(NAME, "SUNRISE_GUI_POST_PANIC", &["run"]) {

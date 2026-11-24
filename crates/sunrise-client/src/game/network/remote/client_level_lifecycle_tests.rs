@@ -205,8 +205,8 @@ fn client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit()
                     "old handle retires after Unload"
                 );
                 assert_eq!(
-                    overworld.datapack_entries(game, "levels:spell"),
-                    None,
+                    overworld.visit_datapack_entries(game, "levels:spell", &mut |_| unreachable!()),
+                    Err(DatapackReadError::UnknownRegistry),
                     "a synchronized registry does not revive a stale level handle"
                 );
                 let next_set = DatapackRegistrySet::from_candidate(candidate(29));
@@ -254,7 +254,10 @@ fn client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit()
                 assert!(remote.logged_in);
                 assert_eq!(remote.entity_id, 8);
                 let next = game.level(&login.dimension).unwrap();
-                assert_eq!(nether.datapack_entries(game, "levels:spell"), None);
+                assert_eq!(
+                    nether.visit_datapack_entries(game, "levels:spell", &mut |_| unreachable!()),
+                    Err(DatapackReadError::UnknownRegistry),
+                );
                 assert_eq!(
                     nether.datapack_read(
                         game,

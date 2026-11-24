@@ -507,7 +507,6 @@ fn a_spawn_or_removal_inside_an_aborted_action_keeps_the_bindings() {
                 .level_summon(level, "minecraft:pig", [1.5, 70.0, 1.5], nbt)
                 .unwrap()
                 .unwrap();
-            let pig = game.entity(pig).unwrap();
             assert_eq!(charge.edit_state(game, pig, |_, _tx, n| *n = 5), Ok(()));
             assert_eq!(
                 indexed(game, Dim::Overworld),

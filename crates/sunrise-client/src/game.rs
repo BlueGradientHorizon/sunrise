@@ -9431,6 +9431,7 @@ impl Game<'_> {
             .open_world_datapacks(&features, Some(&mut prepared))
             .map_err(|error| error.diagnostic())?;
         let world_loading::PreparedTerrain {
+            configured_levels,
             world,
             streaming,
             save,

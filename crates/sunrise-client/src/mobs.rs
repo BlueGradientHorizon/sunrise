@@ -5651,7 +5651,7 @@ impl EntityModelDocument {
         }
         let mut models = BTreeMap::new();
         for (key, model) in layers {
-            if !model_layers::is_layer_key(&key) {
+            if !model_layers::is_layer_id(&key) {
                 return Err(format!("{}: invalid model layer key {key:?}", path.display()).into());
             }
             let mut part = Part::decode("root", model)

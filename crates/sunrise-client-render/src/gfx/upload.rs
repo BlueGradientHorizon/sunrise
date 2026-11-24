@@ -157,7 +157,8 @@ mod tests {
             NonZeroU64::new(capacity.max_quads() as u64 * EntityQuadCapacity::VERTEX_QUAD_BYTES)
                 .unwrap();
         assert!(size.get() <= limit && size.get().next_power_of_two() > limit);
-        assert_eq!(staging_slice_size(size, CHUNK, limit).get(), limit - 3);
+        let aligned_limit = limit - (limit % wgpu::COPY_BUFFER_ALIGNMENT);
+        assert_eq!(legal_buffer_size(size.get(), aligned_limit), limit - 3);
     }
 
     fn device() -> Option<(wgpu::Device, wgpu::Queue)> {

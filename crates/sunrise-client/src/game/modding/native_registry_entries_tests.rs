@@ -553,9 +553,9 @@ fn generic_client_entries_use_only_builtin_synced_and_negotiated_tables() {
                         "test:a".into(),
                     ]),
                 );
-                let host = host(game);
+                let h = host(game);
                 assert_eq!(
-                    host.visit_registry_entries("test:empty", &mut |_| panic!(
+                    h.visit_registry_entries("test:empty", &mut |_| panic!(
                         "empty registry visited"
                     )),
                     Ok(ControlFlow::Continue(()))
@@ -563,7 +563,7 @@ fn generic_client_entries_use_only_builtin_synced_and_negotiated_tables() {
                 for registry in ["test:protocol_order", "test:sparse"] {
                     let mut names = Vec::new();
                     assert_eq!(
-                        host.visit_registry_entries(registry, &mut |id| {
+                        h.visit_registry_entries(registry, &mut |id| {
                             names.push(id.to_owned());
                             ControlFlow::Continue(())
                         }),
@@ -571,9 +571,9 @@ fn generic_client_entries_use_only_builtin_synced_and_negotiated_tables() {
                     );
                     assert_eq!(names, ["test:z", "test:a"]);
                 }
-                assert_eq!(host.registry_entry_in_tag(&fall, "minecraft:is_fall"), None);
+                assert_eq!(h.registry_entry_in_tag(&fall, "minecraft:is_fall"), None);
                 assert_eq!(
-                    host.registry_entry_in_tag(&step, "minecraft:vibrations"),
+                    h.registry_entry_in_tag(&step, "minecraft:vibrations"),
                     Some(false)
                 );
                 game.remote.as_mut().unwrap().datapacks = Default::default();

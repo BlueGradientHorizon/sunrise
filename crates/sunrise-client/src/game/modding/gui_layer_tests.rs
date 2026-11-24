@@ -545,7 +545,7 @@ fn mod_layers_draw_in_their_place_and_hide_like_vanilla_layers() {
 fn failed_gui_layer_keeps_completed_paint_and_isolates_following_layers() {
     use mod_api::{
         __private::{HookPanicReport, take_hook_panics},
-        GuiClipRefusal, GuiPaintError,
+        GuiClipRefusal, GuiDrawError,
         client::hud_layout::PoseOp,
     };
     use sunrise_client::hud::rgba;
@@ -581,40 +581,35 @@ fn failed_gui_layer_keeps_completed_paint_and_isolates_following_layers() {
                         "hud_test:checked".into(),
                         GuiLayerPlacement::AboveAll,
                         Box::new(|_, draw| {
-                            // Unpopped pose stays lexical to gui_paint; malformed draw/clip checks
+                            // Pose stays lexical to draw_gui/scope; malformed draw/clip checks
                             // stay independent of layer containment.
                             assert_eq!(
-                                draw.gui_paint(&[GuiDraw::Push(vec![PoseOp::Translate(
-                                    50.0, 50.0
-                                )])]),
+                                draw.draw_gui(&mut |canvas| {
+                                    canvas.scope(
+                                        &[PoseOp::Translate(50.0, 50.0)],
+                                        None,
+                                        &mut |_| Ok(()),
+                                    )
+                                }),
                                 Ok(())
                             );
                             assert_eq!(
-                                draw.push_clip([f32::NAN, 0.0, 1.0, 1.0]),
+                                draw.with_scissor([f32::NAN, 0.0, 1.0, 1.0], &mut |_| {
+                                    unreachable!()
+                                }),
                                 Err(GuiClipRefusal::NotFinite)
                             );
-                            draw.push_clip([10.0, 10.0, 5.0, 5.0]).unwrap();
-                            draw.fill([0.0, 0.0, 100.0, 100.0], 0xFFFF_0000);
-                            assert_eq!(
-                                draw.gui_paint(&[
-                                    GuiDraw::Fill {
-                                        x0: 10,
-                                        y0: 10,
-                                        x1: 15,
-                                        y1: 15,
-                                        color: 0xFFFF_FF00,
-                                    },
-                                    GuiDraw::Item {
-                                        slot: 99,
-                                        x: 0,
-                                        y: 0,
-                                        seed: 0,
-                                        scale: [1.0, 1.0],
-                                        pivot: [0.0, 0.0],
-                                    },
-                                ]),
-                                Err(GuiPaintError::ItemSlot { index: 1, slot: 99 })
-                            );
+                            draw.with_scissor([10.0, 10.0, 5.0, 5.0], &mut |draw| {
+                                draw.fill([0.0, 0.0, 100.0, 100.0], 0xFFFF_0000);
+                                assert_eq!(
+                                    draw.draw_gui(&mut |canvas| {
+                                        canvas.fill([10.0, 10.0, 5.0, 5.0], 0xFFFF_FF00)?;
+                                        Err(GuiDrawError::Abort)
+                                    }),
+                                    Err(GuiDrawError::Abort)
+                                );
+                            })
+                            .unwrap();
                             log("checked");
                         }),
                     ));
@@ -633,10 +628,11 @@ fn failed_gui_layer_keeps_completed_paint_and_isolates_following_layers() {
                         "hud_test:panicking".into(),
                         GuiLayerPlacement::AboveAll,
                         Box::new(|_, draw| {
-                            draw.push_clip([20.0, 20.0, 4.0, 4.0]).unwrap();
-                            draw.fill([0.0, 0.0, 100.0, 100.0], 0xFF00_00FF);
-                            log("panicking");
-                            panic!("broken layer");
+                            let _ = draw.with_scissor([20.0, 20.0, 4.0, 4.0], &mut |draw| {
+                                draw.fill([0.0, 0.0, 100.0, 100.0], 0xFF00_00FF);
+                                log("panicking");
+                                panic!("broken layer");
+                            });
                         }),
                     ));
                 }
@@ -755,9 +751,10 @@ fn a_gui_wrapper_panic_is_contained_but_delegated_engine_paint_is_fatal() {
                             ctx.with_draw(&mut |draw| draw.fill([0.0, 0.0, 4.0, 4.0], 0xFF00_00FF));
                             ctx.draw_previous();
                             ctx.with_draw(&mut |draw| {
-                                draw.push_clip([0.0, 0.0, 4.0, 4.0]).unwrap();
-                                draw.fill([0.0, 0.0, 20.0, 20.0], 0xFFFF_0000);
-                                panic!("broken wrapper");
+                                let _ = draw.with_scissor([0.0, 0.0, 4.0, 4.0], &mut |draw| {
+                                    draw.fill([0.0, 0.0, 20.0, 20.0], 0xFFFF_0000);
+                                    panic!("broken wrapper");
+                                });
                             });
                             return;
                         }

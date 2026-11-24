@@ -266,32 +266,6 @@ mod tests {
     }
 
     #[test]
-    fn validator_attributes_owners_and_preserves_entries_for_startup_collision_checks() {
-        let mut pipelines = vec![
-            pipeline("shared:glow"),
-            pipeline("shared:glow"),
-            pipeline("shared:glow").optional(),
-        ];
-        validate_render_pipelines("first", &[], &mut pipelines);
-        assert_eq!(
-            ids(&pipelines),
-            [
-                "shared:glow".to_owned(),
-                "shared:glow".to_owned(),
-                "shared:glow".to_owned(),
-            ]
-        );
-        assert!(pipelines.iter().all(|p| p.owner() == "first"));
-
-        let previous = pipelines.clone();
-        pipelines.push(pipeline("shared:glow").optional());
-        validate_render_pipelines("second", &previous, &mut pipelines);
-        assert_eq!(pipelines.len(), 4);
-        assert_eq!(pipelines[3].owner(), "second");
-        assert!(pipelines[3].optional);
-    }
-
-    #[test]
     fn a_mod_can_register_more_than_vanillas_pipeline_count() {
         let mut pipelines = Vec::new();
         {

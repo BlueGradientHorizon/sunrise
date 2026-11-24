@@ -993,6 +993,7 @@ mod tests {
                 [
                     Event::Joined {
                         registries: invalid,
+                        datapacks: Default::default(),
                         uuid: 1,
                         name: "Alex".into(),
                     },
@@ -1022,6 +1023,7 @@ mod tests {
                 [
                     Event::Joined {
                         registries: valid,
+                        datapacks: Default::default(),
                         uuid: 2,
                         name: "Steve".into(),
                     },
@@ -1043,7 +1045,10 @@ mod tests {
             push_events(
                 game,
                 [
-                    Event::Reconfigured(invalid),
+                    Event::Reconfigured {
+                        registries: invalid,
+                        datapacks: Default::default(),
+                    },
                     Event::Packet(Box::new(login_packet())),
                 ],
             );

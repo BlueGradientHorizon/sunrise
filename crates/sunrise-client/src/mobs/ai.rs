@@ -28,10 +28,7 @@ use sunrise_core::{
     geometry::{Aabb, Axis, ShapeOp, Vec3, VoxelShape},
     random::RandomSource,
 };
-use sunrise_world::{
-    native_load_context::{LoopContext, LoopSide},
-    registry::BlockStateId,
-};
+use sunrise_world::native_load_context::{LoopContext, LoopSide};
 
 #[cfg(test)]
 mod inside_walk_tests {
@@ -1143,7 +1140,6 @@ pub enum Pause {
     },
     /// The server found changed equipment before the living AI step.
     Equipment {
-        was_on_fire: bool,
         first: sunrise_core::equipment_slot::EquipmentSlot,
     },
     /// A breeding goal or brain behaviour finished its decision. Deliver the action before
@@ -1161,7 +1157,6 @@ pub enum Pause {
     /// A brain was constructed or rebuilt during the tick and needs the owning
     /// game to fire `register_behaviors` with a scoped `ServerHost`.
     RegisterBehaviors {
-        was_on_fire: bool,
         stage: BrainStage,
     },
     /// The mob's `InsideEffects` collector is ready to flush against the live level.
@@ -1182,8 +1177,8 @@ pub enum BrainStage {
 /// The remainder of the mob tick after a drink finishes on its owning level.
 #[derive(Debug)]
 pub enum DrinkResume {
-    Trader { was_on_fire: bool },
-    Witch { was_on_fire: bool },
+    Trader,
+    Witch,
 }
 
 #[derive(Debug)]
@@ -1254,20 +1249,6 @@ enum AiPause {
     Breed(Box<MobEvent>, BreedingPhase),
     BeeDamage(super::bee::ServerAiStage),
     RegisterBehaviors(BrainStage),
-}
-
-enum ServerAiPause {
-    BeeDamage(super::bee::ServerAiStage),
-    RegisterBehaviors(BrainStage),
-}
-
-impl From<ServerAiPause> for AiPause {
-    fn from(pause: ServerAiPause) -> Self {
-        match pause {
-            ServerAiPause::BeeDamage(stage) => Self::BeeDamage(stage),
-            ServerAiPause::RegisterBehaviors(stage) => Self::RegisterBehaviors(stage),
-        }
-    }
 }
 
 fn goal_pause_to_ai(phase: SelectorPhase, pause: super::goals::GoalPause) -> AiPause {
@@ -1591,10 +1572,10 @@ fn after_base_tick(
     {
         return TickProgress::Paused(Pause::Drink {
             stack,
-            resume: DrinkResume::Trader { was_on_fire },
+            resume: DrinkResume::Trader,
         });
     }
-    after_using_item(m, w, level, events, was_on_fire, movement)
+    after_using_item(m, w, level, events, movement)
 }
 
 fn after_using_item(
@@ -1602,7 +1583,6 @@ fn after_using_item(
     w: &MobWorld,
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
-    was_on_fire: bool,
     movement: Option<&mut Option<MobMovement>>,
 ) -> TickProgress {
     // LivingEntity.tick -> detectEquipmentUpdates, before the sleep check and aiStep.
@@ -1615,9 +1595,9 @@ fn after_using_item(
                 mod_api::__private::enabled_listened(mod_api::HookId::LivingEquipmentChange)
             })
     {
-        return TickProgress::Paused(Pause::Equipment { was_on_fire, first });
+        return TickProgress::Paused(Pause::Equipment { first });
     }
-    resume_after_equipment(m, w, level, was_on_fire, events, movement)
+    resume_after_equipment(m, w, level, events, movement)
 }
 
 /// Continue `finish_server_ai_step` after the owning game flushed staged
@@ -1626,7 +1606,6 @@ pub(super) fn resume_after_register_behaviors(
     m: &mut Mob,
     w: &MobWorld,
     level: &mut DamageLevel<'_>,
-    was_on_fire: bool,
     stage: BrainStage,
     events: &mut Vec<MobEvent>,
     movement: Option<&mut Option<MobMovement>>,
@@ -1638,13 +1617,21 @@ pub(super) fn resume_after_register_behaviors(
         } else {
             AiStage::AfterWater
         };
-        return continue_ai_tail(m, w, level, events, was_on_fire, no_ai, pause_owner, next);
+        return continue_ai_tail(m, w, level, events, no_ai, pause_owner, next);
     }
-    let progress = match finish_server_ai_step_from(m, w, level, events, Some(stage), pause_owner) {
+    let progress = match finish_server_ai_step_from(
+        m,
+        w,
+        level,
+        events,
+        Some(stage),
+        pause_owner,
+        pause_owner,
+    ) {
         ControlFlow::Continue(()) => ai_step_after_server_ai(m, w, level, events, pause_owner),
-        ControlFlow::Break(next) => ControlFlow::Break(next.into()),
+        ControlFlow::Break(next) => ControlFlow::Break(next),
     };
-    finish_ai_progress(m, w, level, events, was_on_fire, movement, progress)
+    finish_ai_progress(m, w, level, events, movement, progress)
 }
 
 /// Continue without redoing base tick, item use or equipment detection.
@@ -1652,7 +1639,6 @@ pub(super) fn resume_after_equipment(
     m: &mut Mob,
     w: &MobWorld,
     level: &mut DamageLevel<'_>,
-    was_on_fire: bool,
     events: &mut Vec<MobEvent>,
     movement: Option<&mut Option<MobMovement>>,
 ) -> TickProgress {
@@ -1710,13 +1696,11 @@ pub(super) fn resume_after_drink(
         return TickProgress::Complete(false);
     }
     match resume {
-        DrinkResume::Trader { was_on_fire } => {
-            after_using_item(m, w, level, events, was_on_fire, movement)
-        }
-        DrinkResume::Witch { was_on_fire } => {
+        DrinkResume::Trader => after_using_item(m, w, level, events, movement),
+        DrinkResume::Witch => {
             super::witch::after_drink(m, events);
             let progress = ai_step(m, w, level, events, movement.is_some());
-            finish_ai_progress(m, w, level, events, was_on_fire, movement, progress)
+            finish_ai_progress(m, w, level, events, movement, progress)
         }
     }
 }
@@ -1784,7 +1768,7 @@ fn ai_and_finish_tick(
         if let Some(stack) = super::witch::ai_step_until_drink(m, events, far) {
             return TickProgress::Paused(Pause::Drink {
                 stack,
-                resume: DrinkResume::Witch { was_on_fire },
+                resume: DrinkResume::Witch,
             });
         }
     }
@@ -1815,7 +1799,7 @@ pub(super) fn resume_after_birth(
             } else if m.removed {
                 return TickProgress::Complete(false);
             } else {
-                match finish_server_ai_step(m, w, level, events, true) {
+                match finish_server_ai_step_from(m, w, level, events, None, true, true) {
                     ControlFlow::Continue(()) => ai_step_after_server_ai(m, w, level, events, true),
                     ControlFlow::Break(pause) => ControlFlow::Break(pause),
                 }
@@ -1863,7 +1847,7 @@ fn finish_ai_progress(
             }))
         }
         ControlFlow::Break(AiPause::RegisterBehaviors(stage)) => {
-            TickProgress::Paused(Pause::RegisterBehaviors { was_on_fire, stage })
+            TickProgress::Paused(Pause::RegisterBehaviors { stage })
         }
     }
 }
@@ -2035,7 +2019,6 @@ fn continue_ai_tail(
             AiStage::Finish => {
                 if pause_damage && m.staged_parts.pending_behaviors.is_some() {
                     return TickProgress::Paused(Pause::RegisterBehaviors {
-                        was_on_fire: false,
                         stage: BrainStage::AfterAgeBoundary {
                             no_ai,
                             after_water: true,
@@ -2054,7 +2037,6 @@ fn continue_ai_tail(
         if pause_damage && m.staged_parts.pending_behaviors.is_some() {
             let after_water = matches!(next, AiStage::Finish);
             return TickProgress::Paused(Pause::RegisterBehaviors {
-                was_on_fire,
                 stage: BrainStage::AfterAgeBoundary { no_ai, after_water },
             });
         }
@@ -5088,9 +5070,7 @@ fn finish_server_ai_step_from(
                 super::animal_brain::ensure_brain(m);
             }
             if m.staged_parts.pending_behaviors.is_some() {
-                return ControlFlow::Break(ServerAiPause::RegisterBehaviors(
-                    BrainStage::BeforeBrain,
-                ));
+                return ControlFlow::Break(AiPause::RegisterBehaviors(BrainStage::BeforeBrain));
             }
         }
     }
@@ -5103,7 +5083,7 @@ fn finish_server_ai_step_from(
             // Villager.customServerAiStep: the brain, then the raid sound roll.
             super::villager::tick_brain(m, w, level, events);
             if pause_owner && m.staged_parts.pending_behaviors.is_some() {
-                return ControlFlow::Break(ServerAiPause::RegisterBehaviors(
+                return ControlFlow::Break(AiPause::RegisterBehaviors(
                     BrainStage::AfterVillagerBrain,
                 ));
             }

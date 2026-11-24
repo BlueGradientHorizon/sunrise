@@ -29,10 +29,6 @@ pub(super) struct WorldRequest {
 
 pub(super) struct PreparedWorld {
     pub save_root: PathBuf,
-    /// The levels' shapes, from the world's dimension types.
-    pub shapes: sunrise_client::chunk::LevelShapes,
-    /// Traversal of the resolved LEVEL_STEM registry, before Overworld is promoted.
-    pub configured_levels: Vec<Dim>,
     pub level: Level,
     pub session_lock: sunrise_client::save::SessionLock,
     pub rand_sequences: sunrise_client::random_sequences::RandomSequences,
@@ -42,10 +38,13 @@ pub(super) struct PreparedWorld {
     created: bool,
     save_reporter: Arc<sunrise_client::chunk_io::SaveFailureReporter>,
     chunk_reports: Arc<sunrise_client::chunk_io::Reports>,
+    #[cfg(test)]
+    stem_order: Option<&'static [&'static str]>,
 }
 
 pub(super) struct PreparedTerrain {
     pub shapes: sunrise_client::chunk::LevelShapes,
+    pub configured_levels: Vec<Dim>,
     pub world: World,
     pub streaming: Streaming,
     pub save: Arc<SaveDir>,
@@ -304,60 +303,6 @@ impl WorldRequest {
             level.dimension = d.clone();
             level.position = None;
         }
-        let (overrides, _) = worldgen_overrides_of(
-            &save_root,
-            &options.resources,
-            res.biomes(),
-            &level.enabled_features,
-            &pack.additional_data,
-        );
-        if created {
-            level.generator = sunrise_client::save::WorldGenerator::read_new(&save_root);
-        } else if options.execution_role.is_dedicated_server() {
-            level.recover_world_generator(&overrides, || {
-                sunrise_client::random_source::create().next_long()
-            })?;
-        }
-        growth::install_live_features(res, pack, options, &overrides);
-        let (mut overrides, _) = worldgen_overrides_of(
-            &save_root,
-            &options.resources,
-            res.biomes(),
-            &level.enabled_features,
-            &pack.additional_data,
-        );
-        let (shapes, configured_levels) = level_shapes(
-            &mut overrides,
-            &options.resources,
-            &level,
-            #[cfg(test)]
-            stem_order,
-        );
-        // The bounded registry-loader leaf slice: fail world preparation before streaming,
-        // rather than letting the flat-generator fallback swallow a selected pack's codec error.
-        overrides.validate_fill_layers(pack.assets.registry)?;
-        // PrepareSpawnTask: resolve the player's dimension against this world's stems,
-        // without changing the saved position or adding a stem for the player.
-        let dim = configured_levels
-            .iter()
-            .find(|dim| dim.id() == level.dimension)
-            .or_else(|| {
-                let spawn = level.world_spawn_dimension.as_deref()?;
-                configured_levels.iter().find(|dim| dim.id() == spawn)
-            })
-            .copied()
-            .unwrap_or(Dim::Overworld);
-        level.dimension = dim.id().to_owned();
-        let shape = shapes.get(dim.id());
-        let streaming_step = startup::step("world.make_streaming");
-        let loot = sunrise_client::structure_blocks::LootSnapshot::default();
-        let biomes = packed_biomes(
-            &save_root,
-            &options.resources,
-            res.biomes(),
-            &level.enabled_features,
-            &pack.additional_data,
-        );
         let integrated = options.execution_role == execution_role::ExecutionRole::IntegratedServer;
         // Resolving the report path must not prevent the world from opening.
         let working_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
@@ -386,6 +331,8 @@ impl WorldRequest {
             created,
             save_reporter,
             chunk_reports,
+            #[cfg(test)]
+            stem_order,
         })
     }
 }
@@ -411,12 +358,29 @@ impl PreparedWorld {
             })?;
         }
         growth::install_live_features(res, pack, options, &overrides);
-        let shapes = level_shapes(&mut overrides, &options.resources, level);
+        let (shapes, configured_levels) = level_shapes(
+            &mut overrides,
+            &options.resources,
+            level,
+            #[cfg(test)]
+            self.stem_order,
+        );
         Dim::set_extra(shapes.extra.iter().map(|level| level.id));
         // The bounded registry-loader leaf slice: fail world preparation before streaming,
         // rather than letting the flat-generator fallback swallow a selected pack's codec error.
         overrides.validate_fill_layers(pack.assets.registry)?;
-        let dim = Dim::from_id(&level.dimension);
+        // PrepareSpawnTask: resolve the player's dimension against this world's stems,
+        // without changing the saved position or adding a stem for the player.
+        let dim = configured_levels
+            .iter()
+            .find(|dim| dim.id() == level.dimension)
+            .or_else(|| {
+                let spawn = level.world_spawn_dimension.as_deref()?;
+                configured_levels.iter().find(|dim| dim.id() == spawn)
+            })
+            .copied()
+            .unwrap_or(Dim::Overworld);
+        level.dimension = dim.id().to_owned();
         let shape = shapes.get(dim.id());
         let streaming_step = startup::step("world.make_streaming");
         let (mut streaming, save, locator) = make_streaming(
@@ -467,12 +431,11 @@ impl PreparedWorld {
         if options.execution_role != execution_role::ExecutionRole::IntegratedServer
             && !save_root.join("level.dat").exists()
         {
-            level.write(&save_root, res.items())?;
+            level.write(save_root, res.items())?;
         }
         Ok(PreparedTerrain {
             shapes,
             configured_levels,
-            level,
             world,
             streaming,
             save,
@@ -1301,21 +1264,9 @@ pub(super) fn make_streaming(
     let mut locator = None;
     let overworld_settings = generator.filter(|_| dim == Dim::Overworld);
     use sunrise_client::flatgen::FlatTerrain;
-    let overrides = std::cell::OnceCell::new();
-    let overrides = || {
-        overrides.get_or_init(|| {
-            world_worldgen_overrides(
-                world_root,
-                &options.resources,
-                &biomes,
-                enabled_features,
-                &pack.additional_data,
-            )
-        })
-    };
     let flat = if runtime.is_none() {
         // Enabled packs own the resolved stem; saved presets fill in levels they don't define.
-        let packed_stem = overrides()
+        let packed_stem = overrides
             .entries(sunrise_world::worldgen::overrides::DIMENSIONS)
             .find(|(id, _)| *id == dim.id())
             .map(|(_, json)| serde_json::from_str::<serde_json::Value>(json))
@@ -1355,8 +1306,8 @@ pub(super) fn make_streaming(
             sunrise_world::level::register_sea_level(key, sea_level);
         }
     };
-    let mut streaming = if let Some(generate) =
-        runtime.filter(|generate| !matches!(generate, super::runtime_levels::Generate::Stem(_)))
+    let mut streaming = if let Some(super::runtime_levels::Generate::Layers { flat, biome }) =
+        runtime
     {
         // A level a mod opened with the default layers or with air alone.
         let inner = sunrise_client::flatgen::FlatTerrain::of_layers(
@@ -1383,7 +1334,7 @@ pub(super) fn make_streaming(
             .then(|| {
                 VanillaTerrain::for_flat_level(
                     terrain_resources,
-                    overrides(),
+                    overrides,
                     seed,
                     &flat,
                     automatic_structures,
@@ -1505,7 +1456,6 @@ pub(super) fn make_streaming(
         // WorldOptions.generateStructures, from the world's settings.
         let structures = automatic_structures;
         let preset = WorldGen::noise_preset(generator);
-        let overrides = overrides();
         let saved_stem = saved_stem.map(sunrise_client::scoreboard::tag_to_json);
         let regions = sunrise_client::save::biome_regions::layout(world_root, dim.id())
             .map_err(|e| format!("Failed to read the world's biome regions: {e}"))?;
@@ -1802,13 +1752,27 @@ mod tests {
 
         with_game(|game| {
             let shape = LevelShape::NETHER;
-            let biomes = packed_biomes(
+            let (overrides, _) = worldgen_overrides_of(
                 root,
                 &game.options.resources,
                 game.res.biomes(),
                 &game.level.enabled_features,
                 &game.pack.additional_data,
             );
+            let packed: Vec<(String, serde_json::Value)> = overrides
+                .entries("biomes")
+                .filter_map(|(id, json)| Some((id.to_owned(), serde_json::from_str(json).ok()?)))
+                .collect();
+            let biomes = if packed.is_empty() {
+                game.res.biomes().clone()
+            } else {
+                Arc::new(
+                    game.res
+                        .biomes()
+                        .with_packs(packed.iter().map(|(i, v)| (i.as_str(), v)))
+                        .unwrap(),
+                )
+            };
             let built = make_streaming(
                 &game.res,
                 &game.pack,
@@ -1820,6 +1784,7 @@ mod tests {
                 29,
                 &game.level,
                 biomes.clone(),
+                &overrides,
                 None,
                 game.save.chunk_reports().clone(),
                 game.save.save_failure_reporter().clone(),
@@ -2544,7 +2509,6 @@ mod tests {
         }"##,
         )
         .unwrap();
-        use sunrise_world::native_load_context::{DataLoadOrigin, LoadContext, LoadInputs};
         let inputs = LoadInputs::new(Default::default(), root.join("settings"));
         let item_data = Arc::new(
             sunrise_world::item_defaults::ItemData::load(

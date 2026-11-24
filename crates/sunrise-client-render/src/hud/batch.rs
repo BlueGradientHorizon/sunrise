@@ -15,6 +15,71 @@ pub struct HudVertex {
     /// pack's text shader draws when it has one.
     pub text: u32,
 }
+/// A triangle clipped by a rectangle has at most seven vertices.
+type ClippedTriangle = SmallVec<[HudVertex; 7]>;
+
+fn triangle_area([a, b, c]: &[HudVertex; 3]) -> f32 {
+    (b.pos[0] - a.pos[0]) * (c.pos[1] - a.pos[1]) - (c.pos[0] - a.pos[0]) * (b.pos[1] - a.pos[1])
+}
+
+fn clip_triangle(triangle: &[HudVertex; 3], [x0, y0, x1, y1]: [f32; 4]) -> ClippedTriangle {
+    let mut poly = ClippedTriangle::from_slice(triangle);
+    for (axis, limit, keep_below) in [(0, x0, false), (0, x1, true), (1, y0, false), (1, y1, true)]
+    {
+        poly = clip_polygon(&poly, axis, limit, keep_below);
+    }
+    poly
+}
+
+/// Sutherland-Hodgman against one half plane, interpolating every attribute.
+fn clip_polygon(poly: &[HudVertex], axis: usize, limit: f32, keep_below: bool) -> ClippedTriangle {
+    let inside = |v: &HudVertex| {
+        if keep_below {
+            v.pos[axis] < limit
+        } else {
+            v.pos[axis] >= limit
+        }
+    };
+    let lerp = |a: &HudVertex, b: &HudVertex, t: f32| {
+        let mix = |p: f32, q: f32| p + (q - p) * t;
+        let mut v = *a;
+        v.pos = [mix(a.pos[0], b.pos[0]), mix(a.pos[1], b.pos[1])];
+        v.uv = [mix(a.uv[0], b.uv[0]), mix(a.uv[1], b.uv[1])];
+        v.depth = mix(a.depth, b.depth);
+        // A shaded shape (a gradient, `hud_kit::shapes`) keeps its colours across the cut.
+        v.color = if a.color == b.color {
+            a.color
+        } else {
+            let channel = |shift: u32| {
+                let (p, q) = (
+                    ((a.color >> shift) & 0xFF) as f32,
+                    ((b.color >> shift) & 0xFF) as f32,
+                );
+                ((p + (q - p) * t).round().clamp(0.0, 255.0) as u32) << shift
+            };
+            channel(0) | channel(8) | channel(16) | channel(24)
+        };
+        v.glint_uv = [
+            mix(a.glint_uv[0], b.glint_uv[0]),
+            mix(a.glint_uv[1], b.glint_uv[1]),
+        ];
+        v.pos[axis] = limit;
+        v
+    };
+    let mut out = ClippedTriangle::new();
+    for i in 0..poly.len() {
+        let (a, b) = (&poly[i], &poly[(i + 1) % poly.len()]);
+        let (ia, ib) = (inside(a), inside(b));
+        if ia {
+            out.push(*a);
+        }
+        if ia != ib {
+            let t = (limit - a.pos[axis]) / (b.pos[axis] - a.pos[axis]);
+            out.push(lerp(a, b, t));
+        }
+    }
+    out
+}
 /// Scale inputs for one view, copied from its owner's settings.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct GuiScale {
@@ -110,7 +175,7 @@ impl HudPaintCheckpoint {
             batch.blends.retain(|(run, _)| run.start < run.end);
             let first = batch.scissors.partition_point(|(run, _)| run.end <= start);
             for (run, _) in &mut batch.scissors[first..] {
-                *run = move_endpoint(run.start)..move_endpoint(run.end);
+                run.end = run.end.min(start);
             }
             batch.scissors.retain(|(run, _)| run.start < run.end);
         }

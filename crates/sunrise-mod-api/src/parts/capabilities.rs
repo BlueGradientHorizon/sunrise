@@ -1096,35 +1096,30 @@ pub mod tests {
 
     #[cfg(test)]
     fn with_sparse_providers(run: impl FnOnce(&mut FakeHost, LevelRef)) {
-        static ITEMS_KEY: AttachmentType<StackList<ItemResource>> = AttachmentType {
-            namespace: "test",
-            name: "sparse_items",
-            default: StackList::new,
-            codec: None,
-            copy_on_death: false,
-            sync: false,
-        };
-        static FLUIDS_KEY: AttachmentType<StackList<FluidResource>> = AttachmentType {
-            namespace: "test",
-            name: "sparse_fluids",
-            default: StackList::new,
-            codec: Some(FLUID_STACKS),
-            copy_on_death: false,
-            sync: false,
-        };
         struct Sparse;
         #[mod_api::__subscriptions]
         impl Hooks for Sparse {
             fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
-                r.register_attachment_type("test:sparse_items", false)
+                let items_key = r
+                    .register_attachment_type(AttachmentDescriptor::new(
+                        "test:sparse_items",
+                        StackList::<ItemResource>::new,
+                    ))
                     .unwrap();
-                r.register_attachment_type("test:sparse_fluids", false)
+                let fluids_key = r
+                    .register_attachment_type(
+                        AttachmentDescriptor::new(
+                            "test:sparse_fluids",
+                            StackList::<FluidResource>::new,
+                        )
+                        .serialize(FLUID_STACKS),
+                    )
                     .unwrap();
                 let kind = r.block_entity_type_key("test:sparse");
-                r.block_entity_capability(&ITEMS, &kind, |_, _, _, _, offer| {
+                r.block_entity_capability(&ITEMS, &kind, move |_, _, _, _, offer| {
                     offer.offer(|| {
                         Box::new(AttachedItems::new(
-                            &ITEMS_KEY,
+                            &items_key,
                             SPARSE_HOLDER,
                             SPARSE_ITEMS_SIZE,
                             4,
@@ -1132,10 +1127,10 @@ pub mod tests {
                         ))
                     });
                 });
-                r.block_entity_capability_before_game(&FLUIDS, &kind, |_, _, _, _, offer| {
+                r.block_entity_capability_before_game(&FLUIDS, &kind, move |_, _, _, _, offer| {
                     offer.offer(|| {
                         Box::new(AttachedFluids::new(
-                            &FLUIDS_KEY,
+                            &fluids_key,
                             SPARSE_HOLDER,
                             usize::MAX,
                             1000,

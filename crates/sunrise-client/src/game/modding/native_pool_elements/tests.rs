@@ -453,23 +453,28 @@ fn a_mod_type_caps_a_named_piece_with_the_jigsaw_building_blocks() {
             _: &dyn BlockMetadata,
             _: &Compound,
         ) -> Result<Arc<dyn StructurePiece>, StructureError> {
-            Err(StructureError("the type saves no piece of its own".into()))
+            Err(StructureError::new(std::io::Error::other(
+                "the type saves no piece of its own",
+            )))
         }
     }
     let inputs = link_inputs();
     let lay_out = |layout: Layout| -> Vec<BoundingBox> {
         let mut random = WorldgenRandom::new(LegacyRandom::new(0));
         random.set_large_feature_seed(0, 0, 0);
-        let (_, pieces) =
-            super::super::native_structure_types::Adapter::new("testmod:links", Arc::new(layout))
-                .find_generation_point(
-                    &mut StubContext,
-                    &inputs,
-                    ChunkPos::new(0, 0),
-                    &Arc::new(Tag::Compound(Compound::new())),
-                    &mut random,
-                )
-                .expect("a start from the pool");
+        let (_, pieces) = super::super::native_structure_types::Adapter::new(
+            "testmod:links",
+            "testmod",
+            Arc::new(layout),
+        )
+        .find_generation_point(
+            &mut StubContext,
+            &inputs,
+            ChunkPos::new(0, 0),
+            &Arc::new(Tag::Compound(Compound::new())),
+            &mut random,
+        )
+        .expect("a start from the pool");
         pieces
             .iter()
             .map(|piece| match piece {

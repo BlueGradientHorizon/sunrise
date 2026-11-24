@@ -187,7 +187,7 @@ impl Game<'_> {
                             before
                                 .iter()
                                 .chain(after)
-                                .zip(removed[..i].iter().chain(&removed[i + 1..]))
+                                .zip(pass.removed[..i].iter().chain(&pass.removed[i + 1..]))
                                 .find(|(p, removed)| p.id == id && !**removed && p.health > 0)
                                 .map(|(p, _)| {
                                     (

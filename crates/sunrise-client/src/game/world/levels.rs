@@ -201,12 +201,8 @@ pub(super) struct Parked {
     chunk_spawn_enemies: bool,
     /// Natural spawning's candidate cache: each level keeps its own players' squares.
     spawn_scratch: super::natural_spawning::SpawnScratch,
-    /// Server ticks since a player was last in the level.
-    pub(super) idle: u32,
-    /// The level's own world border (`ServerLevel.getWorldBorder`), and what its players were
-    /// last told of it (`LanHost::border_sent`).
+    /// The level's own world border (`ServerLevel.getWorldBorder`).
     pub(in crate::game) border: sunrise_client::worldborder::WorldBorder,
-    border_sent: Option<sunrise_client::lan::border::Sent>,
 }
 
 impl Parked {
@@ -1517,6 +1513,7 @@ impl Game<'_> {
         }
         let observe_level =
             running.is_some() && (self.serving.is_some() || self.options.dedicated.is_some());
+        let dimensions = self.level_creation_order().to_vec();
         let mut order = std::mem::take(&mut self.levels.tick_order);
         self.select_tick_levels(&mut order);
         let n = order.len();

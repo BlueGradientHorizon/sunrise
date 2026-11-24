@@ -27,7 +27,7 @@ use sunrise_client::{
 use sunrise_core::{
     geometry::{Aabb, COLLISION_EPSILON, Vec3, VoxelShape},
     position::BlockPos,
-    random::{LegacyRandom, RandomSource, WorldgenRandom, XoroshiroRandom},
+    random::{LegacyRandom, LevelRandom, RandomSource, WorldgenRandom, XoroshiroRandom},
 };
 use sunrise_world::dimension_type::DimensionFacts;
 use sunrise_world::registry::BlockStateId;
@@ -844,31 +844,6 @@ impl NaturalLevel for GameLevel<'_, '_> {
         }
         // An earlier check's mob that no spawn took is not this one.
         self.checked.take();
-        if !pending.fresh
-            && let Some(configured) = self.configured.borrow_mut().as_mut()
-            && configured.id == entity
-            && configured.position == at
-            && let Some((mob, _)) = configured.tree.root_mob_mut()
-        {
-            // The mob the spawner loaded from its entity data, as the level will have it.
-            let level = self.level_ref();
-            self.game
-                .lend_unspawned(entity, at, Some(mob), |handle, _| {
-                    self.game.native_mob_spawn_position_check(
-                        mod_api::__private::MobSpawnPositionCheckCall {
-                            dimension: self.game.dim.id(),
-                            kind: entity,
-                            reason,
-                            pos: at,
-                            level,
-                            spawner: self.spawner,
-                            mob: handle,
-                            result: &mut result,
-                        },
-                    );
-                });
-            return result;
-        }
         let provisional = self.provisional.get();
         let body = if let Some(tag) = pending.configured {
             self.game
@@ -923,26 +898,6 @@ impl NaturalLevel for GameLevel<'_, '_> {
         if let Some(refused) = self.checked.take() {
             self.provisional.set(refused.provisional);
         }
-        if let Some(refused) = self.configured.take() {
-            self.provisional.set(refused.provisional);
-        }
-    }
-    fn load_configured(&self, entity: &Compound, id: &str, at: [f64; 3], yaw: f32) -> bool {
-        // An earlier spawn's tree that nothing took is not this one.
-        self.configured.take();
-        let provisional = self.provisional.get();
-        let Some((tree, key)) = self.game.load_configured_entity(self, entity, at, yaw) else {
-            self.provisional.set(provisional);
-            return false;
-        };
-        *self.configured.borrow_mut() = Some(Configured {
-            tree,
-            key,
-            provisional,
-            id: id.to_owned(),
-            position: at,
-        });
-        true
     }
     fn potential_spawns(&self, category: Category, pos: [i32; 3], entries: &mut Vec<SpawnEntry>) {
         let mut canceled = false;
@@ -2548,7 +2503,7 @@ mod tests {
         }
         fn mob_spawn_position_check(
             &self,
-            _: &dyn mod_api::Host,
+            host: &dyn mod_api::Host,
             event: &mut mod_api::MobSpawnPositionCheckEvent<'_>,
         ) {
             let mob = event.mob;
@@ -2575,11 +2530,11 @@ mod tests {
         ) -> mod_api::Flow {
             let level = host.level(event.dimension).unwrap();
             let reads = (
-                event.mob.kind(host),
-                event.mob.position(host),
+                event.mob.kind(),
+                event.mob.position(),
                 event
                     .mob
-                    .equipment(host, mod_api::EquipmentSlot::Head)
+                    .equipment(mod_api::EquipmentSlot::Head)
                     .map(|e| e.is_none()),
             );
             self.log.lock().unwrap().push(Heard {
@@ -2719,10 +2674,7 @@ mod tests {
                     let (mob, _) = l.finalize_spawned(r, rng)?.primary;
                     l.record_pending(&mob);
                     pending.push(mob);
-                    Some(spawn_selection::Spawned {
-                        school: true,
-                        cluster_size: None,
-                    })
+                    Some(spawn_selection::Spawned { school: true })
                 };
                 spawn_selection::spawn_category_for_position(
                     &natural,
@@ -3815,7 +3767,10 @@ mod tests {
                 .level(event.dimension)
                 .and_then(|level| level.entity_by_uuid(host, mod_api::EntityUuid(expected)))
                 .map(|entity| entity.id());
-            self.joined.lock().unwrap().push((event.entity, resolved));
+            self.joined
+                .lock()
+                .unwrap()
+                .push((event.subject.id(), resolved));
             if self.veto && event.kind == NATURAL_RIDER {
                 mod_api::Flow::Cancel
             } else {
@@ -3972,14 +3927,10 @@ mod tests {
             let id = JOINED_CANDIDATE.load(std::sync::atomic::Ordering::Relaxed);
             if std::env::var(SPAWN_CLUSTER_CASE).as_deref() == Ok("valid") {
                 assert_eq!(event.mob.entity().id(), id);
-                assert_eq!(
-                    event.mob.entity().position(host),
-                    Some(JOINED_POSITION)
-                );
-                assert_eq!(
-                    event.mob.entity().tags(host).unwrap(),
-                    vec!["after-admission".to_owned()]
-                );
+                assert_eq!(event.mob.entity().position(host), Some(JOINED_POSITION));
+                let tags = event.mob.entity().tags(host).unwrap();
+                assert!(tags.contains("after-admission"));
+                assert_eq!(tags.iter_utf16().count(), 1);
             }
             CLUSTER_QUERIES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             event.size = 1;
@@ -4002,7 +3953,7 @@ mod tests {
             if event.kind != SULFUR_CUBE || event.dimension != "minecraft:overworld" {
                 return mod_api::Flow::Continue;
             }
-            let id = event.entity;
+            let id = event.subject.id();
             let entity = host.entity(id).unwrap();
             assert!(entity.add_tag(host, "after-admission"));
             JOINED_CANDIDATE.store(id, std::sync::atomic::Ordering::Relaxed);

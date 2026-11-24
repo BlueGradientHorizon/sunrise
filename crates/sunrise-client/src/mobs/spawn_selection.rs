@@ -1388,6 +1388,7 @@ pub fn spawn_category_for_position<L: NaturalLevel, R: RandomSource + Clone>(
     };
     while let Some(candidate) = cluster.next_candidate(l, random, state, trace) {
         let request = cluster.request(candidate);
+        let group_index = request.group_index;
         let Some(result) = spawn(l, &request, random) else {
             continue;
         };
@@ -1398,6 +1399,10 @@ pub fn spawn_category_for_position<L: NaturalLevel, R: RandomSource + Clone>(
             candidate.block,
             trace,
         );
+        let request = SpawnRequest {
+            group_index,
+            ..cluster.request(candidate)
+        };
         let size = cluster_size(l, &request, max_cluster_size(candidate.species));
         cluster.check_limit(candidate, size, result.school);
     }

@@ -314,10 +314,8 @@ fn poison(callback: Callback, id: &'static str) -> bool {
         Callback::IndependentHook(_)
             | Callback::Hook(generated::HookId::BuildCreativeModeTabContents)
     ) {
-        let (entered, trapped) = LISTENER_SERIAL.get();
-        LISTENER_SERIAL.set((entered, trapped.wrapping_add(1)));
+        ISOLATED_FAILURES.set(ISOLATED_FAILURES.get().wrapping_add(1));
     }
-    ISOLATED_FAILURES.set(ISOLATED_FAILURES.get().wrapping_add(1));
     installed().is_none_or(|installed| poison_installed(installed, callback, id))
 }
 
@@ -527,8 +525,7 @@ pub(crate) fn invoke_without_disabling<T>(
     call: impl FnOnce() -> T,
 ) -> Option<T> {
     contain_callback(call, |payload| {
-        let (entered, trapped) = LISTENER_SERIAL.get();
-        LISTENER_SERIAL.set((entered, trapped.wrapping_add(1)));
+        ISOLATED_FAILURES.set(ISOLATED_FAILURES.get().wrapping_add(1));
         report_callback_panic(installed(), hook, mod_id, None, false, payload);
     })
 }
@@ -1294,7 +1291,6 @@ impl ConsumeEffectBinding {
     pub(crate) fn invoke(self, invoke: impl FnOnce(&dyn Hooks)) -> bool {
         self.owner
             .call("consume effect", "consume_effect", || {
-                bump_listener_serial();
                 invoke(&*self.entry.hooks);
             })
             .is_ok()
@@ -1371,72 +1367,8 @@ thread_local! {
     static ACTIVE_LISTENERS: std::cell::RefCell<Vec<(usize, &'static str)>> = const {
         std::cell::RefCell::new(Vec::new())
     };
-    /// Listener entries (including nested hooks) and abort-signaling isolated traps on this thread.
-    static LISTENER_SERIAL: std::cell::Cell<(u64, u64)> = const { std::cell::Cell::new((0, 0)) };
     /// Per-thread count of trapped listener failures on this thread.
     static ISOLATED_FAILURES: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
-}
-
-#[inline]
-fn bump_listener_serial() {
-    let (entered, trapped) = LISTENER_SERIAL.get();
-    LISTENER_SERIAL.set((entered.wrapping_add(1), trapped));
-}
-
-pub(crate) fn listener_serial() -> u64 {
-    LISTENER_SERIAL.get().0
-}
-
-#[cfg(test)]
-mod listener_lease_tests {
-    use super::*;
-    use sunrise_mod_runtime::pending_children::{Decision, Error, PendingChildren};
-
-    #[test]
-    fn entering_a_different_hook_expires_a_retained_pending_child() {
-        struct Listener;
-        #[mod_api::__subscriptions]
-        impl crate::Hooks for Listener {
-            fn mob_split(
-                &self,
-                _: &mut dyn crate::ServerHost,
-                _: &mut crate::MobSplitEvent<'_>,
-            ) -> Flow {
-                Flow::Continue
-            }
-            fn baby_entity_spawn(
-                &self,
-                _: &mut dyn crate::ServerHost,
-                _: &mut crate::BabyEntitySpawnEvent<'_>,
-            ) -> Flow {
-                Flow::Continue
-            }
-        }
-        install(vec![ModEntry::new("lease-test", Box::new(Listener))].into());
-        let mut arena = PendingChildren::default();
-        arena
-            .run(
-                1,
-                1,
-                vec![7u32],
-                |arena, action| {
-                    let _outer = listening(generated::HookId::MobSplit).next().unwrap();
-                    arena.sync_listener(listener_serial()).unwrap();
-                    let child = arena.borrow(action, 0).unwrap();
-                    assert_eq!(arena.get(child), Ok(&7));
-                    let _nested = listening(generated::HookId::BabyEntitySpawn)
-                        .next()
-                        .unwrap();
-                    arena.sync_listener(listener_serial()).unwrap();
-                    assert_eq!(arena.get(child), Err(Error::Expired));
-                    let fresh = arena.borrow(action, 0).unwrap();
-                    assert_eq!(arena.get(fresh), Ok(&7));
-                    Decision::Accept
-                },
-                |_| true,
-            )
-            .unwrap();
-    }
 }
 
 #[cfg(test)]

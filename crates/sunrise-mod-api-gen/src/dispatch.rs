@@ -1773,43 +1773,6 @@ pub(super) fn emit<'a>(
                     }}"
                 ))
             }
-            None if hook.context == Some(PhaseContext::ChunkDisk) => {
-                // Each disk operation reports its own error. Keep the first terminal error
-                // for job publication, out of the store lent to later listeners.
-                let job_failure = fresh_name("job_failure", &mut used);
-                let outcome = fresh_name("outcome", &mut used);
-                (
-                    String::new(),
-                    format!(
-                        "if {event}.data.failure().is_none() {{
-                             let mut {job_failure} = None;
-                             for ({listener_id}, {mod_item}) in super::entered_with_id(HookId::{hook_id}, \"{name}\") {{
-                                 {local_event} {snapshot_statement}
-                                 let {outcome} = super::runtime::invoke(HookId::{hook_id}, \"{name}\", {listener_id}, || {mod_item}.{name}({invoke}));
-                                 if let Some(mut error) = {event}.data.failure().cloned() {{
-                                     if error.mod_id.is_empty() {{ error.mod_id = {listener_id}.into(); }}
-                                     if {job_failure}.is_none() {{
-                                         {job_failure} = Some(error);
-                                     }} else {{
-                                         log::warn!(\"mod {{}} hook {name} refused: {{error:?}}\", {listener_id});
-                                     }}
-                                 }} else if {outcome}.is_some() {{
-                                     {local_write_back}
-                                     continue;
-                                 }}
-                                 {restore_statement}
-                                 match {outcome} {{
-                                     Some(()) => {{}}
-                                     None => {{
-                                         {job_failure}.get_or_insert_with(|| super::chunk_disk::unwound_failure({listener_id}));
-                                     }}
-                                 }}
-                             }}
-                             if let Some(error) = {job_failure} {{ {event}.data.attribute_failure(error); }}
-                         }}"
-                    ),
-                )
-            }
             None if name == "consume_effect" => (
                 String::new(),
                 format!("callback.invoke(|{mod_item}| {mod_item}.{name}({invoke}))"),

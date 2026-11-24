@@ -392,7 +392,7 @@ impl HudAtlas {
             .get(name.strip_prefix("minecraft:").unwrap_or(name))
             .copied()
     }
-    pub(crate) fn blit_atlas_page(&self, name: &str) -> Option<usize> {
+    pub fn blit_atlas_page(&self, name: &str) -> Option<usize> {
         if self
             .live
             .contains_key(name.strip_prefix("minecraft:").unwrap_or(name))

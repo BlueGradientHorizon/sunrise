@@ -747,24 +747,22 @@ impl Game<'_> {
                                 &mut movement,
                             )
                         }
-                        Some(Pause::Equipment { was_on_fire, .. }) => {
+                        Some(Pause::Equipment { .. }) => {
                             sunrise_client::mobs::riders::resume_after_equipment(
                                 &mut mobs,
                                 i,
                                 &w,
                                 &mut level,
-                                was_on_fire,
                                 &mut events,
                                 &mut movement,
                             )
                         }
-                        Some(Pause::RegisterBehaviors { was_on_fire, stage }) => {
+                        Some(Pause::RegisterBehaviors { stage }) => {
                             sunrise_client::mobs::riders::resume_after_register_behaviors(
                                 &mut mobs,
                                 i,
                                 &w,
                                 &mut level,
-                                was_on_fire,
                                 stage,
                                 &mut events,
                                 &mut movement,
@@ -1696,42 +1694,9 @@ impl mod_api::InsideEntityAccess for GameMobInsideAccess<'_, '_> {
         else {
             return false;
         };
-        let Some(m) = self.mob() else {
-            return false;
-        };
-        if m.species() == Species::Wither {
-            return false;
-        }
-        let kind = m.kind.id.clone();
-        let name = sunrise_client_core::potions::namespaced(def.id);
-        let new = !m
-            .extra
-            .effects
-            .iter()
-            .any(|e| e.registry_index == Some(def.index));
-        if !self
-            .game
-            .can_be_affected_resolved(Some(self.mob_id as i32), &kind, name, Some(effect))
-        {
-            return false;
-        }
         let instance =
             sunrise_client::effects::EffectInstance::from_def(def, duration, i32::from(amplifier));
-        let Some(changed) = self
-            .game
-            .mutate_mob_effects(self.mob_id, Some(name), |mob| {
-                mob.add_effect_instance(name, instance)
-            })
-        else {
-            return false;
-        };
-        self.game.mod_effect_added_resolved(
-            effect,
-            Some(self.mob_id as i32),
-            i32::from(amplifier),
-            new,
-        );
-        changed
+        self.game.add_mob_effect(self.mob_id, instance, None)
     }
 
     fn hurt_with_source(
