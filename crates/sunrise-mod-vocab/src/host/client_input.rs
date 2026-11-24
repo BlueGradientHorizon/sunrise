@@ -33,16 +33,16 @@ pub trait ClientInputClientHost {
     /// Cleared when the window loses focus; available even outside a world.
     fn modifiers(&self) -> ClientModifiers;
     /// Side: client.
-    /// The clipboard's text (`KeyboardHandler.getClipboard`), empty when it holds none,
-    /// while the game handles a key, mouse or typed-text event: a mod's key or screen hook
-    /// pasting into its own field. None at any other moment (a tick, a frame, a packet),
-    /// so no mod reads the clipboard without the player doing something, and None on a
-    /// server.
+    /// The clipboard's text (`KeyboardHandler.getClipboard`), empty when it holds none.
+    /// Works from any client callback (a tick, a frame, a payload handler, an input event, a
+    /// screen hook), as vanilla's `KeyboardHandler`; None only without a native window (a
+    /// server or a headless host).
     fn clipboard_text(&self) -> Option<String>;
     /// Side: client.
-    /// Puts `text` on the clipboard (`KeyboardHandler.setClipboard`) on the same terms as
-    /// `native_clipboard_text` reads it. False, with nothing copied, at any other moment or
-    /// on a server; empty text copies nothing, as vanilla's.
+    /// Puts `text` on the clipboard (`KeyboardHandler.setClipboard`) from any client
+    /// callback, as `clipboard_text` reads it. False, with nothing copied, only without a
+    /// native window (a server or a headless host); empty text is ignored and leaves the
+    /// clipboard unchanged, as vanilla's.
     fn set_clipboard_text(&self, text: &str) -> bool;
     /// Side: client.
     /// Whether the window holds the pointer (`MouseHandler.isMouseGrabbed`): true while the
