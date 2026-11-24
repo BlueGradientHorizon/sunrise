@@ -282,8 +282,8 @@ impl Game<'_> {
             });
         }
     }
-    /// The bucket's sound (none for a fluid with no world form) and fluid game event, from the
-    /// player when one is given, at the outermost commit.
+    /// The bucket's sound the effects carry (none for a fluid without one) and the fluid game
+    /// event, from the player when one is given, at the outermost commit.
     pub(in crate::game) fn commit_fluid_effects(&mut self, effects: FluidEffects) {
         let FluidEffects {
             level,

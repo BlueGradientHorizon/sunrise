@@ -75,6 +75,51 @@ fn a_second_pickup_of_one_source_in_a_transaction_gets_nothing() {
     });
 }
 
+/// A registered tank-only fluid that names a live bucket plays that bucket's fill sound once at
+/// the commit, as a world fluid does; one that names none plays no sound.
+#[test]
+#[ignore = "daily"]
+fn a_tank_only_fluid_with_a_bucket_plays_its_fill_sound_at_the_commit() {
+    with_level(|game, level| {
+        crate::game::native_item_places::tests::open_to_lan(game);
+        let fill = |game: &mut Game<'_>| {
+            game.creatures.lan_sounds.clear();
+            let host: &mut dyn ServerHost = game;
+            let played: Result<bool, TransactionError<()>> = host.transaction(|host, tx| {
+                level
+                    .play_fluid_effects(host, AT, key("sunrise:definition_test"), true, None, tx)
+                    .map_err(|_| ())
+            });
+            assert_eq!(played, Ok(true));
+            game.creatures
+                .lan_sounds
+                .iter()
+                .map(|s| s.sound.clone())
+                .collect::<Vec<_>>()
+        };
+        assert!(fill(game).is_empty());
+        let mut content = sunrise_mod_package::content::Content::declared("sunrise");
+        content
+            .fluids
+            .push(sunrise_mod_package::content::FluidLook {
+                id: "sunrise:definition_test".into(),
+                sprite: None,
+                tint: None,
+                world: None,
+                bucket_item: Some("minecraft:honey_bottle".into()),
+                measures: Default::default(),
+            });
+        sunrise_client::mod_content::set_fluid_looks(&[sunrise_client::mod_content::ContentMod {
+            id: "sunrise".into(),
+            content,
+            jars: Vec::new(),
+        }]);
+        let sounds = fill(game);
+        sunrise_client::mod_content::set_fluid_looks(&[]);
+        assert_eq!(sounds, ["minecraft:item.bucket.fill"]);
+    });
+}
+
 #[test]
 #[ignore = "daily"]
 fn an_aborted_placement_over_a_skull_leaves_it_and_drops_nothing() {
