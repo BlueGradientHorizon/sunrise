@@ -1399,7 +1399,7 @@ always sent. An enchantment reaches the enchanting table through vanilla's tags 
 in_enchanting_table.json` and the others), which a mod adds to as any tag. A world's data pack replaces a mod's
 enchantment of the same id. What an enchantment does beyond vanilla's effect components is the mod's code: a native
 hook reads the held stack's enchantments, or claims a `post_attack` effect of its own kind
-([enchantment effect kinds](items/enchantment-effect-kinds.md)).
+([enchantment effect kinds](items.md#custom-enchantment-effect-kinds)).
 
 #### Worldgen additions, biome modifiers and custom biomes
 
