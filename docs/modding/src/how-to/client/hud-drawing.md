@@ -1,8 +1,11 @@
 # Drawing on the HUD and in screens
 
 A HUD layer, a screen or a tooltip hook draws through the `DrawContext` it is handed, in GUI pixels. Each call
-is one of vanilla's `GuiGraphics` calls: `fill`, `text`, `sprite`, `item_stack` and the others. `gui_paint`
-takes a buffer of `GuiDraw` ops for the same calls, with `Push` / `Pop` for the pose.
+is one of vanilla's `GuiGraphics` calls: `fill`, `text`, `sprite`, `item_stack` and the others.
+[Draw through a canvas](gui-paint.md#drawing-directly-with-a-canvas) with `draw_gui` to group
+fills, styled text, blits and seeded items with their decorations in lexical pose and scissor scopes.
+See [status rows and fixed text positions](#status-rows-and-fixed-text-positions) to draw at the
+original layer or reserve space for overlays.
 
 `ClientHost::debug_overlay_visible()` reports whether the client draws its debug overlay this frame. In
 `render_gui_post`, use it to leave space for the overlay. Always-on debug entries can make it visible with
@@ -122,7 +125,8 @@ It does not suppress toasts, which draw after the active screen or overlay. F1 h
 toasts and audio stream failure notices, but not other callback error toasts.
 To replace all rows formerly drawn by `health_hud`, replace or wrap `player_health`,
 `armor_level`, `food_level` and `air_level`; `vehicle_health` is separate.
-You can keep a `GuiDraw` list: pass it to `draw.gui_paint(&draws)` and handle its returned error.
+Use [`draw.draw_gui`](gui-paint.md#drawing-directly-with-a-canvas) in the installed body to group
+fallible draws with a scoped pose or scissor.
 Sunrise's radial overlay keeps clear of the actual paint from installed status-layer bodies,
 including replacements and wrappers.
 
@@ -184,13 +188,16 @@ on the `DebugEntry` to keep it allowed under reduced debug info.
 
 ## Registering world-space debug renderers
 
-In `Hooks::register_debug_renderers`, push `DebugRenderer::new(draw)` for each renderer that
-should run until the next refresh. To gate a renderer on a debug options switch, register
+In `Hooks::register_debug_renderers` (hook version 4), push `DebugRenderer::new(draw)` for each
+renderer that should run until the next refresh. Callbacks run after `submit_custom_geometry` and
+share its deferred geometry and submission rules. To gate a renderer on a debug options switch, register
 `DebugEntry::renderer(id)` at startup in `Hooks::register_debug_entries` (or reference a
 built-in vanilla entry such as `"minecraft:chunk_borders"`) and check
 `event.is_debug_entry_enabled(id)` before pushing. Unconditional renderers require no switch
-entry. Use the callback's `ClientHost`, `WorldRenderView` and `WorldDrawContext` to draw, and
-capture any per-refresh state specific to this renderer.
+entry. Use the callback's `ClientHost`, `WorldRenderView<'_>` (lending the frame's `Camera`,
+world `partial_tick`, `game_time`, `improved_transparency` state, and visible
+`RenderableSection` slice), and `WorldDrawContext` to draw, and capture any per-refresh state
+specific to this renderer.
 
 ```rust,ignore
 use mod_api::{
@@ -219,8 +226,9 @@ The client collects a fresh list at startup, login, the first world view and the
 after a selection rebuild or respawn. Every submitted renderer from an enabled mod is kept in
 registration order, with no ID-based filtering or deduplication. Keep per-refresh state in the
 new callbacks. Only installed callbacks run in a world view, as their registering mods, after
-`submit_custom_geometry` and within its shared draw limits. A panic disables only that
-callback for the rest of the session, including after a selection refresh.
+`submit_custom_geometry`, sharing its deferred `WorldDrawContext` (which grows dynamically and
+draws at the end of the world pass). A panic disables only that callback for the rest of the
+session, including after a selection refresh.
 
 ## Block overlays
 
@@ -299,39 +307,31 @@ fn gui_render_post(&self, _: &dyn ClientHost, event: &mut GuiRenderPostEvent<'_>
 }
 ```
 
-In a `gui_paint` buffer the same call is the op `GuiDraw::FillGradient { x0, y0, x1, y1, top, bottom }`, with
-vanilla's corner arguments: `top` stays on the `y0` edge and `bottom` on the `y1` edge.
+`GuiCanvas::fill_gradient` takes the same arguments and follows the canvas's current pose and scissor.
 
-- **Pose and clip.** A gradient follows the current pose (a `gui_paint` buffer's `Push`) and the hook call's
-  clip (`push_clip`), as `fill` does. A clip that cuts the rectangle keeps the colour ramp: the cut edge has the
-  colour that was there.
+- **Clip.** A clip from `DrawContext::with_scissor` or `GuiCanvas::scope` keeps the colour ramp:
+  the cut edge has the colour that was there.
 - **Empty or inverted.** Zero width or height draws nothing, as does inversion on exactly one axis.
-  Inverting both axes (`w < 0` and `h < 0`, or `x1 < x0` and `y1 < y0`) draws sorted bounds with the
-  colours flipped: the first colour stays on its input y edge, now the lower edge. This preserves vanilla's
-  visible winding and colour placement. A `fill_gradient` rectangle with a NaN or infinite coordinate draws nothing.
+  Inverting both axes (`w < 0` and `h < 0`) draws sorted bounds with the colours flipped: the first
+  colour stays on its input y edge, now the lower edge. This preserves vanilla's visible winding
+  and colour placement. A non-finite rectangle draws nothing; the canvas reports `NotFinite`.
   Zero-area calls are culled here; vanilla can retain their layering bounds without drawing pixels.
 - **Cost.** One quad on the GUI batch, as `fill`; nothing is drawn or kept when a mod doesn't call it.
 
 ## Player faces
 
-The `gui_paint` op `GuiDraw::PlayerFace { uuid, x, y, size, hat, flip, color }` draws a player's skin head as
-vanilla's `PlayerFaceExtractor` does, the head the player list, a team screen or a waystone's owner line shows:
-the face, then the hat layer when `hat`, each `size` GUI pixels square at `x, y`, tinted by the ARGB `color`
-(`0xFFFF_FFFF` for none).
+`GuiCanvas::player_face(uuid, at, size, hat, flip, argb)` inside `DrawContext::draw_gui` draws a player's skin
+head as vanilla's `PlayerFaceExtractor` does, the head the player list, a team screen or a waystone's owner
+line shows: the face, then the hat layer when `hat`, each `size` GUI pixels square at `at`, tinted by the ARGB
+`argb` (`0xFFFF_FFFF` for none).
 
 ```rust,ignore
-use mod_api::client::hud_layout::GuiDraw;
+use mod_api::{DrawContext, GuiDrawError};
 
-fn draw_member(draw: &mut dyn DrawContext, member: u128, x: i32, y: i32) -> Result<(), GuiPaintError> {
-    draw.gui_paint(&[GuiDraw::PlayerFace {
-        uuid: member,
-        x,
-        y,
-        size: 8,
-        hat: true,
-        flip: false,
-        color: 0xFFFF_FFFF,
-    }])
+fn draw_member(draw: &mut dyn DrawContext, member: u128, x: f32, y: f32) -> Result<(), GuiDrawError> {
+    draw.draw_gui(&mut |canvas| {
+        canvas.player_face(member, [x, y], 8.0, true, false, 0xFFFF_FFFF)
+    })
 }
 ```
 
@@ -339,36 +339,30 @@ fn draw_member(draw: &mut dyn DrawContext, member: u128, x: i32, y: i32) -> Resu
   player list draws. Any other UUID, an offline team member say, draws its profile's skin, looked up by id the
   way a player head's profile is: the lookup starts in the background the first time and is kept as heads keep
   theirs. Until the skin is downloaded and in the atlas, and when the profile has none, the face is the UUID's
-  default skin (`DefaultPlayerSkin.get`). The op never waits, so draw it every frame and the real skin appears
-  when it is ready.
-- **Upside down.** `flip` draws the face upside down. The op never guesses it from a name: vanilla's player
+  default skin (`DefaultPlayerSkin.get`). The call never waits, so draw it every frame and the real skin appears
+  when it is ready; new skin requests wait for the outer `draw_gui` group to commit.
+- **Upside down.** `flip` draws the face upside down. The call never guesses it from a name: vanilla's player
   list flips Dinnerbone and Grumm only while their player is in the level, so set it yourself if you want that.
-- **Pose and clip.** The face follows the buffer's pose (`Push`) and the hook call's clip (`push_clip`), as
-  `Blit` does; the hat layer is drawn under the same pose, clip and tint as the face.
+- **Pose and clip.** The face follows the canvas's pose and scissor (`GuiCanvas::scope` and
+  `DrawContext::with_scissor`), as `blit` does; the hat layer is drawn under the same pose, scissor and tint as
+  the face.
 
 ## Standalone textures
 
-The `gui_paint` op `GuiDraw::Texture { id, x, y, w, h, uv, src, tex, color }` is vanilla's
+`GuiCanvas::texture(id, dst, region, argb)` inside `DrawContext::draw_gui` is vanilla's
 `GuiGraphicsExtractor.blit` with a texture's `Identifier`: a picture that isn't in the GUI atlas, such as a
-guide book's chapter art. It takes `blit`'s arguments: the quad at `x, y`, `w` by `h` GUI pixels, showing the
-`src` texels from `uv` of an image `tex` texels big, tinted by the ARGB `color`.
+guide book's chapter art. It takes `blit`'s arguments: the quad at `dst = [x, y, w, h]` in GUI pixels, showing
+`region.src` texels from `region.uv` of an image `region.tex` texels big, tinted by the ARGB `argb`.
 
 ```rust,ignore
-use mod_api::client::hud_layout::GuiDraw;
+use mod_api::{DrawContext, GuiBlitRegion, GuiDrawError, Identifier};
 
-fn draw_chapter(draw: &mut dyn DrawContext, art: &Identifier) -> Result<(), GuiPaintError> {
+fn draw_chapter(draw: &mut dyn DrawContext, art: &Identifier) -> Result<(), GuiDrawError> {
     // `art` is `mymod:textures/book/chapter.png`, parsed once at load.
-    draw.gui_paint(&[GuiDraw::Texture {
-        id: art.clone(),
-        x: 20,
-        y: 20,
-        w: 128,
-        h: 64,
-        uv: [0.0, 0.0],
-        src: [256, 128],
-        tex: [256, 128],
-        color: 0xFFFF_FFFF,
-    }])
+    draw.draw_gui(&mut |canvas| {
+        let region = GuiBlitRegion::new([0.0, 0.0], [256, 128], [256, 128]);
+        canvas.texture(art, [20.0, 20.0, 128.0, 64.0], region, 0xFFFF_FFFF)
+    })
 }
 ```
 
@@ -384,18 +378,18 @@ fn draw_chapter(draw: &mut dyn DrawContext, art: &Identifier) -> Result<(), GuiP
   filters linearly, `"clamp": true` clamps to the edge; otherwise nearest and repeat. No mipmaps.
 - **Missing images.** An id with no image, one that doesn't decode, or one whose `.png.mcmeta` isn't valid JSON or
   has a `texture` section vanilla's codec refuses, draws vanilla's magenta and black missing texture in its place, in
-  order with the other ops. The buffer isn't refused for it.
-- **Refused.** A `tex` with a zero side, or a NaN or infinite `uv`, refuses the whole buffer with
-  `GuiPaintError::TextureSize`: its coordinates would not be finite.
-- **Pose and clip.** The quad follows the buffer's pose (`Push`) and the hook call's clip (`push_clip`), as
-  `Blit` does.
+  order with the other draws. The call isn't refused for it.
+- **Refused.** A NaN or infinite `uv` returns `GuiDrawError::NotFinite` and a `tex` with a zero side
+  `GuiDrawError::BadBlitRegion`; the call draws nothing.
+- **Pose and clip.** The quad follows the canvas's pose and scissor (`GuiCanvas::scope` and
+  `DrawContext::with_scissor`), as `blit` does.
 
 ## Scaled text
 
 `DrawContext::text_scaled(text, at, scale, argb, shadow)` draws `text` as `text` does, scaled by `scale` about
-`at`, its top-left corner: what vanilla's HUD draws with `PoseStack.scale` around a line, without a `gui_paint`
-buffer of `Push`, `Text` and `Pop`. A half-size line under a label is `scale` 0.5, starting a quarter of its
-unscaled width left of where it is centred.
+`at`, its top-left corner. A half-size line under a label uses `scale` 0.5, starting a quarter of its
+unscaled width left of where it is centred. This is plain text; for a styled `Text`, draw with
+`GuiCanvas::text` inside a scope that translates to `at`, scales, and translates back.
 
 ```rust,ignore
 use mod_api::{GuiLayerPlacement, RegisterGuiLayersEvent, RegistrationContext};
