@@ -510,7 +510,7 @@ fn an_entry_is_decoded_from_its_own_text_once_its_kind_is_known() {
         ),
         ("no kind", r#"{"size":1}"#.to_owned()),
         ("a kind that is not a string", r#"{"kind":1}"#.to_owned()),
-        ("an array", r#"["engine"]"#.to_owned()),
+        ("an array", r#"["symbols"]"#.to_owned()),
     ];
     for (case, entry) in refused {
         let bytes = with_raw_entry(&written, ENGINE, &entry);
