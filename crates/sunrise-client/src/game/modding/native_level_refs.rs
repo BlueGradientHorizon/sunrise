@@ -3229,6 +3229,8 @@ mod tests {
                 assert_eq!(host.brightness(LightLayer::Sky, lit), 12);
                 assert_eq!(host.raw_brightness(lit, 0), 12);
                 assert_eq!(host.raw_brightness(lit, 9), 5);
+                // `Level.getSkyDarken` as the game's own light reads take it.
+                assert_eq!(LevelHost::sky_darken(&*host), Some(darken));
                 let pos = BlockPos::new(lit[0], lit[1], lit[2]);
                 assert_eq!(
                     host.raw_brightness(lit, darken),

@@ -565,6 +565,8 @@ mod tests {
             assert_eq!(game.level_is_raining_at(level, unloaded), None);
             assert_eq!(game.level_is_raining_at(level, [1, 4000, 1]), None);
             game.with_level(|_, host, _| {
+                // The level's own weather, wherever a position is (`Level.isRaining`).
+                assert_eq!(mod_api::LevelHost::is_raining(&*host), Some(true));
                 assert!(host.is_raining_at(plains));
                 assert!(!host.is_raining_at(roofed));
                 assert!(!host.is_raining_at(desert));
@@ -590,7 +592,10 @@ mod tests {
 
             game.world.weather.rain_level = (0.0, 0.0);
             assert_eq!(game.level_is_raining_at(level, plains), Some(false));
-            game.with_level(|_, host, _| assert!(!host.is_raining_at(plains)));
+            game.with_level(|_, host, _| {
+                assert_eq!(mod_api::LevelHost::is_raining(&*host), Some(false));
+                assert!(!host.is_raining_at(plains));
+            });
             assert_eq!(game.world.chunks.len(), chunks, "nothing was loaded");
         });
     }
