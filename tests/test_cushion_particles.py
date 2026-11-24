@@ -43,9 +43,13 @@ impl Particles {
         assert_eq!(speed, 0.05); assert_eq!(count, 10); self.count += count;
     }
 }
+#[derive(Default)]
+struct ServerState {
+    lan_cushion_breaks: Vec<(u32, [f64; 3])>,
+}
 struct Game {
     pack: Pack, audio: Audio, particles: Particles, headless: bool,
-    lan_cushion_breaks: Vec<(u32, [f64; 3])>,
+    server: ServerState,
 }
 impl Game {
     fn particle_sprite(&self, _: u32, _: [i32; 3]) -> Option<(String, u32)> {
@@ -60,12 +64,12 @@ fn main() {
             let mut game = Game {
                 pack: Pack { assets: Assets { registry: Registry } },
                 audio: Audio { capture: serving.then_some(()) },
-                particles: Particles::default(), headless, lan_cushion_breaks: vec![],
+                particles: Particles::default(), headless, server: ServerState::default(),
             };
             game.cushion_break_particles(&cushion);
-            assert_eq!(game.lan_cushion_breaks.len(), usize::from(serving));
+            assert_eq!(game.server.lan_cushion_breaks.len(), usize::from(serving));
             if serving {
-                let (state, at) = game.lan_cushion_breaks[0];
+                let (state, at) = game.server.lan_cushion_breaks[0];
                 assert_eq!(state, 123);
                 assert_eq!([at[0], at[2]], [1.5, 2.5]);
                 assert!((at[1] - (10.0 + 1.0/6.0)).abs() < 1e-12);

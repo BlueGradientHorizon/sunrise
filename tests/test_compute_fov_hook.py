@@ -28,7 +28,8 @@ struct Settings { fov: f32 }
 struct StudioFreecam { active: bool, fov: f32 }
 struct Studio { freecam: StudioFreecam }
 impl Studio { fn flying(&self) -> bool { self.freecam.active } }
-struct Game { view: View, settings: Settings, override_fov: Option<f32>, death_time: Option<i32>, studio: Studio }
+struct ClientState { view: View, studio: Studio }
+struct Game { client: ClientState, settings: Settings, override_fov: Option<f32>, death_time: Option<i32> }
 impl Game {
     fn fov_effect_scale(&self) -> f32 { 1.0 }
     fn camera_death_time(&self) -> Option<i32> { self.death_time }
@@ -49,21 +50,24 @@ fn unchanged_narrow_wide_and_invalid() {
     for (value, expected) in [(None, 35.0), (Some(15.0), 15.0), (Some(120.0), 120.0),
         (Some(1.0), 1.0), (Some(179.0), 179.0), (Some(0.0), 35.0), (Some(180.0), 35.0),
         (Some(-1.0), 35.0), (Some(f32::NAN), 35.0), (Some(f32::INFINITY), 35.0)] {
-        let game = Game { view: View, settings: Settings { fov: 70.0 }, override_fov: value,
-            death_time: None, studio: Studio { freecam: StudioFreecam { active: false, fov: 70.0 } } };
+        let game = Game {
+            client: ClientState { view: View, studio: Studio { freecam: StudioFreecam { active: false, fov: 70.0 } } },
+            settings: Settings { fov: 70.0 }, override_fov: value, death_time: None };
         assert_eq!(game.fov_degrees(0.25, [1.0, 2.0, 3.0]), expected);
     }
 }
 #[test]
 fn camera_death_time_reaches_calculate_fov() {
-    let game = Game { view: View, settings: Settings { fov: 70.0 }, override_fov: None,
-        death_time: Some(7), studio: Studio { freecam: StudioFreecam { active: false, fov: 70.0 } } };
+    let game = Game {
+        client: ClientState { view: View, studio: Studio { freecam: StudioFreecam { active: false, fov: 70.0 } } },
+        settings: Settings { fov: 70.0 }, override_fov: None, death_time: Some(7) };
     assert_eq!(game.fov_degrees(0.25, [1.0, 2.0, 3.0]), 38.5);
 }
 #[test]
 fn studio_freecam_uses_its_fov() {
-    let game = Game { view: View, settings: Settings { fov: 70.0 }, override_fov: None,
-        death_time: None, studio: Studio { freecam: StudioFreecam { active: true, fov: 42.0 } } };
+    let game = Game {
+        client: ClientState { view: View, studio: Studio { freecam: StudioFreecam { active: true, fov: 42.0 } } },
+        settings: Settings { fov: 70.0 }, override_fov: None, death_time: None };
     assert_eq!(game.fov_degrees(0.25, [1.0, 2.0, 3.0]), 42.0);
 }
 """.replace("METHOD", actual)

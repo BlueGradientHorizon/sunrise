@@ -9,7 +9,7 @@ from the target's module. If a hook already exposes the value, use the hook inst
 
 ## Example
 
-This example declares a mutable getter for `Game::ticks_until_autosave` and uses it from a `HEAD` mixin
+This example declares a mutable getter for `ServerState::ticks_until_autosave` and uses it from a `HEAD` mixin
 in a mod named `fnr_support`. The manifest's header is as on [Mixins](2-mixins.md#example). The helper also
 calls a [support module](5-support-modules.md) of the same mod, so the example keeps its row.
 
@@ -23,7 +23,7 @@ source = "src/runtime.rs"
 [[native.bridge]]
 id = "ticks"
 kind = "GET_MUT"
-target = "sunrise_client::game::Game"
+target = "sunrise_client::game::server_state::ServerState"
 member = "ticks_until_autosave"
 
 [[native.mixin]]
@@ -38,7 +38,7 @@ bindings = [{ name = "game", ty = "&mut Game<'_>", value = "&mut *self" }]
 
 ```rust,ignore
 fn head(game: &mut Game<'_>) {
-    let ticks = game.__horizon_mixins_fnr_support_ticks();
+    let ticks = game.server.__horizon_mixins_fnr_support_ticks();
     *ticks = crate::game::autosave::fnr_runtime::bumped(*ticks);
     fnr_support::note(&format!("module and bridge: ticks_until_autosave {}", *ticks));
 }

@@ -45,7 +45,8 @@ impl TryIntoApi for Option<&EngineStack> {
     }
 }
 struct Model { previous_head_pitch: f32 }
-struct Game { cancel: Option<usize>, calls: Vec<(usize, Option<i32>, f32, f32, f32)>, runs: Vec<(u32, i32)>, pitch: f32, player_model: Option<Model> }
+struct ClientState { player_model: Option<Model> }
+struct Game { cancel: Option<usize>, calls: Vec<(usize, Option<i32>, f32, f32, f32)>, runs: Vec<(u32, i32)>, pitch: f32, client: ClientState }
 impl Game {
     fn own_uuid(&self) -> u128 { 7 }
     fn own_entity_id(&self) -> i32 { 9 }
@@ -78,7 +79,7 @@ impl Game {
 #[test]
 fn cancellation_and_pose_share_one_dispatch_for_each_hand() {
     for (cancel, hands) in [(None, vec![0, 1]), (Some(0), vec![1]), (Some(1), vec![0])] {
-        let mut game = Game { cancel, calls: Vec::new(), runs: Vec::new(), pitch: 3.0, player_model: Some(Model { previous_head_pitch: 1.0 }) };
+        let mut game = Game { cancel, calls: Vec::new(), runs: Vec::new(), pitch: 3.0, client: ClientState { player_model: Some(Model { previous_head_pitch: 1.0 }) } };
         let expected = hands.into_iter().map(|h| (h, [2.0, 0.0, 0.0], [0.0, 15.0, 0.0], 2.0)).collect::<Vec<_>>();
         mod_api::__private::CONVERSIONS.set(0);
         assert_eq!(game.draw(), expected);
@@ -88,7 +89,7 @@ fn cancellation_and_pose_share_one_dispatch_for_each_hand() {
     }
     mod_api::__private::LISTENED.set(false);
     mod_api::__private::CONVERSIONS.set(0);
-    let mut game = Game { cancel: Some(0), calls: Vec::new(), runs: Vec::new(), pitch: 3.0, player_model: Some(Model { previous_head_pitch: 1.0 }) };
+    let mut game = Game { cancel: Some(0), calls: Vec::new(), runs: Vec::new(), pitch: 3.0, client: ClientState { player_model: Some(Model { previous_head_pitch: 1.0 }) } };
     assert_eq!(game.draw(), vec![(0, [0.0; 3], [0.0; 3], 1.0), (1, [0.0; 3], [0.0; 3], 1.0)]);
     assert!(game.calls.is_empty());
     assert!(game.runs.is_empty());

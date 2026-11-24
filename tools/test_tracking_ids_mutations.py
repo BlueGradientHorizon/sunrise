@@ -50,9 +50,9 @@ for name, expr in [('falling', 'Some(&f.attachment_lifetime)'),
 start = originals[dragon].index('    pub(super) fn assign_dragon_and_crystal_ids(')
 end = originals[dragon].index('\n    }', start)
 body = originals[dragon][start:end]
-for name, expr in [('dragon', 'super::entity::assign_stored_id(&mut self.next_entity, &mut d.id, None);'),
-                   ('parts', 'self.next_entity += 8;'),
-                   ('late-crystal', 'super::entity::assign_stored_id(&mut self.next_entity, &mut c.id, None);')]:
+for name, expr in [('dragon', 'super::entity::assign_stored_id(&mut self.server.next_entity, &mut d.id, None);'),
+                   ('parts', 'self.server.next_entity += 8;'),
+                   ('late-crystal', 'super::entity::assign_stored_id(&mut self.server.next_entity, &mut c.id, None);')]:
     offset = originals[dragon].index(expr, start, end)
     cases.append((name, dragon, offset, offset + len(expr), ';',
                   'late_dragon_ids_reserve_parts_before_crystals'))
