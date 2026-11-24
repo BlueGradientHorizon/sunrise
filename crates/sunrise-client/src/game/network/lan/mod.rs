@@ -2888,6 +2888,8 @@ impl Game<'_> {
         // Apply its packets before taking the snapshot too.
         self.tick_lan_packets();
         if self.lan.is_none() {
+            // No one else to tell: the host's `broadcastToAdmins` lines go.
+            self.admin_feedback.clear();
             if self.level_pass.running.is_none() {
                 self.level_pass.packets_drained = false;
             }
@@ -2902,7 +2904,7 @@ impl Game<'_> {
             self.run_level_teleports();
         }
         if !self.admin_feedback.is_empty() {
-            self.send_admin_feedback(None);
+            self.send_admin_feedback();
         }
         // An animal whose rider left the game (or the level) stops taking
         // its input.

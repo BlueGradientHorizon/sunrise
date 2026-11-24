@@ -309,6 +309,7 @@ mod tests {
             kind: "minecraft:arrow".into(),
             source: Some(engine::LootEntity::new("minecraft:skeleton")),
             direct: Some(engine::LootEntity::new("minecraft:arrow")),
+            is_direct: false,
         };
         let value = engine::LootContext {
             queried_table_id: None,

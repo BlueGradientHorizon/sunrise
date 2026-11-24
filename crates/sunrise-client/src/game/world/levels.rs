@@ -643,6 +643,11 @@ impl Levels {
             .map(|(_, level)| &mut level.world)
     }
 
+    /// The block ticks of the level not in place whose dimension is `dimension`.
+    pub(super) fn parked_block_ticks_of(&self, dimension: &str) -> Option<&Ticks> {
+        self.parked_of(dimension).map(|level| &level.block_ticks)
+    }
+
     /// The streaming of the level not in place whose dimension is `dimension`.
     pub(super) fn parked_streaming_of(&self, dimension: &str) -> Option<&Streaming> {
         self.parked
@@ -1396,7 +1401,7 @@ impl Game<'_> {
                 self.console_broadcast = Some(true);
                 self.sprint_report(&report);
                 self.console_broadcast = None;
-                self.send_admin_feedback(None);
+                self.send_admin_feedback();
                 self.admin_feedback.clear();
                 // Then onTickRateChanged, its mods outside the server's broadcast.
                 self.on_tick_rate_changed();

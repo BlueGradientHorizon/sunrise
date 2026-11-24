@@ -148,7 +148,7 @@ let done = self.edit_state(event.subject.host(), entity, |_, _tx, progress| {
   removed, with its attachment map still bound. Handles of block entities made inside it stay
   `Stale`. Removed block entities retire only when the outermost transaction commits. For the
   gameplay entry points that defer saving and unloading during an open action savepoint, see
-  [saving chunk attachments](../../how-to/chunk-data-save.md).
+  [saving chunk attachments](../../how-to/world/chunk-data.md#saving-chunk_data_save).
 - No size or depth limit of its own applies to a value. A saved value follows the chunk's NBT rules:
   vanilla 26.3 reads region files with `NbtAccounter.unlimitedHeap`, an unbounded byte budget and
   depth 512. The 2 MiB quota of a chunk packet's block entity data is a network limit and does not
@@ -263,3 +263,27 @@ depth 512), or unwinding panics also keep the original data.
 Callbacks are registered at startup and frozen with the block registry snapshot. A data-pack
 `/reload` keeps that registry and its existing callbacks; it does not register replacement code.
 A newly prepared registry receives its own callback snapshot.
+
+## Load callback
+
+Use `block_entity_on_load` to initialize a mod block entity after attachment and
+saved-data application, before it ticks. The hook fires for fresh placement,
+saved chunk loads and client chunk reception. It corresponds to NeoForge's
+`IBlockEntityExtension.onLoad`.
+
+The event supplies `event.subject: BlockEntitySideScope<'_>`: match
+`BlockEntitySideScope::Server(scope)` for a mutable `BlockEntityView` and `&mut dyn ServerHost`
+sequentially, or `BlockEntitySideScope::Client(scope)` for a read-only `BlockEntityReadView`
+and `&mut dyn ClientHost` sequentially. Both views already see the applied saved data. Dispatch
+is keyed by the block entity type ID.
+
+- The hook fires once per attached identity, on each logical side. Writing a
+  payload to an existing identity does not fire it again.
+- Unloading and loading a chunk creates new identities and delivers new notices.
+  Vanilla block entities do not receive this hook.
+- Notices are drained before block entity ticking. Each drain handles only the
+  notices pending when it begins; a listener's replacement block queues a notice
+  for a later drain.
+- If a pre-tick drain replaces the entity about to tick, that tick waits. The
+  replacement receives its own notice before ticking.
+- Worlds without subscribers collect no notices.

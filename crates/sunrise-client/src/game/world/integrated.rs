@@ -1165,7 +1165,7 @@ impl Game<'_> {
                         );
                     }
                 }
-                self.send_admin_feedback(Some(conn));
+                self.send_admin_feedback();
             }
             if theirs != back
                 && let Err(e) = self.enter_level(back)

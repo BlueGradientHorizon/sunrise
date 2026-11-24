@@ -6,15 +6,17 @@ use crate::options::Options;
 use crate::sdk_fetch::{PinnedSdk, ensure_sdk, fetch_build, fetch_pinned};
 use crate::uses_table::{self, Scanned, surface_of};
 use mod_surface::child::ChildEntry;
-use mod_surface::uses::{Change, Fit, FitReport, PLAIN_SCHEMA, USES_FILE, UsesTable};
+use mod_surface::uses::{Change, Fit, USES_FILE, UsesTable};
 use mod_surface::{Surface, leaf};
 use std::path::Path;
 use std::process::ExitCode;
+use std::rc::Rc;
 use sunrise_mod_package::{
     Manifest, Package,
     manifest::MAX_USES,
     sdk::{self, ChangeNote, Index},
 };
+use sunrise_native_build::check::{self, Builds, Judged, Unlisted, Verdict};
 use sunrise_native_build::game_uses;
 
 /// One searchable record: its id, its doc text and its names in other mod APIs.
@@ -183,8 +185,9 @@ pub(crate) fn hooks(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-/// `sdk diff <a> <b>`: what changed in the surface from build `a` to build `b` (Nightly names
-/// or shas). Only each build's small files are read, so a pruned build still answers.
+/// `sdk diff <a> <b>`: what changed in the surface from build `a` to build `b` (release names
+/// or shas, as `--sunrise` takes them). Only each build's small files are read, so a pruned build
+/// still answers.
 pub(crate) fn sdk(args: &[String]) -> Result<(), String> {
     let usage = "cargo sunrise-mod sdk diff <build> <build>";
     let [command, a, b] = args else {
@@ -346,7 +349,7 @@ fn fit_lines(entry: ChildEntry, package: Option<&Path>, builds: &[&str]) -> Resu
         Some(path) => package_subject(path)?,
         None => folder_subject(entry, project)?,
     };
-    let (name, mut table, manifest) = match subject {
+    let (name, table, manifest) = match subject {
         Subject::Table {
             name,
             table,
@@ -354,9 +357,10 @@ fn fit_lines(entry: ChildEntry, package: Option<&Path>, builds: &[&str]) -> Resu
         } => (name, table, manifest),
         Subject::NotApplicable { message, .. } => return Ok(Answer::NotApplicable(message)),
     };
-    // Whether the build the list was made for gave the hook versions a list of an older tool
-    // lacks: asked for once, and only when a target leaves nothing else to judge.
-    let mut baseline: Option<Result<(), String>> = None;
+    let made_for = table.made_for.clone();
+    // The surface of the build the list was made for, fetched at most once whatever the builds:
+    // asked for only when a target leaves nothing else to judge.
+    let mut made_for_surface: Option<Result<Vec<u8>, String>> = None;
     println!("{name}:");
     let (mut all, mut known) = (true, true);
     // Each build gets its own verdict: one that cannot be fetched or compared is not known, and
@@ -374,70 +378,78 @@ fn fit_lines(entry: ChildEntry, package: Option<&Path>, builds: &[&str]) -> Resu
             }
         };
         let (target, target_surface) = target;
-        if target.build == table.made_for {
+        if target.build == made_for {
             println!("{}  made for", target.name);
             continue;
         }
-        let game = match game_fit(&manifest, &table, &target) {
-            Ok(game) => game,
+        let target_surface = Rc::new(target_surface);
+        // Each build judges its own copy, which the made-for surface may complete: what one
+        // build's verdict needed never changes another's.
+        let mut target_table = table.clone();
+        let judged = mixins_rev(&target).and_then(|mixins_rev| {
+            check::judge(
+                &manifest,
+                Builds {
+                    made_for: &made_for,
+                    build: &target.build,
+                    mixins_rev: &mixins_rev,
+                },
+                || Ok(&mut target_table),
+                &mut || Ok(target_surface.clone()),
+                &mut || build_data(&manifest, &target),
+                Some(&mut || {
+                    made_for_surface
+                        .get_or_insert_with(|| {
+                            fetch_build(project, &made_for).and_then(|made| {
+                                std::fs::read(&made.surface)
+                                    .map_err(|e| format!("{}: {e}", made.surface.display()))
+                            })
+                        })
+                        .clone()
+                }),
+            )
+        });
+        let Judged {
+            verdict,
+            deferred,
+            uncompared,
+            unjudged,
+            unpinned,
+        } = match judged {
+            Ok(judged) => judged,
             Err(why) => {
                 known = false;
                 println!("{}  not known: {why}", target.name);
                 continue;
             }
         };
-        let Comparison {
-            report,
-            mut compared,
-            uncompared,
-            unfetched,
-        } = compare_fit(&mut table, &target_surface, game, &mut baseline, |pin| {
-            let made_for = fetch_build(project, pin)?;
-            std::fs::read(&made_for.surface)
-                .map_err(|e| format!("{}: {e}", made_for.surface.display()))
-        });
-        let mut answer = report.verdict;
-        if !compared.misfits.is_empty() {
-            let mut misfits = match answer {
-                Fit::DoesNotFit(misfits) => misfits,
-                Fit::Fits | Fit::Unversioned(_) => Vec::new(),
-            };
-            misfits.append(&mut compared.misfits);
-            misfits.sort();
-            answer = Fit::DoesNotFit(misfits);
-        }
-        // What is already known to have changed is said, whatever the build data would add; with
-        // nothing known, a comparison that could not be made is the answer.
-        if let Some(why) = &uncompared
-            && !matches!(answer, Fit::DoesNotFit(_))
-        {
-            known = false;
-            println!("{}  not known: {why}", target.name);
-            continue;
-        }
-        match answer {
-            Fit::Fits if !compared.unjudged.is_empty() => {
+        match verdict {
+            Verdict::MadeFor => println!("{}  made for", target.name),
+            Verdict::Fits { .. } => println!("{}  fits", target.name),
+            Verdict::Exact { .. } => {
                 known = false;
                 println!(
                     "{}  not known: nothing the list can judge changed, but the build's data cannot show {} unchanged (it holds no body for a function the mod calls, or not every part of a loop).",
                     target.name,
-                    compared
-                        .unjudged
+                    unjudged
                         .iter()
                         .map(|id| format!("`{}`", id.rsplit(':').next().unwrap_or(id)))
                         .collect::<Vec<_>>()
                         .join(", ")
                 );
             }
-            Fit::Fits if compared.unrecorded => {
+            Verdict::NoList {
+                why: Unlisted::GameCode,
+                ..
+            } => {
                 known = false;
                 println!(
                     "{}  not known: nothing the list can judge changed, but it holds no record of game code the mod declares. Pack the mod again with `cargo sunrise-mod build`, which records it.",
                     target.name
                 );
             }
-            Fit::Fits => println!("{}  fits", target.name),
-            Fit::Unversioned(hooks) => {
+            // The list is the pin's, so only its hook versions can be missing.
+            Verdict::NoList { hooks, .. } => {
                 known = false;
                 println!(
                     "{}  not known: nothing the list can judge changed, but it holds no version of {}{}. Pack the mod again with `cargo sunrise-mod build`, which records them.",
@@ -447,12 +459,12 @@ fn fit_lines(entry: ChildEntry, package: Option<&Path>, builds: &[&str]) -> Resu
                         .map(|id| format!("`{}`", leaf(id)))
                         .collect::<Vec<_>>()
                         .join(", "),
-                    unfetched.map_or(String::new(), |why| format!(
+                    unpinned.map_or(String::new(), |why| format!(
                         ", and the build it was made for could not be read for them ({why})"
-                    ))
+                    )),
                 );
             }
-            Fit::DoesNotFit(misfits) => {
+            Verdict::DoesNotFit { misfits, .. } => {
                 all = false;
                 let count = misfits
                     .iter()
@@ -469,7 +481,7 @@ fn fit_lines(entry: ChildEntry, package: Option<&Path>, builds: &[&str]) -> Resu
                 }
             }
         }
-        if let Some(note) = report.deferred {
+        if let Some(note) = deferred {
             println!("    {note}");
         }
     }
@@ -480,107 +492,35 @@ fn fit_lines(entry: ChildEntry, package: Option<&Path>, builds: &[&str]) -> Resu
     })
 }
 
-pub(crate) struct Comparison {
-    pub report: FitReport,
-    pub compared: game_uses::Compared,
-    uncompared: Option<String>,
-    unfetched: Option<String>,
-}
-
-/// The mod API's items are judged by the surface, and declared game code by the build data.
-/// Both the CLI and the registry compare them here; their callers supply the files.
-pub(crate) fn compare_fit<B: AsRef<[u8]>>(
-    table: &mut UsesTable,
-    target_surface: &Surface,
-    (compared, uncompared): (game_uses::Compared, Option<String>),
-    baseline: &mut Option<Result<(), String>>,
-    baseline_surface: impl FnOnce(&str) -> Result<B, String>,
-) -> Comparison {
-    let api = |table: &UsesTable| {
-        table.fits(
-            table
-                .entries
-                .iter()
-                .filter(|entry| !entry.id.starts_with(game_uses::PREFIX)),
-            target_surface,
-        )
-    };
-    let mut report = api(table);
-    let mut unfetched = None;
-    if matches!(report.verdict, Fit::Unversioned(_)) && table.schema < PLAIN_SCHEMA {
-        let fetched = baseline.get_or_insert_with(|| {
-            let versions = baseline_surface(&table.made_for)?;
-            table
-                .pin_hook_versions(versions.as_ref())
-                .map_err(|e| e.to_string())
-        });
-        match fetched {
-            Ok(()) => report = api(table),
-            Err(why) => unfetched = Some(why.clone()),
-        }
-    }
-    Comparison {
-        report,
-        compared,
-        uncompared,
-        unfetched,
-    }
-}
-
-/// The game code `manifest` declares, as `target` has it, against `table`'s record of it, and
-/// the horizon-mixins revision the mod pins against the one `target`'s tool builds with. A
-/// misfit already known stays when the build data cannot be read: why it cannot comes second.
-/// The build data is fetched from `target`'s signed SDK into a private folder, never read from
-/// the project's cache, which the checkout can edit.
-fn game_fit(
-    manifest: &Manifest,
-    table: &UsesTable,
-    target: &PinnedSdk,
-) -> Result<(game_uses::Compared, Option<String>), String> {
+/// The horizon-mixins revision `target`'s tool builds with, from its verified `sdk.json`.
+fn mixins_rev(target: &PinnedSdk) -> Result<String, String> {
     let path = target.dir.join(sdk::INDEX);
     let bytes = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
     let index =
         Index::read(&bytes, &target.build).map_err(|e| format!("{}: {e}", path.display()))?;
-    Ok(compare_game(manifest, table, &index.mixins.rev, || {
-        let staging = tempfile::tempdir().map_err(|e| format!("build data: {e}"))?;
-        crate::sdk_fetch::release_data(
-            &crate::sdk_fetch::Base::from_env(),
-            &crate::sdk_fetch::keys(),
-            &target.build,
-            staging.path(),
-            true,
-        )?;
-        let data = staging
-            .path()
-            .join(&target.build)
-            .join(crate::sdk_fetch::BUILD_DATA);
-        game_uses::entries(manifest, &data, &target.build)
-    }))
+    Ok(index.mixins.rev)
 }
 
-pub(crate) fn compare_game(
+/// Where the game code `manifest` declares is in `target`, by its build data. The build data is
+/// fetched from `target`'s signed SDK into a private folder, never read from the project's
+/// cache, which the checkout can edit.
+fn build_data(
     manifest: &Manifest,
-    table: &UsesTable,
-    mixins_rev: &str,
-    target_entries: impl FnOnce() -> Result<Vec<(String, game_uses::Now)>, String>,
-) -> (game_uses::Compared, Option<String>) {
-    let mut compared = game_uses::Compared::default();
-    let mut uncompared = None;
-    if game_uses::declared(manifest) {
-        let recorded: Vec<_> = table
-            .entries
-            .iter()
-            .filter(|entry| entry.id.starts_with(game_uses::PREFIX))
-            .collect();
-        match target_entries() {
-            Ok(now) => compared = game_uses::compare(&recorded, now),
-            Err(why) => uncompared = Some(why),
-        }
-    }
-    compared
-        .misfits
-        .extend(game_uses::tool(manifest, mixins_rev));
-    (compared, uncompared)
+    target: &PinnedSdk,
+) -> Result<Vec<(String, game_uses::Now)>, String> {
+    let staging = tempfile::tempdir().map_err(|e| format!("build data: {e}"))?;
+    crate::sdk_fetch::release_data(
+        &crate::sdk_fetch::Base::from_env(),
+        &crate::sdk_fetch::keys(),
+        &target.build,
+        staging.path(),
+        true,
+    )?;
+    let data = staging
+        .path()
+        .join(&target.build)
+        .join(crate::sdk_fetch::BUILD_DATA);
+    game_uses::entries(manifest, &data, &target.build)
 }
 
 /// What the mod nearest to a removed item may use now, in `new`: the hook with one of the same
@@ -659,7 +599,11 @@ pub(crate) fn pin_report(entry: ChildEntry, root: &Path, to: &str) -> Result<(),
     );
     // The game code the mod declares, by the new build's build data.
     let made = uses_table::table(&uses, &parsed, &old)?;
-    let (compared, uncompared) = game_fit(&parsed, &made, &new)?;
+    // A misfit already known stays when the build data cannot be read: why it cannot comes second.
+    let (compared, uncompared) =
+        game_uses::compare_declared(&parsed, &made, &mixins_rev(&new)?, || {
+            build_data(&parsed, &new)
+        });
     for misfit in &compared.misfits {
         println!("{misfit}");
     }

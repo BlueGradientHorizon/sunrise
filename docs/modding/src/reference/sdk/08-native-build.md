@@ -129,7 +129,8 @@ source and caches), `toolchain` (as for `native-build`) and `mods` (the mod's fo
 `native-lock` reads the pinned game's `Cargo.lock`, kept as `game-lock/<commit>.lock` in `work` and downloaded from
 that commit of the game's repository the first time; with no network, put the file there. It creates `work` when it
 is missing. A shared crates.io package keeps the game's version on the same semver line. If a direct or transitive
-requirement excludes that version, `native-lock` refuses without replacing the mod's `Cargo.lock`.
+requirement excludes that version or requests a feature it lacks, `native-lock` refuses without replacing the mod's
+`Cargo.lock`.
 
 `native-discover` checks the mod against the pinned game's source with the deprecation lint forced on the mod alone;
 it runs the tool itself as Cargo's rustc wrapper for that.
