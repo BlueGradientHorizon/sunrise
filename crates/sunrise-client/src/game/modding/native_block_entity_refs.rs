@@ -492,15 +492,17 @@ impl Game<'_> {
         let Some(entity) = self.world.block_entities.get(&key) else {
             return Err(BlockEntityError::Stale);
         };
-        if !matches!(entity, BlockEntity::Mod(_))
-            || !save::randomizable_container(entity, &block)
-            || sunrise_client_core::identifier::normalize_id(table).is_none()
-        {
+        let Some(table) = sunrise_client_core::identifier::normalize_id(table) else {
+            return Ok(false);
+        };
+        if !matches!(entity, BlockEntity::Mod(_)) || !save::randomizable_container(entity, &block) {
             return Ok(false);
         }
+        // The table and seed as `trySaveLootTable` writes them and a reload reads them back:
+        // the identifier in full, and no seed for 0.
         let pending = save::PendingContainerLoot {
-            table: Tag::String(table.into()),
-            seed: Some(Tag::Long(seed)),
+            table: Tag::String(table.as_str().into()),
+            seed: (seed != 0).then_some(Tag::Long(seed)),
         };
         let current = self
             .world
@@ -508,7 +510,9 @@ impl Game<'_> {
             .get(&(key.0 >> 4, key.2 >> 4))
             .and_then(|chunk| chunk.saved.as_ref())
             .and_then(|saved| saved.pending_loot.get(&key));
-        if current == Some(&pending) {
+        if current.is_some_and(|current| {
+            current.table_id() == table && current.seed_value().unwrap_or(0) == seed
+        }) {
             return Ok(false);
         }
         self.journal_block_entity(key);
@@ -516,6 +520,24 @@ impl Game<'_> {
             extras.pending_loot.insert(key, pending);
         });
         self.world.modified.insert((key.0 >> 4, key.2 >> 4));
+        Ok(true)
+    }
+
+    /// `RandomizableContainer.unpackLootTable(null)`, what vanilla's `getItem`, `setItem`,
+    /// `removeItem` and `isEmpty` run first: a pending table rolls into the container's empty
+    /// slots now, with no player. False when no table waits.
+    pub(super) fn block_entity_unpack_loot_table(
+        &mut self,
+        entity: BlockEntityRef,
+    ) -> Result<bool, BlockEntityError> {
+        let (key, _) = self
+            .native_block_entity_write_target(entity)
+            .ok_or(BlockEntityError::Stale)?;
+        if !self.block_loot_pending(key) {
+            return Ok(false);
+        }
+        self.journal_block_entity(key);
+        self.unpack_loot(crate::game::container_loot::LootTarget::Block(key), None);
         Ok(true)
     }
 

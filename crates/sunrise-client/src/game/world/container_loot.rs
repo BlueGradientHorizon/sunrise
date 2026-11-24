@@ -10,6 +10,14 @@ pub(super) enum LootTarget {
     Boat(u32),
 }
 impl Game<'_> {
+    /// Whether the container at `key` still waits with a loot table.
+    pub(super) fn block_loot_pending(&self, key: (i32, i32, i32)) -> bool {
+        self.world
+            .chunks
+            .get(&(key.0 >> 4, key.2 >> 4))
+            .and_then(|c| c.saved.as_ref())
+            .is_some_and(|s| s.pending_loot.contains_key(&key))
+    }
     pub(super) fn loot_inventory_item(
         &mut self,
         key: (i32, i32, i32),
@@ -66,12 +74,7 @@ impl Game<'_> {
                 let Some(pending) = take_block_pending(&mut self.world, key) else {
                     return;
                 };
-                // Keep the block-container rule: a table coexisting with items is dropped.
-                if self.world.block_entities[&key]
-                    .slots()
-                    .iter()
-                    .any(Option::is_some)
-                {
+                if mixed_state_dropped(&self.world.block_entities[&key]) {
                     return;
                 }
                 (pending, key)
@@ -285,6 +288,13 @@ pub(super) fn take_block_pending(
     pending
 }
 
+/// Keep the block-container rule: a vanilla container's table coexisting with items is
+/// dropped. A mod container reaches that state through `RandomizableContainer.setLootTable` on
+/// a filled container, which vanilla rolls as usual: `LootTable.fill` fills the empty slots.
+fn mixed_state_dropped(entity: &BlockEntity) -> bool {
+    !matches!(entity, BlockEntity::Mod(_)) && entity.slots().iter().any(Option::is_some)
+}
+
 /// The random a container's loot drew from (`LootContext.Builder.create`: the explicit seed,
 /// the table's named random sequence, then the level random), kept for the slot shuffle.
 enum FillRandom {
@@ -445,7 +455,7 @@ impl super::GameLevel<'_> {
         let Some(entity) = self.world.block_entities.get(&key) else {
             return;
         };
-        if entity.slots().iter().any(Option::is_some) {
+        if mixed_state_dropped(entity) {
             return;
         }
         let mut slots = entity.slots().to_vec();
