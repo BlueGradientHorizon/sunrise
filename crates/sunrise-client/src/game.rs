@@ -3337,6 +3337,7 @@ struct Game<'a> {
     /// Shared with an integrated server; `collision` and `motion` borrow from it.
     res: Arc<Resources>,
     rest_loader: Option<WorldRestLoader>,
+    pending_entry: Option<PendingWorldEntry>,
     /// A pack reload staged on a worker until `drive_pack_reload` applies it.
     pack_reload: Option<packs::PackReload>,
     /// A server's resource packs (game/world/server_packs.rs).
@@ -3348,6 +3349,9 @@ struct Game<'a> {
     /// This world's frozen damage definitions and reloadable tag snapshot.
     pub(super) health_resources: sunrise_client::health::HealthResources,
     damage_tag_generation: u64,
+    /// This game's resource packs (`reload_packs` replaces them).
+    pending_initial_models: Option<Box<initial_client_models::PendingClientStart>>,
+    stitching_block_atlas: Option<Arc<RenderAssets>>,
     pack: PackResources,
     /// The title and menu bundle (GUI atlas, font and panorama).
     gui: UiResources,
@@ -3359,6 +3363,8 @@ struct Game<'a> {
     world_biomes_base: Option<Arc<Biomes>>,
     streaming: Streaming,
     lod: Option<sunrise_client::lod::Lod>,
+    /// The server's BlueMap far terrain draws from, when the player named one.
+    lod_blue_map: Option<Arc<sunrise_client::bluemap::BlueMap>>,
     options: Options,
     player: Option<PlayerMotion>,
     spawn: Option<Vec3>,
@@ -3392,6 +3398,8 @@ struct Game<'a> {
     previous: Instant,
     /// Controllers (Sunrise's own).
     pad: pad::Pads,
+    /// Mod screens' living scenes, per mod and clock id (game/modding/native_scene_live.rs).
+    live_scenes: std::cell::RefCell<native_scene_live::LiveScenes>,
     /// `DebugRenderer.renderers`: active mod renderers and their owners, resolved at refresh.
     debug_renderers: Vec<sunrise_client::debug_entries::ActiveDebugRenderer>,
     ticks: u64,
@@ -3412,8 +3420,11 @@ struct Game<'a> {
     setting_overrides: std::cell::RefCell<std::collections::BTreeMap<(String, String), String>>,
     /// The native damage hooks every level of this game lends to its hits.
     damage_hooks: sunrise_client::health::DamageHooks,
+    paused_mob_hurt: Option<Box<sunrise_client::mobs::PausedMobHurt>>,
     dropped: sunrise_client::join_seq::JoinList<ItemEntity>,
     particles: sunrise_client::particles::ParticleEngine,
+    /// `ItemPickupParticle`s: taken items, orbs and arrows flying to their collector.
+    pickups: pickups::Pickups,
     /// `CreateWorldScreen.openCreateWorldScreen`'s data read, on a worker,
     /// while the title says `createWorld.preparing`.
     creation_job: Option<std::thread::JoinHandle<std::result::Result<(), String>>>,
@@ -3464,6 +3475,11 @@ struct Game<'a> {
     sleeping: Option<[i32; 3]>,
     sleep_timer: u32,
     dim: Dim,
+    /// The world's data packs' content tables, when it has packs (`None`
+    /// keeps `Resources.rest`'s own in use).
+    world_tables: Option<WorldTables>,
+    /// Server-owned loot and item snapshots, independent of client preloads.
+    server_loot: sunrise_client::structure_blocks::LootSnapshot,
     server_items: Option<Arc<Items>>,
     /// The world is superflat (`ServerLevel.isFlat`, for every dimension).
     world_flat: bool,
@@ -3483,6 +3499,7 @@ struct Game<'a> {
     cushions: sunrise_client::join_seq::JoinList<sunrise_client::entities::Cushion>,
     /// Entities of types Sunrise does not simulate.
     others: sunrise_client::join_seq::ResidentList<commands::OtherEntity>,
+    armor_stand_assets: armor_stands::ArmorStandAssets,
     boats: sunrise_client::join_seq::JoinList<boats::Boat, false>,
     carts: sunrise_client::join_seq::JoinList<minecarts::Minecart, false>,
     /// Songs playing from jukeboxes (tracked sound handles).
@@ -3506,6 +3523,11 @@ struct Game<'a> {
     posed_rider: Option<u32>,
     /// Block entity data of broken blocks waiting for their dropped item.
     pending: spill::Pending,
+    /// Item entities spawned and block entities removed while the block
+    /// behaviour ran (spilled contents, popped resources).
+    spill: spill::Spill,
+    /// The recipe book of the open screen (game/items/recipe_book.rs).
+    recipe_ui: recipe_book::RecipeUi,
     /// The player's fishing hook.
     hook: sunrise_client::join_seq::ResidentSlot<fishing::Hook>,
     tridents: sunrise_client::join_seq::JoinList<trident::ThrownTrident>,
@@ -3513,6 +3535,8 @@ struct Game<'a> {
     /// Ominous trial spawners' item spawners.
     ominous_spawners:
         sunrise_client::join_seq::ResidentList<ominous_item_spawner::OminousItemSpawner>,
+    /// Monster spawners' display mobs (`game/mobs/spawner.rs`).
+    spawners: spawner::SpawnerState,
     tnts: sunrise_client::join_seq::JoinList<tnt::PrimedTnt>,
     /// The open `host.transaction`s, innermost last (`transactions.rs`).
     transactions: transactions::OpenTransactions,
@@ -3539,16 +3563,30 @@ struct Game<'a> {
     mod_jobs: mod_browser::Jobs,
     /// Every item and recipe, for mods (`game/modding/native_recipes.rs`), made once.
     recipe_tables: native_recipes::RecipeTables,
+    /// Main-hand input captured by a client mod, independent of living-item use.
+    client_item_use: Option<native_claimed_items::ActiveClientItemUse>,
     /// The native lifecycle bookkeeping.
     native_lifecycle: native_lifecycle::NativeLifecycle,
     resident_entities: resident_state::ResidentEntities,
+    /// The mobs lent to the hook calls running now, before they join a level
+    /// (game/modding/native_unspawned_mob.rs).
+    lent_mobs: RefCell<native_unspawned_mob::LentMobs>,
     /// Native mods' config files this game loaded (game/modding/native_configs.rs).
     native_configs: native_configs::NativeConfigs,
     /// Private custom-book connection and placement state.
     native_net: native_net::NativeNet,
+    /// Meshed sections waiting for an upload budget (Sunrise settings).
+    pending_uploads: Vec<sunrise_client::streaming::MeshUpload>,
+    /// Empty between updates. Reuses storage for merging two sorted runs.
+    pending_uploads_merge: Vec<sunrise_client::streaming::MeshUpload>,
+    occlusion: entity_culling::EntityOcclusion,
     async_particle_culler: RefCell<particle_culling::ParticleAsyncState>,
+    /// A scripted flight from the control socket (`fly`).
+    flight: Option<control::Flight>,
     /// The running agent action from the control socket (game/runtime/agent/mod.rs).
     agent: agent::Agent,
+    /// Widget commands waiting for the frame after a click (game/runtime/ui_control.rs).
+    ui_wait: ui_control::UiWait,
     /// What happened, for `events` and `wait-for` (game/runtime/events.rs).
     events: events::Events,
     /// Who caused each input event: a person, an agent or the game (game/runtime/input_trace.rs).
@@ -3585,6 +3623,13 @@ struct Game<'a> {
     /// The open world is shared behind an invite code (game/network/friends.rs).
     #[cfg(feature = "friends")]
     friends: Option<friends::Sharing>,
+    command_block_screen: Option<command_blocks::CommandBlockScreen>,
+    /// The game tests read so far, by id (the test instance registry).
+    test_defs: std::cell::RefCell<HashMap<String, Option<test_instances::TestDef>>>,
+    /// `GameTestTicker.SINGLETON`: the game tests running on this server.
+    game_tests: game_tests::GameTests,
+    /// Startup declarations shared by F3 options, the overlay and renderer selection.
+    registered_debug_entries: std::sync::Arc<[sunrise_client::debug_entries::RegisteredDebugEntry]>,
     /// The passages mods registered in each level, and a client's copy (`native_passages.rs`).
     passages: native_passages::Passages,
     /// MultiPlayerGameMode.previousLocalPlayerMode (F3+N goes back to it).
@@ -3597,6 +3642,9 @@ struct Game<'a> {
     /// +2): the pick helpers' `&self` reach.
     entity_reach: f64,
     block_reach: f64,
+    /// A mod asked for the command trees again (`native_refresh_commands`):
+    /// the next server tick asks every mod for its commands and resends them.
+    native_commands: native_server::NativeCommandState,
     /// Live attachments and original snapshots retained during player replacement.
     player_state: original_player::PlayerState,
     /// The retained server reload listeners of the last successful reload.
@@ -3605,6 +3653,7 @@ struct Game<'a> {
     mount: mounts::MountState,
     stats: stats::Stats,
     score: scoreboard::ScoreState,
+    fns: functions::FnState,
     border: sunrise_client::worldborder::WorldBorder,
     adv: advancements::AdvState,
     fangs: fangs::FangState,
@@ -12997,12 +13046,48 @@ impl<'a> Game<'a> {
         );
         let music_toast = prep.settings.file.int("musicToast").clamp(0, 2) as u8;
         let resources_path = prep.options.resources.clone();
-        let painting_variants = std::mem::take(&mut prep.prepared.painting_variants);
+        let GameCpuResources {
+            painting_variants,
+            frame_model,
+            glow_frame_model,
+            map_frame_model,
+            glow_map_frame_model,
+            armor_stand_assets,
+            waypoint_styles,
+            boat_models,
+            cart_models,
+            crystal_model,
+            cushion_model,
+            dragon_model,
+            arrow_model,
+            bee_stinger_model,
+            trident_model,
+            entity_models,
+            creative_screen,
+        } = prep.prepared;
+        let client_prepared = client_state::ClientCpuResources {
+            frame_model,
+            glow_frame_model,
+            map_frame_model,
+            glow_map_frame_model,
+            waypoint_styles,
+            boat_models,
+            cart_models,
+            crystal_model,
+            cushion_model,
+            dragon_model,
+            arrow_model,
+            bee_stinger_model,
+            trident_model,
+            entity_models,
+            creative_screen,
+        };
         let mut game = Game {
             world_biomes: None,
             world_biomes_base: None,
             res: res.clone(),
             rest_loader: None,
+            pending_entry: None,
             pack_reload: None,
             server_packs: Default::default(),
             integrated_starting: None,
@@ -13010,11 +13095,14 @@ impl<'a> Game<'a> {
             motion: res.motion(),
             health_resources: res.motion().health.clone(),
             damage_tag_generation: 1,
+            pending_initial_models: None,
+            stitching_block_atlas: None,
             pack: prep.pack,
             gui: prep.gui,
             world: prep.world,
             streaming: prep.streaming,
             lod: None,
+            lod_blue_map: None,
             options: prep.options,
             player: None,
             spawn: None,
@@ -13046,6 +13134,7 @@ impl<'a> Game<'a> {
             renderer: None,
             previous: prep.now,
             pad: Default::default(),
+            live_scenes: Default::default(),
             debug_renderers: Vec::new(),
             ticks: 0,
             error: None,
@@ -13058,8 +13147,10 @@ impl<'a> Game<'a> {
             tick: sunrise_client::parallel::TickThread::mint(),
             setting_overrides: Default::default(),
             damage_hooks: native_hooks::DAMAGE_HOOKS,
+            paused_mob_hurt: None,
             dropped: Default::default(),
             particles: prep.particles,
+            pickups: Default::default(),
             creation_job: None,
             mobs: Default::default(),
             mob_index: Default::default(),
@@ -13090,6 +13181,8 @@ impl<'a> Game<'a> {
             sleeping: None,
             sleep_timer: 0,
             dim: Dim::Overworld,
+            world_tables: None,
+            server_loot: Default::default(),
             world_flat: false,
             levels: Default::default(),
             portals: Default::default(),
@@ -13103,6 +13196,7 @@ impl<'a> Game<'a> {
             armor_stands: Default::default(),
             cushions: Default::default(),
             others: Default::default(),
+            armor_stand_assets,
             boats: Default::default(),
             carts: Default::default(),
             jukebox_sounds: HashMap::new(),
@@ -13124,10 +13218,13 @@ impl<'a> Game<'a> {
             riding: None,
             posed_rider: None,
             pending: Default::default(),
+            spill: Default::default(),
+            recipe_ui: Default::default(),
             hook: Default::default(),
             tridents: Default::default(),
             rockets: Default::default(),
             ominous_spawners: Default::default(),
+            spawners: Default::default(),
             tnts: Default::default(),
             transactions: Default::default(),
             mod_screen: None,
@@ -13140,17 +13237,24 @@ impl<'a> Game<'a> {
             screenshot_sequence: None,
             pending_render_capture: None,
             pending_bench: None,
+            flight: None,
+            ui_wait: Default::default(),
             events: Default::default(),
             input_trace: Default::default(),
             repro: Default::default(),
             profile: profile_capture::Profile::new(slow_frame_ms),
             agent: agent::Agent::default(),
+            occlusion: Default::default(),
             async_particle_culler: RefCell::new(Default::default()),
+            pending_uploads: Vec::new(),
+            pending_uploads_merge: Vec::new(),
             mods: mod_sources,
             mod_jobs: Default::default(),
             recipe_tables: Default::default(),
+            client_item_use: None,
             native_lifecycle: Default::default(),
             resident_entities: Default::default(),
+            lent_mobs: Default::default(),
             native_configs: Default::default(),
             native_net: Default::default(),
             sky_darken_memo: Default::default(),
@@ -13170,12 +13274,17 @@ impl<'a> Game<'a> {
             serving: None,
             #[cfg(feature = "friends")]
             friends: None,
+            command_block_screen: None,
+            test_defs: std::cell::RefCell::new(HashMap::new()),
+            game_tests: game_tests::GameTests::default(),
+            registered_debug_entries: sunrise_client::debug_entries::registered(),
             passages: Default::default(),
             previous_mode: None,
             clipboard: Default::default(),
             pending_save: None,
             entity_reach: 3.0,
             block_reach: 4.5,
+            native_commands: Default::default(),
             player_state: Default::default(),
             server_items: None,
             reload_resources: Default::default(),
@@ -13183,6 +13292,7 @@ impl<'a> Game<'a> {
             mount: Default::default(),
             stats: Default::default(),
             score: Default::default(),
+            fns: Default::default(),
             border: Default::default(),
             adv: Default::default(),
             fangs: Default::default(),
@@ -13193,7 +13303,7 @@ impl<'a> Game<'a> {
                 music_toast,
                 prep.tutorial,
                 prep.standalone_geometry,
-                prep.prepared,
+                client_prepared,
             ),
         };
         game.reset_entity_residency();

@@ -2,7 +2,6 @@
 use super::*;
 
 pub(in crate::game) struct ClientState {
-    pub(in crate::game) pending_entry: Option<PendingWorldEntry>,
     /// `DebugEntryChunkGeneration`'s `lastPos` and `result`: F3's `Density` line is sampled
     /// again only when the feet block (or the dimension) changes.
     pub(in crate::game) debug_density: RefCell<debug_keys::DensityCache>,
@@ -30,10 +29,6 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game) code_of_conduct: Option<code_of_conduct::Prompt>,
     pub(in crate::game) dialogs: dialogs::DialogState,
     pub(in crate::game) world_renderer_ready: bool,
-    /// This game's resource packs (`reload_packs` replaces them).
-    pub(in crate::game) pending_initial_models:
-        Option<Box<initial_client_models::PendingClientStart>>,
-    pub(in crate::game) stitching_block_atlas: Option<Arc<RenderAssets>>,
     pub(in crate::game) instance_groups:
         std::cell::RefCell<native_instance_groups::InstanceGroupStorage>,
     pub(in crate::game) standalone_geometry: native_block_entity_draw::StandaloneGeometry,
@@ -48,8 +43,6 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game) lod_observe: sunrise_client::fast_hash::FxHashSet<(i32, i32)>,
     /// The server level far terrain keeps the chunks of.
     pub(in crate::game) lod_level: Option<String>,
-    /// The server's BlueMap far terrain draws from, when the player named one.
-    pub(in crate::game) lod_blue_map: Option<Arc<sunrise_client::bluemap::BlueMap>>,
     /// The detail revision, centre and radius `Lod::update` last had covered for.
     pub(in crate::game) lod_covered_at: Option<(u64, (i32, i32), i32)>,
     /// Whether the view's columns have all arrived, and how new it is: large
@@ -204,8 +197,6 @@ pub(in crate::game) struct ClientState {
     /// Mod block entities' kept geometry (game/modding/native_block_entity_draw.rs).
     pub(in crate::game) kept_block_entities:
         std::cell::RefCell<native_block_entity_draw::KeptGeometry>,
-    /// Mod screens' living scenes, per mod and clock id (game/modding/native_scene_live.rs).
-    pub(in crate::game) live_scenes: std::cell::RefCell<native_scene_live::LiveScenes>,
     /// Client mods' dynamic textures in the GUI atlas's pool (game/modding/native_dynamic_textures.rs).
     pub(in crate::game) dynamic_textures: sunrise_client::hud::dynamic_textures::DynamicTextures,
     /// Glyphs from `native_draw_text` (`&self`): uploaded to the font atlas with the frame.
@@ -269,8 +260,6 @@ pub(in crate::game) struct ClientState {
     /// Remote guardian eye targets reused between ticks.
     pub(in crate::game) guardian_look_scratch: Vec<(usize, [f64; 3])>,
     pub(in crate::game) explicit_particle_quads: sunrise_client::particles::ParticleQuads,
-    /// `ItemPickupParticle`s: taken items, orbs and arrows flying to their collector.
-    pub(in crate::game) pickups: pickups::Pickups,
     /// Sign text being edited (`SignEditScreen`).
     pub(in crate::game) sign_edit: Option<sign_edit::SignEditor>,
     /// An open book, book and quill or lectern screen.
@@ -341,7 +330,6 @@ pub(in crate::game) struct ClientState {
     /// The `map=true` frame variants.
     pub(in crate::game) map_frame_model: frames::FrameModel,
     pub(in crate::game) glow_map_frame_model: frames::FrameModel,
-    pub(in crate::game) armor_stand_assets: armor_stands::ArmorStandAssets,
     /// `WaypointStyleManager`.
     pub(in crate::game) waypoint_styles: sunrise_client::locator_bar::WaypointStyles,
     /// `ClientWaypointManager`: the locator bar's waypoints.
@@ -395,14 +383,10 @@ pub(in crate::game) struct ClientState {
     /// Runtime trim slots and the last completed preparation for this atlas.
     pub(in crate::game) trim_slots: sunrise_client::trims::TrimSlots,
     pub(in crate::game) cart_models: minecarts::CartModels,
-    /// The recipe book of the open screen (game/items/recipe_book.rs).
-    pub(in crate::game) recipe_ui: recipe_book::RecipeUi,
     /// The horse inventory (game/interface/mount_menu.rs).
     pub(in crate::game) mount_menu: mount_menu::MountMenu,
     /// The other players' hooks a server tracks to this client.
     pub(in crate::game) remote_hooks: Vec<fishing::RemoteHook>,
-    /// Monster spawners' display mobs (`game/mobs/spawner.rs`).
-    pub(in crate::game) spawners: spawner::SpawnerState,
     pub(in crate::game) trident_model: Option<sunrise_client::mobs::Part>,
     pub(in crate::game) arrow_model: Option<sunrise_client::mobs::Part>,
     pub(in crate::game) bee_stinger_model: Option<sunrise_client::mobs::Part>,
@@ -431,27 +415,16 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game) panel: native_panel::Panel,
     /// Sunrise's own shader pack, while one is picked (`game/modding/native_shaders.rs`).
     pub(in crate::game) native_shaders: native_shaders::NativeShaders,
-    /// Main-hand input captured by a client mod, independent of living-item use.
-    pub(in crate::game) client_item_use: Option<native_claimed_items::ActiveClientItemUse>,
     /// Native client mods' key mappings (game/modding/native_key_mappings.rs).
     pub(in crate::game) mod_keys: sunrise_client::keymapping::ModKeys,
     /// The mod whose own screen is open (`Screen::Mod`).
     pub(in crate::game) native_mod_screen: Option<String>,
-    /// Meshed sections waiting for an upload budget (Sunrise settings).
-    pub(in crate::game) pending_uploads: Vec<sunrise_client::streaming::MeshUpload>,
-    /// Empty between updates. Reuses storage for merging two sorted runs.
-    pub(in crate::game) pending_uploads_merge: Vec<sunrise_client::streaming::MeshUpload>,
     /// The camera section (column, height) `pending_uploads` is sorted for, farthest first:
     /// while it stays, the list needs only its new meshes merged in, not a sort every frame.
     pub(in crate::game) pending_uploads_order: Option<((i32, i32), i32)>,
     pub(in crate::game) upload_pace: upload_pace::UploadPace,
     /// This frame's view frustum, for culling entities and block entities.
     pub(in crate::game) view_frustum: Option<sunrise_client::gfx::JoinedFrusta>,
-    pub(in crate::game) occlusion: entity_culling::EntityOcclusion,
-    /// A scripted flight from the control socket (`fly`).
-    pub(in crate::game) flight: Option<control::Flight>,
-    /// Widget commands waiting for the frame after a click (game/runtime/ui_control.rs).
-    pub(in crate::game) ui_wait: ui_control::UiWait,
     /// `SUNRISE_TICK_SCRIPT`'s scenario (game/world/tick_script.rs).
     pub(in crate::game) tick_script: tick_script::TickScript,
     /// The last water plane `water_plane` found, kept while none is in reach.
@@ -470,13 +443,12 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game) retry_due: Option<sunrise_hooks::connection::Server>,
     /// What the window's title last showed: its session part and the language (window_title.rs).
     pub(in crate::game) window_title: Option<(Option<&'static str>, u64)>,
-    pub(in crate::game) studio: studio::Studio,
+    pub(super) studio: studio::Studio,
     /// The Social Interactions screen and the players whose chat is hidden (game/network/social.rs).
     pub(in crate::game) social: social::Social,
     pub(in crate::game) world_options: Option<lan_screen::WorldOptions>,
     /// Chat Settings opened from RestrictionsScreen: Done returns to World Options.
     pub(in crate::game) options_to_world_options: bool,
-    pub(in crate::game) command_block_screen: Option<command_blocks::CommandBlockScreen>,
     pub(in crate::game) block_editor: Option<block_editor::BlockEditScreen>,
     /// `GameTestBlockHighlightRenderer.markers`: block, text, removal time.
     pub(in crate::game) test_highlights: HashMap<(i32, i32, i32), (String, std::time::Instant)>,
@@ -485,9 +457,6 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game) debug_keys: sunrise_client::debug_keys::DebugKeys,
     /// The F3 overlay's charts (F3+2, F3+3).
     pub(in crate::game) debug_charts: sunrise_client::debug_chart::DebugCharts,
-    /// Startup declarations shared by F3 options, the overlay and renderer selection.
-    pub(in crate::game) registered_debug_entries:
-        std::sync::Arc<[sunrise_client::debug_entries::RegisteredDebugEntry]>,
     /// `Minecraft.debugEntries`: what the overlay and the debug renderers
     /// show (`debug-profile.json`, F3+F6).
     pub(in crate::game) debug_entries: sunrise_client::debug_entries::DebugEntries,
@@ -558,6 +527,24 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game) player_model: Option<Mob>,
 }
 
+pub(in crate::game) struct ClientCpuResources {
+    pub(in crate::game) frame_model: frames::FrameModel,
+    pub(in crate::game) glow_frame_model: frames::FrameModel,
+    pub(in crate::game) map_frame_model: frames::FrameModel,
+    pub(in crate::game) glow_map_frame_model: frames::FrameModel,
+    pub(in crate::game) waypoint_styles: sunrise_client::locator_bar::WaypointStyles,
+    pub(in crate::game) boat_models: boats::BoatModels,
+    pub(in crate::game) cart_models: minecarts::CartModels,
+    pub(in crate::game) crystal_model: Option<sunrise_client::mobs::Part>,
+    pub(in crate::game) cushion_model: Option<sunrise_client::mobs::Part>,
+    pub(in crate::game) dragon_model: Option<sunrise_client::mobs::Part>,
+    pub(in crate::game) arrow_model: Option<sunrise_client::mobs::Part>,
+    pub(in crate::game) bee_stinger_model: Option<sunrise_client::mobs::Part>,
+    pub(in crate::game) trident_model: Option<sunrise_client::mobs::Part>,
+    pub(in crate::game) entity_models: EntityModels,
+    pub(in crate::game) creative_screen: Creative,
+}
+
 impl ClientState {
     // Kept out-of-line so its field temporaries do not bloat `Game::construct`'s unoptimised frame.
     #[inline(never)]
@@ -567,10 +554,9 @@ impl ClientState {
         music_toast: u8,
         tutorial: tutorial::Tutorial,
         standalone_geometry: native_block_entity_draw::StandaloneGeometry,
-        prepared: GameCpuResources,
+        prepared: ClientCpuResources,
     ) -> Self {
         Self {
-            pending_entry: None,
             debug_density: RefCell::default(),
             pending_pack_reload: false,
             frame_attempted: render_settings::FrameAttempt::default(),
@@ -582,8 +568,6 @@ impl ClientState {
             code_of_conduct: None,
             dialogs: Default::default(),
             world_renderer_ready: false,
-            pending_initial_models: None,
-            stitching_block_atlas: None,
             instance_groups: Default::default(),
             standalone_geometry,
             fog: Default::default(),
@@ -594,7 +578,6 @@ impl ClientState {
             lod_source_attempted: false,
             lod_observe: Default::default(),
             lod_level: None,
-            lod_blue_map: None,
             lod_covered_at: None,
             view_arrival: Default::default(),
             drop_spam_throttler: Default::default(),
@@ -669,7 +652,6 @@ impl ClientState {
             frames: 0,
             glint_frame: Default::default(),
             kept_block_entities: Default::default(),
-            live_scenes: Default::default(),
             dynamic_textures: Default::default(),
             text_patches: Default::default(),
             prepared_model_draws: Default::default(),
@@ -707,7 +689,6 @@ impl ClientState {
             bee_sounds: HashMap::new(),
             guardian_look_scratch: Vec::new(),
             explicit_particle_quads: Default::default(),
-            pickups: Default::default(),
             sign_edit: None,
             book: None,
             book_last_click: None,
@@ -745,7 +726,6 @@ impl ClientState {
             glow_frame_model: prepared.glow_frame_model,
             map_frame_model: prepared.map_frame_model,
             glow_map_frame_model: prepared.glow_map_frame_model,
-            armor_stand_assets: prepared.armor_stand_assets,
             waypoint_styles: prepared.waypoint_styles,
             waypoints: Default::default(),
             locator_camera: None,
@@ -777,10 +757,8 @@ impl ClientState {
             skin_slots: sunrise_client::skins::SkinSlots::new(sunrise_client::hud::SKIN_SLOTS),
             trim_slots: Default::default(),
             cart_models: prepared.cart_models,
-            recipe_ui: Default::default(),
             mount_menu: Default::default(),
             remote_hooks: Vec::new(),
-            spawners: Default::default(),
             trident_model: prepared.trident_model,
             arrow_model: prepared.arrow_model,
             bee_stinger_model: prepared.bee_stinger_model,
@@ -792,20 +770,14 @@ impl ClientState {
             agent_last: None,
             frame_stats: Default::default(),
             alloc_mark: None,
-            flight: None,
-            ui_wait: Default::default(),
             tick_script: tick_script::TickScript::from_env(),
             view_frustum: None,
-            occlusion: Default::default(),
-            pending_uploads: Vec::new(),
-            pending_uploads_merge: Vec::new(),
             pending_uploads_order: None,
             upload_pace: Default::default(),
             extras: Default::default(),
             pvp: Default::default(),
             panel: Default::default(),
             native_shaders: Default::default(),
-            client_item_use: None,
             mod_keys: Default::default(),
             native_mod_screen: None,
             water_plane_memo: Default::default(),
@@ -818,13 +790,11 @@ impl ClientState {
             studio: Default::default(),
             world_options: None,
             options_to_world_options: false,
-            command_block_screen: None,
             block_editor: None,
             test_highlights: HashMap::new(),
             social: Default::default(),
             debug_keys: Default::default(),
             debug_charts: Default::default(),
-            registered_debug_entries: sunrise_client::debug_entries::registered(),
             debug_entries: sunrise_client::debug_entries::DebugEntries::load(
                 &std::env::current_dir().unwrap_or_default(),
             ),

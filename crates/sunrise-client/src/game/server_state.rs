@@ -20,7 +20,6 @@ pub(in crate::game) struct ServerState {
     /// An early shutdown must not replace on-disk tickets while the server is
     /// still publishing levels or activating their tickets.
     pub(in crate::game) startup_ticket_restore_pending: bool,
-    pub(in crate::game) paused_mob_hurt: Option<Box<sunrise_client::mobs::PausedMobHurt>>,
     pub(in crate::game) next_entity: u32,
     /// The last entity id when this level's entity pass began: an item with a
     /// later one was added during that pass and first ticks on the next
@@ -90,11 +89,6 @@ pub(in crate::game) struct ServerState {
     pub(in crate::game) carrier_retention_snapshot: Vec<(u128, u32)>,
     /// Offline-to-account UUID migration: loaded entities retain the old UUID until saved.
     pub(in crate::game) owner_migration: Option<(u128, u128)>,
-    /// The world's data packs' content tables, when it has packs (`None`
-    /// keeps `Resources.rest`'s own in use).
-    pub(in crate::game) world_tables: Option<WorldTables>,
-    /// Server-owned loot and item snapshots, independent of client preloads.
-    pub(in crate::game) server_loot: sunrise_client::structure_blocks::LootSnapshot,
     /// The world is the Debug preset (`Level.isDebug`, for every dimension): its blocks
     /// cannot be changed and nothing ticks.
     pub(in crate::game) world_debug: bool,
@@ -146,9 +140,6 @@ pub(in crate::game) struct ServerState {
     /// The ender inventory (27 slots) and the ender chest showing it.
     pub(in crate::game) ender_items: Vec<Option<ItemStack>>,
     pub(in crate::game) ender_open: Option<(i32, i32, i32)>,
-    /// Item entities spawned and block entities removed while the block
-    /// behaviour ran (spilled contents, popped resources).
-    pub(in crate::game) spill: spill::Spill,
     pub(in crate::game) creaking: creaking::CreakingState,
     /// Reused candidate buffers for natural spawning.
     pub(in crate::game) spawn_scratch: natural_spawning::SpawnScratch,
@@ -170,9 +161,6 @@ pub(in crate::game) struct ServerState {
     pub(in crate::game) pickup_columns: Option<machines::StampedItemColumns>,
     /// Where the mobs are, while the block entities tick (potent sulfur gas).
     pub(in crate::game) pass_mobs: Option<potent_sulfur::PassMobs>,
-    /// The mobs lent to the hook calls running now, before they join a level
-    /// (game/modding/native_unspawned_mob.rs).
-    pub(in crate::game) lent_mobs: RefCell<native_unspawned_mob::LentMobs>,
     /// Entities whose copies are held out of storage; their handles refuse until stored back.
     pub(in crate::game) held_out: Vec<u32>,
     /// What the boats' and minecarts' ticks know about the mobs: their box reach
@@ -194,14 +182,9 @@ pub(in crate::game) struct ServerState {
     pub(in crate::game) structure_templates:
         HashMap<String, Option<structure_blocks::TemplateEntry>>,
     pub(in crate::game) structure_spawns: sunrise_client::mobs::spawn_selection::StructureSpawns,
-    /// The game tests read so far, by id (the test instance registry).
-    pub(in crate::game) test_defs:
-        std::cell::RefCell<HashMap<String, Option<test_instances::TestDef>>>,
     /// `test_defs` holds the world's whole test instance registry
     /// (`snapshot_test_defs`), so a miss is final.
     pub(in crate::game) test_defs_snapshot: bool,
-    /// `GameTestTicker.SINGLETON`: the game tests running on this server.
-    pub(in crate::game) game_tests: game_tests::GameTests,
     /// `ServerChunkCache.lastSpawnState` of each level: its spawnable chunks
     /// and each `MobCategory`'s count.
     pub(in crate::game) spawn_counts: HashMap<Dim, (i32, [i32; 8])>,
@@ -258,9 +241,6 @@ pub(in crate::game) struct ServerState {
     /// have each chest open.
     pub(in crate::game) lid_openers: HashMap<(i32, i32, i32), i32>,
     pub(in crate::game) lan_acting: Option<u32>,
-    /// A mod asked for the command trees again (`native_refresh_commands`):
-    /// the next server tick asks every mod for its commands and resends them.
-    pub(in crate::game) native_commands: native_server::NativeCommandState,
     /// The abilities of the server player whose turn it is (`as_guest`): their record's
     /// copy, which the turn reads and writes and the put-back at the end of `guest_turn` stores. None outside a turn.
     pub(in crate::game) acting_abilities: Option<sunrise_client::lan::abilities::PlayerAbilities>,
@@ -352,7 +332,6 @@ pub(in crate::game) struct ServerState {
     pub(in crate::game) combat: combat::CombatTracker,
     /// Each guest's own `CombatTracker`, out of `combat` between turns.
     pub(in crate::game) guest_combat: std::collections::HashMap<u32, combat::CombatTracker>,
-    pub(in crate::game) fns: functions::FnState,
     pub(in crate::game) bosses: bossbars::BossState,
     pub(in crate::game) exec: commands::execute::ExecState,
     pub(in crate::game) rand_sequences: sunrise_client::random_sequences::RandomSequences,
@@ -375,7 +354,6 @@ impl ServerState {
             destroy_delay: 0,
             world_adopted: false,
             startup_ticket_restore_pending: false,
-            paused_mob_hurt: None,
             next_entity: 0,
             ticked_entities_through: u32::MAX,
             contact_drops: 0..0,
@@ -432,7 +410,6 @@ impl ServerState {
             pending_vehicle: None,
             ender_items: vec![None; 27],
             ender_open: None,
-            spill: Default::default(),
             creaking: Default::default(),
             spawn_scratch: Default::default(),
             hoppers: HashMap::new(),
@@ -443,7 +420,6 @@ impl ServerState {
             item_columns: None,
             pickup_columns: None,
             pass_mobs: None,
-            lent_mobs: Default::default(),
             held_out: Vec::with_capacity(4),
             vehicle_mobs: Default::default(),
             missing_professions: Default::default(),
@@ -452,9 +428,7 @@ impl ServerState {
             level_shapes: Default::default(),
             singleplayer_profile: None,
             structure_templates: HashMap::new(),
-            test_defs: std::cell::RefCell::new(HashMap::new()),
             test_defs_snapshot: false,
-            game_tests: game_tests::GameTests::default(),
             spawn_counts: HashMap::new(),
             spawn_policies: HashMap::new(),
             server_tick_deadline: None,
@@ -480,7 +454,6 @@ impl ServerState {
             lid_openers: HashMap::new(),
             lan_acting: None,
             acting_abilities: None,
-            native_commands: Default::default(),
             lan_building_boxes: Default::default(),
             save_after_guest_turn: false,
             lan_guest_swaps: Vec::new(),
@@ -510,12 +483,9 @@ impl ServerState {
             console_broadcast: None,
             rcon_source: false,
             server_lists: None,
-            world_tables: None,
-            server_loot: Default::default(),
             cmds: Default::default(),
             combat: Default::default(),
             guest_combat: Default::default(),
-            fns: Default::default(),
             bosses: Default::default(),
             exec: Default::default(),
             rand_sequences: Default::default(),
