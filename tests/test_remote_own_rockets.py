@@ -9,27 +9,21 @@ import subprocess
 import tempfile
 import unittest
 
-ROOT = Path(__file__).resolve().parents[1]
-GAME = ROOT / "crates/sunrise-client/src/game"
-
-
-def lift(path, start, end):
-    source = path.read_text()
-    a = source.index(start)
-    return source[a : source.index(end, a)].replace("pub(super) ", "")
+from rust_items import rust_fn
 
 
 @unittest.skipUnless(shutil.which("rustc"), "requires Rust")
 class RemoteOwnRocketTests(unittest.TestCase):
     def test_the_spark_follows_the_moved_player_at_the_rocket_hand(self):
-        methods = lift(
-            GAME / "entities/fireworks.rs",
-            "    /// `Entity.getHandHoldingItemAngle",
-            "    /// `FireworkRocketItem.use` while gliding",
-        ) + lift(
-            GAME / "network/remote_projectiles.rs",
-            "    /// This client's own player's entity id",
-            "    /// One tick of interpolation",
+        methods = "\n".join(
+            rust_fn(name, owner="Game")
+            for name in (
+                "rocket_hand_angle",
+                "follow_own_player",
+                "rocket_spark",
+                "remote_player_id",
+                "tick_own_rockets",
+            )
         )
         fixture = r'''
 #![allow(dead_code)]

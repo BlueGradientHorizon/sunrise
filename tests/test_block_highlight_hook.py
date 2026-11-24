@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class BlockHighlightHookTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("rustc"), "requires Rust")
     def test_cancel_and_camera_outline_gates(self):
-        source = (ROOT / "crates/sunrise-client/src/game.rs").read_text(encoding="utf-8")
+        source = (ROOT / "crates/sunrise-client/src/game/game_client.rs").read_text(encoding="utf-8")
         call = source.index("self.native_block_highlight(")
         start = source.rindex(".filter(|h| {", 0, call)
         end = source.index(".map(|h| {", call)

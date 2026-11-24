@@ -37,8 +37,10 @@ fn a_harming_splash_potion_credits_its_thrower_and_its_sword() {
     credited_push(|game| {
         let mut potion = ItemStack::new("minecraft:splash_potion", 1);
         potion.data_mut().potion = Some("minecraft:harming".into());
-        let mut owner = PotionOwner::default();
-        owner.attacker = Some(50);
+        let owner = PotionOwner {
+            attacker: Some(50),
+            ..Default::default()
+        };
         game.splash(
             &potion,
             Vec3::new(0.0, 0.0, 0.0),

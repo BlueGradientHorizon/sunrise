@@ -57,10 +57,14 @@ def pointer_projection_sources():
 class WorldInputCaptureTests(unittest.TestCase):
     def test_loading_completion_wiring(self):
         game = "".join((ROOT / "crates/sunrise-client/src" / path).read_text(encoding="utf-8")
-                       for path in ("game/world/player_spawn.rs", "game/runtime/window_handler.rs", "game.rs"))
+                       for path in ("game/world/player_spawn.rs", "game/world/player_spawn_client.rs",
+                                    "game/runtime/window_handler.rs", "game.rs"))
         remote_dir = ROOT / "crates/sunrise-client/src/game/network/remote"
-        tick = (remote_dir / "tick.rs").read_text(encoding="utf-8")
-        level_tick = (remote_dir / "client_level_tick.rs").read_text(encoding="utf-8")
+        tick = "".join((remote_dir / name).read_text(encoding="utf-8") for name in ("tick.rs", "tick_client.rs"))
+        level_tick = "".join(
+            (remote_dir / name).read_text(encoding="utf-8")
+            for name in ("client_level_tick.rs", "client_level_tick_client.rs")
+        )
         spawn = method(game, "spawn_player")
         # The client half is a separate method: check the order across both bodies.
         call = spawn.index("self.spawn_player_client(")
@@ -84,7 +88,8 @@ class WorldInputCaptureTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("rustc"), "requires Rust")
     def test_capture_lifecycle(self):
         source = "".join((ROOT / "crates/sunrise-client/src" / path).read_text(encoding="utf-8")
-                         for path in ("game.rs", "game/interface/pointer_capture.rs", "game/network/lan/mod.rs"))
+                         for path in ("game.rs", "game/game_client.rs", "game/interface/pointer_capture.rs",
+                                      "game/network/lan/mod.rs"))
         fixture = r'''
 use std::cell::Cell;
 #[derive(Clone, Copy, PartialEq)]
