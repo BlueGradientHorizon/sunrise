@@ -16,7 +16,12 @@ const VSH: &str = "#version 330\nin vec3 Position;\nout vec4 vertexColor;\n\
     void main() { vertexColor = vec4(1.0); gl_Position = vec4(Position, 1.0); }\n";
 
 /// The files these tests include, by id.
-const FILES: [(&str, &str); 5] = [
+const FILES: [(&str, &str); 6] = [
+    // A function that parses and fails validation: a constant index past its array, line 4.
+    (
+        "minecraft:shaders/include/pick.glsl",
+        "// pick\nfloat pick() {\n    float a[2] = float[2](1.0, 2.0);\n    return a[5];\n}\n",
+    ),
     // An inactive branch, then a quoted include from this file's folder.
     (
         "minecraft:shaders/include/outer.glsl",
@@ -181,4 +186,55 @@ fn an_expansion_without_defines_locates_each_line() {
     assert_eq!(at("float after;"), (stage.into(), 3));
     assert_eq!(at("#version 450"), (stage.into(), 0));
     assert_eq!(at("void main()"), (stage.into(), 0));
+}
+
+/// An error naga's validator finds (the module parses) in an included file names that file and
+/// the line its span starts on.
+#[test]
+fn a_validation_error_in_an_include_names_its_file_and_line() {
+    let fsh = "#version 330\n#include <minecraft:pick.glsl>\nin vec4 vertexColor;\n\
+        out vec4 fragColor;\nvoid main() { fragColor = vertexColor * pick(); }\n";
+    let errors = translate(VSH, fsh).unwrap_err();
+    assert_eq!(
+        located(&errors),
+        [("minecraft:shaders/include/pick.glsl", 4)]
+    );
+    // Not the parser's: its errors quote the line they read.
+    assert!(
+        !errors[0].message.starts_with("fragment shader: ("),
+        "{errors:?}"
+    );
+}
+
+/// A validation error whose span is in no line the author wrote (an entry point using what its
+/// stage forbids, the entry point being Sunrise's `main`) names the stage file with no line.
+#[test]
+fn a_validation_error_outside_the_authors_lines_names_the_stage_file() {
+    let vsh = "#version 330\nin vec3 Position;\nout vec4 vertexColor;\n\
+        void main() { vertexColor = vec4(dFdx(Position.x)); gl_Position = vec4(Position, 1.0); }\n";
+    let fsh = "#version 330\nin vec4 vertexColor;\nout vec4 fragColor;\n\
+        void main() { fragColor = vertexColor; }\n";
+    let errors = translate(vsh, fsh).unwrap_err();
+    assert_eq!(located(&errors), [(VSH_FILE, 0)]);
+}
+
+/// A translated program says where a stage declares a resource, a stage reading it first, and
+/// where the fragment stage declares an output: what checks after translation name.
+#[test]
+fn a_program_locates_its_declarations_and_outputs() {
+    let vsh = "#version 330\nuniform sampler2D Sampler1;\nin vec3 Position;\nout vec4 vertexColor;\n\
+        void main() { vertexColor = vec4(1.0); gl_Position = vec4(Position, 1.0); }\n";
+    let fsh = "#version 330\n#include <minecraft:plain.glsl>\nuniform sampler2D Sampler1;\n\
+        in vec4 vertexColor;\nout vec4 fragColor;\nlayout(location = 1) out vec4 extra;\n\
+        void main() { fragColor = vertexColor * texture(Sampler1, vec2(0.5)); extra = vec4(a + b); }\n";
+    let program = translate(vsh, fsh).unwrap();
+    let at = |l: Location| (l.file, l.line);
+    // Sampler1 (texture at 6, sampler object at 7): declared by both, read by the fragment.
+    assert_eq!(at(program.declared_at(6)), (FSH_FILE.into(), 3));
+    assert_eq!(at(program.declared_at(7)), (FSH_FILE.into(), 3));
+    assert_eq!(at(program.output_at(0)), (FSH_FILE.into(), 5));
+    assert_eq!(at(program.output_at(1)), (FSH_FILE.into(), 6));
+    // Nothing declared there: the vertex file, no line; no output there: the fragment file.
+    assert_eq!(at(program.declared_at(40)), (VSH_FILE.into(), 0));
+    assert_eq!(at(program.output_at(3)), (FSH_FILE.into(), 0));
 }

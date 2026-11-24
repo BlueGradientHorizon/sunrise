@@ -32,7 +32,7 @@ use naga::valid::{Capabilities, ValidationFlags, Validator};
 mod glsl_fixups;
 mod located;
 
-pub use located::{Error, Expanded, describe};
+pub use located::{Error, Expanded, Location, describe};
 use located::{Lines, Origin};
 
 /// What a program's pipeline gives it, beyond its [`Glue`].
@@ -96,6 +96,45 @@ pub struct Translated {
     /// First set-0 binding assigned to [`Translated::other`], strictly above every binding in
     /// [`Inputs::blocks`] and [`Inputs::samplers`].
     other_base: u32,
+    /// The code each stage was parsed from, with where its lines came from, and where the
+    /// fragment stage declares each output location (a byte of its code): what
+    /// [`Translated::declared_at`] and [`Translated::output_at`] read. None for a program made
+    /// from modules alone ([`Translated::new`]).
+    sources: Option<Box<Sources>>,
+}
+
+#[derive(Debug)]
+struct Sources {
+    code: [Expanded; 2],
+    outputs: Vec<(u32, usize)>,
+}
+
+/// Where the first of `stages` (each a module and the code it was parsed from) that declares
+/// the resource at `binding` of set 0 declares it, preferring one whose entry point reads it
+/// (`reading`, in the stages' order); the first stage's file with no line when none declares
+/// it.
+pub fn declared_at(
+    stages: [(&naga::Module, &Expanded); 2],
+    reading: [bool; 2],
+    binding: u32,
+) -> Location {
+    let declaration = |(module, code): (&naga::Module, &Expanded)| {
+        (module.global_variables.iter())
+            .find(|(_, g)| {
+                g.binding
+                    .as_ref()
+                    .is_some_and(|b| b.group == 0 && b.binding == binding)
+            })
+            .map(|(handle, _)| code.location_in(module.global_variables.get_span(handle)))
+    };
+    let order = [0, 1].into_iter().filter(|&i| reading[i]).chain([0, 1]);
+    order
+        .filter_map(|i| declaration(stages[i]))
+        .next()
+        .unwrap_or_else(|| Location {
+            file: stages[0].1.file().to_owned(),
+            line: 0,
+        })
 }
 
 /// The integer texel buffers a stage declares (`uniform isamplerBuffer` or `usamplerBuffer`).
@@ -163,7 +202,39 @@ impl Translated {
             other,
             read,
             other_base,
+            sources: None,
         }
+    }
+
+    /// Where a stage declares the resource at `binding` of set 0, a stage reading it first
+    /// ([`declared_at`]): what a refusal of that declaration names. Nowhere known for a program
+    /// made from modules alone.
+    pub fn declared_at(&self, binding: u32) -> Location {
+        let Some(sources) = &self.sources else {
+            return Location::default();
+        };
+        let stages = self.stages_reading(binding);
+        declared_at(
+            [
+                (&self.vertex, &sources.code[0]),
+                (&self.fragment, &sources.code[1]),
+            ],
+            [
+                stages.contains(wgpu_types::ShaderStages::VERTEX),
+                stages.contains(wgpu_types::ShaderStages::FRAGMENT),
+            ],
+            binding,
+        )
+    }
+
+    /// Where the fragment stage declares its output at `location`; its file with no line when
+    /// it declares none there (nowhere known for a program made from modules alone).
+    pub fn output_at(&self, location: u32) -> Location {
+        let Some(sources) = &self.sources else {
+            return Location::default();
+        };
+        let at = sources.outputs.iter().find(|(l, _)| *l == location);
+        sources.code[1].location_at(at.map(|(_, at)| *at))
     }
 
     /// The binding of the `index`th block or sampler of [`Translated::other`] in set 0.
@@ -375,12 +446,12 @@ pub fn translate(
             ),
         )]);
     }
-    Ok(Translated::new(
-        vertex,
-        fragment,
-        names.other,
-        names.other_base,
-    ))
+    let mut program = Translated::new(vertex, fragment, names.other, names.other_base);
+    program.sources = Some(Box::new(Sources {
+        code: [vertex_code, fragment_code],
+        outputs: names.outputs,
+    }));
+    Ok(program)
 }
 
 /// A bound on a program's includes, which are pasted every time.
@@ -918,6 +989,8 @@ struct Names {
     /// The fragment stage's inputs: each one's location and where the rewritten stage declares
     /// it (a byte of its text), which an error about the location names.
     inputs: Vec<(u32, usize)>,
+    /// The fragment stage's outputs, the same way.
+    outputs: Vec<(u32, usize)>,
 }
 
 impl Names {
@@ -927,6 +1000,7 @@ impl Names {
             other: Vec::new(),
             other_base,
             inputs: Vec::new(),
+            outputs: Vec::new(),
         }
     }
 
@@ -1132,6 +1206,7 @@ fn rewrite(
                             outputs.len() - 1
                         }) as u32
                     });
+                    names.outputs.push((location, out.text().len()));
                     write(
                         &mut out,
                         &format!(
@@ -1218,7 +1293,11 @@ fn compile(
     let info = Validator::new(ValidationFlags::all(), Capabilities::all())
         .validate(&module)
         .map_err(|e| {
-            let span = e.spans().next().map_or(naga::Span::default(), |(s, _)| *s);
+            // The innermost span naga gives (an expression inside the function the error names).
+            let span = (e.spans().map(|(s, _)| *s))
+                .filter(|s| s.to_range().is_some())
+                .last();
+            let span = span.unwrap_or_default();
             let inner = e.into_inner();
             let mut message = inner.to_string();
             let mut source = std::error::Error::source(&inner);

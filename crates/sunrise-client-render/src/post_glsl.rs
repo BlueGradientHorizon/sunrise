@@ -31,6 +31,27 @@ pub struct Program {
     pub samplers: Vec<(String, u32)>,
     /// What each stage reads (`sunrise_glsl::bindings_read`, from the stages' validation).
     pub read: Vec<(u32, wgpu::ShaderStages)>,
+    /// The code each stage was parsed from, with where its lines came from.
+    code: [Expanded; 2],
+}
+
+impl Program {
+    /// Where a stage declares the resource at `binding`, a stage reading it first
+    /// (`sunrise_glsl::declared_at`): what a refusal of that declaration names.
+    pub fn declared_at(&self, binding: u32) -> sunrise_glsl::Location {
+        let stages = sunrise_glsl::stages_reading(&self.read, binding);
+        sunrise_glsl::declared_at(
+            [
+                (&self.vertex, &self.code[0]),
+                (&self.fragment, &self.code[1]),
+            ],
+            [
+                stages.contains(wgpu::ShaderStages::VERTEX),
+                stages.contains(wgpu::ShaderStages::FRAGMENT),
+            ],
+            binding,
+        )
+    }
 }
 
 fn is_ident(c: u8) -> bool {
@@ -286,7 +307,11 @@ fn parse(
     let info = Validator::new(ValidationFlags::all(), Capabilities::empty())
         .validate(&module)
         .map_err(|e| {
-            let span = e.spans().next().map_or(naga::Span::default(), |(s, _)| *s);
+            // The innermost span naga gives (an expression inside the function the error names).
+            let span = (e.spans().map(|(s, _)| *s))
+                .filter(|s| s.to_range().is_some())
+                .last();
+            let span = span.unwrap_or_default();
             vec![code.error_in(span, format!("{:?}", e.into_inner()))]
         })?;
     Ok((module, info))
@@ -359,6 +384,7 @@ pub fn translate(
         blocks,
         samplers,
         read,
+        code: [vs, fs],
     })
 }
 
@@ -798,5 +824,44 @@ mod tests {
                 vec![("p:shaders/post/a.fsh".to_owned(), 4)]
             )
         );
+    }
+
+    /// An error naga's validator finds (the stage parses) in a file an include includes names
+    /// that file and the line its span starts on.
+    #[test]
+    fn a_validation_error_in_a_nested_include_names_its_file_and_line() {
+        use sunrise_assets::resource_source::Resource;
+        let files = [
+            (
+                "assets/p/shaders/post/a.vsh",
+                "#version 330\nvoid main() { gl_Position = vec4(0.0, 0.0, 0.0, 1.0); }\n",
+            ),
+            (
+                "assets/p/shaders/post/a.fsh",
+                "#version 330\n#include <p:outer.glsl>\nlayout(location=0) out vec4 fragColor;\n\
+                 void main() { fragColor = vec4(pick()); }\n",
+            ),
+            (
+                "assets/p/shaders/include/outer.glsl",
+                "#include \"lib/pick.glsl\"\n",
+            ),
+            (
+                "assets/p/shaders/include/lib/pick.glsl",
+                "// pick\nfloat pick() {\n    float a[2] = float[2](1.0, 2.0);\n    return a[5];\n}\n",
+            ),
+        ];
+        let source = ResourceSource::indexed(
+            (files.iter())
+                .map(|(p, t)| ((*p).to_owned(), Resource::bytes(t.as_bytes().to_vec())))
+                .collect(),
+        );
+        let Err(Refused::Translator { stage, errors }) =
+            translate(&source, "p:post/a", "p:post/a", ANY)
+        else {
+            panic!("not the translator's refusal");
+        };
+        assert_eq!(stage, "p:post/a");
+        let located: Vec<(&str, u32)> = errors.iter().map(|e| (e.file.as_str(), e.line)).collect();
+        assert_eq!(located, [("p:shaders/include/lib/pick.glsl", 4)]);
     }
 }

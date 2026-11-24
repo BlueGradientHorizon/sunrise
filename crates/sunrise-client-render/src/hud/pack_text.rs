@@ -447,7 +447,11 @@ fn load_clouds(
             &|name| matches!(name, clouds::INFO_BLOCK | clouds::FACES) || samplers.contains(&name),
         )
         .map_err(|e| e.to_string())
-        .and_then(|program| clouds::check(&program, targets).map(|()| program))
+        .and_then(|program| {
+            clouds::check(&program, targets)
+                .map(|()| program)
+                .map_err(|e| e.to_string())
+        })
         .map_err(|why| RequiredShaderRefused { pipeline, why })
     };
     let classic = translate(&CLASSIC_DEFINES, &[], 1, clouds::CLASSIC_PIPELINE)?;

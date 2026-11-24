@@ -25,6 +25,26 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
+/// Where something is in the author's files: a file id and a line from 1, as [`Error`] has them
+/// (line 0: the file as a whole; no file: nowhere known, for a program made without its
+/// sources).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Location {
+    pub file: String,
+    pub line: u32,
+}
+
+impl Location {
+    /// `message` here.
+    pub fn error(&self, message: impl std::fmt::Display) -> Error {
+        Error {
+            file: self.file.clone(),
+            line: self.line,
+            message: message.to_string(),
+        }
+    }
+}
+
 /// Errors as one line, `; ` between them: a load note's text.
 pub fn describe(errors: &[Error]) -> String {
     let mut out = String::new();
@@ -222,7 +242,7 @@ impl Expanded {
     /// The error at byte `at` of [`Expanded::text`], at the file and line that byte came from.
     /// Sunrise's own lines, or no byte, name the stage file with no line.
     pub fn error_at(&self, at: Option<usize>, message: String) -> Error {
-        self.located(at.and_then(|at| self.lines.origin_at(at)), message)
+        self.location_at(at).error(message)
     }
 
     /// [`Expanded::error_at`] the start of naga's `span` (none for an unknown one).
@@ -246,22 +266,36 @@ impl Expanded {
     }
 
     fn located(&self, origin: Option<Origin>, message: String) -> Error {
+        self.location(origin).error(message)
+    }
+
+    /// The file and line of `origin`; the stage file with no line for Sunrise's own code.
+    fn location(&self, origin: Option<Origin>) -> Location {
         match origin {
-            Some(origin) => Error {
+            Some(origin) => Location {
                 file: self.files[origin.file as usize].clone(),
                 line: origin.line,
-                message,
             },
-            None => Error {
+            None => Location {
                 file: self.file().to_owned(),
                 line: 0,
-                message,
             },
         }
     }
 
-    /// Each range of [`Expanded::text`] (in order, apart) replaced by its text: lines it adds
-    /// come from the line the range starts on.
+    /// Where byte `at` of [`Expanded::text`] came from ([`Expanded::error_at`]).
+    pub fn location_at(&self, at: Option<usize>) -> Location {
+        self.location(at.and_then(|at| self.lines.origin_at(at)))
+    }
+
+    /// Where the start of naga's `span` came from.
+    pub fn location_in(&self, span: naga::Span) -> Location {
+        self.location_at(span.to_range().map(|r| r.start))
+    }
+
+    /// Each range of [`Expanded::text`] (in order, apart) replaced by its text. A replacement
+    /// with as many line breaks as the text it replaces keeps that text's lines, line for line;
+    /// one with any other count takes the line its range starts on for all its lines.
     pub fn edit(&mut self, edits: Vec<(Range<usize>, String)>) {
         self.lines.edit(edits);
     }

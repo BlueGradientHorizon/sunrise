@@ -57,10 +57,11 @@ pub fn interface_limits(limits: &wgpu::Limits) -> InterfaceLimits {
 }
 
 /// The shaders of one pipeline (`text.vsh`, `text.fsh`) with vanilla's `defines` for it.
-/// `include` answers a file id (`minecraft:shaders/include/fog.glsl`) with its text. Errors name
-/// the stages `minecraft:shaders/core/core.vsh` and `.fsh` ([`translate_core_at`] takes their
-/// names).
-pub fn translate_core(
+/// `include` answers a file id (`minecraft:shaders/include/fog.glsl`) with its text. For tests,
+/// which give a stage's text without a file: errors name the stages
+/// `minecraft:shaders/core/core.vsh` and `.fsh`. The game names them ([`translate_core_at`]).
+#[cfg(test)]
+pub(crate) fn translate_core(
     vertex: &str,
     fragment: &str,
     defines: &[&str],
@@ -72,7 +73,8 @@ pub fn translate_core(
 
 /// [`translate_core`] for a pipeline that also gives the blocks and samplers `provided` says
 /// yes to, at their [`Translated::other`] bindings; the others are still an error.
-pub fn translate_core_with(
+#[cfg(test)]
+pub(crate) fn translate_core_with(
     vertex: &str,
     fragment: &str,
     defines: &[&str],
