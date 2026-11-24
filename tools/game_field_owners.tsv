@@ -1,0 +1,606 @@
+field	type	owner	reason	declaration_index
+res	Arc<Resources>	game	shared (survey + review)	0
+rest_loader	Option<WorldRestLoader>	game	drop-order (client): WorldRestLoader holds JoinHandle; precedes integrated_starting (15) and later effectful Game fields	1
+pending_entry	Option<PendingWorldEntry>	client	client (survey + review)	2
+debug_density	RefCell<debug_keys::DensityCache>	client	client (survey; review=common from unpruned BFS, group=debug)	3
+pending_pack_reload	bool	client	client (survey + review)	4
+frame_attempted	render_settings::FrameAttempt	client	client (survey + review)	5
+pack_folder	Option<( std::time::Instant, Vec<(String, u64, Option<std::time::SystemTime>)>, )>	client	client (survey + review)	6
+pack_reload	Option<packs::PackReload>	game	drop-order (client): PackReload holds Option<JoinHandle>; precedes integrated_starting (15) and later effectful Game fields	7
+reload_overlay	Option<packs::ReloadOverlay>	client	client (survey + review)	8
+server_packs	server_packs::ServerPackState	game	drop-order (client): ServerPackState holds download::Queue & PackNotifier Receivers; precedes integrated_starting (15) and later effectful Game fields	9
+client_reports	Arc<sunrise_client::chunk_io::Reports>	client	client (survey + review)	10
+link_prompt	Option<String>	client	client (survey; review=common from unpruned BFS, group=net-client)	11
+command_prompt	Option<remote_chat::CommandPrompt>	client	client (survey; review=common from unpruned BFS, group=net-client)	12
+code_of_conduct	Option<code_of_conduct::Prompt>	client	client (survey; review=common from unpruned BFS, group=net-client)	13
+dialogs	dialogs::DialogState	client	client (survey; review=common from unpruned BFS, group=net-client)	14
+integrated_starting	Option<integrated::Starting>	game	mode (survey; review=client, mode flags stay on Game)	15
+world_renderer_ready	bool	client	client (survey + review)	16
+collision	&'a BlockCollisionRegistry<'a>	game	shared (survey + review)	17
+motion	&'a MotionResources	game	shared (survey + review)	18
+health_resources	sunrise_client::health::HealthResources	game	shared (survey + review)	19
+damage_tag_generation	u64	game	shared (survey + review)	20
+data_map_registries	Vec<String>	server	server (survey + review)	21
+pending_initial_models	Option<Box<initial_client_models::PendingClientStart>>	client	client (survey + review)	22
+stitching_block_atlas	Option<Arc<RenderAssets>>	client	client (survey + review)	23
+pack	PackResources	game	shared (survey + review)	24
+gui	UiResources	game	shared (survey + review)	25
+instance_groups	std::cell::RefCell<native_instance_groups::InstanceGroupStorage>	client	client (survey; review=common from unpruned BFS, group=modding-client)	26
+standalone_geometry	native_block_entity_draw::StandaloneGeometry	client	client (survey + review)	27
+fog	sunrise_client::fog::FogState	client	client (survey + review)	28
+screen_fx	sunrise_client::screen_effects::ScreenEffects	client	client (survey + review)	29
+item_activation	sunrise_client::item_activation::ItemActivation	client	client (survey; review=common from unpruned BFS, group=first-person)	30
+weather_parameters	sunrise_client::weather::ParameterCache	client	client (survey + review)	31
+panorama_rotation	sunrise_client::gfx::panorama::Rotation	client	client (survey + review)	32
+world	World	game	shared (survey + review)	33
+world_biomes	Option<Arc<Biomes>>	game	shared (survey + review)	34
+world_biomes_base	Option<Arc<Biomes>>	game	shared (survey + review)	35
+streaming	Streaming	game	shared (survey + review)	36
+lod	Option<sunrise_client::lod::Lod>	game	drop-order (client): Option<Lod> impl Drop stops & joins LOD worker/mesh threads; precedes remote (460), integrated (473), fangs (603)	37
+lod_source_attempted	bool	client	client (survey; review=common from unpruned BFS, group=lod)	38
+lod_observe	sunrise_client::fast_hash::FxHashSet<(i32, i32)>	client	client (survey; review=common from unpruned BFS, group=lod)	39
+lod_level	Option<String>	client	client (survey + review)	40
+lod_blue_map	Option<Arc<sunrise_client::bluemap::BlueMap>>	client	client (survey; review=common from unpruned BFS, group=lod)	41
+lod_covered_at	Option<(u64, (i32, i32), i32)>	client	client (survey; review=common from unpruned BFS, group=lod)	42
+view_arrival	sunrise_client::streaming::ViewArrival	client	client (survey; review=common from unpruned BFS, group=lod)	43
+options	Options	game	mode (survey + review)	44
+player	Option<PlayerMotion>	game	shared (survey + review)	45
+drop_spam_throttler	sunrise_client::menu::DropSpamThrottler	client	client (survey; review=common from unpruned BFS, group=inventory)	46
+spawn	Option<Vec3>	game	shared (survey + review)	47
+clock	FixedStep	game	shared (survey + review)	48
+previous_position	Vec3	game	shared (survey + review)	49
+rope_rot_old	(f32, f32)	client	client (survey + review)	50
+eye	f32	game	shared (survey + review)	51
+previous_eye	f32	client	client (survey; review=common from unpruned BFS, group=player-state)	52
+yaw	f32	game	shared (survey + review)	53
+pitch	f32	game	shared (survey + review)	54
+inventory	Vec<Option<ItemStack>>	game	shared (survey + review)	55
+selected	usize	game	shared (survey + review)	56
+carried	Option<ItemStack>	game	shared (survey + review)	57
+craft_grid	Vec<Option<ItemStack>>	game	shared (survey + review)	58
+craft_size	usize	game	shared (survey + review)	59
+craft_table	Option<[i32; 3]>	server	server (survey; review=common from unpruned BFS, group=inventory)	60
+inv_drag	Option<(i32, Vec<usize>)>	client	client (survey; review=common from unpruned BFS, group=screens)	61
+container_buttons	HashSet<MouseButton>	client	client (survey + review)	62
+container_owned_up	bool	client	client (survey + review)	63
+physical_presses	u64	client	client (survey + review)	64
+inv_clicks	sunrise_client::container_screen::Clicks	client	client (survey; review=common from unpruned BFS, group=screens)	65
+tweaks	extras::mouse_tweaks::Tweaks	client	client (survey + review)	66
+bundle_mouse	bundles::BundleMouse	client	client (survey + review)	67
+last_inv_click	Option<(std::time::Instant, Option<usize>, bool)>	client	client (survey; review=common from unpruned BFS, group=screens)	68
+last_quick_moved	Option<ItemStack>	client	client (survey + review)	69
+container	Option<(i32, i32, i32)>	game	shared (survey + review)	70
+open_container_slots	Option<((i32, i32, i32), usize)>	server	server (survey; review=common from unpruned BFS, group=inventory)	71
+station	Option<stations::Station>	game	shared (survey + review)	72
+potions	potions::PotionState	game	shared (survey + review)	73
+scratch_slot	Option<ItemStack>	game	shared (survey + review)	74
+mining	Option<Mining>	game	shared (survey + review)	75
+destroying	HashMap<i32, client_cracks::ClientCrack>	client	client (survey; review=common from unpruned BFS, group=remote-entities)	76
+destroy_delay	u32	server	server (survey; review=common from unpruned BFS, group=player-actions)	77
+use_delay	u32	game	shared (survey + review)	78
+creative	bool	game	shared (survey + review)	79
+mode	sunrise_client::command::args::GameMode	game	shared (survey + review)	80
+keys	sunrise_client::held::HeldKeys	client	client (survey; review=common from unpruned BFS, group=input)	81
+physical_keys	HashSet<KeyCode>	client	client (survey; review=common from unpruned BFS, group=input)	82
+rejected_keys	HashSet<KeyCode>	client	client (survey + review)	83
+physical_buttons	HashSet<MouseButton>	client	client (survey + review)	84
+drag_button	Option<MouseButton>	client	client (survey + review)	85
+right_click_emulation	sunrise_client_input::mouse::RightClickEmulation	client	client (survey + review)	86
+cursor	(f32, f32)	client	client (survey; review=common from unpruned BFS, group=input)	87
+window_cursor	Option<sunrise_client::window::PointerSample>	client	client (survey; review=common from unpruned BFS, group=input)	88
+window_pointer_space	std::cell::OnceCell<sunrise_client::window::PointerSpace>	client	client (survey; review=common from unpruned BFS, group=input)	89
+cursor_icon	sunrise_client::widgets::Cursor	client	client (survey + review)	90
+captured	bool	client	client (survey; review=common from unpruned BFS, group=input)	91
+capture_mode	Option<CursorGrabMode>	client	client (survey; review=common from unpruned BFS, group=input)	92
+regrab_on_refocus	bool	client	client (survey + review)	93
+controller_notice	sunrise_client::controller_notice::NoticeSlot	client	client (survey + review)	94
+focused	bool	client	client (survey; review=common from unpruned BFS, group=window-loop)	95
+unclaimed_window	bool	client	client (survey; review=common from unpruned BFS, group=window-loop)	96
+unclaimed_modifiers	Option<winit::event::Modifiers>	client	client (survey + review)	97
+focus_after_run	Option<bool>	client	client (survey + review)	98
+ime_allowed	bool	client	client (survey + review)	99
+held_key_text	ime::HeldKeyText	client	client (survey + review)	100
+ime_area	Option<[i32; 4]>	client	client (survey; review=common from unpruned BFS, group=input)	101
+focus_lost	Option<Instant>	client	client (survey + review)	102
+modifiers	winit::keyboard::ModifiersState	client	client (survey; review=common from unpruned BFS, group=input)	103
+fullscreen	sunrise_client::window::FullscreenState	client	client (survey + review)	104
+video_modes	sunrise_client::window::VideoModeList	client	client (survey + review)	105
+mouse	MouseLook	client	client (survey; review=common from unpruned BFS, group=input)	106
+agent_pointer	bool	client	client (survey; review=common from unpruned BFS, group=input)	107
+smooth_camera	bool	client	client (survey + review)	108
+vanilla_mappings	sunrise_client::keymapping::VanillaMappings	client	client (survey; review=common from unpruned BFS, group=input)	109
+was_playing	bool	client	client (survey; review=common from unpruned BFS, group=input)	110
+pause	bool	game	mode (survey; review=client, mode flags stay on Game)	111
+debug	bool	client	client (survey + review)	112
+gpu_passes	bool	client	client (survey + review)	113
+gpu_pass_detail	bool	client	client (survey + review)	114
+screen	Screen	client	client (survey; review=common from unpruned BFS, group=screens)	115
+screen_state	screen_build::ScreenState	game	drop-order (client): ScreenState holds MountedScreenWidgets impl Drop disposing mod widgets; precedes window (117), renderer (119), remote (460), fangs (603)	116
+window	Option<Arc<Window>>	game	drop-order (client): Option<Arc<Window>> drops OS window; must keep order relative to renderer (119) and later effectful Game fields	117
+resize_state	Option<ResizeState>	client	client (survey + review)	118
+renderer	Option<Renderer>	game	drop-order (client): Option<Renderer> impl Drop handles lost-device swapchain and joins submit Queue/Presenter/Readbacks/PostEffects threads; precedes audio (173), remote (460), fangs (603)	119
+last_device_recovery	Option<Instant>	client	client (survey + review)	120
+entity_vertices	Vec<Vertex>	client	client (survey; review=common from unpruned BFS, group=renderer)	121
+dynamic_lights	Vec<[f32; 4]>	client	client (survey + review)	122
+luminance	std::cell::OnceCell<sunrise_client::dynamic_light::Luminance>	client	client (survey; review=common from unpruned BFS, group=extras-platform)	123
+see_through_vertices	Vec<Vertex>	client	client (survey; review=common from unpruned BFS, group=renderer)	124
+shadow_only_vertices	std::cell::RefCell<Vec<Vertex>>	client	client (survey; review=common from unpruned BFS, group=renderer)	125
+entity_spans	std::cell::RefCell<Vec<sunrise_client::gfx::pack_draw::EntitySpan>>	client	client (survey; review=common from unpruned BFS, group=renderer)	126
+entity_runs	Vec<entity::DrawRun>	client	client (survey + review)	127
+entity_motion	std::cell::RefCell<Vec<(u32, u64)>>	client	client (survey; review=common from unpruned BFS, group=renderer)	128
+entity_motion_posed	std::cell::RefCell<Vec<u32>>	client	client (survey; review=common from unpruned BFS, group=renderer)	129
+skin_models	std::cell::RefCell<sunrise_client::mobs::skin::SkinModels>	client	client (survey; review=common from unpruned BFS, group=renderer)	130
+skin_frame	std::cell::RefCell<sunrise_client::gfx::entity_skin::SkinFrame>	client	client (survey; review=common from unpruned BFS, group=renderer)	131
+glowing_vertices	std::cell::RefCell<Vec<Vertex>>	client	client (survey; review=common from unpruned BFS, group=renderer)	132
+mod_sounds	native_local_sounds::ModSounds	client	client (survey; review=common from unpruned BFS, group=audio)	133
+mod_clear_particles	std::cell::Cell<bool>	client	client (survey; review=common from unpruned BFS, group=modding-client)	134
+lent_level_random	Option<std::rc::Rc<std::cell::RefCell<mod_api::LegacyRandomSource>>>	client	client (survey; review=common from unpruned BFS, group=modding-client)	135
+pack_ids	Option<shader_packs::PackIds>	client	client (survey + review)	136
+started	Instant	client	client (survey + review)	137
+spectator_gui	sunrise_client::spectator_menu::SpectatorGui	client	client (survey + review)	138
+previous	Instant	game	shared (survey; review=client, kept on Game conservatively)	139
+last_input	Instant	client	client (survey + review)	140
+pad	pad::Pads	game	drop-order (client): Pads holds gilrs/rumble Effects and DualSense Link impl Drop joining HID worker; precedes remote (460), fangs (603)	141
+frames	u64	client	client (survey; review=common from unpruned BFS, group=window-loop)	142
+glint_frame	sunrise_client::item_render::GlintFrame	client	client (survey + review)	143
+kept_block_entities	std::cell::RefCell<native_block_entity_draw::KeptGeometry>	client	client (survey + review)	144
+live_scenes	std::cell::RefCell<native_scene_live::LiveScenes>	client	client (survey + review)	145
+dynamic_textures	sunrise_client::hud::dynamic_textures::DynamicTextures	client	client (survey + review)	146
+text_patches	std::cell::RefCell<Vec<sunrise_client::font::Patch>>	client	client (survey + review)	147
+prepared_model_draws	std::cell::RefCell<Vec<sunrise_client::gfx::PreparedModelDraw>>	client	client (survey + review)	148
+model_copy_order	Vec<u32>	client	client (survey + review)	149
+world_geometry	Option<sunrise_client::world_geometry::WorldGeometry>	client	client (survey + review)	150
+debug_renderers	Vec<sunrise_client::debug_entries::ActiveDebugRenderer>	game	drop-order (client): Vec<ActiveDebugRenderer> impl Drop disposes mod debug renderers via CallbackOwner; precedes remote (460), fangs (603)	151
+debug_renderers_version	Option<u64>	client	client (survey + review)	152
+hud_layer_next	Option<usize>	client	client (survey + review)	153
+mod_view_distances	std::cell::OnceCell<native_block_entity_draw::ViewDistances>	client	client (survey + review)	154
+block_entity_reach	std::cell::OnceCell<Box<[(Reach, bool)]>>	client	client (survey + review)	155
+item_level_cache	std::cell::RefCell< Option<( (u64, i64, i64, &'static str), sunrise_assets::item_model::LevelState, )>, >	client	client (survey; review=common from unpruned BFS, group=modding-client)	156
+world_frames	u64	client	client (survey + review)	157
+fps	f32	client	client (survey + review)	158
+fps_frames	u64	client	client (survey + review)	159
+fps_at	Instant	client	client (survey + review)	160
+ticks	u64	game	shared (survey + review)	161
+gui_ticks	i32	client	client (survey + review)	162
+texture_ticks	u64	client	client (survey + review)	163
+health_hud	hud_layout::HealthHud	client	client (survey + review)	164
+error	Option<Box<dyn std::error::Error>>	game	shared (survey + review)	165
+message	Option<(String, Instant)>	client	client (survey; review=common from unpruned BFS, group=hud)	166
+save	Arc<SaveDir>	game	drop-order (server): Arc<SaveDir> impl Drop joins region/chunk writer thread; precedes session_lock (170), lan (472), serving (475), fangs (603)	167
+level	Level	game	shared (survey + review)	168
+player_autosaves	sunrise_client::lan::playerdata::Autosaves	game	drop-order (server): Autosaves impl Drop drains & joins playerdata writer thread; must precede session_lock (170) and later effectful Game fields	169
+session_lock	Option<sunrise_client::save::SessionLock>	game	drop-order (server): Option<SessionLock> impl Drop unlocks & closes session.lock; precedes levels (291), lan (472), serving (475), fangs (603)	170
+world_adopted	bool	server	server (survey; review=common from unpruned BFS, group=world-save)	171
+startup_ticket_restore_pending	bool	server	server (survey; review=common from unpruned BFS, group=world-save)	172
+audio	Audio	game	drop-order (client): Audio holds output Stream, MixerBackend impl Drop, MicPool impl Drop, StreamPool impl Drop; precedes remote (460), integrated (473), fangs (603)	173
+loop_context	Arc<sunrise_world::native_load_context::LoopContext>	game	shared (survey + review)	174
+tick	sunrise_client::parallel::TickThread	game	shared (survey + review)	175
+setting_overrides	std::cell::RefCell<std::collections::BTreeMap<(String, String), String>>	game	shared (survey + review)	176
+damage_hooks	sunrise_client::health::DamageHooks	game	shared (survey + review)	177
+paused_mob_hurt	Option<Box<sunrise_client::mobs::PausedMobHurt>>	server	server (survey + review)	178
+music	sunrise_client::music::MusicManager	client	client (survey + review)	179
+music_layers	sunrise_client::music::MusicLayers	client	client (survey + review)	180
+now_playing	Option<sunrise_client::toasts::NowPlayingToast>	client	client (survey + review)	181
+music_toast_state	u8	client	client (survey + review)	182
+music_notes	sunrise_client::toasts::MusicNotes	client	client (survey + review)	183
+ambience	sunrise_client::ambience::Ambience	client	client (survey; review=common from unpruned BFS, group=audio)	184
+sound_paused	bool	client	client (survey + review)	185
+cart_sounds	HashSet<u32>	client	client (survey + review)	186
+riding_cart_sounds	Option<u32>	client	client (survey + review)	187
+riding_sound	Option<u32>	client	client (survey + review)	188
+was_fall_flying	bool	client	client (survey + review)	189
+bee_sounds	HashMap<u32, bool>	client	client (survey + review)	190
+guardian_look_scratch	Vec<(usize, [f64; 3])>	client	client (survey + review)	191
+dropped	sunrise_client::join_seq::JoinList<ItemEntity>	game	shared (survey + review)	192
+next_entity	u32	server	server (survey; review=common from unpruned BFS, group=entities)	193
+ticked_entities_through	u32	server	server (survey + review)	194
+contact_drops	std::ops::Range<u32>	server	server (survey + review)	195
+particles	sunrise_client::particles::ParticleEngine	game	drop-order (client): ParticleEngine holds Provided impl Drop atomic live-count tracking; precedes remote (460), fangs (603)	196
+explicit_particle_quads	sunrise_client::particles::ParticleQuads	client	client (survey + review)	197
+pickups	pickups::Pickups	client	client (survey; review=common from unpruned BFS, group=remote-entities)	198
+sign_edit	Option<sign_edit::SignEditor>	client	client (survey; review=common from unpruned BFS, group=screens)	199
+book	Option<books::BookScreen>	client	client (survey; review=common from unpruned BFS, group=screens)	200
+book_last_click	Option<std::time::Instant>	client	client (survey + review)	201
+lectern_pulses	Vec<((i32, i32, i32), i32)>	server	server (survey; review=common from unpruned BFS, group=block-entities)	202
+loading_progress	f32	client	client (survey + review)	203
+creation_job	Option<std::thread::JoinHandle<std::result::Result<(), String>>>	game	drop-order (client): Option<JoinHandle> background world creation thread handle; precedes remote (460), fangs (603)	204
+loading_progress_at	Option<std::time::Instant>	client	client (survey + review)	205
+moving_pistons_stale	bool	client	client (survey + review)	206
+spawn_origin	Option<((i32, i32), i32)>	server	server (survey + review)	207
+spawn_hook_fired	bool	server	server (survey + review)	208
+spawn_hook_cancelled	bool	server	server (survey + review)	209
+spawn_spiral	sunrise_client::world_spawn::ChunkSpiral	server	server (survey + review)	210
+player_spawn	Option<sunrise_client::world_spawn::PlayerSpawnFinder>	server	server (survey + review)	211
+spawn_wait	Vec<(i32, i32)>	server	server (survey; review=common from unpruned BFS, group=server-levels)	212
+mobs	sunrise_client::join_seq::JoinList<Mob>	game	shared (survey + review)	213
+mob_index	mob_index::MobIndex	game	shared (survey + review)	214
+creatures	creatures::Creatures	game	shared (survey + review)	215
+sculk	sculk::SculkState	game	shared (survey + review)	216
+raiding	raids::Raiding	server	server (survey; review=common from unpruned BFS, group=mobs)	217
+attack_ticks	u32	server	server (survey; review=common from unpruned BFS, group=player-actions)	218
+attack_item	Option<Arc<str>>	server	server (survey; review=common from unpruned BFS, group=player-actions)	219
+last_hurt_by_player	HashMap<u32, combat::PlayerCredit>	server	server (survey; review=common from unpruned BFS, group=mobs)	220
+lead_killers	HashMap<u32, (u128, Dim)>	server	server (survey; review=common from unpruned BFS, group=mobs)	221
+love_cause	HashMap<u32, Option<u32>>	server	server (survey + review)	222
+died	sunrise_client::fast_hash::FxHashSet<u32>	server	server (survey; review=common from unpruned BFS, group=mobs)	223
+be_anims	sunrise_client::block_entity_anim::BlockEntityAnims	game	shared (survey + review)	224
+using	Option<(usize, u32)>	game	shared (survey + review)	225
+use_duration	i32	game	shared (survey + review)	226
+use_start	using_item::UseStart	game	shared (survey + review)	227
+crossbow_sounds	[bool; 2]	server	server (survey; review=common from unpruned BFS, group=player-actions)	228
+view	sunrise_client::camera::Camera	client	client (survey + review)	229
+limiter	sunrise_client::window::FramerateLimiter	client	client (survey + review)	230
+frame_clock	sunrise_client::window::SystemClock	client	client (survey + review)	231
+scope_scale	f32	client	client (survey + review)	232
+frame_ticks	f32	client	client (survey + review)	233
+title	Option<Title>	game	drop-order (client): Option<Title> holds WorldUpgrader impl Drop (cancels/closes upgrader) & backup Receiver; precedes remote (460), fangs (603)	234
+armor	[Option<ItemStack>; 4]	game	shared (survey + review)	235
+offhand	Option<ItemStack>	game	shared (survey + review)	236
+equipment	sunrise_items::equipment::Equipment	game	shared (survey + review)	237
+hotbar_pop	[u8; 10]	client	client (survey + review)	238
+hand	Hand	game	shared (survey + review)	239
+shield_cooldown	u32	server	server (survey; review=common from unpruned BFS, group=player-actions)	240
+cooldowns	sunrise_client::cooldowns::Cooldowns	game	shared (survey + review)	241
+command_source	Option<commands::execute::Source>	server	server (survey; review=common from unpruned BFS, group=commands)	242
+native_command_filter	bool	server	server (survey; review=common from unpruned BFS, group=commands)	243
+titles	titles::Titles	client	client (survey; review=common from unpruned BFS, group=hud)	244
+tool_highlight	sunrise_client::hud_overlays::ToolHighlight	client	client (survey + review)	245
+saving_indicator	sunrise_client::hud_overlays::SavingIndicator	client	client (survey + review)	246
+autosaving	bool	game	shared (survey + review)	247
+ticks_until_autosave	i64	server	server (survey; review=common from unpruned BFS, group=world-save)	248
+applied_modifiers	Vec<(String, String)>	server	server (survey; review=common from unpruned BFS, group=inventory)	249
+experience	Experience	game	shared (survey + review)	250
+orbs	sunrise_client::join_seq::JoinList<ExperienceOrb>	game	shared (survey + review)	251
+xp_delay	u32	server	server (survey; review=common from unpruned BFS, group=player-state)	252
+ordered	ordered_tick::OrderedTicks	server	server (survey + review)	253
+level_up_sound	sunrise_client::entities::LevelUpSound	server	server (survey; review=common from unpruned BFS, group=player-state)	254
+swing	sunrise_client::first_person::SwingState	game	shared (survey + review)	255
+swings_started	u32	game	shared (survey + review)	256
+predicted_swings	u32	server	server (survey + review)	257
+heights	sunrise_client::first_person::HandHeights	client	client (survey + review)	258
+sway	sunrise_client::first_person::HandSway	client	client (survey; review=common from unpruned BFS, group=first-person)	259
+visible_hands	[(usize, Option<ItemStack>); 2]	client	client (survey + review)	260
+hands_replaced	[bool; 2]	client	client (survey + review)	261
+clicks	sunrise_client::first_person::Clicks<Option<ItemStack>>	game	shared (survey + review)	262
+hand_strength	sunrise_client::attack_strength::AttackStrength	client	client (survey; review=common from unpruned BFS, group=player-actions)	263
+settings	Settings	game	shared (survey + review)	264
+look	look::LookCache	client	client (survey + review)	265
+tutorial	tutorial::Tutorial	client	client (survey; review=common from unpruned BFS, group=hud)	266
+toast_manager	toast_manager::ToastManager	client	client (survey; review=common from unpruned BFS, group=hud)	267
+narration	sunrise_client::screen_narrator::ScreenNarrator	client	client (survey + review)	268
+options_from_title	bool	client	client (survey; review=common from unpruned BFS, group=screens)	269
+avatar	sunrise_client::camera::AvatarBob	client	client (survey; review=common from unpruned BFS, group=camera)	270
+flash	u32	game	shared (survey + review)	271
+custom_sky	custom_sky::CustomSkyView	client	client (survey + review)	272
+rain_sound_time	i32	client	client (survey + review)	273
+lightning_seen	[u32; 2]	client	client (survey; review=common from unpruned BFS, group=weather)	274
+sleeping	Option<[i32; 3]>	game	shared (survey + review)	275
+sleep_timer	u32	game	shared (survey + review)	276
+player_beds	Vec<(Dim, [i32; 3])>	server	server (survey; review=common from unpruned BFS, group=block-entities)	277
+sleep_seen	(i64, i64)	server	server (survey + review)	278
+dim	Dim	game	shared (survey + review)	279
+world_root	PathBuf	server	server (survey; review=common from unpruned BFS, group=world-save)	280
+carrier_retention_snapshot	Vec<(u128, u32)>	server	server (survey + review)	281
+owner_migration	Option<(u128, u128)>	server	server (survey + review)	282
+world_tables	Option<WorldTables>	server	server (survey; review=common from unpruned BFS, group=resources)	283
+server_loot	sunrise_client::structure_blocks::LootSnapshot	server	server (survey; review=common from unpruned BFS, group=resources)	284
+server_items	Option<Arc<Items>>	game	shared (survey + review)	285
+world_flat	bool	game	shared (survey + review)	286
+world_debug	bool	server	server (survey; review=common from unpruned BFS, group=world-chunks)	287
+server_trips	Vec<server_travel::Trip>	server	server (survey; review=common from unpruned BFS, group=server-levels)	288
+level_teleports	Vec<server_travel::LevelTeleport>	server	server (survey + review)	289
+teleport_notes	Vec<server_travel::TeleportNote>	server	server (survey; review=common from unpruned BFS, group=server-levels)	290
+levels	levels::Levels	game	drop-order (server): Levels holds Parked dimensions owning World, Streaming, Arc<SaveDir> and entity JoinLists; precedes lan (472), serving (475), fangs (603)	291
+level_pass	levels::Pass	server	server (survey + review)	292
+portals	nether_portal::Portals	game	shared (survey + review)	293
+respawn_config	Option<respawn_anchor::RespawnConfig>	server	server (survey; review=common from unpruned BFS, group=player-state)	294
+end_portal_travel	bool	server	server (survey + review)	295
+win	Option<win::Win>	client	client (survey + review)	296
+demo_intro	Option<demo_intro::DemoIntro>	client	client (survey; review=common from unpruned BFS, group=screens)	297
+end	end::EndState	game	shared (survey + review)	298
+block_ticks	Ticks	game	shared (survey + review)	299
+tick_scratch	TickScratch	server	server (survey + review)	300
+tick_chunks	sunrise_client::tick_chunk_membership::TickChunkMembership	server	server (survey; review=common from unpruned BFS, group=world-chunks)	301
+tickets	sunrise_client::ticket_levels::ChunkTickets	server	server (survey; review=common from unpruned BFS, group=world-chunks)	302
+random_tick_sections	sunrise_client::random_tick_sections::RandomTickSections	server	server (survey; review=common from unpruned BFS, group=world-chunks)	303
+level_events	Vec<LevelEvent>	game	shared (survey + review)	304
+falling_vertices	RefCell<HashMap<BlockStateId, Vec<(Vec<usize>, Vec<Vertex>)>>>	client	client (survey + review)	305
+falling	sunrise_client::join_seq::JoinList<FallingBlock, false>	game	shared (survey + review)	306
+transient_blocks	transient_blocks::TransientBlocks	client	client (survey; review=common from unpruned BFS, group=world-chunks)	307
+paintings	sunrise_client::join_seq::JoinList<sunrise_client::entities::Painting>	game	shared (survey + review)	308
+painting_variants	paintings::PaintingVariants	game	shared (survey + review)	309
+item_frames	sunrise_client::join_seq::JoinList<sunrise_client::entities::ItemFrame>	game	shared (survey + review)	310
+frame_model	frames::FrameModel	client	client (survey + review)	311
+glow_frame_model	frames::FrameModel	client	client (survey + review)	312
+map_frame_model	frames::FrameModel	client	client (survey + review)	313
+glow_map_frame_model	frames::FrameModel	client	client (survey + review)	314
+armor_stands	sunrise_client::join_seq::JoinList<sunrise_client::entities::ArmorStand>	game	shared (survey + review)	315
+location_armor	[Option<ItemStack>; 4]	server	server (survey; review=common from unpruned BFS, group=inventory)	316
+cushions	sunrise_client::join_seq::JoinList<sunrise_client::entities::Cushion>	game	shared (survey + review)	317
+others	sunrise_client::join_seq::ResidentList<commands::OtherEntity>	game	drop-order (server): ResidentList<OtherEntity> impl Drop emits residency removals & retires AttachmentLifetime; precedes resident_entities (427), persist (452), fangs (603)	318
+armor_stand_assets	armor_stands::ArmorStandAssets	client	client (survey + review)	319
+waypoint_styles	sunrise_client::locator_bar::WaypointStyles	client	client (survey + review)	320
+waypoints	sunrise_client::locator_bar::ClientWaypoints	client	client (survey + review)	321
+locator_camera	Option<([f64; 3], f32, f32, f32)>	client	client (survey + review)	322
+native_camera_frame	Option<mod_api::Camera>	client	client (survey + review)	323
+posed_rotation	Option<(f32, f32)>	client	client (survey + review)	324
+post_effects	Vec<String>	client	client (survey + review)	325
+requested_post_effects_buf	Vec<String>	client	client (survey + review)	326
+polytone_post_ticks	f64	client	client (survey + review)	327
+expression_frame	sunrise_client::environment::Frame	client	client (survey + review)	328
+spectated_post_effect	Option<&'static str>	client	client (survey + review)	329
+spectated_post_effect_active	bool	client	client (survey + review)	330
+experience_display	(f32, bool, u64)	client	client (survey + review)	331
+boats	sunrise_client::join_seq::JoinList<boats::Boat, false>	game	shared (survey + review)	332
+leash_boats	Vec<(u32, sunrise_client::mobs::leash::HolderState)>	server	server (survey; review=common from unpruned BFS, group=mobs)	333
+boat_models	boats::BoatModels	client	client (survey + review)	334
+crystal_model	Option<sunrise_client::mobs::Part>	client	client (survey + review)	335
+cushion_model	Option<sunrise_client::mobs::Part>	client	client (survey + review)	336
+entity_models	EntityModels	client	client (survey; review=common from unpruned BFS, group=entity-models)	337
+carts	sunrise_client::join_seq::JoinList<minecarts::Minecart, false>	game	shared (survey + review)	338
+watched_vehicles	Vec<lan_vehicles::WatchedVehicle>	server	server (survey + review)	339
+jukebox_sounds	HashMap<(i32, i32, i32), u64>	game	shared (survey + review)	340
+bolts	sunrise_client::join_seq::ResidentList<lightning::Bolt>	game	shared (survey + review)	341
+maps	maps::Maps	game	shared (survey + review)	342
+fight	dragon::Fight	server	server (survey; review=common from unpruned BFS, group=portals-end)	343
+dragon	native_entity_refs::dragon_parts_table::DragonSlot	game	shared (survey + review)	344
+crystals	sunrise_client::join_seq::JoinList<dragon::Crystal>	game	shared (survey + review)	345
+breath_clouds	sunrise_client::join_seq::ResidentList<dragon::Breath>	game	shared (survey + review)	346
+dragon_model	Option<sunrise_client::mobs::Part>	client	client (survey + review)	347
+map_patches	Vec<sunrise_client::font::Patch>	client	client (survey + review)	348
+name_tag_layouts	names::NameTagLayouts	client	client (survey + review)	349
+text_displays	indexmap::IndexMap<i32, text_displays::RemoteTextDisplay>	client	client (survey; review=common from unpruned BFS, group=remote-entities)	350
+see_through_collector	text_displays::SeeThroughCollector	client	client (survey + review)	351
+translucent_display_collector	text_displays::TranslucentDisplayCollector	client	client (survey + review)	352
+display_visible_scratch	Vec<(i32, f64)>	client	client (survey + review)	353
+block_display_parts_scratch	Vec<u32>	client	client (survey + review)	354
+display_inline_profiles_scratch	Vec<std::sync::Arc<serde_json::Value>>	client	client (survey + review)	355
+interactions	std::collections::HashMap<i32, interactions::RemoteInteraction>	client	client (survey; review=common from unpruned BFS, group=remote-entities)	356
+remote_knots	HashMap<u32, [i32; 3]>	client	client (survey; review=common from unpruned BFS, group=remote-entities)	357
+knot_ids	HashMap<[i32; 3], u32>	server	server (survey; review=common from unpruned BFS, group=entities)	358
+broken_knots	Vec<[i32; 3]>	server	server (survey; review=common from unpruned BFS, group=entities)	359
+text_display_vertices	usize	client	client (survey + review)	360
+skin_downloads	RefCell<sunrise_client::skins::Downloader>	game	drop-order (client): RefCell<Downloader> holds skin download mpsc Sender/Receiver; precedes remote (460), fangs (603)	361
+skin_profiles	RefCell<sunrise_client::skins::Resolver>	game	drop-order (client): RefCell<Resolver> holds profile lookup mpsc Sender/Receiver; precedes remote (460), fangs (603)	362
+skin_slots	sunrise_client::skins::SkinSlots	client	client (survey + review)	363
+trim_slots	sunrise_client::trims::TrimSlots	client	client (survey + review)	364
+cart_models	minecarts::CartModels	client	client (survey + review)	365
+riding	Option<u32>	game	shared (survey + review)	366
+riding_order	i64	server	server (survey; review=common from unpruned BFS, group=player-state)	367
+started_riding	Vec<u32>	server	server (survey; review=common from unpruned BFS, group=player-state)	368
+rotation_forced	bool	server	server (survey; review=common from unpruned BFS, group=player-state)	369
+posed_rider	Option<u32>	game	shared (survey + review)	370
+pending_vehicle	Option<[i32; 4]>	server	server (survey; review=common from unpruned BFS, group=player-state)	371
+ender_items	Vec<Option<ItemStack>>	server	server (survey; review=common from unpruned BFS, group=inventory)	372
+ender_open	Option<(i32, i32, i32)>	server	server (survey; review=common from unpruned BFS, group=inventory)	373
+pending	spill::Pending	game	shared (survey + review)	374
+spill	spill::Spill	server	server (survey; review=common from unpruned BFS, group=world-chunks)	375
+recipe_ui	recipe_book::RecipeUi	client	client (survey; review=common from unpruned BFS, group=screens)	376
+mount_menu	mount_menu::MountMenu	client	client (survey; review=common from unpruned BFS, group=screens)	377
+hook	sunrise_client::join_seq::ResidentSlot<fishing::Hook>	game	shared (survey + review)	378
+remote_hooks	Vec<fishing::RemoteHook>	client	client (survey; review=common from unpruned BFS, group=remote-entities)	379
+tridents	sunrise_client::join_seq::JoinList<trident::ThrownTrident>	game	shared (survey + review)	380
+rockets	sunrise_client::join_seq::JoinList<fireworks::Rocket>	game	shared (survey + review)	381
+ominous_spawners	sunrise_client::join_seq::ResidentList<ominous_item_spawner::OminousItemSpawner>	game	shared (survey + review)	382
+creaking	creaking::CreakingState	server	server (survey; review=common from unpruned BFS, group=mobs)	383
+spawners	spawner::SpawnerState	client	client (survey; review=common from unpruned BFS, group=mobs)	384
+spawn_scratch	natural_spawning::SpawnScratch	server	server (survey; review=common from unpruned BFS, group=mobs)	385
+trident_model	Option<sunrise_client::mobs::Part>	client	client (survey + review)	386
+arrow_model	Option<sunrise_client::mobs::Part>	client	client (survey + review)	387
+bee_stinger_model	Option<sunrise_client::mobs::Part>	client	client (survey + review)	388
+tnts	sunrise_client::join_seq::JoinList<tnt::PrimedTnt>	game	shared (survey + review)	389
+hoppers	HashMap<(i32, i32, i32), machines::HopperState>	server	server (survey; review=common from unpruned BFS, group=block-entities)	390
+transactions	transactions::OpenTransactions	game	shared (survey + review)	391
+dispense_source	Option<dispenser::DispenseSource>	server	server (survey + review)	392
+slot_changed_active	Vec<slot_changes::SlotChangedTarget>	server	server (survey; review=common from unpruned BFS, group=modding-server)	393
+contents_changing	Vec<(mod_api::LevelRef, BlockPos)>	server	server (survey; review=common from unpruned BFS, group=modding-server)	394
+mod_screen	Option<native_hooks::OpenNativeScreen>	game	drop-order (client): Option<OpenNativeScreen> holds OwnedMenuScreen CallbackValue impl Drop; precedes control (407), remote (460), fangs (603)	395
+mod_container_viewers	HashMap<(&'static str, (i32, i32, i32)), mod_container_openers::ModContainerOpeners>	server	server (survey; review=common from unpruned BFS, group=modding-server)	396
+item_columns	Option<machines::ItemColumns>	server	server (survey + review)	397
+pickup_columns	Option<machines::StampedItemColumns>	server	server (survey + review)	398
+pass_mobs	Option<potent_sulfur::PassMobs>	server	server (survey + review)	399
+spawner_tick_positions	Vec<sunrise_client::block_entities::Pos>	game	shared (survey; review=server, kept on Game conservatively)	400
+trial_spawner_tick_positions	Vec<sunrise_client::block_entities::Pos>	game	shared (survey; review=server, kept on Game conservatively)	401
+loop_states	published_loops::LoopStates	game	shared (survey + review)	402
+creative_screen	Creative	client	client (survey; review=common from unpruned BFS, group=screens)	403
+creative_search_named	Option<u64>	client	client (survey; review=common from unpruned BFS, group=screens)	404
+creative_contents	native_hooks::CreativeCache	client	client (survey; review=common from unpruned BFS, group=screens)	405
+creative_ignore_text	bool	client	client (survey + review)	406
+control	Option<sunrise_client::control::Server>	game	shared (survey + review)	407
+agent_control_on	bool	client	client (survey + review)	408
+agent_last	Option<Instant>	client	client (survey + review)	409
+frame_stats	sunrise_client::control::FrameStats	client	client (survey + review)	410
+alloc_mark	Option<( sunrise_threads::alloc_count::Counts, sunrise_threads::alloc_count::Counts, )>	client	client (survey + review)	411
+perf	sunrise_client::telemetry::Session	game	shared (survey + review)	412
+pending_screenshot	Option<std::sync::mpsc::Sender<String>>	game	drop-order (client): Option<mpsc::Sender<String>> drops control-socket reply channel; precedes remote (460), fangs (603)	413
+screenshot_sequence	Option<screenshot_sequence::Sequence>	game	drop-order (client): Option<Sequence> holds reply mpsc::Sender<String>; precedes remote (460), fangs (603)	414
+pending_render_capture	Option<std::sync::mpsc::Sender<String>>	game	drop-order (client): Option<mpsc::Sender<String>> drops control-socket reply channel; precedes remote (460), fangs (603)	415
+pending_bench	Option<(Instant, std::sync::mpsc::Sender<String>, bool)>	game	drop-order (client): Option<(Instant, mpsc::Sender<String>, bool)> drops control-socket reply channel; precedes remote (460), fangs (603)	416
+extras	extras::ExtrasState	client	client (survey + review)	417
+pvp	pvp::PvpState	client	client (survey + review)	418
+mods	mods::ModsState	game	shared (survey + review)	419
+mod_jobs	mod_browser::Jobs	game	drop-order (client): mod_browser::Jobs holds Option<Receiver<Finished>>; precedes remote (460), fangs (603)	420
+recipe_tables	native_recipes::RecipeTables	game	shared (survey + review)	421
+panel	native_panel::Panel	client	client (survey + review)	422
+native_shaders	native_shaders::NativeShaders	client	client (survey + review)	423
+client_item_use	Option<native_claimed_items::ActiveClientItemUse>	client	client (survey + review)	424
+mod_keys	sunrise_client::keymapping::ModKeys	client	client (survey; review=common from unpruned BFS, group=input)	425
+native_lifecycle	native_lifecycle::NativeLifecycle	game	shared (survey + review)	426
+resident_entities	resident_state::ResidentEntities	game	shared (survey + review)	427
+lent_mobs	RefCell<native_unspawned_mob::LentMobs>	server	server (survey; review=common from unpruned BFS, group=modding-server)	428
+held_out	Vec<u32>	server	server (survey; review=common from unpruned BFS, group=modding-server)	429
+native_configs	native_configs::NativeConfigs	game	shared (survey + review)	430
+native_net	native_net::NativeNet	game	shared (survey + review)	431
+native_mod_screen	Option<String>	client	client (survey; review=common from unpruned BFS, group=modding-client)	432
+pending_uploads	Vec<sunrise_client::streaming::MeshUpload>	client	client (survey; review=common from unpruned BFS, group=renderer)	433
+pending_uploads_merge	Vec<sunrise_client::streaming::MeshUpload>	client	client (survey; review=common from unpruned BFS, group=renderer)	434
+pending_uploads_order	Option<((i32, i32), i32)>	client	client (survey; review=common from unpruned BFS, group=renderer)	435
+upload_pace	upload_pace::UploadPace	client	client (survey; review=common from unpruned BFS, group=renderer)	436
+view_frustum	Option<sunrise_client::gfx::JoinedFrusta>	client	client (survey + review)	437
+occlusion	entity_culling::EntityOcclusion	client	client (survey + review)	438
+async_particle_culler	RefCell<particle_culling::ParticleAsyncState>	game	drop-order (client): RefCell<ParticleAsyncState> holds SyncSender/Receiver/JoinHandle worker; precedes remote (460), fangs (603)	439
+flight	Option<control::Flight>	client	client (survey; review=common from unpruned BFS, group=extras-platform)	440
+agent	agent::Agent	game	shared (survey + review)	441
+ui_wait	ui_control::UiWait	client	client (survey + review)	442
+events	events::Events	game	shared (survey; review=client, kept on Game conservatively)	443
+input_trace	input_trace::InputTrace	game	drop-order (client): InputTrace holds Option<Sender<String>> for inputs.jsonl; must precede repro (445) and later effectful Game fields	444
+repro	repro::Repro	game	drop-order (client): Repro holds inputs JoinHandle and reply/export channels; precedes profile (446), remote (460), fangs (603)	445
+profile	profile_capture::Profile	game	shared (survey + review)	446
+tick_script	tick_script::TickScript	client	client (survey; review=common from unpruned BFS, group=extras-platform)	447
+sky_darken_memo	std::cell::Cell<Option<((Dim, i64, u32, u32), i32)>>	game	shared (survey + review)	448
+water_plane_memo	std::cell::Cell<Option<f32>>	client	client (survey + review)	449
+water_plane_scan	std::cell::Cell<Option<([i32; 3], i64)>>	client	client (survey + review)	450
+vehicle_mobs	boat_passengers::VehicleMobs	server	server (survey; review=common from unpruned BFS, group=entities)	451
+persist	persist::EntityMemory	game	shared (survey + review)	452
+missing_professions	HashSet<String>	server	server (survey; review=common from unpruned BFS, group=world-save)	453
+entity_attachments	native_colliders::EntityMaps	game	shared (survey + review)	454
+collider_changes	Vec<native_colliders::ColliderChange>	server	server (survey + review)	455
+collider_placements	native_colliders::Placements	game	shared (survey + review)	456
+collider_histories	native_colliders::Histories	game	shared (survey + review)	457
+entity_initialization	entity_initialization::EntityInitialization	server	server (survey; review=common from unpruned BFS, group=modding-server)	458
+attachment_indexes	attachment_index::Indexes	game	shared (survey + review)	459
+remote	Option<remote::Remote>	game	mode (survey + review)	460
+client_tasks	sunrise_client::net::ClientTasks	game	drop-order (client): ClientTasks impl Drop closes inbox and disposes queued mod callbacks; precedes replay (470), lan (472), integrated (473), fangs (603)	461
+pending_client_tasks	std::collections::VecDeque<sunrise_client::net::ClientTask>	game	drop-order (client): VecDeque<ClientTask> impl Drop disposes mod callbacks via CallbackOwner; precedes replay (470), lan (472), integrated (473), fangs (603)	462
+realm_session	bool	game	mode (survey; review=client, mode flags stay on Game)	463
+last_connection	Option<sunrise_hooks::connection::Server>	client	client (survey + review)	464
+connection_open	bool	client	client (survey + review)	465
+pending_retry	Option<sunrise_hooks::connection::Retry>	client	client (survey + review)	466
+retry_due	Option<sunrise_hooks::connection::Server>	client	client (survey + review)	467
+lan_session	bool	game	mode (survey; review=client, mode flags stay on Game)	468
+window_title	Option<(Option<&'static str>, u64)>	client	client (survey + review)	469
+replay	replay::Replay	game	mode (survey + review)	470
+studio	studio::Studio	client	client (survey; review=common from unpruned BFS, group=extras-platform)	471
+lan	Option<lan::LanHost>	game	mode (survey + review)	472
+integrated	Option<integrated::Integrated>	game	mode (survey + review)	473
+level_shapes	sunrise_client::chunk::LevelShapes	server	server (survey; review=common from unpruned BFS, group=world-chunks)	474
+serving	Option<integrated::Serving>	game	mode (survey + review)	475
+singleplayer_profile	Option<native_singleplayer_owner::SingleplayerProfile>	server	server (survey; review=common from unpruned BFS, group=server-levels)	476
+friends	Option<friends::Sharing>	game	mode (survey + review)	477
+social	social::Social	client	client (survey + review)	478
+world_options	Option<lan_screen::WorldOptions>	client	client (survey; review=common from unpruned BFS, group=screens)	479
+options_to_world_options	bool	client	client (survey + review)	480
+command_block_screen	Option<command_blocks::CommandBlockScreen>	client	client (survey; review=common from unpruned BFS, group=screens)	481
+block_editor	Option<block_editor::BlockEditScreen>	client	client (survey + review)	482
+structure_templates	HashMap<String, Option<structure_blocks::TemplateEntry>>	server	server (survey + review)	483
+structure_spawns	sunrise_client::mobs::spawn_selection::StructureSpawns	server	server (survey + review)	484
+test_defs	std::cell::RefCell<HashMap<String, Option<test_instances::TestDef>>>	server	server (survey; review=common from unpruned BFS, group=commands)	485
+test_defs_snapshot	bool	server	server (survey; review=common from unpruned BFS, group=commands)	486
+test_highlights	HashMap<(i32, i32, i32), (String, std::time::Instant)>	client	client (survey; review=common from unpruned BFS, group=renderer)	487
+game_tests	game_tests::GameTests	server	server (survey + review)	488
+debug_keys	sunrise_client::debug_keys::DebugKeys	client	client (survey + review)	489
+debug_charts	sunrise_client::debug_chart::DebugCharts	client	client (survey; review=common from unpruned BFS, group=debug)	490
+registered_debug_entries	std::sync::Arc<[sunrise_client::debug_entries::RegisteredDebugEntry]>	client	client (survey + review)	491
+debug_entries	sunrise_client::debug_entries::DebugEntries	client	client (survey + review)	492
+debug_options	Option<debug_options::DebugOptionsUi>	client	client (survey + review)	493
+memory_meter	std::cell::RefCell<sunrise_client::debug_overlay::MemoryMeter>	client	client (survey + review)	494
+debug_paint	RefCell<sunrise_client::debug_overlay::PaintCache>	client	client (survey + review)	495
+debug_refresh	std::cell::Cell<Option<(Instant, Option<u32>)>>	client	client (survey + review)	496
+gpu_utilization	f64	client	client (survey + review)	497
+gpu_culling_auto	sunrise_client::autotune::GpuCullingAuto	client	client (survey + review)	498
+dynamic_resolution	sunrise_client::dynamic_resolution::DynamicResolution	client	client (survey + review)	499
+rendered_mobs	std::cell::Cell<usize>	client	client (survey + review)	500
+screen_blur_requested	std::cell::Cell<bool>	client	client (survey + review)	501
+spawn_counts	HashMap<Dim, (i32, [i32; 8])>	server	server (survey + review)	502
+spawn_policies	HashMap<mod_api::DimensionKey, natural_spawning::SpawnPolicy>	server	server (survey; review=common from unpruned BFS, group=mobs)	503
+passages	native_passages::Passages	game	shared (survey + review)	504
+pause_menu	bool	client	client (survey; review=common from unpruned BFS, group=screens)	505
+pause_focus	Option<u8>	client	client (survey; review=common from unpruned BFS, group=screens)	506
+death_focus	Option<u8>	client	client (survey; review=common from unpruned BFS, group=screens)	507
+focus_screen	u64	client	client (survey + review)	508
+previous_mode	Option<sunrise_client::command::args::GameMode>	game	shared (survey + review)	509
+gamemode_switcher	Option<sunrise_client::game_mode_switcher::GameModeSwitcher>	client	client (survey + review)	510
+clipboard	sunrise_client::clipboard::SystemClipboard	game	drop-order (client): SystemClipboard holds arboard::Clipboard OS handle; precedes player_state (553), ui (578), fangs (603)	511
+user_input	std::cell::Cell<bool>	client	client (survey + review)	512
+text_selection	sunrise_client::clipboard::AppendSelection	client	client (survey + review)	513
+client_quit	std::cell::Cell<saving::ClientQuit>	client	client (survey + review)	514
+saved_for_exit	bool	client	client (survey + review)	515
+pending_save	Option<saving::ClosingSave>	game	drop-order (client): Option<ClosingSave> holds reply Sender and write-completion Receiver; precedes player_state (553), ui (578), fangs (603)	516
+server_tick_deadline	Option<Instant>	server	server (survey; review=common from unpruned BFS, group=server-levels)	517
+frame_drawn	bool	client	client (survey + review)	518
+world_icon	Option<WorldIcon>	client	client (survey; review=common from unpruned BFS, group=startup-packs)	519
+forced_hit	Option<Hit>	server	server (survey; review=common from unpruned BFS, group=player-actions)	520
+tick_hit	std::cell::Cell<Option<Option<Hit>>>	server	server (survey; review=common from unpruned BFS, group=player-actions)	521
+tick_mob	Option<Option<(usize, f64, [f64; 3])>>	server	server (survey; review=common from unpruned BFS, group=player-actions)	522
+entity_reach	f64	game	shared (survey + review)	523
+block_reach	f64	game	shared (survey + review)	524
+client_pick	native_hooks::ClientPick	client	client (survey; review=common from unpruned BFS, group=input)	525
+guest_use	Option<GuestUse>	server	server (survey + review)	526
+use_failed	bool	server	server (survey + review)	527
+block_use_original	Vec<(Hand, Option<ItemStack>)>	server	server (survey; review=common from unpruned BFS, group=modding-server)	528
+lan_events	Vec<QueuedLevelEvent>	server	server (survey; review=common from unpruned BFS, group=lan-host)	529
+lan_songs	Vec<([i32; 3], Option<String>)>	server	server (survey; review=common from unpruned BFS, group=lan-host)	530
+lan_cushion_breaks	Vec<(sunrise_world::registry::BlockStateId, [f64; 3])>	server	server (survey; review=common from unpruned BFS, group=lan-host)	531
+lan_block_events	Vec<([i32; 3], i32, i32, u32)>	server	server (survey; review=common from unpruned BFS, group=lan-host)	532
+lan_entity_events	Vec<(i32, i8)>	server	server (survey; review=common from unpruned BFS, group=lan-host)	533
+lan_critical_hits	Vec<(Option<u32>, i32, bool)>	server	server (survey; review=common from unpruned BFS, group=lan-host)	534
+lan_kinetic_hits	Vec<Option<u32>>	server	server (survey + review)	535
+stabbed	HashMap<(Option<u32>, u32), i64>	server	server (survey + review)	536
+stab_players	Vec<spear_players::StabPlayer>	server	server (survey + review)	537
+player_stabs	Vec<spear_players::StabBatch>	server	server (survey + review)	538
+known_movement	Vec3	server	server (survey; review=common from unpruned BFS, group=player-actions)	539
+kinetic_feedback	HashMap<i32, i64>	server	server (survey; review=common from unpruned BFS, group=player-actions)	540
+lan_global_events	Vec<(&'static str, i32, [i32; 3], i32)>	server	server (survey; review=common from unpruned BFS, group=lan-host)	541
+lid_openers	HashMap<(i32, i32, i32), i32>	server	server (survey; review=common from unpruned BFS, group=block-entities)	542
+lan_acting	Option<u32>	server	server (survey; review=common from unpruned BFS, group=lan-host)	543
+native_commands	native_server::NativeCommandState	server	server (survey + review)	544
+acting_abilities	Option<sunrise_client::lan::abilities::PlayerAbilities>	server	server (survey; review=common from unpruned BFS, group=lan-host)	545
+lan_building_boxes	building_players::BuildingPlayers	server	server (survey; review=common from unpruned BFS, group=lan-host)	546
+save_after_guest_turn	bool	server	server (survey + review)	547
+lan_guest_swaps	Vec<u32>	server	server (survey; review=common from unpruned BFS, group=lan-host)	548
+lan_displaced_players	Vec<lan_actions::DisplacedPlayer>	server	server (survey; review=common from unpruned BFS, group=lan-host)	549
+interrupted_turns	Vec<u32>	server	server (survey; review=common from unpruned BFS, group=lan-host)	550
+crash_save	server_lifecycle::CrashSave	server	server (survey; review=common from unpruned BFS, group=lan-host)	551
+lan_ender_menus	Vec<(u32, sunrise_core::nbt::Tag)>	server	server (survey; review=common from unpruned BFS, group=lan-host)	552
+player_state	original_player::PlayerState	game	shared (survey + review)	553
+lan_break_pos	Option<[i32; 3]>	server	server (survey + review)	554
+break_collect	Option<Vec<ItemStack>>	server	server (survey + review)	555
+lan_acting_name	Option<String>	server	server (survey; review=common from unpruned BFS, group=lan-host)	556
+lan_acting_uuid	Option<u128>	server	server (survey; review=common from unpruned BFS, group=lan-host)	557
+tnt_refused	Option<BlockPos>	server	server (survey; review=common from unpruned BFS, group=player-actions)	558
+lan_acting_permission	Option<u8>	server	server (survey; review=common from unpruned BFS, group=lan-host)	559
+lan_acting_spawn_protection	Option<i32>	server	server (survey; review=common from unpruned BFS, group=lan-host)	560
+lan_acting_entity	Option<u32>	server	server (survey; review=common from unpruned BFS, group=lan-host)	561
+lan_acting_fake	bool	server	server (survey; review=common from unpruned BFS, group=lan-host)	562
+fake_action	std::sync::Arc<native_server::FakeAction>	server	server (survey; review=common from unpruned BFS, group=modding-server)	563
+chat_capture	Option<Vec<sunrise_client::text::Text>>	server	server (survey; review=common from unpruned BFS, group=lan-host)	564
+guest_packets	Vec<sunrise_protocol::packets::play::Clientbound>	server	server (survey; review=common from unpruned BFS, group=lan-host)	565
+guest_cooldowns	Vec<(Arc<str>, i32)>	server	server (survey; review=common from unpruned BFS, group=lan-host)	566
+guest_entity_events	Vec<i8>	server	server (survey; review=common from unpruned BFS, group=lan-host)	567
+guest_equipment_breaks	Vec<i8>	server	server (survey; review=common from unpruned BFS, group=lan-host)	568
+guest_block_sounds	Vec<(String, [f64; 3], f32, f32)>	server	server (survey; review=common from unpruned BFS, group=lan-host)	569
+guest_player_sounds	Vec<(String, [f64; 3], f32, f32)>	server	server (survey; review=common from unpruned BFS, group=lan-host)	570
+bound_sounds	Vec<level_sounds::BoundSound>	server	server (survey; review=common from unpruned BFS, group=lan-host)	571
+admin_feedback	Vec<(sunrise_client::text::Text, Option<u32>)>	server	server (survey; review=common from unpruned BFS, group=lan-host)	572
+console_broadcast	Option<bool>	server	server (survey; review=common from unpruned BFS, group=commands)	573
+rcon_source	bool	server	server (survey; review=common from unpruned BFS, group=commands)	574
+server_lists	Option<std::sync::Arc<std::sync::Mutex<dedicated::Lists>>>	server	server (survey + review)	575
+cmds	commands::extra::CommandExtras	server	server (survey; review=common from unpruned BFS, group=commands)	576
+reload_resources	mod_api::RetainedListeners	game	drop-order (server): RetainedListeners holds Arc<dyn Any + Send + Sync> mod-owned objects with mod Drops; precedes ui (578) and fangs (603)	577
+ui	chat::UiState	game	shared (survey + review)	578
+combat	combat::CombatTracker	server	server (survey; review=common from unpruned BFS, group=player-actions)	579
+guest_combat	std::collections::HashMap<u32, combat::CombatTracker>	server	server (survey; review=common from unpruned BFS, group=lan-host)	580
+mount	mounts::MountState	game	shared (survey + review)	581
+stats	stats::Stats	game	shared (survey + review)	582
+score	scoreboard::ScoreState	game	shared (survey + review)	583
+fns	functions::FnState	server	server (survey; review=common from unpruned BFS, group=commands)	584
+bosses	bossbars::BossState	server	server (survey; review=common from unpruned BFS, group=commands)	585
+boss_overlay	sunrise_client::boss_overlay::BossOverlay	client	client (survey; review=common from unpruned BFS, group=hud)	586
+exec	commands::execute::ExecState	server	server (survey + review)	587
+rand_sequences	sunrise_client::random_sequences::RandomSequences	server	server (survey; review=common from unpruned BFS, group=player-actions)	588
+brushing	brush::Brushing	server	server (survey + review)	589
+border	sunrise_client::worldborder::WorldBorder	game	shared (survey + review)	590
+border_renderer	sunrise_client::border_render::BorderRenderer	client	client (survey + review)	591
+border_section	Option<[i32; 3]>	client	client (survey + review)	592
+border_state	sunrise_client::border_render::BorderRenderState	client	client (survey + review)	593
+tab_list	sunrise_client::tab_list::TabList	client	client (survey + review)	594
+subtitles	subtitle_hud::SubtitleState	client	client (survey; review=common from unpruned BFS, group=audio)	595
+adv	advancements::AdvState	game	shared (survey + review)	596
+restore_player_state	bool	server	server (survey + review)	597
+stats_ui	stats_screen::StatsUi	client	client (survey; review=common from unpruned BFS, group=screens)	598
+adv_ui	advancements_screen::AdvUi	client	client (survey; review=common from unpruned BFS, group=screens)	599
+links_ui	server_links::LinksUi	client	client (survey + review)	600
+camera_type	sunrise_client::camera::CameraType	client	client (survey + review)	601
+requested_camera_type	std::cell::Cell<Option<sunrise_client::camera::CameraType>>	client	client (survey + review)	602
+fangs	fangs::FangState	game	shared (survey + review)	603
+player_model	Option<Mob>	client	client (survey; index 604 is last field so drop order unchanged in ClientState tail)	604

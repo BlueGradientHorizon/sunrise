@@ -309,6 +309,8 @@ mod client_executor;
 mod client_item_extensions;
 #[path = "game/interface/client_reload/mod.rs"]
 mod client_reload;
+#[path = "game/client_state.rs"]
+mod client_state;
 #[path = "game/runtime/client_tick_steps.rs"]
 mod client_tick_steps;
 #[path = "game/items/clip_ray.rs"]
@@ -2117,6 +2119,8 @@ mod server_links;
 mod server_packs;
 #[path = "game/world/server_reload/mod.rs"]
 mod server_reload;
+#[path = "game/server_state.rs"]
+mod server_state;
 #[path = "game/world/server_travel.rs"]
 mod server_travel;
 #[cfg(test)]
@@ -2429,6 +2433,7 @@ use sunrise_client_gameplay::occlusion_culling;
 use sunrise_gameplay::lan::idle as lan_idle;
 use sunrise_gameplay::{interaction_shapes, item_areas, mob_index, tick_profile};
 
+use client_state::ClientState;
 use event_loop::EventLoopCtl;
 use hand::interact_location;
 pub(crate) use hit::Hit;
@@ -2439,6 +2444,7 @@ use resource_loader::{
     EntityModels, GameCpuResources, Loaded, LoaderMsg, PendingWorldEntry, WorldRestLoader,
     run_loading, write_report,
 };
+use server_state::ServerState;
 use sunrise_client::random_source;
 use sunrise_client_render::block_entity_reach::Reach;
 // `Action` here is the title screen's buttons (`title::Action`).
@@ -3331,63 +3337,20 @@ struct Game<'a> {
     /// Shared with an integrated server; `collision` and `motion` borrow from it.
     res: Arc<Resources>,
     rest_loader: Option<WorldRestLoader>,
-    pending_entry: Option<PendingWorldEntry>,
-    /// `DebugEntryChunkGeneration`'s `lastPos` and `result`: F3's `Density` line is sampled
-    /// again only when the feet block (or the dimension) changes.
-    debug_density: RefCell<debug_keys::DensityCache>,
-    pending_pack_reload: bool,
-    /// HDR, Smooth Gradients, picked path and outcome at the last frame attempt, including a failed
-    /// replacement (`follow_frame`).
-    frame_attempted: render_settings::FrameAttempt,
-    /// When `resourcepacks/` was last looked at for the open pack screen, and what it held
-    /// (`watch_pack_folder`).
-    pack_folder: Option<(
-        std::time::Instant,
-        Vec<(String, u64, Option<std::time::SystemTime>)>,
-    )>,
     /// A pack reload staged on a worker until `drive_pack_reload` applies it.
     pack_reload: Option<packs::PackReload>,
-    /// Its `LoadingOverlay`, up from the reload's start until it has faded
-    /// out after it: no input reaches the game meanwhile.
-    reload_overlay: Option<packs::ReloadOverlay>,
     /// A server's resource packs (game/world/server_packs.rs).
     server_packs: server_packs::ServerPackState,
-    /// The window's inbox for server notices, kept across world disconnects.
-    client_reports: Arc<sunrise_client::chunk_io::Reports>,
-    /// The link a chat click asks to open (`ConfirmLinkScreen`).
-    link_prompt: Option<String>,
-    /// A command the player didn't type, waiting for their answer
-    /// (game/network/remote_chat.rs).
-    command_prompt: Option<remote_chat::CommandPrompt>,
-    /// A server's Code of Conduct to accept (game/interface/code_of_conduct.rs).
-    code_of_conduct: Option<code_of_conduct::Prompt>,
-    dialogs: dialogs::DialogState,
     /// Single player's server while it loads its world (`Minecraft.doWorldLoad`).
     integrated_starting: Option<integrated::Starting>,
-    world_renderer_ready: bool,
     collision: &'a BlockCollisionRegistry<'a>,
     motion: &'a MotionResources,
     /// This world's frozen damage definitions and reloadable tag snapshot.
     pub(super) health_resources: sunrise_client::health::HealthResources,
     damage_tag_generation: u64,
-    /// The registries native mods registered data map types for, as of the
-    /// server tables' last build: what `data_maps_updated` fires for.
-    data_map_registries: Vec<String>,
-    /// This game's resource packs (`reload_packs` replaces them).
-    pending_initial_models: Option<Box<initial_client_models::PendingClientStart>>,
-    stitching_block_atlas: Option<Arc<RenderAssets>>,
     pack: PackResources,
     /// The title and menu bundle (GUI atlas, font and panorama).
     gui: UiResources,
-    instance_groups: std::cell::RefCell<native_instance_groups::InstanceGroupStorage>,
-    standalone_geometry: native_block_entity_draw::StandaloneGeometry,
-    /// `FogRenderer`'s evolving state.
-    fog: sunrise_client::fog::FogState,
-    screen_fx: sunrise_client::screen_effects::ScreenEffects,
-    /// `LocalPlayer.itemActivation`: the totem flying up to the screen.
-    item_activation: sunrise_client::item_activation::ItemActivation,
-    weather_parameters: sunrise_client::weather::ParameterCache,
-    panorama_rotation: sunrise_client::gfx::panorama::Rotation,
     world: World,
     /// The biome table the world plays with: the game's own with the world's
     /// packs over it (`Biomes::with_packs`), `None` before a world opens.
@@ -3396,29 +3359,12 @@ struct Game<'a> {
     world_biomes_base: Option<Arc<Biomes>>,
     streaming: Streaming,
     lod: Option<sunrise_client::lod::Lod>,
-    lod_source_attempted: bool,
-    lod_observe: sunrise_client::fast_hash::FxHashSet<(i32, i32)>,
-    /// The server level far terrain keeps the chunks of.
-    lod_level: Option<String>,
-    /// The server's BlueMap far terrain draws from, when the player named one.
-    lod_blue_map: Option<Arc<sunrise_client::bluemap::BlueMap>>,
-    /// The detail revision, centre and radius `Lod::update` last had covered for.
-    lod_covered_at: Option<(u64, (i32, i32), i32)>,
-    /// Whether the view's columns have all arrived, and how new it is: large
-    /// translucent pages wait for both before they shrink (`set_terrain_loading`).
-    view_arrival: sunrise_client::streaming::ViewArrival,
     options: Options,
     player: Option<PlayerMotion>,
-    drop_spam_throttler: sunrise_client::menu::DropSpamThrottler,
     spawn: Option<Vec3>,
     clock: FixedStep,
     previous_position: Vec3,
-    /// `yRotO` / `xRotO` of the local player: the view at the start of the tick,
-    /// moved by `Entity.turn` and a boat's `clampRotation` as the view is
-    /// (`LocalPlayer.getRopeHoldPosition` eases the held lead from it).
-    rope_rot_old: (f32, f32),
     eye: f32,
-    previous_eye: f32,
     yaw: f32,
     pitch: f32,
     inventory: Vec<Option<ItemStack>>,
@@ -3426,229 +3372,36 @@ struct Game<'a> {
     carried: Option<ItemStack>,
     craft_grid: Vec<Option<ItemStack>>,
     craft_size: usize,
-    /// The crafting table the 3x3 grid belongs to (`CraftingMenu.access`).
-    craft_table: Option<[i32; 3]>,
-    /// A quick craft drag over inventory slots: (button, game slots so far).
-    inv_drag: Option<(i32, Vec<usize>)>,
-    /// The mouse buttons whose press a container hook took: their release is the hooks' too.
-    container_buttons: HashSet<MouseButton>,
-    /// This mouse event's button-up ended a container hook's press latch (`container_button_up`).
-    container_owned_up: bool,
-    /// Physical mouse presses so far: a drag knows whether its press is still the latest.
-    physical_presses: u64,
-    /// `AbstractContainerScreen`'s quick craft and skip-release state.
-    inv_clicks: sunrise_client::container_screen::Clicks,
-    /// The Mouse Tweaks extra's drag and wheel (`tweaks`).
-    tweaks: extras::mouse_tweaks::Tweaks,
-    /// The wheel and hovered slot of `BundleMouseActions`.
-    bundle_mouse: bundles::BundleMouse,
-    /// The last inventory click, for the double click that gathers a stack.
-    last_inv_click: Option<(std::time::Instant, Option<usize>, bool)>,
-    /// `lastQuickMoved`: what the last Shift click moved, which a Shift
-    /// double click moves every stack of.
-    last_quick_moved: Option<ItemStack>,
     /// Open container block entity, if any.
     container: Option<(i32, i32, i32)>,
-    /// The open container and the slots it had when it opened:
-    /// `Container.stillValid` holds only while every block entity the menu
-    /// took is still there, so a half of a double chest (or the container)
-    /// going away closes it.
-    open_container_slots: Option<((i32, i32, i32), usize)>,
     /// Open workstation menu (enchanting table, anvil, ...).
     station: Option<stations::Station>,
     /// Status effects and thrown potions (game/items/potions.rs).
     potions: potions::PotionState,
     scratch_slot: Option<ItemStack>,
     mining: Option<Mining>,
-    /// The other players' cracks (`LevelRenderer.destroyingBlocks`): breaker id to the block,
-    /// stage (0..=9), last refresh time and stored additional display positions.
-    destroying: HashMap<i32, client_cracks::ClientCrack>,
-    destroy_delay: u32,
     use_delay: u32,
     creative: bool,
     /// The game mode; `creative` mirrors `mode == Creative`.
     mode: sunrise_client::command::args::GameMode,
-    keys: sunrise_client::held::HeldKeys,
-    // Physical input is separate from remapped and toggled movement keys.
-    physical_keys: HashSet<KeyCode>,
-    /// Keys whose first press a mod cancelled (`key_mapping_pre`): their repeats are never held.
-    rejected_keys: HashSet<KeyCode>,
-    physical_buttons: HashSet<MouseButton>,
-    drag_button: Option<MouseButton>,
-    /// Control + left click as a right click (macOS).
-    right_click_emulation: sunrise_client_input::mouse::RightClickEmulation,
-    cursor: (f32, f32),
-    /// The window pointer sample; frames and input project it at the current GUI size.
-    window_cursor: Option<sunrise_client::window::PointerSample>,
-    window_pointer_space: std::cell::OnceCell<sunrise_client::window::PointerSpace>,
-    /// The cursor icon the window shows (`widgets::take_cursor` each frame).
-    cursor_icon: sunrise_client::widgets::Cursor,
-    captured: bool,
-    /// Native grab mode used by winit. Linux window managers can drop the
-    /// grab without a focus event, leaving `captured` true but stale.
-    capture_mode: Option<CursorGrabMode>,
-    /// The window held the pointer when it lost focus: the system lets a
-    /// grabbed pointer go with the focus, and a window that comes back still
-    /// wanting it takes it again (`MouseHandler.grabMouse`, whose grab
-    /// outlives the window's focus).
-    regrab_on_refocus: bool,
-    /// Controller connection notices.
-    controller_notice: sunrise_client::controller_notice::NoticeSlot,
-    focused: bool,
-    /// The visible window of a game an agent started, until a person clicks into it: its
-    /// pointer grab stays inside the game as `--offscreen`'s does, so the person's pointer is
-    /// never taken, hidden or moved, and their keys and mouse don't reach the game.
-    unclaimed_window: bool,
-    /// The modifiers the person last held at it, applied at the claim (`held_modifiers`).
-    unclaimed_modifiers: Option<winit::event::Modifiers>,
-    /// The window's last focus change during a scripted run, applied once the run ends.
-    focus_after_run: Option<bool>,
-    /// Whether the window currently accepts input method events.
-    ime_allowed: bool,
-    /// The character of the key held down, for the input method's echo of it.
-    held_key_text: ime::HeldKeyText,
-    /// The candidate window's area last given to the window, in pixels.
-    ime_area: Option<[i32; 4]>,
-    /// When the window lost focus, while it is still without
-    /// (`Minecraft.lastActiveTime`: pausing waits 500 ms).
-    focus_lost: Option<Instant>,
-    /// The keyboard's modifier state (`KeyEvent.modifiers`).
-    modifiers: winit::keyboard::ModifiersState,
-    /// The window's fullscreen request and reported state.
-    fullscreen: sunrise_client::window::FullscreenState,
-    /// The monitor whose video modes `settings.video_modes` holds.
-    video_modes: sunrise_client::window::VideoModeList,
-    /// MouseHandler's accumulated look and wheel state.
-    mouse: MouseLook,
-    /// An agent moved the mouse (`mouse-move`) since the pointer was last
-    /// grabbed or released: its motion turns the view like a grabbed pointer.
-    agent_pointer: bool,
-    /// `Options.smoothCamera` (cinematic camera), not persisted.
-    smooth_camera: bool,
-    /// Uniform `KeyState` (`isDown`, `clickCount`) for every vanilla mapping slot.
-    vanilla_mappings: sunrise_client::keymapping::VanillaMappings,
-    /// A world screen with the pointer captured was open last frame.
-    was_playing: bool,
     /// Minecraft.pause: a single-player screen that pauses the game is open.
     pause: bool,
-    debug: bool,
-    /// `sunrise-ctl gpu-passes`: time Sunrise's own passes on the GPU with F3 shut.
-    gpu_passes: bool,
-    /// `sunrise-ctl gpu-passes detail`: also dispatch times and counters.
-    gpu_pass_detail: bool,
-    screen: Screen,
     screen_state: screen_build::ScreenState,
     window: Option<Arc<Window>>,
-    /// What `window_resize` last reported: the physical size and the GUI settings behind the scaled size.
-    resize_state: Option<ResizeState>,
     renderer: Option<Renderer>,
-    /// Avoid an endless rebuild loop if the new device is lost as well.
-    last_device_recovery: Option<Instant>,
-    /// CPU geometry storage retained across frames, including empty/title frames.
-    entity_vertices: Vec<Vertex>,
-    /// Sunrise Extras' dynamic lights this frame (`dynamic_lights.rs`), and how brightly each
-    /// item glows (built the first time the extra is on).
-    dynamic_lights: Vec<[f32; 4]>,
-    luminance: std::cell::OnceCell<sunrise_client::dynamic_light::Luminance>,
-    /// Name tags drawn over everything (`RenderPipelines.TEXT_SEE_THROUGH`).
-    see_through_vertices: Vec<Vertex>,
-    /// The first-person player's model, which only a native pack's shadow pass draws.
-    shadow_only_vertices: std::cell::RefCell<Vec<Vertex>>,
-    /// Runs of `entity_vertices` by entity, for a shader pack's per-entity draws; recorded only
-    /// while `pack_ids` is set (game/interface/shader_packs.rs).
-    entity_spans: std::cell::RefCell<Vec<sunrise_client::gfx::pack_draw::EntitySpan>>,
-    /// The runs of `entity_geometry`'s ordered pass, kept to reuse their storage.
-    entity_runs: Vec<entity::DrawRun>,
-    /// Which entity this frame's entity vertices belong to (`Frame::entity_motion`).
-    entity_motion: std::cell::RefCell<Vec<(u32, u64)>>,
-    /// The GPU-posed vertex count at each of `entity_motion`'s marks (`Frame::entity_motion_posed`).
-    entity_motion_posed: std::cell::RefCell<Vec<u32>>,
-    /// Mob models posed on the GPU (`Frame::skin`, `mobs::skin`): the models stored there,
-    /// and this frame's draws.
-    skin_models: std::cell::RefCell<sunrise_client::mobs::skin::SkinModels>,
-    skin_frame: std::cell::RefCell<sunrise_client::gfx::entity_skin::SkinFrame>,
-    /// The glowing entities' silhouettes this frame (game/entities/glowing.rs).
-    glowing_vertices: std::cell::RefCell<Vec<Vertex>>,
-    /// Client mods' sounds (`play_local_sound`): those waiting for the next audio update
-    /// (`tick_sound_engine`), the stops and fades asked of them, and their handles.
-    mod_sounds: native_local_sounds::ModSounds,
-    /// A client mod asked to clear the particles (`clear_particles`), done before
-    /// the next frame or particle tick (`apply_mod_particle_clear`).
-    mod_clear_particles: std::cell::Cell<bool>,
-    /// The level random a block part's `animate_tick` holds as `event.random`, while it runs:
-    /// the game's own draws during the call go through it (`with_lent_level_random`).
-    lent_level_random: Option<std::rc::Rc<std::cell::RefCell<mod_api::LegacyRandomSource>>>,
-    /// The shader pack's entity and block entity ids, while one draws entities.
-    pack_ids: Option<shader_packs::PackIds>,
-    started: Instant,
-    /// `SpectatorGui`: the menu a spectator opens with the hotbar keys.
-    spectator_gui: sunrise_client::spectator_menu::SpectatorGui,
     previous: Instant,
-    /// FramerateLimitTracker.latestInputTime.
-    last_input: Instant,
     /// Controllers (Sunrise's own).
     pad: pad::Pads,
-    frames: u64,
-    /// The glint clock and options, read once per frame (game/interface/item_draw.rs).
-    glint_frame: sunrise_client::item_render::GlintFrame,
-    /// Mod block entities' kept geometry (game/modding/native_block_entity_draw.rs).
-    kept_block_entities: std::cell::RefCell<native_block_entity_draw::KeptGeometry>,
-    /// Mod screens' living scenes, per mod and clock id (game/modding/native_scene_live.rs).
-    live_scenes: std::cell::RefCell<native_scene_live::LiveScenes>,
-    /// Client mods' dynamic textures in the GUI atlas's pool (game/modding/native_dynamic_textures.rs).
-    dynamic_textures: sunrise_client::hud::dynamic_textures::DynamicTextures,
-    /// Glyphs from `native_draw_text` (`&self`): uploaded to the font atlas with the frame.
-    text_patches: std::cell::RefCell<Vec<sunrise_client::font::Patch>>,
-    /// Prepared block-entity copies for this frame, in entity-stream order.
-    prepared_model_draws: std::cell::RefCell<Vec<sunrise_client::gfx::PreparedModelDraw>>,
-    /// Scratch for the copies a frame draws through the terrain materials.
-    model_copy_order: Vec<u32>,
-    world_geometry: Option<sunrise_client::world_geometry::WorldGeometry>,
     /// `DebugRenderer.renderers`: active mod renderers and their owners, resolved at refresh.
     debug_renderers: Vec<sunrise_client::debug_entries::ActiveDebugRenderer>,
-    /// `DebugRenderer.lastDebugEntriesVersion`: none before the first view of a world.
-    debug_renderers_version: Option<u64>,
-    /// Next undrawn mod layer in HUD `gui_layers::order`; `None` while hidden or outside its pass.
-    hud_layer_next: Option<usize>,
-    /// The mod block entities' view distances, asked of the parts once (`native_block_entity_draw`).
-    mod_view_distances: std::cell::OnceCell<native_block_entity_draw::ViewDistances>,
-    /// What drawing a block entity asks of its block, by state id (`block_entity_reach`):
-    /// resolved from the block names once, not for every block entity in every frame.
-    block_entity_reach: std::cell::OnceCell<Box<[(Reach, bool)]>>,
-    /// `item_level` for one frame, game time, day time and dimension.
-    item_level_cache: std::cell::RefCell<
-        Option<(
-            (u64, i64, i64, &'static str),
-            sunrise_assets::item_model::LevelState,
-        )>,
-    >,
-    /// Frames drawn with the player in the world, for `--world-frames`.
-    world_frames: u64,
-    fps: f32,
-    fps_frames: u64,
-    fps_at: Instant,
     ticks: u64,
-    /// `Hud.tickCount`, advanced on each unpaused client tick, including in menus.
-    gui_ticks: i32,
-    /// The sprite animation clock (`TextureManager.tick`): counts only the ticks the level
-    /// runs normally, so `/tick freeze` holds it and `/tick step` moves it on.
-    texture_ticks: u64,
-    health_hud: hud_layout::HealthHud,
     /// What ends the game with an error; kept as it is, so main can tell a debug crash.
     error: Option<Box<dyn std::error::Error>>,
-    message: Option<(String, Instant)>,
     save: Arc<SaveDir>,
     level: Level,
     /// Must precede session_lock: dropping the writer drains writes while the world is locked.
     player_autosaves: sunrise_client::lan::playerdata::Autosaves,
     session_lock: Option<sunrise_client::save::SessionLock>,
-    /// The prepared world is installed. The session lock is taken earlier so tag
-    /// reads see ready tables, and is not this marker: a final save before the
-    /// prepared `Level` is installed would replace the world with placeholder state.
-    world_adopted: bool,
-    /// An early shutdown must not replace on-disk tickets while the server is
-    /// still publishing levels or activating their tickets.
-    startup_ticket_restore_pending: bool,
     audio: Audio,
     /// The side, registries and mod settings of this game's resource generation, which
     /// its menus lend to the hooks they fire inside a loop; rebuilt by `refresh_loop_context`.
@@ -3659,98 +3412,16 @@ struct Game<'a> {
     setting_overrides: std::cell::RefCell<std::collections::BTreeMap<(String, String), String>>,
     /// The native damage hooks every level of this game lends to its hits.
     damage_hooks: sunrise_client::health::DamageHooks,
-    paused_mob_hurt: Option<Box<sunrise_client::mobs::PausedMobHurt>>,
-    music: sunrise_client::music::MusicManager,
-    /// The tracks native mods play over the music (`native_music_layers`).
-    music_layers: sunrise_client::music::MusicLayers,
-    /// `ToastManager.nowPlayingToast`: there while Music Toast is not Never.
-    now_playing: Option<sunrise_client::toasts::NowPlayingToast>,
-    /// The Music Toast option the toast was last set up for.
-    music_toast_state: u8,
-    music_notes: sunrise_client::toasts::MusicNotes,
-    ambience: sunrise_client::ambience::Ambience,
-    /// The sound engine was told the game paused (pauseAllExcept).
-    sound_paused: bool,
-    /// Minecarts whose `MinecartSoundInstance` is playing.
-    cart_sounds: HashSet<u32>,
-    /// The minecart the riding sounds were started for (`LocalPlayer.startRiding`).
-    riding_cart_sounds: Option<u32>,
-    /// The happy ghast its riding sound was started for (`LocalPlayer.startRiding`).
-    riding_sound: Option<u32>,
-    /// `LocalPlayer.wasFallFlying` for the elytra's flying sound.
-    was_fall_flying: bool,
-    /// Bees whose buzz is playing, and whether it is the aggressive one.
-    bee_sounds: HashMap<u32, bool>,
-    /// Remote guardian eye targets reused between ticks.
-    guardian_look_scratch: Vec<(usize, [f64; 3])>,
     dropped: sunrise_client::join_seq::JoinList<ItemEntity>,
-    next_entity: u32,
-    /// The last entity id when this level's entity pass began: an item with a
-    /// later one was added during that pass and first ticks on the next
-    /// (`EntityTickList`). `u32::MAX` until a tick has run.
-    ticked_entities_through: u32,
-    /// The items `tick_blocks` dropped while applying the entities' block
-    /// contacts (a boat breaking a lily pad). Vanilla runs those in each
-    /// entity's own tick (`applyEffectsFromBlocks`), inside the entity pass,
-    /// so they too first tick on the next tick.
-    contact_drops: std::ops::Range<u32>,
     particles: sunrise_client::particles::ParticleEngine,
-    explicit_particle_quads: sunrise_client::particles::ParticleQuads,
-    /// `ItemPickupParticle`s: taken items, orbs and arrows flying to their collector.
-    pickups: pickups::Pickups,
-    /// Sign text being edited (`SignEditScreen`).
-    sign_edit: Option<sign_edit::SignEditor>,
-    /// An open book, book and quill or lectern screen.
-    book: Option<books::BookScreen>,
-    /// The last click on the book screen, for double clicks.
-    book_last_click: Option<std::time::Instant>,
-    /// Lecterns whose page-turn pulse is running (ticks left).
-    lectern_pulses: Vec<((i32, i32, i32), i32)>,
-    /// LevelLoadingScreen.smoothedProgress while the player is not placed yet.
-    loading_progress: f32,
     /// `CreateWorldScreen.openCreateWorldScreen`'s data read, on a worker,
     /// while the title says `createWorld.preparing`.
     creation_job: Option<std::thread::JoinHandle<std::result::Result<(), String>>>,
-    /// When `loading_progress` last eased (the server thread's load, 50 ms a step).
-    loading_progress_at: Option<std::time::Instant>,
-    /// A received packet started or ended a piston's move: `poll_remote`
-    /// syncs the moving pistons once its packets are handled, not once per packet.
-    moving_pistons_stale: bool,
-    /// The world spawn search's origin chunk and fallback height, once known.
-    spawn_origin: Option<((i32, i32), i32)>,
-    /// `native_create_spawn_position` was asked, and a mod chose the spawn.
-    spawn_hook_fired: bool,
-    spawn_hook_cancelled: bool,
-    spawn_spiral: sunrise_client::world_spawn::ChunkSpiral,
-    /// A new player's spawn search, while its candidates' chunks load.
-    player_spawn: Option<sunrise_client::world_spawn::PlayerSpawnFinder>,
-    /// Chunks a respawn search waits for this tick, kept loading beside the
-    /// player's own (taken by `update_world`).
-    spawn_wait: Vec<(i32, i32)>,
     mobs: sunrise_client::join_seq::JoinList<Mob>,
     /// `mobs` by network id, for the packets that name one (`game/mobs/mob_index.rs`).
     mob_index: mob_index::MobIndex,
     creatures: creatures::Creatures,
     sculk: sculk::SculkState,
-    raiding: raids::Raiding,
-    attack_ticks: u32,
-    /// The main hand's item at the last player tick, whose attack damage and
-    /// speed modifiers apply (`LivingEntity.detectEquipmentUpdates`): a hotbar
-    /// swap just before an attack keeps them, with the new item's enchantments
-    /// (attribute swapping).
-    attack_item: Option<Arc<str>>,
-    /// Mobs a player hurt (`LivingEntity.lastHurtByPlayer`), by player UUID.
-    last_hurt_by_player: HashMap<u32, combat::PlayerCredit>,
-    /// Leashed mobs a player killed, with the killer's UUID: the lead drops
-    /// on the corpse's next tick (`Leashable.tickLeash`), for the mods. With
-    /// the corpse's dimension: each level's tick prunes only its own.
-    lead_killers: HashMap<u32, (u128, Dim)>,
-    /// Animals a player fed into love (`Animal.loveCause`), with the guest it was by
-    /// connection (None: the host). Breeding credits them, wherever they are.
-    love_cause: HashMap<u32, Option<u32>>,
-    /// Mobs whose death (`LivingEntity.die`) has been handled.
-    /// Looked up per mob each tick: a fast hasher (never iterated).
-    died: sunrise_client::fast_hash::FxHashSet<u32>,
     /// Client-ticked block-entity animation state (`game/blocks/block_entity_anims.rs`).
     be_anims: sunrise_client::block_entity_anim::BlockEntityAnims,
     /// Item being used (eaten): hotbar slot and ticks used.
@@ -3760,19 +3431,6 @@ struct Game<'a> {
     /// What that use began with (`useItem`) and whether a mod set its ticks left
     /// (`game/items/item_use.rs`).
     use_start: using_item::UseStart,
-    /// The crossbow charge's start and middle loading sounds played (`game/items/crossbow.rs`):
-    /// each charge plays each once, however far a mod's tick moved the charge at a time.
-    crossbow_sounds: [bool; 2],
-    /// Camera.oldFovModifier / fovModifier.
-    /// `Camera` (eye height and field-of-view easing, view placement).
-    view: sunrise_client::camera::Camera,
-    /// `FramerateLimiter` and its clock.
-    limiter: sunrise_client::window::FramerateLimiter,
-    frame_clock: sunrise_client::window::SystemClock,
-    /// Hud.scopeScale (spyglass overlay size).
-    scope_scale: f32,
-    /// Duration of the last frame in ticks (GUI easing).
-    frame_ticks: f32,
     title: Option<Title>,
     /// Armor slots: head, chest, legs, feet.
     armor: [Option<ItemStack>; 4],
@@ -3783,319 +3441,89 @@ struct Game<'a> {
     /// the fields above. Nothing in the game reads these yet; they are kept
     /// for mods and saves.
     equipment: sunrise_items::equipment::Equipment,
-    /// `ItemStack.popTime` of the nine hotbar stacks, then the off hand: set to 5
-    /// when a slot gains items, counted down each tick.
-    hotbar_pop: [u8; 10],
     /// The hand an item use acts with (`InteractionHand`): the off hand only
     /// for its turn in `use_item` and while its item is being used.
     hand: Hand,
-    /// The shield's item cooldown after an axe disabled it (ticks).
-    shield_cooldown: u32,
     /// `Player.getCooldowns()`: the `use_cooldown` component's entries, what
     /// `itemDecorations` shades a slot by. A server's players have their own
     /// (`GuestPlay::cooldowns`), swapped in for their turn.
     cooldowns: sunrise_client::cooldowns::Cooldowns,
-    /// The source of a command run through /execute (the player otherwise).
-    command_source: Option<commands::execute::Source>,
-    native_command_filter: bool,
-    titles: titles::Titles,
-    /// `Hud.toolHighlightTimer`: the selected item name.
-    tool_highlight: sunrise_client::hud_overlays::ToolHighlight,
-    /// `Hud.autosaveIndicatorValue`.
-    saving_indicator: sunrise_client::hud_overlays::SavingIndicator,
     /// This game's world is autosaving this tick (`MinecraftServer.isSaving`).
     autosaving: bool,
-    /// `MinecraftServer.ticksUntilAutosave`: the ticks left before the next
-    /// autosave, counted down a tick at a time.
-    ticks_until_autosave: i64,
-    applied_modifiers: Vec<(String, String)>,
     experience: Experience,
     orbs: sunrise_client::join_seq::JoinList<ExperienceOrb>,
-    xp_delay: u32,
-    ordered: ordered_tick::OrderedTicks,
-    level_up_sound: sunrise_client::entities::LevelUpSound,
     /// The arm swing (`LivingEntity.SwingState`) and how many swings started.
     swing: sunrise_client::first_person::SwingState,
     swings_started: u32,
-    /// Swings of uses whose client predicts them (`SwingSource.PREDICTED`):
-    /// a server does not send these back to the player who swung.
-    predicted_swings: u32,
-    /// The first-person equip heights and the items the hands show (with
-    /// the slot each came from).
-    heights: sunrise_client::first_person::HandHeights,
-    /// The hands' lag behind the view (`LocalPlayer.xBob`, `yBob`); a new
-    /// LocalPlayer (joining, respawning, changing dimension) starts at 0.
-    sway: sunrise_client::first_person::HandSway,
-    visible_hands: [(usize, Option<ItemStack>); 2],
-    /// Whether the main and off hand's slots were set to a new stack that
-    /// the hand doesn't show yet (`Game::hand_stack_replaced`).
-    hands_replaced: [bool; 2],
     /// `Minecraft`'s attack handling, attack clicks since the last tick and
     /// the attack strength tickers the hand reads.
     clicks: sunrise_client::first_person::Clicks<Option<ItemStack>>,
-    hand_strength: sunrise_client::attack_strength::AttackStrength,
     settings: Settings,
-    look: look::LookCache,
-    tutorial: tutorial::Tutorial,
-    toast_manager: toast_manager::ToastManager,
-    /// The open screen's narration (`Screen`'s narration state and timing).
-    narration: sunrise_client::screen_narrator::ScreenNarrator,
-    /// Where the options screen returns: true = title, false = pause menu.
-    options_from_title: bool,
-    /// `ClientAvatarState`: walked distance and view bob.
-    avatar: sunrise_client::camera::AvatarBob,
     flash: u32,
-    /// OptiFine custom sky layers' eased brightness (`custom_sky.rs`).
-    custom_sky: custom_sky::CustomSkyView,
-    /// `ClientLevel.rainSoundTime`: ticks of rain since the last rain sound.
-    rain_sound_time: i32,
-    /// Bolts that struck here and sky flashes they made, in total (`status`).
-    lightning_seen: [u32; 2],
     /// The head of the bed while sleeping; the visual timer also survives waking.
     sleeping: Option<[i32; 3]>,
     sleep_timer: u32,
-    /// The beds players sleep in that this game marked `occupied`, by level
-    /// (game/blocks/beds.rs).
-    player_beds: Vec<(Dim, [i32; 3])>,
-    /// `SleepStatus`'s active and sleeping players at the last announcement.
-    sleep_seen: (i64, i64),
     dim: Dim,
-    world_root: PathBuf,
-    carrier_retention_snapshot: Vec<(u128, u32)>,
-    /// Offline-to-account UUID migration: loaded entities retain the old UUID until saved.
-    owner_migration: Option<(u128, u128)>,
-    /// The world's data packs' content tables, when it has packs (`None`
-    /// keeps `Resources.rest`'s own in use).
-    world_tables: Option<WorldTables>,
-    /// Server-owned loot and item snapshots, independent of client preloads.
-    server_loot: sunrise_client::structure_blocks::LootSnapshot,
     server_items: Option<Arc<Items>>,
     /// The world is superflat (`ServerLevel.isFlat`, for every dimension).
     world_flat: bool,
-    /// The world is the Debug preset (`Level.isDebug`, for every dimension): its blocks
-    /// cannot be changed and nothing ticks.
-    world_debug: bool,
-    /// A server's players on their way to another level, each waiting for
-    /// the destination to load around them.
-    server_trips: Vec<server_travel::Trip>,
-    /// Players a command sends to another level, once it has run.
-    level_teleports: Vec<server_travel::LevelTeleport>,
-    /// Teleports a command made inside a level, for `native_player_teleported`
-    /// once the player's move has reached their client (the put-back at the end of `guest_turn`).
-    teleport_notes: Vec<server_travel::TeleportNote>,
     /// A server's levels other than the one in place (game/world/levels.rs).
     levels: levels::Levels,
-    /// Which pass of a server tick runs (`tick_server`): the first one reads
-    /// the network, the last one ends the players' tick.
-    level_pass: levels::Pass,
     /// Nether portals: the player's, items' and mobs' (game/blocks/nether_portal.rs).
     portals: nether_portal::Portals,
-    /// The respawn point when it is not the world spawn or a bed: a respawn
-    /// anchor (`game/blocks/respawn_anchor.rs`).
-    respawn_config: Option<respawn_anchor::RespawnConfig>,
-    /// The next enter_dimension call comes from an End portal.
-    end_portal_travel: bool,
-    /// The open WinScreen (game/interface/win.rs).
-    win: Option<win::Win>,
-    demo_intro: Option<demo_intro::DemoIntro>,
     end: end::EndState,
     block_ticks: Ticks,
-    tick_scratch: TickScratch,
-    tick_chunks: sunrise_client::tick_chunk_membership::TickChunkMembership,
-    tickets: sunrise_client::ticket_levels::ChunkTickets,
-    random_tick_sections: sunrise_client::random_tick_sections::RandomTickSections,
     level_events: Vec<LevelEvent>,
-    /// Falling models by state and selected-model address list; cleared on pack/atlas replacement.
-    falling_vertices: RefCell<HashMap<BlockStateId, Vec<(Vec<usize>, Vec<Vertex>)>>>,
     falling: sunrise_client::join_seq::JoinList<FallingBlock, false>,
-    /// Blocks the server shows for a moment (`ClientboundAddTransientBlockPacket`).
-    transient_blocks: transient_blocks::TransientBlocks,
     paintings: sunrise_client::join_seq::JoinList<sunrise_client::entities::Painting>,
     painting_variants: paintings::PaintingVariants,
     item_frames: sunrise_client::join_seq::JoinList<sunrise_client::entities::ItemFrame>,
-    frame_model: frames::FrameModel,
-    glow_frame_model: frames::FrameModel,
-    /// The `map=true` frame variants.
-    map_frame_model: frames::FrameModel,
-    glow_map_frame_model: frames::FrameModel,
     armor_stands: sunrise_client::join_seq::JoinList<sunrise_client::entities::ArmorStand>,
-    /// Worn armor as of the last equipment check (frost walker).
-    location_armor: [Option<ItemStack>; 4],
     /// `Cushion` decoration entities (game/entities/cushions.rs).
     cushions: sunrise_client::join_seq::JoinList<sunrise_client::entities::Cushion>,
     /// Entities of types Sunrise does not simulate.
     others: sunrise_client::join_seq::ResidentList<commands::OtherEntity>,
-    armor_stand_assets: armor_stands::ArmorStandAssets,
-    /// `WaypointStyleManager`.
-    waypoint_styles: sunrise_client::locator_bar::WaypointStyles,
-    /// `ClientWaypointManager`: the locator bar's waypoints.
-    waypoints: sunrise_client::locator_bar::ClientWaypoints,
-    /// The camera the last frame drew from (position, yaw, pitch, fov), for the locator bar.
-    locator_camera: Option<([f64; 3], f32, f32, f32)>,
-    native_camera_frame: Option<mod_api::Camera>,
-    /// The yaw and pitch a native mod's camera drew the last frame from (`native_camera_pose`),
-    /// none when it drew from vanilla's.
-    posed_rotation: Option<(f32, f32)>,
-    /// `LocalPlayer.postEffects`: the chains the server has the screen run
-    /// (`ClientboundPostEffectsPacket`), in order.
-    post_effects: Vec<String>,
-    /// Reused per-frame `requestedPostEffects` storage.
-    requested_post_effects_buf: Vec<String>,
-    /// The game time (ticks and partial) of the last frame, for `PolyDeltaTime`.
-    polytone_post_ticks: f64,
-    /// The last expression context built (what the packs' expressions read), kept across frames
-    /// so its strings are rewritten in place instead of allocated each frame.
-    expression_frame: sunrise_client::environment::Frame,
-    /// `GameRenderer.spectatedEntityPostEffect` (`checkEntityPostEffect`).
-    spectated_post_effect: Option<&'static str>,
-    /// `GameRenderer.spectatedEntityEffectActive` (`toggleSpectatorPostEffect`).
-    spectated_post_effect_active: bool,
-    /// `LocalPlayer.experienceDisplayStartTick`: (last progress, seen a change, tick).
-    experience_display: (f32, bool, u64),
     boats: sunrise_client::join_seq::JoinList<boats::Boat, false>,
-    /// The boats a mob's lead can hang on, for this tick's mob ticks.
-    leash_boats: Vec<(u32, sunrise_client::mobs::leash::HolderState)>,
-    boat_models: boats::BoatModels,
-    /// EndCrystalModel's baked layer.
-    crystal_model: Option<sunrise_client::mobs::Part>,
-    /// CushionModel's baked layer.
-    cushion_model: Option<sunrise_client::mobs::Part>,
-    /// Models drawn only once such an entity shows up (lead knots, wind charges...).
-    entity_models: EntityModels,
     carts: sunrise_client::join_seq::JoinList<minecarts::Minecart, false>,
-    /// The boats and minecarts `native_vehicle_moved` follows (lan_vehicles.rs).
-    watched_vehicles: Vec<lan_vehicles::WatchedVehicle>,
     /// Songs playing from jukeboxes (tracked sound handles).
     jukebox_sounds: HashMap<(i32, i32, i32), u64>,
     bolts: sunrise_client::join_seq::ResidentList<lightning::Bolt>,
     maps: maps::Maps,
-    /// The ender dragon fight (game/mobs/dragon.rs).
-    fight: dragon::Fight,
     dragon: native_entity_refs::dragon_parts_table::DragonSlot,
     crystals: sunrise_client::join_seq::JoinList<dragon::Crystal>,
     breath_clouds: sunrise_client::join_seq::ResidentList<dragon::Breath>,
-    dragon_model: Option<sunrise_client::mobs::Part>,
-    /// Map textures waiting for the next HUD batch to upload them.
-    map_patches: Vec<sunrise_client::font::Patch>,
-    name_tag_layouts: names::NameTagLayouts,
-    text_displays: indexmap::IndexMap<i32, text_displays::RemoteTextDisplay>,
-    see_through_collector: text_displays::SeeThroughCollector,
-    translucent_display_collector: text_displays::TranslucentDisplayCollector,
-    display_visible_scratch: Vec<(i32, f64)>,
-    block_display_parts_scratch: Vec<u32>,
-    display_inline_profiles_scratch: Vec<std::sync::Arc<serde_json::Value>>,
-    interactions: std::collections::HashMap<i32, interactions::RemoteInteraction>,
-    /// The fence knots a server tracks to this client, by entity id, at their
-    /// block (`LeashFenceKnotEntity`).
-    remote_knots: HashMap<u32, [i32; 3]>,
-    /// The entity ids a hosted server gives the knots its mobs hang on, by
-    /// block, while a lead is tied there.
-    knot_ids: HashMap<[i32; 3], u32>,
-    /// Fence posts whose natural knot was killed and whose leads drop next tick.
-    broken_knots: Vec<[i32; 3]>,
-    text_display_vertices: usize,
     /// Player skin downloads, and which skin each atlas skin slot holds
     /// (least recently shown first).
     skin_downloads: RefCell<sunrise_client::skins::Downloader>,
     /// `ProfileResolver.Cached`: `Dynamic` profiles (name- or id-only heads
     /// and mannequins) resolve through the services in the background.
     skin_profiles: RefCell<sunrise_client::skins::Resolver>,
-    skin_slots: sunrise_client::skins::SkinSlots,
-    /// Runtime trim slots and the last completed preparation for this atlas.
-    trim_slots: sunrise_client::trims::TrimSlots,
-    cart_models: minecarts::CartModels,
     /// The boat the player rides.
     riding: Option<u32>,
-    /// This window's player's place in `riding`'s passengers, as `Guest.vehicle_order` is a guest's.
-    riding_order: i64,
-    /// Vehicles that gained a rider this tick whose `START_RIDING_TRIGGER` was
-    /// not fired yet (`game/entities/boarding.rs`), for a guest's turn.
-    started_riding: Vec<u32>,
-    /// A rotation-only write (`/rotate`, `Entity.forceSetRotation`) to the player of this
-    /// turn: the put-back at the end of `guest_turn` sends it as `ClientboundPlayerRotationPacket`, not a teleport.
-    rotation_forced: bool,
     /// The mount the last `position_rider` put the player on, to tell the tick
     /// a seat is taken (`Entity.moveTo`, no camera sweep) from the ones that
     /// follow it (`positionRider`, interpolated as usual).
     posed_rider: Option<u32>,
-    /// The vehicle the player's file names, waiting for it to be in the world
-    /// (`ServerPlayer.loadAndSpawnParentVehicle`).
-    pending_vehicle: Option<[i32; 4]>,
-    /// The ender inventory (27 slots) and the ender chest showing it.
-    ender_items: Vec<Option<ItemStack>>,
-    ender_open: Option<(i32, i32, i32)>,
     /// Block entity data of broken blocks waiting for their dropped item.
     pending: spill::Pending,
-    /// Item entities spawned and block entities removed while the block
-    /// behaviour ran (spilled contents, popped resources).
-    spill: spill::Spill,
-    /// The recipe book of the open screen (game/items/recipe_book.rs).
-    recipe_ui: recipe_book::RecipeUi,
-    /// The horse inventory (game/interface/mount_menu.rs).
-    mount_menu: mount_menu::MountMenu,
     /// The player's fishing hook.
     hook: sunrise_client::join_seq::ResidentSlot<fishing::Hook>,
-    /// The other players' hooks a server tracks to this client.
-    remote_hooks: Vec<fishing::RemoteHook>,
     tridents: sunrise_client::join_seq::JoinList<trident::ThrownTrident>,
     rockets: sunrise_client::join_seq::JoinList<fireworks::Rocket>,
     /// Ominous trial spawners' item spawners.
     ominous_spawners:
         sunrise_client::join_seq::ResidentList<ominous_item_spawner::OminousItemSpawner>,
-    creaking: creaking::CreakingState,
-    /// Monster spawners' display mobs (`game/mobs/spawner.rs`).
-    spawners: spawner::SpawnerState,
-    /// Reused candidate buffers for natural spawning.
-    spawn_scratch: natural_spawning::SpawnScratch,
-    trident_model: Option<sunrise_client::mobs::Part>,
-    arrow_model: Option<sunrise_client::mobs::Part>,
-    bee_stinger_model: Option<sunrise_client::mobs::Part>,
     tnts: sunrise_client::join_seq::JoinList<tnt::PrimedTnt>,
-    hoppers: HashMap<(i32, i32, i32), machines::HopperState>,
     /// The open `host.transaction`s, innermost last (`transactions.rs`).
     transactions: transactions::OpenTransactions,
-    /// The source of the running dispenser behaviour, including across mod callbacks.
-    dispense_source: Option<dispenser::DispenseSource>,
-    /// Open mod menus whose `menu_slot_changed` dispatch is currently on the call stack.
-    slot_changed_active: Vec<slot_changes::SlotChangedTarget>,
-    /// Backing blocks whose contents notice is on the call stack, innermost last.
-    contents_changing: Vec<(mod_api::LevelRef, BlockPos)>,
     /// The mod screen of a menu open on this client (`native_screen`).
     mod_screen: Option<native_hooks::OpenNativeScreen>,
-    /// The players with each mod container open, by level (`tick_mod_container_viewers`).
-    mod_container_viewers:
-        HashMap<(&'static str, (i32, i32, i32)), mod_container_openers::ModContainerOpeners>,
-    /// Where item entities are, while the block entities tick (hoppers).
-    item_columns: Option<machines::ItemColumns>,
-    /// The item columns for one pass of the players' pickups
-    /// (`tick_guests`), rebuilt after any write to the items (a pickup, a
-    /// command, an explosion): see `item_columns`.
-    pickup_columns: Option<machines::StampedItemColumns>,
-    /// Where the mobs are, while the block entities tick (potent sulfur gas).
-    pass_mobs: Option<potent_sulfur::PassMobs>,
     /// Block-entity positions retained between ticks for client effects.
     spawner_tick_positions: Vec<sunrise_client::block_entities::Pos>,
     trial_spawner_tick_positions: Vec<sunrise_client::block_entities::Pos>,
     /// The `[[native.loop]]` slots' state, per published loop (`published_loops.rs`).
     loop_states: published_loops::LoopStates,
-    creative_screen: Creative,
-    /// The creative search projection whose stacks the mods' `item_name` parts last named.
-    creative_search_named: Option<u64>,
-    creative_contents: native_hooks::CreativeCache,
-    /// `CreativeModeInventoryScreen.ignoreTextInput`: the chat key opened the
-    /// search tab, so the letter it carries is not typed into the box.
-    creative_ignore_text: bool,
     control: Option<sunrise_client::control::Server>,
-    /// The Agent Control setting the socket was last opened or closed for (`agent_settings`).
-    agent_control_on: bool,
-    /// When an agent's last command came.
-    agent_last: Option<Instant>,
-    frame_stats: sunrise_client::control::FrameStats,
-    /// This thread's and all threads' allocation counts at the last rendered frame.
-    alloc_mark: Option<(
-        sunrise_threads::alloc_count::Counts,
-        sunrise_threads::alloc_count::Counts,
-    )>,
     /// This play session's frame and tick times, for opt-in performance statistics.
     perf: sunrise_client::telemetry::Session,
     /// Control replies waiting for a rendered frame or a benchmark deadline.
@@ -4105,56 +3533,22 @@ struct Game<'a> {
     /// `render-capture DIR`: replied once the renderer wrote the scene.
     pending_render_capture: Option<std::sync::mpsc::Sender<String>>,
     pending_bench: Option<(Instant, std::sync::mpsc::Sender<String>, bool)>,
-    /// Settings and HUD state: `game/interface/extras.rs`.
-    extras: extras::ExtrasState,
-    /// The PvP & HUD options' state (`game/entities/pvp.rs`).
-    pvp: pvp::PvpState,
     /// Sunrise mods (`game/modding/mods/mod.rs`), none running unless turned on.
     mods: mods::ModsState,
     /// The in-game browser's worker, separate from the cloneable reload inputs.
     mod_jobs: mod_browser::Jobs,
     /// Every item and recipe, for mods (`game/modding/native_recipes.rs`), made once.
     recipe_tables: native_recipes::RecipeTables,
-    /// The item panel beside container screens (`game/modding/native_panel.rs`).
-    panel: native_panel::Panel,
-    /// Sunrise's own shader pack, while one is picked (`game/modding/native_shaders.rs`).
-    native_shaders: native_shaders::NativeShaders,
-    /// Main-hand input captured by a client mod, independent of living-item use.
-    client_item_use: Option<native_claimed_items::ActiveClientItemUse>,
-    /// Native client mods' key mappings (game/modding/native_key_mappings.rs).
-    mod_keys: sunrise_client::keymapping::ModKeys,
     /// The native lifecycle bookkeeping.
     native_lifecycle: native_lifecycle::NativeLifecycle,
     resident_entities: resident_state::ResidentEntities,
-    /// The mobs lent to the hook calls running now, before they join a level
-    /// (game/modding/native_unspawned_mob.rs).
-    lent_mobs: RefCell<native_unspawned_mob::LentMobs>,
-    /// Entities whose copies are held out of storage; their handles refuse until stored back.
-    held_out: Vec<u32>,
     /// Native mods' config files this game loaded (game/modding/native_configs.rs).
     native_configs: native_configs::NativeConfigs,
     /// Private custom-book connection and placement state.
     native_net: native_net::NativeNet,
-    /// The mod whose own screen is open (`Screen::Mod`).
-    native_mod_screen: Option<String>,
-    /// Meshed sections waiting for an upload budget (Sunrise settings).
-    pending_uploads: Vec<sunrise_client::streaming::MeshUpload>,
-    /// Empty between updates. Reuses storage for merging two sorted runs.
-    pending_uploads_merge: Vec<sunrise_client::streaming::MeshUpload>,
-    /// The camera section (column, height) `pending_uploads` is sorted for, farthest first:
-    /// while it stays, the list needs only its new meshes merged in, not a sort every frame.
-    pending_uploads_order: Option<((i32, i32), i32)>,
-    upload_pace: upload_pace::UploadPace,
-    /// This frame's view frustum, for culling entities and block entities.
-    view_frustum: Option<sunrise_client::gfx::JoinedFrusta>,
-    occlusion: entity_culling::EntityOcclusion,
     async_particle_culler: RefCell<particle_culling::ParticleAsyncState>,
-    /// A scripted flight from the control socket (`fly`).
-    flight: Option<control::Flight>,
     /// The running agent action from the control socket (game/runtime/agent/mod.rs).
     agent: agent::Agent,
-    /// Widget commands waiting for the frame after a click (game/runtime/ui_control.rs).
-    ui_wait: ui_control::UiWait,
     /// What happened, for `events` and `wait-for` (game/runtime/events.rs).
     events: events::Events,
     /// Who caused each input event: a person, an agent or the game (game/runtime/input_trace.rs).
@@ -4163,26 +3557,12 @@ struct Game<'a> {
     repro: repro::Repro,
     /// The health history and client captures (game/profile_capture.rs).
     profile: profile_capture::Profile,
-    /// `SUNRISE_TICK_SCRIPT`'s scenario (game/world/tick_script.rs).
-    tick_script: tick_script::TickScript,
     /// The overworld's last `sky_darken` and its inputs (time, rain, thunder).
     sky_darken_memo: std::cell::Cell<Option<((Dim, i64, u32, u32), i32)>>,
-    /// The last water plane `water_plane` found, kept while none is in reach.
-    water_plane_memo: std::cell::Cell<Option<f32>>,
-    /// The camera's block and the second `water_plane` last scanned at.
-    water_plane_scan: std::cell::Cell<Option<([i32; 3], i64)>>,
-    /// What the boats' and minecarts' ticks know about the mobs: their box reach
-    /// (`vehicle_mob_reach`) and a grid of their boxes (`mobs_meeting`).
-    vehicle_mobs: boat_passengers::VehicleMobs,
     persist: persist::EntityMemory,
-    /// Missing profession IDs already reported for this world session.
-    missing_professions: HashSet<String>,
     entity_attachments: native_colliders::EntityMaps,
-    /// What changed in entities' colliders this tick, for the players who track them.
-    collider_changes: Vec<native_colliders::ColliderChange>,
     collider_placements: native_colliders::Placements,
     collider_histories: native_colliders::Histories,
-    entity_initialization: entity_initialization::EntityInitialization,
     /// Typed per-level membership follows dimensions, not the temporary world swap.
     attachment_indexes: attachment_index::Indexes,
     /// Connected to a server: the world comes from the network (game/network/remote/mod.rs).
@@ -4192,308 +3572,44 @@ struct Game<'a> {
     pending_client_tasks: std::collections::VecDeque<sunrise_client::net::ClientTask>,
     /// The current connection came from Realms (retained for reconnect).
     realm_session: bool,
-    /// The server this window connected to last over the network: kept while something may
-    /// connect there again (game/network/remote/connection.rs).
-    last_connection: Option<sunrise_hooks::connection::Server>,
-    /// A connection over the network is open: started, not yet closed (one `Hooks::left` or
-    /// `Hooks::ended` each).
-    connection_open: bool,
-    /// The crates' answer to the last connection's end, until the Disconnected screen shows it.
-    pending_retry: Option<sunrise_hooks::connection::Retry>,
-    /// A connection the Disconnected screen makes on its next frame, as that answer asked.
-    retry_due: Option<sunrise_hooks::connection::Server>,
     /// The current connection came from the LAN list (`ServerData.isLan`).
     lan_session: bool,
-    /// What the window's title last showed: its session part and the language (window_title.rs).
-    window_title: Option<(Option<&'static str>, u64)>,
     /// Replay playback (game/replay.rs), and Sunrise Studio's editor on it (game/studio.rs).
     pub(super) replay: replay::Replay,
-    pub(super) studio: studio::Studio,
     /// This world is open to the network (game/lan.rs).
     lan: Option<lan::LanHost>,
     /// Single player's server thread, which `remote` is connected to.
     integrated: Option<integrated::Integrated>,
-    /// The shapes of the open world's levels, from its dimension types.
-    level_shapes: sunrise_client::chunk::LevelShapes,
     /// This game is that server thread's (game/world/integrated.rs).
     serving: Option<integrated::Serving>,
-    /// `IntegratedServer`'s single-player profile, fixed when the server thread is created,
-    /// before its startup hooks (game/modding/native_singleplayer_owner.rs). None elsewhere.
-    singleplayer_profile: Option<native_singleplayer_owner::SingleplayerProfile>,
     /// The open world is shared behind an invite code (game/network/friends.rs).
     #[cfg(feature = "friends")]
     friends: Option<friends::Sharing>,
-    /// The Social Interactions screen and the players whose chat is hidden (game/network/social.rs).
-    social: social::Social,
-    world_options: Option<lan_screen::WorldOptions>,
-    /// Chat Settings opened from RestrictionsScreen: Done returns to World Options.
-    options_to_world_options: bool,
-    command_block_screen: Option<command_blocks::CommandBlockScreen>,
-    block_editor: Option<block_editor::BlockEditScreen>,
-    /// `StructureTemplateManager.structureRepository`: the templates in memory
-    /// by id, a miss included (game/administration/structure_blocks.rs).
-    structure_templates: HashMap<String, Option<structure_blocks::TemplateEntry>>,
-    structure_spawns: sunrise_client::mobs::spawn_selection::StructureSpawns,
-    /// The game tests read so far, by id (the test instance registry).
-    test_defs: std::cell::RefCell<HashMap<String, Option<test_instances::TestDef>>>,
-    /// `test_defs` holds the world's whole test instance registry
-    /// (`snapshot_test_defs`), so a miss is final.
-    test_defs_snapshot: bool,
-    /// `GameTestBlockHighlightRenderer.markers`: block, text, removal time.
-    test_highlights: HashMap<(i32, i32, i32), (String, std::time::Instant)>,
-    /// `GameTestTicker.SINGLETON`: the game tests running on this server.
-    game_tests: game_tests::GameTests,
-    /// KeyboardHandler's debug key state (game/interface/debug_keys.rs), the physical
-    /// keys held, and the debug renderers F3+B and F3+G switch on.
-    debug_keys: sunrise_client::debug_keys::DebugKeys,
-    /// The F3 overlay's charts (F3+2, F3+3).
-    debug_charts: sunrise_client::debug_chart::DebugCharts,
-    /// Startup declarations shared by F3 options, the overlay and renderer selection.
-    registered_debug_entries: std::sync::Arc<[sunrise_client::debug_entries::RegisteredDebugEntry]>,
-    /// `Minecraft.debugEntries`: what the overlay and the debug renderers
-    /// show (`debug-profile.json`, F3+F6).
-    debug_entries: sunrise_client::debug_entries::DebugEntries,
-    /// `DebugOptionsScreen` while it is open (game/interface/debug_options.rs).
-    debug_options: Option<debug_options::DebugOptionsUi>,
-    /// `DebugEntryMemory`'s readings (game/interface/debug_lines.rs).
-    memory_meter: std::cell::RefCell<sunrise_client::debug_overlay::MemoryMeter>,
-    /// The F3 overlay's vertices between rebuilds (`draw_debug_overlay_under`).
-    debug_paint: RefCell<sunrise_client::debug_overlay::PaintCache>,
-    /// The F3 overlay's last reading of the refresh rate, and when it was taken.
-    debug_refresh: std::cell::Cell<Option<(Instant, Option<u32>)>>,
-    /// `Minecraft.gpuUtilization`: the last timed frame's GPU time over its
-    /// CPU time, in percent.
-    gpu_utilization: f64,
-    /// GPU Culling's Auto mode: what it has decided from the frames' CPU and GPU times.
-    gpu_culling_auto: sunrise_client::autotune::GpuCullingAuto,
-    /// Dynamic Resolution: the scale it has the world at (`frame_autotune`).
-    dynamic_resolution: sunrise_client::dynamic_resolution::DynamicResolution,
-    /// The mobs `mob_run_geometry` drew last frame (`lastEntityRenderStateCount`).
-    rendered_mobs: std::cell::Cell<usize>,
-    /// Whether a native mod requested background blur for this frame (`apply_screen_blur`).
-    screen_blur_requested: std::cell::Cell<bool>,
-    /// `ServerChunkCache.lastSpawnState` of each level: its spawnable chunks
-    /// and each `MobCategory`'s count.
-    spawn_counts: HashMap<Dim, (i32, [i32; 8])>,
-    /// The natural spawning policy mods set on each level (`LevelRef::set_spawn_limits`,
-    /// `set_spawn_flags`); a level with none spawns as vanilla. Kept while the world is open.
-    spawn_policies: HashMap<mod_api::DimensionKey, natural_spawning::SpawnPolicy>,
     /// The passages mods registered in each level, and a client's copy (`native_passages.rs`).
     passages: native_passages::Passages,
-    /// PauseScreen.showPauseMenu (false after F3+Escape).
-    pause_menu: bool,
-    pause_focus: Option<u8>,
-    death_focus: Option<u8>,
-    /// The screen ([`Game::key_screen`]) the menu focus belongs to. Another
-    /// screen in front drops it, as `Gui.setScreen` drops the focus of the
-    /// screen it leaves (`Screen.clearFocus`).
-    focus_screen: u64,
     /// MultiPlayerGameMode.previousLocalPlayerMode (F3+N goes back to it).
     previous_mode: Option<sunrise_client::command::args::GameMode>,
-    gamemode_switcher: Option<sunrise_client::game_mode_switcher::GameModeSwitcher>,
     /// The system clipboard (`KeyboardHandler.clipboardManager`).
     clipboard: sunrise_client::clipboard::SystemClipboard,
-    /// The game is handling a key, mouse or typed-text event, from the window or the
-    /// control socket: the only time a mod reaches the clipboard (`with_user_input`).
-    user_input: std::cell::Cell<bool>,
-    /// Select All in the append-only text fields.
-    text_selection: sunrise_client::clipboard::AppendSelection,
-    /// The client loop consumes a mod's quit request outside the calling hook.
-    client_quit: std::cell::Cell<saving::ClientQuit>,
-    /// The world was saved for the application ending (`save_for_exit`).
-    saved_for_exit: bool,
     pending_save: Option<saving::ClosingSave>,
-    /// Scheduled end of the server tick (`MinecraftServer.haveTime`).
-    server_tick_deadline: Option<Instant>,
-    /// The last world frame reached the swap chain. A window the compositor
-    /// stops showing gets no frames, and the event loop must not spin on it.
-    frame_drawn: bool,
-    /// The world list's icon in progress (`GameRenderer.tryTakeScreenshotIfNeeded`):
-    /// `None` without a local world, or once the save has its icon.png.
-    world_icon: Option<WorldIcon>,
-    /// The block a guest is acting on (game/network/lan_actions/interaction.rs).
-    forced_hit: Option<Hit>,
-    /// Non-window simulation's tick-local block ray. Windows use client_pick.
-    tick_hit: std::cell::Cell<Option<Option<Hit>>>,
-    /// Non-window simulation's tick-local mob ray, including the held attack range.
-    tick_mob: Option<Option<(usize, f64, [f64; 3])>>,
     /// `Player.entityInteractionRange` and `blockInteractionRange`, refreshed
     /// each tick from the attribute (a server's reach modifier, creative's
     /// +2): the pick helpers' `&self` reach.
     entity_reach: f64,
     block_reach: f64,
-    client_pick: native_hooks::ClientPick,
-    /// The part of a right click a guest's packet asks for (game/network/lan_actions/interaction.rs).
-    guest_use: Option<GuestUse>,
-    /// The last `use_hand` that ended the click did so with `FAIL`, which
-    /// does not consume the action (handleUseItemOn's ANY_BLOCK_USE).
-    use_failed: bool,
-    block_use_original: Vec<(Hand, Option<ItemStack>)>,
-    /// Level events of this tick for the guests, with their excluded source.
-    lan_events: Vec<QueuedLevelEvent>,
-    /// Jukebox level events 1010 (song name) and 1011 (`None`) for the guests;
-    /// the song's network id is only known once the hub is in hand.
-    lan_songs: Vec<([i32; 3], Option<String>)>,
-    lan_cushion_breaks: Vec<(sunrise_world::registry::BlockStateId, [f64; 3])>,
-    /// Block events (position, b0, b1, state) and entity events (id, event) for the guests.
-    lan_block_events: Vec<([i32; 3], i32, i32, u32)>,
-    lan_entity_events: Vec<(i32, i8)>,
-    /// Successful crits (attacking guest, hit entity), queued while the hub is taken.
-    lan_critical_hits: Vec<(Option<u32>, i32, bool)>,
-    /// Spear stabs that landed (the stabbing guest), queued while the hub is
-    /// taken: `broadcastEntityEvent(player, 2)`.
-    lan_kinetic_hits: Vec<Option<u32>>,
-    /// `LivingEntity.recentKineticEnemies`: when each player (a guest, or the
-    /// window's own) last stabbed each entity this use.
-    stabbed: HashMap<(Option<u32>, u32), i64>,
-    /// The other players the acting player's spear can reach this turn,
-    /// taken from the hub before it (`spear_players`).
-    stab_players: Vec<spear_players::StabPlayer>,
-    /// Spear stabs on players worked out in a guest's turn, landed once the
-    /// hub is back (`land_player_stabs`).
-    player_stabs: Vec<spear_players::StabBatch>,
-    /// The movement a guest's client reported this tick
-    /// (`ServerPlayer.getKnownMovement`), for their turn.
-    known_movement: Vec3,
-    /// `LivingEntity.lastKineticHitFeedbackTime` of the entities that felt a
-    /// spear's hit (`spear::OWN` is this window's player), in game time.
-    kinetic_feedback: HashMap<i32, i64>,
-    /// Global level events for every guest (`ServerLevel.globalLevelEvent`), with their level.
-    lan_global_events: Vec<(&'static str, i32, [i32; 3], i32)>,
-    /// `ContainerOpenersCounter`: how many players (the host and the guests)
-    /// have each chest open.
-    lid_openers: HashMap<(i32, i32, i32), i32>,
-    lan_acting: Option<u32>,
-    /// A mod asked for the command trees again (`native_refresh_commands`):
-    /// the next server tick asks every mod for its commands and resends them.
-    native_commands: native_server::NativeCommandState,
-    /// The abilities of the server player whose turn it is (`as_guest`): their record's
-    /// copy, which the turn reads and writes and the put-back at the end of `guest_turn` stores. None outside a turn.
-    acting_abilities: Option<sunrise_client::lan::abilities::PlayerAbilities>,
-    /// Other players in the current guest turn, including borrowed ancestor bodies.
-    lan_building_boxes: building_players::BuildingPlayers,
-    /// A guest's `/save-all`: saved once their turn ends (`run_guest_command`),
-    /// when their own state is back in their record.
-    save_after_guest_turn: bool,
-    /// Guests whose records are displaced by nested player swaps, outer first.
-    lan_guest_swaps: Vec<u32>,
-    /// Bodies and their statistics displaced by guest turns, outer first.
-    lan_displaced_players: Vec<lan_actions::DisplacedPlayer>,
-    /// Connections whose turn a panic interrupted this tick: the turn helpers record the
-    /// player before re-raising, the end-of-turn path records it before its callbacks run and
-    /// clears it after a clean put-back. Cleared at the start of every server tick; the crash
-    /// save leaves these players' files as last saved (`server_lifecycle`).
-    interrupted_turns: Vec<u32>,
-    /// What teardown decided about the interrupted turns, for the writes after it.
-    crash_save: server_lifecycle::CrashSave,
-    /// Ender chests a mod opened for a guest inside that guest's turn
-    /// (`player_open_ender_chest`), by connection, with their titles: opened as the turn
-    /// ends, once the guest's own ender chest is back in their record.
-    lan_ender_menus: Vec<(u32, sunrise_core::nbt::Tag)>,
     /// Live attachments and original snapshots retained during player replacement.
     player_state: original_player::PlayerState,
-    /// The block the acting player is breaking (`break_block`): its destroy
-    /// event, and the ones before it, are the player's own (`Level.levelEvent`
-    /// with the player excluded); the events after it are not.
-    lan_break_pos: Option<[i32; 3]>,
-    /// Where a player's break puts the block's own drops instead of popping
-    /// them (`PlayerRef::destroy_block` with `into_inventory`).
-    break_collect: Option<Vec<ItemStack>>,
-    /// The name of the guest `lan_acting` acts for (`Player.getName`).
-    lan_acting_name: Option<String>,
-    /// Their UUID (`Player.getUUID`).
-    lan_acting_uuid: Option<u128>,
-    /// Where the mods refused to prime TNT: the sound and game event the level
-    /// queued right after the prime are dropped (`prime_tnt_event`).
-    tnt_refused: Option<BlockPos>,
-    /// Their permission level: an op's above 0 (`PlayerList.isOp`).
-    lan_acting_permission: Option<u8>,
-    /// The spawn protection radius that holds the acting guest back
-    /// (`DedicatedServer.isUnderSpawnProtection` before the position test):
-    /// None for an operator, without operators, or off a dedicated server.
-    lan_acting_spawn_protection: Option<i32>,
-    /// Their entity id, which the hub (often taken out of `lan` while they
-    /// act) would otherwise have to be asked for.
-    lan_acting_entity: Option<u32>,
-    /// Whether the player currently swapped into the game is connectionless.
-    lan_acting_fake: bool,
-    /// A fake player's `perform_action` in progress, and what it refused.
-    fake_action: std::sync::Arc<native_server::FakeAction>,
-    /// Command feedback to forward to a guest.
-    chat_capture: Option<Vec<sunrise_client::text::Text>>,
-    /// Packets for the guest acting now, sent once its action returns.
-    guest_packets: Vec<sunrise_protocol::packets::play::Clientbound>,
-    /// The acting guest's cooldowns, as (item, ticks): their packet needs the
-    /// hub's item registry, which the guest's turn does not hold.
-    guest_cooldowns: Vec<(Arc<str>, i32)>,
-    /// The acting guest's own entity events (`ServerPlayer.connection.send`),
-    /// sent with their entity id, which the guest's turn does not hold.
-    guest_entity_events: Vec<i8>,
-    /// The acting guest's equipment breaks (`onEquippedItemBroken`'s entity
-    /// events), broadcast with their entity id once their turn ends.
-    guest_equipment_breaks: Vec<i8>,
-    /// Block sounds queued by the acting guest, excluding that guest.
-    guest_block_sounds: Vec<(String, [f64; 3], f32, f32)>,
-    /// `Player.playSound` of the acting guest (event, position, volume,
-    /// pitch): `level.playSound(player, ...)` leaves the guest out, whose
-    /// own client plays it.
-    guest_player_sounds: Vec<(String, [f64; 3], f32, f32)>,
-    /// Sounds bound to an entity this tick, for the players (`game/interface/level_sounds.rs`).
-    bound_sounds: Vec<level_sounds::BoundSound>,
-    /// `broadcastToAdmins` lines for the other operators that a command queued,
-    /// sent once it returns (`send_admin_feedback`), each with the guest whose
-    /// command it was (`commandSource() != source`): None for a block, a
-    /// minecart, the console or the host.
-    admin_feedback: Vec<(sunrise_client::text::Text, Option<u32>)>,
-    /// The server console is running a command: whether its feedback goes to
-    /// the operators (`DedicatedServer.shouldInformAdmins`,
-    /// `broadcast-console-to-ops`).
-    console_broadcast: Option<bool>,
-    /// The command the console is running came over RCON: its source is named `Rcon`
-    /// (`RconConsoleSource.createCommandSourceStack`), not `Server`.
-    rcon_source: bool,
-    /// A dedicated server's operator, whitelist and ban lists, for `/op`,
-    /// `/ban` and friends (`DedicatedPlayerList`).
-    server_lists: Option<std::sync::Arc<std::sync::Mutex<dedicated::Lists>>>,
-    /// State of `/spectate`, `/posteffect`, `/debug`, `/waypoint` and friends.
-    cmds: commands::extra::CommandExtras,
     /// The retained server reload listeners of the last successful reload.
     reload_resources: mod_api::RetainedListeners,
     ui: chat::UiState,
-    combat: combat::CombatTracker,
-    /// Each guest's own `CombatTracker`, out of `combat` between turns.
-    guest_combat: std::collections::HashMap<u32, combat::CombatTracker>,
     mount: mounts::MountState,
     stats: stats::Stats,
     score: scoreboard::ScoreState,
-    fns: functions::FnState,
-    bosses: bossbars::BossState,
-    /// `Hud.bossOverlay`: the bars this window is showing.
-    boss_overlay: sunrise_client::boss_overlay::BossOverlay,
-    exec: commands::execute::ExecState,
-    rand_sequences: sunrise_client::random_sequences::RandomSequences,
-    /// `BrushableBlockEntity`'s brush counts of the blocks being brushed.
-    brushing: brush::Brushing,
     border: sunrise_client::worldborder::WorldBorder,
-    /// `WorldBorderRenderer` and its render state.
-    border_renderer: sunrise_client::border_render::BorderRenderer,
-    /// The camera's 16-block section when the wall was last invalidated.
-    border_section: Option<[i32; 3]>,
-    border_state: sunrise_client::border_render::BorderRenderState,
-    /// `Hud.tabList`: the player list's header, footer and heart states.
-    tab_list: sunrise_client::tab_list::TabList,
-    subtitles: subtitle_hud::SubtitleState,
     adv: advancements::AdvState,
-    restore_player_state: bool,
-    stats_ui: stats_screen::StatsUi,
-    adv_ui: advancements_screen::AdvUi,
-    /// The Server Links screens' state (game/network/server_links.rs).
-    links_ui: server_links::LinksUi,
-    camera_type: sunrise_client::camera::CameraType,
-    requested_camera_type: std::cell::Cell<Option<sunrise_client::camera::CameraType>>,
     fangs: fangs::FangState,
-    /// The local player as a model (third person, the inventory).
-    player_model: Option<Mob>,
+    pub(in crate::game) server: ServerState,
+    pub(in crate::game) client: ClientState,
 }
 /// The open world's dimensions past vanilla's three. One per process, as a window
 /// and its server thread name the same dimensions.
@@ -13723,38 +12839,178 @@ impl<'a> Game<'a> {
         );
         streaming.paused = true;
         let standalone_geometry = native_block_entity_draw::StandaloneGeometry::new(&pack, &gui);
-        let mut game = Game {
+        let server = ServerState {
             structure_spawns: sunrise_client::mobs::spawn_selection::StructureSpawns::load(
                 &options.resources,
             ),
-            world_biomes: None,
-            world_biomes_base: None,
-            res: res.clone(),
-            rest_loader: None,
+            data_map_registries: Vec::new(),
+            craft_table: None,
+            open_container_slots: None,
+            destroy_delay: 0,
+            world_adopted: false,
+            startup_ticket_restore_pending: false,
+            paused_mob_hurt: None,
+            next_entity: 0,
+            ticked_entities_through: u32::MAX,
+            contact_drops: 0..0,
+            lectern_pulses: Vec::new(),
+            spawn_origin: None,
+            spawn_hook_fired: false,
+            spawn_hook_cancelled: false,
+            spawn_spiral: Default::default(),
+            player_spawn: None,
+            spawn_wait: Vec::new(),
+            raiding: Default::default(),
+            attack_ticks: 100,
+            attack_item: None,
+            last_hurt_by_player: HashMap::new(),
+            lead_killers: HashMap::new(),
+            love_cause: HashMap::new(),
+            died: Default::default(),
+            crossbow_sounds: [false; 2],
+            shield_cooldown: 0,
+            command_source: None,
+            native_command_filter: false,
+            // `computeNextAutosaveInterval` at the clock's 20 ticks a second.
+            ticks_until_autosave: 6000,
+            applied_modifiers: Vec::new(),
+            xp_delay: 0,
+            ordered: Default::default(),
+            level_up_sound: Default::default(),
+            predicted_swings: 0,
+            player_beds: Vec::new(),
+            sleep_seen: (0, 0),
+            world_root: PathBuf::new(),
+            carrier_retention_snapshot: Vec::new(),
+            owner_migration: None,
+            world_debug: false,
+            server_trips: Vec::new(),
+            level_teleports: Vec::new(),
+            teleport_notes: Vec::new(),
+            level_pass: Default::default(),
+            respawn_config: None,
+            end_portal_travel: false,
+            tick_scratch: TickScratch::default(),
+            tick_chunks: Default::default(),
+            tickets: Default::default(),
+            random_tick_sections: Default::default(),
+            location_armor: Default::default(),
+            leash_boats: Vec::new(),
+            watched_vehicles: Vec::new(),
+            fight: dragon::Fight::default(),
+            knot_ids: Default::default(),
+            broken_knots: Vec::new(),
+            riding_order: 0,
+            started_riding: Vec::new(),
+            rotation_forced: false,
+            pending_vehicle: None,
+            ender_items: vec![None; 27],
+            ender_open: None,
+            spill: Default::default(),
+            creaking: Default::default(),
+            spawn_scratch: Default::default(),
+            hoppers: HashMap::new(),
+            dispense_source: None,
+            slot_changed_active: Vec::new(),
+            contents_changing: Vec::new(),
+            mod_container_viewers: HashMap::new(),
+            item_columns: None,
+            pickup_columns: None,
+            pass_mobs: None,
+            lent_mobs: Default::default(),
+            held_out: Vec::with_capacity(4),
+            vehicle_mobs: Default::default(),
+            missing_professions: Default::default(),
+            collider_changes: Vec::new(),
+            entity_initialization: Default::default(),
+            level_shapes: Default::default(),
+            singleplayer_profile: None,
+            structure_templates: HashMap::new(),
+            test_defs: std::cell::RefCell::new(HashMap::new()),
+            test_defs_snapshot: false,
+            game_tests: game_tests::GameTests::default(),
+            spawn_counts: HashMap::new(),
+            spawn_policies: HashMap::new(),
+            server_tick_deadline: None,
+            forced_hit: None,
+            tick_hit: Default::default(),
+            tick_mob: None,
+            guest_use: None,
+            use_failed: false,
+            block_use_original: Vec::new(),
+            lan_events: Vec::new(),
+            lan_songs: Vec::new(),
+            lan_cushion_breaks: Vec::new(),
+            lan_block_events: Vec::new(),
+            lan_entity_events: Vec::new(),
+            lan_critical_hits: Vec::new(),
+            lan_kinetic_hits: Vec::new(),
+            stabbed: HashMap::new(),
+            stab_players: Vec::new(),
+            player_stabs: Vec::new(),
+            known_movement: Vec3::ZERO,
+            kinetic_feedback: HashMap::new(),
+            lan_global_events: Vec::new(),
+            lid_openers: HashMap::new(),
+            lan_acting: None,
+            acting_abilities: None,
+            native_commands: Default::default(),
+            lan_building_boxes: Default::default(),
+            save_after_guest_turn: false,
+            lan_guest_swaps: Vec::new(),
+            lan_displaced_players: Vec::new(),
+            interrupted_turns: Vec::new(),
+            crash_save: Default::default(),
+            lan_ender_menus: Vec::new(),
+            lan_break_pos: None,
+            break_collect: None,
+            guest_packets: Vec::new(),
+            guest_cooldowns: Vec::new(),
+            guest_entity_events: Vec::new(),
+            guest_equipment_breaks: Vec::new(),
+            guest_block_sounds: Vec::new(),
+            guest_player_sounds: Vec::new(),
+            bound_sounds: Vec::new(),
+            lan_acting_name: None,
+            lan_acting_uuid: None,
+            tnt_refused: None,
+            lan_acting_permission: None,
+            lan_acting_spawn_protection: None,
+            lan_acting_entity: None,
+            lan_acting_fake: false,
+            fake_action: Default::default(),
+            chat_capture: None,
+            admin_feedback: Vec::new(),
+            console_broadcast: None,
+            rcon_source: false,
+            server_lists: None,
+            world_tables: None,
+            server_loot: Default::default(),
+            cmds: Default::default(),
+            combat: Default::default(),
+            guest_combat: Default::default(),
+            fns: Default::default(),
+            bosses: Default::default(),
+            exec: Default::default(),
+            rand_sequences: Default::default(),
+            brushing: Default::default(),
+            restore_player_state: true,
+        };
+        let client = ClientState {
             pending_entry: None,
             debug_density: RefCell::default(),
             pending_pack_reload: false,
             frame_attempted: render_settings::FrameAttempt::default(),
             pack_folder: None,
-            pack_reload: None,
             reload_overlay: None,
-            server_packs: Default::default(),
             client_reports: Arc::default(),
             link_prompt: None,
             command_prompt: None,
             code_of_conduct: None,
             dialogs: Default::default(),
-            integrated_starting: None,
             world_renderer_ready: false,
-            collision: res.collision(),
-            motion: res.motion(),
-            health_resources: res.motion().health.clone(),
-            damage_tag_generation: 1,
-            data_map_registries: Vec::new(),
             pending_initial_models: None,
             stitching_block_atlas: None,
-            pack,
-            gui,
             instance_groups: Default::default(),
             standalone_geometry,
             fog: Default::default(),
@@ -13762,32 +13018,15 @@ impl<'a> Game<'a> {
             item_activation: Default::default(),
             weather_parameters: Default::default(),
             panorama_rotation: Default::default(),
-            world,
-            streaming,
-            lod: None,
             lod_source_attempted: false,
             lod_observe: Default::default(),
             lod_level: None,
             lod_blue_map: None,
             lod_covered_at: None,
             view_arrival: Default::default(),
-            options,
-            player: None,
             drop_spam_throttler: Default::default(),
-            spawn: None,
-            clock: FixedStep::default(),
-            previous_position: Vec3::ZERO,
             rope_rot_old: (0.0, 10.0),
-            eye: 1.62,
             previous_eye: 1.62,
-            yaw: look.map_or(level.rotation[0], |l| l.0),
-            pitch: look.map_or(level.rotation[1], |l| l.1),
-            inventory,
-            selected: 0,
-            carried: None,
-            craft_grid: vec![None; 9],
-            craft_size: 2,
-            craft_table: None,
             inv_drag: None,
             container_buttons: HashSet::new(),
             container_owned_up: false,
@@ -13797,21 +13036,7 @@ impl<'a> Game<'a> {
             inv_clicks: Default::default(),
             last_inv_click: None,
             last_quick_moved: None,
-            container: None,
-            open_container_slots: None,
-            station: None,
-            potions: Default::default(),
-            scratch_slot: None,
-            mining: None,
             destroying: HashMap::new(),
-            destroy_delay: 0,
-            use_delay: 0,
-            creative,
-            mode: if creative {
-                sunrise_client::command::args::GameMode::Creative
-            } else {
-                sunrise_client::command::args::GameMode::Survival
-            },
             keys: Default::default(),
             physical_keys: HashSet::new(),
             rejected_keys: HashSet::new(),
@@ -13842,15 +13067,11 @@ impl<'a> Game<'a> {
             smooth_camera: false,
             vanilla_mappings: Default::default(),
             was_playing: false,
-            pause: false,
             debug: false,
             gpu_passes: false,
             gpu_pass_detail: false,
             screen: Screen::Playing,
-            screen_state: screen_build::ScreenState::default(),
-            window: None,
             resize_state: None,
-            renderer: None,
             last_device_recovery: None,
             entity_vertices: Vec::new(),
             dynamic_lights: Vec::new(),
@@ -13871,9 +13092,7 @@ impl<'a> Game<'a> {
             health_hud: hud_layout::HealthHud::default(),
             started: now,
             spectator_gui: Default::default(),
-            previous: now,
             last_input: now,
-            pad: Default::default(),
             frames: 0,
             glint_frame: Default::default(),
             kept_block_entities: Default::default(),
@@ -13883,7 +13102,6 @@ impl<'a> Game<'a> {
             prepared_model_draws: Default::default(),
             model_copy_order: Vec::new(),
             world_geometry: Some(Default::default()),
-            debug_renderers: Vec::new(),
             debug_renderers_version: None,
             hud_layer_next: None,
             mod_view_distances: Default::default(),
@@ -13893,23 +13111,9 @@ impl<'a> Game<'a> {
             fps: 0.0,
             fps_frames: 0,
             fps_at: now,
-            ticks: 0,
             gui_ticks: 0,
             texture_ticks: 0,
-            error: None,
             message: None,
-            save,
-            level,
-            player_autosaves: Default::default(),
-            session_lock: None,
-            world_adopted: false,
-            startup_ticket_restore_pending: false,
-            audio,
-            loop_context: Arc::new(res.core.item_data.context().loop_context(loop_side, [])),
-            tick: sunrise_client::parallel::TickThread::mint(),
-            setting_overrides: Default::default(),
-            damage_hooks: native_hooks::DAMAGE_HOOKS,
-            paused_mob_hurt: None,
             music: {
                 // The manager starts with the saved option (MusicManager's constructor).
                 let mut music = sunrise_client::music::MusicManager::default();
@@ -13931,135 +13135,45 @@ impl<'a> Game<'a> {
             was_fall_flying: false,
             bee_sounds: HashMap::new(),
             guardian_look_scratch: Vec::new(),
-            dropped: Default::default(),
-            next_entity: 0,
-            ticked_entities_through: u32::MAX,
-            contact_drops: 0..0,
-            particles,
             explicit_particle_quads: Default::default(),
             pickups: Default::default(),
             sign_edit: None,
             book: None,
             book_last_click: None,
-            lectern_pulses: Vec::new(),
             loading_progress: 0.0,
-            creation_job: None,
             loading_progress_at: None,
             moving_pistons_stale: false,
-            spawn_origin: None,
-            spawn_hook_fired: false,
-            spawn_hook_cancelled: false,
-            spawn_spiral: Default::default(),
-            player_spawn: None,
-            spawn_wait: Vec::new(),
-            mobs: Default::default(),
-            mob_index: Default::default(),
-            creatures: Default::default(),
-            sculk: Default::default(),
-            raiding: Default::default(),
-            attack_ticks: 100,
-            attack_item: None,
-            last_hurt_by_player: HashMap::new(),
-            lead_killers: HashMap::new(),
-            love_cause: HashMap::new(),
-            died: Default::default(),
-            be_anims: {
-                let mut anims = sunrise_client::block_entity_anim::BlockEntityAnims::default();
-                anims.classify(registry);
-                anims
-            },
-            using: None,
-            use_duration: 0,
-            use_start: Default::default(),
-            crossbow_sounds: [false; 2],
             view: Default::default(),
             limiter: sunrise_client::window::FramerateLimiter::new(0),
             frame_clock: Default::default(),
             scope_scale: 0.5,
             frame_ticks: 0.0,
-            title: None,
-            armor: [None, None, None, None],
-            offhand: None,
-            equipment: Default::default(),
             hotbar_pop: [0; 10],
-            hand: Hand::Main,
-            shield_cooldown: 0,
-            cooldowns: Default::default(),
-            command_source: None,
-            native_command_filter: false,
             titles: Default::default(),
             tool_highlight: Default::default(),
             saving_indicator: Default::default(),
-            autosaving: false,
-            // `computeNextAutosaveInterval` at the clock's 20 ticks a second.
-            ticks_until_autosave: 6000,
-            applied_modifiers: Vec::new(),
-            experience: Experience::default(),
-            orbs: Default::default(),
-            xp_delay: 0,
-            ordered: Default::default(),
-            level_up_sound: Default::default(),
-            swing: Default::default(),
-            swings_started: 0,
-            predicted_swings: 0,
             heights: Default::default(),
             sway: Default::default(),
             visible_hands: [(0, None), (0, None)],
             hands_replaced: [false; 2],
-            clicks: Default::default(),
             hand_strength: Default::default(),
-            settings,
             look: Default::default(),
             tutorial,
             toast_manager: Default::default(),
             narration: Default::default(),
             options_from_title: false,
             avatar: Default::default(),
-            flash: 0,
             custom_sky: Default::default(),
             rain_sound_time: 0,
             lightning_seen: [0; 2],
-            sleeping: None,
-            sleep_timer: 0,
-            player_beds: Vec::new(),
-            sleep_seen: (0, 0),
-            dim: Dim::Overworld,
-            world_root: PathBuf::new(),
-            carrier_retention_snapshot: Vec::new(),
-            owner_migration: None,
-            world_flat: false,
-            world_debug: false,
-            server_trips: Vec::new(),
-            level_teleports: Vec::new(),
-            teleport_notes: Vec::new(),
-            levels: Default::default(),
-            level_pass: Default::default(),
-            portals: Default::default(),
-            respawn_config: None,
-            end_portal_travel: false,
             win: None,
             demo_intro: None,
-            end: Default::default(),
-            block_ticks: Ticks::new(0),
-            tick_scratch: TickScratch::default(),
-            tick_chunks: Default::default(),
-            tickets: Default::default(),
-            random_tick_sections: Default::default(),
-            level_events: Vec::new(),
             falling_vertices: Default::default(),
-            falling: Default::default(),
             transient_blocks: Default::default(),
-            paintings: Default::default(),
-            painting_variants: prepared.painting_variants,
-            item_frames: Default::default(),
             frame_model: prepared.frame_model,
             glow_frame_model: prepared.glow_frame_model,
             map_frame_model: prepared.map_frame_model,
             glow_map_frame_model: prepared.glow_map_frame_model,
-            armor_stands: Default::default(),
-            location_armor: Default::default(),
-            cushions: Default::default(),
-            others: Default::default(),
             armor_stand_assets: prepared.armor_stand_assets,
             waypoint_styles: prepared.waypoint_styles,
             waypoints: Default::default(),
@@ -14073,21 +13187,10 @@ impl<'a> Game<'a> {
             spectated_post_effect: None,
             spectated_post_effect_active: false,
             experience_display: Default::default(),
-            boats: Default::default(),
-            leash_boats: Vec::new(),
             boat_models: prepared.boat_models,
             crystal_model: prepared.crystal_model,
             cushion_model: prepared.cushion_model,
             entity_models: prepared.entity_models,
-            carts: Default::default(),
-            watched_vehicles: Vec::new(),
-            jukebox_sounds: HashMap::new(),
-            bolts: Default::default(),
-            maps: maps::Maps::default(),
-            fight: dragon::Fight::default(),
-            dragon: Default::default(),
-            crystals: Default::default(),
-            breath_clouds: Default::default(),
             dragon_model: prepared.dragon_model,
             map_patches: Vec::new(),
             name_tag_layouts: Default::default(),
@@ -14099,144 +13202,54 @@ impl<'a> Game<'a> {
             display_inline_profiles_scratch: Vec::new(),
             interactions: Default::default(),
             remote_knots: Default::default(),
-            knot_ids: Default::default(),
-            broken_knots: Vec::new(),
             text_display_vertices: 0,
-            skin_downloads: RefCell::new({
-                let mut downloads = sunrise_client::skins::Downloader::new(
-                    std::env::current_dir()
-                        .unwrap_or_default()
-                        .join("assets/skins"),
-                );
-                downloads.set_resource_root(resource_source.clone());
-                downloads
-            }),
-            skin_profiles: RefCell::new(sunrise_client::skins::Resolver::new()),
             skin_slots: sunrise_client::skins::SkinSlots::new(sunrise_client::hud::SKIN_SLOTS),
             trim_slots: Default::default(),
             cart_models: prepared.cart_models,
-            riding: None,
-            riding_order: 0,
-            started_riding: Vec::new(),
-            rotation_forced: false,
-            posed_rider: None,
-            pending_vehicle: None,
-            ender_items: vec![None; 27],
-            ender_open: None,
-            pending: Default::default(),
-            spill: Default::default(),
             recipe_ui: Default::default(),
             mount_menu: Default::default(),
-            hook: Default::default(),
             remote_hooks: Vec::new(),
-            tridents: Default::default(),
-            rockets: Default::default(),
-            ominous_spawners: Default::default(),
-            creaking: Default::default(),
             spawners: Default::default(),
-            spawn_scratch: Default::default(),
             trident_model: prepared.trident_model,
             arrow_model: prepared.arrow_model,
             bee_stinger_model: prepared.bee_stinger_model,
-            tnts: Default::default(),
-            hoppers: HashMap::new(),
-            transactions: Default::default(),
-            dispense_source: None,
-            slot_changed_active: Vec::new(),
-            contents_changing: Vec::new(),
-            mod_screen: None,
-            mod_container_viewers: HashMap::new(),
-            item_columns: None,
-            pickup_columns: None,
-            pass_mobs: None,
-            spawner_tick_positions: Vec::new(),
-            trial_spawner_tick_positions: Vec::new(),
-            loop_states: Default::default(),
             creative_screen: prepared.creative_screen,
             creative_search_named: None,
             creative_contents: Default::default(),
             creative_ignore_text: false,
-            control: None,
             agent_control_on: false,
             agent_last: None,
             frame_stats: Default::default(),
             alloc_mark: None,
-            perf: Default::default(),
-            pending_screenshot: None,
-            screenshot_sequence: None,
-            pending_render_capture: None,
-            pending_bench: None,
             flight: None,
             ui_wait: Default::default(),
-            events: Default::default(),
-            input_trace: Default::default(),
-            repro: Default::default(),
-            profile: profile_capture::Profile::new(slow_frame_ms),
             tick_script: tick_script::TickScript::from_env(),
-            agent: agent::Agent::default(),
             view_frustum: None,
             occlusion: Default::default(),
-            async_particle_culler: RefCell::new(Default::default()),
             pending_uploads: Vec::new(),
             pending_uploads_merge: Vec::new(),
             pending_uploads_order: None,
             upload_pace: Default::default(),
             extras: Default::default(),
             pvp: Default::default(),
-            mods: mod_sources,
-            mod_jobs: Default::default(),
-            recipe_tables: Default::default(),
             panel: Default::default(),
             native_shaders: Default::default(),
             client_item_use: None,
             mod_keys: Default::default(),
-            native_lifecycle: Default::default(),
-            resident_entities: Default::default(),
-            lent_mobs: Default::default(),
-            held_out: Vec::with_capacity(4),
-            native_configs: Default::default(),
-            native_net: Default::default(),
             native_mod_screen: None,
-            sky_darken_memo: Default::default(),
             water_plane_memo: Default::default(),
             water_plane_scan: Default::default(),
-            vehicle_mobs: Default::default(),
-            persist: Default::default(),
-            missing_professions: Default::default(),
-            entity_attachments: Default::default(),
-            collider_changes: Vec::new(),
-            collider_placements: Default::default(),
-            collider_histories: Default::default(),
-            entity_initialization: Default::default(),
-            attachment_indexes: Default::default(),
-            remote: None,
-            client_tasks: Default::default(),
-            pending_client_tasks: Default::default(),
-            realm_session: false,
             last_connection: None,
             connection_open: false,
             pending_retry: None,
             retry_due: None,
-            lan_session: false,
             window_title: None,
-            replay: Default::default(),
             studio: Default::default(),
-            lan: None,
-            integrated: None,
-            level_shapes: Default::default(),
-            serving: None,
-            singleplayer_profile: None,
             world_options: None,
             options_to_world_options: false,
             command_block_screen: None,
             block_editor: None,
-            structure_templates: HashMap::new(),
-            test_defs: std::cell::RefCell::new(HashMap::new()),
-            test_defs_snapshot: false,
             test_highlights: HashMap::new(),
-            game_tests: game_tests::GameTests::default(),
-            #[cfg(feature = "friends")]
-            friends: None,
             social: Default::default(),
             debug_keys: Default::default(),
             debug_charts: Default::default(),
@@ -14253,112 +13266,221 @@ impl<'a> Game<'a> {
             dynamic_resolution: Default::default(),
             rendered_mobs: Default::default(),
             screen_blur_requested: Default::default(),
-            spawn_counts: HashMap::new(),
-            spawn_policies: HashMap::new(),
-            passages: Default::default(),
             pause_menu: true,
             pause_focus: None,
             death_focus: None,
             focus_screen: 0,
-            previous_mode: None,
             gamemode_switcher: None,
-            clipboard: Default::default(),
             user_input: Default::default(),
             text_selection: Default::default(),
             client_quit: std::cell::Cell::new(saving::ClientQuit::Running),
             saved_for_exit: false,
-            pending_save: None,
-            server_tick_deadline: None,
             frame_drawn: true,
             world_icon: None,
-            forced_hit: None,
-            tick_hit: Default::default(),
-            tick_mob: None,
-            entity_reach: 3.0,
-            block_reach: 4.5,
             client_pick: Default::default(),
-            guest_use: None,
-            use_failed: false,
-            block_use_original: Vec::new(),
-            lan_events: Vec::new(),
-            lan_songs: Vec::new(),
-            lan_cushion_breaks: Vec::new(),
-            lan_block_events: Vec::new(),
-            lan_entity_events: Vec::new(),
-            lan_critical_hits: Vec::new(),
-            lan_kinetic_hits: Vec::new(),
-            stabbed: HashMap::new(),
-            stab_players: Vec::new(),
-            player_stabs: Vec::new(),
-            known_movement: Vec3::ZERO,
-            kinetic_feedback: HashMap::new(),
-            lan_global_events: Vec::new(),
-            lid_openers: HashMap::new(),
-            lan_acting: None,
-            acting_abilities: None,
-            native_commands: Default::default(),
-            lan_building_boxes: Default::default(),
-            save_after_guest_turn: false,
-            lan_guest_swaps: Vec::new(),
-            lan_displaced_players: Vec::new(),
-            interrupted_turns: Vec::new(),
-            crash_save: Default::default(),
-            lan_ender_menus: Vec::new(),
-            player_state: Default::default(),
-            lan_break_pos: None,
-            break_collect: None,
-            guest_packets: Vec::new(),
-            guest_cooldowns: Vec::new(),
-            guest_entity_events: Vec::new(),
-            guest_equipment_breaks: Vec::new(),
-            guest_block_sounds: Vec::new(),
-            guest_player_sounds: Vec::new(),
-            bound_sounds: Vec::new(),
-            lan_acting_name: None,
-            lan_acting_uuid: None,
-            tnt_refused: None,
-            lan_acting_permission: None,
-            lan_acting_spawn_protection: None,
-            lan_acting_entity: None,
-            lan_acting_fake: false,
-            fake_action: Default::default(),
-            chat_capture: None,
-            admin_feedback: Vec::new(),
-            console_broadcast: None,
-            rcon_source: false,
-            server_lists: None,
-            world_tables: None,
-            server_loot: Default::default(),
-            server_items: None,
-            cmds: Default::default(),
-            reload_resources: Default::default(),
-            ui: chat::UiState::new(),
-            combat: Default::default(),
-            guest_combat: Default::default(),
-            mount: Default::default(),
-            stats: Default::default(),
-            score: Default::default(),
-            fns: Default::default(),
-            bosses: Default::default(),
             boss_overlay: Default::default(),
-            exec: Default::default(),
-            rand_sequences: Default::default(),
-            brushing: Default::default(),
-            border: Default::default(),
             border_renderer: Default::default(),
             border_section: None,
             border_state: Default::default(),
             tab_list: Default::default(),
             subtitles: Default::default(),
-            adv: Default::default(),
-            restore_player_state: true,
             stats_ui: Default::default(),
             adv_ui: Default::default(),
             links_ui: Default::default(),
             camera_type: Default::default(),
             requested_camera_type: Default::default(),
-            fangs: Default::default(),
             player_model: None,
+        };
+        let mut game = Game {
+            world_biomes: None,
+            world_biomes_base: None,
+            res: res.clone(),
+            rest_loader: None,
+            pack_reload: None,
+            server_packs: Default::default(),
+            integrated_starting: None,
+            collision: res.collision(),
+            motion: res.motion(),
+            health_resources: res.motion().health.clone(),
+            damage_tag_generation: 1,
+            pack,
+            gui,
+            world,
+            streaming,
+            lod: None,
+            options,
+            player: None,
+            spawn: None,
+            clock: FixedStep::default(),
+            previous_position: Vec3::ZERO,
+            eye: 1.62,
+            yaw: look.map_or(level.rotation[0], |l| l.0),
+            pitch: look.map_or(level.rotation[1], |l| l.1),
+            inventory,
+            selected: 0,
+            carried: None,
+            craft_grid: vec![None; 9],
+            craft_size: 2,
+            container: None,
+            station: None,
+            potions: Default::default(),
+            scratch_slot: None,
+            mining: None,
+            use_delay: 0,
+            creative,
+            mode: if creative {
+                sunrise_client::command::args::GameMode::Creative
+            } else {
+                sunrise_client::command::args::GameMode::Survival
+            },
+            pause: false,
+            screen_state: screen_build::ScreenState::default(),
+            window: None,
+            renderer: None,
+            previous: now,
+            pad: Default::default(),
+            debug_renderers: Vec::new(),
+            ticks: 0,
+            error: None,
+            save,
+            level,
+            player_autosaves: Default::default(),
+            session_lock: None,
+            audio,
+            loop_context: Arc::new(res.core.item_data.context().loop_context(loop_side, [])),
+            tick: sunrise_client::parallel::TickThread::mint(),
+            setting_overrides: Default::default(),
+            damage_hooks: native_hooks::DAMAGE_HOOKS,
+            dropped: Default::default(),
+            particles,
+            creation_job: None,
+            mobs: Default::default(),
+            mob_index: Default::default(),
+            creatures: Default::default(),
+            sculk: Default::default(),
+            be_anims: {
+                let mut anims = sunrise_client::block_entity_anim::BlockEntityAnims::default();
+                anims.classify(registry);
+                anims
+            },
+            using: None,
+            use_duration: 0,
+            use_start: Default::default(),
+            title: None,
+            armor: [None, None, None, None],
+            offhand: None,
+            equipment: Default::default(),
+            hand: Hand::Main,
+            cooldowns: Default::default(),
+            autosaving: false,
+            experience: Experience::default(),
+            orbs: Default::default(),
+            swing: Default::default(),
+            swings_started: 0,
+            clicks: Default::default(),
+            settings,
+            flash: 0,
+            sleeping: None,
+            sleep_timer: 0,
+            dim: Dim::Overworld,
+            world_flat: false,
+            levels: Default::default(),
+            portals: Default::default(),
+            end: Default::default(),
+            block_ticks: Ticks::new(0),
+            level_events: Vec::new(),
+            falling: Default::default(),
+            paintings: Default::default(),
+            painting_variants: prepared.painting_variants,
+            item_frames: Default::default(),
+            armor_stands: Default::default(),
+            cushions: Default::default(),
+            others: Default::default(),
+            boats: Default::default(),
+            carts: Default::default(),
+            jukebox_sounds: HashMap::new(),
+            bolts: Default::default(),
+            maps: maps::Maps::default(),
+            dragon: Default::default(),
+            crystals: Default::default(),
+            breath_clouds: Default::default(),
+            skin_downloads: RefCell::new({
+                let mut downloads = sunrise_client::skins::Downloader::new(
+                    std::env::current_dir()
+                        .unwrap_or_default()
+                        .join("assets/skins"),
+                );
+                downloads.set_resource_root(resource_source.clone());
+                downloads
+            }),
+            skin_profiles: RefCell::new(sunrise_client::skins::Resolver::new()),
+            riding: None,
+            posed_rider: None,
+            pending: Default::default(),
+            hook: Default::default(),
+            tridents: Default::default(),
+            rockets: Default::default(),
+            ominous_spawners: Default::default(),
+            tnts: Default::default(),
+            transactions: Default::default(),
+            mod_screen: None,
+            spawner_tick_positions: Vec::new(),
+            trial_spawner_tick_positions: Vec::new(),
+            loop_states: Default::default(),
+            control: None,
+            perf: Default::default(),
+            pending_screenshot: None,
+            screenshot_sequence: None,
+            pending_render_capture: None,
+            pending_bench: None,
+            events: Default::default(),
+            input_trace: Default::default(),
+            repro: Default::default(),
+            profile: profile_capture::Profile::new(slow_frame_ms),
+            agent: agent::Agent::default(),
+            async_particle_culler: RefCell::new(Default::default()),
+            mods: mod_sources,
+            mod_jobs: Default::default(),
+            recipe_tables: Default::default(),
+            native_lifecycle: Default::default(),
+            resident_entities: Default::default(),
+            native_configs: Default::default(),
+            native_net: Default::default(),
+            sky_darken_memo: Default::default(),
+            persist: Default::default(),
+            entity_attachments: Default::default(),
+            collider_placements: Default::default(),
+            collider_histories: Default::default(),
+            attachment_indexes: Default::default(),
+            remote: None,
+            client_tasks: Default::default(),
+            pending_client_tasks: Default::default(),
+            realm_session: false,
+            lan_session: false,
+            replay: Default::default(),
+            lan: None,
+            integrated: None,
+            serving: None,
+            #[cfg(feature = "friends")]
+            friends: None,
+            passages: Default::default(),
+            previous_mode: None,
+            clipboard: Default::default(),
+            pending_save: None,
+            entity_reach: 3.0,
+            block_reach: 4.5,
+            player_state: Default::default(),
+            server_items: None,
+            reload_resources: Default::default(),
+            ui: chat::UiState::new(),
+            mount: Default::default(),
+            stats: Default::default(),
+            score: Default::default(),
+            border: Default::default(),
+            adv: Default::default(),
+            fangs: Default::default(),
+            server,
+            client,
         };
         game.reset_entity_residency();
         Ok(game)
