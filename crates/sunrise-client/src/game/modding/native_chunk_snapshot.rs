@@ -10,7 +10,7 @@ use mod_api::{BlockState, ChunkRef, ChunkSnapshot, Heightmap};
 use std::sync::Arc;
 use sunrise_client::assets::Properties;
 use sunrise_client::biome::Biomes;
-use sunrise_client::chunk::{Chunk, Light, Section};
+use sunrise_client::chunk::{Chunk, LevelShape, Light, Section};
 use sunrise_world::heightmap::{HeightmapState, HeightmapType};
 use sunrise_world::registry::BlockStateId;
 use sunrise_world::worldgen::terrain::TerrainBlockStates;
@@ -26,19 +26,30 @@ pub(in crate::game) struct EngineChunkSnapshot {
 }
 
 impl EngineChunkSnapshot {
-    /// Wrap a chunk's copy-on-write `Arc<Section>` list into an immutable [`ChunkSnapshot`].
-    /// Shared by live chunk capture (G1), saved chunk reads (G3), and detached generation (G4).
+    /// Wrap a chunk's copy-on-write `Arc<Section>` list into an immutable [`ChunkSnapshot`],
+    /// clipped to the level's actual `LevelShape` build height rather than the widened internal
+    /// `ColumnLayout`.
     pub(in crate::game) fn from_chunk(
         chunk: &Chunk,
+        shape: LevelShape,
         states: Arc<Index>,
         biomes: Arc<Biomes>,
         properties: Properties,
         has_light: bool,
     ) -> ChunkSnapshot {
+        let start = ((shape.min_y - chunk.min_y()) >> 4).max(0) as usize;
+        let end = start
+            .saturating_add(shape.section_count())
+            .min(chunk.sections.len());
+        let sections: Arc<[Arc<Section>]> = if start <= end {
+            chunk.sections[start..end].iter().cloned().collect()
+        } else {
+            Arc::from([])
+        };
         ChunkSnapshot::from_backend(Arc::new(Self {
             pos: [chunk.x, chunk.z],
-            min_y: chunk.min_y(),
-            sections: chunk.sections.iter().cloned().collect(),
+            min_y: shape.min_y,
+            sections,
             states,
             biomes,
             properties,
@@ -58,13 +69,13 @@ impl EngineChunkSnapshot {
     }
 
     #[inline]
-    fn heightmap_type(kind: Heightmap) -> HeightmapType {
+    fn heightmap_type(kind: Heightmap) -> Option<HeightmapType> {
         match kind {
-            Heightmap::WorldSurface => HeightmapType::WorldSurface,
-            Heightmap::MotionBlocking => HeightmapType::MotionBlocking,
-            Heightmap::MotionBlockingNoLeaves => HeightmapType::MotionBlockingNoLeaves,
-            Heightmap::OceanFloor => HeightmapType::OceanFloor,
-            _ => HeightmapType::WorldSurface,
+            Heightmap::WorldSurface => Some(HeightmapType::WorldSurface),
+            Heightmap::MotionBlocking => Some(HeightmapType::MotionBlocking),
+            Heightmap::MotionBlockingNoLeaves => Some(HeightmapType::MotionBlockingNoLeaves),
+            Heightmap::OceanFloor => Some(HeightmapType::OceanFloor),
+            _ => None,
         }
     }
 }
@@ -94,7 +105,7 @@ impl mod_api::__private::ChunkSnapshotBackend for EngineChunkSnapshot {
         if lx >= 16 || lz >= 16 {
             return None;
         }
-        let htype = Self::heightmap_type(kind);
+        let htype = Self::heightmap_type(kind)?;
         let xz = (usize::from(lz) << 4) | usize::from(lx);
         for (si, section) in self.sections.iter().enumerate().rev() {
             if !section
@@ -242,16 +253,19 @@ impl Game<'_> {
     /// active/parked levels, or a logged-in client's loaded level).
     pub(super) fn chunk_snapshot(&self, chunk: ChunkRef) -> Option<ChunkSnapshot> {
         let [x, z] = chunk.pos();
-        let column = self
-            .native_level_view_world(chunk.level())?
-            .chunks
-            .get(&(x, z))?;
+        let world = self.native_level_view_world(chunk.level())?;
+        let column = world.chunks.get(&(x, z))?;
         let states = super::api_values::block_state::current().ok()?;
         let biomes = world_biomes!(self).clone();
         let properties = self.pack.assets.properties.clone();
         let has_light = column.lit || column.light_loaded;
         Some(EngineChunkSnapshot::from_chunk(
-            column, states, biomes, properties, has_light,
+            column,
+            world.shape,
+            states,
+            biomes,
+            properties,
+            has_light,
         ))
     }
 }
@@ -419,6 +433,45 @@ mod tests {
                 assert_eq!(worker_snap.heightmap(Heightmap::WorldSurface, 16, 0), None);
             });
             worker.join().expect("worker thread reads cleanly");
+
+            // Non-Overworld LevelShape (Nether 0..256, 16 sections) clips padded ColumnLayout
+            // sections so min_y, height, section_count, heightmap, and bounds match level.height.
+            let nether_shape = sunrise_client::chunk::LevelShape::NETHER;
+            let mut nether_col = Chunk::with_layout(3, 4, nether_shape.column());
+            nether_col.lit = true;
+            // Put stone in padded below-0 section (y = -16) and inside Nether (y = 32).
+            let padded_sec = ((0 - nether_col.min_y()) >> 4) as usize - 1;
+            let in_range_sec = ((32 - nether_col.min_y()) >> 4) as usize;
+            Arc::make_mut(&mut nether_col.sections[padded_sec]).set(0, stone_id);
+            Arc::make_mut(&mut nether_col.sections[in_range_sec]).set(0, stone_id);
+            let nether_snap = super::EngineChunkSnapshot::from_chunk(
+                &nether_col,
+                nether_shape,
+                super::super::api_values::block_state::current().unwrap(),
+                biomes.clone(),
+                game.pack.assets.properties.clone(),
+                true,
+            );
+            assert_eq!(nether_snap.min_y(), 0);
+            assert_eq!(nether_snap.height(), 256);
+            assert_eq!(nether_snap.section_count(), 16);
+            assert_eq!(nether_snap.section(0).unwrap().section_y(), 0);
+            assert_eq!(nether_snap.section(15).unwrap().section_y(), 15);
+            assert!(nether_snap.section(16).is_none());
+            assert_eq!(nether_snap.block_state(0, -16, 0), None);
+            assert_eq!(nether_snap.block_state(0, 256, 0), None);
+            assert_eq!(
+                nether_snap.block_state(0, 32, 0).unwrap().block(),
+                stone_key
+            );
+            assert_eq!(
+                nether_snap.heightmap(Heightmap::WorldSurface, 0, 0),
+                Some(33)
+            );
+            assert_eq!(
+                nether_snap.heightmap(Heightmap::WorldSurface, 1, 0),
+                Some(0)
+            );
 
             // Unloaded chunk & stale level handles return None.
             let unloaded = level.chunk_ref(game, [99, 99]).unwrap();
