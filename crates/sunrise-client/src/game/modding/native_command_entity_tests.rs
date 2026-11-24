@@ -379,8 +379,8 @@ fn blocks_carts_and_functions_keep_their_entity() {
     );
 }
 
-/// `execute on origin` of a fake player's projectile executes as that fake player, and as no
-/// entity once the fake is gone.
+/// `execute on origin` of a fake player's projectile executes as that fake player, and selects
+/// nothing once the fake is gone.
 #[test]
 #[ignore = "daily"]
 fn execute_on_origin_reaches_a_fake_players_projectile() {
@@ -422,13 +422,11 @@ fn execute_on_origin_reaches_a_fake_players_projectile() {
                 assert_eq!(command.entity, Some(fake.entity()));
                 assert_eq!(command.player(), Some(fake));
 
-                // Removed, the fake no longer resolves. `on origin` still forks to its old
-                // connection (Sunrise keeps the projectile's guest), so the executor runs as no
-                // entity, never the player in place.
+                // Removed, the fake is no owner: `on origin` selects nothing (vanilla's
+                // `getOwner()` is null), so the executor never runs as the player in place.
                 assert!(game.player_remove_fake(fake));
                 assert!(game.native_run_command(line));
-                let (_, command) = last(heard);
-                assert_eq!((command.entity, command.player()), (None, None));
+                assert!(heard.lock().unwrap().is_empty());
             });
         },
     );
