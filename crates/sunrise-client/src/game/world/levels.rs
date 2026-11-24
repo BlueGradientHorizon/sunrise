@@ -701,7 +701,7 @@ impl Levels {
     }
 
     /// The mobs of a parked level.
-    pub(super) fn parked_mobs(&self, dim: Dim) -> Option<&[Mob]> {
+    pub(in crate::game) fn parked_mobs(&self, dim: Dim) -> Option<&[Mob]> {
         self.parked.get(&dim).map(|level| &*level.mobs)
     }
 

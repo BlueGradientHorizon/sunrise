@@ -425,7 +425,7 @@ impl Game<'_> {
         let pos = BlockPos::new(x, y, z);
         let _query = super::native_hooks::enter_survival_query(world as *const _, pos, state)
             .ok_or(LevelReadError::Unavailable)?;
-        let read = ReadLevel { game: self, level };
+        let read = ReadLevel::new(self, level, world);
         let mut query = SurvivalReadLevel {
             read,
             signal_ticks: ticks,

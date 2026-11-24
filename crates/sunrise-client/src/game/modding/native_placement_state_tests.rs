@@ -409,11 +409,13 @@ fn can_survive_uses_the_parked_level_for_vanilla_and_part_reads() {
         "can_survive_uses_the_parked_level_for_vanilla_and_part_reads",
         |game| {
             use super::api_values::TryIntoApi;
+            use sunrise_client::{containers::BlockEntity, items::ItemStack};
 
             let overworld = game.level("minecraft:overworld").unwrap();
             let registry = game.pack.assets.registry;
             let dirt = registry.default_state("minecraft:dirt").unwrap();
             let stone = registry.default_state("minecraft:stone").unwrap();
+            let chest = registry.default_state("minecraft:chest").unwrap();
             let sapling = game
                 .block_state_default(game.block_key("minecraft:oak_sapling").unwrap())
                 .unwrap()
@@ -437,6 +439,14 @@ fn can_survive_uses_the_parked_level_for_vanilla_and_part_reads() {
                 .unwrap();
             game.world.set(POS.x, POS.y - 1, POS.z, stone).unwrap();
             game.world.set(POS.x + 1, POS.y, POS.z, dirt).unwrap();
+            let chest_pos = (POS.x + 2, POS.y, POS.z);
+            game.world.set(chest_pos.0, chest_pos.1, chest_pos.2, chest).unwrap();
+            let mut chest_slots = vec![None; 27];
+            chest_slots[0] = Some(ItemStack::new("minecraft:stone", 3));
+            game.world.block_entities.insert(
+                chest_pos,
+                BlockEntity::Chest(chest_slots),
+            );
             game.enter_level(Dim::Overworld).unwrap();
 
             assert_eq!(
@@ -457,6 +467,22 @@ fn can_survive_uses_the_parked_level_for_vanilla_and_part_reads() {
             );
             assert_eq!(overworld.dimension_id(), "minecraft:overworld");
             assert_eq!(nether.dimension_id(), "minecraft:the_nether");
+            let parked = game.levels.parked_world(Dim::Nether).unwrap();
+            let read = super::native_level_signals::ReadLevel::new(game, nether, parked);
+            let side = mod_api::BlockSide {
+                level: nether,
+                pos: [chest_pos.0, chest_pos.1, chest_pos.2],
+                side: None,
+            };
+            assert_eq!(
+                mod_api::LevelHost::container_size(&read, side),
+                Some(27),
+                "container size follows the parked level handle"
+            );
+            assert!(
+                mod_api::LevelHost::container_stack(&read, side, 0).is_some(),
+                "container stacks follow the parked level handle"
+            );
         },
     );
 }

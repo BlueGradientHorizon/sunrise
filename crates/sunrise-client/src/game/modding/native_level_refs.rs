@@ -681,7 +681,7 @@ impl Game<'_> {
         if !self.level_in_place(level) {
             return None;
         }
-        let view = super::native_level_signals::ReadLevel { game: self, level };
+        let view = super::native_level_signals::ReadLevel::new(self, level, &self.world);
         Some(f(&self.res.behaviours().signals(&view, &self.block_ticks)))
     }
     /// How strongly the block at `pos` powers the block on its `direction` side, power it

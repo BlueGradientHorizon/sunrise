@@ -13,19 +13,34 @@ use sunrise_world::{level::signal_access::SignalAccess, registry::BlockStateId};
 pub(super) struct ReadLevel<'g, 'a> {
     pub game: &'g Game<'a>,
     pub level: mod_api::LevelRef,
+    world: &'g World,
+    dim: super::Dim,
+    dimension: sunrise_core::dimension::Dimension,
 }
 
-impl ReadLevel<'_, '_> {
-    /// The world addressed by this handle. Callers validate residency before constructing a
-    /// reader; keeping the lookup here prevents Parts from silently seeing the active level.
+impl<'g, 'a> ReadLevel<'g, 'a> {
+    pub(super) fn new(
+        game: &'g Game<'a>,
+        level: mod_api::LevelRef,
+        world: &'g World,
+    ) -> Self {
+        let dim = super::Dim::from_id(level.dimension_id());
+        ReadLevel {
+            game,
+            level,
+            world,
+            dim,
+            dimension: dim.level(),
+        }
+    }
+
+    /// The world resolved for this handle before the reader was constructed.
     pub(super) fn world(&self) -> &World {
-        self.game
-            .native_level_read_world(self.level)
-            .expect("read level handle is resident")
+        self.world
     }
 
     pub(super) fn dimension(&self) -> sunrise_core::dimension::Dimension {
-        super::Dim::from_id(self.level.dimension_id()).level()
+        self.dimension
     }
 
     pub(super) fn border(&self) -> &sunrise_client::worldborder::WorldBorder {
@@ -34,7 +49,7 @@ impl ReadLevel<'_, '_> {
         } else {
             self.game
                 .levels
-                .parked_border(super::Dim::from_id(self.level.dimension_id()))
+                .parked_border(self.dim)
                 .expect("resident parked level has its world border")
         }
     }
@@ -45,8 +60,16 @@ impl ReadLevel<'_, '_> {
         } else {
             self.game
                 .levels
-                .parked_lid_openers_of(self.level.dimension_id())
+                .parked_lid_openers_of(self.dim.id())
                 .expect("resident parked level has its lid openers")
+        }
+    }
+
+    fn mobs(&self) -> Option<&[sunrise_client::mobs::Mob]> {
+        if self.level.dimension() == self.game.native_level_key() {
+            Some(&self.game.mobs)
+        } else {
+            self.game.levels.parked_mobs(self.dim)
         }
     }
 
@@ -59,10 +82,9 @@ impl ReadLevel<'_, '_> {
                 .get(&key)
                 .map(|s| s.status == sunrise_client::block_entity_anim::ShulkerStatus::Closed)
         } else {
-            let dim = super::Dim::from_id(self.level.dimension_id());
             self.game
                 .levels
-                .parked_anims(dim)?
+                .parked_anims(self.dim)?
                 .shulkers
                 .get(&key)
                 .map(|s| s.status == sunrise_client::block_entity_anim::ShulkerStatus::Closed)
@@ -262,13 +284,17 @@ impl LevelHost for ReadLevel<'_, '_> {
         if at.level != self.level || !self.world().is_loaded_at(at.pos[0], at.pos[1], at.pos[2]) {
             return None;
         }
-        self.game.container_size(at)
+        self.game
+            .level_container_size(self.world, self.mobs()?, at)
     }
     fn container_stack(&self, at: mod_api::BlockSide, slot: usize) -> Option<mod_api::ItemStack> {
         if at.level != self.level || !self.world().is_loaded_at(at.pos[0], at.pos[1], at.pos[2]) {
             return None;
         }
-        self.game.container_stack(at, slot)?.try_into_api().ok()
+        self.game
+            .level_container_stack(self.world, self.mobs()?, at, slot)?
+            .try_into_api()
+            .ok()
     }
     fn block_entity_part_snapshot(
         &self,
@@ -282,7 +308,7 @@ impl LevelHost for ReadLevel<'_, '_> {
             self.game.native_authoritative(),
             self.game
                 .attachment_indexes
-                .get(&super::Dim::from_id(self.level.dimension_id())),
+                .get(&self.dim),
             entity,
             namespace,
             name,
@@ -374,9 +400,17 @@ impl LevelHost for ReadLevel<'_, '_> {
         self.world().is_loaded_at(x, y, z)
     }
     fn is_raining_at(&self, pos: [i32; 3]) -> bool {
-        self.game
-            .level_is_raining_at(self.level, pos)
-            .unwrap_or(false)
+        if !self.world.is_loaded_at(pos[0], pos[1], pos[2]) {
+            return false;
+        }
+        super::native_level_world::rain_at(
+            self.world,
+            self.game.res.facts(),
+            world_biomes!(self.game),
+            self.game.res.behaviours(),
+            self.dim,
+            BlockPos::new(pos[0], pos[1], pos[2]),
+        )
     }
     fn enabled_features(&self) -> mod_api::FeatureFlags {
         mod_api::FeatureFlags::new(self.game.enabled_feature_ids().clone())

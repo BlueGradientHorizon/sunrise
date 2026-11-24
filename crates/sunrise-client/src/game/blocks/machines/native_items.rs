@@ -2,7 +2,9 @@
 //! container slots and the composter's state-backed input/output, by the rules hoppers follow.
 //! Side-local slots are numbered from zero. It acts where the world is simulated, never on
 //! a client's copy, and only on the level in place.
-use super::{Game, Insertion, Kind, MoveIn, PlacementAttempt, Pos, Slots, View};
+use super::{
+    Containers, Game, Insertion, Kind, Mob, MoveIn, PlacementAttempt, Pos, Slots, View, World,
+};
 use crate::game::transactions::After;
 use mod_api::{BlockSide, LevelRef, Transaction};
 use sunrise_client::items::ItemStack;
@@ -201,6 +203,36 @@ impl Game<'_> {
     pub(in crate::game) fn container_stack(&self, at: BlockSide, slot: usize) -> Option<ItemStack> {
         self.level_in_place(at.level).then_some(())?;
         self.containers().capability_stack(at, slot)
+    }
+    fn level_containers<'a>(&'a self, world: &'a World, mobs: &'a [Mob]) -> Containers<'a> {
+        Containers {
+            world,
+            behaviours: self.res.behaviours(),
+            items: self.items(),
+            registry: self.pack.assets.registry,
+            brewing: None,
+            mobs,
+        }
+    }
+    /// The item capability read used by a level-bound Part, including parked levels.
+    pub(in crate::game) fn level_container_size(
+        &self,
+        world: &World,
+        mobs: &[Mob],
+        at: BlockSide,
+    ) -> Option<usize> {
+        self.level_containers(world, mobs).capability_size(at)
+    }
+    /// The item capability read used by a level-bound Part, including parked levels.
+    pub(in crate::game) fn level_container_stack(
+        &self,
+        world: &World,
+        mobs: &[Mob],
+        at: BlockSide,
+        slot: usize,
+    ) -> Option<ItemStack> {
+        self.level_containers(world, mobs)
+            .capability_stack(at, slot)
     }
     /// Keeps what a capability write to slot `slot` of `view` changes: that slot alone where a
     /// write there changes nothing else, else each block entity of the view whole.
