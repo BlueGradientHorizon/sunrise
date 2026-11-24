@@ -70,6 +70,12 @@ impl Game<'_> {
             master_volume: self.settings.master_volume as f32,
         }
     }
+    /// Whether a shader pack is currently loaded and active (`IrisApi.isShaderPackInUse()`).
+    pub(in crate::game) fn shader_pack_active(&self) -> bool {
+        self.renderer
+            .as_ref()
+            .is_some_and(|r| r.shader_pack_kind().is_some())
+    }
 }
 
 /// Convert live client settings into the API-owned GUI snapshot.

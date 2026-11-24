@@ -46,6 +46,7 @@ pub enum RegistrationError {
         owner: String,
         id: Identifier,
     },
+    InvalidPackBinding(String),
     AlreadyPublished,
 }
 
@@ -83,6 +84,7 @@ impl std::fmt::Display for RegistrationError {
                 f,
                 "mod {owner}: pipeline {id} collides with earlier registration from mod {earlier}"
             ),
+            Self::InvalidPackBinding(reason) => f.write_str(reason),
             Self::AlreadyPublished => f.write_str("pipeline registrations were already published"),
         }
     }
@@ -151,9 +153,166 @@ pub fn register(
             });
         }
     }
+    validate_pack_bindings(&pipelines).map_err(RegistrationError::InvalidPackBinding)?;
     REGISTERED
         .set(pipelines)
         .map_err(|_| RegistrationError::AlreadyPublished)
+}
+
+/// Built-in Iris/OptiFine pack sampler names that mod `PackBinding` depth targets may not
+/// claim (matches `sunrise_render_shaderpack::pack_post::construction::source`).
+fn is_reserved_pack_sampler(name: &str) -> bool {
+    sunrise_shaders::buffer_index(name).is_some()
+        || sunrise_shaders::shadow_color(name).is_some()
+        || matches!(
+            name,
+            "depthtex0"
+                | "depthtex1"
+                | "depthtex2"
+                | "gdepthtex"
+                | "shadowtex0"
+                | "shadowtex1"
+                | "shadowtex0HW"
+                | "shadowtex1HW"
+                | "watershadow"
+                | "shadow"
+                | "noisetex"
+                | "texture"
+                | "gtexture"
+                | "tex"
+                | "lightmap"
+                | "normals"
+                | "specular"
+                | sunrise_shaders::WATER_MASK
+        )
+}
+
+/// Built-in Iris/OptiFine pack uniform names that mod `PackBinding` frame uniforms may not
+/// claim.
+fn is_reserved_pack_uniform(name: &str) -> bool {
+    sunrise_render_shaderpack::pack_uniforms::NAMES.contains(&name)
+}
+
+/// Validate GLSL syntax, reserved Iris/OptiFine names, and cross-mod uniqueness across every
+/// registered `RenderPipeline::pack_binding`. Multiple pipelines owned by the same mod may
+/// share one `PackDepthTarget.id` (with identical samplers), compatible defines, and typed
+/// uniforms; cross-mod collisions fail startup naming both mods and the colliding name.
+fn validate_pack_bindings(pipelines: &[RenderPipeline]) -> Result<(), String> {
+    let mut depth_targets: BTreeMap<&Identifier, (&str, &mod_api::PackDepthTarget)> =
+        BTreeMap::new();
+    let mut samplers: BTreeMap<&str, (&str, &Identifier)> = BTreeMap::new();
+    let mut uniforms: BTreeMap<&str, (&str, mod_api::PackUniformType)> = BTreeMap::new();
+    let mut defines: BTreeMap<&str, (&str, Option<&str>)> = BTreeMap::new();
+
+    for pipeline in pipelines {
+        let Some(binding) = &pipeline.pack_binding else {
+            continue;
+        };
+        let owner = pipeline.owner();
+        binding.validate_syntax().map_err(|reason| {
+            format!(
+                "Invalid pack binding on render pipeline {} (registered by {}): {reason}",
+                pipeline.id, owner
+            )
+        })?;
+
+        if let Some(target) = &binding.depth_target {
+            if let Some(&(first_owner, first_target)) = depth_targets.get(&target.id) {
+                if first_owner != owner {
+                    return Err(format!(
+                        "Duplicate pack depth target registration: {} (registered by {} and {})",
+                        target.id, first_owner, owner
+                    ));
+                }
+                if first_target != target {
+                    return Err(format!(
+                        "Conflicting pack depth target declaration for {} in mod {}: shared targets must declare identical samplers",
+                        target.id, owner
+                    ));
+                }
+            } else {
+                depth_targets.insert(&target.id, (owner, target));
+            }
+            for sampler in target
+                .depth_samplers
+                .iter()
+                .chain(target.opaque_depth_samplers.iter())
+            {
+                if is_reserved_pack_sampler(sampler) {
+                    return Err(format!(
+                        "Reserved pack sampler name {:?} on render pipeline {} (registered by {}) collides with a built-in shader-pack sampler",
+                        sampler, pipeline.id, owner
+                    ));
+                }
+                if let Some(&(first_owner, first_target_id)) = samplers.get(sampler.as_str()) {
+                    if first_owner != owner {
+                        return Err(format!(
+                            "Duplicate pack sampler registration: {:?} (registered by {} and {})",
+                            sampler, first_owner, owner
+                        ));
+                    }
+                    if first_target_id != &target.id {
+                        return Err(format!(
+                            "Conflicting pack sampler registration {:?} in mod {}: bound to both {} and {}",
+                            sampler, owner, first_target_id, target.id
+                        ));
+                    }
+                } else {
+                    samplers.insert(sampler.as_str(), (owner, &target.id));
+                }
+            }
+        }
+
+        for uniform in &binding.frame_uniforms {
+            let names =
+                std::iter::once(uniform.name.as_str()).chain(uniform.previous_name.as_deref());
+            for name in names {
+                if is_reserved_pack_uniform(name) {
+                    return Err(format!(
+                        "Reserved pack uniform name {:?} on render pipeline {} (registered by {}) collides with a built-in shader-pack uniform",
+                        name, pipeline.id, owner
+                    ));
+                }
+                if let Some(&(first_owner, first_ty)) = uniforms.get(name) {
+                    if first_owner != owner {
+                        return Err(format!(
+                            "Duplicate pack uniform registration: {:?} (registered by {} and {})",
+                            name, first_owner, owner
+                        ));
+                    }
+                    if first_ty != uniform.ty {
+                        return Err(format!(
+                            "Conflicting pack uniform type for {:?} in mod {}: declared as {:?} and {:?}",
+                            name, owner, first_ty, uniform.ty
+                        ));
+                    }
+                } else {
+                    uniforms.insert(name, (owner, uniform.ty));
+                }
+            }
+        }
+
+        for (name, value) in &binding.defines {
+            let val = value.as_deref();
+            if let Some(&(first_owner, first_val)) = defines.get(name.as_str()) {
+                if first_owner != owner {
+                    return Err(format!(
+                        "Duplicate pack define registration: {:?} (registered by {} and {})",
+                        name, first_owner, owner
+                    ));
+                }
+                if first_val != val {
+                    return Err(format!(
+                        "Conflicting pack define value for {:?} in mod {}: {:?} vs {:?}",
+                        name, owner, first_val, val
+                    ));
+                }
+            } else {
+                defines.insert(name.as_str(), (owner, val));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// The registered pipelines; none until registration publishes them.
@@ -561,5 +720,269 @@ fn pipeline_fragment(input: PipelineInput) -> vec4<f32> {
             built("test:effect/glow.png"),
             Err("required render pipeline test:glow from mod  refused: its texture: NotASpriteKey: the id names a file, not a sprite key".into())
         );
+    }
+
+    #[test]
+    fn register_validates_pack_bindings_collisions_reserved_names_and_ordering() {
+        use mod_api::__private::game::RegistrationContextNew;
+        use mod_api::{
+            Hooks, ModEntry, PackBinding, PackDepthTarget, PackPassSlot, PackUniformDecl,
+            PackUniformType, PipelineGeometryClass, RegisterRenderPipelinesEvent,
+            RegistrationContext,
+        };
+
+        struct Custom(Box<dyn Fn(&mut RegisterRenderPipelinesEvent<'_>) + Send + Sync>);
+        #[mod_api::__subscriptions]
+        impl Hooks for Custom {
+            fn register_render_pipelines(
+                &self,
+                _: &RegistrationContext,
+                event: &mut RegisterRenderPipelinesEvent<'_>,
+            ) {
+                (self.0)(event);
+            }
+        }
+
+        let run = |mods: Vec<ModEntry>| -> Result<Vec<RenderPipeline>, String> {
+            let mut result = Err(String::new());
+            mod_platform::testing::with_mods(mods.into(), || {
+                let mut staged = Vec::new();
+                mod_api::dispatch_register_render_pipelines(
+                    &RegistrationContext::new(),
+                    &mut staged,
+                );
+                result = validate_pack_bindings(&staged).map(|()| staged);
+            });
+            result
+        };
+
+        // Same mod sharing one auxiliary depth target, uniform, and define across opaque +
+        // translucent pipelines succeeds, and preserves pack pass ordering.
+        let shared_target = || {
+            PackDepthTarget::new(id("alpha:aux_depth"))
+                .depth_sampler("alphaDepthTex0")
+                .opaque_depth_sampler("alphaDepthTex1")
+        };
+        let ok = run(vec![
+            ModEntry::new(
+                "alpha",
+                Box::new(Custom(Box::new(move |ev| {
+                    ev.register(
+                        pipeline("alpha:opaque", "alpha:opaque")
+                            .geometry_class(PipelineGeometryClass::Terrain)
+                            .pack_binding(
+                                PackBinding::new()
+                                    .program("alpha_terrain")
+                                    .slot(PackPassSlot::AfterOpaqueGbuffers)
+                                    .define("ALPHA_LAYER")
+                                    .define_value("ALPHA_MAT_LEAF", "1")
+                                    .depth_target(shared_target())
+                                    .frame_uniform(
+                                        PackUniformDecl::new(
+                                            "alphaProjection",
+                                            PackUniformType::Mat4,
+                                        )
+                                        .with_previous("alphaPreviousProjection"),
+                                    ),
+                            ),
+                    );
+                    ev.register(
+                        pipeline("alpha:water", "alpha:water")
+                            .geometry_class(PipelineGeometryClass::Translucent)
+                            .pack_binding(
+                                PackBinding::new()
+                                    .program("alpha_water")
+                                    .program("alpha_terrain")
+                                    .slot(PackPassSlot::AfterTranslucentGbuffers)
+                                    .define("ALPHA_LAYER")
+                                    .depth_target(shared_target())
+                                    .frame_uniform(
+                                        PackUniformDecl::new(
+                                            "alphaProjection",
+                                            PackUniformType::Mat4,
+                                        )
+                                        .with_previous("alphaPreviousProjection"),
+                                    ),
+                            ),
+                    );
+                }))),
+            ),
+            ModEntry::new(
+                "beta",
+                Box::new(Custom(Box::new(|ev| {
+                    ev.register(
+                        pipeline("beta:contraption", "beta:contraption")
+                            .geometry_class(PipelineGeometryClass::Entity),
+                    );
+                }))),
+            ),
+        ])
+        .unwrap();
+        assert_eq!(ok.len(), 3);
+        assert_eq!(
+            ok[0].effective_pack_programs(),
+            [
+                "alpha_terrain",
+                "gbuffers_terrain",
+                "gbuffers_textured_lit",
+                "gbuffers_textured",
+                "gbuffers_basic",
+            ]
+        );
+        assert_eq!(
+            ok[1].effective_pack_programs(),
+            [
+                "alpha_water",
+                "alpha_terrain",
+                "gbuffers_water",
+                "gbuffers_terrain",
+                "gbuffers_textured_lit",
+                "gbuffers_textured",
+                "gbuffers_basic",
+            ]
+        );
+        assert_eq!(
+            ok[2].effective_pack_programs(),
+            [
+                "gbuffers_entities",
+                "gbuffers_textured_lit",
+                "gbuffers_textured",
+                "gbuffers_basic",
+            ]
+        );
+        assert!(ok[0].effective_pack_slot().unwrap() < ok[1].effective_pack_slot().unwrap());
+
+        // Cross-mod sampler collision names both mods and the colliding sampler.
+        let sampler_err = run(vec![
+            ModEntry::new(
+                "mod_one",
+                Box::new(Custom(Box::new(|ev| {
+                    ev.register(pipeline("mod_one:p", "mod_one:p").pack_binding(
+                        PackBinding::new().depth_target(
+                            PackDepthTarget::new(id("mod_one:d")).depth_sampler("sharedTex"),
+                        ),
+                    ));
+                }))),
+            ),
+            ModEntry::new(
+                "mod_two",
+                Box::new(Custom(Box::new(|ev| {
+                    ev.register(pipeline("mod_two:p", "mod_two:p").pack_binding(
+                        PackBinding::new().depth_target(
+                            PackDepthTarget::new(id("mod_two:d")).opaque_depth_sampler("sharedTex"),
+                        ),
+                    ));
+                }))),
+            ),
+        ])
+        .unwrap_err();
+        assert!(sampler_err.contains("sharedTex"), "{sampler_err}");
+        assert!(sampler_err.contains("mod_one"), "{sampler_err}");
+        assert!(sampler_err.contains("mod_two"), "{sampler_err}");
+
+        // Cross-mod uniform collision (including previous_name) names both mods.
+        let uniform_err = run(vec![
+            ModEntry::new(
+                "mod_one",
+                Box::new(Custom(Box::new(|ev| {
+                    ev.register(
+                        pipeline("mod_one:p", "mod_one:p").pack_binding(
+                            PackBinding::new().frame_uniform(
+                                PackUniformDecl::new("customProj", PackUniformType::Mat4)
+                                    .with_previous("customPrevProj"),
+                            ),
+                        ),
+                    );
+                }))),
+            ),
+            ModEntry::new(
+                "mod_two",
+                Box::new(Custom(Box::new(|ev| {
+                    ev.register(pipeline("mod_two:p", "mod_two:p").pack_binding(
+                        PackBinding::new().frame_uniform(PackUniformDecl::new(
+                            "customPrevProj",
+                            PackUniformType::Mat4,
+                        )),
+                    ));
+                }))),
+            ),
+        ])
+        .unwrap_err();
+        assert!(uniform_err.contains("customPrevProj"), "{uniform_err}");
+        assert!(uniform_err.contains("mod_one"), "{uniform_err}");
+        assert!(uniform_err.contains("mod_two"), "{uniform_err}");
+
+        // Cross-mod define collision names both mods.
+        let define_err = run(vec![
+            ModEntry::new(
+                "mod_one",
+                Box::new(Custom(Box::new(|ev| {
+                    ev.register(
+                        pipeline("mod_one:p", "mod_one:p")
+                            .pack_binding(PackBinding::new().define("SHARED_FLAG")),
+                    );
+                }))),
+            ),
+            ModEntry::new(
+                "mod_two",
+                Box::new(Custom(Box::new(|ev| {
+                    ev.register(
+                        pipeline("mod_two:p", "mod_two:p")
+                            .pack_binding(PackBinding::new().define("SHARED_FLAG")),
+                    );
+                }))),
+            ),
+        ])
+        .unwrap_err();
+        assert!(define_err.contains("SHARED_FLAG"), "{define_err}");
+        assert!(define_err.contains("mod_one"), "{define_err}");
+        assert!(define_err.contains("mod_two"), "{define_err}");
+
+        // Reserved vanilla/Iris samplers and uniforms are refused.
+        for reserved_sampler in ["depthtex0", "colortex0", "shadowtex0", "noisetex"] {
+            let err = run(vec![ModEntry::new(
+                "mod_one",
+                Box::new(Custom(Box::new(move |ev| {
+                    ev.register(pipeline("mod_one:p", "mod_one:p").pack_binding(
+                        PackBinding::new().depth_target(
+                            PackDepthTarget::new(id("mod_one:d")).depth_sampler(reserved_sampler),
+                        ),
+                    ));
+                }))),
+            )])
+            .unwrap_err();
+            assert!(err.contains(reserved_sampler), "{err}");
+            assert!(err.contains("mod_one"), "{err}");
+        }
+        for reserved_uniform in ["gbufferProjection", "cameraPosition", "worldTime"] {
+            let err = run(vec![ModEntry::new(
+                "mod_one",
+                Box::new(Custom(Box::new(move |ev| {
+                    ev.register(pipeline("mod_one:p", "mod_one:p").pack_binding(
+                        PackBinding::new().frame_uniform(PackUniformDecl::new(
+                            reserved_uniform,
+                            PackUniformType::Mat4,
+                        )),
+                    ));
+                }))),
+            )])
+            .unwrap_err();
+            assert!(err.contains(reserved_uniform), "{err}");
+            assert!(err.contains("mod_one"), "{err}");
+        }
+
+        // Invalid define syntax is refused at registration.
+        let bad_define = run(vec![ModEntry::new(
+            "mod_one",
+            Box::new(Custom(Box::new(|ev| {
+                ev.register(
+                    pipeline("mod_one:p", "mod_one:p")
+                        .pack_binding(PackBinding::new().define_value("VALID", "1\n#define BAD")),
+                );
+            }))),
+        )])
+        .unwrap_err();
+        assert!(bad_define.contains("mod_one"), "{bad_define}");
+        assert!(bad_define.contains("VALID"), "{bad_define}");
     }
 }
