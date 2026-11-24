@@ -19,7 +19,7 @@ pub use world::datapack_snapshot::{
 mod __private {
     pub use crate::world::datapack_registry::VanillaValueDecoder;
     pub use crate::world::datapack_registry_set::{
-        build_datapack_candidate_with_decoder, queued_datapack_set_bytes,
-        rebind_datapack_vanilla_values,
+        build_datapack_candidate_with_decoder, declarations_use_vanilla_values,
+        queued_datapack_set_bytes, rebind_datapack_vanilla_values,
     };
 }

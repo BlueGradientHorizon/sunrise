@@ -512,6 +512,14 @@ fn pairs_heap_bytes(pairs: &Vec<(String, DatapackValue)>) -> usize {
     )
 }
 
+/// Whether any declared registry schema contains a vanilla value kind (`IntProvider`,
+/// `BlockStateProvider`, `BlockPredicate`, or `HolderSet`).
+pub fn declarations_use_vanilla_values(declarations: &[DatapackRegistryDeclaration]) -> bool {
+    declarations
+        .iter()
+        .any(|declaration| schema_has_vanilla_kind(&declaration.fields))
+}
+
 /// Build a [`DatapackCandidate`] using the engine's decoder for vanilla value kinds.
 pub fn build_datapack_candidate_with_decoder(
     declarations: &[DatapackRegistryDeclaration],

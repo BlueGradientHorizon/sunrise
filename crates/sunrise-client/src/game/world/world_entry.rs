@@ -441,7 +441,7 @@ impl Game<'_> {
                 let (candidate, values) = datapack_candidate.take().unwrap();
                 (
                     Some(mod_api::DatapackRegistrySet::from_candidate(candidate)),
-                    Some(values),
+                    values,
                 )
             }
             None => (None, None),
@@ -601,7 +601,7 @@ impl Game<'_> {
     ) -> Result<
         Option<(
             mod_api::DatapackCandidate,
-            super::native_datapack_values::DatapackVanillaValues,
+            Option<super::native_datapack_values::DatapackVanillaValues>,
         )>,
     > {
         let declarations = mod_api::__private::datapack_registry_declarations();
@@ -630,6 +630,16 @@ impl Game<'_> {
             })?
             .into_iter()
             .collect();
+        if !mod_api::__private::declarations_use_vanilla_values(declarations) {
+            let candidate =
+                mod_api::DatapackCandidate::build(declarations, &files).map_err(|error| {
+                    format!(
+                        "datapack registry {} entry {} (pack {}, file {}): {:?}",
+                        error.registry, error.entry, error.pack, error.file, error.reason
+                    )
+                })?;
+            return Ok(Some((candidate, None)));
+        }
         let live_features = self.res.behaviours().live_features();
         let catalog = live_features
             .as_ref()
@@ -660,7 +670,7 @@ impl Game<'_> {
                 error.registry, error.entry, error.pack, error.file, error.reason
             )
         })?;
-        Ok(Some((candidate, decoder.finish())))
+        Ok(Some((candidate, Some(decoder.finish()))))
     }
     /// A world open's tables, and the first generation of the registries the mods declared.
     pub(super) fn open_world_tables(

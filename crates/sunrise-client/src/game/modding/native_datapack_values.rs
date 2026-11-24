@@ -706,6 +706,9 @@ impl<'g> Game<'g> {
         Option<Arc<DatapackVanillaValues>>,
     )> {
         let declarations = mod_api::__private::datapack_registry_declarations();
+        if !mod_api::__private::declarations_use_vanilla_values(declarations) {
+            return Ok((Arc::new(received.clone()), None));
+        }
         let (block_tags, fluid_tags, biome_tags) = self.client_datapack_tags();
         let catalog = self.client_state_provider_catalog()?;
         let biomes = self
