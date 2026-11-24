@@ -1385,7 +1385,6 @@ sunrise-client game::native_guest_turn_tests::server_services_preserve_identity_
 sunrise-client game::native_guest_turn_tests::set_selected_slot_tells_an_acting_guests_client lib daily resources
 sunrise-client game::native_guest_turn_tests::tick_advancement_notice_precedes_recipe_reward lib daily resources
 sunrise-client game::native_hanging_tests::a_client_turns_its_painting_with_the_servers_direction lib daily resources
-sunrise-client game::native_hanging_tests::a_frame_is_hidden_and_shown_through_its_handle lib daily resources
 sunrise-client game::native_hanging_tests::a_frame_turns_to_every_direction_and_its_bounds_follow lib daily resources
 sunrise-client game::native_hanging_tests::a_frames_item_turns_with_vanillas_wrap_and_other_kinds_are_refused lib daily resources
 sunrise-client game::native_hanging_tests::a_hanging_entity_turned_back_to_south_is_sent_south lib daily resources
