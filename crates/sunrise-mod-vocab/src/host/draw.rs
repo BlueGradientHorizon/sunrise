@@ -597,6 +597,36 @@ pub trait WorldDrawContext {
         let _ = (model, instances);
         unimplemented!("WorldDrawContext::draw_model_instances")
     }
+    /// Supply this frame's value for a mod-declared shader-pack uniform ([`PackUniformDecl`]).
+    /// Returns `true` when `name` matches a registered mod uniform with the matching
+    /// [`PackUniformType`], and `false` otherwise (never panics). When the declaration specifies
+    /// a `previous_name`, the engine automatically tracks the prior frame's value under it.
+    fn set_pack_uniform(&mut self, name: &str, value: PackUniformValue) -> bool {
+        let _ = (name, value);
+        false
+    }
+    /// Whether the active Iris/OptiFine shader pack currently routes `pipeline` through one of
+    /// its translated programs ([`PackOverrideState::Bound`]), fell back to the mod's own shader
+    /// ([`PackOverrideState::UnboundPack`]), or no shader pack is active
+    /// ([`PackOverrideState::NoPack`]).
+    fn pack_override_state(
+        &self,
+        pipeline: RenderPipelineRef,
+    ) -> Result<PackOverrideState, RenderPipelineError> {
+        let _ = pipeline;
+        Ok(PackOverrideState::NoPack)
+    }
+    /// Toggle whether `pipeline`'s declared [`PackBinding::defines`] are active for shader-pack
+    /// compilation. Changing the active define set triggers at most one shader-pack reload;
+    /// passing the current state is a no-op.
+    fn set_pack_defines_active(
+        &mut self,
+        pipeline: RenderPipelineRef,
+        active: bool,
+    ) -> Result<(), RenderPipelineError> {
+        let _ = (pipeline, active);
+        Ok(())
+    }
 }
 /// CPU-side submission of batches for the current world view. The renderer uploads them after
 /// this hook, before it opens any pass that may draw them.

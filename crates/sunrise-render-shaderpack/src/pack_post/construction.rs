@@ -3,10 +3,14 @@
 //! compute dispatches (`compile` makes them), its samplers and its blits. It ends where the
 //! frame's own work starts (`execution.rs`).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use sunrise_shaders::{BUFFERS, Format, Group, Kind, Post, SHADOW_COLORS};
 
+use super::mod_pack::{
+    ModDepthTargetDecl, ModDrawChunk, ModPackPass, ModPackRuntime, ModPassSlot, ModUniformDecl,
+    ModUniformMatch, ModUniformTable, match_mod_uniform, mod_depth_source,
+};
 use super::packed;
 use super::{image_binding, image_format, storage_formats_of};
 use crate::pack_draw::DrawUniforms;
@@ -602,6 +606,14 @@ pub struct Resources<'a> {
     /// While the pack is laid out for `compile`: the pipelines its programs need. `None`
     /// compiles each as its program is built.
     pub jobs: Option<std::cell::RefCell<Vec<Job>>>,
+    /// Mod-declared auxiliary depth targets for sampler resolution.
+    pub mod_depth_targets: &'a [ModDepthTargetDecl],
+    /// Mod-declared per-frame uniforms for uniform resolution and type validation.
+    pub mod_uniforms: &'a [ModUniformDecl],
+    /// Deduplicates warnings when a pack declares a mod uniform with an incompatible GLSL type.
+    pub mod_uniform_mismatches: &'a std::cell::RefCell<HashSet<(String, String)>>,
+    /// Auxiliary depth target index written by the mod geometry pass currently being built, if any.
+    pub mod_depth_target: std::cell::Cell<Option<usize>>,
 }
 
 impl Resources<'_> {
@@ -889,7 +901,9 @@ pub fn bindings(
                 (src, t.sample_type, t.dimension)
             }
             None => {
-                let mut src = source(&s.name, group.shadow(), shadow.is_some(), watershadow);
+                let mut src = mod_depth_source(pack.mod_depth_targets, &s.name).unwrap_or_else(
+                    || source(&s.name, group.shadow(), shadow.is_some(), watershadow),
+                );
                 // A sampler the game gives no texture reads texture unit 0, as do the atlas's
                 // names: the atlas in gbuffers programs, `colortex0` in deferred, composite and
                 // final (OptiFine's shaders.txt). Iris 1.11.7 read the atlas through a name of
@@ -920,13 +934,22 @@ pub fn bindings(
                 {
                     src = unit_0;
                 }
+                let active_mod_depth = pack.mod_depth_target.get();
                 let blank = match src {
                     // The shadow pass writes the shadow map.
                     Source::ShadowDepth(..) => group == Group::Shadow,
                     Source::Atlas => geometry.is_none(),
-                    Source::Depth => geometry.is_some(),
+                    // A mod pass writing to its own auxiliary depth target can legally sample
+                    // the pack's main `depthtex0`; passes writing to `depthtex0` cannot.
+                    Source::Depth => geometry.is_some() && active_mod_depth.is_none(),
                     // Translucent terrain reads the copy; opaque terrain would read itself.
-                    Source::Depth1 | Source::Depth2 => group == Group::Gbuffers,
+                    Source::Depth1 | Source::Depth2 => {
+                        group == Group::Gbuffers && active_mod_depth.is_none()
+                    }
+                    Source::ModDepth(idx) => active_mod_depth == Some(idx),
+                    Source::ModOpaqueDepth(idx) => {
+                        group == Group::Gbuffers && active_mod_depth == Some(idx)
+                    }
                     Source::Color(n) => {
                         (group != Group::Translucent || n < 4) && in_place & 1 << n != 0
                     }
@@ -943,7 +966,11 @@ pub fn bindings(
                     | Source::Depth1
                     | Source::Depth2
                     | Source::ShadowDepth(..)
-                    | Source::WaterMask => wgpu::TextureSampleType::Float { filterable: false },
+                    | Source::WaterMask
+                    | Source::ModDepth(_)
+                    | Source::ModOpaqueDepth(_) => {
+                        wgpu::TextureSampleType::Float { filterable: false }
+                    }
                     // Unfilterable on WebGPU-level devices; the lightmap is sampled at texel centres.
                     Source::Lightmap => float,
                     _ => float,
@@ -1162,6 +1189,44 @@ const POLYGON_OFFSET: wgpu::DepthBiasState = wgpu::DepthBiasState {
 /// buffers, buffer n is shadowcolor n); `shadow` the shadowcolor formats when the shadow pass
 /// runs. `water_mask` and `polygon_offset` also make the pass's depth-only pipeline
 /// (`Pass::water_mask`) and its polygon-offset one (`Pass::polygon_offset`).
+/// Match a pass's declared GLSL uniforms against mod-declared per-frame uniforms.
+/// Incompatible GLSL types leave the uniform unbound, record a note, and log a warning once
+/// per `(name, declared_ty)` without panicking.
+fn resolve_mod_uniforms<'a>(
+    interface: &'a sunrise_shaders::Interface,
+    pass_name: &str,
+    pack: &Resources<'_>,
+    notes: &mut Vec<String>,
+) -> (Vec<(usize, bool, u32)>, HashSet<&'a str>) {
+    let mut bound = Vec::new();
+    let mut handled = HashSet::new();
+    for u in &interface.uniforms {
+        match match_mod_uniform(pack.mod_uniforms, &u.name, &u.ty) {
+            ModUniformMatch::None => {}
+            ModUniformMatch::Bound { index, previous } => {
+                bound.push((index, previous, u.offset));
+                handled.insert(u.name.as_str());
+            }
+            ModUniformMatch::TypeMismatch { expected } => {
+                handled.insert(u.name.as_str());
+                let key = (u.name.clone(), u.ty.clone());
+                let first = pack.mod_uniform_mismatches.borrow_mut().insert(key);
+                let msg = format!(
+                    "{pass_name}: mod uniform `{}` declared as `{}` (mod provides `{}`); left unbound",
+                    u.name,
+                    u.ty,
+                    expected.glsl_name()
+                );
+                if first {
+                    log::warn!("shader pack: {msg}");
+                }
+                notes.push(msg);
+            }
+        }
+    }
+    (bound, handled)
+}
+
 pub fn build_pass(
     device: &wgpu::Device,
     p: sunrise_shaders::PostProgram,
@@ -1175,6 +1240,39 @@ pub fn build_pass(
     pack: &Resources<'_>,
     water_mask: bool,
     polygon_offset: bool,
+) -> Option<Pass> {
+    build_pass_with_depth_compare(
+        device,
+        p,
+        formats,
+        shadow,
+        screen,
+        notes,
+        geometry,
+        custom,
+        draws,
+        pack,
+        water_mask,
+        polygon_offset,
+        wgpu::CompareFunction::LessEqual,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_pass_with_depth_compare(
+    device: &wgpu::Device,
+    p: sunrise_shaders::PostProgram,
+    formats: &[wgpu::TextureFormat; BUFFERS],
+    shadow: Option<&[wgpu::TextureFormat; SHADOW_COLORS]>,
+    screen: wgpu::TextureFormat,
+    notes: &mut Vec<String>,
+    geometry: Option<&Geometry<'_>>,
+    custom: &[(String, String)],
+    draws: &wgpu::BindGroupLayout,
+    pack: &Resources<'_>,
+    water_mask: bool,
+    polygon_offset: bool,
+    depth_compare: wgpu::CompareFunction,
 ) -> Option<Pass> {
     let features = device.features();
     // The frame's uniforms, then the pack's custom ones.
@@ -1359,7 +1457,7 @@ pub fn build_pass(
             depth_stencil: geometry.map(|g| wgpu::DepthStencilState {
                 format: wgpu::TextureFormat::Depth32Float,
                 depth_write_enabled: Some(g.depth_write),
-                depth_compare: Some(wgpu::CompareFunction::LessEqual),
+                depth_compare: Some(depth_compare),
                 stencil: Default::default(),
                 bias: if p.name == "gbuffers_damagedblock" {
                     POLYGON_OFFSET
@@ -1441,10 +1539,15 @@ pub fn build_pass(
         }
     };
     let interface = &program.interface;
+    let (mod_uniforms, mod_handled) = resolve_mod_uniforms(interface, &p.name, pack, notes);
     let missing: Vec<&str> = interface
         .uniforms
         .iter()
-        .filter(|u| !u.name.starts_with("hz_") && index(&u.name, &u.ty).is_none())
+        .filter(|u| {
+            !u.name.starts_with("hz_")
+                && !mod_handled.contains(u.name.as_str())
+                && index(&u.name, &u.ty).is_none()
+        })
         .map(|u| u.name.as_str())
         .collect();
     if !missing.is_empty() {
@@ -1470,6 +1573,7 @@ pub fn build_pass(
             .iter()
             .map(|u| (index(&u.name, &u.ty), u.ty.clone(), u.offset))
             .collect(),
+        mod_uniforms,
         name: p.name,
         group: p.group,
         pipeline: Pipeline::Render(pipeline),
@@ -1593,6 +1697,7 @@ pub fn build_compute(
     let image_copies = image_copies(&samplers, &images);
     let (before_colors, snapshots) = befores(&images);
     let (shadow_own, shadow_before) = shadow_images(&images);
+    let (mod_uniforms, _) = resolve_mod_uniforms(interface, &name, pack, notes);
     Some(Pass {
         ubo: device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(&name),
@@ -1607,6 +1712,7 @@ pub fn build_compute(
             .iter()
             .map(|u| (index(&u.name, &u.ty), u.ty.clone(), u.offset))
             .collect(),
+        mod_uniforms,
         name,
         group,
         pipeline: Pipeline::Compute {
@@ -1861,6 +1967,16 @@ pub struct PackPost {
     pub final_target: Option<FinalTarget>,
     pub screen: wgpu::TextureFormat,
     pub uniforms: FrameUniforms,
+    /// Mod-declared render pipelines bound to translated pack programs.
+    pub mod_passes: Vec<ModPackPass>,
+    /// Uploaded quad draw chunks for bound mod pipelines on the current frame.
+    pub mod_draws: Vec<ModDrawChunk>,
+    /// Mod-declared auxiliary depth targets and lazy usage flags (allocated only when sampled).
+    pub mod_depth_decls: Vec<ModDepthTargetDecl>,
+    pub mod_depth_used: Vec<bool>,
+    pub mod_opaque_depth_used: Vec<bool>,
+    /// Mod-declared per-frame uniforms with automatic previous-frame tracking.
+    pub mod_uniforms: ModUniformTable,
 }
 
 impl PackPost {
@@ -1882,10 +1998,36 @@ impl PackPost {
         world: World<'_>,
         cancel: &std::sync::atomic::AtomicBool,
     ) -> Result<PackPost, Refused> {
+        Self::new_with_mods(
+            device,
+            queue,
+            adapter,
+            post,
+            screen,
+            world,
+            ModPackRuntime::default(),
+            cancel,
+        )
+    }
+
+    /// As [`Self::new`], with mod-declared auxiliary depth targets, frame uniforms, and
+    /// pipeline pack bindings.
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_mods(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        adapter: &wgpu::Adapter,
+        post: Post,
+        screen: wgpu::TextureFormat,
+        world: World<'_>,
+        mods: ModPackRuntime<'_>,
+        cancel: &std::sync::atomic::AtomicBool,
+    ) -> Result<PackPost, Refused> {
         use std::sync::atomic::Ordering;
-        let spare = (post.clone(), world.clone());
-        let (built, jobs) =
-            PackPost::build(device, queue, adapter, post, screen, world, true, cancel)?;
+        let spare = (post.clone(), world.clone(), mods.clone());
+        let (built, jobs) = PackPost::build(
+            device, queue, adapter, post, screen, world, mods, true, cancel,
+        )?;
         let refused = compile(device, &jobs, cancel);
         // Some pipelines may be left unmade: the pack can't draw.
         if cancel.load(Ordering::Relaxed) {
@@ -1898,12 +2040,15 @@ impl PackPost {
             "shader pack: {program} was refused ({refused}): building it again a program at a time"
         );
         drop((built, jobs));
-        let (post, world) = spare;
-        PackPost::build(device, queue, adapter, post, screen, world, false, cancel)
-            .map(|(built, _)| built)
+        let (post, world, mods) = spare;
+        PackPost::build(
+            device, queue, adapter, post, screen, world, mods, false, cancel,
+        )
+        .map(|(built, _)| built)
     }
 
     /// `new`'s work: with `defer`, the pipelines are left to make (the jobs returned).
+    #[allow(clippy::too_many_arguments)]
     fn build(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -1911,6 +2056,7 @@ impl PackPost {
         mut post: Post,
         screen: wgpu::TextureFormat,
         world: World<'_>,
+        mods: ModPackRuntime<'_>,
         defer: bool,
         cancel: &std::sync::atomic::AtomicBool,
     ) -> Result<(PackPost, Vec<Job>), Refused> {
@@ -2066,6 +2212,34 @@ impl PackPost {
             })
         });
         let stand_ins = std::cell::RefCell::new(Vec::new());
+        let mod_uniform_mismatches = std::cell::RefCell::new(HashSet::new());
+        // Pre-scan the pack's programs to know which mod-declared auxiliary depth targets any
+        // pack pass samples before building mod geometry passes (so a mod pass targeting an
+        // actively sampled auxiliary depth buffer can legally sample `depthtex0`).
+        let mut pre_mod_depth_sampled = vec![false; mods.depth_targets.len()];
+        if !mods.depth_targets.is_empty() {
+            let samplers = post
+                .programs
+                .iter()
+                .chain(&post.shadow_comp)
+                .chain(&post.water)
+                .chain(&post.weather)
+                .chain(post.mod_programs.iter().filter_map(|m| m.program.as_ref()))
+                .flat_map(|p| {
+                    p.program
+                        .iter()
+                        .map(|q| &q.interface)
+                        .chain(p.compute.iter().map(|(_, c)| &c.interface))
+                })
+                .flat_map(|i| &i.samplers);
+            for s in samplers {
+                if let Some(Source::ModDepth(idx) | Source::ModOpaqueDepth(idx)) =
+                    mod_depth_source(mods.depth_targets, &s.name)
+                {
+                    pre_mod_depth_sampled[idx] = true;
+                }
+            }
+        }
         let pack = Resources {
             textures: &textures,
             images: &images,
@@ -2082,6 +2256,10 @@ impl PackPost {
                 .filter(|&n| !shadow_config.nearest[n])
                 .fold(0, |m, n| m | 1 << n),
             jobs: defer.then(Default::default),
+            mod_depth_targets: mods.depth_targets,
+            mod_uniforms: mods.uniforms,
+            mod_uniform_mismatches: &mod_uniform_mismatches,
+            mod_depth_target: std::cell::Cell::new(None),
         };
         // Flat terrain resolves each quad's source state against the current pack; terrain that
         // reads its pages per section binds them by the same layout.
@@ -2102,6 +2280,7 @@ impl PackPost {
         // a polygon-offset one for sign text.
         let water_mask_next = std::cell::Cell::new(false);
         let polygon_offset_next = std::cell::Cell::new(false);
+        let depth_compare_next = std::cell::Cell::new(wgpu::CompareFunction::LessEqual);
         let mut build = |mut p: sunrise_shaders::PostProgram, geometry: Option<&Geometry<'_>>| {
             // Not wanted any more: the rest is skipped and the build refused below.
             if cancel.load(std::sync::atomic::Ordering::Relaxed) {
@@ -2141,7 +2320,7 @@ impl PackPost {
                 computes = Vec::new();
                 last
             } else {
-                build_pass(
+                build_pass_with_depth_compare(
                     device,
                     p,
                     if in_shadow { &shadow_space } else { &formats },
@@ -2154,6 +2333,7 @@ impl PackPost {
                     &pack,
                     water_mask_next.get(),
                     polygon_offset_next.get(),
+                    depth_compare_next.get(),
                 )?
             };
             pass.compute.append(&mut computes);
@@ -2498,6 +2678,52 @@ impl PackPost {
             pages: false,
         };
         let lines = post.lines.and_then(|p| build(p, Some(&line_geometry)));
+        // Build mod-declared pipeline passes that resolved to a pack program.
+        let mut mod_passes = Vec::new();
+        if !mods.vertex_buffers.is_empty() {
+            for resolved in post.mod_programs {
+                let Some(program) = resolved.program else {
+                    continue;
+                };
+                let Some(spec) = mods.pipelines.iter().find(|s| s.slot == resolved.slot) else {
+                    continue;
+                };
+                if spec.pass_slot == ModPassSlot::Shadow && shadow_formats.is_none() {
+                    continue;
+                }
+                let active_depth = spec.depth_target.filter(|&idx| {
+                    spec.pass_slot != ModPassSlot::Shadow
+                        && pre_mod_depth_sampled.get(idx).copied().unwrap_or(false)
+                });
+                let mod_geometry = Geometry {
+                    buffers: mods.vertex_buffers,
+                    table: None,
+                    depth_write: spec.depth_write,
+                    atlas: None,
+                    material_maps: true,
+                    ids: None,
+                    cull: false,
+                    pages: false,
+                };
+                pack.mod_depth_target.set(active_depth);
+                depth_compare_next.set(if spec.depth_test {
+                    wgpu::CompareFunction::LessEqual
+                } else {
+                    wgpu::CompareFunction::Always
+                });
+                let built_pass = build(program, Some(&mod_geometry));
+                pack.mod_depth_target.set(None);
+                depth_compare_next.set(wgpu::CompareFunction::LessEqual);
+                if let Some(pass) = built_pass {
+                    mod_passes.push(ModPackPass {
+                        slot: spec.slot,
+                        pass_slot: spec.pass_slot,
+                        depth_target: active_depth,
+                        pass,
+                    });
+                }
+            }
+        }
         // Developers' aid: `SUNRISE_SHADER_PACK_SKIP=composite,final` leaves programs out.
         let skip = std::env::var("SUNRISE_SHADER_PACK_SKIP").unwrap_or_default();
         let passes: Vec<Pass> = post
@@ -2653,7 +2879,43 @@ impl PackPost {
             .chain(weather.iter().flatten())
             .chain(hand.iter().map(|h| &h.0))
             .chain(&hand_water)
+            .chain(mod_passes.iter().map(|m| &m.pass))
         };
+        // Lazy allocation for mod-declared auxiliary depth targets: allocate a depth target
+        // (and its opaque-depth snapshot) only when at least one built pass actually samples it.
+        let mut mod_depth_used = vec![false; mods.depth_targets.len()];
+        let mut mod_opaque_depth_used = vec![false; mods.depth_targets.len()];
+        for p in every_pass().flat_map(|p| std::iter::once(p).chain(&p.compute)) {
+            for s in &p.samplers {
+                match s.source {
+                    Source::ModDepth(idx) => {
+                        if let Some(flag) = mod_depth_used.get_mut(idx) {
+                            *flag = true;
+                        }
+                    }
+                    Source::ModOpaqueDepth(idx) => {
+                        if let Some(flag) = mod_depth_used.get_mut(idx) {
+                            *flag = true;
+                        }
+                        if let Some(flag) = mod_opaque_depth_used.get_mut(idx) {
+                            *flag = true;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        for m in &mut mod_passes {
+            if let Some(idx) = m.depth_target
+                && !mod_depth_used.get(idx).copied().unwrap_or(false)
+            {
+                if m.pass.samplers.iter().any(|s| s.source == Source::Depth) {
+                    mod_depth_used[idx] = true;
+                } else {
+                    m.depth_target = None;
+                }
+            }
+        }
         let shadow_targets = shadow_formats.map(|f| {
             // `shadow_storage` covers compute stages attached to a pass, which `every_pass`
             // leaves out: one may be the only program binding shadowcolorimgN.
@@ -2715,6 +2977,12 @@ impl PackPost {
                 .chain(weather.iter().take(1).flatten())
                 .chain(hand.iter().map(|h| &h.0))
                 .chain(&hand_water)
+                .chain(
+                    mod_passes
+                        .iter()
+                        .filter(|m| m.pass_slot != ModPassSlot::Shadow)
+                        .map(|m| &m.pass),
+                )
                 .find(touched)
                 .map(|_| true)
                 .or_else(|| passes.iter().find(touched).map(|_| true));
@@ -2731,10 +2999,12 @@ impl PackPost {
             || clouds.is_some()
             || lines.is_some()
             || weather.is_some()
-            || hand.is_some();
-        let blit_depth = draws_depth
-            || passes
+            || hand.is_some()
+            || mod_passes
                 .iter()
+                .any(|m| m.pass_slot != ModPassSlot::Shadow && m.depth_target.is_none());
+        let blit_depth = draws_depth
+            || every_pass()
                 .flat_map(|p| std::iter::once(p).chain(&p.compute))
                 .any(|p| {
                     p.samplers.iter().any(|s| {
@@ -3084,6 +3354,12 @@ impl PackPost {
             shadow_pass_images,
             shadow_writes,
             shadow_buffers,
+            mod_passes,
+            mod_draws: Vec::new(),
+            mod_depth_decls: mods.depth_targets.to_vec(),
+            mod_depth_used,
+            mod_opaque_depth_used,
+            mod_uniforms: ModUniformTable::new(mods.uniforms),
         };
         Ok((built, jobs))
     }
