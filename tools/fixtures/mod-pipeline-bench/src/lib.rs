@@ -1,13 +1,13 @@
 //! The mod `tools/mod_pipeline_bench.py` measures: it registers [`PIPELINES`] render pipelines,
-//! half of them textured, and draws [`QUADS_PER_STAGE`] quads through them at each of four world
-//! render stages, every frame, in front of the camera. The driver writes the shaders
-//! (`assets/pipeline_bench/shaders/pipeline/pNN.wgsl`) when it stages the mod, and the
+//! half of them textured, and draws [`QUADS_PER_LAYER`] quads through them across four depth
+//! layers in `submit_custom_geometry`, every frame, in front of the camera. The driver writes the
+//! shaders (`assets/pipeline_bench/shaders/pipeline/pNN.wgsl`) when it stages the mod, and the
 //! benchmark's game (`crates/sunrise-mod-host/examples/mod_pipeline_bench.rs`) links it.
 use mod_api::{
     ClientHost, ClientReloadHost, ClientResourcesReloadedEvent, ClientSetupContext,
     ClientSetupEvent, Hooks, Identifier, PipelineBlend, PipelineQuad, PipelineTexture,
-    RegisterRenderPipelinesEvent, RegistrationContext, RenderAssets, RenderLevelStage,
-    RenderLevelStageEvent, RenderPipeline, RenderPipelineRef, WorldDepth,
+    RegisterRenderPipelinesEvent, RegistrationContext, RenderAssets, RenderPipeline,
+    RenderPipelineRef, SubmitCustomGeometryEvent, WorldDepth,
 };
 use std::sync::Mutex;
 
@@ -15,16 +15,11 @@ pub const ID: &str = "pipeline_bench";
 pub const VERSION: &str = "0.1.0";
 /// Pipelines registered; those from `PIPELINES / 2` on sample a block sprite.
 pub const PIPELINES: usize = 32;
-/// Quads drawn at each of [`STAGES`], spread over that stage's share of the pipelines. The four
-/// stages' quads together stay under the view's quad limit.
-pub const QUADS_PER_STAGE: usize = 500;
-const STAGES: [RenderLevelStage; 4] = [
-    RenderLevelStage::AfterOpaqueBlocks,
-    RenderLevelStage::AfterTranslucentBlocks,
-    RenderLevelStage::AfterWeather,
-    RenderLevelStage::AfterLevel,
-];
-const PER_STAGE: usize = PIPELINES / STAGES.len();
+/// Quads drawn per depth layer (`LAYERS` layers total), spread over that layer's share of the
+/// pipelines.
+pub const QUADS_PER_LAYER: usize = 500;
+const LAYERS: usize = 4;
+const PER_LAYER: usize = PIPELINES / LAYERS;
 
 fn id(index: usize) -> Identifier {
     Identifier::parse(&format!("{ID}:p{index:02}")).expect("bench pipeline id")
@@ -86,41 +81,44 @@ impl Hooks for Bench {
         self.resolve(context.render_assets());
     }
 
-    fn render_level_stage(&self, _: &dyn ClientHost, event: &mut RenderLevelStageEvent<'_>) {
-        let Some(slot) = STAGES.iter().position(|stage| *stage == event.stage) else {
-            return;
-        };
+    fn submit_custom_geometry(
+        &self,
+        _: &dyn ClientHost,
+        event: &mut SubmitCustomGeometryEvent<'_>,
+    ) {
         let pipelines = self.pipelines.lock().unwrap();
         if pipelines.len() != PIPELINES {
             return;
         }
-        let [x, y, z] = event.view.camera;
+        let [x, y, z] = event.view.camera.position;
         let mut quads = self.quads.lock().unwrap();
-        // A wall of quads 8 blocks ahead along +z and one more block per stage, 25 across.
-        let share = QUADS_PER_STAGE.div_ceil(PER_STAGE);
-        for (n, pipeline) in pipelines[slot * PER_STAGE..][..PER_STAGE]
-            .iter()
-            .enumerate()
-        {
-            quads.clear();
-            quads.extend(
-                (n * share..QUADS_PER_STAGE.min((n + 1) * share)).map(|quad| {
-                    let left = x + (quad % 25) as f64 * 0.5 - 6.25;
-                    let bottom = y + (quad / 25) as f64 * 0.5 - 5.0;
-                    let depth = z + 8.0 + slot as f64;
-                    PipelineQuad::spanning(
-                        [
-                            [left, bottom, depth],
-                            [left, bottom + 0.45, depth],
-                            [left + 0.45, bottom + 0.45, depth],
-                            [left + 0.45, bottom, depth],
-                        ],
-                        0x80FF_FFFF,
-                    )
-                }),
-            );
-            if let Err(error) = event.draw.pipeline_quads(*pipeline, &quads) {
-                eprintln!("pipeline_bench: quads refused: {error:?}");
+        // Four walls of quads 8..11 blocks ahead along +z, 25 across, spread across all pipelines.
+        let share = QUADS_PER_LAYER.div_ceil(PER_LAYER);
+        for layer in 0..LAYERS {
+            for (n, pipeline) in pipelines[layer * PER_LAYER..][..PER_LAYER]
+                .iter()
+                .enumerate()
+            {
+                quads.clear();
+                quads.extend(
+                    (n * share..QUADS_PER_LAYER.min((n + 1) * share)).map(|quad| {
+                        let left = x + (quad % 25) as f64 * 0.5 - 6.25;
+                        let bottom = y + (quad / 25) as f64 * 0.5 - 5.0;
+                        let depth = z + 8.0 + layer as f64;
+                        PipelineQuad::spanning(
+                            [
+                                [left, bottom, depth],
+                                [left, bottom + 0.45, depth],
+                                [left + 0.45, bottom + 0.45, depth],
+                                [left + 0.45, bottom, depth],
+                            ],
+                            0x80FF_FFFF,
+                        )
+                    }),
+                );
+                if let Err(error) = event.draw.pipeline_quads(*pipeline, &quads) {
+                    eprintln!("pipeline_bench: quads refused: {error:?}");
+                }
             }
         }
     }
