@@ -65,12 +65,8 @@ fn judged_with(
         || read.as_mut().map_err(|why| *why),
         &mut || Ok::<_, String>(target.clone()),
         &mut || match data {
-            Some(data) => {
-                game_uses::entries(&bundle.manifest, data, build).map_err(GameDataError::Unread)
-            }
-            None => Err(GameDataError::Omitted(
-                "no game code declared: never read".to_owned(),
-            )),
+            Some(data) => game_uses::entries(&bundle.manifest, data, build),
+            None => Err("no game code declared: never read".to_owned()),
         },
         None,
     )
