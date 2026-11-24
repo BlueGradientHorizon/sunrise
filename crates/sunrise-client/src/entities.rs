@@ -47,7 +47,7 @@ mod item_no_physics;
 pub mod nameplate;
 mod obstacles;
 pub use fluids::{fall_reset_hit, fluid_flow, update_entity_fluids, water_clip};
-pub use item_merge::{ItemCells, merge_with_neighbours};
+pub use item_merge::{ItemCells, merge_with_neighbours, merge_with_neighbours_recording};
 pub use obstacles::ObstacleGrid;
 
 #[cfg(test)]
@@ -225,6 +225,10 @@ pub struct ItemEntity {
     /// `ServerEntity.isFullPrecisionEncodingRequired` reads it for items, whose
     /// resting position is exact while a 1/4096 delta is not.
     pub vertical_collision: bool,
+    /// `Entity.isRemoved`: set when a tick pass retires this drop while the
+    /// lifted list is kept in place across callbacks so indices and `ItemCells`
+    /// stay valid until the pass compacts once at the end.
+    pub removed: bool,
     /// `Entity.random`, after the constructor's draws: `moveTowardsClosestSpace`
     /// takes an item's escape speed from it.
     pub random: sunrise_core::random::LegacyRandom,
@@ -2721,6 +2725,7 @@ mod fire_environment_tests {
             age: 0,
             stack_revision: 0,
             lifespan: ItemEntity::LIFETIME,
+            removed: false,
             pickup_delay: 0,
             bob_offset: 0.0,
             ticks: 0,
@@ -2917,6 +2922,7 @@ mod destroyed_bundle_environment_tests {
             age: 0,
             stack_revision: 0,
             lifespan: ItemEntity::LIFETIME,
+            removed: false,
             pickup_delay: 0,
             bob_offset: 0.0,
             ticks: 0,
@@ -3133,6 +3139,7 @@ mod merge_tests {
             age,
             stack_revision: 0,
             lifespan: ItemEntity::LIFETIME,
+            removed: false,
             pickup_delay: 0,
             bob_offset: 0.0,
             ticks: age.max(0) as u32,
@@ -3673,6 +3680,7 @@ mod honey_slide_tests {
             age: 10,
             stack_revision: 0,
             lifespan: ItemEntity::LIFETIME,
+            removed: false,
             pickup_delay: 0,
             bob_offset: 0.0,
             ticks: 10,
@@ -3779,6 +3787,7 @@ mod slime_bounce_tests {
             age: 10,
             stack_revision: 0,
             lifespan: ItemEntity::LIFETIME,
+            removed: false,
             pickup_delay: 0,
             bob_offset: 0.0,
             ticks: 10,
@@ -4688,6 +4697,7 @@ mod item_destroyed_tests {
             age: 0,
             stack_revision: 0,
             lifespan: ItemEntity::LIFETIME,
+            removed: false,
             pickup_delay: 0,
             bob_offset: 0.0,
             ticks: 0,
@@ -4965,6 +4975,7 @@ mod dropped_item_light_tests {
             age: 0,
             stack_revision: 0,
             lifespan: ItemEntity::LIFETIME,
+            removed: false,
             pickup_delay: 0,
             bob_offset: 0.0,
             ticks: 0,

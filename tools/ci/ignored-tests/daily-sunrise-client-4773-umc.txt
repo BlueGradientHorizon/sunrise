@@ -1,1 +1,2 @@
+sunrise-client game::item_entities::expire_tests::expiry_burst_lends_stacks_preserves_order_and_reuses_cells lib daily resources
 sunrise-client game::potions::tick_effects_tests::bad_omen_production_tick_stops_on_raid_omen_insert_and_borrows_hidden_chains lib daily resources

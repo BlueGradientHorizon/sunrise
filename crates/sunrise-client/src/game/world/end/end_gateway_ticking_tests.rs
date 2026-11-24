@@ -39,6 +39,7 @@ fn item(id: u32, at: Vec3) -> ItemEntity {
         age: 97,
         stack_revision: 0,
         lifespan: ItemEntity::LIFETIME,
+        removed: false,
         pickup_delay: 0,
         bob_offset: 0.0,
         ticks: 97,

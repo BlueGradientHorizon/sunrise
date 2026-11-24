@@ -2974,6 +2974,7 @@ pub fn item_entity_from_nbt(tag: &Tag, id: u32, bob_offset: f32) -> Option<ItemE
         bob_offset,
         ticks: 0,
         needs_sync: false,
+        removed: false,
         stuck: Vec3::ZERO,
         was_touching_water: false,
         // The caller gives it the own random that drew its UUID and bobOffs.

@@ -361,8 +361,8 @@ struct ExtendLife {
 
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for ExtendLife {
-    fn item_expire(&self, _: &mut dyn ServerHost, event: &mut mod_api::ItemExpireEvent<'_>) {
-        if event.entity == self.id.load(Ordering::Relaxed) {
+    fn item_expire(&self, _: &mut dyn ServerHost, event: &mut mod_api::ItemExpireEvent) {
+        if event.item.entity().id() == self.id.load(Ordering::Relaxed) {
             event.extra_life += 100;
         }
     }

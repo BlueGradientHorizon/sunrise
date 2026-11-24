@@ -3663,18 +3663,18 @@ impl Game<'_> {
     /// A dropped item reaches its lifespan on the server (`ItemEntity.tick`,
     /// NeoForge's `EventHooks.onItemExpire` / `ItemExpireEvent`), before
     /// removal. Every mod may set or add to `extra_life`, in ticks, which
-    /// starts at zero, and may query the live item entity through `Host`.
+    /// starts at zero, and may query or mutate the live item entity through
+    /// `item` (including lending its stack with `ItemEntityRef::with_stack`).
     /// Afterward `lifespan` gets `extra_life` by signed 32-bit wrapping
     /// addition, then is clamped to `0..=32766` (`Short.MAX_VALUE - 1`)
     /// without rewinding `age`. If `age >= lifespan`, the item is discarded
     /// and `entity_leave_level` fires before the next drop ticks.
     pub(in crate::game) fn native_item_expire(
         &mut self,
-        entity: u32,
-        stack: &ItemStack,
+        item: mod_api::ItemEntityRef,
         extra_life: &mut i32,
     ) {
-        self.fire_item_expire(entity, stack, extra_life);
+        self.fire_item_expire(item, extra_life);
     }
     /// The food level of the server player `player` (`name`) is about to change
     /// from `from` to `to` (Bukkit's `FoodLevelChangeEvent`):

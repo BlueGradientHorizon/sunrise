@@ -2353,8 +2353,14 @@ impl Entity for ItemEntity {
     fn portal_size(&self) -> Option<(f32, f32)> {
         Some((0.25, 0.25))
     }
+    fn is_alive(&self) -> bool {
+        !self.removed
+    }
+    fn is_removed(&self) -> bool {
+        self.removed
+    }
     fn selector_target(&self) -> Option<Target> {
-        Some(Target::Item(self.id))
+        (!self.removed).then_some(Target::Item(self.id))
     }
     fn thunder_hit(&self) -> ThunderHit {
         ThunderHit::Item

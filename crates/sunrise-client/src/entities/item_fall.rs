@@ -24,6 +24,7 @@ impl ItemEntity {
             velocity,
             ground: Default::default(),
             vertical_collision: false,
+            removed: false,
             fall_distance: 0.0,
             age: 0,
             stack_revision: 0,

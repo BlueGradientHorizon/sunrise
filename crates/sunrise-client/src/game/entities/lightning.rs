@@ -521,7 +521,7 @@ impl Game<'_> {
         viewers.extend(
             self.dropped
                 .iter()
-                .filter(|e| !b.hit_items.contains(&e.id))
+                .filter(|e| !e.removed && !b.hit_items.contains(&e.id))
                 .filter(|e| in_viewer_box(at, [e.position.x, e.position.y, e.position.z]))
                 .map(|e| self.item_entity_view(e)),
         );
