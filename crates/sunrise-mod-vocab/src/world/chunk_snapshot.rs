@@ -48,6 +48,10 @@ pub trait ChunkSnapshotBackend: Send + Sync + 'static {
 /// cap. Holding a snapshot pins its sections in memory after the chunk unloads, and causes the
 /// live chunk's next block, biome, or light edit to any still-shared section to copy that section
 /// before mutating it.
+///
+/// **Tracking later updates:** A snapshot reflects the chunk at capture time and does not update
+/// automatically. Mods keeping derived data in sync listen to `client_block_changed` /
+/// `client_chunk_load` on the client or block-change hooks on the server and re-capture as needed.
 // no wire: in-process immutable handle sharing reference-counted section allocations for workers.
 // exhaustive: opaque handle with private backend field; constructed only by the engine.
 #[derive(Clone)]
@@ -110,8 +114,9 @@ impl ChunkSnapshot {
     }
 
     /// Heightmap value at chunk-local block coordinates `(lx, lz)` (`0..16`), matching vanilla's
-    /// `ChunkAccess.getHeight(Heightmap.Types, x, z)` (the first block Y above the highest
-    /// matching block, or `min_y` if the column is empty). Returns `None` if `lx >= 16 || lz >= 16`.
+    /// `LevelReader.getHeight(Heightmap.Types, x, z)` and `Heightmap.getFirstAvailable(x, z)`
+    /// (the first block Y above the highest matching block, or `min_y` if the column is empty).
+    /// Returns `None` if `lx >= 16 || lz >= 16`.
     pub fn heightmap(&self, kind: Heightmap, lx: u8, lz: u8) -> Option<i32> {
         self.backend.heightmap(kind, lx, lz)
     }
