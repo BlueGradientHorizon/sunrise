@@ -1094,7 +1094,7 @@ pub(in crate::game) fn run_continuing_wind_charge_keeps_tick_order_and_skips_rel
             if case != "reversed" {
                 assert!(
                     observed.alone_ticks.lock().unwrap().contains(&85),
-                    "w6 must run through the batched entity_tick_each pass"
+                    "w6 must fire entity_tick_post on its own tick"
                 );
             }
             if case == "ctrl4" {
