@@ -1,20 +1,14 @@
-//! Structure processors the structure libraries write in Java, carried over
-//! as data the game runs: the ones that give spawners their mob.
+//! Structure processors with a vanilla data-pack form (or a no-op), carried
+//! over as data the game runs:
 //!
-//! - Moog's Structure Lib's and Repurposed Structures' spawner randomizing
-//!   processors pick a mob from a weighted list for each spawner. They become
-//!   `sunrise:spawner_mobs` (`sunrise_world::worldgen::structure::processor`),
-//!   with Repurposed's `rs_spawners` list written in.
+//! - Repurposed Structures' `structure_void_processor` becomes vanilla's
+//!   `minecraft:block_ignore` on `minecraft:structure_void`.
 //! - Moog's vanilla loot swap only acts when its mod's "replace vanilla"
 //!   preset is on; one that ships off is a no-op and is taken out.
-//! - Repurposed Structures' mineshaft sky view becomes the game's
-//!   `sunrise:mineshaft_sky_view`.
 //!
-//! Lithostitched's processors and Choice Theorem's Overhauled Village's
-//! compat hook are carried by `crate::lithostitched`, called from [`carry`].
-//!
-//! What is not here is taken out of its list later and counted
-//! (`worldgen::upgrade`). The entity NBT is written in 26.3's shape (an
+//! Any other non-`minecraft:` processor requires a library mod that registers
+//! its `STRUCTURE_PROCESSOR` type and is taken out of its list later and
+//! counted (`worldgen::upgrade`). Entity NBT is upgraded to 26.3's shape (an
 //! `equipment` map, not 1.21.1's `HandItems` and `ArmorItems`).
 use serde_json::{Value, json};
 use std::{
@@ -25,17 +19,9 @@ use std::{
 /// What the processors read from the mod's own data files.
 #[derive(Debug, Default)]
 pub struct ProcessorData {
-    /// Repurposed Structures' `rs_spawners/<path>.json` by id: each mob and
-    /// its weight, without the weight-0 entries its loader removes.
-    pub spawners: BTreeMap<String, Vec<(String, f64)>>,
     /// Moog's "replace vanilla" presets that are on by default:
     /// `(mod id, vanilla_key)`.
     pub replace_vanilla: BTreeSet<(String, String)>,
-    /// The mod's processor lists by id, for Lithostitched's references.
-    pub lists: BTreeMap<String, Value>,
-    /// The mods named by its `ctov:modular_compat` processors that are
-    /// ported along ([`Self::mark_loaded`]).
-    pub compat_loaded: BTreeSet<String>,
 }
 
 impl ProcessorData {
@@ -56,9 +42,7 @@ impl ProcessorData {
             else {
                 continue;
             };
-            let spawners = rest.strip_prefix("rs_spawners/");
-            let list = rest.strip_prefix("worldgen/processor_list/");
-            if spawners.is_none() && list.is_none() && rest != "moogs_structures/replace_vanilla" {
+            if rest != "moogs_structures/replace_vanilla" {
                 continue;
             }
             let declared = entry.size();
@@ -69,21 +53,6 @@ impl ProcessorData {
             else {
                 continue;
             };
-            if let Some(path) = list {
-                out.lists.insert(format!("{ns}:{path}"), v);
-                continue;
-            }
-            if let Some(path) = spawners {
-                let mobs = v["mobs"]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .filter_map(|m| Some((m["name"].as_str()?.to_owned(), m["weight"].as_f64()?)))
-                    .filter(|(_, w)| *w != 0.)
-                    .collect();
-                out.spawners.insert(format!("{ns}:{path}"), mobs);
-                continue;
-            }
             for preset in v["presets"].as_array().into_iter().flatten() {
                 if preset["default_enabled"].as_bool() != Some(true) {
                     continue;
@@ -298,28 +267,15 @@ mod tests {
 
     fn data() -> ProcessorData {
         let mut d = ProcessorData::default();
-        d.spawners.insert(
-            "repurposed_structures:dungeons/badlands".into(),
-            vec![
-                ("minecraft:husk".into(), 10.),
-                ("minecraft:cave_spider".into(), 3.),
-            ],
-        );
         d.replace_vanilla.insert(("mvs".into(), "village".into()));
         d
     }
 
     #[test]
-    fn spawner_processors_become_data() {
+    fn disabled_loot_swap_is_dropped_and_mod_processors_pass_through_to_drop() {
         let mut list = json!({"processors": [
             {"processor_type": "moogs_structures:spawner_randomizing_processor",
-             "weighted_entities": [{"entity": "minecraft:blaze", "weight": 2, "nbt": {"Health": 5}}],
-             "spawn_count": 2, "spawner_replacement_block": {"Name": "minecraft:stone"}},
-            {"processor_type": "repurposed_structures:spawner_randomizing_processor",
-             "rs_spawner_resourcelocation": "repurposed_structures:dungeons/badlands",
-             "valid_block_light_level": {"min_inclusive": 0, "max_inclusive": 7}},
-            {"processor_type": "repurposed_structures:spawner_randomizing_processor",
-             "rs_spawner_resourcelocation": "repurposed_structures:missing"},
+             "weighted_entities": [{"entity": "minecraft:blaze", "weight": 2}]},
             {"processor_type": "minecraft:gravity", "heightmap": "WORLD_SURFACE_WG", "offset": 0},
             {"processor_type": "moogs_structures:vanilla_loot_swap_processor",
              "modid": "mns", "vanilla_key": "fortress", "loot_table_mapping": {}},
@@ -328,38 +284,18 @@ mod tests {
         let mut carried = BTreeMap::new();
         assert!(carry("processor_list", &mut list, &data(), &mut carried));
         let p = list["processors"].as_array().unwrap();
-        assert_eq!(p.len(), 5, "{p:#?}");
+        assert_eq!(p.len(), 3, "{p:#?}");
+        // Third-party processor, vanilla processor, and an enabled loot swap stay
+        // (non-vanilla ones are dropped later); the disabled swap is removed as a no-op.
         assert_eq!(
-            p[0],
-            json!({"processor_type": "sunrise:spawner_mobs",
-                   "mobs": [{"entity": {"Health": 5, "id": "minecraft:blaze"}, "weight": 2.0}],
-                   "spawn_count": 2, "replacement": {"Name": "minecraft:stone"}})
+            p[0]["processor_type"],
+            "moogs_structures:spawner_randomizing_processor"
         );
-        assert_eq!(
-            p[1],
-            json!({"processor_type": "sunrise:spawner_mobs",
-                   "mobs": [{"entity": {"id": "minecraft:husk"}, "weight": 10.0},
-                            {"entity": {"id": "minecraft:cave_spider"}, "weight": 3.0}],
-                   "custom_spawn_rules": {"block_light_limit": {"min_inclusive": 0, "max_inclusive": 7}}})
-        );
-        // Unknown list, vanilla processor, and a swap whose preset is on: kept
-        // (the Java ones are dropped later); the swap that is off is gone.
-        assert_eq!(
-            p[2]["rs_spawner_resourcelocation"],
-            "repurposed_structures:missing"
-        );
-        assert_eq!(p[3]["processor_type"], "minecraft:gravity");
-        assert_eq!(p[4]["modid"], "mvs");
+        assert_eq!(p[1]["processor_type"], "minecraft:gravity");
+        assert_eq!(p[2]["modid"], "mvs");
         assert_eq!(
             carried,
-            BTreeMap::from([
-                ("moogs_structures:spawner_randomizing_processor".into(), 1),
-                ("moogs_structures:vanilla_loot_swap_processor".into(), 1),
-                (
-                    "repurposed_structures:spawner_randomizing_processor".into(),
-                    1
-                ),
-            ])
+            BTreeMap::from([("moogs_structures:vanilla_loot_swap_processor".into(), 1)])
         );
     }
 
@@ -410,21 +346,21 @@ mod tests {
             "sunrise:matter_phase"
         );
         assert_eq!(first["location_predicate"]["phase_to_test_for"], "AIR");
+        // Mod-defined position rule tests are left untouched (require a mod).
         assert_eq!(
             first["position_predicate"]["predicate_type"],
-            "sunrise:y_value"
+            "repurposed_structures:y_value_pos_rule_test"
         );
-        assert_eq!(first["position_predicate"]["max_y_value"], 31);
         let delegated = &list[1]["delegate"]["rules"][0];
         assert_eq!(
             delegated["position_predicate"]["predicate_type"],
-            "sunrise:piece_origin_axis_aligned_linear_pos"
+            "repurposed_structures:piece_origin_axis_aligned_linear_pos_rule_test"
         );
         assert_eq!(
             delegated["input_predicate"]["predicate_type"],
             "minecraft:block_match"
         );
-        assert_eq!(carried.values().sum::<usize>(), 4);
+        assert_eq!(carried.values().sum::<usize>(), 2);
         assert_eq!(carried["repurposed_structures:matter_phase_rule_test"], 2);
         // A file holding none is left as it is.
         assert!(!rule_tests("template_pool", &mut pool, &mut carried));

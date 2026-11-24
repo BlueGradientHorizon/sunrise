@@ -199,14 +199,14 @@ fn features(kind: &str, v: &mut Value, report: &mut Upgrade) -> bool {
     changed
 }
 
-/// Takes the processors written in Java (any type outside `minecraft:` and
-/// the game's own `sunrise:`) out of a processor list: `{"processors":
-/// [...]}`, a bare list, or an id (left as it is). The ones with a data form
-/// were rewritten before ([`crate::processors::carry`]). The game, like vanilla, refuses a list holding a type it
-/// does not know, and with it every pool that names the list, so without
-/// this the structure does not generate at all. Without them it generates
-/// undecorated: no pillars under it, spawners left as the template has
-/// them, blocks not swapped. Whether anything was taken out.
+/// Takes non-`minecraft:` processors out of a processor list: `{"processors":
+/// [...]}`, a bare list, or an id (left as it is). Any processor with a
+/// vanilla data form was rewritten before ([`crate::processors::carry`]);
+/// remaining third-party types require a library mod that registers them via
+/// `STRUCTURE_PROCESSOR`. The game, like vanilla, refuses a list holding a
+/// type it does not know, and with it every pool that names the list, so
+/// without this the structure does not generate at all. Whether anything was
+/// taken out.
 fn drop_java_processors(list: &mut Value, dropped: &mut BTreeMap<String, usize>) -> bool {
     let Some(processors) = crate::processors::processors(list) else {
         return false;

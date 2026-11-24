@@ -107,15 +107,8 @@ impl PosRule {
             _ => return Err(DecodeError::Field("position predicate")),
         })
     }
-    /// PosRuleTest.test for a block at `world`, `relative` in its template,
-    /// in a piece placed at `reference`.
-    fn test(
-        &self,
-        relative: [i32; 3],
-        world: [i32; 3],
-        reference: [i32; 3],
-        random: &mut impl RandomSource,
-    ) -> bool {
+    /// PosRuleTest.test for a block at `world`, in a piece placed at `reference`.
+    fn test(&self, world: [i32; 3], reference: [i32; 3], random: &mut impl RandomSource) -> bool {
         match *self {
             Self::Always => true,
             Self::Linear {
@@ -414,8 +407,7 @@ impl ProcessorList {
         resources: &StructureResources,
         bindings: &FeatureBlockBindings<'_>,
     ) -> Result<Self, DecodeError> {
-        // Lists name lists (a pillar's, a mod's): a cycle of names
-        // is refused rather than followed.
+        // Lists name lists (a mod's): a cycle of names is refused rather than followed.
         thread_local!(static DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) });
         let depth = DEPTH.get();
         if depth >= 16 {
@@ -650,9 +642,7 @@ pub(super) fn process_block<W: PlacementContext>(
                 if !rule.location.test(located, info.pos, &mut random) {
                     continue;
                 }
-                let position_ok = rule
-                    .position
-                    .test(relative, info.pos, reference, &mut random);
+                let position_ok = rule.position.test(info.pos, reference, &mut random);
                 if !position_ok {
                     continue;
                 }

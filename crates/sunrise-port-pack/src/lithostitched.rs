@@ -4,12 +4,6 @@
 //!
 //! - `lithostitched:jigsaw` structures become vanilla's jigsaw. Lithostitched
 //!   lays jigsaws out its own way (OPEN-L5): Sunrise keeps vanilla's layouts.
-//! - Its processors (`block_swap`, `reference`, `apply_random`, `condition`,
-//!   `set_block`, `discard_input`) are the game's own types
-//!   (`sunrise_world`'s `structure::processor`): they are carried as written,
-//!   the processors nested in them carried in turn. CTOV's
-//!   `ctov:modular_compat` (a reference that runs only when its mod is loaded)
-//!   becomes a `reference` when the mod is ported along, else nothing.
 //! - `add_template_pool_elements` and `add_processor_list_processors`
 //!   modifiers become `sunrise:add_to` pool and processor list files
 //!   (`docs/modding/src/how-to/content-mods.md`), with their `priority`, when their load conditions pass.
