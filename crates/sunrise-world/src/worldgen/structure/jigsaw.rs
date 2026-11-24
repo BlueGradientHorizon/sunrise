@@ -578,7 +578,17 @@ impl Pools {
                             // Once per pool: each worker decodes its own copy.
                             static WARNED: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
                             if WARNED.lock().unwrap().insert(name.to_owned()) {
-                                log::warn!("Sunrise: template pool {name} is left out: {error}");
+                                let file = match name.split_once(':') {
+                                    Some((ns, path)) => {
+                                        format!("data/{ns}/worldgen/template_pool/{path}.json")
+                                    }
+                                    None => {
+                                        format!("data/minecraft/worldgen/template_pool/{name}.json")
+                                    }
+                                };
+                                log::warn!(
+                                    "Sunrise: template pool {name} ({file}) is left out: {error}"
+                                );
                             }
                             return None;
                         }

@@ -714,7 +714,14 @@ impl GeneratorData {
                 .processor_lists
                 .iter()
                 .filter_map(|(name, json)| {
-                    resources.processor_list(json, &bindings).ok()?;
+                    if let Err(error) =
+                        super::super::structure::processor::ProcessorList::decode_named(
+                            name, json, resources, &bindings,
+                        )
+                    {
+                        log::warn!("Sunrise: processor list {name} is left out: {error}");
+                        return None;
+                    }
                     super::super::density::identifier(name).ok()
                 })
                 .collect(),
