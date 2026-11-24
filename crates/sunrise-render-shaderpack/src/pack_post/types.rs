@@ -425,6 +425,9 @@ pub struct Pass {
     pub groups: HashMap<u64, wgpu::BindGroup>,
     /// The same for End portal draws, with `end_portal.png` bound as the atlas.
     pub portal_groups: HashMap<u64, wgpu::BindGroup>,
+    /// The same for native terrain quads (`Draw::block_atlas`), with the block atlas bound as
+    /// the atlas (`PackPost::block_atlas_group`).
+    pub block_atlas_groups: HashMap<u64, wgpu::BindGroup>,
     /// (binding, target) of each image: for a buffer, the side its sampler reads.
     pub images: Vec<(u32, Image)>,
     /// Binds the pack's storage buffers in set 4.
@@ -454,11 +457,18 @@ impl Pass {
     /// Back to the uniform values the pass was made with, and no bind groups.
     pub fn reset_history(&mut self) {
         self.block.clone_from(&self.initial_block);
-        self.groups.clear();
-        self.portal_groups.clear();
+        self.forget_groups();
         for compute in &mut self.compute {
             compute.reset_history();
         }
+    }
+
+    /// Drops every cached bind group of the pass: the plain ones, the End portal ones and the
+    /// block atlas ones, which all name the same buffers.
+    pub fn forget_groups(&mut self) {
+        self.groups.clear();
+        self.portal_groups.clear();
+        self.block_atlas_groups.clear();
     }
 
     pub fn render(&self) -> &wgpu::RenderPipeline {
@@ -512,8 +522,9 @@ pub struct Targets {
 pub struct World<'a> {
     /// The block atlas and its size.
     pub atlas: Option<(wgpu::TextureView, [u32; 2])>,
-    /// Of a stitched block atlas, each sprite layer's place (`PackAtlas::rects_table`); empty
-    /// for a grid.
+    /// Each sprite layer's place in the block atlas (`PackAtlas::rects_table`), stitched or a
+    /// grid: flat terrain reads it, and native terrain quads are placed by it
+    /// (`pack_entities::BlockAtlas`).
     pub sprite_rects: &'a [u32],
     pub material_maps: Option<[wgpu::TextureView; 2]>,
     pub lightmap: wgpu::TextureView,

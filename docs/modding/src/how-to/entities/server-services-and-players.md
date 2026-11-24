@@ -614,6 +614,11 @@ kept body:
 | `on_ground` | The local player's own predicted flag; for another kept entity, its client copy's flag. |
 | `is_in_water` | The local player's own fluid state, or a kept entity's last client update. |
 | `is_swimming` | The local player's swimming flag, not the pose (crawling can share that pose). `None` for other players and other entity kinds. |
+| `is_in_lava` | The local player's own fluid state, or a kept entity's last client update. |
+| `is_sprinting` | The local player's predicted sprinting flag, or a kept entity's synced flag. |
+| `pose` | The local player's predicted pose, or the `DATA_POSE` the server last sent for a kept entity. |
+| `is_crouching` | `LocalPlayer.isCrouching` for the local player: its own crouching flag, set before its input each tick, so it can differ from its pose for a tick. A kept entity's crouching pose otherwise. |
+| `LivingRef::no_jump_delay` | `LivingEntity.noJumpDelay` of the local player's prediction: 10 after a ground jump, counting down. `None` for other entities. |
 | `main_arm` | `LivingEntity.getMainArm` for every living entity the client tracks, as the server last sent it: another player's or a mannequin's main hand, a mob's left-handed flag; the local player's own Main Hand option. `None` for an entity that isn't living. |
 
 Client reads are views, not server authority. Inventory access here is read-only;
