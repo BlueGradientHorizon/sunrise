@@ -1038,6 +1038,14 @@ impl PackPost {
         if !pass.block.is_empty() {
             queue.write_buffer(&pass.ubo, 0, &pass.block);
         }
+        self.cached_group(device, pass)
+    }
+
+    /// `pass`'s bind group for the frame's state, from its cache (`Pass::groups`) or made and
+    /// cached: what `bind` gives once its copies and uniform upload are done. A second group of
+    /// the same pass (another atlas, `portal_group`, `block_atlas_group`) takes it from here
+    /// rather than from `bind`, so those run once a pass.
+    fn cached_group(&self, device: &wgpu::Device, pass: &mut Pass) -> wgpu::BindGroup {
         let targets = self.targets.as_ref().expect("resized");
         let shadow = self.shadow_targets.as_ref();
         let shadow_main = shadow.map_or(0, |s| s.main);
@@ -1557,14 +1565,17 @@ impl PackPost {
             let group = self.bind(device, queue, encoder, pass, size);
             let portal_group = self.portal_group(
                 device,
-                queue,
                 encoder,
                 pass,
-                size,
                 geometry
                     .draws
                     .iter()
                     .any(|d| d.pack && d.program == program && d.portal),
+            );
+            let block_group = self.block_atlas_group(
+                device,
+                pass,
+                (geometry.draws.iter()).any(|d| d.pack && d.program == program && d.block_atlas),
             );
             {
                 let mut rp = self.begin(encoder, pass);
@@ -1578,18 +1589,14 @@ impl PackPost {
                 rp.set_bind_group(1, &geometry.table_group, &[]);
                 rp.set_vertex_buffer(0, geometry.vertices());
                 rp.set_index_buffer(geometry.indices.slice(..), wgpu::IndexFormat::Uint32);
-                let mut on_portal = false;
+                let groups = [Some(&group), portal_group.as_ref(), block_group.as_ref()];
+                let mut bound = 0;
                 // Polygon-offset sign text takes the pass's biased pipeline, in its place among
                 // the run's draws (`Draw::polygon_offset`).
                 let offset = pass.polygon_offset.as_ref().and_then(|p| p.get());
                 let mut on_offset = false;
                 for d in draws {
-                    if let Some(portal) = &portal_group
-                        && d.portal != on_portal
-                    {
-                        rp.set_bind_group(0, if d.portal { portal } else { &group }, &[]);
-                        on_portal = d.portal;
-                    }
+                    bind_atlas(&mut rp, d, groups, &mut bound);
                     if let Some(offset) = offset
                         && d.polygon_offset != on_offset
                     {
@@ -1646,10 +1653,8 @@ impl PackPost {
     pub fn portal_group(
         &mut self,
         device: &wgpu::Device,
-        queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
         pass: &mut Pass,
-        size: [u32; 2],
         wanted: bool,
     ) -> Option<wgpu::BindGroup> {
         let atlas = pass.atlas.clone().or_else(|| self.atlas.clone())?;
@@ -1675,9 +1680,38 @@ impl PackPost {
         let view = self.portal_texture.as_ref().map(|p| p.1.clone());
         let saved = std::mem::replace(&mut pass.atlas, view);
         let groups = std::mem::replace(&mut pass.groups, std::mem::take(&mut pass.portal_groups));
-        let group = self.bind(device, queue, encoder, pass, size);
+        let group = self.cached_group(device, pass);
         pass.portal_groups = std::mem::replace(&mut pass.groups, groups);
         pass.atlas = saved;
+        Some(group)
+    }
+
+    /// Native terrain quads (`Draw::block_atlas`) bind the block atlas, the one
+    /// the pack's terrain samples, as the atlas. The program reads its `normals` and `specular`
+    /// as paged maps of the shared atlas (`Pass::paged`), whose pages say nothing of the block
+    /// atlas: these draws get the stand-ins a program reads with no map bound. `None` when no such
+    /// draw is in this pass, or the pack has no block atlas.
+    pub fn block_atlas_group(
+        &self,
+        device: &wgpu::Device,
+        pass: &mut Pass,
+        wanted: bool,
+    ) -> Option<wgpu::BindGroup> {
+        let atlas = self.atlas.clone().filter(|_| wanted)?;
+        // `bind` caches groups by a key without the atlas: these are kept in a cache of their
+        // own, swapped in with the atlas.
+        let saved = (
+            pass.atlas.replace(atlas),
+            std::mem::replace(&mut pass.paged, false),
+            std::mem::replace(&mut pass.material_maps, false),
+        );
+        let groups = std::mem::replace(
+            &mut pass.groups,
+            std::mem::take(&mut pass.block_atlas_groups),
+        );
+        let group = self.cached_group(device, pass);
+        pass.block_atlas_groups = std::mem::replace(&mut pass.groups, groups);
+        (pass.atlas, pass.paged, pass.material_maps) = saved;
         Some(group)
     }
 
@@ -1707,17 +1741,25 @@ impl PackPost {
             let group = self.bind(device, queue, encoder, pass, size);
             let portal_group = self.portal_group(
                 device,
-                queue,
                 encoder,
                 pass,
-                size,
                 (geometry.draws.iter()).any(|d| {
                     d.shadow
                         && crate::pack_entities::shadow_program(d.program) == program
                         && d.portal
                 }),
             );
-            let mut on_portal = false;
+            let block_group = self.block_atlas_group(
+                device,
+                pass,
+                (geometry.draws.iter()).any(|d| {
+                    d.shadow
+                        && crate::pack_entities::shadow_program(d.program) == program
+                        && d.block_atlas
+                }),
+            );
+            let groups = [Some(&group), portal_group.as_ref(), block_group.as_ref()];
+            let mut bound = 0;
             let mut rp = self.begin(encoder, pass);
             rp.set_pipeline(pass.render());
             rp.set_bind_group(0, &group, &[]);
@@ -1730,12 +1772,7 @@ impl PackPost {
             rp.set_vertex_buffer(0, geometry.vertices());
             rp.set_index_buffer(geometry.indices.slice(..), wgpu::IndexFormat::Uint32);
             for d in draws {
-                if let Some(portal) = &portal_group
-                    && d.portal != on_portal
-                {
-                    rp.set_bind_group(0, if d.portal { portal } else { &group }, &[]);
-                    on_portal = d.portal;
-                }
+                bind_atlas(&mut rp, d, groups, &mut bound);
                 if pass.draw {
                     rp.set_bind_group(2, &geometry.group, &[geometry.offset(d.slot)]);
                 }
@@ -2182,7 +2219,7 @@ impl PackPost {
             .chain(&mut self.shadow_water)
             .chain(&mut self.shadow_comp);
         for pass in passes {
-            pass.groups.clear();
+            pass.forget_groups();
             for c in &mut pass.compute {
                 c.groups.clear();
             }
@@ -2640,5 +2677,30 @@ impl PackPost {
             }
         }
         hasher.finish()
+    }
+}
+
+/// Set 0 for draw `d` of an entity pass: of `groups` (plain, End portal, block atlas), the one
+/// of the atlas it samples (`Draw::portal`, `Draw::block_atlas`), the plain one when that atlas's
+/// is missing. `bound`: the index of the group set now.
+fn bind_atlas(
+    rp: &mut wgpu::RenderPass<'_>,
+    d: &crate::pack_entities::Draw,
+    groups: [Option<&wgpu::BindGroup>; 3],
+    bound: &mut usize,
+) {
+    let wanted = if d.portal {
+        1
+    } else if d.block_atlas {
+        2
+    } else {
+        0
+    };
+    let wanted = if groups[wanted].is_some() { wanted } else { 0 };
+    if wanted != *bound
+        && let Some(group) = groups[wanted]
+    {
+        rp.set_bind_group(0, group, &[]);
+        *bound = wanted;
     }
 }

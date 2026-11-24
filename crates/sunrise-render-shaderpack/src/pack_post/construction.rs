@@ -1492,6 +1492,7 @@ pub fn build_pass(
         ids: geometry.is_some_and(|g| g.ids.is_some()),
         groups: HashMap::new(),
         portal_groups: HashMap::new(),
+        block_atlas_groups: HashMap::new(),
         copies: (image_buffers(&images)
             | if p.group == Group::Translucent {
                 written
@@ -1636,6 +1637,7 @@ pub fn build_compute(
         ids: false,
         groups: HashMap::new(),
         portal_groups: HashMap::new(),
+        block_atlas_groups: HashMap::new(),
         buffers: !interface.buffers.is_empty(),
         images,
         compute: Vec::new(),
@@ -2348,7 +2350,15 @@ impl PackPost {
         let shadow_programs = [post.shadow_entities, post.shadow_block];
         let entity_vertices = (programs.iter().chain(&shadow_programs))
             .any(Option::is_some)
-            .then(|| PackEntities::new(device, &draws.layout));
+            .then(|| {
+                let mut entities = PackEntities::new(device, &draws.layout);
+                // Native terrain quads of block entities and entities are placed in the block
+                // atlas, the one the pack's terrain samples (`pack_entities::BlockAtlas`).
+                entities.set_block_atlas(world.atlas.as_ref().and_then(|(_, size)| {
+                    crate::pack_entities::BlockAtlas::new(world.sprite_rects, *size)
+                }));
+                entities
+            });
         let entity_buffers = crate::pack_entities::buffers();
         let entity_geometry = entity_vertices.as_ref().map(|e| Geometry {
             buffers: &entity_buffers,
