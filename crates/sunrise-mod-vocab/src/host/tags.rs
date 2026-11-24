@@ -42,8 +42,8 @@ pub trait TagsHost {
     /// water and flowing water, and for a mod's fluid, tank-only or not, the `bucket_item` it
     /// names (a world fluid's generated `<id>_bucket` by default). None for `minecraft:empty`,
     /// whose bucket is air, for a fluid with no bucket, for a name no registered fluid has, for
-    /// a named item no item has, and for a named item that is the game's bucket of another fluid
-    /// (a mod fluid naming `minecraft:water_bucket`), which would not keep it.
+    /// a named item no item has, and for one of the game's own buckets that would not keep it:
+    /// the empty bucket, another fluid's (a mod fluid naming `minecraft:water_bucket`) or a mob's.
     fn fluid_bucket(&self, fluid: &str) -> Option<ItemKey>;
     /// Side: both.
     /// The fluid a filled bucket the game registers holds (`BucketItem.content`), the inverse of

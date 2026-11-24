@@ -437,8 +437,8 @@ impl Game<'_> {
     /// The bucket item that picks `fluid` up (`Fluid.getBucket`), `minecraft:water_bucket` for
     /// water and flowing water, the bucket a mod's fluid names, a tank-only one's too. None for
     /// `minecraft:empty`, whose bucket is air, for a fluid with no bucket, for a name no
-    /// registered fluid has, for a named item no item has, and for one that is the game's
-    /// bucket of another fluid.
+    /// registered fluid has, for a named item no item has, and for one of the game's own
+    /// buckets that would not keep it: the empty bucket, another fluid's or a mob's.
     pub(super) fn fluid_bucket(&self, fluid: &str) -> Option<mod_api::ItemKey> {
         let item = match fluid_kind(fluid) {
             Some(FluidKind::Mod(mod_fluid) | FluidKind::ModFlowing(mod_fluid)) => {
@@ -453,15 +453,18 @@ impl Game<'_> {
                 mod_api::__private::item_key(&sunrise_client::mod_content::fluid_bucket(fluid)?)?
             }
         };
-        // Filling the game's bucket of another fluid would turn this fluid into that one.
-        match self.bucket_fluid(item) {
-            Some(held)
-                if !mod_api::__private::fluid_id(held)
-                    .is_some_and(|held| self.fluid_is_same(held, fluid)) =>
+        // The game's own buckets keep what they hold: filling the empty one, or one of another
+        // fluid or a mob, would lose this fluid.
+        let id = mod_api::__private::item_key_id(item)?;
+        match sunrise_client::items::bucket_contents(id) {
+            Some((sunrise_world::level::BucketContent::Fluid(held), ..))
+                if fluid_kind(fluid).is_some_and(|fluid| fluid.same_family(held)) =>
             {
-                None
+                Some(item)
             }
-            _ => Some(item),
+            Some(_) => None,
+            None if id == "minecraft:bucket" => None,
+            None => Some(item),
         }
     }
 

@@ -613,6 +613,14 @@ mod tests {
                 "lost",
                 br#"{"bucket_item":"measured:no_such_jar","world":{"bucket":false}}"#,
             ),
+            (
+                "cod",
+                br#"{"bucket_item":"minecraft:cod_bucket","world":{"bucket":false}}"#,
+            ),
+            (
+                "hollow",
+                br#"{"bucket_item":"minecraft:bucket","world":{"bucket":false}}"#,
+            ),
         ] {
             std::fs::write(fluids.join(format!("{name}.json")), body).unwrap();
         }
@@ -677,6 +685,8 @@ mod tests {
                     "measured:salt",
                     "measured:shared",
                     "measured:lost",
+                    "measured:cod",
+                    "measured:hollow",
                 ] {
                     assert_eq!(bucket(fluid), None, "{fluid}");
                 }
