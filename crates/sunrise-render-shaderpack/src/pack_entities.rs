@@ -1032,6 +1032,8 @@ fn material_runs<'a>(
         // same for all its other quads).
         let split = matches!(program, Some(BLOCK | ENTITY | TRANSLUCENT))
             || (program == Some(PARTICLE) && drawn[PARTICLE_TRANSLUCENT]);
+        // A quad is read only inside its own span, never across into the next one.
+        let range_end = range.end;
         let program_at = move |i: usize| {
             let layer = vertices[i].layer;
             let material = material_program(&span, layer, drawn);
@@ -1042,7 +1044,7 @@ fn material_runs<'a>(
             // program for the run leaves them to Sunrise, uncast, as before.
             let held = material.is_some_and(|p| {
                 matches!(p, BLOCK | BLOCK_TRANSLUCENT | ENTITY | TRANSLUCENT) && drawn[p]
-            }) && vertices
+            }) && vertices[..range_end]
                 .get(i..i + 4)
                 .is_some_and(|quad| atlas.is_some_and(|a| a.holds(quad)));
             if held {

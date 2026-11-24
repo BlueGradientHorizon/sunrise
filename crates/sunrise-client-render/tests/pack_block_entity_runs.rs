@@ -156,7 +156,7 @@ fn shoot(renderer: &mut Renderer, frame: &Frame<'_>, path: &Path) -> [u8; 4] {
         scaled: false,
         background: false,
     });
-    renderer.render(frame).unwrap();
+    renderer.render(frame, None).unwrap();
     renderer
         .screenshot_result
         .take()
@@ -441,6 +441,7 @@ fn fixture_frame(hud: &HudBatch) -> Frame<'_> {
         water_plane: None,
         cave_culling: false,
         title: false,
+        sky_pass: false,
         sky_blocked: false,
         skybox: false,
         end_sky: false,
