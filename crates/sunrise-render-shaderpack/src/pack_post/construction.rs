@@ -2819,7 +2819,7 @@ impl PackPost {
         let water_mask = (water.iter())
             .flat_map(|p| &p.samplers)
             .any(|s| s.source == Source::WaterMask);
-        let every_pass = || {
+        let every_pass = |mod_passes: &[ModPackPass]| {
             (passes
                 .iter()
                 .chain(&shadow_comp)
@@ -2841,7 +2841,7 @@ impl PackPost {
         // (and its opaque-depth snapshot) only when at least one built pass actually samples it.
         let mut mod_depth_used = vec![false; mods.depth_targets.len()];
         let mut mod_opaque_depth_used = vec![false; mods.depth_targets.len()];
-        for p in every_pass().flat_map(|p| std::iter::once(p).chain(&p.compute)) {
+        for p in every_pass(&mod_passes).flat_map(|p| std::iter::once(p).chain(&p.compute)) {
             for s in &p.samplers {
                 match s.source {
                     Source::ModDepth(idx) => {
@@ -2875,7 +2875,7 @@ impl PackPost {
         let shadow_targets = shadow_formats.map(|f| {
             // `shadow_storage` covers compute stages attached to a pass, which `every_pass`
             // leaves out: one may be the only program binding shadowcolorimgN.
-            let colors = (every_pass().fold(0u16, |m, p| {
+            let colors = (every_pass(&mod_passes).fold(0u16, |m, p| {
                 let own = if p.group.shadow() {
                     p.reads | p.written | p.flip
                 } else {
@@ -2884,7 +2884,7 @@ impl PackPost {
                 m | own | p.shadow_reads
             }) | shadow_storage)
                 & shadow_colors;
-            let depth1 = every_pass()
+            let depth1 = every_pass(&mod_passes)
                 .flat_map(|p| &p.samplers)
                 .any(|s| matches!(s.source, Source::ShadowDepth(1, _)));
             let t = crate::pack_shadow::ShadowTargets::new(
@@ -2960,7 +2960,7 @@ impl PackPost {
                 .iter()
                 .any(|m| m.pass_slot != ModPassSlot::Shadow && m.depth_target.is_none());
         let blit_depth = draws_depth
-            || every_pass()
+            || every_pass(&mod_passes)
                 .flat_map(|p| std::iter::once(p).chain(&p.compute))
                 .any(|p| {
                     p.samplers.iter().any(|s| {

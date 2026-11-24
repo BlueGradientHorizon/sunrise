@@ -22,7 +22,7 @@ pub use crate::pack_post::construction::{
 pub use crate::pack_weather::Weather;
 
 /// The texture behind a pack sampler name.
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Source {
     Color(usize),
     Depth,
