@@ -32,8 +32,7 @@ pub(super) struct EntityJournal {
     /// Below the join number of every entity added in the transaction (`JoinSeq::upcoming` as
     /// it opened).
     mark: JoinSeq,
-    /// How many bolts and thrown potions there were as it opened.
-    bolts: usize,
+    /// How many thrown potions there were as it opened.
     potions: usize,
     /// The travellers that arrived from another level, by the ids they arrived under.
     arrivals: HashSet<u32>,
@@ -195,7 +194,6 @@ impl Game<'_> {
     pub(super) fn entity_journal_open(&self) -> EntityJournal {
         EntityJournal {
             mark: JoinSeq::upcoming(),
-            bolts: self.bolts.len(),
             potions: self.potions.thrown.len(),
             ..EntityJournal::default()
         }
@@ -437,7 +435,6 @@ impl Game<'_> {
                 mob.removed = was;
             }
         }
-        self.bolts.truncate(journal.bolts);
         self.potions.thrown.truncate(journal.potions);
         // One load when nothing joined anywhere since the transaction opened.
         if JoinSeq::latest() >= journal.mark {
@@ -480,6 +477,7 @@ impl Game<'_> {
             self.item_frames,
             self.others,
             self.breath_clouds,
+            self.bolts,
             self.fangs.list,
             self.ominous_spawners,
             self.resident_entities.knots,
@@ -528,6 +526,25 @@ impl Drop for Departure {
     }
 }
 
+fn remove_entity_attachment(
+    attachments: &mut HashMap<super::AttachmentKey, super::KeptAttachments>,
+    id: u32,
+) -> Option<super::KeptAttachments> {
+    let key = attachments
+        .keys()
+        .find(|key| {
+            matches!(
+                key,
+                super::AttachmentKey::Level(
+                    _,
+                    sunrise_mod_runtime::attachments::Holder::Entity(entity),
+                ) if *entity == id
+            )
+        })
+        .copied()?;
+    attachments.remove(&key)
+}
+
 impl Game<'_> {
     /// Entity `id` is leaving this level with `map` inside a transaction: its index rows stay
     /// until the root closes, so a snapshot inside the action sees no gap.
@@ -566,11 +583,10 @@ impl Game<'_> {
     /// slots on, so its own abort can put back what it kept, which is older.
     pub(super) fn roll_back_in_flight(&mut self, level: &mut Level) {
         for (id, slot) in std::mem::take(&mut level.in_flight) {
-            let holder = sunrise_mod_runtime::attachments::Holder::Entity(id);
             // 🤖 Agent: as in `journal_travel`, both are consumed and the travelled one, kept
             // before the entity arrived under `id`, is the older and the one put back.
             let travelled = level.travelled.remove(&id);
-            let kept = level.attachments.remove(&holder);
+            let kept = remove_entity_attachment(&mut level.attachments, id);
             if let Some(kept) = travelled.or(kept) {
                 *slot.lock().unwrap_or_else(|error| error.into_inner()) = Some(kept.contents);
             }
@@ -588,9 +604,7 @@ impl Game<'_> {
             // travelled to `source` was kept before anything kept it under `source`, so its
             // travelled entry is the older one, and the one an abort restores.
             let travelled = level.travelled.remove(&source);
-            let kept = level
-                .attachments
-                .remove(&sunrise_mod_runtime::attachments::Holder::Entity(source));
+            let kept = remove_entity_attachment(&mut level.attachments, source);
             if let Some(kept) = travelled.or(kept) {
                 level.travelled.entry(arrived).or_insert(kept);
             }

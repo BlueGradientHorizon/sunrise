@@ -5,12 +5,20 @@ pub use mod_api::world::biome::{BiomeColors, SpawnEntry};
 use serde_json::Value;
 use std::{
     borrow::Cow,
+    cell::RefCell,
     collections::{BTreeMap, BTreeSet, HashMap},
-    sync::{Arc, Mutex, OnceLock},
+    sync::{Arc, Mutex, OnceLock, Weak},
 };
 use sunrise_assets::resource_source::{ResourceRoot, ResourceSource};
-use sunrise_client_core::particle_type::ParticleType;
 use sunrise_core::{noise::SimplexNoise, position::BlockPos, random::LegacyRandom};
+use sunrise_world::worldgen::biome_temperature::{
+    BiomeTemperature, BiomeTemperatureSettings, Precipitation, TemperatureModifier,
+};
+
+type TemperatureCaches = HashMap<*const (), (Weak<()>, BiomeTemperature)>;
+thread_local! {
+    static TEMPERATURE_CACHES: RefCell<TemperatureCaches> = RefCell::default();
+}
 
 /// The missing saved biomes already warned about in the open world: each dimension's table
 /// keeps its own placeholders, but a name is reported once per world.
@@ -95,6 +103,8 @@ pub struct BiomeInfo {
     pub frozen: bool,
     pub downfall: f32,
     pub precipitation: bool,
+    /// Clones share the same biome identity; a newly decoded biome gets its own cache.
+    temperature_cache_key: Arc<()>,
     pub grass: u32,
     pub modifier: GrassModifier,
     pub foliage: u32,
@@ -104,8 +114,6 @@ pub struct BiomeInfo {
     /// The biome's own fog colour attribute; otherwise the dimension's applies.
     pub fog: Option<u32>,
     pub water_fog: u32,
-    /// `minecraft:visual/ambient_particles` entries and their probabilities.
-    pub ambient_particles: Vec<(ParticleType, f32)>,
     /// `BiomeGenerationSettings.features`: the placed feature ids of each
     /// `GenerationStep.Decoration` step, in order.
     pub features: Vec<Vec<String>>,
@@ -114,27 +122,7 @@ pub struct BiomeInfo {
     pub attributes: sunrise_world::environment_attributes::AttributeMap,
 }
 impl BiomeInfo {
-    fn ambient_particles(v: &Value) -> Vec<(ParticleType, f32)> {
-        let list = &v["attributes"]["minecraft:visual/ambient_particles"];
-        let entries = list["argument"].as_array().or_else(|| list.as_array());
-        entries
-            .into_iter()
-            .flatten()
-            .filter_map(|entry| {
-                Some((
-                    ParticleType::from_name(entry["particle"]["type"].as_str()?)?,
-                    entry["probability"].as_f64().unwrap_or(0.0) as f32,
-                ))
-            })
-            .collect()
-    }
-
-    /// `Biome.getHeightAdjustedTemperature`: the frozen modifier, then cooler
-    /// with height above `sea_level + 17`.
-    pub fn temperature_at(&self, pos: BlockPos, sea_level: i32) -> f32 {
-        use sunrise_world::worldgen::biome_temperature::{
-            BiomeTemperatureSettings, TemperatureModifier,
-        };
+    fn temperature_settings(&self) -> BiomeTemperatureSettings {
         BiomeTemperatureSettings {
             base_temperature: self.temperature,
             modifier: if self.frozen {
@@ -145,14 +133,41 @@ impl BiomeInfo {
             has_precipitation: self.precipitation,
             downfall: self.downfall,
         }
-        .height_adjusted(pos, sea_level)
     }
-    /// `Biome.getPrecipitationAt` in the Overworld (sea level 63): None
-    /// without precipitation, else whether it falls as snow
-    /// (`getHeightAdjustedTemperature` below 0.15).
-    pub fn snows_at(&self, x: i32, y: i32, z: i32) -> Option<bool> {
-        self.precipitation
-            .then(|| self.temperature_at(BlockPos::new(x, y, z), 63) < 0.15)
+
+    /// `Biome.getHeightAdjustedTemperature`: the frozen modifier, then cooler
+    /// with height above `sea_level + 17`.
+    pub fn temperature_at(&self, pos: BlockPos, sea_level: i32) -> f32 {
+        self.temperature_settings().height_adjusted(pos, sea_level)
+    }
+
+    /// `Biome.getPrecipitationAt`: None without precipitation, otherwise whether it snows.
+    /// `Biome.getTemperature` retains the temperature per biome, thread and packed position.
+    pub fn snows_at(&self, pos: BlockPos, sea_level: i32) -> Option<bool> {
+        TEMPERATURE_CACHES.with_borrow_mut(|caches| {
+            let key = Arc::as_ptr(&self.temperature_cache_key);
+            let cache = if let Some((_, cache)) = caches.get_mut(&key) {
+                cache
+            } else {
+                // Weak keys prevent address reuse until the old cache is discarded without
+                // keeping biomes from replaced registries alive.
+                caches.retain(|_, (biome, _)| biome.strong_count() != 0);
+                &mut caches
+                    .entry(key)
+                    .or_insert_with(|| {
+                        (
+                            Arc::downgrade(&self.temperature_cache_key),
+                            BiomeTemperature::new(self.temperature_settings()),
+                        )
+                    })
+                    .1
+            };
+            match cache.precipitation_at(pos, sea_level) {
+                Precipitation::None => None,
+                Precipitation::Rain => Some(false),
+                Precipitation::Snow => Some(true),
+            }
+        })
     }
 }
 /// The game's biomes, by id. The built-in (vanilla) biomes come first, in
@@ -273,6 +288,7 @@ impl BiomeInfo {
             frozen: v["temperature_modifier"].as_str() == Some("frozen"),
             downfall,
             precipitation: v["has_precipitation"].as_bool().unwrap_or(true),
+            temperature_cache_key: Arc::new(()),
             grass: color(&effects["grass_color"])
                 .unwrap_or_else(|| sample(&maps.grass, temperature, downfall, 0xFF00FF)),
             modifier,
@@ -284,7 +300,6 @@ impl BiomeInfo {
             sky: color(&attributes["minecraft:visual/sky_color"]),
             fog: color(&attributes["minecraft:visual/fog_color"]),
             water_fog: color(&attributes["minecraft:visual/water_fog_color"]).unwrap_or(0x050533),
-            ambient_particles: Self::ambient_particles(v),
             features: v["features"]
                 .as_array()
                 .into_iter()
@@ -470,6 +485,10 @@ impl Biomes {
             .copied()
             .unwrap_or(0)
     }
+    /// Exact biome table index for `name`, or `None` when the table does not contain it.
+    pub fn try_id(&self, name: &str) -> Option<u16> {
+        self.index.get(name).copied()
+    }
     /// Whether the game has the biome `name`.
     pub fn contains(&self, name: &str) -> bool {
         self.index.contains_key(name)
@@ -491,6 +510,7 @@ impl Biomes {
                 frozen: false,
                 downfall: 0.4,
                 precipitation: false,
+                temperature_cache_key: Arc::new(()),
                 grass: 0x7f_c0_55,
                 modifier: GrassModifier::None,
                 foliage: 0x6a_ab_37,
@@ -499,7 +519,6 @@ impl Biomes {
                 sky: None,
                 fog: None,
                 water_fog: 0x3f_76_e4,
-                ambient_particles: Vec::new(),
                 features: Vec::new(),
                 attributes: Default::default(),
             });
@@ -570,6 +589,10 @@ impl Biomes {
         self.list
             .get(usize::from(id))
             .map_or("minecraft:plains", |b| b.name.as_str())
+    }
+    /// Exact canonical name of biome `id`, or `None` when `id` is past this table.
+    pub fn try_name(&self, id: u16) -> Option<&str> {
+        self.list.get(usize::from(id)).map(|b| b.name.as_str())
     }
     /// A biome's natural spawners by category, sorted by category name; None for a name this
     /// table lacks.
@@ -789,6 +812,7 @@ mod pack_tests {
         let base = builtin(&["minecraft:meadow", "minecraft:plains", "minecraft:river"]);
         let red = json!({"temperature": 2.0, "effects": {"water_color": "#ff0000"},
             "attributes": {"minecraft:visual/ambient_particles": {
+                "modifier": "append",
                 "argument": [{"particle": {"type": "minecraft:ash"}, "probability": 0.25}]}}});
         let hot = json!({"effects": {"grass_color": 0x123456}});
         let files = [
@@ -802,9 +826,21 @@ mod pack_tests {
         assert_eq!(world.id("minecraft:river"), 2);
         assert_eq!(world.get(2).water, 0xFF0000);
         assert_eq!(world.get(2).temperature, 2.0);
-        assert_eq!(world.get(2).ambient_particles.len(), 1);
-        assert_eq!(world.get(2).ambient_particles[0].0.name(), "ash");
-        assert_eq!(world.get(2).ambient_particles[0].1, 0.25);
+        use sunrise_world::environment_attributes::{AMBIENT_PARTICLES, Entry, attribute};
+        use sunrise_world::{particle_options::ParticleOptions, particle_type::ParticleType};
+        let entry = world
+            .get(2)
+            .attributes
+            .get(attribute(AMBIENT_PARTICLES).unwrap());
+        let Some(Entry::AppendAmbientParticles(particles)) = entry else {
+            panic!("the replacement biome carries its ambient particle modifier");
+        };
+        assert_eq!(particles.len(), 1);
+        assert_eq!(
+            *particles[0].particle,
+            ParticleOptions::Simple(ParticleType::Ash)
+        );
+        assert_eq!(particles[0].probability, 0.25);
         // New biomes follow, in registry order.
         assert_eq!(world.id("minecraft:molten_peaks"), 3);
         assert_eq!(world.id("pack:zeta"), 4);
@@ -879,6 +915,37 @@ impl Biomes {
                     .collect(),
             ),
         }
+    }
+}
+
+#[cfg(test)]
+mod precipitation_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn snow_is_not_warm_enough_to_rain_including_nan() {
+        let mut biomes =
+            Biomes::from_jsons(&[("test:unstable", json!({"has_precipitation": true}))]);
+        biomes.list[0].temperature = f32::NAN;
+        assert_eq!(
+            biomes.get(0).snows_at(BlockPos::new(0, 64, 0), 63),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn precipitation_caches_belong_to_the_biome_and_thread() {
+        let biomes = Biomes::from_jsons(&[("test:taiga", json!({"temperature": 0.25}))]);
+        let pos = BlockPos::new(0, 170, 0);
+        assert_eq!(biomes.get(0).snows_at(pos, 63), Some(true));
+        assert_eq!(biomes.clone().get(0).snows_at(pos, 120), Some(true));
+        std::thread::scope(|thread| {
+            thread.spawn(|| assert_eq!(biomes.get(0).snows_at(pos, 120), Some(false)));
+        });
+
+        let replaced = biomes.with_packs([("test:taiga", &json!({"temperature": 0.25}))]);
+        assert_eq!(replaced.get(0).snows_at(pos, 120), Some(false));
     }
 }
 

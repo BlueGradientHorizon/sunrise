@@ -48,9 +48,6 @@ impl Game<'_> {
         };
         let tags = [&self.res.items().block_tags, &world_items.block_tags];
         let facts = self.res.facts();
-        let journaled_groups = self
-            .transactions
-            .journaled_connection_group_positions(self.dim);
         let watched = std::mem::take(&mut self.world.watched);
         let matches = |f, s| {
             super::commands::block_input_matches(
@@ -71,31 +68,32 @@ impl Game<'_> {
         let (out, publication) = if let Some(frame) = self.transactions.level_frame(self.dim) {
             let (out, publication) = self.world.stage_edit_runs(
                 &runs,
-                &journaled_groups,
                 matches,
                 track,
-                |pos, old, new| {
+                |pos, old, new, clears_group, old_group| {
                     frame.keep_bulk_block(pos, old);
+                    if old_group.is_some() {
+                        frame.keep_connection_group(pos, old_group);
+                    }
                     let to = BlockStateId(new);
                     steps
                         .entry(pos)
-                        .and_modify(|step| step.to = to)
-                        .or_insert(StrictBlockStep { to, row: None });
+                        .and_modify(|step| {
+                            step.to = to;
+                            step.clear_connection_group |= clears_group;
+                        })
+                        .or_insert(StrictBlockStep {
+                            to,
+                            row: None,
+                            clear_connection_group: clears_group,
+                        });
                 },
             );
             (out, Some(publication))
         } else {
-            (
-                self.world
-                    .edit_runs(&runs, &journaled_groups, matches, track),
-                None,
-            )
+            (self.world.edit_runs(&runs, matches, track), None)
         };
         self.world.watched = watched;
-        if !out.group_clears.is_empty() {
-            self.transactions
-                .reconcile_bulk_connection_group_clears(self.dim, &out.group_clears);
-        }
         // The block entities the new blocks bring, as `native_set_block` makes them (a mod block's own,
         // included), in the order `replace_block_entities` takes them: the positions needing a fresh entity.
         let resources = Arc::clone(&self.res);
@@ -683,7 +681,6 @@ mod tests {
                 state: 1,
                 only: None,
             }],
-            &FxHashSet::default(),
             |_, _| true,
             |s| s == 2,
         );
@@ -722,7 +719,6 @@ mod tests {
                 state: 1,
                 only: None,
             }],
-            &FxHashSet::default(),
             |_, _| true,
             |s| s == 3,
         );
@@ -750,7 +746,6 @@ mod tests {
                 state: 3,
                 only: None,
             }],
-            &FxHashSet::default(),
             |_, _| true,
             |s| s == 3,
         );
@@ -795,7 +790,6 @@ mod tests {
                 state: 4,
                 only: None,
             }],
-            &FxHashSet::default(),
             |_, _| true,
             |_| true,
         );
@@ -820,7 +814,6 @@ mod tests {
                 state: 4,
                 only: None,
             }],
-            &FxHashSet::default(),
             |_, _| true,
             |_| true,
         );

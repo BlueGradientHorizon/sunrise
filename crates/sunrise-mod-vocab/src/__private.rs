@@ -144,6 +144,27 @@ pub fn enabled_listened(hook: HookId) -> bool {
     crate::runtime::enabled_listened(hook)
 }
 
+/// A live listener query bound to the creating thread's installed dispatch table.
+// no wire: a process-local view of the installed dispatch table, never sent.
+pub struct EnabledListeners {
+    installed: Option<&'static crate::runtime::Installed>,
+    hook: HookId,
+}
+
+impl EnabledListeners {
+    pub fn capture(hook: HookId) -> Self {
+        Self {
+            installed: crate::runtime::installed(),
+            hook,
+        }
+    }
+
+    pub fn any(&self) -> bool {
+        self.installed
+            .is_some_and(|installed| crate::runtime::has_enabled_listener(installed, self.hook))
+    }
+}
+
 /// Whether any part subscribed to the scoped entity hook `hook` is attached to
 /// entity type `kind`, so a family's walk can resolve its rows' slots once per
 /// pass instead of naming each row's type.
@@ -347,6 +368,22 @@ pub mod game {
     /// A chunk handle the game names.
     pub fn chunk_ref(level: LevelRef, pos: [i32; 2]) -> ChunkRef {
         ChunkRef { level, pos }
+    }
+    /// A non-blocking chunk request handle the game names.
+    pub fn chunk_request_ref(level: LevelRef, id: u64) -> ChunkRequestRef {
+        ChunkRequestRef { level, id }
+    }
+    /// One finished or failed non-blocking chunk request constructed by the game.
+    pub fn completed_chunk_request(
+        request: ChunkRequestRef,
+        pos: [i32; 2],
+        result: Result<ChunkSnapshot, ChunkLoadError>,
+    ) -> CompletedChunkRequest {
+        CompletedChunkRequest {
+            request,
+            pos,
+            result,
+        }
     }
     /// An open menu's handle the game names.
     pub fn menu_ref(player: PlayerRef, window: i32, generation: u64) -> MenuRef {
@@ -798,9 +835,3 @@ impl EffectiveDependencies {
 }
 
 include!(concat!(env!("OUT_DIR"), "/mod_api_exports_private.rs"));
-
-/// How many listeners this thread has entered. A scoped
-/// resource that must not outlive one listener compares it between operations.
-pub fn listener_serial() -> u64 {
-    crate::runtime::listener_serial()
-}

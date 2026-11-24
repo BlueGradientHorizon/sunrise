@@ -21,7 +21,8 @@ does) can't see tag parts, and warns once.
 ## Right click on a block
 
 `Hooks::right_click_block` corresponds to NeoForge 26.3's
-`PlayerInteractEvent.RightClickBlock`, on the clicking client and server:
+`PlayerInteractEvent.RightClickBlock`, with the same switches on the clicking
+client and server:
 
 - `use_block = TriState::True` allows block use even while sneaking with an item
   in either hand. `Default` skips while sneaking with either hand full; `False` skips block use.
@@ -77,55 +78,7 @@ second registration for the same item refuses startup; there is no last-writer-w
 This example traces the input for an existing `mymod:tool` without doing anything in the world:
 
 ```rust
-use std::sync::Arc;
-
-use mod_api::{
-    ClientHost, ClientItemUseBehavior, Hooks, ItemStack, JavaString, Registrar, RegistrationContext,
-};
-
-struct ToolMod;
-struct Behavior;
-
-#[mod_api::sunrise_mod]
-impl Hooks for ToolMod {
-    fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
-        let key = r.item_key("mymod:tool");
-        r.register_client_item_use(key, Arc::new(Behavior));
-    }
-}
-
-impl ClientItemUseBehavior for Behavior {
-    fn use_item(&self, _host: &mut dyn ClientHost, stack: &ItemStack, slot: u32) {
-        let data = stack
-            .components()
-            .and_then(|c| c.as_nbt().get(&JavaString::from("minecraft:custom_data")));
-        eprintln!(
-            "Tool input started in slot {slot}: {} item(s), custom data present: {}",
-            stack.count(),
-            data.is_some(),
-        );
-    }
-
-    fn release_using(
-        &self,
-        _host: &mut dyn ClientHost,
-        _stack: &ItemStack,
-        slot: u32,
-        ticks_held: u32,
-    ) {
-        eprintln!("Tool input released in slot {slot} after {ticks_held} ticks");
-    }
-
-    fn on_stop_using(
-        &self,
-        _host: &mut dyn ClientHost,
-        _stack: &ItemStack,
-        slot: u32,
-        _ticks_held: u32,
-    ) {
-        eprintln!("Tool input ended in slot {slot}");
-    }
-}
+{{#include ../../../examples/src/item_behaviors.rs:client_item_use}}
 ```
 
 An enabled owner consumes the input before crosshair handling. This applies to main-hand
@@ -154,15 +107,30 @@ require a release in `release_using` and cleanup that should also run on resets 
 
 ## Item use on a block
 
-`Hooks::use_item_on_block` (`UseItemOnBlockEvent`) runs with
-`HostSide` before each selected phase: `ItemBeforeBlock`, `Block`, then
-`ItemAfterBlock`. `event.click` describes the hit, hand, held stack and player.
-Return `Flow::Cancel` to skip the selected phase's Part and vanilla behaviour,
-using `*event.cancellation_result` (initially `TryWithEmptyHand`) as its result.
+After `Hooks::right_click_block` lets the click through, `Hooks::use_item_on_block`
+(`UseItemOnBlockEvent`) runs with `HostSide` before each selected phase:
+`ItemBeforeBlock`, `Block`, then `ItemAfterBlock`. The event and the scoped Parts
+below share `event.click`: the logical side, level, position, exact hit, hand,
+optional held stack and acting player. Return `Flow::Cancel` to skip the selected
+phase's Part and vanilla behaviour, using `*event.cancellation_result` (initially
+`TryWithEmptyHand`) as its result. Canceling does not undo work from earlier phases.
 
-Canceling `ItemBeforeBlock` skips the item's `on_item_use_first` Part. `Pass`
-continues to the block phase; any non-`Pass` result ends the block interaction. Cancellation alone does not suppress the later phases when its answer is `Pass`. A block-phase `TryWithEmptyHand`
-can run the block's empty-hand behaviour on the main hand.
+- `ItemPart::on_item_use_first` is the held item's first refusal, after the
+  `ItemBeforeBlock` event and before the block is asked. `Pass` goes on to the
+  block; any other result skips both block use and the item's `use_on` for this hand.
+- `BlockPart::use_item_on` is the clicked state's behaviour, after the `Block`
+  event, for either hand. `Pass` and `Fail` go on to the item rather than using
+  the block's template. `TryWithEmptyHand` selects the empty method on the main
+  hand only, even if it came from a canceled `Block` event.
+- `BlockPart::use_without_item` then runs before the empty method's template.
+  There is no fourth event phase. The click still carries whatever the hand
+  holds; the fallback does not require an empty stack. `Pass`, `Fail` and
+  `TryWithEmptyHand` go on to the item without retrying the fallback.
+
+These three methods take `HostSide` and return `Option<InteractionResult>`.
+`None` defers to the ordinary behaviour if no other Part answers. A supplied
+result replaces that behaviour. If the block lets the click through, the
+`ItemAfterBlock` event still precedes the held item's `use_on` Part.
 
 `ItemPart::use_on`, `Hooks::entity_interact` and `ItemPart::item_interact_mob`
 use version 2, run on both logical sides, and expose native `HostSide`.
@@ -171,11 +139,15 @@ listeners and the ordinary behaviour; `Some(result)` supplies the replacement
 answer. `item_interact_mob` also carries the interaction `hand`.
 `ItemPart::use_item` keeps its existing both-side, version-2 contract.
 
-Client execution predicts hands only. Client hosts allow reads and local effects,
-not authoritative world, inventory or entity writes; perform those on the server.
-Answer on the client as well when prediction must stop the hand loop: an answer
-made only on the server cannot suppress an offhand attempt already predicted by
-the client.
+Client hosts allow reads and local effects, not authoritative world, inventory or
+entity writes; perform those on the server. A client Part changes only prediction,
+not whether the ordinary `UseItemOn` request goes to the server. If its click or
+stack cannot be represented, the engine keeps the ordinary path; if the captured
+block or hand changed while deciding, it discards the prediction without retrying.
+A main-hand request still uses the hotbar slot selected before prediction; a Part's
+change of slot applies to later actions.
+Answer on the client as well when prediction must stop the hand loop: a server-only
+answer cannot suppress an offhand attempt already predicted by the client.
 
 A client without this mod usually predicts vanilla here; the server corrects it.
 For a [server-registered cauldron click](../../how-to/world/cauldron-interactions.md#client-prediction),
@@ -185,9 +157,10 @@ that local phase runs, but it can stop air use and the other hand's turn.
 
 `Success`, `SuccessServer` and `Consume` consume the interaction and end the
 client's hand loop. Only `Success` swings on the client; `SuccessServer` swings
-on the server and `Consume` never swings. `Fail` ends block interaction only,
-not an entity or air-use hand loop. `Pass` and `TryWithEmptyHand` fall through
-(the latter can select the block's empty-hand behaviour at the block phase).
+on the server and `Consume` never swings. A `Fail` from the outer block gate or
+an item-on-block result ends the client's click, but a `Fail` from either block
+method falls through to the item as described above. `Pass` falls through;
+`TryWithEmptyHand` selects the empty method only at the main-hand `Block` phase.
 
 ## Item wear
 
@@ -250,8 +223,13 @@ held-stack queries. Each item's parts are asked once per registered enchantment 
 installed (server world open or `/reload`, or client tag packets), with the item's default stack. The
 engines read the stored answers until the next install or world close. Support resolves before the server
 resolves primary answers. Each snapshot owns its answers; publishing a fresh world-loot snapshot copies
-the current answers without asking listeners again. The client `Host::enchantment_supports` read is separate:
-it checks `supported_items` membership only.
+the current answers without asking listeners again.
+
+`enchantments()`, `enchantment_supports(id, item)` and `enchantment_min_cost(id, level)` answer on either
+side, on any `Host` and on `ClientSetupContext`: a server reads its own enchantment registry, data packs
+included, and a client the table built from the server's synced entries when available, else the local table. `enchantments()` lists `EnchantmentInfo` records in registry order, including
+`weight` (selection weight) and `anvil_cost` (base anvil fee per enchantment level).
+`enchantment_supports` checks only `supported_items` membership, not Item Part overrides.
 
 ## Hand, break and name on the client
 
@@ -376,3 +354,85 @@ need to keep it afterwards. The input views and staged edits are not Wire record
 
 `MenuPart::menu_slot_rules` answers per menu type and slot, including for a replacement from
 `item_stacked_on_other`.
+
+## Stacking onto another item in a menu
+
+`ItemPart::item_stacked_on_other` shares the `item_stacked_on_other` hook, event and
+decide/fire/apply transaction with `Hooks::item_stacked_on_other` (NeoForge's
+`ItemStackedOnOtherEvent`), covering vanilla 26.3's `Item.overrideStackedOnOther` and
+`Item.overrideOtherStackedOnMe` on both sides:
+
+- **Server (authoritative)**: single-player integrated server, LAN host and dedicated server
+  receive `HostSide::Server`.
+- **Client**: ordinary container/inventory click prediction and creative Survival Inventory tab or
+  Item Tab hotbar pickups receive `HostSide::Client`. During client prediction, server
+  reconciliation remains authoritative. Creative catalogue display slots are not pickup overrides.
+
+Dispatch runs at the resolved pickup moment: both a direct left/right `Pickup` when no drag is
+active and a one-slot left/right `QuickCraft` drag release (matching vanilla
+`AbstractContainerMenu.doClick`). Multi-slot drags, middle-button drags and direct pickups that
+only reset an active drag do not dispatch.
+
+On each resolved pickup, dispatch follows vanilla
+`AbstractContainerMenu.tryItemClickBehaviourOverride` order inside one transaction:
+
+1. Global `Hooks::item_stacked_on_other` listeners (`event.event.direction == StackedOnOtherDirection::Event`),
+   authoritative server side only.
+2. The carried (cursor) stack's `ItemPart::item_stacked_on_other` (`StackedOnOtherDirection::CarriedOnOther`).
+3. Vanilla's carried override (`BundleItem.overrideStackedOnOther`, dispatched by item type rather
+   than mere `bundle_contents` component presence), using its real outcome to decide whether to
+   stop before step 4.
+4. The clicked slot stack's `ItemPart::item_stacked_on_other` (`StackedOnOtherDirection::OtherStackedOnMe`).
+5. Vanilla's clicked override (`BundleItem.overrideOtherStackedOnMe`), then the plain pickup click.
+
+`ItemPart` overrides represent both vanilla outcomes inside the transaction:
+
+- **Handled (stop)**: set `event.result.handled = true`, set `event.result.carried` via
+  `StackResult::Set(...)` and/or `event.result.clicked` via `ClickedStackResult::Set(...)` or
+  `ClickedStackResult::Take(count)`, and return `Flow::Cancel`. Stops later overrides and plain
+  pickup.
+- **Not handled (continue, optionally with edits)**: leave `event.result.handled = false`,
+  optionally edit `event.result.carried` and/or `event.result.clicked`, and return
+  `Flow::Continue`. Later overrides and plain pickup observe the edited stacks.
+
+For `event.result.clicked`, direct writes and slot takes are distinct:
+
+- `ClickedStackResult::Set(stack)` writes the clicked slot directly (`Slot.set`), without running
+  `Slot.onTake` side effects — clearing an occupied furnace or crafting result slot with
+  `ClickedStackResult::Set(None)` produces no smelting experience, leaves `recipes_used` untouched,
+  and fires no take hooks.
+- `ClickedStackResult::Take(count)` takes `count` items from the clicked slot via `Slot.safeTake` /
+  `Slot.onTake` (spawning furnace XP, clearing `recipes_used`, consuming crafting inputs, and
+  firing take hooks such as `item_smelted` and `furnace_extract`). `ClickedStackResult::Take` is
+  refused for global listeners.
+
+Contradictory `ItemPart` answers (`Flow::Cancel` with `handled = false`, or `Flow::Continue` with
+`handled = true`), writing through the host to what the click read, returning an invalid stack,
+failing slot placement/pickup rules, or panicking refuses the click and rolls back every write.
+Global `Hooks::item_stacked_on_other` listeners preserve their separate contract (stacks may only
+be set on `Flow::Cancel` + `handled = true`, result/potion slots cannot be edited directly, and
+`Flow::Cancel` with `handled = false` skips vanilla bundle overrides and runs plain pickup).
+
+For an authoritative mount-menu pickup, the saddle, body equipment and chest slots belong to
+the mount, but roll back together with the player's inventory and cursor if the click is refused
+or an enclosing transaction aborts. The server reconciles the open menu from settled storage.
+
+## Dropped item destruction
+
+`ItemPart::item_destroyed` is `IItemExtension.onDestroyed` (vanilla `ItemStack.onDestroyed`). It
+fires on the server inside a transaction whenever a dropped item entity reaches zero health from
+damage — fire (`minecraft:on_fire`, `minecraft:in_fire`), lava (`minecraft:lava`), cactus
+(`minecraft:cactus`), explosions, `/damage`, `EntityRef::hurt`, or block-contact damage — before
+built-in container components are cleared and before the entity is discarded (matching vanilla
+`ItemEntity.hurtServer` -> `ItemStack.onDestroyed` -> `discard()`). Lifetime despawn
+(`item_despawn`) and void removal do not fire it.
+
+The part receives the original intact `event.stack`, the still-live `event.item: ItemEntityRef`
+(whose `with_stack(host, ...)` also still holds the original un-emptied stack), the lethal
+`event.damage_type`, and `event.drops: &mut Vec<ItemStack>` (pre-populated with any vanilla
+`minecraft:bundle_contents` or `minecraft:container` spills). Push or edit stacks in `event.drops`
+to spawn them at the entity's position (`ItemUtils.onContainerDestroyed`) once the entity is
+discarded. Each part's drop edits are validated against the item registry (an invalid stack rolls
+that part's edit back); a panic or a refused commit rolls back the transaction's host writes and
+falls back to the vanilla drop baseline while still discarding the destroyed item entity. An item
+with no listening `ItemPart` pays one table lookup and opens no transaction.

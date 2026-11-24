@@ -112,6 +112,15 @@ data slots. If a neighbor write must commit with the subject edit, use
 inputs fails. A read-only or no-op loan does not copy or journal storage. A type
 with no subscriber skips the tick entirely; pending load notices still come first.
 
+### Combining subject and world writes in one transaction
+
+To make a dropped-item edit and a resident block-entity write atomic, run both inside
+`tick.transaction` and return `Err` if either write or the subject reacquisition is refused:
+
+```rust
+{{#include ../../../examples/src/block_entity_transaction.rs:block_entity_transaction}}
+```
+
 ## One-shot client effects
 
 To tell clients about something that happened once, such as a burst of particles, queue
@@ -191,11 +200,13 @@ server hook told after the chunk's block entities; a client is told of the block
 
 What a running machine does on the client alone (a looping hum, smoke from its chimney, a part eased between
 two server updates) hangs off its client tick, vanilla's client `BlockEntityTicker`. A `BlockEntityPart` opts
-its type in with `block_entity_client_ticks`, asked once for each of its blocks, and is then told
-`block_entity_client_tick` once per client tick for each copy this client holds, while the level runs (not
-paused or frozen), in vanilla's ticker order. A loaded copy ticks whether or not it is drawn: hidden behind a
-wall, out of view or beyond `block_entity_view_distance`, where `block_entity_submit` is not called. It is
-never called on a server, and a type that doesn't opt in costs nothing.
+its type in with `block_entity_client_ticks`, asked once for each of its blocks when the client level
+initializes its ticker table (before the first column's block entities or the first ticker pass). Each copy
+this client holds gets `block_entity_client_tick` once per client tick while the level runs (not paused or
+frozen), in vanilla's ticker order: a chunk's initial tickers join in packet order, and a state change that
+adds a ticker joins it when enabled. A loaded copy ticks whether or not it is drawn: hidden behind a wall,
+out of view or beyond `block_entity_view_distance`, where `block_entity_submit` is not called. It is never
+called on a server, and a type that doesn't opt in costs nothing.
 
 The event carries `event.subject: BlockEntityClientScope<'_>`: call `event.subject.with_view(|view| ...)`
 to read the resident copy's handle, position, level, block state, data slots, item slots and merged NBT
@@ -300,10 +311,15 @@ envelope header), is one-time context. Decode `open.extra` in the registered cli
 It is an empty slice when no payload matched this opening. Reusing a window id does not reuse
 its previous context. Keep owned decoded values if the screen needs them later; the bytes are
 borrowed only during construction. `pos` is an optional hint offered to the factory and later
-returned by `screen_pos()`. Neither is live data or block backing.
-The menu's declared container slots, if any, start empty. Opening returns the window id or
-`Ok(None)` when vetoed. Invalid type,
-connection or client support, opening bytes, data count or
+returned by `screen_pos()`. Neither is live data or block backing. Pass `Some(hand)` from an
+item's use to let `menu_still_valid` compare that hand's current stack with the one at open. Other
+openers pass `None`. The menu's declared container slots, if any, start empty;
+[`owned_slots`](../../concepts/capabilities/menu-slots.md#menu-owned-slots) declares a temporary
+container that belongs to the window, and adding `results` makes it a blockless processing menu
+that computes outputs in `menu_slot_changed`, handles takes in `menu_slot_take`, and returns its
+non-result inputs to the player on close (dropping overflow, or dropping on disconnect or death,
+and discarding result slots). Opening returns the window id or `Ok(None)` when vetoed. Invalid
+type, connection or client support, opening bytes, data count or
 title returns `OpenMenuError`. Neither a refused nor a cancelled open closes the old menu.
 
 For a slotless status screen, declare `data/mymod/sunrise/menu/status.json` as
@@ -341,6 +357,16 @@ lecterns and mount inventories. `replace` is the Java `MenuProvider`'s choice
 window, which centres the mouse again; `MenuReplace::InPlace` sends none, so the client keeps
 its screen and its mouse where they are until the new screen replaces it, as when one
 screen of a machine leads to the next.
+
+### Window ids
+
+Each menu the server opens for a player takes the next id of that player's container counter
+(vanilla's `ServerPlayer.containerCounter`), 1 to 100 and round again. `player.container_counter(host)` reads
+the id the last open took, so the next one is `counter % 100 + 1`: the id to hand a menu built before the open,
+as Java's `MenuProvider.createMenu(containerId, ...)` is. `player.next_container_counter(host)` advances the
+counter as an open does without opening anything, for an open that decides after the advance that no window
+follows (a `createMenu` that answers `null`). A mod modelling `ServerPlayer.openMenu` from inside the player's
+own action closes the open menu first with `menu.close_container(host)`, which closes at the call there.
 
 ## The menu's screen
 

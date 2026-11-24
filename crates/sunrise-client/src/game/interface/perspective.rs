@@ -192,6 +192,7 @@ pub(super) fn player_type_with_document(
 fn load_player_type(models: &sunrise_client::mobs::EntityModelDocument) -> Option<Arc<MobType>> {
     models.model("minecraft:player#main").map(|model| {
         Arc::new(MobType {
+            type_key: Default::default(),
             shadow: None,
             id: "minecraft:player".into(),
             // Players render as a humanoid; the species only drives local AI.
@@ -314,29 +315,17 @@ impl Game<'_> {
                 self.studio.freecam.pitch,
             ));
         }
-        // Minecraft.cameraEntity: a server's spectator camera on a mob or
-        // another player.
-        let (entity, descending, entity_kind) = match self.spectated_camera_snapshot() {
-            Some(e) => (
-                e,
-                false,
-                sunrise_world::collision_context::EntityContextKind::Living,
-            ),
-            None => {
-                let mut entity = self.player_camera_entity()?;
-                if let Some(position) = self.remote_minecart_rider_position(partial) {
-                    // Already evaluated at partial: do not linearly interpolate
-                    // between tick endpoints across a corner a second time.
-                    entity.position = position;
-                    entity.previous = position;
-                }
-                (
-                    entity,
-                    self.player.as_ref()?.shift_key_down,
-                    sunrise_world::collision_context::EntityContextKind::Player,
-                )
-            }
-        };
+        let subject = self.camera_subject()?;
+        let mut entity = subject.camera;
+        if let Some(position) = self.remote_minecart_camera_position(&subject, partial) {
+            // Already evaluated at partial: do not linearly interpolate
+            // between tick endpoints across a corner a second time.
+            entity.position = position;
+            entity.previous = position;
+        }
+        let descending =
+            subject.is_local_player && self.player.as_ref().is_some_and(|p| p.shift_key_down);
+        let entity_kind = subject.collision_kind;
         let mut view = self.view;
         let kind = self.camera_type;
 
@@ -428,20 +417,10 @@ impl Game<'_> {
                 _ => None,
             })
         });
-        // Camera.setup: the living mount's scale and camera distance
-        // attributes (the happy ghast's is 8, the default 4).
         let mount = self
             .riding
             .and_then(|id| self.mobs.iter().find(|m| m.id == id))
-            .map(|m| {
-                let attribute = |name: &str, default: f64| {
-                    m.kind.attributes.get(name).copied().unwrap_or(default)
-                };
-                (
-                    attribute("minecraft:scale", 1.0) as f32,
-                    attribute("minecraft:camera_distance", 4.0),
-                )
-            });
+            .map(Mob::camera_scale_and_distance);
         // AbstractBoat.positionRider turns a passenger by the boat's
         // deltaRotation after its yRotO was saved, and LocalPlayer.getViewYRot
         // interpolates a passenger's yaw: the boat's turn is spread over the
@@ -567,7 +546,7 @@ impl Game<'_> {
         // LivingEntity.getBedOrientation: the model lies in the bed as
         // another player's does (`villager::sleep_pose`).
         let bed = self.sleeping.map_or(0, |head| self.bed_facing(head));
-        let spectator = self.spectator();
+        let spectator = self.own_player_is_spectator();
         let boat_yaw = self
             .riding
             .and_then(|id| self.boats.iter().find(|b| b.id == id).map(|b| b.yaw));
@@ -751,7 +730,7 @@ impl Game<'_> {
                 && shadow_pass_takes_own_model(
                     self.occlusion.shadow_casters.1,
                     self.pack_ids.is_some(),
-                    self.spectator(),
+                    self.own_player_is_spectator(),
                 )))
             && self
                 .player
@@ -840,7 +819,7 @@ impl Game<'_> {
         let body = self.own_body_visible();
         // The mods' pre hooks (`render_player_pre`, then `render_living_pre`), as for the other
         // players: a cancel skips the rest of this player's drawing and its post hooks, and the
-        // frame's later passes (flames, name tag) leave it out too.
+        // frame's later name tag pass leaves it out too; its flames stay.
         let name = self.own_profile_name();
         let who = PlayerRender {
             name: &name,
@@ -873,7 +852,7 @@ impl Game<'_> {
         // visibility (set by player_model_visibility) hides body parts, and
         // translucent_body marks the body OIT for the ghostly look. Only first
         // person and dead players skip it.
-        if body || self.spectator() {
+        if body || self.own_player_is_spectator() {
             sunrise_client::mobs::render::render_with_frame(
                 m,
                 alpha as f32,
@@ -1007,7 +986,7 @@ impl Game<'_> {
         let mut verts = Vec::new();
         // A spectator preview still draws its own model: the poses'
         // visibility hides body parts, leaving the head and its layers.
-        let body = self.own_body_visible() || self.spectator();
+        let body = self.own_body_visible() || self.own_player_is_spectator();
         let (data, armour) = (
             self as &dyn sunrise_client::mobs::render::RenderDataSource,
             self.player_armor_layers(),
@@ -1555,6 +1534,9 @@ pub(super) fn player_preview_quads_no_cull(
     }
     let mut quads: Vec<(f32, [[f32; 3]; 4], [[f32; 2]; 4], u32)> = Vec::new();
     for (index, q) in verts.as_chunks::<4>().0.iter().enumerate() {
+        if (q[0].layer & 0xffff) == sunrise_client::gfx::GLINT_ONLY_OVERLAY {
+            continue;
+        }
         let p: [glam::Vec3; 4] =
             std::array::from_fn(|i| gui.transform_point3(glam::Vec3::from_array(q[i].pos)));
         let n = (p[1] - p[0]).cross(p[2] - p[0]);
@@ -1614,7 +1596,10 @@ pub(super) fn preview_glint_quads(
     for (index, q) in verts.as_chunks::<4>().0.iter().enumerate() {
         let armor = match q[0].layer & 0xffff {
             sunrise_client::mobs::render::ARMOR_GLINT => true,
-            7 | 8 | sunrise_client::gfx::TRANSLUCENT_GLINT_ITEM_OVERLAY => false,
+            7
+            | 8
+            | sunrise_client::gfx::TRANSLUCENT_GLINT_ITEM_OVERLAY
+            | sunrise_client::gfx::GLINT_ONLY_OVERLAY => false,
             _ => continue,
         };
         let p: [glam::Vec3; 4] =
@@ -1937,7 +1922,7 @@ mod preview_tests {
         .flatten()
         .collect();
         let frame = GlintFrame {
-            millis: 1234.0,
+            millis: 1_234,
             speed: 0.5,
             alpha: 0.75,
             sprite: true,
@@ -1949,7 +1934,7 @@ mod preview_tests {
         let armor = sunrise_client::item_render::Glint {
             speed: 0.5,
             alpha: 0.75,
-            millis: 1234.0,
+            millis: 1_234,
             scale: 0.16,
         };
         let (pos, uv, glint_uv, is_armor) = glints[0];
@@ -2051,7 +2036,6 @@ mod preview_tests {
             heightmaps: Default::default(),
             animations: Default::default(),
             biome_tags: Default::default(),
-            entity_tags: Default::default(),
             villager_hats: Default::default(),
             frame_models: Default::default(),
             cem: Default::default(),

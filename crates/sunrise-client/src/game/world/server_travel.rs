@@ -687,11 +687,10 @@ impl Game<'_> {
                 let Some(host) = self.lan.as_mut() else {
                     return;
                 };
-                let _ = host
-                    .hub
-                    .guests
-                    .update_connection(conn, |g| g.seen_credits = true);
-                host.play.entry(conn).or_default().won_game = true;
+                host.hub.update_guest(conn, |guest| {
+                    guest.seen_credits = true;
+                    guest.won_game = true;
+                });
                 // ClientboundGameEventPacket.WIN_GAME.
                 host.hub.send_to(
                     conn,
@@ -1494,8 +1493,12 @@ impl Game<'_> {
             return;
         }
         for t in std::mem::take(&mut self.level_teleports) {
-            self.apply_level_teleport(t, LevelTeleportKind::Direct);
+            self.apply_direct_level_teleport(t);
         }
+    }
+
+    pub(super) fn apply_direct_level_teleport(&mut self, teleport: LevelTeleport) {
+        self.apply_level_teleport(teleport, LevelTeleportKind::Direct);
     }
 
     fn apply_level_teleport(&mut self, t: LevelTeleport, kind: LevelTeleportKind) {
@@ -1596,6 +1599,11 @@ impl Game<'_> {
                         g.native_player_teleported(uuid, &name, origin, t.at, t.dim.id());
                     });
                 }
+                // `ServerPlayer.teleport` has already placed the player in `t.dim`;
+                // fire `player_changed_dimension` now (just like `EndExit` above) so
+                // consecutive direct cross-dimension teleports in one tick never lose
+                // the first transition when `self.server_trips.retain` replaces the trip.
+                self.tell_mods_changed_dimension(t.conn, Some(source), t.dim);
                 self.server_trips.retain(|trip| !trip.is(t.conn));
                 self.server_trips.push(Trip {
                     conn: t.conn,
@@ -1618,7 +1626,7 @@ impl Game<'_> {
                     // The body does not tick until arrival. Letting it leave the destination before
                     // its chunks load can strand this trip and freeze its damage cooldown indefinitely.
                     hold: true,
-                    left: Some(source),
+                    left: None,
                 });
             }
         }
@@ -1807,39 +1815,53 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn natural_carrier_moves_full_objects_and_readmits_the_tree_in_order() {
-        use mod_api::{AttachmentType, EntityConstructingEvent, Holder, Hooks, HostSide};
-        use std::sync::Mutex;
-        const STATE: AttachmentType<i32> = AttachmentType {
-            namespace: "natural_tree",
-            name: "state",
-            default: || 0,
-            codec: None,
-            copy_on_death: false,
-            sync: false,
+        use mod_api::{
+            AttachmentDescriptor, AttachmentKey, EntityConstructingEvent, Holder, Hooks, HostSide,
         };
-        struct Constructed(Arc<Mutex<Vec<Holder>>>);
+        use std::sync::Mutex;
+        struct Constructed(
+            Arc<Mutex<Vec<Holder>>>,
+            Arc<Mutex<Option<AttachmentKey<i32>>>>,
+        );
         #[mod_api::__subscriptions]
         impl Hooks for Constructed {
             fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-                r.register_attachment_type("natural_tree:state", false)
+                let state = r
+                    .register_attachment_type(AttachmentDescriptor::new(
+                        "natural_tree:state",
+                        || 0i32,
+                    ))
                     .unwrap();
+                *self.1.lock().unwrap() = Some(state);
             }
             fn entity_constructing(&self, host: HostSide<'_>, event: &mut EntityConstructingEvent) {
                 self.0.lock().unwrap().push(event.holder);
                 if let HostSide::Server(host) = host {
-                    STATE.set(host, event.holder, 41).unwrap();
+                    let state = self
+                        .1
+                        .lock()
+                        .unwrap()
+                        .clone()
+                        .expect("Constructed registered");
+                    state.set(host, event.holder, 41).unwrap();
                 }
             }
         }
         for conflict in [false, true] {
             let calls = Arc::new(Mutex::new(Vec::new()));
+            let state_slot = Arc::new(Mutex::new(None));
             let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
                 "natural_tree",
-                Box::new(Constructed(calls.clone())),
+                Box::new(Constructed(calls.clone(), state_slot.clone())),
             )]
             .into();
             mod_platform::testing::with_mods(mods, || {
                 super::super::native_entity_refs::tests::with_game(|game| {
+                    let state = state_slot
+                        .lock()
+                        .unwrap()
+                        .clone()
+                        .expect("Constructed registered");
                     game.options.dedicated = Some(Vec::new());
                     let tag = sunrise_core::nbt::parse_snbt(r#"{
                     id:"minecraft:pig",UUID:[I;703,0,0,1],Pos:[1.0d,80.0d,2.0d],NoAI:1b,
@@ -1856,7 +1878,7 @@ mod tests {
                     let ids = [root, held, leaf, sibling];
                     assert!(game.persist.off_level.contains_key(&held));
                     assert!(game.persist.off_level.contains_key(&sibling));
-                    STATE.set(game, Holder::Entity(leaf), 77).unwrap();
+                    state.set(game, Holder::Entity(leaf), 77).unwrap();
                     game.persist.forced_meta.insert(leaf, [5, 6, 7, 8]);
                     game.portals.entities.entry(leaf).or_default().cooldown = 19;
                     let source = game.dim;
@@ -1899,9 +1921,9 @@ mod tests {
                     );
                     assert_eq!(game.persist.forced_meta.get(&leaf), Some(&[5, 6, 7, 8]));
                     assert_eq!(game.portals.entities[&leaf].cooldown, 19);
-                    assert_eq!(STATE.get(game, Holder::Entity(leaf)), Ok(77));
+                    assert_eq!(state.get(game, Holder::Entity(leaf), Clone::clone), Ok(77));
                     if !conflict {
-                        assert_eq!(STATE.get(game, Holder::Entity(held)), Ok(41));
+                        assert_eq!(state.get(game, Holder::Entity(held), Clone::clone), Ok(41));
                     }
                     assert!(game.mobs_below_off_level().contains(&leaf));
                     game.native_joins_flush(false, 0);
@@ -1924,7 +1946,7 @@ mod tests {
                         assert!(!game.persist.forced_meta.contains_key(&id));
                     }
                     game.enter_level(Dim::Nether).unwrap();
-                    assert_eq!(STATE.get(game, Holder::Entity(leaf)), Ok(77));
+                    assert_eq!(state.get(game, Holder::Entity(leaf), Clone::clone), Ok(77));
                     game.native_joins_flush(false, 0);
                     assert_eq!(*calls.lock().unwrap(), before);
                 })
@@ -2114,7 +2136,7 @@ mod transfer_lifetime_tests {
         default: || 0,
         codec: None,
         copy_on_death: false,
-        sync: false,
+        sync_codec: None,
     };
 
     fn removal<T: Rideable + sunrise_client::join_seq::Joined + HasAttachmentLifetime>(
@@ -2334,8 +2356,8 @@ mod credits_respawn_tests {
 
         game.remove_old_player_for_clone(2, false);
         let host = game.lan.as_mut().unwrap();
-        host.play.entry(2).or_default().won_game = true;
         host.hub.guests.update(0, |g| {
+            g.won_game = true;
             g.inbox.push_back(InboxItem::Packet(
                 S::ClientCommand(play::ClientCommand { action: 0 }),
                 None,
@@ -2353,8 +2375,8 @@ mod credits_respawn_tests {
                 .iter()
                 .any(|packet| matches!(packet, C::SetEntityData(data) if data.id == 2))
         );
-        assert!(!host.play[&2].won_game, "the credits are over");
         let guest = &host.hub.guests[0];
+        assert!(!guest.won_game, "the credits are over");
         assert_eq!(guest.load_timeout, 60);
         assert!(guest.loading);
         assert!(!guest.client_loaded());
@@ -2488,10 +2510,8 @@ mod credits_respawn_tests {
         game.lan
             .as_mut()
             .unwrap()
-            .play
-            .entry(2)
-            .or_default()
-            .won_game = true;
+            .hub
+            .update_guest(2, |guest| guest.won_game = true);
         game.guest_respawn(2);
         assert_eq!(
             game.lan.as_ref().unwrap().hub.guests[0].dimension,
@@ -2584,3 +2604,7 @@ mod changed_dimension_tests;
 #[cfg(test)]
 #[path = "server_travel/respawn_tests.rs"]
 mod respawn_tests;
+
+#[cfg(test)]
+#[path = "server_travel/respawn_target_tests.rs"]
+mod respawn_target_tests;

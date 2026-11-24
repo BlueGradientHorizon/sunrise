@@ -512,6 +512,9 @@ mod tests {
                 explosion_resistance: 100.0,
                 randomly_ticks: false,
                 drip_particle: Some("minecraft:dripping_water".into()),
+                temperature: 300,
+                density: 1000,
+                viscosity: 1000,
             };
             let lava = FluidTypeProperties {
                 description_id: "block.minecraft.lava".into(),
@@ -526,28 +529,171 @@ mod tests {
                 explosion_resistance: 100.0,
                 randomly_ticks: true,
                 drip_particle: Some("minecraft:dripping_lava".into()),
+                temperature: 1300,
+                density: 3000,
+                viscosity: 6000,
             };
-            let inert = |description_id: &str| FluidTypeProperties {
-                description_id: description_id.into(),
-                light_level: 0,
-                fall_distance_modifier: 1.0,
-                can_push_entity: false,
-                explosion_resistance: 0.0,
-                randomly_ticks: false,
-                drip_particle: None,
-                ..lava.clone()
+            // NeoForgeMod.EMPTY_TYPE states zeros; a tank-only fluid with no file keeps
+            // `FluidType.Properties`' defaults.
+            let inert = |description_id: &str, [temperature, density, viscosity]: [i32; 3]| {
+                FluidTypeProperties {
+                    description_id: description_id.into(),
+                    light_level: 0,
+                    fall_distance_modifier: 1.0,
+                    can_push_entity: false,
+                    explosion_resistance: 0.0,
+                    randomly_ticks: false,
+                    drip_particle: None,
+                    temperature,
+                    density,
+                    viscosity,
+                    ..lava.clone()
+                }
             };
             assert_eq!(read("minecraft:water"), water);
             assert_eq!(read("minecraft:flowing_water"), water);
             assert_eq!(read("minecraft:lava"), lava);
             assert_eq!(read("minecraft:flowing_lava"), lava);
-            assert_eq!(read("minecraft:empty"), inert("block.minecraft.air"));
+            assert_eq!(
+                read("minecraft:empty"),
+                inert("block.minecraft.air", [0; 3])
+            );
             assert_eq!(
                 read("sunrise:definition_test"),
-                inert("fluid_type.sunrise.definition_test")
+                inert("fluid_type.sunrise.definition_test", [300, 1000, 1000])
             );
             assert_eq!(host.fluid_key("minecraft:no_such_fluid"), None);
         });
+    }
+
+    /// A mod's fluid file through the real content loader: the numbers it states, its light
+    /// level among them, for its source and flowing forms alike, `FluidType.Properties`' defaults
+    /// for keys it leaves out, and the bucket it names, which must be a live item that keeps the
+    /// fluid. Loading a mod replaces process-wide fluid tables, so this runs in its own process.
+    #[test]
+    #[ignore = "daily"]
+    fn a_mod_fluid_file_states_its_temperature_density_and_viscosity() {
+        if super::super::native_entity_refs::tests::run_fresh_cases(
+            "game::native_block_states::tests::a_mod_fluid_file_states_its_temperature_density_and_viscosity",
+            "SUNRISE_FLUID_MEASURES_CHILD",
+            &["loaded"],
+        ) {
+            return;
+        }
+        use mod_api::{FluidTypeProperties, Host, HostFluidStates};
+        let dir = tempfile::tempdir().unwrap();
+        let fluids = dir.path().join("data/measured/sunrise/fluid");
+        std::fs::create_dir_all(&fluids).unwrap();
+        std::fs::write(
+            dir.path().join("sunrise-mod.toml"),
+            "id = \"measured\"\nname = \"Measured\"\nversion = \"1\"\napi = \"0.2\"\ncapabilities = [\"registries\"]\n",
+        )
+        .unwrap();
+        std::fs::write(
+            fluids.join("brine.json"),
+            br#"{"temperature":-40,"density":1200,"viscosity":0,"light_level":10,"bucket_item":"measured:brine_pail","world":{}}"#,
+        )
+        .unwrap();
+        std::fs::write(fluids.join("plain.json"), br#"{"world":{}}"#).unwrap();
+        for (name, body) in [
+            // A file alone registers no tank-only fluid.
+            (
+                "essence",
+                &br#"{"bucket_item":"minecraft:honey_bottle"}"#[..],
+            ),
+            (
+                "salt",
+                br#"{"bucket_item":"minecraft:water_bucket","world":{"bucket":false}}"#,
+            ),
+            (
+                "shared",
+                br#"{"bucket_item":"measured:plain_bucket","world":{"bucket":false}}"#,
+            ),
+            (
+                "lost",
+                br#"{"bucket_item":"measured:no_such_jar","world":{"bucket":false}}"#,
+            ),
+            (
+                "cod",
+                br#"{"bucket_item":"minecraft:cod_bucket","world":{"bucket":false}}"#,
+            ),
+            (
+                "hollow",
+                br#"{"bucket_item":"minecraft:bucket","world":{"bucket":false}}"#,
+            ),
+        ] {
+            std::fs::write(fluids.join(format!("{name}.json")), body).unwrap();
+        }
+        let mut sources = super::super::mods::ModsState {
+            dev: vec![dir.path().to_path_buf()],
+            ..Default::default()
+        };
+        sources.select(
+            &std::env::current_dir().unwrap(),
+            &["measured".to_owned()].into(),
+        );
+        let vanilla = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
+        let root = super::super::mods::content_root(&vanilla, &sources).unwrap();
+        super::super::native_entity_refs::tests::with_game_at(
+            root.prepared().to_path_buf(),
+            |game| {
+                let host: &dyn Host = game;
+                let read = |id: &str| -> FluidTypeProperties {
+                    host.fluid_states()
+                        .type_properties(host.fluid_key(id).unwrap())
+                        .unwrap()
+                };
+                let measures = |id: &str| {
+                    let properties = read(id);
+                    [
+                        properties.temperature,
+                        properties.density,
+                        properties.viscosity,
+                    ]
+                };
+                assert_eq!(measures("measured:brine"), [-40, 1200, 0]);
+                assert_eq!(measures("measured:flowing_brine"), [-40, 1200, 0]);
+                assert_eq!(measures("measured:plain"), [300, 1000, 1000]);
+                assert_eq!(measures("measured:flowing_plain"), [300, 1000, 1000]);
+                // `FluidType.getLightLevel` is the file's, though the block emits none.
+                assert_eq!(read("measured:flowing_brine").light_level, 10);
+                assert_eq!(read("measured:plain").light_level, 0);
+                // `Fluid.getBucket`: the named bucket and the default one, each holding its
+                // fluid back; none for an unregistered fluid, a missing item or the game's
+                // bucket of another fluid.
+                let bucket = |fluid: &str| host.fluid_bucket(fluid);
+                let item = |id: &str| mod_api::__private::item_key(id);
+                assert_eq!(
+                    bucket("measured:flowing_brine"),
+                    item("measured:brine_pail")
+                );
+                assert!(item("measured:brine_bucket").is_none());
+                assert_eq!(bucket("measured:plain"), item("measured:plain_bucket"));
+                for (bucket, fluid) in [
+                    ("measured:brine_pail", "measured:brine"),
+                    ("measured:plain_bucket", "measured:plain"),
+                    ("minecraft:water_bucket", "minecraft:water"),
+                ] {
+                    assert_eq!(
+                        host.bucket_fluid(item(bucket).unwrap()),
+                        host.fluid_key(fluid)
+                    );
+                }
+                assert_eq!(host.bucket_fluid(item("minecraft:bucket").unwrap()), None);
+                for fluid in [
+                    "measured:essence",
+                    "measured:salt",
+                    "measured:shared",
+                    "measured:lost",
+                    "measured:cod",
+                    "measured:hollow",
+                ] {
+                    assert_eq!(bucket(fluid), None, "{fluid}");
+                }
+                assert_eq!(host.fluid_pickup_sound("measured:essence"), None);
+                assert_eq!(host.fluid_empty_sound("measured:essence"), None);
+            },
+        );
     }
 
     /// `FluidState.createLegacyBlock`: a source is its block at level 0, flowing water of amount
@@ -942,6 +1088,15 @@ mod facts_tests {
             assert_eq!(facts.friction(stone), Some(0.6));
             assert_eq!(facts.friction(state("minecraft:ice")), Some(0.98));
             assert_eq!(facts.friction(state("minecraft:slime_block")), Some(0.8));
+            // getSpeedFactor and getJumpFactor: 1.0 by default, soul sand 0.4 speed, honey 0.4
+            // speed and 0.5 jump.
+            let (soul_sand, honey) = (state("minecraft:soul_sand"), state("minecraft:honey_block"));
+            assert_eq!(facts.speed_factor(stone), Some(1.0));
+            assert_eq!(facts.jump_factor(stone), Some(1.0));
+            assert_eq!(facts.speed_factor(soul_sand), Some(0.4));
+            assert_eq!(facts.jump_factor(soul_sand), Some(1.0));
+            assert_eq!(facts.speed_factor(honey), Some(0.4));
+            assert_eq!(facts.jump_factor(honey), Some(0.5));
             // isSolidRender: a full occluding cube only.
             assert_eq!(facts.is_solid_render(stone), Some(true));
             assert_eq!(facts.is_solid_render(state("minecraft:glass")), Some(false));

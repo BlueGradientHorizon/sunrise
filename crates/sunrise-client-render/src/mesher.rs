@@ -25,7 +25,7 @@ pub use visibility_plan::{
 };
 #[cfg(test)]
 #[path = "mesher/source_tests.rs"]
-mod source_tests;
+pub(crate) mod source_tests;
 use crate::connected::{FaceNeighbours, Overlay, Pick, TileLayer};
 use crate::{
     assets::{Assets, RenderAssets},
@@ -537,6 +537,11 @@ impl SectionMesh {
     /// leave out those facing away from the eye (`sides`).
     /// Then lays them out compactly (`packed`) while the renderer reads that.
     pub fn sort_solid(&mut self) {
+        self.sort_solid_as(packed::packing());
+    }
+
+    /// `sort_solid`, then the compact layout only when `compact`.
+    pub(crate) fn sort_solid_as(&mut self, compact: bool) {
         let quads = self.solid.len() / 4;
         if !self.solid_tints.is_empty() {
             self.solid_tints.resize(quads, packed::UNKNOWN_TINT);
@@ -549,7 +554,7 @@ impl SectionMesh {
         self.bounds = self.compute_bounds();
         self.packed.clear();
         self.packed_far = false;
-        if packed::packing() && quads > 0 && self.solid_tints.len() == quads {
+        if compact && quads > 0 && self.solid_tints.len() == quads {
             packed::layout_into(&self.solid, &self.solid_tints, &mut self.packed);
         }
         self.solid_tints.clear();
@@ -1106,6 +1111,23 @@ impl MeshTables {
                 cover,
             });
         }
+        let [
+            water_still,
+            water_flow,
+            water_overlay,
+            lava_still,
+            lava_flow,
+        ] = if layers == 0 {
+            [0; 5]
+        } else {
+            [
+                layer("minecraft:block/water_still")?,
+                layer("minecraft:block/water_flow")?,
+                layer("minecraft:block/water_overlay")?,
+                layer("minecraft:block/lava_still")?,
+                layer("minecraft:block/lava_flow")?,
+            ]
+        };
         let mut tables = Self {
             solid: info.iter().map(|i| i.solid).collect(),
             full_faces: info
@@ -1114,11 +1136,11 @@ impl MeshTables {
                 .collect(),
             info,
             visibility,
-            water_still: layer("minecraft:block/water_still")?,
-            water_flow: layer("minecraft:block/water_flow")?,
-            water_overlay: layer("minecraft:block/water_overlay")?,
-            lava_still: layer("minecraft:block/lava_still")?,
-            lava_flow: layer("minecraft:block/lava_flow")?,
+            water_still,
+            water_flow,
+            water_overlay,
+            lava_still,
+            lava_flow,
             mod_fluids,
             animated_layers,
             colormaps: Vec::new(),
@@ -2014,7 +2036,11 @@ impl<'a> Tints<'a> {
             None => Self::biome_id(&self.zoom, self.region, self.plains, self.origin, at),
         };
         let [cx, cz, base_y] = self.origin;
-        let block = [cx * 16 + at[0], base_y + at[1], cz * 16 + at[2]];
+        let block = [
+            (cx * 16).wrapping_add(at[0]),
+            base_y.wrapping_add(at[1]),
+            (cz * 16).wrapping_add(at[2]),
+        ];
         let mut host = crate::environment::BlockHost::new(block, self.biomes.get(id));
         let colour = colormap.sample(&mut host).map(|c| c & 0xFF_FFFF);
         self.cells.insert((index, at), colour);
@@ -2045,7 +2071,11 @@ impl<'a> Tints<'a> {
         [cx, cz, base_y]: [i32; 3],
         [x, y, z]: [i32; 3],
     ) -> u16 {
-        let q = zoom.quart_at_block(BlockPos::new(cx * 16 + x, base_y + y, cz * 16 + z));
+        let q = zoom.quart_at_block(BlockPos::new(
+            (cx * 16).wrapping_add(x),
+            base_y.wrapping_add(y),
+            (cz * 16).wrapping_add(z),
+        ));
         Self::quart_biome(region, plains, [cx, cz], q)
     }
     /// The biome of quart cell `q` in the loaded chunks around chunk `(cx, cz)`, plains where
@@ -2075,10 +2105,15 @@ impl<'a> Tints<'a> {
         // The base cells of blocks lo..=hi, and the cell past the last.
         let span = |lo: i32, hi: i32| (lo.wrapping_sub(2) >> 2)..=(hi.wrapping_sub(2) >> 2) + 1;
         let (xs, ys, zs) = (
-            span(cx * 16 - r, cx * 16 + 15 + r),
-            span(base_y, base_y + 15),
-            span(cz * 16 - r, cz * 16 + 15 + r),
+            span((cx * 16).wrapping_sub(r), (cx * 16).wrapping_add(15 + r)),
+            span(base_y, base_y.wrapping_add(15)),
+            span((cz * 16).wrapping_sub(r), (cz * 16).wrapping_add(15 + r)),
         );
+        // A rectangle that wraps Java's signed block coordinates isn't one continuous quart range.
+        if xs.is_empty() || ys.is_empty() || zs.is_empty() {
+            self.uniform = Some(None);
+            return None;
+        }
         let first = Self::quart_biome(
             self.region,
             self.plains,
@@ -2138,7 +2173,10 @@ impl<'a> Tints<'a> {
             return cached;
         }
         let [cx, cz, base_y] = self.origin;
-        let (bx, by, bz) = (cx * 16, base_y + y, cz * 16);
+        let (bx, by, bz) = (cx * 16, base_y.wrapping_add(y), cz * 16);
+        let first = [bx, bz].map(|v| v.wrapping_sub(r + 2) >> 2);
+        // After signed block coordinates wrap, the base quart cells are still adjacent.
+        let quart_distance = |q: i32, first: i32| ((q - first) & (i32::MAX >> 1)) as usize;
         if cells.is_empty() {
             cells.resize(dim * dim, UNSET);
         }
@@ -2148,16 +2186,16 @@ impl<'a> Tints<'a> {
             if known != UNSET {
                 return known;
             }
-            let block = BlockPos::new(bx + x + dx, by, bz + z + dz);
+            let block = BlockPos::new(bx.wrapping_add(x + dx), by, bz.wrapping_add(z + dz));
             let mut biome = layer.zoomed[cell];
             if biome == NO_BIOME {
                 // BiomeManager.getBiome over the loaded chunks (plains
                 // where there is none): `quart_at_block`, its cell's
                 // corner jitter mixed once per layer.
                 let base = [block.x, block.y, block.z].map(|v| v.wrapping_sub(2) >> 2);
-                let first = [bx - r, bz - r].map(|v| v.wrapping_sub(2) >> 2);
                 let span = dim / 4 + 2;
-                let at = (base[2] - first[1]) as usize * span + (base[0] - first[0]) as usize;
+                let at =
+                    quart_distance(base[2], first[1]) * span + quart_distance(base[0], first[0]);
                 if layer.jitter.is_empty() {
                     layer.jitter.resize(span * span, None);
                 }

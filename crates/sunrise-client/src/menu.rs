@@ -23,17 +23,22 @@ use sunrise_world::native_load_context::{LoopContext, LoopSide};
 mod models;
 pub use models::{
     AnvilCraftSnapshot, AnvilUpdateInputs, GrindstonePlaceEdits, GrindstoneTakeEdits,
-    PendingGrindstoneTake, SlotContext, SlotRules, SlotView, StackedClick, StackedOutcome,
+    PendingGrindstoneTake, QuickCraftDrag, SlotContext, SlotRules, SlotView, StackedClick,
+    StackedClickedEdit, StackedEditPolicy, StackedOutcome, StackedResume, StackedSlotKind,
+    StackedSlotTarget,
 };
 mod slot_context;
 pub use slot_context::{apply_menu_slot_rules, lan_container};
 use std::sync::Arc;
 
 mod bundle;
+pub use bundle::{vanilla_carried_override, vanilla_clicked_override};
 pub mod container_items;
 pub use container_items::fits_inside_container_items;
 mod click;
-pub use click::{ClickContinuation, SlotTake};
+pub use click::{ClickContinuation, SlotTake, apply_stacked_outcome};
+mod client_drops;
+pub use client_drops::DropSpamThrottler;
 mod storage;
 pub use storage::{MutationStamp, Snapshot};
 mod equip_movement;
@@ -386,7 +391,8 @@ const GRID: usize = 2;
 const RESULT: usize = 3;
 /// `Container.getMaxStackSize`.
 const CONTAINER_MAX: u32 = 99;
-const OFFHAND: usize = 40;
+/// `Inventory.SLOT_OFFHAND`: the off hand's slot in the player's inventory.
+pub const OFFHAND: usize = 40;
 
 pub struct Menu {
     state: storage::State,
@@ -793,6 +799,7 @@ impl Menu {
                 data: vec![0; data],
                 creative: false,
                 on_client: false,
+                drop_spam: None,
                 selected: 0,
                 drops: Vec::new(),
                 dropped: Vec::new(),
@@ -815,6 +822,7 @@ impl Menu {
                 item_smithed: Vec::new(),
                 takes: None,
                 output_removed: 0,
+                furnace_extracted: Vec::new(),
                 equipped: Vec::new(),
                 merchant: None,
                 stone: Stonecutter::default(),
@@ -1555,6 +1563,21 @@ impl Menu {
         self.state.containers[s.container][s.index].as_ref()
     }
 
+    /// The menu's own containers (`MAIN`, `GRID`, `RESULT`), in [`mod_api::MenuContainer`] order.
+    pub fn slot_containers(
+        &self,
+    ) -> (
+        &[Option<ItemStack>],
+        &[Option<ItemStack>],
+        &[Option<ItemStack>],
+    ) {
+        (
+            &self.state.containers[MAIN],
+            &self.state.containers[GRID],
+            &self.state.containers[RESULT],
+        )
+    }
+
     /// Load an existing container slot without applying insertion limits.
     pub fn load_slot(&mut self, i: usize, stack: Option<ItemStack>) {
         self.touch();
@@ -2159,10 +2182,16 @@ impl Menu {
 
     /// `FurnaceResultSlot.checkTakeAchievements`: what `carried` and
     /// `removeCount` were, kept for `ItemSmeltedEvent` when a server caller
-    /// listens; the count starts again.
+    /// listens, and recorded in `furnace_extracted` so callers can award
+    /// smelting experience only on actual takes; the count starts again.
     fn furnace_take(&mut self, env: &Env, carried: &ItemStack) {
         self.touch();
         let removed = std::mem::take(&mut self.state.output_removed);
+        if removed > 0 {
+            self.state
+                .furnace_extracted
+                .push((carried.clone(), removed));
+        }
         if self.state.item_smelted_hook && env.loop_context.side() == LoopSide::Server {
             let carried = (carried.count > 0).then(|| carried.clone());
             self.state.item_smelted.push((carried, removed));
@@ -2298,20 +2327,74 @@ fn stackable(items: &Items, stack: &ItemStack) -> bool {
         && !(stack.damage > 0 && items.get(&stack.item).is_some_and(|i| i.max_damage > 0))
 }
 
-/// `Inventory.getSlotWithRemainingSpace`, preferring selected and offhand slots.
+/// [`slot_with_remaining_space`] in the player's container `inventory` (the off hand at
+/// [`OFFHAND`]), with `stack`'s own maximum, none for a stack that never joins another.
 fn slot_with_space(
     inventory: &[Option<ItemStack>],
     selected: usize,
     items: &Items,
     stack: &ItemStack,
 ) -> Option<usize> {
-    [selected, OFFHAND].into_iter().chain(0..36).find(|&i| {
-        inventory[i].as_ref().is_some_and(|have| {
-            have.same_item_same_components(stack)
-                && stackable(items, have)
-                && have.count < item_max_stack(items, have)
-        })
-    })
+    let max = if stackable(items, stack) {
+        item_max_stack(items, stack)
+    } else {
+        0
+    };
+    slot_with_remaining_space(
+        &inventory[..36],
+        inventory[OFFHAND].as_ref(),
+        selected,
+        stack,
+        max,
+    )
+}
+
+/// `Inventory.getSlotWithRemainingSpace`: where `stack` joins a stack already there
+/// (`hasRemainingSpaceForItem`: the same item and components, fewer than `max`, the stack's
+/// `getMaxStackSize`, which is 0 for a stack that is not `isStackable`). The selected slot
+/// first, then the off hand ([`OFFHAND`]), then the 36 main slots `items` in order.
+/// `Inventory.add` and `placeItemBackInInventory` ask it before [`free_slot`]. NeoForge and
+/// Fabric have no event that picks the slot (`ItemEntityPickupEvent.Pre` can refuse a pickup,
+/// not place it), so a Java mod mixes into `Inventory.getSlotWithRemainingSpace`; a native mod
+/// answers here through `[[native.mixin]]` (#4854).
+#[sunrise_mod_api_macros::replaceable]
+pub fn slot_with_remaining_space(
+    items: &[Option<ItemStack>],
+    offhand: Option<&ItemStack>,
+    selected: usize,
+    stack: &ItemStack,
+    max: u32,
+) -> Option<usize> {
+    let has_space = |have: Option<&ItemStack>| {
+        have.is_some_and(|have| have.same_item_same_components(stack) && have.count < max)
+    };
+    let slot = if has_space(items[selected].as_ref()) {
+        Some(selected)
+    } else if has_space(offhand) {
+        Some(OFFHAND)
+    } else {
+        items.iter().position(|have| has_space(have.as_ref()))
+    };
+    #[cfg(test)]
+    let slot =
+        crate::rule_replacements::slot_with_remaining_space(items, offhand, selected, stack, max)
+            .unwrap_or(slot);
+    let _ = items;
+    slot
+}
+
+/// `Inventory.getFreeSlot`: the first empty one of the 36 main slots `items`, never the off
+/// hand. `Inventory.add` and `placeItemBackInInventory` put there what joins no stack
+/// ([`slot_with_remaining_space`]), and pick-block's `addAndPickItem` the stack it moves out
+/// of the hotbar. NeoForge and Fabric have no event that picks the slot, so a Java mod mixes
+/// into `Inventory.getFreeSlot`; a native mod answers here through `[[native.mixin]]` (#4854).
+#[sunrise_mod_api_macros::replaceable]
+pub fn free_slot(items: &[Option<ItemStack>]) -> Option<usize> {
+    let slot = items.iter().position(Option::is_none);
+    #[cfg(test)]
+    let slot = crate::rule_replacements::free_slot(items).unwrap_or(slot);
+    let _ = items;
+    slot
 }
 
 /// `Inventory.add`; leaves any remainder in `stack`.
@@ -2326,7 +2409,7 @@ pub(crate) fn inventory_add(
         return false;
     }
     if items.get(&stack.item).is_some_and(|i| i.max_damage > 0) && stack.damage > 0 {
-        if let Some(slot) = inventory[..36].iter().position(Option::is_none) {
+        if let Some(slot) = free_slot(&inventory[..36]) {
             inventory[slot] = Some(stack.clone());
             stack.count = 0;
             return true;
@@ -2340,7 +2423,7 @@ pub(crate) fn inventory_add(
     loop {
         let last = stack.count;
         let slot = slot_with_space(inventory, selected, items, stack)
-            .or_else(|| inventory[..36].iter().position(Option::is_none));
+            .or_else(|| free_slot(&inventory[..36]));
         if let Some(slot) = slot {
             let cell = inventory[slot].get_or_insert_with(|| {
                 let mut empty = stack.clone();
@@ -2968,34 +3051,33 @@ impl Menu {
 
     /// Update a detached menu after an accepted edit of its live offer.
     pub fn merchant_update_result(&mut self, items: &Items) {
+        self.merchant_update_with_feedback(items, crate::merchant::TradeFeedback::Current);
+    }
+
+    pub fn merchant_update_with_feedback(
+        &mut self,
+        items: &Items,
+        feedback: crate::merchant::TradeFeedback,
+    ) {
         self.touch();
-        let Some(m) = self.state.merchant.as_mut() else {
-            return;
-        };
-        let (a, b) = (
-            self.state.containers[MAIN][0].as_ref(),
-            self.state.containers[MAIN][1].as_ref(),
-        );
-        let (a, b) = if a.is_none() { (b, None) } else { (a, b) };
-        m.active = None;
-        if a.is_none() {
-            self.state.containers[RESULT][0] = None;
-            m.future_xp = 0;
-            return;
+        if let Some(merchant) = &mut self.state.merchant {
+            let [payment, result] = self
+                .state
+                .containers
+                .get_disjoint_mut([MAIN, RESULT])
+                .expect("separate merchant inputs and result");
+            if let Some((yes, pitch)) = merchant.update_sell_item(
+                items,
+                payment[0].as_ref(),
+                payment[1].as_ref(),
+                &mut result[0],
+                feedback,
+            ) {
+                merchant
+                    .events
+                    .push(crate::merchant::Event::TradeUpdated(yes, pitch));
+            }
         }
-        if !m.offers.is_empty() {
-            let (active, result) =
-                crate::merchant::sell_item(&m.offers, items, a, b, Some(m.selection_hint));
-            m.active = active;
-            m.future_xp = if result.is_some() {
-                active.map_or(0, |i| m.offers[i].xp)
-            } else {
-                0
-            };
-            self.state.containers[RESULT][0] = result;
-        }
-        let has = self.state.containers[RESULT][0].is_some();
-        m.notify_trade_updated(has);
     }
     /// `MerchantResultSlot.checkTakeAchievements`: award the tallied count, then reset it.
     fn merchant_check_take_achievements(&mut self, stack: &ItemStack) {
@@ -3252,7 +3334,8 @@ pub(crate) mod tests {
             let handled = |clicked| StackedOutcome {
                 canceled: true,
                 handled: true,
-                clicked: Some(clicked),
+                resume: StackedResume::Done,
+                clicked: Some(StackedClickedEdit::Set(clicked)),
                 ..StackedOutcome::default()
             };
             // The result slot's onTake would not run: nothing goes in, nothing is taken out.
@@ -3289,7 +3372,8 @@ pub(crate) mod tests {
             let answer = StackedOutcome {
                 canceled: true,
                 handled: true,
-                clicked: Some(None),
+                resume: StackedResume::Done,
+                clicked: Some(StackedClickedEdit::Set(None)),
                 carried: Some(potion.clone()),
                 ..StackedOutcome::default()
             };
@@ -4750,6 +4834,7 @@ pub(crate) mod tests {
                 links: Vec::new(),
                 asks_still_valid: crate::lan::menu::asks_still_valid(mod_type, registry_id),
                 opening_item: None,
+                slot_changed_seen: None,
             };
             menu.still_valid(context, &world, &guest)
         };
@@ -4819,6 +4904,7 @@ pub(crate) mod tests {
                 links: Vec::new(),
                 asks_still_valid: crate::lan::menu::asks_still_valid(Some(mod_type), "test:rules"),
                 opening_item: None,
+                slot_changed_seen: None,
             };
             menu.still_valid(context, &world, &guest)
         };
@@ -5640,6 +5726,175 @@ pub(crate) mod tests {
             }
         }
         assert_eq!(seen, [potion.clone(), potion]);
+    }
+
+    /// `Inventory.add` takes its slots from `getSlotWithRemainingSpace` and `getFreeSlot`
+    /// ([`slot_with_remaining_space`], [`free_slot`]), and pick-block from
+    /// `getSuitableHotbarSlot` and `getFreeSlot`: one dirt at a time lands where the pickers
+    /// answer and nowhere else, in vanilla's order (the selected slot, the off hand, the main
+    /// slots, then the first empty one).
+    #[test]
+    fn inventory_add_and_pick_block_land_where_the_slot_pickers_answer() {
+        use crate::pick_item::{
+            Picked, apply, plan, suitable_hotbar_slot, vanilla_not_replaceable,
+        };
+        let items = Items::default();
+        let mut inventory = vec![stack("stone", 64); 41];
+        inventory[36..].fill(None);
+        for (slot, have) in [
+            (0, stack("stone", 5)),
+            (1, None),
+            (2, None),
+            (3, stack("dirt", 63)),
+            (7, stack("dirt", 63)),
+            (20, None),
+            (OFFHAND, stack("dirt", 62)),
+        ] {
+            inventory[slot] = have;
+        }
+        let selected = 3;
+        let dirt = stack("dirt", 1).unwrap();
+        let mut landed = Vec::new();
+        for _ in 0..6 {
+            let answer = slot_with_remaining_space(
+                &inventory[..36],
+                inventory[OFFHAND].as_ref(),
+                selected,
+                &dirt,
+                64,
+            )
+            .or_else(|| free_slot(&inventory[..36]))
+            .unwrap();
+            let mut expected = inventory.clone();
+            match &mut expected[answer] {
+                Some(have) => have.count += 1,
+                empty => *empty = Some(dirt.clone()),
+            }
+            let mut one = dirt.clone();
+            assert!(inventory_add(
+                &mut inventory,
+                selected,
+                false,
+                &items,
+                &mut one
+            ));
+            assert_eq!((one.count, &inventory), (0, &expected), "into {answer}");
+            landed.push(answer);
+        }
+        assert_eq!(landed, [3, OFFHAND, OFFHAND, 7, 1, 1]);
+
+        // Pick-block with infinite materials: the hotbar slot `getSuitableHotbarSlot` answers
+        // takes the item, and what it held moves to the slot `getFreeSlot` answers.
+        let mut main: Vec<_> = (0..36)
+            .map(|i| if i == 20 { None } else { stack("stone", 5) })
+            .collect();
+        let mut sword = stack("diamond_sword", 1).unwrap();
+        sword.enchant("minecraft:sharpness", 1);
+        main[3] = Some(sword);
+        let wood = stack("oak_planks", 1).unwrap();
+        let mut vanilla = |s: &ItemStack, _: usize| vanilla_not_replaceable(s);
+        let hotbar = suitable_hotbar_slot(&main, selected, &mut vanilla);
+        let free = free_slot(&main).unwrap();
+        assert_eq!(
+            (hotbar, free),
+            (4, 20),
+            "past the enchanted sword; the first empty slot"
+        );
+        let picked = plan(&main, selected, &wood, true, &mut vanilla);
+        assert_eq!(picked, Some(Picked::Add { hotbar }));
+        let mut chosen = selected;
+        apply(&mut main, &mut chosen, &wood, picked.unwrap());
+        assert_eq!(
+            (chosen, &main[hotbar], &main[free]),
+            (hotbar, &Some(wood), &stack("stone", 5))
+        );
+    }
+    /// A mod's rows that keep hotbar slots 6 to 8 free (`getFreeSlot`,
+    /// `getSlotWithRemainingSpace` and `getSuitableHotbarSlot` answering past them, replaced on
+    /// this thread through `rule_replacements`) keep a stack out of them wherever a slot is
+    /// chosen: the menus' `Inventory.add` passes a stack in slot 6 with room and the selected
+    /// slot 7, and a creative pick takes slot 0 and moves its stack to slot 1.
+    #[test]
+    fn replaced_slot_pickers_keep_added_and_picked_stacks_out_of_locked_slots() {
+        use crate::pick_item::{apply, plan};
+        use crate::rule_replacements::{FREE_SLOT, HOTBAR_SLOT, REMAINING_SPACE, replaced};
+        fn open(i: usize) -> bool {
+            !(6..=8).contains(&i)
+        }
+        fn free(items: &[Option<ItemStack>]) -> Option<usize> {
+            (0..items.len()).find(|&i| open(i) && items[i].is_none())
+        }
+        fn space(
+            items: &[Option<ItemStack>],
+            offhand: Option<&ItemStack>,
+            selected: usize,
+            stack: &ItemStack,
+            max: u32,
+        ) -> Option<usize> {
+            let has = |have: Option<&ItemStack>| {
+                have.is_some_and(|have| have.same_item_same_components(stack) && have.count < max)
+            };
+            if open(selected) && has(items[selected].as_ref()) {
+                Some(selected)
+            } else if has(offhand) {
+                Some(OFFHAND)
+            } else {
+                (0..items.len()).find(|&i| open(i) && has(items[i].as_ref()))
+            }
+        }
+        fn hotbar(_: &[Option<ItemStack>], _: usize) -> usize {
+            0
+        }
+        let locked = |test: &mut dyn FnMut()| {
+            replaced(&FREE_SLOT, free, || {
+                replaced(&REMAINING_SPACE, space, || {
+                    replaced(&HOTBAR_SLOT, hotbar, test)
+                })
+            })
+        };
+
+        let items = Items::default();
+        let mut inventory = vec![None; 41];
+        inventory[6] = stack("dirt", 10);
+        let mut vanilla = inventory.clone();
+        let selected = 7;
+        let mut one = stack("dirt", 1).unwrap();
+        locked(&mut || {
+            assert!(inventory_add(
+                &mut inventory,
+                selected,
+                false,
+                &items,
+                &mut one
+            ));
+        });
+        assert_eq!(
+            (&inventory[0], &inventory[6], &inventory[7]),
+            (&stack("dirt", 1), &stack("dirt", 10), &None)
+        );
+        // Without the rows, vanilla's slot: the stack in slot 6 with room.
+        let mut one = stack("dirt", 1).unwrap();
+        assert!(inventory_add(
+            &mut vanilla,
+            selected,
+            false,
+            &items,
+            &mut one
+        ));
+        assert_eq!(vanilla[6], stack("dirt", 11));
+
+        let mut main = vec![None; 36];
+        main[0] = stack("stone", 5);
+        let wood = stack("oak_planks", 1).unwrap();
+        let mut chosen = selected;
+        locked(&mut || {
+            let picked = plan(&main, selected, &wood, true, &mut |_, _| false).unwrap();
+            apply(&mut main, &mut chosen, &wood, picked);
+        });
+        assert_eq!(
+            (chosen, &main[0], &main[1], &main[7]),
+            (0, &Some(wood.clone()), &stack("stone", 5), &None)
+        );
     }
     #[path = "../dfa_tests.rs"]
     mod dfa;

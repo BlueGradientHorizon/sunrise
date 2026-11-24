@@ -176,6 +176,20 @@ impl Game<'_> {
         if self.spectator() {
             return false;
         }
+        if let Some(hit) = self.crosshair_entity_hit() {
+            if self.falling.iter().any(|f| f.id as i32 == hit.id) {
+                return false;
+            }
+            if let Some(tnt_id) = self
+                .tnts
+                .iter()
+                .find(|t| t.id as i32 == hit.id)
+                .map(|t| t.id)
+            {
+                self.strike_general_row(tnt_id, "minecraft:tnt");
+                return true;
+            }
+        }
         // A painting nearer than the targeted block and mob breaks instead.
         if let Some((i, d)) = self.painting_hit()
             && self.mob_hit().is_none_or(|m| d < m.1)
@@ -295,8 +309,6 @@ impl Game<'_> {
             self.audio
                 .play("minecraft:entity.player.attack.knockback", from, 1.0, 1.0);
         }
-        // LivingEntity.setLastHurtMob (tamed wolves join in).
-        self.combat.last_hurt_mob = Some((self.mobs[index].id, self.world.game_time));
         let old_health = self.mobs[index].health;
         let source = match from {
             Some(f) => self.attack_source(f),
@@ -316,6 +328,9 @@ impl Game<'_> {
             .find(&self.mobs, id)
             .filter(|&i| self.mobs[i].join == join && !self.mobs[i].removed)
         else {
+            if landed {
+                self.remember_player_target(Some(id));
+            }
             return;
         };
         if landed {
@@ -432,6 +447,7 @@ impl Game<'_> {
             if crit || sweep.is_none() {
                 self.audio.play(sound, from, 1.0, 1.0);
             }
+            self.remember_player_target(Some(id));
             // The hurt or death sound the mob raised (getHurtSound / getDeathSound,
             // its voice pitch from its own random). A sweep's own hurt/death
             // listeners may have changed the entity list.
@@ -466,7 +482,7 @@ impl Game<'_> {
                 && self.mobs[i].join == join
                 && !self.mobs[i].removed
             {
-                self.weapon_hit(i);
+                self.weapon_hit(i, sunrise_client::health::damage_type(source.kind, false));
             }
             // Player.attack: causeFoodExhaustion(0.1F) only when the hit hurt
             // (inside `if (wasHurt)`), after damageStatsAndHearts.

@@ -147,8 +147,6 @@ pub(in crate::game) fn listen_snapshot(tick: &TickThread) -> Option<ListenSnapsh
         index.blocks(),
     ))
 }
-#[path = "api_values/inside_write.rs"]
-mod inside_write;
 #[path = "api_values/landing_write.rs"]
 mod landing_write;
 #[path = "api_values/recipe_inputs.rs"]
@@ -2546,98 +2544,11 @@ mod declaration_snapshot_tests {
     }
 }
 
-#[path = "api_values/gui_draw.rs"]
-mod gui_draw;
 #[path = "api_values/text_boundary.rs"]
 mod text_boundary;
 #[cfg(test)]
-mod gui_draw_boundary_tests {
+mod text_boundary_tests {
     use super::{TryIntoApi, TryIntoEngine};
-    use serde_json::json;
-    use sunrise_client::{
-        hud_layout::{Blend, GuiDraw as D, PoseOp},
-        text::Text,
-    };
-
-    #[test]
-    fn gui_commands_keep_every_variant_field_order_and_text_source() {
-        let text = Text::from(
-            json!({"translate":"test.hud", "fallback":"%s", "with":[{"text":"name"}], "bold":false, "test:meta":{"n":1}}),
-        );
-        let commands = vec![
-            D::Sprite {
-                sprite: String::from("test:sprite").into(),
-                x: -1,
-                y: 2,
-                w: 3,
-                h: 4,
-                region: Some([5, 6, 7, 8]),
-                color: 0x12345678,
-                blend: Blend::Crosshair,
-            },
-            D::AtlasSprite {
-                sprite: "test:atlas".into(),
-                x: 11,
-                y: 12,
-                w: 13,
-                h: 14,
-                color: 15,
-            },
-            D::Blit {
-                texture: "test:texture".into(),
-                blend: Blend::Nausea,
-                x: 21,
-                y: 22,
-                w: 23,
-                h: 24,
-                uv: [0.25, 0.5],
-                src: [26, 27],
-                tex: [28, 29],
-                color: 30,
-            },
-            D::Fill {
-                x0: -31,
-                y0: 32,
-                x1: 33,
-                y1: 34,
-                color: 35,
-            },
-            D::FillGradient {
-                x0: 36,
-                y0: -37,
-                x1: 38,
-                y1: 39,
-                top: 0x8000_0040,
-                bottom: 0xFF00_0041,
-            },
-            D::Text {
-                text: text.clone(),
-                x: 41,
-                y: 42,
-                color: 43,
-                shadow: false,
-            },
-            D::Item {
-                slot: 40,
-                x: 51,
-                y: 52,
-                seed: -53,
-                scale: [0.5, 1.5],
-                pivot: [55., 56.],
-            },
-            D::Push(vec![PoseOp::Translate(61., 62.), PoseOp::Scale(0.5, 1.5)]),
-            D::Pop,
-        ];
-        let api = commands.try_into_api().unwrap();
-        let actual: Result<Vec<D>, mod_api::text::TextFormError> = api.try_into_engine(&());
-        let actual = actual.unwrap();
-        assert_eq!(actual, commands);
-        let D::Text { text: actual, .. } = &actual[5] else {
-            panic!("text command")
-        };
-        assert_eq!(actual.component(), text.component());
-    }
-
     #[test]
     fn tooltip_pairs_round_trip_without_an_item_registry() {
         let lines = vec![(sunrise_client::text::Text::literal("tip"), 0xff00ff00)];
@@ -2668,6 +2579,43 @@ mod gui_draw_boundary_tests {
     }
 }
 
+pub(in crate::game) fn placement_source_into_engine(
+    source: mod_api::PlacementSource,
+) -> Option<sunrise_world::level::PlacementSource> {
+    match source {
+        mod_api::PlacementSource::Player {
+            yaw,
+            pitch,
+            sneaking,
+        } if yaw.is_finite() && pitch.is_finite() => {
+            Some(sunrise_world::level::PlacementSource::Player {
+                yaw,
+                pitch,
+                sneaking,
+            })
+        }
+        mod_api::PlacementSource::Directional { direction } => {
+            Some(sunrise_world::level::PlacementSource::Directional { direction })
+        }
+        _ => None,
+    }
+}
+
+/// A directional placement question vanilla throws on, as `LevelRef::state_for_placement`
+/// refuses it.
+pub(in crate::game) fn placement_refusal_into_api(
+    refusal: sunrise_world::level::DirectionalRefusal,
+) -> mod_api::PlacementStateError {
+    match refusal {
+        sunrise_world::level::DirectionalRefusal::NoVerticalLook => {
+            mod_api::PlacementStateError::NoVerticalLook
+        }
+        sunrise_world::level::DirectionalRefusal::ReplacingClickedCycle => {
+            mod_api::PlacementStateError::ReplacingClickedCycle
+        }
+    }
+}
+
 impl TryIntoApi for sunrise_world::level::PlacementContext {
     type Api = mod_api::PlacementContext;
     type Error = StackReadError;
@@ -2681,9 +2629,20 @@ impl TryIntoApi for sunrise_world::level::PlacementContext {
         snapshot.hit_pos = self.hit_pos;
         snapshot.hit = [self.hit.x, self.hit.y, self.hit.z];
         snapshot.inside = self.inside;
-        snapshot.yaw = self.yaw;
-        snapshot.pitch = self.pitch;
-        snapshot.sneaking = self.sneaking;
+        snapshot.source = match self.source {
+            sunrise_world::level::PlacementSource::Player {
+                yaw,
+                pitch,
+                sneaking,
+            } => mod_api::PlacementSource::Player {
+                yaw,
+                pitch,
+                sneaking,
+            },
+            sunrise_world::level::PlacementSource::Directional { direction } => {
+                mod_api::PlacementSource::Directional { direction }
+            }
+        };
         snapshot.replace_clicked = self.replace_clicked;
         Ok(snapshot)
     }
@@ -2693,18 +2652,20 @@ impl TryIntoApi for sunrise_world::level::PlacementContext {
 mod placement_snapshot_tests {
     use super::*;
     #[test]
-    fn placement_keeps_click_view_flags_and_empty_hand_without_fallback() {
+    fn placement_keeps_click_source_flags_and_empty_hand_without_fallback() {
         install_parts(&[]).unwrap();
-        mod_api::__private::resolve_items(["minecraft:stone"]).unwrap();
+        mod_api::__private::resolve_items(["minecraft:stone", "minecraft:shulker_box"]).unwrap();
         let mut engine = sunrise_world::level::PlacementContext {
             pos: sunrise_core::position::BlockPos::new(1, 2, 3),
             hit_pos: sunrise_core::position::BlockPos::new(4, 5, 6),
             face: sunrise_core::geometry::Direction::Up,
             hit: sunrise_core::geometry::Vec3::new(4.25, 5.5, 6.75),
             inside: true,
-            yaw: -45.0,
-            pitch: 90.0,
-            sneaking: true,
+            source: sunrise_world::level::PlacementSource::Player {
+                yaw: -45.0,
+                pitch: 90.0,
+                sneaking: true,
+            },
             item: "minecraft:stone".into(),
             replace_clicked: true,
         };
@@ -2717,19 +2678,84 @@ mod placement_snapshot_tests {
         assert_eq!(snapshot.face, sunrise_core::geometry::Direction::Up);
         assert_eq!(snapshot.hit, [4.25, 5.5, 6.75]);
         assert!(snapshot.inside);
-        assert_eq!(snapshot.yaw, -45.0);
-        assert_eq!(snapshot.pitch, 90.0);
-        assert!(snapshot.sneaking && snapshot.replace_clicked);
+        assert_eq!(
+            snapshot.source,
+            mod_api::PlacementSource::Player {
+                yaw: -45.0,
+                pitch: 90.0,
+                sneaking: true,
+            }
+        );
+        assert!(snapshot.replace_clicked);
         assert_eq!(
             snapshot.item,
             mod_api::__private::item_key("minecraft:stone")
         );
+
+        // Dispenser directional placement preserves the dispenser's facing.
+        let dispenser_engine = sunrise_world::level::PlacementContext {
+            pos: sunrise_core::position::BlockPos::new(10, 64, 2),
+            hit_pos: sunrise_core::position::BlockPos::new(10, 64, 2),
+            face: sunrise_core::geometry::Direction::Up,
+            hit: sunrise_core::geometry::Vec3::new(10.5, 64.0, 2.5),
+            inside: false,
+            source: sunrise_world::level::PlacementSource::Directional {
+                direction: sunrise_core::geometry::Direction::East,
+            },
+            item: "minecraft:shulker_box".into(),
+            replace_clicked: true,
+        };
+        let dispenser_snapshot = dispenser_engine.try_into_api().unwrap();
+        assert_eq!(
+            dispenser_snapshot,
+            mod_api::PlacementContext::directional(
+                sunrise_core::position::BlockPos::new(10, 64, 2),
+                sunrise_core::geometry::Direction::East,
+                sunrise_core::geometry::Direction::Up,
+                mod_api::__private::item_key("minecraft:shulker_box"),
+            )
+        );
+
+        // Falling-block directional check: Directional { Down } with empty hand.
+        engine.source = sunrise_world::level::PlacementSource::Directional {
+            direction: sunrise_core::geometry::Direction::Down,
+        };
         engine.item.clear();
-        let mut empty = snapshot;
-        empty.item = None;
-        assert_eq!(engine.try_into_api(), Ok(empty));
+        let mut falling = snapshot;
+        falling.source = mod_api::PlacementSource::Directional {
+            direction: sunrise_core::geometry::Direction::Down,
+        };
+        falling.item = None;
+        assert_eq!(engine.try_into_api(), Ok(falling));
+
         engine.item = "missing:item".into();
         assert_eq!(engine.try_into_api(), Err(StackReadError::UnknownItem));
+
+        // Non-finite player orientation is refused at the mod boundary.
+        assert_eq!(
+            placement_source_into_engine(mod_api::PlacementSource::Player {
+                yaw: f32::NAN,
+                pitch: 0.0,
+                sneaking: false,
+            }),
+            None
+        );
+        assert_eq!(
+            placement_source_into_engine(mod_api::PlacementSource::Player {
+                yaw: 0.0,
+                pitch: f32::INFINITY,
+                sneaking: true,
+            }),
+            None
+        );
+        assert_eq!(
+            placement_source_into_engine(mod_api::PlacementSource::Directional {
+                direction: sunrise_core::geometry::Direction::Down,
+            }),
+            Some(sunrise_world::level::PlacementSource::Directional {
+                direction: sunrise_core::geometry::Direction::Down,
+            })
+        );
     }
 }
 
@@ -2788,6 +2814,7 @@ pub(in crate::game) fn install_test_platform() {
                 install_packages: mod_platform::__private::install_packages,
                 install_registration_data: mod_platform::__private::install_registration_data,
                 install_parts: mod_platform::__private::install_parts,
+                with_registration_open: mod_platform::__private::with_registration_open,
                 profiler_is_enabled: mod_platform::__private::profiler::is_enabled,
                 profiler_start: mod_platform::__private::profiler::start,
                 profiler_stop: mod_platform::__private::profiler::stop,
@@ -2812,9 +2839,15 @@ pub(in crate::game) fn install_parts(mods: &[mod_api::ModEntry]) -> Result<(), V
 }
 #[cfg(test)]
 pub(in crate::game) fn register_game_keys(ids: impl IntoIterator<Item = String>) {
+    let mod_fluids = sunrise_world::fluid::mod_fluids();
+    let mod_fluids: Vec<&str> = mod_fluids
+        .iter()
+        .flat_map(|(_, fluid)| [fluid.id.as_str(), fluid.flowing_id.as_str()])
+        .collect();
     with_rule_schema(|schema| {
         mod_platform::__private::part_tests::register_game_keys(
             ids,
+            &mod_fluids,
             schema,
             super::native_dimensions::valid_shape,
         )

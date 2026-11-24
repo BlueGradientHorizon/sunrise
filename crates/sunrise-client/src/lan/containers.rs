@@ -85,7 +85,39 @@ impl PreparedClick {
     }
 }
 
+/// Items detached from a closing hub menu that the game returns to the player or drops.
+pub struct ClosedHubMenu {
+    pub carried: Option<ItemStack>,
+    pub processing_inputs: Vec<ItemStack>,
+}
+
 impl Hub {
+    /// `RemoteSampleLogger.useSample`: a tick-time sample to every player who asked for
+    /// `dedicated_server_tick_time` (registry id 0) and passes
+    /// `ServerDebugSubscribers.hasRequiredPermissions` (`PlayerList.isOp`, any level).
+    pub fn tick_time_subscribers(&self) -> Vec<u32> {
+        self.guests
+            .iter()
+            .filter(|g| {
+                g.participates_online()
+                    && g.joined()
+                    && !g.disconnect_pending
+                    && g.debug_subscriptions.contains(&0)
+                    && self.ops.contains_key(&g.uuid)
+                    && g.sender.is_live()
+            })
+            .map(|g| g.conn)
+            .collect()
+    }
+
+    /// One packet to each snapshotted connection, encoded once.
+    pub fn send_to_each(&self, conns: &[u32], packet: &C) {
+        let body = packet.encode();
+        for g in conns.iter().filter_map(|c| self.guest(*c)) {
+            g.sender.send(body.clone());
+        }
+    }
+
     pub fn send_to(&self, conn: u32, packet: &C) {
         if let Some(g) = self.guest(conn) {
             if let C::RemoveEntities(p) = packet {
@@ -418,6 +450,11 @@ impl Hub {
                 title,
             }));
             let mod_type = crate::containers::mod_menu_type(menu_kind);
+            let slot_changed_seen = mod_type.map(|t| {
+                let mut seen = items.clone();
+                seen.resize(t.slots, None);
+                seen
+            });
             g.menu = Some(Menu {
                 window,
                 kind,
@@ -437,6 +474,7 @@ impl Hub {
                 links: Vec::new(),
                 asks_still_valid: super::menu::asks_still_valid(mod_type, menu_kind),
                 opening_item: None,
+                slot_changed_seen,
             });
             window
         });
@@ -492,6 +530,7 @@ impl Hub {
                 links: Vec::new(),
                 asks_still_valid: false,
                 opening_item: None,
+                slot_changed_seen: None,
             });
             window
         });
@@ -650,12 +689,19 @@ impl Hub {
         &mut self,
         i: usize,
         window: i32,
-    ) -> Option<(Option<ItemStack>, Option<NativeMenuEvent>)> {
+    ) -> Option<(ClosedHubMenu, Option<NativeMenuEvent>)> {
         self.guests.update(i, |g| {
             let menu = g.menu.take_if(|m| m.window == window)?;
             let carried = g.close_menu_cursor(menu.window);
+            let processing_inputs = menu.take_processing_inputs(&mut g.native_menu);
             let closed = menu.native_closed(g.uuid, g.menu_generation, &mut g.native_menu);
-            Some((carried, closed))
+            Some((
+                ClosedHubMenu {
+                    carried,
+                    processing_inputs,
+                },
+                closed,
+            ))
         })
     }
 
@@ -663,18 +709,26 @@ impl Hub {
         let Some(window) = self.guests[i].menu.as_ref().map(|menu| menu.window) else {
             return;
         };
-        let Some((carried, closed)) = self.take_hub_menu(i, window) else {
+        let Some((closed_menu, closed)) = self.take_hub_menu(i, window) else {
             return;
         };
         let guest = &self.guests[i];
         guest.send(&C::ContainerClose(play::ContainerClose {
             container: window,
         }));
-        if let Some(item) = carried {
+        if let Some(item) = closed_menu.carried {
             self.native_menu_events
                 .push(NativeMenuEvent::ReturnCarried {
                     conn: guest.conn,
                     item,
+                });
+        }
+        if !closed_menu.processing_inputs.is_empty() {
+            self.native_menu_events
+                .push(NativeMenuEvent::ReturnProcessingInputs {
+                    conn: guest.conn,
+                    items: closed_menu.processing_inputs,
+                    drop_instead: guest.dead,
                 });
         }
         self.native_menu_events.extend(closed);
@@ -703,12 +757,40 @@ impl Hub {
             })
     }
 
-    /// The client closed its window. Return the closing cursor to the game for removal.
-    pub fn container_closed(&mut self, conn: u32, window: i32) -> Option<ItemStack> {
+    /// Take processing-menu input returns queued by a hub-side window close, split into
+    /// `(to_return, to_drop)` according to whether the player was dead or disconnecting.
+    pub fn take_closed_processing_inputs(&mut self, conn: u32) -> (Vec<ItemStack>, Vec<ItemStack>) {
+        let mut to_return = Vec::new();
+        let mut to_drop = Vec::new();
+        for event in self.native_menu_events.extract_if(.., move |event| {
+            matches!(
+                event,
+                NativeMenuEvent::ReturnProcessingInputs { conn: owner, .. } if *owner == conn
+            )
+        }) {
+            if let NativeMenuEvent::ReturnProcessingInputs {
+                items,
+                drop_instead,
+                ..
+            } = event
+            {
+                if drop_instead {
+                    to_drop.extend(items);
+                } else {
+                    to_return.extend(items);
+                }
+            }
+        }
+        (to_return, to_drop)
+    }
+
+    /// The client closed its window. Return the closing cursor and any processing inputs to the
+    /// game for removal.
+    pub fn container_closed(&mut self, conn: u32, window: i32) -> Option<ClosedHubMenu> {
         let i = self.guests.connection_index(conn)?;
-        let (carried, closed) = self.take_hub_menu(i, window)?;
+        let (closed_menu, closed) = self.take_hub_menu(i, window)?;
         self.native_menu_events.extend(closed);
-        carried
+        Some(closed_menu)
     }
 
     /// Project one live stack for a click claim. Reuse its admissions for the hash and
@@ -967,16 +1049,40 @@ impl Hub {
         ))
     }
 
-    /// The pickup click `p` as `item_stacked_on_other` is asked about it, on the container the
-    /// first step read: the stacks it finds. `None` for a click that never asks.
+    /// The resolved pickup click `p` as `item_stacked_on_other` is asked about it, on the
+    /// container the first step read: the stacks it finds.
+    ///
+    /// Resolves both a direct left/right `PICKUP` when no drag is active (`prepared.drag.is_none()`)
+    /// and a one-slot left/right `QUICK_CRAFT` drag release (`stage == 2`, `slots.len() == 1`,
+    /// `kind <= 1`, carried stack present), matching vanilla 26.3 `AbstractContainerMenu.doClick`.
+    /// Returns `None` for direct pickups arriving during an active drag (which only reset the drag),
+    /// multi-slot drags, middle-button drags (`kind == 2`), and other inputs.
     pub fn stacked_click(
         &mut self,
         prepared: &mut PreparedClick,
         p: &play::ContainerClick,
     ) -> Option<crate::menu::StackedClick> {
-        if p.input != menu::input::PICKUP {
-            return None;
-        }
+        let (slot, button) = match p.input {
+            menu::input::PICKUP => {
+                if prepared.drag.is_some() {
+                    return None;
+                }
+                (i32::from(p.slot), i32::from(p.button))
+            }
+            menu::input::QUICK_CRAFT => {
+                let stage = i32::from(p.button) & 3;
+                if stage != 2 {
+                    return None;
+                }
+                let (kind, slots) = prepared.drag.as_ref()?;
+                if slots.len() != 1 || *kind > 1 {
+                    return None;
+                }
+                self.guests[prepared.i].carried.as_ref()?;
+                (slots[0] as i32, i32::from(*kind))
+            }
+            _ => return None,
+        };
         let loop_context = &self.loop_context;
         self.guests.update(prepared.i, |guest| {
             View {
@@ -987,7 +1093,47 @@ impl Hub {
 
                 loop_context,
             }
-            .stacked_click(i32::from(p.slot), i32::from(p.button))
+            .stacked_click(slot, button)
+        })
+    }
+
+    /// Probe the shared vanilla carried override (`vanilla_carried_override`) on the prepared hub
+    /// menu state with `(carried, clicked)` staged into the cursor and menu `slot`, restoring all
+    /// state before returning whether the carried item's vanilla override handled the click.
+    pub fn probe_carried_vanilla_override(
+        &mut self,
+        prepared: &mut PreparedClick,
+        slot: usize,
+        primary: bool,
+        carried: Option<ItemStack>,
+        clicked: Option<ItemStack>,
+        rules: &dyn Rules,
+    ) -> bool {
+        let loop_context = &self.loop_context;
+        self.guests.update(prepared.i, |guest| {
+            let kept = (
+                guest.inventory.clone(),
+                guest.armor.clone(),
+                guest.offhand.clone(),
+                guest.carried.clone(),
+                guest.craft_grid.clone(),
+                guest.craft_result.clone(),
+            );
+            let items = prepared.items.clone();
+            let mut view = View {
+                guest,
+                container: prepared.items.as_deref_mut(),
+                shulker: prepared.shulker,
+                container_limits: prepared.container_limits.clone(),
+                loop_context,
+            };
+            let took = menu::probe_carried_vanilla_override(
+                &mut view, slot, primary, carried, clicked, rules,
+            );
+            (guest.inventory, guest.armor, guest.offhand) = (kept.0, kept.1, kept.2);
+            (guest.carried, guest.craft_grid, guest.craft_result) = (kept.3, kept.4, kept.5);
+            prepared.items = items;
+            took
         })
     }
 

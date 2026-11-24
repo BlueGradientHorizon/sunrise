@@ -1,7 +1,10 @@
 //! Local particle and firework requests from native client hooks.
 use super::Game;
-use mod_api::{FireworksRequest, client::particles::PositionSource};
-use sunrise_client::particles::ParticleOptions;
+use mod_api::{
+    Direction, FireworksRequest, LevelRef, LevelWriteError, client::particles::PositionSource,
+};
+use sunrise_client::particles::{Particle, ParticleOptions};
+use sunrise_world::registry::BlockStateId;
 
 /// The most explosions one `create_fireworks` request draws (a crafted rocket holds at
 /// most 7 stars; a mod's show can be larger).
@@ -64,6 +67,41 @@ impl Game<'_> {
         });
         true
     }
+    pub(super) fn level_add_breaking_particles(
+        &mut self,
+        level: LevelRef,
+        pos: [i32; 3],
+        state: BlockStateId,
+        face: Direction,
+    ) -> Result<bool, LevelWriteError> {
+        if self.native_client_level() != Some(level) {
+            return Err(LevelWriteError::Unavailable);
+        }
+        Ok(self.add_breaking_particle(pos, state, face))
+    }
+
+    pub(super) fn level_add_terrain_particle(
+        &mut self,
+        level: LevelRef,
+        state: BlockStateId,
+        source_pos: [i32; 3],
+        at: [f64; 3],
+        velocity: [f64; 3],
+    ) -> Result<bool, LevelWriteError> {
+        if self.native_client_level() != Some(level) {
+            return Err(LevelWriteError::Unavailable);
+        }
+        if !at.into_iter().chain(velocity).all(f64::is_finite) {
+            return Ok(false);
+        }
+        let Some((sprite, tint)) = self.particle_sprite(state, source_pos) else {
+            return Ok(false);
+        };
+        let particle = Particle::terrain(self.particles.random(), at, velocity, sprite, tint);
+        self.particles.push(particle);
+        Ok(true)
+    }
+
     /// `ClientLevel.createFireworks`: queue a firework's explosions in this client's loaded
     /// world through the starter a bursting rocket uses, its blast and twinkle sounds gated by
     /// `audible` as a rocket's by its silence. No entity, no damage, nothing on the server.

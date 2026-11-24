@@ -20,6 +20,8 @@ pub mod packet_source;
 pub mod parallel;
 pub mod powder_snow;
 #[cfg(test)]
+mod rule_replacements;
+#[cfg(test)]
 mod test_log;
 #[cfg(test)]
 mod test_resources;
@@ -190,6 +192,7 @@ pub mod tick_chunk_membership;
 pub mod ticket_levels;
 pub mod title;
 pub mod toasts;
+pub mod tooltip_components;
 pub mod travel_gate;
 pub mod ui_theme;
 pub mod vanillagen;

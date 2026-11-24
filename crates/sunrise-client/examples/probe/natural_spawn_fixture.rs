@@ -335,11 +335,14 @@ impl NaturalLevel for World<'_> {
                 .any(|(id, b)| id == "minecraft:shulker" && b.intersects(grown))
     }
     fn unobstructed(&self, bounds: Aabb) -> bool {
+        let Ok(shape) = sunrise_core::geometry::VoxelShape::from_box(bounds) else {
+            return false;
+        };
         !self
             .entities
             .borrow()
             .iter()
-            .any(|(_, b)| b.intersects(bounds))
+            .any(|(_, b)| spawn_selection::blocks_spawn_shape(&shape, bounds, *b))
     }
     fn spawn_mobs(&self) -> bool {
         self.spawn_mobs
@@ -529,8 +532,9 @@ pub fn main() -> sunrise_client::Result<()> {
     let facts = BlockFacts::load(root, registry)?;
     let data = MobData::load(
         &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
-        &facts,
-    );
+        facts.states.len(),
+        false,
+    )?;
     let defaults = sunrise_world::item_defaults::read(root)?;
     let items = Items::catalog(root, &PackOverlay::NONE, &defaults)?;
     // Trial spawner rewards: the loot tables and the configs.
@@ -786,7 +790,6 @@ pub fn main() -> sunrise_client::Result<()> {
             let bounds = neutral_box(l, r);
             l.entities.borrow_mut().push((r.entity.to_owned(), bounds));
             Some(Spawned {
-                bounds,
                 school: true,
                 cluster_size: None,
             })
@@ -973,7 +976,6 @@ fn spawner_case(
                 ));
                 Some(SpawnerAdded {
                     id: spawned.len() as u32,
-                    bounds,
                     mob: true,
                 })
             };

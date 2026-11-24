@@ -1,4 +1,7 @@
 //! Owned and borrowed item values. Registry-dependent validation belongs to the game's write boundary.
+#[path = "item_stack_text.rs"]
+mod text;
+
 use crate::ItemKey;
 use component_edits::{ComponentEdit, ItemComponentEdits};
 use std::num::NonZeroU32;
@@ -178,8 +181,8 @@ impl<'a> ItemStackView<'a> {
 /// The editor cannot leave the callback:
 ///
 /// ```compile_fail
-/// use mod_api::{ItemComponentEditor, ItemPlace, ServerHost, Transaction};
-/// fn keep_editor(place: &ItemPlace, host: &mut dyn ServerHost, tx: &Transaction) {
+/// use mod_api::{ItemComponentEditor, ItemPlace, ServerHost, TransactionContext};
+/// fn keep_editor(place: &ItemPlace, host: &mut dyn ServerHost, tx: &TransactionContext) {
 ///     let mut saved: Option<&mut ItemComponentEditor<'_>> = None;
 ///     let _ = place.edit(host, tx, |editor| { saved = Some(editor); });
 ///     let _ = saved;
@@ -189,8 +192,8 @@ impl<'a> ItemStackView<'a> {
 /// The callback cannot use the host already borrowed by the edit:
 ///
 /// ```compile_fail
-/// use mod_api::{ItemPlace, ServerHost, Transaction};
-/// fn reread(place: &ItemPlace, host: &mut dyn ServerHost, tx: &Transaction) {
+/// use mod_api::{ItemPlace, ServerHost, TransactionContext};
+/// fn reread(place: &ItemPlace, host: &mut dyn ServerHost, tx: &TransactionContext) {
 ///     let _ = place.edit(host, tx, |_| { let _ = place.with_stack(host, |s| s.count()); });
 /// }
 /// ```
@@ -587,10 +590,14 @@ impl crate::NoBackend for StackWriteError {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum CraftedByError {
+    /// The supplied context does not identify this host's innermost open transaction.
+    InvalidContext,
     /// The place is not a menu slot or the carried stack, or it no longer holds a stack.
     NotHeld,
-    /// The host has no server game backend, or the transaction or place is no longer usable.
+    /// The host has no server game backend, or the place is no longer usable.
     Unavailable,
+    /// The host rolled back the inner replacement commit (for example after a packet refusal).
+    CommitRefused,
 }
 
 impl crate::NoBackend for CraftedByError {
@@ -915,6 +922,17 @@ impl ItemStack {
             value.insert(JavaString::from("components"), Tag::Compound(patch));
         }
         Some(value)
+    }
+    /// `ItemStack.getUseAnimation` with the mods' `use_animation` answers applied: the
+    /// animation the renderer draws while this stack is in use. A `Spear` answer for a stack
+    /// without kinetic data reads `None`, as it draws. Read from inside an
+    /// `ItemPart::use_animation` callback for a stack of the item that callback is answering
+    /// (a copy with another count or components included), it is the item's own answer: that
+    /// Part is not asked again. Another item's Parts are asked. `None` for an item the host doesn't know or a host without the engine backend.
+    pub fn use_animation(&self, host: &dyn crate::Host) -> crate::UseAnimation {
+        crate::backend_of(host)
+            .and_then(|backend| backend.item_stack_use_animation(self))
+            .unwrap_or(crate::UseAnimation::None)
     }
 }
 

@@ -107,6 +107,12 @@ pub trait MobsBackend {
     /// clients as `DATA_MOB_FLAGS_ID`).
     fn mob_is_aggressive(&self, mob: MobRef) -> Option<bool>;
     /// Side: server.
+    /// `TamableAnimal.isInSittingPose`: the synced sitting pose, apart from
+    /// `TamableAnimal.isOrderedToSit` (the order the AI keeps and the save
+    /// stores). None for a horse, another mob kind, the dragon, a stale or
+    /// removed handle, or a client.
+    fn mob_is_in_sitting_pose(&self, mob: MobRef) -> Option<bool>;
+    /// Side: server.
     /// `Mob.isPersistenceRequired`. The dragon never despawns
     /// (`EnderDragon.checkDespawn` is empty), but keeps and saves the flag
     /// (`PersistenceRequired`).
@@ -169,48 +175,20 @@ pub trait MobsBackend {
     /// `Raider.getCurrentRaid`: the raid a raider belongs to, even a stopped
     /// one. None for a mob that is no raider or in no raid.
     fn mob_raid(&self, mob: MobRef) -> Option<RaidRef>;
-    /// Side: server.
-    /// The unspawned mob's entity type (`minecraft:zombie`). `Expired` once the hook that lent it has returned.
-    fn unspawned_mob_kind(&self, mob: UnspawnedMobRef) -> Result<Identifier, UnspawnedMobError>;
-    /// Side: server.
-    /// Where the unspawned mob will join the level. `Expired` once the hook that lent it has returned.
-    fn unspawned_mob_position(&self, mob: UnspawnedMobRef) -> Result<[f64; 3], UnspawnedMobError>;
-    /// Side: server.
-    /// The stack in `slot` (`LivingEntity.getItemBySlot`) and its count; `None` for an empty slot. `Expired` once the hook that lent it has returned.
-    fn unspawned_mob_equipment(
-        &self,
-        mob: UnspawnedMobRef,
-        slot: EquipmentSlot,
-    ) -> Result<Option<ItemStack>, UnspawnedMobError>;
-    /// Side: server.
-    /// An attribute's base value, before modifiers; `Unsupported` for one the mob's type does not have. `Expired` once the hook that lent it has returned.
-    fn unspawned_mob_attribute_base(
-        &self,
-        mob: UnspawnedMobRef,
-        attribute: &Identifier,
-    ) -> Result<f64, UnspawnedMobError>;
-    /// Side: server.
-    /// An attribute's value with its modifiers, its equipment's included; `Unsupported` for one the mob's type does not have. `Expired` once the hook that lent it has returned.
-    fn unspawned_mob_attribute_value(
-        &self,
-        mob: UnspawnedMobRef,
-        attribute: &Identifier,
-    ) -> Result<f64, UnspawnedMobError>;
-    /// Side: server.
-    /// The tags a mod gave the unspawned mob so far (`Entity.entityTags()`). `Expired` once the hook that lent it has returned.
-    fn unspawned_mob_tags(&self, mob: UnspawnedMobRef) -> Result<Vec<String>, UnspawnedMobError>;
-    /// Side: server.
-    /// The unspawned mob's custom name, if it has one. `Expired` once the hook that lent it has returned.
-    fn unspawned_mob_custom_name(
-        &self,
-        mob: UnspawnedMobRef,
-    ) -> Result<Option<Text>, UnspawnedMobError>;
 }
 /// The handles' writes of the `mobs` area, implemented by the game and reached through [`BackendMut`].
 // hidden: a handle's backend, reached through `Backend`; mods call the handle, never this trait
 #[doc(hidden)]
 #[sunrise_mod_api_macros::host_area]
 pub trait MobsBackendMut {
+    // hidden: a scoped pending-child editor completes construction via the listener's host loan.
+    #[doc(hidden)]
+    fn initialize_pending_child(
+        &mut self,
+        child: UnspawnedMob,
+        action: u64,
+    ) -> Result<UnspawnedMob, UnspawnedMobError>;
+
     /// Side: server.
     /// `EnderDragonPhaseManager.setPhase`: the dragon ends its phase and
     /// begins the new one fresh (targets and counters cleared), and the
@@ -346,6 +324,13 @@ pub trait MobsBackendMut {
     /// `Mob.setPersistenceRequired`, which sets the flag and cannot clear it.
     /// False for an unavailable mob.
     fn mob_set_persistence_required(&mut self, mob: MobRef) -> bool;
+    /// Side: server.
+    /// `TamableAnimal.setInSittingPose`: writes the synced sitting pose and
+    /// marks the mob for sync. The saved order is left alone, so the pet's
+    /// own sit goal may write the pose again on its next tick, as vanilla.
+    /// False for a horse, another mob kind, the dragon, a stale or removed
+    /// handle, or a client.
+    fn mob_set_in_sitting_pose(&mut self, mob: MobRef, sitting: bool) -> bool;
     /// Side: server.
     /// `Mob.setNoAi`: whether the mob's own AI runs. With no AI the mob
     /// stands (what NoAI keeps in vanilla still runs), and the flag is

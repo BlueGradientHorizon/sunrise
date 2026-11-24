@@ -12,14 +12,15 @@ pub trait LevelCollisionBackend {
     /// None for a stale level, an unloaded column or a position outside build height.
     /// Reads parked server levels and the current client level without loading chunks.
     fn level_block_floor_height(&self, level: LevelRef, pos: [i32; 3]) -> Option<f64>;
-    /// Side: server.
+    /// Side: both.
     /// The supplied state's block-local outline or collision boxes at `pos`,
     /// with an empty context (`BlockState.getShape` / `getCollisionShape`).
     /// The state need not be the block stored there; level-dependent shapes
     /// still read the real level. Pass `block_state(host, pos)` to query the
     /// state at that position. Interaction, visual, occlusion and support shapes
-    /// are not exposed. Returns None on a client, for an unknown state, a stale
-    /// handle or a closed level. Collision errors return no boxes.
+    /// are not exposed. Reads open server levels and the current client level.
+    /// Returns None for an unknown state, a stale handle or an unavailable level.
+    /// Collision errors return no boxes.
     fn level_block_shape(
         &self,
         level: LevelRef,

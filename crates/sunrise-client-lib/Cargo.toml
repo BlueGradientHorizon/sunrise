@@ -114,8 +114,12 @@ test-menu-validity = []
 test-payload-probe = []
 # Isolated server-publication slots for resource-backed game fixtures only.
 test-publication-scope = []
+# Thread-local tooltip component factories for isolated game unit tests only.
+test-tooltip-factories = []
 # Non-consuming residency journal observation for game fixtures only.
 test-residency-observer = []
+# Local server-pack feedback observation for game fixtures only.
+test-pack-feedback = []
 # A level side with no weather, tags or block entities, for tests and probes that never read them.
 test-dry-side = []
 default = ["audio", "controllers"]
@@ -231,6 +235,10 @@ path = "../sunrise-client/tests/custom_component_unregistered.rs"
 [[test]]
 name = "custom_component_wire"
 path = "../sunrise-client/tests/custom_component_wire.rs"
+
+[[test]]
+name = "custom_bundle_wire"
+path = "../sunrise-client/tests/custom_bundle_wire.rs"
 
 [[test]]
 name = "datapack_join"

@@ -195,7 +195,22 @@ impl TryIntoApi for engine::LootContext<'_> {
 
 struct LootAbilityHost;
 impl mod_api::Host for LootAbilityHost {}
-mod_api::impl_host_areas!(LootAbilityHost);
+mod_api::impl_host_areas!(LootAbilityHost, except(datafix, items));
+impl mod_api::prelude::ItemsHost for LootAbilityHost {
+    fn item_abilities(&self) -> Vec<String> {
+        crate::game::item_abilities::ability::names()
+    }
+}
+impl mod_api::prelude::DatafixHost for LootAbilityHost {
+    fn upgrade_nbt(
+        &self,
+        kind: mod_api::NbtDataType,
+        data_version: i32,
+        nbt: mod_api::Compound,
+    ) -> Result<mod_api::Compound, mod_api::NbtUpgradeError> {
+        crate::game::Game::upgrade_nbt(kind, data_version, nbt)
+    }
+}
 
 pub(crate) fn dispatch_loot_ability(tool: &engine::LootStack, ability: &str, holds: &mut bool) {
     if !mod_api::__private::item_listens(mod_api::HookId::CanPerformAction, &tool.item) {
@@ -299,6 +314,7 @@ mod tests {
             kind: "minecraft:arrow".into(),
             source: Some(engine::LootEntity::new("minecraft:skeleton")),
             direct: Some(engine::LootEntity::new("minecraft:arrow")),
+            is_direct: false,
         };
         let value = engine::LootContext {
             queried_table_id: None,

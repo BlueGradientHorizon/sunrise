@@ -435,24 +435,76 @@ impl Game<'_> {
     }
 
     /// The bucket item that picks `fluid` up (`Fluid.getBucket`), `minecraft:water_bucket` for
-    /// water and flowing water. None for `minecraft:empty`, whose bucket is air, and for a name
-    /// no fluid has.
+    /// water and flowing water, the bucket a mod's fluid names, a tank-only one's too. None for
+    /// `minecraft:empty`, whose bucket is air, for a fluid with no bucket, for a name no
+    /// registered fluid has, for a named item no item has, and for one of the game's own
+    /// buckets that would not keep it: the empty bucket, another fluid's or a mob's.
     pub(super) fn fluid_bucket(&self, fluid: &str) -> Option<mod_api::ItemKey> {
-        mod_api::__private::item_key(sunrise_world::level::fluid_bucket(fluid_kind(fluid)?)?)
+        let item = match fluid_kind(fluid) {
+            Some(FluidKind::Mod(mod_fluid) | FluidKind::ModFlowing(mod_fluid)) => {
+                mod_api::__private::item_key(&sunrise_client::mod_content::fluid_bucket(
+                    &mod_fluid.get().id,
+                )?)?
+            }
+            Some(kind) => mod_api::__private::item_key(sunrise_world::level::fluid_bucket(kind)?)?,
+            // A fluid file alone registers no tank-only fluid.
+            None => {
+                mod_api::__private::fluid_key(fluid)?;
+                mod_api::__private::item_key(&sunrise_client::mod_content::fluid_bucket(fluid)?)?
+            }
+        };
+        // The game's own buckets keep what they hold: filling the empty one, or one of another
+        // fluid or a mob, would lose this fluid.
+        let id = mod_api::__private::item_key_id(item)?;
+        match sunrise_client::items::bucket_contents(id) {
+            Some((sunrise_world::level::BucketContent::Fluid(held), ..))
+                if fluid_kind(fluid).is_some_and(|fluid| fluid.same_family(held)) =>
+            {
+                Some(item)
+            }
+            Some(_) => None,
+            None if id == "minecraft:bucket" => None,
+            None => Some(item),
+        }
+    }
+
+    /// The fluid a filled bucket the game registers holds (`BucketItem.content`): water for
+    /// `minecraft:water_bucket`, lava for `minecraft:lava_bucket`, a mod world fluid's source
+    /// for its generated bucket. None for any other item.
+    pub(super) fn bucket_fluid(&self, bucket: mod_api::ItemKey) -> Option<mod_api::FluidKey> {
+        let item = mod_api::__private::item_key_id(bucket)?;
+        match sunrise_client::items::bucket_contents(item)? {
+            (sunrise_world::level::BucketContent::Fluid(kind), ..) => {
+                mod_api::__private::fluid_key(kind.name())
+            }
+            _ => None,
+        }
     }
 
     /// The sound event a bucket plays as it picks `fluid` up (`Fluid.getPickupSound`),
-    /// `minecraft:item.bucket.fill_lava` for lava and flowing lava. None for
-    /// `minecraft:empty`, which has none, and for a name no fluid has.
+    /// `minecraft:item.bucket.fill_lava` for lava and flowing lava, `minecraft:item.bucket.fill`
+    /// for water and a mod's fluid with a bucket. None for `minecraft:empty`, which has none,
+    /// for a tank-only fluid with no bucket and for a name no fluid has.
     pub(super) fn fluid_pickup_sound(&self, fluid: &str) -> Option<&'static str> {
-        sunrise_world::level::fluid_pickup_sound(fluid_kind(fluid)?)
+        match fluid_kind(fluid) {
+            Some(kind) => sunrise_world::level::fluid_pickup_sound(kind),
+            None => self
+                .fluid_bucket(fluid)
+                .map(|_| "minecraft:item.bucket.fill"),
+        }
     }
 
     /// The sound event a bucket plays as it empties `fluid` (`BucketItem.playEmptySound`),
-    /// `minecraft:item.bucket.empty_lava` for lava and flowing lava. None for
-    /// `minecraft:empty`, for a tank-only fluid and for a name no fluid has.
+    /// `minecraft:item.bucket.empty_lava` for lava and flowing lava, `minecraft:item.bucket.empty`
+    /// for water and a mod's fluid with a bucket. None for `minecraft:empty`, for a tank-only
+    /// fluid with no bucket and for a name no fluid has.
     pub(super) fn fluid_empty_sound(&self, fluid: &str) -> Option<&'static str> {
-        sunrise_world::level::fluid_empty_sound(fluid_kind(fluid)?)
+        match fluid_kind(fluid) {
+            Some(kind) => sunrise_world::level::fluid_empty_sound(kind),
+            None => self
+                .fluid_bucket(fluid)
+                .map(|_| "minecraft:item.bucket.empty"),
+        }
     }
 
     /// Read a loaded block in a server tick hook, without loading a chunk.
