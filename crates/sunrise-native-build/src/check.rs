@@ -90,6 +90,8 @@ pub struct Judged<E> {
     pub uncompared: Option<E>,
     /// The ids of declared game code the build data cannot show unchanged: with nothing known to have changed, they make the verdict [`Verdict::Exact`].
     pub unjudged: Vec<String>,
+    /// With [`Unlisted::HookVersions`]: why the build the mod was made for could not give the hook versions the list lacks.
+    pub unpinned: Option<E>,
 }
 
 /// The builds a fit compares: the one a mod was made for, the one it is judged against, and the horizon-mixins revision that one's tool builds with.
@@ -100,7 +102,7 @@ pub struct Builds<'a> {
     pub mixins_rev: &'a str,
 }
 
-/// How the native mod `manifest` stands against `builds.build`, by `table`, the list of what it uses (or why it has none this tool reads). `surface` gives the build's surface, and `game` where the game code the mod declares is in it ([`game_uses::entries`]). `made_for_surface`, when at hand, gives the `surface.json` of the build the mod was made for, whose hook versions complete a list an older tool wrote, into the table. Each is asked for only when the verdict needs it; `Err` is what one returned, or why the made-for surface could not be read, and then the verdict is not known.
+/// How the native mod `manifest` stands against `builds.build`, by `table`, the list of what it uses (or why it has none this tool reads). `surface` gives the build's surface, and `game` where the game code the mod declares is in it ([`game_uses::entries`]). `made_for_surface`, when at hand, gives the `surface.json` of the build the mod was made for, whose hook versions complete a list an older tool wrote, into the table. Each is asked for only when the verdict needs it; `Err` is what `surface` or `game` returned, and then the verdict is not known. A made-for surface that cannot be had or read leaves the hooks unversioned, and says why in [`Judged::unpinned`].
 pub fn judge<'t, E: From<String>>(
     manifest: &Manifest,
     builds: Builds<'_>,
@@ -120,6 +122,7 @@ pub fn judge<'t, E: From<String>>(
         deferred: None,
         uncompared: None,
         unjudged: Vec::new(),
+        unpinned: None,
     };
     if made_for == build {
         return Ok(verdict(Verdict::MadeFor));
@@ -148,6 +151,22 @@ pub fn judge<'t, E: From<String>>(
         )
     };
     let mut report = api(table);
+    // A list an older tool wrote holds no hook versions, and the build it was made for has them: asked for whenever the list leaves a hook unjudged, whatever the game code shows, so a misfit they reveal is named beside the rest. A surface that gives none leaves the list as it was.
+    let mut unpinned = None;
+    if matches!(report.verdict, Fit::Unversioned(_))
+        && table.schema < uses::PLAIN_SCHEMA
+        && let Some(made_for_surface) = made_for_surface
+    {
+        let pinned = made_for_surface().and_then(|bytes| {
+            table
+                .pin_hook_versions(&bytes)
+                .map_err(|e| E::from(e.to_string()))
+        });
+        match pinned {
+            Ok(()) => report = api(table),
+            Err(why) => unpinned = Some(why),
+        }
+    }
     let (mut compared, uncompared) = game_uses::compare_declared(manifest, table, mixins_rev, game);
     let mut misfits = match &mut report.verdict {
         Fit::DoesNotFit(misfits) => std::mem::take(misfits),
@@ -159,24 +178,6 @@ pub fn judge<'t, E: From<String>>(
         && let Some(lack) = uncompared
     {
         return Err(lack);
-    }
-    // A list an older tool wrote holds no hook versions, and the build it was made for has them: asked for only when nothing else is known to have changed. A surface that gives none leaves the list as it was.
-    if misfits.is_empty()
-        && matches!(report.verdict, Fit::Unversioned(_))
-        && table.schema < uses::PLAIN_SCHEMA
-        && let Some(made_for_surface) = made_for_surface
-    {
-        table
-            .pin_hook_versions(&made_for_surface()?)
-            .map_err(|e| {
-                E::from(format!(
-                    "the list holds no hook versions, and the surface of the build it was made for cannot be read for them: {e}"
-                ))
-            })?;
-        report = api(table);
-        if let Fit::DoesNotFit(changed) = &mut report.verdict {
-            misfits.append(changed);
-        }
     }
     let verdict = if !misfits.is_empty() {
         misfits.sort();
@@ -209,6 +210,7 @@ pub fn judge<'t, E: From<String>>(
         deferred: report.deferred,
         uncompared,
         unjudged: compared.unjudged,
+        unpinned,
     })
 }
 

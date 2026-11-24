@@ -348,7 +348,7 @@ fn fit_lines(entry: ChildEntry, package: Option<&Path>, builds: &[&str]) -> Resu
         Some(path) => package_subject(path)?,
         None => folder_subject(entry, project)?,
     };
-    let (name, mut table, manifest) = match subject {
+    let (name, table, manifest) = match subject {
         Subject::Table {
             name,
             table,
@@ -382,6 +382,9 @@ fn fit_lines(entry: ChildEntry, package: Option<&Path>, builds: &[&str]) -> Resu
             continue;
         }
         let target_surface = Rc::new(target_surface);
+        // Each build judges its own copy, which the made-for surface may complete: what one
+        // build's verdict needed never changes another's.
+        let mut target_table = table.clone();
         let judged = mixins_rev(&target).and_then(|mixins_rev| {
             check::judge(
                 &manifest,
@@ -390,22 +393,16 @@ fn fit_lines(entry: ChildEntry, package: Option<&Path>, builds: &[&str]) -> Resu
                     build: &target.build,
                     mixins_rev: &mixins_rev,
                 },
-                || Ok(&mut table),
+                || Ok(&mut target_table),
                 &mut || Ok(target_surface.clone()),
                 &mut || build_data(&manifest, &target),
                 Some(&mut || {
                     made_for_surface
                         .get_or_insert_with(|| {
-                            fetch_build(project, &made_for)
-                                .and_then(|made| {
-                                    std::fs::read(&made.surface)
-                                        .map_err(|e| format!("{}: {e}", made.surface.display()))
-                                })
-                                .map_err(|why| {
-                                    format!(
-                                        "the list holds no hook versions, and the build it was made for could not be read for them ({why})"
-                                    )
-                                })
+                            fetch_build(project, &made_for).and_then(|made| {
+                                std::fs::read(&made.surface)
+                                    .map_err(|e| format!("{}: {e}", made.surface.display()))
+                            })
                         })
                         .clone()
                 }),
@@ -416,6 +413,7 @@ fn fit_lines(entry: ChildEntry, package: Option<&Path>, builds: &[&str]) -> Resu
             deferred,
             uncompared,
             unjudged,
+            unpinned,
         } = match judged {
             Ok(judged) => judged,
             Err(why) => {
@@ -453,13 +451,16 @@ fn fit_lines(entry: ChildEntry, package: Option<&Path>, builds: &[&str]) -> Resu
             Verdict::NoList { hooks, .. } => {
                 known = false;
                 println!(
-                    "{}  not known: nothing the list can judge changed, but it holds no version of {}. Pack the mod again with `cargo sunrise-mod build`, which records them.",
+                    "{}  not known: nothing the list can judge changed, but it holds no version of {}{}. Pack the mod again with `cargo sunrise-mod build`, which records them.",
                     target.name,
                     hooks
                         .iter()
                         .map(|id| format!("`{}`", leaf(id)))
                         .collect::<Vec<_>>()
                         .join(", "),
+                    unpinned.map_or(String::new(), |why| format!(
+                        ", and the build it was made for could not be read for them ({why})"
+                    )),
                 );
             }
             Verdict::DoesNotFit { misfits, .. } => {
