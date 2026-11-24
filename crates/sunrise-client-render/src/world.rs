@@ -1187,7 +1187,14 @@ mod tests {
             world.block_entities_in_box([1, 64, 1], [2, 65, 2]),
             Some(vec![(1, 64, 1)])
         );
-        world.block_entities.put(taken.0, taken.1);
+        assert_eq!(
+            world.block_entities.taken_type(&(1, 64, 1)),
+            Some(crate::block_entities::TakenType::Vanilla(
+                "minecraft:campfire"
+            ))
+        );
+        assert!(world.block_entities.put(taken.0, taken.1));
+        assert_eq!(world.block_entities.taken_type(&(1, 64, 1)), None);
         // The maximum is exclusive on every axis; the build height clips the box.
         for max in [[1, 65, 2], [2, 64, 2], [2, 65, 1]] {
             assert_eq!(world.block_entities_in_box([0, 63, 0], max), Some(vec![]));

@@ -146,8 +146,11 @@ impl Game<'_> {
                 .filter_map(|(x, y, z)| {
                     let pos = (x, y, z);
                     let kind = match world.block_entities.taken_type(&pos) {
-                        // Taken out: a mod's keeps its own type, a vanilla one is its block's.
+                        // Taken out: it keeps its own type, whatever stands there now.
                         Some(TakenType::Mod(kind)) => kind?,
+                        Some(TakenType::Vanilla(id)) => {
+                            mod_api::__private::block_entity_type_key(id)?
+                        }
                         Some(TakenType::Block) | None => {
                             let block = &registry.state(world.block(x, y, z))?.name;
                             let id = match world.block_entities.get(&pos) {
@@ -160,10 +163,7 @@ impl Game<'_> {
                             mod_api::__private::block_entity_type_key(id)?
                         }
                     };
-                    Some(BlockEntityAt {
-                        pos: [x, y, z],
-                        kind,
-                    })
+                    Some(BlockEntityAt::new([x, y, z], kind))
                 })
                 .collect(),
         )

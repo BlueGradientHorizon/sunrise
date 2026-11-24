@@ -45,7 +45,7 @@ pub trait BlockEntitiesBackend {
     /// Side: both.
     /// The block entity's level.
     fn block_entity_level(&self, entity: BlockEntityRef) -> Option<LevelRef>;
-    /// Side: both.
+    /// Side: server.
     /// The block entities of the named open server level, active or parked, whose positions lie
     /// in the box from `min` (inclusive) to `max` (exclusive) on each axis and within the level's
     /// build height (`LevelHeightAccessor.isInsideBuildHeight`), in no order. Only chunks

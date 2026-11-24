@@ -5,13 +5,20 @@ use std::{fmt, sync::Arc};
 /// A block entity `LevelRef::block_entities` found: its block position and its type
 /// (`BlockEntity.getType`), not its block's ID nor its saved data.
 // no wire: an in-process host read's result, never sent.
-// exhaustive: the game builds one per block entity it lists; mods only read it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub struct BlockEntityAt {
     /// The block entity's block position.
     pub pos: [i32; 3],
     /// Its type's key; `kind.id(host)` names it, as `minecraft:chest`.
     pub kind: BlockEntityTypeKey,
+}
+
+impl BlockEntityAt {
+    /// The block entity of type `kind` at `pos`.
+    pub fn new(pos: [i32; 3], kind: BlockEntityTypeKey) -> Self {
+        Self { pos, kind }
+    }
 }
 
 /// The mirror followed by rotation applied during structure placement.
