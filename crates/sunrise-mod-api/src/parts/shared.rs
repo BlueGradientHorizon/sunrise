@@ -61,6 +61,7 @@ pub struct PartRegistrar {
     pub(crate) custom_stat_owners: Vec<&'static str>,
     /// The entity types each named to `entity_tick_each`, in order: `None` for every type.
     pub(crate) entity_tick_each: Vec<Option<String>>,
+    pub(crate) enchanting_table_offsets: Vec<[i32; 3]>,
     pub(crate) mod_id: &'static str,
     pub(crate) mod_index: usize,
     /// Parts registered so far, by every mod: the next part's `order`.
@@ -125,6 +126,7 @@ impl PartRegistrar {
             custom_stats: Vec::new(),
             custom_stat_owners: Vec::new(),
             entity_tick_each: Vec::new(),
+            enchanting_table_offsets: Vec::new(),
             mod_id,
             mod_index: 0,
             registered: 0,
@@ -354,6 +356,7 @@ pub(crate) fn install_registrar(
         custom_stats: registrar.custom_stats,
         custom_stat_owners: registrar.custom_stat_owners,
         entity_tick_each: mod_vocab::__private::EntityTickEach::of(&registrar.entity_tick_each),
+        enchanting_table_offsets: registrar.enchanting_table_offsets,
         keys: registrar.parts,
         tags: registrar.tags,
         block_entity_types: registrar.block_entity_types,

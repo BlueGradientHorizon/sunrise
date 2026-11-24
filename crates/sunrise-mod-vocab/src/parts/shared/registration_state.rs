@@ -21,6 +21,8 @@ pub(crate) struct Installed {
     pub(crate) custom_stats: Vec<String>,
     pub(crate) custom_stat_owners: Vec<&'static str>,
     pub(crate) entity_tick_each: crate::parts::EntityTickEach,
+    /// Enchanting table scan offsets the mods declared, in load order.
+    pub(crate) enchanting_table_offsets: Vec<[i32; 3]>,
     pub(crate) game_rule_slots: Vec<u32>,
     pub(crate) keys: Parts,
     pub(crate) tags: TagParts,

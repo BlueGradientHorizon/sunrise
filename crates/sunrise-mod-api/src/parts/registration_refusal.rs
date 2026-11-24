@@ -72,6 +72,7 @@ impl PartRegistrar {
             custom_stats,
             custom_stat_owners,
             entity_tick_each,
+            enchanting_table_offsets,
             block_entity_types,
             entity_attributes,
             general_entity_types,
