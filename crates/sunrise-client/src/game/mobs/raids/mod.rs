@@ -6,7 +6,7 @@ use super::{Dim, Game, creatures::Finalized};
 use std::collections::{HashMap, HashSet};
 use sunrise_client::mobs::villager as mobs_villager;
 use sunrise_client::{
-    effects::{EffectInstance, OmenTick},
+    effects::{EffectInstance, OmenTick, TickingEffect},
     lan::playerdata::ints_uuid,
     mobs::{
         Mob, Species, raider,
@@ -399,7 +399,7 @@ impl Game<'_> {
     /// `BadOmenMobEffect` and `RaidOmenMobEffect.applyEffectTick` for the
     /// player's effect tick: Bad Omen inside a village becomes Raid Omen,
     /// whose last tick starts or extends a raid where it began.
-    pub(super) fn omen_tick(&mut self, e: &EffectInstance) -> OmenTick {
+    pub(super) fn omen_tick(&mut self, e: TickingEffect) -> OmenTick {
         if self.spectator() || self.player.is_none() {
             return OmenTick::Continue;
         }
