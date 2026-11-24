@@ -983,7 +983,8 @@ impl Game<'_> {
             let age = item.age as f32 + partial;
             let (lo, hi) = state.bounding_box();
             let min_offset_y = -lo.y + 0.0625;
-            let bob = (age / 10.0 + item.bob_offset).sin() * 0.1 + 0.1;
+            let motion = self.dropped_stack_motion(&item.stack);
+            let bob = item_render::item_bob(age, item.bob_offset, motion.bob);
             let spin = item_render::item_spin(age, item.bob_offset);
             let pose = glam::Mat4::from_translation(pos.as_vec3())
                 * glam::Mat4::from_translation(glam::Vec3::new(0.0, bob + min_offset_y, 0.0))
@@ -1013,11 +1014,12 @@ impl Game<'_> {
             };
             let seed = i64::from(self.item_number(&item.stack.item).unwrap_or(0))
                 + i64::from(item.stack.damage);
-            let copies = item_render::cluster_poses_with_depth(
+            let copies = item_render::dropped_copy_poses(
                 pose,
                 item_render::rendered_amount(item.stack.count),
                 seed,
                 hi.z - lo.z,
+                motion.spread,
             );
             // Use the same animated, spun, clustered transforms as the draw.
             // ItemEntity's collision box is only 0.25 blocks and cannot prove
