@@ -1657,9 +1657,14 @@ def selector_targets(root: Path, rows: dict[FnKey, FnRow], mod_sides: dict[str, 
                         if (rel_p, parts[0].strip(), target) not in known_stale:
                             file_, sep, rest = target.partition("::")
                             if sep:
+                                f_clean = file_.strip()
                                 fn_name = rest.rpartition("::")[2].strip()
-                                new_file = port_moves.get((file_.strip(), fn_name))
-                                if new_file and new_file != file_.strip():
+                                new_file = port_moves.get((f_clean, fn_name))
+                                if not new_file and not (root / f_clean).is_file():
+                                    base_f = re.sub(r"_(?:client|server)(?=\.rs$|/)", "", f_clean, count=1)
+                                    if base_f != f_clean and (root / base_f).is_file():
+                                        new_file = base_f
+                                if new_file and new_file != f_clean:
                                     parts[2] = parts[2].replace(f"{file_}::", f"{new_file}::", 1)
                                     out_lines.append("\t".join(parts) + eol)
                                     continue
