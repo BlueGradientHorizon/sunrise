@@ -3,7 +3,8 @@
 //! The registry bot (which publishes the releases whose dependencies cannot be met on a build) and
 //! the launcher's install planner (which picks the releases to install) must agree on this, so both
 //! call this one function. It takes plain values and does no I/O. Whether a release fits a game
-//! build is the caller's question, as is which releases are listed at all.
+//! build is the caller's question, as are which releases are listed at all and reading a version
+//! from text: a caller that cannot read a release's version as semver has no offer to make.
 
 use semver::{Version, VersionReq};
 
@@ -23,7 +24,7 @@ pub struct Offer<'a> {
     pub project: &'a str,
     /// The in-game ID that project provides.
     pub mod_id: &'a str,
-    pub version: &'a str,
+    pub version: &'a Version,
     /// The release file's SHA-256, in hexadecimal.
     pub sha256: &'a str,
 }
@@ -37,7 +38,7 @@ pub struct Revoked<'a> {
 
 /// Whether `offer` satisfies `requirement`: it provides the same in-game ID, belongs to the pinned
 /// project when one is pinned, its version is inside the range, and neither its project nor its
-/// file is revoked. A version that is not semver is in no range.
+/// file is revoked.
 pub fn satisfies(
     requirement: &Requirement<'_>,
     offer: &Offer<'_>,
@@ -47,7 +48,7 @@ pub fn satisfies(
         && requirement
             .project
             .is_none_or(|pinned| pinned == offer.project)
-        && Version::parse(offer.version).is_ok_and(|version| requirement.range.matches(&version))
+        && requirement.range.matches(offer.version)
         && !revoked.iter().any(|row| {
             row.project == offer.project
                 && row
@@ -60,56 +61,46 @@ pub fn satisfies(
 mod tests {
     use super::*;
 
-    const OFFER: Offer<'static> = Offer {
-        project: "Ab3dE9xQ",
-        mod_id: "wayfinder",
-        version: "1.4.2",
-        sha256: "aa11",
-    };
-
-    fn asks(range: &str, project: Option<&str>, revoked: &[Revoked<'_>]) -> bool {
+    fn asks(range: &str, project: Option<&str>, version: &str, revoked: &[Revoked<'_>]) -> bool {
         let range = VersionReq::parse(range).unwrap();
         let requirement = Requirement {
             mod_id: "wayfinder",
             range: &range,
             project,
         };
-        satisfies(&requirement, &OFFER, revoked)
+        let offer = Offer {
+            project: "Ab3dE9xQ",
+            mod_id: "wayfinder",
+            version: &Version::parse(version).unwrap(),
+            sha256: "aa11",
+        };
+        satisfies(&requirement, &offer, revoked)
     }
 
     #[test]
     fn a_release_inside_the_range_satisfies_and_one_outside_does_not() {
-        assert!(asks("^1.2", None, &[]));
-        assert!(!asks("^2", None, &[]));
-        assert!(!asks("=1.4.1", None, &[]));
-    }
-
-    #[test]
-    fn a_version_that_is_not_semver_is_in_no_range() {
-        let range = VersionReq::STAR;
-        let requirement = Requirement {
-            mod_id: "wayfinder",
-            range: &range,
-            project: None,
-        };
-        let offer = Offer {
-            version: "1.4",
-            ..OFFER
-        };
-        assert!(!satisfies(&requirement, &offer, &[]));
+        assert!(asks("^1.2", None, "1.4.2", &[]));
+        assert!(asks("^1.4", None, "1.4.0", &[]));
+        assert!(!asks("^2", None, "1.4.2", &[]));
+        assert!(!asks("=1.4.1", None, "1.4.2", &[]));
     }
 
     #[test]
     fn another_mod_or_another_project_than_the_pinned_one_does_not_satisfy() {
-        let range = VersionReq::STAR;
         let other_mod = Requirement {
             mod_id: "compass",
-            range: &range,
+            range: &VersionReq::STAR,
             project: None,
         };
-        assert!(!satisfies(&other_mod, &OFFER, &[]));
-        assert!(asks("*", Some("Ab3dE9xQ"), &[]));
-        assert!(!asks("*", Some("Zz91kLmN"), &[]));
+        let offer = Offer {
+            project: "Ab3dE9xQ",
+            mod_id: "wayfinder",
+            version: &Version::new(1, 4, 2),
+            sha256: "aa11",
+        };
+        assert!(!satisfies(&other_mod, &offer, &[]));
+        assert!(asks("*", Some("Ab3dE9xQ"), "1.4.2", &[]));
+        assert!(!asks("*", Some("Zz91kLmN"), "1.4.2", &[]));
     }
 
     #[test]
@@ -130,8 +121,8 @@ mod tests {
             project: "Zz91kLmN",
             sha256: None,
         };
-        assert!(!asks("*", None, &[whole]));
-        assert!(!asks("*", None, &[this_file]));
-        assert!(asks("*", None, &[another_file, another_project]));
+        assert!(!asks("*", None, "1.4.2", &[whole]));
+        assert!(!asks("*", None, "1.4.2", &[this_file]));
+        assert!(asks("*", None, "1.4.2", &[another_file, another_project]));
     }
 }
