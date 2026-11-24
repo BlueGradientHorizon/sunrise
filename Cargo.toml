@@ -80,6 +80,7 @@ members = [
     "crates/sunrise-mod-pipeline",
     "crates/sunrise-release-sign",
     "crates/sunrise-mod-deps",
+    "crates/sunrise-dependency-rule",
     "xtask",
 ]
 resolver = "2"
