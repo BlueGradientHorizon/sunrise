@@ -552,7 +552,7 @@ impl StockLayerDraw for StockDraw<'_, '_> {
         match layer {
             StockLayer::Armor(_, _) => {
                 let only_this = StockLayerMask::ALL_ARMOR.without(layer);
-                let run = || {
+                let mut run = || {
                     if self.ctx.is_player {
                         let extra = if self.ctx.local_player {
                             self.game.player_armor_layers(only_this)
