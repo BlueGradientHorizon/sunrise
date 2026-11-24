@@ -1131,6 +1131,153 @@ class GameFieldOwnersWrapperTests(unittest.TestCase):
             finally:
                 gfo.ROOT = old_root
 
+    def test_cli_wrapper_fix_check_with_ctor_helper_structs(self):
+        import io
+        from contextlib import redirect_stderr, redirect_stdout
+
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            table = td_path / "owners.tsv"
+            table.write_text(
+                "field\ttype\towner\treason\tdeclaration_index\twrapper\n"
+                "audio\tAudio\tgame\tdrop-order (client)\t0\tclient_only\n"
+                "levels\tLevels\tgame\tdrop-order (server)\t1\tserver_only\n"
+                "renderer\tOption<Renderer>\tgame\tdrop-order (client)\t2\tclient_only\n"
+                "save\tSaveDir\tgame\tdrop-order (server)\t3\tserver_only\n"
+                "shared\ti32\tgame\tshared\t4\t-\n",
+                encoding="utf-8",
+            )
+            src_dir = td_path / "crates/sunrise-client/src"
+            game_dir = src_dir / "game"
+            game_dir.mkdir(parents=True)
+            game_rs = src_dir / "game.rs"
+            game_rs.write_text(
+                "mod client_side;\n"
+                "mod server_side;\n"
+                "pub struct Game<'a> {\n"
+                "    audio: client_side::ClientShared<Audio>,\n"
+                "    levels: server_side::ServerShared<Levels>,\n"
+                "    renderer: client_side::ClientShared<Option<Renderer>>,\n"
+                "    save: server_side::ServerShared<SaveDir>,\n"
+                "    shared: i32,\n"
+                "    server: server_side::ServerState,\n"
+                "    client: client_side::ClientState,\n"
+                "}\n"
+                "impl<'a> Game<'a> {\n"
+                "    fn finish_construct(audio: Audio, lv: Levels, save: SaveDir, shared: i32) -> Self {\n"
+                "        struct WrappedClientInit {\n"
+                "            audio: client_side::ClientShared<Audio>,\n"
+                "        }\n"
+                "        struct WrappedServerInit {\n"
+                "            levels: server_side::ServerShared<Levels>,\n"
+                "        }\n"
+                "        struct WrappedPrepInit {\n"
+                "            save: server_side::ServerShared<SaveDir>,\n"
+                "            shared: i32,\n"
+                "        }\n"
+                "        #[inline(never)]\n"
+                "        fn build_wrapped_client(audio: Audio) -> Box<WrappedClientInit> {\n"
+                "            Box::new(WrappedClientInit {\n"
+                "                audio: client_side::ClientShared::new(audio),\n"
+                "            })\n"
+                "        }\n"
+                "        #[inline(never)]\n"
+                "        fn build_wrapped_server(lv: Levels) -> Box<WrappedServerInit> {\n"
+                "            Box::new(WrappedServerInit {\n"
+                "                levels: server_side::ServerShared::new(lv),\n"
+                "            })\n"
+                "        }\n"
+                "        struct WrappedRendererInit {\n"
+                "            renderer: client_side::ClientShared<Option<Renderer>>,\n"
+                "        }\n"
+                "        #[inline(never)]\n"
+                "        fn build_wrapped_renderer() -> Box<WrappedRendererInit> {\n"
+                "            Box::new(WrappedRendererInit {\n"
+                "                renderer: client_side::ClientShared::new(None),\n"
+                "            })\n"
+                "        }\n"
+                "        #[inline(never)]\n"
+                "        fn wrap_prep_and_effects(save: SaveDir, shared: i32) -> Box<WrappedPrepInit> {\n"
+                "            Box::new(WrappedPrepInit {\n"
+                "                save: server_side::ServerShared::new(save),\n"
+                "                shared,\n"
+                "            })\n"
+                "        }\n"
+                "        let wc = build_wrapped_client(audio);\n"
+                "        let ws = build_wrapped_server(lv);\n"
+                "        let wp = wrap_prep_and_effects(save, shared);\n"
+                "        let wr = build_wrapped_renderer();\n"
+                "        Game {\n"
+                "            audio: wc.audio,\n"
+                "            levels: ws.levels,\n"
+                "            renderer: wr.renderer,\n"
+                "            save: wp.save,\n"
+                "            shared: wp.shared,\n"
+                "            server: server_side::ServerState::new(),\n"
+                "            client: client_side::ClientState::new(),\n"
+                "        }\n"
+                "    }\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            (game_dir / "client_side.rs").write_text(
+                "pub(in crate::game) struct ClientState {}\n" + gfo.SIDE_WRAPPER_DEFS["client"],
+                encoding="utf-8",
+            )
+            (game_dir / "server_side.rs").write_text(
+                "pub(in crate::game) struct ServerState {}\n" + gfo.SIDE_WRAPPER_DEFS["server"],
+                encoding="utf-8",
+            )
+            old_root = gfo.ROOT
+            try:
+                gfo.ROOT = td_path
+                out_buf, err_buf = io.StringIO(), io.StringIO()
+                with redirect_stdout(out_buf), redirect_stderr(err_buf):
+                    rc_fix = gfo.main(["--fix", "--no-fmt", "--table", str(table), str(game_rs), str(game_dir)])
+                self.assertEqual(rc_fix, 0, err_buf.getvalue())
+                g_txt = game_rs.read_text(encoding="utf-8")
+                self.assertEqual(g_txt.count("client_side::ClientOnly<Audio>"), 2)
+                self.assertEqual(g_txt.count("server_side::ServerOnly<Levels>"), 2)
+                self.assertEqual(g_txt.count("client_side::ClientOnly<Option<Renderer>>"), 2)
+                self.assertEqual(g_txt.count("server_side::ServerOnly<SaveDir>"), 2)
+                self.assertIn("audio: client_side::ClientOnly::new(audio),", g_txt)
+                self.assertIn("levels: server_side::ServerOnly::new(lv),", g_txt)
+                self.assertIn("save: server_side::ServerOnly::new(save),", g_txt)
+                self.assertIn("client_side::ClientOnly::new(None)", g_txt)
+                self.assertIn("audio: wc.audio,", g_txt)
+                self.assertIn("levels: ws.levels,", g_txt)
+                self.assertIn("renderer: wr.renderer,", g_txt)
+                self.assertIn("save: wp.save,", g_txt)
+
+                out_buf, err_buf = io.StringIO(), io.StringIO()
+                with redirect_stdout(out_buf), redirect_stderr(err_buf):
+                    rc_check = gfo.main(["--check", "--table", str(table), str(game_rs), str(game_dir)])
+                self.assertEqual(rc_check, 0, err_buf.getvalue())
+
+                # Drift inside WrappedClientInit literal fails --check.
+                game_rs.write_text(
+                    g_txt.replace("client_side::ClientOnly::new(audio)", "client_side::ClientShared::new(audio)"),
+                    encoding="utf-8",
+                )
+                out_buf, err_buf = io.StringIO(), io.StringIO()
+                with redirect_stdout(out_buf), redirect_stderr(err_buf):
+                    rc_drift = gfo.main(["--check", "--table", str(table), str(game_rs), str(game_dir)])
+                self.assertEqual(rc_drift, 1)
+                self.assertIn("WrappedClientInit", err_buf.getvalue())
+
+                # Drift inside WrappedRendererInit literal fails --check.
+                game_rs.write_text(
+                    g_txt.replace("client_side::ClientOnly::new(None)", "client_side::ClientShared::new(None)"),
+                    encoding="utf-8",
+                )
+                out_buf, err_buf = io.StringIO(), io.StringIO()
+                with redirect_stdout(out_buf), redirect_stderr(err_buf):
+                    rc_drift2 = gfo.main(["--check", "--table", str(table), str(game_rs), str(game_dir)])
+                self.assertEqual(rc_drift2, 1)
+                self.assertIn("WrappedRendererInit", err_buf.getvalue())
+            finally:
+                gfo.ROOT = old_root
+
 
 if __name__ == "__main__":
     unittest.main()

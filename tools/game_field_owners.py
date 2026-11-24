@@ -4234,8 +4234,17 @@ def plan_game_struct_and_ctor_edits(
     for missing in sorted(set(wrappers) - seen_struct_fields):
         problems.append(f"crates/sunrise-client/src/game.rs: wrapped field `{missing}` missing from `struct Game`")
 
-    # 2. Locate `Game { ... }` inside `fn finish_construct`
+    # 2. Locate `Game { ... }` and optional out-of-line wrapped init helpers inside `fn finish_construct`
     ctor_body: tuple[int, int] | None = None
+    helper_specs = (
+        ("WrappedClientInit", "wc", ("client_",), False),
+        ("WrappedServerInit", "ws", ("server_",), False),
+        ("WrappedRendererInit", "wr", ("client_",), False),
+        ("WrappedPrepInit", "wp", ("client_", "server_"), True),
+    )
+    helper_names = {spec[0] for spec in helper_specs}
+    helper_struct_bodies: dict[str, tuple[int, int]] = {}
+    helper_lit_bodies: dict[str, tuple[int, int]] = {}
     i = 0
     while i < n:
         if tokens[i][0] == "IDENT" and tokens[i][1] == "fn" and i + 1 < n and tokens[i + 1][1] == "finish_construct":
@@ -4246,6 +4255,29 @@ def plan_game_struct_and_ctor_edits(
                 fn_end = skip_balanced(tokens, j, "{", "}")
                 k = j + 1
                 while k < fn_end - 1:
+                    if (
+                        tokens[k][0] == "IDENT"
+                        and tokens[k][1] == "struct"
+                        and k + 2 < fn_end
+                        and tokens[k + 1][1] in helper_names
+                        and tokens[k + 2][1] == "{"
+                    ):
+                        sname = tokens[k + 1][1]
+                        send = skip_balanced(tokens, k + 2, "{", "}")
+                        helper_struct_bodies[sname] = (k + 2, send)
+                        k = send
+                        continue
+                    if (
+                        tokens[k][0] == "IDENT"
+                        and tokens[k][1] in helper_names
+                        and tokens[k + 1][1] == "{"
+                        and (k == j + 1 or tokens[k - 1][1] != "struct")
+                    ):
+                        sname = tokens[k][1]
+                        lend = skip_balanced(tokens, k + 1, "{", "}")
+                        helper_lit_bodies[sname] = (k + 1, lend)
+                        k = lend
+                        continue
                     if tokens[k][0] == "IDENT" and tokens[k][1] == "Game" and tokens[k + 1][1] == "{":
                         lit_end = skip_balanced(tokens, k + 1, "{", "}")
                         ctor_body = (k + 1, lit_end)
@@ -4258,6 +4290,123 @@ def plan_game_struct_and_ctor_edits(
         problems.append("crates/sunrise-client/src/game.rs: `Game { ... }` literal in `finish_construct` not found")
         return edits, problems
 
+    helper_field_vars: dict[str, str] = {}
+    for sname, var_name, expected_prefixes, allow_unwrapped in helper_specs:
+        sbody = helper_struct_bodies.get(sname)
+        lbody = helper_lit_bodies.get(sname)
+        if sbody is None and lbody is None:
+            continue
+        if sbody is None or lbody is None:
+            problems.append(f"crates/sunrise-client/src/game.rs: `{sname}` struct and literal must both exist")
+            continue
+        struct_fnames: set[str] = set()
+        for part in split_top_level(tokens[sbody[0] + 1 : sbody[1] - 1], ","):
+            k = 0
+            while k < len(part):
+                if part[k][1] == "#" and k + 1 < len(part) and part[k + 1][1] == "[":
+                    k = skip_balanced(part, k + 1, "[", "]")
+                elif part[k][1] == "pub":
+                    k += 1
+                    if k < len(part) and part[k][1] == "(":
+                        k = skip_balanced(part, k, "(", ")")
+                else:
+                    break
+            if k + 2 >= len(part) or part[k][0] != "IDENT" or part[k + 1][1] != ":":
+                continue
+            fname = norm_ident(part[k][1])
+            struct_fnames.add(fname)
+            ty_toks = part[k + 2 :]
+            actual_wrap, inner_ty = unwrap_wrapper_type(src, ty_toks)
+            expected_wrap = wrappers.get(fname)
+            if expected_wrap is None:
+                if allow_unwrapped:
+                    if actual_wrap is not None:
+                        problems.append(
+                            f"crates/sunrise-client/src/game.rs: `{sname}::{fname}` has unexpected wrapper `{actual_wrap}`"
+                        )
+                    continue
+                problems.append(
+                    f"crates/sunrise-client/src/game.rs: `{sname}::{fname}` has wrapper `-`, "
+                    f"expected `{expected_prefixes}`"
+                )
+                continue
+            if not any(expected_wrap.startswith(p) for p in expected_prefixes):
+                problems.append(
+                    f"crates/sunrise-client/src/game.rs: `{sname}::{fname}` has wrapper `{expected_wrap}`, "
+                    f"expected `{expected_prefixes}`"
+                )
+                continue
+            helper_field_vars[fname] = var_name
+            if actual_wrap != expected_wrap:
+                ty_start, ty_end = ty_toks[0][2], ty_toks[-1][3]
+                smod, wname = WRAPPER_TYPES[expected_wrap]
+                new_ty = f"{smod}::{wname}<{inner_ty}>"
+                old_ty = src[ty_start:ty_end]
+                edits.append(
+                    Edit(
+                        ty_start,
+                        ty_end,
+                        new_ty,
+                        fname,
+                        "ctor-helper-struct-wrapper",
+                        f"{fname}: {old_ty}",
+                        f"{fname}: {new_ty}",
+                    )
+                )
+                problems.append(
+                    f"crates/sunrise-client/src/game.rs: `{sname}::{fname}` wrapper is `{actual_wrap or '-'}`, "
+                    f"expected `{expected_wrap}`"
+                )
+        lit_fnames: set[str] = set()
+        for part in split_top_level(tokens[lbody[0] + 1 : lbody[1] - 1], ","):
+            k = 0
+            while k < len(part) and part[k][1] == "#" and k + 1 < len(part) and part[k + 1][1] == "[":
+                k = skip_balanced(part, k + 1, "[", "]")
+            if k >= len(part) or part[k][0] != "IDENT":
+                continue
+            fname = norm_ident(part[k][1])
+            lit_fnames.add(fname)
+            expected_wrap = wrappers.get(fname)
+            if expected_wrap is None or not any(expected_wrap.startswith(p) for p in expected_prefixes):
+                continue
+            if k + 1 < len(part) and part[k + 1][1] == ":":
+                expr_toks = part[k + 2 :]
+                actual_wrap, inner_expr = unwrap_wrapper_ctor(src, expr_toks)
+                rep_start, rep_end = expr_toks[0][2], expr_toks[-1][3]
+                is_shorthand = False
+            elif k + 1 == len(part):
+                actual_wrap = None
+                inner_expr = part[k][1]
+                rep_start, rep_end = part[k][2], part[k][3]
+                is_shorthand = True
+            else:
+                continue
+            if actual_wrap != expected_wrap:
+                smod, wname = WRAPPER_TYPES[expected_wrap]
+                wrapped_expr = f"{smod}::{wname}::new({inner_expr})"
+                replacement = f"{fname}: {wrapped_expr}" if is_shorthand else wrapped_expr
+                old_expr = src[rep_start:rep_end]
+                edits.append(
+                    Edit(
+                        rep_start,
+                        rep_end,
+                        replacement,
+                        fname,
+                        "ctor-helper-wrapper",
+                        f"{fname}: {old_expr}",
+                        f"{fname}: {replacement}",
+                    )
+                )
+                problems.append(
+                    f"crates/sunrise-client/src/game.rs: `{sname}` literal `{fname}` uses wrapper "
+                    f"`{actual_wrap or '-'}`, expected `{expected_wrap}`"
+                )
+        if struct_fnames != lit_fnames:
+            problems.append(
+                f"crates/sunrise-client/src/game.rs: `{sname}` struct/literal field mismatch: "
+                f"struct_only={sorted(struct_fnames - lit_fnames)}, lit_only={sorted(lit_fnames - struct_fnames)}"
+            )
+
     seen_ctor_fields: set[str] = set()
     for part in split_top_level(tokens[ctor_body[0] + 1 : ctor_body[1] - 1], ","):
         k = 0
@@ -4268,6 +4417,41 @@ def plan_game_struct_and_ctor_edits(
         fname = norm_ident(part[k][1])
         seen_ctor_fields.add(fname)
         expected_wrap = wrappers.get(fname)
+        if fname in helper_field_vars:
+            var_name = helper_field_vars[fname]
+            expected_move = f"{var_name}.{fname}"
+            if k + 1 < len(part) and part[k + 1][1] == ":":
+                expr_toks = part[k + 2 :]
+                is_move = (
+                    len(expr_toks) == 3
+                    and expr_toks[0][0] == "IDENT"
+                    and expr_toks[0][1] == var_name
+                    and expr_toks[1][1] == "."
+                    and expr_toks[2][0] == "IDENT"
+                    and norm_ident(expr_toks[2][1]) == fname
+                )
+                if not is_move:
+                    rep_start, rep_end = expr_toks[0][2], expr_toks[-1][3]
+                    old_expr = src[rep_start:rep_end]
+                    edits.append(
+                        Edit(
+                            rep_start,
+                            rep_end,
+                            expected_move,
+                            fname,
+                            "ctor-helper-move",
+                            f"{fname}: {old_expr}",
+                            f"{fname}: {expected_move}",
+                        )
+                    )
+                    problems.append(
+                        f"crates/sunrise-client/src/game.rs: `finish_construct` `{fname}` must move `{expected_move}`"
+                    )
+            else:
+                problems.append(
+                    f"crates/sunrise-client/src/game.rs: `finish_construct` `{fname}` must move `{expected_move}`"
+                )
+            continue
         if k + 1 < len(part) and part[k + 1][1] == ":":
             expr_toks = part[k + 2 :]
             actual_wrap, inner_expr = unwrap_wrapper_ctor(src, expr_toks)
