@@ -1727,7 +1727,9 @@ impl Game<'_> {
     /// `CompositeBlockModel`'s second part for block state `state`: what its special renderer
     /// draws with default data, after the block-state model's faces, under the same pose and
     /// packed `light`. It takes no tint and no hidden faces; `color` (`0xAARRGGBB`) multiplies
-    /// it, and below opaque it blends as `entityTranslucent` does.
+    /// it, and below opaque it blends as `entityTranslucent` does. The end portal and gateway
+    /// draw their starfield whatever `color` is, as `rendertype_end_portal` does. Appends
+    /// nothing and returns `false` when `pose` carries a vertex out of the finite range.
     pub(super) fn special_model_part(
         &self,
         state: BlockStateId,
@@ -1735,18 +1737,31 @@ impl Game<'_> {
         light: u32,
         color: u32,
         out: &mut Vec<Vertex>,
-    ) {
+    ) -> bool {
+        use sunrise_client::block_entity_render::{END_GATEWAY_LAYER, END_PORTAL_LAYER};
         let start = out.len();
         self.special_block_model(state, pose, super::minecarts::special_light(light), out);
+        if out[start..]
+            .iter()
+            .any(|vertex| vertex.pos.iter().any(|c| !c.is_finite()))
+        {
+            out.truncate(start);
+            return false;
+        }
         if color != u32::MAX {
             for vertex in &mut out[start..] {
                 vertex.color =
                     sunrise_client::terrain_model::multiply_draw_color(vertex.color, color);
             }
         }
-        if color >> 24 != 0xFF {
+        // The portal shader writes an opaque starfield, so a faded portal stays opaque.
+        let portal = out[start..]
+            .iter()
+            .any(|vertex| matches!(vertex.layer & 0xFFFF, END_PORTAL_LAYER | END_GATEWAY_LAYER));
+        if color >> 24 != 0xFF && !portal {
             sunrise_client::gfx::mark_oit(&mut out[start..]);
         }
+        true
     }
 
     /// The baked faces a slot draws through the terrain materials: a standalone model's, or a

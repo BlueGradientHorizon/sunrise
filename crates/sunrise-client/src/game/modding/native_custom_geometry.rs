@@ -599,6 +599,7 @@ impl Game<'_> {
                     hidden_faces: copy.hidden_faces,
                     ..Default::default()
                 };
+                let copy_start = entities.len();
                 let drawn = terrain_model::draw_model(
                     faces,
                     pose,
@@ -612,10 +613,12 @@ impl Game<'_> {
                     },
                     |vertex| entities.push(vertex),
                 );
+                // A pose that throws the special part past the finite range drops the copy.
                 if let Some(state) = special
                     && drawn
+                    && !self.special_model_part(state, pose, copy.light, copy.color, entities)
                 {
-                    self.special_model_part(state, pose, copy.light, copy.color, entities);
+                    entities.truncate(copy_start);
                 }
             }
         }
@@ -856,6 +859,48 @@ mod tests {
                 faded
                     .iter()
                     .all(|v| v.layer & sunrise_client::gfx::OIT_ENTITY != 0 && v.color >> 24 < 0xFF)
+            );
+            let registry = &game.pack.assets.registry;
+            let parse = |text| sunrise_client::block_sprites::parse_state(registry, text).unwrap();
+            let (left, gateway, table) = (
+                parse("chest[type=left]"),
+                parse("end_gateway"),
+                parse("enchanting_table"),
+            );
+            let special = |state, pose, color| {
+                let mut out = Vec::new();
+                let drawn = game.special_model_part(state, pose, 0xF0F0, color, &mut out);
+                (drawn, out)
+            };
+            // The left half of a double chest draws alone, with no neighbour to pair with.
+            let (drawn, out) = special(left, Mat4::IDENTITY, u32::MAX);
+            assert!(drawn && !out.is_empty());
+            // A pose past the finite range draws nothing.
+            let (drawn, out) = special(
+                chest,
+                Mat4::from_scale(Vec3::splat(f32::INFINITY)),
+                u32::MAX,
+            );
+            assert!(!drawn && out.is_empty());
+            // EndCubeSpecialRenderer: all six faces, and the starfield stays opaque when faded.
+            let (drawn, out) = special(gateway, Mat4::IDENTITY, 0x80FF_FFFF);
+            assert!(drawn && out.len() == 24);
+            assert!(
+                out.iter()
+                    .all(|v| v.layer & sunrise_client::gfx::OIT_ENTITY == 0)
+            );
+            // The enchanting table: its block-state faces, then the book.
+            let (drawn, out) = special(table, Mat4::IDENTITY, u32::MAX);
+            assert!(drawn && !out.is_empty());
+            let model = game.native_block_state_model(table).unwrap();
+            let slot = mod_api::__private::game::Fields::fields(&model).slot;
+            assert!(!game.model_faces(slot).unwrap().is_empty());
+            assert_eq!(
+                game.standalone_geometry
+                    .instance_slot(slot)
+                    .unwrap()
+                    .special,
+                Some(table)
             );
         });
     }

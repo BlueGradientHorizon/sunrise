@@ -45,9 +45,7 @@ impl Game<'_> {
             },
             options,
             |pose, light, out| {
-                if let Some(state) = special {
-                    self.special_model_part(state, pose, light, color, out);
-                }
+                special.is_none_or(|state| self.special_model_part(state, pose, light, color, out))
             },
         )
     }
@@ -84,13 +82,13 @@ fn engine_options(options: TerrainModelOptions<'_>) -> NativeModelRenderOptions<
 
 /// Appends `faces` under `draw`'s pose, then `special`'s vertices under the same pose and
 /// light, or appends nothing and returns `Refused` when the renderer refuses the model or
-/// `options`.
+/// `options`, or `special` refuses the pose.
 fn draw_terrain_model(
     draw: &mut BlockEntityDraw,
     faces: &[BakedFace],
     sprite_layer: impl Fn(&str) -> Option<u32>,
     options: TerrainModelOptions<'_>,
-    special: impl FnOnce(glam::Mat4, u32, &mut Vec<sunrise_client::mesher::Vertex>),
+    special: impl FnOnce(glam::Mat4, u32, &mut Vec<sunrise_client::mesher::Vertex>) -> bool,
 ) -> Result<(), TerrainModelError> {
     let pose = draw.pose();
     let light = draw.element_ambient();
@@ -104,8 +102,9 @@ fn draw_terrain_model(
         sprite_layer,
         |vertex| vertices.push(vertex),
     );
-    if drawn {
-        special(pose, light, vertices);
+    let drawn = drawn && special(pose, light, vertices);
+    if !drawn {
+        vertices.truncate(start);
     }
     draw.lit_since(start, BlockEntityDraw::cell_centre, draw.light() & 0xffff);
     drawn.then_some(()).ok_or(TerrainModelError::Refused)
@@ -169,7 +168,7 @@ mod tests {
             diffuse_lights(false),
             Vec::new(),
         );
-        let result = draw_terrain_model(&mut draw, faces, sprite, options, |_, _, _| {});
+        let result = draw_terrain_model(&mut draw, faces, sprite, options, |_, _, _| true);
         (result, draw.into_vertices())
     }
 
@@ -209,6 +208,32 @@ mod tests {
             materials(&vertices),
             [TERRAIN_MODEL_CUTOUT_MIPPED_OVERLAY; 3]
         );
+    }
+
+    #[test]
+    fn a_special_part_that_refuses_its_pose_takes_the_faces_with_it() {
+        let faces = [face(None, -1)];
+        let mut draw = BlockEntityDraw::posed(
+            0.0,
+            0,
+            0xF0F0,
+            [0; 3],
+            Mat4::from_translation(Vec3::X),
+            diffuse_lights(false),
+            Vec::new(),
+        );
+        let result = draw_terrain_model(
+            &mut draw,
+            &faces,
+            sprite,
+            TerrainModelOptions::default(),
+            |_, _, out| {
+                out.push(bytemuck::Zeroable::zeroed());
+                false
+            },
+        );
+        assert_eq!(result, Err(TerrainModelError::Refused));
+        assert!(draw.into_vertices().is_empty());
     }
 
     #[test]
@@ -273,7 +298,7 @@ mod tests {
             draw.unlit(unlit);
             let options = TerrainModelOptions::default().with_shade(TerrainShade::Model);
             assert_eq!(
-                draw_terrain_model(&mut draw, &faces, sprite, options, |_, _, _| {}),
+                draw_terrain_model(&mut draw, &faces, sprite, options, |_, _, _| true),
                 Ok(())
             );
             draw.into_vertices()

@@ -346,7 +346,9 @@ pub trait RenderAssets {
     /// boxes, banners, heads and skulls, the bell, conduit, decorated pot, enchanting table's
     /// book, copper golem statues, the end portal and gateway) is their composite: the
     /// blockstate parts, then the special renderer's geometry with no block entity data (a
-    /// closed lid, no patterns, no profile), as a block display shows it. It draws through
+    /// closed lid, a closed book lying on the enchanting table, a still banner with no
+    /// patterns, every face of the end portal and gateway, no profile), as a block display
+    /// shows it. It draws through
     /// [`WorldDrawContext::draw_model_instances`](crate::WorldDrawContext::draw_model_instances),
     /// [`InstanceGroupRef`] and `BlockEntityDrawContext::terrain_model`; the special part takes
     /// the entity materials, no tint and no hidden faces. `ModelError::UnknownModel` for a state
