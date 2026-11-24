@@ -46,12 +46,12 @@ impl DefaultCapabilitiesRegistrar for PartRegistrar {
         let Some(id) = self.default_block_id(block) else {
             return;
         };
-        if i32::try_from(container.slots).is_err() {
+        // Vanilla's ItemStackWithSlot.CODEC saves each Slot as an unsigned byte.
+        const MAX_SAVED_SLOTS: usize = u8::MAX as usize + 1;
+        if container.slots > MAX_SAVED_SLOTS {
             self.refused.push(format!(
-                "mod {} declared a block container for {id} with {} slots, exceeding i32::MAX ({})",
-                self.mod_id,
-                container.slots,
-                i32::MAX
+                "mod {} declared a block container for {id} with {} slots, exceeding the saved limit of {MAX_SAVED_SLOTS}",
+                self.mod_id, container.slots
             ));
             return;
         }

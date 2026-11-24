@@ -25,6 +25,11 @@ ids = [
     "method:BiomeSource::possible_biomes",
     "method:GenerationContext::noise_biome",
     "handle:SectionVisibilityInput::biome",
+    "handle:ChunkSnapshot::biome",
+    "handle:ChunkSnapshot::biome_name",
+    "handle:ChunkSnapshot::biome_id",
+    "handle:SectionSnapshot::uniform_biome",
+    "handle:SectionSnapshot::biome_quart",
     "hook:section_visibility",
 ]
 why = """
@@ -73,4 +78,7 @@ migrate = """
   tags are now `InvalidIdentifier = 0`, `UnknownBiome = 1`, `WrongGeneration = 2`, and `Unavailable = 3`
   (previously `WrongGeneration = 0` and `Unavailable = 1`). Do not use either mod format as a vanilla
   network codec.
+- `ChunkSnapshot::biome`, `SectionSnapshot::uniform_biome` and `SectionSnapshot::biome_quart` return
+  the stored `&BiomeKey` (`LevelChunkSection.getNoiseBiome`'s holder) instead of an ordinal `BiomeId`.
+  `ChunkSnapshot::biome_name` and `biome_id` are removed: read `key.identifier()` from the returned key.
 """

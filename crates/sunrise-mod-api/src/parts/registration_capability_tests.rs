@@ -144,7 +144,7 @@ mod tests {
             }
         }
 
-        let max_saved_slots = i32::MAX as usize;
+        let max_saved_slots = 256;
         let oversized_slots = max_saved_slots + 1;
         let registrar = super::super::register_all(
             &[
@@ -318,13 +318,13 @@ mod tests {
     }
 
     #[test]
-    fn block_container_refuses_slot_count_outside_java_int_range() {
+    fn block_container_refuses_more_slots_than_vanilla_saves() {
         let mut registrar = super::super::PartRegistrar::new("overflow");
         let rejected = (&mut registrar as &mut dyn Registrar).block_key("overflow:too_many");
         (&mut registrar as &mut dyn Registrar).block_container(
             &rejected,
             crate::ModContainer {
-                slots: (i32::MAX as usize) + 1,
+                slots: 257,
                 ..Default::default()
             },
         );
@@ -340,11 +340,11 @@ mod tests {
                 .is_block_capability_registered(&ITEMS, &rejected)
         );
 
-        let accepted = (&mut registrar as &mut dyn Registrar).block_key("overflow:max_int");
+        let accepted = (&mut registrar as &mut dyn Registrar).block_key("overflow:max_saved");
         (&mut registrar as &mut dyn Registrar).block_container(
             &accepted,
             crate::ModContainer {
-                slots: i32::MAX as usize,
+                slots: 256,
                 ..Default::default()
             },
         );
@@ -512,14 +512,14 @@ mod tests {
         let refused_before_valid = registrar.refused.len();
         let vault = (&mut registrar as &mut dyn Registrar).block_key("bad_storage:valid_vault");
         let mut vault_faces: [Vec<usize>; 6] = Default::default();
-        vault_faces[1] = vec![256];
+        vault_faces[1] = vec![255];
         (&mut registrar as &mut dyn Registrar).block_container(
             &vault,
             crate::ModContainer {
-                slots: 257,
+                slots: 256,
                 faces: vault_faces,
-                inputs: vec![256],
-                outputs: vec![256],
+                inputs: vec![255],
+                outputs: vec![255],
                 insert_rules: Vec::new(),
                 menu: None,
             },

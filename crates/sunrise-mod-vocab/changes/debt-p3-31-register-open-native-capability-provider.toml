@@ -39,13 +39,10 @@ cap or per-step cloning. A panicking provider is reported and disabled for the s
 stopping later providers. `HopperBlockEntity.getBlockContainer`'s vanilla fallback and the
 registration-time coverage queries are preserved.
 
-Stock mod block storage validates its shape at registration instead of clipping it. Container
-slots and indices use the nonnegative `int` range of NeoForge's `ResourceHandler.size` and
-`getResource(int)`. NeoForge's `StacksResourceHandler.serialize` uses a positional stack list,
-so the handler supports indices beyond an unsigned byte. Sunrise keeps vanilla's
-`ContainerHelper.saveAllItems`/`loadAllItems` and `ItemStackWithSlot.CODEC` encodings for vanilla
-containers, and uses its own extended `Items[].Slot` NBT `Int` encoding at indices 256 and above
-for mod containers. Generated structure block entities load against their declared block's storage
+Stock mod block storage validates its shape at registration instead of clipping it. A stock
+container keeps at most 256 slots, since it saves through vanilla's
+`ContainerHelper.saveAllItems`/`loadAllItems` and `ItemStackWithSlot.CODEC`, whose `Slot` is an
+unsigned byte; a larger store is a capability provider of the mod's own. Generated structure block entities load against their declared block's storage
 shape, as `StructureTemplate.placeInWorld` loads data into the placed block's entity.
 `FluidStacksResourceHandler` and `SimpleEnergyHandler` anchor the declared tanks and nonnegative
 energy settings: zero capacities and rates greater than the energy capacity are not rewritten.
@@ -100,7 +97,7 @@ The removed `CapabilityProviders` operations were engine cursor and presence hel
   Mods still register with `r.item_container(&item, callback)` and query the stack through
   `place.capability(host, &ITEM_ITEMS)`.
 
-For `block_container`, pass `slots` in `0..=i32::MAX`, keep `faces`/`inputs`/`outputs` indices
+For `block_container`, pass `slots` in `0..=256`, keep `faces`/`inputs`/`outputs` indices
 below `slots` and `insert_rules.len()` at most `slots`; a declared menu must match `slots` to
 open. For `block_fluids`, keep indices below `tanks.len()` and pass the capacity you intend
 rather than relying on clipping or promoting zero. For `block_energy`, pass nonnegative

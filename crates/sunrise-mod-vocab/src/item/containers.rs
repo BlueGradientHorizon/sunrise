@@ -179,11 +179,10 @@ impl ModContainerInsertRule {
 /// from (`canTakeItemThroughFace`); and the vanilla menu that shows its
 /// slots when the block is used, if any (`MOD_MENUS`).
 ///
-/// Validated at registration (`Registrar::block_container`): `slots` must fit in a nonnegative
-/// `i32`, every index in `faces`, `inputs` and `outputs` must be `< slots`, and
-/// `insert_rules.len()` must be `<= slots`. An unsupported or slot-count-mismatched `menu` is
-/// ignored without changing `slots`. Extended slot indices (`>= 256`) persist in mod block-entity
-/// `Items` entries as NBT `Int` `Slot` values.
+/// Validated at registration (`Registrar::block_container`): `slots` must be at most 256, every
+/// index in `faces`, `inputs` and `outputs` must be `< slots`, and `insert_rules.len()` must be
+/// `<= slots`. An unsupported or slot-count-mismatched `menu` is ignored without changing
+/// `slots`.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 // exhaustive: mods construct the declaration when calling Registrar::block_container
 #[derive(sunrise_mod_api_macros::Wire)]

@@ -244,7 +244,7 @@ mod tests {
                 r.block_container(
                     &press,
                     mod_api::ModContainer {
-                        slots: 257,
+                        slots: 256,
                         ..Default::default()
                     },
                 );
@@ -255,7 +255,7 @@ mod tests {
             mod_platform::__private::part_tests::install_parts_fixture(mod_api::__private::mods())
                 .unwrap();
             let Tag::Compound(nbt) = sunrise_core::nbt::parse_snbt(
-                r#"{id:"minecraft:banner",energy:900L,LootTable:"test:loot",Items:[{Slot:0b,id:"minecraft:stone",count:3},{Slot:256,id:"minecraft:dirt",count:7}]}"#,
+                r#"{id:"minecraft:banner",energy:900L,LootTable:"test:loot",Items:[{Slot:0b,id:"minecraft:stone",count:3},{Slot:255,id:"minecraft:dirt",count:7}]}"#,
             ).unwrap().0 else {
                 panic!("not a compound");
             };
@@ -278,7 +278,7 @@ mod tests {
                 assert_eq!(entity.items[0].as_ref().unwrap().count, 3);
                 let expected = ItemStack::new("minecraft:dirt", 7);
                 assert_eq!(
-                    entity.items.get(256).and_then(Option::as_ref),
+                    entity.items.get(255).and_then(Option::as_ref),
                     Some(&expected)
                 );
                 let saved = crate::save::block_entity_encode::encode(
@@ -294,7 +294,7 @@ mod tests {
                 };
                 assert_eq!(pos, (3, 64, 5));
                 assert_eq!(
-                    reloaded.items.get(256).and_then(Option::as_ref),
+                    reloaded.items.get(255).and_then(Option::as_ref),
                     Some(&expected)
                 );
             }

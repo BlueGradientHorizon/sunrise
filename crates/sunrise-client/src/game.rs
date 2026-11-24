@@ -4173,6 +4173,9 @@ struct Game<'a> {
     native_net: native_net::NativeNet,
     /// The mod whose own screen is open (`Screen::Mod`).
     native_mod_screen: Option<String>,
+    /// The open mod screen came from the Mods screen's Config (`IConfigScreenFactory`'s
+    /// `parent`): closing it returns to Options > Mods.
+    native_mod_screen_parent: bool,
     /// Meshed sections waiting for an upload budget (Sunrise settings).
     pending_uploads: Vec<sunrise_client::streaming::MeshUpload>,
     /// Empty between updates. Reuses storage for merging two sorted runs.
@@ -7273,8 +7276,10 @@ impl Game<'_> {
                 crack: None,
             });
         }
+        // BlockState.getDestroyProgress each tick: a block Part may answer for an unbreakable block.
+        let progress = self.destroy_progress(hit.pos);
         let state = self.world.block(hit.pos[0], hit.pos[1], hit.pos[2]);
-        if self.res.facts().get(state).hardness < 0.0 {
+        if progress == 0.0 && self.res.facts().get(state).hardness < 0.0 {
             // The server still counts its destroy ticks on an unbreakable block.
             let m = self.mining.as_mut().ok_or("mining")?;
             m.per_tick = 0.0;
@@ -7283,7 +7288,6 @@ impl Game<'_> {
             self.destroy_progress_event(pos, hit.face, ticks);
             return Ok(());
         }
-        let progress = self.destroy_progress(hit.pos);
         self.swing_arm();
         let m = self.mining.as_mut().ok_or("mining")?;
         m.per_tick = progress;
@@ -14542,6 +14546,7 @@ impl<'a> Game<'a> {
             native_configs: Default::default(),
             native_net: Default::default(),
             native_mod_screen: None,
+            native_mod_screen_parent: false,
             sky_darken_memo: Default::default(),
             water_plane_memo: Default::default(),
             water_plane_scan: Default::default(),

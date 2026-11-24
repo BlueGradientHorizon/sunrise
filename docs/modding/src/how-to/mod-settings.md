@@ -185,6 +185,17 @@ The settings folder is settings only, not bulk storage: ordinary files there are
 subfolders or unsafe entries still warn during snapshots. Keep bulk files under `Host::instance_dir()` or
 `ServerHost::world_dir()` instead; their files are not included in settings snapshots.
 
+### Your own config screen
+
+To show your own screen instead of the settings page, register a config screen factory from `Hooks::register`
+with `Registrar::register_config_screen(Arc::new(|host: &dyn ClientHost| true))`, as NeoForge mods register an
+`IConfigScreenFactory`. **Config** then shows for your mod even with no settings. Pressing it calls the factory:
+prepare what your screen shows and return `true`, and the game opens your mod's own screen (as
+[`mod_screen_open`](client/screens.md#opening-a-mod-screen-and-synchronous-transitions) does, so `screen_opening`
+can still cancel or replace it) over the Mods screen. Closing it, with Escape or `mod_screen_close`, returns to
+the Mods screen with your mod still selected. Return `false` to stay on the Mods screen. A mod registers one
+factory; a second comes back as the error. Config opens nothing before the game has finished starting.
+
 ## Verified package runtime files
 
 Do not mix player-editable configs or settings with immutable data shipped inside your `.smod` package.

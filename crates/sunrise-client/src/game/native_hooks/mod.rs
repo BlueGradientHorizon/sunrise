@@ -254,6 +254,7 @@ mod data_maps_updated;
 #[cfg(test)]
 mod death_source_tests;
 mod default_components_bound;
+mod destroy_progress;
 mod dispense_method;
 mod draw_measures;
 mod effect_particle_modification;
