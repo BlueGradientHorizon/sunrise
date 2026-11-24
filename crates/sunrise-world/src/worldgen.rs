@@ -55,6 +55,7 @@ pub mod material_surface;
 pub mod mod_biome_sources;
 pub mod mod_features;
 pub mod mod_generators;
+pub(crate) mod mod_random;
 pub mod mod_rule_tests;
 pub mod ore_feature;
 pub mod overrides;

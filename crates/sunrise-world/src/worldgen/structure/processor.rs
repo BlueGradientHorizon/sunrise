@@ -159,7 +159,7 @@ impl PosRule {
                     <= clamped_chance(*min_chance, *max_chance, *min_dist, *max_dist, dist))
             }
             Self::Mod(test) => {
-                let mut rng = crate::worldgen::mod_rule_tests::EngineRandom(random);
+                let mut rng = crate::worldgen::mod_random::EngineRandom(random);
                 test.test(
                     &crate::worldgen::mod_rule_tests::PosRuleTestRunContext,
                     in_template,

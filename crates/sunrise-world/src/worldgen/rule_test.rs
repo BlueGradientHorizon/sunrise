@@ -4,7 +4,8 @@ use super::{
     block_feature::FeatureBlockBindings,
     density::identifier,
     integer,
-    mod_rule_tests::{EngineRandom, ModRuleTest, RuleTestDecodeScope, RuleTestRunContext},
+    mod_random::EngineRandom,
+    mod_rule_tests::{ModRuleTest, RuleTestDecodeScope, RuleTestRunContext},
     number_text, required,
 };
 use crate::registry::BlockStateId;
