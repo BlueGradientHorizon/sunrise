@@ -802,6 +802,12 @@ pub struct Streaming {
     /// The columns and the next row the band's decoration ranks were given
     /// for (`set_band`).
     band_ranked: Option<(i32, i32, i32)>,
+    /// Active non-blocking mod chunk requests at `FULL` (level 33): generated, decorated, lit,
+    /// and kept resident until their request completes or is cancelled, sorted strictly after
+    /// player views, extra areas, forced chunks, and pregeneration bands.
+    async_requests: HashSet<(i32, i32)>,
+    /// Spatial cover over `async_requests`, rebuilt in `begin_plan_update` when non-empty.
+    async_request_cover: Option<ForcedCover>,
 }
 /// The ranges a finalize/decoration pass ran for, compared every commit so
 /// that a change wakes the next pass even when `GenerationScan` could not
@@ -813,6 +819,7 @@ struct DecorationBasis {
     extra: Vec<((i32, i32), i32)>,
     forced: HashSet<(i32, i32)>,
     band: Option<Band>,
+    async_requests: HashSet<(i32, i32)>,
 }
 /// Snapshot only after a scan found no missing candidates. Public range fields
 /// and `World::chunks` can change without going through Streaming, so compare
@@ -833,6 +840,7 @@ struct GenerationScan {
     extra: Vec<((i32, i32), i32)>,
     forced: HashSet<(i32, i32)>,
     band: Option<Band>,
+    async_requests: HashSet<(i32, i32)>,
     chunk_revision: u64,
     plan: Vec<(i64, i32, i32)>,
     /// Entries before it are no longer missing.
@@ -843,11 +851,16 @@ struct GenerationScan {
 }
 impl GenerationScan {
     fn same_ranges(&self, ranges: &Ranges<'_>) -> bool {
+        let same_async = match ranges.async_requests {
+            Some(req) => self.async_requests == *req.chunks,
+            None => self.async_requests.is_empty(),
+        };
         self.center == ranges.center
             && self.radius == ranges.radius
             && self.extra == ranges.extra
             && self.forced == *ranges.forced
             && self.band.as_ref() == ranges.band
+            && same_async
     }
     fn unchanged(&self, ranges: &Ranges<'_>, world: &World) -> bool {
         self.exhausted
@@ -886,6 +899,10 @@ impl GenerationScan {
         self.extra.extend_from_slice(ranges.extra);
         self.forced.clone_from(ranges.forced);
         self.band = ranges.band.copied();
+        match ranges.async_requests {
+            Some(req) => self.async_requests.clone_from(req.chunks),
+            None => self.async_requests.clear(),
+        }
         self.chunk_revision = world.chunks.membership_revision();
     }
 }
@@ -980,14 +997,14 @@ impl GenerationScan {
             // Forced chunks and their generation neighbourhood: the ring that
             // is decorated (or finished, without decoration) and the one its
             // 3x3 needs.
-            let reach = if input.decorates {
+            let forced_reach = if input.decorates {
                 FORCED_TERRAIN_RING
             } else {
                 FORCED_FEATURES_RING
             };
             for &(fx, fz) in input.ranges.forced {
-                for dz in -reach..=reach {
-                    for dx in -reach..=reach {
+                for dz in -forced_reach..=forced_reach {
+                    for dx in -forced_reach..=forced_reach {
                         let (x, z) = (fx + dx, fz + dz);
                         if input.world.chunks.contains_key(&(x, z))
                             || input.generating.contains(&(x, z))
@@ -1001,6 +1018,28 @@ impl GenerationScan {
                     }
                 }
             }
+            // Non-blocking mod chunk requests and their FULL generation halo,
+            // sorted strictly after player views, forced chunks, and pregen bands.
+            if let Some(req) = input.ranges.async_requests {
+                let req_reach = margin.max(reach + 1);
+                for &(rx, rz) in req.chunks {
+                    for dz in -req_reach..=req_reach {
+                        for dx in -req_reach..=req_reach {
+                            let (x, z) = (rx + dx, rz + dz);
+                            if !input.ranges.requested(x, z, input.decorates)
+                                || input.world.chunks.contains_key(&(x, z))
+                                || input.generating.contains(&(x, z))
+                                || input.failed.contains(&(x, z))
+                                || input.protos.contains_key(&(x, z))
+                                || input.finishing.contains(&(x, z))
+                            {
+                                continue;
+                            }
+                            wanted.push((input.ranges.priority(x, z), x, z));
+                        }
+                    }
+                }
+            }
             let ranges = Ranges {
                 center: input.ranges.center,
                 radius: input.ranges.radius,
@@ -1009,6 +1048,7 @@ impl GenerationScan {
                 cover: input.ranges.cover,
                 forced_cover: None,
                 band: input.ranges.band,
+                async_requests: input.ranges.async_requests,
             };
             self.remember(ranges, input.world);
             if wanted.is_empty() {
@@ -1429,6 +1469,8 @@ impl Streaming {
             mesh: true,
             band: None,
             band_ranked: None,
+            async_requests: HashSet::new(),
+            async_request_cover: None,
         }
     }
     /// Shares generation resources, but gives distant work its own worker state.
@@ -2013,6 +2055,7 @@ impl Streaming {
         self.busy()
             || !self.protos.is_empty()
             || !self.extra.is_empty()
+            || !self.async_requests.is_empty()
             || !self.deferred.is_empty()
             || self.saving != 0
     }
@@ -2121,6 +2164,11 @@ impl Streaming {
         }
         ExtraCover::refresh(&mut self.cover, &self.extra);
         ForcedCover::refresh(&mut self.forced_cover, &self.forced);
+        if self.async_requests.is_empty() {
+            self.async_request_cover = None;
+        } else {
+            ForcedCover::refresh(&mut self.async_request_cover, &self.async_requests);
+        }
         self.cover_current = true;
         // The sweeps below walk every loaded column and proto chunk. Run them
         // at once when the view moves and every eighth tick otherwise: a
@@ -2308,6 +2356,7 @@ impl Streaming {
                                 > r4 * r4)
                         && !ranges.in_extra(x, z, 4)
                         && !ranges.in_band(x, z, 4)
+                        && !ranges.in_async_requests(x, z, 4)
                         && !ranges.forced_within(x, z, FORCED_TERRAIN_RING)
                 })
                 .map(|(k, _)| *k)
@@ -2351,12 +2400,13 @@ impl Streaming {
     /// returned at capacity without remembering where its candidates came
     /// from.
     fn decoration_ranges_changed(&mut self) -> bool {
-        let (center, radius, band, extra, forced) = (
+        let (center, radius, band, extra, forced, async_requests) = (
             self.center,
             self.radius,
             self.band,
             self.extra.as_slice(),
             &self.forced,
+            &self.async_requests,
         );
         let changed = match &self.decoration_basis {
             Some(basis) => {
@@ -2365,6 +2415,7 @@ impl Streaming {
                     || basis.band != band
                     || basis.extra != extra
                     || basis.forced != *forced
+                    || basis.async_requests != *async_requests
             }
             None => true,
         };
@@ -2378,6 +2429,7 @@ impl Streaming {
             basis.extra.clear();
             basis.extra.extend_from_slice(extra);
             basis.forced.clone_from(forced);
+            basis.async_requests.clone_from(async_requests);
         }
         changed
     }
@@ -2499,6 +2551,7 @@ impl Streaming {
                     cover: ExtraCover::current(&self.cover, &self.extra, self.cover_current),
                     forced_cover: self.forced_cover.as_ref().filter(|_| self.cover_current),
                     band: self.band.as_ref(),
+                    async_requests: self.async_requests_range(),
                 };
                 let (protos, generating) = (&self.protos, &self.generating);
                 self.decoration_order.retain(|x, z| {
@@ -2692,6 +2745,7 @@ impl Streaming {
                 cover: ExtraCover::current(&self.cover, &self.extra, self.cover_current),
                 forced_cover: self.forced_cover.as_ref().filter(|_| self.cover_current),
                 band: self.band.as_ref(),
+                async_requests: self.async_requests_range(),
             };
             self.waiting.retain(|&(x, sy, z)| {
                 let back = ranges.in_view(x, z);
@@ -2860,6 +2914,7 @@ impl Streaming {
                 cover: ExtraCover::current(&self.cover, &self.extra, self.cover_current),
                 forced_cover: self.forced_cover.as_ref().filter(|_| self.cover_current),
                 band: self.band.as_ref(),
+                async_requests: self.async_requests_range(),
             },
             world,
             generating: &self.generating,
@@ -2990,6 +3045,15 @@ impl Streaming {
             world.dirty_sections.insert(section);
         });
     }
+    fn async_requests_range(&self) -> Option<AsyncRequests<'_>> {
+        (!self.async_requests.is_empty()).then(|| AsyncRequests {
+            chunks: &self.async_requests,
+            cover: self
+                .async_request_cover
+                .as_ref()
+                .filter(|_| self.cover_current),
+        })
+    }
     fn ranges(&self) -> Ranges<'_> {
         Ranges {
             center: self.center,
@@ -2999,6 +3063,7 @@ impl Streaming {
             cover: ExtraCover::current(&self.cover, &self.extra, self.cover_current),
             forced_cover: self.forced_cover.as_ref().filter(|_| self.cover_current),
             band: self.band.as_ref(),
+            async_requests: self.async_requests_range(),
         }
     }
     fn near_finished(&self, x: i32, z: i32, reach: i32) -> bool {
@@ -3329,6 +3394,63 @@ impl Streaming {
         !self.unknown.is_empty()
     }
 
+    /// Check whether a non-blocking mod chunk request at `chunk` can be admitted.
+    pub fn check_async_request(&self, world: &World, chunk: (i32, i32)) -> FullColumn {
+        if !chunk_pos_is_valid(chunk) || self.remote {
+            return FullColumn::Refused;
+        }
+        if full_column_ready(world, chunk) {
+            return FullColumn::Ready;
+        }
+        if self.paused || self.shared.aborted.load(Ordering::Relaxed) {
+            return FullColumn::Refused;
+        }
+        if self.full_column_failed(chunk) {
+            return FullColumn::Failed;
+        }
+        FullColumn::Pending
+    }
+
+    /// Keep `chunk` loading/generating to `FULL` (level 33) at priority strictly below player
+    /// views, forced chunks, and pregeneration bands until removed.
+    pub fn add_async_request(&mut self, chunk: (i32, i32)) {
+        if self.async_requests.insert(chunk) {
+            self.generation_scan.invalidate();
+            for dx in -2..=2 {
+                for dz in -2..=2 {
+                    self.decoration_order
+                        .rank_or_append(chunk.0 + dx, chunk.1 + dz);
+                }
+            }
+        }
+    }
+
+    /// Release a non-blocking mod chunk request's hold on `chunk`.
+    pub fn remove_async_request(&mut self, chunk: (i32, i32)) {
+        if self.async_requests.remove(&chunk) {
+            self.generation_scan.invalidate();
+        }
+    }
+
+    /// Release every active non-blocking mod chunk request on this level (e.g. level close).
+    pub fn clear_async_requests(&mut self) {
+        if !self.async_requests.is_empty() {
+            self.async_requests.clear();
+            self.async_request_cover = None;
+            self.generation_scan.invalidate();
+        }
+    }
+
+    /// Whether any non-blocking mod chunk request is currently active on this level.
+    pub fn has_async_requests(&self) -> bool {
+        !self.async_requests.is_empty()
+    }
+
+    /// Every column currently held by an active non-blocking mod chunk request.
+    pub fn async_requests(&self) -> impl Iterator<Item = (i32, i32)> + '_ {
+        self.async_requests.iter().copied()
+    }
+
     /// Add the `UNKNOWN` tickets to `extra` for one owner update, each as the square of its
     /// column alone, so the update neither unloads their columns nor finishes more around
     /// them. The caller truncates `extra` afterwards, as for its other per-update areas.
@@ -3622,6 +3744,11 @@ pub fn chunk_pos_is_valid((x, z): (i32, i32)) -> bool {
 const FORCED_FULL_RING: i32 = 2;
 const FORCED_FEATURES_RING: i32 = 3;
 const FORCED_TERRAIN_RING: i32 = 4;
+#[derive(Clone, Copy)]
+struct AsyncRequests<'a> {
+    chunks: &'a HashSet<(i32, i32)>,
+    cover: Option<&'a ForcedCover>,
+}
 /// The areas kept loaded: circles around the player and `extra`, and forced chunks.
 struct Ranges<'a> {
     center: (i32, i32),
@@ -3634,6 +3761,8 @@ struct Ranges<'a> {
     /// The combined `forced` set by distance (`Streaming::forced_cover`), while it matches.
     forced_cover: Option<&'a ForcedCover>,
     band: Option<&'a Band>,
+    /// Active non-blocking mod chunk requests at `FULL` (level 33).
+    async_requests: Option<AsyncRequests<'a>>,
 }
 /// The chunks a pregeneration task (`/pregen`) wants lit now: rows `z0..=z1`
 /// of the columns `x0..=x1`, those within `circle` (a centre and a radius in
@@ -3911,13 +4040,24 @@ impl CoverGrid {
     }
 }
 impl Ranges<'_> {
-    /// `distance`, or the band's nearer priority close to it.
+    /// `distance`, or the band's nearer priority close to it; columns needed only by
+    /// non-blocking mod chunk requests always sort strictly after player, forced, and band work.
     fn priority(&self, x: i32, z: i32) -> i64 {
         let own = self.distance(x, z);
-        match self.band {
+        let p = match self.band {
             Some(band) if band.within(x, z, 4) => own.min(band.priority(x, z)),
             _ => own,
+        };
+        if self.async_requests.is_some()
+            && !self.in_main_range(x, z, 4)
+            && !self.in_extra(x, z, 4)
+            && !self.in_band(x, z, 4)
+            && self.in_async_requests(x, z, 4)
+        {
+            const AFTER_BAND: i64 = 1 << 42;
+            return AFTER_BAND.saturating_add(own.clamp(0, (1 << 40) - 1));
         }
+        p
     }
     fn player_distance(&self, x: i32, z: i32) -> i64 {
         let d = |c: (i32, i32)| {
@@ -3968,15 +4108,32 @@ impl Ranges<'_> {
         (self.radius >= 0 && dx * dx + dz * dz <= r * r)
             || self.in_extra(x, z, 1 + reach)
             || self.in_band(x, z, 1 + reach)
+            || self.in_async_requests(x, z, 1 + reach)
     }
     fn in_range(&self, x: i32, z: i32, margin: i32) -> bool {
         self.in_main_range(x, z, margin)
             || self.in_extra(x, z, margin)
             || self.in_band(x, z, margin)
+            || self.in_async_requests(x, z, margin)
     }
     /// Within `margin` of the pregeneration band.
     fn in_band(&self, x: i32, z: i32, margin: i32) -> bool {
         self.band.is_some_and(|b| b.within(x, z, margin))
+    }
+    /// Within `margin` (Chebyshev) of an active non-blocking mod chunk request.
+    fn in_async_requests(&self, x: i32, z: i32, margin: i32) -> bool {
+        let Some(req) = self.async_requests else {
+            return false;
+        };
+        if req.chunks.is_empty() || margin < 0 {
+            return false;
+        }
+        if let Some(cover) = req.cover {
+            return cover.within(x, z, margin);
+        }
+        req.chunks
+            .iter()
+            .any(|&(rx, rz)| (x - rx).abs().max((z - rz).abs()) <= margin)
     }
     /// Within `margin` of an extra area's square (Chebyshev distance, as
     /// vanilla's ticket levels spread).
@@ -5035,6 +5192,7 @@ mod tests {
             cover: None,
             forced_cover: None,
             band: None,
+            async_requests: None,
         };
         let generate = |x, z, priority, order| Queued {
             priority,
@@ -5277,6 +5435,7 @@ mod tests {
                     cover: None,
                     forced_cover: None,
                     band: None,
+                    async_requests: None,
                 },
                 world: &self.world,
                 generating: &self.generating,
@@ -5662,6 +5821,7 @@ mod tests {
                     cover: None,
                     forced_cover: None,
                     band: None,
+                    async_requests: None,
                 };
                 let square = |x: i32, z: i32, n: i32| {
                     (-n..=n).flat_map(move |dz| (-n..=n).map(move |dx| (x + dx, z + dz)))
@@ -5719,6 +5879,7 @@ mod tests {
                     cover: None,
                     forced_cover: None,
                     band: None,
+                    async_requests: None,
                 };
                 let span = radius * 3 + 20;
                 for x in -span..=span {
@@ -5756,6 +5917,7 @@ mod tests {
             cover: None,
             forced_cover: None,
             band: None,
+            async_requests: None,
         };
         for x in -5i32..=15 {
             for z in -13i32..=7 {
@@ -5789,6 +5951,7 @@ mod tests {
             cover: None,
             forced_cover: None,
             band: None,
+            async_requests: None,
         };
         let mut planned = plan_unloads(&world, |x, z| idle.unloaded(x, z, true));
         assert_eq!(planned.len(), 3);
@@ -5817,6 +5980,7 @@ mod tests {
                 cover: None,
                 forced_cover: None,
                 band: None,
+                async_requests: None,
             };
             let level = |x: i32, z: i32| 31 + ((x - 40).abs().max((z + 9).abs()) - view).max(0);
             for x in 40 - view - 8..=40 + view + 8 {
@@ -5872,6 +6036,7 @@ mod tests {
             cover: None,
             forced_cover: None,
             band: None,
+            async_requests: None,
         };
         let level = |x: i32, z: i32| 31 + (x - 40).abs().max((z + 40).abs());
         for x in 40 - 6..=40 + 6 {
@@ -6093,6 +6258,7 @@ mod cover_tests {
                 cover,
                 forced_cover: None,
                 band: None,
+                async_requests: None,
             };
             let (scan, grid) = (ranges(None), ranges(Some(&cover)));
             let span = [4, 30, 120][case % 3] + 40;
@@ -6134,6 +6300,7 @@ mod cover_tests {
                 cover,
                 forced_cover: None,
                 band: None,
+                async_requests: None,
             };
             let (scan, index) = (ranges(None), ranges(Some(&cover)));
             let (cx, cz) = extra[1].0;
@@ -6173,6 +6340,7 @@ mod cover_tests {
                 cover,
                 forced_cover: None,
                 band: None,
+                async_requests: None,
             };
             let (scan, buckets) = (ranges(None), ranges(Some(&cover)));
             // Around each area, and on a coarse lattice over the whole spread. A debug build
@@ -6249,6 +6417,7 @@ mod cover_tests {
                 cover,
                 forced_cover: None,
                 band: None,
+                async_requests: None,
             };
             // The columns streaming asks about: everything kept, and the
             // generation scan's ring past it.
@@ -6319,5 +6488,44 @@ mod reload_tests {
 
         assert_eq!(world.dirty_sections.len(), 1);
         assert!(world.dirty_sections.contains(&(4, 3, 5)));
+    }
+
+    #[test]
+    fn async_request_columns_sort_strictly_after_player_forced_and_band_work() {
+        let forced: HashSet<(i32, i32)> = [(200, 200)].into();
+        let async_reqs: HashSet<(i32, i32)> = [(15, 0), (30, 0)].into();
+        let band = Band {
+            x0: 40,
+            x1: 42,
+            z0: 0,
+            z1: 2,
+            circle: None,
+        };
+        let ranges = Ranges {
+            center: (0, 0),
+            radius: 4,
+            extra: &[],
+            forced: &forced,
+            cover: None,
+            forced_cover: None,
+            band: Some(&band),
+            async_requests: Some(AsyncRequests {
+                chunks: &async_reqs,
+                cover: None,
+            }),
+        };
+        let player_edge = ranges.priority(4, 0);
+        let forced_chunk = ranges.priority(200, 200);
+        let band_chunk = ranges.priority(40, 0);
+        let near_async = ranges.priority(15, 0);
+        let far_async = ranges.priority(30, 0);
+
+        assert!(player_edge < near_async);
+        assert!(forced_chunk < near_async);
+        assert!(band_chunk < near_async);
+        assert!(near_async < far_async);
+        assert!(ranges.in_range(15, 0, 0));
+        assert!(ranges.in_range(16, 1, 1));
+        assert!(!ranges.unloaded(15, 0, true));
     }
 }

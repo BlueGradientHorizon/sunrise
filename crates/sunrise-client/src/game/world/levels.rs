@@ -1825,6 +1825,7 @@ impl Game<'_> {
                 || self.should_tick_level(dim)
                 || self.needs_view_pass(dim)
                 || self.has_spawn_tickets(dim)
+                || self.has_async_chunk_requests(dim)
                 || self.vehicle_waits_in(dim)
             {
                 continue;
@@ -1925,6 +1926,7 @@ impl Game<'_> {
         }
         self.attachment_indexes.remove(&dim);
         self.passages.retire_level(dim.key());
+        self.clear_async_chunk_requests_for_dim(dim);
     }
 
     /// `MinecraftServer.stopServer`'s `level.close()` loop: close every loaded

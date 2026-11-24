@@ -477,6 +477,7 @@ impl ChunkTickets {
             s.players.dedup();
             s.forced.sort_unstable();
             s.viewed.sort_unstable();
+            s.viewed.dedup();
             s.portal = self.portal.iter().map(|t| (t.chunk, t.level)).collect();
             s.portal.sort_unstable();
             s.spawn = self.spawn_areas().collect();

@@ -14,6 +14,7 @@ pub(crate) mod biome_region;
 pub(crate) mod biome_source;
 pub(crate) mod chunk_generator;
 pub(crate) mod chunk_refusal;
+pub(crate) mod chunk_request;
 pub(crate) mod chunk_snapshot;
 pub(crate) mod clock_adjustment;
 pub(crate) mod criteria;
