@@ -97,6 +97,22 @@ fn arrow_miss(dodged: bool) -> EntityHit {
 }
 pub(super) type SpawnReason = sunrise_client::mobs::spawn_rules::Reason;
 
+/// Who caused a player's hurt, keeping vanilla's `DamageSource.getEntity` cases
+/// apart: a caller can name the entity, say there is none, or leave the one a
+/// non-mob cause already put in the lent attack.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum KnownCause {
+    /// No explicit cause: infer the melee attacker or projectile owner.
+    Infer,
+    /// Explicitly no causing entity: the source names none.
+    None,
+    /// The causing entity the lent attack already carries (a player, guest or
+    /// dragon from `/damage`, `EntityRef::hurt`).
+    Attack,
+    /// The explicitly named causing entity.
+    Entity(u32),
+}
+
 /// Whether vanilla calls `finalizeSpawn` for a mob a spawn site makes, and with
 /// which reason. The reason is vanilla's `EntitySpawnReason` at that site.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -3138,7 +3154,7 @@ impl Game<'_> {
                         amount,
                         Some(from),
                         "minecraft:mob_attack",
-                        Some(Some(cube)),
+                        KnownCause::Entity(cube),
                         false,
                     ) && let Some(m) = self.mobs.iter_mut().find(|m| m.id == cube)
                     {
@@ -4652,14 +4668,14 @@ impl Game<'_> {
         true
     }
     /// `hurtServer` on the player. `from` is the source's position (none: no
-    /// direction), `known`: the causing mob when it is given (`/damage`),
-    /// else the melee attacker is the mob nearest to `from`.
+    /// direction), `known`: who caused it (`KnownCause::Infer` guesses the
+    /// melee attacker nearest to `from`).
     pub(super) fn hurt_player_from(
         &mut self,
         amount: f32,
         from: Option<[f64; 3]>,
         damage_type: &str,
-        known: Option<Option<u32>>,
+        known: KnownCause,
         by_creative_player: bool,
     ) -> bool {
         let post_attack_if_alive = std::mem::take(&mut self.combat.post_attack_if_alive);
@@ -4678,9 +4694,10 @@ impl Game<'_> {
         let raised = blocking.is_some();
         // Melee: the attacker stands at `from` (another player's hit has no mob behind it).
         let attacker = match known {
-            Some(known) => known,
-            None if melee.is_some() => melee,
-            None => from
+            KnownCause::Entity(id) => Some(id),
+            KnownCause::Attack | KnownCause::None => None,
+            KnownCause::Infer if melee.is_some() => melee,
+            KnownCause::Infer => from
                 .filter(|_| !projectile && damage_type != "minecraft:player_attack")
                 .and_then(|from| {
                     self.mobs
@@ -4730,10 +4747,16 @@ impl Game<'_> {
         // owner of the projectile that hit (`projectile_owner` outlives a
         // projectile's other hits), not the guessed melee attacker.
         let owner = owner.filter(|_| projectile);
-        let causing = known.map_or_else(
-            || attacker.or(owner).map_or(attack.attacker, |id| id as i32),
-            |known| known.map_or(0, |id| id as i32),
-        );
+        let causing = match known {
+            KnownCause::Infer => attacker.or(owner).map_or(attack.attacker, |id| id as i32),
+            // An explicit cause that is not a mob (another player, a guest, the
+            // dragon, a stand) stays in the lent attack's attacker.
+            KnownCause::Attack => attack.attacker,
+            KnownCause::Entity(id) => id as i32,
+            // `magic()` from a projectile whose owner is gone names no entity,
+            // even though the enclosing attack still holds the dead shooter.
+            KnownCause::None => 0,
+        };
         let mut outcome = sunrise_client::health::BlockOutcome::default();
         // The hit's own push, held back until after the shield's (`hurtServer`
         // runs `applyItemBlocking` before `dealDefaultKnockback`).
@@ -4777,6 +4800,7 @@ impl Game<'_> {
                     causing,
                     direct: attack.projectile_direct(damage_type),
                     position: None,
+                    direct_type: None,
                 };
                 default_push = Some(([xd, zd], source));
             }
@@ -4849,6 +4873,7 @@ impl Game<'_> {
                 causing,
                 direct: attack.projectile_direct(damage_type),
                 position: None,
+                direct_type: None,
             };
             self.after_block(outcome, (attacker, projectile), source, &attack);
         }
@@ -7612,6 +7637,7 @@ impl Game<'_> {
                     mob,
                     block,
                     p.age,
+                    p.id,
                     &owner,
                     self.entity_silent(p.id),
                     p.velocity,

@@ -1332,7 +1332,13 @@ impl Game<'_> {
         self.combat.projectile_direct =
             Some(Text::translate("entity.minecraft.firework_rocket", &[]));
         let at = [from.x, from.y, from.z];
-        self.hurt_player_from(amount, Some(at), "minecraft:fireworks", Some(None), false);
+        self.hurt_player_from(
+            amount,
+            Some(at),
+            "minecraft:fireworks",
+            crate::game::creatures::KnownCause::None,
+            false,
+        );
     }
     /// `FireworkEntityRenderer.submit`: the item (GROUND) facing the camera,
     /// lit at the rocket's light probe.

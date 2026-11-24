@@ -1058,6 +1058,7 @@ impl<'a> DamageLevel<'a> {
                     damage_type: source.damage_type.to_owned(),
                     causing: source.causing,
                     direct: source.direct,
+                    direct_type: source.direct_type.map(str::to_owned),
                     position: source.position,
                     lent_entity: self
                         .effects
@@ -1087,6 +1088,7 @@ pub struct DamagePost {
     damage_type: String,
     causing: i32,
     direct: i32,
+    direct_type: Option<String>,
     position: Option<[f64; 3]>,
     lent_entity: Option<i32>,
     state: DamageState,
@@ -1099,6 +1101,7 @@ impl DamagePost {
             damage_type: &self.damage_type,
             causing: self.causing,
             direct: self.direct,
+            direct_type: self.direct_type.as_deref(),
             position: self.position,
         };
         (source, &self.state, self.lent_entity)
@@ -3083,6 +3086,7 @@ mod tests {
             causing: 0,
             direct: 0,
             position: None,
+            direct_type: None,
         };
         let mut knock = Knock {
             strength: 0.4,

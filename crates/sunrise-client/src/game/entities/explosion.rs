@@ -781,6 +781,7 @@ impl Game<'_> {
     fn explosion_hurt_player(
         &mut self,
         context: &ExplosionHookContext<'_>,
+        blast_attack: &sunrise_client::health::Attack,
         radius: f32,
         damage_type: &str,
         exploding: Option<u32>,
@@ -913,7 +914,7 @@ impl Game<'_> {
                 && let Ok(o) = p.hurt_caused_by(
                     crate::game::entity::damage_level_of!(
                         self,
-                        self.combat.attack(),
+                        blast_attack,
                         no_push,
                         crate::game::entity::player_victim_causer!(self, decision),
                         acting_equipment!(self)
@@ -959,11 +960,11 @@ impl Game<'_> {
             let source = mod_api::entity::health::HurtSource {
                 damage_type,
                 causing: attacker.map_or(0, |(id, _)| *id as i32),
-                direct: 0,
-                position: None,
+                direct: blast_attack.direct.unwrap_or(0),
+                position: Some(center),
+                direct_type: None,
             };
-            let attack = self.current_attack();
-            self.after_block(outcome, (None, false), source, &attack);
+            self.after_block(outcome, (None, false), source, blast_attack);
         }
         self.finish_guest_damage();
         pushed
@@ -1080,6 +1081,33 @@ impl Game<'_> {
             flying_knockback,
             player_cause: self.blast_player_cause(),
         };
+        // The blast's `DamageSource`, shared by every victim: the exploding or
+        // explicitly supplied direct entity, its class and the blast's centre.
+        let (blast_direct_id, blast_direct_kind) = blast_source_spec.damage_direct.map_or(
+            (0, sunrise_client::health::DirectEntity::Other),
+            |(id, class)| (id as i32, class),
+        );
+        let mut blast_attack = self.combat.attack().clone();
+        blast_attack.direct = Some(blast_direct_id);
+        blast_attack.direct_kind = Some(blast_direct_kind);
+        blast_attack.position = Some(center);
+        if blast_attack.attacker == 0
+            && let Some(Some(cause)) = &self.combat.explicit_explosion_cause
+            && cause.player
+        {
+            blast_attack.attacker = cause.entity.0 as i32;
+        }
+        if blast_attack.player_uuid.is_none() {
+            if let Some(Some(cause)) = &self.combat.explicit_explosion_cause
+                && cause.player
+            {
+                blast_attack.player_uuid = self.player_uuid_of(cause.guest);
+            } else if self.combat.blast_owner_player
+                && self.combat.explicit_explosion_cause.is_none()
+            {
+                blast_attack.player_uuid = self.player_uuid_of(self.combat.blast_guest);
+            }
+        }
         let own = if self
             .lan_acting_entity
             .is_some_and(|id| !self.combat.visits(id))
@@ -1088,6 +1116,7 @@ impl Game<'_> {
         } else {
             self.explosion_hurt_player(
                 &context,
+                &blast_attack,
                 radius,
                 damage_type,
                 exploding,
@@ -1110,6 +1139,7 @@ impl Game<'_> {
                 let push = self.as_guest(conn, |g| {
                     g.explosion_hurt_player(
                         &context,
+                        &blast_attack,
                         radius,
                         damage_type,
                         exploding,
@@ -1123,30 +1153,6 @@ impl Game<'_> {
             }
         }
         // Mobs. `WitherBoss.hurtServer`: a wither shrugs off an undead cause.
-        let (blast_direct_id, blast_direct_kind) = blast_source_spec.damage_direct.map_or(
-            (0, sunrise_client::health::DirectEntity::Other),
-            |(id, class)| (id as i32, class),
-        );
-        let mut blast_attack = self.combat.attack().clone();
-        blast_attack.direct = Some(blast_direct_id);
-        blast_attack.direct_kind = Some(blast_direct_kind);
-        if blast_attack.attacker == 0
-            && let Some(Some(cause)) = &self.combat.explicit_explosion_cause
-            && cause.player
-        {
-            blast_attack.attacker = cause.entity.0 as i32;
-        }
-        if blast_attack.player_uuid.is_none() {
-            if let Some(Some(cause)) = &self.combat.explicit_explosion_cause
-                && cause.player
-            {
-                blast_attack.player_uuid = self.player_uuid_of(cause.guest);
-            } else if self.combat.blast_owner_player
-                && self.combat.explicit_explosion_cause.is_none()
-            {
-                blast_attack.player_uuid = self.player_uuid_of(self.combat.blast_guest);
-            }
-        }
         let cause = self
             .combat
             .explicit_explosion_cause
@@ -1187,6 +1193,7 @@ impl Game<'_> {
                     causing: attacker.as_ref().map_or(0, |(id, _)| *id as i32),
                     direct: exploding.map_or(0, |id| id as i32),
                     position: Some(center),
+                    direct_type: None,
                 };
                 let creative = self.creative_damage_source_id(source.causing);
                 let vanilla = self.saved_refuses_damage($id as u32, damage_type, creative);
@@ -1586,6 +1593,7 @@ impl Game<'_> {
                     causing: causing as i32,
                     direct: causing as i32,
                     position: Some(center),
+                    direct_type: None,
                 };
                 let creative = self.creative_damage_source_id(source.causing);
                 let vanilla = self.saved_refuses_damage(id, damage_type, creative);

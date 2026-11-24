@@ -87,6 +87,7 @@ fn accepted_hit_moves_through_teleport_restore_but_not_respawn() {
         causing: 41,
         direct: 73,
         position: Some([-17.25, 64.5, 32.75]),
+        direct_type: None,
     };
     let mut weapon = ItemStack::new("minecraft:bow", 1);
     weapon.damage = 19;

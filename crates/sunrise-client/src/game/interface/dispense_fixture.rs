@@ -787,7 +787,7 @@ impl Game<'_> {
                 4.0,
                 Some([0.0, 64.0, 2.0]),
                 "minecraft:arrow",
-                Some(None),
+                crate::game::creatures::KnownCause::None,
                 false,
             );
             let stack = self.inventory[self.selected].as_ref();

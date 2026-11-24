@@ -883,6 +883,7 @@ impl Game<'_> {
             causing: attacker,
             direct: attacker,
             position: None,
+            direct_type: None,
         };
         if super::entity::damage_level_of!(self, self.combat.attack(), no_push, None)
             .invulnerability_check(
@@ -1298,6 +1299,7 @@ impl Game<'_> {
                         causing: 0,
                         direct: 0,
                         position: None,
+                        direct_type: None,
                     };
                     sunrise_client::health::DamageLevel::of(
                         world,
@@ -1672,6 +1674,7 @@ impl Game<'_> {
             causing: causing_id as i32,
             direct: direct as i32,
             position,
+            direct_type: None,
         };
         if super::entity::damage_level_of!(self, self.combat.attack(), no_push, None)
             .invulnerability_check(

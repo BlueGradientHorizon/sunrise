@@ -35,6 +35,7 @@ impl Game<'_> {
             causing: causing_id,
             direct: entity_id(direct),
             position,
+            direct_type: None,
         };
         if self.item_damage_kind(id, source, causing).is_none()
             || !self.item_stack_takes_damage(&item.stack, damage_type)

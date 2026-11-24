@@ -87,6 +87,7 @@ const PVP_SOURCE: HurtSource<'static> = HurtSource {
     causing: 0,
     direct: 0,
     position: None,
+    direct_type: None,
 };
 
 #[cfg(test)]

@@ -371,6 +371,7 @@ impl Game<'_> {
                                         causing: 0,
                                         direct: 0,
                                         position: None,
+                                        direct_type: None,
                                     };
                                     let vanilla = self
                                         .resident_item_or_orb_immune(orb_id, entity.1, kind, false);
@@ -433,6 +434,7 @@ impl Game<'_> {
                                     causing: 0,
                                     direct: 0,
                                     position: None,
+                                    direct_type: None,
                                 };
                                 sunrise_client::health::DamageLevel::of(
                                     world,

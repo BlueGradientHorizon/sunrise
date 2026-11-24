@@ -305,8 +305,8 @@ impl Game<'_> {
                     _ => None,
                 };
                 let attacker = match cause {
-                    Some(Target::Mob(i)) => Some(Some(i)),
-                    _ => Some(None),
+                    Some(Target::Mob(i)) => crate::game::creatures::KnownCause::Entity(i),
+                    _ => crate::game::creatures::KnownCause::Attack,
                 };
                 // `DamageSource.isCreativePlayer`: a creative player's hit
                 // passes the victim's invulnerability (#916).
@@ -452,6 +452,7 @@ impl Game<'_> {
             causing: entity_id(causing),
             direct: entity_id(direct),
             position,
+            direct_type: None,
         };
         if crate::game::entity::damage_level_of!(self, self.combat.attack(), no_push, None)
             .invulnerability_check(

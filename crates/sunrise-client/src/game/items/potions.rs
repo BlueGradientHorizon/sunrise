@@ -11,7 +11,7 @@ use super::{
 };
 use mod_api::{EffectApplicable, EffectTickChange, EntityRef, LivingRef, PlayerFood};
 use sunrise_assets::item_model::DisplayContext;
-use sunrise_client::health::Attack;
+use sunrise_client::health::{Attack, DirectEntity};
 use sunrise_client::{
     block_entity_render::vertex_light,
     brewing,
@@ -394,16 +394,28 @@ impl PotionOwner {
 }
 impl Game<'_> {
     /// The attack of a potion's or cloud's hit: its thrower and what they hold, for
-    /// `living_knockback`.
-    fn potion_attack(&self, owner: Option<Who>, guest: Option<u32>) -> Attack {
-        match owner {
+    /// `living_knockback`, and the cloud or potion as the direct entity
+    /// (`DamageSources.indirectMagic`), separately from the causing owner.
+    fn potion_attack(
+        &self,
+        owner: Option<Who>,
+        guest: Option<u32>,
+        direct: Option<(u32, DirectEntity, &str)>,
+    ) -> Attack {
+        let mut attack = match owner {
             Some(Who::Mob(id)) => self.attack_of(id as i32),
             Some(Who::Player) => self.attack_of(
                 self.player_entity_id_by_connection(guest)
                     .unwrap_or_default(),
             ),
             None => Attack::default(),
+        };
+        if let Some((id, kind, entity_type)) = direct {
+            attack.direct = Some(id as i32);
+            attack.direct_kind = Some(kind);
+            attack.direct_type = Some(entity_type.to_owned());
         }
+        attack
     }
 }
 /// A mob's effect ids carry the `minecraft:` namespace; a mod's has its own.
@@ -448,7 +460,13 @@ impl Game<'_> {
     /// The dragon's breath (`AreaEffectCloud` with instant damage at
     /// `amplifier`) on a mob: what a cloud puts on it, `indirectMagic(cloud,
     /// dragon)` with no owner to credit (the dragon is not a mob here).
-    pub(super) fn breath_affect_mob(&mut self, mob: u32, amplifier: i32, at: [f64; 3]) {
+    pub(super) fn breath_affect_mob(
+        &mut self,
+        mob: u32,
+        amplifier: i32,
+        at: [f64; 3],
+        cloud: Option<u32>,
+    ) {
         let source = Text::translate("entity.minecraft.area_effect_cloud", &[]);
         let effect = [("instant_damage", 1, amplifier)];
         // DragonFireball.onHit and the flame phase: `setPotionDurationScale(0.25)`.
@@ -459,6 +477,7 @@ impl Game<'_> {
             at,
             &source,
             (None, None),
+            cloud,
         );
     }
 }
@@ -1183,6 +1202,9 @@ impl Game<'_> {
             action => action,
         };
         let rules = self.world.health_rules;
+        // An instant effect can land in a lent attack (a cloud's or a splash
+        // potion's indirectMagic): its attacker is the source's causing entity.
+        let causing = self.combat.attack().attacker;
         let Some(p) = self.player.as_mut() else {
             self.combat.forget_noted(false);
             return;
@@ -1198,7 +1220,7 @@ impl Game<'_> {
             EffectAction::Hurt(source, amount) => {
                 let mut canceled = false;
                 if let Some(id) = self.health_resources.damage.id(source)
-                    && let Ok(o) = p.hurt_blocking(
+                    && let Ok(o) = p.hurt_caused_by(
                         crate::game::entity::damage_level_of!(
                             self,
                             self.combat.attack(),
@@ -1211,6 +1233,9 @@ impl Game<'_> {
                         id,
                         amount,
                         None,
+                        false,
+                        causing,
+                        false,
                     )
                 {
                     canceled = o.canceled;
@@ -1895,6 +1920,7 @@ impl Game<'_> {
                     target_pos,
                     None,
                     t.age,
+                    t.id,
                     &potion_owner,
                     silent,
                     t.velocity,
@@ -1926,6 +1952,7 @@ impl Game<'_> {
                     None,
                     Some((pos, dir)),
                     t.age,
+                    t.id,
                     &potion_owner,
                     silent,
                     t.velocity,
@@ -2034,6 +2061,7 @@ impl Game<'_> {
     }
     fn tick_potion_cloud(&mut self, c: &mut Breath, players: &[FightPlayer]) -> bool {
         c.age = c.age.wrapping_add(1);
+        let cloud_id = c.id;
         let Some(potion) = c.potion.as_mut() else {
             return true;
         };
@@ -2107,6 +2135,7 @@ impl Game<'_> {
                 c.at,
                 &potion.source,
                 (potion.owner, potion.guest),
+                Some(cloud_id),
             );
             if potion.settings.radius_on_use != 0.0 {
                 c.radius += potion.settings.radius_on_use;
@@ -2176,6 +2205,7 @@ impl Game<'_> {
         at: [f64; 3],
         source: &Text,
         (owner, guest): (Option<Who>, Option<u32>),
+        cloud: Option<u32>,
     ) {
         // `indirectMagic(cloud, owner)` names the cloud in the death message
         // (it gives no kill credit).
@@ -2188,13 +2218,21 @@ impl Game<'_> {
         let scaled = |duration| sunrise_client::effects::scaled_duration(duration, duration_scale);
         match victim {
             Victim::Player(who) => self.as_fight_player(who, |g| {
+                let mut attack = g.potion_attack(
+                    owner,
+                    guest,
+                    cloud.map(|id| (id, DirectEntity::Other, "minecraft:area_effect_cloud")),
+                );
+                attack.position = Some(at);
                 for (id, duration, amp) in effects {
                     let Some(e) = brewing::effect(id) else {
                         continue;
                     };
                     if e.instant {
                         if let Some(a) = sunrise_client::effects::instant(id, *amp, 0.5) {
-                            g.apply_indirect_effect_action(a, &cloud_owner);
+                            g.with_attack(attack.clone(), |g| {
+                                g.apply_indirect_effect_action(a, &cloud_owner)
+                            });
                         }
                     } else {
                         let mut instance = EffectInstance::new(e.id, scaled(*duration), *amp);
@@ -2227,7 +2265,13 @@ impl Game<'_> {
                             if (*id == "instant_damage") != inverted {
                                 // HealOrHarmMobEffect.applyInstantaneousEffect: indirectMagic(cloud, owner).
                                 let source = Damage::indirect_magic(owner, at);
-                                let attack = self.potion_attack(owner, guest);
+                                let attack = self.potion_attack(
+                                    owner,
+                                    guest,
+                                    cloud.map(|id| {
+                                        (id, DirectEntity::Other, "minecraft:area_effect_cloud")
+                                    }),
+                                );
                                 let plan =
                                     self.prepare_knockback_credit(mob as i32, owner, &attack);
                                 let mut credit = plan.lend(&mut self.last_hurt_by_player);
@@ -2418,6 +2462,7 @@ impl Game<'_> {
         effects: &[(&'static str, i32, i32)],
         at: Vec3,
         age: u32,
+        potion_id: u32,
         owner: &PotionOwner,
         duration_scale: f64,
     ) {
@@ -2433,11 +2478,23 @@ impl Game<'_> {
             );
             if let Some(d2) = splash_distance_sqr(at, age, bounds) {
                 let intensity = 1.0 - d2.sqrt() / 4.0;
+                let mut attack = self.potion_attack(
+                    owner.who(),
+                    owner.guest,
+                    (potion_id != 0).then_some((
+                        potion_id,
+                        DirectEntity::Projectile,
+                        "minecraft:splash_potion",
+                    )),
+                );
+                attack.position = Some([at.x, at.y, at.z]);
                 for (id, duration, amp) in effects {
                     let instant = brewing::effect(id).is_some_and(|e| e.instant);
                     if instant {
                         if let Some(a) = sunrise_client::effects::instant(id, *amp, intensity) {
-                            self.apply_indirect_effect_action(a, owner);
+                            self.with_attack(attack.clone(), |g| {
+                                g.apply_indirect_effect_action(a, owner)
+                            });
                         }
                     } else {
                         let d = (intensity * f64::from(*duration) * duration_scale + 0.5) as i32;
@@ -2482,6 +2539,7 @@ impl Game<'_> {
         mob: Option<Vec3>,
         hit: Option<([i32; 3], Direction)>,
         age: u32,
+        potion_id: u32,
         owner: &PotionOwner,
         silent: bool,
         motion: Vec3,
@@ -2585,7 +2643,9 @@ impl Game<'_> {
         let duration_scale = f64::from(stack.potion_duration_scale());
         // Every player in range (`ThrownSplashPotion.applySplash` over
         // `LivingEntity`s, the players among them).
-        self.for_each_player(|g| g.splash_on_player(&effects, at, age, owner, duration_scale));
+        self.for_each_player(|g| {
+            g.splash_on_player(&effects, at, age, potion_id, owner, duration_scale)
+        });
         // Mobs take the instant effects (undead invert healing and harming).
         let undead = &self.items().entity_type_tags;
         let mut hits = Vec::new();
@@ -2629,12 +2689,20 @@ impl Game<'_> {
                     // HealOrHarmMobEffect.applyInstantaneousEffect: indirectMagic(potion, owner).
                     let harm = (intensity * f64::from(6 << amp) + 0.5) as i32 as f32;
                     let source = Damage::indirect_magic(owner.who(), [at.x, at.y, at.z]);
-                    let id = m.id;
-                    let mut attack = self.potion_attack(owner.who(), owner.guest);
+                    let mob = m.id;
+                    let mut attack = self.potion_attack(
+                        owner.who(),
+                        owner.guest,
+                        (potion_id != 0).then_some((
+                            potion_id,
+                            DirectEntity::Projectile,
+                            "minecraft:splash_potion",
+                        )),
+                    );
                     attack.projectile = self.combat.attack().projectile;
                     attack.projectile_kind = self.combat.attack().projectile_kind;
                     attack.projectile_type = self.combat.attack().projectile_type;
-                    let plan = self.prepare_knockback_credit(id as i32, owner.who(), &attack);
+                    let plan = self.prepare_knockback_credit(mob as i32, owner.who(), &attack);
                     let mut credit = plan.lend(&mut self.last_hurt_by_player);
                     self.mobs[i].damage_by(
                         crate::game::entity::damage_level_of!(self, &attack, &mut credit, None),
@@ -4426,6 +4494,7 @@ mod xp_bottle_tests {
                     at,
                     None,
                     face,
+                    0,
                     0,
                     &PotionOwner::default(),
                     false,

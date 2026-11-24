@@ -39,6 +39,7 @@ impl Game<'_> {
                     causing: attacker.map_or(0, |id| id as i32),
                     direct: 0,
                     position: source.from,
+                    direct_type: None,
                 },
                 &attack,
             );
@@ -49,6 +50,7 @@ impl Game<'_> {
             causing: 0,
             direct: 0,
             position: None,
+            direct_type: None,
         };
         self.knock_back_player(power, x, z, source, &attack, 0.0);
     }
