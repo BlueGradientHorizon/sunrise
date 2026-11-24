@@ -3222,13 +3222,18 @@ mod tests {
             let block = game.world.light(3, -60, 5) & 15;
             assert_eq!((sky, block), (12, 5));
             let chunks = game.world.chunks.len();
+            // Night: the sky is darkened, so the read is not just the daytime 0.
+            game.world.day_time = 18000;
             let darken = game.sky_darken();
+            assert!(darken > 0, "night darkens the sky");
 
             game.with_level(|_, host, _| {
                 assert_eq!(host.brightness(LightLayer::Block, lit), 5);
                 assert_eq!(host.brightness(LightLayer::Sky, lit), 12);
                 assert_eq!(host.raw_brightness(lit, 0), 12);
                 assert_eq!(host.raw_brightness(lit, 9), 5);
+                // `Level.getSkyDarken` as the game's own light reads take it.
+                assert_eq!(LevelHost::sky_darken(&*host), Some(darken));
                 let pos = BlockPos::new(lit[0], lit[1], lit[2]);
                 assert_eq!(
                     host.raw_brightness(lit, darken),
@@ -3252,9 +3257,29 @@ mod tests {
                 game.level_brightness(level, LightLayer::Sky, [0, 320, 0]),
                 None
             );
+            // The level view a block part's callback gets (`ReadLevel`), on the server.
+            let view = crate::game::native_level_signals::ReadLevel { game, level };
+            assert_eq!(LevelHost::sky_darken(&view), Some(darken));
             let stale = LevelRef::new(WorldEpoch::new(u64::MAX), game.dim.key());
             assert_eq!(game.level_brightness(stale, LightLayer::Sky, lit), None);
             assert_eq!(game.world.chunks.len(), chunks, "nothing was loaded");
+
+            // A logged-in client reads the same darkening through the same view.
+            game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
+            game.options.dedicated = None;
+            let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
+            game.connect_local(pipe, "SkyDarkenReadTest").unwrap();
+            game.remote.as_mut().unwrap().logged_in = true;
+            let client = game.level("minecraft:overworld").unwrap();
+            // The client's own world, at night as the server's time packet would set it.
+            game.world.day_time = 18000;
+            let darken = game.sky_darken();
+            assert!(darken > 0, "night darkens the client's sky");
+            let view = crate::game::native_level_signals::ReadLevel {
+                game,
+                level: client,
+            };
+            assert_eq!(LevelHost::sky_darken(&view), Some(darken));
         });
     }
 
