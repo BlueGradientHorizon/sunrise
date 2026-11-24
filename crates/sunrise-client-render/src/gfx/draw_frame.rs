@@ -2404,16 +2404,9 @@ impl Renderer {
                 .pack_post
                 .as_ref()
                 .and_then(|(_, post)| post.as_ref())
-                .is_some_and(|post| {
-                    let format = post.formats[0];
-                    pack_post::holds_floats(format)
-                        && format
-                            .guaranteed_format_features(self.device.features())
-                            .flags
-                            .contains(wgpu::TextureFormatFeatureFlags::BLENDABLE)
-                });
+                .is_some_and(|post| post.colortex0_blendable(&self.device));
         let after_pack_custom_geometry =
-            world_primitives && pack_draws_terrain && pack_colortex0_blendable;
+            live_hooks && world_primitives && pack_draws_terrain && pack_colortex0_blendable;
         if oit_on {
             let size = self
                 .world_post
@@ -4073,7 +4066,6 @@ impl Renderer {
                 after_pack_custom_geometry,
                 pack_draws_weather,
                 pack_draws_terrain,
-                pack_draws_water,
                 pack_draws_shadow,
                 pack_draws_outline,
                 pack_draws_clouds,

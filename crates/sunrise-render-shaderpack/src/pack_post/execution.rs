@@ -2142,9 +2142,21 @@ impl PackPost {
         !pass.group.shadow() && pass.group != Group::Final && sizes.any(|s| Some(s) != first)
     }
 
+    /// Whether `colortex0` is float-blendable on `device`, so standard world-primitive
+    /// pipelines can draw into the pack's color target.
+    pub fn colortex0_blendable(&self, device: &wgpu::Device) -> bool {
+        let format = self.formats[0];
+        holds_floats(format)
+            && format
+                .guaranteed_format_features(device.features())
+                .flags
+                .contains(wgpu::TextureFormatFeatureFlags::BLENDABLE)
+    }
+
     /// Drops every pass's cached bind groups, compute stages included: they name views that
     /// were made again.
     pub fn forget_groups(&mut self) {
+        self.export_depth_group = None;
         let sky = self
             .sky
             .iter_mut()

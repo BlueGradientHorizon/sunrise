@@ -81,6 +81,14 @@ fn pack_clip_matrix(view_proj: Mat4) -> Mat4 {
     adapt * view_proj
 }
 
+/// Target attachment and depth-compare state for [`ModPipelines::build_render_pipeline`].
+#[derive(Clone, Copy)]
+struct TargetState {
+    color_format: wgpu::TextureFormat,
+    depth_compare: wgpu::CompareFunction,
+    write_mask: wgpu::ColorWrites,
+}
+
 /// A built pipeline, with its texture's bind group (group 1) when it is textured, plus the
 /// shader module and fixed state needed to lazily compile a shader-pack target variant.
 struct Compiled {
@@ -226,7 +234,6 @@ impl ModPipelines {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn build_render_pipeline(
         &self,
         device: &wgpu::Device,
@@ -234,9 +241,7 @@ impl ModPipelines {
         textured: bool,
         blend: PipelineBlend,
         depth: WorldDepth,
-        color_format: wgpu::TextureFormat,
-        depth_compare: wgpu::CompareFunction,
-        write_mask: wgpu::ColorWrites,
+        target: TargetState,
     ) -> wgpu::RenderPipeline {
         let attributes = wgpu::vertex_attr_array![0=>Float32x3,1=>Float32x2,2=>Unorm8x4];
         // Blending happens in the frame's storage, as every vanilla draw's does. Neither mode
@@ -284,7 +289,7 @@ impl ModPipelines {
                 depth_write_enabled: Some(false),
                 depth_compare: Some(match depth {
                     WorldDepth::ThroughWalls => wgpu::CompareFunction::Always,
-                    _ => depth_compare,
+                    _ => target.depth_compare,
                 }),
                 stencil: Default::default(),
                 bias: Default::default(),
@@ -295,9 +300,9 @@ impl ModPipelines {
                 entry_point: Some(FRAGMENT_ENTRY),
                 compilation_options: Default::default(),
                 targets: &[Some(wgpu::ColorTargetState {
-                    format: color_format,
+                    format: target.color_format,
                     blend: Some(blend_state),
-                    write_mask,
+                    write_mask: target.write_mask,
                 })],
             }),
             multiview_mask: None,
@@ -334,9 +339,11 @@ impl ModPipelines {
             texture.is_some(),
             built.blend,
             built.depth,
-            self.color_format,
-            wgpu::CompareFunction::GreaterEqual,
-            wgpu::ColorWrites::ALL,
+            TargetState {
+                color_format: self.color_format,
+                depth_compare: wgpu::CompareFunction::GreaterEqual,
+                write_mask: wgpu::ColorWrites::ALL,
+            },
         );
         let internal = pollster::block_on(internal.pop());
         let validation = pollster::block_on(validation.pop());
@@ -368,26 +375,42 @@ impl ModPipelines {
         {
             return;
         }
-        let write_mask = if rgb {
-            wgpu::ColorWrites::COLOR
-        } else {
-            wgpu::ColorWrites::ALL
+        let target = TargetState {
+            color_format: format,
+            depth_compare: wgpu::CompareFunction::LessEqual,
+            write_mask: if rgb {
+                wgpu::ColorWrites::COLOR
+            } else {
+                wgpu::ColorWrites::ALL
+            },
         };
         let compiled = self
             .pipelines
             .iter()
-            .map(|entry| {
+            .enumerate()
+            .map(|(slot, entry)| {
                 let c = entry.as_ref()?;
-                Some(self.build_render_pipeline(
+                let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
+                let internal = device.push_error_scope(wgpu::ErrorFilter::Internal);
+                let pipeline = self.build_render_pipeline(
                     device,
                     &c.shader,
                     c.texture.is_some(),
                     c.blend,
                     c.depth,
-                    format,
-                    wgpu::CompareFunction::LessEqual,
-                    write_mask,
-                ))
+                    target,
+                );
+                let internal = pollster::block_on(internal.pop());
+                let validation = pollster::block_on(validation.pop());
+                match internal.or(validation) {
+                    None => Some(pipeline),
+                    Some(error) => {
+                        log::warn!(
+                            "Sunrise: mod pipeline slot {slot} refused for shader-pack target {format:?}: {error}"
+                        );
+                        None
+                    }
+                }
             })
             .collect();
         self.pack_pipelines = Some((key, compiled));
@@ -445,7 +468,7 @@ impl ModPipelines {
     /// refuses is the error, by id, and leaves this renderer and `set` as they were; an optional
     /// one is logged once, draws nothing and resolves invalid.
     /// A textured pipeline whose texture can't be bound (`textures`) is refused the same way.
-    fn build(
+    pub(super) fn build(
         &mut self,
         device: &wgpu::Device,
         set: &Pipelines,
@@ -691,6 +714,27 @@ mod tests {
     const SIZE: u32 = 64;
     /// The frame before any quad: a quarter grey, stored as 64 in 8 bits.
     const CLEAR: f64 = 64.0 / 255.0;
+
+    #[test]
+    fn pack_clip_matrix_flips_y_and_inverts_reversed_z_depth() {
+        // Independent clip-space transform check: given a clip vector `(x, y, z, w)` produced by
+        // `view_proj`, `pack_clip_matrix(view_proj)` must yield `(x, -y, w - z, w)` so NDC y flips
+        // for GL row order and reversed-Z `[1..0]` becomes GL depth `[0..1]`.
+        let proj = Mat4::perspective_infinite_reverse_rh(std::f32::consts::FRAC_PI_2, 1.5, 0.05);
+        let adapted = pack_clip_matrix(proj);
+        for p in [
+            glam::Vec4::new(0.0, 0.0, -0.05, 1.0), // near plane: z_ndc = 1 -> 0
+            glam::Vec4::new(0.25, 0.5, -4.0, 1.0), // upper-right mid-distance
+            glam::Vec4::new(-1.5, -0.75, -20.0, 1.0), // lower-left far-distance
+        ] {
+            let orig = proj * p;
+            let got = adapted * p;
+            assert_eq!(got.x, orig.x);
+            assert_eq!(got.y, -orig.y);
+            assert_eq!(got.z, orig.w - orig.z);
+            assert_eq!(got.w, orig.w);
+        }
+    }
 
     const PASS: &str =
         "fn pipeline_fragment(input: PipelineInput) -> vec4<f32> { return input.color; }";
