@@ -454,6 +454,11 @@ pub trait ItemsBackendMut {
         power: i32,
         pool: &Identifier,
     ) -> Result<Option<ItemStack>, StackWriteError>;
+    /// Side: server. The durability `stack`'s enchantments repair for `points` experience points
+    /// (`EnchantmentHelper.modifyDurabilityToRepairFromXp`), drawing from the active level's
+    /// random where an effect's conditions do.
+    fn item_resource_durability_to_repair_from_xp(&mut self, stack: &ItemStack, points: u32)
+    -> u32;
     /// Side: server.
     /// Puts up to `amount` of `resource` into slot `slot` of those `at`'s side reaches, as a hopper
     /// would (`canPlaceItem`, the slot's limit, the same item and components), in transaction
