@@ -154,24 +154,30 @@ fn post_effects_reach_acting_and_displaced_players_and_refuse_stale_or_client() 
         // Respawning players (placed = false, respawning = true, as during player_clone)
         // remain accessible before hub.respawn sends ClientboundPostEffectsPacket.
         let respawn_effect = id("example:respawn");
-        {
-            let hub = &mut game.lan.as_mut().unwrap().hub;
-            let gi = hub.guests.connection_index(12).unwrap();
-            hub.guests[gi].placed = false;
-            hub.guests[gi].respawning = true;
-        }
+        game.lan
+            .as_mut()
+            .unwrap()
+            .hub
+            .update_guest(12, |g| {
+                g.placed = false;
+                g.respawning = true;
+            })
+            .unwrap();
         assert!(a.add_post_effect(game, &respawn_effect).unwrap());
         assert_eq!(
             a.post_effects(game).unwrap(),
             vec![effect_a.clone(), respawn_effect.clone()]
         );
         assert!(a.remove_post_effect(game, &respawn_effect).unwrap());
-        {
-            let hub = &mut game.lan.as_mut().unwrap().hub;
-            let gi = hub.guests.connection_index(12).unwrap();
-            hub.guests[gi].placed = true;
-            hub.guests[gi].respawning = false;
-        }
+        game.lan
+            .as_mut()
+            .unwrap()
+            .hub
+            .update_guest(12, |g| {
+                g.placed = true;
+                g.respawning = false;
+            })
+            .unwrap();
 
         // Stale epoch, mismatched uuid/entity, and offline handles refuse with Stale.
         let stale = mod_api::__private::game::player_ref(
