@@ -702,6 +702,7 @@ fn remesh(
                         cutout_leaves,
                         opaque_ice: false,
                         translucent_layers: &[],
+                        layer_overrides: &[],
                         leaf_culling,
                         hidden_states: &[],
                         part_tables: Default::default(),
