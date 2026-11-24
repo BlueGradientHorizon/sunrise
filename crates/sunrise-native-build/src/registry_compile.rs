@@ -507,7 +507,7 @@ pub(super) fn stage_and_cargo(
     // One workspace unifies the crates.io graph of the whole install set: another mod can move a
     // version or enable a feature under a mod whose files did not change, so each library's
     // identity names its graph as cargo just resolved it, after its source digest.
-    let graphs = metadata.graphs(&mod_dirs)?;
+    let graphs = metadata.graphs(rust, out, &mod_dirs)?;
     let mut identities = super::library_record::Identities::default();
     let fill = |path: &Path, identity: &str| -> Result<(), String> {
         let entry = fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
