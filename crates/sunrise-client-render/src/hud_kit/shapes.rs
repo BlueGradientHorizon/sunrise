@@ -10,28 +10,6 @@
 //! Angles are radians from straight up, clockwise, as a stick and the dial's slots go: 0 is up,
 //! `FRAC_PI_2` right. Positions and radii are GUI px. Radii are snapped to whole GUI px, so a
 //! ring's edge lands on the same pixels at every GUI scale.
-//!
-//! ```
-//! use sunrise_client_render::hud::{HudAtlas, HudBatch, rgba};
-//! use sunrise_client_render::hud_kit::shapes::{self, Stop};
-//! use std::f32::consts::{FRAC_PI_8, TAU};
-//!
-//! let source = sunrise_client_render::resource_source::ResourceSource::directory("/nonexistent".into());
-//! let atlas = HudAtlas::build(&source).unwrap();
-//! let mut batch = HudBatch::scratch([854, 480]);
-//! let centre = [213.0, 120.0];
-//! // A dark disc fading out, a faint ring, then the top 45 degree sector lit.
-//! let dark = rgba(13, 14, 19, 180);
-//! batch.fill_disc_gradient(&atlas, centre, 90.0, &[Stop(0.0, dark), Stop(1.0, dark & 0x00FF_FFFF)]);
-//! batch.fill_arc(&atlas, centre, [40.0, 70.0], [0.0, TAU], rgba(13, 14, 19, 115));
-//! let start = batch.vertices.len();
-//! batch.fill_arc(&atlas, centre, [40.0, 70.0], [-FRAC_PI_8, FRAC_PI_8], rgba(118, 86, 250, 140));
-//! // Fade the sector in and slide it: only what was drawn since `start` changes.
-//! batch.alpha_since(start, 0.5);
-//! batch.translate_since(start, 0.0, 2.0);
-//! assert_eq!(batch.vertices.len() % 6, 0);
-//! assert_eq!(shapes::arc_segments(TAU, 70.0), 110);
-//! ```
 use crate::hud::{HudAtlas, HudBatch, HudVertex};
 
 /// How long, in GUI px along its outer edge, one segment of an arc is at most: short enough that
@@ -479,5 +457,40 @@ mod tests {
         assert_eq!(b.vertices[start].pos, [13.0, 8.0]);
         // The colour itself stays.
         assert_eq!(b.vertices[start].color & 0x00FF_FFFF, 0x00FF_FFFF);
+    }
+
+    #[test]
+    fn the_dial_layers_draw_whole_units() {
+        let atlas = atlas();
+        let mut batch = batch();
+        let centre = [213.0, 120.0];
+        // A dark disc fading out, a faint ring, then the top 45 degree sector lit.
+        let dark = rgba(13, 14, 19, 180);
+        batch.fill_disc_gradient(
+            &atlas,
+            centre,
+            90.0,
+            &[Stop(0.0, dark), Stop(1.0, dark & 0x00FF_FFFF)],
+        );
+        batch.fill_arc(
+            &atlas,
+            centre,
+            [40.0, 70.0],
+            [0.0, TAU],
+            rgba(13, 14, 19, 115),
+        );
+        let start = batch.vertices.len();
+        batch.fill_arc(
+            &atlas,
+            centre,
+            [40.0, 70.0],
+            [-std::f32::consts::FRAC_PI_8, std::f32::consts::FRAC_PI_8],
+            rgba(118, 86, 250, 140),
+        );
+        // Fade the sector in and slide it: only what was drawn since `start` changes.
+        batch.alpha_since(start, 0.5);
+        batch.translate_since(start, 0.0, 2.0);
+        assert_eq!(batch.vertices.len() % 6, 0);
+        assert_eq!(arc_segments(TAU, 70.0), 110);
     }
 }
