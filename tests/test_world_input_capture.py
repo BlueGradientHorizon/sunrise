@@ -173,7 +173,6 @@ struct ClientState {
     studio: Studio, cursor: (f32, f32),
     window_cursor: Option<window::PointerSample>,
     window_pointer_space: std::cell::OnceCell<window::PointerSpace>,
-    command_prompt: Option<()>,
     unclaimed_window: bool, focus_after_run: Option<bool>,
     unclaimed_modifiers: Option<u8>,
 }
@@ -184,7 +183,7 @@ impl Default for ClientState {
             screen: Screen::Playing, studio: Studio::default(),
             cursor: (0.0, 0.0), window_cursor: None,
             window_pointer_space: std::cell::OnceCell::new(),
-            command_prompt: None, unclaimed_window: false,
+            unclaimed_window: false,
             focus_after_run: None, unclaimed_modifiers: None }
     }
 }
@@ -193,7 +192,7 @@ struct Game {
     screen_state: ScreenState, remote: Option<Remote>,
     replay: Replay,
     mining: bool, renderer: Option<Renderer>,
-    server_packs: ServerPacks, options: Options, settings: Settings,
+    server_packs: ServerPacks, command_prompt: Option<()>, options: Options, settings: Settings,
     scripted: bool, applied_focus: Vec<bool>, applied_modifiers: Vec<u8>,
     server: ServerState, client: ClientState,
 }
@@ -202,7 +201,7 @@ impl Default for Game {
         Self { window: Some(Box::default()), title: None,
             screen_state: ScreenState::default(), remote: None, replay: Replay::default(),
             mining: false, renderer: None, server_packs: ServerPacks::default(),
-            options: Options::default(), settings: Settings,
+            command_prompt: None, options: Options::default(), settings: Settings,
             scripted: false, applied_focus: Vec::new(), applied_modifiers: Vec::new(),
             server: ServerState::default(), client: ClientState::default() }
     }
@@ -242,10 +241,10 @@ fn main() {
     // So does a clicked command's confirmation.
     {
         let mut game = Game::default();
-        game.client.command_prompt = Some(());
+        game.command_prompt = Some(());
         game.capture(true);
         assert!(!game.client.captured);
-        game.client.command_prompt = None;
+        game.command_prompt = None;
         game.capture(true);
         assert!(game.client.captured);
     }
