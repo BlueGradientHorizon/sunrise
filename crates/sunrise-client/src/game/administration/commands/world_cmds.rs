@@ -1130,6 +1130,7 @@ impl Game<'_> {
         ));
         Ok(sent)
     }
+    #[inline(always)]
     pub(in crate::game) fn cmd_particle_client(
         &mut self,
         options: &sunrise_client::particles::ParticleOptions,

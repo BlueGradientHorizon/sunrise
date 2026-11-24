@@ -419,6 +419,7 @@ impl Game<'_> {
         Ok(())
     }
 
+    #[inline(always)]
     pub(in crate::game) fn install_remote_session_server(&mut self) {
         self.save.0 = Arc::new(SaveDir::new(
             std::env::temp_dir().join("sunrise-remote-unused"),
@@ -705,6 +706,7 @@ impl Game<'_> {
         Ok(())
     }
 
+    #[inline(always)]
     pub(in crate::game) fn init_remote_for_replay_server(&mut self) {
         self.save.0 = Arc::new(SaveDir::new(
             std::env::temp_dir().join("sunrise-replay-unused"),

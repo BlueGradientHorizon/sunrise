@@ -741,6 +741,7 @@ impl Game<'_> {
         self.native_client_resources_reloaded();
         Ok(())
     }
+    #[inline(always)]
     pub(in crate::game) fn apply_staged_pack_server(&mut self) {
         self.random_tick_sections.0.clear();
     }

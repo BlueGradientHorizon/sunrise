@@ -569,7 +569,7 @@ impl Game<'_> {
         self.client.screen == Screen::Chat
     }
 
-    #[inline]
+    #[inline(always)]
     pub(in crate::game) fn playing_screen_open(&self) -> bool {
         self.client.screen == Screen::Playing
     }

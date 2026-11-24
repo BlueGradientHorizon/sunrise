@@ -510,10 +510,12 @@ impl Game<'_> {
         Ok(out)
     }
 
+    #[inline(always)]
     pub(in crate::game) fn dispense_case_client_start(&mut self) {
         self.audio.0.capture = Some(Vec::new());
     }
 
+    #[inline(always)]
     pub(in crate::game) fn dispense_case_client_finish(&mut self, out: &mut Vec<String>) {
         for sound in self.audio.0.capture.take().unwrap_or_default() {
             out.push(format!("S {} {}", floor_pos(sound.position), sound.event));

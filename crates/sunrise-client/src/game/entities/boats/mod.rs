@@ -1209,6 +1209,7 @@ impl Game<'_> {
         self.tick_boat_client(&mut b);
         b
     }
+    #[inline(always)]
     pub(in crate::game) fn tick_boat_client(&mut self, b: &mut Boat) {
         Self::tick_boat_paddles(b, &mut self.audio.0);
     }

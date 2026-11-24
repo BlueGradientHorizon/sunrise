@@ -16,7 +16,7 @@ impl Game<'_> {
             .is_some_and(|name| self.loop_context.mod_recipe_property_contains(set, name))
     }
 
-    #[inline]
+    #[inline(always)]
     pub(in crate::game) fn has_world_tables(&self) -> bool {
         self.world_tables.0.is_some()
     }

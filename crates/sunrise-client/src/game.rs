@@ -5771,6 +5771,7 @@ impl Game<'_> {
         }
         Ok(())
     }
+    #[inline(always)]
     pub(in crate::game) fn process_level_events_end_gateway_client(&mut self, pos: BlockPos) {
         let at = [
             f64::from(pos.x) + 0.5,
@@ -5792,6 +5793,7 @@ impl Game<'_> {
             .0
             .play_unshared("minecraft:block.end_gateway.spawn", Some(at), 10.0, pitch);
     }
+    #[inline(always)]
     pub(in crate::game) fn process_level_events_portal_travel_client(&mut self) {
         let pitch = self.particles.0.level_random().next_float() * 0.4 + 0.8;
         self.audio.0.play_on(
@@ -5802,6 +5804,7 @@ impl Game<'_> {
             pitch,
         );
     }
+    #[inline(always)]
     pub(in crate::game) fn process_level_events_sound_client(
         &mut self,
         id: i32,
@@ -5854,6 +5857,7 @@ impl Game<'_> {
             self.audio.0.play(name, c, volume, pitch);
         }
     }
+    #[inline(always)]
     pub(in crate::game) fn process_level_events_note_custom_sound_client(&mut self, pos: BlockPos) {
         if let Some(BlockEntity::Skull(skull)) =
             self.world.block_entities.get(&(pos.x, pos.y + 1, pos.z))
@@ -8753,6 +8757,7 @@ impl Game<'_> {
             last_attempt: None,
         });
     }
+    #[inline(always)]
     pub(in crate::game) fn finish_open_world_sections_client(&mut self) {
         self.pending_uploads.0.clear();
         if let Some(r) = self.renderer.0.as_mut() {
@@ -8811,6 +8816,7 @@ impl Game<'_> {
         self.capture(false);
         Ok(())
     }
+    #[inline(always)]
     pub(in crate::game) fn finish_close_world_server(&mut self) {
         self.server_loot.0.set(None);
         self.server_items = None;
@@ -14094,7 +14100,7 @@ impl Game<'_> {
             PresenceStatus::Online
         }
     }
-    #[inline]
+    #[inline(always)]
     pub(in crate::game) fn set_client_message(&mut self, text: String) {
         self.client.message = Some((text, Instant::now()));
     }

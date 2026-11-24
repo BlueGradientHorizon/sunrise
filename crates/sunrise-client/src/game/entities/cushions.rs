@@ -501,6 +501,7 @@ impl Game<'_> {
             .send_particles(&options, particle_at, [0.25, 0.0625, 0.25], 0.05, 10);
     }
 
+    #[inline(always)]
     pub(in crate::game) fn cushion_break_particles_server(
         &mut self,
         state: sunrise_world::registry::BlockStateId,

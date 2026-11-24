@@ -685,7 +685,7 @@ impl Game<'_> {
             .held_arm_pose = poses;
     }
     /// Arrows and bee stingers stuck in the local player's body.
-    #[inline]
+    #[inline(always)]
     pub(in crate::game) fn local_stuck_counts(&self) -> (i32, i32) {
         (self.combat.0.stuck.arrows, self.combat.0.stuck.stingers)
     }

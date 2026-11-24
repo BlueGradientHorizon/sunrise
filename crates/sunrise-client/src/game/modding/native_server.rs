@@ -665,6 +665,7 @@ impl Game<'_> {
         self.guest_combat.0.remove(&guest.conn);
     }
 
+    #[inline(always)]
     pub(in crate::game) fn cleanup_fake_player_client(&mut self, entity_id: i32) {
         self.client.destroying.remove(&entity_id);
     }

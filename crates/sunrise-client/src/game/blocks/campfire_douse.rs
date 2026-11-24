@@ -121,6 +121,7 @@ impl Game<'_> {
         Ok(true)
     }
 
+    #[inline(always)]
     pub(in crate::game) fn use_campfire_douse_client(&mut self, pos: [i32; 3], signal: bool) {
         for _ in 0..20 {
             make_campfire_smoke(&mut self.particles.0, pos, signal, true);

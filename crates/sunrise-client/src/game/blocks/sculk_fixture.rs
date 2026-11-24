@@ -663,10 +663,12 @@ impl Game<'_> {
         Ok(out)
     }
 
+    #[inline(always)]
     pub(in crate::game) fn sculk_scenario_set_capture_client(&mut self, enabled: bool) {
         self.audio.0.capture = enabled.then(Vec::new);
     }
 
+    #[inline(always)]
     pub(in crate::game) fn sculk_scenario_drain_capture_client(
         &mut self,
     ) -> Vec<sunrise_client::audio::CapturedSound> {

@@ -774,7 +774,7 @@ impl Game<'_> {
         Ok(true)
     }
 
-    #[inline]
+    #[inline(always)]
     pub(in crate::game) fn creative_item_enabled(
         &self,
         stack: &ItemStack,

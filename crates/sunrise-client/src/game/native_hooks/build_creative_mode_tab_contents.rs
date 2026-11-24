@@ -89,7 +89,7 @@ impl Game<'_> {
         }
     }
 
-    #[inline]
+    #[inline(always)]
     pub(in crate::game) fn shared_items(&self) -> Arc<Items> {
         match (&self.server_items, &self.world_tables.0) {
             (Some(items), _) => Arc::clone(items),

@@ -119,6 +119,7 @@ impl Game<'_> {
             self.send_creative_slots();
         }
     }
+    #[inline(always)]
     pub(in crate::game) fn creative_display_click_server(
         &mut self,
         shown: Option<&ItemStack>,
@@ -825,6 +826,7 @@ impl Game<'_> {
         }
         true
     }
+    #[inline(always)]
     pub(in crate::game) fn menu_session_with_game_server(&mut self, before: &[Option<ItemStack>]) {
         if let Some(BlockEntity::Furnace(f)) = self
             .container
@@ -1025,7 +1027,7 @@ impl Game<'_> {
             self.container_changed(key);
         }
     }
-    #[inline]
+    #[inline(always)]
     pub(in crate::game) fn hovered_inventory_slot(&self) -> Option<usize> {
         let size = self
             .renderer

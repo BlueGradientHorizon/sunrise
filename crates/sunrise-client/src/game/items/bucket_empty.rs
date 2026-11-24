@@ -64,6 +64,7 @@ impl Game<'_> {
         self.server.guest_player_sounds.extend(moved);
     }
 
+    #[inline(always)]
     pub(in crate::game) fn keep_guest_bucket_sounds_client(
         &mut self,
         sound: &str,

@@ -327,6 +327,7 @@ impl Game<'_> {
         }
     }
 
+    #[inline(always)]
     pub(in crate::game) fn poll_closing_save_chunks_server(
         &mut self,
         keys: &mut VecDeque<(i32, i32)>,
@@ -356,6 +357,7 @@ impl Game<'_> {
         }
     }
 
+    #[inline(always)]
     pub(in crate::game) fn poll_closing_save_entities_server(
         &mut self,
         keys: &mut VecDeque<(i32, i32)>,
@@ -384,6 +386,7 @@ impl Game<'_> {
         }
     }
 
+    #[inline(always)]
     pub(in crate::game) fn poll_closing_save_flush_server(
         &self,
     ) -> Result<Receiver<std::io::Result<()>>> {

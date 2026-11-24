@@ -108,7 +108,7 @@ pub(in crate::game) struct LanHost {
 }
 
 impl Game<'_> {
-    #[inline]
+    #[inline(always)]
     pub(in crate::game) fn lan_guest_acting(&self) -> bool {
         self.server.lan_acting.is_some()
     }
@@ -1360,6 +1360,7 @@ impl Game<'_> {
         Ok(())
     }
 
+    #[inline(always)]
     pub(in crate::game) fn start_lan_hub_client(&mut self) {
         self.audio.0.capture = Some(Vec::new());
     }
@@ -1421,6 +1422,7 @@ impl Game<'_> {
         }
     }
 
+    #[inline(always)]
     pub(in crate::game) fn lan_disconnect_client(&mut self) {
         self.audio.0.capture = None;
     }

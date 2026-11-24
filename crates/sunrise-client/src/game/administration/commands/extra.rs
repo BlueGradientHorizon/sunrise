@@ -886,6 +886,7 @@ impl Game<'_> {
     pub(in crate::game) fn profile_fetches_pending(&mut self) -> bool {
         self.profile_fetches_pending_client(&self.cmds.0.profile_fetches)
     }
+    #[inline(always)]
     pub(in crate::game) fn profile_fetches_pending_client(&self, fetches: &[ProfileFetch]) -> bool {
         let mut resolver = self.skin_profiles.0.borrow_mut();
         fetches
@@ -916,6 +917,7 @@ impl Game<'_> {
             }
         }
     }
+    #[inline(always)]
     pub(in crate::game) fn tick_profile_fetches_client(&self, key: &NameOrId) -> Resolve {
         self.skin_profiles.0.borrow_mut().state(key)
     }

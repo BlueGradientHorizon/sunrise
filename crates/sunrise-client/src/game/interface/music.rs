@@ -10,12 +10,12 @@ use sunrise_client::{
 };
 
 impl Game<'_> {
-    #[inline]
+    #[inline(always)]
     pub(in crate::game) fn audio_capture_active(&self) -> bool {
         self.audio.0.capture.is_some()
     }
 
-    #[inline]
+    #[inline(always)]
     pub(in crate::game) fn audio_capture_len(&self) -> usize {
         self.audio.0.capture.as_ref().map_or(0, Vec::len)
     }

@@ -799,6 +799,7 @@ impl Game<'_> {
             host.hub.send_to(conn, &packet);
         }
     }
+    #[inline(always)]
     pub(in crate::game) fn raid_horn_client(&mut self, at: [f64; 3]) {
         // This window only. A positioned `play` would be broadcast to
         // every guest on top of the packet each of them is sent.
@@ -1262,6 +1263,7 @@ impl Game<'_> {
             }
         }
     }
+    #[inline(always)]
     pub(in crate::game) fn sync_villager_raids_client(&mut self) -> bool {
         self.particles.0.random().next_int_bound(100) == Ok(0)
     }

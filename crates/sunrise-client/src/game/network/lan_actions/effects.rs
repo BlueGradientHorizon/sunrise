@@ -89,7 +89,7 @@ impl Game<'_> {
         }
     }
 
-    #[inline]
+    #[inline(always)]
     pub(in crate::game) fn lan_broken_block_positions(&self) -> Vec<[f64; 3]> {
         let Some(host) = self.lan.as_ref() else {
             return Vec::new();
