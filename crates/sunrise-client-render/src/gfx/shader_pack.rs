@@ -16,20 +16,11 @@ impl Renderer {
             self.pack_atlas = None;
             self.pack_material_atlases = None;
         }
-        let instance = wgpu::vertex_attr_array![5=>Float32x4];
-        let vertex = wgpu::VertexBufferLayout {
-            array_stride: std::mem::size_of::<TerrainVertex>() as u64,
-            step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &TERRAIN_ATTRIBUTES,
-        };
-        let instances = wgpu::VertexBufferLayout {
-            array_stride: 16,
-            step_mode: wgpu::VertexStepMode::Instance,
-            attributes: &instance,
-        };
-        let buffers = [Some(vertex), Some(instances)];
+        let draws = self.pack_terrain_draws();
+        let buffers = pack_terrain_buffers();
+        let buffers = &buffers[..terrain_buffer_count(draws)];
         let flat = self.pack_terrain_flat;
-        let pages = self.pack_terrain_draws().reads_pages();
+        let pages = draws.reads_pages();
         let sprite_rects = self
             .pack_atlas
             .as_ref()
@@ -50,7 +41,7 @@ impl Renderer {
                     .map_or([1, 1], |t| [t.width(), t.height()]),
                 terrain: self.pack_atlas.as_ref().map(|_| pack_post::Geometry {
                     // Flat terrain programs pull their vertices (`pack_atlas::PULL_FLAT`).
-                    buffers: if flat { &[] } else { &buffers },
+                    buffers: if flat { &[] } else { buffers },
                     table: self.flat.as_ref().filter(|_| flat).map(|f| &f.draw_layout),
                     depth_write: true,
                     atlas: None,
@@ -201,27 +192,19 @@ impl Renderer {
             .as_ref()
             .map(|t| t.create_view(&Default::default()));
         let flat = self.pack_terrain_flat;
-        let pages = self.pack_terrain_draws().reads_pages();
+        let draws = self.pack_terrain_draws();
+        let pages = draws.reads_pages();
         let table = (self.flat.as_ref())
             .filter(|_| flat)
             .map(|f| f.draw_layout.clone());
         let terrain = self.pack_atlas.is_some();
+        let draws_sections = PackLoading::draws_of(&pack, terrain);
         let clouds = self.cloud_bindings.clone();
         let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let cancelled = cancel.clone();
         let build = move || {
-            let instance = wgpu::vertex_attr_array![5=>Float32x4];
-            let vertex = wgpu::VertexBufferLayout {
-                array_stride: std::mem::size_of::<TerrainVertex>() as u64,
-                step_mode: wgpu::VertexStepMode::Vertex,
-                attributes: &TERRAIN_ATTRIBUTES,
-            };
-            let instances = wgpu::VertexBufferLayout {
-                array_stride: 16,
-                step_mode: wgpu::VertexStepMode::Instance,
-                attributes: &instance,
-            };
-            let buffers = [Some(vertex), Some(instances)];
+            let buffers = pack_terrain_buffers();
+            let buffers = &buffers[..terrain_buffer_count(draws)];
             let world = pack_post::World {
                 atlas,
                 sprite_rects: &sprite_rects,
@@ -230,7 +213,7 @@ impl Renderer {
                 gui_size,
                 terrain: terrain.then(|| pack_post::Geometry {
                     // Flat terrain programs pull their vertices (`pack_atlas::PULL_FLAT`).
-                    buffers: if flat { &[] } else { &buffers },
+                    buffers: if flat { &[] } else { buffers },
                     table: table.as_ref(),
                     depth_write: true,
                     atlas: None,
@@ -261,6 +244,7 @@ impl Renderer {
                     label,
                     started,
                     _cancel: CancelOnDrop(cancel),
+                    draws: draws_sections,
                 });
             }
             Err(e) => {
@@ -456,14 +440,17 @@ impl Renderer {
         }
         self.pack_terrain_flat = flat;
         // Per-section draws read the pages where the pack's terrain programs still fit the
-        // vertex stage with them.
+        // vertex stage with them, and the normal stream where they don't but fit with it.
         let gpu = pack_post::Gpu::of(&self.adapter, self.device.features());
-        let fit = (self.pack_terrain_bindings).pages_fit(&self.device.limits(), gpu);
+        let limits = self.device.limits();
+        let fit = (self.pack_terrain_bindings).pages_fit(&limits, gpu);
         self.pack_terrain_pages = !flat && self.terrain_pages && fit;
-        if !flat && self.terrain_pages && !fit {
+        let stream = (self.pack_terrain_bindings).normals_fit(&limits, gpu);
+        self.pack_terrain_normals = !flat && !self.pack_terrain_pages && stream;
+        if !flat && !self.pack_terrain_pages && !stream {
             log::warn!(
-                "shader pack terrain: {:?} and set 3 don't fit the vertex stage's storage \
-                 buffers; per-section draws give the constant normal and tangent",
+                "shader pack terrain: {:?} fit the vertex stage's buffers with neither set 3 \
+                 nor the normal stream; per-section draws give the constant normal and tangent",
                 self.pack_terrain_bindings
             );
         }
@@ -473,17 +460,23 @@ impl Renderer {
     /// How the game's terrain draws give the pack's terrain programs their vertices, as
     /// `pack_terrain_inputs` last took them: flat, or per section, reading their quad's corners
     /// from the section arena's pages where vertex shaders read storage and the pack's programs
-    /// fit with them (`pack_terrain_pages`).
+    /// fit with them (`pack_terrain_pages`), else their quad's normal and tangent from the
+    /// normal stream where they fit with it (`pack_terrain_normals`), else as attributes alone.
     pub(crate) fn pack_terrain_draws(&self) -> pack_atlas::TerrainDraws {
-        match (self.pack_terrain_flat, self.pack_terrain_pages) {
-            (true, _) => pack_atlas::TerrainDraws::Flat,
-            (false, true) => pack_atlas::TerrainDraws::Pages,
-            (false, false) => pack_atlas::TerrainDraws::Attributes,
+        match (
+            self.pack_terrain_flat,
+            self.pack_terrain_pages,
+            self.pack_terrain_normals,
+        ) {
+            (true, ..) => pack_atlas::TerrainDraws::Flat,
+            (false, true, _) => pack_atlas::TerrainDraws::Pages,
+            (false, false, true) => pack_atlas::TerrainDraws::Normals,
+            (false, false, false) => pack_atlas::TerrainDraws::Attributes,
         }
     }
     /// What the pack about to be loaded binds in its terrain programs' vertex stage
     /// (`pack_atlas::TerrainBindings::of`), before `pack_inputs`: per-section draws read the
-    /// arena's pages only where those programs still fit with them.
+    /// arena's pages, or else the normal stream, only where those programs still fit with them.
     pub fn set_pack_terrain_bindings(&mut self, bindings: pack_atlas::TerrainBindings) {
         self.pack_terrain_bindings = bindings;
     }
@@ -510,5 +503,41 @@ impl Renderer {
     pub fn shader_pack_dimension(&self) -> Option<i32> {
         let loading = self.pack_loading.as_ref().map(|l| l.dimension);
         loading.or_else(|| self.pack_post.as_ref().map(|p| p.0))
+    }
+}
+
+/// The section origins' vertex attribute (`section_instance`).
+const INSTANCE_ATTRIBUTES: [wgpu::VertexAttribute; 1] = wgpu::vertex_attr_array![5=>Float32x4];
+
+/// The vertex buffers a pack's per-section terrain programs read: the arena's vertices, the
+/// sections' origins and the normal stream (`pack_atlas::NORMAL_ATTRIBUTES`), of which a
+/// pipeline takes `terrain_buffer_count`.
+fn pack_terrain_buffers() -> [Option<wgpu::VertexBufferLayout<'static>>; 3] {
+    [
+        Some(wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<TerrainVertex>() as u64,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &TERRAIN_ATTRIBUTES,
+        }),
+        Some(wgpu::VertexBufferLayout {
+            array_stride: 16,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &INSTANCE_ATTRIBUTES,
+        }),
+        Some(wgpu::VertexBufferLayout {
+            array_stride: pack_atlas::NORMAL_BYTES,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &pack_atlas::NORMAL_ATTRIBUTES,
+        }),
+    ]
+}
+
+/// How many of `pack_terrain_buffers` a terrain program drawn as `draws` reads: the normal
+/// stream only with `TerrainDraws::Normals`.
+fn terrain_buffer_count(draws: pack_atlas::TerrainDraws) -> usize {
+    if draws == pack_atlas::TerrainDraws::Normals {
+        3
+    } else {
+        2
     }
 }

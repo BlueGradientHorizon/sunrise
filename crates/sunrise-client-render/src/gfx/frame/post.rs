@@ -174,6 +174,9 @@ impl Renderer {
                 );
             }
             let pages = &self.pack_pages;
+            // The pack's terrain programs read the normal stream beside each run's vertices
+            // (`pack_atlas::TerrainDraws::Normals`).
+            let normals = self.pack_terrain_draws() == pack_atlas::TerrainDraws::Normals;
             let mut terrain =
                 |rp: &mut wgpu::RenderPass<'_>,
                  list: pack_post::TerrainList,
@@ -234,7 +237,15 @@ impl Renderer {
                                     (shadow_first + shadow_solid, shadow_translucent)
                                 }
                             };
-                            self.draw_sections_paged(rp, &self.indirect, first, count, page);
+                            if normals {
+                                let bind = |rp: &mut wgpu::RenderPass<'_>, key: u32| {
+                                    rp.set_vertex_buffer(2, self.normals_binding(key));
+                                    page(rp, key);
+                                };
+                                self.draw_sections_paged(rp, &self.indirect, first, count, &bind);
+                            } else {
+                                self.draw_sections_paged(rp, &self.indirect, first, count, page);
+                            }
                         }
                     }
                 };
