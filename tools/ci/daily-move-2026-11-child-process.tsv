@@ -13,7 +13,7 @@ sunrise-client-lib	lib	benchmark::tests::a_refused_switch_ends_the_run_with_the_
 sunrise-client-lib	bin:sunrise-ctl	launch::tests::launch_refuses_a_socket_path_too_long	crates/sunrise-client/src/bin/sunrise-ctl/launch.rs:268	child-process
 sunrise-client-lib	lib	block_entity_item::tests::a_mod_block_entity_rides_its_item	crates/sunrise-client/src/block_entity_item.rs:621	child-process
 sunrise-client	lib	game::commands::modprofile::tests::modprofile_state_and_report_side_effects	crates/sunrise-client/src/game/administration/commands/modprofile_tests.rs:14	child-process
-sunrise-client	lib	game::dedicated::tests::console_logging_survives_closed_stdout	crates/sunrise-client/src/game/interface/dedicated/mod.rs:2893	child-process
+sunrise-client	lib	game::server_side::dedicated::tests::console_logging_survives_closed_stdout	crates/sunrise-client/src/game/interface/dedicated/mod.rs:2893	child-process
 sunrise-client	lib	game::mods::tests::content_overlay_validates_dependencies_and_orders_layers	crates/sunrise-client/src/game/modding/mods/mod.rs:2675	child-process
 sunrise-client	lib	game::mods::tests::native_content_follows_the_build_and_misplaced_content_follows_its_selection	crates/sunrise-client/src/game/modding/mods/mod.rs:2747	child-process
 sunrise-client	lib	game::mods::tests::a_shared_missing_jar_stops_native_load_and_refuses_each_content_mod_row	crates/sunrise-client/src/game/modding/mods/mod.rs:2814	child-process

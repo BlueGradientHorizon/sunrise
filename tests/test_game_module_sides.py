@@ -1320,6 +1320,73 @@ class GameModuleSidesTests(unittest.TestCase):
         self.assertEqual(by_name["Game field owners"].command, "python3 tools/game_field_owners.py --check")
         self.assertEqual(by_name["Game module sides"].command, "python3 tools/game_module_sides.py --check --against deadbeef")
 
+    def test_r3_01_daily_move_tsvs_rewritten_and_checked(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_synthetic_tree(root)
+            tsv_path = root / "tools/ci/daily-move-2026-11.tsv"
+            write_tree(
+                root,
+                {
+                    "tools/ci/daily-move-2026-11.tsv": (
+                        "# PACKAGE\tTARGET\tTEST\tSOURCE\tREASON\n"
+                        "sunrise-client\tlib\tgame::srv_mod::tests::runs\tcrates/sunrise-client/src/game/world/srv_mod.rs:1\tslow\n"
+                        "sunrise-client\tlib\tgame::shared::tests::stays\tcrates/sunrise-client/src/game/world/shared.rs:1\tslow\n"
+                        "sunrise-world\tlib\tgame::srv_mod::other\tcrates/sunrise-world/src/lib.rs:1\tslow\n"
+                    ),
+                },
+            )
+            rc, _, err = run_cli("--fix", "--no-fmt", "--root", str(root))
+            self.assertEqual(rc, 0, err)
+            content = tsv_path.read_text()
+            self.assertIn("sunrise-client\tlib\tgame::server_side::srv_mod::tests::runs\t", content)
+            self.assertIn("sunrise-client\tlib\tgame::shared::tests::stays\t", content)
+            self.assertIn("sunrise-world\tlib\tgame::srv_mod::other\t", content)
+            self.assertEqual(run_cli("--check", "--root", str(root))[0], 0)
+            # Reintroducing the old pre-move selector fails --check.
+            tsv_path.write_text(content.replace("game::server_side::srv_mod::", "game::srv_mod::"))
+            rc, _, err = run_cli("--check", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("tools/ci/daily-move-2026-11.tsv", err)
+
+    def test_r3_02_ignored_tests_readme_selector_rewritten_and_checked(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_synthetic_tree(root)
+            readme = root / "tools/ci/ignored-tests/README.md"
+            write_tree(
+                root,
+                {
+                    "tools/ci/ignored-tests/README.md": (
+                        "Example: `game::srv_mod::tests::runs` and `game::shared::tests::stays`.\n"
+                    ),
+                },
+            )
+            rc, _, err = run_cli("--fix", "--no-fmt", "--root", str(root))
+            self.assertEqual(rc, 0, err)
+            text = readme.read_text()
+            self.assertIn("`game::server_side::srv_mod::tests::runs`", text)
+            self.assertIn("`game::shared::tests::stays`", text)
+            self.assertEqual(run_cli("--check", "--root", str(root))[0], 0)
+            # Reverting the README selector fails --check.
+            readme.write_text(text.replace("game::server_side::srv_mod::", "game::srv_mod::"))
+            rc, _, err = run_cli("--check", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("tools/ci/ignored-tests/README.md", err)
+
+    def test_r3_03_no_consecutive_comment_lines(self):
+        import tokenize
+
+        for rel in ("tools/game_module_sides.py", "tests/test_game_module_sides.py"):
+            with (ROOT / rel).open("rb") as fp:
+                lines = [
+                    tok.start[0]
+                    for tok in tokenize.tokenize(fp.readline)
+                    if tok.type == tokenize.COMMENT and not tok.string.startswith("#!")
+                ]
+            consec = [(lines[i], lines[i + 1]) for i in range(len(lines) - 1) if lines[i + 1] == lines[i] + 1]
+            self.assertEqual(consec, [], f"{rel} has consecutive comment lines: {consec}")
+
 
 if __name__ == "__main__":
     unittest.main()

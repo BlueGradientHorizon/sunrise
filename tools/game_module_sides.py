@@ -2820,6 +2820,27 @@ def collect_moved_subtrees_and_includes(
     return moved_file_depth, moved_file_side, moved_root_files, moved_includes, errors
 
 
+def rewrite_daily_move_tsv(text: str, mod_to_side: dict[str, str]) -> str:
+    """Rewrite column 3 (`TEST`) of `sunrise-client` rows in `tools/ci/daily-move-*.tsv`."""
+    out: list[str] = []
+    for line in text.splitlines(keepends=True):
+        stripped = line.lstrip()
+        if not stripped or stripped.startswith("#"):
+            out.append(line)
+            continue
+        eol = "\r\n" if line.endswith("\r\n") else ("\n" if line.endswith("\n") else "")
+        body = line[: len(line) - len(eol)] if eol else line
+        parts = body.split("\t")
+        if len(parts) >= 3 and parts[0] == "sunrise-client" and parts[2].startswith("game::"):
+            new_test = rewrite_game_paths_in_text(parts[2], mod_to_side, full=False)
+            if new_test != parts[2]:
+                parts[2] = new_test
+                out.append("\t".join(parts) + eol)
+                continue
+        out.append(line)
+    return "".join(out)
+
+
 def selector_targets(
     root: Path,
     mod_to_side: dict[str, str],
@@ -2833,6 +2854,21 @@ def selector_targets(
         for p in sorted(ignored_dir.glob("*.txt")):
             old = p.read_text(encoding="utf-8")
             new = rewrite_ignored_tests_file(old, mod_to_side)
+            if new != old:
+                updates.append((p, new))
+        readme = ignored_dir / "README.md"
+        if readme.is_file():
+            old = readme.read_text(encoding="utf-8")
+            if "game::" in old:
+                new = rewrite_doc_file(old, mod_to_side)
+                if new != old:
+                    updates.append((readme, new))
+
+    ci_dir = root / "tools/ci"
+    if ci_dir.is_dir():
+        for p in sorted(ci_dir.glob("daily-move-*.tsv")):
+            old = p.read_text(encoding="utf-8")
+            new = rewrite_daily_move_tsv(old, mod_to_side)
             if new != old:
                 updates.append((p, new))
 
