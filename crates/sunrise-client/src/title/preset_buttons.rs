@@ -6,6 +6,21 @@ use sunrise_hooks::title::Button as AddedButton;
 /// selected without asking again whether it shows.
 pub(super) const ADDED_IDS: u8 = sunrise_hooks::title::FIRST_ID;
 
+/// The main menu's id for its bottom notice (`TitleScreen.init`'s `PlainTextButton`), which is
+/// drawn and pressed apart from [`Title::buttons`].
+pub(super) const CREDITS_ID: u8 = 9;
+
+/// The bottom notice's translation key.
+const CREDITS_KEY: &str = "sunrise.title.not_affiliated";
+
+/// The bottom notice and its bounds on a main menu `w` by `h`: `TitleScreen.init`'s
+/// `PlainTextButton`, the text's width wide and 10 high at `height - 10`, 2 from the right edge.
+pub(super) fn credits_notice(atlas: &HudAtlas, w: f32, h: f32) -> (String, [f32; 4]) {
+    let notice = lang::get_or(CREDITS_KEY, "Not affiliated with Mojang or Microsoft");
+    let tw = HudBatch::text_width(atlas, &notice).ceil();
+    (notice, [w - tw - 2.0, h - 10.0, tw, 10.0])
+}
+
 /// Where the logo and edition banner end (`draw_logo`: the banner's top 67, 14 rows).
 const BANNER_BOTTOM: f32 = 81.0;
 
@@ -72,6 +87,56 @@ impl Title {
             return top;
         }
         top.min(h - 128.0 - 24.0 * added as f32)
+    }
+    /// `TitleScreen.init`'s widgets as `ScreenEvent.Init.Post` lists them (`Screen.children()`),
+    /// in registration order: Singleplayer, Multiplayer, Minecraft Realms, the buttons crates
+    /// above the engine add, the icon row (Friends, Language..., Accessibility Settings...),
+    /// Options..., Quit Game and the bottom notice. Each is its id, its bounds on a main menu `w`
+    /// by `h`, and its label's translation key. Empty off the main menu.
+    pub fn init_children(
+        &self,
+        atlas: &HudAtlas,
+        w: f32,
+        h: f32,
+    ) -> Vec<(u8, [f32; 4], &'static str)> {
+        if !matches!(self.mode, Mode::Main) {
+            return Vec::new();
+        }
+        let (w, h) = (w.ceil(), h.ceil());
+        let key = |id: u8| match id {
+            1 => "menu.singleplayer",
+            4 => "menu.multiplayer",
+            8 => "menu.online",
+            3 => "menu.options",
+            2 => "menu.quit",
+            5 => "gui.friends.open",
+            6 => "options.language",
+            7 => "options.accessibility",
+            id => registered()[usize::from(id - ADDED_IDS)].label(),
+        };
+        let (icons, rows): (Vec<_>, Vec<_>) = self
+            .buttons(w, h)
+            .into_iter()
+            .map(|b| (b.id, [b.x, b.y, b.w, 20.0], key(b.id), b.icon.is_some()))
+            .partition(|&(.., icon)| icon);
+        // Options... and Quit Game are added after the icon row.
+        let menu = rows.len().saturating_sub(2);
+        let (_, credits) = credits_notice(atlas, w, h);
+        rows[..menu]
+            .iter()
+            .chain(&icons)
+            .chain(&rows[menu..])
+            .map(|&(id, rect, key, _)| (id, rect, key))
+            .chain([(CREDITS_ID, credits, CREDITS_KEY)])
+            .collect()
+    }
+    /// The main menu's widgets a mod removed at `ScreenEvent.Init.Post`, by their
+    /// [`Title::init_children`] ids, until the next init: none is drawn, pressed or focused.
+    pub fn set_removed_children(&mut self, removed: Vec<u8>) {
+        if self.focused_button.is_some_and(|id| removed.contains(&id)) {
+            self.focused_button = None;
+        }
+        self.removed_children = removed;
     }
     pub(super) fn buttons(&self, w: f32, h: f32) -> Vec<Button> {
         // The game rules draw and press their own.
@@ -184,6 +249,7 @@ impl Title {
                     button.icon = Some((icon, 15.0));
                     buttons.push(button);
                 }
+                buttons.retain(|button| !self.removed_children.contains(&button.id));
                 buttons
             }
             Mode::Select { worlds, selected } => {

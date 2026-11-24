@@ -461,20 +461,34 @@ impl Game<'_> {
         };
         // Use the initialized layout, not last frame's draw registrations (which may
         // still belong to a different screen, and omit children clipped offscreen).
-        let native = if view.id == "paused" {
-            self.pause_init_children()
-                .into_iter()
-                .map(|(action, rect, label)| {
-                    let id = mount.alloc_id();
-                    mount.children.push(ScreenChild::new(id, rect, label));
-                    (id, action)
-                })
-                .collect::<Vec<_>>()
-        } else {
-            Vec::new()
+        let native = match (view.id, self.title.as_ref()) {
+            ("paused", _) => self.pause_init_children(),
+            ("title", Some(title)) => {
+                let [w, h] = self.gui_frame_now().1.size.map(|axis| axis as f32);
+                title
+                    .init_children(&self.gui.atlas, w, h)
+                    .into_iter()
+                    .map(|(action, rect, key)| {
+                        (
+                            action,
+                            rect,
+                            Some(mod_api::Text::translate(key, Vec::new())),
+                        )
+                    })
+                    .collect()
+            }
+            _ => Vec::new(),
         };
+        let native = native
+            .into_iter()
+            .map(|(action, rect, label)| {
+                let id = mount.alloc_id();
+                mount.children.push(ScreenChild::new(id, rect, label));
+                (id, action)
+            })
+            .collect::<Vec<_>>();
         let mut entries: Vec<MountedWidgetEntry> = Vec::new();
-        let mut removed_pause_actions = Vec::new();
+        let mut removed_actions = Vec::new();
         let mut initial_focus = None;
         self.native_screen_init_post(view, |listen| {
             let children = mount.children.clone();
@@ -488,7 +502,7 @@ impl Game<'_> {
                     } else if let Some(&(_, action)) =
                         native.iter().find(|&&(child, _)| child == id)
                     {
-                        removed_pause_actions.push(action);
+                        removed_actions.push(action);
                     }
                 }
                 initial_focus = mount.initial_focus.take().or(initial_focus);
@@ -506,9 +520,14 @@ impl Game<'_> {
         self.screen_state.widgets.next_id.set(mount.next_id);
         let initial_focus =
             initial_focus.and_then(|id| entries.iter().position(|entry| entry.id == id));
+        if view.id == "title"
+            && let Some(title) = self.title.as_mut()
+        {
+            title.set_removed_children(std::mem::take(&mut removed_actions));
+        }
         let mut inner = self.screen_state.widgets.inner.borrow_mut();
         inner.entries = entries.into_iter().map(Some).collect();
-        inner.removed_pause_actions = removed_pause_actions;
+        inner.removed_pause_actions = removed_actions;
         if self
             .pause_focus
             .is_some_and(|id| inner.removed_pause_actions.contains(&id))
@@ -536,6 +555,9 @@ impl Game<'_> {
     /// preserving `MouseHandler.LastClick`).
     pub(super) fn clear_screen_widgets(&mut self) {
         self.screen_state.widgets.clear();
+        if let Some(title) = self.title.as_mut() {
+            title.set_removed_children(Vec::new());
+        }
         sunrise_client::preedit::reset();
         self.ime_area = None;
     }

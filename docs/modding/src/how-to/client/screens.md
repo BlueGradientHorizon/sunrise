@@ -361,7 +361,11 @@ text or selection that must survive a rebuild on your mod struct and seed the ne
 `event.widgets.set_initial_focus(id)` to focus a widget mounted by your listener on open
 (`Screen.setInitialFocus`). Read `event.widgets.children()` for the ordered child list and
 use `event.widgets.remove(child.id)` to remove a listed child (`ScreenEvent.Init.removeListener`).
-The list includes earlier accepted mounts and the native controls on the pause menu. A later
+The list includes earlier accepted mounts and the native controls on the pause menu and the
+title screen, in vanilla's order (on the title screen: Singleplayer, Multiplayer, Minecraft Realms,
+the Mods button while it shows, the Friends, Language and Accessibility icons, Options..., Quit Game
+and the bottom notice), each labelled with its translation key. A removed native control is neither drawn nor
+pressed until the screen initializes again. A later
 listener sees your edits only if your callback completes normally. There is no live focus setter
 or mutable lookup for built-in widgets.
 A custom widget can track its own focus via `set_focused` and read or change the state it owns.

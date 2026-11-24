@@ -42,7 +42,7 @@ pub use buffet::State as BuffetEditor;
 pub use create_world::{DIFFICULTIES, WorldOptions};
 pub use flat::{FlatLayer, FlatSettings, State as FlatEditor};
 pub use onboarding::Onboarding;
-use preset_buttons::ADDED_IDS;
+use preset_buttons::{ADDED_IDS, CREDITS_ID, credits_notice};
 use preset_editors::PresetEditorFactories;
 use world_toast::WorldToast;
 
@@ -450,6 +450,9 @@ pub struct Title {
     warning_check: Cell<[f32; 4]>,
     /// The bottom notice's `PlainTextButton` as last drawn: x, y, width, height.
     credits_button: Cell<[f32; 4]>,
+    /// The main menu's own widgets a mod removed at `ScreenEvent.Init.Post`, by id
+    /// ([`Title::init_children`]): neither drawn, pressed nor focused until the next init.
+    removed_children: Vec<u8>,
     /// `Minecraft.allowsMultiplayer()` once the account's attributes are known.
     pub allows_multiplayer: bool,
     /// The packages in the mods folder (the Mods screen's rows): the main menu's added buttons
@@ -932,6 +935,7 @@ impl Title {
             message_lines: Cell::new(1),
             warning_check: Cell::new([0.0; 4]),
             credits_button: Cell::new([0.0; 4]),
+            removed_children: Vec::new(),
             allows_multiplayer: true,
             mods: 0,
             ban_queue: Default::default(),
@@ -2347,7 +2351,7 @@ Would you like to enable the Narrator or visit the Accessibility Settings?",
                 return (Action::None, true, true);
             }
         }
-        if matches!(self.mode, Mode::Main) {
+        if matches!(self.mode, Mode::Main) && !self.removed_children.contains(&CREDITS_ID) {
             let [bx, by, bw, bh] = self.credits_button.get();
             if (bx..bx + bw).contains(&x) && (by..by + bh).contains(&y) {
                 return (Action::Credits, true, true);
