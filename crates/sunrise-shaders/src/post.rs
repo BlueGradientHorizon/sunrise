@@ -746,7 +746,7 @@ pub struct ModPackProgramRequest {
 }
 
 /// Resolution result for one [`ModPackProgramRequest`].
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct ModPackProgram {
     /// Mod pipeline slot index from [`ModPackProgramRequest::slot`].
     pub slot: usize,
@@ -1092,6 +1092,27 @@ pub fn load_post(
             p.blend = blend(properties, &p.name).unwrap_or(Some(TRANSLUCENT_BLEND));
             p
         });
+    // Resolve non-shadow mod pipeline requests against the pack's gbuffers/translucent programs.
+    // Shadow-slot mod requests resolve inside `load_shadow` only when `shadow_pass` is active.
+    let mod_programs: Vec<ModPackProgram> = inputs
+        .mod_programs
+        .iter()
+        .map(|req| {
+            let program = if req.group.shadow() {
+                None
+            } else {
+                let names: Vec<&str> = req.programs.iter().map(String::as_str).collect();
+                gbuffers(&names, req.group, &req.inputs).map(|mut p| {
+                    p.blend = blend(properties, &p.name).unwrap_or(req.default_blend);
+                    p
+                })
+            };
+            ModPackProgram {
+                slot: req.slot,
+                program,
+            }
+        })
+        .collect();
     if let Some(terrain) = &inputs.terrain {
         // Cutout terrain's alpha test, unless `alphaTest.*` says otherwise (3.2): alpha above
         // 0.5, which `alphaTestRef` reads. Iris 1.11.7 with probe packs of ours (#9307), through
@@ -1222,28 +1243,7 @@ pub fn load_post(
         Some(_) => true,
         None => !flag("particles.before.deferred").unwrap_or(false),
     };
-    // Resolve non-shadow mod pipeline requests against the pack's gbuffers/translucent programs.
-    // Shadow-slot mod requests resolve inside `load_shadow` only when `shadow_pass` is active.
-    let mut mod_programs: Vec<ModPackProgram> = inputs
-        .mod_programs
-        .iter()
-        .map(|req| {
-            let program = if req.group.shadow() {
-                None
-            } else {
-                let names: Vec<&str> = req.programs.iter().map(String::as_str).collect();
-                gbuffers(&names, req.group, &req.inputs).map(|mut p| {
-                    p.blend = blend(properties, &p.name).unwrap_or(req.default_blend);
-                    p
-                })
-            };
-            ModPackProgram {
-                slot: req.slot,
-                program,
-            }
-        })
-        .collect();
-    loader.post.mod_programs = std::mem::take(&mut mod_programs);
+    loader.post.mod_programs = mod_programs;
     load_shadow(
         &mut loader,
         inputs.terrain.as_ref(),
@@ -3529,6 +3529,7 @@ blend.composite1.colortex3 = ONE ONE ONE ONE
             terrain_one_pass: None,
             terrain_geometry: None,
             entity_geometry: None,
+            mod_programs: Vec::new(),
             interface_limits: Default::default(),
         };
         let post = load_post(&pack, "", &Properties::default(), &macros, &inputs);
@@ -3737,9 +3738,9 @@ blend.composite1.colortex3 = ONE ONE ONE ONE
             void main() { gl_FragData[0] = vec4(1.0, 0.0, 0.0, 1.0); }\n\
             #endif\n";
         let broken_fsh = "#version 120\nvoid main() { gl_FragData[0] = undeclared_symbol; }\n";
-        let pack = Pack::open_memory(
+        let pack = Pack::from_zip_bytes(
             "mod-pack-programs",
-            memory_pack(&[
+            crate::pack::tests::zip(&[
                 ("shaders/custom_terrain.vsh", mod_vsh),
                 ("shaders/custom_terrain.fsh", mod_fsh_defined),
                 ("shaders/broken_custom.vsh", mod_vsh),
@@ -3798,12 +3799,18 @@ blend.composite1.colortex3 = ONE ONE ONE ONE
         assert_eq!(post.mod_programs.len(), 3);
         assert_eq!(post.mod_programs[0].slot, 0);
         assert_eq!(
-            post.mod_programs[0].program.as_ref().map(|p| p.name.as_str()),
+            post.mod_programs[0]
+                .program
+                .as_ref()
+                .map(|p| p.name.as_str()),
             Some("custom_terrain")
         );
         assert_eq!(post.mod_programs[1].slot, 1);
         assert_eq!(
-            post.mod_programs[1].program.as_ref().map(|p| p.name.as_str()),
+            post.mod_programs[1]
+                .program
+                .as_ref()
+                .map(|p| p.name.as_str()),
             Some("gbuffers_terrain")
         );
         assert_eq!(post.mod_programs[2].slot, 2);

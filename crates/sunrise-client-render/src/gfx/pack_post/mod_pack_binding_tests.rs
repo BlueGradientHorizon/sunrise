@@ -59,7 +59,21 @@ fn load_with_mods(
     requests: Vec<sunrise_shaders::ModPackProgramRequest>,
     runtime: &OwnedModPackRuntime,
 ) -> (PackPost, wgpu::TextureView, wgpu::TextureView) {
-    let pack = sunrise_shaders::Pack::from_files(files);
+    use std::io::{Cursor, Write};
+    let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
+    for (name, contents) in files {
+        zip.start_file(
+            format!("shaders/{name}"),
+            zip::write::SimpleFileOptions::default(),
+        )
+        .unwrap();
+        zip.write_all(contents.as_bytes()).unwrap();
+    }
+    let pack = sunrise_shaders::Pack::from_zip_bytes(
+        "mod-pack-binding-fixture",
+        zip.finish().unwrap().into_inner(),
+    )
+    .unwrap();
     let mut macros = sunrise_shaders::Macros::standard();
     let (props, _) = sunrise_shaders::read_properties(&pack, &mut macros);
     let inputs = sunrise_shaders::GameInputs {
