@@ -72,9 +72,13 @@ DEFAULT_INCLUDES_TABLE = Path(__file__).resolve().with_name("game_module_include
 
 SIDE_MOD_NAME = {"client": "client_side", "server": "server_side"}
 SIDE_STRUCT_NAME = {"client": "ClientState", "server": "ServerState"}
+SIDE_WRAPPER_STRUCTS = {
+    "client": frozenset({"ClientOnly", "ClientShared"}),
+    "server": frozenset({"ServerOnly", "ServerShared"}),
+}
 SIDE_ALLOWED_STRUCTS = {
-    "client": frozenset({"ClientState", "ClientCpuResources", "ClientConstructEffects"}),
-    "server": frozenset({"ServerState"}),
+    "client": frozenset({"ClientState", "ClientCpuResources", "ClientConstructEffects"}) | SIDE_WRAPPER_STRUCTS["client"],
+    "server": frozenset({"ServerState"}) | SIDE_WRAPPER_STRUCTS["server"],
 }
 SIDE_OLD_FILE = {"client": "client_state.rs", "server": "server_state.rs"}
 SIDE_NEW_FILE = {"client": "client_side.rs", "server": "server_side.rs"}
@@ -1925,6 +1929,12 @@ def check_side_file_structure(
                             problems.append(
                                 f"{rel}:{attr.line}: `{sname}` must not carry attribute `#[{attr.name}...]`"
                             )
+            elif cname in SIDE_WRAPPER_STRUCTS[side]:
+                for attr in item.attrs:
+                    if attr.name not in ("doc", "allow", "expect", "repr"):
+                        problems.append(
+                            f"{rel}:{attr.line}: wrapper `{cname}` must not carry attribute `#[{attr.name}...]`"
+                        )
             continue
 
         if item.kind == "impl":
@@ -1933,6 +1943,7 @@ def check_side_file_structure(
             impl_toks = [t for t in tokens if item.start <= t[2] and t[3] <= item.end]
             is_trait, trait_toks, target_toks, brace_idx = parse_impl_header(impl_toks)
             segs = target_path_segments(target_toks)
+            allowed_impl_targets = frozenset({sname}) | SIDE_WRAPPER_STRUCTS[side]
             if is_trait:
                 trait_str = format_rust_tokens(trait_toks) or "<unknown>"
                 target_str = format_rust_tokens(target_toks) or "<unknown>"
@@ -1940,7 +1951,7 @@ def check_side_file_structure(
                     f"{rel}:{item.line}: disallowed trait impl `{trait_str}` for `{target_str}` in side file "
                     "(state structs must not implement traits here)"
                 )
-            elif segs != [sname]:
+            elif len(segs) != 1 or segs[0] not in allowed_impl_targets:
                 problems.append(
                     f"{rel}:{item.line}: disallowed inherent `impl {'::'.join(segs) or '<unknown>'}` in side file"
                 )
