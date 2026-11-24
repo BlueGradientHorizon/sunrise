@@ -2554,9 +2554,9 @@ impl Streaming {
                     async_requests: (!self.async_requests.is_empty()).then(|| AsyncRequests {
                         chunks: &self.async_requests,
                         cover: self
-                            .async_requests_cover
+                            .async_request_cover
                             .as_ref()
-                            .filter(|_| self.async_requests_cover_current),
+                            .filter(|_| self.async_request_cover_current),
                     }),
                 };
                 let (protos, generating) = (&self.protos, &self.generating);
@@ -2754,9 +2754,9 @@ impl Streaming {
                 async_requests: (!self.async_requests.is_empty()).then(|| AsyncRequests {
                     chunks: &self.async_requests,
                     cover: self
-                        .async_requests_cover
+                        .async_request_cover
                         .as_ref()
-                        .filter(|_| self.async_requests_cover_current),
+                        .filter(|_| self.async_request_cover_current),
                 }),
             };
             self.waiting.retain(|&(x, sy, z)| {
@@ -2929,9 +2929,9 @@ impl Streaming {
                 async_requests: (!self.async_requests.is_empty()).then(|| AsyncRequests {
                     chunks: &self.async_requests,
                     cover: self
-                        .async_requests_cover
+                        .async_request_cover
                         .as_ref()
-                        .filter(|_| self.async_requests_cover_current),
+                        .filter(|_| self.async_request_cover_current),
                 }),
             },
             world,
