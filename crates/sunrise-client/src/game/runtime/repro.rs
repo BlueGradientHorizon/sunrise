@@ -554,7 +554,7 @@ impl Game<'_> {
                 Some(server) => {
                     server.ask(|reply| OwnerRequest::Control(ControlRequest::WorldRoot(reply)))
                 }
-                None => self.world_dir(),
+                None => self.start_recording_world_root_server(),
             }
         } else {
             None
@@ -652,6 +652,15 @@ impl Game<'_> {
             "world": world,
             "mode": mode,
         }))
+    }
+
+    #[inline(always)]
+    pub(in crate::game) fn start_recording_world_root_server(&self) -> Option<PathBuf> {
+        if !self.server.world_root.as_os_str().is_empty() {
+            Some(self.server.world_root.clone())
+        } else {
+            None
+        }
     }
 
     fn record_stop_command(

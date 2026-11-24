@@ -610,7 +610,7 @@ impl Game<'_> {
             return None;
         }
         if self.client.panel.of.as_ref() != Some(&of) {
-            let items = self.items();
+            let items = world_items!(self);
             let stacks = shown
                 .items
                 .iter()
@@ -620,11 +620,9 @@ impl Game<'_> {
             self.client.panel.stacks = stacks;
             // The same title again (the mod updating its buttons) keeps the page.
             let old = self.client.panel.recipes.take();
-            let items = self.items();
-            let recipes = shown
+            self.client.panel.recipes = shown
                 .as_ref()
                 .map(|shown| super::native_panel_recipes::Pages::new(items, shown, old));
-            self.client.panel.recipes = recipes;
             self.client.panel.of = Some(of.clone());
         }
         Some(of.0)
