@@ -280,7 +280,7 @@ fn sulfur_cube_splits_two_babies_unless_primed_and_size_one_asks_nobody() {
             // Populating the initially empty list on a primed sulfur cube spawns the added child.
             *push_when_empty.lock().unwrap() = true;
             let mut dying = cube(game, "minecraft:sulfur_cube", 4, 0);
-            dying.extra.counter2 = 40;
+            dying.extra.sulfur_fuse = sunrise_client::mobs::sulfur_cube::Fuse::set(40);
             assert!(sunrise_client::mobs::sulfur_cube::primed(&dying));
             game.split_dead_cube(dying);
             assert_eq!(game.mobs.len(), 1);
