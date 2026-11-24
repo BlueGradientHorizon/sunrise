@@ -300,10 +300,6 @@ fn two_mods_interoperate_through_c_convention_tags_and_all_ten_registries() {
                 Some(true)
             );
 
-            assert!(matches!(
-                tags.world_clocks(c::world_clocks::IGNORES_PAUSE_COMMAND),
-                TagMembers::Members(_)
-            ));
             let clock_tag = tags
                 .key(&Identifier::parse("mod_a:primary").unwrap())
                 .unwrap()
@@ -318,8 +314,9 @@ fn two_mods_interoperate_through_c_convention_tags_and_all_ten_registries() {
     });
 }
 
-/// Every built-in convention tag across all ten registries binds cleanly against vanilla 26.3
-/// with zero unresolved required entries, zero cycles, and complete API key resolution.
+/// Every built-in convention tag across all nine NeoForge convention-tagged registries binds
+/// cleanly against vanilla 26.3 with zero unresolved required entries, zero cycles, and complete
+/// API key resolution.
 #[test]
 #[ignore = "daily"]
 fn all_builtin_convention_tags_bind_cleanly_against_26_3() {
@@ -348,7 +345,7 @@ fn all_builtin_convention_tags_bind_cleanly_against_26_3() {
         let host: &dyn Host = game;
         let tags = host.tags();
         let all = convention::all();
-        assert_eq!(all.len(), 10, "expected all 10 convention tag registries");
+        assert_eq!(all.len(), 9, "expected all 9 convention tag registries");
 
         let mut total_checked = 0usize;
         for (registry, entries) in all {
@@ -394,10 +391,6 @@ fn all_builtin_convention_tags_bind_cleanly_against_26_3() {
                         tags.damage_types(key.typed::<DamageTypeKey>()),
                         TagMembers::Members(_)
                     ),
-                    "world_clock" => matches!(
-                        tags.world_clocks(key.typed::<WorldClockKey>()),
-                        TagMembers::Members(_)
-                    ),
                     other => panic!("unexpected convention tag registry {other}"),
                 };
                 assert!(
@@ -407,12 +400,12 @@ fn all_builtin_convention_tags_bind_cleanly_against_26_3() {
                 total_checked += 1;
             }
         }
-        assert!(
-            total_checked >= 540,
-            "expected ~544 convention tags, checked {total_checked}"
+        assert_eq!(
+            total_checked, 540,
+            "expected all 540 NeoForge convention tags, checked {total_checked}"
         );
 
-        // Spot-check const-built typed constants match dynamic TagKey lookup across all 10 modules.
+        // Spot-check const-built typed constants match dynamic TagKey lookup across all 9 modules.
         assert_eq!(
             c::blocks::ORES.untyped(),
             tags.key(&Identifier::parse("c:ores").unwrap()).unwrap()
@@ -452,11 +445,6 @@ fn all_builtin_convention_tags_bind_cleanly_against_26_3() {
         assert_eq!(
             c::damage_types::IS_MAGIC.untyped(),
             tags.key(&Identifier::parse("neoforge:is_magic").unwrap())
-                .unwrap()
-        );
-        assert_eq!(
-            c::world_clocks::IGNORES_PAUSE_COMMAND.untyped(),
-            tags.key(&Identifier::parse("neoforge:ignores/pause_command").unwrap())
                 .unwrap()
         );
 
