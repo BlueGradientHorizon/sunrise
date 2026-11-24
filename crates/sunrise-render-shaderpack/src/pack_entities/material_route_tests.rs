@@ -164,17 +164,25 @@ fn native_terrain_quads_take_the_block_program_where_the_block_atlas_holds_them(
     let atlas = atlas();
     let runs = |drawn, atlas| {
         material_runs(&vertices, &spans, drawn, atlas)
-            .map(|r| (r.range, r.program, r.polygon_offset, r.block_atlas))
+            .map(|r| {
+                (
+                    r.range,
+                    r.program,
+                    r.polygon_offset,
+                    r.block_atlas,
+                    r.sorted,
+                )
+            })
             .collect::<Vec<_>>()
     };
     assert_eq!(
         runs([true; PROGRAMS], Some(&atlas)),
         [
-            (0..4, Some(BLOCK), false, false),
-            (4..16, Some(BLOCK), false, true),
-            (16..24, Some(BLOCK_TRANSLUCENT), false, true),
-            (24..40, None, false, false),
-            (40..44, Some(BLOCK), false, false),
+            (0..4, Some(BLOCK), false, false, false),
+            (4..16, Some(BLOCK), false, true, false),
+            (16..24, Some(BLOCK_TRANSLUCENT), false, true, true),
+            (24..40, None, false, false, false),
+            (40..44, Some(BLOCK), false, false, false),
         ]
     );
     let mut opaque = [true; PROGRAMS];
@@ -182,19 +190,33 @@ fn native_terrain_quads_take_the_block_program_where_the_block_atlas_holds_them(
     assert_eq!(
         runs(opaque, Some(&atlas)),
         [
-            (0..4, Some(BLOCK), false, false),
-            (4..24, Some(BLOCK), false, true),
-            (24..40, None, false, false),
-            (40..44, Some(BLOCK), false, false),
+            (0..4, Some(BLOCK), false, false, false),
+            (4..16, Some(BLOCK), false, true, false),
+            (16..24, Some(BLOCK), false, true, true),
+            (24..40, None, false, false, false),
+            (40..44, Some(BLOCK), false, false, false),
         ],
-        "no translucent block program: the block program draws them all"
+        "no translucent block program: the block program draws them all, the translucent ones \
+         sorted apart"
+    );
+    let mut no_block = [true; PROGRAMS];
+    no_block[BLOCK] = false;
+    no_block[BLOCK_TRANSLUCENT] = false;
+    assert_eq!(
+        runs(no_block, Some(&atlas)),
+        [
+            (0..4, Some(BLOCK), false, false, false),
+            (4..40, None, false, false, false),
+            (40..44, Some(BLOCK), false, false, false),
+        ],
+        "no block program: all Sunrise's, so none is cast either"
     );
     assert_eq!(
         runs([true; PROGRAMS], None),
         [
-            (0..4, Some(BLOCK), false, false),
-            (4..40, None, false, false),
-            (40..44, Some(BLOCK), false, false),
+            (0..4, Some(BLOCK), false, false, false),
+            (4..40, None, false, false, false),
+            (40..44, Some(BLOCK), false, false, false),
         ],
         "no block atlas: all Sunrise's"
     );

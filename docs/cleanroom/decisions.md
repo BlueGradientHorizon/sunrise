@@ -119,14 +119,19 @@ the full list.
   (`pack_atlas`): each quad's UVs are placed in its sprite's cell of that atlas, clamped to the sprite per vertex as the
   pack's terrain clamps them. Its `normals` and `specular` read the stand-ins a program reads with no map bound: the
   block programs read those maps as the shared atlas's paged maps, whose pages say nothing of the block atlas. The
-  pack's shadow program draws it too, with the same atlas. A quad whose sprite the block atlas lacks (a layer past
-  the atlas's table, or a fluid layer below 0, NaN or infinite), a pack without a block program, or one without a
-  block atlas leaves the quad to Sunrise, as before.
+  translucent kinds of one block entity's run are drawn far to near, by the distance and tie order Sunrise's own draw
+  sorts them with (`QuadSort`); separate block entities stay separate draws, in the order they came. The pack's shadow
+  program draws what the block program draws, with the same atlas. A quad whose sprite the block atlas lacks (a layer
+  past the atlas's table, or a fluid layer below 0, NaN or infinite), a pack without a block program (even one with a
+  shadow program: nothing casts the quad then, as before), or one without a block atlas leaves the quad to Sunrise.
 - **Reason:** 2.3's program for block entities is the only one the spec ties to this geometry, and 6.1.4 then puts it
   in the buffers the pack's `final` reads; drawn natively, it reached only `colortex0`. The block atlas already holds
   every terrain sprite, as the pack's terrain reads them, so no texture is copied; the renderer has no table from a
-  terrain sprite layer to its place in the shared atlas. Paged-map reads of the block atlas's UVs would return another texture's material.
+  terrain sprite layer to its place in the shared atlas. Paged-map reads of the block atlas's UVs would return another
+  texture's material. Sunrise's own draw sorts these translucent kinds on upload; within a run the pack's draw keeps
+  that order, while a sort across block entities would need one draw for several `blockEntityId`s.
 - **Tests:** `pack_entities::material_route_tests::native_terrain_quads_take_the_block_program_where_the_block_atlas_holds_them`
   and `pack_entities::material_route_tests::the_block_atlas_places_native_terrain_quads` (`sunrise-render-shaderpack`);
   the daily `pack_entities::gpu_span_tests::native_terrain_quads_draw_in_the_block_programs_from_the_block_atlas`
-  (`sunrise-render-shaderpack`) and `pack_block_entity_runs` (`sunrise-client-render`, the real `Renderer`).
+  (`sunrise-render-shaderpack`), and `pack_block_entity_runs` and
+  `gfx::pack_post::block_atlas_group_tests::a_resize_drops_the_portal_and_block_atlas_groups` (`sunrise-client-render`).

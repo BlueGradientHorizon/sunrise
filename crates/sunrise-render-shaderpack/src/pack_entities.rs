@@ -8,7 +8,7 @@
 
 use std::ops::Range;
 
-use sunrise_render_core::entity::TEXT_POLYGON_OFFSET_SOLID_OVERLAY;
+use sunrise_render_core::entity::{QuadSort, TEXT_POLYGON_OFFSET_SOLID_OVERLAY};
 use sunrise_shaders::render_stage;
 
 use sunrise_render_core::{
@@ -301,6 +301,10 @@ pub struct PackEntities {
     /// Where the pack's block atlas holds each terrain sprite: none leaves a block entity's
     /// native terrain quads to Sunrise.
     block_atlas: Option<BlockAtlas>,
+    /// Sorts translucent native terrain quads, and where each sorted quad came from and went
+    /// (first vertex in `Frame::entities`, first in the buffer), kept between frames.
+    sort: QuadSort,
+    moved: Vec<(u32, u32)>,
 }
 
 impl PackEntities {
@@ -345,6 +349,8 @@ impl PackEntities {
             uniforms: Vec::new(),
             draws: Vec::new(),
             block_atlas: None,
+            sort: QuadSort::default(),
+            moved: Vec::new(),
         }
     }
 
@@ -508,6 +514,7 @@ impl PackEntities {
             program: material,
             polygon_offset: offset,
             block_atlas,
+            sorted,
         } in material_runs(entities, spans, drawn, atlas)
         {
             let run_start = range.start as u32;
@@ -608,7 +615,21 @@ impl PackEntities {
                     || (part == Part::Plain
                         && bytemuck::cast_slice::<_, u8>(&whole[..run.len().min(whole.len())])
                             == bytemuck::cast_slice::<_, u8>(run));
-                if in_order {
+                if sorted {
+                    // Translucent native terrain quads far to near, as Sunrise's own draw sorts
+                    // them (`RenderTypes.translucentMovingBlock` and still fluids sort on
+                    // upload); each quad still finds its copy from last frame.
+                    self.sort
+                        .sort(self.scratch[start as usize..].as_chunks_mut::<4>().0);
+                    self.moved.clear();
+                    self.moved.extend(
+                        (self.sort.sources().enumerate()).map(|(to, from)| {
+                            (run_start + 4 * from, posed + start + 4 * to as u32)
+                        }),
+                    );
+                    self.moved.sort_unstable();
+                    copied.extend(self.moved.iter().map(|&(from, to)| (from, to, 4)));
+                } else if in_order {
                     copied.push((run_start, posed + start, run.len() as u32));
                 }
                 if program == DESTROY {
@@ -926,11 +947,14 @@ struct MaterialRun {
     polygon_offset: bool,
     /// Native terrain quads, placed in the block atlas (`BlockAtlas::place`).
     block_atlas: bool,
+    /// Translucent ones of them (a still fluid's, a translucent model's), drawn far to near.
+    sorted: bool,
 }
 
 /// Split where a quad's program, depth mode or atlas changes, keeping contiguous runs in vertex
-/// order. A block entity's native terrain quad goes to the block program when `atlas` holds its
-/// sprite (spec 2.3: `gbuffers_block` draws block entities), else to Sunrise.
+/// order. A block entity's native terrain quad goes to the block program when the pack has it
+/// and `atlas` holds its sprite (spec 2.3: `gbuffers_block` draws block entities), else to
+/// Sunrise.
 fn material_runs<'a>(
     vertices: &'a [Vertex],
     spans: &'a [EntitySpan],
@@ -945,18 +969,24 @@ fn material_runs<'a>(
             let layer = vertices[i].layer;
             let material = material_program(&span, layer, drawn);
             if !is_native_terrain(layer) {
-                return (material, polygon_offset(material, layer), false);
+                return (material, polygon_offset(material, layer), false, false);
             }
-            let held = matches!(material, Some(BLOCK | BLOCK_TRANSLUCENT))
+            // Only while the pack draws them (`drawn`): a pack with a shadow program but no
+            // block program leaves them to Sunrise, uncast, as before.
+            let held = material.is_some_and(|p| matches!(p, BLOCK | BLOCK_TRANSLUCENT) && drawn[p])
                 && vertices
                     .get(i..i + 4)
                     .is_some_and(|quad| atlas.is_some_and(|a| a.holds(quad)));
             if held {
-                (material, false, true)
+                let translucent = matches!(
+                    layer & 0xffff,
+                    FLUID_OVERLAY | TERRAIN_MODEL_TRANSLUCENT_OVERLAY
+                );
+                (material, false, true, translucent)
             } else {
                 // Sunrise's (the run's other quads may still be the pack's: `prepare` keeps
                 // native terrain quads out of a run it does not place).
-                (material.filter(|_| !split), false, false)
+                (material.filter(|_| !split), false, false, false)
             }
         };
         let mut start = range.start;
@@ -982,6 +1012,7 @@ fn material_runs<'a>(
                 program: key.0,
                 polygon_offset: key.1,
                 block_atlas: key.2,
+                sorted: key.3,
             })
         })
     })
@@ -1613,6 +1644,89 @@ mod gpu_span_tests {
                 );
             }
         }
+        let span = [EntitySpan {
+            start: 0,
+            id: 77,
+            stage: render_stage("BLOCK_ENTITIES"),
+            ..Default::default()
+        }];
+        let casters = Casters {
+            blocks: true,
+            ..Default::default()
+        };
+        // Translucent ones far to near, as Sunrise's own draw sorts them: two fluid quads ahead
+        // of the camera, the near one (z 2) submitted first, then a translucent model (z 9),
+        // then the far fluid (z 6).
+        let at = |overlay: u32, sprite: u32, z: f32| {
+            let mut q = quad(overlay, sprite, 0.0);
+            for v in &mut q {
+                v.pos[2] = z;
+            }
+            q
+        };
+        let translucent = [
+            at(super::FLUID_OVERLAY, 0, 2.0),
+            at(super::TERRAIN_MODEL_TRANSLUCENT_OVERLAY, 1, 9.0),
+            at(super::FLUID_OVERLAY, 1, 6.0),
+        ]
+        .concat();
+        geometry.prepare(
+            &device,
+            &queue,
+            &layout.layout,
+            &translucent,
+            &span,
+            [true; PROGRAMS],
+            ([0.; 4], [1; 2]),
+            casters,
+            &mut rest,
+            None,
+            (&[], &[]),
+        );
+        assert_eq!(
+            (geometry.draws.iter())
+                .map(|d| (d.base, d.quads, d.program, d.block_atlas))
+                .collect::<Vec<_>>(),
+            [(0, 3, BLOCK_TRANSLUCENT, true)]
+        );
+        assert_eq!(
+            (geometry.scratch.chunks(4))
+                .map(|q| (q[0].pos[2], q[0].uv))
+                .collect::<Vec<_>>(),
+            [(9.0, [0.75, 0.5]), (6.0, [0.75, 0.5]), (2.0, [0.25, 0.5])],
+            "far to near, each with its own sprite"
+        );
+        // No block program (a shadow program only): Sunrise draws them and nothing casts them,
+        // as before.
+        let mut no_block = [true; PROGRAMS];
+        no_block[BLOCK] = false;
+        no_block[BLOCK_TRANSLUCENT] = false;
+        geometry.prepare(
+            &device,
+            &queue,
+            &layout.layout,
+            &mixed,
+            &span,
+            no_block,
+            ([0.; 4], [1; 2]),
+            casters,
+            &mut rest,
+            None,
+            (&[], &[]),
+        );
+        assert!(geometry.draws.iter().all(|d| !d.block_atlas && !d.pack));
+        assert_eq!(
+            (geometry.draws.iter())
+                .map(|d| (d.base, d.shadow))
+                .collect::<Vec<_>>(),
+            [(0, true), (4, true)],
+            "only the model's quads cast"
+        );
+        assert_eq!(
+            bytemuck::cast_slice::<_, u8>(&rest),
+            bytemuck::cast_slice::<_, u8>(&mixed),
+            "Sunrise draws the whole run, in order"
+        );
     }
 
     #[test]

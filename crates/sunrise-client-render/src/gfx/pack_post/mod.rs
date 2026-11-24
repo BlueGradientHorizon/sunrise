@@ -406,3 +406,6 @@ mod material_route_tests;
 
 #[cfg(test)]
 mod sign_text_target_tests;
+
+#[cfg(test)]
+mod block_atlas_group_tests;

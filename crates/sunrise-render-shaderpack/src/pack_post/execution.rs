@@ -851,6 +851,14 @@ impl PackPost {
         if !pass.block.is_empty() {
             queue.write_buffer(&pass.ubo, 0, &pass.block);
         }
+        self.cached_group(device, pass)
+    }
+
+    /// `pass`'s bind group for the frame's state, from its cache (`Pass::groups`) or made and
+    /// cached: what `bind` gives once its copies and uniform upload are done. A second group of
+    /// the same pass (another atlas, `portal_group`, `block_atlas_group`) takes it from here
+    /// rather than from `bind`, so those run once a pass.
+    fn cached_group(&self, device: &wgpu::Device, pass: &mut Pass) -> wgpu::BindGroup {
         let targets = self.targets.as_ref().expect("resized");
         let shadow = self.shadow_targets.as_ref();
         let shadow_main = shadow.map_or(0, |s| s.main);
@@ -1367,10 +1375,8 @@ impl PackPost {
             let group = self.bind(device, queue, encoder, pass, size);
             let portal_group = self.portal_group(
                 device,
-                queue,
                 encoder,
                 pass,
-                size,
                 geometry
                     .draws
                     .iter()
@@ -1378,10 +1384,7 @@ impl PackPost {
             );
             let block_group = self.block_atlas_group(
                 device,
-                queue,
-                encoder,
                 pass,
-                size,
                 (geometry.draws.iter()).any(|d| d.pack && d.program == program && d.block_atlas),
             );
             {
@@ -1460,10 +1463,8 @@ impl PackPost {
     pub fn portal_group(
         &mut self,
         device: &wgpu::Device,
-        queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
         pass: &mut Pass,
-        size: [u32; 2],
         wanted: bool,
     ) -> Option<wgpu::BindGroup> {
         let atlas = pass.atlas.clone().or_else(|| self.atlas.clone())?;
@@ -1489,7 +1490,7 @@ impl PackPost {
         let view = self.portal_texture.as_ref().map(|p| p.1.clone());
         let saved = std::mem::replace(&mut pass.atlas, view);
         let groups = std::mem::replace(&mut pass.groups, std::mem::take(&mut pass.portal_groups));
-        let group = self.bind(device, queue, encoder, pass, size);
+        let group = self.cached_group(device, pass);
         pass.portal_groups = std::mem::replace(&mut pass.groups, groups);
         pass.atlas = saved;
         Some(group)
@@ -1501,12 +1502,9 @@ impl PackPost {
     /// atlas: these draws get the stand-ins a program reads with no map bound. `None` when no such
     /// draw is in this pass, or the pack has no block atlas.
     pub fn block_atlas_group(
-        &mut self,
+        &self,
         device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        encoder: &mut wgpu::CommandEncoder,
         pass: &mut Pass,
-        size: [u32; 2],
         wanted: bool,
     ) -> Option<wgpu::BindGroup> {
         let atlas = self.atlas.clone().filter(|_| wanted)?;
@@ -1521,7 +1519,7 @@ impl PackPost {
             &mut pass.groups,
             std::mem::take(&mut pass.block_atlas_groups),
         );
-        let group = self.bind(device, queue, encoder, pass, size);
+        let group = self.cached_group(device, pass);
         pass.block_atlas_groups = std::mem::replace(&mut pass.groups, groups);
         (pass.atlas, pass.paged, pass.material_maps) = saved;
         Some(group)
@@ -1553,10 +1551,8 @@ impl PackPost {
             let group = self.bind(device, queue, encoder, pass, size);
             let portal_group = self.portal_group(
                 device,
-                queue,
                 encoder,
                 pass,
-                size,
                 (geometry.draws.iter()).any(|d| {
                     d.shadow
                         && crate::pack_entities::shadow_program(d.program) == program
@@ -1565,10 +1561,7 @@ impl PackPost {
             );
             let block_group = self.block_atlas_group(
                 device,
-                queue,
-                encoder,
                 pass,
-                size,
                 (geometry.draws.iter()).any(|d| {
                     d.shadow
                         && crate::pack_entities::shadow_program(d.program) == program
