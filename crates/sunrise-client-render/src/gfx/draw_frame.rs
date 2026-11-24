@@ -2286,6 +2286,15 @@ impl Renderer {
             Some((color, depth)) => (color, depth),
             None => (&view_target, &self.depth),
         };
+        let pack_draws_mod_stages = world_primitives
+            && pack_post
+            && scaled.is_some()
+            && self
+                .pack_post
+                .as_ref()
+                .and_then(|p| p.1.as_ref())
+                .is_some_and(|p| p.stage_color_format().is_some());
+        let mut primitive_stage = 0usize;
         if culling && let Some(cull) = &mut self.cull {
             cull.bind_depth(&self.device, world_depth);
         }
@@ -2475,11 +2484,9 @@ impl Renderer {
                 sky_switches,
                 hdr_gain,
             );
-            // The next stage of the mods' primitives to draw (`RenderLevelStage`): a stage this
-            // route does not draw its part of the world at goes with the next one it reaches.
-            let mut primitive_stage = 0;
             // RenderLevelStageEvent.AfterSky: behind every terrain, once this pass drew the sky.
-            if world_primitives && !pack_draws_sky && !pack_draws_terrain {
+            if world_primitives && !pack_draws_mod_stages && !pack_draws_sky && !pack_draws_terrain
+            {
                 self.world_primitives
                     .draw_through(&mut pass, &mut primitive_stage, 0);
                 pass.set_bind_group(0, &self.group, &[]);
@@ -2820,7 +2827,7 @@ impl Renderer {
             }
             // RenderLevelStageEvent.AfterOpaqueBlocks: after solid and cutout terrain, before
             // entities.
-            if world_primitives && !pack_draws_terrain {
+            if world_primitives && !pack_draws_mod_stages && !pack_draws_terrain {
                 self.world_primitives
                     .draw_through(&mut pass, &mut primitive_stage, 1);
                 pass.set_bind_group(0, &self.group, &[]);
@@ -3475,7 +3482,11 @@ impl Renderer {
             }
             // RenderLevelStageEvent.AfterTranslucentBlocks: after translucent terrain, here or
             // OIT's.
-            if world_primitives && !pack_draws_water && !pack_draws_terrain {
+            if world_primitives
+                && !pack_draws_mod_stages
+                && !pack_draws_water
+                && !pack_draws_terrain
+            {
                 self.world_primitives
                     .draw_through(&mut pass, &mut primitive_stage, 2);
                 pass.set_bind_group(0, &self.group, &[]);
@@ -3596,7 +3607,7 @@ impl Renderer {
                 pass.set_bind_group(0, &self.group, &[]);
             }
             // RenderLevelStageEvent.AfterWeather: after the rain and snow this pass drew.
-            if world_primitives && !pack_draws_weather && !oit_on {
+            if world_primitives && !pack_draws_mod_stages && !pack_draws_weather && !oit_on {
                 self.world_primitives
                     .draw_through(&mut pass, &mut primitive_stage, 3);
                 pass.set_bind_group(0, &self.group, &[]);
@@ -3639,8 +3650,10 @@ impl Renderer {
             }
             // Native mods' primitives: after the entities and the rest of the world, into its
             // targets (its resolution, reversed depth and TAA), before the hand
-            // (RenderLevelStageEvent.AfterLevel), with any stage not drawn yet.
-            if world_primitives {
+            // (RenderLevelStageEvent.AfterLevel), with any stage not drawn yet. When an active
+            // shader pack renders world passes, `PackPost::run_frame` draws stages 0..=3 into
+            // `colortex0` + `depthtex0` and stage 4 (`AfterLevel`) against exported `world_depth`.
+            if world_primitives && !pack_draws_mod_stages {
                 pass.stage(self.own_timing.as_mut(), "mod primitives");
                 self.world_primitives.draw_through(
                     &mut pass,
@@ -3720,6 +3733,7 @@ impl Renderer {
                 sourced_frame,
                 sourced_cpu,
                 lifts_world,
+                pack_mod_stage: pack_draws_mod_stages.then_some(primitive_stage),
             },
         )?;
         laps.lap("r_passes");

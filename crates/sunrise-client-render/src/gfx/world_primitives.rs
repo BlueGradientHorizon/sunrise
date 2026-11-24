@@ -53,19 +53,42 @@ struct Globals {
     viewport: [f32; 4],
 }
 
+/// Clip-space transform from Sunrise's world target (screen rows, reversed-Z `[1..0]`) to a
+/// shader pack's `colortex0` + `depthtex0` (GL rows, GL `[0..1]` depth): maps `(x, y, z, w)`
+/// to `(x, -y, w - z, w)` so `ndc_y' = -ndc_y` and `ndc_z' = 1 - ndc_z`.
+pub(crate) fn pack_clip_matrix(view_proj: Mat4) -> Mat4 {
+    let adapt = Mat4::from_cols_array(&[
+        1.0, 0.0, 0.0, 0.0, //
+        0.0, -1.0, 0.0, 0.0, //
+        0.0, 0.0, -1.0, 0.0, //
+        0.0, 0.0, 1.0, 1.0, //
+    ]);
+    adapt * view_proj
+}
+
 /// The pipelines and buffers that draw a [`Batch`].
 pub struct WorldPrimitives {
-    /// Depth tested, then seen through walls.
+    shader: wgpu::ShaderModule,
+    pipeline_layout: wgpu::PipelineLayout,
+    /// Depth tested, then seen through walls (world target: reversed-Z, screen rows).
     quad_pipelines: [wgpu::RenderPipeline; 2],
     line_pipelines: [wgpu::RenderPipeline; 2],
+    /// Lazily built for a shader pack's `colortex0` format + GL `[0..1]` `LessEqual` depth.
+    pack_pipelines: Option<(
+        wgpu::TextureFormat,
+        [wgpu::RenderPipeline; 2],
+        [wgpu::RenderPipeline; 2],
+    )>,
     layout: wgpu::BindGroupLayout,
     globals: wgpu::Buffer,
+    pack_globals: wgpu::Buffer,
     sampler: wgpu::Sampler,
     quads: wgpu::Buffer,
     lines: wgpu::Buffer,
     indices: wgpu::Buffer,
     index_quads: u32,
     group: Option<AtlasGroup>,
+    pack_group: Option<AtlasGroup>,
     quad_vertices: Vec<Vertex>,
     line_instances: Vec<[f32; 8]>,
     index_data: Vec<u32>,
@@ -130,6 +153,66 @@ impl WorldPrimitives {
             bind_group_layouts: &[Some(&layout)],
             ..Default::default()
         });
+        let (quad_pipelines, line_pipelines) = Self::build_pipelines(
+            device,
+            &shader,
+            &pipeline_layout,
+            color_format,
+            linear,
+            wgpu::CompareFunction::GreaterEqual,
+        );
+        let buffer = |label, size, usage| {
+            device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some(label),
+                size,
+                usage: usage | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            })
+        };
+        Self {
+            shader,
+            pipeline_layout,
+            quad_pipelines,
+            line_pipelines,
+            pack_pipelines: None,
+            globals: buffer(
+                "World primitive globals",
+                std::mem::size_of::<Globals>() as u64,
+                wgpu::BufferUsages::UNIFORM,
+            ),
+            pack_globals: buffer(
+                "World primitive pack globals",
+                std::mem::size_of::<Globals>() as u64,
+                wgpu::BufferUsages::UNIFORM,
+            ),
+            sampler: device.create_sampler(&wgpu::SamplerDescriptor {
+                label: Some("World primitives"),
+                ..Default::default()
+            }),
+            layout,
+            quads: buffer("World primitive quads", 0, wgpu::BufferUsages::VERTEX),
+            lines: buffer("World primitive lines", 0, wgpu::BufferUsages::VERTEX),
+            indices: buffer("World primitive indices", 0, wgpu::BufferUsages::INDEX),
+            index_quads: 0,
+            group: None,
+            pack_group: None,
+            quad_vertices: Vec::new(),
+            line_instances: Vec::new(),
+            index_data: Vec::new(),
+            counts: [0; 4],
+            stage_ends: [[0; 4]; STAGES - 1],
+            pipelines: super::mod_pipelines::ModPipelines::new(device, color_format),
+        }
+    }
+
+    fn build_pipelines(
+        device: &wgpu::Device,
+        shader: &wgpu::ShaderModule,
+        pipeline_layout: &wgpu::PipelineLayout,
+        color_format: wgpu::TextureFormat,
+        linear: bool,
+        depth_compare: wgpu::CompareFunction,
+    ) -> ([wgpu::RenderPipeline; 2], [wgpu::RenderPipeline; 2]) {
         let quad_attributes =
             wgpu::vertex_attr_array![0=>Float32x3,1=>Float32x2,2=>Uint32,3=>Unorm8x4,4=>Uint32];
         let line_attributes =
@@ -151,9 +234,9 @@ impl WorldPrimitives {
                         through: bool| {
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some(label),
-                layout: Some(&pipeline_layout),
+                layout: Some(pipeline_layout),
                 vertex: wgpu::VertexState {
-                    module: &shader,
+                    module: shader,
                     entry_point: Some(entry[0]),
                     compilation_options: Default::default(),
                     buffers,
@@ -165,21 +248,21 @@ impl WorldPrimitives {
                     ..Default::default()
                 },
                 // Blended over what is drawn, writing no depth: a translucent box doesn't hide
-                // the primitives behind it. Reversed depth: nearer is greater.
+                // the primitives behind it.
                 depth_stencil: Some(wgpu::DepthStencilState {
                     format: wgpu::TextureFormat::Depth32Float,
                     depth_write_enabled: Some(false),
                     depth_compare: Some(if through {
                         wgpu::CompareFunction::Always
                     } else {
-                        wgpu::CompareFunction::GreaterEqual
+                        depth_compare
                     }),
                     stencil: Default::default(),
                     bias: Default::default(),
                 }),
                 multisample: Default::default(),
                 fragment: Some(wgpu::FragmentState {
-                    module: &shader,
+                    module: shader,
                     entry_point: Some(entry[1]),
                     compilation_options: wgpu::PipelineCompilationOptions {
                         constants: &super::linear_blend::frame_constants(color_format, linear),
@@ -199,59 +282,45 @@ impl WorldPrimitives {
         let lines = ["vs_line", "fs_line"];
         let list = wgpu::PrimitiveTopology::TriangleList;
         let strip = wgpu::PrimitiveTopology::TriangleStrip;
-        let quad_pipelines = [
-            pipeline("World primitives", quads, &quad_buffers, list, false),
-            pipeline(
-                "World primitives through walls",
-                quads,
-                &quad_buffers,
-                list,
-                true,
-            ),
-        ];
-        let line_pipelines = [
-            pipeline("World primitive lines", lines, &line_buffers, strip, false),
-            pipeline(
-                "World primitive lines through walls",
-                lines,
-                &line_buffers,
-                strip,
-                true,
-            ),
-        ];
-        let buffer = |label, size, usage| {
-            device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some(label),
-                size,
-                usage: usage | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            })
-        };
-        Self {
-            quad_pipelines,
-            line_pipelines,
-            globals: buffer(
-                "World primitive globals",
-                std::mem::size_of::<Globals>() as u64,
-                wgpu::BufferUsages::UNIFORM,
-            ),
-            sampler: device.create_sampler(&wgpu::SamplerDescriptor {
-                label: Some("World primitives"),
-                ..Default::default()
-            }),
-            layout,
-            quads: buffer("World primitive quads", 0, wgpu::BufferUsages::VERTEX),
-            lines: buffer("World primitive lines", 0, wgpu::BufferUsages::VERTEX),
-            indices: buffer("World primitive indices", 0, wgpu::BufferUsages::INDEX),
-            index_quads: 0,
-            group: None,
-            quad_vertices: Vec::new(),
-            line_instances: Vec::new(),
-            index_data: Vec::new(),
-            counts: [0; 4],
-            stage_ends: [[0; 4]; STAGES - 1],
-            pipelines: super::mod_pipelines::ModPipelines::new(device, color_format),
+        (
+            [
+                pipeline("World primitives", quads, &quad_buffers, list, false),
+                pipeline(
+                    "World primitives through walls",
+                    quads,
+                    &quad_buffers,
+                    list,
+                    true,
+                ),
+            ],
+            [
+                pipeline("World primitive lines", lines, &line_buffers, strip, false),
+                pipeline(
+                    "World primitive lines through walls",
+                    lines,
+                    &line_buffers,
+                    strip,
+                    true,
+                ),
+            ],
+        )
+    }
+
+    /// Ensure pipelines for drawing inside a shader pack's `colortex0` (`format`, GL rows,
+    /// GL `[0..1]` depth with `CompareFunction::LessEqual`) are ready.
+    pub fn ensure_pack_pipelines(&mut self, device: &wgpu::Device, format: wgpu::TextureFormat) {
+        if self.pack_pipelines.as_ref().is_none_or(|p| p.0 != format) {
+            let (quads, lines) = Self::build_pipelines(
+                device,
+                &self.shader,
+                &self.pipeline_layout,
+                format,
+                false,
+                wgpu::CompareFunction::LessEqual,
+            );
+            self.pack_pipelines = Some((format, quads, lines));
         }
+        self.pipelines.ensure_pack_pipelines(device, format);
     }
 
     /// Reserves CPU and GPU geometry storage for `quads` and `lines`, total across both depth
@@ -349,16 +418,21 @@ impl WorldPrimitives {
             viewport: [viewport[0] as f32, viewport[1] as f32, 0.0, 0.0],
         };
         upload(&self.globals, bytemuck::bytes_of(&globals));
+        let pack_globals = Globals {
+            view_proj: pack_clip_matrix(view_proj).to_cols_array_2d(),
+            viewport: [viewport[0] as f32, viewport[1] as f32, 0.0, 0.0],
+        };
+        upload(&self.pack_globals, bytemuck::bytes_of(&pack_globals));
         if self.group.as_ref().is_none_or(|g| g.view != *atlas) {
-            self.group = Some(AtlasGroup {
+            let make_group = |label, buffer: &wgpu::Buffer| AtlasGroup {
                 view: atlas.clone(),
                 group: device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("World primitives"),
+                    label: Some(label),
                     layout: &self.layout,
                     entries: &[
                         wgpu::BindGroupEntry {
                             binding: 0,
-                            resource: self.globals.as_entire_binding(),
+                            resource: buffer.as_entire_binding(),
                         },
                         wgpu::BindGroupEntry {
                             binding: 1,
@@ -370,7 +444,9 @@ impl WorldPrimitives {
                         },
                     ],
                 }),
-            });
+            };
+            self.group = Some(make_group("World primitives", &self.globals));
+            self.pack_group = Some(make_group("World primitives (pack)", &self.pack_globals));
         }
         true
     }
@@ -382,13 +458,45 @@ impl WorldPrimitives {
     /// mods' pipeline quads in the order queued. Leaves the pass with its own pipeline, bind
     /// group 0 and buffers.
     pub fn draw_through(&self, pass: &mut wgpu::RenderPass<'_>, next: &mut usize, stage: usize) {
+        self.draw_through_inner(pass, next, stage, false);
+    }
+
+    /// Same as [`Self::draw_through`], targeting a shader pack's `colortex0` + `depthtex0`
+    /// (GL rows, GL `[0..1]` `LessEqual` depth) prepared with [`Self::ensure_pack_pipelines`].
+    pub fn draw_through_pack(
+        &self,
+        pass: &mut wgpu::RenderPass<'_>,
+        next: &mut usize,
+        stage: usize,
+    ) {
+        self.draw_through_inner(pass, next, stage, true);
+    }
+
+    fn draw_through_inner(
+        &self,
+        pass: &mut wgpu::RenderPass<'_>,
+        next: &mut usize,
+        stage: usize,
+        pack: bool,
+    ) {
         let (first, last) = (*next, stage.min(STAGES - 1));
         if first > last {
             return;
         }
         *next = last + 1;
-        let Some(AtlasGroup { group, .. }) = &self.group else {
-            return;
+        let (group, quad_pipelines, line_pipelines) = if pack {
+            let Some(AtlasGroup { group, .. }) = &self.pack_group else {
+                return;
+            };
+            let Some((_, qp, lp)) = &self.pack_pipelines else {
+                return;
+            };
+            (group, qp, lp)
+        } else {
+            let Some(AtlasGroup { group, .. }) = &self.group else {
+                return;
+            };
+            (group, &self.quad_pipelines, &self.line_pipelines)
         };
         let [quads, quads_through, lines, lines_through] =
             spans(self.counts, &self.stage_ends, first, last);
@@ -404,18 +512,22 @@ impl WorldPrimitives {
             .enumerate()
         {
             if !quad_range.is_empty() {
-                pass.set_pipeline(&self.quad_pipelines[through]);
+                pass.set_pipeline(&quad_pipelines[through]);
                 pass.set_vertex_buffer(0, self.quads.slice(..));
                 pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
                 pass.draw_indexed(quad_range.start * 6..quad_range.end * 6, 0, 0..1);
             }
             if !line_range.is_empty() {
-                pass.set_pipeline(&self.line_pipelines[through]);
+                pass.set_pipeline(&line_pipelines[through]);
                 pass.set_vertex_buffer(0, self.lines.slice(..));
                 pass.draw(0..4, line_range);
             }
         }
-        self.pipelines.draw(pass, &self.indices, first, last);
+        if pack {
+            self.pipelines.draw_pack(pass, &self.indices, first, last);
+        } else {
+            self.pipelines.draw(pass, &self.indices, first, last);
+        }
     }
 }
 

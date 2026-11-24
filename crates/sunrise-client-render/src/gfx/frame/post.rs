@@ -44,6 +44,9 @@ pub(in crate::gfx) struct PostPassArgs<'a> {
     pub(in crate::gfx) sourced_frame: bool,
     pub(in crate::gfx) sourced_cpu: [usize; 3],
     pub(in crate::gfx) lifts_world: bool,
+    /// When a shader pack runs mod world stages inside `PackPost::run_frame`, the first stage
+    /// index not yet drawn in the vanilla world pass (`0..=4`).
+    pub(in crate::gfx) pack_mod_stage: Option<usize>,
 }
 
 pub(in crate::gfx) struct PostPassResult {
@@ -102,6 +105,7 @@ impl Renderer {
             sourced_frame,
             sourced_cpu,
             lifts_world,
+            pack_mod_stage,
         } = args;
 
         let mut fg_made = false;
@@ -216,9 +220,27 @@ impl Renderer {
                 indices: self.indices.clone(),
                 quads: cloud_quads,
             }));
+            if let Some(format) = post.stage_color_format()
+                && pack_mod_stage.is_some()
+            {
+                self.world_primitives
+                    .ensure_pack_pipelines(&self.device, format);
+            }
+            let world_primitives = &self.world_primitives;
+            let mut stage_cursor = pack_mod_stage.unwrap_or(world_primitives::STAGES);
+            let mut stage_draw = |rp: &mut wgpu::RenderPass<'_>, stage: usize| {
+                if stage >= world_primitives::STAGES - 1 {
+                    world_primitives.draw_through(rp, &mut stage_cursor, stage);
+                } else {
+                    world_primitives.draw_through_pack(rp, &mut stage_cursor, stage);
+                }
+            };
+            let stages = pack_mod_stage
+                .is_some()
+                .then_some(&mut stage_draw as &mut pack_post::StageDraw<'_>);
             // Fails only on a wait that found the device lost: the frame stops here, with
             // the pack kept for the next one and nothing more encoded.
-            let ran = post.run(
+            let ran = post.run_with_stages(
                 &self.device,
                 &self.queue,
                 &mut encoder,
@@ -231,6 +253,7 @@ impl Renderer {
                 [self.config.width, self.config.height],
                 pages,
                 &mut terrain,
+                stages,
                 &self.device_lost,
                 super::super::in_flight::poll_live,
             );

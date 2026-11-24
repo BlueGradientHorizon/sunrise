@@ -47,6 +47,7 @@ pub trait PackPostExt: Sized {
     );
     /// Runs the pack over the world drawn into `world` (colour) and `world_depth`, then draws
     /// the result onto `screen`. Fails once the device is lost (`lost`).
+    #[allow(clippy::too_many_arguments)]
     fn run(
         &mut self,
         device: &wgpu::Device,
@@ -61,6 +62,46 @@ pub trait PackPostExt: Sized {
         window: [u32; 2],
         pages: &[TerrainPage],
         terrain: &mut TerrainDraw<'_>,
+        lost: &std::sync::atomic::AtomicBool,
+        poll: sunrise_render_shaderpack::PollLive,
+    ) -> Result<(), String> {
+        self.run_with_stages(
+            device,
+            queue,
+            encoder,
+            world,
+            world_depth,
+            screen,
+            frame,
+            inputs,
+            size,
+            window,
+            pages,
+            terrain,
+            None,
+            lost,
+            poll,
+        )
+    }
+    /// Same as [`Self::run`], additionally invoking `stages` at the pack's `RenderLevelStage`
+    /// points (`0 = AfterSky`, `1 = AfterOpaqueBlocks`, `2 = AfterTranslucentBlocks`,
+    /// `3 = AfterWeather`) against `colortex0` + `depthtex0`.
+    #[allow(clippy::too_many_arguments)]
+    fn run_with_stages(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        world: &wgpu::TextureView,
+        world_depth: &wgpu::TextureView,
+        screen: &wgpu::TextureView,
+        frame: &Frame,
+        inputs: &PackInputs,
+        size: [u32; 2],
+        window: [u32; 2],
+        pages: &[TerrainPage],
+        terrain: &mut TerrainDraw<'_>,
+        stages: Option<&mut StageDraw<'_>>,
         lost: &std::sync::atomic::AtomicBool,
         poll: sunrise_render_shaderpack::PollLive,
     ) -> Result<(), String>;
@@ -172,7 +213,7 @@ impl PackPostExt for PackPost {
 
     /// Runs the pack over the world drawn into `world` (colour) and `world_depth`, then draws
     /// the result onto `screen`.
-    fn run(
+    fn run_with_stages(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -186,6 +227,7 @@ impl PackPostExt for PackPost {
         window: [u32; 2],
         pages: &[TerrainPage],
         terrain: &mut TerrainDraw<'_>,
+        stages: Option<&mut StageDraw<'_>>,
         lost: &std::sync::atomic::AtomicBool,
         poll: sunrise_render_shaderpack::PollLive,
     ) -> Result<(), String> {
@@ -232,6 +274,7 @@ impl PackPostExt for PackPost {
             window,
             pages,
             terrain,
+            stages,
             frame.shadow_cache,
             frame.shadow_scene_revision,
             frame.ticks,
@@ -406,3 +449,6 @@ mod material_route_tests;
 
 #[cfg(test)]
 mod sign_text_target_tests;
+
+#[cfg(test)]
+mod mod_stage_tests;
