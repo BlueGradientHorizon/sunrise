@@ -381,11 +381,17 @@ impl WorldgenOverrides {
     }
 
     /// Evaluates `neoforge:conditions` on every winning worldgen / dimension JSON entry
-    /// (`RegistryDataLoader` / `ConditionalOps`), removing entries whose conditions fail.
-    /// Called after all packs have been added so a failing higher-priority file drops the
-    /// entry and never uncovers a lower pack's version. Tags ignore conditions (`TagLoader`),
-    /// and unparseable JSON is kept untouched for the owning decoder's error diagnostic.
-    pub fn filter_conditions(&mut self, conditions: &crate::conditions::LoadConditions) {
+    /// (`RegistryDataLoader` / `ConditionalOps`), removing entries whose conditions fail
+    /// or fail to decode. Called after all packs have been added so a failing higher-priority
+    /// file drops the entry and never uncovers a lower pack's version. Tags ignore conditions
+    /// (`TagLoader`), and unparseable JSON is kept untouched for the owning decoder's error
+    /// diagnostic. Returns formatted diagnostics for entries whose conditions failed to decode
+    /// or evaluate without mutating `conditions`'s shared diagnostics.
+    pub fn filter_conditions(
+        &mut self,
+        conditions: &crate::conditions::LoadConditions,
+    ) -> Vec<String> {
+        let mut diagnostics = Vec::new();
         for (bundle, entries) in &mut self.entries {
             let Some(kind) = KINDS
                 .iter()
@@ -400,9 +406,16 @@ impl WorldgenOverrides {
                 };
                 let (ns, path) = id.split_once(':').unwrap_or(("minecraft", id));
                 let file_path = format!("data/{ns}/{kind}/{path}.json");
-                conditions.allows_file(&value, &file_path)
+                match conditions.allows_file_isolated(&value, &file_path) {
+                    Ok(allowed) => allowed,
+                    Err(error) => {
+                        diagnostics.push(format!("{file_path}: {error}"));
+                        false
+                    }
+                }
             });
         }
+        diagnostics
     }
     /// After the last pack: leaves out the packs' new biomes (`known` says
     /// which the game has), and what names them names the rest without
@@ -1027,13 +1040,38 @@ mod level_facts_tests {
 
         let conditions = crate::conditions::LoadConditions::new(["present"])
             .with_tags([("minecraft:block", ["demo:soil"])]);
-        overrides.filter_conditions(&conditions);
+        assert!(overrides.filter_conditions(&conditions).is_empty());
         let features: Vec<&str> = overrides.entries("features").map(|(id, _)| id).collect();
         assert!(!features.contains(&"demo:oak"));
         assert!(features.contains(&"demo:pine"));
         assert!(!features.contains(&"demo:empty_tag"));
         assert!(features.contains(&"demo:broken"));
         assert_eq!(overrides.tags("block_tags").count(), 1);
+    }
+
+    #[test]
+    fn filter_conditions_reports_unknown_condition_without_mutating_shared_diagnostics() {
+        let mut overrides = WorldgenOverrides::default();
+        assert_eq!(
+            overrides.add_file("high", "data/demo/worldgen/feature/bad_cond.json", || {
+                Some(
+                    r#"{"neoforge:conditions":[{"type":"unknown:bogus"}],"type":"minecraft:tree","config":{}}"#
+                        .into(),
+                )
+            }),
+            PackFile::Read
+        );
+        let conditions = crate::conditions::LoadConditions::new(["present"]);
+        let diagnostics = overrides.filter_conditions(&conditions);
+        assert!(overrides.entries("features").next().is_none());
+        assert_eq!(diagnostics.len(), 1);
+        assert!(
+            diagnostics[0].contains("data/demo/worldgen/feature/bad_cond.json")
+                && diagnostics[0].contains("unknown:bogus"),
+            "expected file path and unknown condition id, got: {:?}",
+            diagnostics
+        );
+        assert_eq!(conditions.check_errors(), Ok(()));
     }
 
     #[test]

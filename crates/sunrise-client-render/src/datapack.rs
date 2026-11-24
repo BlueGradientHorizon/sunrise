@@ -1398,7 +1398,7 @@ pub fn worldgen_overrides_over(
             }
         }
     }
-    out.filter_conditions(conditions);
+    warnings.extend(out.filter_conditions(conditions));
     warnings.extend(out.finish(biomes));
     for (kind, files) in not_read {
         warnings.push(format!("{kind}: {files} files the generator does not read"));
