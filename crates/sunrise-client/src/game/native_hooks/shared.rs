@@ -2332,6 +2332,10 @@ impl Game<'_> {
         let lend_mob = original_lend
             .and_then(|id| self.mobs.iter().position(|m| m.id as i32 == id))
             .filter(|&index| Some(index) != victim_mob);
+        // A parked guest the hit lent, lent again if its reads still answer from its record.
+        let parked = original_lend
+            .filter(|_| lend_mob.is_none())
+            .and_then(|id| self.native_parked_causer(id));
         let (victim_mob, lend_mob) = match (victim_mob, lend_mob) {
             (Some(v), Some(l)) => {
                 let [v, l] = self
@@ -2345,6 +2349,8 @@ impl Game<'_> {
             (None, None) => (None, None),
         };
         let player_victim = self.player.as_ref().is_some_and(|p| p.entity_id == entity);
+        let hub = self.lan.as_ref().map(|lan| &lan.hub);
+        let parked = move || HitLend::parked_guest(hub, parked?);
         let (victim, lend) = if player_victim {
             let p = self.player.as_ref().expect("the player victim");
             let body = LivingBody::Player(PlayerBody {
@@ -2354,19 +2360,22 @@ impl Game<'_> {
                 attributes: Some(&p.attributes),
                 effects: Some(&self.potions.effects),
                 equipment: acting_equipment!(self),
+                attachments: None,
             });
-            (Some(body), lend_mob.and_then(HitLend::mob))
+            (Some(body), lend_mob.and_then(HitLend::mob).or_else(parked))
         } else {
             let lend = match lend_mob {
                 Some(mob) => HitLend::mob(mob),
-                None => original_lend.and_then(|id| {
-                    HitLend::attacking_player(
-                        self.player.as_mut(),
-                        id,
-                        &self.potions.effects,
-                        acting_equipment!(self),
-                    )
-                }),
+                None => original_lend
+                    .and_then(|id| {
+                        HitLend::attacking_player(
+                            self.player.as_mut(),
+                            id,
+                            &self.potions.effects,
+                            acting_equipment!(self),
+                        )
+                    })
+                    .or_else(parked),
             };
             (victim_mob.map(LivingBody::Mob), lend)
         };
