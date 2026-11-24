@@ -14,4 +14,5 @@ sunrise-client-render pack_terrain_normals_stream_after_flat_draws test:pack_ter
 sunrise-client-render pack_terrain_normals_stream_from_start test:pack_terrain_normals daily child-process
 sunrise-client-render pack_terrain_normals_stream_in_the_shadow_pass test:pack_terrain_normals daily child-process
 sunrise-client-render pack_terrain_normals_stream_where_pages_dont_fit test:pack_terrain_normals daily child-process
+sunrise-client-render pack_terrain_normals_water_only test:pack_terrain_normals daily child-process
 sunrise-client-render pack_terrain_normals_without_vertex_storage test:pack_terrain_normals daily child-process

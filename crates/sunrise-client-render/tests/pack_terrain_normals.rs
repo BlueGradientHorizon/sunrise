@@ -98,6 +98,19 @@ fn pack_terrain_normals_pending_post_only() {
 
 #[test]
 #[ignore = "daily"]
+fn pack_terrain_normals_water_only() {
+    run_daily(
+        "pack_terrain_normals_water_only",
+        &[
+            ("SUNRISE_FLAT_DRAWS", "0"),
+            ("SUNRISE_SHADER_PACK_WITHOUT", "vertex-storage"),
+        ],
+        fixture_water_only,
+    );
+}
+
+#[test]
+#[ignore = "daily"]
 fn pack_terrain_normals_pending_refused() {
     run_daily(
         "pack_terrain_normals_pending_refused",
@@ -838,6 +851,66 @@ fn fixture_pending_post_only(
     assert!(poll(&mut renderer).unwrap(), "the pack runs");
     frames_keep(&mut renderer, &hud, out, "running", 2, start);
     finish(out, serde_json::Map::new())
+}
+
+/// A pack whose only program drawing the game's sections is `gbuffers_water` (and a `final`
+/// that shows `colortex0`), no terrain program: per-section translucent quads read the
+/// normal stream, which both arenas keep from the start (a pack picked, vertex storage taken
+/// away), through the frames while the pack builds and once it runs, and each translucent view
+/// reads its face's own normal.
+fn fixture_water_only(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    std::fs::create_dir_all(out)?;
+    let mut renderer = renderer(window, (true, true))?;
+    let hud = HudBatch::scratch([320, 180]);
+    let mut result = serde_json::Map::new();
+    let start = layout(&renderer);
+    assert!(
+        start.1 && start.2,
+        "a pack picked: the stream from the start"
+    );
+    renderer.upload(SECTION, &mesh(true));
+    let folder = out.join("pack-water");
+    let shaders = folder.join("shaders");
+    std::fs::create_dir_all(&shaders)?;
+    std::fs::write(
+        shaders.join("gbuffers_water.vsh"),
+        "#version 120\nvarying vec3 n;\nvoid main() { gl_Position = ftransform(); n = gl_Normal; }\n",
+    )?;
+    std::fs::write(
+        shaders.join("gbuffers_water.fsh"),
+        "#version 120\nvarying vec3 n;\nvoid main() { gl_FragData[0] = vec4(n * 0.4 + 0.6, 1.0); }\n",
+    )?;
+    std::fs::write(
+        shaders.join("final.vsh"),
+        "#version 120\nvarying vec2 uv;\n\
+         void main() { uv = gl_MultiTexCoord0.xy; gl_Position = ftransform(); }\n",
+    )?;
+    std::fs::write(
+        shaders.join("final.fsh"),
+        "#version 120\nuniform sampler2D colortex0;\nvarying vec2 uv;\n\
+         void main() { gl_FragColor = texture2D(colortex0, uv); }\n",
+    )?;
+    std::fs::write(shaders.join("shaders.properties"), "shadow.enabled=false\n")?;
+    let post = read_pack(&mut renderer, &folder);
+    assert!(post.water.is_some(), "gbuffers_water loads");
+    assert!(
+        post.terrain.is_none() && post.terrain_cutout.is_none(),
+        "no terrain program"
+    );
+    renderer.load_shader_pack(
+        0,
+        post,
+        Vec::new(),
+        "water".into(),
+        std::time::Instant::now(),
+    );
+    frames_keep(&mut renderer, &hud, out, "pending", 3, start);
+    assert!(poll(&mut renderer).unwrap(), "the pack runs");
+    frames_keep(&mut renderer, &hud, out, "running", 1, start);
+    check_views(&mut renderer, &hud, out, "water", true, normal, &mut result);
+    let (section, translucent, _) = renderer.section_arena_normals();
+    assert!(section && translucent, "both arenas keep the stream");
+    finish(out, result)
 }
 
 /// A pack the device refuses once built (`colortex0` in an integer format and no `final` to
