@@ -880,6 +880,8 @@ class GameModuleSidesTests(unittest.TestCase):
             before = snapshot_tree(root)
             rc, _, err = run_cli("--fix", "--no-fmt", "--root", str(root))
             self.assertEqual(rc, 1)
+            self.assertIn("game/client_state.rs:", err)
+            self.assertNotIn("client_side.rs", err)
             self.assertIn("unexpected `inner_attr` item", err)
             self.assertIn("unexpected `use` item", err)
             self.assertIn("unexpected `const` item", err)

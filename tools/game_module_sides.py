@@ -2230,11 +2230,12 @@ def rewrite_state_file(
     moved_arms: list[ModArm],
     field_specs: dict[str, FieldSpec],
     root: Path,
+    src_rel: str | None = None,
 ) -> tuple[str, list[str]]:
     """Build the updated `{client,server}_side.rs` text and return `(new_text, errors)`."""
     side_mod = SIDE_MOD_NAME[side]
     struct_name = SIDE_STRUCT_NAME[side]
-    rel = f"crates/sunrise-client/src/game/{SIDE_NEW_FILE[side]}"
+    rel = src_rel or f"crates/sunrise-client/src/game/{SIDE_NEW_FILE[side]}"
     src_root = (root / "crates/sunrise-client/src").resolve()
     side_dir = src_root / "game"
     errors: list[str] = []
@@ -2997,7 +2998,8 @@ def run_fix(
             errors.append(f"neither {new_path} nor {old_path} exists")
             continue
         src_text = src_path.read_text(encoding="utf-8")
-        new_text, errs = rewrite_state_file(src_text, side, side_arms[side], field_specs, root)
+        src_rel = src_path.relative_to(root.resolve()).as_posix()
+        new_text, errs = rewrite_state_file(src_text, side, side_arms[side], field_specs, root, src_rel)
         errors.extend(errs)
         if not errs:
             if not new_path.is_file() or new_path.read_text(encoding="utf-8") != new_text:
