@@ -519,7 +519,7 @@ mod render_item_in_frame;
 mod render_level_stage;
 mod render_living_post;
 mod render_living_pre;
-mod render_name_tag;
+mod render_name_tag_can_render;
 mod render_player_post;
 mod render_player_pre;
 mod render_tooltip_gather_components;

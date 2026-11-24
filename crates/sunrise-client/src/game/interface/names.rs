@@ -339,7 +339,7 @@ impl Game<'_> {
             let mut visible = name_shown;
             let mut text = None;
             if hooks {
-                self.native_render_name_tag(
+                self.native_render_name_tag_can_render(
                     m.id,
                     if player {
                         "minecraft:player"
@@ -474,7 +474,7 @@ impl Game<'_> {
             let mut visible = name_shown;
             let mut text = None;
             if hooks {
-                self.native_render_name_tag(
+                self.native_render_name_tag_can_render(
                     a.id,
                     "minecraft:armor_stand",
                     name_shown,
@@ -546,7 +546,7 @@ impl Game<'_> {
                 let mut visible = name_shown;
                 let mut text = None;
                 if hooks {
-                    self.native_render_name_tag(
+                    self.native_render_name_tag_can_render(
                         frame.id,
                         frame.kind(),
                         name_shown,
@@ -612,7 +612,7 @@ impl Game<'_> {
             let mut visible = name_shown;
             let mut text = None;
             if hooks {
-                self.native_render_name_tag(
+                self.native_render_name_tag_can_render(
                     id as u32,
                     display.kind(),
                     name_shown,

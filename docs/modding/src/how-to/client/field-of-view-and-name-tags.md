@@ -26,7 +26,7 @@ either.
 
 ## Name tags
 
-`render_name_tag` runs when the game decides whether to show the name tag of a player, mob, armor stand or item
+`render_name_tag_can_render` runs when the game decides whether to show the name tag of a player, mob, armor stand or item
 frame, before the tag is drawn. It is NeoForge's `RenderNameTagEvent`.
 
 | `RenderNameTagEvent` field | Meaning |
