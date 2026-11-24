@@ -1286,5 +1286,21 @@
     "path": "crates/sunrise-client/src/game/blocks/falling_blocks/moving_piston_tests.rs",
     "reason": "run by tools/test_falling_moving_piston_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_falling_moving_piston_parity.py records the vanilla 26.3 moving-piston falling-block witness into .local and runs this test against it through SUNRISE_FALLING_MOVING_PISTON_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::native_hooks::render_tooltip_texture::render_tooltip_texture_tests::an_items_tooltip_style_draws_its_own_sprites",
+    "path": "crates/sunrise-client/src/game/native_hooks/render_tooltip_texture.rs",
+    "reason": "run by tools/test_tooltip_display_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_tooltip_display_parity.py records the vanilla 26.3 tooltip_style sprites witness into .local and runs this test against it through SUNRISE_TOOLTIP_STYLE_SPRITES_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client-lib",
+    "target": "lib",
+    "test": "item_sync::tests::a_tooltip_style_crosses_the_wire",
+    "path": "crates/sunrise-client/src/item_sync.rs",
+    "reason": "run by tools/test_item_wire_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_item_wire_parity.py records the vanilla 26.3 tooltip_style wire witness into .local and runs this test against it through SUNRISE_TOOLTIP_STYLE_WIRE_WITNESS, so no recorded vanilla data is committed."
   }
 ]

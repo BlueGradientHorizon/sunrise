@@ -91,3 +91,5 @@ sunrise-client game::native_client_screens::client_screen_tests::done_on_an_uned
 sunrise-client-lib mobs::ai::oxygen_bonus_tests::a_mob_losing_air_under_water_saves_oxygen_bonus tools/test_mob_oxygen_bonus_parity.py harness
 sunrise-client-lib mobs::ai::noai_ridden_tests::a_ridden_noai_donkey_travels_and_turns_with_its_rider tools/test_noai_ridden_travel_parity.py harness
 sunrise-client game::falling_blocks::moving_piston_tests::a_falling_block_resting_in_a_moving_piston_cell_stays tools/test_falling_moving_piston_parity.py harness
+sunrise-client game::native_hooks::render_tooltip_texture::render_tooltip_texture_tests::an_items_tooltip_style_draws_its_own_sprites tools/test_tooltip_display_parity.py harness
+sunrise-client-lib item_sync::tests::a_tooltip_style_crosses_the_wire tools/test_item_wire_parity.py harness
