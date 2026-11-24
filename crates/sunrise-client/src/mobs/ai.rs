@@ -2550,28 +2550,17 @@ pub(super) fn in_rain(m: &Mob, w: &MobWorld) -> bool {
     w.raining_at(x, y, z) || w.raining_at(x, top, z)
 }
 /// `LivingEntity.baseTick` refills a breather's air by 4, then
-/// `Axolotl.handleAirSupply` (unless the mob has no AI): water or rain fills
-/// it, anywhere else it runs down from the pre-tick value, and at -20 the
-/// axolotl dries out.
-fn axolotl_air_step(m: &mut Mob, w: &MobWorld) -> Option<AirStep> {
-    if m.no_ai {
-        m.air = (m.air + 4).min(super::axolotl::MAX_AIR);
-        return None;
-    }
+/// `Axolotl.handleAirSupply` (a mob with AI): water or rain fills it, anywhere
+/// else it runs down from the pre-tick value, and at -20 the axolotl dries out.
+fn axolotl_air_step(m: &Mob, w: &MobWorld) -> AirStep {
     let breathes = m.fluids.in_water || in_rain(m, w);
-    Some(AirStep::own(m.air, super::axolotl::MAX_AIR, breathes))
+    AirStep::own(m.air, super::axolotl::MAX_AIR, breathes)
 }
 /// `Nautilus.baseTick`: `LivingEntity.baseTick` refills the air of this
-/// water breather, then, unless it has no AI, `Nautilus.handleAirSupply`
-/// takes it back out of water, where the nautilus dries out.
+/// water breather, then `Nautilus.handleAirSupply` (a mob with AI) takes it
+/// back out of water, where the nautilus dries out.
 fn nautilus_air_step(m: &mut Mob) -> Option<AirStep> {
     const MAX_AIR: i32 = 300;
-    if m.no_ai {
-        if m.alive() {
-            m.air = (m.air + 4).min(MAX_AIR);
-        }
-        return None;
-    }
     if !m.alive() {
         m.air = MAX_AIR;
         return None;
@@ -2891,13 +2880,14 @@ fn continue_base_tick(
             }
             BaseStage::Air => {
                 // Air supply and drowning (WaterAnimal.handleAirSupply for aquatic mobs).
-                // Nautilus.baseTick: NoAI skips only the custom handler; the
-                // superclass Breath/drown path must still process its air.
-                let step = if m.species() == Species::Axolotl {
-                    axolotl_air_step(m, w).map(|step| (step, AirDamage::DryOut))
-                } else if m.species() == Species::Nautilus {
+                // Axolotl.baseTick and Nautilus.baseTick: NoAI skips only their own
+                // handleAirSupply, so a NoAI one takes LivingEntity.baseTick's path below,
+                // under the liveness check made before the in-wall hurt.
+                let step = if m.species() == Species::Axolotl && !m.no_ai {
+                    Some((axolotl_air_step(m, w), AirDamage::DryOut))
+                } else if m.species() == Species::Nautilus && !m.no_ai {
                     nautilus_air_step(m).map(|step| (step, AirDamage::DryOut))
-                } else if m.kind.flags.needs_water {
+                } else if m.kind.flags.needs_water && m.species() != Species::Nautilus {
                     Some((
                         AirStep::own(m.air, 300, m.fluids.in_water),
                         AirDamage::Drown,
@@ -9823,11 +9813,36 @@ mod oxygen_bonus_tests {
 }
 
 #[cfg(test)]
-mod nautilus_noai_air_tests {
+mod noai_breather_air_tests {
     use super::*;
     use std::sync::Arc;
 
+    fn witness_26_3_rows() -> Vec<String> {
+        let raw = std::env::var("SUNRISE_NOAI_BREATHER_AIR_WITNESS").expect(
+            "run through tools/test_noai_breather_air_parity.py, which records the 26.3 witness",
+        );
+        let mut path = std::path::PathBuf::from(&raw);
+        if path.is_dir() {
+            path.push("noai_breather_air.txt");
+        }
+        let witness = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+            panic!(
+                "failed to read {} (run tools/test_noai_breather_air_parity.py to record the 26.3 witness): {err}",
+                path.display()
+            )
+        });
+        witness
+            .lines()
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+            .map(str::to_owned)
+            .collect()
+    }
+
     fn check(water: bool, no_ai: bool, initial: i32, expected: [i32; 2]) {
+        check_species("minecraft:nautilus", water, no_ai, initial, expected);
+    }
+
+    fn check_species(id: &str, water: bool, no_ai: bool, initial: i32, expected: [i32; 2]) {
         let build = |world: &mut crate::world::World,
                      registry: &sunrise_world::registry::BlockRegistry| {
             world
@@ -9845,9 +9860,13 @@ mod nautilus_noai_air_tests {
             }
         };
         let ran = crate::mobs::world::with_built_test_world(&[], build, |w, types| {
-            let kind = Arc::new(types.types["minecraft:nautilus"].clone());
-            assert!(kind.flags.needs_water);
-            assert!(w.entity_tag_bit(&kind, crate::items::EntityTypeTags::CAN_BREATHE_UNDER_WATER));
+            let kind = Arc::new(types.types[id].clone());
+            if id == "minecraft:nautilus" {
+                assert!(kind.flags.needs_water);
+            }
+            assert!(
+                w.entity_tag_bit(&kind, crate::items::EntityTypeTags::CAN_BREATHE_UNDER_WATER,)
+            );
             let mut mob = Mob::new(1, kind, Vec3::new(2.5, 3.0, 2.5), 0.0);
             mob.no_ai = no_ai;
             mob.no_gravity = true;
@@ -9866,14 +9885,12 @@ mod nautilus_noai_air_tests {
                 assert_eq!(
                     mob.air,
                     expected,
-                    "water={water}, NoAI={no_ai}, initial={initial}, tick={}",
+                    "{id} water={water}, NoAI={no_ai}, initial={initial}, tick={}",
                     index + 1
                 );
             }
         });
-        if !ran {
-            eprintln!("Prepared mob data unavailable; Nautilus full-tick coverage did not run");
-        }
+        assert!(ran, "prepared mob data must run the {id} full-tick fixture");
     }
 
     /// `Nautilus.baseTick`: NoAI skips only handleAirSupply; super.baseTick
@@ -9887,6 +9904,46 @@ mod nautilus_noai_air_tests {
         }
     }
 
+    /// Vanilla 26.3 (witness recorded by `tools/test_noai_breather_air_parity.py`): `LivingEntity.baseTick`
+    /// refills only while the air is below the maximum, so a NoAI axolotl or nautilus
+    /// loaded above it keeps its air across full mob ticks, and one just below tops up to it.
+    #[test]
+    #[ignore = "run by tools/test_noai_breather_air_parity.py"]
+    fn noai_breathers_keep_air_above_their_maximum() {
+        let rows = witness_26_3_rows();
+        let mut checked = 0usize;
+        for (species, max) in [("axolotl", 6000), ("nautilus", 300)] {
+            let id = format!("minecraft:{species}");
+            for (water, scene) in [(false, "0"), (true, "1")] {
+                for initial in [max + 1, 32767, max - 6] {
+                    let initial_str = initial.to_string();
+                    let row = rows
+                        .iter()
+                        .find(|line| {
+                            let mut cols = line.split_ascii_whitespace();
+                            cols.next() == Some(species)
+                                && cols.next() == Some(scene)
+                                && cols.next() == Some("0")
+                                && cols.next() == Some(initial_str.as_str())
+                        })
+                        .unwrap_or_else(|| {
+                            panic!(
+                                "missing 26.3 witness row for {species} scene={scene} air={initial}"
+                            )
+                        });
+                    let cols: Vec<&str> = row.split_ascii_whitespace().collect();
+                    let expected = [
+                        cols[6].parse::<i32>().unwrap(),
+                        cols[9].parse::<i32>().unwrap(),
+                    ];
+                    check_species(&id, water, true, initial, expected);
+                    checked += 1;
+                }
+            }
+        }
+        assert_eq!(checked, 12);
+    }
+
     /// With AI, handleAirSupply still uses the pre-super air on land and
     /// writes300 in water. The NoAI exception must not alter that policy.
     #[test]
@@ -9896,6 +9953,141 @@ mod nautilus_noai_air_tests {
         check(false, false, 100, [99, 98]);
         check(true, false, 300, [300, 300]);
         check(true, false, 100, [300, 300]);
+    }
+
+    /// Vanilla 26.3 (`VanillaNoAiBreatherAirOracle`, `tools/test_noai_breather_air_parity.py`):
+    /// a NoAI axolotl or nautilus loaded with a signed-short `Air`, ticked, saved, reloaded and
+    /// ticked again, over dry air, water, bubble columns at the eye and feet, the breathing
+    /// effects and a lethal in-wall hurt.
+    #[test]
+    #[ignore = "run by tools/test_noai_breather_air_parity.py"]
+    fn noai_breathers_match_the_pinned_oracle() {
+        use std::collections::HashMap;
+        use sunrise_core::nbt::Tag;
+        let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
+        let water = |scene: i32| (1..=4).contains(&scene);
+        let ran = crate::mobs::world::with_resource_test_world(
+            &root,
+            &[],
+            true,
+            true,
+            |world, registry| {
+                world
+                    .chunks
+                    .insert((0, 0), Arc::new(crate::chunk::Chunk::empty(0, 0)));
+                for scene in 0..6 {
+                    let x = 2 * scene;
+                    let (eye, feet) = match scene {
+                        1 => ("minecraft:water", "minecraft:water"),
+                        2 => ("minecraft:bubble_column", "minecraft:bubble_column"),
+                        3 => ("minecraft:bubble_column", "minecraft:water"),
+                        4 => ("minecraft:water", "minecraft:bubble_column"),
+                        5 => ("minecraft:stone", "minecraft:air"),
+                        _ => ("minecraft:air", "minecraft:air"),
+                    };
+                    world
+                        .set(x, 65, 2, registry.default_state(eye).unwrap())
+                        .unwrap();
+                    world
+                        .set(x, 64, 2, registry.default_state(feet).unwrap())
+                        .unwrap();
+                }
+            },
+            |world, types| {
+                let types: HashMap<String, Arc<crate::mobs::MobType>> = types
+                    .types
+                    .iter()
+                    .map(|(id, kind)| (id.clone(), Arc::new(kind.clone())))
+                    .collect();
+                let saved_air = |tag: &Tag| match tag.get("Air") {
+                    Some(Tag::Short(air)) => i32::from(*air),
+                    other => panic!("no short Air: {other:?}"),
+                };
+                let mut rows = Vec::new();
+                for (species, max) in [("axolotl", 6000), ("nautilus", 300)] {
+                    let id = format!("minecraft:{species}");
+                    let probe = Mob::new(1, types[&id].clone(), Vec3::ZERO, 0.0);
+                    // The eye in block 65, the feet in block 64.
+                    let y = 65.05 - probe.eye_height();
+                    for scene in 0..6 {
+                        for mask in 0..8 {
+                            if scene == 5 && mask != 0 {
+                                continue;
+                            }
+                            for air in [10, max - 6, max - 1, max, max + 1, 32767] {
+                                let health = if scene == 5 { ",Health:1f" } else { "" };
+                                let snbt = format!(
+                                    "{{id:\"{id}\",Pos:[{}.5d,{y:?}d,2.5d],NoAI:1b,Air:{air}s{health}}}",
+                                    2 * scene
+                                );
+                                let tag = sunrise_core::nbt::parse_snbt(&snbt).unwrap().0;
+                                let mut first =
+                                    crate::entity_nbt::mob_from_nbt(&tag, &types, 1, None).unwrap();
+                                for (bit, effect) in [
+                                    (1, "minecraft:water_breathing"),
+                                    (2, "minecraft:conduit_power"),
+                                    (4, "minecraft:breath_of_the_nautilus"),
+                                ] {
+                                    if mask & bit != 0 {
+                                        first.add_effect(effect, 100, 0);
+                                    }
+                                }
+                                let loaded = first.air;
+                                let tick = |mob: &mut Mob| {
+                                    base_tick(
+                                        mob,
+                                        world,
+                                        &mut crate::health::TestLevel::new(0).level(),
+                                        &mut Vec::new(),
+                                    );
+                                    assert_eq!(
+                                        mob.fluids.eye_in_water,
+                                        water(scene),
+                                        "fixture immersion"
+                                    );
+                                    crate::entity_nbt::mob_to_nbt(
+                                        mob,
+                                        [1, 2, 3, 4],
+                                        None,
+                                        None,
+                                        |_| None,
+                                        &Default::default(),
+                                    )
+                                };
+                                let saved = tick(&mut first);
+                                let ticked = first.air;
+                                let mut second =
+                                    crate::entity_nbt::mob_from_nbt(&saved, &types, 1, None)
+                                        .unwrap();
+                                let reloaded = second.air;
+                                let again = tick(&mut second);
+                                rows.push(format!(
+                                    "{species} {scene} {mask} {air} {:016x} {loaded} {ticked} {} {reloaded} {} {:08x}",
+                                    y.to_bits(),
+                                    saved_air(&saved),
+                                    saved_air(&again),
+                                    first.health.to_bits()
+                                ));
+                            }
+                        }
+                    }
+                }
+                if let Some(path) = std::env::var_os("SUNRISE_NOAI_BREATHER_AIR_OUTPUT") {
+                    std::fs::write(path, rows.join("\n") + "\n").unwrap();
+                }
+                let expected = witness_26_3_rows();
+                assert_eq!(expected.len(), 2 * (5 * 8 + 1) * 6);
+                assert_eq!(rows.len(), expected.len());
+                for (index, (actual, expected)) in rows.iter().zip(expected.iter()).enumerate() {
+                    assert_eq!(
+                        actual.as_str(),
+                        expected.as_str(),
+                        "26.3 NoAI breather air row {index} diverged"
+                    );
+                }
+            },
+        );
+        assert!(ran, "prepared resources must run the NoAI breather fixture");
     }
 }
 

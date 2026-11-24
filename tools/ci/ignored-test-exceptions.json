@@ -1310,5 +1310,21 @@
     "path": "crates/sunrise-client/src/mobs/ai.rs",
     "reason": "run by tools/test_first_tick_lava_burn_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_first_tick_lava_burn_parity.py records the vanilla 26.3 first-tick lava burn witness into .local and runs this test against it through SUNRISE_FIRST_TICK_LAVA_BURN_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client-lib",
+    "target": "lib",
+    "test": "mobs::ai::noai_breather_air_tests::noai_breathers_keep_air_above_their_maximum",
+    "path": "crates/sunrise-client/src/mobs/ai.rs",
+    "reason": "run by tools/test_noai_breather_air_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_noai_breather_air_parity.py records the vanilla 26.3 NoAI breather air witness into .local and runs this test against it through SUNRISE_NOAI_BREATHER_AIR_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client-lib",
+    "target": "lib",
+    "test": "mobs::ai::noai_breather_air_tests::noai_breathers_match_the_pinned_oracle",
+    "path": "crates/sunrise-client/src/mobs/ai.rs",
+    "reason": "run by tools/test_noai_breather_air_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_noai_breather_air_parity.py records the vanilla 26.3 NoAI breather air witness into .local and runs this test against it through SUNRISE_NOAI_BREATHER_AIR_WITNESS, so no recorded vanilla data is committed."
   }
 ]
