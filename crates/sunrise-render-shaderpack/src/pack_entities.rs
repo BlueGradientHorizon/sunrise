@@ -2,23 +2,20 @@
 //! `gbuffers_entities`, `gbuffers_block`, `gbuffers_entities_translucent` and
 //! `gbuffers_particles` (spec 2.3, 5.3, 5.4): the runs of `Frame::entities` the game marked (`EntitySpan`), each its
 //! own draw with its `entityId` or `blockEntityId` and `entityColor` in a per-draw slot of
-//! `HzDraw` (set 2). Sunrise draws whatever the pack does not.
+//! `HzDraw` (set 2). A block entity's native terrain quads (a mod's fluids and terrain models,
+//! drawn natively from the terrain's sprite arrays) take the pack's block atlas instead
+//! ([`BlockAtlas`]). Sunrise draws whatever the pack does not.
 
 use std::ops::Range;
 
 use sunrise_render_core::entity::TEXT_POLYGON_OFFSET_SOLID_OVERLAY;
 use sunrise_shaders::render_stage;
 
-// `FLUID_OVERLAY` and the terrain overlays are only read by the tests' probes.
 use sunrise_render_core::{
-    EntitySpan, EntityVertex as Vertex, OIT_ENTITY, TRANSLUCENT_GLINT_ITEM_OVERLAY,
-    TRANSLUCENT_ITEM_OVERLAY, TRANSLUCENT_PARTICLE_OVERLAY, WATER_MASK_OVERLAY, is_native_terrain,
-    skin_runs,
-};
-#[cfg(test)]
-use sunrise_render_core::{
-    FLUID_OVERLAY, TERRAIN_MODEL_CUTOUT_MIPPED_OVERLAY, TERRAIN_MODEL_CUTOUT_OVERLAY,
-    TERRAIN_MODEL_SOLID_OVERLAY, TERRAIN_MODEL_TRANSLUCENT_OVERLAY,
+    EntitySpan, EntityVertex as Vertex, FLUID_OVERLAY, OIT_ENTITY,
+    TERRAIN_MODEL_CUTOUT_MIPPED_OVERLAY, TERRAIN_MODEL_CUTOUT_OVERLAY, TERRAIN_MODEL_SOLID_OVERLAY,
+    TERRAIN_MODEL_TRANSLUCENT_OVERLAY, TRANSLUCENT_GLINT_ITEM_OVERLAY, TRANSLUCENT_ITEM_OVERLAY,
+    TRANSLUCENT_PARTICLE_OVERLAY, WATER_MASK_OVERLAY, is_native_terrain, skin_runs,
 };
 
 /// `HzDraw`'s size (pack_draw.rs).
@@ -249,6 +246,9 @@ pub struct Draw {
     /// Polygon-offset sign text (`polygon_offset`): drawn with the program's pipeline that biases
     /// depth as vanilla's `RenderPipelines.TEXT_POLYGON_OFFSET` does.
     pub polygon_offset: bool,
+    /// A block entity's native terrain quads, placed in the block atlas ([`BlockAtlas`]): drawn
+    /// with that atlas bound in place of the shared one.
+    pub block_atlas: bool,
 }
 
 /// Which entity runs a pack's shadow pass draws (2.4, 3.2).
@@ -298,6 +298,9 @@ pub struct PackEntities {
     scratch: Vec<Vertex>,
     uniforms: Vec<u8>,
     pub draws: Vec<Draw>,
+    /// Where the pack's block atlas holds each terrain sprite: none leaves a block entity's
+    /// native terrain quads to Sunrise.
+    block_atlas: Option<BlockAtlas>,
 }
 
 impl PackEntities {
@@ -341,7 +344,13 @@ impl PackEntities {
             scratch: Vec::new(),
             uniforms: Vec::new(),
             draws: Vec::new(),
+            block_atlas: None,
         }
+    }
+
+    /// The block atlas the pack's terrain samples, set with it ([`BlockAtlas`]).
+    pub fn set_block_atlas(&mut self, atlas: Option<BlockAtlas>) {
+        self.block_atlas = atlas;
     }
 
     fn vertex_buffer(device: &wgpu::Device, vertices: u64) -> wgpu::Buffer {
@@ -481,6 +490,7 @@ impl PackEntities {
                     false,
                     false,
                     false,
+                    false,
                 );
             }
         }
@@ -489,27 +499,39 @@ impl PackEntities {
         let (mut other, mut portal_faces, mut beam_faces) = (Vec::new(), Vec::new(), Vec::new());
         let mut water_patches = Vec::new();
         let mut without_fluids = Vec::new();
-        for (span, range, material, offset) in material_runs(entities, spans, drawn) {
+        // Held apart while the runs borrow it (`push_draw` takes `self`), put back after them.
+        let placing = self.block_atlas.take();
+        let atlas = placing.as_ref();
+        for MaterialRun {
+            span,
+            range,
+            program: material,
+            polygon_offset: offset,
+            block_atlas,
+        } in material_runs(entities, spans, drawn, atlas)
+        {
             let run_start = range.start as u32;
             let whole = &entities[range];
-            // A native fluid carries sprite-array UVs, not shared-atlas UVs.
-            // Keep it in its own material even when a shader pack draws the
-            // model in the same block-entity run. Do not corrupt either UV space.
-            let whole: &[Vertex] = if whole.chunks(4).any(|q| is_native_terrain(q[0].layer)) {
-                without_fluids.clear();
-                for quad in whole.chunks(4) {
-                    if is_native_terrain(quad[0].layer) {
-                        if !span.hidden {
-                            rest.extend_from_slice(quad);
+            // A native terrain quad carries sprite-array UVs, not shared-atlas UVs. A run of them
+            // the block atlas holds is placed in that atlas below; any other goes to Sunrise,
+            // even when a shader pack draws the model in the same run. Do not corrupt either UV
+            // space.
+            let whole: &[Vertex] =
+                if !block_atlas && whole.chunks(4).any(|q| is_native_terrain(q[0].layer)) {
+                    without_fluids.clear();
+                    for quad in whole.chunks(4) {
+                        if is_native_terrain(quad[0].layer) {
+                            if !span.hidden {
+                                rest.extend_from_slice(quad);
+                            }
+                        } else {
+                            without_fluids.extend_from_slice(quad);
                         }
-                    } else {
-                        without_fluids.extend_from_slice(quad);
                     }
-                }
-                &without_fluids
-            } else {
-                whole
-            };
+                    &without_fluids
+                } else {
+                    whole
+                };
             // A block entity's run can hold End portal faces and beams beside plain parts (an End
             // gateway: its cube and its beam): each goes to its own program.
             // Beacon beams come in a run of their own, at stage NONE (game.rs: no stage of 5.4
@@ -595,6 +617,9 @@ impl PackEntities {
                 if part == Part::Portal {
                     as_portal_texture(&mut self.scratch[start as usize..]);
                 }
+                if let Some(atlas) = atlas.filter(|_| block_atlas) {
+                    atlas.place(&mut self.scratch[start as usize..]);
+                }
                 let vertices = self.scratch.len() as u32 - start;
                 let overlay = self.scratch[start as usize].layer & 0xffff;
                 let portal = part == Part::Portal;
@@ -609,9 +634,11 @@ impl PackEntities {
                     portal,
                     part == Part::WaterMask,
                     offset && part == Part::Plain,
+                    block_atlas,
                 );
             }
         }
+        self.block_atlas = placing;
         if self.draws.is_empty() && posed == 0 {
             return;
         }
@@ -681,6 +708,7 @@ impl PackEntities {
         portal: bool,
         water_mask: bool,
         polygon_offset: bool,
+        block_atlas: bool,
     ) {
         let (entity_id, block_id) = match program {
             BLOCK | BLOCK_TRANSLUCENT => (0, span.id),
@@ -707,6 +735,7 @@ impl PackEntities {
             portal,
             water_mask,
             polygon_offset,
+            block_atlas,
         });
     }
 }
@@ -849,13 +878,18 @@ pub fn shadow_program(program: usize) -> usize {
 
 fn material_program(span: &EntitySpan, layer: u32, drawn: [bool; PROGRAMS]) -> Option<usize> {
     Some(match program_of(span)? {
+        // A block entity's translucent native terrain quads (a still fluid's, a translucent
+        // moving block's) are translucent block-entity geometry too.
         BLOCK
             if drawn[BLOCK_TRANSLUCENT]
                 && (span.translucent
                     || layer & OIT_ENTITY != 0
                     || matches!(
                         layer & 0xffff,
-                        TRANSLUCENT_ITEM_OVERLAY | TRANSLUCENT_GLINT_ITEM_OVERLAY
+                        TRANSLUCENT_ITEM_OVERLAY
+                            | TRANSLUCENT_GLINT_ITEM_OVERLAY
+                            | FLUID_OVERLAY
+                            | TERRAIN_MODEL_TRANSLUCENT_OVERLAY
                     )) =>
         {
             BLOCK_TRANSLUCENT
@@ -880,15 +914,28 @@ fn polygon_offset(program: Option<usize>, layer: u32) -> bool {
         && layer & 0xffff == TEXT_POLYGON_OFFSET_SOLID_OVERLAY
 }
 
-/// One piece of a span's run (`material_runs`): its span, its vertices, the program that draws
-/// it and whether it takes that program's polygon-offset pipeline (`polygon_offset`).
-type MaterialRun = (EntitySpan, Range<usize>, Option<usize>, bool);
+/// One piece of a span's run (`material_runs`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct MaterialRun {
+    span: EntitySpan,
+    /// Its vertices.
+    range: Range<usize>,
+    /// The program that draws it; `None`: Sunrise does.
+    program: Option<usize>,
+    /// It takes that program's polygon-offset pipeline (`polygon_offset`).
+    polygon_offset: bool,
+    /// Native terrain quads, placed in the block atlas (`BlockAtlas::place`).
+    block_atlas: bool,
+}
 
-/// Split where a quad's program or depth mode changes, keeping contiguous runs in vertex order.
+/// Split where a quad's program, depth mode or atlas changes, keeping contiguous runs in vertex
+/// order. A block entity's native terrain quad goes to the block program when `atlas` holds its
+/// sprite (spec 2.3: `gbuffers_block` draws block entities), else to Sunrise.
 fn material_runs<'a>(
     vertices: &'a [Vertex],
     spans: &'a [EntitySpan],
     drawn: [bool; PROGRAMS],
+    atlas: Option<&'a BlockAtlas>,
 ) -> impl Iterator<Item = MaterialRun> + 'a {
     runs(vertices.len(), spans).flat_map(move |(span, range)| {
         let program = program_of(&span);
@@ -897,28 +944,137 @@ fn material_runs<'a>(
         let program_at = move |i: usize| {
             let layer = vertices[i].layer;
             let material = material_program(&span, layer, drawn);
-            (material, polygon_offset(material, layer))
+            if !is_native_terrain(layer) {
+                return (material, polygon_offset(material, layer), false);
+            }
+            let held = matches!(material, Some(BLOCK | BLOCK_TRANSLUCENT))
+                && vertices
+                    .get(i..i + 4)
+                    .is_some_and(|quad| atlas.is_some_and(|a| a.holds(quad)));
+            if held {
+                (material, false, true)
+            } else {
+                // Sunrise's (the run's other quads may still be the pack's: `prepare` keeps
+                // native terrain quads out of a run it does not place).
+                (material.filter(|_| !split), false, false)
+            }
         };
         let mut start = range.start;
         std::iter::from_fn(move || {
             if start >= range.end {
                 return None;
             }
-            let (program, offset) = program_at(start);
+            let key = program_at(start);
             let end = if split {
                 (start..range.end)
                     .step_by(4)
                     .skip(1)
-                    .find(|&i| program_at(i) != (program, offset))
+                    .find(|&i| program_at(i) != key)
                     .unwrap_or(range.end)
             } else {
                 range.end
             };
             let run = start..end;
             start = end;
-            Some((span, run, program, offset))
+            Some(MaterialRun {
+                span,
+                range: run,
+                program: key.0,
+                polygon_offset: key.1,
+                block_atlas: key.2,
+            })
         })
     })
+}
+
+/// The block atlas a pack's terrain samples (`pack_post::World::atlas`), for a block entity's
+/// native terrain quads: a mod's still fluids (`FLUID_OVERLAY`) and terrain models
+/// (`TERRAIN_MODEL_*_OVERLAY`), which Sunrise draws from the terrain's sprite arrays. Under a
+/// pack, the block program draws them (spec 2.3) from this atlas, so they reach the buffers it
+/// writes (6.1.4), placed as the pack's own terrain places a sprite (`pack_atlas`'s terrain
+/// inputs).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BlockAtlas {
+    /// Per sprite layer, its sprite's top left corner (x | y << 16) and side in atlas pixels
+    /// (`PackAtlas::rects_table`).
+    rects: Vec<u32>,
+    /// The atlas's size in pixels.
+    size: [u32; 2],
+}
+
+impl BlockAtlas {
+    /// `None` for an empty table or atlas: nothing can be placed.
+    pub fn new(rects: &[u32], size: [u32; 2]) -> Option<Self> {
+        (rects.len() >= 2 && size[0] > 0 && size[1] > 0).then(|| Self {
+            rects: rects.to_vec(),
+            size,
+        })
+    }
+
+    /// A native terrain quad's sprite layer, as the native shaders read it from its first
+    /// vertex (`@interpolate(flat)`): a fluid's in `glint_uv.x` (`vs_native_fluid`), a terrain
+    /// model's in the layer's high 16 bits (`vs_native_model`). A fluid's fraction is dropped, as
+    /// the shader's `u32` conversion drops it; `None` for one below 0, NaN or infinite.
+    fn sprite(v: &Vertex) -> Option<u32> {
+        if v.layer & 0xffff == FLUID_OVERLAY {
+            let layer = v.glint_uv[0];
+            (layer.is_finite() && layer >= 0.0).then_some(layer as u32)
+        } else {
+            Some(v.layer >> 16)
+        }
+    }
+
+    /// The sprite layer's corner and side, when the table has the layer.
+    fn rect(&self, layer: u32) -> Option<([u32; 2], u32)> {
+        let at = usize::try_from(layer).ok()?.checked_mul(2)?;
+        let (&corner, &side) = (self.rects.get(at)?, self.rects.get(at + 1)?);
+        (side > 0).then_some(([corner & 0xffff, corner >> 16], side))
+    }
+
+    /// Whether this atlas holds `quad`'s sprite and its UVs are numbers.
+    fn holds(&self, quad: &[Vertex]) -> bool {
+        Self::sprite(&quad[0]).and_then(|l| self.rect(l)).is_some()
+            && quad.iter().flat_map(|v| v.uv).all(f32::is_finite)
+    }
+
+    /// `quads` (each held, `holds`) as the block program reads them from this atlas:
+    /// - each UV in its sprite's cell, clamped to the sprite as the pack's terrain clamps it
+    ///   (`(cell + clamp(uv, 0, 1)) * side / size`);
+    /// - a terrain model's normal (a float z in the normal's bytes, x and y in `glint_uv`,
+    ///   `vs_native_model`) as the entity vertex's signed bytes;
+    /// - overlay 0 and no glint: no overlay colour, no HDR tier, no sprite layer left over.
+    fn place(&self, quads: &mut [Vertex]) {
+        let scale = [1.0 / self.size[0] as f32, 1.0 / self.size[1] as f32];
+        for quad in quads.as_chunks_mut::<4>().0 {
+            let Some(([x, y], side)) = Self::sprite(&quad[0]).and_then(|l| self.rect(l)) else {
+                continue;
+            };
+            let side = side as f32;
+            let cell = [x as f32 / side, y as f32 / side];
+            for v in quad {
+                v.uv = std::array::from_fn(|i| {
+                    (cell[i] + v.uv[i].clamp(0.0, 1.0)) * (scale[i] * side)
+                });
+                if matches!(
+                    v.layer & 0xffff,
+                    TERRAIN_MODEL_SOLID_OVERLAY
+                        | TERRAIN_MODEL_CUTOUT_OVERLAY
+                        | TERRAIN_MODEL_CUTOUT_MIPPED_OVERLAY
+                ) {
+                    let z = f32::from_ne_bytes(v.normal.map(|b| b as u8));
+                    let n = [v.glint_uv[0], v.glint_uv[1], z];
+                    v.normal = if n.iter().all(|c| c.is_finite()) {
+                        let [x, y, z] = n.map(|c| (c.clamp(-1.0, 1.0) * 127.0).round() as i8);
+                        [x, y, z, 0]
+                    } else {
+                        [0; 4]
+                    };
+                }
+                v.layer = 0;
+                v.glint_uv = [0.0; 2];
+            }
+        }
+    }
 }
 
 /// Which program draws `span`'s run, given which of them (or their fallbacks) the pack has;
@@ -1356,6 +1512,105 @@ mod gpu_span_tests {
                         "fluid UV/layer payload cannot be sampled from the entity atlas"
                     );
                 }
+            }
+        }
+    }
+
+    /// With the pack's block atlas, a block entity's native terrain quads are the block
+    /// programs' draws, placed in that atlas and bound to it (`Draw::block_atlas`); a hidden run
+    /// only casts; a quad the atlas lacks stays Sunrise's, in order.
+    #[test]
+    #[ignore = "daily"]
+    fn native_terrain_quads_draw_in_the_block_programs_from_the_block_atlas() {
+        let _gpu = crate::test_gpu::lock();
+        let adapter = crate::test_gpu::adapter().unwrap();
+        let (device, queue) =
+            pollster::block_on(adapter.request_device(&Default::default())).unwrap();
+        let layout = crate::pack_draw::DrawUniforms::new(&device);
+        let mut geometry = PackEntities::new(&device, &layout.layout);
+        // Layer 0 at (0, 0) and layer 1 at (16, 0) of a 32 by 16 atlas, 16 pixels a side.
+        geometry.set_block_atlas(BlockAtlas::new(&[0, 16, 16, 16], [32, 16]));
+        let quad = |overlay: u32, sprite: u32, y: f32| {
+            let fluid = overlay == super::FLUID_OVERLAY;
+            [Vertex {
+                pos: [0.0, y, 0.0],
+                uv: [0.5, 0.5],
+                layer: if fluid {
+                    overlay
+                } else {
+                    overlay | sprite << 16
+                },
+                glint_uv: [if fluid { sprite as f32 } else { 0.0 }, 0.0],
+                color: 0xff00_80ff,
+                ..bytemuck::Zeroable::zeroed()
+            }; 4]
+        };
+        let mixed = [
+            quad(0, 3, 1.0),
+            quad(super::TERRAIN_MODEL_SOLID_OVERLAY, 1, 2.0),
+            quad(super::FLUID_OVERLAY, 0, 3.0),
+            quad(super::TERRAIN_MODEL_SOLID_OVERLAY, 7, 4.0),
+            quad(0, 3, 5.0),
+        ]
+        .concat();
+        let mut rest = Vec::new();
+        for hidden in [false, true] {
+            geometry.prepare(
+                &device,
+                &queue,
+                &layout.layout,
+                &mixed,
+                &[EntitySpan {
+                    start: 0,
+                    id: 77,
+                    stage: render_stage("BLOCK_ENTITIES"),
+                    hidden,
+                    ..Default::default()
+                }],
+                [true; PROGRAMS],
+                ([0.; 4], [1; 2]),
+                Casters {
+                    blocks: true,
+                    ..Default::default()
+                },
+                &mut rest,
+                None,
+                (&[], &[]),
+            );
+            // (base, program, pack, shadow, block atlas).
+            let draws = (geometry.draws.iter())
+                .map(|d| (d.base, d.program, d.pack, d.shadow, d.block_atlas))
+                .collect::<Vec<_>>();
+            assert_eq!(
+                draws,
+                [
+                    (0, BLOCK, !hidden, true, false),
+                    (4, BLOCK, !hidden, true, true),
+                    (8, BLOCK_TRANSLUCENT, !hidden, true, true),
+                    (12, BLOCK, !hidden, true, false),
+                ],
+                "hidden {hidden}"
+            );
+            // The placed quads: layer 1's middle (24 / 32, 8 / 16) and layer 0's (8 / 32).
+            let placed = (geometry.scratch[4..12].iter())
+                .map(|v| (v.pos[1], v.uv, v.layer, v.glint_uv, v.color))
+                .collect::<Vec<_>>();
+            assert_eq!(
+                placed,
+                [
+                    [(2.0, [0.75, 0.5], 0, [0.0; 2], 0xff00_80ff); 4],
+                    [(3.0, [0.25, 0.5], 0, [0.0; 2], 0xff00_80ff); 4]
+                ]
+                .concat()
+            );
+            if hidden {
+                assert!(rest.is_empty());
+            } else {
+                assert_eq!(
+                    bytemuck::cast_slice::<_, u8>(&rest),
+                    bytemuck::cast_slice::<_, u8>(&mixed[12..16]),
+                    "the quad the atlas lacks stays Sunrise's, untouched"
+                );
             }
         }
     }

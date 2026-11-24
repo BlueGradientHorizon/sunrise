@@ -1,0 +1,2 @@
+# A block entity's native terrain quads split into the block programs' draws from the pack's block atlas (#5090).
+sunrise-render-shaderpack pack_entities::gpu_span_tests::native_terrain_quads_draw_in_the_block_programs_from_the_block_atlas lib daily gpu

@@ -105,3 +105,28 @@ the full list.
   `gfx::pack_post::normalized_image_tests::an_rgba16f_image_of_a_float_buffer_binds_without_a_note` and
   `gfx::pack_post::normalized_image_tests::an_rgba8_image_of_a_float_buffer_still_refuses_its_program`
   (`sunrise-client-render`).
+
+## D-4: a block entity's native terrain quads under a pack
+
+- **Open point:** spec rev 1, 2.3 (line 294) gives `gbuffers_block` "block entities, sign text", and 6.1.4 sends a
+  program's outputs to the buffers its `RENDERTARGETS`/`DRAWBUFFERS` list names. Sunrise's mods can draw, inside a
+  block entity's run, terrain-sheet geometry that Sunrise draws natively from its sprite arrays: still fluids and
+  terrain models (`FLUID_OVERLAY`, `TERRAIN_MODEL_*_OVERLAY`). The spec has no such geometry, so it does not say which
+  program draws it, which texture it reads or which maps its `normals` and `specular` are.
+- **Decision:** the block program draws it, as the rest of its block entity: `gbuffers_block_translucent` for the
+  translucent kinds (a still fluid, a translucent terrain model) when the pack has it, `gbuffers_block` otherwise, its
+  `blockEntityId` the block entity's. It samples the pack's block atlas, the one the pack's terrain samples
+  (`pack_atlas`): each quad's UVs are placed in its sprite's cell of that atlas, clamped to the sprite per vertex as the
+  pack's terrain clamps them. Its `normals` and `specular` read the stand-ins a program reads with no map bound: the
+  block programs read those maps as the shared atlas's paged maps, whose pages say nothing of the block atlas. The
+  pack's shadow program draws it too, with the same atlas. A quad whose sprite the block atlas lacks (a layer past
+  the atlas's table, or a fluid layer below 0, NaN or infinite), a pack without a block program, or one without a
+  block atlas leaves the quad to Sunrise, as before.
+- **Reason:** 2.3's program for block entities is the only one the spec ties to this geometry, and 6.1.4 then puts it
+  in the buffers the pack's `final` reads; drawn natively, it reached only `colortex0`. The block atlas already holds
+  every terrain sprite, as the pack's terrain reads them, so no texture is copied; the renderer has no table from a
+  terrain sprite layer to its place in the shared atlas. Paged-map reads of the block atlas's UVs would return another texture's material.
+- **Tests:** `pack_entities::material_route_tests::native_terrain_quads_take_the_block_program_where_the_block_atlas_holds_them`
+  and `pack_entities::material_route_tests::the_block_atlas_places_native_terrain_quads` (`sunrise-render-shaderpack`);
+  the daily `pack_entities::gpu_span_tests::native_terrain_quads_draw_in_the_block_programs_from_the_block_atlas`
+  (`sunrise-render-shaderpack`) and `pack_block_entity_runs` (`sunrise-client-render`, the real `Renderer`).
