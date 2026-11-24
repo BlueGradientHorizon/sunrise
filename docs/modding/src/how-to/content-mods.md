@@ -227,6 +227,8 @@ identifiers as well as textures. Far terrain (LOD) omits mod fluids. LAN and ded
 them when they run the same mods: a client whose mods add different content is refused when it joins, with
 the reason.
 
+#### Join compatibility and package sides
+
 Every Sunrise server checks loaded mods in the configuration phase (`sunrise_protocol::mod_list`, channel
 `sunrise:mod_list`), including when its own list is empty. Only the ids and versions of `side = "both"` mods cross
 this channel. Missing mods, extra both-side mods and version differences refuse the join, naming every id and
@@ -257,6 +259,8 @@ client announces its own brand and list before answering known packs; that reply
 check without an extra ping. The server sends its list only to an identified Sunrise client, including when
 either list is empty. Vanilla clients receive no mod-list payload, and clients do not disclose their mod
 identities to servers that have not identified themselves as Sunrise. Nothing here repeats per tick.
+
+#### Blocks
 
 A block names its template and what differs from it:
 
@@ -363,6 +367,31 @@ the ask for all of them. Light that depends only on the state needs no part: use
 A mod can [query a candidate state's source light](world/block-state-facts.md#contextual-light-emission)
 with `LevelRef::get_light_emission`. It returns the raw Part answer or the declared light, with no
 relight. This differs from `LevelRef::brightness`, which reads the light the engine has propagated.
+
+##### Per-state light
+
+Blocks in JSON and code can set `state_light`, which overrides `properties.light`.
+Use `properties` for an ordered list of state property names, `values` for
+comma-separated value tuples mapped to emission (0 to 15), and `default` for
+unmatched states. Without a default, every state must match a tuple.
+For example, `"state_light":{"properties":["lit"],"values":{"true":15},"default":0}`
+makes a lamp dark when unlit and emit 15 when lit. Code uses `mod_api::StateLight`
+with the same `properties`, `values` and `default` fields on `Block::state_light`.
+
+A block that joins its neighbours in six directions (a cable, a pipe) copies
+`minecraft:chorus_plant`, vanilla's `PipeBlock`, and names the block tag it
+connects to besides itself:
+
+```json
+{ "template": "minecraft:chorus_plant", "connects_to": "#mymod:cable_connects" }
+```
+
+It keeps the chorus plant's six sides but none of its rules: it needs no
+support, and each side is joined when the block there is the same block or in
+the tag, on placement and whenever that neighbour changes. Its shapes are the
+chorus plant's (10 pixels across) unless it sets `"thickness"`, 2 to 14
+pixels: its outline and collision are then built as `PipeBlock` builds its
+own, a core and an arm to each joined side.
 
 A block copies its template's states. It can also declare state properties of
 its own, which its template does not have — how a pipe says which sides it
@@ -487,7 +516,7 @@ block's `thickness` outline). Omitted `collision_shapes` preserves the existing 
 outline also becomes collision, otherwise the template collision is retained. An explicit collision
 table can be used without an outline override, and overrides `thickness` collision too.
 
-### Entity-context shape declarations
+##### Entity-context shape declarations
 
 Native declarations use the same fields on `mod_api::Block`, with API-owned
 `ShapeEntityKind::{Item, Player, Living, Other}` keys and `BlockShapes` values.
@@ -528,7 +557,7 @@ and player selection uses its own outline channel. Callers without a captured
 entity class retain ordinary shapes. These declarations select state/class-only
 geometry, not arbitrary world-dependent block behavior or native callbacks.
 
-### Scaffolding's context collision
+##### Scaffolding's context collision
 
 A block that is stood on like scaffolding and dropped through while sneaking (a metal
 scaffolding) sets `"context_collision": "scaffolding"` (`Block::context_collision =
@@ -550,7 +579,7 @@ entity class stands over the rule for that class, as it does over the block's ot
 }
 ```
 
-### Shapes a block entity publishes
+##### Shapes a block entity publishes
 
 A block whose geometry depends on what is inside it (a cable bus with attached parts, a table
 showing its tools) sets `"shapes_from_block_entity": true` (`Block::shapes_from_block_entity`).
@@ -598,7 +627,7 @@ Shapes that depend on the querying entity are not published: a part answers them
   are kept under is the engine's: `replace_data` and `merge_data` leave them alone, and a
   payload that carries it has it ignored.
 
-### Shapes that depend on the querying entity
+##### Shapes that depend on the querying entity
 
 A block part can give a block another collision shape for the entity that asks, as vanilla's
 `getCollisionShape(state, level, pos, context)` does: `BlockPart::collision_shape(context, event)`
@@ -641,6 +670,8 @@ was made: `entity()` (the entity's id, `None` for the empty, position and cache 
   naming the mods and the block.
 - **Cost.** Nothing for a block without such a part. An opted-in block costs one call per
   distinct question in a tick.
+
+#### Items
 
 An item copies its template's data components, with `max_stack_size` and
 `rarity` changed, and any other 26.3 component set or removed in
@@ -768,20 +799,10 @@ have no `max_stack_size` or `rarity` keys, so those two go in `components` here
     "minecraft:damage_resistant": { "types": "#minecraft:is_fire" } } }
 ```
 
-A block that joins its neighbours in six directions (a cable, a pipe) copies
-`minecraft:chorus_plant`, vanilla's `PipeBlock`, and names the block tag it
-connects to besides itself:
+Unknown component types fail content loading unless a code mod registers them.
+Item-id-specific behaviour does not follow a template: a copy of the trident does not throw.
 
-```json
-{ "template": "minecraft:chorus_plant", "connects_to": "#mymod:cable_connects" }
-```
-
-It keeps the chorus plant's six sides but none of its rules: it needs no
-support, and each side is joined when the block there is the same block or in
-the tag, on placement and whenever that neighbour changes. Its shapes are the
-chorus plant's (10 pixels across) unless it sets `"thickness"`, 2 to 14
-pixels: its outline and collision are then built as `PipeBlock` builds its
-own, a core and an arm to each joined side.
+#### Creative tabs
 
 A mod's creative inventory tabs are `data/<id>/sunrise/creative_tab/*.json`:
 a title, the item on the tab's button, and its items in order (items the game
@@ -833,8 +854,7 @@ outside a live world. It does not change the snapshot's build permissions.
 Each tab's `display_name` is a translatable component for its `itemGroup.*` key,
 with the catalog's `title` as its text fallback.
 
-Unknown component types fail content loading unless a code mod registers them.
-Item-id-specific behaviour does not follow a template: a copy of the trident does not throw.
+#### Mob effects
 
 A mod effect is declared in `data/<id>/sunrise/mob_effect/<name>.json` with what vanilla's `MobEffect` takes: its
 category (`beneficial`, `harmful` or `neutral`) and its RGB colour (0 to `0xFFFFFF`), which its particles take:
@@ -857,6 +877,8 @@ Code mods read a registered type's classification with `effect_key.category(host
 which returns `EffectCategory::Beneficial`, `Harmful` or `Neutral`. For an active
 instance, use `active_effect.id.category(host)`. The read works on both sides and
 returns `None` before the effect registry is complete; it never guesses a category.
+
+#### Entity types
 
 A mod entity type is declared in `data/<id>/sunrise/entity_type/<name>.json`. It copies a vanilla type:
 `minecraft:snowball`, a thrown item projectile, or a living mob (below). A thrown type's `item` is one of the mod's own
@@ -982,6 +1004,48 @@ Each omitted key keeps the template's value. `volume`, `voice_pitch` and the ste
 finite as a float; another number, or a step given in another form than an id, `"none"` or that object, stops
 content admission, with the file and the key in the error.
 
+A code mod can also use `Registrar::declare_entity_attributes(path, template, attributes)` during registration.
+That declaration starts from the vanilla template's attribute row, replacing the content row's overrides.
+Declared bases remain available to base-value reads, but computed values and spawn fields clamp them to each
+attribute's vanilla range (for example, `minecraft:max_health` is clamped to 1–1024).
+
+To give an existing type, vanilla or a mod's, an attribute it lacks, a code mod calls
+`Registrar::modify_entity_attributes(entity, attributes)` (NeoForge's `EntityAttributeModificationEvent`) during
+registration. Each attribute takes its base, or with `None` the attribute's own default. It changes the type's
+default after every declared set, so entities created after load have it; a later addition of the same attribute
+wins. A mod's type needs its declared set first: one that only a content file defines has no attribute row to add
+to. An attribute the game does not know, or a type without an attribute row, stops the resource load:
+
+```rust,ignore
+registrar.modify_entity_attributes(
+    "minecraft:zombie",
+    vec![("minecraft:luck".to_string(), Some(2.5))],
+)?;
+```
+
+It is a mob of its template's class under its own id, `<id>:<name>`: the template's size, model, texture, sounds and
+behaviour, with its own attributes. It saves what its template's class saves under its own id (a zombie's `IsBaby`,
+`CanBreakDoors` and conversion times) and loads back as itself. Its entity data is its template's class's. Its loot
+table is its own, `<id>:entities/<name>` (vanilla's `EntityType.getDefaultLootTable`). It is not in vanilla's entity type
+tags (`#minecraft:undead`, `#minecraft:zombies`...) unless the mod adds it. Its row in `entity-types.json` is its
+template's, with `template` added and its attributes in place of the template's. To draw a custom model or texture,
+a client mod registers a renderer for it ([entity renderers](client/entity-renderers.md)); the content declaration
+inherits the template's goals.
+
+Daylight burning follows the type's own id, not its template. To make a type burn in sunlight,
+add its id to `data/minecraft/tags/entity_type/burn_in_daylight.json`. Leaving it out does not
+make it immune to ordinary fire.
+
+##### Passenger attachment points
+
+An entity type can set `passenger_attachments` to seat offsets relative to its feet.
+A list of exactly three plain numbers is **one** `[x, y, z]` point, not three heights.
+For multiple seats use nested points, for example `[[1, 2, 3], [-1, 4, 5]]`.
+Seats follow passenger order; extra passengers use the last point. Offsets scale with
+the entity and rotate with its yaw.
+
+#### Custom attributes
+
 A code mod can also register an attribute type of its own with `Registrar::declare_attribute(path, default,
 min, max, syncable, sentiment, tooltip)` (vanilla's `RangedAttribute` in the attribute registry). Only both-side
 packages may declare attributes; client-only packages refuse with `WrongSide` so extra
@@ -1025,6 +1089,8 @@ a range that leaves the default out refuses the load, naming the mod. A client n
 check it already passes at join: a client without the mod cannot join. A save keeps a base past vanilla's bound while
 the mod is there; once it is gone, the load clamps the base into the bounds and logs it, once per attribute in each
 world load.
+
+#### Custom datapack registries
 
 A code mod can declare a datapack registry of its own with `Registrar::declare_datapack_registry(path, sync,
 fields)` (NeoForge's `DataPackRegistryEvent.NewRegistry`).
@@ -1107,38 +1173,6 @@ unavailable registries, stale or unloaded levels, and a missing published set gi
 returns `Unavailable`. Listing returns `None` for an unavailable level or registry, not for a
 known empty registry. Once a client receives a valid snapshot at join or reload, it reads those
 entries; any of its declared registries omitted from the snapshot have no entries there.
-
-A code mod can also use `Registrar::declare_entity_attributes(path, template, attributes)` during registration.
-That declaration starts from the vanilla template's attribute row, replacing the content row's overrides.
-Declared bases remain available to base-value reads, but computed values and spawn fields clamp them to each
-attribute's vanilla range (for example, `minecraft:max_health` is clamped to 1–1024).
-
-To give an existing type, vanilla or a mod's, an attribute it lacks, a code mod calls
-`Registrar::modify_entity_attributes(entity, attributes)` (NeoForge's `EntityAttributeModificationEvent`) during
-registration. Each attribute takes its base, or with `None` the attribute's own default. It changes the type's
-default after every declared set, so entities created after load have it; a later addition of the same attribute
-wins. A mod's type needs its declared set first: one that only a content file defines has no attribute row to add
-to. An attribute the game does not know, or a type without an attribute row, stops the resource load:
-
-```rust,ignore
-registrar.modify_entity_attributes(
-    "minecraft:zombie",
-    vec![("minecraft:luck".to_string(), Some(2.5))],
-)?;
-```
-
-It is a mob of its template's class under its own id, `<id>:<name>`: the template's size, model, texture, sounds and
-behaviour, with its own attributes. It saves what its template's class saves under its own id (a zombie's `IsBaby`,
-`CanBreakDoors` and conversion times) and loads back as itself. Its entity data is its template's class's. Its loot
-table is its own, `<id>:entities/<name>` (vanilla's `EntityType.getDefaultLootTable`). It is not in vanilla's entity type
-tags (`#minecraft:undead`, `#minecraft:zombies`...) unless the mod adds it. Its row in `entity-types.json` is its
-template's, with `template` added and its attributes in place of the template's. To draw a custom model or texture,
-a client mod registers a renderer for it ([entity renderers](client/entity-renderers.md)); the content declaration
-inherits the template's goals.
-
-Daylight burning follows the type's own id, not its template. To make a type burn in sunlight,
-add its id to `data/minecraft/tags/entity_type/burn_in_daylight.json`. Leaving it out does not
-make it immune to ordinary fire.
 
 #### Block entity containers
 
@@ -1309,6 +1343,8 @@ vanilla nor an installed mod defines is also dropped. The warning names the entr
 entry (`"required": false`) is dropped silently. If the base has no tag folder for that registry, the reference is
 left in place.
 
+#### Tags and enchantments
+
 Tags merge as a data pack's do. Every mod's file for one tag (vanilla's `data/minecraft/tags/`, the convention
 `data/c/tags/`, or another mod's) adds its values after vanilla's and the mods' before it, in load order. A file with
 `"replace": true` first drops what came before it, vanilla's entries and the earlier mods', and the mods after it
@@ -1343,6 +1379,8 @@ in_enchanting_table.json` and the others), which a mod adds to as any tag. A wor
 enchantment of the same id. What an enchantment does beyond vanilla's effect components is the mod's code: a native
 hook reads the held stack's enchantments, or claims a `post_attack` effect of its own kind
 ([enchantment effect kinds](items/enchantment-effect-kinds.md)).
+
+#### Worldgen additions, biome modifiers and custom biomes
 
 A mod adds to structure sets, template pools and processor lists that are not its own (vanilla's villages, another
 mod's houses) with a set, pool or processor list file in its own namespace holding `sunrise:add_to`, a key vanilla data
@@ -1481,15 +1519,8 @@ smallest group above its largest, a spawn cost that is not finite, a climate num
 Declared modifiers apply when the world loads, through the same content loader as file modifiers, to both the
 generator and the game's biome table, including when no data pack is enabled.
 
-A modifier changes a biome that already generates. To add a mod's own biomes to the Overworld or the Nether, a code mod
-declares a **biome region** instead: `Registrar::declare_biome_region(path, region)` takes a `BiomeRegion` (its
-`dimension`, `minecraft:overworld` or `minecraft:nether`; a `weight` from 1 to 1000 against vanilla's 10; and its
-`points`, the same `BiomePoint`s as a mod dimension's). An area belongs to one region, and the region's own points
-choose the biome there. A malformed or repeated id, an id outside the mod's namespace, another dimension, a weight
-outside 1 to 1000, no points or an invalid point refuse the mods at startup, naming the mod. A new world records the
-declared regions in `data/sunrise/biome_regions.dat`, and from then on that record decides: a changed or added region
-reaches an existing world only when its owner opts in, and a world whose region's mod is missing asks before it opens
-(a dedicated server reads `[biome_regions] missing = "refuse" | "vanilla"` in `server.toml`).
+A modifier changes a biome that already generates. To add a mod's own biomes to the Overworld or the Nether,
+declare a [biome region](content-mods/biome-regions.md) instead.
 
 The modifiers rewrite the biomes when the content root builds, and the generator orders every biome's features as
 vanilla's `FeatureSorter` does, so an added feature takes its place in that order (its random seed follows from it). A
@@ -1531,15 +1562,7 @@ radius. `kernel_size` 0 is none.
     "top": "carve", "bottom": "none", "rigid_junctions": true, "inflate": true } }
 ```
 
-### Passenger attachment points
-
-An entity type can set `passenger_attachments` to seat offsets relative to its feet.
-A list of exactly three plain numbers is **one** `[x, y, z]` point, not three heights.
-For multiple seats use nested points, for example `[[1, 2, 3], [-1, 4, 5]]`.
-Seats follow passenger order; extra passengers use the last point. Offsets scale with
-the entity and rotate with its yaw.
-
-### Custom block-state definition types
+#### Custom block-state definition types
 
 Register a definition provider with `Hooks::register_block_state_models` before client resources
 load (`event.register(id, provider)`). Set `neoforge:definition_type` to that id in the
@@ -1556,13 +1579,3 @@ otherwise it draws no model. Pack layers bind independently. An unknown type,
 explicit refusal, invalid model, out-of-range state, duplicate state or answer
 with no picks rejects the whole layer with a diagnostic, leaving lower layers
 available. Vanilla `variants` and `multipart` remain available for ordinary files.
-
-## Per-state light
-
-Blocks in JSON and code can set `state_light`, which overrides `properties.light`.
-Use `properties` for an ordered list of state property names, `values` for
-comma-separated value tuples mapped to emission (0 to 15), and `default` for
-unmatched states. Without a default, every state must match a tuple.
-For example, `"state_light":{"properties":["lit"],"values":{"true":15},"default":0}`
-makes a lamp dark when unlit and emit 15 when lit. Code uses `mod_api::StateLight`
-with the same `properties`, `values` and `default` fields on `Block::state_light`.
