@@ -611,12 +611,12 @@ mod tests {
                 .expect("overworld light");
             assert!(light_snap.has_light());
             assert_eq!(
-                light_snap.sky_light(8, 318, 8),
+                light_snap.light(8, 318, 8).map(|(sky, _)| sky),
                 Some(15),
                 "open sky at top of Overworld has skylight 15"
             );
             assert_eq!(
-                light_snap.sky_light(8, -60, 8),
+                light_snap.light(8, -60, 8).map(|(sky, _)| sky),
                 Some(0),
                 "deep underground has skylight 0"
             );
@@ -668,7 +668,7 @@ mod tests {
                 "Nether roof bedrock at y=127"
             );
             // Nether has no sky light (`sky_light == false`), so even above the roof skylight is 0.
-            assert_eq!(nether_light.sky_light(8, 200, 8), Some(0));
+            assert_eq!(nether_light.light(8, 200, 8).map(|(sky, _)| sky), Some(0));
 
             game.close_detached_generators_for_dim(Dim::Nether);
             game.close_detached_generators_for_dim(Dim::Overworld);
