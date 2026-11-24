@@ -460,11 +460,13 @@ fn pack_boundaries_fire_in_order_and_draw_pack_custom_depth_tests_mod_pipelines(
     let atlas_view = atlas.create_view(&Default::default());
 
     let id = Identifier::parse("test:pack_custom").unwrap();
-    let registered =
-        [
-            RenderPipeline::new(id.clone(), id, PipelineBlend::Translucent, WorldDepth::Test)
-                .optional(),
-        ];
+    let registered = [RenderPipeline::new(
+        id.clone(),
+        id,
+        PipelineBlend::Translucent,
+        WorldDepth::Tested,
+    )
+    .optional()];
     let set = Pipelines::build(&registered, 1, |_| {
         Ok(
             "fn pipeline_fragment(input: PipelineInput) -> vec4<f32> { return input.color; }"
