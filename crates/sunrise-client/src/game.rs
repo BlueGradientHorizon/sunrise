@@ -361,6 +361,9 @@ mod container_hooks;
 mod container_layout;
 #[path = "game/world/container_loot.rs"]
 mod container_loot;
+#[cfg(test)]
+#[path = "game/items/continue_using_tests.rs"]
+mod continue_using_tests;
 #[path = "game/runtime/control.rs"]
 mod control;
 #[cfg(test)]
@@ -2240,6 +2243,9 @@ mod stations;
 mod stats;
 #[path = "game/interface/stats_screen.rs"]
 mod stats_screen;
+#[cfg(test)]
+#[path = "game/items/stop_using_tests.rs"]
+mod stop_using_tests;
 #[path = "game/world/storage.rs"]
 mod storage;
 #[cfg(test)]

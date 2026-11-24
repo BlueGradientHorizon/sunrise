@@ -179,6 +179,7 @@ mod can_be_connected_to;
 mod can_be_connected_to_tests;
 mod can_be_hydrated;
 mod can_continue_sleeping;
+mod can_continue_using;
 mod can_drop_from_explosion;
 mod can_entity_destroy;
 mod can_equip;
@@ -417,6 +418,7 @@ mod on_dropped_by_player;
 mod on_entity_item_update;
 mod on_item_use_first;
 mod on_sheared;
+mod on_stop_using;
 mod panel_recipes;
 #[cfg(test)]
 mod panel_recipes_tests;

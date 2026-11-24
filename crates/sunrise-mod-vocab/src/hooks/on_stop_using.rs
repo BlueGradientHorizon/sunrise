@@ -19,11 +19,12 @@ pub trait Hooks {
     /// world, not on a server's client. Only the `ItemPart`s attached to
     /// `stack`'s item are told.
     #[hook(
+        dispatch = "flat",
         side = "both",
         contract = "listen",
         scope = "item",
         key = "stack",
         neoforge = "IItemExtension.onStopUsing"
     )]
-    fn on_stop_using();
+    fn on_stop_using(stack: &ItemStack, entity: Option<i32>, hand: Hand, time_left: i32);
 }

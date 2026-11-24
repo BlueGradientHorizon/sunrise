@@ -60,7 +60,7 @@ fn eating(body: impl FnOnce(&mut Game<'_>)) {
 }
 
 #[test]
-#[ignore = "needs prepared resources in SUNRISE_TEST_RESOURCES and an isolated mod registry"]
+#[ignore = "daily"]
 fn a_part_keeps_or_stops_a_use_whatever_the_hand_holds() {
     crate::game::in_own_process(
         "game::continue_using_tests::a_part_keeps_or_stops_a_use_whatever_the_hand_holds",

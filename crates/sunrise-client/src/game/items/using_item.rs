@@ -317,43 +317,6 @@ impl Game<'_> {
         }
         can_continue
     }
-    /// A server client's use in `slot`, `ticks` in, with `held` there now: does it
-    /// go on? Its first tick keeps `held` as the use's stack; later ones ask
-    /// [`Self::can_continue_using`] and go on with `held`. An emptied hand stops it.
-    /// A stopped use is cleared, and another item's stop is heard (`on_stop_using`).
-    pub(in crate::game) fn remote_use_goes_on(
-        &mut self,
-        slot: usize,
-        ticks: u32,
-        held: Option<&ItemStack>,
-    ) -> bool {
-        let Some(began) = self.remote.as_ref().map(|r| r.use_item.clone()) else {
-            return true;
-        };
-        let hand = if slot == super::shield::OFFHAND_SLOT {
-            Hand::Off
-        } else {
-            Hand::Main
-        };
-        let goes_on = match (began.as_ref().filter(|_| ticks > 0), held) {
-            (None, _) => ticks == 0 || held.is_none(),
-            (Some(began), Some(held)) => self.can_continue_using(began, held, None, hand),
-            (Some(_), None) => false,
-        };
-        if goes_on {
-            if let Some(r) = self.remote.as_mut() {
-                r.use_item = held.cloned();
-            }
-            return true;
-        }
-        self.using = None;
-        // Another item stops the use (`stopUsingItem`); an emptied hand is used up.
-        if let Some(began) = began.filter(|_| held.is_some()) {
-            let time_left = item_use::ticks_left(self.use_duration, ticks);
-            self.stopped_using(&began, None, hand, time_left);
-        }
-        false
-    }
     /// `LivingEntity.stopUsingItem`: the use of `stack` is over (`useItem` and
     /// its remaining ticks are cleared), and when the use effects of the stack
     /// ask for it, `ItemStack.causeUseVibration` sends an `ITEM_INTERACT_FINISH`

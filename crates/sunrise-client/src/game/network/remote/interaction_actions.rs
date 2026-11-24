@@ -505,20 +505,20 @@ impl Game<'_> {
     /// in the same tick, when a keybind opens a screen.
     pub(super) fn release_remote_use(&mut self) {
         self.send_action(6);
-        // a mod's Stop may skip the item's release, and a mod's own release follows.
+        // a mod's Stop may skip the item's release; a mod's release, then on_stop_using, follow.
         let hand = self.used_hand();
         if let Some((slot, ticks)) = self.using.take()
             && let Some(hand) = hand
             && let Some(stack) = self.stack_in(slot).cloned()
         {
             self.with_hand(hand, |g| {
-                if !g.use_item_stopped(&stack, ticks) {
-                    return;
+                if g.use_item_stopped(&stack, ticks) {
+                    if &*stack.item == "minecraft:trident" {
+                        g.release_trident(g.ticks_held(&stack, ticks));
+                    }
+                    g.mod_release_using(&stack, ticks);
                 }
-                if &*stack.item == "minecraft:trident" {
-                    g.release_trident(g.ticks_held(&stack, ticks));
-                }
-                g.mod_release_using(&stack, ticks);
+                g.stopped_using(&stack, None, hand, ticks_left(g.use_duration, ticks));
             });
         }
     }

@@ -61,7 +61,7 @@ fn eating(body: impl FnOnce(&mut Game<'_>)) {
 }
 
 #[test]
-#[ignore = "needs prepared resources in SUNRISE_TEST_RESOURCES and an isolated mod registry"]
+#[ignore = "daily"]
 fn a_part_hears_each_stop_of_its_items_use_once() {
     crate::game::in_own_process(
         "game::stop_using_tests::a_part_hears_each_stop_of_its_items_use_once",

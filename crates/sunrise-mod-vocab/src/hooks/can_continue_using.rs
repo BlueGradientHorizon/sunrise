@@ -13,6 +13,8 @@ pub trait Hooks {
     /// switch, which stops a main-hand use before any item check. Only the
     /// `ItemPart`s attached to `stack`'s item are asked.
     #[hook(
+        receiver = "read",
+        dispatch = "flat",
         side = "both",
         contract = "listen",
         scope = "item",
@@ -20,5 +22,11 @@ pub trait Hooks {
         host = "read",
         neoforge = "IItemExtension.canContinueUsing"
     )]
-    fn can_continue_using();
+    fn can_continue_using(
+        stack: &ItemStack,
+        held: &ItemStack,
+        entity: Option<i32>,
+        hand: Hand,
+        can_continue: &mut bool,
+    );
 }
