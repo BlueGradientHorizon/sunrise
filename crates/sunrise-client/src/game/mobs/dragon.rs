@@ -21,7 +21,7 @@ use super::{
     creatures::SpawnSite,
     potions::{Victim, mob_can_be_affected},
 };
-use mod_api::DragonPhase;
+use mod_api::{DragonPhase, DragonRespawnStage};
 use sunrise_client::{
     health::{DamageContainer, DamageLevel, HurtSource, Hurting, Knock, Reduction},
     hud::HudBatch,
@@ -211,6 +211,15 @@ impl Fight {
     pub(super) fn arena_watched(&self) -> bool {
         self.players
     }
+    /// The fight as mods read it.
+    pub(super) fn api(&self) -> mod_api::DragonFightState {
+        mod_api::DragonFightState {
+            won: self.killed,
+            previously_won: self.previously_killed,
+            respawn_stage: self.respawn.map(|(stage, _)| stage.api()),
+            alive_crystals: self.alive_crystals,
+        }
+    }
 }
 impl Respawn {
     fn name(self) -> &'static str {
@@ -230,6 +239,14 @@ impl Respawn {
         ]
         .into_iter()
         .find(|r| r.name() == name)
+    }
+    pub(super) fn api(self) -> DragonRespawnStage {
+        match self {
+            Respawn::Start => DragonRespawnStage::Start,
+            Respawn::Preparing => DragonRespawnStage::PreparingToSummonPillars,
+            Respawn::Pillars => DragonRespawnStage::SummoningPillars,
+            Respawn::Summoning => DragonRespawnStage::SummoningDragon,
+        }
     }
 }
 #[derive(Clone, Debug)]
@@ -1189,7 +1206,7 @@ impl Game<'_> {
         sunrise_client::save::dimension_dir(&self.world_root, "minecraft:the_end").join(FIGHT_FILE)
     }
     /// The saved fight, or `createDefault` with the gateways shuffled by the seed.
-    fn load_fight(&mut self) {
+    pub(super) fn load_fight(&mut self) {
         if self.fight.loaded {
             return;
         }
@@ -1416,21 +1433,28 @@ impl Game<'_> {
     /// `EnderDragonFight.tick`, before the level ticks its entities.
     pub(super) fn tick_fight(&mut self) {
         self.load_fight();
+        let mut canceled = false;
+        if mod_api::__private::listened(mod_api::HookId::DragonFightTick) {
+            self.native_dragon_fight_tick(self.fight_level(), &mut canceled);
+        }
         // updatePlayers, every 20 ticks.
-        self.fight.player_scan += 1;
-        if self.fight.player_scan >= 20 {
-            self.fight.player_scan = 0;
-            self.fight.players = self.fight_has_players();
+        if !canceled {
+            self.fight.player_scan += 1;
+            if self.fight.player_scan >= 20 {
+                self.fight.player_scan = 0;
+                self.fight.players = self.fight_has_players();
+            }
         }
         if !self.arena_loaded() {
             return;
         }
+        // World generation's, not the fight's: placed whatever a mod does.
         if !self.fight.crystals_placed {
             self.place_spike_crystals();
             self.fight.crystals_placed = true;
             self.fight.dirty = true;
         }
-        if self.fight.players {
+        if !canceled && self.fight.players {
             if self.fight.needs_scan {
                 self.scan_state();
                 self.fight.needs_scan = false;
@@ -1461,6 +1485,11 @@ impl Game<'_> {
             }
         }
         self.assign_dragon_and_crystal_ids();
+    }
+
+    /// The End's handle, which the fight's hooks are told.
+    fn fight_level(&self) -> mod_api::LevelRef {
+        self.level_ref(self.lend_epoch(), self.dim.key())
     }
 
     pub(super) fn assign_dragon_and_crystal_ids(&mut self) {
@@ -1590,35 +1619,44 @@ impl Game<'_> {
         by: Option<FightWho>,
         respawn_crystal: bool,
     ) {
+        // `level.getDragonFight()`: only a level with a fight hears of it.
+        if !self.dimension_type().has_ender_dragon_fight {
+            return;
+        }
         if respawn_crystal {
             self.abort_respawn();
-            return;
+        } else {
+            // EnderDragonFight.onCrystalDestroyed.
+            self.count_crystals();
+            // EnderDragon.onCrystalDestroyed: the player behind the damage, else
+            // the one nearest the crystal's block (`CRYSTAL_DESTROY_TARGETING`,
+            // whose range `TargetingConditions.test` skips without a targeter).
+            let player = by.or_else(|| {
+                let p = c.position;
+                let at = Vec3::new(p.x.floor(), p.y.floor(), p.z.floor());
+                let peaceful = self.ui.difficulty == 0;
+                nearest_enemy(&self.fight_players(), peaceful, at, None, |_| true).map(|p| p.who)
+            });
+            if let Some(d) = self.dragon.as_mut() {
+                if d.nearest_crystal == Some(index) {
+                    d.nearest_crystal = None;
+                    self.hurt_dragon(0, 10.0, true, player, DamageKind::Explosion);
+                } else if let Some(n) = d.nearest_crystal.as_mut()
+                    && *n > index
+                {
+                    *n -= 1;
+                }
+                let target =
+                    player.and_then(|who| self.fight_players().into_iter().find(|p| p.who == who));
+                if let Some(d) = self.dragon.as_mut() {
+                    d.strafe_after_crystal(target.as_ref());
+                }
+            }
         }
-        // EnderDragonFight.onCrystalDestroyed.
-        self.count_crystals();
-        // EnderDragon.onCrystalDestroyed: the player behind the damage, else
-        // the one nearest the crystal's block (`CRYSTAL_DESTROY_TARGETING`,
-        // whose range `TargetingConditions.test` skips without a targeter).
-        let player = by.or_else(|| {
+        if mod_api::__private::listened(mod_api::HookId::EndCrystalDestroyed) {
             let p = c.position;
-            let at = Vec3::new(p.x.floor(), p.y.floor(), p.z.floor());
-            let peaceful = self.ui.difficulty == 0;
-            nearest_enemy(&self.fight_players(), peaceful, at, None, |_| true).map(|p| p.who)
-        });
-        let Some(d) = self.dragon.as_mut() else {
-            return;
-        };
-        if d.nearest_crystal == Some(index) {
-            d.nearest_crystal = None;
-            self.hurt_dragon(0, 10.0, true, player, DamageKind::Explosion);
-        } else if let Some(n) = d.nearest_crystal.as_mut()
-            && *n > index
-        {
-            *n -= 1;
-        }
-        let target = player.and_then(|who| self.fight_players().into_iter().find(|p| p.who == who));
-        if let Some(d) = self.dragon.as_mut() {
-            d.strafe_after_crystal(target.as_ref());
+            let pos = BlockPos::new(p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32);
+            self.native_end_crystal_destroyed(self.fight_level(), pos, respawn_crystal);
         }
     }
     /// The boxes of the living dragon's parts a projectile can hit, in `getSubEntities` order.
@@ -3140,31 +3178,28 @@ impl Game<'_> {
             self.level_event_at(3000, pos, 0);
             let _ = self.place_gateway_at(pos);
         }
-        if !self.fight.previously_killed
+        // getHeightmapPos(MOTION_BLOCKING, getPodiumLocation(origin)).
+        let y = {
+            use sunrise_world::{heightmap::HeightmapType, worldgen::terrain::TerrainBlockStates};
+            let properties = &self.pack.assets.properties;
+            self.world.motion_blocking(0, 0, |s| {
+                HeightmapType::MotionBlocking.is_opaque(properties.heightmap_state(s))
+            })
+        };
+        let previously_won = self.fight.previously_killed;
+        let mut place_egg = None;
+        if mod_api::__private::listened(mod_api::HookId::DragonFightWon) {
+            let pos = BlockPos::new(0, y, 0);
+            self.native_dragon_fight_won(self.fight_level(), pos, previously_won, &mut place_egg);
+        }
+        if place_egg.unwrap_or(!previously_won)
             && let Some(egg) = self
                 .pack
                 .assets
                 .registry
                 .default_state("minecraft:dragon_egg")
         {
-            let y = (0..256)
-                .rev()
-                .find(|&y| {
-                    let f = self.res.facts().get(self.world.block(0, y, 0));
-                    f.full_collision || f.legacy_solid
-                })
-                .map_or(64, |y| y + 1);
-            let pos = BlockPos::new(0, y, 0);
-            let allowed = self.with_level(|_, level, _| {
-                let mut cancel = false;
-                if level.native_authoritative {
-                    level.native_dragon_egg_form(level.dimension, pos, &mut cancel);
-                }
-                !cancel
-            });
-            if allowed {
-                let _ = self.level_set([0, y, 0], egg);
-            }
+            let _ = self.level_set([0, y, 0], egg);
         }
         self.fight.previously_killed = true;
         self.fight.killed = true;
@@ -4427,10 +4462,11 @@ impl Game<'_> {
             })
     }
     /// `EnderDragonFight.tryRespawn`: a crystal on each side of the portal.
-    fn try_respawn(&mut self) {
+    /// True when a respawn started.
+    pub(super) fn try_respawn(&mut self) -> bool {
         self.load_fight();
         if !self.fight.killed || self.fight.respawn.is_some() {
-            return;
+            return false;
         }
         let origin = match self.fight.exit_portal {
             Some(o) => o,
@@ -4438,7 +4474,7 @@ impl Game<'_> {
                 let _ = self.activate_exit_portal();
                 match self.fight.exit_portal {
                     Some(o) => o,
-                    None => return,
+                    None => return false,
                 }
             }
         };
@@ -4462,7 +4498,7 @@ impl Game<'_> {
                 .map(|c| c.position)
                 .collect();
             if hits.is_empty() {
-                return;
+                return false;
             }
             found.extend(hits);
         }
@@ -4481,6 +4517,8 @@ impl Game<'_> {
         self.fight.respawn = Some((Respawn::Start, 0));
         self.fight.respawn_crystals = found;
         self.fight.dirty = true;
+        self.native_dragon_respawn_stage(self.fight_level(), DragonRespawnStage::Start);
+        true
     }
     fn block_name_at(&self, p: [i32; 3]) -> std::sync::Arc<str> {
         self.res
@@ -4507,9 +4545,11 @@ impl Game<'_> {
             pitch,
         );
     }
-    fn set_respawn(&mut self, stage: Option<Respawn>) {
-        self.fight.respawn = stage.map(|s| (s, 0));
+    /// `setRespawnStage` short of `END`.
+    fn set_respawn(&mut self, stage: Respawn) {
+        self.fight.respawn = Some((stage, 0));
         self.fight.dirty = true;
+        self.native_dragon_respawn_stage(self.fight_level(), stage.api());
     }
     /// `EnderDragonFight.tick` with a respawn in progress.
     fn tick_respawn(&mut self) {
@@ -4532,7 +4572,7 @@ impl Game<'_> {
         match stage {
             Respawn::Start => {
                 self.respawn_beams(Some(CENTER));
-                self.set_respawn(Some(Respawn::Preparing));
+                self.set_respawn(Respawn::Preparing);
             }
             Respawn::Preparing => {
                 if time < 100 {
@@ -4540,7 +4580,7 @@ impl Game<'_> {
                         self.respawn_growl();
                     }
                 } else {
-                    self.set_respawn(Some(Respawn::Pillars));
+                    self.set_respawn(Respawn::Pillars);
                 }
             }
             Respawn::Pillars => {
@@ -4561,7 +4601,7 @@ impl Game<'_> {
                         self.rebuild_spike(spike);
                     }
                 } else if start {
-                    self.set_respawn(Some(Respawn::Summoning));
+                    self.set_respawn(Respawn::Summoning);
                 }
             }
             Respawn::Summoning => {
@@ -4675,7 +4715,7 @@ impl Game<'_> {
         }
     }
     /// `resetSpikeCrystals`: spike crystals lose their beams and protection.
-    fn reset_spike_crystals(&mut self) {
+    pub(super) fn reset_spike_crystals(&mut self) {
         let spikes = sunrise_world::worldgen::end_spike::spikes_for_seed(self.level.seed);
         for c in &mut self.crystals {
             let on_spike = spikes.iter().any(|s| {
@@ -4819,6 +4859,7 @@ impl Game<'_> {
         }
         self.fight.dirty = true;
         self.count_crystals();
+        self.native_dragon_respawn_stage(self.fight_level(), DragonRespawnStage::End);
     }
     /// `abortRespawnSequence`.
     fn abort_respawn(&mut self) {
@@ -6855,6 +6896,9 @@ pub(in crate::game) mod tests {
     }
 }
 
+#[cfg(test)]
+#[path = "dragon/fight_hooks_tests.rs"]
+mod fight_hooks_tests;
 #[cfg(test)]
 #[path = "dragon/residency_tests.rs"]
 mod residency_tests;

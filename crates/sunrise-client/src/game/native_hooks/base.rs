@@ -116,18 +116,6 @@ impl GameLevel<'_> {
         self.fire_block_form(dimension, pos, from, to, cancel);
     }
 
-    /// The Ender Dragon fight is about to place its first dragon egg at `pos`.
-    /// Set `cancel` to leave the block unchanged. Server-side.
-    #[inline(always)]
-    pub(in crate::game) fn native_dragon_egg_form(
-        &self,
-        dimension: LevelDimension,
-        pos: BlockPos,
-        cancel: &mut bool,
-    ) {
-        self.fire_dragon_egg_form(dimension, pos, cancel);
-    }
-
     /// An authoritative server is about to deliver `neighborChanged`.
     /// State and block IDs are valid in this level's registries for this call.
     /// The host is the level writer vanilla's `neighborChanged` gets: a part may read
