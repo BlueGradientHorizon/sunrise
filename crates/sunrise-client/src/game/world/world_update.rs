@@ -473,6 +473,7 @@ impl Game<'_> {
             }
         }
     }
+    #[inline(always)]
     pub(in crate::game) fn update_world_server(&mut self, dim: Dim) {
         self.streaming.extra.extend(
             self.server

@@ -552,7 +552,7 @@ impl Game<'_> {
         json!({ "kind": kind, "block": block, "entity": entity })
     }
 
-    #[inline]
+    #[inline(always)]
     pub(in crate::game) fn shield_cooldown(&self) -> u32 {
         self.server.shield_cooldown
     }

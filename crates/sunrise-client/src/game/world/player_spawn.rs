@@ -101,6 +101,7 @@ impl Game<'_> {
         Ok(())
     }
 
+    #[inline(always)]
     pub(in crate::game) fn spawn_player_client(
         &mut self,
         player: PlayerMotion,

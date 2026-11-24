@@ -375,6 +375,7 @@ impl Game<'_> {
             self.capture(true);
         }
     }
+    #[inline(always)]
     pub(in crate::game) fn tick_container_reach_client(&mut self) {
         self.client.screen = super::Screen::Playing;
         self.capture(true);

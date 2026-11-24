@@ -8736,10 +8736,12 @@ impl Game<'_> {
         self.open_builtin_levels()?;
         Ok(stack)
     }
+    #[inline(always)]
     pub(in crate::game) fn finish_open_world_client_clear_debug_density(&mut self) {
         // Another world: its generator, not the last one's Density line.
         self.client.debug_density.borrow_mut().clear();
     }
+    #[inline(always)]
     pub(in crate::game) fn finish_open_world_client_set_world_icon(
         &mut self,
         save_root: &std::path::Path,
@@ -8819,9 +8821,11 @@ impl Game<'_> {
         self.server.world_adopted = false;
         self.server.startup_ticket_restore_pending = false;
     }
+    #[inline(always)]
     pub(in crate::game) fn finish_close_world_server_clear_bosses(&mut self) {
         self.server.bosses = Default::default();
     }
+    #[inline(always)]
     pub(in crate::game) fn finish_close_world_server_clear_player_beds(&mut self) {
         self.server.player_beds.clear();
     }
@@ -8859,12 +8863,15 @@ impl Game<'_> {
         self.levels.0.clear();
         self.clear_entities_client_render_caches();
     }
+    #[inline(always)]
     pub(in crate::game) fn clear_entities_client_transient_blocks(&mut self) {
         self.client.transient_blocks.clear();
     }
+    #[inline(always)]
     pub(in crate::game) fn clear_entities_server_missing_professions(&mut self) {
         self.server.missing_professions.clear();
     }
+    #[inline(always)]
     pub(in crate::game) fn clear_entities_client_render_caches(&mut self) {
         self.client.entity_vertices.clear();
         self.client.see_through_vertices.clear();

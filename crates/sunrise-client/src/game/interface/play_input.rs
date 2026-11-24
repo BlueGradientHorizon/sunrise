@@ -52,7 +52,7 @@ impl Game<'_> {
         self.mapped_key_down(action.name())
     }
 
-    #[inline]
+    #[inline(always)]
     pub(in crate::game) fn sneak_or_right_shift_held(&self) -> bool {
         self.held_mapping(sunrise_client::actions::Action::Sneak)
             || self.client.keys.raw(&KeyCode::ShiftRight)

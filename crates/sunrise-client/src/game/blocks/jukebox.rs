@@ -302,6 +302,7 @@ impl Game<'_> {
         self.notify_record_playing(pos, true);
         self.start_song_server(pos, song);
     }
+    #[inline(always)]
     pub(in crate::game) fn start_song_server(&mut self, pos: [i32; 3], song: &str) {
         if self.audio_capture_active() {
             self.server.lan_songs.push((pos, Some(song.to_owned())));

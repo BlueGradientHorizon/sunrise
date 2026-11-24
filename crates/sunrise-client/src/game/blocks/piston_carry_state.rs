@@ -173,6 +173,7 @@ impl Game<'_> {
         }
     }
 
+    #[inline(always)]
     pub(in crate::game) fn finish_piston_position_changes_client(&mut self, at: Pos) {
         self.client.test_highlights.remove(&at);
     }

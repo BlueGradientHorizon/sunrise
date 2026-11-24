@@ -304,6 +304,7 @@ impl Game<'_> {
         self.server.attack_ticks = 0;
         self.reset_attack_strength_client();
     }
+    #[inline(always)]
     pub(in crate::game) fn reset_attack_strength_client(&mut self) {
         self.client.hand_strength.reset();
     }
@@ -849,6 +850,7 @@ impl Game<'_> {
         }
     }
 
+    #[inline(always)]
     pub(in crate::game) fn tick_hand_server(
         &mut self,
         reset: bool,

@@ -32,7 +32,7 @@ mod test_runs;
 mod text_commands;
 pub(in crate::game) mod world_cmds;
 
-use super::{Dim, Game, Screen, chat::PLAYER_NAME, vehicle_teleport::TeleportMotion};
+use super::{Dim, Game, chat::PLAYER_NAME, vehicle_teleport::TeleportMotion};
 use sunrise_client::{
     command::{
         Arg, CommandError, Context, Reader,

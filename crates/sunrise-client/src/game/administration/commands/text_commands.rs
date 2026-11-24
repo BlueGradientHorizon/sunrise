@@ -360,6 +360,7 @@ impl Game<'_> {
             }
         }
     }
+    #[inline(always)]
     pub(in crate::game) fn titles_or_packet_client(&mut self, local: impl FnOnce(&mut Titles)) {
         local(&mut self.client.titles);
     }

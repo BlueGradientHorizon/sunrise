@@ -113,7 +113,7 @@ impl Game<'_> {
         self.server.lan_acting.is_some()
     }
 
-    #[inline]
+    #[inline(always)]
     pub(in crate::game) fn lan_acting_uuid(&self) -> Option<u128> {
         self.server.lan_acting_uuid
     }

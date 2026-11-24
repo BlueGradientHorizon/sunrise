@@ -467,6 +467,7 @@ impl Game<'_> {
         self.bolts.push(bolt);
         Some(id)
     }
+    #[inline(always)]
     pub(in crate::game) fn load_bolt_client(&mut self) {
         self.client.lightning_seen[0] += 1;
     }

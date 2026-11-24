@@ -921,6 +921,7 @@ impl Game<'_> {
         Ok(())
     }
 
+    #[inline(always)]
     pub(in crate::game) fn integrated_tick_loop_client(&mut self, started: Instant) -> f32 {
         self.client
             .debug_charts

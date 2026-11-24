@@ -564,7 +564,7 @@ impl ScreenBuildState {
 }
 
 impl Game<'_> {
-    #[inline]
+    #[inline(always)]
     pub(in crate::game) fn chat_screen_open(&self) -> bool {
         self.client.screen == Screen::Chat
     }

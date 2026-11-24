@@ -21,6 +21,7 @@ impl Game<'_> {
             self.set_hud_overlay(message);
         }
     }
+    #[inline(always)]
     pub(in crate::game) fn set_hud_overlay(&mut self, message: Text) {
         self.client.titles.set_overlay(message, false);
     }

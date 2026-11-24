@@ -1086,6 +1086,7 @@ impl Game<'_> {
         Ok(())
     }
 
+    #[inline(always)]
     pub(in crate::game) fn guest_turn_client_enter_input(
         &mut self,
         sneaking: bool,
@@ -1101,6 +1102,7 @@ impl Game<'_> {
         (host_keys, saved_mappings)
     }
 
+    #[inline(always)]
     pub(in crate::game) fn guest_turn_client_enter_screens(
         &mut self,
     ) -> (
@@ -1124,7 +1126,7 @@ impl Game<'_> {
         )
     }
 
-    #[inline]
+    #[inline(always)]
     pub(in crate::game) fn guest_turn_client_replace_message(
         &mut self,
         message: Option<(String, std::time::Instant)>,
@@ -1132,6 +1134,7 @@ impl Game<'_> {
         std::mem::replace(&mut self.client.message, message)
     }
 
+    #[inline(always)]
     pub(in crate::game) fn guest_turn_client_leave_screens(
         &mut self,
         screen: Screen,
@@ -1168,7 +1171,7 @@ impl Game<'_> {
         (guest_sign, guest_lectern, guest_command_block, guest_mount)
     }
 
-    #[inline]
+    #[inline(always)]
     pub(in crate::game) fn guest_turn_client_leave_input(
         &mut self,
         host_keys: sunrise_client::held::HeldKeys,

@@ -508,6 +508,7 @@ impl Game<'_> {
         });
         self.open_sign_editor_server(pos, front);
     }
+    #[inline(always)]
     pub(in crate::game) fn open_sign_editor_server(&mut self, pos: (i32, i32, i32), front: bool) {
         if let (Some(player), Some(name)) = (
             self.server.lan_acting_uuid,

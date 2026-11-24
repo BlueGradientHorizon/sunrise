@@ -1093,7 +1093,7 @@ impl Game<'_> {
         self.lectern_menu_done(key, &menu);
         self.follow_lectern();
     }
-    #[inline]
+    #[inline(always)]
     pub(in crate::game) fn lectern_book_open(&self) -> bool {
         matches!(
             self.client.book,

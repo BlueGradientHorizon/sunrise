@@ -541,6 +541,7 @@ impl Game<'_> {
             host.hub.send_to(*conn, packet);
         }
     }
+    #[inline(always)]
     pub(in crate::game) fn publish_boss_bars_client(&mut self, event: &play::BossEvent, now: u128) {
         self.client.boss_overlay.apply(event, now);
     }
