@@ -156,20 +156,23 @@ struct Lists {
     pub flat: bool,
     pub hdr: bool,
     pub entity_quads: u32,
+    /// A pack-drawn name tag's copies: their first quad and count.
+    pub name_tags: (u32, u32),
 }
 
 impl Renderer {
     /// Draws each of this frame's views (`view_sections::Sections`) and hands it to
     /// `native_world_view_drawn`. The views' globals go in the frame's own buffer, its bind
     /// groups with it, and the frame's are put back after them, all in `encoder`'s order.
-    /// `globals` are the frame's, `flat` whether it drew flat, `entity_quads` its entity quads.
+    /// `globals` are the frame's, `flat` whether it drew flat, `entity_quads` its entity quads and
+    /// `name_tags` the range of a pack-drawn name tag's copies.
     pub(super) fn draw_world_views(
         &mut self,
         encoder: &mut wgpu::CommandEncoder,
         frame: &Frame,
         globals: Globals,
         flat: bool,
-        entity_quads: u32,
+        (entity_quads, name_tags): (u32, (u32, u32)),
     ) {
         let views = self.world_views.sections.take_views();
         let [r, g, b, _] = globals.fog_color.map(f64::from);
@@ -185,6 +188,7 @@ impl Renderer {
             flat,
             hdr: self.hdr.is_some(),
             entity_quads,
+            name_tags,
         };
         let format = self.output.frame.format;
         let mut targets = std::mem::take(&mut self.world_views.targets);
@@ -333,7 +337,8 @@ impl Renderer {
             }
         }
         pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
-        if lists.entity_quads > 0 {
+        let (tags_first, tags) = lists.name_tags;
+        if lists.entity_quads + tags > 0 {
             pass.set_pipeline(match view.clip_plane {
                 Some(_) => &self.world_views.clipped_entities,
                 None => &self.entity_pipeline,
@@ -341,6 +346,9 @@ impl Renderer {
             pass.set_bind_group(0, &self.entity_group, &[]);
             pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
             pass.draw_indexed(0..lists.entity_quads * 6, 0, 0..1);
+            // A pack-drawn name tag's copies, as the native entity layer (the pack's text blocks
+            // hold the frame camera's matrices, not the view's).
+            pass.draw_indexed(0..tags * 6, (tags_first * 4) as i32, 0..1);
         }
         pass.set_bind_group(0, &self.group, &[]);
         match flat {

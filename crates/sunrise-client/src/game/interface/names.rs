@@ -843,9 +843,9 @@ pub(super) fn name_tag_layer(pack_text: bool, text_alpha: u32, background: u32) 
     if !pack_text {
         0
     } else if text_alpha == 0xFF && background >> 24 == 0 {
-        sunrise_client::gfx::TEXT_NORMAL_SOLID_OVERLAY
+        sunrise_client::gfx::NAME_TAG_SOLID_OVERLAY
     } else {
-        sunrise_client::gfx::TEXT_NORMAL_OVERLAY
+        sunrise_client::gfx::NAME_TAG_OVERLAY
     }
 }
 

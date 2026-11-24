@@ -1398,7 +1398,8 @@ impl Renderer {
             glint_only_quads,
             text_offset_solid_quads,
             text_normal_solid_quads,
-            text_normal_quads,
+            name_tag_solid_quads,
+            name_tag_quads,
         ] = self.entity_batch.update(
             entities,
             frame.additive,
@@ -1433,10 +1434,12 @@ impl Renderer {
             + banner_pattern_quads
             + glint_only_quads
             + text_solid_quads
-            + text_normal_quads;
-        // Where the solid text ends and the translucent `NORMAL` text (`RenderTypes.text`, the
-        // last material) begins.
-        let text_end = world_quads - text_normal_quads;
+            + name_tag_solid_quads
+            + name_tag_quads;
+        // Where the solid text ends and a pack-drawn name tag's copies (the last materials, solid
+        // then translucent) begin.
+        let text_end = world_quads - name_tag_solid_quads - name_tag_quads;
+        let name_tags = (text_end, name_tag_solid_quads + name_tag_quads);
         laps.lap("r_draw_lists");
         // Where the tail of materials the classic and the improved passes
         // both draw ends: the shadows, particles and items count back from it.
@@ -1452,7 +1455,8 @@ impl Renderer {
             - banner_pattern_quads
             - glint_only_quads
             - text_solid_quads
-            - text_normal_quads;
+            - name_tag_solid_quads
+            - name_tag_quads;
         let native_clouds = self.native.as_ref().is_none_or(|n| n.vanilla_clouds);
         // A pack's core/clouds, decided before either mesh is prepared: its faces, or none and
         // the native mesh in this same frame.
@@ -2279,7 +2283,7 @@ impl Renderer {
             shadow_first,
             shadow_solid,
             shadow_translucent,
-            entity_quads,
+            (entity_quads, name_tags),
             shadow_only_quads,
             outline_base,
         );
@@ -2920,7 +2924,7 @@ impl Renderer {
                 );
                 pass.set_bind_group(0, &self.group, &[]);
             }
-            if text_solid_quads > 0 {
+            if text_solid_quads + name_tag_solid_quads > 0 {
                 pass.stage(self.own_timing.as_mut(), "entity text solid");
                 pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
                 // Draw glowing outline copies with NORMAL depth before coplanar
@@ -2931,7 +2935,7 @@ impl Renderer {
                         core_text::WorldTextMode::Normal,
                         &self.world_text_pipeline,
                         &self.text_mark_pipelines[0],
-                        text_normal_solid_quads,
+                        text_normal_solid_quads + name_tag_solid_quads,
                         text_end - text_normal_solid_quads,
                     ),
                     (
@@ -2977,15 +2981,15 @@ impl Renderer {
             // .executeTranslucent` runs its phases: `nameTags` (`TEXT`, discrete name tags) before
             // `texts` (`TEXT_POLYGON_OFFSET`, text displays). Under Improved Transparency their
             // `OIT_*` stages draw it.
-            if text_quads + text_normal_quads > 0 && !oit_on {
+            if text_quads + name_tag_quads > 0 && !oit_on {
                 pass.stage(self.own_timing.as_mut(), "entity text");
                 pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
                 for (mode, pipeline, count, first) in [
                     (
                         core_text::WorldTextMode::Normal,
                         &self.world_text_pipeline,
-                        text_normal_quads,
-                        text_end,
+                        name_tag_quads,
+                        text_end + name_tag_solid_quads,
                     ),
                     (
                         core_text::WorldTextMode::PolygonOffset,
@@ -3289,9 +3293,10 @@ impl Renderer {
                         };
                         // `OIT_TEXT_POLYGON_OFFSET` (text displays) and `OIT_TEXT` (discrete
                         // name tags): one program, the pack's when it has one.
-                        for (count, first) in
-                            [(text_quads, entity_quads), (text_normal_quads, text_end)]
-                        {
+                        for (count, first) in [
+                            (text_quads, entity_quads),
+                            (name_tag_quads, text_end + name_tag_solid_quads),
+                        ] {
                             if count == 0 {
                                 continue;
                             }
@@ -3760,6 +3765,7 @@ impl Renderer {
                 debug_top,
                 globals,
                 entity_quads,
+                name_tags,
                 hand_in_world,
                 world_quads,
                 additive_quads,

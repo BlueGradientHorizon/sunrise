@@ -10,7 +10,7 @@ impl Renderer {
         shadow_first: u32,
         shadow_solid: u32,
         shadow_translucent: u32,
-        entity_quads: u32,
+        (entity_quads, name_tags): (u32, (u32, u32)),
         shadow_only_quads: u32,
         outline_base: u32,
     ) {
@@ -90,7 +90,7 @@ impl Renderer {
                 );
             }
             drop(pass);
-            if entity_quads > 0 || shadow_only_quads > 0 {
+            if entity_quads + name_tags.1 > 0 || shadow_only_quads > 0 {
                 let mut pass = native
                     .frame
                     .shadow_map
@@ -101,6 +101,9 @@ impl Renderer {
                 pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
                 pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
                 pass.draw_indexed(0..entity_quads * 6, 0, 0..1);
+                // A pack-drawn name tag's copies, which cast as the native entity layer does.
+                let (first, count) = name_tags;
+                pass.draw_indexed(0..count * 6, (first * 4) as i32, 0..1);
                 // Before the GPU-posed outlines (`EntityBatch::append_shadow_only`).
                 let first = outline_base - shadow_only_quads * 4;
                 pass.draw_indexed(0..shadow_only_quads * 6, first as i32, 0..1);

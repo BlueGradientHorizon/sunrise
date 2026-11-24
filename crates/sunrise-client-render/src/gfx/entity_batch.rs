@@ -20,9 +20,10 @@ pub use sunrise_render_core::entity::{
 /// Sorted still-fluid geometry follows, then the two native world-canvas text materials,
 /// NORMAL and POLYGON_OFFSET, the four native terrain model materials, banner patterns,
 /// glint-only overlays, solid `POLYGON_OFFSET` and `NORMAL` text
-/// (`SubmitNodeCollection.canRenderAsSolid`), and translucent `NORMAL` text (52).
+/// (`SubmitNodeCollection.canRenderAsSolid`), then a pack-drawn name tag's solid (53) and
+/// translucent (52) copies.
 /// Material storage order is independent of their draw stages.
-const MATERIALS: usize = 22;
+const MATERIALS: usize = 23;
 const _: () = assert!(
     TEXT_POLYGON_OFFSET_SOLID_OVERLAY != super::EXPLICIT_PARTICLE_OVERLAY
         && TEXT_POLYGON_OFFSET_SOLID_OVERLAY != GLINT_ONLY_OVERLAY
@@ -30,11 +31,17 @@ const _: () = assert!(
         && TEXT_NORMAL_SOLID_OVERLAY != super::EXPLICIT_PARTICLE_OVERLAY
         && TEXT_NORMAL_SOLID_OVERLAY != GLINT_ONLY_OVERLAY
         && TEXT_NORMAL_SOLID_OVERLAY != BANNER_PATTERN_OVERLAY
-        && TEXT_NORMAL_OVERLAY != super::EXPLICIT_PARTICLE_OVERLAY
-        && TEXT_NORMAL_OVERLAY != GLINT_ONLY_OVERLAY
-        && TEXT_NORMAL_OVERLAY != BANNER_PATTERN_OVERLAY
-        && TEXT_NORMAL_OVERLAY != TEXT_POLYGON_OFFSET_SOLID_OVERLAY
-        && TEXT_NORMAL_OVERLAY != TEXT_NORMAL_SOLID_OVERLAY
+        && NAME_TAG_OVERLAY != super::EXPLICIT_PARTICLE_OVERLAY
+        && NAME_TAG_OVERLAY != GLINT_ONLY_OVERLAY
+        && NAME_TAG_OVERLAY != BANNER_PATTERN_OVERLAY
+        && NAME_TAG_OVERLAY != TEXT_POLYGON_OFFSET_SOLID_OVERLAY
+        && NAME_TAG_OVERLAY != TEXT_NORMAL_SOLID_OVERLAY
+        && NAME_TAG_SOLID_OVERLAY != super::EXPLICIT_PARTICLE_OVERLAY
+        && NAME_TAG_SOLID_OVERLAY != GLINT_ONLY_OVERLAY
+        && NAME_TAG_SOLID_OVERLAY != BANNER_PATTERN_OVERLAY
+        && NAME_TAG_SOLID_OVERLAY != TEXT_POLYGON_OFFSET_SOLID_OVERLAY
+        && NAME_TAG_SOLID_OVERLAY != TEXT_NORMAL_SOLID_OVERLAY
+        && NAME_TAG_SOLID_OVERLAY != NAME_TAG_OVERLAY
 );
 pub const TERRAIN_MODEL_SOLID_OVERLAY: u32 = 42;
 pub const TERRAIN_MODEL_CUTOUT_OVERLAY: u32 = 43;
@@ -106,10 +113,14 @@ pub const TRANSLUCENT_GLINT_ITEM_OVERLAY: u32 = 33;
 /// The overlay of text in `Font.DisplayMode.POLYGON_OFFSET` (text displays):
 /// drawn like an ordinary entity, pulled toward the camera.
 pub const TEXT_POLYGON_OFFSET_OVERLAY: u32 = 35;
-/// The overlay of translucent text in `Font.DisplayMode.NORMAL` (`RenderTypes.text`,
-/// `RenderPipelines.TEXT`; `OIT_TEXT` under Improved Transparency): a discrete name tag on its
-/// background, which `SubmitNodeCollection.canRenderAsSolid` leaves out of the solid phase.
-pub const TEXT_NORMAL_OVERLAY: u32 = 52;
+/// The overlays of a name tag's `Font.DisplayMode.NORMAL` copy when a pack's `core/text` draws
+/// it (`RenderTypes.text`, `RenderPipelines.TEXT`): opaque on no background, which
+/// `SubmitNodeCollection.canRenderAsSolid` puts in the solid phase, and translucent (a discrete
+/// tag on its background; `OIT_TEXT` under Improved Transparency). Their own materials, last,
+/// so the passes that draw the native entity layer (world views, a shader pack's shadow) draw
+/// them too.
+pub const NAME_TAG_SOLID_OVERLAY: u32 = 53;
+pub const NAME_TAG_OVERLAY: u32 = 52;
 /// A native world canvas, drawn after particles with normal text depth/culling.
 pub const WORLD_TEXT_OVERLAY: u32 = 39;
 /// The front of its eight-offset outlined text, using POLYGON_OFFSET.
@@ -163,7 +174,8 @@ fn material(layer: u32, oit: bool) -> usize {
         GLINT_ONLY_OVERLAY => return 18,
         TEXT_POLYGON_OFFSET_SOLID_OVERLAY => return 19,
         TEXT_NORMAL_SOLID_OVERLAY => return 20,
-        TEXT_NORMAL_OVERLAY => return 21,
+        NAME_TAG_SOLID_OVERLAY => return 21,
+        NAME_TAG_OVERLAY => return 22,
         _ => {}
     }
     if layer & 0xffff == FLUID_OVERLAY {
@@ -469,7 +481,8 @@ mod tests {
             TEXT_POLYGON_OFFSET_OVERLAY,
             TEXT_POLYGON_OFFSET_SOLID_OVERLAY,
             TEXT_NORMAL_SOLID_OVERLAY,
-            TEXT_NORMAL_OVERLAY,
+            NAME_TAG_OVERLAY,
+            NAME_TAG_SOLID_OVERLAY,
             11,
             12,
             OIT_ENTITY,
@@ -626,7 +639,7 @@ mod tests {
         assert_eq!(
             counts,
             [
-                1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 2, 1, 1, 0, 0, 0, 0, 0, 0
+                1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 2, 1, 1, 0, 0, 0, 0, 0, 0, 0
             ]
         );
         let xs: Vec<_> = batch.combined.iter().step_by(4).map(|v| v.pos[0]).collect();
@@ -702,7 +715,7 @@ mod tests {
         assert_eq!(
             batch.update(&entities, &additive, &quad(0, 9.0), &quad(0, 10.0), true),
             [
-                1, 1, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0
+                1, 1, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
             ]
         );
         let positions: Vec<_> = batch.combined.iter().step_by(4).map(|v| v.pos[0]).collect();
@@ -947,7 +960,7 @@ mod tests {
         assert_eq!(
             counts,
             [
-                4, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+                4, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
             ]
         );
         let xs: Vec<f32> = batch.combined.iter().step_by(4).map(|v| v.pos[0]).collect();
@@ -957,7 +970,7 @@ mod tests {
         assert_eq!(
             counts,
             [
-                2, 0, 0, 0, 0, 0, 1, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+                2, 0, 0, 0, 0, 0, 1, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
             ]
         );
         let xs: Vec<f32> = batch.combined.iter().step_by(4).map(|v| v.pos[0]).collect();
