@@ -24,5 +24,7 @@
   "how-to/world/check-biome-tags": "how-to/world/biomes",
   "how-to/world/refusing-dimension-travel": "how-to/world/portal-destination",
   "reference/container-loot": "how-to/items/loot-functions-and-conditions",
+  "reference/sdk/hosts": "reference/sdk/release",
+  "reference/sdk/retention": "reference/sdk/release",
   "start/first-wasm-mod": "start/first-mod"
 }
