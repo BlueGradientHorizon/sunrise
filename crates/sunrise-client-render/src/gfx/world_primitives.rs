@@ -1241,6 +1241,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "daily"]
     fn device_limited_pages_keep_every_record_and_page_local_ranges() {
         let _gpu = crate::gfx::test_gpu::lock();
         let Some(adapter) = crate::gfx::test_gpu::adapter() else {
