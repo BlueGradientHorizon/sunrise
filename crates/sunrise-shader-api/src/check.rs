@@ -10,10 +10,10 @@
 use crate::inputs::{DISPLACEMENT_INPUT, Frame};
 use crate::manifest::{OptionKind, PackOption};
 use crate::package::Pack;
-use crate::stages::{Composed, StageKind, compose};
-use naga::valid::{Capabilities, ModuleInfo, ValidationFlags, Validator};
+use crate::stages::{StageKind, compose};
+use naga::valid::ModuleInfo;
 use std::collections::HashSet;
-use std::fmt;
+use sunrise_mod_pipeline::check::{Composed, Problem, located, problem, translate, validate};
 
 /// naga expressions a stage may hold, over all its functions.
 pub const MAX_EXPRESSIONS: usize = 20_000;
@@ -199,14 +199,14 @@ pub fn check(pack: &Pack) -> Result<Report, Vec<Problem>> {
 }
 
 /// Builds and checks one stage of `pack` from its file, on a thread of its own with the stack
-/// and the bounds of [`crate::guard`]: a pack's file never crashes the checker.
+/// and the bounds of [`sunrise_mod_pipeline::guard`]: a pack's file never crashes the checker.
 pub fn check_stage(
     pack: &Pack,
     kind: StageKind,
     file: &str,
     entry: usize,
 ) -> Result<CheckedStage, Vec<Problem>> {
-    crate::guard::guarded(|| build_stage(pack, kind, file, entry))
+    sunrise_mod_pipeline::guard::guarded(|| build_stage(pack, kind, file, entry))
         .unwrap_or_else(|reason| Err(vec![problem(file, reason)]))
 }
 
@@ -219,7 +219,7 @@ fn build_stage(
     // First without the entry points, so a missing or mistyped stage function
     // is reported as such rather than as a call that doesn't resolve.
     let mut own = compose(pack, kind, file, entry);
-    if let Some((at, message)) = crate::guard::refusal(&own.text) {
+    if let Some((at, message)) = sunrise_mod_pipeline::guard::refusal(&own.text) {
         return Err(vec![located(&own, at, message)]);
     }
     let entries = own.parts.pop().expect("entries are the last part");
@@ -267,10 +267,10 @@ fn build_stage(
             ));
     }
     problems.extend(cost_problems((expressions, texture_reads), file, "stage"));
-    problems.extend(translate(
+    problems.extend(translate_options(
         &module,
         &info,
-        Some(&pack.manifest.options),
+        &pack.manifest.options,
         file,
     ));
     if !problems.is_empty() {
@@ -652,6 +652,36 @@ fn option_sets(options: &[PackOption]) -> [(&'static str, Vec<(String, f64)>); 3
             }),
         ),
     ]
+}
+
+/// Translates a stage with its options at their defaults, then minimums, then maximums, as wgpu
+/// does when it builds the pipelines: the refusals of the first set refused, each naming the set
+/// and the backend.
+fn translate_options(
+    module: &naga::Module,
+    info: &ModuleInfo,
+    options: &[PackOption],
+    file: &str,
+) -> Vec<Problem> {
+    let present: HashSet<&str> = module
+        .overrides
+        .iter()
+        .filter_map(|(_, o)| o.name.as_deref())
+        .collect();
+    for (set, values) in option_sets(options) {
+        let constants = values
+            .into_iter()
+            .filter(|(id, _)| present.contains(id.as_str()))
+            .collect();
+        let refusals = translate(module, info, &constants);
+        if !refusals.is_empty() {
+            return refusals
+                .into_iter()
+                .map(|refusal| problem(file, format!("with the options at their {set}, {refusal}")))
+                .collect();
+        }
+    }
+    Vec::new()
 }
 
 #[cfg(test)]

@@ -9,12 +9,15 @@
 //! the mod's function reads and returns linear light, and the generated entry points convert
 //! from the quad's vanilla-space colour and to the frame, which stores vanilla's 2.2 encoding
 //! in every format the renderer draws today.
+//!
+//! The WGSL shader-pack checker uses [`check`] and [`guard`] as well, so a file is refused the
+//! same way by both.
 pub mod check;
 pub mod guard;
 
 use crate::check::{Composed, Problem, located, problem, translate, validate};
 
-/// 0.2's colour boundary, in every 0.2 prelude and in mod pipelines' generated entries:
+/// The colour boundary of mod pipelines' generated entries (and of every WGSL pack 0.2 prelude):
 /// vanilla's 2.2 power both ways.
 pub const COLOR_HELPERS: &str = "\
 // Negatives and NaN made 0 (a comparison with NaN is false), so no `pow` sees them.
@@ -146,7 +149,7 @@ pub fn compose(file: &str, text: &str) -> Result<String, Vec<Problem>> {
 
 /// The whole shader of a pipeline whose file `file` holds `text`, with `pipeline_texture` when
 /// it is `textured`, or each reason the file is refused, located in the file where it has a
-/// span (the pack checker's [`Problem`], which prints `<file>:<line>:<column>: <message>`).
+/// span ([`Problem`], which prints `<file>:<line>:<column>: <message>`).
 ///
 /// The checks run on the whole composed module, so the renderer's own prelude and entry points
 /// count as the mod's: its rules above, then naga validation, and translation of the module to
@@ -221,11 +224,14 @@ fn compose_checked(file: &str, text: &str, textured: bool) -> Result<String, Vec
     let module = naga::front::wgsl::parse_str(&composed.text)
         .map_err(|e| vec![located(&composed, None, e.message().to_owned())])?;
     let info = validate(&composed, &module)?;
-    let problems = translate(&module, &info, None, file);
-    if problems.is_empty() {
+    let refusals = translate(&module, &info, &Default::default());
+    if refusals.is_empty() {
         Ok(composed.text)
     } else {
-        Err(problems)
+        Err(refusals
+            .into_iter()
+            .map(|refusal| problem(file, refusal))
+            .collect())
     }
 }
 
@@ -416,7 +422,7 @@ fn pipeline_fragment(input: PipelineInput) -> vec4<f32> { return pipeline_textur
         assert!(!compose(GLOW).unwrap().contains("@group(1)"));
     }
 
-    /// A fragment of any cost the backends translate builds: one over the pack checker's 20,000
+    /// A fragment of any cost the backends translate builds: one over the WGSL pack checker's 20,000
     /// expressions and 64 texture reads included.
     #[test]
     fn a_fragment_over_the_pack_caps_builds() {
