@@ -122,7 +122,7 @@ impl Game<'_> {
     /// events removed), or None. A mob's (styled, or the plain name a spawn gave it) and an
     /// armor stand's live with them; a frame's, a falling block's, a lightning bolt's and a
     /// cushion's with their own data; every other kind's in its saved `CustomName`. On a
-    /// client, the name the server synced for a mob, an armor stand or a display.
+    /// client, the name the server synced for a mob, an armor stand, a lightning bolt or a display.
     pub(super) fn entity_custom_name(&self, entity: EntityRef) -> Option<Text> {
         let decode = sunrise_client::entity_nbt::decode_custom_name_text;
         if let Some(display) = self.native_client_display(entity) {
@@ -190,6 +190,8 @@ impl Game<'_> {
             a.custom_name = name;
         } else if let Some(f) = self.item_frames.iter_mut().find(|f| f.id == id) {
             f.custom_name = saved.clone();
+        } else if let Some(i) = self.bolts.iter().position(|b| b.id == id) {
+            self.bolts.update(i, |b| b.custom_name = saved.clone());
         }
         self.put_saved(id, "CustomName", saved);
         true
