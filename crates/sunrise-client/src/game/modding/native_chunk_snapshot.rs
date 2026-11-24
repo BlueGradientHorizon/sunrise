@@ -396,7 +396,7 @@ mod tests {
                 assert_eq!(worker_snap.heightmap(Heightmap::OceanFloor, 0, 0), Some(1));
 
                 // Out-of-bounds checks never panic.
-                assert_eq!(worker_snap.section(24), None);
+                assert!(worker_snap.section(24).is_none());
                 assert_eq!(worker_snap.block_state(16, 0, 0), None);
                 assert_eq!(worker_snap.block_state(0, -65, 0), None);
                 assert_eq!(worker_snap.block_state(0, 320, 0), None);
