@@ -1349,6 +1349,9 @@ impl DirectEntity {
 pub struct Attack {
     /// The attacking entity's id, 0 for none.
     pub attacker: i32,
+    /// The attacking entity's type, when the site that built the attack knows
+    /// it: `DamageSource.getEntity`'s entity type for damage predicates.
+    pub attacker_type: Option<String>,
     /// The projectile delivering this hit, if any (`DamageSource.getDirectEntity`).
     pub projectile: Option<i32>,
     /// The class family of [`Self::projectile`] (`AbstractArrow`, `LargeFireball`, or another `Projectile`).
@@ -1378,6 +1381,7 @@ pub struct Attack {
 /// The attack of a hit nobody started: environment damage, falls, a level built outside a hit.
 pub static NO_ATTACK: Attack = Attack {
     attacker: 0,
+    attacker_type: None,
     projectile: None,
     projectile_kind: DirectEntity::Other,
     projectile_type: None,
@@ -2692,15 +2696,32 @@ impl ImmunityWorld for Environment<'_> {
             .into_iter()
             .map(|stack| stack.map_or(&[][..], ItemStack::enchantments))
             .zip(sunrise_items::equipment::SLOT_NAMES);
-        let source = self
-            .level
-            .attack()
-            .player_source(&self.source.definition().name, self.causing);
+        let attack = self.level.attack();
+        let source = attack.player_source(&self.source.definition().name, self.causing);
+        // `Enchantment.damageContext` names the source and direct entities.
+        // The lent attack knows the attacker's type; the direct one is that
+        // same living entity for a melee hit, or the projectile it supplies.
+        let attacker = (source.causing != 0 && source.causing == attack.attacker)
+            .then_some(attack.attacker_type.as_deref())
+            .flatten();
+        let direct_attacker = if source.direct == 0 {
+            None
+        } else if source.direct == source.causing {
+            attacker
+        } else if attack.direct == Some(source.direct) {
+            attack.direct_type.as_deref()
+        } else if attack.projectile == Some(source.direct) {
+            attack.projectile_type
+        } else {
+            None
+        };
         let context = crate::enchant::EffectContext {
             items: Some(items),
             damage_type: Some(source.damage_type),
             is_direct: source.causing == source.direct,
             this: Some("minecraft:player"),
+            attacker,
+            direct_attacker,
             ..Default::default()
         };
         Ok(items.enchantments.is_damage_immune(

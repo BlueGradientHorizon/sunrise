@@ -1201,6 +1201,27 @@ impl Enchantments {
             None => string_list(spec).iter().any(|s| s == entity),
         }
     }
+
+    /// One `EntityPredicate`: a present predicate needs its entity, then
+    /// matches its type (`minecraft:entity_type` or the legacy `type`) and,
+    /// when asked, its movement and flying flag. Serves both
+    /// `damage_source_properties` and `entity_properties`.
+    fn entity_predicate_matches(
+        &self,
+        predicate: &Value,
+        entity: Option<&str>,
+        state: Option<(f64, bool)>,
+    ) -> bool {
+        let Some(entity) = entity else { return false };
+        let spec = &predicate["minecraft:entity_type"];
+        let spec = if spec.is_null() {
+            &predicate["type"]
+        } else {
+            spec
+        };
+        (spec.is_null() || self.entity_matches(spec, Some(entity)))
+            && movement_matches(predicate, state)
+    }
     /// The loot-condition subset enchantment `requirements` use.
     pub fn condition(
         &self,
@@ -1243,6 +1264,24 @@ impl Enchantments {
                 {
                     return false;
                 }
+                // `DamageSourcePredicate`: every present entity predicate must
+                // match, and fails when that entity is absent.
+                let source_entity = &p["source_entity"];
+                if !source_entity.is_null()
+                    && !self.entity_predicate_matches(source_entity, ctx.attacker, None)
+                {
+                    return false;
+                }
+                let direct_entity = &p["direct_entity"];
+                if !direct_entity.is_null()
+                    && !self.entity_predicate_matches(
+                        direct_entity,
+                        ctx.direct_attacker,
+                        ctx.direct_motion,
+                    )
+                {
+                    return false;
+                }
                 p["tags"].as_array().into_iter().flatten().all(|t| {
                     let tag = t["id"].as_str().unwrap_or("").trim_start_matches('#');
                     let has = ctx
@@ -1258,14 +1297,7 @@ impl Enchantments {
                     "direct_attacker" => ctx.direct_attacker,
                     _ => None,
                 };
-                let spec = &c["predicate"]["minecraft:entity_type"];
-                let spec = if spec.is_null() {
-                    &c["predicate"]["type"]
-                } else {
-                    spec
-                };
-                (spec.is_null() && entity.is_some() || self.entity_matches(spec, entity))
-                    && movement_matches(&c["predicate"], role_state(c, ctx))
+                self.entity_predicate_matches(&c["predicate"], entity, role_state(c, ctx))
             }
             "minecraft:random_chance" => {
                 let chance = match &c["chance"] {
@@ -2529,6 +2561,163 @@ mod ignite_tests {
             }
             assert!(reg.weighted(&mut LegacyRandom::new(0), &[]).is_none());
         }
+    }
+
+    #[test]
+    fn damage_source_properties_match_source_and_direct_entities() {
+        let e = super::tests::sample();
+        let mut random = LegacyRandom::new(0);
+        let predicate = |field: &str, kind: &str| {
+            json!({
+                "type": "minecraft:damage_source_properties",
+                "predicate": {field: {"minecraft:entity_type": kind}}
+            })
+        };
+        let source_zombie = predicate("source_entity", "minecraft:zombie");
+        let direct_player = predicate("direct_entity", "minecraft:player");
+        let none = EffectContext {
+            damage_type: Some("minecraft:generic"),
+            ..Default::default()
+        };
+        assert!(
+            !e.condition(&source_zombie, 1, &none, &mut random),
+            "source_entity requires an attacker"
+        );
+        assert!(
+            !e.condition(&direct_player, 1, &none, &mut random),
+            "direct_entity requires a direct attacker"
+        );
+        let hit = EffectContext {
+            damage_type: Some("minecraft:generic"),
+            attacker: Some("minecraft:zombie"),
+            direct_attacker: Some("minecraft:player"),
+            ..Default::default()
+        };
+        assert!(e.condition(&source_zombie, 1, &hit, &mut random));
+        assert!(e.condition(&direct_player, 1, &hit, &mut random));
+        assert!(
+            !e.condition(
+                &predicate("direct_entity", "minecraft:zombie"),
+                1,
+                &hit,
+                &mut random
+            ),
+            "the direct entity is evaluated separately from the source"
+        );
+        let legacy = json!({
+            "type": "minecraft:damage_source_properties",
+            "predicate": {"source_entity": {"type": "minecraft:zombie"}}
+        });
+        assert!(
+            e.condition(&legacy, 1, &hit, &mut random),
+            "the legacy `type` key still names the entity type"
+        );
+    }
+
+    #[test]
+    fn damage_immunity_requires_the_matching_attacker() {
+        use std::sync::Arc;
+
+        let definition = json!({
+            "description": "Zombie ward",
+            "max_level": 1,
+            "weight": 1,
+            "anvil_cost": 0,
+            "supported_items": "#minecraft:enchantable/foot_armor",
+            "effects": {"minecraft:damage_immunity": [{
+                "requirements": {
+                    "type": "minecraft:damage_source_properties",
+                    "predicate": {"source_entity": {
+                        "minecraft:entity_type": "minecraft:zombie"
+                    }}
+                }
+            }]}
+        });
+        let table = super::tests::sample()
+            .with_entries([("test:zombie_ward", &definition)])
+            .unwrap()
+            .unwrap();
+        let active = [(Arc::<str>::from("test:zombie_ward"), 1)];
+        let active = active.iter().map(|(id, level)| (id, *level));
+        let mut random = LegacyRandom::new(0);
+        let zombie = EffectContext {
+            damage_type: Some("minecraft:generic"),
+            attacker: Some("minecraft:zombie"),
+            ..Default::default()
+        };
+        assert!(table.is_damage_immune(active, &zombie, &mut random));
+        let active = [(Arc::<str>::from("test:zombie_ward"), 1)];
+        let active = active.iter().map(|(id, level)| (id, *level));
+        let skeleton = EffectContext {
+            damage_type: Some("minecraft:generic"),
+            attacker: Some("minecraft:skeleton"),
+            ..Default::default()
+        };
+        assert!(!table.is_damage_immune(active, &skeleton, &mut random));
+        let active = [(Arc::<str>::from("test:zombie_ward"), 1)];
+        let active = active.iter().map(|(id, level)| (id, *level));
+        let absent = EffectContext {
+            damage_type: Some("minecraft:generic"),
+            ..Default::default()
+        };
+        assert!(
+            !table.is_damage_immune(active, &absent, &mut random),
+            "a source_entity requirement fails when the attacker is absent"
+        );
+    }
+
+    #[test]
+    fn a_source_entity_requirement_gates_a_damage_effect() {
+        let definition = json!({
+            "description": "Zombie bane",
+            "max_level": 1,
+            "weight": 1,
+            "anvil_cost": 0,
+            "supported_items": "#minecraft:enchantable/sword",
+            "effects": {"minecraft:damage": [{
+                "effect": {"type": "minecraft:add", "value": 2.0},
+                "requirements": {
+                    "type": "minecraft:damage_source_properties",
+                    "predicate": {"source_entity": {
+                        "minecraft:entity_type": "minecraft:zombie"
+                    }}
+                }
+            }]}
+        });
+        let table = super::tests::sample()
+            .with_entries([("test:zombie_bane", &definition)])
+            .unwrap()
+            .unwrap();
+        let mut sword = ItemStack::new("minecraft:diamond_sword", 1);
+        sword.enchant("test:zombie_bane", 1);
+        let mut random = LegacyRandom::new(0);
+        let zombie = EffectContext {
+            attacker: Some("minecraft:zombie"),
+            ..Default::default()
+        };
+        assert_eq!(
+            table.modify_value(Some(&sword), "minecraft:damage", &zombie, &mut random, 0.0),
+            2.0
+        );
+        let skeleton = EffectContext {
+            attacker: Some("minecraft:skeleton"),
+            ..Default::default()
+        };
+        assert_eq!(
+            table.modify_value(
+                Some(&sword),
+                "minecraft:damage",
+                &skeleton,
+                &mut random,
+                0.0
+            ),
+            0.0
+        );
+        let absent = EffectContext::default();
+        assert_eq!(
+            table.modify_value(Some(&sword), "minecraft:damage", &absent, &mut random, 0.0),
+            0.0
+        );
     }
 
     #[test]

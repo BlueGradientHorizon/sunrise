@@ -2092,7 +2092,7 @@ impl Game<'_> {
             let pitch = 0.8 + self.world.random.next_float() * 0.3;
             self.audio
                 .play("minecraft:entity.ender_dragon.hurt", Some(at), 5.0, pitch);
-            if kind == DamageKind::Thorns {
+            if kind.is("minecraft:thorns") {
                 self.audio
                     .play("minecraft:enchant.thorns.hit", Some(at), 1.0, 1.0);
             }

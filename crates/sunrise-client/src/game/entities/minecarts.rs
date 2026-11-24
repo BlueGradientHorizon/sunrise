@@ -1318,6 +1318,7 @@ impl Game<'_> {
             &c.ground,
             &mut c.velocity,
         );
+        let (writes, hurts) = super::entity::split_contact_hurts(writes);
         super::entity::apply_contact_writes(
             writes,
             &mut c.velocity,
@@ -1325,6 +1326,7 @@ impl Game<'_> {
             Some(&mut c.stuck),
             None,
         );
+        self.queue_vehicle_contact_hurts(super::commands::Target::Cart(c.id), hurts);
         if c.push_by_bubble_column(
             &self.world,
             self.pack.assets.registry,
@@ -1972,7 +1974,15 @@ impl Game<'_> {
             // stored cart keeps its slots for whatever reads them meanwhile.
             let (due, section_step) =
                 self.with_entity_held_out(id, |game| section_steps::tick(game, id, i, &mut index));
+            // A contact hurt lands on the stored row, not the ticked copy.
+            if self.apply_vehicle_contact_hurts(super::commands::Target::Cart(id)) {
+                continue;
+            }
             section_steps::tell(self, id, section_step);
+            // A hook may have removed the cart during its tick: the cart's tick stops here.
+            if cart_at(&self.carts, id, i).is_none() {
+                continue;
+            }
             if due {
                 self.perform_cart_command(id);
                 index.forget_carts();
@@ -2086,6 +2096,14 @@ impl Game<'_> {
         let id = self.carts[i].id;
         let result =
             self.with_entity_held_out(id, |game| section_steps::tick_riding(game, id, i, intent));
+        // A contact hurt lands on the stored row, not the ticked copy; a
+        // breaking hit removes the cart and releases its seat.
+        if self.apply_vehicle_contact_hurts(super::commands::Target::Cart(id)) {
+            if self.riding == Some(id) && !self.persist.removed_vehicles.contains_key(&id) {
+                self.riding = None;
+            }
+            return true;
+        }
         let Some((_, alive, cart_step, player_step)) = result else {
             return true;
         };

@@ -2401,8 +2401,28 @@ impl Game<'_> {
                 .and_then(|host| host.hub.guests.iter().find(|g| g.entity_id == attacker))
                 .map(|g| sunrise_client::lan::playerdata::uuid_ints(g.uuid))
         };
+        let attacker_type = if attacker == 0 {
+            None
+        } else if self
+            .player
+            .as_ref()
+            .is_some_and(|p| p.entity_id == attacker)
+        {
+            Some("minecraft:player".to_owned())
+        } else if let Some(mob) = self.mobs.iter().find(|m| m.id as i32 == attacker) {
+            Some(mob.kind.id.to_string())
+        } else if self
+            .lan
+            .as_ref()
+            .is_some_and(|host| host.hub.guests.iter().any(|g| g.entity_id == attacker))
+        {
+            Some("minecraft:player".to_owned())
+        } else {
+            None
+        };
         Attack {
             attacker,
+            attacker_type,
             held,
             projectile: None,
             projectile_kind: sunrise_client::health::DirectEntity::Other,
