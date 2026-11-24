@@ -359,6 +359,7 @@ const UNLISTED_KINDS: &[&str] = &[
     "minecraft:glow_item_frame",
     "minecraft:cushion",
     "minecraft:painting",
+    "minecraft:lightning_bolt",
 ];
 
 /// Queue `tag` with the chunk loads as a fresh add.
@@ -947,6 +948,9 @@ impl Game<'_> {
                     self.load_painting(tag, uuid, key);
                 }
             }
+            "minecraft:lightning_bolt" => {
+                let _ = self.load_bolt(tag, None, false);
+            }
             _ => return Err(tag),
         }
         Ok(())
@@ -1249,6 +1253,7 @@ impl Game<'_> {
     fn loads_as_passenger(&self, kind: &str) -> bool {
         self.res.mob_types().contains_key(kind)
             || super::general::general_type_catalog().slot(kind).is_some()
+            || kind == "minecraft:lightning_bolt"
     }
 
     /// Install each supported passenger in list order. Raw records for an unavailable
@@ -1262,6 +1267,8 @@ impl Game<'_> {
                 {
                     mob.extra.rider.get_or_insert(id);
                 }
+            } else if entity_nbt::kind(&rider).as_deref() == Some("minecraft:lightning_bolt") {
+                let _ = self.load_bolt(rider, Some(vehicle), false);
             } else if self
                 .load_general_passenger(&rider, Some(vehicle), None)
                 .is_err()
@@ -1281,13 +1288,21 @@ impl Game<'_> {
     /// The UUIDs `spawn_entity_from_nbt` would add for `tag`, in
     /// `Entity.getSelfAndPassengers` order: the root's, then those of the
     /// riders its loader takes, read as the loaders read them (a malformed
-    /// UUID is none). Passengers the loaders keep unloaded have none here.
+    /// UUID is none). Passengers the loaders keep unloaded or that cannot
+    /// attach to a non-serializable vehicle have none here.
     pub(in crate::game) fn summon_tree_uuids(&self, tag: &Tag) -> Vec<[i32; 4]> {
-        let mut uuids: Vec<[i32; 4]> = entity_nbt::uuid(tag).into_iter().collect();
+        let mut uuids: Vec<[i32; 4]> = entity_nbt::entity_uuid(tag).into_iter().collect();
         let kind = entity_nbt::kind(tag).unwrap_or_default();
-        if (!UNLISTED_KINDS.contains(&kind.as_str()) && self.listed_kind_takes_riders(&kind))
+        let takes_riders = ((!UNLISTED_KINDS.contains(&kind.as_str())
+            && self.listed_kind_takes_riders(&kind))
+            || kind == "minecraft:armor_stand"
             || super::general::general_type_catalog().slot(&kind).is_some()
-        {
+            || (!UNLISTED_KINDS.contains(&kind.as_str())
+                && !self.listed_kind_takes_riders(&kind)
+                && Self::other_takes_passengers(&kind)))
+            && super::seats::could_accept_passenger(&kind)
+            && super::seats::saves_with_chunk(&kind);
+        if takes_riders {
             self.rider_uuids(tag, &mut uuids);
         }
         uuids
@@ -1298,8 +1313,13 @@ impl Game<'_> {
                 .iter()
                 .filter(|p| entity_nbt::kind(p).is_some_and(|kind| self.loads_as_passenger(&kind)))
             {
-                uuids.extend(entity_nbt::uuid(p));
-                self.rider_uuids(p, uuids);
+                uuids.extend(entity_nbt::entity_uuid(p));
+                let p_kind = entity_nbt::kind(p).unwrap_or_default();
+                if super::seats::could_accept_passenger(&p_kind)
+                    && super::seats::saves_with_chunk(&p_kind)
+                {
+                    self.rider_uuids(p, uuids);
+                }
             }
         }
     }
@@ -1907,7 +1927,7 @@ impl Game<'_> {
             self.remember_tags(id, tag);
         }
     }
-    fn remember(&mut self, id: u32, uuid: Option<[i32; 4]>, mut tag: Tag) {
+    pub(super) fn remember(&mut self, id: u32, uuid: Option<[i32; 4]>, mut tag: Tag) {
         self.restore_portal_cooldown(id, &tag);
         self.remember_uuid(id, uuid, &tag);
         // `Team` is read, never written: the team keeps its members itself.
@@ -1933,7 +1953,7 @@ impl Game<'_> {
         self.load_saved_collider(id, tag);
         self.join_saved_team(id, tag);
     }
-    fn join_saved_team(&mut self, id: u32, tag: &Tag) {
+    pub(in crate::game) fn join_saved_team(&mut self, id: u32, tag: &Tag) {
         if tag.get("Team").is_some() {
             let name = uuid_text(self.uuid_for(id));
             join_saved_team(&mut self.score.board, &name, tag);

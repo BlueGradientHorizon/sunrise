@@ -104,6 +104,7 @@ pub(super) fn target_id(t: Target) -> Option<u32> {
         | Target::Trident(id)
         | Target::Spawner(id)
         | Target::Cloud(id)
+        | Target::Bolt(id)
         | Target::Hook(id)
         | Target::Knot(id)
         | Target::General(id) => Some(id),

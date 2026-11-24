@@ -1407,6 +1407,7 @@ impl Game<'_> {
                 | super::commands::Target::Dragon(_)
                 | super::commands::Target::Spawner(_)
                 | super::commands::Target::Cloud(_)
+                | super::commands::Target::Bolt(_)
         ) {
             let at = self.target_position(target)?;
             let [width, height] = self.entity_dimensions(entity)?;
@@ -1446,6 +1447,7 @@ impl Game<'_> {
                 | Target::Dragon(_)
                 | Target::Spawner(_)
                 | Target::Cloud(_)
+                | Target::Bolt(_)
         ) {
             let mut tag = self.command_target_nbt(target)?;
             super::persist::write_attachments(&mut tag, id, &self.entity_attachments);
@@ -1463,6 +1465,7 @@ impl Game<'_> {
                 Target::Dragon(_) => self.discard_resident_dragon(),
                 Target::Spawner(_) => self.ominous_spawners.retain(|e| e.id != id),
                 Target::Cloud(_) => self.breath_clouds.retain(|e| e.id != id),
+                Target::Bolt(_) => self.bolts.retain(|e| e.id != id),
                 _ => unreachable!("lone traveller kind selected above"),
             }
             self.forget_entity(id);

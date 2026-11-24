@@ -104,6 +104,31 @@ pub fn position(tag: &Tag) -> Option<Vec3> {
 pub fn uuid(tag: &Tag) -> Option<[i32; 4]> {
     uuid_from_tag(tag.get("UUID"))
 }
+/// `UUIDUtil.CODEC` through `NbtOps.getIntStream`: a 4-element numeric array or
+/// list (`Entity.load` ignores quoted UUID strings and keeps the constructor UUID).
+pub fn entity_uuid(tag: &Tag) -> Option<[i32; 4]> {
+    match tag.get("UUID")? {
+        Tag::IntArray(v) if v.len() == 4 => Some([v[0], v[1], v[2], v[3]]),
+        Tag::ByteArray(v) if v.len() == 4 => Some([
+            i32::from(v[0] as i8),
+            i32::from(v[1] as i8),
+            i32::from(v[2] as i8),
+            i32::from(v[3] as i8),
+        ]),
+        Tag::LongArray(v) if v.len() == 4 => {
+            Some([v[0] as i32, v[1] as i32, v[2] as i32, v[3] as i32])
+        }
+        Tag::List(v) if v.len() == 4 => {
+            let int = |t: &Tag| match t {
+                Tag::Float(v) => Some(f32::from_bits(*v) as i32),
+                Tag::Double(v) => Some(f64::from_bits(*v) as i32),
+                other => number(Some(other)).map(|v| v as i32),
+            };
+            Some([int(&v[0])?, int(&v[1])?, int(&v[2])?, int(&v[3])?])
+        }
+        _ => None,
+    }
+}
 pub fn motion(tag: &Tag) -> Vec3 {
     read_doubles::<3>(tag.get("Motion")).map_or(Vec3::ZERO, |m| Vec3::new(m[0], m[1], m[2]))
 }
@@ -1901,7 +1926,7 @@ pub fn sanitize_custom_name(tag: &mut Tag) {
         map.remove(&"CustomName".into());
     }
 }
-pub use sunrise_client_core::component::name_text;
+pub use sunrise_client_core::component::{name_text, validated_component};
 /// `Mob.readAdditionalSaveData`: negative radii retain the live homePosition.
 /// Used after the command adapter restores runtime AI, as well as fresh load.
 pub fn read_mob_home(m: &mut Mob, tag: &Tag) {

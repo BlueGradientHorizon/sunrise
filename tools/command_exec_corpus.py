@@ -9275,6 +9275,126 @@ def area_effect_cloud_water_fall():
     return ops + setup(*cleanup)
 
 
+def summon_lightning_bolt_nbt():
+    # Vanilla 26.3 witness for /summon minecraft:lightning_bolt with trailing NBT (#2690).
+    # Covers synchronized RNG identity/lifetime/fire, inherited Entity state, UUID admission
+    # (live bolt, in-place Player offline UUID, malformed string UUID, release on discard),
+    # CustomName validation & team formatting, /execute summon, Passengers both ways, and
+    # entity-ticking chunk eligibility.
+    player_uuid = '-1608632253,-450807400,-1786055591,-2146546415'
+    ops = [
+        # 1. Synchronized RNG strike, live NBT, inherited Entity state, fire, rod, creeper, exact discard tick.
+        {'op': 'sync_randoms', 'uniquifier': 26901, 'entity_id': 2690100, 'level_seed': 26901},
+        cmd('/fill 3 209 3 5 209 5 minecraft:stone', False),
+        cmd('/setblock 4 209 4 minecraft:lightning_rod'),
+        cmd('/execute if block 4 209 4 minecraft:lightning_rod[powered=false]'),
+        cmd('/summon minecraft:creeper 4.5 210 4.5 {NoAI:1b,NoGravity:1b,Invulnerable:1b,Tags:["bolt_creeper"]}'),
+        cmd('/data get entity @e[tag=bolt_creeper,limit=1] powered'),
+        cmd('/summon minecraft:lightning_bolt 4.5 210 4.5 {CustomName:"fz",Fire:40s,Silent:1b,PortalCooldown:12,Tags:["bolt_a"]}'),
+        cmd('/data get entity @e[type=minecraft:lightning_bolt,tag=bolt_a,limit=1]'),
+        {'op': 'tick', 'n': 1},
+        cmd('/execute if block 4 209 4 minecraft:lightning_rod[powered=true]'),
+        cmd('/data get entity @e[tag=bolt_creeper,limit=1] powered'),
+        cmd('/data get entity @e[type=minecraft:lightning_bolt,tag=bolt_a,limit=1] Fire'),
+        cmd('/data get entity @e[type=minecraft:lightning_bolt,tag=bolt_a,limit=1] PortalCooldown'),
+        # Step tick-by-tick to witness exact discard timing under synchronized RNGs (discards on tick 8).
+        *[item for _ in range(9) for item in (
+            {'op': 'tick', 'n': 1},
+            cmd('/execute if entity @e[type=minecraft:lightning_bolt,tag=bolt_a]'),
+        )],
+        cmd('/execute if block 4 209 4 minecraft:lightning_rod[powered=false]'),
+        # Strike over solid stone to witness real spawnFire(4) placement on first server tick.
+        cmd('/setblock 6 209 4 minecraft:stone', False),
+        cmd('/summon minecraft:lightning_bolt 6.5 210 4.5 {Silent:1b,Tags:["bolt_fire"]}'),
+        {'op': 'tick', 'n': 1},
+        cmd('/execute if block 6 210 4 minecraft:fire'),
+        {'op': 'tick', 'n': 60},
+        cmd('/execute if entity @e[type=minecraft:lightning_bolt]'),
+        cmd('/fill 3 209 3 7 211 5 minecraft:air', False),
+
+        # 2. UUID admission: live bolt dup, in-place Player dup, malformed string UUID, release on discard.
+        {'op': 'sync_randoms', 'uniquifier': 26902, 'entity_id': 2690200, 'level_seed': 26902},
+        cmd('/summon minecraft:armor_stand 10.5 210 4.5 {NoGravity:1b,UUID:[I;2690,0,0,2],Tags:["bolt_stand"]}'),
+        cmd('/summon minecraft:lightning_bolt 8.5 210 4.5 {UUID:[I;2690,0,0,1],Fire:20s,Tags:["bolt_live_uuid"]}'),
+        cmd('/summon minecraft:lightning_bolt 8.5 210 4.5 {UUID:[I;2690,0,0,1],Tags:["bolt_dup_live"]}'),
+        cmd(f'/summon minecraft:lightning_bolt 8.5 210 4.5 {{UUID:[I;{player_uuid}],Tags:["bolt_dup_player"]}}'),
+        {'op': 'sync_randoms', 'uniquifier': 26907, 'entity_id': 2690700, 'level_seed': 26907},
+        cmd('/summon minecraft:lightning_bolt 8.5 210 4.5 {UUID:"00000a82-0000-0000-0000-000000000002",Tags:["bolt_str_uuid"]}'),
+        cmd('/data get entity @e[type=minecraft:lightning_bolt,tag=bolt_str_uuid,limit=1] UUID'),
+        {'op': 'tick', 'n': 60},
+        cmd('/execute if entity @e[type=minecraft:lightning_bolt]'),
+        # UUID released on discard: re-summoning [I;2690,0,0,1] now succeeds.
+        cmd('/summon minecraft:lightning_bolt 8.5 210 4.5 {UUID:[I;2690,0,0,1],Tags:["bolt_reused"]}'),
+        {'op': 'tick', 'n': 60},
+        cmd('/execute if entity @e[type=minecraft:lightning_bolt]'),
+
+        # 3. CustomName validation (numeric 123 ignored), styled component, Team formatting, plain no-NBT form.
+        {'op': 'sync_randoms', 'uniquifier': 26903, 'entity_id': 2690300, 'level_seed': 26903},
+        *setup('/team add bolt_team', '/team modify bolt_team color aqua', '/team modify bolt_team prefix "[B] "'),
+        cmd('/summon minecraft:lightning_bolt 8.5 210 4.5 {CustomName:123,Tags:["bolt_bad_name"]}'),
+        cmd('/data get entity @e[type=minecraft:lightning_bolt,tag=bolt_bad_name,limit=1] CustomName'),
+        cmd('/summon minecraft:lightning_bolt 8.5 210 4.5 {CustomName:{text:"Bolt",color:"gold"},Tags:["bolt_gold"]}'),
+        cmd('/summon minecraft:lightning_bolt 8.5 210 4.5 {Team:"bolt_team",CustomName:"Zap",Tags:["bolt_teamed"]}'),
+        cmd('/summon minecraft:lightning_bolt 8.5 210 4.5'),
+        {'op': 'tick', 'n': 60},
+        cmd('/execute if entity @e[type=minecraft:lightning_bolt]'),
+        *setup('/team remove bolt_team'),
+
+        # 4. /execute summon creates a live bolt that strikes and discards.
+        {'op': 'sync_randoms', 'uniquifier': 26904, 'entity_id': 2690400, 'level_seed': 26904},
+        cmd('/setblock 10 209 4 minecraft:lightning_rod'),
+        cmd('/execute positioned 10.5 210 4.5 summon minecraft:lightning_bolt run tag @s add exec_bolt'),
+        cmd('/execute if entity @e[type=minecraft:lightning_bolt,tag=exec_bolt]'),
+        {'op': 'tick', 'n': 1},
+        cmd('/execute if block 10 209 4 minecraft:lightning_rod[powered=true]'),
+        {'op': 'tick', 'n': 60},
+        cmd('/execute if entity @e[type=minecraft:lightning_bolt,tag=exec_bolt]'),
+
+        # 5. Passengers both ways: bolt riding serializable vehicle vs bolt refusing to be a vehicle.
+        {'op': 'sync_randoms', 'uniquifier': 26905, 'entity_id': 2690500, 'level_seed': 26905},
+        cmd('/summon minecraft:armor_stand 12.5 210 4.5 {NoGravity:1b,Tags:["bolt_veh"],Passengers:[{id:"minecraft:lightning_bolt",UUID:[I;2690,0,0,10],Tags:["bolt_rider"]}]}'),
+        cmd('/execute if entity @e[type=minecraft:lightning_bolt,tag=bolt_rider]'),
+        cmd('/execute as @e[tag=bolt_rider] on vehicle if entity @s[tag=bolt_veh]'),
+        cmd('/execute as @e[tag=bolt_veh] on passengers if entity @s[tag=bolt_rider]'),
+        cmd('/data get entity @e[tag=bolt_veh,limit=1] Passengers'),
+        cmd('/ride @e[tag=bolt_stand,limit=1] mount @e[tag=bolt_rider,limit=1]'),
+        cmd('/summon minecraft:lightning_bolt 12.5 210 4.5 {UUID:[I;2690,0,0,11],Tags:["bolt_root"],Passengers:[{id:"minecraft:pig",UUID:[I;2690,0,0,2],NoAI:1b,Tags:["bolt_unadmitted_child"]}]}'),
+        cmd('/execute if entity @e[type=minecraft:lightning_bolt,tag=bolt_root]'),
+        cmd('/execute if entity @e[tag=bolt_unadmitted_child]'),
+        cmd('/execute as @e[tag=bolt_root] on passengers if entity @s'),
+        {'op': 'tick', 'n': 60},
+        cmd('/execute if entity @e[type=minecraft:lightning_bolt]'),
+
+        # 6. Tick eligibility: non-entity-ticking border chunk (16, 0) holds bolt until promoted.
+        {'op': 'sync_randoms', 'uniquifier': 26906, 'entity_id': 2690600, 'level_seed': 26906},
+        cmd('/forceload add 240 0', False),
+        {'op': 'wait_chunks', 'chunks': [[15, 0], [16, 0]]},
+        cmd('/setblock 260 209 4 minecraft:lightning_rod'),
+        cmd('/summon minecraft:lightning_bolt 260.5 210 4.5 {Fire:40s,Tags:["bolt_border"]}'),
+        {'op': 'tick', 'n': 5},
+        cmd('/execute if entity @e[type=minecraft:lightning_bolt,tag=bolt_border]'),
+        cmd('/data get entity @e[type=minecraft:lightning_bolt,tag=bolt_border,limit=1] Fire'),
+        cmd('/execute if block 260 209 4 minecraft:lightning_rod[powered=false]'),
+        cmd('/forceload add 256 0', False),
+        {'op': 'wait_chunks', 'chunks': [[16 + dx, dz] for dx in range(-2, 3) for dz in range(-2, 3)], 'tick_level': False},
+        {'op': 'tick', 'n': 1},
+        cmd('/execute if block 260 209 4 minecraft:lightning_rod[powered=true]'),
+        cmd('/data get entity @e[type=minecraft:lightning_bolt,tag=bolt_border,limit=1] Fire'),
+        {'op': 'tick', 'n': 60},
+        cmd('/execute if entity @e[type=minecraft:lightning_bolt,tag=bolt_border]'),
+        *setup(
+            '/forceload remove 240 0',
+            '/forceload remove 256 0',
+            '/kill @e[tag=bolt_creeper]',
+            '/kill @e[tag=bolt_stand]',
+            '/kill @e[tag=bolt_veh]',
+            '/fill 0 208 0 15 215 15 minecraft:air',
+            '/setblock 260 209 4 minecraft:air',
+        ),
+    ]
+    return ops
+
+
 def groups():
     try:
         from .spectral_duration_corpus import cases as spectral_saved_duration
@@ -9616,6 +9736,7 @@ def groups():
         (STAND_LIVING_GROUP, armor_stand_living_counters()),
         ('summon custom name replies', summon_custom_name_replies()),
         ('area effect cloud water fall distance', area_effect_cloud_water_fall()),
+        ('summon lightning_bolt NBT', summon_lightning_bolt_nbt()),
         # Last: it leaves the player in other food than it found.
         (player_food.GROUP, player_food.cases(cmd, setup)),
     ]

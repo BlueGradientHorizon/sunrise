@@ -28,7 +28,7 @@ impl Game<'_> {
             Target::Player => Some(self.player.as_ref()?.spectator),
             Target::Guest(conn) => Some(self.command_guest(conn)?.motion.as_deref()?.spectator),
             Target::Mob(id) => Some(self.mobs.iter().find(|m| m.id == id)?.no_physics),
-            Target::Dragon(id) | Target::Cloud(id) | Target::Spawner(id) => {
+            Target::Dragon(id) | Target::Cloud(id) | Target::Spawner(id) | Target::Bolt(id) => {
                 Some(self.stored_no_physics(id))
             }
             Target::Projectile(id) => {
@@ -85,7 +85,9 @@ impl Game<'_> {
                 mob.no_physics = no_physics;
                 true
             }
-            Some(Target::Dragon(id) | Target::Cloud(id) | Target::Spawner(id)) => {
+            Some(
+                Target::Dragon(id) | Target::Cloud(id) | Target::Spawner(id) | Target::Bolt(id),
+            ) => {
                 self.persist.no_physics.insert(id, no_physics);
                 true
             }

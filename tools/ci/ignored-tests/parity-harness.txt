@@ -111,3 +111,4 @@ sunrise-client-lib projectiles::tests::a_fireball_turns_on_the_tick_it_hits tool
 sunrise-client game::potions::cloud_water_tests::a_cloud_in_water_resets_its_fall_distance_and_a_dry_one_keeps_it tools/test_cloud_water_parity.py harness
 sunrise-client game::fangs::current_tests::fangs_in_a_current_are_pushed_and_fangs_in_still_water_are_not tools/test_fangs_fluid_current_parity.py harness
 sunrise-client game::commands::data::fire_tests::fire_changes_on_eyes_fangs_spawners_clouds_and_bullets tools/test_entity_fire_ticks_parity.py harness
+sunrise-client game::commands::summon_bolt_tests::a_bolt_summoned_with_nbt_strikes_and_goes tools/test_summon_bolt_nbt_parity.py harness

@@ -113,7 +113,10 @@ impl Game<'_> {
         // Kinds outside `entity_lists!` first, then the listed kinds
         // (`Entity::load_nbt`), then whatever else is a compound.
         let transferring = transferred.is_some();
-        let unloaded = if kind == "minecraft:tnt"
+        let unloaded = if kind == "minecraft:lightning_bolt" && !is_mob && !transferring {
+            let _ = self.load_bolt(tag, None, !from_disk);
+            Ok(())
+        } else if kind == "minecraft:tnt"
             && !is_mob
             && reason == sunrise_client::world::EntityLoadReason::TeleportedTnt
         {

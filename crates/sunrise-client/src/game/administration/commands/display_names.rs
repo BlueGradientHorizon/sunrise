@@ -62,6 +62,7 @@ impl Game<'_> {
                 let block = Text::translate(&format!("block.{block}"), &[]);
                 Text::translate("entity.minecraft.falling_block_type", &[block])
             }
+            Target::Bolt(id) => self.bolt_plain_name(id),
             other => {
                 if let Some(name) = super::super::native_entities::target_id(other)
                     .and_then(|id| self.custom_name_of(id))
@@ -88,6 +89,18 @@ impl Game<'_> {
                 .map_or_else(String::new, |m| m.command_name().plain()),
             other => self.target_base_name(other).plain(),
         }
+    }
+    pub(in crate::game) fn bolt_plain_name(&self, id: u32) -> Text {
+        if let Some(name) = self
+            .bolts
+            .iter()
+            .find(|b| b.id == id)
+            .and_then(|b| b.custom_name.as_ref())
+            .and_then(sunrise_client::entity_nbt::decode_custom_name_text)
+        {
+            return sunrise_client::scoreboard::remove_click_events(&name);
+        }
+        Text::translate("entity.minecraft.lightning_bolt", &[])
     }
     /// Shared `Entity.getDisplayName` decoration: `PlayerTeam.formatNameForTeam`
     /// of `getName()`, then `withHoverEvent(createHoverEvent())` (a `ShowEntity`

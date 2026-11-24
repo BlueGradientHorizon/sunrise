@@ -265,6 +265,17 @@ impl Game<'_> {
                 mixed.insert(vehicle);
             }
         }
+        for b in &self.bolts {
+            if let Some(vehicle) = b.mount
+                && !self
+                    .persist
+                    .removals
+                    .contains(&super::commands::Target::Bolt(b.id))
+            {
+                riding.add(vehicle as i32, b.id as i32);
+                mixed.insert(vehicle);
+            }
+        }
         for vehicle in mixed {
             let seats = self.seated_passengers(vehicle);
             if let Some(passengers) = riding.passengers.get_mut(&(vehicle as i32)) {
@@ -840,9 +851,7 @@ impl Game<'_> {
         assign_resident_ids!(self.tridents, t, next, None);
         assign_resident_ids!(self.rockets, r, next, None);
         assign_resident_ids!(self.crystals, c, next, None);
-        self.bolts.iter_mut().for_each(|b| {
-            assign_entity_id(next, &mut b.id);
-        });
+        assign_resident_ids!(self.bolts, b, next, Some(&b.attachment_lifetime));
         assign_resident_ids!(self.ominous_spawners, o, next, None);
         self.potions.thrown_ids().for_each(|id| {
             assign_entity_id(next, id);
@@ -895,9 +904,57 @@ impl Game<'_> {
                 e.meta.push((0, serializer::BYTE, Value::Byte(1)));
             }
         }
-        // LightningBolt: each client draws and flashes its own.
+        // LightningBolt: each client draws and flashes its own; sync inherited Entity data.
         for b in self.bolts.iter().filter(|b| b.id > after) {
-            add_state(out, b.id, "minecraft:lightning_bolt", b.at, 0.0, false);
+            let e = add_state(
+                out,
+                b.id,
+                "minecraft:lightning_bolt",
+                b.at,
+                b.rotation[0],
+                b.on_ground,
+            );
+            e.pitch = b.rotation[1];
+            e.velocity = at(b.velocity);
+            let flags =
+                i8::from(b.fire_ticks > 0 || b.has_visual_fire) | (i8::from(b.glowing) << 6);
+            if flags != 0 {
+                e.meta.push((0, serializer::BYTE, Value::Byte(flags)));
+            }
+            if b.air != 300 {
+                e.meta.push((1, serializer::INT, Value::Int(b.air)));
+            }
+            if let Some(name) = &b.custom_name {
+                e.meta.push((
+                    2,
+                    serializer::OPTIONAL_COMPONENT,
+                    Value::OptText(Some(name.clone())),
+                ));
+            }
+            if b.custom_name_visible {
+                e.meta.push((3, serializer::BOOLEAN, Value::Bool(true)));
+            }
+            if b.silent {
+                e.meta.push((4, serializer::BOOLEAN, Value::Bool(true)));
+            }
+            if b.no_gravity {
+                e.meta.push((5, serializer::BOOLEAN, Value::Bool(true)));
+            }
+            if b.ticks_frozen != 0 {
+                e.meta
+                    .push((7, serializer::INT, Value::Int(b.ticks_frozen)));
+            }
+            e.defaults.push((0, serializer::BYTE, Value::Byte(0)));
+            e.defaults.push((1, serializer::INT, Value::Int(300)));
+            e.defaults
+                .push((2, serializer::OPTIONAL_COMPONENT, Value::OptText(None)));
+            e.defaults
+                .push((3, serializer::BOOLEAN, Value::Bool(false)));
+            e.defaults
+                .push((4, serializer::BOOLEAN, Value::Bool(false)));
+            e.defaults
+                .push((5, serializer::BOOLEAN, Value::Bool(false)));
+            e.defaults.push((7, serializer::INT, Value::Int(0)));
         }
         for t in self.tnts.iter().filter(|t| t.id > after) {
             let e = add_state(

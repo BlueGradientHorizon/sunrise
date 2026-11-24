@@ -1446,5 +1446,13 @@
     "path": "crates/sunrise-client/src/game/administration/commands/data/fire_tests.rs",
     "reason": "run by tools/test_entity_fire_ticks_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_entity_fire_ticks_parity.py records the vanilla 26.3 entity fire-ticks witness into .local and runs this test against it through SUNRISE_ENTITY_FIRE_TICKS_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::commands::summon_bolt_tests::a_bolt_summoned_with_nbt_strikes_and_goes",
+    "path": "crates/sunrise-client/src/game/administration/commands/summon_bolt_tests.rs",
+    "reason": "run by tools/test_summon_bolt_nbt_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_summon_bolt_nbt_parity.py records the vanilla 26.3 summon lightning_bolt NBT witness into .local and runs this test against it through SUNRISE_SUMMON_BOLT_NBT_WITNESS, so no recorded vanilla data is committed."
   }
 ]

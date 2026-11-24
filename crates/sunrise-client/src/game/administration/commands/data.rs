@@ -473,6 +473,11 @@ impl Game<'_> {
                     self.res.items(),
                 )
             }
+            Target::Bolt(id) => {
+                let uuid = self.uuid_for(id);
+                let b = self.bolts.iter().find(|b| b.id == id)?;
+                self.bolt_tag(b, uuid, include_id)
+            }
             // LeashFenceKnotEntity saves nothing of its own: the common
             // entity fields, as an explicitly summoned knot's.
             Target::Knot(id) => {
@@ -983,6 +988,26 @@ impl Game<'_> {
                 }
                 set_key(&mut tag, "UUID", Tag::IntArray(uuid.to_vec()));
             }
+            Target::Bolt(id) => {
+                Self::normalize_loaded_mob_tags(&mut tag);
+                let i = self
+                    .bolts
+                    .iter()
+                    .position(|b| b.id == id)
+                    .ok_or_else(stale)?;
+                self.bolts.update(i, |b| b.apply_nbt(&tag));
+                self.join_saved_team(id, &tag);
+                let mut kept = Compound::new();
+                if let Some(tags @ Tag::List(_)) = tag.get("Tags") {
+                    kept.insert("Tags".into(), tags.clone());
+                }
+                if let Some(data @ Tag::Compound(d)) = tag.get("data")
+                    && !d.is_empty()
+                {
+                    kept.insert("data".into(), data.clone());
+                }
+                tag = Tag::Compound(kept);
+            }
             _ => return Err(stale()),
         }
         if let Target::Mob(id)
@@ -999,6 +1024,7 @@ impl Game<'_> {
         | Target::Rocket(id)
         | Target::Other(id)
         | Target::Fangs(id)
+        | Target::Bolt(id)
         | Target::Projectile(id) = t
         {
             if let Some(kept) = kept_passengers
@@ -1180,7 +1206,8 @@ impl Game<'_> {
             | Target::Dragon(id)
             | Target::Other(id)
             | Target::Fangs(id)
-            | Target::Cloud(id) => Some(self.persist.raw.entry(id).or_insert_with(empty)),
+            | Target::Cloud(id)
+            | Target::Bolt(id) => Some(self.persist.raw.entry(id).or_insert_with(empty)),
             // `tags_of` reads these two from the same map and a falling
             // block from its saved compound; without these arms `/tag`
             // wrote nothing and still reported success.
@@ -1990,6 +2017,8 @@ impl Game<'_> {
             Some(Target::Trident(id))
         } else if self.ominous_spawners.iter().any(|s| s.id == id) {
             Some(Target::Spawner(id))
+        } else if self.bolts.iter().any(|b| b.id == id) {
+            Some(Target::Bolt(id))
         } else if self.creatures.projectiles.iter().any(|p| p.id == id) {
             Some(Target::Projectile(id))
         } else if self.orbs.iter().any(|o| o.id == id) {
@@ -2036,12 +2065,13 @@ impl Game<'_> {
         }
         place_summoned(&mut tag, pos);
         // ServerLevel.tryAddFreshEntityWithPassengers: a UUID of the tree that
-        // an entity in the level holds refuses the whole tree, before any of
-        // it joins (players are not looked at here).
-        if self.summon_tree_uuids(&tag).into_iter().any(|u| {
-            self.target_with_uuid(u)
-                .is_some_and(|t| t != Target::Player)
-        }) {
+        // an entity (including a player) in the destination level holds refuses
+        // the whole tree before any of it joins.
+        if self
+            .summon_tree_uuids(&tag)
+            .into_iter()
+            .any(|u| self.is_loaded_uuid_in_level(u))
+        {
             return Err(err("commands.summon.failed.uuid", &[]));
         }
         let from = self.mobs.len();

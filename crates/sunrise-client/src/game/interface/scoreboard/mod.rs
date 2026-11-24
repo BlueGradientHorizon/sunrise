@@ -121,6 +121,7 @@ fn gives_uuid(t: Target) -> Option<u32> {
         | Target::Other(id)
         | Target::Fangs(id)
         | Target::Cloud(id)
+        | Target::Bolt(id)
         | Target::General(id)
         | Target::Hook(id)
         | Target::Orb(id) => Some(id),
@@ -309,6 +310,7 @@ impl Game<'_> {
             | Target::Other(id)
             | Target::Fangs(id)
             | Target::Cloud(id)
+            | Target::Bolt(id)
             | Target::Hook(id) => self.persist.raw.get(&id),
             Target::DragonPart(_) => None,
             Target::Player => self.level.player_extra.as_ref(),

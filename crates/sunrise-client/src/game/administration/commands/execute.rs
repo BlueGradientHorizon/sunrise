@@ -193,6 +193,11 @@ impl Game<'_> {
                 .find(|c| c.id == id)
                 .map_or([0.0; 2], |c| c.rotation),
             Target::Cloud(id) => saved_rotation(id),
+            Target::Bolt(id) => self
+                .bolts
+                .iter()
+                .find(|b| b.id == id)
+                .map_or([0.0; 2], |b| b.rotation),
             Target::Dragon(id) => self
                 .dragon
                 .as_ref()
@@ -965,6 +970,14 @@ impl Game<'_> {
                             .iter()
                             .filter(|m| m.extra.mount == Some(id) && m.alive() && !m.removed)
                             .map(|m| Target::Mob(m.id)),
+                    );
+                }
+                if let Some(id) = self.resident_target_id(entity) {
+                    passengers.extend(
+                        self.bolts
+                            .iter()
+                            .filter(|b| b.mount == Some(id))
+                            .map(|b| Target::Bolt(b.id)),
                     );
                 }
                 passengers

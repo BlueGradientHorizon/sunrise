@@ -95,6 +95,8 @@ pub(super) enum Target {
     Spawner(u32),
     /// A simulated lingering, creeper or dragon area-effect cloud.
     Cloud(u32),
+    /// A live lightning bolt (`minecraft:lightning_bolt`).
+    Bolt(u32),
     /// A general entity row, by its entity id (#792).
     General(u32),
     /// A cast fishing hook (`minecraft:fishing_bobber`), which lives with the
@@ -811,6 +813,12 @@ impl Game<'_> {
                 .iter()
                 .filter(|c| c.id != 0)
                 .map(|c| Target::Cloud(c.id)),
+        );
+        candidates.extend(
+            self.bolts
+                .iter()
+                .filter(|b| b.id != 0)
+                .map(|b| Target::Bolt(b.id)),
         );
         candidates.extend(self.natural_knot_ids().into_iter().map(Target::Knot));
         // `isRemoved` from a mod's call on, though the sweep has not taken it out.
@@ -1686,6 +1694,21 @@ impl Game<'_> {
                     });
                 }
             }
+            Target::Bolt(id) => {
+                if let Some(i) = self.bolts.iter().position(|e| e.id == id) {
+                    self.bolts.update(i, |b| {
+                        b.at = pos;
+                        if let Some([yaw, pitch]) = rotation {
+                            if yaw.is_finite() {
+                                b.rotation[0] = yaw;
+                            }
+                            if !pitch.is_nan() {
+                                b.rotation[1] = entity_pitch(pitch);
+                            }
+                        }
+                    });
+                }
+            }
             // Wall-mounted entities do not move; a hook follows its own tick and a
             // dragon part its dragon's.
             Target::Frame(_) | Target::Painting(_) => self.teleport_hanging(t, v),
@@ -2342,6 +2365,7 @@ impl Game<'_> {
             Target::Trident(id) => self.tridents.retain(|t| t.id != id),
             Target::Spawner(id) => self.remove_ominous_spawner(id),
             Target::Cloud(id) => self.remove_breath_cloud(id),
+            Target::Bolt(id) => self.remove_bolt(id),
             Target::Hook(id) => self.remove_fishing_hook(id),
             Target::Knot(_) => {}
             // No command names a part, and `kill` on one would not stop its dragon.
@@ -2461,16 +2485,10 @@ impl Game<'_> {
                     name = self.target_name(Target::Orb(id));
                 }
                 "lightning_bolt" => {
-                    let block = [
-                        pos[0].floor() as i32,
-                        pos[1].floor() as i32,
-                        pos[2].floor() as i32,
-                    ];
-                    if !self.lightning_strike_allowed(self.lan_acting_uuid, block, "command") {
-                        return Err(err("commands.summon.failed", &[]));
-                    }
-                    self.spawn_bolt(pos, false);
-                    name = Text::translate("entity.minecraft.lightning_bolt", &[]);
+                    let target = self
+                        .summon_with_nbt(&kind, pos, "{}")?
+                        .ok_or_else(|| err("commands.summon.failed", &[]))?;
+                    name = self.target_name(target);
                 }
                 "end_crystal" => {
                     // EndCrystal's constructor takes an id from the entity
@@ -4305,6 +4323,10 @@ mod difficulty_tests {
 pub(in crate::game) mod summon_item_orb_tests;
 
 #[cfg(test)]
+#[path = "summon_bolt_tests.rs"]
+pub(in crate::game) mod summon_bolt_tests;
+
+#[cfg(test)]
 pub(in crate::game) mod peaceful_tests {
     use super::{Arg, Context, Game};
     use crate::game::{execution_role::ExecutionRole, native_entity_refs::tests as fixture};
@@ -4524,6 +4546,7 @@ mod look_at_tests {
             Target::Trident(7),
             Target::Spawner(7),
             Target::Cloud(7),
+            Target::Bolt(7),
         ] {
             assert_eq!(non_player_entity_id(t), Some(7), "{t:?}");
         }

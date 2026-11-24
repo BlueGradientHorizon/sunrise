@@ -282,6 +282,21 @@ impl Game<'_> {
                     }
                     _ => {}
                 }
+            } else if let Some(i) = self.bolts.iter().position(|b| b.id == id) {
+                self.bolts.update(i, |b| match (index, value) {
+                    (0, Value::Byte(flags)) => {
+                        b.fire_ticks = i32::from(flags & 1);
+                        b.glowing = (*flags as u8 & 0x40) != 0;
+                    }
+                    (1, Value::Int(air)) => b.air = *air,
+                    (2, Value::OptText(name)) => b.custom_name = name.clone(),
+                    (2, Value::Text(name)) => b.custom_name = Some(name.clone()),
+                    (3, Value::Bool(visible)) => b.custom_name_visible = *visible,
+                    (4, Value::Bool(silent)) => b.silent = *silent,
+                    (5, Value::Bool(no_gravity)) => b.no_gravity = *no_gravity,
+                    (7, Value::Int(frozen)) => b.ticks_frozen = *frozen,
+                    _ => {}
+                });
             } else if let Some(c) = self.cushions.iter_mut().find(|c| c.id == id) {
                 // Cushion.DATA_COLOR (DyeColor, a byte-backed id).
                 if let (8, Value::Id(color)) = (index, value) {
