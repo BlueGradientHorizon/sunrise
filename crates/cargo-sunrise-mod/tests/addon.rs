@@ -60,6 +60,10 @@ struct Library;
 #[mod_api::sunrise_mod]
 impl mod_api::Hooks for Library {}
 pub fn magic() -> u32 { 1729 }
+#[derive(mod_api::Event)]
+#[event(id = "native:reaction", side = server, cancellable)]
+#[non_exhaustive]
+pub struct Reaction { pub heat: u32, pub cancelled: bool }
 "#,
     )
     .unwrap();
@@ -70,10 +74,22 @@ pub fn magic() -> u32 { 1729 }
 struct Addon;
 #[mod_api::sunrise_mod]
 impl mod_api::Hooks for Addon {
-    fn register(&self, _: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+    #[subscribe(priority = 5)]
+    fn on_reaction(&self, _: &mut dyn mod_api::ServerHost, event: &mut native::Reaction) -> mod_api::Flow {
+        if event.heat > 1000 { mod_api::Flow::Cancel } else { mod_api::Flow::Continue }
+    }
+    fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
         assert_eq!(native::magic(), 1729);
+        // The library's event type is shared: the game accepts a listener of it.
+        r.add_listener_receive_cancelled(0, Self::after).unwrap();
         println!("addon registered with server library");
         std::process::exit(0);
+    }
+}
+impl Addon {
+    fn after(&self, _: &mut dyn mod_api::ServerHost, event: &mut native::Reaction) -> mod_api::Flow {
+        event.cancelled = false;
+        mod_api::Flow::Continue
     }
 }
 "#,

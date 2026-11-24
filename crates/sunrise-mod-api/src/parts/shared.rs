@@ -63,6 +63,8 @@ pub struct PartRegistrar {
     pub(crate) entity_tick_each: Vec<Option<String>>,
     pub(crate) mod_id: &'static str,
     pub(crate) mod_index: usize,
+    /// The Rust type of the registering mod's `Hooks`: its listeners must be its own methods.
+    pub(crate) mod_type: Option<std::any::TypeId>,
     /// Parts registered so far, by every mod: the next part's `order`.
     pub(crate) registered: usize,
     pub(crate) parts: Parts,
@@ -125,6 +127,7 @@ impl PartRegistrar {
             entity_tick_each: Vec::new(),
             mod_id,
             mod_index: 0,
+            mod_type: None,
             registered: 0,
             parts: Self::capability_parts(),
             entity_selector_bytes: 0,
@@ -257,6 +260,7 @@ pub(crate) fn register_all(
     for (index, hooks) in mod_vocab::__private::entered_registration(mods, "register").enumerate() {
         registrar.mod_id = mod_vocab::__private::parts_installation::mod_entry_id(&mods[index]);
         registrar.mod_index = index;
+        registrar.mod_type = Some((hooks as &dyn std::any::Any).type_id());
         registrar.current_warnings.clear();
         let first_refusal = registrar.refused.len();
         let rollback = registrar.registration_checkpoint();

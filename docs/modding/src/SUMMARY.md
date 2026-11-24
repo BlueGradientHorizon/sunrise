@@ -29,6 +29,7 @@
 - [Registry keys](concepts/registry-keys.md)
 - [Wire types](concepts/wire-types.md)
 - [Dependencies between mods](concepts/dependencies.md)
+- [Events between mods](concepts/mod-events.md)
 - [The native route](concepts/native-route.md)
 - [Testing a mod](concepts/testing.md)
 

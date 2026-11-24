@@ -116,6 +116,8 @@ pub struct Parts {
         HashMap<Box<str>, (usize, String, crate::__private::InstalledRecipeSerializer)>,
     /// Entity selector tokens the mods registered, by name, in registration order.
     pub(crate) entity_selectors: Vec<EntitySelectorInfo>,
+    /// Mod event listeners by event type, in dispatch order.
+    pub(crate) mod_events: HashMap<std::any::TypeId, Vec<ModEventListener>>,
     /// Frozen raw payload declarations and their sole receiving owners.
     pub(crate) payloads: Option<Arc<crate::parts::payloads::Payloads>>,
     /// Only the parts that override each scoped hook, resolved at load or reload. Boxed: most of the
