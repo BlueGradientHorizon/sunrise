@@ -382,8 +382,12 @@ mod tests {
             let col_dirt = Arc::new(col_dirt);
 
             // Seed initial pending save so (3, 3) exists from iteration 0.
-            save.save_later(&[col_stone.clone()], game.pack.assets.registry, &biomes)
-                .expect("seed save_later");
+            save.save_later(
+                std::slice::from_ref(&col_stone),
+                game.pack.assets.registry,
+                &biomes,
+            )
+            .expect("seed save_later");
 
             let stop = Arc::new(AtomicBool::new(false));
             let stop_reader = stop.clone();
@@ -420,8 +424,12 @@ mod tests {
                 save.save_later(&[col], game.pack.assets.registry, &biomes)
                     .expect("async save_later");
             }
-            save.save(&[col_stone.clone()], game.pack.assets.registry, &biomes)
-                .expect("synchronous flush after async writes");
+            save.save(
+                std::slice::from_ref(&col_stone),
+                game.pack.assets.registry,
+                &biomes,
+            )
+            .expect("synchronous flush after async writes");
             stop.store(true, Ordering::Relaxed);
             reader_thread
                 .join()
