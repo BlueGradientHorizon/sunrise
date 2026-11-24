@@ -353,43 +353,43 @@ fn sticks_of(pad: &gilrs::Gamepad) -> [[f32; 2]; 2] {
 impl Game<'_> {
     /// Controllers are turned off: dropping the DualSense's output frees its triggers.
     pub(super) fn pad_output_off(&mut self) {
-        self.pad.devices.output = None;
-        self.pad.devices.shown = None;
+        self.pad.0.devices.output = None;
+        self.pad.0.devices.shown = None;
     }
 
     /// After each poll: the DualSense's output opens once this window has the pad in hand, then
     /// shows what the game is doing; vibrations that are over stop.
     pub(super) fn pad_output_frame(&mut self) {
-        if self.pad.devices.dualsense
-            && self.pad.in_use
+        if self.pad.0.devices.dualsense
+            && self.pad.0.in_use
             && self.pad_has_window()
-            && self.pad.devices.output.is_none()
+            && self.pad.0.devices.output.is_none()
         {
-            self.pad.devices.output = Some(sunrise_dualsense::Link::start());
+            self.pad.0.devices.output = Some(sunrise_dualsense::Link::start());
         }
         self.pad_haptics();
         self.pad_show();
         let now = Instant::now();
-        self.pad.devices.rumbles.retain(|(_, end)| *end > now);
+        self.pad.0.devices.rumbles.retain(|(_, end)| *end > now);
     }
 
     /// The DualSense's HID output, while it is the active pad, open, and this window has focus
     /// (another game on the same pad keeps it otherwise).
     fn pad_output(&self) -> Option<&sunrise_dualsense::Link> {
-        let output = self.pad.devices.output.as_ref()?;
-        (self.pad.devices.dualsense && self.pad_has_window() && output.open().is_some())
+        let output = self.pad.0.devices.output.as_ref()?;
+        (self.pad.0.devices.dualsense && self.pad_has_window() && output.open().is_some())
             .then_some(output)
     }
 
     /// What the DualSense shows: while playing, its triggers feel what their actions do; in
     /// menus, paused, unfocused or with another pad active, they are free.
     fn pad_show(&mut self) {
-        if self.pad.devices.output.is_none() {
+        if self.pad.0.devices.output.is_none() {
             return;
         }
-        let playing = self.pad.devices.dualsense
+        let playing = self.pad.0.devices.dualsense
             && self.pad_has_window()
-            && self.title.is_none()
+            && self.title.0.is_none()
             && self.client.screen == Screen::Playing
             && !self.screen_over_playing()
             && !self.pause;
@@ -399,7 +399,7 @@ impl Game<'_> {
             (TriggerFeel::Free, TriggerFeel::Free)
         };
         // The lightbar follows the player; menus keep the last colour.
-        let in_world = self.title.is_none();
+        let in_world = self.title.0.is_none();
         let lightbar = match self.player.as_mut().filter(|_| in_world) {
             Some(p) => {
                 let max = p.attribute("minecraft:max_health").unwrap_or(20.0) as f32;
@@ -409,7 +409,7 @@ impl Game<'_> {
                     .lightbar
                     .colour(health, self.dim.id())
             }
-            None => self.pad.devices.shown.and_then(|s| s.lightbar),
+            None => self.pad.0.devices.shown.and_then(|s| s.lightbar),
         };
         let lights = self.settings.controller.lightbar != gamepad::Lightbar::Off;
         let state = sunrise_dualsense::device::State {
@@ -417,11 +417,11 @@ impl Game<'_> {
             lightbar: lightbar.filter(|_| lights),
             player_leds: lights.then_some(sunrise_dualsense::PLAYER_1),
         };
-        if self.pad.devices.shown != Some(state)
-            && let Some(output) = &self.pad.devices.output
+        if self.pad.0.devices.shown != Some(state)
+            && let Some(output) = &self.pad.0.devices.output
         {
             output.set(state);
-            self.pad.devices.shown = Some(state);
+            self.pad.0.devices.shown = Some(state);
         }
     }
 
@@ -494,25 +494,25 @@ impl Game<'_> {
     /// only then); close them when it goes. Opt-in with `SUNRISE_DUALSENSE_HAPTICS=1` until
     /// they are proven on a pad (docs/controllers.md); never for games without sound (tests).
     fn pad_haptics(&mut self) {
-        let usb = self.pad.devices.output.as_ref().and_then(|o| o.open())
+        let usb = self.pad.0.devices.output.as_ref().and_then(|o| o.open())
             == Some(sunrise_dualsense::Transport::Usb);
         if !usb {
-            self.pad.devices.haptics = None;
-            self.pad.devices.haptics_tried = false;
-        } else if !self.pad.devices.haptics_tried {
-            self.pad.devices.haptics_tried = true;
+            self.pad.0.devices.haptics = None;
+            self.pad.0.devices.haptics_tried = false;
+        } else if !self.pad.0.devices.haptics_tried {
+            self.pad.0.devices.haptics_tried = true;
             if std::env::var_os("SUNRISE_DUALSENSE_HAPTICS").is_some_and(|v| v == "1")
                 && std::env::var_os("SUNRISE_NO_AUDIO").is_none()
             {
-                self.pad.devices.haptics = sunrise_dualsense::haptics::Haptics::open();
+                self.pad.0.devices.haptics = sunrise_dualsense::haptics::Haptics::open();
             }
         }
     }
 
     /// Release the DualSense's output (the game is quitting).
     pub(in crate::game) fn pad_close_output(&mut self) {
-        self.pad.devices.haptics = None;
-        self.pad.devices.output = None;
+        self.pad.0.devices.haptics = None;
+        self.pad.0.devices.output = None;
     }
 
     /// Play a vibration on the active pad: a DualSense through its own report, else gilrs' force
@@ -521,6 +521,7 @@ impl Game<'_> {
         let level = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
         if let Some(haptics) = self
             .pad
+            .0
             .devices
             .haptics
             .as_ref()
@@ -544,17 +545,18 @@ impl Game<'_> {
             output.rumble(steps.collect());
             return;
         }
-        let (Some(gilrs), Some(id)) = (self.pad.devices.gilrs.as_mut(), self.pad.devices.active)
+        let (Some(gilrs), Some(id)) =
+            (self.pad.0.devices.gilrs.as_mut(), self.pad.0.devices.active)
         else {
             return;
         };
         if let Some(playing) = play_pulse(gilrs, id, pulse) {
-            self.pad.devices.rumbles.push(playing);
+            self.pad.0.devices.rumbles.push(playing);
         }
     }
 
     pub(super) fn pad_devices_status(&self) -> Value {
-        self.pad.devices.status()
+        self.pad.0.devices.status()
     }
 }
 

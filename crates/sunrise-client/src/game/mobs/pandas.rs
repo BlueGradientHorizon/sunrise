@@ -196,12 +196,12 @@ impl Game<'_> {
         for (item, crumbs) in bites {
             let options = self.item_particle(&ItemStack::new(&item, 1));
             for (at, velocity) in crumbs {
-                self.particles.add(&options, at, velocity);
+                self.particles.0.add(&options, at, velocity);
             }
         }
         let options = ParticleOptions::simple(ParticleType::Sneeze);
         for (at, velocity) in sneezes {
-            self.particles.add(&options, at, velocity);
+            self.particles.0.add(&options, at, velocity);
         }
     }
 }

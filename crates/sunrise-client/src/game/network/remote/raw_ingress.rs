@@ -82,7 +82,8 @@ impl Game<'_> {
             // Capture tasks before checking the packet queue, so a task published after the
             // empty packet boundary cannot overtake a packet that arrived before that task.
             self.pending_client_tasks
-                .append(&mut self.client_tasks.take_turn());
+                .0
+                .append(&mut self.client_tasks.0.take_turn());
             let Some(remote) = self.remote.as_mut() else {
                 break;
             };
@@ -109,8 +110,8 @@ impl Game<'_> {
             receive = true;
         }
         self.send_suggestion_request();
-        while self.client_tasks.is_open()
-            && let Some(task) = self.pending_client_tasks.pop_front()
+        while self.client_tasks.0.is_open()
+            && let Some(task) = self.pending_client_tasks.0.pop_front()
         {
             task.run(self);
         }
@@ -841,7 +842,7 @@ mod tests {
             assert_eq!(entity.position(game), Some([2.0, 64.0, 0.0]));
 
             let (record, calls) = std::sync::mpsc::channel();
-            let executor = game.client_tasks.executor("producer").unwrap();
+            let executor = game.client_tasks.0.executor("producer").unwrap();
             executor.execute(Box::new(move |host| {
                 record.send(entity.position(host)).unwrap()
             }));

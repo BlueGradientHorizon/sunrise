@@ -35,7 +35,7 @@ impl Game<'_> {
     ) {
         let world = match parked {
             None => &self.world,
-            Some(id) => match self.levels.parked_world_of(id) {
+            Some(id) => match self.levels.0.parked_world_of(id) {
                 Some(world) => world,
                 None => return,
             },
@@ -56,7 +56,7 @@ impl Game<'_> {
         }
         let world = match parked {
             None => &mut self.world,
-            Some(id) => match self.levels.parked_world_mut_of(id) {
+            Some(id) => match self.levels.0.parked_world_mut_of(id) {
                 Some(world) => world,
                 None => return,
             },

@@ -46,7 +46,7 @@ impl Game<'_> {
         while Instant::now() < deadline {
             self.update_world();
             if self.remote.is_none() {
-                error = Some(match self.title.as_ref().map(|t| &t.mode) {
+                error = Some(match self.title.0.as_ref().map(|t| &t.mode) {
                     Some(sunrise_client::title::Mode::Multiplayer(
                         sunrise_client::multiplayer::Screen::Disconnected { reason, .. },
                     )) => format!("disconnected: {}", reason.plain()),
@@ -74,7 +74,7 @@ impl Game<'_> {
             // the /list reply), however busy the machine, up to 15 s.
             let shown = self.remote.as_ref().map_or(0, |r| r.chat.len());
             let answered = shown > chat_at
-                || self.command_prompt.is_some()
+                || self.command_prompt.0.is_some()
                 || now - step_at > Duration::from_secs(15);
             if let Some(tag) = &entity_tag
                 && (step != 0 || spawned_at.is_some() && count > 0)

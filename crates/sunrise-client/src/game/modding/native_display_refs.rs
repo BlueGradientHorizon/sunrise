@@ -55,7 +55,7 @@ impl Game<'_> {
         let Target::Other(id) = self.native_entity_target(display.entity())? else {
             return None;
         };
-        let kind = self.others.iter().find(|o| o.id == id)?.kind.as_str();
+        let kind = self.others.0.iter().find(|o| o.id == id)?.kind.as_str();
         Some((DisplayKind::from_entity_type(kind)?, id))
     }
 
@@ -199,10 +199,11 @@ impl Game<'_> {
         }
         let index = self
             .others
+            .0
             .iter()
             .position(|o| o.id == display.entity().id())
             .unwrap();
-        self.others.update(index, |o| {
+        self.others.0.update(index, |o| {
             if o.kind == "minecraft:item_display" {
                 o.item_transformation = Some(t.into());
             }
@@ -575,7 +576,7 @@ mod tests {
 
     fn push(game: &mut Game<'_>, id: u32, kind: &str) -> DisplayRef {
         game.options.dedicated = Some(Vec::new());
-        game.others.push(OtherEntity {
+        game.others.0.push(OtherEntity {
             size_answer: None,
             attachment_lifetime: Default::default(),
             knot_check: None,
@@ -604,7 +605,7 @@ mod tests {
             assert_eq!(block.kind(game), Some(DisplayKind::Block));
             assert_eq!(item.kind(game), Some(DisplayKind::Item));
             assert_eq!(text.entity(), game.entity(21).unwrap());
-            game.others.push(OtherEntity {
+            game.others.0.push(OtherEntity {
                 size_answer: None,
                 attachment_lifetime: Default::default(),
                 knot_check: None,
@@ -800,7 +801,7 @@ mod tests {
             assert!(data.iter().any(|e| e.0 == 17 && e.2 == Value::Float(2.5)));
             assert!(text_display_data(&raw, false).iter().any(|e| e.0 == 23));
             // The saved entity is the compound `/data get entity` shows.
-            let o = game.others.iter().find(|o| o.id == 21).unwrap();
+            let o = game.others.0.iter().find(|o| o.id == 21).unwrap();
             let saved = game.other_to_nbt(o, [1, 2, 3, 4]);
             assert_eq!(
                 saved.get("billboard"),

@@ -13,11 +13,11 @@ fn connection_and_dimension_replacement_clear_every_particle_group() {
         game.options.execution_role = ExecutionRole::Client;
         fill(game);
         // Include pending particles as well as live groups before replacing the connection.
-        game.particles.elder_guardian();
+        game.particles.0.elder_guardian();
         let (client, _server) = Pipe::pair();
         game.connect_local(client, "ParticleReset").unwrap();
         assert_eq!(game.client_particle_count(), 0);
-        assert!(game.pickups.live.is_empty());
+        assert!(game.pickups.0.live.is_empty());
         game.tick_particles();
         assert_eq!(game.client_particle_count(), 0);
         let spawn = SpawnInfo {
@@ -33,10 +33,10 @@ fn connection_and_dimension_replacement_clear_every_particle_group() {
             sea_level: 63,
         };
         fill(game);
-        game.particles.elder_guardian();
+        game.particles.0.elder_guardian();
         game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
         assert_eq!(game.client_particle_count(), 0);
-        assert!(game.pickups.live.is_empty());
+        assert!(game.pickups.0.live.is_empty());
         game.tick_particles();
         assert_eq!(
             game.client_particle_count(),

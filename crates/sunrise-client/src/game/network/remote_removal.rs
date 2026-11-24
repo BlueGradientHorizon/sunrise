@@ -35,6 +35,7 @@ impl Game<'_> {
         }
         for id in self
             .text_displays
+            .0
             .values()
             .filter_map(|d| d.vehicle)
             .chain(self.armor_stands.iter().filter_map(|a| a.vehicle))
@@ -55,7 +56,7 @@ impl Game<'_> {
         // precede its vehicle, whose other seat state still needs clearing.
         for &id in ids {
             self.detach_remote_tracking_entity(id);
-            self.audio.remove_sound_entity(id as u32);
+            self.audio.0.remove_sound_entity(id as u32);
             // Entity.setRemoved detaches every passenger, even when no empty
             // SetPassengers packet preceded the vehicle's removal. Otherwise
             // mobs and other players keep their passenger pose after it is gone.

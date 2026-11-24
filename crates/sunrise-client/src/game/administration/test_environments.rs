@@ -176,7 +176,7 @@ impl Game<'_> {
                     silent: true,
                     ..self.server_source()
                 };
-                self.exec.commands = 0;
+                self.exec.0.commands = 0;
                 let _ = self.run_function(&function, None, source);
             }
             None => log::error!("Test Batch failed for non-existent function {id}"),

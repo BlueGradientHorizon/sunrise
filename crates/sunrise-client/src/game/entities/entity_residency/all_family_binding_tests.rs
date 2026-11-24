@@ -57,7 +57,7 @@ fn every_ordinary_resident_family_binds_its_actual_owned_slot() {
             );
         };
         macro_rules! summon {
-            ($name:literal, $kind:ident, $($field:ident).+) => {{
+            ($name:literal, $kind:ident, $($field:tt).+) => {{
                 game.summon_with_nbt(concat!("minecraft:", $name), [0.5, 70.0, 0.5], "{}").unwrap();
                 game.lan_assign_ids();
                 let id = game$(.$field)+[0].id;
@@ -81,7 +81,7 @@ fn every_ordinary_resident_family_binds_its_actual_owned_slot() {
         summon!("painting", Painting, paintings);
         summon!("oak_boat", Boat, boats);
         summon!("minecart", Cart, carts);
-        summon!("marker", Other, others);
+        summon!("marker", Other, others.0);
         game.add_fangs([0.5, 70.0, 0.5], 0.0, 0, 0);
         let id = game.fangs.list[0].id;
         bind(game, id, Kind::Fangs);

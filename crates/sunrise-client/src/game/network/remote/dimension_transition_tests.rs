@@ -344,15 +344,16 @@ fn a_failed_presentation_discards_its_draws_without_disabling_its_factory() {
                                 }
                             }
                             if trip == 1 {
-                                game.audio.heard.clear();
+                                game.audio.0.heard.clear();
                                 game.tick_sound_engine();
                                 assert_eq!(
-                                    game.audio.heard.get("minecraft:ui.button.click"),
+                                    game.audio.0.heard.get("minecraft:ui.button.click"),
                                     Some(&1)
                                 );
                                 assert!(
                                     !game
                                         .audio
+                                        .0
                                         .heard
                                         .contains_key("minecraft:entity.player.levelup")
                                 );

@@ -35,17 +35,20 @@ mod local_sound_tests {
         with_mods(mods, || {
             crate::game::native_entity_refs::tests::with_game(|game| {
                 game.options.execution_role = super::ExecutionRole::Client;
-                game.audio.heard.clear();
+                game.audio.0.heard.clear();
                 game.native_render_gui_pre(&mut false);
                 assert_eq!(
                     game.client.mod_sounds.queued.borrow().len(),
                     1,
                     "held for the audio update"
                 );
-                assert!(!game.audio.heard.contains_key("minecraft:ui.button.click"));
+                assert!(!game.audio.0.heard.contains_key("minecraft:ui.button.click"));
                 game.tick_sound_engine();
                 assert!(game.client.mod_sounds.queued.borrow().is_empty());
-                assert_eq!(game.audio.heard.get("minecraft:ui.button.click"), Some(&1));
+                assert_eq!(
+                    game.audio.0.heard.get("minecraft:ui.button.click"),
+                    Some(&1)
+                );
             });
         });
     }

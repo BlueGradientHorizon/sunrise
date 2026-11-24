@@ -278,7 +278,7 @@ mod tests {
                 dispense_fixture::stop_recording(),
                 ["G 1,64,2 minecraft:step"]
             );
-            game.audio.capture = Some(Vec::new());
+            game.audio.0.capture = Some(Vec::new());
             assert!(game.entity_broadcast_event(cow, 3));
             assert_eq!(game.server.lan_entity_events, [(10, 3)]);
             let stale = EntityRef::new(WorldEpoch::new(cow.epoch().get() + 1), 10);

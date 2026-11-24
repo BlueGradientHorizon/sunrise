@@ -572,7 +572,7 @@ impl Game<'_> {
             loaded_view_distance: Some(self.streaming.radius.max(0) as u32),
             simulation_distance: Some(s.simulation_distance.max(0) as u32),
             far_terrain_distance: Some(self.lod_distance()),
-            far_terrain_active: Some(self.lod.is_some()),
+            far_terrain_active: Some(self.lod.0.is_some()),
             graphics_preset: s.graphics_preset.clone(),
         }
     }
@@ -722,7 +722,7 @@ impl Game<'_> {
 
     /// The pass timings the running capture asked for, as the renderer shows them now.
     fn gpu_readout(&self) -> Option<sunrise_client::gfx::pack_timing::GpuReadout> {
-        gpu_readout(self.profile.gpu, self.renderer.as_ref())
+        gpu_readout(self.profile.gpu, self.renderer.0.as_ref())
     }
 
     /// `/profiler start|stop|status|mark`: the requests of `sunrise-ctl profile`, answered in chat.
@@ -1021,7 +1021,7 @@ impl Game<'_> {
         });
         let t = self.profile.perf.now();
         if self.profile.gpu != GpuSwitch::Off
-            && let Some(renderer) = self.renderer.as_mut()
+            && let Some(renderer) = self.renderer.0.as_mut()
         {
             let frames = renderer.take_timed_frames();
             self.profile.perf.gpu_frames(t, cpu_ms, &frames);
@@ -1031,7 +1031,7 @@ impl Game<'_> {
             .as_ref()
             .and_then(|r| r.session.counters.lock().unwrap().clone());
         self.profile.perf.set_connection(connection);
-        let (wanted, renderer) = (self.profile.gpu, self.renderer.as_ref());
+        let (wanted, renderer) = (self.profile.gpu, self.renderer.0.as_ref());
         let entities = self.perf_entity_count() as u32;
         let memory = &mut self.profile.memory;
         self.profile.perf.frame_with_gpu(

@@ -95,7 +95,7 @@ impl Game<'_> {
             kind,
             self.creative_source_of(causing),
         );
-        if crate::game::entity::damage_level_of!(self, self.combat.attack(), no_push, None)
+        if crate::game::entity::damage_level_of!(self, self.combat.0.attack(), no_push, None)
             .invulnerability_check(
                 sunrise_client::health::Hurting::Entity(id as i32, "minecraft:item", source),
                 vanilla,

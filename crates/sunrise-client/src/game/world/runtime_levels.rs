@@ -580,7 +580,7 @@ impl Game<'_> {
         if let Some(cap) = property("sunrise-max-runtime-levels")
             .and_then(|value| value.trim().parse::<usize>().ok())
         {
-            self.levels.runtime.set_cap(cap);
+            self.levels.0.runtime.set_cap(cap);
         }
     }
 
@@ -627,7 +627,7 @@ impl Game<'_> {
     ) -> Result<LevelRef, RuntimeLevelError> {
         let owner = self.runtime_caller()?;
         Self::owned_level_id(owner, id)?;
-        if !self.levels.runtime.holds(id) && Dim::exists(id) {
+        if !self.levels.0.runtime.holds(id) && Dim::exists(id) {
             return Err(RuntimeLevelError::ReservedId);
         }
         if resolve_type(id, &level).is_none() {
@@ -641,7 +641,7 @@ impl Game<'_> {
             RuntimeGenerator::Flat | RuntimeGenerator::Void | RuntimeGenerator::Mod(_) => {}
             _ => return Err(RuntimeLevelError::UnknownGenerator),
         }
-        let generation = self.levels.runtime.queue_open(owner, id, level)?;
+        let generation = self.levels.0.runtime.queue_open(owner, id, level)?;
         let epoch = self
             .native_lifecycle
             .epoch()
@@ -668,10 +668,10 @@ impl Game<'_> {
     fn runtime_level_queue_unload(&mut self, id: &str) -> Result<(), RuntimeLevelError> {
         let owner = self.runtime_caller()?;
         Self::owned_level_id(owner, id)?;
-        if self.levels.runtime.is_open(id) && self.level_has_players(Dim::from_id(id)) {
+        if self.levels.0.runtime.is_open(id) && self.level_has_players(Dim::from_id(id)) {
             return Err(RuntimeLevelError::PlayersInside);
         }
-        self.levels.runtime.queue_unload(id)
+        self.levels.0.runtime.queue_unload(id)
     }
 
     /// `RuntimeLevels::delete`: check the request now, queue it for after the level loop.
@@ -689,23 +689,23 @@ impl Game<'_> {
     fn runtime_level_queue_delete(&mut self, id: &str) -> Result<(), RuntimeLevelError> {
         let owner = self.runtime_caller()?;
         Self::owned_level_id(owner, id)?;
-        if !self.levels.runtime.holds(id) && Dim::exists(id) {
+        if !self.levels.0.runtime.holds(id) && Dim::exists(id) {
             return Err(RuntimeLevelError::ReservedId);
         }
-        if self.levels.runtime.is_open(id) && self.level_has_players(Dim::from_id(id)) {
+        if self.levels.0.runtime.is_open(id) && self.level_has_players(Dim::from_id(id)) {
             return Err(RuntimeLevelError::PlayersInside);
         }
         if self.levels_below(id) {
             return Err(RuntimeLevelError::LevelsBelow);
         }
-        self.levels.runtime.queue_delete(owner, id)
+        self.levels.0.runtime.queue_delete(owner, id)
     }
 
     /// Whether a level exists below `id` (`id/...`): in the table, among the world's levels, or
     /// as a folder in the level's own. Folders nest, so removing `id` would remove it.
     fn levels_below(&self, id: &str) -> bool {
         let below = format!("{id}/");
-        self.levels.runtime.any_below(id)
+        self.levels.0.runtime.any_below(id)
             || Dim::all().iter().any(|dim| dim.id().starts_with(&below))
             || folder_holds_levels(&sunrise_client::save::dimension_dir(
                 &self.server.world_root,
@@ -717,7 +717,7 @@ impl Game<'_> {
     /// folder that cannot be looked at may be one: only one that is not there is no level.
     fn references_file_shared(&self, id: &str) -> bool {
         sharing_references_file(id).iter().any(|other| {
-            self.levels.runtime.knows(other)
+            self.levels.0.runtime.knows(other)
                 || Dim::exists(other)
                 || !std::fs::symlink_metadata(sunrise_client::save::dimension_dir(
                     &self.server.world_root,
@@ -729,7 +729,7 @@ impl Game<'_> {
 
     /// `RuntimeLevels::is_open`.
     pub(in crate::game) fn runtime_level_is_open(&self, id: &str) -> bool {
-        self.levels.runtime.is_open(id)
+        self.levels.0.runtime.is_open(id)
     }
 
     fn runtime_refusal(&self, call: &str, id: &str, error: RuntimeLevelError) {
@@ -753,7 +753,7 @@ impl Game<'_> {
     /// for a runtime level the open it was given. A handle of an earlier open reads as stale.
     pub(in crate::game) fn level_handle_current(&self, level: LevelRef) -> bool {
         self.native_lifecycle.epoch() == Some(level.epoch())
-            && level.generation() == self.levels.runtime.generation_of(level.dimension_id())
+            && level.generation() == self.levels.0.runtime.generation_of(level.dimension_id())
     }
 
     /// A handle to the server level `key`, of the generation it is open with.
@@ -763,17 +763,17 @@ impl Game<'_> {
         key: mod_api::DimensionKey,
     ) -> LevelRef {
         let id = mod_api::__private::dimension_id(key).expect("the game's table made the key");
-        LevelRef::with_generation(epoch, key, self.levels.runtime.generation_of(id))
+        LevelRef::with_generation(epoch, key, self.levels.0.runtime.generation_of(id))
     }
 
     /// Apply the requests mods made since the last time, in order. Runs after the level loop of a
     /// server tick, on the server thread, with no level in the middle of a tick. A request
     /// that no longer holds is dropped, with a line in the log.
     pub(in crate::game) fn apply_runtime_levels(&mut self) {
-        for request in self.levels.runtime.take_queue() {
+        for request in self.levels.0.runtime.take_queue() {
             match request {
                 Request::Open(id) => {
-                    let owner = self.levels.runtime.owner_of(&id);
+                    let owner = self.levels.0.runtime.owner_of(&id);
                     if let Err(why) = self.apply_runtime_open(&id) {
                         // Nothing of it stays: `is_open` says false and the id opens again.
                         self.unpublish_runtime_level(&id);
@@ -781,10 +781,10 @@ impl Game<'_> {
                     }
                 }
                 Request::Unload(id) => {
-                    let owner = self.levels.runtime.owner_of(&id);
+                    let owner = self.levels.0.runtime.owner_of(&id);
                     if let Err(why) = self.apply_runtime_unload(&id) {
                         // Still open: `is_open` says true and the mod can unload it again.
-                        self.levels.runtime.keep_open(&id);
+                        self.levels.0.runtime.keep_open(&id);
                         log::warn!(
                             "mod {owner}: runtime level {id} stays open, its close failed: {why}"
                         );
@@ -796,11 +796,12 @@ impl Game<'_> {
     }
 
     fn apply_runtime_open(&mut self, id: &str) -> sunrise_client::Result<()> {
-        if self.levels.runtime.is_erasing(id) {
+        if self.levels.0.runtime.is_erasing(id) {
             return Err("the files of an earlier delete are not all removed".into());
         }
         let level = self
             .levels
+            .0
             .runtime
             .level_of(id)
             .cloned()
@@ -819,7 +820,7 @@ impl Game<'_> {
         self.server.level_shapes.extra = leaked_table(extras);
         if let Some(host) = self.lan.as_mut() {
             host.hub.config.levels = self.server.level_shapes;
-            host.hub.config.level_seeds = self.levels.runtime.seeds();
+            host.hub.config.level_seeds = self.levels.0.runtime.seeds();
         }
         if let Ok(key) = LevelKey::parse(id) {
             DimensionFacts::add_level(key, facts);
@@ -827,13 +828,13 @@ impl Game<'_> {
         Dim::add_extra(id);
         let dim = Dim::extra(id).ok_or("the level was not added")?;
         #[cfg(test)]
-        if self.levels.runtime.fail_open_after_publication {
+        if self.levels.0.runtime.fail_open_after_publication {
             return Err("injected level construction failure".into());
         }
         let mut parked = self.open_runtime_level(dim)?;
         parked.world.game_time = self.world.game_time;
-        self.levels.parked.insert(dim, parked);
-        self.levels.runtime.mark_open(id);
+        self.levels.0.parked.insert(dim, parked);
+        self.levels.0.runtime.mark_open(id);
         self.native_level_opened(dim);
         self.validate_mod_chunk_tickets(dim);
         Ok(())
@@ -850,7 +851,7 @@ impl Game<'_> {
             self.enter_level(Dim::Overworld)?;
         }
         // A level the idle close already saved and dropped is only forgotten.
-        if self.levels.parked.contains_key(&dim)
+        if self.levels.0.parked.contains_key(&dim)
             && let Err(why) = self.close_parked_level(dim)
         {
             // The level stays as it was, and in place if it was.
@@ -869,14 +870,14 @@ impl Game<'_> {
     fn apply_runtime_delete(&mut self, owner: &'static str, id: &str) {
         if let Err(why) = self.close_to_delete(owner, id) {
             // Still open, for another try.
-            self.levels.runtime.keep_open(id);
+            self.levels.0.runtime.keep_open(id);
             log::warn!("mod {owner}: runtime level {id} was not deleted: {why}");
             return;
         }
         match self.erase_runtime_files(id) {
-            Ok(()) => self.levels.runtime.finish_erasing(id),
+            Ok(()) => self.levels.0.runtime.finish_erasing(id),
             Err(why) => {
-                self.levels.runtime.mark_erasing(id);
+                self.levels.0.runtime.mark_erasing(id);
                 log::warn!(
                     "mod {owner}: runtime level {id} is closed but its files were not all \
                      removed ({why}); delete it again"
@@ -888,14 +889,14 @@ impl Game<'_> {
     fn close_to_delete(&mut self, owner: &'static str, id: &str) -> sunrise_client::Result<()> {
         // The request passed this when it was made; the folder is derived from nothing less.
         Self::owned_level_id(owner, id).map_err(|error| format!("{error:?}"))?;
-        if !self.levels.runtime.holds(id) && Dim::exists(id) {
+        if !self.levels.0.runtime.holds(id) && Dim::exists(id) {
             return Err("a level every world has".into());
         }
         if self.levels_below(id) {
             return Err("a level exists below it".into());
         }
         // A level whose open is still waiting comes after this request: only files are removed.
-        if self.levels.runtime.is_live(id) {
+        if self.levels.0.runtime.is_live(id) {
             self.apply_runtime_unload(id)?;
         }
         Ok(())
@@ -903,7 +904,7 @@ impl Game<'_> {
 
     fn erase_runtime_files(&self, id: &str) -> std::io::Result<()> {
         #[cfg(test)]
-        if self.levels.runtime.fail_erase {
+        if self.levels.0.runtime.fail_erase {
             return Err(std::io::Error::other("injected removal failure"));
         }
         erase_level_files(
@@ -918,9 +919,9 @@ impl Game<'_> {
     fn unpublish_runtime_level(&mut self, id: &str) {
         // A save a mod asked for has nothing left to write, and must not open the level again.
         if let Some(dim) = Dim::extra(id) {
-            self.levels.cancel_requested_save(dim);
+            self.levels.0.cancel_requested_save(dim);
         }
-        self.levels.runtime.remove(id);
+        self.levels.0.runtime.remove(id);
         Dim::remove_extra(id);
         let extras: Vec<_> = self
             .server
@@ -933,7 +934,7 @@ impl Game<'_> {
         self.server.level_shapes.extra = leaked_table(extras);
         if let Some(host) = self.lan.as_mut() {
             host.hub.config.levels = self.server.level_shapes;
-            host.hub.config.level_seeds = self.levels.runtime.seeds();
+            host.hub.config.level_seeds = self.levels.0.runtime.seeds();
             host.hub.close_views_of(id);
         }
         if let Ok(key) = LevelKey::parse(id) {
@@ -944,7 +945,7 @@ impl Game<'_> {
     /// What the level `dim` is opened with: its generator, and its seed, which the world's is for
     /// a level every world has.
     pub(in crate::game) fn runtime_terrain(&self, dim: Dim) -> Option<(Generate, i64)> {
-        let level = self.levels.runtime.level_of(dim.id())?;
+        let level = self.levels.0.runtime.level_of(dim.id())?;
         Some((Generate::of(level)?, level.seed))
     }
 }

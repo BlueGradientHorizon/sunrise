@@ -49,7 +49,7 @@ impl Game<'_> {
         };
         let signal = state.properties.get("signal_fire").map(String::as_str) == Some("true");
         for _ in 0..20 {
-            make_campfire_smoke(&mut self.particles, pos, signal, true);
+            make_campfire_smoke(&mut self.particles.0, pos, signal, true);
         }
         let at = BlockPos::new(pos[0], pos[1], pos[2]);
         self.predict_blocks(&[(at, unlit)], seq);
@@ -112,7 +112,7 @@ impl Game<'_> {
         if self.server.lan_acting.is_none() {
             let signal = state.properties.get("signal_fire").map(String::as_str) == Some("true");
             for _ in 0..20 {
-                make_campfire_smoke(&mut self.particles, pos, signal, true);
+                make_campfire_smoke(&mut self.particles.0, pos, signal, true);
             }
         }
         self.post_block_game_event("minecraft:block_change", pos, self.sculk_actor(), None);

@@ -39,7 +39,7 @@ impl Game<'_> {
             |p, v| spawned.push((p, v)),
         );
         for (p, v) in spawned {
-            self.particles.add(&options, p, v);
+            self.particles.0.add(&options, p, v);
         }
     }
 
@@ -642,6 +642,7 @@ impl Game<'_> {
     pub(in crate::game) fn remote_click(&mut self, right: bool) -> bool {
         let Some(size) = self
             .renderer
+            .0
             .as_ref()
             .map(|r| [r.config.width, r.config.height])
         else {

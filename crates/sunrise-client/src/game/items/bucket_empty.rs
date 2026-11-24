@@ -60,7 +60,7 @@ impl Game<'_> {
         if self.server.lan_acting.is_none() {
             return;
         }
-        let Some(capture) = self.audio.capture.as_mut() else {
+        let Some(capture) = self.audio.0.capture.as_mut() else {
             return;
         };
         let want = sound.trim_start_matches("minecraft:");

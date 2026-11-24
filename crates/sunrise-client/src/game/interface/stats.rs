@@ -186,7 +186,7 @@ impl Game<'_> {
     }
 
     pub(in crate::game) fn award_displaced_stat(&mut self, depth: usize, key: &str, n: i32) {
-        let frame = &self.lan_displaced_players[depth];
+        let frame = &self.lan_displaced_players.0[depth];
         if frame.fake {
             return;
         }
@@ -196,7 +196,7 @@ impl Game<'_> {
                 key,
                 n,
                 |game| {
-                    let frame = &game.lan_displaced_players[depth];
+                    let frame = &game.lan_displaced_players.0[depth];
                     frame.uuid.map(|uuid| {
                         (
                             uuid,
@@ -207,7 +207,7 @@ impl Game<'_> {
                         )
                     })
                 },
-                |game| &mut game.lan_displaced_players[depth].stats,
+                |game| &mut game.lan_displaced_players.0[depth].stats,
             );
         });
     }

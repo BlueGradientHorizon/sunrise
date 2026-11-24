@@ -111,7 +111,7 @@ impl Game<'_> {
     fn provider_file(&self, registry: &str, id: &str) -> Option<Value> {
         let id = sunrise_client::command::args::normalized(id);
         match registry {
-            "minecraft:predicate" => self.fns.store.predicates.get(id.as_ref()),
+            "minecraft:predicate" => self.fns.0.store.predicates.get(id.as_ref()),
             _ => self.context_registry(registry)?.get(id.as_ref()),
         }
         .cloned()
@@ -496,7 +496,7 @@ mod tests {
             None,
         )
         .unwrap();
-        game.fns.store.predicates.insert(
+        game.fns.0.store.predicates.insert(
             "minecraft:nested/true".into(),
             json!({"condition": "minecraft:all_of", "terms": []}),
         );

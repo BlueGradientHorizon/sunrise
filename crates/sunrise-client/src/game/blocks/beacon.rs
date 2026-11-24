@@ -314,7 +314,7 @@ impl Game<'_> {
             f64::from(p[1]) + 0.5,
             f64::from(p[2]) + 0.5,
         ];
-        self.audio.play(sound, Some(at), 1.0, 1.0);
+        self.audio.0.play(sound, Some(at), 1.0, 1.0);
     }
     /// `updateBase`: complete layers of `beacon_base_blocks` below.
     fn beacon_base(&self, x: i32, y: i32, z: i32) -> i32 {
@@ -458,6 +458,7 @@ impl Game<'_> {
                     }
                 }
                 self.audio
+                    .0
                     .play("minecraft:ui.button.click", None, 0.25, 1.0);
             }
             return true;
@@ -471,6 +472,7 @@ impl Game<'_> {
             {
                 s.beacon[1] = Some(p);
                 self.audio
+                    .0
                     .play("minecraft:ui.button.click", None, 0.25, 1.0);
             }
             return true;
@@ -479,6 +481,7 @@ impl Game<'_> {
             let paid = self.station.as_ref().is_some_and(|s| s.inputs[0].is_some());
             if paid && sel[0].is_some() {
                 self.audio
+                    .0
                     .play("minecraft:ui.button.click", None, 0.25, 1.0);
                 self.confirm_beacon(sel);
                 self.close_beacon_screen();
@@ -487,6 +490,7 @@ impl Game<'_> {
         }
         if inside(l, 190.0, 107.0, 22.0, 22.0) {
             self.audio
+                .0
                 .play("minecraft:ui.button.click", None, 0.25, 1.0);
             self.close_beacon_screen();
             return true;

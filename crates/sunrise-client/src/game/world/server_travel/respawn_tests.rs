@@ -579,6 +579,7 @@ fn with_anchor_death(
                 let mut chunk = Chunk::with_layout(x >> 4, z >> 4, game.world.layout());
                 chunk.set(x & 15, y, z & 15, anchor.0);
                 game.save
+                    .0
                     .save(&[Arc::new(chunk)], registry, world_biomes!(game))
                     .unwrap();
                 assert!(

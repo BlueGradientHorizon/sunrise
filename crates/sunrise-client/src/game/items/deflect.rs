@@ -214,11 +214,13 @@ impl Game<'_> {
     pub(in crate::game) fn shulker_bullet_hurt(&mut self, at: [f64; 3], silent: bool) {
         if !silent {
             self.audio
+                .0
                 .play("minecraft:entity.shulker_bullet.hurt", Some(at), 1.0, 1.0);
         }
         if let Some(ty) = sunrise_client::particles::ParticleType::from_name("crit") {
             let options = sunrise_client::particles::ParticleOptions::simple(ty);
             self.particles
+                .0
                 .send_particles(&options, at, [0.2, 0.2, 0.2], 0.0, 15);
             self.lan_level_particles(&options, at, [0.2, 0.2, 0.2], 0.0, 15, None);
         }
@@ -280,6 +282,7 @@ impl Game<'_> {
             .as_ref()
             .map(|p| [p.position.x, p.position.y, p.position.z]);
         self.audio
+            .0
             .play("minecraft:entity.player.attack.nodamage", from, 1.0, 1.0);
         turned
     }

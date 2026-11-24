@@ -51,7 +51,7 @@ impl Game<'_> {
             } else {
                 SoundInstance::riding_happy_ghast(&sound, random_source::create())
             };
-            self.audio.play_instance(instance, false);
+            self.audio.0.play_instance(instance, false);
         }
         self.client.riding_sound = started.map(|g| g.id);
         ridden.map(|r| r.1)
@@ -107,7 +107,7 @@ impl Game<'_> {
             if self.client.bee_sounds.get(&sound.id) != Some(&sound.angry) {
                 self.client.bee_sounds.insert(sound.id, sound.angry);
                 let instance = SoundInstance::bee(sound, sound.angry, random_source::create());
-                self.audio.play_instance(instance, false);
+                self.audio.0.play_instance(instance, false);
             }
         }
         mobs
@@ -135,7 +135,7 @@ impl Game<'_> {
             sniffer_digging: false,
         };
         let instance = SoundInstance::guardian_attack(&sound, random_source::create());
-        self.audio.play_instance(instance, false);
+        self.audio.0.play_instance(instance, false);
     }
 
     /// `ClientPacketListener.handleEntityEvent` 63: a sniffer's digging
@@ -152,6 +152,6 @@ impl Game<'_> {
             return;
         }
         let instance = SoundInstance::sniffer(id, random_source::create());
-        self.audio.play_instance(instance, false);
+        self.audio.0.play_instance(instance, false);
     }
 }

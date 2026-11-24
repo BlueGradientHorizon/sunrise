@@ -166,7 +166,7 @@ fn with_game(test: impl FnOnce(&mut Game<'_>)) {
         )
         .unwrap();
         assert!(loot.has_table(TABLE));
-        game.server_loot.set(Some(Arc::new(loot)));
+        game.server_loot.0.set(Some(Arc::new(loot)));
         test(game);
     });
 }

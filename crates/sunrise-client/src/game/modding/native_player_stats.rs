@@ -37,7 +37,7 @@ impl Game<'_> {
             Some(PlayerRead::Acting { .. }) => Some(Some(&self.stats)),
             None => {
                 let entity = player.entity();
-                if self.lan_displaced_players.is_empty()
+                if self.lan_displaced_players.0.is_empty()
                     || self.native_lifecycle.epoch()? != entity.epoch()
                 {
                     return None;
@@ -45,7 +45,7 @@ impl Game<'_> {
                 let CombatPlayer::Displaced(depth, _) = self.combat_player(entity.id())? else {
                     return None;
                 };
-                let frame = &self.lan_displaced_players[depth];
+                let frame = &self.lan_displaced_players.0[depth];
                 (frame.uuid == Some(player.uuid())).then_some(Some(&frame.stats))
             }
         }

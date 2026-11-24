@@ -719,7 +719,7 @@ impl Game<'_> {
         position: [f64; 3],
         rotation: Option<(f32, f32)>,
     ) {
-        if let Some(d) = self.text_displays.get_mut(&id) {
+        if let Some(d) = self.text_displays.0.get_mut(&id) {
             d.move_to(position, rotation);
         }
     }
@@ -729,7 +729,7 @@ impl Game<'_> {
         position: Option<[f64; 3]>,
         rotation: Option<(f32, f32)>,
     ) {
-        if let Some(d) = self.text_displays.get_mut(&id) {
+        if let Some(d) = self.text_displays.0.get_mut(&id) {
             d.move_to_opt(position, rotation);
         }
     }
@@ -740,12 +740,18 @@ impl Game<'_> {
         position: [f64; 3],
         rotation: Option<(f32, f32)>,
     ) -> bool {
-        let Some(pos) = self.text_displays.get(&id).map(RemoteTextDisplay::position) else {
+        let Some(pos) = self
+            .text_displays
+            .0
+            .get(&id)
+            .map(RemoteTextDisplay::position)
+        else {
             return false;
         };
         let is_ticking = self.is_display_ticking(pos);
         let interpolating = self
             .text_displays
+            .0
             .get_mut(&id)
             .is_some_and(|d| d.apply_position_sync(position, rotation, is_ticking));
         if !interpolating {
@@ -767,6 +773,7 @@ impl Game<'_> {
     ) -> Option<[f64; 3]> {
         let (resolved, interpolated) = self
             .text_displays
+            .0
             .get_mut(&id)?
             .apply_teleport_packet(position, yaw, pitch, relatives);
         if let Some(r) = self.remote.as_mut() {
@@ -783,7 +790,12 @@ impl Game<'_> {
     /// A display a packet moved without interpolation changes section at once (`Entity.setPos`
     /// through the level callback), before its riders are seated.
     fn file_snapped_display(&mut self, id: i32) {
-        if let Some(at) = self.text_displays.get(&id).map(RemoteTextDisplay::position) {
+        if let Some(at) = self
+            .text_displays
+            .0
+            .get(&id)
+            .map(RemoteTextDisplay::position)
+        {
             self.pick_section_move(id as u32, [at.x, at.y, at.z]);
         }
     }
@@ -847,7 +859,7 @@ impl Game<'_> {
                 .as_ref()
                 .map(|p| glam::DVec3::new(p.position.x, p.position.y, p.position.z));
         }
-        if let Some(d) = self.text_displays.get(&(id as i32)) {
+        if let Some(d) = self.text_displays.0.get(&(id as i32)) {
             return Some(d.position);
         }
         if let Some(i) = self.mob_index.find_ref(&self.mobs, id) {
@@ -949,7 +961,7 @@ impl Game<'_> {
     /// EntityTickEvent: once for the family, or each alone of a type a mod named, right before
     /// and right after its own tick; a canceled one keeps its state.
     fn tick_and_file_display(&mut self, id: i32) {
-        if let Some(display) = self.text_displays.get_mut(&id) {
+        if let Some(display) = self.text_displays.0.get_mut(&id) {
             let from = display.position();
             display.tick();
             let at = display.position();
@@ -960,8 +972,8 @@ impl Game<'_> {
     }
 
     pub(in crate::game) fn tick_text_displays(&mut self, running: bool) {
-        let mut eligible = Vec::with_capacity(self.text_displays.len());
-        for (&id, display) in &self.text_displays {
+        let mut eligible = Vec::with_capacity(self.text_displays.0.len());
+        for (&id, display) in &self.text_displays.0 {
             if self.display_should_tick(id, display, running) {
                 eligible.push(id);
             }
@@ -980,7 +992,7 @@ impl Game<'_> {
         let mut alone = Vec::new();
         let mut batch = Vec::new();
         for id in eligible {
-            let Some(display) = self.text_displays.get(&id) else {
+            let Some(display) = self.text_displays.0.get(&id) else {
                 continue;
             };
             if round.alone_kind(display.shows.kind()) {
@@ -1162,7 +1174,12 @@ impl Game<'_> {
             // Evaluate visibility and per-entity partial while `self.text_displays` is intact
             // so indirect-passenger vehicle chains across displays resolve accurately.
             visible.clear();
-            for (&id, display) in self.text_displays.iter().filter(|(_, d)| d.shows == shows) {
+            for (&id, display) in self
+                .text_displays
+                .0
+                .iter()
+                .filter(|(_, d)| d.shows == shows)
+            {
                 let entity_partial = self.display_partial(id, partial);
                 if self.display_visible(id, display, camera, entity_partial as f32, scale, now) {
                     visible.push((id, entity_partial));
@@ -1171,7 +1188,7 @@ impl Game<'_> {
             for &(id, entity_partial) in &visible {
                 let partial_f32 = entity_partial as f32;
                 let (d, position, rotation, on_fire, shown_block, shown_item, shown_item_display) = {
-                    let Some(display) = self.text_displays.get_mut(&id) else {
+                    let Some(display) = self.text_displays.0.get_mut(&id) else {
                         continue;
                     };
                     // DisplayRenderer.extractRenderState evaluates progress even before renderState != null.
@@ -1196,6 +1213,7 @@ impl Game<'_> {
                 let light = Self::display_light(&self.world, &d, position, on_fire);
                 let outline = self
                     .text_displays
+                    .0
                     .get(&id)
                     .and_then(|display| self.display_outline(id, display));
                 if let Some(state) = shown_block {
@@ -1309,6 +1327,7 @@ impl Game<'_> {
         visible.clear();
         for (&id, display) in self
             .text_displays
+            .0
             .iter()
             .filter(|(_, d)| d.shows == Shows::Text)
         {
@@ -1320,7 +1339,7 @@ impl Game<'_> {
         for &(id, entity_partial) in &visible {
             let partial_f32 = entity_partial as f32;
             let (d, position, rotation, on_fire, lines) = {
-                let Some(display) = self.text_displays.get_mut(&id) else {
+                let Some(display) = self.text_displays.0.get_mut(&id) else {
                     continue;
                 };
                 // DisplayRenderer.extractRenderState evaluates progress even before renderState != null.
@@ -1395,7 +1414,7 @@ impl Game<'_> {
                 }
                 self.client.text_display_vertices += batch.vertices.len() / 6 * 4;
             }
-            if let Some(display) = self.text_displays.get_mut(&id) {
+            if let Some(display) = self.text_displays.0.get_mut(&id) {
                 display.lines = Some(cached);
             }
         }
@@ -1561,7 +1580,7 @@ mod tests {
         use sunrise_core::nbt::{Compound, Tag};
 
         with_game(|game| {
-            game.others.push(OtherEntity {
+            game.others.0.push(OtherEntity {
                 size_answer: None,
                 attachment_lifetime: Default::default(),
                 knot_check: None,

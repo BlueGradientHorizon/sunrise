@@ -235,7 +235,7 @@ fn parse_wait(words: &[&str]) -> Result<(Condition, Duration, Option<u64>)> {
 
 impl Game<'_> {
     fn snapshot(&self) -> Snapshot {
-        let world = self.title.is_none().then(|| self.level.name.clone());
+        let world = self.title.0.is_none().then(|| self.level.name.clone());
         Snapshot {
             screen: self.screen_label(),
             dimension: self.dim.id().to_string(),
@@ -257,16 +257,16 @@ impl Game<'_> {
             hit: if self.remote.is_some() {
                 self.events.remote_hit.clone()
             } else {
-                self.combat.last_hit()
+                self.combat.0.last_hit()
             },
             world,
         }
     }
 
     pub(super) fn loaded(&self) -> bool {
-        self.title.is_none()
+        self.title.0.is_none()
             && self.player.is_some()
-            && self.streaming.pending() + self.pending_uploads.len() == 0
+            && self.streaming.pending() + self.pending_uploads.0.len() == 0
     }
 
     /// Once per event loop turn: record what changed, answer the waits that hold.
@@ -299,7 +299,7 @@ impl Game<'_> {
                 {
                     event["position"] = json!(at);
                 }
-                self.repro.note_event(self.ticks, &event);
+                self.repro.0.note_event(self.ticks, &event);
                 self.events.push(self.ticks, event);
             }
         }

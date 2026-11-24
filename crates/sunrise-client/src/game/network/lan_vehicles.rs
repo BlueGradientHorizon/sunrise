@@ -658,7 +658,7 @@ impl Game<'_> {
                 lent.give_back(&mut self.world);
                 let pause = outcome.unwrap_or_else(|panic| std::panic::resume_unwind(panic));
                 self.mobs[i] = m;
-                self.paused_mob_hurt = paused_hurt;
+                self.paused_mob_hurt.0 = paused_hurt;
                 // LivingEntity.checkFallDamage sends dust before Block.fallOn.
                 // Send it to every nearby player, including the driver.
                 for event in events.extract_if(.., |e| {

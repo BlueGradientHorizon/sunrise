@@ -305,7 +305,7 @@ impl Game<'_> {
                 m.extra.passenger = true;
             }
         }
-        for (id, display) in &mut self.text_displays {
+        for (id, display) in &mut self.text_displays.0 {
             if passengers.contains(id) {
                 display.vehicle = Some(vehicle_id);
             } else if display.vehicle == Some(vehicle_id) {
@@ -452,6 +452,7 @@ impl Game<'_> {
             if let Some(at) = self.passenger_riding_position(id, None, None, &index) {
                 let before = self
                     .text_displays
+                    .0
                     .get(&(id as i32))
                     .map(|d| d.seat().1)
                     .or_else(|| {
@@ -776,7 +777,7 @@ impl Game<'_> {
             self.boats.update(i, super::boats::Boat::tick_bubble_wobble);
             if !driven {
                 self.boats
-                    .update(i, |b| Self::tick_boat_paddles(b, &mut self.audio));
+                    .update(i, |b| Self::tick_boat_paddles(b, &mut self.audio.0));
             }
         }
     }

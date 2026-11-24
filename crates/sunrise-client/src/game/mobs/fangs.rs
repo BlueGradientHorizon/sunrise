@@ -128,7 +128,7 @@ impl Game<'_> {
                 })
             });
         if let Some((pos, pitch)) = sound {
-            self.audio.play_unshared(
+            self.audio.0.play_unshared(
                 "minecraft:entity.evoker_fangs.attack",
                 Some(pos),
                 1.0,
@@ -156,7 +156,7 @@ impl Game<'_> {
         let crit = ParticleOptions::simple(ParticleType::Crit);
         for crits in bursts {
             for (at, velocity) in crits {
-                self.particles.add(&crit, at, velocity);
+                self.particles.0.add(&crit, at, velocity);
             }
         }
     }
@@ -191,7 +191,7 @@ impl Game<'_> {
                 f.started = true;
                 self.lan_entity_event(f.id as i32, 4, f.pos);
                 let pitch = fang_attack_pitch(&mut f.random);
-                self.audio.play_unshared(
+                self.audio.0.play_unshared(
                     "minecraft:entity.evoker_fangs.attack",
                     Some(f.pos),
                     1.0,

@@ -215,7 +215,7 @@ impl Game<'_> {
     }
     /// Discover and load the data packs of the world (once, or on `/reload`).
     pub(in crate::game) fn ensure_datapacks(&mut self) {
-        if self.fns.loaded || self.server.world_root.as_os_str().is_empty() {
+        if self.fns.0.loaded || self.server.world_root.as_os_str().is_empty() {
             return;
         }
         if let Err(error) = self.reload_datapacks(false, &self.level.enabled_features.clone()) {
@@ -266,7 +266,7 @@ impl Game<'_> {
             &resources,
             data,
             changes,
-            self.cmds.vanilla_disabled,
+            self.cmds.0.vanilla_disabled,
             enabled_features,
             &additional,
         );
@@ -322,13 +322,13 @@ impl Game<'_> {
         }
         self.install_loop_context(context);
         if opening_world {
-            self.fns = Default::default();
+            self.fns.0 = Default::default();
         }
-        self.fns.packs = stack.packs.clone();
-        self.fns.enabled = stack.enabled.clone();
+        self.fns.0.packs = stack.packs.clone();
+        self.fns.0.enabled = stack.enabled.clone();
         self.pack.additional_data = additional.into();
-        self.fns.loaded = true;
-        self.fns.load_pending = true;
+        self.fns.0.loaded = true;
+        self.fns.0.load_pending = true;
         // An explicit reload (`/reload`, `/datapack`) also rebuilds the
         // content tables, as `ReloadableServerResources` does. World open must
         // also install its tables before function admission validates inline holders.
@@ -346,8 +346,8 @@ impl Game<'_> {
         // (`TimerQueue.remove`) drop it from the queue, and a reload only
         // replaces the function library. Read the saved file when the world's
         // data loads, then keep the queue as it is.
-        if !self.fns.schedule_loaded {
-            self.fns.schedule_loaded = true;
+        if !self.fns.0.schedule_loaded {
+            self.fns.0.schedule_loaded = true;
             self.load_schedule();
         }
         Ok(stack)
@@ -359,7 +359,7 @@ impl Game<'_> {
     pub(in crate::game) fn admit_store(&mut self, mut store: DataStore, stack: &PackStack) {
         // The installed candidate already selected and checked the same winners
         // gameplay uses, including the native contributions.
-        if let Some(tables) = &self.world_tables {
+        if let Some(tables) = &self.world_tables.0 {
             let copy = |entries: &std::collections::HashMap<String, serde_json::Value>| {
                 entries
                     .iter()
@@ -377,7 +377,7 @@ impl Game<'_> {
         // argument's `#tag` resolves against them.
         self.sync_pack_tag_ids();
         let mut registries = self.ui.registries.clone();
-        registries.permission = self.fns.command_level();
+        registries.permission = self.fns.0.command_level();
         registries.functions = store.functions.keys().cloned().collect();
         registries.function_tags = store.function_tags.keys().cloned().collect();
         registries.predicates = store.predicates.keys().cloned().collect();
@@ -423,7 +423,7 @@ impl Game<'_> {
         for (id, e) in &store.errors {
             log::warn!("Sunrise: failed to load function {id}: {e}");
         }
-        self.fns.store = store;
+        self.fns.0.store = store;
         self.sync_function_registries(stack);
     }
     /// The item and block tags the world's packs define, as `TagLoader` binds
@@ -459,45 +459,48 @@ impl Game<'_> {
     fn save_datapack_settings(&self) {
         let disabled: Vec<&String> = self
             .fns
+            .0
             .packs
             .iter()
-            .filter(|p| !self.fns.enabled.contains(&p.id))
+            .filter(|p| !self.fns.0.enabled.contains(&p.id))
             .map(|p| &p.id)
             .collect();
-        let json = serde_json::json!({"enabled": self.fns.enabled, "disabled": disabled});
+        let json = serde_json::json!({"enabled": self.fns.0.enabled, "disabled": disabled});
         let _ = std::fs::write(self.datapack_settings_path(), json.to_string());
     }
     pub(in crate::game) fn sync_function_registries(&mut self, stack: &PackStack) {
         self.sync_schedule_registry();
         self.sync_enchantment_registries();
         let reg = &mut self.ui.registries;
-        reg.functions = self.fns.store.functions.keys().cloned().collect();
-        reg.function_tags = self.fns.store.function_tags.keys().cloned().collect();
-        reg.predicates = self.fns.store.predicates.keys().cloned().collect();
-        reg.item_modifiers = self.fns.store.item_modifiers.keys().cloned().collect();
+        reg.functions = self.fns.0.store.functions.keys().cloned().collect();
+        reg.function_tags = self.fns.0.store.function_tags.keys().cloned().collect();
+        reg.predicates = self.fns.0.store.predicates.keys().cloned().collect();
+        reg.item_modifiers = self.fns.0.store.item_modifiers.keys().cloned().collect();
         let sources = reg
             .by_registry
             .entry("minecraft:slot_source".into())
             .or_default();
-        sources.ids = self.fns.store.slot_sources.keys().cloned().collect();
+        sources.ids = self.fns.0.store.slot_sources.keys().cloned().collect();
         sources.tags = self
             .fns
+            .0
             .store
             .slot_source_tags
             .keys()
-            .filter(|id| self.fns.store.slot_source_tag(id).is_ok())
+            .filter(|id| self.fns.0.store.slot_source_tag(id).is_ok())
             .cloned()
             .collect();
-        reg.schedules = self.fns.schedule.iter().map(|s| s.id.clone()).collect();
+        reg.schedules = self.fns.0.schedule.iter().map(|s| s.id.clone()).collect();
 
         reg.datapacks_enabled = std::iter::once("vanilla".to_owned())
-            .chain(self.fns.enabled.iter().cloned())
+            .chain(self.fns.0.enabled.iter().cloned())
             .collect();
         reg.datapacks_disabled = self
             .fns
+            .0
             .packs
             .iter()
-            .filter(|p| !self.fns.enabled.contains(&p.id))
+            .filter(|p| !self.fns.0.enabled.contains(&p.id))
             .map(|p| p.id.clone())
             .collect();
         // A pack's worldgen ids join the completion registries
@@ -544,7 +547,7 @@ impl Game<'_> {
     }
 
     fn sync_schedule_registry(&mut self) {
-        self.ui.registries.schedules = self.fns.schedule.iter().map(|s| s.id.clone()).collect();
+        self.ui.registries.schedules = self.fns.0.schedule.iter().map(|s| s.id.clone()).collect();
     }
 
     // ---- scheduled events ------------------------------------------------------
@@ -568,19 +571,19 @@ impl Game<'_> {
                 continue;
             };
             let _ = cb;
-            self.fns.next_seq += 1;
-            self.fns.schedule.push(Scheduled {
+            self.fns.0.next_seq += 1;
+            self.fns.0.schedule.push(Scheduled {
                 id: id.to_string_lossy(),
                 time: *time,
-                seq: self.fns.next_seq,
+                seq: self.fns.0.next_seq,
             });
         }
     }
     pub(in crate::game) fn save_schedule(&self) {
-        if !self.fns.loaded || self.remote.is_some() {
+        if !self.fns.0.loaded || self.remote.is_some() {
             return;
         }
-        let mut events = self.fns.schedule.clone();
+        let mut events = self.fns.0.schedule.clone();
         events.sort_by_key(|e| (e.time, e.seq));
         let list = events
             .iter()
@@ -623,15 +626,15 @@ impl Game<'_> {
         if self.remote.is_some() {
             return;
         }
-        self.exec = ExecState::default();
+        self.exec.0 = ExecState::default();
         let source = self.server_source();
-        if self.fns.load_pending {
-            self.fns.load_pending = false;
-            for f in self.fns.store.tag_functions("minecraft:load") {
+        if self.fns.0.load_pending {
+            self.fns.0.load_pending = false;
+            for f in self.fns.0.store.tag_functions("minecraft:load") {
                 self.run_function_by_id(&f, None, source);
             }
         }
-        for f in self.fns.store.tag_functions("minecraft:tick") {
+        for f in self.fns.0.store.tag_functions("minecraft:tick") {
             self.run_function_by_id(&f, None, source);
         }
     }
@@ -642,12 +645,13 @@ impl Game<'_> {
         if self.remote.is_some() {
             return;
         }
-        self.exec = ExecState::default();
+        self.exec.0 = ExecState::default();
         let source = self.server_source();
         let now = self.world.game_time;
         loop {
             let due = self
                 .fns
+                .0
                 .schedule
                 .iter()
                 .enumerate()
@@ -655,10 +659,10 @@ impl Game<'_> {
                 .min_by_key(|(_, e)| (e.time, e.seq))
                 .map(|(i, _)| i);
             let Some(i) = due else { break };
-            let event = self.fns.schedule.remove(i);
+            let event = self.fns.0.schedule.remove(i);
             match event.id.strip_prefix('#') {
                 Some(tag) => {
-                    for f in self.fns.store.tag_functions(tag) {
+                    for f in self.fns.0.store.tag_functions(tag) {
                         self.run_function_by_id(&f, None, source);
                     }
                 }
@@ -667,8 +671,8 @@ impl Game<'_> {
         }
     }
     fn run_function_by_id(&mut self, id: &str, args: Option<&Tag>, source: Source) {
-        self.exec.commands = 0;
-        if let Some(f) = self.fns.store.functions.get(id).cloned() {
+        self.exec.0.commands = 0;
+        if let Some(f) = self.fns.0.store.functions.get(id).cloned() {
             // `ServerFunctionManager.execute` logs a function that failed to
             // instantiate or run; its lines' own failures stay silent.
             if let Err(e) = self.run_function(&f, args, source) {
@@ -684,7 +688,7 @@ impl Game<'_> {
     /// and execute it as the rewarded player, with suppressed output and GAMEMASTER permission.
     pub(in crate::game) fn run_advancement_reward_function(&mut self, id: &str) {
         self.ensure_datapacks();
-        let Some(function) = self.fns.store.functions.get(id).cloned() else {
+        let Some(function) = self.fns.0.store.functions.get(id).cloned() else {
             return;
         };
         let Some(pos) = self.target_position(Target::Player) else {
@@ -701,12 +705,13 @@ impl Game<'_> {
         // The existing runner applies this level to nested function calls too.
         let permission = self
             .fns
+            .0
             .permission
             .replace(sunrise_client::command::vanilla::GAMEMASTERS);
-        let callback = self.exec.callback.take();
+        let callback = self.exec.0.callback.take();
         let result = self.run_function(&function, None, source);
-        self.exec.callback = callback;
-        self.fns.permission = permission;
+        self.exec.0.callback = callback;
+        self.fns.0.permission = permission;
         if let Err(error) = result {
             log::warn!(
                 "Sunrise: failed to run advancement reward function {id}: {}",
@@ -736,12 +741,15 @@ impl Game<'_> {
         if let Err((key, a)) = self.parse_macro_lines(f, &lines) {
             return Err(failure(&key, &a));
         }
-        if self.exec.functions.len() >= 128 {
+        if self.exec.0.functions.len() >= 128 {
             return Ok(Outcome::NoReturn);
         }
-        self.exec.functions.push(f.id.clone());
-        let outer = self.exec.returned.take();
-        let level = std::mem::replace(&mut self.ui.registries.permission, self.fns.command_level());
+        self.exec.0.functions.push(f.id.clone());
+        let outer = self.exec.0.returned.take();
+        let level = std::mem::replace(
+            &mut self.ui.registries.permission,
+            self.fns.0.command_level(),
+        );
         let inner = Source {
             silent: true,
             store: None,
@@ -749,10 +757,10 @@ impl Game<'_> {
         };
         for line in lines {
             let _ = self.execute_line(&line, inner);
-            if self.exec.returned.is_some() {
+            if self.exec.0.returned.is_some() {
                 break;
             }
-            if self.exec.commands
+            if self.exec.0.commands
                 > self
                     .ui
                     .rules
@@ -763,8 +771,8 @@ impl Game<'_> {
             }
         }
         self.ui.registries.permission = level;
-        let returned = std::mem::replace(&mut self.exec.returned, outer);
-        self.exec.functions.pop();
+        let returned = std::mem::replace(&mut self.exec.0.returned, outer);
+        self.exec.0.functions.pop();
         Ok(match returned {
             None => Outcome::NoReturn,
             Some(Some(v)) => Outcome::Value(v),
@@ -783,7 +791,10 @@ impl Game<'_> {
         if !f.is_macro() {
             return Ok(());
         }
-        let level = std::mem::replace(&mut self.ui.registries.permission, self.fns.command_level());
+        let level = std::mem::replace(
+            &mut self.ui.registries.permission,
+            self.fns.0.command_level(),
+        );
         let d = self.function_dispatcher();
         let mut out = Ok(());
         for (line, entry) in lines.iter().zip(&f.lines) {
@@ -811,19 +822,21 @@ impl Game<'_> {
         match name.strip_prefix('#') {
             // ServerFunctionLibrary.getTag: an unknown tag is empty.
             Some(tag) => {
-                if !self.fns.store.function_tags.contains_key(tag) {
+                if !self.fns.0.store.function_tags.contains_key(tag) {
                     return Ok(Vec::new());
                 }
                 Ok(self
                     .fns
+                    .0
                     .store
                     .tag_functions(tag)
                     .iter()
-                    .filter_map(|id| self.fns.store.functions.get(id).cloned())
+                    .filter_map(|id| self.fns.0.store.functions.get(id).cloned())
                     .collect())
             }
             None => self
                 .fns
+                .0
                 .store
                 .functions
                 .get(name)
@@ -865,11 +878,12 @@ impl Game<'_> {
             .unwrap_or_else(|| self.player_source());
         let call = if self
             .exec
+            .0
             .prepared_function
             .as_ref()
             .is_some_and(|p| p.matches(ctx, source))
         {
-            std::sync::Arc::unwrap_or_clone(self.exec.prepared_function.take().unwrap().call)
+            std::sync::Arc::unwrap_or_clone(self.exec.0.prepared_function.take().unwrap().call)
         } else {
             let Some(call) = self.prepare_function_call(ctx)? else {
                 return Ok(0);
@@ -975,7 +989,7 @@ impl Game<'_> {
                 }
             }
         }
-        self.exec.callback = Some(if failed && sum == 0 {
+        self.exec.0.callback = Some(if failed && sum == 0 {
             Some((false, 0))
         } else if any {
             Some((true, sum))
@@ -991,10 +1005,10 @@ impl Game<'_> {
         ctx: &Context,
         sources: &[Source],
     ) -> Option<Vec<PreparedFunctionCall>> {
-        if !self.fns.loaded
+        if !self.fns.0.loaded
             || sources.len() < 2
-            || !self.exec.functions.is_empty()
-            || self.exec.prepared_function.is_some()
+            || !self.exec.0.functions.is_empty()
+            || self.exec.0.prepared_function.is_some()
             || sources.iter().any(|s| s.silent)
             || ctx.has("with")
             || ctx.get("arguments").is_some()
@@ -1004,7 +1018,7 @@ impl Game<'_> {
         let Some(Arg::Resource(name)) = ctx.get("name") else {
             return None;
         };
-        if name.starts_with('#') || self.fns.store.functions.get(name)?.is_macro() {
+        if name.starts_with('#') || self.fns.0.store.functions.get(name)?.is_macro() {
             return None;
         }
         let limit = self
@@ -1012,7 +1026,7 @@ impl Game<'_> {
             .rules
             .int_at(sunrise_client::gamerules::vanilla::MAX_COMMAND_SEQUENCE_LENGTH)
             .max(1) as u32;
-        if sources.len() > limit.saturating_sub(self.exec.commands) as usize {
+        if sources.len() > limit.saturating_sub(self.exec.0.commands) as usize {
             return None;
         }
         // No start or slot is published until the existing validation succeeds.
@@ -1037,7 +1051,7 @@ impl Game<'_> {
     pub(in crate::game) fn cmd_return(&mut self, id: &str, ctx: &Context) -> R<i32> {
         if id == "return.fail" {
             self.finish_return(None);
-            self.exec.callback = Some(Some((false, 0)));
+            self.exec.0.callback = Some(Some((false, 0)));
             return Ok(0);
         }
         let value = match ctx.get("value") {
@@ -1052,9 +1066,9 @@ impl Game<'_> {
             let Some(Arg::Resource(name)) = ctx.get("function").cloned() else {
                 return Ok(0);
             };
-            let before = self.fns.schedule.len();
-            self.fns.schedule.retain(|e| e.id != name);
-            let count = before - self.fns.schedule.len();
+            let before = self.fns.0.schedule.len();
+            self.fns.0.schedule.retain(|e| e.id != name);
+            let count = before - self.fns.0.schedule.len();
             if count == 0 {
                 return Err(err("commands.schedule.cleared.failure", &[&name]));
             }
@@ -1081,7 +1095,7 @@ impl Game<'_> {
             // An unknown tag is empty, and scheduling it is allowed.
             Some(_) => name.clone(),
             None => {
-                let Some(f) = self.fns.store.functions.get(&name) else {
+                let Some(f) = self.fns.0.store.functions.get(&name) else {
                     return Err(err("arguments.function.unknown", &[&name]));
                 };
                 if f.is_macro() {
@@ -1091,17 +1105,18 @@ impl Game<'_> {
             }
         };
         if replace {
-            self.fns.schedule.retain(|e| e.id != schedule_id);
+            self.fns.0.schedule.retain(|e| e.id != schedule_id);
         }
         if !self
             .fns
+            .0
             .schedule
             .iter()
             .any(|e| e.id == schedule_id && e.time == tick_time)
         {
-            self.fns.next_seq += 1;
-            let seq = self.fns.next_seq;
-            self.fns.schedule.push(Scheduled {
+            self.fns.0.next_seq += 1;
+            let seq = self.fns.0.next_seq;
+            self.fns.0.schedule.push(Scheduled {
                 id: schedule_id,
                 time: tick_time,
                 seq,
@@ -1143,6 +1158,7 @@ impl Game<'_> {
         };
         let description = self
             .fns
+            .0
             .packs
             .iter()
             .find(|p| p.id == id)
@@ -1157,6 +1173,7 @@ impl Game<'_> {
             "pack.source.builtin"
         } else if self
             .fns
+            .0
             .packs
             .iter()
             .any(|pack| pack.id == id && pack.is_feature())
@@ -1164,6 +1181,7 @@ impl Game<'_> {
             "pack.source.feature"
         } else if self
             .fns
+            .0
             .packs
             .iter()
             .find(|pack| pack.id == id)
@@ -1183,10 +1201,10 @@ impl Game<'_> {
     }
     /// The selected packs, lowest priority first.
     fn selected_packs(&self) -> Vec<String> {
-        let vanilla = (!self.cmds.vanilla_disabled).then(|| "vanilla".to_owned());
+        let vanilla = (!self.cmds.0.vanilla_disabled).then(|| "vanilla".to_owned());
         vanilla
             .into_iter()
-            .chain(self.fns.enabled.iter().cloned())
+            .chain(self.fns.0.enabled.iter().cloned())
             .collect()
     }
     /// `FileUtil.isPathPartPortable`: no trailing dot and no Windows device
@@ -1260,6 +1278,7 @@ impl Game<'_> {
     }
     fn missing_pack_features(&self, id: &str) -> Vec<String> {
         self.fns
+            .0
             .packs
             .iter()
             .find(|pack| pack.id == id)
@@ -1277,17 +1296,17 @@ impl Game<'_> {
             _ => None,
         };
         let selected = self.selected_packs();
-        let previous_enabled = self.fns.enabled.clone();
-        let previous_vanilla_disabled = self.cmds.vanilla_disabled;
+        let previous_enabled = self.fns.0.enabled.clone();
+        let previous_vanilla_disabled = self.cmds.0.vanilla_disabled;
         // `DataPackCommand.listAvailablePacks`: a feature pack the world's
         // features do not cover is not available.
         let mut available: Vec<String> = std::iter::once("vanilla".to_owned())
-            .chain(self.fns.packs.iter().map(|p| p.id.clone()))
+            .chain(self.fns.0.packs.iter().map(|p| p.id.clone()))
             .filter(|p| !selected.contains(p))
             .filter(|p| self.missing_pack_features(p).is_empty())
             .collect();
         available.sort_by(|a, b| datapack::compare_ids(a, b));
-        let known = |g: &Self, n: &str| n == "vanilla" || g.fns.packs.iter().any(|p| p.id == n);
+        let known = |g: &Self, n: &str| n == "vanilla" || g.fns.0.packs.iter().any(|p| p.id == n);
         match id {
             "datapack.create" => self.create_pack(ctx),
             "datapack.list" => {
@@ -1349,7 +1368,7 @@ impl Game<'_> {
                     ));
                 }
                 if name == "vanilla" {
-                    self.cmds.vanilla_disabled = false;
+                    self.cmds.0.vanilla_disabled = false;
                 } else {
                     let existing = match ctx.get("existing") {
                         Some(Arg::Str(e)) => Some(e.clone()),
@@ -1358,13 +1377,14 @@ impl Game<'_> {
                     let position = if ctx.has("first") {
                         0
                     } else if let Some(e) = &existing {
-                        let Some(i) = self.fns.enabled.iter().position(|p| p == e) else {
+                        let Some(i) = self.fns.0.enabled.iter().position(|p| p == e) else {
                             return Err(err("commands.datapack.unknown", &[e]));
                         };
                         if ctx.has("before") { i } else { i + 1 }
                     } else if !ctx.has("last")
                         && self
                             .fns
+                            .0
                             .packs
                             .iter()
                             .find(|pack| pack.id == name)
@@ -1375,9 +1395,9 @@ impl Game<'_> {
                     {
                         0
                     } else {
-                        self.fns.enabled.len()
+                        self.fns.0.enabled.len()
                     };
-                    self.fns.enabled.insert(position, name.clone());
+                    self.fns.0.enabled.insert(position, name.clone());
                 }
                 self.feedback(Text::translate(
                     "commands.datapack.modify.enable",
@@ -1396,6 +1416,7 @@ impl Game<'_> {
                 }
                 if self
                     .fns
+                    .0
                     .packs
                     .iter()
                     .find(|pack| pack.id == name)
@@ -1406,6 +1427,7 @@ impl Game<'_> {
                 }
                 if self
                     .fns
+                    .0
                     .packs
                     .iter()
                     .any(|pack| pack.id == name && pack.is_feature() && !pack.features().is_empty())
@@ -1422,9 +1444,9 @@ impl Game<'_> {
                     ));
                 }
                 if name == "vanilla" {
-                    self.cmds.vanilla_disabled = true;
+                    self.cmds.0.vanilla_disabled = true;
                 } else {
-                    self.fns.enabled.retain(|p| p != &name);
+                    self.fns.0.enabled.retain(|p| p != &name);
                 }
                 self.feedback(Text::translate(
                     "commands.datapack.modify.disable",
@@ -1452,17 +1474,17 @@ impl Game<'_> {
             &self.options.resources,
             &self.pack.data_source,
             &self.pack.data_changes,
-            self.cmds.vanilla_disabled,
+            self.cmds.0.vanilla_disabled,
             &self.level.enabled_features,
             &additional,
         );
         stack.enabled =
-            datapack::selected_ids(stack.packs.iter().map(Arc::as_ref), &self.fns.enabled);
+            datapack::selected_ids(stack.packs.iter().map(Arc::as_ref), &self.fns.0.enabled);
         let prepared = match self.prepare_pack_condition_reload(&stack) {
             Ok(prepared) => prepared,
             Err(error) => {
-                self.fns.enabled = previous_enabled;
-                self.cmds.vanilla_disabled = previous_vanilla_disabled;
+                self.fns.0.enabled = previous_enabled;
+                self.cmds.0.vanilla_disabled = previous_vanilla_disabled;
                 return Err(Self::reload_failure(error));
             }
         };
@@ -1470,8 +1492,8 @@ impl Game<'_> {
         let context = match self.prepare_loop_context(&root) {
             Ok(context) => context,
             Err(error) => {
-                self.fns.enabled = previous_enabled;
-                self.cmds.vanilla_disabled = previous_vanilla_disabled;
+                self.fns.0.enabled = previous_enabled;
+                self.cmds.0.vanilla_disabled = previous_vanilla_disabled;
                 return Err(Self::reload_failure(ReloadStageError::DataSource(
                     error.to_string(),
                 )));
@@ -1480,8 +1502,8 @@ impl Game<'_> {
         let world = match self.prepare_world_reload(&stack, &root) {
             Ok(world) => world,
             Err(error) => {
-                self.fns.enabled = previous_enabled;
-                self.cmds.vanilla_disabled = previous_vanilla_disabled;
+                self.fns.0.enabled = previous_enabled;
+                self.cmds.0.vanilla_disabled = previous_vanilla_disabled;
                 return Err(Self::reload_failure(ReloadStageError::DataSource(
                     error.to_string(),
                 )));
@@ -1489,11 +1511,11 @@ impl Game<'_> {
         };
         prepared.bind_loot(&world);
         self.install_loop_context(context);
-        self.fns.packs = stack.packs.clone();
-        self.fns.enabled = stack.enabled.clone();
+        self.fns.0.packs = stack.packs.clone();
+        self.fns.0.enabled = stack.enabled.clone();
         self.pack.additional_data = additional.into();
         self.save_datapack_settings();
-        self.fns.load_pending = true;
+        self.fns.0.load_pending = true;
         self.install_world_tables(world);
         self.apply_server_reload(prepared, &stack, &self.level.enabled_features.clone());
         self.run_native_advancement_grants();
@@ -1525,17 +1547,23 @@ impl Game<'_> {
                 .map_err(|e| err("argument.nbt.invalid", &[&e]))?;
             value
         } else {
-            self.fns.store.predicates.get(id).cloned().ok_or_else(|| {
-                let id = if id.contains(':') {
-                    id.to_string()
-                } else {
-                    format!("minecraft:{id}")
-                };
-                err(
-                    "argument.resource_or_id.no_such_element",
-                    &[&id, &"minecraft:predicate"],
-                )
-            })?
+            self.fns
+                .0
+                .store
+                .predicates
+                .get(id)
+                .cloned()
+                .ok_or_else(|| {
+                    let id = if id.contains(':') {
+                        id.to_string()
+                    } else {
+                        format!("minecraft:{id}")
+                    };
+                    err(
+                        "argument.resource_or_id.no_such_element",
+                        &[&id, &"minecraft:predicate"],
+                    )
+                })?
         };
         let source = self
             .server
@@ -1688,13 +1716,21 @@ mod tests {
             .unwrap();
             game.load_world(request).unwrap();
             assert!(
-                game.fns.store.functions.contains_key("first_open:block"),
+                game.fns.0.store.functions.contains_key("first_open:block"),
                 "first-open admission errors: {:?}",
-                game.fns.store.errors
+                game.fns.0.store.errors
             );
-            assert!(!game.fns.store.functions.contains_key("first_open:invalid"));
+            assert!(
+                !game
+                    .fns
+                    .0
+                    .store
+                    .functions
+                    .contains_key("first_open:invalid")
+            );
             assert!(
                 game.fns
+                    .0
                     .store
                     .errors
                     .iter()
@@ -1786,7 +1822,7 @@ mod tests {
                         .unwrap();
                         request.save_root = world;
                         game.load_world(request).unwrap();
-                        let store = &game.fns.store;
+                        let store = &game.fns.0.store;
                         assert!(
                             store.functions.contains_key("fnmod:plain"),
                             "{:?}",
@@ -1800,6 +1836,7 @@ mod tests {
                         assert!(!store.functions.contains_key("fnmod:unknown"));
                         let refusal = |game: &Game<'_>, id: &str| {
                             game.fns
+                                .0
                                 .store
                                 .errors
                                 .iter()
@@ -1818,7 +1855,7 @@ mod tests {
                         offered.store(false, Ordering::Relaxed);
                         let features = game.level.enabled_features.clone();
                         game.reload_datapacks(false, &features).unwrap();
-                        assert!(!game.fns.store.functions.contains_key("fnmod:plain"));
+                        assert!(!game.fns.0.store.functions.contains_key("fnmod:plain"));
                         assert!(
                             refusal(game, "fnmod:plain")
                                 .unwrap()
@@ -1895,9 +1932,10 @@ mod tests {
                 .unwrap();
             game.build_registries();
             game.set_allow_commands(true);
-            assert_eq!(game.fns.store.tag_functions("h155c:pair").len(), 2);
+            assert_eq!(game.fns.0.store.tag_functions("h155c:pair").len(), 2);
             assert!(
                 game.fns
+                    .0
                     .store
                     .functions
                     .get("h155c:macro")
@@ -1938,13 +1976,13 @@ mod tests {
             }
             fn capture(g: &mut Game<'_>, line: &str) -> (Vec<String>, Vec<(bool, i32)>) {
                 g.server.chat_capture = Some(Vec::new());
-                g.cmds.results = Some(Vec::new());
+                g.cmds.0.results = Some(Vec::new());
                 assert!(g.run_command(line));
                 let texts = g.server.chat_capture.take().unwrap();
-                let callbacks = g.cmds.results.take().unwrap();
+                let callbacks = g.cmds.0.results.take().unwrap();
                 println!("causal raw {line}: {texts:?} callbacks={callbacks:?}");
                 assert!(
-                    g.exec.prepared_function.is_none(),
+                    g.exec.0.prepared_function.is_none(),
                     "no prepared call after command/error/return"
                 );
                 (
@@ -2188,6 +2226,7 @@ mod tests {
             for name in ["zero", "five", "fail", "fallthrough", "admit"] {
                 assert!(
                     game.fns
+                        .0
                         .store
                         .functions
                         .contains_key(&format!("h155:{name}"))
@@ -2249,10 +2288,10 @@ mod tests {
                         _ => "",
                     };
                     game.server.chat_capture = Some(Vec::new());
-                    game.cmds.results = Some(Vec::new());
+                    game.cmds.0.results = Some(Vec::new());
                     let accepted = game.run_command(&format!("execute store result score #r h155 store success score #s h155 {middle}run function h155:{name}"));
                     let messages = game.server.chat_capture.take().unwrap();
-                    let callbacks = game.cmds.results.take().unwrap();
+                    let callbacks = game.cmds.0.results.take().unwrap();
                     assert!(accepted, "actual registered function command");
                     let count = if route == "two" { 2 } else { 1 };
                     assert_eq!(
@@ -2299,10 +2338,10 @@ mod tests {
                 }
             }
             assert!(game.run_command("scoreboard players set #plain h155 0"));
-            game.cmds.results = Some(Vec::new());
+            game.cmds.0.results = Some(Vec::new());
             assert!(game.run_command("execute as @e[type=pig,tag=h155u,sort=nearest,limit=2] run scoreboard players add #plain h155 1"));
             assert_eq!(
-                game.cmds.results.take().unwrap(),
+                game.cmds.0.results.take().unwrap(),
                 vec![(true, 1), (true, 2)]
             );
             assert_eq!(game.score.board.score("#plain", "h155").unwrap().value, 2);
@@ -2329,13 +2368,13 @@ mod tests {
                 lines: vec![FunctionLine::Command("return 1".into())],
                 parameters: vec![],
             };
-            game.exec.functions.push("test:outer".into());
+            game.exec.0.functions.push("test:outer".into());
             let source = game.server_source();
             game.run_function(&inner, None, source).unwrap();
-            assert_eq!(game.exec.functions, ["test:outer"]);
-            game.exec.functions.clear();
+            assert_eq!(game.exec.0.functions, ["test:outer"]);
+            game.exec.0.functions.clear();
             game.run_function(&inner, None, source).unwrap();
-            assert!(game.exec.functions.is_empty());
+            assert!(game.exec.0.functions.is_empty());
         });
         assert!(ran, "the prepared-resource fixture must run this case");
     }
@@ -2391,8 +2430,14 @@ mod tests {
             let first_instance = first.get(&modifier_id).unwrap();
             assert_eq!(first.id_of(&first_instance), Some(&modifier_id));
             assert_eq!(first.modifiers().len(), 1);
-            let first_generation =
-                Arc::downgrade(game.world_tables.as_ref().unwrap().loot.global_modifiers());
+            let first_generation = Arc::downgrade(
+                game.world_tables
+                    .0
+                    .as_ref()
+                    .unwrap()
+                    .loot
+                    .global_modifiers(),
+            );
             assert!(game.run_command("datapack disable \"file/candidate\""));
             assert!(
                 game.reload_resources()
@@ -2442,9 +2487,13 @@ mod tests {
             let old_context = game.loop_context.clone();
             let old_root = game.options.resources.clone();
             let old_data = game.pack.data_source.clone();
-            let old_tables = game.world_tables.as_ref().map(|tables| tables as *const _);
+            let old_tables = game
+                .world_tables
+                .0
+                .as_ref()
+                .map(|tables| tables as *const _);
             let old_generation = game.damage_tag_generation;
-            let old_enabled = game.fns.enabled.clone();
+            let old_enabled = game.fns.0.enabled.clone();
             std::fs::write(&modifier_file, br#"{"type":"neoforge:add_table","table":"minecraft:blocks/stone","priority":1003}"#).unwrap();
             let error = game.reload_datapacks(true, &[]).err().unwrap();
             assert!(error.to_string().contains("reload_test:missing"));
@@ -2462,21 +2511,24 @@ mod tests {
             assert!(Arc::ptr_eq(&game.loop_context, &old_context));
             assert_eq!(
                 old_tables,
-                game.world_tables.as_ref().map(|tables| tables as *const _)
+                game.world_tables
+                    .0
+                    .as_ref()
+                    .map(|tables| tables as *const _)
             );
             assert_eq!(game.damage_tag_generation, old_generation);
-            assert_eq!(game.fns.enabled, old_enabled);
+            assert_eq!(game.fns.0.enabled, old_enabled);
             assert_eq!(
                 super::super::native_world_read::block_in_tag(stone, "reload_test:candidate"),
                 old_tag
             );
             game.save_datapack_settings();
             let settings = std::fs::read(root.join("datapacks.json")).unwrap();
-            let enabled = game.fns.enabled.clone();
+            let enabled = game.fns.0.enabled.clone();
             let context = game.loop_context.clone();
             let generation = game.damage_tag_generation;
             assert!(!game.run_command("datapack disable \"file/candidate\""));
-            assert_eq!(game.fns.enabled, enabled);
+            assert_eq!(game.fns.0.enabled, enabled);
             assert_eq!(
                 std::fs::read(root.join("datapacks.json")).unwrap(),
                 settings
@@ -2626,9 +2678,9 @@ mod tests {
             .unwrap();
             request.save_root = root.clone();
             game.load_world(request).unwrap();
-            assert!(game.fns.store.functions.contains_key("test:start"));
+            assert!(game.fns.0.store.functions.contains_key("test:start"));
             assert_eq!(
-                game.fns.store.tag_functions("minecraft:load"),
+                game.fns.0.store.tag_functions("minecraft:load"),
                 ["test:start"]
             );
             assert!(game.items().item_tags["test:sample"].contains("minecraft:stone"));
@@ -2650,17 +2702,17 @@ mod tests {
             assert!(game.stations().recipe_index.contains("test:sample"));
 
             // Changing packs must not reload an old timer from disk.
-            game.fns.schedule.push(Scheduled {
+            game.fns.0.schedule.push(Scheduled {
                 id: "test:start".into(),
                 time: 1000,
                 seq: 1,
             });
             game.save_schedule();
-            game.fns.schedule.clear();
+            game.fns.0.schedule.clear();
             assert!(game.run_command("datapack disable \"file/test\""));
-            assert!(game.fns.schedule.is_empty());
+            assert!(game.fns.0.schedule.is_empty());
             assert!(game.run_command("datapack enable \"file/test\""));
-            assert!(game.fns.schedule.is_empty());
+            assert!(game.fns.0.schedule.is_empty());
 
             // World-open selection and completions must both use the incoming
             // level's flags, even while `self.level` is still the old level.
@@ -2682,7 +2734,7 @@ mod tests {
             let staged = game
                 .stage_world_tables(&stack, false, &game.options.resources.clone())
                 .unwrap();
-            game.world_tables = staged.tables;
+            game.world_tables.0 = staged.tables;
             game.health_resources = staged.health;
             assert!(game.items().item_tags["test:sample"].contains("minecraft:diamond"));
         });
@@ -2768,7 +2820,7 @@ mod tests {
         }
         game.server.world_root = dir.clone();
         let run = |game: &mut Game<'_>, line: &str| {
-            game.exec = ExecState::default();
+            game.exec.0 = ExecState::default();
             let source = game.player_source();
             game.execute_line(line, source)
         };
@@ -2794,6 +2846,7 @@ mod tests {
             assert!(
                 !game
                     .fns
+                    .0
                     .store
                     .functions
                     .contains_key(&format!("h144:{name}"))
@@ -2807,6 +2860,7 @@ mod tests {
             );
             assert!(
                 game.fns
+                    .0
                     .store
                     .errors
                     .iter()
@@ -2814,8 +2868,8 @@ mod tests {
             );
         }
         assert!(run(&mut game, "function h144:forbidden").is_err());
-        assert!(game.fns.store.functions.contains_key("h144:macro"));
-        assert!(game.fns.store.functions["h144:macro"].is_macro());
+        assert!(game.fns.0.store.functions.contains_key("h144:macro"));
+        assert!(game.fns.0.store.functions["h144:macro"].is_macro());
         run(&mut game, "function h144:good").unwrap();
         assert_eq!(game.score.board.score("good", "h144").unwrap().value, -98);
         run(&mut game, "function h144:sequence").unwrap();
@@ -2837,8 +2891,8 @@ mod tests {
         .unwrap();
         game.reload_datapacks(true, &game.level.enabled_features.clone())
             .unwrap();
-        assert!(game.fns.store.functions.contains_key("h144:good"));
-        assert!(!game.fns.store.functions.contains_key("h144:forbidden"));
+        assert!(game.fns.0.store.functions.contains_key("h144:good"));
+        assert!(!game.fns.0.store.functions.contains_key("h144:forbidden"));
         assert!(
             !game
                 .ui
@@ -2926,7 +2980,7 @@ mod tests {
         }
         game.server.world_root = dir.clone();
         let run = |game: &mut Game<'_>, line: &str| {
-            game.exec = ExecState::default();
+            game.exec.0 = ExecState::default();
             let source = game.player_source();
             game.execute_line(line, source)
         };
@@ -2934,9 +2988,10 @@ mod tests {
         run(&mut game, "scoreboard players set #ran h166 -99").unwrap();
         game.reload_datapacks(false, &game.level.enabled_features.clone())
             .unwrap();
-        assert!(!game.fns.store.functions.contains_key("h166:novar"));
+        assert!(!game.fns.0.store.functions.contains_key("h166:novar"));
         assert!(
             game.fns
+                .0
                 .store
                 .errors
                 .iter()
@@ -3005,9 +3060,9 @@ mod tests {
         .unwrap();
         game.build_registries();
         game.set_allow_commands(true);
-        game.fns.loaded = true;
+        game.fns.0.loaded = true;
         let run = |game: &mut Game<'_>, line: &str| {
-            game.exec = ExecState::default();
+            game.exec.0 = ExecState::default();
             let source = game.player_source();
             game.execute_line(line, source).unwrap();
         };
@@ -3026,7 +3081,7 @@ mod tests {
             if let Some(tail) = tail {
                 lines.push(FunctionLine::Command(tail.into()));
             }
-            game.fns.store.functions.insert(
+            game.fns.0.store.functions.insert(
                 id.clone(),
                 Function {
                     id,
@@ -3265,7 +3320,7 @@ mod entity_score_tests {
 
         game.set_allow_commands(true);
         game.ensure_datapacks();
-        game.fns.store.predicates.insert(
+        game.fns.0.store.predicates.insert(
             "h270:min2".into(),
             serde_json::json!({
                 "type": "minecraft:entity_scores", "entity": "this", "scores": {"pts": {"min": 2}}
@@ -3405,7 +3460,7 @@ mod entity_score_tests {
         }
         game.server.world_root = dir.clone();
         let run = |game: &mut Game<'_>, line: &str| {
-            game.exec = ExecState::default();
+            game.exec.0 = ExecState::default();
             let source = game.player_source();
             game.execute_line(line, source)
         };
@@ -3432,6 +3487,7 @@ mod entity_score_tests {
                 );
                 assert_eq!(
                     game.fns
+                        .0
                         .store
                         .functions
                         .contains_key(&format!("h146:{name}")),
@@ -3446,6 +3502,7 @@ mod entity_score_tests {
                 );
                 assert_eq!(
                     game.fns
+                        .0
                         .packs
                         .iter()
                         .any(|p| p.id == format!("file/{name}")),
@@ -3551,7 +3608,7 @@ mod required_tag_tests {
         game.build_registries();
         game.set_allow_commands(true);
         let run = |game: &mut Game<'_>, line: &str| {
-            game.exec = ExecState::default();
+            game.exec.0 = ExecState::default();
             let source = game.player_source();
             if let Err(error) = game.execute_line(line, source) {
                 assert!(line.contains("function #h145:"), "{line}: {error:?}");
@@ -3567,15 +3624,16 @@ mod required_tag_tests {
             game.score.board.score("sentinel", "h145").unwrap().value,
             73
         );
-        assert!(game.fns.enabled.contains(&"file/h145".to_owned()));
+        assert!(game.fns.0.enabled.contains(&"file/h145".to_owned()));
         assert!(
-            game.fns.store.errors.is_empty(),
+            game.fns.0.store.errors.is_empty(),
             "{:?}",
-            game.fns.store.errors
+            game.fns.0.store.errors
         );
         for name in ["a", "b", "c"] {
             assert!(
                 game.fns
+                    .0
                     .store
                     .functions
                     .contains_key(&format!("h145:{name}"))
@@ -3584,6 +3642,7 @@ mod required_tag_tests {
         for name in tags.as_object().unwrap().keys() {
             assert!(
                 game.fns
+                    .0
                     .store
                     .function_tags
                     .contains_key(&format!("h145:{name}"))
@@ -3656,7 +3715,7 @@ mod required_tag_tests {
             if actual != expected {
                 failures.push(format!("{name}: {actual:?} expected {expected:?}"));
             }
-            let ids = game.fns.store.tag_functions(&format!("h145:{name}"));
+            let ids = game.fns.0.store.tag_functions(&format!("h145:{name}"));
             let expected_ids: Vec<String> = if name == "optional_invalid_child" {
                 vec!["h145:a".into(), "h145:b".into()]
             } else {
@@ -3740,7 +3799,7 @@ mod required_tag_tests {
             }
             game.server.world_root = dir.clone();
             game.reload_datapacks(false, &[]).unwrap();
-            assert!(game.fns.store.predicates.contains_key("h121:reference"));
+            assert!(game.fns.0.store.predicates.contains_key("h121:reference"));
             assert!(
                 game.ui
                     .registries
@@ -3748,7 +3807,7 @@ mod required_tag_tests {
                     .contains(&"h121:reference".into())
             );
             let run = |game: &mut Game<'_>, line: &str| {
-                game.exec = ExecState::default();
+                game.exec.0 = ExecState::default();
                 let source = game.player_source();
                 game.execute_line(line, source).unwrap();
             };
@@ -3872,7 +3931,7 @@ mod required_tag_tests {
                 "minecraft:h121_canonical",
                 serde_json::json!({"type":"minecraft:all_of","terms":["h121_canonical"]}),
             );
-            game.fns.store.predicates.extend(defensive_graphs);
+            game.fns.0.store.predicates.extend(defensive_graphs);
             let mut source = game.player_source();
             source.entity = Some(Target::Mob(actors[0].0));
             source.pos = game.target_position(Target::Mob(actors[0].0)).unwrap();
@@ -3894,6 +3953,7 @@ mod required_tag_tests {
             ] {
                 assert!(
                     game.fns
+                        .0
                         .store
                         .predicates
                         .contains_key(&format!("h121:{name}"))

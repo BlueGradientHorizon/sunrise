@@ -49,7 +49,7 @@ mod tests {
             // Logical state is tracked uniformly for every resolved vanilla mapping,
             // independent of its physical key state.
             game.client.screen = Screen::Playing;
-            game.title = None;
+            game.title.0 = None;
             let chat = game.vanilla_key_mapping("key.chat").unwrap();
             game.client.physical_keys.insert(KeyCode::KeyT);
             assert_eq!(chat.physical_down(game), Ok(true));
@@ -75,7 +75,7 @@ mod tests {
         with_client_game(|game| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             game.client.screen = Screen::Playing;
-            game.title = None;
+            game.title.0 = None;
             let old = game.vanilla_key_mapping("key.attack").unwrap();
             assert_eq!(old.binding(game), Ok("key.mouse.left"));
 

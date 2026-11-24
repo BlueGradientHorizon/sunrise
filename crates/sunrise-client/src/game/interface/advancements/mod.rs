@@ -276,7 +276,7 @@ struct PlayerEntityState<'a> {
 pub(in crate::game) struct View<'a, 'g>(pub(in crate::game) &'a Game<'g>);
 impl adv::World for View<'_, '_> {
     fn predicate(&self, id: &str) -> Option<&Value> {
-        self.0.fns.store.predicates.get(id)
+        self.0.fns.0.store.predicates.get(id)
     }
     fn dimension(&self) -> &str {
         self.0.dim.id()
@@ -364,7 +364,7 @@ impl adv::World for View<'_, '_> {
     }
     fn in_tag(&self, registry: &str, tag: &str, id: &str) -> bool {
         let tags = TagSources {
-            pack_tags: self.0.world_tables.as_ref().map(|t| &t.pack_tags),
+            pack_tags: self.0.world_tables.0.as_ref().map(|t| &t.pack_tags),
             items: self.0.items(),
             mob_data: self.0.res.mob_data(),
             damage: &self.0.health_resources.damage,
@@ -1357,6 +1357,7 @@ impl Game<'_> {
         let mut random = sunrise_client::random_source::entity();
         let pitch = ((random.next_float() - random.next_float()) * 0.7 + 1.0) * 2.0;
         self.audio
+            .0
             .play("minecraft:entity.item.pickup", Some(at), 0.2, pitch);
     }
     /// `PlayerAdvancements.award` once done: `AdvancementRewards.grant`,
@@ -3772,7 +3773,7 @@ mod structure_tag_tests {
             id_matches(&set(tag), "worldgen/structure", id, &View(game))
         };
         // A world without packs: the game's own tags.
-        assert!(game.world_tables.is_none());
+        assert!(game.world_tables.0.is_none());
         assert!(holds(
             &game,
             "#minecraft:village",
@@ -3818,11 +3819,11 @@ mod structure_tag_tests {
             &[],
             &[],
         );
-        game.world_tables = game
+        game.world_tables.0 = game
             .stage_world_tables(&stack, false, &root)
             .unwrap()
             .tables;
-        assert!(game.world_tables.is_some());
+        assert!(game.world_tables.0.is_some());
         assert!(holds(&game, "#mypack:village", "minecraft:igloo"));
         assert!(holds(&game, "#mypack:village", "minecraft:village_plains"));
         assert!(!holds(&game, "#mypack:village", "minecraft:shipwreck"));
@@ -3934,10 +3935,10 @@ mod random_chance_command_tests {
         for row in &rows {
             let seed = row["seed"].as_i64().unwrap();
             let name = format!("h122:case_{}", row["case"]);
-            assert!(game.fns.store.predicates.contains_key(&name));
+            assert!(game.fns.0.store.predicates.contains_key(&name));
             game.world.random.set_seed(seed);
             game.run_command("scoreboard players set branch h122 -99");
-            game.exec = Default::default();
+            game.exec.0 = Default::default();
             let source = game.player_source();
             game.execute_line(&format!("execute as 0000007a-0000-0000-0000-000000000001 if predicate {name} run scoreboard players set branch h122 1"),source).unwrap();
             assert_eq!(
@@ -4191,6 +4192,7 @@ mod movement_predicate_tests {
         for (name, p, want) in probes {
             assert!(
                 game.fns
+                    .0
                     .store
                     .predicates
                     .contains_key(&format!("motion:{name}"))

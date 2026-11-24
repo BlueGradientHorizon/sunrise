@@ -41,7 +41,7 @@ fn with_game(test: impl FnOnce(&mut Game<'_>)) {
     g.world = World::new(g.res.facts().air, 1);
     g.player = Some(PlayerMotion::new(g.motion, Vec3::new(30.0, 64.0, 0.5)).unwrap());
     g.player.as_mut().unwrap().entity_id = 77;
-    g.audio.capture = Some(Vec::new());
+    g.audio.0.capture = Some(Vec::new());
     test(&mut g);
 }
 fn thorny() -> ItemStack {
@@ -51,7 +51,7 @@ fn thorny() -> ItemStack {
 }
 fn pair(g: &mut Game<'_>, slot: usize) -> Damage {
     g.mobs.clear();
-    g.audio.capture.as_mut().unwrap().clear();
+    g.audio.0.capture.as_mut().unwrap().clear();
     let kind = g.res.mob_types().get("minecraft:husk").unwrap().clone();
     for (id, x) in [(41, 10.5), (42, 0.5)] {
         let mut m = Mob::new(id, kind.clone(), Vec3::new(x, 64.0, 0.5), 0.0);
@@ -73,6 +73,7 @@ fn check_answer(g: &Game<'_>, slot: usize, answers: bool) {
     assert_eq!(f::item_stack(&g.mobs[0], f::MAINHAND).unwrap().damage, 0);
     let sounds: Vec<_> = g
         .audio
+        .0
         .capture
         .as_ref()
         .unwrap()
@@ -204,7 +205,7 @@ fn dragon_takes_player_thorns_through_its_body() {
             let mut d = Dragon::new(Vec3::new(0.0, 70.0, 0.0), 0.0, 1);
             d.id = SPECIAL;
             g.dragon.replace(d);
-            g.audio.capture.as_mut().unwrap().clear();
+            g.audio.0.capture.as_mut().unwrap().clear();
             if wing {
                 g.dragon_wing_knock_back(Vec3::ZERO, false);
             } else {
@@ -226,6 +227,7 @@ fn dragon_takes_player_thorns_through_its_body() {
             );
             assert_eq!(
                 g.audio
+                    .0
                     .capture
                     .as_ref()
                     .unwrap()
@@ -261,7 +263,7 @@ fn dragon_takes_player_thorns_through_its_body() {
         d.invulnerable = 0;
         d.last_source = None;
         let before = d.health;
-        g.audio.capture.as_mut().unwrap().clear();
+        g.audio.0.capture.as_mut().unwrap().clear();
         let p = g.player.as_mut().unwrap();
         p.health.sync_velocity = false;
         let velocity = Vec3::new(0.25, -0.125, 0.75);
@@ -282,6 +284,7 @@ fn dragon_takes_player_thorns_through_its_body() {
         assert_eq!(d.hurt_by_player, Some((FightWho::Host, 0)));
         assert_eq!(
             g.audio
+                .0
                 .capture
                 .as_ref()
                 .unwrap()

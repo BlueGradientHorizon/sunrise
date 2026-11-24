@@ -104,7 +104,7 @@ fn setup_remote_overworld(game: &mut Game<'_>, player_id: i32, player_pos: [f64;
     remote.entity_id = player_id;
     remote.view_distance = 8;
     remote.level_load.finish();
-    game.title = None;
+    game.title.0 = None;
     let pos = Vec3::new(player_pos[0], player_pos[1], player_pos[2]);
     game.player = Some(PlayerMotion::new(game.motion, pos).unwrap());
     game.previous_position = pos;
@@ -870,7 +870,7 @@ pub(in crate::game) fn run_singleplayer_and_unstored_pick_share_unified_query_an
                     "with_game exercises the unstored pick path"
                 );
                 ensure_chunk(game, 0, 0);
-                game.title = None;
+                game.title.0 = None;
                 game.block_reach = 4.5;
                 game.entity_reach = 3.0;
                 let registry = game.pack.assets.registry;

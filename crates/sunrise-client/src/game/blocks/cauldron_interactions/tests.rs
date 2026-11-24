@@ -322,7 +322,7 @@ fn setup(game: &mut Game<'_>, block: &str, level: Option<&str>, item: &str, coun
     game.inventory.fill(None);
     game.inventory[0] = Some(ItemStack::new(item, count));
     game.creatures.lan_sounds.clear();
-    game.audio.capture = Some(Vec::new());
+    game.audio.0.capture = Some(Vec::new());
     crate::game::sculk::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
 }
 fn state(game: &Game<'_>) -> (String, Option<String>) {
@@ -446,13 +446,13 @@ fn cauldron_outer_abort_discards_effects_and_drops() {
             assert_eq!(game.use_on_cauldron(POS).unwrap(), Outcome::Success);
             assert_eq!(events(), 0);
             assert!(game.creatures.lan_sounds.is_empty());
-            assert!(game.audio.capture.as_ref().unwrap().is_empty());
+            assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
             ((), false)
         });
         unchanged(game, seen);
         assert_eq!(events(), 0);
         assert!(game.creatures.lan_sounds.is_empty());
-        assert!(game.audio.capture.as_ref().unwrap().is_empty());
+        assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
     });
 }
 #[test]
@@ -553,7 +553,7 @@ fn cauldron_client_skips_custom_prediction() {
         assert_eq!(seen.calls.load(Ordering::SeqCst), 0);
         assert_eq!(seen.actor.load(Ordering::SeqCst), 0);
         unchanged(game, seen);
-        assert_eq!(game.audio.capture.as_ref().unwrap().len(), 0);
+        assert_eq!(game.audio.0.capture.as_ref().unwrap().len(), 0);
         assert_eq!(events(), 0);
         setup(
             game,

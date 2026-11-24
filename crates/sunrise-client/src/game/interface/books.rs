@@ -197,7 +197,7 @@ impl Game<'_> {
             // Screen.defaultHandleClickEvent: copied, the book stays open.
             ClickEvent::CopyToClipboard(value) => {
                 use sunrise_client::clipboard::Clipboard;
-                self.clipboard.set(&value);
+                self.clipboard.0.set(&value);
             }
             // defaultHandleGameClickEvent: the dialog opens over the book.
             ClickEvent::ShowDialog(dialog) => self.show_dialog_ref(&dialog),
@@ -685,7 +685,7 @@ impl Game<'_> {
                 title, title_edit, ..
             }) = self.client.book.as_mut()
             {
-                title_edit.shortcut(shortcut, &mut self.clipboard);
+                title_edit.shortcut(shortcut, &mut self.clipboard.0);
                 title.clone_from(&title_edit.value);
             }
             return;
@@ -699,7 +699,7 @@ impl Game<'_> {
             _ => None,
         };
         if let Some(BookScreen::Edit { page_edit, .. }) = self.client.book.as_mut() {
-            page_edit.shortcut(shortcut, &mut self.clipboard);
+            page_edit.shortcut(shortcut, &mut self.clipboard.0);
         }
         self.page_keep(before);
     }
@@ -934,6 +934,7 @@ impl Game<'_> {
             return;
         }
         self.audio
+            .0
             .play("minecraft:item.book.page_turn", None, 1.0, 1.0);
     }
     fn set_lectern_powered(&mut self, key: (i32, i32, i32), powered: bool) {
@@ -1035,6 +1036,7 @@ impl Game<'_> {
             f64::from(pos[2]) + 0.5,
         ];
         self.audio
+            .0
             .play("minecraft:item.book.put", Some(at), 1.0, 1.0);
         self.container_changed(key);
         if let (Some(player), Some(name)) = (
@@ -1307,6 +1309,7 @@ impl Game<'_> {
             |x: f32, y: f32, bw: f32, bh: f32| mx >= x && my >= y && mx < x + bw && my < y + bh;
         let click = |game: &mut Self| {
             game.audio
+                .0
                 .play("minecraft:ui.button.click", None, 0.25, 1.0)
         };
         match &self.client.book {
@@ -1802,7 +1805,7 @@ mod lectern_books_tag_tests {
         game.server.world_root = dir;
         let stack = game.reload_datapacks(false, &[]).unwrap();
         let root = game.options.resources.clone();
-        game.world_tables = game
+        game.world_tables.0 = game
             .stage_world_tables(&stack, false, &root)
             .unwrap()
             .tables;

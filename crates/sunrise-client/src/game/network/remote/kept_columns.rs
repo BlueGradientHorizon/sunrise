@@ -64,7 +64,7 @@ impl Game<'_> {
 
     fn update_remote_chunk_view(&mut self, range: ClientChunkRange) {
         let (hidden, shown) = self.world.chunks.set_client_chunk_range(range);
-        if let Some(renderer) = &mut self.renderer {
+        if let Some(renderer) = &mut self.renderer.0 {
             renderer.remove_columns(hidden.iter().copied());
         }
         self.streaming
@@ -123,12 +123,12 @@ impl Game<'_> {
         let freed =
             sunrise_client::streaming::Streaming::take_remote_columns(&mut self.world, gone);
         self.streaming.forget_columns(&mut self.world, gone);
-        if keep_terrain && let Some(lod) = &mut self.lod {
+        if keep_terrain && let Some(lod) = &mut self.lod.0 {
             for chunk in &freed {
                 lod.observe(chunk.clone(), self.res.facts());
             }
         }
-        if let Some(renderer) = self.renderer.as_mut() {
+        if let Some(renderer) = self.renderer.0.as_mut() {
             renderer.remove_columns(gone.iter().copied());
         }
         sunrise_client::chunk::free_columns(freed, gone.len());

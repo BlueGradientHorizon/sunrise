@@ -23,12 +23,12 @@ impl Game<'_> {
             ("assets", vec![&self.pack.source])
         } else {
             let mut sources = Vec::new();
-            if !self.cmds.vanilla_disabled {
+            if !self.cmds.0.vanilla_disabled {
                 sources.push(&self.pack.data_source);
             }
             sources.push(&self.pack.data_changes);
             if self.options.execution_role.is_logical_server() {
-                sources.extend(self.fns.pack_sources().rev());
+                sources.extend(self.fns.0.pack_sources().rev());
             }
             ("data", sources)
         })

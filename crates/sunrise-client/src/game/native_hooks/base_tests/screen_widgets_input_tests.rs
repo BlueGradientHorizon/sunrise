@@ -279,7 +279,7 @@ fn key(game: &mut Game<'_>, key: KeyCode, state: ElementState) {
 }
 
 fn publish_frame(game: &mut Game<'_>, frame: u64) {
-    let renderer = game.renderer.as_ref().unwrap();
+    let renderer = game.renderer.0.as_ref().unwrap();
     let size = [renderer.config.width, renderer.config.height];
     game.hud(size);
     widgets::set_action_screen(game.key_screen());
@@ -313,7 +313,7 @@ fn native_and_mounted_press_tab_and_preedit_use_the_receiving_screen() {
         send_mouse_button(game, id, MouseButton::Left, false);
 
         assert!(game.mod_screen_open("input_route"));
-        let focused = game.screen_state.widgets.focused_id().unwrap();
+        let focused = game.screen_state.0.widgets.focused_id().unwrap();
         move_mouse(game, id, 24.0, 30.0);
         send_mouse_button(game, id, MouseButton::Left, true);
         assert_eq!(
@@ -324,7 +324,7 @@ fn native_and_mounted_press_tab_and_preedit_use_the_receiving_screen() {
                 Seen::PressPost("mod".into(), true)
             ]
         );
-        assert_eq!(game.screen_state.widgets.focused_id(), Some(focused));
+        assert_eq!(game.screen_state.0.widgets.focused_id(), Some(focused));
         send_mouse_button(game, id, MouseButton::Left, false);
         take(state);
         move_mouse(game, id, 300.0, 100.0);
@@ -333,7 +333,7 @@ fn native_and_mounted_press_tab_and_preedit_use_the_receiving_screen() {
             take(state),
             [Seen::PressPre, Seen::PressPost("mod".into(), false)]
         );
-        assert_eq!(game.screen_state.widgets.focused_id(), Some(focused));
+        assert_eq!(game.screen_state.0.widgets.focused_id(), Some(focused));
         send_mouse_button(game, id, MouseButton::Left, false);
         game.mod_screen_close("input_route");
         assert_eq!(game.client.screen, Screen::Playing);
@@ -349,11 +349,11 @@ fn native_and_mounted_press_tab_and_preedit_use_the_receiving_screen() {
         tab(game); // Warning, tab group -10.
         tab(game); // Native field.
         assert!(game.dialog_typing());
-        assert!(!game.screen_state.widgets.has_focus());
+        assert!(!game.screen_state.0.widgets.has_focus());
         tab(game); // Native notice button.
         tab(game); // Appended mod button.
         assert!(!game.dialog_typing());
-        assert!(game.screen_state.widgets.has_focus());
+        assert!(game.screen_state.0.widgets.has_focus());
         key(game, KeyCode::Enter, ElementState::Pressed);
         assert_eq!(take(state), [Seen::Activation("after_dialog")]);
         game.clear_dialog();
@@ -556,9 +556,9 @@ fn release_drag_and_wheel_cancellation_preserve_input_bookkeeping() {
                 Seen::ScreenWheelPost([0.25, -0.75])
             ]
         );
-        game.pad.menu.synthetic = true;
+        game.pad.0.menu.synthetic = true;
         send_scroll(game, id, 0.25, -0.75);
-        game.pad.menu.synthetic = false;
+        game.pad.0.menu.synthetic = false;
         assert!(take(state).is_empty());
         game.mod_screen_close("input_route");
         assert_eq!(game.client.screen, Screen::Playing);

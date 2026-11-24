@@ -129,7 +129,7 @@ fn with_effects(test: impl FnOnce(&mut Game<'_>, &Calls)) {
                     .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
                 game.player =
                     Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 63.0, 4.5)).unwrap());
-                game.audio.capture = Some(Vec::new());
+                game.audio.0.capture = Some(Vec::new());
                 test(game, &calls);
             },
         );
@@ -137,14 +137,14 @@ fn with_effects(test: impl FnOnce(&mut Game<'_>, &Calls)) {
 }
 
 fn admit(game: &mut Game<'_>) -> usize {
-    game.particles.tick(&ParticleLevel {
+    game.particles.0.tick(&ParticleLevel {
         world: &game.world,
         facts: game.res.facts(),
         collision: game.collision,
         player: None,
         cached_chunk: std::cell::Cell::new(None),
     });
-    game.particles.len()
+    game.particles.0.len()
 }
 
 fn fresh(name: &str) -> bool {
@@ -176,15 +176,15 @@ fn hit_effect_replaces_the_crumb_but_not_the_sound_or_level_random() {
                 .default_state(&format!("minecraft:{name}"))
                 .unwrap();
             game.world.set(4, 64, 4, state).unwrap();
-            game.particles.clear();
-            game.audio.heard.clear();
-            game.particles.seed_randoms(10, 11, 12);
+            game.particles.0.clear();
+            game.audio.0.heard.clear();
+            game.particles.0.seed_randoms(10, 11, 12);
             game.breaking_block_effects([4, 64, 4], [-1, 0, 0], true);
             assert_eq!(admit(game), expected, "{name}");
             if name == "glass" {
                 // The client-only hit sound intentionally bypasses the server's effect capture.
                 assert_eq!(
-                    game.audio.heard,
+                    game.audio.0.heard,
                     [("minecraft:block.glass.hit".into(), 1)].into()
                 );
                 let mut expected_random = LegacyRandom::new(11);
@@ -193,11 +193,11 @@ fn hit_effect_replaces_the_crumb_but_not_the_sound_or_level_random() {
                     expected_random.next_double();
                 }
                 assert_eq!(
-                    game.particles.level_random().next_long(),
+                    game.particles.0.level_random().next_long(),
                     expected_random.next_long()
                 );
                 let mut quads = Vec::new();
-                game.particles.render(
+                game.particles.0.render(
                     glam::DVec3::ZERO,
                     glam::Quat::IDENTITY,
                     0.0,
@@ -207,7 +207,7 @@ fn hit_effect_replaces_the_crumb_but_not_the_sound_or_level_random() {
                 assert_eq!(quads.len(), 4);
                 assert!(quads.iter().all(|vertex| vertex.pos[0] > 7.0));
             } else if name == "air" {
-                assert!(game.audio.heard.is_empty());
+                assert!(game.audio.0.heard.is_empty());
             }
         }
         let pos = BlockPos::new(4, 64, 4);
@@ -231,7 +231,7 @@ fn hit_effect_replaces_the_crumb_but_not_the_sound_or_level_random() {
         let tint = biomes.grass(biomes.id("minecraft:plains"), 0.0, 0.0);
         let c = |shift: u32| 0.6 * ((tint >> shift) & 255) as f32 / 255.0;
         for edge in [[i32::MIN, 64, i32::MAX], [i32::MAX, 64, i32::MIN]] {
-            game.particles.clear();
+            game.particles.0.clear();
             assert_eq!(
                 game.level_add_breaking_particles(
                     level,
@@ -246,7 +246,7 @@ fn hit_effect_replaces_the_crumb_but_not_the_sound_or_level_random() {
                 Ok(true)
             );
             assert_eq!(admit(game), 2);
-            for particle in game.particles.live() {
+            for particle in game.particles.0.live() {
                 assert_eq!(particle.rgba, [c(16), c(8), c(0), 1.0]);
             }
         }
@@ -287,12 +287,12 @@ fn break_event_uses_the_destroyed_state_and_keeps_its_sound() {
         assert!(game.res.facts().get(stone).spawn_terrain_particles);
         assert!(!game.res.facts().get(barrier).spawn_terrain_particles);
         game.world.set(4, 64, 4, air).unwrap();
-        game.particles.requested = Some(Vec::new());
+        game.particles.0.requested = Some(Vec::new());
         let before_part = requested_count();
         game.level_event_at(2001, [4, 64, 4], glass.0 as i32);
-        assert_eq!(game.particles.requested.take().unwrap().len(), 1);
+        assert_eq!(game.particles.0.requested.take().unwrap().len(), 1);
         assert_eq!(admit(game), 1, "the part replaces the entire vanilla burst");
-        let [sound] = game.audio.capture.as_deref().unwrap() else {
+        let [sound] = game.audio.0.capture.as_deref().unwrap() else {
             panic!("expected exactly one break sound");
         };
         assert_eq!(sound.event, "minecraft:block.glass.break");
@@ -301,14 +301,14 @@ fn break_event_uses_the_destroyed_state_and_keeps_its_sound() {
             "the sound precedes the Part's request"
         );
         assert_eq!(game.world.block(4, 64, 4), air);
-        game.particles.clear();
+        game.particles.0.clear();
         game.level_event_at(2001, [4, 64, 4], stone.0 as i32);
         assert_eq!(
             admit(game),
             64,
             "an unhandled full block gives the vanilla burst"
         );
-        game.particles.clear();
+        game.particles.0.clear();
         let cobblestone = game
             .pack
             .assets

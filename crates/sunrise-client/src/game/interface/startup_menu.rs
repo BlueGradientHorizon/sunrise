@@ -147,18 +147,18 @@ impl StartupMenu {
                 let title = title.with_user(|| game.options.player_name());
                 game.show_title_with_registry(title);
             }
-            None => game.title = None,
+            None => game.title.0 = None,
         }
-        game.pending_entry = self.pending.take();
+        game.pending_entry.0 = self.pending.take();
         game.perf = std::mem::take(&mut self.perf);
-        game.mod_jobs = std::mem::take(&mut self.mod_jobs);
+        game.mod_jobs.0 = std::mem::take(&mut self.mod_jobs);
         game.client.cursor = self.cursor;
         if self.key_focus.is_none() {
             game.client.window_cursor = Some(self.pointer);
         }
         game.client.modifiers = self.modifiers;
         game.client.physical_keys = std::mem::take(&mut self.physical_keys);
-        game.clipboard = std::mem::take(&mut self.clipboard);
+        game.clipboard.0 = std::mem::take(&mut self.clipboard);
         game.client.text_selection = std::mem::take(&mut self.selection);
         if let Some(toast) = self.pending_narrator_toast.take() {
             game.add_system_toast(Some(super::toast_manager::SystemToastId::Narrator), toast);
@@ -1662,7 +1662,7 @@ mod tests {
                 let Some(PendingWorldEntry::Local {
                     create: Some(options),
                     ..
-                }) = &game.pending_entry
+                }) = &game.pending_entry.0
                 else {
                     panic!("pending")
                 };
@@ -1805,7 +1805,7 @@ mod tests {
         assert!(loading.settings.resource_packs.is_empty());
 
         super::super::native_entity_refs::tests::with_client_game(|game| {
-            game.title = Some(game.new_title(PathBuf::from("saves")));
+            game.title.0 = Some(game.new_title(PathBuf::from("saves")));
             game.open_options_at(true, Page::Packs);
             game.handle_window_event_inner(
                 &Loop,

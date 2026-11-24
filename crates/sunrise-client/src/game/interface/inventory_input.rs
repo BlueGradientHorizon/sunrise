@@ -18,16 +18,20 @@ impl Game<'_> {
         shortcut: Option<sunrise_client::clipboard::EditShortcut>,
     ) -> Result<bool> {
         let creative = self.client.screen == Screen::Creative;
-        let search = creative && self.creative_screen.tab().search;
+        let search = creative && self.creative_screen.0.tab().search;
         self.client.creative_ignore_text = false;
         let binding = sunrise_client::keybinds::key_name(raw);
         let chat = binding == Some(self.settings.keys.get("key.chat"));
         if creative
             && !search
             && chat
-            && let Some(tab) = self.creative_screen.search_tab()
+            && let Some(tab) = self.creative_screen.0.search_tab()
         {
-            select_creative_tab(&mut self.creative_screen, &mut self.client.inv_clicks, tab);
+            select_creative_tab(
+                &mut self.creative_screen.0,
+                &mut self.client.inv_clicks,
+                tab,
+            );
             self.build_screen();
             self.client.creative_ignore_text = true;
             return Ok(true);
@@ -38,7 +42,7 @@ impl Game<'_> {
         }
         // A focused mounted child has already received the key. Do not type it
         // into an unrelated editor that happens to be focused behind it.
-        if !self.screen_state.widgets.has_focus() {
+        if !self.screen_state.0.widgets.has_focus() {
             if search && !self.mod_browser_typing() {
                 if self.search_tab_hotbar_key(raw) {
                     self.client.creative_ignore_text = true;
@@ -47,11 +51,11 @@ impl Game<'_> {
                 if let Some(shortcut) = shortcut {
                     self.creative_search_shortcut(shortcut);
                 } else {
-                    let before = self.creative_screen.search.value.clone();
+                    let before = self.creative_screen.0.search.value.clone();
                     let (ctrl, shift) = (self.has_control_down(), self.has_shift_down());
-                    self.creative_screen.search.key(raw, ctrl, shift);
-                    if self.creative_screen.search.value != before {
-                        self.creative_screen.scroll = 0.0;
+                    self.creative_screen.0.search.key(raw, ctrl, shift);
+                    if self.creative_screen.0.search.value != before {
+                        self.creative_screen.0.scroll = 0.0;
                     }
                 }
                 return Ok(true);
@@ -128,6 +132,7 @@ impl Game<'_> {
         };
         let Some(size) = self
             .renderer
+            .0
             .as_ref()
             .map(|r| [r.config.width, r.config.height])
         else {
@@ -150,6 +155,7 @@ impl Game<'_> {
         use sunrise_client::menu::Input;
         let Some(size) = self
             .renderer
+            .0
             .as_ref()
             .map(|r| [r.config.width, r.config.height])
         else {
@@ -185,10 +191,11 @@ impl Game<'_> {
     /// search tab's box takes the key instead.
     pub(in crate::game) fn inventory_pick_key(&mut self) {
         let menu = (self.client.screen == Screen::Inventory
-            || (self.client.screen == Screen::Creative && !self.creative_screen.tab().search))
+            || (self.client.screen == Screen::Creative && !self.creative_screen.0.tab().search))
             && !self.dialog_open();
         let Some(size) = self
             .renderer
+            .0
             .as_ref()
             .map(|r| [r.config.width, r.config.height])
         else {
@@ -369,7 +376,7 @@ impl Game<'_> {
         let Some((ty, slots)) = self.client.inv_drag.clone() else {
             return self.carried.is_some() || self.inventory_target().0.is_some();
         };
-        let Some(r) = self.renderer.as_ref() else {
+        let Some(r) = self.renderer.0.as_ref() else {
             return true;
         };
         let batch = HudBatch::new(
@@ -401,7 +408,7 @@ impl Game<'_> {
     }
     /// The hovered slot and whether the cursor is outside the window.
     pub(in crate::game) fn inventory_target(&self) -> (Option<usize>, bool) {
-        let Some(r) = self.renderer.as_ref() else {
+        let Some(r) = self.renderer.0.as_ref() else {
             return (None, false);
         };
         let batch = HudBatch::new(

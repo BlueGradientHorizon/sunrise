@@ -77,7 +77,7 @@ fn with_callback_game(
     mod_platform::testing::with_mods(mods, || {
         with_interaction_game(true, |game| {
             game.set_local_mode(sunrise_client::command::args::GameMode::Survival);
-            game.title = None;
+            game.title.0 = None;
             game.client.screen = Screen::Playing;
             game.remote.as_mut().unwrap().loaded_sent = true;
             let attack = click.then(|| {
@@ -296,7 +296,7 @@ fn the_host_presses_by_name_and_refuses_the_others() {
         assert_eq!(game.pending_mapping_clicks("key.hotbar.3"), 0);
         // An open screen suppresses polling, not changes to the logical mappings.
         game.player = None;
-        game.title = Some(game.new_title(game.save.root.clone()));
+        game.title.0 = Some(game.new_title(game.save.0.root.clone()));
         assert!(game.mod_mappings_screen_open());
         let hotbar_slot = game.vanilla_mapping_slot(hotbar).unwrap();
         let before_clicks = game.client.vanilla_mappings.pending_clicks(hotbar_slot);

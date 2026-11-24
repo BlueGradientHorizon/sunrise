@@ -46,8 +46,10 @@ impl Game<'_> {
             return Ok(());
         }
         self.save
-            .save_chunk_tickets(self.streaming.commanded(), self.tickets.portal_tickets())?;
+            .0
+            .save_chunk_tickets(self.streaming.commanded(), self.tickets.0.portal_tickets())?;
         self.save
+            .0
             .save_mod_tickets(self.streaming.mod_tickets(), |slot| {
                 mod_api::TicketController::from_slot(slot).map(|c| c.id())
             })
@@ -70,7 +72,7 @@ impl Game<'_> {
             self.client.client_quit.set(ClientQuit::Stopping);
             self.close_client_tasks();
         }
-        if let Some(save) = &mut self.pending_save {
+        if let Some(save) = &mut self.pending_save.0 {
             save.quit |= quit;
             return Ok(());
         }
@@ -79,7 +81,7 @@ impl Game<'_> {
         if quit && let Some(starting) = self.integrated_starting.take() {
             starting.handle.request_stop();
             self.integrated = Some(starting.handle);
-            self.pending_save = Some(ClosingSave {
+            self.pending_save.0 = Some(ClosingSave {
                 quit,
                 close: true,
                 reply: None,
@@ -88,9 +90,9 @@ impl Game<'_> {
             });
             return Ok(());
         }
-        if self.title.is_some() || self.client.saved_for_exit {
+        if self.title.0.is_some() || self.client.saved_for_exit {
             // A quit from the title still needs the event loop to finish.
-            self.pending_save = Some(ClosingSave {
+            self.pending_save.0 = Some(ClosingSave {
                 quit,
                 close: true,
                 reply: None,
@@ -109,7 +111,7 @@ impl Game<'_> {
         self.streaming.abort_generation();
         if let Some(integrated) = &self.integrated {
             integrated.request_stop();
-            self.pending_save = Some(ClosingSave {
+            self.pending_save.0 = Some(ClosingSave {
                 quit,
                 close: true,
                 reply: None,
@@ -126,7 +128,7 @@ impl Game<'_> {
                 remote.session.disconnect();
             }
             self.client.saved_for_exit = true;
-            self.pending_save = Some(ClosingSave {
+            self.pending_save.0 = Some(ClosingSave {
                 quit,
                 close: true,
                 reply: None,
@@ -138,7 +140,7 @@ impl Game<'_> {
             self.award_custom_stat("leave_game", 1);
             self.lan_close(false);
             self.free_player_beds()?;
-            self.pending_save = Some(ClosingSave {
+            self.pending_save.0 = Some(ClosingSave {
                 quit,
                 close: true,
                 reply: None,
@@ -157,7 +159,7 @@ impl Game<'_> {
         all: bool,
         reply: std::sync::mpsc::Sender<String>,
     ) -> Result<()> {
-        if self.pending_save.is_some() {
+        if self.pending_save.0.is_some() {
             return Err("a world save is already in progress".into());
         }
         if all {
@@ -169,7 +171,7 @@ impl Game<'_> {
         self.client.physical_keys.clear();
         self.set_mapping_held("key.attack", false);
         self.set_mapping_held("key.use", false);
-        self.pending_save = Some(ClosingSave {
+        self.pending_save.0 = Some(ClosingSave {
             quit: false,
             close: false,
             reply: Some(reply),
@@ -182,14 +184,14 @@ impl Game<'_> {
     /// `true` means the window can exit. The session lock stays in Game until
     /// every snapshot has been queued and every writer has synced its files.
     pub(super) fn poll_closing_save(&mut self) -> Result<bool> {
-        let defers = self.pending_save.as_ref().is_some_and(|save| {
+        let defers = self.pending_save.0.as_ref().is_some_and(|save| {
             !matches!(save.stage, Stage::Server | Stage::Quit)
                 && save.started.elapsed() < Duration::from_secs(30)
         });
         if defers && self.defer_chunk_disk_save() {
             return Ok(false);
         }
-        let Some(mut save) = self.pending_save.take() else {
+        let Some(mut save) = self.pending_save.0.take() else {
             return Ok(false);
         };
         let (per_frame, budget) = if save.close {
@@ -250,7 +252,7 @@ impl Game<'_> {
                         self.world.modified.remove(&key);
                         let chunks = self.with_entities(self.world.chunks.get(&key));
                         self.native_full_chunk_snapshots(&chunks);
-                        self.save.save_later(
+                        self.save.0.save_later(
                             &chunks,
                             self.pack.assets.registry,
                             world_biomes!(self),
@@ -271,7 +273,7 @@ impl Game<'_> {
                     for _ in 0..per_frame {
                         let Some(&key) = keys.front() else { break };
                         let chunks = self.entity_chunks(&HashSet::from([key]), false);
-                        self.save.save_entities_later(chunks)?;
+                        self.save.0.save_entities_later(chunks)?;
                         keys.pop_front();
                         if started.elapsed() >= budget {
                             break;
@@ -280,16 +282,16 @@ impl Game<'_> {
                     if keys.is_empty() {
                         self.prune_entity_memory();
                         self.save_raids();
-                        self.save.save_attachments(&self.world.attachments)?;
+                        self.save.0.save_attachments(&self.world.attachments)?;
                         self.save_chunk_tickets()?;
                         self.save_game_metadata()?;
-                        save.stage = Stage::Writes(Some(self.save.flush_later()?));
+                        save.stage = Stage::Writes(Some(self.save.0.flush_later()?));
                     }
                     Ok(false)
                 }
                 Stage::Writes(flush) => {
                     let Some(receive) = flush else {
-                        *flush = Some(self.save.flush_later()?);
+                        *flush = Some(self.save.0.flush_later()?);
                         return Ok(false);
                     };
                     if !self.finish_player_autosaves(false)? {
@@ -330,7 +332,7 @@ impl Game<'_> {
                     self.client.saved_for_exit = true;
                     Ok(true)
                 } else {
-                    if save.close && self.title.is_none() {
+                    if save.close && self.title.0.is_none() {
                         self.finish_perf();
                         self.finish_close_world()?;
                     }
@@ -348,7 +350,7 @@ impl Game<'_> {
                 }
                 // Keep ownership (and the lock) on errors too. Native shutdown must
                 // finish a durable barrier before it can declare the save completed.
-                self.pending_save = Some(save);
+                self.pending_save.0 = Some(save);
                 other
             }
         }
@@ -356,13 +358,13 @@ impl Game<'_> {
 
     pub(super) fn render_closing_save(&mut self) -> Result<()> {
         if matches!(
-            self.pending_save.as_ref().map(|save| &save.stage),
+            self.pending_save.0.as_ref().map(|save| &save.stage),
             Some(Stage::Quit)
         ) {
             return Ok(());
         }
         let waiting = matches!(
-            self.pending_save.as_ref().map(|save| &save.stage),
+            self.pending_save.0.as_ref().map(|save| &save.stage),
             Some(Stage::Server | Stage::Writes(_))
         );
         if waiting {
@@ -388,14 +390,14 @@ impl Game<'_> {
             )
             .without_navigation()
         });
-        let Some(renderer) = &mut self.renderer else {
+        let Some(renderer) = &mut self.renderer.0 else {
             return Ok(());
         };
         let mut hud = HudBatch::new(
             [renderer.config.width, renderer.config.height],
             self.settings.gui_scale_inputs(),
         );
-        let progress = match self.pending_save.as_ref().map(|save| &save.stage) {
+        let progress = match self.pending_save.0.as_ref().map(|save| &save.stage) {
             Some(Stage::Chunks(_)) => 0.25,
             Some(Stage::Entities(_)) => 0.5,
             Some(Stage::Writes(_)) => 0.9,
@@ -416,7 +418,7 @@ impl Game<'_> {
     /// the save has one. The Select World list shows it as the world's preview.
     pub(super) fn tick_world_icon(&mut self) {
         // Its grab would take a sequence's frame.
-        if self.screenshot_sequence.is_some() {
+        if self.screenshot_sequence.0.is_some() {
             return;
         }
         let Some(icon) = self.client.world_icon.as_ref() else {
@@ -436,12 +438,12 @@ impl Game<'_> {
         // takeAutoScreenshot only saves with every loaded section rendered, or
         // the icon would picture the holes the streamer has not filled yet.
         if self.streaming.pending() != 0
-            || !self.pending_uploads.is_empty()
+            || !self.pending_uploads.0.is_empty()
             || self.remote_backlog() != 0
         {
             return;
         }
-        let Some(renderer) = self.renderer.as_mut() else {
+        let Some(renderer) = self.renderer.0.as_mut() else {
             return;
         };
         // countRenderedSections() > 10: a client that joined its server
@@ -492,7 +494,7 @@ impl Game<'_> {
             }
         }
         let keys: Vec<_> = self.world.modified.iter().copied().collect();
-        self.save.save_attachments(&self.world.attachments)?;
+        self.save.0.save_attachments(&self.world.attachments)?;
         // ChunkMap.save calls tryMarkSaved before creating the snapshot. A record failure
         // finishes this attempt and does not put the mark back.
         for key in &keys {
@@ -501,6 +503,7 @@ impl Game<'_> {
         let chunks = self.with_entities(keys.iter().filter_map(|k| self.world.chunks.get(k)));
         self.native_full_chunk_snapshots(&chunks);
         self.save
+            .0
             .save_later(&chunks, self.pack.assets.registry, world_biomes!(self))?;
         // Prepare entities while the chunk writer runs, then use one barrier.
         if !wait {
@@ -509,7 +512,7 @@ impl Game<'_> {
         self.save_entities(false)?;
         self.save_raids();
         if wait {
-            self.save.flush()?;
+            self.save.0.flush()?;
         }
         if mod_api::__private::listened(mod_api::HookId::LevelSave) {
             self.native_level_save(self.dim.id());
@@ -530,7 +533,7 @@ mod tests {
         let deadline = Instant::now() + Duration::from_secs(5);
         loop {
             let quit = game.poll_closing_save().unwrap();
-            if game.pending_save.is_none() {
+            if game.pending_save.0.is_none() {
                 return quit;
             }
             assert!(
@@ -550,7 +553,7 @@ mod tests {
             with_game(|game| {
                 let dir = tempfile::tempdir().unwrap();
                 game.server.world_root = dir.path().to_path_buf();
-                game.save = Arc::new(SaveDir::new(
+                game.save.0 = Arc::new(SaveDir::new(
                     game.server.world_root.clone(),
                     LevelShape::OVERWORLD,
                     Some(Default::default()),
@@ -563,15 +566,15 @@ mod tests {
                 scoped(language, || {
                     game.save_game().unwrap();
                     let explicit = game.client.message.take().unwrap().0;
-                    game.pending_save = Some(ClosingSave {
+                    game.pending_save.0 = Some(ClosingSave {
                         quit: false,
                         close: false,
                         reply: None,
                         started: Instant::now(),
-                        stage: Stage::Writes(Some(game.save.flush_later().unwrap())),
+                        stage: Stage::Writes(Some(game.save.0.flush_later().unwrap())),
                     });
                     assert!(!finish_staged_save(game));
-                    assert!(game.pending_save.is_none());
+                    assert!(game.pending_save.0.is_none());
                     let incremental = game.client.message.take().unwrap().0;
                     assert_eq!(
                         (explicit.as_str(), incremental.as_str()),
@@ -589,7 +592,7 @@ mod tests {
             with_game(|game| {
                 for quit in [false, true] {
                     let dir = tempfile::tempdir().unwrap();
-                    game.save = Arc::new(SaveDir::new(
+                    game.save.0 = Arc::new(SaveDir::new(
                         dir.path().to_path_buf(),
                         LevelShape::OVERWORLD,
                         None,
@@ -597,21 +600,22 @@ mod tests {
                     let invalid = (0..=DISK_WRITE_NESTING_GUARD)
                         .fold(Tag::Int(0), |nested, _| Tag::List(vec![nested]));
                     game.save
+                        .0
                         .save_entities(vec![((2, 0), vec![invalid])])
                         .unwrap();
-                    assert_eq!(game.save.record_save_failures(), 1);
+                    assert_eq!(game.save.0.record_save_failures(), 1);
                     let (send, receive) = mpsc::channel();
-                    game.pending_save = Some(ClosingSave {
+                    game.pending_save.0 = Some(ClosingSave {
                         quit,
                         close: quit,
                         reply: (!quit).then_some(send),
                         started: Instant::now(),
-                        stage: Stage::Writes(Some(game.save.flush_later().unwrap())),
+                        stage: Stage::Writes(Some(game.save.0.flush_later().unwrap())),
                     });
                     game.client.saved_for_exit = false;
                     game.client.message = None;
                     assert_eq!(finish_staged_save(game), quit);
-                    assert!(game.pending_save.is_none());
+                    assert!(game.pending_save.0.is_none());
                     if !quit {
                         let reply: serde_json::Value =
                             serde_json::from_str(&receive.try_recv().unwrap()).unwrap();

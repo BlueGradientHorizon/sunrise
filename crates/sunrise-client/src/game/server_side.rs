@@ -1135,3 +1135,27 @@ impl ServerState {
         }
     }
 }
+
+#[allow(dead_code)]
+#[repr(transparent)]
+pub(in crate::game) struct ServerOnly<T>(pub(in crate::game::server_side) T);
+
+#[allow(dead_code)]
+impl<T> ServerOnly<T> {
+    #[inline(always)]
+    pub(in crate::game) fn new(value: T) -> Self {
+        Self(value)
+    }
+}
+
+#[allow(dead_code)]
+#[repr(transparent)]
+pub(in crate::game) struct ServerShared<T>(pub(in crate::game) T);
+
+#[allow(dead_code)]
+impl<T> ServerShared<T> {
+    #[inline(always)]
+    pub(in crate::game) fn new(value: T) -> Self {
+        Self(value)
+    }
+}

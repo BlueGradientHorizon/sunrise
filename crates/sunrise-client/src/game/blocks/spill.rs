@@ -1473,11 +1473,11 @@ impl Game<'_> {
     /// Add the item entities the block behaviour spawned and follow up on the
     /// block entities it removed.
     pub(in crate::game) fn flush_spill(&mut self) {
-        if self.spill.is_empty() {
+        if self.spill.0.is_empty() {
             return;
         }
         let _save_lease = sunrise_client::join_seq::visibility::PassLease::enter();
-        let mut spill = std::mem::take(&mut self.spill);
+        let mut spill = std::mem::take(&mut self.spill.0);
         self.finish_piston_position_changes(std::mem::take(&mut spill.piston_positions));
         let used = std::mem::take(&mut spill.used);
         let tool = self.held().cloned();

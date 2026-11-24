@@ -372,7 +372,7 @@ impl Game<'_> {
     pub(super) fn tick_summoned_eyes(&mut self) {
         let ticking = self.entity_ticking_area();
         let mut shattered = Vec::new();
-        self.others.retain_mut(|o| {
+        self.others.0.retain_mut(|o| {
             let Some(eye) = o.eye.as_mut() else {
                 return true;
             };
@@ -396,6 +396,7 @@ impl Game<'_> {
         });
         for at in shattered {
             self.audio
+                .0
                 .play("minecraft:entity.ender_eye.death", Some(at), 1.0, 1.0);
             self.level_event_at(2003, at.map(|v| v.floor() as i32), 0);
         }
@@ -671,11 +672,11 @@ impl Game<'_> {
                 "minecraft:weather.end_flash",
                 sunrise_client::sound_engine::WEATHER,
                 sunrise_client::random_source::create(),
-                self.audio.listener,
+                self.audio.0.listener,
                 flash.x_angle,
                 flash.y_angle,
             );
-            self.audio.play_instance_after(instance, 30);
+            self.audio.0.play_instance_after(instance, 30);
         }
     }
 
@@ -1419,6 +1420,7 @@ impl Game<'_> {
         let r = self.world.random.next_float();
         let pitch = 0.33 + r * (0.5 - 0.33);
         self.audio
+            .0
             .play("minecraft:entity.ender_eye.launch", Some(at), 1.0, pitch);
         // CriteriaTriggers.USED_ENDER_EYE, against the feature's block.
         let (dx, dz) = (
@@ -1449,6 +1451,7 @@ impl Game<'_> {
             }
             let at = eye.position.to_array();
             self.audio
+                .0
                 .play("minecraft:entity.ender_eye.death", Some(at), 1.0, 1.0);
             if eye.survive {
                 // new ItemEntity(level, x, y, z, item): random spread, 0.2 up.
@@ -1482,21 +1485,21 @@ impl Game<'_> {
         );
         let crumbs = self.item_particle(&ItemStack::new("minecraft:ender_eye", 1));
         for _ in 0..8 {
-            let r = self.particles.random();
+            let r = self.particles.0.random();
             let v = [
                 r.next_gaussian() * 0.15,
                 r.next_double() * 0.2,
                 r.next_gaussian() * 0.15,
             ];
-            self.particles.add(&crumbs, [x, y, z], v);
+            self.particles.0.add(&crumbs, [x, y, z], v);
         }
         let portal = ParticleOptions::simple(ParticleType::Portal);
         let mut angle = 0.0f64;
         while angle < std::f64::consts::PI * 2.0 {
             let (c, s) = (angle.cos(), angle.sin());
             let at = [x + c * 5.0, y - 0.4, z + s * 5.0];
-            self.particles.add(&portal, at, [c * -5.0, 0.0, s * -5.0]);
-            self.particles.add(&portal, at, [c * -7.0, 0.0, s * -7.0]);
+            self.particles.0.add(&portal, at, [c * -5.0, 0.0, s * -5.0]);
+            self.particles.0.add(&portal, at, [c * -7.0, 0.0, s * -7.0]);
             angle += std::f64::consts::PI / 20.0;
         }
     }
@@ -1518,14 +1521,15 @@ impl Game<'_> {
             if water {
                 let bubble = ParticleOptions::simple(ParticleType::Bubble);
                 for _ in 0..4 {
-                    self.particles.add(&bubble, origin, movement);
+                    self.particles.0.add(&bubble, origin, movement);
                 }
             } else {
-                let r = self.particles.random();
+                let r = self.particles.0.random();
                 let x = origin[0] + r.next_double() * 0.6 - 0.3;
                 let z = origin[2] + r.next_double() * 0.6 - 0.3;
                 let portal = ParticleOptions::simple(ParticleType::Portal);
                 self.particles
+                    .0
                     .add(&portal, [x, origin[1] - 0.5, z], movement);
             }
         }

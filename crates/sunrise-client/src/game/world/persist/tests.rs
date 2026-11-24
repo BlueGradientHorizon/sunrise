@@ -57,24 +57,24 @@ mod transient_entities {
         with_server(|game| {
             let display = display(game);
             game.save_entities(true).unwrap();
-            assert_eq!(game.save.load_entities(0, 0).unwrap().len(), 1);
+            assert_eq!(game.save.0.load_entities(0, 0).unwrap().len(), 1);
             assert_eq!(display.set_persistent(game, false), Ok(true));
             assert_eq!(
-                game.save.load_entities(0, 0).unwrap().len(),
+                game.save.0.load_entities(0, 0).unwrap().len(),
                 1,
                 "setting the flag does not rewrite an old snapshot"
             );
 
             let chunk = game.world.chunks.remove(&(0, 0)).unwrap();
             game.unload_entities(std::slice::from_ref(&chunk));
-            game.save.flush().unwrap();
+            game.save.0.flush().unwrap();
             assert_eq!(game.entity(display.id()), None);
-            let records = game.save.load_entities(0, 0).unwrap();
+            let records = game.save.0.load_entities(0, 0).unwrap();
             assert!(records.is_empty());
             game.world.chunks.insert((0, 0), chunk);
             game.world.queue_entity_nbt((0, 0), records);
             game.spawn_loaded_entities();
-            assert!(game.others.is_empty());
+            assert!(game.others.0.is_empty());
         });
     }
 
@@ -253,7 +253,7 @@ fn neutral_load_restores_only_the_saved_live_target_with_or_without_listeners() 
 #[ignore = "daily"]
 fn resident_other_and_fangs_load_tick_and_reset() {
     super::super::native_entity_refs::tests::with_game(|game| {
-        game.others.clear();
+        game.others.0.clear();
         game.fangs.list.clear();
         let tag = |kind| {
             let mut tag = entity(kind);
@@ -273,9 +273,9 @@ fn resident_other_and_fangs_load_tick_and_reset() {
         let id = game
             .load_other(tag("minecraft:marker"), "minecraft:marker")
             .unwrap();
-        assert_eq!(game.others[0].id, id);
-        let snapshot = game.others.to_vec();
-        game.others.update(0, |o| o.yaw = 90.0);
+        assert_eq!(game.others.0[0].id, id);
+        let snapshot = game.others.0.to_vec();
+        game.others.0.update(0, |o| o.yaw = 90.0);
         assert_eq!(snapshot[0].yaw, 0.0);
         game.load_unlisted(
             (0, 0),
@@ -294,9 +294,9 @@ fn resident_other_and_fangs_load_tick_and_reset() {
         assert_eq!(game.fangs.list.len(), 1);
         assert_eq!(game.fangs.list[0].id, survivor);
         assert_eq!(game.fangs.list[0].warmup, 39);
-        game.others.clear();
+        game.others.0.clear();
         game.fangs.list.clear();
-        assert!(game.others.is_empty() && game.fangs.list.is_empty());
+        assert!(game.others.0.is_empty() && game.fangs.list.is_empty());
     });
 }
 
@@ -1213,7 +1213,7 @@ fn an_orb_saves_its_live_portal_cooldown() {
         // One tick: the orb's own (ordered) tick, then Entity.handlePortal's
         // pass over the entities.
         game.server.ordered.announced = sunrise_client::join_seq::JoinSeq::MAX;
-        game.tickets.update(None);
+        game.tickets.0.update(None);
         game.begin_ordered_ticks();
         game.run_ordered_ticks(sunrise_client::join_seq::JoinSeq::MAX, false)
             .unwrap();

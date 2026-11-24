@@ -265,10 +265,10 @@ impl Game<'_> {
         let (played, start, middle) = charge_sounds(now, self.server.crossbow_sounds, sounds);
         self.server.crossbow_sounds = played;
         if let Some(sound) = start {
-            self.audio.play(sound, at, 0.5, 1.0);
+            self.audio.0.play(sound, at, 0.5, 1.0);
         }
         if let Some(sound) = middle {
-            self.audio.play(sound, at, 0.5, 1.0);
+            self.audio.0.play(sound, at, 0.5, 1.0);
         }
         let charged = stack.data().is_some_and(|d| !d.charged.is_empty());
         if now >= 1.0 && !charged {
@@ -311,7 +311,7 @@ impl Game<'_> {
                 self.consume_player_slot(i, 1);
             }
             let pitch = 1.0 / (self.world.random.next_float() * 0.5 + 1.0) + 0.2;
-            self.audio.play(sounds[2], at, 1.0, pitch);
+            self.audio.0.play(sounds[2], at, 1.0, pitch);
         }
     }
     /// `CrossbowItem.performShooting`.
@@ -420,6 +420,7 @@ impl Game<'_> {
                 .as_ref()
                 .map_or(eye, |pl| [pl.position.x, pl.position.y, pl.position.z]);
             self.audio
+                .0
                 .play("minecraft:item.crossbow.shoot", Some(feet), 1.0, pitch);
             self.damage_held(if rocket { 3 } else { 1 });
         }
@@ -481,7 +482,7 @@ mod tests {
             .unwrap(),
         );
         let p = game.player.as_ref().expect("a player").position;
-        game.audio.capture = Some(Vec::new());
+        game.audio.0.capture = Some(Vec::new());
         (game, [p.x, p.y, p.z])
     }
 
@@ -500,7 +501,7 @@ mod tests {
 
         let bow = ItemStack::new("minecraft:bow", 1);
         game.release_bow(&bow, 20);
-        let shot = game.audio.capture.take().unwrap_or_default();
+        let shot = game.audio.0.capture.take().unwrap_or_default();
         let at: Vec<_> = shot
             .iter()
             .filter(|s| s.event == "minecraft:entity.arrow.shoot")
@@ -508,12 +509,12 @@ mod tests {
             .collect();
         assert_eq!(at, vec![feet]);
 
-        game.audio.capture = Some(Vec::new());
+        game.audio.0.capture = Some(Vec::new());
         let mut crossbow = ItemStack::new("minecraft:crossbow", 1);
         crossbow.data_mut().charged = vec![ItemStack::new(ARROW, 1)];
         *game.held_mut() = Some(crossbow);
         game.shoot_crossbow();
-        let shot = game.audio.capture.take().unwrap_or_default();
+        let shot = game.audio.0.capture.take().unwrap_or_default();
         let at: Vec<_> = shot
             .iter()
             .filter(|s| s.event == "minecraft:item.crossbow.shoot")

@@ -107,7 +107,7 @@ fn a_rocket_posts_its_shot_once_and_a_silent_one_launches_quietly() {
                 .iter()
                 .all(|r| r.has_been_shot == (r.position.x == 9.5))
         );
-        game.audio.heard.clear();
+        game.audio.0.heard.clear();
         start_events();
         game.tick_rockets();
         let first = take_shots();
@@ -121,7 +121,7 @@ fn a_rocket_posts_its_shot_once_and_a_silent_one_launches_quietly() {
         assert!(second.is_empty());
         assert!(game.rockets.iter().all(|r| r.has_been_shot));
         // Only the rocket that isn't silent launches with a sound.
-        assert_eq!(game.audio.heard.get(launch), Some(&1));
+        assert_eq!(game.audio.0.heard.get(launch), Some(&1));
     });
 }
 /// #14440: an orb's move adds its drop to the fall outside water; landing
@@ -193,7 +193,7 @@ fn a_falling_rocket_hits_the_ground_and_one_in_water_splashes() {
             "summon firework_rocket {x}.5 202 10.5 {{LifeTime:100,HasBeenShot:1b,ShotAtAngle:1b,Motion:[0d,-0.5d,0d]}}"
         )));
         }
-        game.audio.heard.clear();
+        game.audio.0.heard.clear();
         start_events();
         let mut falls = Vec::new();
         for _ in 0..6 {
@@ -216,7 +216,7 @@ fn a_falling_rocket_hits_the_ground_and_one_in_water_splashes() {
             [("minecraft:splash", 20), ("minecraft:hit_ground", 6)]
         );
         assert_eq!(
-            game.audio.heard.get("minecraft:entity.generic.splash"),
+            game.audio.0.heard.get("minecraft:entity.generic.splash"),
             Some(&1)
         );
     });

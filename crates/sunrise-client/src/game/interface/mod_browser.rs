@@ -173,7 +173,7 @@ impl Game<'_> {
     pub(super) fn drive_mod_browser(&mut self) {
         // The Browse mods page's layout reads the browser: a worker's answer
         // arriving makes the built page again at its next draw.
-        let (installed, changed) = self.mod_jobs.poll(
+        let (installed, changed) = self.mod_jobs.0.poll(
             &mut self.ui.options.mod_browser,
             &mut self.settings.mods,
             self.player.is_some(),

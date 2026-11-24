@@ -85,7 +85,7 @@ impl Game<'_> {
             f64::from(pos[1]) + 0.5,
             f64::from(pos[2]) + 0.5,
         ];
-        self.audio.play(sound, Some(at), 1.0, 1.0);
+        self.audio.0.play(sound, Some(at), 1.0, 1.0);
     }
     /// `LoomScreen.mouseClicked` on a pattern button: `clickMenuButton`, and
     /// the select sound when the menu took it.
@@ -98,6 +98,7 @@ impl Game<'_> {
         });
         if taken {
             self.audio
+                .0
                 .play("minecraft:ui.loom.select_pattern", None, 1.0, 1.0);
             self.remote_station_button(index as i32);
         }
@@ -152,6 +153,7 @@ impl Game<'_> {
     pub(in crate::game) fn loom_drag(&mut self) -> bool {
         let Some(size) = self
             .renderer
+            .0
             .as_ref()
             .map(|r| [r.config.width, r.config.height])
         else {

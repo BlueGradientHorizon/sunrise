@@ -296,12 +296,12 @@ fn a_clients_frames_tick_its_declared_copies_until_they_go() {
         // quiet type never. The spawner ticks between the second hum and the first, as it arrived:
         // its two particles come between their ticks.
         let all = |first| ticked(&[(HUMS[1], 10), (HUMS[0], first), (OTHER, 40), (CRATE_AT, 50)]);
-        game.particles.requested = Some(Vec::new());
+        game.particles.0.requested = Some(Vec::new());
         TICK_PARTICLES.lock().unwrap().clear();
         assert_eq!(frame(game, 1), all(30));
         let seen = std::mem::take(&mut *TICK_PARTICLES.lock().unwrap());
         assert_eq!([seen[1] - seen[0], seen[2] - seen[1]], [2, 0], "{seen:?}");
-        game.particles.requested = None;
+        game.particles.0.requested = None;
         assert_eq!(frame(game, 2), [all(30), all(30)].concat());
 
         // The server's update reaches the next frame's drain: the notice comes first, and both

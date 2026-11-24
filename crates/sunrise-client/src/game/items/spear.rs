@@ -45,7 +45,7 @@ impl Game<'_> {
             self.server.stabbed.retain(|(who, _), _| *who != actor);
             if let Some(p) = &self.player {
                 let at = [p.position.x, p.position.y, p.position.z];
-                self.audio.play(kinetic.sound, Some(at), 1.0, 1.0);
+                self.audio.0.play(kinetic.sound, Some(at), 1.0, 1.0);
             }
         }
         true
@@ -228,7 +228,7 @@ impl Game<'_> {
             return;
         };
         let actor = self.server.lan_acting;
-        if self.audio.capture.is_some() {
+        if self.audio.0.capture.is_some() {
             self.server.lan_kinetic_hits.push(actor);
         }
         let who = actor.map_or(OWN, |conn| conn as i32);
@@ -385,7 +385,7 @@ impl Game<'_> {
             let indicator = sunrise_client::particles::ParticleOptions::simple(
                 sunrise_client::particles::ParticleType::DamageIndicator,
             );
-            self.particles.send_particles(
+            self.particles.0.send_particles(
                 &indicator,
                 [feet[0], feet[1] + height * 0.5, feet[2]],
                 [0.1, 0.0, 0.1],
@@ -467,7 +467,7 @@ impl Game<'_> {
     pub(in crate::game) fn play_at_feet(&mut self, sound: &str) {
         if let Some(p) = &self.player {
             let at = [p.position.x, p.position.y, p.position.z];
-            self.audio.play(sound, Some(at), 1.0, 1.0);
+            self.audio.0.play(sound, Some(at), 1.0, 1.0);
         }
     }
 
@@ -489,6 +489,7 @@ impl Game<'_> {
         {
             self.server.kinetic_feedback.insert(entity, now);
             self.audio
+                .0
                 .play_unshared(kinetic.hit_sound, Some(at), 1.0, 1.0);
         }
     }

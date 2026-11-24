@@ -157,14 +157,14 @@ fn an_empty_slot_clicked_as_occupied_still_plays_the_pickup() {
             point: [8.8, 64.75, 9.0],
             inside: false,
         };
-        game.audio.capture = Some(Vec::new());
+        game.audio.0.capture = Some(Vec::new());
         let posted = record(|| {
             assert!(
                 game.use_hand(Some(&hit)).unwrap(),
                 "removeBook answers SUCCESS"
             );
         });
-        let sounds = game.audio.capture.take().unwrap_or_default();
+        let sounds = game.audio.0.capture.take().unwrap_or_default();
         assert!(game.dropped.is_empty(), "an empty stack drops nothing");
         assert_eq!(last_slot(game), -1, "nothing came out of the slot");
         assert_eq!(signal(game), 0);

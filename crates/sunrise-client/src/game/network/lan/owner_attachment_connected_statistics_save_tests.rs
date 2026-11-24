@@ -135,13 +135,13 @@ mod connected_statistics_save_tests {
         });
         fs::create_dir_all(&dir).unwrap();
         game.server.world_root = dir.clone();
-        game.save = Arc::new(sunrise_client::save::SaveDir::new(
+        game.save.0 = Arc::new(sunrise_client::save::SaveDir::new(
             dir.clone(),
             sunrise_client::save::LevelShape::OVERWORLD,
             Some(Default::default()),
         ));
         use sunrise_client::server::user_lists::{BanList, IpBanList, OpList, WhiteList};
-        game.server_lists = Some(Arc::new(Mutex::new(
+        game.server_lists.0 = Some(Arc::new(Mutex::new(
             super::super::super::dedicated::Lists {
                 ops: OpList::new(dir.join("ops.json")),
                 white: WhiteList::new(dir.join("whitelist.json")),

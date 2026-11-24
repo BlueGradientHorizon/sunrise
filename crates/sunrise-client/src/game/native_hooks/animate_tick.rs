@@ -74,19 +74,19 @@ impl Game<'_> {
         &mut self,
         f: impl FnOnce(&mut Self, &mut dyn mod_api::RandomSource) -> R,
     ) -> R {
-        if let Some(lent) = self.lent_level_random.clone() {
+        if let Some(lent) = self.lent_level_random.0.clone() {
             return f(self, &mut LevelRandom(lent));
         }
         let lent: LentRandom = Rc::new(RefCell::new(mod_api::LegacyRandomSource::from(<(
             u64,
             Option<f64>,
         )>::from(
-            &*self.particles.level_random(),
+            &*self.particles.0.level_random(),
         ))));
-        self.lent_level_random = Some(lent.clone());
+        self.lent_level_random.0 = Some(lent.clone());
         let out = f(self, &mut LevelRandom(lent.clone()));
-        self.lent_level_random = None;
-        *self.particles.level_random() =
+        self.lent_level_random.0 = None;
+        *self.particles.0.level_random() =
             LegacyRandom::from(<(u64, Option<f64>)>::from(&*lent.borrow()));
         out
     }
@@ -99,14 +99,14 @@ impl Game<'_> {
         &mut self,
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
-        let Some(lent) = self.lent_level_random.clone() else {
+        let Some(lent) = self.lent_level_random.0.clone() else {
             return f(self);
         };
-        *self.particles.level_random() =
+        *self.particles.0.level_random() =
             LegacyRandom::from(<(u64, Option<f64>)>::from(&*lent.borrow()));
         let out = f(self);
         *lent.borrow_mut() = mod_api::LegacyRandomSource::from(<(u64, Option<f64>)>::from(
-            &*self.particles.level_random(),
+            &*self.particles.0.level_random(),
         ));
         out
     }

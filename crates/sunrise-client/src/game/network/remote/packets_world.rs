@@ -186,7 +186,7 @@ impl Game<'_> {
             // GUARDIAN_ELDER_EFFECT: the apparition, and the curse sound
             // unless the elder guardian is silent.
             10 => {
-                self.particles.elder_guardian();
+                self.particles.0.elder_guardian();
                 if p.rounded_param() == 1
                     && let Some(at) = self.player.as_ref().map(|m| m.position)
                 {

@@ -956,6 +956,7 @@ impl Game<'_> {
         let chunk = chunk_of(at);
         let quarantined_here = self
             .others
+            .0
             .iter()
             .filter(|other| quarantined_kind(&other.kind) && chunk_of(other.position) == chunk)
             .count();
@@ -1040,6 +1041,7 @@ impl Game<'_> {
         let uuids: HashSet<[i32; 4]> = tree.iter().map(|&index| rows[index].uuid).collect();
         if self
             .levels
+            .0
             .parked_general_holds_any_uuid(destination, &uuids)
         {
             return Err(format!(

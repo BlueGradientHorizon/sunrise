@@ -117,12 +117,12 @@ fn an_oozing_player_swirls_slime_ball_crumbs() {
         g.player = Some(PlayerMotion::new(g.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
         // `ParticleEngine.add` records what the level is asked for instead of
         // drawing it, so the swirls are read exactly.
-        g.particles.requested = Some(Vec::new());
+        g.particles.0.requested = Some(Vec::new());
         // One tick in four swirls one particle.
         for _ in 0..64 {
             g.effect_swirls();
         }
-        let asked = g.particles.requested.take().unwrap();
+        let asked = g.particles.0.requested.take().unwrap();
         assert!(
             asked
                 .iter()
@@ -131,7 +131,7 @@ fn an_oozing_player_swirls_slime_ball_crumbs() {
             asked.iter().map(|(o, ..)| o.ty).collect::<Vec<_>>()
         );
         // The crumb draws the slime ball's model, not the missing sprite.
-        let sprites = g.particles.item_sprites.get(&ParticleType::ItemSlime);
+        let sprites = g.particles.0.item_sprites.get(&ParticleType::ItemSlime);
         assert!(sprites.is_some_and(|s| !s.is_empty()), "{sprites:?}");
     });
 }

@@ -151,13 +151,13 @@ impl Game<'_> {
             &mut self.server.chat_capture,
             if silent { None } else { Some(Vec::new()) },
         );
-        let outer_exec = std::mem::take(&mut self.exec);
-        let outer_results = self.cmds.results.take();
+        let outer_exec = std::mem::take(&mut self.exec.0);
+        let outer_results = self.cmds.0.results.take();
         let level = std::mem::replace(&mut self.ui.registries.permission, permission);
         let ok = self.run_command(line);
         self.ui.registries.permission = level;
-        self.exec = outer_exec;
-        self.cmds.results = outer_results;
+        self.exec.0 = outer_exec;
+        self.cmds.0.results = outer_results;
         let lines = std::mem::replace(&mut self.server.chat_capture, capture).unwrap_or_default();
         self.server.console_broadcast = console;
         self.server.native_command_filter = filter;

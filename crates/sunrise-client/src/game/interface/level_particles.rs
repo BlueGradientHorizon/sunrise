@@ -13,21 +13,23 @@ use sunrise_world::registry::BlockStateId;
 
 impl Game<'_> {
     pub(in crate::game) fn dragon_egg_particles(&mut self, pos: [i32; 3], data: i32) {
-        self.particles.block_teleportation(pos, data, [16, 8, 16]);
+        self.particles.0.block_teleportation(pos, data, [16, 8, 16]);
     }
     /// Event 2016: `Shulker.teleportSomewhere`'s particles between the
     /// shell's old and new cells.
     pub(in crate::game) fn shulker_teleport_particles(&mut self, pos: [i32; 3], data: i32) {
-        self.particles.block_teleportation(pos, data, [8, 8, 8]);
+        self.particles.0.block_teleportation(pos, data, [8, 8, 8]);
     }
     /// Event 2017: `TeleportRandomlyConsumeEffect`'s directional particles.
     pub(in crate::game) fn consume_teleport_particles(&mut self, pos: [i32; 3], data: i32) {
         self.particles
+            .0
             .block_teleportation(pos, data, [127, 127, 127]);
     }
     /// Event 2018: an enderman's portal trail.
     pub(in crate::game) fn enderman_teleport_particles(&mut self, pos: [i32; 3], data: i32) {
         self.particles
+            .0
             .enderman_teleportation(pos, data, self.settings.particles);
     }
     /// `LevelEventHandler.levelEvent` 3002 to 3005, drawing from the client
@@ -42,7 +44,7 @@ impl Game<'_> {
         };
         let p = [pos.x, pos.y, pos.z];
         let mut spawned = Vec::new();
-        let random = self.particles.level_random();
+        let random = self.particles.0.level_random();
         // 3002 with an axis: a lightning rod; otherwise copper cleaned by lightning.
         match usize::try_from(data) {
             Ok(axis) if id == 3002 && axis < 3 => {
@@ -52,7 +54,7 @@ impl Game<'_> {
         }
         let options = ParticleOptions::simple(ty);
         for (p, v) in spawned {
-            self.particles.add(&options, p, v);
+            self.particles.0.add(&options, p, v);
         }
     }
     /// `BoneMealItem.addGrowthParticles` (event 1505, `count` the data):
@@ -128,7 +130,7 @@ impl Game<'_> {
     ) {
         let options = ParticleOptions::simple(ty);
         for _ in 0..count.max(0) {
-            let r = self.particles.level_random();
+            let r = self.particles.0.level_random();
             let v = [0.0; 3].map(|_: f64| r.next_gaussian() * 0.02);
             let start = 0.5 - xz;
             let x = f64::from(at[0]) + start + r.next_double() * xz * 2.0;
@@ -141,7 +143,7 @@ impl Game<'_> {
                     .facts()
                     .is_air(self.world.block(below[0], below[1], below[2]))
             {
-                self.particles.add(&options, [x, y, z], v);
+                self.particles.0.add(&options, [x, y, z], v);
             }
         }
     }
@@ -158,7 +160,7 @@ impl Game<'_> {
     pub(in crate::game) fn sniffer_egg_crack_particles(&mut self, pos: BlockPos) {
         let mut spawned = Vec::new();
         particles::on_block_faces_between(
-            self.particles.level_random(),
+            self.particles.0.level_random(),
             [pos.x, pos.y, pos.z],
             3,
             6,
@@ -166,7 +168,7 @@ impl Game<'_> {
         );
         let options = ParticleOptions::simple(ParticleType::EggCrack);
         for (p, v) in spawned {
-            self.particles.add(&options, p, v);
+            self.particles.0.add(&options, p, v);
         }
     }
     /// `LevelEventHandler` 1501 (lava put out) and 2009 (a wet sponge dried):
@@ -174,10 +176,11 @@ impl Game<'_> {
     pub(in crate::game) fn puffs_above_block(&mut self, pos: BlockPos, ty: ParticleType) {
         let options = ParticleOptions::simple(ty);
         for _ in 0..8 {
-            let r = self.particles.level_random();
+            let r = self.particles.0.level_random();
             let x = f64::from(pos.x) + r.next_double();
             let z = f64::from(pos.z) + r.next_double();
             self.particles
+                .0
                 .add(&options, [x, f64::from(pos.y) + 1.2, z], [0.0; 3]);
         }
     }
@@ -186,21 +189,22 @@ impl Game<'_> {
     pub(in crate::game) fn torch_burnout_smoke(&mut self, pos: BlockPos) {
         let options = ParticleOptions::simple(ParticleType::Smoke);
         for _ in 0..5 {
-            let r = self.particles.level_random();
+            let r = self.particles.0.level_random();
             let x = f64::from(pos.x) + r.next_double() * 0.6 + 0.2;
             let y = f64::from(pos.y) + r.next_double() * 0.6 + 0.2;
             let z = f64::from(pos.z) + r.next_double() * 0.6 + 0.2;
-            self.particles.add(&options, [x, y, z], [0.0; 3]);
+            self.particles.0.add(&options, [x, y, z], [0.0; 3]);
         }
     }
     /// `LevelEventHandler` 1503: smoke on the inserted eye.
     pub(in crate::game) fn end_portal_frame_smoke(&mut self, pos: BlockPos) {
         let options = ParticleOptions::simple(ParticleType::Smoke);
         for _ in 0..16 {
-            let r = self.particles.level_random();
+            let r = self.particles.0.level_random();
             let x = f64::from(pos.x) + (5.0 + r.next_double() * 6.0) / 16.0;
             let z = f64::from(pos.z) + (5.0 + r.next_double() * 6.0) / 16.0;
             self.particles
+                .0
                 .add(&options, [x, f64::from(pos.y) + 0.8125, z], [0.0; 3]);
         }
     }
@@ -208,7 +212,7 @@ impl Game<'_> {
     /// particles thrown outwards, then the explosion sound when `data` is 1.
     pub(in crate::game) fn dragon_fireball_burst(&mut self, pos: BlockPos, data: i32) {
         for _ in 0..200 {
-            let r = self.particles.level_random();
+            let r = self.particles.0.level_random();
             let dist = r.next_float() * 4.0;
             let angle = r.next_float() * std::f32::consts::TAU;
             let vx = f64::from(trig::cos(f64::from(angle)) * dist);
@@ -218,7 +222,7 @@ impl Game<'_> {
                 scale: dist,
                 ..ParticleOptions::simple(ParticleType::DragonBreath)
             };
-            self.particles.add(
+            self.particles.0.add(
                 &options,
                 [
                     f64::from(pos.x) + vx * 0.1,
@@ -231,7 +235,7 @@ impl Game<'_> {
         if data == 1 {
             let at = [pos.x, pos.y, pos.z].map(|v| f64::from(v) + 0.5);
             let pitch = self.world.random.next_float() * 0.1 + 0.9;
-            self.audio.play(
+            self.audio.0.play(
                 "minecraft:entity.dragon_fireball.explode",
                 Some(at),
                 1.0,
@@ -306,7 +310,7 @@ impl Game<'_> {
             .offset(tip_state, pos.x, pos.z)
             .unwrap_or([0.0; 3]);
         // The tip shape starts 5/16 up; the particle sits a pixel below that.
-        self.particles.add(
+        self.particles.0.add(
             &ParticleOptions::simple(ty),
             [
                 f64::from(pos.x) + 0.5 + offset[0],
@@ -334,7 +338,7 @@ impl Game<'_> {
             return;
         }
         self.global_level_event_sound(id, pos);
-        if self.audio.capture.is_some() {
+        if self.audio.0.capture.is_some() {
             self.server
                 .lan_global_events
                 .push((self.dim.id(), id, pos, data));
@@ -359,7 +363,7 @@ impl Game<'_> {
         self.global_level_event_sound(id, pos);
         if let Some(host) = self.lan.as_ref() {
             host.hub.global_level_event(self.dim.id(), id, pos, data);
-        } else if self.audio.capture.is_some() {
+        } else if self.audio.0.capture.is_some() {
             self.server
                 .lan_global_events
                 .push((self.dim.id(), id, pos, data));
@@ -387,7 +391,7 @@ impl Game<'_> {
             [0, 1, 2].map(|k| eye[k] + d[k] / length * 2.0)
         });
         // Each guest plays it from the global packet.
-        self.audio.play_unshared(sound, at, volume, 1.0);
+        self.audio.0.play_unshared(sound, at, volume, 1.0);
     }
     /// `ClientLevel.addBreakingBlockEffects`: the block's hit sound (only for
     /// `play_sound`) and one crumb on the face being mined; nothing for air.
@@ -427,7 +431,7 @@ impl Game<'_> {
             f64::from(pos.z) + 0.5,
         ];
         let crumb = self.item_particle(&ItemStack::new("minecraft:splash_potion", 1));
-        let r = self.particles.level_random();
+        let r = self.particles.0.level_random();
         let crumbs: Vec<[f64; 3]> = (0..8)
             .map(|_| {
                 [
@@ -438,12 +442,12 @@ impl Game<'_> {
             })
             .collect();
         for v in crumbs {
-            self.particles.add(&crumb, at, v);
+            self.particles.0.add(&crumb, at, v);
         }
         let channel = |shift: i32| ((data >> shift) & 0xFF) as f32 / 255.0;
         let color = [channel(16), channel(8), channel(0)];
         for _ in 0..100 {
-            let r = self.particles.level_random();
+            let r = self.particles.0.level_random();
             let dist = r.next_double() * 4.0;
             let angle = r.next_double() * std::f64::consts::PI * 2.0;
             let velocity = [
@@ -462,7 +466,7 @@ impl Game<'_> {
                 scale: dist as f32,
                 ..ParticleOptions::simple(ty)
             };
-            self.particles.add(
+            self.particles.0.add(
                 &options,
                 [
                     at[0] + velocity[0] * 0.1,

@@ -68,7 +68,7 @@ impl Game<'_> {
             slot,
             leggings,
             baby,
-            &self.armor_stand_assets.equipment,
+            &self.armor_stand_assets.0.equipment,
             overlay,
         )
     }
@@ -223,6 +223,7 @@ impl Game<'_> {
         let trim = stack
             .and_then(|s| {
                 self.armor_stand_assets
+                    .0
                     .trim_texture(&piece.asset, piece.kind, s)
             })
             .and_then(|t| bind(&t.sprite()));

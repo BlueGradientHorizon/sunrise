@@ -149,7 +149,7 @@ impl Game<'_> {
     pub(in crate::game) fn close_debug_options(&mut self) {
         self.client.debug_options = None;
         self.set_screen(Screen::Playing);
-        self.capture(self.title.is_none());
+        self.capture(self.title.0.is_none());
     }
     /// The header's title row and warning (`init`'s vertical layout,
     /// centred in the header): the title's x, the row's top, the warning's
@@ -187,7 +187,7 @@ impl Game<'_> {
     /// `ClampingLazyMaxIntRange(-1, window.calculateScale(0, unicode))` as a
     /// CycleButton: the next value, or the previous one with Shift.
     fn cycle_debug_gui_scale(&mut self, back: bool) {
-        let size = self.renderer.as_ref().map_or([1280, 720], |r| {
+        let size = self.renderer.0.as_ref().map_or([1280, 720], |r| {
             [r.config.width as i32, r.config.height as i32]
         });
         let max = sunrise_client::window::calculate_scale(size, 0, self.settings.force_unicode);
@@ -211,6 +211,7 @@ impl Game<'_> {
         // extractBlurredBackground: the debug overlay goes under the screen.
         let size = self
             .renderer
+            .0
             .as_ref()
             .map_or([w as u32, h as u32], |r| [r.config.width, r.config.height]);
         self.draw_debug_overlay_under(batch, size);
@@ -218,7 +219,7 @@ impl Game<'_> {
         let in_world = self.player.is_some();
         ui::menu_background(batch, atlas, 0.0, 0.0, w, h, in_world);
         let reduced = self.reduced_debug_info();
-        let rows = rows(&self.registered_debug_entries, &s.search.value);
+        let rows = rows(&self.registered_debug_entries.0, &s.search.value);
         let (top, bottom) = (HEADER, h - FOOTER);
         let content = content_height(rows.len());
         self.client
@@ -262,7 +263,7 @@ impl Game<'_> {
                     };
                     batch.text_styled(atlas, &name, cx, cy + 5.0, u32::MAX, true);
                     let xs = button_xs(cx);
-                    let status = self.debug_entries.status(entry.path);
+                    let status = self.debug_entries.0.status(entry.path);
                     for ((status_of, key, color), x) in BUTTONS.into_iter().zip(xs) {
                         let selected = status == status_of;
                         let label = Text::translate(key, &[]).with_color(if selected {
@@ -324,8 +325,8 @@ impl Game<'_> {
             Text::translate("gui.done", &[]),
         ];
         let active = [
-            !self.debug_entries.is_using_profile(Profile::Default),
-            !self.debug_entries.is_using_profile(Profile::Performance),
+            !self.debug_entries.0.is_using_profile(Profile::Default),
+            !self.debug_entries.0.is_using_profile(Profile::Performance),
             true,
             true,
         ];
@@ -366,7 +367,7 @@ impl Game<'_> {
         };
         let (w, h) = self.gui_size();
         let (top, bottom) = (HEADER, h - FOOTER);
-        let rows = rows(&self.registered_debug_entries, &s.search.value);
+        let rows = rows(&self.registered_debug_entries.0, &s.search.value);
         let left = row_left(w);
         // A press on the scrollbar holds it and clicks nothing else.
         if s.scroll.press(
@@ -397,7 +398,7 @@ impl Game<'_> {
             for (i, row) in rows.iter().enumerate() {
                 let Row::Option(entry) = row else { continue };
                 let cy = top + 2.0 - s.scroll.amount.trunc() + i as f32 * ITEM + 2.0;
-                let status = self.debug_entries.status(entry.path);
+                let status = self.debug_entries.0.status(entry.path);
                 for ((status_of, _, _), x) in BUTTONS.into_iter().zip(button_xs(left + 2.0)) {
                     if status != status_of && ui::hovered(self.client.cursor, x, cy, BUTTON, 16.0) {
                         clicked = Some((entry.path, status_of));
@@ -409,8 +410,8 @@ impl Game<'_> {
         self.client.debug_options = Some(s);
         if let Some((path, status)) = clicked {
             // OptionEntry.setValue.
-            self.audio.play_button_click();
-            self.debug_entries.set_status(path, status);
+            self.audio.0.play_button_click();
+            self.debug_entries.0.set_status(path, status);
             return true;
         }
         let (xs, fy) = footer(w, h);
@@ -426,18 +427,18 @@ impl Game<'_> {
                 } else {
                     Profile::Performance
                 };
-                if self.debug_entries.is_using_profile(profile) {
+                if self.debug_entries.0.is_using_profile(profile) {
                     return search;
                 }
-                self.audio.play_button_click();
-                self.debug_entries.load_profile(profile);
+                self.audio.0.play_button_click();
+                self.debug_entries.0.load_profile(profile);
             }
             2 => {
-                self.audio.play_button_click();
+                self.audio.0.play_button_click();
                 self.cycle_debug_gui_scale(shift);
             }
             _ => {
-                self.audio.play_button_click();
+                self.audio.0.play_button_click();
                 self.close_debug_options();
             }
         }
@@ -451,7 +452,7 @@ impl Game<'_> {
             || (HEADER..h - FOOTER).contains(&self.client.cursor.1);
         if scroll && let Some(s) = &mut self.client.debug_options {
             let content =
-                content_height(rows(&self.registered_debug_entries, &s.search.value).len());
+                content_height(rows(&self.registered_debug_entries.0, &s.search.value).len());
             s.scroll
                 .wheel(delta, ITEM / 2.0, HEADER, h - FOOTER, content);
             return true;
@@ -466,7 +467,7 @@ impl Game<'_> {
             && s.scroll.held()
         {
             let content =
-                content_height(rows(&self.registered_debug_entries, &s.search.value).len());
+                content_height(rows(&self.registered_debug_entries.0, &s.search.value).len());
             s.scroll.drag(y, HEADER, h - FOOTER, content);
             return true;
         }
@@ -501,7 +502,7 @@ impl Game<'_> {
             return false;
         };
         if let Some(shortcut) = shortcut {
-            s.search.shortcut(shortcut, &mut self.clipboard);
+            s.search.shortcut(shortcut, &mut self.clipboard.0);
             true
         } else {
             s.search.key(key, ctrl, shift)
@@ -675,7 +676,7 @@ pub(in crate::game) mod tests {
             None,
         )
         .unwrap();
-        game.title = Some(game.new_title(std::path::PathBuf::from("saves")));
+        game.title.0 = Some(game.new_title(std::path::PathBuf::from("saves")));
         game
     }
 
@@ -690,7 +691,7 @@ pub(in crate::game) mod tests {
         use sunrise_client::debug_keys::KeyAction;
         let mut resources = None;
         let mut game = title_game(&mut resources);
-        assert!(game.player.is_none() && game.renderer.is_none() && game.integrated.is_none());
+        assert!(game.player.is_none() && game.renderer.0.is_none() && game.integrated.is_none());
         game.debug_key(KeyCode::F3, KeyAction::Press);
         game.debug_key(KeyCode::F3, KeyAction::Release);
         assert!(
@@ -704,7 +705,7 @@ pub(in crate::game) mod tests {
             !overlay.vertices.is_empty(),
             "F3 must paint even without a level"
         );
-        assert!(game.title.is_some());
+        assert!(game.title.0.is_some());
         // Gui treats the title as an open screen even when F1 hides the HUD.
         game.ui.hide_gui = true;
         let mut hidden_hud = HudBatch::new([1280, 720], game.settings.gui_scale_inputs());
@@ -713,11 +714,11 @@ pub(in crate::game) mod tests {
         game.debug_key(KeyCode::F3, KeyAction::Press);
         game.debug_key(KeyCode::F3, KeyAction::Release);
         assert!(!game.client.debug);
-        game.debug_entries.set_status("fps", Status::AlwaysOn);
+        game.debug_entries.0.set_status("fps", Status::AlwaysOn);
         assert!(ScreensClientHost::debug_overlay_visible(&game));
 
         // With no screen open, the hidden HUD suppresses even an always-on entry.
-        game.title = None;
+        game.title.0 = None;
         game.client.screen = Screen::Playing;
         assert!(!ScreensClientHost::debug_overlay_visible(&game));
         game.ui.hide_gui = false;
@@ -734,7 +735,7 @@ pub(in crate::game) mod tests {
         use sunrise_client::debug_keys::KeyAction;
         let mut resources = None;
         let mut game = title_game(&mut resources);
-        let original_title = game.title.as_ref().unwrap().screen_key();
+        let original_title = game.title.0.as_ref().unwrap().screen_key();
         assert!(!game.client.captured);
         game.debug_key(KeyCode::F3, KeyAction::Press);
         game.debug_key(KeyCode::F6, KeyAction::Press);
@@ -746,7 +747,7 @@ pub(in crate::game) mod tests {
         // RedrawRequested only updates the world, spawns a player and ticks
         // gameplay when title.is_none(). Keep that no-level sentinel intact.
         assert!(
-            game.title.is_some(),
+            game.title.0.is_some(),
             "F6 must not enable the world-entry gates"
         );
         assert!(
@@ -757,14 +758,14 @@ pub(in crate::game) mod tests {
             game.shows_panorama(),
             "the level-less options retain the panorama"
         );
-        assert!(game.player.is_none() && game.renderer.is_none() && game.integrated.is_none());
+        assert!(game.player.is_none() && game.renderer.0.is_none() && game.integrated.is_none());
         let frame = game.hud([1280, 720]);
         assert!(
             !frame.vertices.is_empty(),
             "the actual debug options screen must paint"
         );
         assert!(
-            game.title.is_some(),
+            game.title.0.is_some(),
             "drawing options must keep world entry disabled"
         );
         sunrise_client::widgets::end_frame(1);
@@ -788,8 +789,8 @@ pub(in crate::game) mod tests {
         game.debug_key(KeyCode::F6, KeyAction::Release);
         game.debug_key(KeyCode::F6, KeyAction::Press);
         assert!(game.client.screen == Screen::Playing);
-        assert!(game.title.is_some() && game.client.debug_options.is_none());
-        assert_eq!(game.title.as_ref().unwrap().screen_key(), original_title);
+        assert!(game.title.0.is_some() && game.client.debug_options.is_none());
+        assert_eq!(game.title.0.as_ref().unwrap().screen_key(), original_title);
         assert!(
             !game.client.captured,
             "closing a title screen must not capture the pointer"
@@ -806,20 +807,20 @@ pub(in crate::game) mod tests {
         let (xs, y) = footer(w, h);
         game.client.cursor = (xs[3] + 1.0, y + 1.0);
         game.debug_options_click();
-        assert!(game.title.is_some() && game.client.debug_options.is_none());
+        assert!(game.title.0.is_some() && game.client.debug_options.is_none());
         assert!(
             !game.client.captured,
             "Done also returns without grabbing the pointer"
         );
         assert!(game.client.screen == Screen::Playing);
-        game.title.as_mut().unwrap().mode = sunrise_client::title::Mode::Select {
+        game.title.0.as_mut().unwrap().mode = sunrise_client::title::Mode::Select {
             worlds: Vec::new(),
             selected: None,
         };
-        let selection = game.title.as_ref().unwrap().screen_key();
+        let selection = game.title.0.as_ref().unwrap().screen_key();
         game.debug_key(KeyCode::F6, KeyAction::Release);
         game.debug_key(KeyCode::F6, KeyAction::Press);
         assert!(game.client.debug_options.is_none());
-        assert_eq!(game.title.as_ref().unwrap().screen_key(), selection);
+        assert_eq!(game.title.0.as_ref().unwrap().screen_key(), selection);
     }
 }

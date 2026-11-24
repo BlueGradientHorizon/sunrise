@@ -82,18 +82,18 @@ impl Game<'_> {
                 };
                 // ServerLevel.sendParticles: count 0 uses the delta as velocity.
                 if count == 0 {
-                    self.particles.create(&options, at, delta);
+                    self.particles.0.create(&options, at, delta);
                 }
                 for _ in 0..count {
-                    let r = self.particles.random();
+                    let r = self.particles.0.random();
                     let p = [
                         at[0] + r.next_gaussian() * delta[0],
                         at[1] + r.next_gaussian() * delta[1],
                         at[2] + r.next_gaussian() * delta[2],
                     ];
-                    self.particles.create(&options, p, [0.0; 3]);
+                    self.particles.0.create(&options, p, [0.0; 3]);
                 }
-                Ok(Some(json!({ "ok": true, "live": self.particles.len() })))
+                Ok(Some(json!({ "ok": true, "live": self.particles.0.len() })))
             }
             "signedit" => {
                 let key = (int(1)?, int(2)?, int(3)?);

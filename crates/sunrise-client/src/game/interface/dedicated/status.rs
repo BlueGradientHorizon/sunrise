@@ -111,10 +111,10 @@ impl Game<'_> {
             "chunks": self.world.chunks.len(),
             "entities": self.entity_count(),
         })];
-        for dim in self.levels.parked_dims() {
+        for dim in self.levels.0.parked_dims() {
             if let (Some(world), Some(entities)) = (
-                self.levels.parked_world(dim),
-                self.levels.parked_entity_count(dim),
+                self.levels.0.parked_world(dim),
+                self.levels.0.parked_entity_count(dim),
             ) {
                 levels.push(json!({
                     "dimension": dim.id(),

@@ -24,7 +24,7 @@ impl Game<'_> {
             sunrise_client::social::tick();
             // Minecraft.tick: every client tick, paused or not, in menus too.
             self.native_client_tick_pre();
-            if self.title.is_none() && !self.pause {
+            if self.title.0.is_none() && !self.pause {
                 if let Some(event_loop) = event_loop
                     && self.client.tick_script.armed()
                 {

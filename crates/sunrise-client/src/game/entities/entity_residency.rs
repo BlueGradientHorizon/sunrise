@@ -40,7 +40,7 @@ pub(crate) use assign_resident_ids;
 // Projectiles, knots and general rows have distinct Game/Parked field paths;
 // keep binding and resolution on this one family list.
 macro_rules! resident_owners {
-    ($then:ident, $this:ident, $($projectiles:ident).+, $($knots:ident).+, $($general:ident).+) => {
+    ($then:ident, $this:ident, $($projectiles:ident).+, $($knots:ident).+, $($general:ident).+, $($others:tt).+) => {
         $then! {
             ($this, $($projectiles).+)
             Mob => Mob: mobs,
@@ -51,7 +51,7 @@ macro_rules! resident_owners {
             Painting => Painting: paintings,
             Boat => Boat: boats,
             Cart => Cart: carts,
-            Other => Other: others,
+            Other => Other: $($others).+,
             Fangs => Fangs: fangs.list,
             Crystal => Crystal: crystals,
             Tnt => Tnt: tnts,
@@ -165,7 +165,7 @@ macro_rules! resident_lifetime_slot {
 pub(crate) use resident_lifetime_slot;
 
 macro_rules! define_resident_access {
-    (($this:ident, $($projectiles:ident).+) $($kind:ident => $target:ident: $($field:ident).+,)*) => {
+    (($this:ident, $($projectiles:ident).+) $($kind:ident => $target:ident: $($field:tt).+,)*) => {
         pub(in crate::game) fn bind_resident_owners(&mut $this, journal: &Journal, dimension: DimensionKey, track_saved_uuids: bool) {
             if track_saved_uuids {
                 $this.persist.uuids.bind(journal, dimension);
@@ -258,7 +258,8 @@ impl Game<'_> {
         self,
         creatures.projectiles,
         resident_entities.knots,
-        resident_entities.general.rows
+        resident_entities.general.rows,
+        others.0
     );
 }
 
@@ -501,7 +502,7 @@ mod tests {
                 Some(Dim::Overworld)
             );
             assert_eq!(game.dim, Dim::Nether);
-            game.levels.clear();
+            game.levels.0.clear();
             assert_eq!(game.server_resident_entity(410), EntityLookup::Missing);
             assert!(matches!(
                 game.server_resident_entity(411),

@@ -326,7 +326,7 @@ mod tests {
                 max_players: 10,
                 integrated: true,
                 levels: game.server.level_shapes,
-                level_seeds: game.levels.runtime.seeds(),
+                level_seeds: game.levels.0.runtime.seeds(),
             };
             let mut net = NetConfig::lan(0, "test".into(), 10);
             net.listen = false;

@@ -303,7 +303,7 @@ fn a_give_that_fits_plays_pickup_in_the_players_level() {
             g.player.as_mut().unwrap().random = EntityRandom::own(LegacyRandom::new(0x5eed));
         })
         .unwrap();
-        game.audio.capture = Some(Vec::new());
+        game.audio.0.capture = Some(Vec::new());
         let player = game.player(13).unwrap();
         let host: &mut dyn ServerHost = game;
         let given = host.transaction(|host, _| Ok::<_, ()>(player.give_stack(host, diamond)));

@@ -530,13 +530,13 @@ fn short_enchantment_item_holders_bind_for_both_selectors() {
         .unwrap();
         game.server.world_root = root.path().to_owned();
         let packs = game.reload_datapacks(false, &[]).unwrap();
-        game.world_tables = game
+        game.world_tables.0 = game
             .stage_world_tables(&packs, false, &resources)
             .unwrap()
             .tables;
         game.load_server_loot();
         let roll = |game: &Game<'_>| {
-            let loot = game.server_loot.get().unwrap();
+            let loot = game.server_loot.0.get().unwrap();
             let stacks = loot.roll("test:sword", &mut LegacyRandom::new(1), 0.0, None, None);
             assert_eq!(stacks[0].item, "minecraft:diamond_sword");
             stacks[0].enchantments.clone()

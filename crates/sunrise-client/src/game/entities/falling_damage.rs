@@ -52,7 +52,7 @@ impl Game<'_> {
                     let plan = self.prepare_knockback_credit(
                         self.mobs[index].id as i32,
                         None,
-                        self.combat.attack(),
+                        self.combat.0.attack(),
                     );
                     let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
                     self.mobs[index].damage(

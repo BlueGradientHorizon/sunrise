@@ -9,7 +9,7 @@ impl Game<'_> {
         // Publish the accepted native screen before building its layout. A
         // staged screen is not shown, even on an in-place Inventory open.
         if screen == Screen::Inventory
-            && let Some(native) = self.mod_screen.as_mut()
+            && let Some(native) = self.mod_screen.0.as_mut()
         {
             native.shown = true;
         }

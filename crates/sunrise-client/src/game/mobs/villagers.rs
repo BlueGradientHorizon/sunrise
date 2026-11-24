@@ -198,6 +198,7 @@ impl Game<'_> {
         if !sound.is_empty() {
             let at = golem.center();
             self.audio
+                .0
                 .play(&format!("minecraft:{sound}"), Some(at), 1.0, 1.0);
         }
         self.mobs.push(golem);
@@ -307,7 +308,7 @@ impl Game<'_> {
         let options = sunrise_client::particles::ParticleOptions::simple(ty);
         let mut spawned = Vec::new();
         sunrise_client::particles::around_self(
-            self.particles.random(),
+            self.particles.0.random(),
             feet,
             size[0],
             size[1],
@@ -315,7 +316,7 @@ impl Game<'_> {
             |p, v| spawned.push((p, v)),
         );
         for (p, v) in spawned {
-            self.particles.add(&options, p, v);
+            self.particles.0.add(&options, p, v);
         }
     }
 
@@ -890,7 +891,7 @@ mod birth_tests {
         // parent before emitting VillagerBirth; the Game owns the other half.
         game.mobs[0].extra.age = 6000;
         game.native_joins_skip();
-        game.audio.capture = Some(Vec::new());
+        game.audio.0.capture = Some(Vec::new());
         game.server.lan_entity_events.clear();
         (parent, partner)
     }

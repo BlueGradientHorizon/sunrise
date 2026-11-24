@@ -409,7 +409,7 @@ impl Game<'_> {
             // PrimedTnt.getRandomShortFuse
             r.next_int_bound(20).unwrap_or(0) + 10
         } else {
-            self.audio.play(
+            self.audio.0.play(
                 "minecraft:entity.tnt.primed",
                 Some([
                     f64::from(pos.x) + 0.5,
@@ -629,8 +629,8 @@ impl Game<'_> {
             // ExplosionInteraction.TNT: the tnt_explosion_drop_decay rule.
             let interaction =
                 self.destroy_type(sunrise_client::gamerules::vanilla::TNT_EXPLOSION_DROP_DECAY);
-            self.combat.explosion_in_water = in_water;
-            self.combat.explosion_direct = Some(id);
+            self.combat.0.explosion_in_water = in_water;
+            self.combat.0.explosion_direct = Some(id);
             self.set_blast_owner(owner, guest);
             let result = self.with_hive_emptying_blast(|g| {
                 g.server_explode_from(
@@ -648,11 +648,11 @@ impl Game<'_> {
                         ),
                 )
             });
-            self.combat.blast_owner = None;
-            self.combat.blast_owner_player = false;
-            self.combat.blast_guest = None;
-            self.combat.explosion_in_water = false;
-            self.combat.explosion_direct = None;
+            self.combat.0.blast_owner = None;
+            self.combat.0.blast_owner_player = false;
+            self.combat.0.blast_guest = None;
+            self.combat.0.explosion_in_water = false;
+            self.combat.0.explosion_direct = None;
             result?;
         }
         Ok(())
@@ -724,8 +724,8 @@ impl Game<'_> {
     /// `blast_attacker`, the damage type and kill credit read. A player is the
     /// one on `guest`, the player in place without one.
     pub(in crate::game) fn set_blast_owner(&mut self, owner: Option<Who>, guest: Option<u32>) {
-        self.combat.blast_guest = guest;
-        self.combat.blast_owner = tnt_blast_owner(
+        self.combat.0.blast_guest = guest;
+        self.combat.0.blast_owner = tnt_blast_owner(
             owner,
             || match guest {
                 Some(_) => self.player_attacker(guest),
@@ -736,19 +736,20 @@ impl Game<'_> {
             },
             |id| self.mob_display_name(id),
         );
-        self.combat.blast_owner_player =
-            owner == Some(Who::Player) && self.combat.blast_owner.is_some();
+        self.combat.0.blast_owner_player =
+            owner == Some(Who::Player) && self.combat.0.blast_owner.is_some();
     }
     /// The attack a player-owned blast's hits land in: its causing player's,
     /// so a mob it kills is that player's kill.
     pub(in crate::game) fn blast_owner_attack(&self) -> sunrise_client::health::Attack {
         let id = self
             .combat
+            .0
             .blast_owner
             .as_ref()
             .map_or(0, |(id, _)| *id as i32);
         let mut attack = self.attack_of(id);
-        attack.player_uuid = self.player_uuid_of(self.combat.blast_guest);
+        attack.player_uuid = self.player_uuid_of(self.combat.0.blast_guest);
         attack
     }
     /// `PrimedTnt.getOwner` for TNT loaded with an `owner`: looked up when
@@ -1901,7 +1902,7 @@ pub(in crate::game) mod tests {
                 },
             );
             // The actual level tick orders the portal pass before the mob pass.
-            game.audio.heard.clear();
+            game.audio.0.heard.clear();
             game.handle_entity_portals();
             game.tick_creatures().unwrap();
             assert_eq!(
@@ -1911,6 +1912,7 @@ pub(in crate::game) mod tests {
             );
             assert_eq!(
                 game.audio
+                    .0
                     .heard
                     .get("minecraft:entity.generic.explode")
                     .copied()
@@ -2139,7 +2141,7 @@ pub(in crate::game) mod tests {
                     .default_state("minecraft:glass")
                     .unwrap();
                 game.world.set(8, 64, 8, glass).unwrap();
-                game.audio.heard.clear();
+                game.audio.0.heard.clear();
                 game.add_primed_tnt(BlockPos::new(8, 64, 8), 0.0, 1, None, None);
                 game.tnts[0].no_gravity = true;
                 game.tnts[0].velocity = Vec3::ZERO;
@@ -2163,7 +2165,7 @@ pub(in crate::game) mod tests {
                     u32::from(!silent),
                     "direct source Silent={silent}"
                 );
-                game.audio.heard.clear();
+                game.audio.0.heard.clear();
                 game.server_explode(
                     [8.5, 64.0, 8.5],
                     0.0,
@@ -2172,7 +2174,7 @@ pub(in crate::game) mod tests {
                 )
                 .unwrap();
                 assert_eq!(
-                    game.audio.heard.get("minecraft:entity.generic.explode"),
+                    game.audio.0.heard.get("minecraft:entity.generic.explode"),
                     Some(&1),
                     "a source-free blast stays audible"
                 );
@@ -2198,7 +2200,7 @@ pub(in crate::game) mod tests {
             for kind in ["splash_potion", "lingering_potion"] {
                 for potion in ["awkward", "swiftness", "healing"] {
                     for silent in [false, true] {
-                        game.audio.heard.clear();
+                        game.audio.0.heard.clear();
                         let stack = ItemStack::new(&format!("minecraft:{kind}"), 1)
                             .with_potion(&format!("minecraft:{potion}"));
                         let mut projectile = Projectile::new(
@@ -2284,7 +2286,7 @@ pub(in crate::game) mod tests {
                 sunrise_client::mobs::hostile::creeper_tick(mob, &mut events);
                 assert!(mob.removed);
                 game.mobs.retain(|m| m.id != id);
-                game.audio.heard.clear();
+                game.audio.0.heard.clear();
                 let particles = particle_count(&game);
                 game.handle_mob_events(events).unwrap();
                 assert!(particle_count(&game) > particles);
@@ -2327,7 +2329,7 @@ pub(in crate::game) mod tests {
                     game.add_projectile(shot);
                     let id = game.creatures.projectiles.last().unwrap().id;
                     set_silent(&mut game, id, silent);
-                    game.audio.heard.clear();
+                    game.audio.0.heard.clear();
                     let particles = particle_count(&game);
                     let clouds = game.breath_clouds.len();
                     let xp: u32 = game.orbs.iter().map(|o| o.points() * o.count).sum();
@@ -2410,7 +2412,7 @@ pub(in crate::game) mod tests {
     }
 
     fn sound_count(game: &Game<'_>, event: &str) -> u32 {
-        game.audio.heard.get(event).copied().unwrap_or(0)
+        game.audio.0.heard.get(event).copied().unwrap_or(0)
     }
 
     #[test]
@@ -2489,12 +2491,12 @@ pub(in crate::game) mod tests {
     ) -> Option<Box<Game<'_>>> {
         let mut game = server_game(resources)?;
         // Observe the server's real emission requests without a camera or render tick.
-        game.particles.requested = Some(Vec::new());
+        game.particles.0.requested = Some(Vec::new());
         Some(game)
     }
 
     fn particle_count(game: &Game<'_>) -> usize {
-        game.particles.requested.as_ref().unwrap().len()
+        game.particles.0.requested.as_ref().unwrap().len()
     }
 
     /// #10063: TNT lit between level ticks (flint and steel, a command) has its

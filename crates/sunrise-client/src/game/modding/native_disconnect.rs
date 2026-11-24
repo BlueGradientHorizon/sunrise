@@ -19,7 +19,8 @@ impl Game<'_> {
         reason: Option<Text>,
     ) -> std::result::Result<(), DisconnectError> {
         let epoch = self.native_lifecycle.epoch();
-        let (Some(epoch), Some(_), None) = (epoch, self.remote.as_ref(), &self.pending_save) else {
+        let (Some(epoch), Some(_), None) = (epoch, self.remote.as_ref(), &self.pending_save.0)
+        else {
             return Err(DisconnectError::Unavailable);
         };
         self.native_net.leave = Some(LeaveRequest { epoch, reason });

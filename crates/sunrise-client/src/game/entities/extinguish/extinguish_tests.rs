@@ -36,6 +36,7 @@ fn block(game: &Game<'_>, pos: [i32; 3]) -> String {
 
 fn heard(game: &Game<'_>) -> u32 {
     game.audio
+        .0
         .heard
         .get("minecraft:entity.generic.extinguish_fire")
         .copied()

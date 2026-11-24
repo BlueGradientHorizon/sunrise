@@ -124,7 +124,7 @@ impl Game<'_> {
                     true
                 }),
             Some(Target::Other(id)) => {
-                if !self.others.iter().any(|o| o.id == id) {
+                if !self.others.0.iter().any(|o| o.id == id) {
                     return false;
                 }
                 use sunrise_core::nbt::Tag;
@@ -333,7 +333,7 @@ mod tests {
             }
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
-            game.others.push(OtherEntity {
+            game.others.0.push(OtherEntity {
                 size_answer: None,
                 attachment_lifetime: Default::default(),
                 join: Default::default(),

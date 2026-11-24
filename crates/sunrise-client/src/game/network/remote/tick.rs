@@ -1022,7 +1022,7 @@ impl Game<'_> {
         let told = |id: i32| {
             let id = id as u32;
             self.mob_index.get_ref(&self.mobs, id).is_some()
-                || self.text_displays.contains_key(&(id as i32))
+                || self.text_displays.0.contains_key(&(id as i32))
                 || flying.contains(&id)
         };
         if running {
@@ -1405,7 +1405,7 @@ impl Game<'_> {
                     } else {
                         ParticleType::Splash
                     };
-                    self.particles.add(
+                    self.particles.0.add(
                         &ParticleOptions::simple(kind),
                         [position.x, position.y, position.z],
                         [velocity.x, velocity.y, velocity.z],
@@ -1543,6 +1543,7 @@ impl Game<'_> {
         // it lit, as meshing waits for here).
         let shown = self
             .renderer
+            .0
             .as_ref()
             .map(|renderer| renderer.section_compiled_and_visible(camera, fade_ms));
         let (cx, cz) = (camera[0] >> 4, camera[2] >> 4);

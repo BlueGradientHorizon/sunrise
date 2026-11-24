@@ -396,7 +396,7 @@ pub(in crate::game) mod tests {
             game.tick_server(false).unwrap();
             all.times.extend(sent(&rx).times);
         }
-        let world = game.levels.parked_world(Dim::Nether).unwrap();
+        let world = game.levels.0.parked_world(Dim::Nether).unwrap();
         assert!(
             square().iter().all(|c| world.chunks.contains_key(c)),
             "still loaded"

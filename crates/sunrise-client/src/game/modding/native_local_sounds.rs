@@ -96,7 +96,7 @@ impl Game<'_> {
             if stopped.contains(&id) {
                 continue;
             }
-            let instance = self.audio.play_mod_sound(&sound, after);
+            let instance = self.audio.0.play_mod_sound(&sound, after);
             sounds.started.insert(id, instance);
         }
         for (id, change) in sounds.changes.get_mut().drain(..) {
@@ -104,18 +104,18 @@ impl Game<'_> {
                 continue;
             };
             match change {
-                Change::Stop => self.audio.stop_mod_sound(instance),
+                Change::Stop => self.audio.0.stop_mod_sound(instance),
                 Change::Fade { volume, ticks } => {
-                    self.audio.fade_mod_sound(instance, volume, ticks)
+                    self.audio.0.fade_mod_sound(instance, volume, ticks)
                 }
-                Change::Move { position } => self.audio.move_mod_sound(instance, position),
-                Change::Pitch { pitch } => self.audio.set_mod_sound_pitch(instance, pitch),
+                Change::Move { position } => self.audio.0.move_mod_sound(instance, position),
+                Change::Pitch { pitch } => self.audio.0.set_mod_sound_pitch(instance, pitch),
             }
             if change.stops() {
                 sounds.started.remove(&id);
             }
         }
-        let audio = &self.audio;
+        let audio = &self.audio.0;
         sounds
             .started
             .retain(|_, instance| audio.mod_sound_state(*instance) != SoundState::Stopped);
@@ -149,7 +149,7 @@ impl Game<'_> {
                 .started
                 .get(&id)
                 .map_or(SoundState::Stopped, |&instance| {
-                    self.audio.mod_sound_state(instance)
+                    self.audio.0.mod_sound_state(instance)
                 }),
         )
     }
@@ -218,6 +218,7 @@ impl Game<'_> {
             return Vec::new();
         }
         self.audio
+            .0
             .event_names()
             .iter()
             .filter_map(|name| Identifier::parse(name).ok())
@@ -240,7 +241,7 @@ impl Game<'_> {
         if !self.native_window() {
             return String::new();
         }
-        self.audio.device().to_owned()
+        self.audio.0.device().to_owned()
     }
 }
 
@@ -334,7 +335,7 @@ mod tests {
                 assert_ne!(game.sound_state(faded), Some(SoundState::Waiting));
                 // Every event the engine has, none dropped (prepared test resources may have
                 // no sounds at all).
-                let names = game.audio.event_names();
+                let names = game.audio.0.event_names();
                 let events = game.sound_events();
                 assert_eq!(events.len(), names.len());
                 assert!(
@@ -365,14 +366,14 @@ mod tests {
     #[ignore = "daily"]
     fn stopped_and_level_cleared_plays_never_reach_the_engine() {
         super::super::native_entity_refs::tests::with_client_game(|game| {
-            game.audio.heard.clear();
+            game.audio.0.heard.clear();
             let harp = "minecraft:block.note_block.harp";
             let bell = "minecraft:block.note_block.bell";
             let stopped = game.play_local_sound(&SoundPlay::ui(harp), 0).unwrap();
             assert!(game.sound_stop(stopped));
             game.tick_sound_engine();
             assert!(
-                !game.audio.heard.contains_key(harp),
+                !game.audio.0.heard.contains_key(harp),
                 "stopped before the update"
             );
             assert_eq!(game.sound_state(stopped), Some(SoundState::Stopped));
@@ -384,7 +385,7 @@ mod tests {
             assert!(!game.sound_stop(queued), "already over");
             game.tick_sound_engine();
             assert!(
-                !game.audio.heard.contains_key(bell),
+                !game.audio.0.heard.contains_key(bell),
                 "cleared with the level"
             );
 

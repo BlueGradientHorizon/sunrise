@@ -104,11 +104,11 @@ impl Game<'_> {
                     ..
                 }
         ) {
-            self.combat.melee_mob = Some(mob);
+            self.combat.0.melee_mob = Some(mob);
         }
         let _ = self.handle_mob_events(vec![e]);
         // Used up by the hit; a blow that hurt nobody leaves it to no other.
-        self.combat.melee_mob = None;
+        self.combat.0.melee_mob = None;
     }
 
     /// The guests' boxes for the blocks entities trigger (pressure plates,

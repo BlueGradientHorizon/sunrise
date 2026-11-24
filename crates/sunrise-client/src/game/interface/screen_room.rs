@@ -44,6 +44,7 @@ impl Game<'_> {
         }
         if let Some(room) = self
             .screen_state
+            .0
             .build
             .room_answer(self.client.frames, self.client.screen)
         {
@@ -59,7 +60,7 @@ impl Game<'_> {
         );
         // No room while the mods are asked, so a host call of theirs that lays the screen out
         // doesn't ask them again.
-        let build = &self.screen_state.build;
+        let build = &self.screen_state.0.build;
         build.keep_room_answer(self.client.frames, self.client.screen, 0.0);
         let mut right = 0.0;
         self.native_screen_room(&view, &mut right);

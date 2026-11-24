@@ -88,7 +88,7 @@ impl TrialSpawnerLevel for GameLevel<'_, '_> {
             .is_empty()
     }
     fn loot_items(&self, table: &str, seed: i64) -> Vec<ItemStack> {
-        let Some(loot) = self.game.server_loot.get() else {
+        let Some(loot) = self.game.server_loot.0.get() else {
             return Vec::new();
         };
         loot.roll_split(table, &mut LegacyRandom::new(seed))
@@ -194,7 +194,7 @@ impl Game<'_> {
             level.spawner = Some(mod_api::Spawner::Trial {
                 pos: mod_api::BlockPos::new(key.0, key.1, key.2),
             });
-            let loot = self.server_loot.get();
+            let loot = self.server_loot.0.get();
             let seed = self.level.seed;
             let mut spawn = |l: &GameLevel, rng: &mut LevelRandom, r: &SpawnerSpawn| {
                 let added = l.game.plan_spawner_mob(l, r, source, &mut planned, rng)?;
@@ -273,6 +273,7 @@ impl Game<'_> {
                 TrialEvent::LevelEvent(id, at, data) => self.level_event_at(id, at, data),
                 TrialEvent::Sound(name) => {
                     self.audio
+                        .0
                         .play(&format!("minecraft:{name}"), Some(center), 1.0, 1.0)
                 }
                 // Written with the state above.
@@ -294,7 +295,7 @@ impl Game<'_> {
                         self.remove_mob_now(id, false);
                     }
                 }
-                TrialEvent::SoundAt(name, at, pitch) => self.audio.play(
+                TrialEvent::SoundAt(name, at, pitch) => self.audio.0.play(
                     &format!("minecraft:{name}"),
                     Some(at.map(|v| f64::from(v) + 0.5)),
                     1.0,
@@ -356,6 +357,7 @@ impl Game<'_> {
         };
         if let Some(at) = feet {
             self.audio
+                .0
                 .play("minecraft:event.mob_effect.trial_omen", Some(at), 1.0, 1.0);
         }
     }

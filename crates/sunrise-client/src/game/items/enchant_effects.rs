@@ -579,7 +579,9 @@ impl Game<'_> {
                         .player
                         .as_ref()
                         .map(|p| [p.position.x, p.position.y, p.position.z]);
-                    self.audio.play(sound, at, float("volume"), float("pitch"));
+                    self.audio
+                        .0
+                        .play(sound, at, float("volume"), float("pitch"));
                 }
             }
             _ => {}
@@ -1281,7 +1283,7 @@ impl Game<'_> {
             &mut random_source::entity(),
         );
         if let Some(pitch) = pitch {
-            self.audio.play(
+            self.audio.0.play(
                 "minecraft:particle.soul_escape",
                 Some([position.x, position.y, position.z]),
                 0.6,

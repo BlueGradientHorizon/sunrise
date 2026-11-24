@@ -34,7 +34,7 @@ fn reload_resolves_parts_against_reloaded_tags() {
         let stone_key = mod_platform::__private::part_tests::block_key("stone");
         let name = stone_key.id(game).expect("stone is registered").to_owned();
         let dir = std::env::temp_dir().join(format!("sunrise-key-tags-{}", std::process::id()));
-        game.session_lock = Some(sunrise_client::save::SessionLock::acquire(&dir).unwrap());
+        game.session_lock.0 = Some(sunrise_client::save::SessionLock::acquire(&dir).unwrap());
         assert_eq!(game.block_in_tag(stone_key, "test:reload"), Some(false));
         assert_eq!(
             game.block_in_tag(stone_key, "base_stone_overworld"),
@@ -46,7 +46,7 @@ fn reload_resolves_parts_against_reloaded_tags() {
             &game.options.resources,
             &game.pack.data_source,
             &game.pack.data_changes,
-            game.cmds.vanilla_disabled,
+            game.cmds.0.vanilla_disabled,
             &game.level.enabled_features,
             &game.pack.additional_data,
         );
@@ -81,7 +81,7 @@ fn reload_resolves_parts_against_reloaded_tags() {
             mod_api::HookId::AnalogOutput,
             stone
         ));
-        game.session_lock = None;
+        game.session_lock.0 = None;
         let _ = std::fs::remove_dir_all(dir);
     });
 }
@@ -252,7 +252,7 @@ fn exercise_blank_inventory_presses() {
                     (Screen::Creative, "creative"),
                 ] {
                     game.set_screen(screen);
-                    let renderer = game.renderer.as_ref().unwrap();
+                    let renderer = game.renderer.0.as_ref().unwrap();
                     let batch = HudBatch::new(
                         [renderer.config.width, renderer.config.height],
                         game.settings.gui_scale_inputs(),
@@ -1323,7 +1323,7 @@ fn eager_saves_wait_for_an_open_world_and_for_light() {
     let dir = std::env::temp_dir().join(format!("sunrise-eager-game-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    game.save = Arc::new(sunrise_client::save::SaveDir::new(
+    game.save.0 = Arc::new(sunrise_client::save::SaveDir::new(
         dir.clone(),
         sunrise_client::save::LevelShape::OVERWORLD,
         Some(Default::default()),
@@ -1342,7 +1342,7 @@ fn eager_saves_wait_for_an_open_world_and_for_light() {
     Arc::make_mut(game.world.chunks.get_mut(&(1, 0)).unwrap()).lit = true;
     game.save_chunks_eagerly(); // still queued: no new dirty transition needed
     assert!(!game.world.modified.contains(&(1, 0)));
-    game.save.flush().unwrap();
+    game.save.0.flush().unwrap();
     assert!(dir.join("region/r.0.0.mca").exists());
     std::fs::remove_dir_all(dir).unwrap();
 }
@@ -1439,7 +1439,7 @@ mod wind_charge_burst_tests {
     fn a_nether_charge_bursts_above_the_nethers_top() {
         with_game(|game| {
             game.world.shape = LevelShape::NETHER;
-            game.audio.capture = Some(Vec::new());
+            game.audio.0.capture = Some(Vec::new());
             let at = Vec3::new(2.5, 300.5, 2.5);
             game.add_projectile(Projectile::new(
                 ProjectileKind::WindCharge,
@@ -1451,6 +1451,7 @@ mod wind_charge_burst_tests {
             game.tick_projectiles().unwrap();
             let bursts: Vec<_> = game
                 .audio
+                .0
                 .capture
                 .take()
                 .unwrap_or_default()

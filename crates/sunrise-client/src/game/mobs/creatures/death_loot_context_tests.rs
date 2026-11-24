@@ -71,7 +71,7 @@ fn death_loot_uses_call_scoped_source_and_hand() {
             game.res.item_defaults(),
         )
         .unwrap();
-        game.server_loot.set(Some(Arc::new(loot)));
+        game.server_loot.0.set(Some(Arc::new(loot)));
         let seen = Arc::new(Mutex::new(Vec::new()));
         let mods = vec![mod_api::ModEntry::new(
             "death_loot_probe",
@@ -254,7 +254,7 @@ fn death_loot_killer_is_not_the_acting_guest() {
             game.res.item_defaults(),
         )
         .unwrap();
-        game.server_loot.set(Some(Arc::new(loot)));
+        game.server_loot.0.set(Some(Arc::new(loot)));
         game.build_registries();
         let mut hand = ItemStack::new("minecraft:diamond_sword", 1);
         hand.damage = 19;
@@ -335,7 +335,7 @@ fn death_loot_nested_death_keeps_outer_context() {
             game.res.item_defaults(),
         )
         .unwrap();
-        game.server_loot.set(Some(Arc::new(loot)));
+        game.server_loot.0.set(Some(Arc::new(loot)));
         let ty = game
             .res
             .mob_types()

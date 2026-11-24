@@ -32,7 +32,7 @@ impl Game<'_> {
         amount: f32,
         p: &sunrise_client::projectiles::Projectile,
     ) -> bool {
-        self.combat.piercing_hit = p.arrow.as_ref().is_some_and(|a| a.pierce > 0);
+        self.combat.0.piercing_hit = p.arrow.as_ref().is_some_and(|a| a.pierce > 0);
         self.mob_hits_player(
             amount,
             [p.previous.x, p.previous.y, p.previous.z],
@@ -169,7 +169,7 @@ impl Game<'_> {
             && let Some(sound) = &component.block_sound
         {
             let pitch = 0.8 + self.world.random.next_float() * 0.4;
-            self.audio.play(sound, at, 1.0, pitch);
+            self.audio.0.play(sound, at, 1.0, pitch);
         }
         // BlocksAttacks.hurtBlockingItem counts use even when nothing is blocked.
         if !outcome.blocking_item_used {
@@ -208,7 +208,7 @@ impl Game<'_> {
         }
         let Some(id) = attacker else {
             // Another player's melee hit has no mob behind it.
-            if let Some((from, disable)) = self.combat.player_attacker {
+            if let Some((from, disable)) = self.combat.0.player_attacker {
                 let fully = outcome.fully_blocked;
                 let attacker = ([from[0], from[2]], disable);
                 self.blocked_by_attacker(
@@ -339,7 +339,7 @@ impl Game<'_> {
             self.stop_active_item_use();
             if let Some(sound) = &component.disabled_sound {
                 let pitch = 0.8 + self.world.random.next_float() * 0.4;
-                self.audio.play(sound, at, 0.8, pitch);
+                self.audio.0.play(sound, at, 0.8, pitch);
             }
         }
     }

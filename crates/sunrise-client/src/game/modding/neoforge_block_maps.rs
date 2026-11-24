@@ -77,7 +77,7 @@ impl Game<'_> {
     /// Install the open world's tables' block maps, replacing the last
     /// load's: none for a world without tables.
     pub(in crate::game) fn install_block_maps(&self) {
-        let maps = self.world_tables.as_ref().and_then(|tables| {
+        let maps = self.world_tables.0.as_ref().and_then(|tables| {
             let overlay = sunrise_world::loot::PackOverlay {
                 conditions: &tables.conditions,
                 files: &tables.files,

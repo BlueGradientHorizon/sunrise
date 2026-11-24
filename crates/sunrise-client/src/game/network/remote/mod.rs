@@ -1314,6 +1314,7 @@ impl Game<'_> {
             C::SoundEntity(p) => self.apply_sound_entity_packet(p),
             C::StopSound(p) => self
                 .audio
+                .0
                 .stop_sounds(p.sound.as_deref(), p.source.map(|s| s as usize)),
             C::AddEntity(p) => self.apply_add_entity_packet(p),
             C::RemoveEntities(p) => self.apply_remove_entities_packet(p),
@@ -1497,7 +1498,7 @@ impl Game<'_> {
             C::ShowDialog(p) => self.show_play_dialog(&p.dialog),
             C::ClearDialog(_) => self.clear_dialog(),
             // ClientPacketListener.handleLowDiskSpaceWarning.
-            C::LowDiskSpaceWarning(_) => self.client_reports.report_low_disk_space(),
+            C::LowDiskSpaceWarning(_) => self.client_reports.0.report_low_disk_space(),
             C::ClearTitles(p) => self.apply_clear_titles_packet(p),
             _ => {}
         }
@@ -2229,7 +2230,7 @@ impl sunrise_client::interaction_input::InteractionWorld for RemoteInputWorld<'_
         self.0.release_tick_targets();
     }
     fn using_item(&self) -> bool {
-        self.0.client_item_use.is_some() || self.0.using.is_some()
+        self.0.client_item_use.0.is_some() || self.0.using.is_some()
     }
     fn release_using(&mut self) {
         if !self.0.end_client_item_use(true) && self.0.using.is_some() {
@@ -2987,12 +2988,12 @@ pub(in crate::game) mod tests {
                 (gate, use_sound),
             ] {
                 game.world.set(x, y, z, state).unwrap();
-                game.audio.capture = Some(Vec::new());
+                game.audio.0.capture = Some(Vec::new());
                 let (answer, dry) = game.remote_block_reacts(&hit, None, true);
                 assert!(answer.consumes_action());
                 game.predict_use(&dry, 1);
                 assert!(open(game), "the gate opens without a server round trip");
-                let capture = game.audio.capture.as_mut().unwrap();
+                let capture = game.audio.0.capture.as_mut().unwrap();
                 assert_eq!(capture.len(), 1);
                 let predicted = capture.pop().unwrap();
                 assert_eq!((predicted.event.as_str(), predicted.source), (name, blocks));
@@ -3043,14 +3044,14 @@ pub(in crate::game) mod tests {
                     [(wire_sound.into(), blocks as i32, 1.0)]
                 );
             }
-            assert_eq!(game.audio.heard.get(blast_sound), Some(&1));
+            assert_eq!(game.audio.0.heard.get(blast_sound), Some(&1));
             let powered = game
                 .with_props(gate, &[("open", "true"), ("powered", "true")])
                 .unwrap();
             game.world.set(x, y, z, powered).unwrap();
             game.explosion_trigger_blocks(&mut [pos]).unwrap();
             assert_eq!(game.world.block(x, y, z), powered);
-            assert_eq!(game.audio.heard.get(blast_sound), Some(&1));
+            assert_eq!(game.audio.0.heard.get(blast_sound), Some(&1));
         });
     }
 

@@ -119,14 +119,14 @@ impl Game<'_> {
         {
             return Ok(None);
         }
-        let value = if self.fns.store.slot_sources.contains_key(&id(raw)) {
+        let value = if self.fns.0.store.slot_sources.contains_key(&id(raw)) {
             Value::String(id(raw))
         } else {
             let (tag, _) = sunrise_core::nbt::parse_snbt(raw)
                 .map_err(|error| err("argument.resource_or_id.failed_to_parse", &[&error]))?;
             typed_source(&tag)
         };
-        expand(&self.fns.store, &value)
+        expand(&self.fns.0.store, &value)
             .map(Some)
             .map_err(|error| err("argument.resource_or_id.failed_to_parse", &[&error]))
     }

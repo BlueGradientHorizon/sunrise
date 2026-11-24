@@ -1144,7 +1144,7 @@ impl Game<'_> {
         }
         match words.get(1).copied() {
             Some("open") => {
-                if self.title.is_some() {
+                if self.title.0.is_some() {
                     return Err("open a world first".into());
                 }
                 let port = words.get(2).map_or(Ok(0), |p| p.parse::<u16>())?;
@@ -1302,6 +1302,7 @@ impl Game<'_> {
         );
         encoder.tables = Some(
             self.save
+                .0
                 .tables
                 .get_or_init(|| Arc::new(sunrise_client::save::SaveTables::new(&self.pack.assets)))
                 .clone(),
@@ -1346,7 +1347,7 @@ impl Game<'_> {
             states_next_entity: None,
             idle_states: Default::default(),
         });
-        self.audio.capture = Some(Vec::new());
+        self.audio.0.capture = Some(Vec::new());
         Ok(())
     }
 
@@ -1392,7 +1393,7 @@ impl Game<'_> {
         self.world.block_log = None;
         self.world.connection_group_log = None;
         self.world.light_log = None;
-        self.audio.capture = None;
+        self.audio.0.capture = None;
         self.server.bound_sounds.clear();
         self.server.lan_events.clear();
         self.server.lan_songs.clear();
@@ -1480,8 +1481,11 @@ impl Game<'_> {
                     self.res.items(),
                 );
             } else {
-                self.player_autosaves
-                    .save_after(guest, &self.server.world_root, self.res.items());
+                self.player_autosaves.0.save_after(
+                    guest,
+                    &self.server.world_root,
+                    self.res.items(),
+                );
             }
             let directory = playerdata::directory(&self.server.world_root);
             self.native_player_save_to_file(guest.uuid, &guest.name, &directory);
@@ -1889,7 +1893,7 @@ impl Game<'_> {
         }
         // ChunkMap.tick sends the changes of an entity outside the
         // entity-ticking range only when it changed section or needs sync.
-        let levels = self.tickets.levels();
+        let levels = self.tickets.0.levels();
         let idle_at = |p: sunrise_core::geometry::Vec3| {
             !levels.in_entity_ticking_range((p.x.floor() as i32) >> 4, (p.z.floor() as i32) >> 4)
         };
@@ -3232,7 +3236,7 @@ impl Game<'_> {
                 log::error!("could not open {}: {e}", level.id());
                 return;
             }
-            self.tickets.add_spawn(
+            self.tickets.0.add_spawn(
                 prepared.chunk(),
                 sunrise_client::ticket_levels::SpawnTicketKind::Player,
             );
@@ -3382,7 +3386,7 @@ impl Game<'_> {
         &mut self,
         events: &[sunrise_world::level::LevelEvent],
     ) {
-        if self.audio.capture.is_none() {
+        if self.audio.0.capture.is_none() {
             return;
         }
         for e in events {
@@ -3417,14 +3421,14 @@ impl Game<'_> {
 
     /// `Level.blockEvent` for the guests (`ClientboundBlockEventPacket`).
     pub(in crate::game) fn lan_block_event(&mut self, pos: [i32; 3], b0: i32, b1: i32) {
-        if self.audio.capture.is_some() {
+        if self.audio.0.capture.is_some() {
             let state = self.world.block(pos[0], pos[1], pos[2]).0;
             self.server.lan_block_events.push((pos, b0, b1, state));
         }
     }
     /// `Level.broadcastEntityEvent` for the guests.
     pub(in crate::game) fn lan_entity_event(&mut self, id: i32, event: i8, at: [f64; 3]) {
-        if self.audio.capture.is_some() {
+        if self.audio.0.capture.is_some() {
             self.server.lan_entity_events.push((id, event));
         }
         self.lan_entity_event_local(id, event, at);
@@ -3434,7 +3438,7 @@ impl Game<'_> {
     pub(in crate::game) fn deliver_entity_event(&mut self, id: i32, event: i8, at: [f64; 3]) {
         if let Some(host) = self.lan.as_ref() {
             host.hub.entity_event(id, event);
-        } else if self.audio.capture.is_some() {
+        } else if self.audio.0.capture.is_some() {
             self.server.lan_entity_events.push((id, event));
         }
         self.lan_entity_event_local(id, event, at);
@@ -3543,12 +3547,12 @@ impl Game<'_> {
             },
             super::render_tick::mob_tracking_body,
         );
-        self.particles.tracking_emitter(
+        self.particles.0.tracking_emitter(
             ParticleOptions::simple(particle),
             TrackingTarget::Entity(id),
             body,
         );
-        if self.audio.capture.is_some() {
+        if self.audio.0.capture.is_some() {
             self.server.lan_critical_hits.push((attacker, id, magic));
         }
     }
@@ -5413,7 +5417,7 @@ pub(in crate::game) mod tests {
                     max_players: 3,
                     integrated: true,
                     levels: game.server.level_shapes,
-                    level_seeds: game.levels.runtime.seeds(),
+                    level_seeds: game.levels.0.runtime.seeds(),
                 };
                 game.lan_host(settings, net, config).unwrap();
                 let mut join = |conn: u32| {
@@ -5682,7 +5686,7 @@ pub(in crate::game) mod tests {
                 max_players: 2,
                 integrated: true,
                 levels: game.server.level_shapes,
-                level_seeds: game.levels.runtime.seeds(),
+                level_seeds: game.levels.0.runtime.seeds(),
             };
             game.lan_host(settings, net, config).unwrap();
             let (tx, _rx) = std::sync::mpsc::channel();
@@ -6223,7 +6227,7 @@ mod world_spawn_join_tests {
     #[ignore = "daily"]
     fn a_returning_player_from_a_missing_level_joins_in_the_world_spawn_level() {
         crate::game::native_guest_turn_tests::with_guests(|game| {
-            game.server.world_root = game.save.root.clone();
+            game.server.world_root = game.save.0.root.clone();
             game.level.world_spawn_dimension = Some("minecraft:the_nether".into());
             let guests = &mut game.lan.as_mut().unwrap().hub.guests;
             guests.update(0, |g| {
@@ -6915,7 +6919,7 @@ mod merchant_packet_tests {
             assert_eq!(gm.slots[0].as_ref().unwrap().count, 4);
             gm.merchant.session.offers[0].price_multiplier = 0.2;
             let merchant_window = gm.window;
-            game.audio.capture = Some(Vec::new());
+            game.audio.0.capture = Some(Vec::new());
             let mut states = super::States::default();
             game.lan_entities(&mut states, false, 0, None);
             let hub = &mut game.lan.as_mut().unwrap().hub;

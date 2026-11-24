@@ -663,8 +663,8 @@ pub(in crate::game) mod item_resource_property_tests {
         assert_eq!(inputs.len(), expected.len());
         crate::game::native_entity_refs::tests::with_game(|game| {
             // Authoritative tag reads are available only while a world is owned.
-            game.session_lock =
-                Some(sunrise_client::save::SessionLock::acquire(&game.save.root).unwrap());
+            game.session_lock.0 =
+                Some(sunrise_client::save::SessionLock::acquire(&game.save.0.root).unwrap());
             for (input, expected) in inputs.iter().zip(&expected) {
                 assert_eq!(input["name"], expected["name"]);
                 let support::Outcome {
@@ -705,7 +705,7 @@ pub(in crate::game) mod item_resource_property_tests {
                     item.repairable(game, &material)
                 );
             }
-            game.session_lock = None;
+            game.session_lock.0 = None;
         });
     }
     /// Changed defaults and a patched mod consumable exercise the real game consumers.
@@ -774,8 +774,8 @@ pub(in crate::game) mod item_resource_property_tests {
         )
         .unwrap();
         crate::game::native_entity_refs::tests::with_game_at(root.clone(), |game| {
-            game.session_lock =
-                Some(sunrise_client::save::SessionLock::acquire(&game.save.root).unwrap());
+            game.session_lock.0 =
+                Some(sunrise_client::save::SessionLock::acquire(&game.save.0.root).unwrap());
             let wood = ItemResource::of(&super::super::api_values::test_snapshot(&ItemStack::new(
                 "minecraft:wooden_sword",
                 1,
@@ -889,7 +889,7 @@ pub(in crate::game) mod item_resource_property_tests {
                 1,
                 "completion must consume the patched mod item"
             );
-            game.session_lock = None;
+            game.session_lock.0 = None;
         });
         fs::remove_dir_all(root).unwrap();
     }

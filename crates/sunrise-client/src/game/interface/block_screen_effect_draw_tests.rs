@@ -912,7 +912,7 @@ fn only_the_last_eligible_renderer_submits() {
 
 /// A frame's pixels, RGBA.
 fn drawn_frame(game: &mut Game<'_>) -> (Vec<u8>, usize) {
-    game.renderer.as_mut().unwrap().screenshot = Some(ScreenshotRequest {
+    game.renderer.0.as_mut().unwrap().screenshot = Some(ScreenshotRequest {
         path: "unused.png".into(),
         size: None,
         scaled: false,
@@ -920,7 +920,7 @@ fn drawn_frame(game: &mut Game<'_>) -> (Vec<u8>, usize) {
     });
     game.render_with(|renderer, frame| renderer.render(frame))
         .unwrap();
-    let result = game.renderer.as_mut().unwrap().screenshot_result.take();
+    let result = game.renderer.0.as_mut().unwrap().screenshot_result.take();
     let mut pending = result.unwrap().unwrap();
     let image = pending.image_mut();
     (std::mem::take(&mut image.rgba), image.width as usize)
@@ -1007,8 +1007,8 @@ fn screen_effect_quads_draw_over_the_level_and_under_the_gui() {
                     .unwrap(),
             );
             game.options.offscreen = true;
-            game.renderer = Some(game.new_renderer(window).unwrap());
-            game.title = None;
+            game.renderer.0 = Some(game.new_renderer(window).unwrap());
+            game.title.0 = None;
             burning_player(game);
             game.previous_position = game.player.as_ref().unwrap().position;
             // A black vignette is no quad: the HUD's camera overlays would darken the colours.

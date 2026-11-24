@@ -17,7 +17,7 @@ impl Game<'_> {
     /// Minecraft.startUseItem: use one crosshair target, then the item itself.
     fn remote_use_inner(&mut self, attempt: mod_api::InteractionAttempt) {
         // Another queued press in the same input drain cannot restart a capture.
-        if self.client_item_use.is_some() {
+        if self.client_item_use.0.is_some() {
             return;
         }
         // Minecraft.startUseItem returns before resetting rightClickDelay
@@ -168,7 +168,7 @@ impl Game<'_> {
         // A piercing weapon neither breaks blocks nor swings on its own.
         if self.clicks.miss_time > 0
             || self.using.is_some()
-            || self.client_item_use.is_some()
+            || self.client_item_use.0.is_some()
             || self
                 .held()
                 .is_some_and(|s| sunrise_client::spear::Kinetic::of(&s.item).is_some())
@@ -231,7 +231,7 @@ impl Game<'_> {
     /// (a proxy's reconfiguration too), but the chat: joining clears it and a
     /// reconfiguration keeps it (`ChatComponent.storeState`).
     pub(super) fn hud_disconnected(&mut self) {
-        self.tab_list.reset();
+        self.tab_list.0.reset();
         self.client.boss_overlay.reset();
         self.client.toast_manager = Default::default();
         self.client.debug_charts.reset();
@@ -264,6 +264,7 @@ impl Game<'_> {
             return;
         };
         self.particles
+            .0
             .tracking_emitter(ParticleOptions::simple(particle), target, body);
     }
     /// `ServerPlayer.dismountTo` lands a rider at the ghast's own (x, maxY, z)

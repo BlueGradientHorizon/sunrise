@@ -17,16 +17,17 @@ impl Game<'_> {
         if level.dimension() == self.dim.key() {
             Some((self.raids_in_place()?, &self.mobs))
         } else {
-            let parked = self.levels.parked_of(level.dimension_id())?;
+            let parked = self.levels.0.parked_of(level.dimension_id())?;
             Some((parked.raiding.raids(level.dimension_id())?, &parked.mobs))
         }
     }
     fn native_level_raids_mut(&mut self, level: LevelRef) -> Option<&mut Raids> {
         self.native_level_world(level)?;
         if level.dimension() == self.dim.key() {
-            self.raiding.raids_mut(level.dimension_id())
+            self.raiding.0.raids_mut(level.dimension_id())
         } else {
             self.levels
+                .0
                 .parked_mut_of(level.dimension_id())?
                 .raiding
                 .raids_mut(level.dimension_id())
@@ -263,6 +264,7 @@ mod tests {
                 let current = game.level(game.dim.id()).unwrap();
                 let (id, _) = game
                     .raiding
+                    .0
                     .raids_mut(current.dimension_id())
                     .unwrap()
                     .create_or_extend([100, 70, 100], 2, None, 7);
@@ -276,6 +278,7 @@ mod tests {
                 game.raid_command_stop(id);
                 let tick_id = game
                     .raiding
+                    .0
                     .raids_mut(current.dimension_id())
                     .unwrap()
                     .create_or_extend([200, 70, 200], 2, None, 7)
@@ -329,7 +332,7 @@ mod tests {
             assert!(game.raid_command_create([10, 70, 10], 2));
             game.save_raids();
             // The world opens again and reads the raids, as `finish_open_world` does.
-            game.raiding = Default::default();
+            game.raiding.0 = Default::default();
             game.read_raids();
             use sunrise_core::random::RandomSource;
             let before = game.world.random.clone().next_long();
@@ -429,6 +432,7 @@ mod tests {
             let current = game.level(game.dim.id()).unwrap();
             let (other_id, _) = game
                 .raiding
+                .0
                 .raids_mut(current.dimension_id())
                 .unwrap()
                 .create_or_extend([100, 70, 100], 2, None, 7);
@@ -472,6 +476,7 @@ mod tests {
             assert_eq!(level.raid(game, raid.id()), Some(raid));
             assert!(
                 game.levels
+                    .0
                     .parked_of(level.dimension_id())
                     .unwrap()
                     .raiding
@@ -491,7 +496,7 @@ mod tests {
                 game.enter_command_level(super::super::Dim::Nether)
                     .is_some()
             );
-            game.levels.clear();
+            game.levels.0.clear();
             assert_eq!(raid.center(game), None);
             assert_eq!(raid.raiders(game), None);
             assert!(!raid.set_omen_level(game, 1));

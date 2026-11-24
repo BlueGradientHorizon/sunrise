@@ -123,7 +123,7 @@ impl Game<'_> {
                 yaw: 0.0,
             });
         }
-        let o = self.others.iter().find(|o| o.id == id)?;
+        let o = self.others.0.iter().find(|o| o.id == id)?;
         if !could_accept_passenger(&o.kind) {
             return None;
         }

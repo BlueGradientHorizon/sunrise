@@ -449,13 +449,13 @@ impl Game<'_> {
         }
     }
     fn need_world(&self) -> Result<()> {
-        if self.title.is_some() {
+        if self.title.0.is_some() {
             return Err("no world open (title screen); use: open WORLD [SEED] [creative]".into());
         }
         Ok(())
     }
     fn require_playing_screen(&self) -> Result<()> {
-        if self.title.is_some() {
+        if self.title.0.is_some() {
             return Err("no world open (title screen); use: open WORLD [SEED] [creative]".into());
         }
         if self.player.is_none() {
@@ -477,7 +477,7 @@ impl Game<'_> {
         if self.dialog_open() {
             return "dialog";
         }
-        if self.title.is_some() {
+        if self.title.0.is_some() {
             return "title";
         }
         if self.client.book.is_some() {
@@ -589,8 +589,8 @@ impl Game<'_> {
         let mut state = json!({
             "dialog": self.dialog_status(),
             "screen": self.screen_label(),
-            "menu": self.title.is_some().then(|| self.title_value()),
-            "world": (self.title.is_none()).then(|| match &self.integrated {
+            "menu": self.title.0.is_some().then(|| self.title_value()),
+            "world": (self.title.0.is_none()).then(|| match &self.integrated {
                 Some(server) => server.world_name.clone(),
                 None => self.level.name.clone(),
             }),
@@ -618,16 +618,17 @@ impl Game<'_> {
             "ticks": self.ticks,
         });
         // Who caused the input, and whether a repro recording runs.
-        let mut input = self.input_trace.summary();
+        let mut input = self.input_trace.0.summary();
         self.repro
-            .fill_summary(&mut input, self.input_trace.events());
+            .0
+            .fill_summary(&mut input, self.input_trace.0.events());
         state["input"] = input;
         state
     }
 
     fn title_value(&self) -> Value {
         use sunrise_client::title::Mode;
-        let Some(title) = &self.title else {
+        let Some(title) = &self.title.0 else {
             return Value::Null;
         };
         let worlds = || {
@@ -856,10 +857,10 @@ impl Game<'_> {
             v["chat_input"] = json!(chat.input.value);
             v["chat_suggestions"] = json!(chat.suggestions_visible());
         }
-        if self.title.is_some() {
+        if self.title.0.is_some() {
             v["menu"] = self.title_value();
         }
-        if self.client.screen == Screen::Inventory && self.title.is_none() {
+        if self.client.screen == Screen::Inventory && self.title.0.is_none() {
             let mut slots = Vec::new();
             for i in self.slots() {
                 let stack = if i == 200 {
@@ -1070,7 +1071,7 @@ impl Game<'_> {
         points: &[(f32, f32)],
         button: MouseButton,
     ) -> Result<()> {
-        let id = self.window.as_ref().ok_or("no window yet")?.id();
+        let id = self.window.0.as_ref().ok_or("no window yet")?.id();
         let projection = self
             .renderer_pointer_projection()
             .ok_or("no renderer yet")?;
@@ -1678,7 +1679,7 @@ impl Game<'_> {
             "scroll-at" => {
                 let (x, y) = (a.f64(0, "X")? as f32, a.f64(1, "Y")? as f32);
                 let steps = a.f64(2, "STEPS")? as f32;
-                let id = self.window.as_ref().ok_or("no window yet")?.id();
+                let id = self.window.0.as_ref().ok_or("no window yet")?.id();
                 let projection = self
                     .renderer_pointer_projection()
                     .ok_or("no renderer yet")?;
@@ -1717,7 +1718,7 @@ impl Game<'_> {
                 self.synth_click(event_loop, x, y, button)?;
                 ok(json!({ "ok": true, "screen": self.screen_label() }))
             }
-            "type" if self.title.is_some() => {
+            "type" if self.title.0.is_some() => {
                 // type [--field name|seed] [--replace] TEXT on the title screens.
                 let mut text = line
                     .trim_start()
@@ -1741,7 +1742,7 @@ impl Game<'_> {
                     }
                 }
                 let editing_preset = self.preset_editor_title().is_some();
-                let title = self.title.as_mut().ok_or("no title screen")?;
+                let title = self.title.0.as_mut().ok_or("no title screen")?;
                 if let Some(field) = &field {
                     match &mut title.mode {
                         sunrise_client::title::Mode::Create { focus, options, .. } => {
@@ -2097,7 +2098,7 @@ impl Game<'_> {
     /// One frame of a task: Some(reply) when it is over.
     fn step_task(&mut self, kind: &mut TaskKind, timed_out: bool) -> Option<Value> {
         // Leaving the world (death, a screen, the title) ends movement tasks.
-        let interrupted = if self.title.is_some() || self.player.is_none() {
+        let interrupted = if self.title.0.is_some() || self.player.is_none() {
             Some("the world closed")
         } else if self.client.screen == Screen::Dead {
             Some("the player died")
@@ -2546,12 +2547,12 @@ mod tests {
                 focused: true,
                 adopt_regions: true,
             };
-            game.title = Some(title);
+            game.title.0 = Some(title);
             assert_eq!(
                 game.title_value(),
                 json!({"mode":"edit-world", "folder":"Moor", "fields":{"name":"Typed name"}, "focus":"name", "adopt_biome_regions":true})
             );
-            game.title.as_mut().unwrap().mode = Mode::AdoptBiomeRegions {
+            game.title.0.as_mut().unwrap().mode = Mode::AdoptBiomeRegions {
                 world,
                 name: "Typed name".into(),
             };

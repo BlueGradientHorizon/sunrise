@@ -85,7 +85,7 @@ impl Game<'_> {
     /// Drops the display mobs of spawners and trial spawners that are gone.
     pub(super) fn forget_spawner_displays(&mut self) {
         let entities = &self.world.block_entities;
-        self.spawners.displays.retain(|k, _| {
+        self.spawners.0.displays.retain(|k, _| {
             matches!(
                 entities.get(k),
                 Some(BlockEntity::Spawner(_) | BlockEntity::TrialSpawner(_))
@@ -344,7 +344,7 @@ impl Game<'_> {
         if let Some(BlockEntity::Spawner(s)) = self.world.block_entities.get_mut(&key) {
             s.client_loaded();
         }
-        self.spawners.displays.remove(&key);
+        self.spawners.0.displays.remove(&key);
         if let Some(log) = self.world.block_log.as_mut() {
             log.push(key);
         }
@@ -368,14 +368,14 @@ impl Game<'_> {
         let (at, w, h) = (m.position, f64::from(m.width()), f64::from(m.height()));
         let options = ParticleOptions::simple(ParticleType::Poof);
         for _ in 0..20 {
-            let r = self.particles.level_random();
+            let r = self.particles.0.level_random();
             let xa = r.next_gaussian() * 0.02;
             let ya = r.next_gaussian() * 0.02;
             let za = r.next_gaussian() * 0.02;
             let x = at.x + w * (2.0 * r.next_double() - 1.0) - xa * 10.0;
             let y = at.y + h * r.next_double() - ya * 10.0;
             let z = at.z + w * (2.0 * r.next_double() - 1.0) - za * 10.0;
-            self.particles.add(&options, [x, y, z], [xa, ya, za]);
+            self.particles.0.add(&options, [x, y, z], [xa, ya, za]);
         }
     }
     /// `LevelEventHandler` 2004: twenty smoke and flame pairs around the spawner.
@@ -385,12 +385,12 @@ impl Game<'_> {
             ParticleOptions::simple(ParticleType::Flame),
         );
         for _ in 0..20 {
-            let r = self.particles.level_random();
+            let r = self.particles.0.level_random();
             let x = f64::from(pos[0]) + 0.5 + (r.next_double() - 0.5) * 2.0;
             let y = f64::from(pos[1]) + 0.5 + (r.next_double() - 0.5) * 2.0;
             let z = f64::from(pos[2]) + 0.5 + (r.next_double() - 0.5) * 2.0;
-            self.particles.add(&smoke, [x, y, z], [0.0; 3]);
-            self.particles.add(&flame, [x, y, z], [0.0; 3]);
+            self.particles.0.add(&smoke, [x, y, z], [0.0; 3]);
+            self.particles.0.add(&flame, [x, y, z], [0.0; 3]);
         }
     }
     /// The client copy's tick: particles and the spin while a player is near.
@@ -414,14 +414,16 @@ impl Game<'_> {
         };
         let display = self.update_spawner_display(key);
         let pos = [key.0, key.1, key.2];
-        let random = self.particles.level_random();
+        let random = self.particles.0.level_random();
         let Some(BlockEntity::Spawner(s)) = self.world.block_entities.get_mut(&key) else {
             return;
         };
         if let Some(p) = s.client_tick(near, display, random, pos) {
             self.particles
+                .0
                 .add(&ParticleOptions::simple(ParticleType::Smoke), p, [0.0; 3]);
             self.particles
+                .0
                 .add(&ParticleOptions::simple(ParticleType::Flame), p, [0.0; 3]);
         }
     }
@@ -429,11 +431,12 @@ impl Game<'_> {
     /// when its type changes. False when there is none.
     pub(super) fn update_spawner_display(&mut self, key: Pos) -> bool {
         let Some(kind) = self.spawner_display_kind(key) else {
-            self.spawners.displays.remove(&key);
+            self.spawners.0.displays.remove(&key);
             return false;
         };
         if self
             .spawners
+            .0
             .displays
             .get(&key)
             .is_none_or(|(k, _)| *k != kind)
@@ -442,7 +445,7 @@ impl Game<'_> {
                 return false;
             };
             let mob = Mob::new(u32::MAX, t, Vec3::ZERO, 0.0);
-            self.spawners.displays.insert(key, (kind, mob));
+            self.spawners.0.displays.insert(key, (kind, mob));
         }
         true
     }
@@ -572,9 +575,10 @@ impl Game<'_> {
         // out of those sections isn't drawn, where it would have gone to the shadow pass alone.
         let shadow_sections = self
             .renderer
+            .0
             .as_ref()
-            .filter(|_| self.client.pack_ids.is_some() && self.occlusion.shadow_casters.0);
-        for (key, (_, mob)) in &self.spawners.displays {
+            .filter(|_| self.client.pack_ids.is_some() && self.occlusion.0.shadow_casters.0);
+        for (key, (_, mob)) in &self.spawners.0.displays {
             let at = glam::DVec3::new(f64::from(key.0), f64::from(key.1), f64::from(key.2));
             if !Reach::Default.should_render([key.0, key.1, key.2], camera, 0) {
                 continue;

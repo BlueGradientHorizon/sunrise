@@ -29,14 +29,15 @@ fn an_ambient_block_or_item_particle_needs_a_name_of_the_level() {
             )
         };
         // At the camera, at `ParticleStatus.ALL`: the minimal setting admits none here.
-        let at = game.particles.camera;
+        let at = game.particles.0.camera;
         game.settings.particles = 0;
-        game.particles.particle_level = 0;
-        game.particles.requested = Some(Vec::new());
+        game.particles.0.particle_level = 0;
+        game.particles.0.requested = Some(Vec::new());
         game.emit_model_ambient(&item("minecraft:apple"), at);
         game.emit_model_ambient(&block("minecraft:stone"), at);
         let drawn: Vec<_> = game
             .particles
+            .0
             .requested
             .as_ref()
             .unwrap()
@@ -44,7 +45,7 @@ fn an_ambient_block_or_item_particle_needs_a_name_of_the_level() {
             .map(|(options, ..)| options.ty)
             .collect();
         assert_eq!(drawn, [ParticleType::Item, ParticleType::Block]);
-        game.particles.requested = Some(Vec::new());
+        game.particles.0.requested = Some(Vec::new());
         for unknown in [
             item("test:no_such_item"),
             item("minecraft:air"),
@@ -53,9 +54,9 @@ fn an_ambient_block_or_item_particle_needs_a_name_of_the_level() {
             game.emit_model_ambient(&unknown, at);
         }
         assert!(
-            game.particles.requested.as_ref().unwrap().is_empty(),
+            game.particles.0.requested.as_ref().unwrap().is_empty(),
             "an unknown block or item draws nothing: {:?}",
-            game.particles.requested.as_ref().unwrap(),
+            game.particles.0.requested.as_ref().unwrap(),
         );
     });
 }

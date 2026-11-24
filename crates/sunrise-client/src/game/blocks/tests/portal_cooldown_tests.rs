@@ -96,6 +96,7 @@ pub(in crate::game) fn run_portal_contact_and_waiting_handoff_match_vanilla_coun
     // Direct handler calls do not refresh the headless world's chunk tickets.
     // Frozen entities retain their counters across every group/phase pass.
     game.tickets
+        .0
         .update(Some(crate::ticket_levels::Sources::default()));
     game.handle_vehicle_portals();
     game.handle_entity_portals();
@@ -103,7 +104,7 @@ pub(in crate::game) fn run_portal_contact_and_waiting_handoff_match_vanilla_coun
     for id in &ids {
         assert_eq!(game.portals.entities.get(id).unwrap().cooldown, 5);
     }
-    game.tickets.update(Some(crate::ticket_levels::Sources {
+    game.tickets.0.update(Some(crate::ticket_levels::Sources {
         forced: vec![(0, 0)],
         ..Default::default()
     }));

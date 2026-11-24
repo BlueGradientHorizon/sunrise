@@ -73,12 +73,12 @@ impl Game<'_> {
     fn set_debug_overlay(&mut self, visible: bool) {
         if self.client.debug != visible {
             self.client.debug = visible;
-            self.debug_entries.invalidate();
+            self.debug_entries.0.invalidate();
         }
     }
 
     fn open_screen(&self) -> OpenScreen {
-        if self.title.is_some() {
+        if self.title.0.is_some() {
             return OpenScreen::Other;
         }
         match self.client.screen {
@@ -129,12 +129,13 @@ impl Game<'_> {
                 | Screen::BlockEditor
         ) || self.client.sign_edit.is_some()
             || self.client.book.is_some()
-            || (self.client.screen == Screen::Creative && self.creative_screen.tab().search)
+            || (self.client.screen == Screen::Creative && self.creative_screen.0.tab().search)
             || self.recipe_search_focused()
             || self.station_typing()
             || (self.title_input_active()
                 && self
                     .title
+                    .0
                     .as_mut()
                     .is_some_and(|t| t.focused_field().is_some()));
         // Container screens use Escape, the inventory key and the hotbar and
@@ -339,9 +340,9 @@ impl Game<'_> {
     }
     /// Whether this client's debug overlay passes the draw gate this frame.
     pub(in crate::game) fn debug_overlay_visible(&self) -> bool {
-        let screen_open = self.title.is_some() || self.client.screen != Screen::Playing;
-        self.debug_entries.any_enabled(
-            &self.registered_debug_entries,
+        let screen_open = self.title.0.is_some() || self.client.screen != Screen::Playing;
+        self.debug_entries.0.any_enabled(
+            &self.registered_debug_entries.0,
             self.client.debug,
             self.reduced_debug_info(),
         ) && (!self.ui.hide_gui || screen_open)
@@ -365,6 +366,7 @@ impl Game<'_> {
         // a sample that stops being current is not painted again from it.
         let lightmap = self
             .renderer
+            .0
             .as_ref()
             .filter(|_| self.debug_shows_lightmap())
             .and_then(|r| r.lightmap_sample());
@@ -432,7 +434,7 @@ impl Game<'_> {
     /// it has to time passes.
     pub(in crate::game) fn debug_lists_gpu_passes(&self) -> bool {
         self.client.debug
-            && self.title.is_none()
+            && self.title.0.is_none()
             && !(self.ui.hide_gui && self.client.screen == Screen::Playing)
             && self.debug_entry("system_specs")
     }
@@ -446,6 +448,7 @@ impl Game<'_> {
         }
         let rate = self
             .window
+            .0
             .as_ref()
             .and_then(|w| w.current_monitor())
             .and_then(|m| m.refresh_rate_millihertz());
@@ -457,6 +460,7 @@ impl Game<'_> {
         let limit = self.framerate_limit();
         let present = self
             .renderer
+            .0
             .as_ref()
             .map_or("", |r| match r.config.present_mode {
                 wgpu::PresentMode::Immediate => " (immediate)",
@@ -471,6 +475,7 @@ impl Game<'_> {
         // Sunrise: with frame generation running, the frames reaching the screen too.
         let generated = self
             .renderer
+            .0
             .as_ref()
             .and_then(|r| r.frame_generation_share())
             .map_or(String::new(), |share| {
@@ -509,7 +514,7 @@ impl Game<'_> {
         d.line("Filtering: None");
         d.line(format!(
             "Terrain Rendering: {}",
-            if self.renderer.as_ref().is_some_and(|r| r.multi_draw) {
+            if self.renderer.0.as_ref().is_some_and(|r| r.multi_draw) {
                 "multidrawindirect"
             } else {
                 "naive"
@@ -522,7 +527,7 @@ impl Game<'_> {
         d: &mut debug_overlay::Displayer,
         framebuffer: [i32; 2],
     ) {
-        if let Some(r) = self.renderer.as_ref() {
+        if let Some(r) = self.renderer.0.as_ref() {
             d.group(
                 "system",
                 [format!(
@@ -545,7 +550,7 @@ impl Game<'_> {
                     }
                 )],
             );
-            if let Some(w) = self.window.as_ref() {
+            if let Some(w) = self.window.0.as_ref() {
                 let density = w.scale_factor();
                 let logical = winit::dpi::PhysicalSize::new(framebuffer[0], framebuffer[1])
                     .to_logical::<f64>(density);
@@ -591,7 +596,7 @@ impl Game<'_> {
         }
         // Sunrise's own: HDR's output while the setting is on, under the GPU (a group of its
         // own would move others to the other column).
-        if let Some(r) = self.renderer.as_ref()
+        if let Some(r) = self.renderer.0.as_ref()
             && r.output().requests_hdr(self.settings.sunrise.hdr)
         {
             d.group("system", [r.hdr_line()]);
@@ -680,8 +685,8 @@ impl Game<'_> {
     }
     /// `DebugScreenEntryList.isCurrentlyEnabled` for an entry's path.
     pub(in crate::game) fn debug_entry(&self, path: &str) -> bool {
-        self.debug_entries.enabled(
-            &self.registered_debug_entries,
+        self.debug_entries.0.enabled(
+            &self.registered_debug_entries.0,
             path,
             self.client.debug,
             self.reduced_debug_info(),
@@ -715,6 +720,7 @@ impl Game<'_> {
             DebugAction::ShowHitboxes if player => {
                 let on = self
                     .debug_entries
+                    .0
                     .toggle_status("entity_hitboxes", self.client.debug);
                 self.debug_translated(if on {
                     "debug.show_hitboxes.on"
@@ -731,6 +737,7 @@ impl Game<'_> {
             DebugAction::ShowChunkBorders if player => {
                 let on = self
                     .debug_entries
+                    .0
                     .toggle_status("chunk_borders", self.client.debug);
                 self.debug_translated(if on {
                     "debug.chunk_boundaries.on"
@@ -844,7 +851,7 @@ impl Game<'_> {
             }
             // Other title submenus still need their own interruption/close policy.
             DebugAction::DebugOptions
-                if self.title.as_ref().is_some_and(|title| {
+                if self.title.0.as_ref().is_some_and(|title| {
                     !matches!(title.mode, sunrise_client::title::Mode::Main)
                 }) =>
             {
@@ -1075,7 +1082,7 @@ impl Game<'_> {
     /// `KeyboardHandler.setClipboard`.
     fn set_clipboard(&mut self, text: &str) {
         use sunrise_client::clipboard::Clipboard;
-        self.clipboard.set(text);
+        self.clipboard.0.set(text);
     }
     /// The debug renderers' gizmos for a frame (`DebugRenderer.emitGizmos`).
     pub(in crate::game) fn debug_gizmos(&self, alpha: f32, camera: [f64; 3]) -> Gizmos {

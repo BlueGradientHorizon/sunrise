@@ -244,37 +244,37 @@ fn a_client_reads_the_entities_and_menu_the_server_shows_it() {
         .unwrap();
     game.handle_packet(add(32, 32, "minecraft:enderman", [4.0, 64.0, 0.0]))
         .unwrap();
-    game.audio.heard.clear();
-    game.audio.capture = Some(Vec::new());
+    game.audio.0.heard.clear();
+    game.audio.0.capture = Some(Vec::new());
     let metadata = |id, values| C::SetEntityData(play::SetEntityData { id, values });
     let creepy = |value| (17, serializer::BOOLEAN, Value::Bool(value));
     let stared = |value| (18, serializer::BOOLEAN, Value::Bool(value));
     game.handle_packet(metadata(31, vec![creepy(true), stared(true)]))
         .unwrap();
     assert_eq!(
-        game.audio.heard.get("minecraft:entity.enderman.stare"),
+        game.audio.0.heard.get("minecraft:entity.enderman.stare"),
         None
     );
     game.handle_packet(metadata(32, vec![stared(true), creepy(true)]))
         .unwrap();
     assert_eq!(
-        game.audio.heard.get("minecraft:entity.enderman.stare"),
+        game.audio.0.heard.get("minecraft:entity.enderman.stare"),
         Some(&1)
     );
     game.handle_packet(metadata(32, vec![creepy(false), stared(false)]))
         .unwrap();
     assert_eq!(
-        game.audio.heard.get("minecraft:entity.enderman.stare"),
+        game.audio.0.heard.get("minecraft:entity.enderman.stare"),
         Some(&1)
     );
     game.mobs.iter_mut().find(|mob| mob.id == 31).unwrap().age = 400;
     game.handle_packet(metadata(31, vec![creepy(false), stared(false)]))
         .unwrap();
     assert_eq!(
-        game.audio.heard.get("minecraft:entity.enderman.stare"),
+        game.audio.0.heard.get("minecraft:entity.enderman.stare"),
         Some(&2)
     );
-    assert!(game.audio.capture.as_ref().unwrap().is_empty());
+    assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
 
     // A new client level: the handles of the old one read as None.
     game.handle_packet(C::Respawn(play::Respawn {
@@ -369,7 +369,7 @@ fn a_villager_raid_sweat_event_draws_particles() {
     .unwrap();
     // `len` counts only particles already ticked in; `made` counts every
     // particle created, which is what the event handler does at once.
-    let made = |g: &Game| g.particles.made().values().sum::<u64>();
+    let made = |g: &Game| g.particles.0.made().values().sum::<u64>();
     let before = made(&game);
     game.handle_packet(C::EntityEvent(play::EntityEvent { id: 21, event: 2 }))
         .unwrap();

@@ -74,7 +74,7 @@ impl Game<'_> {
         let Some(answer) = self.client.pending_retry.take() else {
             return;
         };
-        if retry_slot(&mut self.title).is_none() {
+        if retry_slot(&mut self.title.0).is_none() {
             return;
         }
         let line = match answer {
@@ -90,7 +90,7 @@ impl Game<'_> {
             let address = sunrise_client::net::shown_address(&server.address);
             log::info!("Sunrise: offering to connect to {address} again: {line}");
         }
-        if let Some(slot) = retry_slot(&mut self.title) {
+        if let Some(slot) = retry_slot(&mut self.title.0) {
             *slot = Some(line);
         }
     }
@@ -100,7 +100,7 @@ impl Game<'_> {
     /// gets the signed-in account again: `connect_server` takes it from `auth::current()`, held
     /// in memory for the whole run (the launcher's session file is gone after the first read).
     pub(in crate::game) fn follow_retry(&mut self) -> Result<()> {
-        if retry_slot(&mut self.title).is_none_or(|slot| slot.is_none()) {
+        if retry_slot(&mut self.title.0).is_none_or(|slot| slot.is_none()) {
             self.client.retry_due = None;
             return Ok(());
         }
@@ -108,7 +108,7 @@ impl Game<'_> {
             Some(server) => Some(Retry::Now(server)),
             None => sunrise_hooks::engine::retry(),
         };
-        let Some(slot) = retry_slot(&mut self.title) else {
+        let Some(slot) = retry_slot(&mut self.title.0) else {
             return Ok(());
         };
         let server = match answer {
@@ -175,7 +175,7 @@ impl Game<'_> {
         if let Err(error) = self.join_server(address, name, None, cookies, lan, realm, list_name) {
             log::warn!("Sunrise: could not join server: {error}");
             let skip = self.settings.file.bool("skipMultiplayerWarning");
-            match &mut self.title {
+            match &mut self.title.0 {
                 Some(title) => {
                     title.skip_multiplayer_warning = skip;
                     title.failed(error);
@@ -286,7 +286,7 @@ impl Game<'_> {
             if self.ticks.saturating_sub(since) >= 600
                 && sunrise_client::ui::hovered(self.client.cursor, x, y, 150.0, 20.0)
             {
-                self.audio.play_button_click();
+                self.audio.0.play_button_click();
                 self.leave_server(None)?;
                 return Ok(true);
             }
@@ -296,7 +296,7 @@ impl Game<'_> {
             return Ok(false);
         };
         if sunrise_client::ui::hovered(self.client.cursor, x, y, 200.0, 20.0) {
-            self.audio.play_button_click();
+            self.audio.0.play_button_click();
             self.leave_server(None)?;
             return Ok(true);
         }

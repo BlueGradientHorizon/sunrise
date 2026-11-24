@@ -90,7 +90,7 @@ fn a_beam_draws_inside_the_render_distance_only_and_leaves_with_its_column() {
     game.settings.render_distance = 4;
     game.streaming.radius = 5;
     game.settings.sunrise.lod_distance = 256;
-    game.lod = Some(sunrise_client::lod::Lod::new(
+    game.lod.0 = Some(sunrise_client::lod::Lod::new(
         game.streaming.lod_source(),
         game.worker_context(),
     ));

@@ -185,7 +185,7 @@ impl Game<'_> {
         self.trigger_item_entity("minecraft:player_sheared_equipment", &saddle, &target);
         // attemptToShearEquipment: playSound(equippable.shearingSound()).
         if !silent {
-            self.audio.play(
+            self.audio.0.play(
                 "minecraft:item.saddle.unequip",
                 Some([at.x, at.y, at.z]),
                 1.0,
@@ -210,7 +210,7 @@ impl Game<'_> {
                 "minecraft:entity.pig.saddle"
             };
             self.mobs[index].set_saddle(held.map(|s| ItemStack { count: 1, ..s }));
-            self.audio.play(sound, Some(at), 1.0, 1.0);
+            self.audio.0.play(sound, Some(at), 1.0, 1.0);
             self.consume_held();
             let id = self.mobs[index].id;
             let pos = self.mobs[index].position;
@@ -409,8 +409,11 @@ impl Game<'_> {
             let feet = [m.position.x, m.position.y, m.position.z];
             if !silent {
                 match seed {
-                    Some(seed) => self.audio.play_seeded(sound, Some(feet), 1.0, pitch, seed),
-                    None => self.audio.play(sound, Some(feet), 1.0, pitch),
+                    Some(seed) => self
+                        .audio
+                        .0
+                        .play_seeded(sound, Some(feet), 1.0, pitch, seed),
+                    None => self.audio.0.play(sound, Some(feet), 1.0, pitch),
                 }
             }
             self.consume_held();
@@ -504,7 +507,7 @@ impl Game<'_> {
                 _ => "minecraft:entity.horse.eat",
             };
             let pitch = (m.random.next_float() - m.random.next_float()) * 0.2 + 1.0;
-            self.audio.play(sound, Some(at), 1.0, pitch);
+            self.audio.0.play(sound, Some(at), 1.0, pitch);
         }
         // gameEvent(GameEvent.EAT): at the mount, from the mount.
         let ctx = self.who_context(Some(Who::Mob(id)), None);
@@ -609,7 +612,7 @@ impl Game<'_> {
                 // playJumpSound, which the server broadcasts for a guest.
                 let sound = format!("minecraft:{}", equine::jump_sound(m));
                 let at = m.center();
-                self.audio.play(&sound, Some(at), 0.4, 1.0);
+                self.audio.0.play(&sound, Some(at), 0.4, 1.0);
             }
         }
         let sprint = keys.sprint || self.held_mapping(Action::Sprint);
@@ -1801,12 +1804,13 @@ mod tests {
     /// game events it made.
     fn feed(game: &mut Game<'_>, item: &str) -> (bool, Shown) {
         game.inventory[game.selected] = Some(ItemStack::new(item, 2));
-        game.audio.capture = Some(Vec::new());
+        game.audio.0.capture = Some(Vec::new());
         crate::game::sculk::TEST_POSTED_EVENTS
             .with(|events| *events.borrow_mut() = Some(Vec::new()));
         let used = game.interact_mount(0, item);
         let sounds = game
             .audio
+            .0
             .capture
             .take()
             .unwrap()
@@ -1942,12 +1946,13 @@ mod tests {
     /// game events it made.
     fn equip(game: &mut Game<'_>, item: &str) -> (bool, Shown) {
         game.inventory[game.selected] = Some(ItemStack::new(item, 2));
-        game.audio.capture = Some(Vec::new());
+        game.audio.0.capture = Some(Vec::new());
         crate::game::sculk::TEST_POSTED_EVENTS
             .with(|events| *events.borrow_mut() = Some(Vec::new()));
         let used = game.interact_mount(0, item);
         let sounds = game
             .audio
+            .0
             .capture
             .take()
             .unwrap()
@@ -2085,12 +2090,13 @@ mod tests {
         ] {
             mount(&mut game, kind, 5, [2.5, 64.0, 2.5], 7);
             game.inventory[game.selected] = Some(ItemStack::new("minecraft:chest", 1));
-            game.audio.capture = Some(Vec::new());
+            game.audio.0.capture = Some(Vec::new());
             crate::game::sculk::TEST_POSTED_EVENTS
                 .with(|events| *events.borrow_mut() = Some(Vec::new()));
             assert!(game.interact_mount(0, "minecraft:chest"), "{kind}");
             let sounds: Vec<_> = game
                 .audio
+                .0
                 .capture
                 .take()
                 .unwrap()

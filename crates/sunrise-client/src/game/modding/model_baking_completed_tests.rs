@@ -97,7 +97,7 @@ fn keeper() -> (Arc<Mutex<Kept>>, mod_api::Mods) {
 pub(in crate::game) fn reload(game: &mut super::Game<'_>) {
     game.spawn_pack_reload(ReloadKind::Selection).unwrap();
     let started = std::time::Instant::now();
-    while game.pack_reload.is_some() {
+    while game.pack_reload.0.is_some() {
         assert!(
             started.elapsed().as_secs() < 300,
             "the reload never finished"

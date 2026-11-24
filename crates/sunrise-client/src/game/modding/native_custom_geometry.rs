@@ -55,17 +55,17 @@ impl Game<'_> {
             }
         }
         let states = EntryStates {
-            selection: &self.debug_entries,
-            entries: &self.registered_debug_entries,
+            selection: &self.debug_entries.0,
+            entries: &self.registered_debug_entries.0,
             overlay: self.client.debug,
             reduced: self.reduced_debug_info(),
         };
         let renderers = mods::debug_renderers(self.options.execution_role, &states);
-        self.debug_renderers = self.debug_entries.active_renderers(renderers);
+        self.debug_renderers.0 = self.debug_entries.0.active_renderers(renderers);
     }
     /// `DebugRenderer.emitGizmos`'s first half: a selection the list has not seen refreshes it.
     fn follow_debug_selection(&mut self) {
-        let version = self.debug_entries.enabled_version();
+        let version = self.debug_entries.0.enabled_version();
         if self.client.debug_renderers_version != Some(version) {
             self.client.debug_renderers_version = Some(version);
             self.refresh_debug_renderers();
@@ -105,7 +105,7 @@ impl Game<'_> {
         draw.begin_stage(*last);
         self.native_submit_custom_geometry(&view, draw);
         self.follow_debug_selection();
-        for renderer in &self.debug_renderers {
+        for renderer in &self.debug_renderers.0 {
             renderer.draw(self, &view, &mut GameWorldDrawContext::new(self, draw));
         }
         self.native_render_level_stage(*last, &view, draw);
@@ -264,6 +264,7 @@ impl Game<'_> {
             .ok_or(InstanceError::Model(mod_api::ModelError::UnknownModel))?;
         let uploaded = self
             .renderer
+            .0
             .as_ref()
             .and_then(|renderer| renderer.prepared_generation());
         #[cfg(test)]
@@ -920,7 +921,7 @@ mod tests {
             game.spawn_pack_reload(super::super::packs::ReloadKind::Selection)
                 .unwrap();
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
-            while game.pack_reload.is_some() && std::time::Instant::now() < deadline {
+            while game.pack_reload.0.is_some() && std::time::Instant::now() < deadline {
                 game.drive_pack_reload();
                 std::thread::sleep(std::time::Duration::from_millis(1));
             }

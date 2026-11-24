@@ -395,7 +395,7 @@ impl Game<'_> {
     /// the bottom of the source block, as high as the water column is deep.
     fn spawn_geyser_particle(&mut self, sulfur: Pos, source: [i32; 3]) {
         let water_blocks = source[1] - sulfur.1 - 1;
-        self.particles.add(
+        self.particles.0.add(
             &ParticleOptions::geyser(T::Geyser, water_blocks),
             [
                 f64::from(source[0]) + 0.5,
@@ -409,7 +409,7 @@ impl Game<'_> {
     /// `PotentSulfurBlockEntity.spawnNoxiousGasCloudParticle` at the centre of
     /// the source block.
     fn spawn_noxious_gas_cloud_particle(&mut self, source: [i32; 3]) {
-        self.particles.add(
+        self.particles.0.add(
             &ParticleOptions::simple(T::NoxiousGasCloud),
             source.map(|c| f64::from(c) + 0.5),
             [0.0; 3],
@@ -462,11 +462,11 @@ impl Game<'_> {
                         let at = source.map(|c| f64::from(c) + 0.5);
                         // playLocalSound: the seed is the level random's next long; a host's
                         // guests play their own.
-                        let seed = self.particles.level_random().next_long();
+                        let seed = self.particles.0.level_random().next_long();
                         if self.remote.is_some() {
-                            self.audio.play_seeded(sound, Some(at), 1.0, 1.0, seed);
+                            self.audio.0.play_seeded(sound, Some(at), 1.0, 1.0, seed);
                         } else {
-                            self.audio.play_unshared(sound, Some(at), 1.0, 1.0);
+                            self.audio.0.play_unshared(sound, Some(at), 1.0, 1.0);
                         }
                     }
                 }

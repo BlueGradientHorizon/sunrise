@@ -360,6 +360,7 @@ fn part_state_saves_with_its_chunk_and_reloads_under_a_fresh_handle() {
         game.save_level(true).unwrap();
         let mut chunk = game
             .save
+            .0
             .load(key.0, key.1, game.pack.assets.registry, world_biomes!(game))
             .unwrap();
         game.world.install_chunk_block_entities(&mut chunk);
@@ -417,6 +418,7 @@ fn item_slot_writes_save_but_menu_data_is_transient() {
             game.save_level(true).unwrap();
             let chunk = game
                 .save
+                .0
                 .load(0, 0, game.pack.assets.registry, world_biomes!(game))
                 .unwrap();
             let [((1, 64, 1), BlockEntity::Mod(reloaded))] = chunk.block_entities.as_slice() else {
@@ -476,6 +478,7 @@ fn an_item_write_commits_in_its_own_level_despite_an_unrelated_transaction() {
         assert!(!game.world.modified.contains(&chunk));
         assert!(
             game.levels
+                .0
                 .parked_world(Dim::Nether)
                 .unwrap()
                 .modified
@@ -486,6 +489,7 @@ fn an_item_write_commits_in_its_own_level_despite_an_unrelated_transaction() {
         game.enter_level(Dim::Nether).unwrap();
         let reloaded = game
             .save
+            .0
             .load(
                 chunk.0,
                 chunk.1,
@@ -583,6 +587,7 @@ fn a_save_or_unload_during_a_transaction_writes_only_committed_state() {
         let reload = |game: &mut Game<'_>| {
             let chunk = game
                 .save
+                .0
                 .load(key.0, key.1, game.pack.assets.registry, world_biomes!(game))
                 .unwrap();
             let saved = chunk.saved.as_ref().unwrap();
@@ -768,6 +773,7 @@ fn part_state_counts_ticks_across_chunk_reload() {
                 game.save_level(true).unwrap();
                 let mut chunk = game
                     .save
+                    .0
                     .load(key.0, key.1, game.pack.assets.registry, world_biomes!(game))
                     .unwrap();
                 game.world.install_chunk_block_entities(&mut chunk);

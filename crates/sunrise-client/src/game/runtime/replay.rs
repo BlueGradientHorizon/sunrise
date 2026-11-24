@@ -694,7 +694,7 @@ impl Game<'_> {
         }
         self.replay.driver = Some(Box::new(driver));
         self.client.camera_type = sunrise_client::camera::CameraType::FirstPerson;
-        self.title = None;
+        self.title.0 = None;
         self.client.screen = Screen::Playing;
         self.commit_screen_transition();
         self.capture(false);
@@ -745,12 +745,12 @@ impl Game<'_> {
             // A title-screen replay has no previous world perspective to
             // restore. Start the next world in first person with visible hands.
             self.client.camera_type = sunrise_client::camera::CameraType::FirstPerson;
-            if let Some(title) = self.title.as_mut() {
+            if let Some(title) = self.title.0.as_mut() {
                 title.activate_mode(sunrise_client::title::Mode::Main);
             }
         } else if self.integrated.is_none() && self.lan.is_none() {
             let _ = self.close_world();
-            if let Some(title) = self.title.as_mut() {
+            if let Some(title) = self.title.0.as_mut() {
                 title.activate_mode(sunrise_client::title::Mode::Main);
             }
         }

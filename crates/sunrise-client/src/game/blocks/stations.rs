@@ -1087,7 +1087,7 @@ impl Game<'_> {
             f64::from(pos[1]) + 0.5,
             f64::from(pos[2]) + 0.5,
         ];
-        self.audio.play(sound, Some(at), volume, pitch);
+        self.audio.0.play(sound, Some(at), volume, pitch);
     }
     pub(super) fn give_or_drop(&mut self, stack: ItemStack) {
         if let Some(rest) = self.add_stack_to_inventory(stack)
@@ -1142,6 +1142,7 @@ impl Game<'_> {
                 .as_ref()
                 .map(|p| [p.position.x, p.position.y, p.position.z]);
             self.audio
+                .0
                 .play("minecraft:entity.player.levelup", at, volume, 1.0);
         }
     }
@@ -1246,6 +1247,7 @@ impl Game<'_> {
         }
         let Some(size) = self
             .renderer
+            .0
             .as_ref()
             .map(|r| [r.config.width, r.config.height])
         else {
@@ -1360,6 +1362,7 @@ impl Game<'_> {
             });
             if taken {
                 self.audio
+                    .0
                     .play("minecraft:ui.stonecutter.select_recipe", None, 1.0, 1.0);
                 self.remote_station_button(index as i32);
                 return true;
@@ -1410,6 +1413,7 @@ impl Game<'_> {
         handled |= self.merchant_drag();
         let Some(size) = self
             .renderer
+            .0
             .as_ref()
             .map(|r| [r.config.width, r.config.height])
         else {
@@ -1518,7 +1522,7 @@ impl Game<'_> {
         let Some(s) = self.station.as_mut() else {
             return;
         };
-        if s.rename.shortcut(shortcut, &mut self.clipboard) {
+        if s.rename.shortcut(shortcut, &mut self.clipboard.0) {
             s.name.clone_from(&s.rename.value);
             let after = self
                 .station

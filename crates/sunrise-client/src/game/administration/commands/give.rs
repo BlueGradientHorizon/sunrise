@@ -27,7 +27,7 @@ impl Game<'_> {
         // A borrowed player's body is in place but their world may be parked. The shared
         // give effects put that world in place only while replaying the sound or drop.
         let dim = self.target_level(Target::Player);
-        if dim != self.dim && self.levels.parked_world(dim).is_none() {
+        if dim != self.dim && self.levels.0.parked_world(dim).is_none() {
             return left.then_some(stack);
         }
         if left {

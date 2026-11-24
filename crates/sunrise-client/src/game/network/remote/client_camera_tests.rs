@@ -107,12 +107,12 @@ fn client_camera_entity_returns_to_player_after_removal() {
         );
         assert!(game.client.spectated_post_effect.is_none());
 
-        game.title = Some(game.new_title(game.save.root.clone()));
+        game.title.0 = Some(game.new_title(game.save.0.root.clone()));
         assert!(
             camera(game).is_none(),
             "the title screen has no camera entity"
         );
-        game.title = None;
+        game.title.0 = None;
         assert_eq!(camera(game), Some(local));
 
         spawn.dimension = "test:other_overworld".into();

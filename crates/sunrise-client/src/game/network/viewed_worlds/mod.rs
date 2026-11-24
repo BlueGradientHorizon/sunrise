@@ -598,11 +598,11 @@ pub(in crate::game) mod tests {
             let mut resources = None;
             let mut game = client(&mut resources);
             game.handle_packet(open(1, "minecraft:the_nether")).unwrap();
-            game.audio.capture = Some(Vec::new());
+            game.audio.0.capture = Some(Vec::new());
             let anvil = sound("minecraft:block.anvil.land", [452, 512, 66], 2.0, 0.5, 42);
             game.handle_packet(run(1, std::slice::from_ref(&anvil)))
                 .unwrap();
-            let played = game.audio.capture.replace(Vec::new()).unwrap();
+            let played = game.audio.0.capture.replace(Vec::new()).unwrap();
             assert_eq!(played.len(), 1);
             assert_eq!(played[0].event, "minecraft:block.anvil.land");
             assert_eq!(played[0].position, [1.5, 70.0, -2.5]);
@@ -624,7 +624,7 @@ pub(in crate::game) mod tests {
             let bell = sound("minecraft:block.bell.use", [0, 512, 0], 1.0, 1.0, 5);
             let harp = sound("minecraft:block.note_block.harp", [8, 512, 8], 1.0, 1.0, 6);
             game.handle_packet(run(1, &[bell, harp])).unwrap();
-            let played = game.audio.capture.replace(Vec::new()).unwrap();
+            let played = game.audio.0.capture.replace(Vec::new()).unwrap();
             assert_eq!(played.len(), 0, "the bell left None, the harp not finite");
             // Bound to entity 40 of the viewed level: asked at the entity there, played where
             // the listener put it; bound to an entity the world does not hold, not asked.
@@ -651,7 +651,7 @@ pub(in crate::game) mod tests {
             };
             game.handle_packet(run(1, &[pig, bound(40), bound(41)]))
                 .unwrap();
-            let played = game.audio.capture.replace(Vec::new()).unwrap();
+            let played = game.audio.0.capture.replace(Vec::new()).unwrap();
             assert_eq!(played.len(), 1);
             assert_eq!(played[0].position, [1.5, 70.0, -2.5]);
             // The player's own level: played where it is, without asking.
@@ -663,7 +663,7 @@ pub(in crate::game) mod tests {
                 7,
             ))
             .unwrap();
-            let played = game.audio.capture.take().unwrap();
+            let played = game.audio.0.capture.take().unwrap();
             assert_eq!(played.len(), 1);
             assert_eq!(played[0].position, [1.0, 64.0, 1.0]);
             let nether = Some("minecraft:the_nether");
@@ -725,7 +725,7 @@ pub(in crate::game) mod tests {
         let mut resources = None;
         let mut game = client(&mut resources);
         game.handle_packet(open(1, "minecraft:the_nether")).unwrap();
-        game.audio.capture = Some(Vec::new());
+        game.audio.0.capture = Some(Vec::new());
         let anvil = sound("minecraft:block.anvil.land", [452, 512, 66], 2.0, 0.5, 42);
         let bound = C::SoundEntity(play::SoundEntity {
             sound: (-1, Some(("minecraft:block.bell.use".into(), None))),
@@ -744,7 +744,7 @@ pub(in crate::game) mod tests {
         assert_eq!(allocations, 0);
         assert_eq!(checks() - before, 1);
         assert_eq!(
-            game.audio.capture.take().map(|played| played.len()),
+            game.audio.0.capture.take().map(|played| played.len()),
             Some(0)
         );
     }

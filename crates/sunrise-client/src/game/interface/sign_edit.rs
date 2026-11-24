@@ -188,7 +188,7 @@ impl Game<'_> {
     fn run_sign_command(&mut self, pos: [i32; 3], command: &str) {
         let source = self.sign_command_source(pos);
         let line = command.strip_prefix('/').unwrap_or(command);
-        self.exec = Default::default();
+        self.exec.0 = Default::default();
         let permission = std::mem::replace(&mut self.ui.registries.permission, 2);
         let _ = self.execute_line(line, source);
         self.ui.registries.permission = permission;
@@ -287,6 +287,7 @@ impl Game<'_> {
                 "minecraft:block.sign.waxed_interact_fail"
             };
             self.audio
+                .0
                 .play(sound, Some(pos.map(|v| f64::from(v) + 0.5)), 1.0, 1.0);
         } else if !executed
             && !self.other_player_is_editing_sign(key)
@@ -397,7 +398,7 @@ impl Game<'_> {
         if item == "minecraft:honeycomb" {
             self.level_event_at(3003, pos, 0);
         }
-        self.audio.play(sound, Some(centre), 1.0, 1.0);
+        self.audio.0.play(sound, Some(centre), 1.0, 1.0);
         self.mark_block_entity_updated(key);
         self.execute_sign_click_commands(pos, front);
         let state = self.world.block(pos[0], pos[1], pos[2]);
@@ -835,7 +836,7 @@ impl Game<'_> {
     /// pass the sign's width is refused whole.
     fn sign_shortcut(&mut self, shortcut: sunrise_client::clipboard::EditShortcut) {
         if shortcut == sunrise_client::clipboard::EditShortcut::Paste {
-            let raw = sunrise_client::clipboard::Clipboard::get(&mut self.clipboard);
+            let raw = sunrise_client::clipboard::Clipboard::get(&mut self.clipboard.0);
             let text = sunrise_client::clipboard::helper_clipboard_contents(&raw);
             self.sign_change(|edit| edit.insert_text(&text));
             return;
@@ -846,7 +847,7 @@ impl Game<'_> {
             .as_ref()
             .map(|e| (e.edit.value.clone(), e.edit.cursor, e.edit.highlight));
         if let Some(edit) = self.client.sign_edit.as_mut() {
-            edit.edit.shortcut(shortcut, &mut self.clipboard);
+            edit.edit.shortcut(shortcut, &mut self.clipboard.0);
             let clean = sunrise_client::clipboard::strip_formatting(&edit.edit.value);
             if clean != edit.edit.value {
                 let n = sunrise_client::ui::char_len(&clean);
@@ -864,7 +865,7 @@ impl Game<'_> {
         let (x, y) = done_button(b.width, b.height);
         let (mx, my) = self.client.cursor;
         if mx >= x && mx < x + 200.0 && my >= y && my < y + 20.0 {
-            self.audio.play_button_click();
+            self.audio.0.play_button_click();
             self.close_sign_editor();
             return true;
         }

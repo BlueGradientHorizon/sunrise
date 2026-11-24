@@ -297,9 +297,9 @@ impl Game<'_> {
         conn: u32,
     ) -> Option<&crate::game::combat::CombatTracker> {
         if self.server.lan_acting == Some(conn) {
-            Some(&self.combat)
+            Some(&self.combat.0)
         } else {
-            self.guest_combat.get(&conn)
+            self.guest_combat.0.get(&conn)
         }
     }
 
@@ -520,9 +520,10 @@ impl Game<'_> {
                     None
                 } else {
                     let credit = if acting {
-                        self.combat.take_hurt_by_player(now)
+                        self.combat.0.take_hurt_by_player(now)
                     } else {
                         self.guest_combat
+                            .0
                             .get_mut(&conn)
                             .and_then(|c| c.take_hurt_by_player(now))
                     };
@@ -732,7 +733,7 @@ impl Game<'_> {
         }
         // A mob that blew up this tick has left the list, but vanilla's player
         // dies inside that blast, before the source is discarded.
-        if let Some((_, kind)) = self.combat.exploded_kinds.iter().rfind(|(m, _)| *m == id) {
+        if let Some((_, kind)) = self.combat.0.exploded_kinds.iter().rfind(|(m, _)| *m == id) {
             return Some(kind.clone());
         }
         self.dragon
@@ -771,9 +772,11 @@ impl Game<'_> {
             // `player_entity_for` takes `&mut self` (the compound for `nbt`);
             // this view of the killer has the player's records without it.
             Some(CombatPlayer::InPlace) => Some(self.player_entity_for_any(&[trigger])),
-            Some(CombatPlayer::Displaced(depth, body)) => {
-                self.displaced_player_entity_for(&self.lan_displaced_players[depth], body, trigger)
-            }
+            Some(CombatPlayer::Displaced(depth, body)) => self.displaced_player_entity_for(
+                &self.lan_displaced_players.0[depth],
+                body,
+                trigger,
+            ),
             Some(CombatPlayer::Parked(g)) => Some(EntityView {
                 kind: "minecraft:player".into(),
                 position: g.position,
@@ -820,11 +823,11 @@ impl Game<'_> {
         if self.server.lan_acting == Some(conn) {
             return self.combat_death_message_for(me);
         }
-        let mut tracker = self.guest_combat.remove(&conn).unwrap_or_default();
-        std::mem::swap(&mut self.combat, &mut tracker);
+        let mut tracker = self.guest_combat.0.remove(&conn).unwrap_or_default();
+        std::mem::swap(&mut self.combat.0, &mut tracker);
         let text = self.combat_death_message_for(me);
-        std::mem::swap(&mut self.combat, &mut tracker);
-        self.guest_combat.insert(conn, tracker);
+        std::mem::swap(&mut self.combat.0, &mut tracker);
+        self.guest_combat.0.insert(conn, tracker);
         text
     }
 }

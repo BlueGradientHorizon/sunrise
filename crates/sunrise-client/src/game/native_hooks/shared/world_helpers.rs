@@ -88,15 +88,15 @@ impl Game<'_> {
     /// apart: ordinary particles, firework starters and elder guardians in the engine,
     /// and ITEM_PICKUP in `pickups`.
     pub(in crate::game) fn client_particle_count(&self) -> usize {
-        self.particles.group_count() + self.pickups.live.len()
+        self.particles.0.group_count() + self.pickups.0.live.len()
     }
     /// `ParticleEngine.clearParticles` over every group Sunrise keeps apart: the engine's
     /// particles, starters, queue and emitters, the item pickups and the elder guardian
     /// apparition. Leaving a level and switching levels clear through it too.
     pub(in crate::game) fn clear_client_particles(&mut self) {
         self.client.mod_clear_particles.set(false);
-        self.particles.clear();
-        self.pickups.clear();
+        self.particles.0.clear();
+        self.pickups.0.clear();
     }
     /// Applies a client mod's `clear_particles` if one is waiting. Called at the start of
     /// each particle tick, after `RenderFrameEvent.Pre`, and at particle extraction, after
@@ -120,7 +120,7 @@ impl Game<'_> {
     /// A mod's own screen closes (Escape, or `mod_screen_close`).
     pub(in crate::game) fn close_mod_screen(&mut self) {
         if self.client.screen == Screen::Mod {
-            if self.title.is_some() {
+            if self.title.0.is_some() {
                 self.close_mod_screen_to_title();
             } else {
                 self.set_screen(Screen::Playing);
@@ -150,7 +150,7 @@ impl Game<'_> {
             ScreenDecision::ModScreen(mod_id) => self.apply_screen(Screen::Mod, Some(mod_id)),
             ScreenDecision::Vanilla(target) => self.open_screen_target(target),
             ScreenDecision::Open => {
-                if let Some(title) = self.title.as_mut() {
+                if let Some(title) = self.title.0.as_mut() {
                     title.open_by_id("title");
                 }
                 self.apply_screen(Screen::Playing, None);

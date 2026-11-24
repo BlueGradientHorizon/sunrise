@@ -159,7 +159,7 @@ fn game_gateway_phases() -> [[i32; 2]; 4] {
         game.creatures.projectiles[0].kind,
         ProjectileKind::EnderPearl
     ));
-    game.tickets.update(Some(crate::ticket_levels::Sources {
+    game.tickets.0.update(Some(crate::ticket_levels::Sources {
         forced: vec![(0, 0)],
         ..Default::default()
     }));

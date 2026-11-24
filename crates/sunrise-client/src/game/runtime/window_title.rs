@@ -42,7 +42,7 @@ impl Game<'_> {
         if self.client.window_title == Some(shown) {
             return;
         }
-        if let Some(window) = &self.window {
+        if let Some(window) = &self.window.0 {
             window.set_title(&title(shown.0));
             self.client.window_title = Some(shown);
         }

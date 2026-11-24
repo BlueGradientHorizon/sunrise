@@ -554,7 +554,7 @@ impl Game<'_> {
         let (res, pack, settings) = (self.res.clone(), self.pack.clone(), self.settings.clone());
         sunrise_client::parallel::set_setting(settings.sunrise.parallel_tick);
         let flags = Arc::new(Flags {
-            reports: self.client_reports.clone(),
+            reports: self.client_reports.0.clone(),
             ..Flags::default()
         });
         flags
@@ -619,7 +619,7 @@ impl Game<'_> {
             new_world,
         });
         // Harnesses, control scripts and runs without a window go on with the world open.
-        if self.window.is_none() || super::synchronous_startup(&self.options) {
+        if self.window.0.is_none() || super::synchronous_startup(&self.options) {
             while self.integrated_starting.is_some() {
                 self.poll_integrated_start()?;
                 if self.integrated_starting.is_some() {
@@ -987,7 +987,7 @@ impl Game<'_> {
             simulation_distance: self.settings.simulation_distance.max(2),
             dimension: self.dim.id().to_owned(),
             levels: self.server.level_shapes,
-            level_seeds: self.levels.runtime.seeds(),
+            level_seeds: self.levels.0.runtime.seeds(),
             seed: self.level.seed,
             max_players: MAX_PLAYERS,
             // No player of its own: the hub runs without a host.
@@ -1068,7 +1068,7 @@ impl Game<'_> {
     pub(super) fn stop_integrated(&mut self, crashed: bool, run_error: Option<&str>) -> Result<()> {
         // Abort background terrain generation/decoration on shutdown, matching vanilla behavior.
         self.streaming.abort_generation();
-        self.levels.abort_parked_generation();
+        self.levels.0.abort_parked_generation();
         // A failed open keeps its opening phase until the final save attempts finish.
         if run_error.is_none() || !self.native_lifecycle.is_opening() {
             self.native_lifecycle.begin_close();
@@ -1783,7 +1783,7 @@ pub(super) mod tests {
                     window.settings.clone(),
                 )
                 .unwrap();
-                server.save = window.save.clone();
+                server.save.0 = window.save.0.clone();
                 let result = server.run_server_lifecycle(false, |server, began| {
                     *began = true;
                     // Model publication at open_world_tables, before later steps can fail.
@@ -2059,9 +2059,9 @@ pub(super) mod tests {
                 )
             };
             game.server.world_root = root.to_path_buf();
-            game.save = Arc::new(open());
+            game.save.0 = Arc::new(open());
             // Crash shutdown only saves an adopted world whose storage is owned.
-            game.session_lock = Some(SessionLock::acquire(root).unwrap());
+            game.session_lock.0 = Some(SessionLock::acquire(root).unwrap());
             game.server.world_adopted = true;
             game.native_level_opened(Dim::Overworld);
             game.native_lifecycle_world_ready();
@@ -2190,7 +2190,7 @@ pub(super) mod tests {
             // No hub: players are not saved, so the owner's file keeps what it had.
             assert_eq!(owner_xp(), Some(11));
             assert_eq!(flags.published.load(Ordering::Relaxed), 0);
-            assert!(game.session_lock.is_none());
+            assert!(game.session_lock.0.is_none());
         });
     }
 

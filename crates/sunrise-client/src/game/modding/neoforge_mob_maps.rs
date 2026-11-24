@@ -175,7 +175,7 @@ impl Game<'_> {
         self.mob_map_snapshot().as_ref()
     }
     pub(in crate::game) fn mob_map_snapshot(&self) -> &Arc<NeoForgeMobMaps> {
-        if let Some(tables) = &self.world_tables {
+        if let Some(tables) = &self.world_tables.0 {
             &tables.data_maps.mob_maps
         } else {
             NeoForgeMobMaps::vanilla()
@@ -192,7 +192,7 @@ impl Game<'_> {
             .end
             .locator()
             .iter()
-            .chain(self.levels.parked_terrains())
+            .chain(self.levels.0.parked_terrains())
         {
             terrain.set_mob_maps(snapshot);
         }

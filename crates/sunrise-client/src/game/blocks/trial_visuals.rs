@@ -42,13 +42,13 @@ fn flame(ominous: bool) -> T {
 
 impl Game<'_> {
     fn particle(&mut self, ty: T, p: [f64; 3], v: [f64; 3]) {
-        self.particles.add(&ParticleOptions::simple(ty), p, v);
+        self.particles.0.add(&ParticleOptions::simple(ty), p, v);
     }
     /// `ClientLevel.playLocalSound`: the sound's seed is the level random's next long, drawn
     /// in turn with the particles' (`Particles::level_random`).
     fn local_sound(&mut self, name: &str, pos: [i32; 3], volume: f32, pitch: f32) {
-        let seed = self.particles.level_random().next_long();
-        self.audio.play_seeded(
+        let seed = self.particles.0.level_random().next_long();
+        self.audio.0.play_seeded(
             &format!("minecraft:{name}"),
             Some(center(pos)),
             volume,
@@ -65,7 +65,7 @@ impl Game<'_> {
             T::Flame
         };
         let sound = |s: &mut Self, name: &str, volume: f32| {
-            let pitch = event_pitch(s.particles.level_random());
+            let pitch = event_pitch(s.particles.0.level_random());
             s.local_sound(name, pos, volume, pitch);
         };
         match id {
@@ -100,7 +100,7 @@ impl Game<'_> {
                 // emitDeactivationParticles.
                 let ty = flame(data != 0);
                 for _ in 0..20 {
-                    let random = self.particles.level_random();
+                    let random = self.particles.0.level_random();
                     let p = [0.4, 0.4, 0.4].map(|lo| next_double(random, lo, 0.6));
                     let v = [0; 3].map(|_| random.next_gaussian() * 0.02);
                     let at = std::array::from_fn(|i| f64::from(pos[i]) + p[i]);
@@ -111,7 +111,7 @@ impl Game<'_> {
             3017 => self.eject_item_particles(pos),
             3018 => {
                 for _ in 0..10 {
-                    let random = self.particles.level_random();
+                    let random = self.particles.0.level_random();
                     let v = [0; 3].map(|_| random.next_gaussian() * 0.02);
                     let at = pos.map(|c| f64::from(c) + random.next_double());
                     self.particle(T::Poof, at, v);
@@ -127,7 +127,7 @@ impl Game<'_> {
                 self.detect_player_particles(pos, 0, T::TrialSpawnerDetectionOminous);
                 // addBecomeOminousParticles.
                 for _ in 0..20 {
-                    let random = self.particles.level_random();
+                    let random = self.particles.0.level_random();
                     let at = pos.map(|c| f64::from(c) + 0.5 + (random.next_double() - 0.5) * 2.0);
                     let v = [0; 3].map(|_| random.next_gaussian() * 0.02);
                     self.particle(T::TrialOmen, at, v);
@@ -144,7 +144,7 @@ impl Game<'_> {
     /// `TrialSpawner.addSpawnParticles`.
     fn trial_spawn_particles(&mut self, pos: [i32; 3], ty: T) {
         for _ in 0..20 {
-            let random = self.particles.level_random();
+            let random = self.particles.0.level_random();
             let at = pos.map(|c| f64::from(c) + 0.5 + (random.next_double() - 0.5) * 2.0);
             self.particle(T::Smoke, at, [0.0; 3]);
             self.particle(ty, at, [0.0; 3]);
@@ -153,7 +153,7 @@ impl Game<'_> {
     /// `TrialSpawner.addDetectPlayerParticles`.
     fn detect_player_particles(&mut self, pos: [i32; 3], data: i32, ty: T) {
         for _ in 0..30 + data.min(10) * 5 {
-            let random = self.particles.level_random();
+            let random = self.particles.0.level_random();
             let x = f64::from(2.0 * random.next_float() - 1.0) * 0.65;
             let z = f64::from(2.0 * random.next_float() - 1.0) * 0.65;
             let y = f64::from(pos[1]) + 0.1 + f64::from(random.next_float()) * 0.8;
@@ -164,7 +164,7 @@ impl Game<'_> {
     /// `TrialSpawner.addEjectItemParticles`.
     fn eject_item_particles(&mut self, pos: [i32; 3]) {
         for _ in 0..20 {
-            let random = self.particles.level_random();
+            let random = self.particles.0.level_random();
             let at = pos.map(|c| f64::from(c) + 0.4 + random.next_double() * 0.2);
             let v = [0; 3].map(|_| random.next_gaussian() * 0.02);
             self.particle(T::SmallFlame, at, [v[0], v[1], v[2] * 0.25]);
@@ -180,7 +180,7 @@ impl Game<'_> {
         let pos = [key.0, key.1, key.2];
         let time = self.world.game_time;
         let c = center(pos);
-        let random = self.particles.level_random();
+        let random = self.particles.0.level_random();
         // TrialSpawnerState.ParticleEmission.
         let mut emitted: Vec<(T, [f64; 3])> = Vec::new();
         match state {
@@ -253,7 +253,7 @@ impl Game<'_> {
             self.vault_connection_particles(pos);
         }
         // emitIdleParticles.
-        let random = self.particles.level_random();
+        let random = self.particles.0.level_random();
         if random.next_float() <= 0.5 {
             let at = cage_point(pos, random);
             self.particle(T::Smoke, at, [0.0; 3]);
@@ -263,7 +263,7 @@ impl Game<'_> {
         }
         // playIdleSounds.
         if shows {
-            let random = self.particles.level_random();
+            let random = self.particles.0.level_random();
             if random.next_float() <= 0.02 {
                 let volume = random.next_float() * 0.25 + 0.75;
                 let pitch = random.next_float() + 0.5;
@@ -275,7 +275,7 @@ impl Game<'_> {
     fn vault_activation_particles(&mut self, pos: [i32; 3], ominous: bool) {
         self.vault_connection_particles(pos);
         for _ in 0..20 {
-            let at = cage_point(pos, self.particles.level_random());
+            let at = cage_point(pos, self.particles.0.level_random());
             self.particle(T::Smoke, at, [0.0; 3]);
             self.particle(flame(ominous), at, [0.0; 3]);
         }
@@ -332,10 +332,10 @@ impl Game<'_> {
             }
             let target = [at[0], at[1] + f64::from(height / 2.0), at[2]];
             let direction: [f64; 3] = std::array::from_fn(|i| target[i] - keyhole[i]);
-            let random = self.particles.level_random();
+            let random = self.particles.0.level_random();
             let count = random.next_int_bound(4).unwrap_or(0) + 2;
             for _ in 0..count {
-                let v = offset_random(direction, self.particles.level_random(), 1.0);
+                let v = offset_random(direction, self.particles.0.level_random(), 1.0);
                 self.particle(T::VaultConnection, keyhole, v);
             }
         }

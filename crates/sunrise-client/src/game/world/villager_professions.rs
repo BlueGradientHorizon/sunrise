@@ -129,8 +129,8 @@ impl Game<'_> {
 impl Game<'_> {
     pub(in crate::game) fn install_profession_save_snapshots(&self) {
         let table = self.stations().professions.clone();
-        self.save.install_profession_snapshot(table.clone());
-        self.levels.install_profession_save_snapshots(table);
+        self.save.0.install_profession_snapshot(table.clone());
+        self.levels.0.install_profession_save_snapshots(table);
     }
 }
 

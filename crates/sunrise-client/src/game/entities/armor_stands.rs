@@ -338,7 +338,7 @@ impl Game<'_> {
         &self,
         worn: [Option<(&str, Option<&ItemStack>)>; 4],
     ) -> Vec<(&Part, [f32; 4], u32, u32, bool)> {
-        let assets = &self.armor_stand_assets;
+        let assets = &self.armor_stand_assets.0;
         let mut out = Vec::new();
         for (item, (layer, slot)) in worn.into_iter().zip([
             ("helmet", "head"),
@@ -375,7 +375,7 @@ impl Game<'_> {
     /// goes into an atlas trim slot, a free one, else the least recently
     /// drawn. Reuse the completed preparation while the requests and atlas stay the same.
     pub(super) fn prepare_trims(&mut self) {
-        let assets = &self.armor_stand_assets;
+        let assets = &self.armor_stand_assets.0;
         let items = self.items();
         let mut wanted: Vec<TrimTexture> = Vec::new();
         let guests = self.lan.iter().flat_map(|host| host.hub.guests.iter());
@@ -540,7 +540,7 @@ impl Game<'_> {
         self.server.next_entity += 1;
         let (_, uuid) = sunrise_client::mobs::living_random();
         self.persist.uuids.insert(stand.id, uuid);
-        self.audio.play(
+        self.audio.0.play(
             "minecraft:entity.armor_stand.place",
             Some([foot.x, foot.y, foot.z]),
             0.75,
@@ -869,6 +869,7 @@ impl Game<'_> {
         let centre = [at[0], at[1] + height * (2.0 / 3.0), at[2]];
         let spread = [width / 4.0, height / 4.0, width / 4.0];
         self.particles
+            .0
             .send_particles(&options, centre, spread, 0.05, 10);
         self.lan_level_particles(&options, centre, spread, 0.05, 10, Some(state));
     }
@@ -889,7 +890,7 @@ impl Game<'_> {
             direct: attacker,
             position: None,
         };
-        if super::entity::damage_level_of!(self, self.combat.attack(), no_push, None)
+        if super::entity::damage_level_of!(self, self.combat.0.attack(), no_push, None)
             .invulnerability_check(
                 sunrise_client::health::Hurting::ArmorStand(id as i32, source),
                 vanilla,
@@ -925,6 +926,7 @@ impl Game<'_> {
             let (width, height) = stand_box(&self.armor_stands[i]);
             if !self.remove_armor_stand_after(id, |game| {
                 game.audio
+                    .0
                     .play("minecraft:entity.armor_stand.break", Some(at), 1.0, 1.0);
                 game.show_breaking_particles(at, f64::from(width), f64::from(height));
             }) {
@@ -937,6 +939,7 @@ impl Game<'_> {
         if time - self.armor_stands[i].last_hit > 5 && !always_kills {
             // First hit: entity event 32, the wobble and the hit sound, then entity_damage.
             self.audio
+                .0
                 .play("minecraft:entity.armor_stand.hit", Some(at), 0.3, 1.0);
             self.stand_game_event("minecraft:entity_damage", at, by);
             self.armor_stands[i].last_hit = time;
@@ -955,6 +958,7 @@ impl Game<'_> {
             }
             game.spawn_item(stand, center, [0.0; 3], 10);
             game.audio
+                .0
                 .play("minecraft:entity.armor_stand.break", Some(at), 1.0, 1.0);
             game.armor_stand_death_drops(&a, damage_type, causing_id);
             for stack in a.equipment.into_iter().flatten() {
@@ -1542,7 +1546,7 @@ impl Game<'_> {
                 .bool_at(sunrise_client::gamerules::vanilla::MOB_DROPS),
             dying,
             |table| {
-                let Some(loot) = self.server_loot.get() else {
+                let Some(loot) = self.server_loot.0.get() else {
                     return Vec::new();
                 };
                 if !loot.has_table(table) {
@@ -1603,6 +1607,7 @@ impl Game<'_> {
         let at = a.position.components();
         let removed = self.remove_armor_stand_after(id, |game| {
             game.audio
+                .0
                 .play("minecraft:entity.armor_stand.break", Some(at), 1.0, 1.0);
             game.armor_stand_death_drops(&a, damage_type, causing);
             let (pos, drops) = broken_armor_stand_equipment(a);
@@ -1683,7 +1688,7 @@ impl Game<'_> {
             direct: direct as i32,
             position,
         };
-        if super::entity::damage_level_of!(self, self.combat.attack(), no_push, None)
+        if super::entity::damage_level_of!(self, self.combat.0.attack(), no_push, None)
             .invulnerability_check(
                 sunrise_client::health::Hurting::ArmorStand(id as i32, source),
                 invulnerable,
@@ -1913,7 +1918,7 @@ impl Game<'_> {
             let light = self.world.light(probe[0], probe[1], probe[2]);
             let packed = a.render_light(light);
             let skinned = if skinning {
-                let mut models = self.skin_models.borrow_mut();
+                let mut models = self.skin_models.0.borrow_mut();
                 let mut frame = self.client.skin_frame.borrow_mut();
                 let mark = frame.mark();
                 let mut skin = sunrise_client::mobs::skin::Skin::new(&mut models, &mut frame);
@@ -1992,7 +1997,7 @@ impl Game<'_> {
         out: &mut Vec<Vertex>,
     ) {
         use sunrise_client::mobs::render::put;
-        let assets = &self.armor_stand_assets;
+        let assets = &self.armor_stand_assets.0;
         let sprites = &self.gui.atlas.sprites;
         let uv_of = |name: &str| sprites.get(name).map(|r| [r.u0, r.v0, r.u1, r.v1]);
         // A texture's OptiFine emissive overlay. The lock is read per lookup and let go:
@@ -2479,7 +2484,7 @@ impl Game<'_> {
                         .iter()
                         .find(|(k, _)| k == "minecraft:profile")
                 })
-                .map(|(_, t)| self.skin_profiles.borrow_mut().head_profile_nbt(t))
+                .map(|(_, t)| self.skin_profiles.0.borrow_mut().head_profile_nbt(t))
                 .unwrap_or_else(|| std::sync::Arc::new(serde_json::Value::Null));
             self.pack.item_renderer.submit_special(
                 &special,
@@ -3189,7 +3194,7 @@ mod postbaseline_lodestone_controls {
         let (all, mixed, inactive) = (id(100), id(101), id(102));
         // Direct class ticks do not refresh the headless fixture's tickets.
         // Use the existing ticket model: only chunk zero is forced to tick.
-        game.tickets.update(Some(crate::ticket_levels::Sources {
+        game.tickets.0.update(Some(crate::ticket_levels::Sources {
             forced: vec![(0, 0)],
             ..Default::default()
         }));
@@ -3338,7 +3343,7 @@ mod setup_anim_tests {
                 stand.pitch = 30.0;
                 stand.vehicle = Some(9);
                 stand.pose = [[10.0, 20.0, 30.0]; 6];
-                let model = game.armor_stand_assets.main.as_ref().unwrap();
+                let model = game.armor_stand_assets.0.main.as_ref().unwrap();
                 let mut poses = Poses::new(model);
                 game.setup_armor_stand_pose(&stand, 0.5, &mut poses);
                 for name in [

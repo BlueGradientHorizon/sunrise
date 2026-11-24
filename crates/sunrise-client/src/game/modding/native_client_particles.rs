@@ -63,6 +63,7 @@ impl Game<'_> {
         // the part holds as `event.random`.
         self.with_lent_level_random(|game| {
             game.particles
+                .0
                 .add_with_world(Some(&game.world), options, at, velocity, false, false);
         });
         true
@@ -97,8 +98,8 @@ impl Game<'_> {
         let Some((sprite, tint)) = self.particle_sprite(state, source_pos) else {
             return Ok(false);
         };
-        let particle = Particle::terrain(self.particles.random(), at, velocity, sprite, tint);
-        self.particles.push(particle);
+        let particle = Particle::terrain(self.particles.0.random(), at, velocity, sprite, tint);
+        self.particles.0.push(particle);
         Ok(true)
     }
 
@@ -128,7 +129,7 @@ impl Game<'_> {
         let camera = self.eye_position().unwrap_or(request.at);
         // Without explosions its poofs are added at once, each with the limiter's roll.
         self.with_lent_level_random(|game| {
-            game.particles.fireworks(
+            game.particles.0.fireworks(
                 request.at,
                 request.velocity,
                 explosions,
@@ -206,8 +207,8 @@ mod tests {
                 ),
                 (false, vec![]),
             ] {
-                game.particles.clear();
-                game.particles.sounds.clear();
+                game.particles.0.clear();
+                game.particles.0.sounds.clear();
                 let host: &mut dyn ClientHost = game;
                 assert!(host.create_fireworks(&request(audible)));
                 for _ in 0..20 {
@@ -218,10 +219,11 @@ mod tests {
                         player: None,
                         cached_chunk: std::cell::Cell::new(None),
                     };
-                    game.particles.tick(&level);
+                    game.particles.0.tick(&level);
                 }
                 let heard: Vec<_> = game
                     .particles
+                    .0
                     .sounds
                     .iter()
                     .filter(|s| s.0.starts_with("minecraft:entity.firework_rocket."))
@@ -230,7 +232,7 @@ mod tests {
                 let expected: Vec<_> = expected.into_iter().map(|s| (s, at)).collect();
                 assert_eq!(heard, expected, "audible {audible}");
                 assert!(
-                    !game.particles.is_empty(),
+                    !game.particles.0.is_empty(),
                     "the sparks drew, audible {audible}"
                 );
             }

@@ -482,7 +482,7 @@ fn an_idle_level_aborts_an_abandoned_chunk_unload_transaction_before_it_closes()
                     assert!(!game.transaction_matches(None));
 
                     game.close_parked_level(dim).unwrap();
-                    assert!(!game.levels.parked.contains_key(&dim));
+                    assert!(!game.levels.0.parked.contains_key(&dim));
                     assert_eq!(*open_frames.lock().unwrap(), [false, false]);
                     assert!(game.transaction_matches(None));
                     assert_eq!(home.connection_group(game, POS), Ok(Some(10)));
@@ -522,7 +522,7 @@ fn a_ticket_a_chunk_unload_listener_adds_keeps_an_idle_custom_level_open() {
         for _ in 1..IDLE_TICKS {
             game.tick_server(false).unwrap();
         }
-        assert_eq!(game.levels.parked[&dim].idle, IDLE_TICKS - 1);
+        assert_eq!(game.levels.0.parked[&dim].idle, IDLE_TICKS - 1);
         // Open the Nether only now and load its chunk (0, 0), then release it:
         // its first drain leaves the view it opened with, so that drain unloads
         // the chunk at once, in the tick the custom level's close is due.
@@ -651,7 +651,7 @@ fn a_live_loading_ticket_keeps_an_idle_custom_level_open_until_it_expires() {
         for _ in 1..IDLE_TICKS {
             game.tick_server(false).unwrap();
         }
-        assert_eq!(game.levels.parked[&dim].idle, IDLE_TICKS - 1);
+        assert_eq!(game.levels.0.parked[&dim].idle, IDLE_TICKS - 1);
         assert!(!game.chunk_loaded(chunk));
         let host: &mut dyn ServerHost = game;
         assert_eq!(level.load_chunk(host, [5, 5]), Ok(()));
@@ -714,13 +714,13 @@ fn an_unload_drops_a_save_waiting_for_its_level() {
         tick_post(game);
         game.apply_runtime_levels();
         let dim = super::Dim::extra("saved:a").unwrap();
-        game.levels.request_save(dim);
+        game.levels.0.request_save(dim);
         assert_eq!(unload_as(game, "saved", "saved:a"), Ok(()));
         game.apply_runtime_levels();
-        assert!(!game.levels.save_pending(dim));
+        assert!(!game.levels.0.save_pending(dim));
         game.run_requested_saves();
         assert!(!game.runtime_level_is_open("saved:a"));
-        assert!(!game.levels.parked.contains_key(&dim));
+        assert!(!game.levels.0.parked.contains_key(&dim));
         assert_eq!(*seen.loads.lock().unwrap(), ["saved:a"]);
     });
 }
@@ -814,10 +814,10 @@ fn failed_construction_rolls_back_every_published_table() {
     with_opener("rollback", "rollback:a", flat(), |game, seen| {
         tick_post(game);
         let first = seen.answers.lock().unwrap()[0].unwrap();
-        game.levels.runtime.fail_open_after_publication = true;
+        game.levels.0.runtime.fail_open_after_publication = true;
         game.apply_runtime_levels();
         assert!(!game.runtime_level_is_open("rollback:a"));
-        assert!(!game.levels.runtime.holds("rollback:a"));
+        assert!(!game.levels.0.runtime.holds("rollback:a"));
         assert!(super::Dim::extra("rollback:a").is_none());
         assert!(
             !game
@@ -829,7 +829,7 @@ fn failed_construction_rolls_back_every_published_table() {
         );
         assert!(seen.loads.lock().unwrap().is_empty());
         assert!(!game.level_handle_current(first));
-        game.levels.runtime.fail_open_after_publication = false;
+        game.levels.0.runtime.fail_open_after_publication = false;
         seen.answers.lock().unwrap().clear();
         tick_post(game);
         game.apply_runtime_levels();
@@ -1266,7 +1266,7 @@ fn a_failed_removal_leaves_the_level_closed_and_its_id_closed_to_open() {
             .world_root
             .join("dimensions/stuck2/a/data/marker.dat");
         write_file(&marker);
-        game.levels.runtime.fail_erase = true;
+        game.levels.0.runtime.fail_erase = true;
         assert_eq!(delete_as(game, "stuck2", "stuck2:a"), Ok(()));
         game.apply_runtime_levels();
         // Closed: not open, out of the world's levels, its handle stale, `level_unload` heard.
@@ -1286,7 +1286,7 @@ fn a_failed_removal_leaves_the_level_closed_and_its_id_closed_to_open() {
         game.apply_runtime_levels();
         assert!(marker.is_file(), "the removal failed again");
         // Once it can, a second delete finishes it and the id opens again, empty.
-        game.levels.runtime.fail_erase = false;
+        game.levels.0.runtime.fail_erase = false;
         assert_eq!(delete_as(game, "stuck2", "stuck2:a"), Ok(()));
         game.apply_runtime_levels();
         assert!(!marker.exists());
@@ -1310,13 +1310,13 @@ fn an_open_queued_behind_a_failed_removal_is_dropped() {
             .world_root
             .join("dimensions/behind2/a/region/r.0.0.mca");
         write_file(&leftover);
-        game.levels.runtime.fail_erase = true;
+        game.levels.0.runtime.fail_erase = true;
         assert_eq!(delete_as(game, "behind2", "behind2:a"), Ok(()));
         tick_post(game);
         assert!(seen.answers.lock().unwrap()[0].is_ok());
         game.apply_runtime_levels();
         assert!(!game.runtime_level_is_open("behind2:a"));
-        assert!(!game.levels.runtime.holds("behind2:a"));
+        assert!(!game.levels.0.runtime.holds("behind2:a"));
         assert!(super::Dim::extra("behind2:a").is_none());
         assert!(leftover.is_file());
         assert!(seen.loads.lock().unwrap().is_empty());
@@ -1647,13 +1647,14 @@ fn reopening_one_id_with_any_seed_reuses_the_metadata_its_first_open_leaked() {
         for seed in [1, 2, 3, i64::MIN, i64::MAX] {
             let level = RuntimeLevel::new("minecraft:overworld", RuntimeGenerator::Flat, seed);
             game.levels
+                .0
                 .runtime
                 .queue_open("cycle", "cycle:a", level)
                 .unwrap();
             game.apply_runtime_levels();
             assert!(game.runtime_level_is_open("cycle:a"));
             assert_eq!(
-                game.levels.runtime.seeds().get("cycle:a").copied(),
+                game.levels.0.runtime.seeds().get("cycle:a").copied(),
                 Some(seed)
             );
             let table = game.server.level_shapes.extra;
@@ -1669,7 +1670,7 @@ fn reopening_one_id_with_any_seed_reuses_the_metadata_its_first_open_leaked() {
             unload_as(game, "cycle", "cycle:a").unwrap();
             game.apply_runtime_levels();
             assert!(!game.runtime_level_is_open("cycle:a"));
-            assert_eq!(game.levels.runtime.seeds().get("cycle:a").copied(), None);
+            assert_eq!(game.levels.0.runtime.seeds().get("cycle:a").copied(), None);
         }
     });
 }

@@ -493,6 +493,7 @@ impl<'r> Game<'r> {
                 if self.natural_knot(id).is_some()
                     || self
                         .others
+                        .0
                         .iter()
                         .any(|o| o.id == id && o.kind == "minecraft:leash_knot")
                 {
@@ -708,7 +709,7 @@ impl<'r> Game<'r> {
                 });
             }
         }
-        for o in self.others.iter() {
+        for o in self.others.0.iter() {
             if o.kind == "minecraft:leash_knot" && allows(o.id, false) {
                 visit(TargetCandidate {
                     who: Who::Mob(o.id),
@@ -849,7 +850,7 @@ impl<'r> Game<'r> {
             let pos = sunrise_client::mobs::leash::knot_state(k.fence).position;
             out.push((Who::Mob(k.id), knot_bounds(pos)));
         }
-        for o in self.others.iter() {
+        for o in self.others.0.iter() {
             if o.kind == "minecraft:leash_knot" {
                 out.push((Who::Mob(o.id), knot_bounds(o.position)));
             }
@@ -904,7 +905,7 @@ impl<'r> Game<'r> {
             position: Some([info.position.x, info.position.y, info.position.z]),
         };
         let vanilla = self.saved_refuses_damage(id, info.damage_type, creative);
-        crate::game::entity::damage_level_of!(self, self.combat.attack(), no_push, None)
+        crate::game::entity::damage_level_of!(self, self.combat.0.attack(), no_push, None)
             .invulnerability_check(
                 sunrise_client::health::Hurting::Entity(id as i32, kind, source),
                 vanilla,
@@ -1049,6 +1050,7 @@ impl<'r> Game<'r> {
         let is_knot = self.natural_knot(id).is_some()
             || self
                 .others
+                .0
                 .iter()
                 .any(|o| o.id == id && o.kind == "minecraft:leash_knot");
         if is_knot {

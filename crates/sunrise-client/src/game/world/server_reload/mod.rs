@@ -103,14 +103,14 @@ impl Game<'_> {
             },
         )
         .unwrap();
-        if let Some(tables) = &self.world_tables {
+        if let Some(tables) = &self.world_tables.0 {
             prepared.loot.bind_from(&tables.loot_modifier_manager);
         }
-        self.reload_resources.install(prepared.retained, &skipped);
+        self.reload_resources.0.install(prepared.retained, &skipped);
         self.server.structure_templates.clear();
     }
     /// The retained server reload listeners of the last successful reload.
     pub(in crate::game) fn reload_resources(&self) -> &dyn ServerReloadResources {
-        &self.reload_resources
+        &self.reload_resources.0
     }
 }

@@ -100,7 +100,7 @@ impl Game<'_> {
 
     pub(in crate::game) fn refresh_client_pick(&mut self, partial_tick: f32) {
         if !self.native_window()
-            || self.title.is_some()
+            || self.title.0.is_some()
             || self.player.is_none()
             || self.native_lifecycle.epoch().is_none()
         {

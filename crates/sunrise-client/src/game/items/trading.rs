@@ -700,6 +700,7 @@ impl Game<'_> {
                     m.focused = Some(i);
                 }
                 self.audio
+                    .0
                     .play("minecraft:ui.button.click", None, 0.25, 1.0);
                 self.try_move_items(index);
                 return true;
@@ -728,6 +729,7 @@ impl Game<'_> {
             return false;
         };
         self.audio
+            .0
             .play("minecraft:ui.button.click", None, 0.25, 1.0);
         self.try_move_items(index);
         true
@@ -746,6 +748,7 @@ impl Game<'_> {
     pub(super) fn merchant_drag(&mut self) -> bool {
         let Some(size) = self
             .renderer
+            .0
             .as_ref()
             .map(|r| [r.config.width, r.config.height])
         else {

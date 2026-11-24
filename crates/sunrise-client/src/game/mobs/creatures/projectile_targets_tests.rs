@@ -132,7 +132,7 @@ fn clear_entities(game: &mut Game<'_>) {
     game.item_frames.clear();
     game.paintings.clear();
     game.cushions.clear();
-    game.others.clear();
+    game.others.0.clear();
     game.server.knot_ids.clear();
     game.server.broken_knots.clear();
     game.resident_entities.knots.clear();
@@ -245,7 +245,7 @@ fn summon_target(game: &mut Game<'_>, target: &str) -> TrackedTarget {
         }
         "leash_knot" => {
             assert!(game.run_command("summon minecraft:leash_knot 3.5 64.375 4.5 {}"));
-            TrackedTarget::ExplicitKnot(game.others.last().unwrap().id)
+            TrackedTarget::ExplicitKnot(game.others.0.last().unwrap().id)
         }
         "leash_knot_tied" => {
             assert!(game.run_command(
@@ -299,7 +299,7 @@ fn target_bounds(game: &Game<'_>, target: TrackedTarget) -> Aabb {
             .selector_target_bounds(Target::Falling(id))
             .expect("falling block bounds"),
         TrackedTarget::ExplicitKnot(id) => {
-            let o = game.others.iter().find(|o| o.id == id).unwrap();
+            let o = game.others.0.iter().find(|o| o.id == id).unwrap();
             let b = sunrise_core::position::BlockPos::containing(o.position);
             let k = sunrise_client::mobs::leash::knot_state([b.x, b.y, b.z]);
             let half = k.width / 2.0;
@@ -410,7 +410,7 @@ fn target_alive(game: &Game<'_>, target: TrackedTarget) -> bool {
         TrackedTarget::Frame(id) => game.item_frames.iter().any(|f| f.id == id),
         TrackedTarget::Cushion(id) => game.cushions.iter().any(|c| c.id == id),
         TrackedTarget::Falling(id) => game.falling.iter().any(|f| f.id == id),
-        TrackedTarget::ExplicitKnot(id) => game.others.iter().any(|o| o.id == id),
+        TrackedTarget::ExplicitKnot(id) => game.others.0.iter().any(|o| o.id == id),
         TrackedTarget::NaturalKnot { id, .. } => {
             game.resident_entities.knots.iter().any(|k| k.id == id)
         }

@@ -94,7 +94,7 @@ impl Game<'_> {
     /// The server list entry of the joined address, if it has one, shown or
     /// hidden (`ServerList.get`).
     fn accepted_code_of_conduct(&self) -> Option<i32> {
-        let address = self.server_packs.address.as_deref()?;
+        let address = self.server_packs.0.address.as_deref()?;
         let (shown, hidden) = servers::load_all(&multiplayer::servers_file(&saves()));
         shown
             .into_iter()
@@ -105,7 +105,7 @@ impl Game<'_> {
 
     /// `ServerList.saveSingleServer`: the joined address's entry keeps `accepted`.
     fn store_code_of_conduct(&self, accepted: i32) {
-        let Some(address) = &self.server_packs.address else {
+        let Some(address) = &self.server_packs.0.address else {
             return;
         };
         let file = multiplayer::servers_file(&saves());
@@ -284,7 +284,7 @@ impl Game<'_> {
         if !toggled && answer.is_none() {
             return Ok(false);
         }
-        self.audio.play_button_click();
+        self.audio.0.play_button_click();
         if let Some(accepted) = answer {
             self.answer_code_of_conduct(accepted)?;
         }

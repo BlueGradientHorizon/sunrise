@@ -80,7 +80,7 @@ fn a_reconfiguring_client_plays_menu_music_and_never_indexes_past_the_biomes() {
     // A new manager waits its first 100 ticks, then starts the menu track.
     let menu = (0..=100).any(|_| {
         game.tick_music();
-        game.client.music.current(&game.audio.engine) == Some("minecraft:music.menu")
+        game.client.music.current(&game.audio.0.engine) == Some("minecraft:music.menu")
     });
     assert!(menu, "the menu music starts under ServerReconfigScreen");
 
@@ -114,9 +114,10 @@ fn a_reconfiguring_client_stops_flat_audio_streams_before_configuration() {
     with_client_game(|game| {
         let (_reader, mut writer) = connect_play_test(game, |_, _| {});
         spawn_menu_test(game);
-        game.audio.backend_live_for_bench();
+        game.audio.0.backend_live_for_bench();
         let stream = game
             .audio
+            .0
             .open_stream(
                 "test_mod",
                 &StreamSpec::new(SoundSource::Music, 1, 48_000),
@@ -196,7 +197,7 @@ fn client_level_transitions_stop_streams_opened_during_unload() {
     .into();
     mod_platform::testing::with_mods(mods, || {
         with_client_game(|game| {
-            game.audio.backend_live_for_bench();
+            game.audio.0.backend_live_for_bench();
             let spawn = SpawnInfo {
                 dimension_type: 0,
                 dimension: "minecraft:overworld".into(),
@@ -214,6 +215,7 @@ fn client_level_transitions_stop_streams_opened_during_unload() {
                 game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
                 let existing = game
                     .audio
+                    .0
                     .open_stream(
                         "test_mod",
                         &StreamSpec::new(SoundSource::Music, 1, 48_000),

@@ -60,7 +60,7 @@ impl Game<'_> {
                 }
                 return self.resident_entities.table.borrow_mut().resident_uuid(id);
             }
-            id = self.levels.travelled(id)?;
+            id = self.levels.0.travelled(id)?;
         }
     }
     /// `EntityReference.getEntity` for `last_hurt_by_mob` read back from a save:
@@ -92,7 +92,7 @@ impl Game<'_> {
     /// The mob resident under `uuid` in a loaded level other than the one in
     /// place, through each level's UUID index.
     fn mob_by_uuid_elsewhere(&self, uuid: [i32; 4]) -> Option<u32> {
-        for dim in self.levels.parked.keys() {
+        for dim in self.levels.0.parked.keys() {
             let mut after = None;
             loop {
                 let next = self

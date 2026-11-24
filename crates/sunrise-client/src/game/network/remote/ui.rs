@@ -22,7 +22,7 @@ impl Game<'_> {
         if damage * (0.2 + strength * strength * 0.8) > 0.0 && self.critical_attack(strength) {
             use sunrise_client::particles::{ParticleOptions, ParticleType};
             let m = &self.mobs[mob];
-            self.particles.tracking_emitter(
+            self.particles.0.tracking_emitter(
                 ParticleOptions::simple(ParticleType::Crit),
                 TrackingTarget::Entity(m.id as i32),
                 mob_tracking_body(m),

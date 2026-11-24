@@ -12,7 +12,7 @@ impl Game<'_> {
     /// The mod screen showing now, if any, including a server-closed screen
     /// kept displayed through `screen_closing` or a veto until removal runs.
     pub(in crate::game) fn shown_native_screen(&self) -> Option<&OpenNativeScreen> {
-        let screen = self.mod_screen.as_ref()?;
+        let screen = self.mod_screen.0.as_ref()?;
         if !screen.shown
             || self.client.screen != Screen::Inventory
             || self.container != Some(screen.menu.key)

@@ -32,8 +32,9 @@ impl Game<'_> {
         let max = center.map(|c| (c + reach).floor());
         let source = self
             .combat
+            .0
             .explosion_direct
-            .or(self.combat.explosion_source);
+            .or(self.combat.0.explosion_source);
         let mut entities = self
             .level(self.dim.id())
             .and_then(|level| self.level_entities_in(level, min, max))
@@ -48,8 +49,8 @@ impl Game<'_> {
         entities.retain(|entity| self.native_entity_target(*entity).is_some());
         let mut seen = HashSet::new();
         entities.retain(|entity| seen.insert(entity.id()));
-        self.combat.blast_hit_ids = seen;
-        self.combat.blast_hit_list = Some(entities.iter().map(|entity| entity.id()).collect());
+        self.combat.0.blast_hit_ids = seen;
+        self.combat.0.blast_hit_list = Some(entities.iter().map(|entity| entity.id()).collect());
     }
 
     /// The four entity kinds the entity-list walk misses: item frames,
@@ -249,7 +250,7 @@ mod tests {
             with_game(|game| {
                 zombie(game, 900, 2.0);
                 zombie(game, 910, -2.0);
-                game.combat.explosion_direct = Some(900);
+                game.combat.0.explosion_direct = Some(900);
                 explode(game);
                 let source = game.mobs.iter().find(|m| m.id == 900).unwrap();
                 assert_eq!(source.health, 20.0);
@@ -426,7 +427,7 @@ mod tests {
                 let mut blocks = Vec::new();
                 game.explosion_detonate([0.0, 1.0, 0.0], 3.0, &mut blocks);
                 assert!(
-                    game.combat.blast_hit_list.is_some(),
+                    game.combat.0.blast_hit_list.is_some(),
                     "the outer list is set"
                 );
                 let before = health_of(game, SPARED);
@@ -447,7 +448,7 @@ mod tests {
                 );
                 // The outer's list is back: its walk still spares the zombie.
                 assert!(
-                    game.combat.blast_hit_list.is_some() && !game.combat.visits(SPARED),
+                    game.combat.0.blast_hit_list.is_some() && !game.combat.0.visits(SPARED),
                     "the outer's list is restored"
                 );
             });
@@ -528,7 +529,7 @@ mod tests {
                     explode(game);
                     assert!(game.boats.iter().all(|boat| ![920, 921].contains(&boat.id)));
                     assert!(game.carts.iter().all(|cart| ![930, 931].contains(&cart.id)));
-                    assert_eq!(game.combat.blast_hit_list, None);
+                    assert_eq!(game.combat.0.blast_hit_list, None);
                 })
             });
         }
@@ -549,7 +550,7 @@ mod tests {
                     ));
                 }
                 game.explosion_detonate([0.0, 1.0, 0.0], 3.0, &mut Vec::new());
-                let listed = game.combat.blast_hit_list.as_ref().unwrap();
+                let listed = game.combat.0.blast_hit_list.as_ref().unwrap();
                 assert!(!listed.contains(&940));
                 assert!(listed.contains(&941));
             })

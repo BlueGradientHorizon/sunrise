@@ -87,7 +87,7 @@ fn drawn_texture(game: &mut super::Game<'_>) -> [u8; 16 * 16 * 4] {
     for _ in 0..32 {
         game.render_with(|renderer, frame| renderer.render(frame))
             .unwrap();
-        let renderer = game.renderer.as_ref().unwrap();
+        let renderer = game.renderer.0.as_ref().unwrap();
         renderer
             .device
             .poll(wgpu::PollType::wait_indefinitely())
@@ -147,7 +147,7 @@ fn a_packs_lightmap_draws_its_expression_uniform() {
         assert!(game.gui.atlas.lightmap_shader.is_some());
         assert_eq!(game.gui.atlas.lightmap_expressions.len(), 1);
         let _event_loop = frame_scene(game);
-        game.renderer.as_mut().unwrap().fullbright = fullbright;
+        game.renderer.0.as_mut().unwrap().fullbright = fullbright;
         // The expression context's strings, given room up front: every frame rewrites them in
         // place, so their buffers (address and capacity) are the same after the frames.
         let context = &mut game.client.expression_frame;
@@ -248,6 +248,7 @@ fn the_sky_draws_its_expression_uniform() {
         assert!(
             !game
                 .renderer
+                .0
                 .as_ref()
                 .unwrap()
                 .post_effects_read_poly_globals()
@@ -271,14 +272,14 @@ pub(in crate::game) fn corner_of(
     game: &mut super::Game<'_>,
     draw: impl FnOnce(&mut super::Game<'_>) -> sunrise_client::Result<bool>,
 ) -> [u8; 3] {
-    game.renderer.as_mut().unwrap().screenshot = Some(sunrise_client::gfx::ScreenshotRequest {
+    game.renderer.0.as_mut().unwrap().screenshot = Some(sunrise_client::gfx::ScreenshotRequest {
         path: "unused.png".into(),
         size: None,
         scaled: false,
         background: false,
     });
     draw(game).unwrap();
-    let result = game.renderer.as_mut().unwrap().screenshot_result.take();
+    let result = game.renderer.0.as_mut().unwrap().screenshot_result.take();
     let mut pending = result.unwrap().unwrap();
     let image = pending.image_mut();
     let width = image.width as usize;
@@ -369,6 +370,7 @@ fn a_post_effect_reads_poly_globals() {
         assert!(
             !game
                 .renderer
+                .0
                 .as_ref()
                 .unwrap()
                 .post_effects_read_poly_globals()
@@ -377,6 +379,7 @@ fn a_post_effect_reads_poly_globals() {
         assert_eq!(corner(game), [64, 51, 0]);
         assert!(
             game.renderer
+                .0
                 .as_ref()
                 .unwrap()
                 .post_effects_read_poly_globals()

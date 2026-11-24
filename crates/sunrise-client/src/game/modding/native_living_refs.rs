@@ -239,7 +239,7 @@ impl Game<'_> {
         let world = if dimension == self.dim {
             &mut self.world
         } else {
-            &mut self.levels.parked_mut(dimension)?.world
+            &mut self.levels.0.parked_mut(dimension)?.world
         };
         let mut level = DamageLevel::of(
             world,
@@ -836,9 +836,10 @@ impl Game<'_> {
     /// in whichever loaded level it is now (`credited_entity`).
     pub(in crate::game) fn living_kill_credit(&self, living: LivingRef) -> Option<EntityRef> {
         let credit = match self.native_living_target(living)? {
-            Target::Player => self.combat.player_credit(self.world.game_time),
+            Target::Player => self.combat.0.player_credit(self.world.game_time),
             Target::Guest(conn) => self
                 .guest_combat
+                .0
                 .get(&conn)
                 .and_then(|combat| combat.player_credit(self.world.game_time)),
             Target::Mob(id) => self.server.last_hurt_by_player.get(&id).copied(),
@@ -862,10 +863,12 @@ impl Game<'_> {
         match self.native_living_target(living)? {
             Target::Player => self
                 .combat
+                .0
                 .kill_credit(self.world.game_time)
                 .and_then(|id| self.credited_entity(id)),
             Target::Guest(conn) => self
                 .guest_combat
+                .0
                 .get(&conn)?
                 .kill_credit(self.world.game_time)
                 .and_then(|id| self.credited_entity(id)),
@@ -961,7 +964,7 @@ impl Game<'_> {
             if self.mob_in_other_level(id).is_some() {
                 return Some(EntityRef::new(epoch, id));
             }
-            id = self.levels.travelled(id)?;
+            id = self.levels.0.travelled(id)?;
             if let Some(found) = self.entity(id) {
                 return Some(found);
             }
@@ -1321,7 +1324,7 @@ impl Game<'_> {
         ctx: sunrise_client::sculk::Context,
     ) {
         if let Some(sound) = sound {
-            self.audio.play(&sound, Some(at), 1.0, 1.0);
+            self.audio.0.play(&sound, Some(at), 1.0, 1.0);
         }
         self.post_game_event(
             if equips {
@@ -1580,8 +1583,8 @@ pub(in crate::game) mod tests {
         use sunrise_core::random::RandomSource;
         super::super::native_entity_refs::tests::with_game(|game| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-            game.audio.engine.loaded = true;
-            game.audio.engine.registry.add_file("minecraft", br#"{"entity.item.break":{"sounds":["test/item"]},"block.anvil.break":{"sounds":["test/anvil"]}}"#, &|_, _| true);
+            game.audio.0.engine.loaded = true;
+            game.audio.0.engine.registry.add_file("minecraft", br#"{"entity.item.break":{"sounds":["test/item"]},"block.anvil.break":{"sounds":["test/anvil"]}}"#, &|_, _| true);
             let source = sunrise_client::health::NO_ATTACK.player_source("minecraft:generic", 0);
             let mut armor: [Option<ItemStack>; 4] = std::array::from_fn(|_| None);
             for (i, name) in ["minecraft:diamond_helmet", "minecraft:diamond_chestplate"]
@@ -1603,10 +1606,10 @@ pub(in crate::game) mod tests {
             for guest in [false, true] {
                 game.armor = armor.clone();
                 game.server.lan_acting = guest.then_some(1);
-                game.audio.capture = Some(Vec::new());
-                game.audio.record_heard = true;
-                game.audio.engine.notifications.clear();
-                game.audio.heard.clear();
+                game.audio.0.capture = Some(Vec::new());
+                game.audio.0.record_heard = true;
+                game.audio.0.engine.notifications.clear();
+                game.audio.0.heard.clear();
                 game.server.guest_equipment_breaks.clear();
                 let random = game.world.random.clone();
                 // Player.hurtArmor supplies FEET, LEGS, CHEST, HEAD;
@@ -1633,9 +1636,10 @@ pub(in crate::game) mod tests {
                 }
                 let expected_armor = game.armor.clone();
                 let expected_events = game.server.guest_equipment_breaks.clone();
-                let expected_sounds = game.audio.heard.clone();
+                let expected_sounds = game.audio.0.heard.clone();
                 let expected_sound_order: Vec<_> = game
                     .audio
+                    .0
                     .engine
                     .notifications
                     .iter()
@@ -1655,16 +1659,17 @@ pub(in crate::game) mod tests {
                 }
                 game.armor = armor.clone();
                 game.server.guest_equipment_breaks.clear();
-                game.audio.capture = Some(Vec::new());
-                game.audio.heard.clear();
-                game.audio.engine.notifications.clear();
+                game.audio.0.capture = Some(Vec::new());
+                game.audio.0.heard.clear();
+                game.audio.0.engine.notifications.clear();
                 game.world.random = random;
                 game.hurt_armor(&source, 4.0);
                 assert_eq!(game.armor, expected_armor);
                 assert_eq!(game.server.guest_equipment_breaks, expected_events);
-                assert_eq!(game.audio.heard, expected_sounds);
+                assert_eq!(game.audio.0.heard, expected_sounds);
                 assert_eq!(
                     game.audio
+                        .0
                         .engine
                         .notifications
                         .iter()
@@ -1994,7 +1999,7 @@ pub(in crate::game) mod tests {
     pub(in crate::game) fn hurt_pig(game: &mut super::Game<'_>) -> (u32, u32) {
         use crate::game::Dim;
         use std::sync::Arc;
-        game.server.world_root = game.save.root.clone();
+        game.server.world_root = game.save.0.root.clone();
         game.enter_level(Dim::Nether).unwrap();
         game.world
             .chunks
@@ -2153,7 +2158,7 @@ pub(in crate::game) mod tests {
             send_to_the_nether(game, zombie);
             let living = game.living(game.entity(pig).unwrap()).unwrap();
             credited = living.kill_credit(game).unwrap().id() as i32;
-            let plan = game.prepare_knockback_credit(pig as i32, None, game.combat.attack());
+            let plan = game.prepare_knockback_credit(pig as i32, None, game.combat.0.attack());
             let mut credit = plan.lend(&mut game.server.last_hurt_by_player);
             let i = game.mobs.iter().position(|m| m.id == pig).unwrap();
             let mob = &mut game.mobs[i];
@@ -2373,7 +2378,7 @@ pub(in crate::game) mod tests {
             let mut attackers = Vec::new();
             let mut health = Vec::new();
             for absorption in [0.0, 8.0] {
-                game.combat = Default::default();
+                game.combat.0 = Default::default();
                 let mut player = PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
                 player.entity_id = 20;
                 player
@@ -2553,17 +2558,17 @@ pub(in crate::game) mod tests {
                 .clone();
             game.mobs.push(Mob::new(12, kind, Vec3::ZERO, 0.0));
             let living = game.living(game.entity(12).unwrap()).unwrap();
-            game.audio.capture = Some(Vec::new());
+            game.audio.0.capture = Some(Vec::new());
             super::super::dispense_fixture::start_recording();
             let helmet = ItemStack::new("minecraft:iron_helmet", 1);
             assert!(game.living_set_equipment(living, EquipmentSlot::Head, Some(helmet.clone())));
             assert!(game.living_set_equipment(living, EquipmentSlot::Head, None));
-            assert!(game.audio.capture.as_ref().unwrap().is_empty());
+            assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
             game.mobs[0].first_tick = false;
             assert!(game.living_set_equipment(living, EquipmentSlot::Head, Some(helmet.clone())));
-            assert_eq!(game.audio.capture.as_ref().unwrap().len(), 1);
+            assert_eq!(game.audio.0.capture.as_ref().unwrap().len(), 1);
             assert!(game.living_set_equipment(living, EquipmentSlot::Head, Some(helmet)));
-            assert_eq!(game.audio.capture.as_ref().unwrap().len(), 1);
+            assert_eq!(game.audio.0.capture.as_ref().unwrap().len(), 1);
             game.mobs[0].silent = true;
             assert!(game.living_set_equipment(
                 living,
@@ -2578,7 +2583,7 @@ pub(in crate::game) mod tests {
                 EquipmentSlot::Chest,
                 Some(ItemStack::new("minecraft:iron_helmet", 1))
             ));
-            assert_eq!(game.audio.capture.as_ref().unwrap().len(), 1);
+            assert_eq!(game.audio.0.capture.as_ref().unwrap().len(), 1);
             let events = super::super::dispense_fixture::stop_recording();
             assert_eq!(
                 events
@@ -2614,13 +2619,13 @@ pub(in crate::game) mod tests {
             game.dragon.replace(dragon);
             let stand = game.living(game.entity(16).unwrap()).unwrap();
             let dragon = game.living(game.entity(17).unwrap()).unwrap();
-            game.audio.capture = Some(Vec::new());
+            game.audio.0.capture = Some(Vec::new());
             super::super::dispense_fixture::start_recording();
             let helmet = ItemStack::new("minecraft:iron_helmet", 1);
             // Before its first tick an entity makes no sound and no event.
             assert!(game.living_set_equipment(stand, EquipmentSlot::Head, Some(helmet.clone())));
             assert!(game.living_set_equipment(stand, EquipmentSlot::Head, None));
-            assert!(game.audio.capture.as_ref().unwrap().is_empty());
+            assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
             game.tick_armor_stands().unwrap();
             game.dragon.as_mut().unwrap().ticks = 1;
             // An equippable item in its own slot: sound and `equip`; the same
@@ -2642,7 +2647,7 @@ pub(in crate::game) mod tests {
             let chest = ItemStack::new("minecraft:iron_chestplate", 1);
             assert!(game.living_set_equipment(dragon, EquipmentSlot::Chest, Some(chest)));
             assert!(game.living_set_equipment(dragon, EquipmentSlot::Saddle, Some(stone)));
-            assert_eq!(game.audio.capture.as_ref().unwrap().len(), 3);
+            assert_eq!(game.audio.0.capture.as_ref().unwrap().len(), 3);
             let events = super::super::dispense_fixture::stop_recording();
             let count = |name: &str| events.iter().filter(|e| e.ends_with(name)).count();
             assert_eq!(count("minecraft:equip"), 3);
@@ -2828,7 +2833,7 @@ pub(in crate::game) mod tests {
                 )
                 .unwrap(),
             );
-            game.audio.capture = Some(Vec::new());
+            game.audio.0.capture = Some(Vec::new());
             for (name, stack) in [("armor.body", &body), ("saddle", &saddle)] {
                 let slots = game.slots_named(&owner, name);
                 assert_eq!(slots.len(), 1, "{name} is one slot");
@@ -2839,7 +2844,7 @@ pub(in crate::game) mod tests {
                 (Some(&body), Some(&saddle))
             );
             // onEquipItem: each item in its own slot plays its equip sound.
-            assert_eq!(game.audio.capture.as_ref().unwrap().len(), 2);
+            assert_eq!(game.audio.0.capture.as_ref().unwrap().len(), 2);
             game.sync_level();
             let tag = game.level.player_tag(&Default::default());
             let equipment = tag.get("equipment").unwrap();
@@ -2908,7 +2913,7 @@ pub(in crate::game) mod tests {
                     stand.no_gravity = true;
                     stand.equipment[0] = Some(ItemStack::new("minecraft:stone", 1));
                     game.armor_stands.push(stand);
-                    game.audio.capture = Some(Vec::new());
+                    game.audio.0.capture = Some(Vec::new());
                     super::super::dispense_fixture::start_recording();
                     game.tick_armor_stands().unwrap();
                     let events = super::super::dispense_fixture::stop_recording();
@@ -2918,7 +2923,7 @@ pub(in crate::game) mod tests {
                         "real listener/handle write control",
                     );
                     assert!(!game.armor_stands[0].first_tick);
-                    let sounds = game.audio.capture.as_ref().unwrap().len();
+                    let sounds = game.audio.0.capture.as_ref().unwrap().len();
                     let equips = events
                         .iter()
                         .filter(|e| e.ends_with("minecraft:equip"))

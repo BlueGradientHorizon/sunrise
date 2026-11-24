@@ -573,9 +573,9 @@ impl Game<'_> {
 
     /// Framebuffer size and GUI projection, including before the renderer is initialized.
     pub(in crate::game) fn gui_frame_now(&self) -> ([u32; 2], GuiSize) {
-        let framebuffer = self.renderer.as_ref().map_or_else(
+        let framebuffer = self.renderer.0.as_ref().map_or_else(
             || {
-                self.window.as_ref().map_or([1280, 720], |window| {
+                self.window.0.as_ref().map_or([1280, 720], |window| {
                     let size = window.inner_size();
                     [size.width, size.height]
                 })
@@ -596,12 +596,13 @@ impl Game<'_> {
 
     fn build_screen_at(&mut self, framebuffer: [u32; 2]) {
         let shown = self.client.screen != Screen::Playing
-            || self.title.is_some()
+            || self.title.0.is_some()
             || self.screen_over_playing();
         let inputs = self.settings.gui_scale_inputs();
         let gui = GuiSize::new(framebuffer, inputs.requested, inputs.unicode);
         let identity = self
             .title
+            .0
             .as_ref()
             .map(|title| title.mode.id())
             .or_else(|| {
@@ -627,6 +628,7 @@ impl Game<'_> {
         let container = container.and_then(|inputs| {
             let unchanged = self
                 .screen_state
+                .0
                 .build
                 .current
                 .as_ref()
@@ -663,6 +665,7 @@ impl Game<'_> {
         let pause = (shown && self.client.screen == Screen::Paused).then(|| {
             let unchanged = self
                 .screen_state
+                .0
                 .build
                 .current
                 .as_ref()
@@ -687,6 +690,7 @@ impl Game<'_> {
             .or_else(|| pause.map(ScreenLayout::Pause))
             .or(text);
         self.screen_state
+            .0
             .build
             .sync(self.client.screen, shown, identity, gui, layout);
     }
@@ -712,7 +716,7 @@ impl Game<'_> {
         if screen == Screen::Creative {
             // `CreativeModeInventoryScreen.extractTabButton`: 26 x 32 each.
             let (ox, oy) = (layout.image[0], layout.image[1]);
-            let creative = &self.creative_screen;
+            let creative = &self.creative_screen.0;
             for tab in creative.tabs.iter().filter(|t| creative.on_page(t)) {
                 let (x, y) = sunrise_client::creative::Creative::tab_position(tab);
                 out.push(ScreenRegion::new(
@@ -737,9 +741,9 @@ impl Game<'_> {
         region_screen: Option<Screen>,
     ) {
         use mod_api::{ScreenRegion, ScreenRegionKind};
-        let (_, mut regions) = std::mem::take(&mut self.screen_state.regions);
+        let (_, mut regions) = std::mem::take(&mut self.screen_state.0.regions);
         regions.clear();
-        let tabs = self.screen_state.drawn_book_tabs.take();
+        let tabs = self.screen_state.0.drawn_book_tabs.take();
         let shown = region_screen.filter(|_| self.screen_view_listened());
         if let Some(screen) = shown
             && let Some(layout) = self.built_container(batch)
@@ -758,13 +762,13 @@ impl Game<'_> {
                 );
             }
         }
-        self.screen_state.regions = (shown, regions);
+        self.screen_state.0.regions = (shown, regions);
     }
 
     /// The last published draw's regions of `screen` (`ScreenView::regions`).
     /// Empty for another screen and when no screen hook listens.
     pub(in crate::game) fn screen_regions(&self, screen: Screen) -> &[mod_api::ScreenRegion] {
-        match &self.screen_state.regions {
+        match &self.screen_state.0.regions {
             (Some(of), regions) if *of == screen => regions,
             _ => &[],
         }
@@ -776,6 +780,7 @@ impl Game<'_> {
         batch: &sunrise_client::hud::HudBatch,
     ) -> Option<&ContainerLayout> {
         self.screen_state
+            .0
             .build
             .current
             .as_ref()?
@@ -785,6 +790,7 @@ impl Game<'_> {
     /// The build's pause layout, when it holds `(width, height)`.
     pub(in crate::game) fn built_pause(&self, width: f32, height: f32) -> Option<&PauseLayout> {
         self.screen_state
+            .0
             .build
             .current
             .as_ref()?
@@ -794,6 +800,7 @@ impl Game<'_> {
     /// The build's chat layout, when it holds `(width, height)`.
     pub(in crate::game) fn built_chat(&self, width: f32, height: f32) -> Option<&ChatLayout> {
         self.screen_state
+            .0
             .build
             .current
             .as_ref()?
@@ -807,6 +814,7 @@ impl Game<'_> {
         height: f32,
     ) -> Option<&CommandBlockLayout> {
         self.screen_state
+            .0
             .build
             .current
             .as_ref()?
@@ -828,7 +836,7 @@ impl Game<'_> {
                 }
             }
             Screen::CommandBlock => {
-                if let Some(screen) = self.command_block_screen.as_mut() {
+                if let Some(screen) = self.command_block_screen.0.as_mut() {
                     screen.resize(&m, &c, w, h);
                 }
             }
@@ -850,11 +858,11 @@ impl Game<'_> {
         let (w, h) = (gui.size[0] as f32, gui.size[1] as f32);
         let cart = match self.client.screen {
             Screen::Chat => None,
-            Screen::CommandBlock => Some(self.command_block_screen.as_ref()?.cart()),
+            Screen::CommandBlock => Some(self.command_block_screen.0.as_ref()?.cart()),
             _ => return None,
         };
         self.resize_text_screens(w, h);
-        let built = self.screen_state.build.current.as_ref().filter(|build| {
+        let built = self.screen_state.0.build.current.as_ref().filter(|build| {
             build.screen == self.client.screen
                 && build.identity == identity
                 && build.scale == gui.scale as f32
@@ -898,7 +906,7 @@ mod tests {
     fn the_chat_box_is_resized_by_the_build_not_the_draw() {
         crate::game::native_entity_refs::tests::with_game(|game| {
             use sunrise_client::chat::{ChatAbilities, ChatScreen, ChatVisibility, Commands};
-            game.title = None;
+            game.title.0 = None;
             // 1280x720 at GUI scale 3 is 427x240.
             game.settings.gui_scale = 3;
             let m = sunrise_client::screen_draw::Measure(&game.gui.atlas.font);
@@ -920,13 +928,16 @@ mod tests {
                 game.built_chat(w, h).map(|layout| layout.leave_bed)
             };
             assert_eq!(leave_bed(game, 427.0, 240.0), Some((113, 200, 200, 20)));
-            let builds = game.screen_state.build.builds;
+            let builds = game.screen_state.0.build.builds;
             game.build_screen();
-            assert_eq!(game.screen_state.build.builds, builds, "an unchanged frame");
+            assert_eq!(
+                game.screen_state.0.build.builds, builds,
+                "an unchanged frame"
+            );
             // GUI scale 1: the build re-makes the box, keeping its text.
             game.settings.gui_scale = 1;
             game.build_screen();
-            assert_eq!(game.screen_state.build.builds, builds + 1);
+            assert_eq!(game.screen_state.0.build.builds, builds + 1);
             assert_eq!(input(game), [4, 708, 1276, 12]);
             assert_eq!(game.ui.chat_screen.as_ref().unwrap().value(), "/say hi");
             assert_eq!(leave_bed(game, 1280.0, 720.0), Some((540, 680, 200, 20)));
@@ -941,7 +952,7 @@ mod tests {
             game.client.screen = Screen::Inventory;
             game.container = None;
             game.craft_size = 2;
-            game.title = None;
+            game.title.0 = None;
             game.potions.effects.list = vec![sunrise_client::effects::EffectInstance::new(
                 "speed", 200, 0,
             )];
@@ -962,10 +973,10 @@ mod tests {
                 Some([[62.0, 24.0, 195.0, 28.0], [62.0, 188.0, 195.0, 28.0]])
             );
             game.build_screen();
-            let before = game.screen_state.build.builds;
+            let before = game.screen_state.0.build.builds;
             let constructions =
                 crate::game::container_layout::LAYOUT_CONSTRUCTIONS.with(|count| count.get());
-            let slots = match &game.screen_state.build.current.as_ref().unwrap().layout {
+            let slots = match &game.screen_state.0.build.current.as_ref().unwrap().layout {
                 BuildLayout::Container(layout) => layout.slots.as_ptr(),
                 _ => panic!("container"),
             };
@@ -975,13 +986,13 @@ mod tests {
                 crate::game::inventory_slots::SLOT_POSITIONS.with(|count| count.get()),
                 positions
             );
-            assert_eq!(game.screen_state.build.builds, before);
+            assert_eq!(game.screen_state.0.build.builds, before);
             assert_eq!(
                 crate::game::container_layout::LAYOUT_CONSTRUCTIONS.with(|count| count.get()),
                 constructions
             );
             let BuildLayout::Container(layout) =
-                &game.screen_state.build.current.as_ref().unwrap().layout
+                &game.screen_state.0.build.current.as_ref().unwrap().layout
             else {
                 panic!("container")
             };
@@ -1021,11 +1032,12 @@ mod tests {
             check(game);
             let inventory = game
                 .creative_screen
+                .0
                 .tab_headers()
                 .iter()
                 .position(|tab| tab.inventory)
                 .unwrap();
-            game.creative_screen.select(inventory);
+            game.creative_screen.0.select(inventory);
             check(game);
         });
     }
@@ -1507,20 +1519,20 @@ mod tests {
                 assert_eq!(slot, [58.0, 178.0, 18.0, 18.0]);
                 assert_eq!(game.slot_at(&batch, 59.0, 179.0), Some(0));
                 assert_eq!(game.slot_at(&batch, 133.0, 179.0), Some(4));
-                let builds = game.screen_state.build.builds;
+                let builds = game.screen_state.0.build.builds;
                 assert_eq!(calls.load(Ordering::Relaxed), 2);
                 game.build_screen();
                 assert_eq!(calls.load(Ordering::Relaxed), 2);
-                assert_eq!(game.screen_state.build.builds, builds);
+                assert_eq!(game.screen_state.0.build.builds, builds);
                 game.client.frames += 1;
                 game.build_screen();
                 assert_eq!(calls.load(Ordering::Relaxed), 4);
-                assert_eq!(game.screen_state.build.builds, builds);
+                assert_eq!(game.screen_state.0.build.builds, builds);
                 width.store(100, Ordering::Relaxed);
                 game.client.frames += 1;
                 game.build_screen();
                 assert_eq!(game.inventory_origin(&batch), (75.0, 37.0));
-                assert_eq!(game.screen_state.build.builds, builds + 1);
+                assert_eq!(game.screen_state.0.build.builds, builds + 1);
                 assert_eq!(game.slot_at(&batch, 83.0, 179.0), Some(0));
                 assert_eq!(
                     game.screen_view(&batch, Screen::Inventory).rect,
@@ -1676,7 +1688,7 @@ mod tests {
                     )
                     .unwrap(),
                 );
-                game.title = None;
+                game.title.0 = None;
                 game.container = None;
                 game.craft_size = 2;
                 game.client.screen = Screen::Inventory;

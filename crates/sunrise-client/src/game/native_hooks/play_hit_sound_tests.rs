@@ -38,7 +38,7 @@ fn play_hit_sound_helper_and_eight_mining_ticks() {
             with_game(|game| {
                 let scratch = tempfile::tempdir().unwrap();
                 game.server.world_root = scratch.path().to_path_buf();
-                game.save = Arc::new(sunrise_client::save::SaveDir::new(
+                game.save.0 = Arc::new(sunrise_client::save::SaveDir::new(
                     scratch.path().to_path_buf(),
                     sunrise_client::save::LevelShape::OVERWORLD,
                     Some(Default::default()),
@@ -51,7 +51,7 @@ fn play_hit_sound_helper_and_eight_mining_ticks() {
                 game.player.as_mut().unwrap().ground.on_ground = true;
                 game.creative = false;
                 game.client.screen = Screen::Playing;
-                game.title = None;
+                game.title.0 = None;
                 game.set_mapping_held("key.attack", true);
                 game.server.forced_hit = Some(Hit {
                     pos: [5, 63, 4],
@@ -72,11 +72,11 @@ fn play_hit_sound_helper_and_eight_mining_ticks() {
                     .default_state("minecraft:glass")
                     .unwrap();
                 for state in [stone, glass] {
-                    game.audio.capture = Some(Vec::new());
+                    game.audio.0.capture = Some(Vec::new());
                     hits.lock().unwrap().clear();
                     game.play_mining_hit_sound(state, [5, 63, 4], [-1, 0, 0], false);
                     assert_eq!(
-                        game.audio.capture.as_ref().unwrap().len(),
+                        game.audio.0.capture.as_ref().unwrap().len(),
                         usize::from(!(installed && state == glass))
                     );
                     if installed && state == glass {
@@ -86,7 +86,7 @@ fn play_hit_sound_helper_and_eight_mining_ticks() {
                         );
                     }
                     if state == stone {
-                        let sound = &game.audio.capture.as_ref().unwrap()[0];
+                        let sound = &game.audio.0.capture.as_ref().unwrap()[0];
                         assert_eq!(sound.event, "minecraft:block.stone.hit");
                         assert_eq!(sound.position, [5.5, 63.5, 4.5]);
                         assert_eq!((sound.volume, sound.pitch), (0.25, 0.5));
@@ -94,14 +94,14 @@ fn play_hit_sound_helper_and_eight_mining_ticks() {
                     }
                 }
                 for state in [stone, glass] {
-                    game.audio.heard.clear();
+                    game.audio.0.heard.clear();
                     hits.lock().unwrap().clear();
                     game.breaking_block_effects([5, 63, 4], [-1, 0, 0], false);
-                    assert!(game.audio.heard.is_empty());
+                    assert!(game.audio.0.heard.is_empty());
                     game.world.set(5, 63, 4, state).unwrap();
                     game.breaking_block_effects([5, 63, 4], [-1, 0, 0], true);
                     assert_eq!(
-                        game.audio.heard.values().sum::<u32>(),
+                        game.audio.0.heard.values().sum::<u32>(),
                         u32::from(!(installed && state == glass))
                     );
                 }
@@ -111,12 +111,12 @@ fn play_hit_sound_helper_and_eight_mining_ticks() {
                     game.clicks.destroying.active = true;
                     game.clicks.destroying.item = game.main_hand_key();
                     game.clicks.destroying.pos = [5, 63, 4];
-                    game.audio.capture = Some(Vec::new());
+                    game.audio.0.capture = Some(Vec::new());
                     hits.lock().unwrap().clear();
                     let mut played = Vec::new();
                     for tick in 1..=8 {
                         game.tick_local_hand().unwrap();
-                        for sound in game.audio.capture.as_mut().unwrap().drain(..) {
+                        for sound in game.audio.0.capture.as_mut().unwrap().drain(..) {
                             played.push((
                                 tick,
                                 sound.event,

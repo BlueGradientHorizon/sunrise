@@ -57,6 +57,7 @@ impl Game<'_> {
             }),
             transmitting: self
                 .cmds
+                .0
                 .waypoints
                 .as_ref()
                 .is_some_and(|tracked| tracked.contains(&Target::Guest(g.conn))),
@@ -71,6 +72,7 @@ impl Game<'_> {
             }),
             icon: self
                 .cmds
+                .0
                 .waypoint_icons
                 .get(&Target::Guest(g.conn))
                 .cloned()

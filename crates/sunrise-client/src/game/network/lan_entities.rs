@@ -629,7 +629,7 @@ impl Game<'_> {
         }
         self.lan_projectile_states(out, after);
         self.lan_general_states(out, after);
-        for o in self.others.iter().filter(|o| o.id > after) {
+        for o in self.others.0.iter().filter(|o| o.id > after) {
             let p = o.position;
             let e = add_state(out, o.id, &o.kind, [p.x, p.y, p.z], o.yaw, false);
             e.pitch = o.pitch;
@@ -654,9 +654,9 @@ impl Game<'_> {
             let Some(kept) = kept.get_mut(&self.dim) else {
                 return;
             };
-            if kept.len() > self.others.len() + 64 {
+            if kept.len() > self.others.0.len() + 64 {
                 let ids: sunrise_client::fast_hash::FxHashSet<u32> =
-                    self.others.iter().map(|o| o.id).collect();
+                    self.others.0.iter().map(|o| o.id).collect();
                 kept.retain(|id, _| ids.contains(id));
             }
         });

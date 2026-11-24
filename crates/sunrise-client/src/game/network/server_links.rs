@@ -262,7 +262,7 @@ impl Game<'_> {
                 .iter()
                 .position(|(x, y)| ui::hovered(self.client.cursor, *x, *y, LINK_WIDTH, 20.0))
         {
-            self.audio.play_button_click();
+            self.audio.0.play_button_click();
             self.click_link(&links[i].link);
             return Ok(true);
         }
@@ -270,13 +270,13 @@ impl Game<'_> {
         let tw = self.gui.atlas.font.width_text(&title);
         let (wx, wy) = warning_button(w, h, tw);
         if ui::hovered(self.client.cursor, wx, wy, WARNING_BUTTON, WARNING_BUTTON) {
-            self.audio.play_button_click();
+            self.audio.0.play_button_click();
             self.set_screen(Screen::DialogWarning);
             return Ok(true);
         }
         let (bx, by) = back_button(w, h);
         if ui::hovered(self.client.cursor, bx, by, 200.0, 20.0) {
-            self.audio.play_button_click();
+            self.audio.0.play_button_click();
             self.set_screen(Screen::Paused);
             return Ok(true);
         }
@@ -399,11 +399,11 @@ impl Game<'_> {
             if !ui::hovered(self.client.cursor, *x, *y, 100.0, 20.0) {
                 continue;
             }
-            self.audio.play_button_click();
+            self.audio.0.play_button_click();
             match i {
                 0 => open_uri(&url),
                 1 => {
-                    self.clipboard.set(&url);
+                    self.clipboard.0.set(&url);
                 }
                 _ => {}
             }
@@ -466,7 +466,7 @@ impl Game<'_> {
             if !ui::hovered(self.client.cursor, *x, *y, 150.0, 20.0) {
                 continue;
             }
-            self.audio.play_button_click();
+            self.audio.0.play_button_click();
             if i == 0 {
                 // DialogConnectionAccess.disconnect: leave with the custom
                 // screens' reason.

@@ -322,7 +322,7 @@ impl Game<'_> {
                 return Ok(true);
             }
             let logged = self.world.block_log.as_ref().map_or(0, Vec::len);
-            let heard = self.audio.capture.as_ref().map_or(0, Vec::len);
+            let heard = self.audio.0.capture.as_ref().map_or(0, Vec::len);
             let used = self.as_guest_at(gi, conn, |g| {
                 let attempt = g.was_block_placement_attempt(hand);
                 let saved = (g.server.forced_hit, g.server.guest_use);
@@ -428,6 +428,7 @@ impl Game<'_> {
         };
         if !self
             .creative_screen
+            .0
             .catalog()
             .item_enabled(held, self.enabled_feature_ids())
         {
@@ -463,7 +464,7 @@ impl Game<'_> {
                 return Err(ActionRefused::Protected);
             }
         }
-        let heard = self.audio.capture.as_ref().map_or(0, Vec::len);
+        let heard = self.audio.0.capture.as_ref().map_or(0, Vec::len);
         let used = self
             .as_guest_at(gi, conn, |g| {
                 // A horn's sound, inline instruments included.

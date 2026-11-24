@@ -53,8 +53,8 @@ impl Game<'_> {
         for profile in profiles {
             let skin = skins::head_skin(
                 profile,
-                &mut self.skin_profiles.borrow_mut(),
-                &mut self.skin_downloads.borrow_mut(),
+                &mut self.skin_profiles.0.borrow_mut(),
+                &mut self.skin_downloads.0.borrow_mut(),
                 |location| self.gui.atlas.sprites.contains_key(location),
             );
             let id = skins::parse_profile(profile).id;
@@ -148,7 +148,7 @@ impl Game<'_> {
     /// drawn; if not (new, or its slot taken), its image is queued for upload
     /// again and it is drawn from the next frame.
     pub(super) fn again_skin(&self, location: &str) -> bool {
-        let mut downloads = self.skin_downloads.borrow_mut();
+        let mut downloads = self.skin_downloads.0.borrow_mut();
         // A slot without its sprite (the atlas was rebuilt, or the upload
         // never happened) counts as missing, so the skin is stored again.
         if self.client.skin_slots.contains(location)
@@ -201,8 +201,8 @@ impl Game<'_> {
         sunrise_client::skins::face_skin(
             uuid,
             listed,
-            &mut self.skin_profiles.borrow_mut(),
-            &mut self.skin_downloads.borrow_mut(),
+            &mut self.skin_profiles.0.borrow_mut(),
+            &mut self.skin_downloads.0.borrow_mut(),
             |location| self.gui.atlas.sprites.contains_key(location),
             name,
         )

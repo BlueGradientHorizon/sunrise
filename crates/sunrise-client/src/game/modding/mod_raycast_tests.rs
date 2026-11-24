@@ -75,7 +75,7 @@ fn mod_raycasts_hit_loaded_blocks_only_with_far_terrain_on_or_off() {
     assert_eq!(game.raycast(8.0), Some(without.1.clone()));
     assert_eq!(game.raycast(1.0), None, "past the distance asked for");
     game.settings.sunrise.lod_distance = 256;
-    game.lod = Some(sunrise_client::lod::Lod::new(
+    game.lod.0 = Some(sunrise_client::lod::Lod::new(
         game.streaming.lod_source(),
         game.worker_context(),
     ));

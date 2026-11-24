@@ -171,6 +171,7 @@ impl Game<'_> {
             }
             _ => self
                 .text_displays
+                .0
                 .get(&id)
                 .map(|display| display.position().to_array())
                 .or_else(|| {
@@ -188,9 +189,11 @@ impl Game<'_> {
 
     pub(in crate::game) fn detach_remote_tracking_entity(&mut self, id: i32) {
         let target = TrackingTarget::Entity(id);
-        if self.particles.has_tracking_target(target) {
+        if self.particles.0.has_tracking_target(target) {
             let last_body = self.remote_entity_tracking_body(id);
-            self.particles.detach_tracking_target(target, || last_body);
+            self.particles
+                .0
+                .detach_tracking_target(target, || last_body);
         }
     }
 }

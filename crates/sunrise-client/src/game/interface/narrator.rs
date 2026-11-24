@@ -253,7 +253,7 @@ impl Game<'_> {
             return self.dialog_typing();
         }
         match self.client.screen {
-            Screen::Chat if self.title.is_none() => true,
+            Screen::Chat if self.title.0.is_none() => true,
             Screen::Options => self.ui.options.typing(),
             Screen::WorldOptions => self.world_options_typing(),
             Screen::CommandBlock | Screen::Social => true,
@@ -262,6 +262,7 @@ impl Game<'_> {
                 self.title_input_active()
                     && self
                         .title
+                        .0
                         .as_mut()
                         .is_some_and(|t| t.has_caret_field() || t.focused_field().is_some())
             }

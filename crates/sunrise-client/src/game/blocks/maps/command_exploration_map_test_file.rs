@@ -263,7 +263,7 @@ mod added_preservation_tests {
         }
         game.reload_datapacks(false, &[]).unwrap();
         assert_eq!(
-            game.fns.store.item_modifiers.get("mapcmd:ordered"),
+            game.fns.0.store.item_modifiers.get("mapcmd:ordered"),
             Some(&ordered)
         );
         assert!(
@@ -287,7 +287,7 @@ mod added_preservation_tests {
             custom.as_ref()
         );
         assert_eq!(
-            game.fns.store.item_modifiers.get("mapcmd:ordered"),
+            game.fns.0.store.item_modifiers.get("mapcmd:ordered"),
             Some(&ordered)
         );
         assert!(!game.run_command("item modify entity @s hotbar.2 mapcmd:ordered"));

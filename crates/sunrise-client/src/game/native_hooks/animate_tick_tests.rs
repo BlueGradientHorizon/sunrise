@@ -86,7 +86,9 @@ fn with_hearts(test: impl FnOnce(&mut Game<'_>, &Calls)) {
 }
 
 fn level_random(game: &mut Game<'_>) -> LegacyRandom {
-    LegacyRandom::from(<(u64, Option<f64>)>::from(&*game.particles.level_random()))
+    LegacyRandom::from(<(u64, Option<f64>)>::from(
+        &*game.particles.0.level_random(),
+    ))
 }
 
 #[test]
@@ -109,7 +111,7 @@ fn sampled_picks_reach_the_parts_of_their_block_only() {
         assert!(Game::animate_part_listens(glass));
         assert!(!Game::animate_part_listens(stone));
         // Under All the limiter draws nothing: the part's two draws are the level random's next.
-        game.particles.particle_level = 0;
+        game.particles.0.particle_level = 0;
         let mut expected = level_random(game);
         game.mod_animate_tick(glass, [1, 64, 2]);
         let first = expected.next_float();
@@ -126,7 +128,7 @@ fn sampled_picks_reach_the_parts_of_their_block_only() {
             )]
         );
         assert_eq!(
-            game.particles.level_random().next_long(),
+            game.particles.0.level_random().next_long(),
             expected.next_long(),
             "the part drew the level's own random"
         );
@@ -187,10 +189,11 @@ fn the_part_runs_inside_its_pick_before_the_fluid_the_next_pick_and_the_rain() {
         // Run after a camera frame: tickWeatherEffects uses the camera position,
         // which is still the origin until the camera has aligned with its entity.
         game.camera_view(1.0).expect("camera over the rod floor");
-        game.particles.requested = Some(Vec::new());
+        game.particles.0.requested = Some(Vec::new());
         game.tick_particles();
         let log: Vec<(ParticleType, [i32; 3])> = game
             .particles
+            .0
             .requested
             .take()
             .unwrap()
@@ -256,7 +259,7 @@ fn the_limiter_roll_of_add_particle_moves_the_parts_random() {
             .default_state("minecraft:glass")
             .unwrap();
         game.settings.particles = 1;
-        game.particles.particle_level = 1;
+        game.particles.0.particle_level = 1;
         let before = level_random(game);
         let mut expected = before.clone();
         game.mod_animate_tick(glass, [8, 64, 8]);
@@ -275,7 +278,7 @@ fn the_limiter_roll_of_add_particle_moves_the_parts_random() {
             )]
         );
         assert_eq!(
-            game.particles.level_random().next_long(),
+            game.particles.0.level_random().next_long(),
             expected.next_long(),
             "the level random after the call counts the limiter roll"
         );

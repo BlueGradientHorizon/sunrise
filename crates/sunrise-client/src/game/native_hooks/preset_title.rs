@@ -19,8 +19,8 @@ impl Game<'_> {
     pub(super) fn stage_title(&mut self, mut title: sunrise_client::title::Title) {
         title.set_additional_data_packs(self.pack.additional_data.clone());
         title.set_preset_data_source(self.pack.data_changes.clone());
-        self.screen_state.build.reopened();
-        self.title = Some(title);
+        self.screen_state.0.build.reopened();
+        self.title.0 = Some(title);
     }
 
     pub(in crate::game) fn show_title_with_registry(

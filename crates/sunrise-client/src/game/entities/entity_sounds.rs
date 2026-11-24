@@ -32,6 +32,7 @@ impl Game<'_> {
         );
         let except = except_actor.then(|| self.native_acting_entity());
         self.audio
+            .0
             .play_bound(event, source, volume, pitch, entity, except);
     }
 
@@ -56,7 +57,7 @@ impl Game<'_> {
             let mut sound = LevelSound::new(event, [0.0; 3], volume, pitch)
                 .in_source(mod_api::SoundSource::ALL[source]);
             sound.emitter = Some(id);
-            let seed = self.audio.next_sound_seed();
+            let seed = self.audio.0.next_sound_seed();
             self.play_client_level_sound(sound, seed);
             return;
         }
@@ -65,7 +66,7 @@ impl Game<'_> {
         };
         let entity = SoundEntity::new(id, state.position, state.silent);
         entity.update(state);
-        self.audio.play_bound(
+        self.audio.0.play_bound(
             event,
             source,
             volume,

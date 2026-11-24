@@ -252,12 +252,12 @@ mod tests {
                 assert_eq!(level_side.entity, None);
                 reads.lock().unwrap().clear();
 
-                game.combat.explosion_direct = Some(9);
+                game.combat.0.explosion_direct = Some(9);
                 game.world.set(POS[0], POS[1], POS[2], gravel).unwrap();
                 let center = POS.map(|c| f64::from(c) + 0.5);
                 let blast = crate::game::explosion::BlockInteraction::Destroy;
                 game.server_explode(center, 4.0, blast, false).unwrap();
-                game.combat.explosion_direct = None;
+                game.combat.0.explosion_direct = None;
                 let blast = reads.lock().unwrap().swap_remove(0);
                 assert_eq!((blast.tool, blast.entity), (None, Some(9)));
             });

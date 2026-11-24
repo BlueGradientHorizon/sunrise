@@ -19,7 +19,7 @@ impl Game<'_> {
         // The mods' render hooks: whether any listens this frame, and no entity canceled yet.
         super::native_mob_draw::begin_entity_frame();
         // Spans tell the pack's passes which entities are hidden; without them, nothing changes.
-        self.occlusion.shadow_casters = match (&self.renderer, &self.client.pack_ids) {
+        self.occlusion.0.shadow_casters = match (&self.renderer.0, &self.client.pack_ids) {
             (Some(r), Some(_)) => r.pack_shadow_casters(),
             // A native pack's shadow pass has no spans to hide entities with: it only needs
             // the first-person model.
@@ -35,10 +35,10 @@ impl Game<'_> {
     ) -> bool {
         let hidden = self.occlusion_hidden(Some(vertices), start, None);
         if hidden
-            && !(self.occlusion.shadow_casters.0 && self.hide_spans_from(start, vertices.len()))
+            && !(self.occlusion.0.shadow_casters.0 && self.hide_spans_from(start, vertices.len()))
         {
             if self.settings.sunrise.entity_culling == EntityCullingMode::Asynchronous
-                && let Some(culler) = &self.occlusion.async_culler
+                && let Some(culler) = &self.occlusion.0.async_culler
             {
                 culler.record_entity_vertices_culled(vertices.len().saturating_sub(start));
             }
@@ -52,14 +52,14 @@ impl Game<'_> {
         lo: glam::Vec3,
         hi: glam::Vec3,
     ) -> bool {
-        if self.occlusion.occlusion_hidden_camera_bounds(
+        if self.occlusion.0.occlusion_hidden_camera_bounds(
             &section_scene!(self),
             self.settings.sunrise.entity_culling,
             lo,
             hi,
         ) {
             if self.settings.sunrise.entity_culling == EntityCullingMode::Asynchronous
-                && let Some(culler) = &self.occlusion.async_culler
+                && let Some(culler) = &self.occlusion.0.async_culler
             {
                 culler.record_entity_vertices_culled(2);
             }
@@ -90,7 +90,7 @@ impl Game<'_> {
         render_bounds: Aabb,
     ) -> EntityCullDecision {
         if self.settings.sunrise.entity_culling == EntityCullingMode::Off
-            || self.occlusion.shadow_casters.0
+            || self.occlusion.0.shadow_casters.0
             || entity.render_glowing(self)
         {
             return EntityCullDecision::Bypass;
@@ -101,8 +101,8 @@ impl Game<'_> {
         let margin = Vec3::new(1.0e-4, 1.0e-4, 1.0e-4);
         let bounds = render_bounds.inflate(margin);
         let scene = section_scene!(self);
-        if self.occlusion.terrain_sections_occlude(&scene, bounds) {
-            if let Some(culler) = &self.occlusion.async_culler {
+        if self.occlusion.0.terrain_sections_occlude(&scene, bounds) {
+            if let Some(culler) = &self.occlusion.0.async_culler {
                 culler.record_entity_culled();
             }
             return EntityCullDecision::Hidden;
@@ -112,6 +112,7 @@ impl Game<'_> {
             EntityCullingMode::Synchronous => {
                 if self
                     .occlusion
+                    .0
                     .entity_hidden_sync(&scene, None, 0, Some(bounds))
                 {
                     EntityCullDecision::Hidden
@@ -120,9 +121,10 @@ impl Game<'_> {
                 }
             }
             EntityCullingMode::Asynchronous => {
-                let Some(culler) = &self.occlusion.async_culler else {
+                let Some(culler) = &self.occlusion.0.async_culler else {
                     return if self
                         .occlusion
+                        .0
                         .entity_hidden_sync(&scene, None, 0, Some(bounds))
                     {
                         EntityCullDecision::Hidden
@@ -169,7 +171,7 @@ impl Game<'_> {
         start: usize,
     ) {
         if decision.checks_vertices()
-            && !self.occlusion.shadow_casters.0
+            && !self.occlusion.0.shadow_casters.0
             && !entity.render_glowing(self)
         {
             self.cull_entity_vertices(vertices, start);
@@ -182,7 +184,7 @@ impl Game<'_> {
         start: usize,
         bounds: Option<Aabb>,
     ) -> bool {
-        self.occlusion.occlusion_hidden(
+        self.occlusion.0.occlusion_hidden(
             &section_scene!(self),
             self.settings.sunrise.entity_culling,
             vertices,
@@ -243,7 +245,7 @@ impl Game<'_> {
         if !self.world.shape.contains_y(block[1]) {
             return true;
         }
-        self.renderer.as_ref().is_none_or(|renderer| {
+        self.renderer.0.as_ref().is_none_or(|renderer| {
             renderer.entity_section_visible(block, self.settings.chunk_fade as f32, now)
         })
     }
@@ -296,8 +298,8 @@ impl Game<'_> {
 
 impl Game<'_> {
     pub(in crate::game) fn prepare_occlusion_culling(&mut self, camera: glam::DVec3) {
-        self.occlusion.section_camera = None;
-        self.occlusion.section_visibility_valid = false;
+        self.occlusion.0.section_camera = None;
+        self.occlusion.0.section_visibility_valid = false;
         let entity_mode = self.settings.sunrise.entity_culling;
         let requested = entity_mode != EntityCullingMode::Off;
         let eligible = requested
@@ -306,55 +308,55 @@ impl Game<'_> {
             && self.player.is_some()
             && !self.spectator();
         if !eligible {
-            self.occlusion.sync_culler = None;
-            self.occlusion.async_culler = None;
-            self.occlusion.async_failed = false;
+            self.occlusion.0.sync_culler = None;
+            self.occlusion.0.async_culler = None;
+            self.occlusion.0.async_failed = false;
             return;
         }
         let at = camera.to_array().map(sunrise_core::mth::floor);
-        self.occlusion.section_camera = Some((
+        self.occlusion.0.section_camera = Some((
             at[0] >> 4,
             (at[1] >> 4) - (self.world.bottom_y() >> 4),
             at[2] >> 4,
         ));
         let camera_facts = self.res.facts().get(self.world.block(at[0], at[1], at[2]));
         if opaque(camera_facts) {
-            self.occlusion.sync_culler = None;
-            self.occlusion.async_culler = None;
-            self.occlusion.async_failed = false;
+            self.occlusion.0.sync_culler = None;
+            self.occlusion.0.async_culler = None;
+            self.occlusion.0.async_failed = false;
             return;
         }
-        self.occlusion.section_visibility_valid = self.settings.sunrise.cave_culling
+        self.occlusion.0.section_visibility_valid = self.settings.sunrise.cave_culling
             && !camera_facts.solid_render
-            && self.occlusion.section_camera.is_some();
+            && self.occlusion.0.section_camera.is_some();
 
         let wants_async = entity_mode == EntityCullingMode::Asynchronous;
         let wants_sync = entity_mode == EntityCullingMode::Synchronous;
         if wants_async {
-            if self.occlusion.async_culler.is_none() && !self.occlusion.async_failed {
+            if self.occlusion.0.async_culler.is_none() && !self.occlusion.0.async_failed {
                 match AsyncOcclusionCuller::new() {
-                    Ok(culler) => self.occlusion.async_culler = Some(Box::new(culler)),
+                    Ok(culler) => self.occlusion.0.async_culler = Some(Box::new(culler)),
                     Err(error) => {
                         log::warn!("Sunrise: cannot start world-occlusion-culling worker: {error}");
-                        self.occlusion.async_failed = true;
+                        self.occlusion.0.async_failed = true;
                     }
                 }
             }
-            if let Some(culler) = &mut self.occlusion.async_culler {
+            if let Some(culler) = &mut self.occlusion.0.async_culler {
                 culler.begin_frame(camera, &self.world);
             }
         } else {
-            self.occlusion.async_culler = None;
-            self.occlusion.async_failed = false;
+            self.occlusion.0.async_culler = None;
+            self.occlusion.0.async_failed = false;
         }
 
-        let async_unavailable = wants_async && self.occlusion.async_culler.is_none();
-        self.occlusion.sync_culler = (wants_sync || async_unavailable)
+        let async_unavailable = wants_async && self.occlusion.0.async_culler.is_none();
+        self.occlusion.0.sync_culler = (wants_sync || async_unavailable)
             .then(|| OcclusionCuller::new(camera.to_array(), 8_192));
     }
 
     pub(in crate::game) fn finish_async_occlusion_culling(&mut self) {
-        if let Some(culler) = &mut self.occlusion.async_culler {
+        if let Some(culler) = &mut self.occlusion.0.async_culler {
             culler.finish_frame(&self.world, self.res.facts());
         }
     }

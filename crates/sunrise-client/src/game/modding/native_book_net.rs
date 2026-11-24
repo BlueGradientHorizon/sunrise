@@ -80,7 +80,7 @@ impl Game<'_> {
         self.build_screen();
     }
     pub(super) fn clear_guest_book_connection(&mut self, conn: u32) {
-        self.guest_combat.remove(&conn);
+        self.guest_combat.0.remove(&conn);
         self.native_net.book_connections.remove(&conn);
         self.native_net.placement.servers.remove(&conn);
     }

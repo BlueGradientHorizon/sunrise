@@ -217,6 +217,7 @@ impl Game<'_> {
             })
             .or_else(|| {
                 self.text_displays
+                    .0
                     .get(&(entity as i32))
                     .and_then(|d| d.vehicle)
             })

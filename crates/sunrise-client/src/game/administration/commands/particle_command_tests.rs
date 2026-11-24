@@ -71,9 +71,9 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
 /// The one particle the window asks the engine for with `command`, at the
 /// player's own block and with no spread.
 fn drawn(game: &mut Game<'_>, command: &str) -> ParticleOptions {
-    game.particles.created_requests = Some(Vec::new());
+    game.particles.0.created_requests = Some(Vec::new());
     assert!(game.run_command(command), "{command}");
-    let mut made = game.particles.created_requests.take().unwrap();
+    let mut made = game.particles.0.created_requests.take().unwrap();
     assert_eq!(made.len(), 1, "{command}");
     made.remove(0).0
 }
@@ -134,8 +134,8 @@ fn particle_options_carry_their_codec_data() {
 fn block_crumble_draws_the_block_it_names() {
     let mut resources = None;
     let mut game = game(&mut resources);
-    game.particles.created_requests = None;
-    game.particles.clear();
+    game.particles.0.created_requests = None;
+    game.particles.0.clear();
     assert!(game.run_command(
         "particle minecraft:block_crumble{block_state:\"minecraft:stone\"} 0.5 100.5 0.5 0 0 0 0 1"
     ));
@@ -146,8 +146,8 @@ fn block_crumble_draws_the_block_it_names() {
         player: None,
         cached_chunk: std::cell::Cell::new(None),
     };
-    game.particles.tick(&level);
-    assert_eq!(game.particles.len(), 1, "the crumble is drawn");
+    game.particles.0.tick(&level);
+    assert_eq!(game.particles.0.len(), 1, "the crumble is drawn");
 }
 
 #[test]
@@ -219,7 +219,7 @@ fn typed_particle_command_encoder_refusal_does_not_deliver_to_a_guest() {
     });
     game.lan = Some(crate::game::lan::LanHost::for_test(hub));
     game.server.lan_acting = Some(1);
-    game.particles.created_requests = Some(Vec::new());
+    game.particles.0.created_requests = Some(Vec::new());
     assert!(game.run_command("particle test:measured{measure:1} 0.5 100.5 0.5 0 0 0 0 1 force @s"));
     assert!(game.server.guest_packets.iter().any(|p| matches!(
         p,
@@ -236,5 +236,5 @@ fn typed_particle_command_encoder_refusal_does_not_deliver_to_a_guest() {
         sunrise_protocol::packets::play::Clientbound::LevelParticles(_)
     )));
     assert!(receiver.try_recv().is_err());
-    assert!(game.particles.created_requests.take().unwrap().is_empty());
+    assert!(game.particles.0.created_requests.take().unwrap().is_empty());
 }

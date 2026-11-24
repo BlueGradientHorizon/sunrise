@@ -418,7 +418,7 @@ fn server_players_initialize_on_join_and_new_respawn_but_not_rebind() {
     observe(|calls| {
         crate::game::native_guest_turn_tests::with_guests(|game| {
             game.options.dedicated = Some(Vec::new());
-            game.server.world_root = game.save.root.clone();
+            game.server.world_root = game.save.0.root.clone();
             game.lan
                 .as_mut()
                 .unwrap()

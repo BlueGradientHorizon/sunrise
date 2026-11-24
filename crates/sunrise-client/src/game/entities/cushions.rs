@@ -293,7 +293,7 @@ impl Game<'_> {
         if self.cushion_in_fire(&self.cushions[placed]) {
             self.break_cushion(placed, false);
         }
-        self.audio.play(
+        self.audio.0.play(
             "minecraft:entity.cushion.place",
             Some([position.x, position.y, position.z]),
             0.75,
@@ -363,7 +363,7 @@ impl Game<'_> {
         };
         self.start_riding(id);
         let p = self.cushions[i].position;
-        self.audio.play(
+        self.audio.0.play(
             "minecraft:entity.cushion.sit",
             Some([p.x, p.y, p.z]),
             1.0,
@@ -428,7 +428,7 @@ impl Game<'_> {
             // BlockAttachedEntity.kill, before dropItem.
             self.entity_killed_event_by([p.x, p.y, p.z], source);
         }
-        self.audio.play(
+        self.audio.0.play(
             "minecraft:entity.cushion.break",
             Some([p.x, p.y, p.z]),
             1.0,
@@ -484,7 +484,7 @@ impl Game<'_> {
         let particle_at = [p.x, p.y + 0.25 * (2.0 / 3.0), p.z];
         // Guest actions temporarily take self.lan; flush once the hub is back.
         // Queue before resolving a sprite: a dedicated server has no renderer.
-        if self.audio.capture.is_some() {
+        if self.audio.0.capture.is_some() {
             self.server.lan_cushion_breaks.push((state, particle_at));
         }
         let at = [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32];
@@ -497,6 +497,7 @@ impl Game<'_> {
             tint,
         );
         self.particles
+            .0
             .send_particles(&options, particle_at, [0.25, 0.0625, 0.25], 0.05, 10);
     }
 
@@ -579,7 +580,7 @@ impl Game<'_> {
             p.velocity = Vec3::ZERO;
             p.fall_distance = 0.0;
         }
-        self.audio.play(
+        self.audio.0.play(
             "minecraft:entity.cushion.get_up",
             Some([c.position.x, c.position.y, c.position.z]),
             1.0,

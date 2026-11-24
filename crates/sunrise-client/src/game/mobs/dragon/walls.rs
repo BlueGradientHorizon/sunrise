@@ -67,7 +67,7 @@ impl Game<'_> {
         if broke && let Some(d) = self.dragon.as_ref() {
             let p = d.parts[0].0;
             // Level event 2008: an explosion puff where a block broke.
-            self.particles.add(
+            self.particles.0.add(
                 &ParticleOptions::simple(ParticleType::Explosion),
                 [p.x, p.y, p.z],
                 [0.0; 3],

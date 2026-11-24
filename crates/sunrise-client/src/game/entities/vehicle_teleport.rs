@@ -922,8 +922,8 @@ impl Game<'_> {
                 }
             }
             Target::Other(id) => {
-                if let Some(i) = self.others.iter().position(|e| e.id == id) {
-                    self.others.update(i, |o| {
+                if let Some(i) = self.others.0.iter().position(|e| e.id == id) {
+                    self.others.0.update(i, |o| {
                         if yaw.is_finite() {
                             o.yaw = yaw;
                         }

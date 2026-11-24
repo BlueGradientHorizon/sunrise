@@ -390,6 +390,7 @@ impl Game<'_> {
     /// a summoned or loaded `minecraft:leash_knot`, which sits on its block.
     pub(in crate::game) fn knot_by_uuid(&self, uuid: [i32; 4]) -> Option<[i32; 3]> {
         self.others
+            .0
             .iter()
             .find(|o| o.kind == "minecraft:leash_knot" && self.persist.uuid_of(o.id) == Some(uuid))
             .map(|o| {
@@ -516,6 +517,7 @@ impl Game<'_> {
                 self.drop_boat_leashes(&held_boats);
                 self.lead_game_event("minecraft:shear", at);
                 self.audio
+                    .0
                     .play("minecraft:item.shears.snip", Some(at), 1.0, 1.0);
                 self.damage_held_tool();
                 return true;

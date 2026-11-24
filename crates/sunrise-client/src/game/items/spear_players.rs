@@ -236,7 +236,7 @@ impl Game<'_> {
         let attack = self.attack_of(attacker_id);
         let land = |g: &mut Self| {
             g.with_attack(attack.clone(), |g| {
-                g.combat.player_attacker = Some((s.from, s.disable_blocking));
+                g.combat.0.player_attacker = Some((s.from, s.disable_blocking));
                 g.note_player_attacker(
                     "minecraft:spear",
                     attacker_id as u32,
@@ -247,7 +247,7 @@ impl Game<'_> {
                 let old_health = health(g);
                 let hurt =
                     s.deals_damage && { g.mob_hits_player(s.amount, s.from, "minecraft:spear") };
-                g.combat.player_attacker = None;
+                g.combat.0.player_attacker = None;
                 // causeExtraKnockback: a push of 0.4, then the weapon's Knockback,
                 // whether or not the hurt went through.
                 let (strength, xd, zd) = s.knockback;

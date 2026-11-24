@@ -66,8 +66,8 @@ pub(in crate::game) struct CreativeCache {
 
 impl Game<'_> {
     pub(in crate::game) fn reset_creative_contents(&mut self) {
-        self.creative_contents = CreativeCache::default();
-        self.creative_screen.reset_contents();
+        self.creative_contents.0 = CreativeCache::default();
+        self.creative_screen.0.reset_contents();
     }
 
     /// Fire after one tab's generator with the live edit session installed.
@@ -101,13 +101,13 @@ impl Game<'_> {
             features: self.enabled_feature_ids().clone(),
             permissions,
         };
-        if let Some(active) = &self.creative_contents.active {
+        if let Some(active) = &self.creative_contents.0.active {
             if active.key.matches(&key) {
                 return Ok(active.partial.clone());
             }
             return Err(CreativeTabReadError::Reentrant);
         }
-        if let Some(published) = &self.creative_contents.published
+        if let Some(published) = &self.creative_contents.0.published
             && published.key.matches(&key)
         {
             return Ok(published.lists.clone());
@@ -115,19 +115,20 @@ impl Game<'_> {
         let holders = self
             .creative_holders()
             .ok_or(CreativeTabReadError::Unavailable)?;
-        let items = match (&self.server_items, &self.world_tables) {
+        let items = match (&self.server_items, &self.world_tables.0) {
             (Some(items), _) => Arc::clone(items),
             (_, Some(tables)) => Arc::clone(&tables.items),
             _ => self.res.shared_items(),
         };
-        let catalog = self.creative_screen.catalog().clone();
+        let catalog = self.creative_screen.0.catalog().clone();
         let prior = self
             .creative_contents
+            .0
             .published
             .as_ref()
             .map(|p| p.lists.clone());
         let listen = mod_api::__private::listened(mod_api::HookId::BuildCreativeModeTabContents);
-        self.creative_contents.active = Some(ActiveBuild {
+        self.creative_contents.0.active = Some(ActiveBuild {
             key: BuildKey {
                 features: key.features.clone(),
                 permissions,
@@ -152,6 +153,7 @@ impl Game<'_> {
                     );
                     let active = self
                         .creative_contents
+                        .0
                         .active
                         .as_mut()
                         .expect("active creative build");
@@ -168,6 +170,7 @@ impl Game<'_> {
                     );
                     *current = self
                         .creative_contents
+                        .0
                         .active
                         .as_mut()
                         .expect("active creative build")
@@ -179,8 +182,8 @@ impl Game<'_> {
                 }
             },
         );
-        self.creative_contents.active = None;
-        self.creative_contents.published = Some(Published {
+        self.creative_contents.0.active = None;
+        self.creative_contents.0.published = Some(Published {
             key,
             lists: lists.clone(),
             api: OnceCell::new(),
@@ -205,10 +208,10 @@ impl Game<'_> {
         let Ok(lists) = self.build_creative(self.creative_permissions()) else {
             return;
         };
-        if let Some(published) = &self.creative_contents.published
+        if let Some(published) = &self.creative_contents.0.published
             && Arc::ptr_eq(&lists, &published.lists)
         {
-            self.creative_screen.publish(
+            self.creative_screen.0.publish(
                 lists,
                 published.holders.clone(),
                 published.items.clone(),
@@ -221,13 +224,14 @@ impl Game<'_> {
     /// The name components that replace the creative search's prepared name lines.
     pub(in crate::game) fn refresh_creative_search_names(&mut self) {
         // Only when the search tab's stacks were made again, not every creative tick.
-        let generation = self.creative_screen.search_generation();
+        let generation = self.creative_screen.0.search_generation();
         if self.client.creative_search_named == Some(generation) {
             return;
         }
         self.client.creative_search_named = Some(generation);
         let names = self
             .creative_screen
+            .0
             .search_items()
             .iter()
             .map(|stack| {
@@ -238,7 +242,7 @@ impl Game<'_> {
                 }
             })
             .collect();
-        self.creative_screen.set_search_names(names);
+        self.creative_screen.0.set_search_names(names);
     }
 
     pub(in crate::game) fn creative_tabs(
@@ -249,12 +253,13 @@ impl Game<'_> {
             return Err(CreativeTabReadError::Unavailable);
         }
         let lists = self.build_creative(permissions)?;
-        let catalog = self.creative_screen.catalog();
-        if self.creative_contents.active.is_some() {
+        let catalog = self.creative_screen.0.catalog();
+        if self.creative_contents.0.active.is_some() {
             return Ok(snapshot(catalog, permissions, &lists));
         }
         let published = self
             .creative_contents
+            .0
             .published
             .as_ref()
             .expect("complete creative build");
@@ -272,18 +277,23 @@ impl Game<'_> {
         if self.native_lifecycle.epoch().is_none() {
             return Err(CreativeTabReadError::Unavailable);
         }
-        Ok(self.creative_contents.published.as_ref().map(|published| {
-            published
-                .api
-                .get_or_init(|| {
-                    snapshot(
-                        self.creative_screen.catalog(),
-                        published.key.permissions,
-                        &published.lists,
-                    )
-                })
-                .clone()
-        }))
+        Ok(self
+            .creative_contents
+            .0
+            .published
+            .as_ref()
+            .map(|published| {
+                published
+                    .api
+                    .get_or_init(|| {
+                        snapshot(
+                            self.creative_screen.0.catalog(),
+                            published.key.permissions,
+                            &published.lists,
+                        )
+                    })
+                    .clone()
+            }))
     }
 
     /// The search tab's canonical display list (not the client-only UI additions).
@@ -295,6 +305,7 @@ impl Game<'_> {
             return Vec::new();
         };
         self.creative_screen
+            .0
             .catalog()
             .search_display(&lists)
             .to_vec()
@@ -304,10 +315,10 @@ impl Game<'_> {
     /// without publishing anything or giving mods a creative callback.
     pub(in crate::game) fn stock_sort_order(&self) -> Vec<ItemStack> {
         let preview;
-        let lists = if let Some(published) = &self.creative_contents.published {
+        let lists = if let Some(published) = &self.creative_contents.0.published {
             &published.lists
         } else {
-            preview = self.creative_screen.catalog().build(
+            preview = self.creative_screen.0.catalog().build(
                 Parameters {
                     features: self.enabled_feature_ids(),
                     operator: false,
@@ -319,7 +330,7 @@ impl Game<'_> {
             );
             &preview
         };
-        self.creative_screen.search_order_from(lists)
+        self.creative_screen.0.search_order_from(lists)
     }
 
     pub(in crate::game) fn creative_stack_key(&self, stack: &ItemStack) -> Option<ItemStack> {
@@ -327,6 +338,7 @@ impl Game<'_> {
         // Use the very same prototypes as the generator during a reentrant read.
         let items = self
             .creative_contents
+            .0
             .active
             .as_ref()
             .map_or_else(|| self.items(), |active| &active.items);
@@ -426,7 +438,7 @@ impl Game<'_> {
         edit: CreativeTabEdit,
         apply: impl FnOnce(&mut TabContents, &Items) -> Result<T, CreativeTabEditError>,
     ) -> Result<T, CreativeTabEditError> {
-        let Some(active) = &self.creative_contents.active else {
+        let Some(active) = &self.creative_contents.0.active else {
             return Err(CreativeTabEditError::Stale);
         };
         let mut session = active

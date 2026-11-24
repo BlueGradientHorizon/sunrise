@@ -232,7 +232,7 @@ impl Game<'_> {
         }
         let mut scratch = std::mem::take(&mut self.server.spawn_scratch);
         self.spawning_chunks(&self.level_players(), &mut scratch);
-        let levels = self.tickets.levels();
+        let levels = self.tickets.0.levels();
         scratch
             .candidates
             .retain(|&(x, z)| levels.random_ticking(x, z));
@@ -707,13 +707,13 @@ impl Game<'_> {
                             )
                         })
                     };
-                    self.audio.play(
+                    self.audio.0.play(
                         "minecraft:entity.lightning_bolt.thunder",
                         Some(at),
                         10000.0,
                         thunder_pitch,
                     );
-                    self.audio.play(
+                    self.audio.0.play(
                         "minecraft:entity.lightning_bolt.impact",
                         Some(at),
                         2.0,
@@ -1032,6 +1032,7 @@ impl Game<'_> {
                         state.converted.push(m.id);
                         m.extra.variant = 1 - m.extra.variant.min(1);
                         self.audio
+                            .0
                             .play("minecraft:entity.mooshroom.convert", Some(at), 2.0, 1.0);
                     }
                     continue;

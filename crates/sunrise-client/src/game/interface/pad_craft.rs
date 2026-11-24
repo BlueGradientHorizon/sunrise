@@ -310,7 +310,7 @@ impl Game<'_> {
     /// The pad can direct-craft here, with nothing carried: the inventory's guide says so on a
     /// recipe. Whether the recipe can be made isn't checked, as that counts the inventory.
     pub(in crate::game) fn direct_craft_usable(&self) -> bool {
-        self.pad.in_use
+        self.pad.0.in_use
             && self.carried.is_none()
             && self.mod_recipe_screen()
             && self.direct_craft_allowed()
@@ -320,11 +320,11 @@ impl Game<'_> {
     /// rather than ending the craft.
     pub(in crate::game) fn direct_craft_takes_press(&self, button: gamepad::Button) -> bool {
         button == gamepad::Button::South
-            && self.pad.edges.is_held(gamepad::Button::LeftTrigger)
+            && self.pad.0.edges.is_held(gamepad::Button::LeftTrigger)
             && self.client.screen == super::Screen::Inventory
-            && self.title.is_none()
+            && self.title.0.is_none()
             && !self.prompt_open()
-            && self.pad.menu.craft.as_ref().is_some_and(|craft| {
+            && self.pad.0.menu.craft.as_ref().is_some_and(|craft| {
                 self.recipe_under_pointer()
                     .and_then(|entry| self.recipe_stable_key(entry))
                     .is_some_and(|key| key == craft.recipe)
@@ -342,7 +342,7 @@ impl Game<'_> {
         let Some(recipe) = self.recipe_stable_key(entry) else {
             return false;
         };
-        if let Some(craft) = &mut self.pad.menu.craft {
+        if let Some(craft) = &mut self.pad.0.menu.craft {
             if craft.recipe != recipe {
                 return false;
             }
@@ -365,26 +365,26 @@ impl Game<'_> {
         if self.integrated.is_none() {
             craft.place_gap = PLACE_GAP;
         }
-        self.pad.menu.craft = Some(craft);
+        self.pad.0.menu.craft = Some(craft);
         true
     }
 
     /// Anything that ends a running craft while the server can still answer; a click or key
     /// behind it goes on to the screen.
     pub(in crate::game) fn direct_craft_stop(&mut self) {
-        self.pad.menu.stop_craft();
+        self.pad.0.menu.stop_craft();
     }
 
     /// The server said a placement can't be made.
     pub(in crate::game) fn direct_craft_refused(&mut self) {
-        if let Some(craft) = &mut self.pad.menu.craft {
+        if let Some(craft) = &mut self.pad.0.menu.craft {
             craft.refused();
         }
     }
 
     /// Once per poll: the running craft's next step, when the last one has been answered.
     pub(in crate::game) fn direct_craft_poll(&mut self) {
-        let Some(mut craft) = self.pad.menu.craft.take() else {
+        let Some(mut craft) = self.pad.0.menu.craft.take() else {
             return;
         };
         let cells = self.craft_size * self.craft_size;
@@ -396,8 +396,8 @@ impl Game<'_> {
         if self.carried.is_some() {
             craft.stop();
         }
-        if !self.pad.edges.is_held(gamepad::Button::South)
-            || !self.pad.edges.is_held(gamepad::Button::LeftTrigger)
+        if !self.pad.0.edges.is_held(gamepad::Button::South)
+            || !self.pad.0.edges.is_held(gamepad::Button::LeftTrigger)
         {
             craft.let_go();
         }
@@ -438,7 +438,7 @@ impl Game<'_> {
                 self.remote_quick_move_unpredicted(100 + cell);
             }
         }
-        self.pad.menu.craft = Some(craft);
+        self.pad.0.menu.craft = Some(craft);
     }
 }
 

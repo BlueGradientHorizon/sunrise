@@ -207,7 +207,7 @@ fn entity_die_explosions() {
             .unwrap();
             game.summon_with_nbt("minecraft:experience_orb", at, "{Value:1s}")
                 .unwrap();
-            game.combat.explosion_owner = source;
+            game.combat.0.explosion_owner = source;
             capture();
             game.server_explode(
                 [4.5, 200.5, 4.5],
@@ -244,7 +244,7 @@ fn entity_die_explosions() {
             assert!(events.contains(&("minecraft:entity_die", [3.5, 200.0, 4.5], None)));
         }
         // Explosion attribution must not leak into subsequent unrelated removals.
-        game.combat.explosion_owner = None;
+        game.combat.0.explosion_owner = None;
         let target = game
             .summon_with_nbt("minecraft:cushion", at, "{}")
             .unwrap()

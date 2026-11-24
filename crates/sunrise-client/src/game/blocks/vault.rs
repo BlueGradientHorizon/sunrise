@@ -137,7 +137,7 @@ impl Game<'_> {
             LevelRandom::for_level(LegacyRandom::new(0)),
         );
         let mut sequences = std::mem::take(&mut self.server.rand_sequences);
-        let loot = self.server_loot.get();
+        let loot = self.server_loot.0.get();
         let players = Players {
             time: self.world.game_time,
             game: self,
@@ -265,6 +265,7 @@ impl Game<'_> {
                 VaultEvent::LevelEvent(id, data) => self.level_event_at(id, pos, data),
                 VaultEvent::Sound(name, volume, pitch) => {
                     self.audio
+                        .0
                         .play(&format!("minecraft:{name}"), Some(center), volume, pitch)
                 }
                 // Vec3.atBottomCenterOf(pos).relative(UP, 1.2), lowered by spawnItem.

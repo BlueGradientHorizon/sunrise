@@ -356,6 +356,7 @@ impl Game<'_> {
             return Err(mod_api::DataMapError::Unavailable);
         }
         self.world_tables
+            .0
             .as_ref()
             .map(|tables| &tables.data_maps)
             .ok_or(mod_api::DataMapError::Unavailable)

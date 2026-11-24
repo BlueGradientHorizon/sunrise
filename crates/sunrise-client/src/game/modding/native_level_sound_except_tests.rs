@@ -236,7 +236,7 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
 
             with_guests(|game| {
                 game.options.dedicated = Some(Vec::new());
-                game.audio.capture = Some(Vec::new());
+                game.audio.0.capture = Some(Vec::new());
                 let (tx12, rx12) = mpsc::channel();
                 let (tx13, rx13) = mpsc::channel();
                 game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
@@ -258,10 +258,15 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                     )
                     .unwrap(),
                 );
-                game.audio.set_listener(at, 0.0, 0.0);
+                game.audio.0.set_listener(at, 0.0, 0.0);
                 let end_portal_spawn = "minecraft:block.end_portal.spawn";
                 let portal_plays = |game: &super::Game<'_>| {
-                    game.audio.heard.get(end_portal_spawn).copied().unwrap_or(0)
+                    game.audio
+                        .0
+                        .heard
+                        .get(end_portal_spawn)
+                        .copied()
+                        .unwrap_or(0)
                 };
                 let burp = "minecraft:entity.player.burp";
                 let bell = "minecraft:block.bell.use";
@@ -297,7 +302,7 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                     game.server.lan_events.clear();
                     game.server.lan_global_events.clear();
                     game.server.lan_entity_events.clear();
-                    if let Some(captured) = game.audio.capture.as_mut() {
+                    if let Some(captured) = game.audio.0.capture.as_mut() {
                         captured.clear();
                     }
                 };
@@ -575,13 +580,13 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                     assert!(game.level_global_level_event(level, 1023, pos, 0));
                     assert!(game.server.lan_events.is_empty());
                     assert!(game.server.lan_global_events.is_empty());
-                    assert!(game.audio.capture.as_ref().unwrap().is_empty());
+                    assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
                     Err::<(), ()>(())
                 });
                 assert!(rolled_plain.is_err());
                 assert!(game.server.lan_events.is_empty());
                 assert!(game.server.lan_global_events.is_empty());
-                assert!(game.audio.capture.as_ref().unwrap().is_empty());
+                assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
 
                 let committed_plain = game.storage_transaction(|game, _| {
                     assert!(game.level_global_level_event(level, 1023, pos, 0));
@@ -591,7 +596,7 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                 assert!(committed_plain.is_ok());
                 assert!(game.server.lan_global_events.is_empty());
                 assert!(game.server.lan_events.is_empty());
-                assert!(game.audio.capture.as_ref().unwrap().is_empty());
+                assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
                 let plain12: Vec<_> = decode_packets(&rx12)
                     .into_iter()
                     .filter_map(|p| match p {
@@ -651,7 +656,7 @@ fn cross_level_transaction_replays_effects_in_request_level_and_preserves_packet
 
             with_guests(|game| {
                 game.options.dedicated = Some(Vec::new());
-                game.audio.capture = Some(Vec::new());
+                game.audio.0.capture = Some(Vec::new());
                 assert!(game.ui.rules.set("global_sound_events", Value::Bool(true)));
                 let (tx12, rx12) = mpsc::channel();
                 let (tx13, rx13) = mpsc::channel();
@@ -949,7 +954,7 @@ fn committed_effects_leave_unrelated_queues_intact_prevent_sound_recursion_and_k
             mod_platform::testing::with_mods(mods, || {
                 with_guests(|game| {
                     game.options.dedicated = Some(Vec::new());
-                    game.audio.capture = Some(Vec::new());
+                    game.audio.0.capture = Some(Vec::new());
                     assert!(game.ui.rules.set("global_sound_events", Value::Bool(true)));
                     let (tx12, rx12) = mpsc::channel();
                     game.lan.as_mut().unwrap().hub.guests.update(0, |g| {

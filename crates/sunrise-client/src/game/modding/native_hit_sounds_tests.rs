@@ -123,7 +123,7 @@ fn check(attacker: i32, expected_at: [f64; 3], hit: impl FnOnce(&mut super::Game
                     max_players: 2,
                     integrated: true,
                     levels: game.server.level_shapes,
-                    level_seeds: game.levels.runtime.seeds(),
+                    level_seeds: game.levels.0.runtime.seeds(),
                 },
             )
             .unwrap();

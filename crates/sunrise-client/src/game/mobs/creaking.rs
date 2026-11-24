@@ -170,6 +170,7 @@ impl Game<'_> {
                 HeartEvent::SetBlock(at, state) => self.level_set(at, state)?,
                 HeartEvent::Sound(name, at, volume, pitch) => {
                     self.audio
+                        .0
                         .play(&format!("minecraft:{name}"), Some(at), volume, pitch)
                 }
                 HeartEvent::Trail {
@@ -177,7 +178,7 @@ impl Game<'_> {
                     target,
                     color,
                     duration,
-                } => self.particles.add(
+                } => self.particles.0.add(
                     &ParticleOptions::trail(target, color, duration),
                     at,
                     [0.0; 3],
@@ -268,7 +269,7 @@ impl Game<'_> {
                     center[1] + r.next_gaussian() * spread[1],
                     center[2] + r.next_gaussian() * spread[2],
                 ];
-                this.particles.add(
+                this.particles.0.add(
                     &ParticleOptions::block(ParticleType::BlockCrumble, sprite.clone(), tint),
                     p,
                     [0.0; 3],

@@ -290,7 +290,7 @@ impl Game<'_> {
             return;
         };
         // LevelRenderer.playJukeboxSong: SimpleSoundInstance.forJukeboxSong.
-        let id = self.audio.play_jukebox_song(&s.sound, pos);
+        let id = self.audio.0.play_jukebox_song(&s.sound, pos);
         self.jukebox_sounds.insert((pos[0], pos[1], pos[2]), id);
         let description =
             sunrise_client::component::to_text(&s.description, &mut |k| Text::literal(k));
@@ -300,7 +300,7 @@ impl Game<'_> {
         self.client.titles.set_overlay(message, true);
         self.update_song_volumes();
         self.notify_record_playing(pos, true);
-        if self.audio.capture.is_some() {
+        if self.audio.0.capture.is_some() {
             self.server.lan_songs.push((pos, Some(song.to_owned())));
         }
     }
@@ -320,14 +320,14 @@ impl Game<'_> {
     }
     fn stop_sound(&mut self, pos: [i32; 3]) {
         if let Some(id) = self.jukebox_sounds.remove(&(pos[0], pos[1], pos[2])) {
-            self.audio.stop_and_release(id);
+            self.audio.0.stop_and_release(id);
         }
     }
     /// Level event 1011: the song ends, here and for the guests.
     fn stop_song(&mut self, pos: [i32; 3]) {
         self.stop_sound(pos);
         self.notify_record_playing(pos, false);
-        if self.audio.capture.is_some() {
+        if self.audio.0.capture.is_some() {
             self.server.lan_songs.push((pos, None));
         }
     }
@@ -454,7 +454,7 @@ impl Game<'_> {
                 f64::from(pos[1]) + f64::from(1.2_f32), // add(0.0, 1.2F, 0.0)
                 f64::from(pos[2]) + 0.5,
             ];
-            self.particles.add(
+            self.particles.0.add(
                 &ParticleOptions::simple(ParticleType::Note),
                 at,
                 [color, 0.0, 0.0],
@@ -476,11 +476,11 @@ impl Game<'_> {
             // stop with level event 1011, or when they end.
             let playing = matches!(self.world.block_entities.get(&k), Some(BlockEntity::Jukebox(j)) if j.playing);
             if !keeps_song(
-                self.audio.engine.is_active(id),
+                self.audio.0.engine.is_active(id),
                 self.remote.is_some(),
                 playing,
             ) {
-                self.audio.stop_and_release(id);
+                self.audio.0.stop_and_release(id);
                 self.jukebox_sounds.remove(&k);
             }
         }

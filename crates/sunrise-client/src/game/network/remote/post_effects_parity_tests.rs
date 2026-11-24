@@ -132,7 +132,7 @@ fn post_effects_cleared_on_login_respawn_and_reconfigure_body() {
 
         // Respawn creates a fresh LocalPlayer with empty post_effects for every keep mask,
         // and clears any spectated entity shader effect.
-        game.title = None;
+        game.title.0 = None;
         if game.player.is_none() {
             game.player = Some(
                 sunrise_client::motion::PlayerMotion::new(
@@ -414,7 +414,7 @@ fn post_effects_before_login_disconnects_case(case_name: &str) {
         .as_str()
         .unwrap();
     with_client_game(|game| {
-        game.title = None;
+        game.title.0 = None;
         game.client.post_effects.clear();
         let (client, _server) = Pipe::pair();
         game.connect_local(client, "PostEffectsBeforeLogin")
@@ -453,7 +453,7 @@ fn post_effects_before_login_disconnects_case(case_name: &str) {
             "play_before_login ({case_name}): post_effects were applied before Login"
         );
         let Some(Mode::Multiplayer(multiplayer::Screen::Disconnected { reason, .. })) =
-            game.title.as_ref().map(|t| &t.mode)
+            game.title.0.as_ref().map(|t| &t.mode)
         else {
             panic!("play_before_login ({case_name}): missing Disconnected screen");
         };

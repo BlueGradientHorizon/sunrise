@@ -25,11 +25,11 @@ pub(in crate::game) enum PadCapture {
 impl Game<'_> {
     /// The overlay that owns the pad now, if one does.
     pub(in crate::game) fn pad_capture(&self) -> Option<PadCapture> {
-        if self.pad.menu.osk.is_some() {
+        if self.pad.0.menu.osk.is_some() {
             Some(PadCapture::Keyboard)
         } else if self.prompt_open() {
             Some(PadCapture::Prompt)
-        } else if self.pad.radial.is_open() {
+        } else if self.pad.0.radial.is_open() {
             Some(PadCapture::Radial)
         } else {
             None

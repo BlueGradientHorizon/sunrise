@@ -416,6 +416,7 @@ impl Game<'_> {
         }
         for (i, other) in self
             .others
+            .0
             .iter()
             .enumerate()
             .filter(|(_, e)| !super::general::quarantined_kind(&e.kind))
@@ -466,9 +467,10 @@ impl Game<'_> {
                 };
                 (kind.into(), block(f.pos))
             }
-            Slot::Apart(Apart::Other(i)) => {
-                (self.others[i].kind.as_str().into(), self.others[i].position)
-            }
+            Slot::Apart(Apart::Other(i)) => (
+                self.others.0[i].kind.as_str().into(),
+                self.others.0[i].position,
+            ),
             Slot::Apart(Apart::Dragon) => (
                 "minecraft:ender_dragon".into(),
                 self.dragon.as_ref().map_or(Vec3::ZERO, |d| d.position),
@@ -484,7 +486,7 @@ impl Game<'_> {
             Slot::Apart(Apart::Painting(i)) => drop(self.paintings.remove(i)),
             Slot::Apart(Apart::Frame(i)) => drop(self.item_frames.remove(i)),
             Slot::Apart(Apart::Dragon) => self.discard_resident_dragon(),
-            Slot::Apart(Apart::Other(i)) => drop(self.others.remove(i)),
+            Slot::Apart(Apart::Other(i)) => drop(self.others.0.remove(i)),
         }
     }
     /// Entities that were moved, not added (a portal's arrival keeps being
@@ -566,7 +568,7 @@ impl Game<'_> {
         self.cushions.iter().for_each(|c| seen(c.id));
         self.paintings.iter().for_each(|p| seen(p.id));
         self.item_frames.iter().for_each(|f| seen(f.id));
-        self.others.iter().for_each(|e| seen(e.id));
+        self.others.0.iter().for_each(|e| seen(e.id));
         if let Some(d) = self.dragon.as_ref() {
             seen(d.id);
         }
@@ -706,7 +708,7 @@ mod tests {
                 let opaque =
                     Game::other_from_nbt(&mut record, game.server.next_entity, "missing:object")
                         .unwrap();
-                game.others.push(opaque);
+                game.others.0.push(opaque);
                 game.native_joins_flush(true, 0);
                 assert_eq!(
                     joins.lock().unwrap().len(),

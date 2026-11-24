@@ -339,7 +339,7 @@ fn a_stop_waiting_for_a_sound_is_heard_after_its_removal() {
             seed: 0,
             particles_before: 0,
         };
-        game.audio.capture = Some(vec![sound(fresh), sound(near)]);
+        game.audio.0.capture = Some(vec![sound(fresh), sound(near)]);
         let told = tick_until_heard(game, heard);
         assert_eq!(
             told.iter().filter(|h| **h == Heard::Stop(near)).count(),

@@ -77,7 +77,7 @@ impl Game<'_> {
             .join(ns)
             .join(format!("{path}.nbt"));
         let name = format!("data/{ns}/structure/{path}.nbt");
-        let resource = self.fns.data_resource(&name).or_else(|| {
+        let resource = self.fns.0.data_resource(&name).or_else(|| {
             self.pack
                 .data_source
                 .contains(&name)

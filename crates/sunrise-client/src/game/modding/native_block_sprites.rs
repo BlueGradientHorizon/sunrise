@@ -31,10 +31,12 @@ impl Game<'_> {
     pub(super) fn texture_sprites(&self, textures: &[&str]) -> Vec<Option<SpriteRef>> {
         let atlas = self
             .stitching_block_atlas
+            .0
             .as_ref()
             .unwrap_or(&self.pack.render);
         let split = self
             .renderer
+            .0
             .as_ref()
             .map_or(u32::MAX, |r| r.sprite_split());
         textures
@@ -122,6 +124,7 @@ impl Game<'_> {
     /// sprite): ask `block_sprites` again then. API 380.
     pub(super) fn block_sprites_version(&self) -> u64 {
         self.stitching_block_atlas
+            .0
             .as_ref()
             .unwrap_or(&self.pack.render)
             .generation
@@ -144,6 +147,7 @@ impl Game<'_> {
         // (no renderer, no arrays: every layer counts as array 0's)
         let split = self
             .renderer
+            .0
             .as_ref()
             .map_or(u32::MAX, |r| r.sprite_split());
         Lookup::new(&self.pack.context, split, &self.pack.layer_names)
@@ -381,7 +385,7 @@ mod texture_atlas_stitched_tests {
                     game.spawn_pack_reload(super::super::packs::ReloadKind::Selection)
                         .unwrap();
                     let started = std::time::Instant::now();
-                    while game.pack_reload.is_some() {
+                    while game.pack_reload.0.is_some() {
                         assert!(
                             started.elapsed().as_secs() < 300,
                             "the reload never finished"
@@ -440,7 +444,7 @@ mod texture_atlas_stitched_tests {
                 game.spawn_pack_reload(super::super::packs::ReloadKind::Selection)
                     .unwrap();
                 let started = std::time::Instant::now();
-                while game.pack_reload.is_some() {
+                while game.pack_reload.0.is_some() {
                     assert!(
                         started.elapsed().as_secs() < 300,
                         "the reload never finished"

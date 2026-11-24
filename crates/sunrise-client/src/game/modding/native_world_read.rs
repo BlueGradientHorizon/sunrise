@@ -284,7 +284,7 @@ impl Game<'_> {
         if self.options.execution_role.is_client() {
             return self.remote.as_ref()?.tags.as_ref();
         }
-        self.session_lock.is_some().then(|| self.items())
+        self.session_lock.0.is_some().then(|| self.items())
     }
 
     /// `items`' block tags, over this game's resolved block keys.
@@ -474,7 +474,7 @@ impl Game<'_> {
         let world = if dim == self.dim {
             Some(&self.world)
         } else {
-            self.levels.parked_world(dim)
+            self.levels.0.parked_world(dim)
         }
         .ok_or(NativeBlockReadError::UnavailableDimension)?;
         read_block(world, self.pack.assets.registry, pos)
@@ -711,7 +711,7 @@ mod tests {
         with_game(|game| {
             let dir =
                 std::env::temp_dir().join(format!("sunrise-tag-reads-{}", std::process::id()));
-            game.session_lock = Some(sunrise_client::save::SessionLock::acquire(&dir).unwrap());
+            game.session_lock.0 = Some(sunrise_client::save::SessionLock::acquire(&dir).unwrap());
             let registry = game.pack.assets.registry;
             let stone = registry.default_state("minecraft:stone").unwrap();
             let water = registry.default_state("minecraft:water").unwrap();
@@ -1055,7 +1055,7 @@ mod tests {
                 .unwrap();
             assert_eq!(tags.items(oak_tag), mod_api::TagMembers::Unavailable);
             assert_eq!(tags.is_in_tag(item, oak_tag), None);
-            game.session_lock = None;
+            game.session_lock.0 = None;
             let _ = std::fs::remove_dir_all(dir);
         });
     }

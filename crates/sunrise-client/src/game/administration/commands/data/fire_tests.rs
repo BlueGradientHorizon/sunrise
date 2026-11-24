@@ -46,7 +46,7 @@ struct Active<'a> {
 
 fn target_exists(game: &crate::game::Game<'_>, target: Target) -> bool {
     match target {
-        Target::Other(id) => game.others.iter().any(|o| o.id == id),
+        Target::Other(id) => game.others.0.iter().any(|o| o.id == id),
         Target::Fangs(id) => game.fangs.list.iter().any(|f| f.id == id),
         Target::Spawner(id) => game.ominous_spawners.iter().any(|s| s.id == id),
         Target::Cloud(id) => game.breath_clouds.iter().any(|c| c.id == id),
@@ -303,7 +303,7 @@ pub(in crate::game) fn run_fire_changes_on_eyes_fangs_spawners_clouds_and_bullet
 
         // Fresh vs already-ticked bullet in lava, plus shoot -> hurt -> discard -> entity_damage order and Silent:1b.
         crate::game::sculk::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
-        game.audio.capture = Some(Vec::new());
+        game.audio.0.capture = Some(Vec::new());
         let fresh = summon_target_at(
             game,
             "minecraft:shulker_bullet",
@@ -320,6 +320,7 @@ pub(in crate::game) fn run_fire_changes_on_eyes_fangs_spawners_clouds_and_bullet
         });
         let fresh_sounds: Vec<String> = game
             .audio
+            .0
             .capture
             .take()
             .unwrap()
@@ -363,11 +364,12 @@ pub(in crate::game) fn run_fire_changes_on_eyes_fangs_spawners_clouds_and_bullet
         assert!(
             game.run_command("data merge entity 00000a7b-0000-0002-0000-000000000001 {Fire:40s}")
         );
-        game.audio.capture = Some(Vec::new());
+        game.audio.0.capture = Some(Vec::new());
         tick_fire_entities(game);
         assert!(!target_exists(game, ticked));
         let ticked_sounds: Vec<String> = game
             .audio
+            .0
             .capture
             .take()
             .unwrap()
@@ -385,7 +387,7 @@ pub(in crate::game) fn run_fire_changes_on_eyes_fangs_spawners_clouds_and_bullet
         );
 
         // Silent:1b suppresses shulker_bullet.hurt on both fire and attack paths.
-        game.audio.capture = Some(Vec::new());
+        game.audio.0.capture = Some(Vec::new());
         let silent_fire = summon_target_at(
             game,
             "minecraft:shulker_bullet",
@@ -395,11 +397,11 @@ pub(in crate::game) fn run_fire_changes_on_eyes_fangs_spawners_clouds_and_bullet
         tick_fire_entities(game);
         assert!(!target_exists(game, silent_fire));
         assert!(
-            game.audio.capture.take().unwrap().is_empty(),
+            game.audio.0.capture.take().unwrap().is_empty(),
             "Silent:1b bullet must not play hurt sound on fire death"
         );
 
-        game.audio.capture = Some(Vec::new());
+        game.audio.0.capture = Some(Vec::new());
         let silent_attack = summon_target_at(
             game,
             "minecraft:shulker_bullet",
@@ -418,7 +420,7 @@ pub(in crate::game) fn run_fire_changes_on_eyes_fangs_spawners_clouds_and_bullet
         let _ = game.destroy_shulker_bullet(sa_idx);
         assert!(!target_exists(game, silent_attack));
         assert!(
-            game.audio.capture.take().unwrap().is_empty(),
+            game.audio.0.capture.take().unwrap().is_empty(),
             "Silent:1b bullet must not play hurt sound on attack path"
         );
         crate::game::sculk::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = None);
@@ -512,6 +514,7 @@ pub(in crate::game) fn run_fire_changes_on_eyes_fangs_spawners_clouds_and_bullet
         );
         assert!(
             game.others
+                .0
                 .iter()
                 .find(|o| o.id == eid)
                 .unwrap()
@@ -548,6 +551,7 @@ pub(in crate::game) fn run_fire_changes_on_eyes_fangs_spawners_clouds_and_bullet
         assert!(
             !game
                 .others
+                .0
                 .iter()
                 .find(|o| o.id == eid)
                 .unwrap()

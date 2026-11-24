@@ -36,8 +36,8 @@ fn run(game: &mut Game<'_>, command: &str) -> (bool, Option<String>) {
 fn data_edits_reach_the_same_live_interaction() {
     game(|game| {
         assert!(game.run_command("summon interaction 4.5 100 4.5 {UUID:[I;66,0,0,1]}"));
-        assert_eq!(game.others.len(), 1);
-        let id = game.others[0].id;
+        assert_eq!(game.others.0.len(), 1);
+        let id = game.others.0[0].id;
         let modified = Some("Modified entity data of Interaction".to_owned());
         assert_eq!(
             run(
@@ -75,9 +75,9 @@ fn data_edits_reach_the_same_live_interaction() {
             .unwrap();
         assert_eq!(tag.get("width"), Some(&Tag::Float(1.0f32.to_bits())));
         // The same entity: its id, UUID and place.
-        assert_eq!((game.others.len(), game.others[0].id), (1, id));
+        assert_eq!((game.others.0.len(), game.others.0[0].id), (1, id));
         assert_eq!(tag.get("UUID"), Some(&Tag::IntArray(vec![66, 0, 0, 1])));
-        assert_eq!(game.others[0].position, Vec3::new(4.5, 100.0, 4.5));
+        assert_eq!(game.others.0[0].position, Vec3::new(4.5, 100.0, 4.5));
     });
 }
 
@@ -97,6 +97,7 @@ fn the_live_settings_are_what_the_interaction_saves() {
     ));
         let find = |g: &Game<'_>, uuid: [i32; 4]| {
             g.others
+                .0
                 .iter()
                 .find(|o| g.persist.uuids.get(&o.id) == Some(&uuid))
                 .unwrap()
@@ -184,7 +185,7 @@ fn the_live_settings_are_what_the_interaction_saves() {
                 format!("{:?}", display.item_transformation)
             )
         );
-        assert_eq!(game.others.len(), 3);
+        assert_eq!(game.others.0.len(), 3);
         assert_eq!(find(game, [66, 0, 0, 1]).id, interaction.id);
     });
 }

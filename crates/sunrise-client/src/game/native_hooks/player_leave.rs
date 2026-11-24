@@ -199,7 +199,7 @@ mod player_leave_tests {
         let mods = vec![ModEntry::new("leave_test", Box::new(Leave(heard.clone())))].into();
         mod_platform::testing::with_mods(mods, || {
             with_guests(|game| {
-                game.server.world_root = game.save.root.clone();
+                game.server.world_root = game.save.0.root.clone();
                 game.options.dedicated = Some(Vec::new());
                 game.native_level_opened(Dim::Overworld);
                 game.world

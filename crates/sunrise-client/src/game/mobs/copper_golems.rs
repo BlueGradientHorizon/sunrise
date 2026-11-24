@@ -167,7 +167,7 @@ impl Game<'_> {
             f64::from(p[2]) + 0.5,
         ];
         let pitch = self.world.random.next_float() * 0.1 + 0.9;
-        self.audio.play(
+        self.audio.0.play(
             &format!("minecraft:block.{kind}.{side}"),
             Some(at),
             0.5,
@@ -192,7 +192,7 @@ impl Game<'_> {
         });
         if let Some(at) = statue_at {
             self.remove_mob_now(id, false);
-            self.audio.play(
+            self.audio.0.play(
                 "minecraft:entity.copper_golem_become_statue",
                 Some(at),
                 1.0,
@@ -377,6 +377,7 @@ impl Game<'_> {
         }
         self.damage_held(1);
         self.audio
+            .0
             .play("minecraft:entity.copper_golem.spawn", Some(at), 1.0, 1.0);
         // Level.removeBlock(pos, false): air, or the water the statue stood in.
         let replacement = registry.default_state(if waterlogged {
@@ -455,6 +456,7 @@ impl Game<'_> {
             self.mobs[index].extra.vector[0] = -2.0;
             self.level_event_at(3003, block, 0);
             self.audio
+                .0
                 .play("minecraft:item.honeycomb.wax_on", Some(at), 1.0, 1.0);
             self.consume_held();
             return true;

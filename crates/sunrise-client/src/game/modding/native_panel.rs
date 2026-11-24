@@ -582,7 +582,7 @@ impl Game<'_> {
         self.client.panel.set_search(caller, mod_id, text);
     }
     fn browser_batch(&self) -> Option<HudBatch> {
-        let r = self.renderer.as_ref()?;
+        let r = self.renderer.0.as_ref()?;
         Some(HudBatch::new(
             [r.config.width, r.config.height],
             self.settings.gui_scale_inputs(),
@@ -592,7 +592,7 @@ impl Game<'_> {
     /// change; none while no mod shows one or no container screen is up.
     fn browser_sync(&mut self) -> Option<Owner> {
         if !matches!(self.client.screen, Screen::Inventory | Screen::Creative)
-            || self.title.is_some()
+            || self.title.0.is_some()
         {
             return None;
         }
@@ -666,7 +666,7 @@ impl Game<'_> {
             return classic_layout(screen, window, f32::from(window_width), centred);
         }
         let left = window_right + MARGIN;
-        let (width, height) = self.renderer.as_ref().filter(|_| recipes).map_or(
+        let (width, height) = self.renderer.0.as_ref().filter(|_| recipes).map_or(
             (batch.width, batch.height),
             |renderer| {
                 (
@@ -980,7 +980,7 @@ impl Game<'_> {
             }
         }
         // The dragged item goes over everything, the settings button's label too.
-        let menu = self.screen_state.screen_instance;
+        let menu = self.screen_state.0.screen_instance;
         let dragged = (self.client.panel.of.as_ref())
             .and_then(|(owner, _)| self.client.panel.dragged(owner, menu))
             .cloned();
@@ -1099,6 +1099,7 @@ impl Game<'_> {
         if let Some(to) = step {
             self.client.panel.page = to;
             self.audio
+                .0
                 .play("minecraft:ui.button.click", None, 0.25, 1.0);
             return true;
         }
@@ -1117,7 +1118,7 @@ impl Game<'_> {
                     stack,
                     from: cursor,
                     dragging: false,
-                    menu: self.screen_state.screen_instance,
+                    menu: self.screen_state.0.screen_instance,
                     cancelled: false,
                 });
                 return true;
@@ -1137,7 +1138,7 @@ impl Game<'_> {
     /// is no longer the open one. True while a press is held: neither the
     /// menu nor its slots hear the move.
     pub(in crate::game) fn mod_browser_drag_move(&mut self) -> bool {
-        let menu = self.screen_state.screen_instance;
+        let menu = self.screen_state.0.screen_instance;
         self.client.panel.press_moved(self.client.cursor, menu)
     }
 
@@ -1161,7 +1162,7 @@ impl Game<'_> {
         };
         let at_index = (self.panel_shown()).and_then(|shown| shown.items.get(held.index).cloned());
         let now = Now {
-            menu: self.screen_state.screen_instance,
+            menu: self.screen_state.0.screen_instance,
             owner: owner.as_ref(),
             on_panel,
             at_index: at_index.as_ref(),
@@ -1208,7 +1209,7 @@ impl Game<'_> {
     /// Whether an item is being dragged off the panel over the menu it was
     /// pressed on: the screen's slots show no tooltip under it.
     pub(in crate::game) fn mod_browser_dragging(&self) -> bool {
-        let menu = self.screen_state.screen_instance;
+        let menu = self.screen_state.0.screen_instance;
         (self.client.panel.held.as_ref()).is_some_and(|held| held.live_on(menu) && held.dragging)
     }
 
@@ -1260,7 +1261,7 @@ impl Game<'_> {
             return false;
         };
         let handled = if let Some(shortcut) = shortcut {
-            search.shortcut(shortcut, &mut self.clipboard);
+            search.shortcut(shortcut, &mut self.clipboard.0);
             true
         } else {
             search.key(key, ctrl, shift)
@@ -1357,7 +1358,7 @@ impl Game<'_> {
     /// screen, a native mod's panel hears it as a `Key` event.
     pub(in crate::game) fn native_panel_key(&mut self, key: &str) {
         if !matches!(self.client.screen, Screen::Inventory | Screen::Creative)
-            || self.title.is_some()
+            || self.title.0.is_some()
             || self.mod_browser_typing()
         {
             return;
@@ -2069,7 +2070,7 @@ mod tests {
                 let many = vec![stack("minecraft:stone"); 300];
                 game.panel_items("jei", many.clone());
                 game.client.screen = Screen::Inventory;
-                assert!(game.title.is_none());
+                assert!(game.title.0.is_none());
                 assert_eq!(frame(game, WINDOW), [], "nothing typed, nothing heard");
 
                 // Another mod naming the owner's id changes nothing.

@@ -24,7 +24,7 @@ impl Game<'_> {
         sunrise_hooks::engine::activity(self.activity());
     }
     fn activity(&self) -> Activity {
-        if self.title.is_some() {
+        if self.title.0.is_some() {
             return Activity::Menus;
         }
         let max = sunrise_client::lan::MAX_PLAYERS;

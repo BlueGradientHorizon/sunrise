@@ -101,7 +101,7 @@ impl Game<'_> {
             self.client.agent_last.map(|t| t.elapsed().as_secs()),
             self.options.control.is_some() && !self.client.agent_control_on,
         );
-        if let Some(line) = self.repro.agent_line(self.input_trace.events()) {
+        if let Some(line) = self.repro.0.agent_line(self.input_trace.0.events()) {
             lines.push(line);
         }
         lines

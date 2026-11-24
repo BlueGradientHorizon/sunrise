@@ -23,6 +23,6 @@ impl Game<'_> {
         if !self.native_window() || exempt.len() > 64 || !exempt.iter().all(|e| sound_id(e)) {
             return false;
         }
-        self.audio.muffle(amount, lowpass, ticks, exempt)
+        self.audio.0.muffle(amount, lowpass, ticks, exempt)
     }
 }

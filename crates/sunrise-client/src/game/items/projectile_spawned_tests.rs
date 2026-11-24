@@ -58,7 +58,7 @@ fn with_enchantments(defs: &[(&str, Value)], test: impl FnOnce(&mut super::Game<
         game.server.world_root = root.clone();
         let stack = game.reload_datapacks(false, &[]).unwrap();
         let resources = game.options.resources.clone();
-        game.world_tables = game
+        game.world_tables.0 = game
             .stage_world_tables(&stack, false, &resources)
             .unwrap()
             .tables;
@@ -98,6 +98,7 @@ fn ignite(seconds: f32) -> Value {
 /// The sounds played since capture began, as (event, volume, pitch).
 fn played(game: &mut super::Game<'_>) -> Vec<(String, f32, f32)> {
     game.audio
+        .0
         .capture
         .replace(Vec::new())
         .unwrap_or_default()
@@ -143,7 +144,7 @@ fn requirements_draw_the_level_random_before_each_effect() {
             let (v, p) = (uniform(0.5, 1.0), uniform(1.0, 2.0));
             expected.push(("minecraft:entity.snowball.throw".to_owned(), v, p));
             let after = own.next_long();
-            game.audio.capture = Some(Vec::new());
+            game.audio.0.capture = Some(Vec::new());
             let shot = Projectile::new(ProjectileKind::Snowball, Vec3::new(0.5, 70.0, 0.5), None)
                 .with_entity_random(LegacyRandom::new(seed));
             let id = game.spawn_projectile(shot, &stack);
@@ -229,7 +230,7 @@ fn stack_then_weapon_in_component_order() {
             .chain(["minecraft:block.note_block.flute"])
             .map(str::to_owned)
             .collect();
-        game.audio.capture = Some(Vec::new());
+        game.audio.0.capture = Some(Vec::new());
         let id = game.spawn_projectile(arrow(&bow), &ammo);
         assert_eq!(names(played(game)), order);
         let p = game

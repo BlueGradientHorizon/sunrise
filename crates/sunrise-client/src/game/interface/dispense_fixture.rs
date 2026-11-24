@@ -308,7 +308,7 @@ impl Game<'_> {
         // Creating the targets must not move the stream the dispenser draws from.
         self.world.random.set_seed(seed);
         self.world.block_log = Some(Vec::new());
-        self.audio.capture = Some(Vec::new());
+        self.audio.0.capture = Some(Vec::new());
         LOG.with(|log| *log.borrow_mut() = Some(Vec::new()));
         let old_mobs: Vec<u32> = self.mobs.iter().map(|m| m.id).collect();
         let old_stands: Vec<u32> = self.armor_stands.iter().map(|s| s.id).collect();
@@ -500,7 +500,7 @@ impl Game<'_> {
             out.push(line);
             out.extend(sound);
         }
-        for sound in self.audio.capture.take().unwrap_or_default() {
+        for sound in self.audio.0.capture.take().unwrap_or_default() {
             out.push(format!("S {} {}", floor_pos(sound.position), sound.event));
         }
         // The sounds bound to an entity (a sheared mob's) are the server's too.
@@ -535,7 +535,7 @@ impl Game<'_> {
         self.armor = Default::default();
         self.offhand = Some(stack);
         self.using = Some((super::shield::OFFHAND_SLOT, 100));
-        self.combat = Default::default();
+        self.combat.0 = Default::default();
         let before = self.stats.get("used", &item);
         let from = sunrise_core::geometry::Vec3::new(
             0.0,
@@ -770,7 +770,7 @@ impl Game<'_> {
         } else {
             GameMode::Survival
         };
-        self.combat = Default::default();
+        self.combat.0 = Default::default();
         self.using = None;
         self.server.shield_cooldown = 0;
         self.yaw = 0.0;
@@ -823,7 +823,7 @@ impl Game<'_> {
             )
         };
         // A new player: no combat of an earlier case's.
-        self.combat = Default::default();
+        self.combat.0 = Default::default();
         let mut player = PlayerMotion::new(self.motion, v3(&op["player"]))?;
         player.velocity = v3(&op["motion"]);
         player.fall_distance = op["fall"].as_f64().unwrap_or(0.0);
@@ -865,6 +865,7 @@ impl Game<'_> {
                 for event in std::mem::take(&mut self.mobs[index].outbox) {
                     if let sunrise_client::mobs::MobEvent::Sound(s, at, volume, pitch) = event {
                         self.audio
+                            .0
                             .play(&format!("minecraft:{s}"), Some(at), volume, pitch);
                     }
                 }

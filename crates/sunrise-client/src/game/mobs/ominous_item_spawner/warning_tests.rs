@@ -49,10 +49,11 @@ fn warning_dispatch_uses_neutral_at_tick_four() {
 
     const WARNING: &str = "minecraft:block.trial_spawner.about_to_spawn_item";
     let center = [6.5, 102.5, 4.5];
-    game.audio.capture = Some(Vec::new());
+    game.audio.0.capture = Some(Vec::new());
     game.audio
+        .0
         .play("minecraft:block.stone.break", Some(center), 1.0, 1.0);
-    game.audio.play_on(
+    game.audio.0.play_on(
         6,
         "minecraft:block.note_block.pling",
         Some(center),
@@ -61,6 +62,7 @@ fn warning_dispatch_uses_neutral_at_tick_four() {
     );
     assert_eq!(
         game.audio
+            .0
             .capture
             .as_ref()
             .unwrap()
@@ -69,7 +71,7 @@ fn warning_dispatch_uses_neutral_at_tick_four() {
             .collect::<Vec<_>>(),
         [4, 6]
     );
-    game.audio.capture.as_mut().unwrap().clear();
+    game.audio.0.capture.as_mut().unwrap().clear();
     let (tag, _) = sunrise_core::nbt::parse_snbt(r#"{id:"minecraft:ominous_item_spawner",UUID:[I;128,0,0,1],Pos:[6.25d,102.75d,4.875d],item:{id:"minecraft:diamond",count:1},spawn_item_after_ticks:40L}"#).unwrap();
     game.load_ominous_item_spawner(tag);
     assert_eq!(game.ominous_spawners.len(), 1);
@@ -85,6 +87,7 @@ fn warning_dispatch_uses_neutral_at_tick_four() {
         assert_eq!(game.ominous_spawners[0].tick_count, tick);
         let warning: Vec<_> = game
             .audio
+            .0
             .capture
             .as_ref()
             .unwrap()
@@ -104,9 +107,17 @@ fn warning_dispatch_uses_neutral_at_tick_four() {
         }
     }
     game.audio
+        .0
         .play("minecraft:block.stone.break", Some(center), 1.0, 1.0);
     assert_eq!(
-        game.audio.capture.as_ref().unwrap().last().unwrap().source,
+        game.audio
+            .0
+            .capture
+            .as_ref()
+            .unwrap()
+            .last()
+            .unwrap()
+            .source,
         4,
         "the explicit warning source must not change later event-family inference"
     );

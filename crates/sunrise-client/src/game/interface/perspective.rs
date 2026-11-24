@@ -644,7 +644,7 @@ impl Game<'_> {
         // server synced them, else the local body's own.
         (m.extra.stuck.arrows, m.extra.stuck.stingers) = match &self.remote {
             Some(r) => (r.own_arrows, r.own_stingers),
-            None => (self.combat.stuck.arrows, self.combat.stuck.stingers),
+            None => (self.combat.0.stuck.arrows, self.combat.0.stuck.stingers),
         };
         m.extra.shoulder_parrots = match &self.remote {
             Some(r) => r.own_shoulders,
@@ -758,7 +758,7 @@ impl Game<'_> {
         (self.own_body_in_view()
             || (self.controls_camera()
                 && shadow_pass_takes_own_model(
-                    self.occlusion.shadow_casters.1,
+                    self.occlusion.0.shadow_casters.1,
                     self.client.pack_ids.is_some(),
                     self.own_player_is_spectator(),
                 )))
@@ -1154,7 +1154,7 @@ impl Game<'_> {
         else {
             return;
         };
-        let assets = &self.armor_stand_assets;
+        let assets = &self.armor_stand_assets.0;
         let Some(layer) = assets
             .equipment
             .get(&asset)
@@ -1258,7 +1258,7 @@ impl Game<'_> {
         let layers = equippable
             .filter(|e| e.slot == "chest")
             .and_then(|e| e.asset_id)
-            .and_then(|asset| self.armor_stand_assets.equipment.get(&asset));
+            .and_then(|asset| self.armor_stand_assets.0.equipment.get(&asset));
         if layers.is_some_and(|k| k.contains_key("wings")) {
             return;
         }

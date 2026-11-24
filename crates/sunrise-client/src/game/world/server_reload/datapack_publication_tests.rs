@@ -161,11 +161,11 @@ fn datapack_game_open_reload_and_exhaustion_are_atomic() {
                 game.pack.data_changes = source;
                 game.load_world(request(root)).unwrap();
                 assert_eq!(
-                    game.fns.store.predicates["registry_test:native"]["chance"],
+                    game.fns.0.store.predicates["registry_test:native"]["chance"],
                     1
                 );
                 assert_eq!(
-                    game.fns.store.item_modifiers["registry_test:native"]["count"],
+                    game.fns.0.store.item_modifiers["registry_test:native"]["count"],
                     3
                 );
                 assert_eq!(power(game), DatapackValue::Int(7));
@@ -230,6 +230,7 @@ fn datapack_game_open_reload_and_exhaustion_are_atomic() {
                 assert_eq!(power(game), DatapackValue::Int(7));
                 let old_files = game
                     .world_tables
+                    .0
                     .as_ref()
                     .map(|tables| tables.files.clone());
                 write(&winning, "{bad");
@@ -242,6 +243,7 @@ fn datapack_game_open_reload_and_exhaustion_are_atomic() {
                 ));
                 assert_eq!(
                     game.world_tables
+                        .0
                         .as_ref()
                         .map(|tables| tables.files.clone()),
                     old_files
@@ -492,6 +494,7 @@ fn with_membership_fixture(run: impl FnOnce(&mut crate::game::Game<'_>, &Path)) 
 }
 fn weights<'game>(game: &'game crate::game::Game<'_>) -> &'game [(String, Tag)] {
     game.world_tables
+        .0
         .as_ref()
         .unwrap()
         .data_maps

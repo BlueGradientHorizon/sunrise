@@ -546,7 +546,7 @@ impl Game<'_> {
             let damage = self.retrieve_hook(stack);
             self.damage_held(damage);
             let pitch = 0.4 / (self.world.random.next_float() * 0.4 + 0.8);
-            self.audio.play(
+            self.audio.0.play(
                 "minecraft:entity.fishing_bobber.retrieve",
                 Some(at),
                 1.0,
@@ -559,7 +559,7 @@ impl Game<'_> {
             }
         } else {
             let pitch = 0.4 / (self.world.random.next_float() * 0.4 + 0.8);
-            self.audio.play(
+            self.audio.0.play(
                 "minecraft:entity.fishing_bobber.throw",
                 Some(at),
                 0.5,
@@ -711,7 +711,7 @@ impl Game<'_> {
             damage = if hooked_item { 3 } else { 5 };
         } else if hook.nibble > 0 {
             let biome = self.biome_name_at(hook.position);
-            let Some(loot) = self.server_loot.get() else {
+            let Some(loot) = self.server_loot.0.get() else {
                 return damage;
             };
             // `withLuck(this.luck + owner.getLuck())`: the rod's Luck of the Sea
@@ -974,7 +974,7 @@ impl Game<'_> {
                     }
                 }
                 let pitch = 1.0 + (h.random.next_float() - h.random.next_float()) * 0.4;
-                self.audio.play(
+                self.audio.0.play(
                     "minecraft:entity.fishing_bobber.splash",
                     Some(at),
                     0.25,
@@ -1043,6 +1043,7 @@ impl Game<'_> {
     ) {
         let options = ParticleOptions::simple(kind);
         self.particles
+            .0
             .send_particles(&options, at, spread, speed, count);
         // The players a server serves are sent them too.
         self.lan_send_particles(super::lan_particles::QueuedParticle {
@@ -1238,7 +1239,7 @@ impl Game<'_> {
                             EntityCollision::Deflected { first, rot } => {
                                 if first {
                                     old_yaw += rot;
-                                    self.audio.play(
+                                    self.audio.0.play(
                                         "minecraft:entity.breeze.deflect",
                                         breeze,
                                         1.0,
@@ -1394,6 +1395,7 @@ impl Game<'_> {
                     })
                     .or_else(|| {
                         self.others
+                            .0
                             .iter()
                             .find(|o| o.id == id && o.kind == "minecraft:leash_knot")
                             .map(|o| (o.position, f64::from(0.5_f32)))
@@ -2308,7 +2310,7 @@ impl Game<'_> {
         let table = sunrise_core::identifier::Identifier::parse(id)
             .ok()
             .map(|table| table.to_string());
-        let Some(loot) = self.server_loot.get() else {
+        let Some(loot) = self.server_loot.0.get() else {
             // No tables loaded: nothing rolls, so there is nothing to check against.
             return table;
         };

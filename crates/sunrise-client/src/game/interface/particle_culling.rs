@@ -12,9 +12,9 @@ macro_rules! section_scene {
         sunrise_client_gameplay::section_scene::SectionScene {
             world: &$game.world,
             facts: $game.res.facts(),
-            renderer: $game.renderer.as_ref(),
+            renderer: $game.renderer.0.as_ref(),
             streaming: &$game.streaming,
-            pending_uploads: &$game.pending_uploads,
+            pending_uploads: &$game.pending_uploads.0,
         }
     };
 }
@@ -36,7 +36,7 @@ impl Game<'_> {
             };
         ParticleOcclusionContext::new(
             section_scene!(self),
-            &self.async_particle_culler,
+            &self.async_particle_culler.0,
             mode,
             camera,
         )
@@ -44,6 +44,7 @@ impl Game<'_> {
 
     pub(super) fn finish_async_particle_culling(&self) {
         self.async_particle_culler
+            .0
             .borrow_mut()
             .finish_frame(&self.world, self.res.facts());
     }

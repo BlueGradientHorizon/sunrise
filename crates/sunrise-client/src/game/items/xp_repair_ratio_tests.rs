@@ -209,7 +209,7 @@ fn a_data_packs_mending_arrives_as_the_ratio() {
         game.server.world_root = root.clone();
         let stack = game.reload_datapacks(false, &[]).unwrap();
         let resources = game.options.resources.clone();
-        game.world_tables = game
+        game.world_tables.0 = game
             .stage_world_tables(&stack, false, &resources)
             .unwrap()
             .tables;

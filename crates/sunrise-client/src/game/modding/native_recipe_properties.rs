@@ -19,7 +19,7 @@ impl Game<'_> {
     /// Publish once per owning load or server update, never from a slot read.
     pub(super) fn refresh_recipe_property_context(&mut self) {
         let mut sets = HashMap::<String, HashSet<String>>::new();
-        if let Some(server) = &self.recipe_ui.server_properties.sets {
+        if let Some(server) = &self.recipe_ui.0.server_properties.sets {
             if let Some(remote) = &self.remote {
                 for (key, ids) in server
                     .iter()
@@ -34,7 +34,7 @@ impl Game<'_> {
                     sets.insert(key.clone(), items);
                 }
             }
-        } else if self.world_tables.is_some() || self.res.rest.get().is_some() {
+        } else if self.world_tables.0.is_some() || self.res.rest.get().is_some() {
             for (key, names) in self.recipes().custom_property_sets() {
                 let items = names
                     .iter()

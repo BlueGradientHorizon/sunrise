@@ -23,6 +23,7 @@ impl Game<'_> {
     ) {
         let Some(mut draws) = self
             .renderer
+            .0
             .as_mut()
             .map(|r| std::mem::take(r.custom_sky_draws()))
         else {
@@ -69,7 +70,7 @@ impl Game<'_> {
             );
             self.client.custom_sky.state = state;
         }
-        if let Some(renderer) = self.renderer.as_mut() {
+        if let Some(renderer) = self.renderer.0.as_mut() {
             *renderer.custom_sky_draws() = draws;
         }
     }

@@ -343,10 +343,11 @@ impl Game<'_> {
         if tick.resonate && self.remote.is_none() {
             // The server's copy plays the resonance for everyone.
             self.audio
+                .0
                 .play("minecraft:block.bell.resonate", Some(centre), 1.0, 1.0);
         }
         if let Some((particles, glow)) = tick.ended {
-            for (p, color) in particles.into_iter().filter(|_| self.renderer.is_some()) {
+            for (p, color) in particles.into_iter().filter(|_| self.renderer.0.is_some()) {
                 // ColorParticleOption.create(ENTITY_EFFECT, color): ARGB.
                 let c = color as u32;
                 let channel = |shift: u32| ((c >> shift) & 255) as f32 / 255.0;
@@ -354,7 +355,7 @@ impl Game<'_> {
                     color: [channel(16), channel(8), channel(0), channel(24)],
                     ..ParticleOptions::simple(ParticleType::EntityEffect)
                 };
-                self.particles.add(&options, p, [0.0; 3]);
+                self.particles.0.add(&options, p, [0.0; 3]);
             }
             // makeRaidersGlow (the server's effect).
             for m in self.mobs.iter_mut().filter(|_| self.remote.is_none()) {
@@ -482,11 +483,11 @@ impl Game<'_> {
                         is_water,
                         is_frame,
                         target,
-                        self.particles.level_random(),
+                        self.particles.0.level_random(),
                     );
                     let nautilus = ParticleOptions::simple(ParticleType::Nautilus);
                     for (p, v) in particles {
-                        self.particles.add(&nautilus, p, v);
+                        self.particles.0.add(&nautilus, p, v);
                     }
                 }
                 Ticker::Pot => {}
@@ -535,7 +536,7 @@ impl Game<'_> {
     /// Sets `be_anims.conduit_servers` to the conduits in the
     /// chunks that tick blocks, keeping the state of those already known.
     fn find_conduits(&mut self) {
-        let levels = self.tickets.levels();
+        let levels = self.tickets.0.levels();
         let kinds = &self.be_anims.kinds;
         let is_conduit = |id: u32| matches!(kinds.get(id as usize), Some(Some(Ticker::Conduit)));
         let mut found = Vec::new();
@@ -575,7 +576,7 @@ impl Game<'_> {
             self.be_anims.conduit_servers.remove(&pos);
             return;
         }
-        if !self.tickets.levels().block_ticking_at(pos[0], pos[2])
+        if !self.tickets.0.levels().block_ticking_at(pos[0], pos[2])
             || !self.border.contains(f64::from(pos[0]), f64::from(pos[2]))
         {
             return;
@@ -619,7 +620,7 @@ impl Game<'_> {
                 } else {
                     "minecraft:block.conduit.deactivate"
                 };
-                self.audio.play(sound, Some(centre), 1.0, 1.0);
+                self.audio.0.play(sound, Some(centre), 1.0, 1.0);
             }
             if let Some(frames) = check.frames {
                 self.conduit_apply_effects(pos, frames);
@@ -629,10 +630,11 @@ impl Game<'_> {
         let (ambient, short) = conduit.ambient(time, &mut self.world.random);
         if ambient {
             self.audio
+                .0
                 .play("minecraft:block.conduit.ambient", Some(centre), 1.0, 1.0);
         }
         if short {
-            self.audio.play(
+            self.audio.0.play(
                 "minecraft:block.conduit.ambient.short",
                 Some(centre),
                 1.0,
@@ -761,6 +763,7 @@ impl Game<'_> {
         );
         self.finish_mob_damage_at(index);
         self.audio
+            .0
             .play("minecraft:block.conduit.attack.target", Some(at), 1.0, 1.0);
     }
     /// `ConduitBlockEntity.selectNewTarget`: one of the enemies in water or
@@ -953,10 +956,11 @@ impl Game<'_> {
         let skin = skull.skin.as_ref()?;
         // PlayerSkin.Patch: a `texture` override replaces the profile's skin.
         if let Some(texture) = &skin.texture
-            && let Some(sprite) =
-                skins::patch_skin(texture, &mut self.skin_downloads.borrow_mut(), |location| {
-                    self.gui.atlas.sprites.contains_key(location)
-                })
+            && let Some(sprite) = skins::patch_skin(
+                texture,
+                &mut self.skin_downloads.0.borrow_mut(),
+                |location| self.gui.atlas.sprites.contains_key(location),
+            )
         {
             return Some(sprite);
         }
@@ -965,7 +969,7 @@ impl Game<'_> {
         // `Dynamic` (name- or id-only) profile.
         let download = skin.download.clone().or_else(|| {
             let key = skin.dynamic.as_ref()?;
-            let skins::Resolve::Done(Some(profile)) = self.skin_profiles.borrow_mut().state(key)
+            let skins::Resolve::Done(Some(profile)) = self.skin_profiles.0.borrow_mut().state(key)
             else {
                 return None;
             };
@@ -974,7 +978,7 @@ impl Game<'_> {
             Some((url, location))
         });
         if let Some((url, location)) = download {
-            let mut downloads = self.skin_downloads.borrow_mut();
+            let mut downloads = self.skin_downloads.0.borrow_mut();
             if self.gui.atlas.sprites.contains_key(&location) {
                 let _ = downloads.state(skins::Kind::Skin, &url);
                 downloads.drawn(&location);

@@ -31,6 +31,7 @@ impl Game<'_> {
     fn nautilus_sound(&mut self, index: usize, sound: &str) {
         let at = self.mobs[index].center();
         self.audio
+            .0
             .play(&format!("minecraft:{sound}"), Some(at), 1.0, 1.0);
     }
     /// `AbstractNautilus.interact` (`super.interact` is `Mob.interact`): any

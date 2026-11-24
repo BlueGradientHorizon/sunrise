@@ -110,7 +110,7 @@ impl Game<'_> {
             "minecraft:tnt".into()
         } else if self.armor_stands.iter().any(|a| a.id == id) {
             self.target_type(Target::Stand(id))
-        } else if self.others.iter().any(|o| o.id == id) {
+        } else if self.others.0.iter().any(|o| o.id == id) {
             self.target_type(Target::Other(id))
         } else if let Some(row) = self.general_object(id) {
             super::general::general_type_catalog()

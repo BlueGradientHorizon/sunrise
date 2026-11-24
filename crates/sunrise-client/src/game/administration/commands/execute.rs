@@ -239,6 +239,7 @@ impl Game<'_> {
                 .map_or([0.0; 2], |(hook, _)| [hook.yaw, hook.pitch]),
             Target::Other(id) => self
                 .others
+                .0
                 .iter()
                 .find(|o| o.id == id)
                 .map_or([0.0; 2], |o| [o.yaw, o.pitch]),
@@ -350,13 +351,13 @@ impl Game<'_> {
     /// Run a parsed command (`root` is the first context; `ctx` the one with
     /// the executable node): `execute` and `return` walk their own chains.
     pub(in crate::game) fn run_chain(&mut self, root: &Context, ctx: &Context) -> R<i32> {
-        self.exec.commands += 1;
+        self.exec.0.commands += 1;
         let limit = self
             .ui
             .rules
             .int_at(sunrise_client::gamerules::vanilla::MAX_COMMAND_SEQUENCE_LENGTH)
             .max(1) as u32;
-        if self.exec.commands > limit {
+        if self.exec.0.commands > limit {
             return Err(err("command.failed", &[]));
         }
         match root.literals.first().map(String::as_str) {
@@ -370,10 +371,10 @@ impl Game<'_> {
     }
     /// Run a leaf command and report its outcome to the `store` callbacks.
     pub(in crate::game) fn run_leaf(&mut self, id: &str, ctx: &Context) -> R<i32> {
-        self.exec.callback = None;
+        self.exec.0.callback = None;
         let store = self.server.command_source.and_then(|s| s.store);
         let result = self.execute_command(id, ctx);
-        let custom = self.exec.callback.take();
+        let custom = self.exec.0.callback.take();
         let outcome = match (&result, custom) {
             (_, Some(c)) => c,
             (Ok(v), None) => Some((true, *v)),
@@ -390,15 +391,15 @@ impl Game<'_> {
     /// `CommandResultCallback`s of a source's `store` chain, oldest first.
     fn deliver(&mut self, store: Option<u32>, success: bool, value: i32) {
         // The outermost source's own CommandResultCallback (harness record).
-        if self.exec.functions.is_empty()
-            && let Some(results) = self.cmds.results.as_mut()
+        if self.exec.0.functions.is_empty()
+            && let Some(results) = self.cmds.0.results.as_mut()
         {
             results.push((success, value));
         }
         let mut chain = Vec::new();
         let mut at = store;
         while let Some(i) = at {
-            let Some(e) = self.exec.stores.get(i as usize) else {
+            let Some(e) = self.exec.0.stores.get(i as usize) else {
                 break;
             };
             chain.push(e.clone());
@@ -455,7 +456,7 @@ impl Game<'_> {
         // (CommandSourceStack.handleError with `forked`).
         let mut forked = false;
         // Nested execute/conditional/other modifier variants retain the old path.
-        let mut function_batch_path = ctx.range.0 <= 1 && self.exec.functions.is_empty();
+        let mut function_batch_path = ctx.range.0 <= 1 && self.exec.0.functions.is_empty();
         let mut function_as_seen = false;
         loop {
             let word = c
@@ -487,11 +488,11 @@ impl Game<'_> {
                     let mut failure = None;
                     for s in sources {
                         let result = if let Some(tasks) = prepared.as_mut() {
-                            self.exec.prepared_function = tasks.next();
+                            self.exec.0.prepared_function = tasks.next();
                             let result = self.with_source(s, |g| g.run_chain(command, last));
                             // Includes a command-cost rejection before the leaf and
                             // a return/error after the slot was consumed.
-                            self.exec.prepared_function = None;
+                            self.exec.0.prepared_function = None;
                             result
                         } else {
                             self.with_source(s, |g| g.run_chain(command, last))
@@ -512,7 +513,7 @@ impl Game<'_> {
                             Err(e) if many => self.command_failure(e.message),
                             Err(e) => failure = Some(e),
                         }
-                        if self.exec.returned.is_some() {
+                        if self.exec.0.returned.is_some() {
                             break;
                         }
                     }
@@ -595,7 +596,7 @@ impl Game<'_> {
         let mut total = 0;
         let mut failure: Option<CommandError> = None;
         for s in sources {
-            self.exec.callback = None;
+            self.exec.0.callback = None;
             let (keep, count) = match self.with_source(s, |g| g.condition(c, want)) {
                 Ok(v) => v,
                 Err(e) => {
@@ -660,12 +661,12 @@ impl Game<'_> {
                 self.command_failure(e.message);
             }
         }
-        self.exec.callback = Some(None);
+        self.exec.0.callback = Some(None);
         Ok(0)
     }
     /// `Frame.returnSuccess`/`returnFailure` then `discard`.
     pub(in crate::game) fn finish_return(&mut self, value: Option<i32>) {
-        self.exec.returned = Some(value);
+        self.exec.0.returned = Some(value);
     }
 
     /// The sources one modifier produces from `s`.
@@ -1172,13 +1173,13 @@ impl Game<'_> {
             };
             StoreTarget::Data(r, path, kind, scale)
         };
-        self.exec.stores.push(StoreEntry {
+        self.exec.0.stores.push(StoreEntry {
             result,
             target,
             parent: s.store,
         });
         Ok(Source {
-            store: Some(self.exec.stores.len() as u32 - 1),
+            store: Some(self.exec.0.stores.len() as u32 - 1),
             ..s
         })
     }
@@ -1224,7 +1225,7 @@ impl Game<'_> {
     /// `ExecuteCommand.isChunkLoaded`: an entity-ticking loading status and
     /// completed entity loading, rather than merely a retained lit column.
     fn command_chunk_loaded(&self, x: i32, z: i32) -> bool {
-        self.tickets.levels().loaded_entity_ticking(x, z)
+        self.tickets.0.levels().loaded_entity_ticking(x, z)
             && self.world.chunks.contains_key(&(x, z))
             && self.streaming.is_lit(x, z)
             // Streaming queues the saved tags before making the column resident;
@@ -1631,12 +1632,12 @@ mod passenger_relation_tests {
                     }
                 }
                 let nested = if depth == 2 { " on passengers" } else { "" };
-                game.cmds.results = Some(Vec::new());
+                game.cmds.0.results = Some(Vec::new());
                 game.server.chat_capture = Some(Vec::new());
                 assert!(game.run_command(&format!(
                 "execute as {} on passengers{nested} store result score @s h150ur store success score @s h150us run scoreboard players add @s h150u 1", actor(parent)
             )));
-                let callbacks = game.cmds.results.take().unwrap();
+                let callbacks = game.cmds.0.results.take().unwrap();
                 let messages: Vec<_> = game
                     .server
                     .chat_capture
@@ -1737,7 +1738,7 @@ mod terminal_fork_tests {
 
     fn capture(game: &mut Game<'_>, command: &str) -> (Vec<String>, Vec<(bool, i32)>) {
         game.server.chat_capture = Some(Vec::new());
-        game.cmds.results = Some(Vec::new());
+        game.cmds.0.results = Some(Vec::new());
         game.as_console(|g| g.run_command(command));
         let messages = game
             .server
@@ -1747,7 +1748,7 @@ mod terminal_fork_tests {
             .iter()
             .map(|t| t.plain())
             .collect();
-        (messages, game.cmds.results.take().unwrap())
+        (messages, game.cmds.0.results.take().unwrap())
     }
 
     #[test]

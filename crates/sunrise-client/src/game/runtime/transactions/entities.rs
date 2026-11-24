@@ -475,7 +475,7 @@ impl Game<'_> {
             self.cushions,
             self.paintings,
             self.item_frames,
-            self.others,
+            self.others.0,
             self.breath_clouds,
             self.bolts,
             self.fangs.list,

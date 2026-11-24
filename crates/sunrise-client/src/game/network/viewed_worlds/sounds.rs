@@ -96,7 +96,7 @@ impl Game<'_> {
             _ => None,
         };
         if let Some(play) = play {
-            self.audio.play_on_seeded(
+            self.audio.0.play_on_seeded(
                 play.source.index(),
                 &play.name,
                 Some(play.at),

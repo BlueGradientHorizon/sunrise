@@ -497,7 +497,7 @@ impl Game<'_> {
         self.server.next_entity = self.server.next_entity.max(200_000);
         self.world.day_time = 6000;
         self.world.random.set_seed(s.level_seed);
-        self.audio.capture = Some(Vec::new());
+        self.audio.0.capture = Some(Vec::new());
         let mut known: HashSet<u32> = self.mobs.iter().map(|m| m.id).collect();
         let mut seeded: HashSet<u32> = HashSet::new();
         let mut known_items = self.dropped.len();
@@ -634,6 +634,7 @@ impl Game<'_> {
                 .map(|s| (s.name, s.at, s.volume, s.pitch));
             for (sound, at, volume, pitch) in self
                 .audio
+                .0
                 .capture
                 .replace(Vec::new())
                 .unwrap_or_default()
@@ -662,7 +663,7 @@ impl Game<'_> {
                 let _ = writeln!(out, "{t} {line}");
             }
         }
-        self.audio.capture = None;
+        self.audio.0.capture = None;
         Ok(out)
     }
 

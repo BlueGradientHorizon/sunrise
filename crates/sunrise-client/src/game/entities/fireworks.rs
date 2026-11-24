@@ -690,6 +690,7 @@ impl Game<'_> {
         ];
         let at = [r.position.x, r.position.y, r.position.z];
         self.particles
+            .0
             .add(&ParticleOptions::simple(ParticleType::Firework), at, v);
     }
     /// `FireworkRocketItem.use` while gliding: drop the player's leads, then a
@@ -846,7 +847,7 @@ impl Game<'_> {
         r.update_rotation(old_rotation);
         let at = [r.position.x, r.position.y, r.position.z];
         if r.life == 0 && !r.silent {
-            self.audio.play(
+            self.audio.0.play(
                 "minecraft:entity.firework_rocket.launch",
                 Some(at),
                 3.0,
@@ -1158,6 +1159,7 @@ impl Game<'_> {
         let camera = self.eye_position().unwrap_or(at);
         let v = [r.velocity.x, r.velocity.y, r.velocity.z];
         self.particles
+            .0
             .fireworks(at, v, r.explosions.as_ref().clone(), camera, !r.silent);
         self.native_firework_explode(r.id, at, r.explosions.len());
     }
@@ -1287,7 +1289,7 @@ impl Game<'_> {
         if let Some(r) = self.rockets.iter().find(|r| r.id == id as u32) {
             let at = [r.position.x, r.position.y, r.position.z];
             let v = [r.velocity.x, r.velocity.y, r.velocity.z];
-            self.particles.fireworks(
+            self.particles.0.fireworks(
                 at,
                 v,
                 r.explosions.as_ref().clone(),
@@ -1333,9 +1335,9 @@ impl Game<'_> {
         // Ability, spectator and death refusals belong to hurtServer, after
         // its invulnerability observation (also for an attached target).
         // No mob ever owns a rocket.
-        self.combat.projectile_owner = None;
-        self.combat.rocket_hit = true;
-        self.combat.projectile_direct =
+        self.combat.0.projectile_owner = None;
+        self.combat.0.rocket_hit = true;
+        self.combat.0.projectile_direct =
             Some(Text::translate("entity.minecraft.firework_rocket", &[]));
         let at = [from.x, from.y, from.z];
         self.hurt_player_from(amount, Some(at), "minecraft:fireworks", Some(None), false);
@@ -1591,12 +1593,12 @@ mod tests {
         leashed(3, here, someone_else);
         game.inventory[game.selected] = Some(super::ItemStack::new("minecraft:firework_rocket", 1));
         let stack = game.inventory[game.selected].clone().unwrap();
-        game.audio.capture = Some(Vec::new());
+        game.audio.0.capture = Some(Vec::new());
 
         assert!(!game.boost_firework(&stack));
         assert_eq!(game.mobs[0].extra.leash, Some(Holder::Player));
         assert!(game.dropped.is_empty());
-        assert!(game.audio.capture.as_ref().unwrap().is_empty());
+        assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
 
         game.player.as_mut().unwrap().fall_flying = true;
         assert!(game.boost_firework(&stack));
@@ -1612,7 +1614,7 @@ mod tests {
             .filter(|d| &*d.stack.item == "minecraft:lead")
             .collect();
         assert_eq!(leads.len(), 1);
-        let heard = game.audio.capture.take().unwrap_or_default();
+        let heard = game.audio.0.capture.take().unwrap_or_default();
         let snaps: Vec<_> = heard
             .iter()
             .filter(|s| s.event == "minecraft:item.lead.break")

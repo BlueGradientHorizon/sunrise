@@ -248,7 +248,7 @@ impl Game<'_> {
             }
             Target::Other(id) => {
                 let uuid = self.uuid_for(id);
-                let o = self.others.iter().find(|o| o.id == id)?.clone();
+                let o = self.others.0.iter().find(|o| o.id == id)?.clone();
                 self.other_tag(&o, uuid, include_id)
             }
             Target::Orb(id) => {
@@ -670,17 +670,18 @@ impl Game<'_> {
             Target::Other(id) => {
                 let i = self
                     .others
+                    .0
                     .iter()
                     .position(|o| o.id == id)
                     .ok_or_else(stale)?;
-                let slot = &self.others[i];
+                let slot = &self.others.0[i];
                 let mut new = Self::other_from_nbt(&mut tag, id, &slot.kind).ok_or_else(stale)?;
                 new.join = slot.join;
                 let is_display = matches!(
                     slot.kind.as_str(),
                     "minecraft:block_display" | "minecraft:item_display" | "minecraft:text_display"
                 );
-                self.others.update(i, |slot| *slot = new);
+                self.others.0.update(i, |slot| *slot = new);
                 // `EntityDataAccessor.setData` keeps the entity's UUID.
                 set_key(&mut tag, "UUID", Tag::IntArray(self.uuid_for(id).to_vec()));
                 if is_display {
@@ -2004,7 +2005,7 @@ impl Game<'_> {
             Some(Target::Boat(id))
         } else if self.carts.iter().any(|c| c.id == id) {
             Some(Target::Cart(id))
-        } else if self.others.iter().any(|o| o.id == id) {
+        } else if self.others.0.iter().any(|o| o.id == id) {
             Some(Target::Other(id))
         } else if self.tnts.iter().any(|t| t.id == id) {
             Some(Target::Tnt(id))
@@ -2187,7 +2188,7 @@ mod tests {
             );
             game.persist.raw.insert(12, Tag::Compound(raw));
             game.persist.uuids.insert(12, [1, 2, 3, 4]);
-            game.others.push(super::super::OtherEntity {
+            game.others.0.push(super::super::OtherEntity {
                 size_answer: None,
                 attachment_lifetime: Default::default(),
                 join: Default::default(),
@@ -2856,7 +2857,7 @@ mod modern_literal_tests {
         game.build_registries();
         game.set_allow_commands(true);
         let run = |g: &mut Game<'_>, line: &str| {
-            g.exec = ExecState::default();
+            g.exec.0 = ExecState::default();
             let source = g.player_source();
             g.execute_line(line, source)
         };

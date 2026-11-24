@@ -994,7 +994,7 @@ impl Game<'_> {
         lists.op_level = props.op_permission_level;
         lists.player_idle_timeout = props.player_idle_timeout;
         let lists = Arc::new(Mutex::new(lists));
-        self.server_lists = Some(lists.clone());
+        self.server_lists.0 = Some(lists.clone());
         log("INFO", &format!("Preparing level \"{level_name}\""));
         let level_load_started = Instant::now();
         let folder = world_dir.to_string_lossy().into_owned();
@@ -1019,7 +1019,7 @@ impl Game<'_> {
         // now rather than at the first tick (reading parses functions; it runs none), and a broken
         // predicate graph stops the start before anything listens (a partial check: predicate_graph.rs).
         self.ensure_datapacks();
-        let store = &self.fns.store;
+        let store = &self.fns.0.store;
         let tag = |id: &str| {
             let (ns, path) = id.split_once(':').unwrap_or(("minecraft", id));
             store
@@ -1183,7 +1183,7 @@ impl Game<'_> {
             simulation_distance: props.simulation_distance.clamp(2, 32),
             dimension: self.dim.id().to_owned(),
             levels: self.server.level_shapes,
-            level_seeds: self.levels.runtime.seeds(),
+            level_seeds: self.levels.0.runtime.seeds(),
             seed: self.level.seed,
             max_players: props.max_players.max(0) as usize,
             integrated: false,
@@ -1302,7 +1302,7 @@ impl Game<'_> {
         let mut next = Instant::now();
         // The panic that ended the tick loop, when one did.
         let mut crashed: Option<String> = None;
-        self.fns.permission = Some(props.function_permission_level.clamp(0, 4) as u8);
+        self.fns.0.permission = Some(props.function_permission_level.clamp(0, 4) as u8);
         let watchdog = Watchdog::start(
             props.max_tick_time,
             self.options.save_failure_diagnostics.clone(),
@@ -2405,7 +2405,7 @@ impl Game<'_> {
         run_error: Option<&str>,
     ) -> Result<()> {
         self.streaming.abort_generation();
-        self.levels.abort_parked_generation();
+        self.levels.0.abort_parked_generation();
         // A failed open keeps its opening phase until the final save attempts finish.
         if run_error.is_none() || !self.native_lifecycle.is_opening() {
             self.native_lifecycle.begin_close();
@@ -2478,9 +2478,9 @@ fn console_level(active: super::Dim, spawn: super::Dim) -> Option<super::Dim> {
 impl Game<'_> {
     /// The count is diagnostic; only hard failures stop the lifecycle.
     fn save_dedicated_checkpoint(&mut self, phase: &str) -> Result<u64> {
-        let before = self.save.record_save_failures();
+        let before = self.save.0.record_save_failures();
         self.save_game()?;
-        let failed = self.save.record_save_failures() - before;
+        let failed = self.save.0.record_save_failures() - before;
         if failed != 0 {
             log::warn!("Partial save during {phase}: {failed} chunk records could not be saved");
         }
@@ -2565,7 +2565,7 @@ mod tests {
                 game.native_lifecycle.world_open_ready().unwrap();
                 let dir = tempfile::tempdir().unwrap();
                 game.server.world_root = dir.path().to_path_buf();
-                game.save = Arc::new(SaveDir::new(
+                game.save.0 = Arc::new(SaveDir::new(
                     game.server.world_root.clone(),
                     LevelShape::OVERWORLD,
                     Some(Default::default()),
@@ -2593,7 +2593,7 @@ mod tests {
                     fail_next_save(game);
                     assert_eq!(game.save_dedicated_checkpoint(phase).unwrap(), 1);
                 }
-                assert_eq!(game.save.record_save_failures(), 2);
+                assert_eq!(game.save.0.record_save_failures(), 2);
                 assert_eq!(game.save_dedicated_checkpoint("no new edits").unwrap(), 0);
 
                 fail_next_save(game);
@@ -2606,7 +2606,7 @@ mod tests {
                     assert_eq!(events[0].0, WorldPhase::WorldCloseFailed);
                     assert!(events[0].1.contains(cause));
                 }
-                assert_eq!(game.save.record_save_failures(), 3);
+                assert_eq!(game.save.0.record_save_failures(), 3);
 
                 let blocked = dir.path().join("level.dat_new");
                 std::fs::create_dir(&blocked).unwrap();

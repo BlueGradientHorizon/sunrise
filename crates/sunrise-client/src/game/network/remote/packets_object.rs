@@ -28,7 +28,7 @@ impl Game<'_> {
         }
         // ClientLevel.addEntity removes any existing entity with the same id before inserting.
         self.detach_camera_if_matching(|cam_id| cam_id == p.id);
-        self.audio.remove_sound_entity(p.id as u32);
+        self.audio.0.remove_sound_entity(p.id as u32);
         let rotation = [p.yaw, p.pitch, p.head_yaw].map(sunrise_protocol::buf::unpack_degrees);
         // ClientLevel.addEntity discards the old entity before inserting the new one.
         if self
@@ -225,7 +225,7 @@ impl Game<'_> {
         if let Some(o) = orb_at {
             let mut r = sunrise_client::random_source::create();
             let pitch = (r.next_float() - r.next_float()) * 0.35 + 0.9;
-            self.audio.play(
+            self.audio.0.play(
                 "minecraft:entity.experience_orb.pickup",
                 Some([o.x, o.y, o.z]),
                 0.1,
@@ -235,6 +235,7 @@ impl Game<'_> {
             let mut r = sunrise_client::random_source::create();
             let pitch = ((r.next_float() - r.next_float()) * 0.7 + 1.0) * 2.0;
             self.audio
+                .0
                 .play("minecraft:entity.item.pickup", Some(at), 0.2, pitch);
         }
         // ItemPickupParticle toward the collector (this player, another one or a mob).
@@ -378,7 +379,7 @@ impl Game<'_> {
             self.teleport_driven_vehicle(position, rotation, delta, p.on_ground);
             return Ok(());
         }
-        if self.text_displays.contains_key(&p.id) {
+        if self.text_displays.0.contains_key(&p.id) {
             self.teleport_remote_text_display(p.id, p.position, p.yaw, p.pitch, p.relatives);
             self.entity_section_moved_id(p.id as u32);
             return Ok(());

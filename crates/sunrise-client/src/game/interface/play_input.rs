@@ -92,7 +92,7 @@ impl Game<'_> {
 
     pub(in crate::game) fn update_modifiers(&mut self, state: winit::keyboard::ModifiersState) {
         self.client.modifiers = state;
-        if let Some(title) = &mut self.title {
+        if let Some(title) = &mut self.title.0 {
             title.set_alt_down(state.alt_key());
         }
         let released = sunrise_client_input::modifiers::reconcile(
@@ -102,8 +102,8 @@ impl Game<'_> {
             &mut self.client.vanilla_mappings,
             [self.settings.toggle_crouch, self.settings.toggle_sprint],
             [
-                self.pad.holds_action("key.sneak"),
-                self.pad.holds_action("key.sprint"),
+                self.pad.0.holds_action("key.sneak"),
+                self.pad.0.holds_action("key.sprint"),
             ],
         );
         for (slot, key) in [(SNEAK, KeyCode::ShiftLeft), (SPRINT, KeyCode::ControlLeft)] {
@@ -146,7 +146,7 @@ impl Game<'_> {
             // A pad's toggle-sneak isn't holding it: it has no release that would end it.
             Source::Keyboard => {
                 !(slot == SNEAK && self.settings.controller.toggle_sneak)
-                    && self.pad.holds_action(["key.sneak", "key.sprint"][slot])
+                    && self.pad.0.holds_action(["key.sneak", "key.sprint"][slot])
             }
             Source::Pad => self.client.physical_keys.iter().any(|physical| {
                 self.settings
@@ -195,7 +195,7 @@ impl Game<'_> {
                     if let Some(pressed) = keyboard_button(
                         gameplay_has_keyboard(
                             self.client.screen,
-                            self.title.is_some(),
+                            self.title.0.is_some(),
                             self.screen_over_playing(),
                         ),
                         action,
@@ -308,7 +308,7 @@ impl Game<'_> {
             }
             let screen_open = !gameplay_has_keyboard(
                 self.client.screen,
-                self.title.is_some(),
+                self.title.0.is_some(),
                 self.screen_over_playing(),
             );
             self.client
@@ -532,7 +532,11 @@ impl Game<'_> {
             return false;
         };
         if !mod_api::__private::listened(mod_api::HookId::KeyMappingPre)
-            || !gameplay_has_keyboard(self.client.screen, self.title.is_some(), self.dialog_open())
+            || !gameplay_has_keyboard(
+                self.client.screen,
+                self.title.0.is_some(),
+                self.dialog_open(),
+            )
         {
             return false;
         }
@@ -631,7 +635,7 @@ impl Game<'_> {
 
     /// Whether a device holds the key mapping named `mapping` (`key.use`).
     pub(in crate::game) fn input_holds(&self, mapping: &str) -> bool {
-        self.pad.holds_action(mapping)
+        self.pad.0.holds_action(mapping)
     }
 
     /// Turns the view by what the devices give this frame (`Entity.turn`).
@@ -642,13 +646,13 @@ impl Game<'_> {
     /// The keyboard or mouse acted in play (a key or button pressed): it has control again, though
     /// only moving the mouse takes a pad out of use.
     pub(in crate::game) fn input_keyboard_used(&mut self) {
-        self.pad.keyboard_took_over = true;
+        self.pad.0.keyboard_took_over = true;
     }
 
     /// Whether the pointer event being handled is one a device made (a pad's menu cursor
     /// clicking), not the mouse's.
     pub(in crate::game) fn input_made_pointer_event(&self) -> bool {
-        self.pad.menu.synthetic
+        self.pad.0.menu.synthetic
     }
 
     /// A new player entity took over (spawn, respawn, a server joined, a dimension change).
@@ -659,12 +663,12 @@ impl Game<'_> {
     /// Whether the drop about to happen is a device's whole-stack drop (it has no Control key to
     /// hold). Asking answers once.
     pub(in crate::game) fn input_takes_stack_drop(&mut self) -> bool {
-        std::mem::take(&mut self.pad.drop_stack)
+        std::mem::take(&mut self.pad.0.drop_stack)
     }
 
     /// The HUD starts a frame: what a device drew on the last one is gone.
     pub(in crate::game) fn input_hud_begin(&mut self) {
-        self.pad.guide_shown.clear();
+        self.pad.0.guide_shown.clear();
     }
 
     /// Something happened to the player that a device may let them feel.

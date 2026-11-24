@@ -158,7 +158,7 @@ impl Game<'_> {
         crashed: bool,
         run_error: Option<&str>,
     ) -> Result<()> {
-        let before = self.save.record_save_failures();
+        let before = self.save.0.record_save_failures();
         // IntegratedServer.teardownPublishedState must happen even if an
         // earlier callback panicked; otherwise lan_close only unpublishes a
         // still-serving server instead of disconnecting and dropping its hub.
@@ -177,7 +177,7 @@ impl Game<'_> {
         // callback), before the save writes the players the exclusion does not name.
         self.exclude_interrupted_players(crashed, |m| log::warn!("{m}"));
         let saved = match catch_unwind(AssertUnwindSafe(|| {
-            if self.server.world_adopted && self.session_lock.is_some() {
+            if self.server.world_adopted && self.session_lock.0.is_some() {
                 self.save_game()
             } else {
                 Ok(())
@@ -203,7 +203,7 @@ impl Game<'_> {
         {
             result = Err(shutdown_panic(payload.as_ref()).into());
         }
-        match catch_unwind(AssertUnwindSafe(|| self.save.flush())) {
+        match catch_unwind(AssertUnwindSafe(|| self.save.0.flush())) {
             Ok(saved) => result = result.and(saved),
             Err(payload) => {
                 let message = shutdown_panic(payload.as_ref());
@@ -212,7 +212,7 @@ impl Game<'_> {
                 }
             }
         }
-        let failed = self.save.record_save_failures() - before;
+        let failed = self.save.0.record_save_failures() - before;
         if crashed && failed != 0 {
             log::warn!(
                 "Partial save during crash shutdown: {failed} chunk records could not be saved"
@@ -236,7 +236,7 @@ impl Game<'_> {
         {
             result = Err(shutdown_panic(payload.as_ref()).into());
         }
-        self.session_lock = None;
+        self.session_lock.0 = None;
         self.server.interrupted_turns.clear();
         self.server.crash_save = Default::default();
         // The integrated client retains these resources after joining this

@@ -22,7 +22,7 @@ impl Game<'_> {
         let world = if level.dimension() == self.dim.key() {
             &mut self.world
         } else {
-            self.levels.parked_world_mut_of(level.dimension_id())?
+            self.levels.0.parked_world_mut_of(level.dimension_id())?
         };
         Some(&mut world.random)
     }

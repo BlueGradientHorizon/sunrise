@@ -62,7 +62,7 @@ impl Game<'_> {
             return;
         };
         let integrated = host.hub.config.integrated;
-        if let Some(level) = self.native_commands.level(command)
+        if let Some(level) = self.native_commands.0.level(command)
             && let Some(permission) = host.hub.guest(conn).map(|g| g.permission)
             && permission >= level
         {
@@ -249,7 +249,7 @@ impl Game<'_> {
             self.ui.registries.players.clone()
         };
         players.extend(host.hub.online_players().map(|g| g.name.clone()));
-        let (ops, banned_players, banned_ips, whitelisted) = match &self.server_lists {
+        let (ops, banned_players, banned_ips, whitelisted) = match &self.server_lists.0 {
             Some(lists) => {
                 let l = lists.lock().unwrap();
                 (

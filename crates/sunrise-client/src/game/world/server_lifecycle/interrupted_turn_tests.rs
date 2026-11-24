@@ -54,13 +54,13 @@ fn scenario(interruption: Interruption) {
         let root = tempfile::tempdir().unwrap();
         let root = root.path().to_path_buf();
         game.server.world_root = root.clone();
-        game.save = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
+        game.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
             root.clone(),
             sunrise_client::save::LevelShape::OVERWORLD,
             Some(Default::default()),
         ));
         game.level.name = "interrupted turn".into();
-        game.session_lock = Some(sunrise_client::save::SessionLock::acquire(&root).unwrap());
+        game.session_lock.0 = Some(sunrise_client::save::SessionLock::acquire(&root).unwrap());
         game.server.world_adopted = true;
         assert!(
             !game.advancement_tree().list.is_empty(),

@@ -50,7 +50,7 @@ fn a_discarded_trident_does_not_apply_its_captured_impact() {
         game.tridents.push(t);
         let handle = game.entity(71).unwrap();
         game.native_joins_skip();
-        game.audio.capture = Some(Vec::new());
+        game.audio.0.capture = Some(Vec::new());
         game.tick_tridents();
         assert!(game.entity_position(handle).is_none());
         assert_eq!(game.tridents[0].fire_ticks, 0);
@@ -73,7 +73,7 @@ fn a_discarded_trident_does_not_apply_its_captured_impact() {
         } else {
             assert_eq!(hits[0].block, [2, 64, 0]);
         }
-        let sounds = game.audio.capture.as_ref().unwrap();
+        let sounds = game.audio.0.capture.as_ref().unwrap();
         assert_eq!(
             sounds
                 .iter()
@@ -128,7 +128,7 @@ fn a_refused_trident_contact_keeps_the_contact_and_finishes_the_tick() {
     };
     with_probe(action, true, |game, observed| {
         let handle = aim_trident_at_wall(game);
-        game.audio.capture = Some(Vec::new());
+        game.audio.0.capture = Some(Vec::new());
         game.tick_tridents();
         let hits = observed.hits.lock().unwrap();
         assert_eq!(hits.len(), 1);
@@ -146,6 +146,7 @@ fn a_refused_trident_contact_keeps_the_contact_and_finishes_the_tick() {
         assert!(
             !game
                 .audio
+                .0
                 .capture
                 .as_ref()
                 .unwrap()

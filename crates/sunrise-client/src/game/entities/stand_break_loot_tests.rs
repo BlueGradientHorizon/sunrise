@@ -89,7 +89,7 @@ fn with_stick_table(game: &mut Game<'_>, name: &str) {
         &[],
         &[],
     );
-    game.world_tables = game
+    game.world_tables.0 = game
         .stage_world_tables(&stack, false, &root)
         .unwrap()
         .tables;

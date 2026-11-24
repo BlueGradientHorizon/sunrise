@@ -224,8 +224,8 @@ impl Game<'_> {
             .join("resourcepacks")
             .join("resources.zip");
         if path.is_file() {
-            self.server_packs.packs.local_world();
-            self.server_packs.packs.push_local(WORLD_PACK_ID, path);
+            self.server_packs.0.packs.local_world();
+            self.server_packs.0.packs.push_local(WORLD_PACK_ID, path);
         }
     }
     /// `ConnectScreen`: the server's setting decides what its packs do
@@ -237,7 +237,7 @@ impl Game<'_> {
         list_name: Option<&str>,
         user: (String, u128),
     ) {
-        let state = &mut self.server_packs;
+        let state = &mut self.server_packs.0;
         state.user = user;
         state.prompt = None;
         state.notifiers.clear();
@@ -264,9 +264,9 @@ impl Game<'_> {
     }
     /// `Minecraft.clearDownloadedResourcePacks`: every server pack goes at once.
     pub(in crate::game) fn server_packs_disconnect(&mut self) {
-        self.server_packs.prompt = None;
-        self.server_packs.notifiers.clear();
-        self.server_packs.packs.disconnect();
+        self.server_packs.0.prompt = None;
+        self.server_packs.0.notifiers.clear();
+        self.server_packs.0.packs.disconnect();
         self.tick_server_packs();
     }
 
@@ -280,6 +280,7 @@ impl Game<'_> {
         let prompt = Prompt::for_server(setting);
         if prompt != Prompt::Pending && (!p.required || prompt != Prompt::Declined) {
             self.server_packs
+                .0
                 .packs
                 .push(p.id, &p.url, parse_sha1(&p.hash));
             return;
@@ -288,9 +289,9 @@ impl Game<'_> {
         let text = p.prompt.as_ref().map(|t| comp_text(&tag_to_json(t)));
         // A new prompt opens as a screen (a mod may keep it shut, and then
         // nothing answers the pack); an open one only takes the pack.
-        if self.server_packs.prompt.is_none()
+        if self.server_packs.0.prompt.is_none()
             && !self.open_screen_overlay("server_pack_prompt", |game| {
-                game.server_packs.prompt = Some(PackPrompt {
+                game.server_packs.0.prompt = Some(PackPrompt {
                     requests: Vec::new(),
                     required: p.required,
                     prompt: None,
@@ -299,7 +300,7 @@ impl Game<'_> {
         {
             return;
         }
-        let state = &mut self.server_packs;
+        let state = &mut self.server_packs.0;
         let open = state.prompt.get_or_insert(PackPrompt {
             requests: Vec::new(),
             required: p.required,
@@ -315,15 +316,21 @@ impl Game<'_> {
     /// `handleResourcePackPop`: one pack, or all of them.
     pub(in crate::game) fn handle_pack_pop(&mut self, id: Option<u128>) {
         match id {
-            Some(id) => self.server_packs.packs.pop(id),
-            None => self.server_packs.packs.pop_all(),
+            Some(id) => self.server_packs.0.packs.pop(id),
+            None => self.server_packs.0.packs.pop_all(),
         }
     }
     /// The joined server's entry in the server list: its `acceptTextures`.
     fn server_setting(&self) -> Option<bool> {
-        let address = self.server_packs.address.as_deref()?;
+        let address = self.server_packs.0.address.as_deref()?;
         let (shown, hidden) = servers::load_all(&multiplayer::servers_file(&saves()));
-        servers::find(&shown, &hidden, address, self.server_packs.name.as_deref())?.accept_textures
+        servers::find(
+            &shown,
+            &hidden,
+            address,
+            self.server_packs.0.name.as_deref(),
+        )?
+        .accept_textures
     }
     fn send_pack_status(&self, id: u128, status: i32) {
         if let Some(r) = &self.remote {
@@ -334,16 +341,16 @@ impl Game<'_> {
     /// `PackConfirmScreen`'s callback: push every pending pack and save the server list.
     /// Declining a required pack closes the connection without changing its stored policy.
     pub(in crate::game) fn answer_pack_prompt(&mut self, yes: bool) -> Result<()> {
-        let Some(prompt) = self.server_packs.prompt.take() else {
+        let Some(prompt) = self.server_packs.0.prompt.take() else {
             return Ok(());
         };
         if self.player.is_some() && self.client.screen == super::Screen::Playing {
             self.capture(true);
         }
         if yes {
-            self.server_packs.packs.allow();
+            self.server_packs.0.packs.allow();
         } else {
-            self.server_packs.packs.reject();
+            self.server_packs.0.packs.reject();
             if prompt.required {
                 let reason = Text::translate("multiplayer.requiredTexturePrompt.disconnect", &[]);
                 // The requests still get local DECLINED feedback. The transport is already
@@ -354,7 +361,7 @@ impl Game<'_> {
             }
         }
         self.refresh_screen_widgets();
-        self.server_packs.complete_prompt(prompt, Some(yes));
+        self.server_packs.0.complete_prompt(prompt, Some(yes));
         Ok(())
     }
 
@@ -362,7 +369,7 @@ impl Game<'_> {
     /// that finished, the ones to start, a resource reload when the active
     /// packs change, and the statuses for the server.
     pub(in crate::game) fn tick_server_packs(&mut self) {
-        let mut notifiers = std::mem::take(&mut self.server_packs.notifiers);
+        let mut notifiers = std::mem::take(&mut self.server_packs.0.notifiers);
         notifiers.retain_mut(|n| {
             let id = SystemToastId::PackDownload(n.id);
             let (keep, hide) = n.poll(|new| self.add_or_update_system_toast(id, new));
@@ -371,10 +378,10 @@ impl Game<'_> {
             }
             keep
         });
-        self.server_packs.notifiers = notifiers;
+        self.server_packs.0.notifiers = notifiers;
         self.drive_mod_browser();
         // A reload waits for the world's resources (`reload_packs`).
-        if self.rest_loader.is_some() {
+        if self.rest_loader.0.is_some() {
             return;
         }
         self.drive_pack_reload();
@@ -384,19 +391,21 @@ impl Game<'_> {
         // its own reload from overlapping).
         let selection_reloading = self
             .pack_reload
+            .0
             .as_ref()
             .is_some_and(|r| r.kind() == ReloadKind::Selection);
         let finished = self
             .server_packs
+            .0
             .queue
             .as_ref()
             .map(download::Queue::finished)
             .unwrap_or_default();
         for batch in finished {
-            self.server_packs.packs.downloaded(batch);
+            self.server_packs.0.packs.downloaded(batch);
         }
-        while !selection_reloading && self.server_packs.packs.wants_tick() {
-            let tick = self.server_packs.packs.tick();
+        while !selection_reloading && self.server_packs.0.packs.wants_tick() {
+            let tick = self.server_packs.0.packs.tick();
             if !tick.download.is_empty() {
                 self.start_pack_downloads(tick.download);
             }
@@ -404,12 +413,12 @@ impl Game<'_> {
                 self.start_pack_reload(&load);
             }
         }
-        for (id, status) in self.server_packs.packs.take_replies() {
+        for (id, status) in self.server_packs.0.packs.take_replies() {
             self.send_pack_status(id, status);
         }
     }
     fn start_pack_downloads(&mut self, requests: Vec<sunrise_client::server_packs::Request>) {
-        let state = &mut self.server_packs;
+        let state = &mut self.server_packs.0;
         let toast_id = state.next_download_toast;
         state.next_download_toast += 1;
         if state.queue.is_none() {
@@ -461,7 +470,7 @@ impl Game<'_> {
             self.finish_pack_reload(false);
             return;
         };
-        self.server_packs.active = server;
+        self.server_packs.0.active = server;
         if let Err(e) = self.spawn_pack_reload(ReloadKind::Server) {
             log::error!("Sunrise: could not start the pack reload worker: {e}");
             self.finish_pack_reload(false);
@@ -469,13 +478,13 @@ impl Game<'_> {
     }
     /// `ServerPacks::reloaded` and the recovery reload it can ask for.
     pub(in crate::game) fn finish_pack_reload(&mut self, ok: bool) {
-        if let Some(recovery) = self.server_packs.packs.reloaded(ok) {
+        if let Some(recovery) = self.server_packs.0.packs.reloaded(ok) {
             self.start_pack_reload(&recovery);
         }
     }
 
     pub(in crate::game) fn draw_pack_prompt(&self, batch: &mut HudBatch) {
-        let Some(prompt) = &self.server_packs.prompt else {
+        let Some(prompt) = &self.server_packs.0.prompt else {
             return;
         };
         sunrise_client::widgets::cover_frame();
@@ -507,7 +516,7 @@ impl Game<'_> {
     /// Admit new server reports in the receiving window. `SystemToast.addOrUpdate`
     /// resets an existing chunk toast instead of admitting a second one.
     pub(in crate::game) fn add_server_report_toasts(&mut self) {
-        let pending = self.client_reports.take();
+        let pending = self.client_reports.0.take();
         let toasts = [
             pending
                 .low_disk_space
@@ -568,7 +577,7 @@ impl Game<'_> {
 
     /// A left click on the prompt: its answer when it hit a button.
     pub(in crate::game) fn pack_prompt_click(&mut self) -> Result<bool> {
-        let Some(prompt) = &self.server_packs.prompt else {
+        let Some(prompt) = &self.server_packs.0.prompt else {
             return Ok(false);
         };
         let answer = prompt
@@ -576,7 +585,7 @@ impl Game<'_> {
             .answer_at(self.client.cursor);
         match answer {
             Some(yes) => {
-                self.audio.play_button_click();
+                self.audio.0.play_button_click();
                 self.answer_pack_prompt(yes)?;
                 Ok(true)
             }
@@ -684,12 +693,12 @@ mod tests {
                         .set_modified(std::time::UNIX_EPOCH)
                         .unwrap();
                     let old_modified = file.metadata().unwrap().modified().unwrap();
-                    game.server_packs.packs.record_feedback();
+                    game.server_packs.0.packs.record_feedback();
                     game.answer_pack_prompt(false).unwrap();
 
                     assert!(game.remote.is_none());
                     assert!(matches!(
-                        &game.title.as_ref().unwrap().mode,
+                        &game.title.0.as_ref().unwrap().mode,
                         sunrise_client::title::Mode::Multiplayer(multiplayer::Screen::Disconnected {
                             reason, retry: None, ..
                         }) if reason.translation_key() == Some("multiplayer.requiredTexturePrompt.disconnect")
@@ -705,11 +714,11 @@ mod tests {
                         }
                     }
                     assert_eq!(
-                        game.server_packs.packs.take_recorded_feedback(),
+                        game.server_packs.0.packs.take_recorded_feedback(),
                         PACK_IDS.map(|id| (id, action::DECLINED))
                     );
-                    assert_eq!(game.server_packs.packs.prompt(), Prompt::Pending);
-                    assert!(game.server_packs.packs.take_replies().is_empty());
+                    assert_eq!(game.server_packs.0.packs.prompt(), Prompt::Pending);
+                    assert!(game.server_packs.0.packs.take_replies().is_empty());
                     assert_ne!(file.metadata().unwrap().modified().unwrap(), old_modified);
                     assert_eq!(std::fs::read(&backup).unwrap(), original_bytes);
                     // Read the saved raw NBT directly to prove Disabled policies were not cleared.
@@ -815,16 +824,17 @@ mod tests {
                     vec![ModEntry::new(OWNER, Box::new(HideHud))].into(),
                     || {
                         crate::game::native_entity_refs::tests::with_client_game(|game| {
-                            game.title = None;
+                            game.title.0 = None;
                             game.client.screen = crate::game::Screen::Playing;
-                            game.audio.backend_live_for_bench();
+                            game.audio.0.backend_live_for_bench();
                             let spec = StreamSpec::new(SoundSource::Voice, 2, 48_000);
                             let (dropped, retired) = mpsc::channel();
                             let _handle = game
                                 .audio
+                                .0
                                 .open_stream(OWNER, &spec, None, Box::new(BrokenSource(dropped)))
                                 .unwrap();
-                            game.audio.mix_buffer(&mut [0.0; 2], 2, 48_000);
+                            game.audio.0.mix_buffer(&mut [0.0; 2], 2, 48_000);
                             // The worker queues the notice before dropping the failed source.
                             retired.recv_timeout(Duration::from_secs(1)).unwrap();
 
@@ -929,10 +939,10 @@ mod tests {
                 mod_platform::testing::with_mods(mods.into(), || {
                     with_client_game(|window| {
                         let serving =
-                            Serving::fixture_with_reports(0, window.client_reports.clone());
+                            Serving::fixture_with_reports(0, window.client_reports.0.clone());
                         window.integrated = Some(Integrated::fixture_for(&serving));
                         window.begin_closing_save(false).unwrap();
-                        assert!(window.pending_save.is_some());
+                        assert!(window.pending_save.0.is_some());
                         let dir = tempfile::tempdir().unwrap();
                         let reporter = sunrise_client::chunk_io::SaveFailureReporter::new(
                             true,
@@ -952,7 +962,7 @@ mod tests {
 
                         assert!(!window.poll_closing_save().unwrap());
                         assert!(window.integrated.is_none());
-                        assert!(window.title.is_some());
+                        assert!(window.title.0.is_some());
                         assert!(
                             window
                                 .client
@@ -1040,7 +1050,7 @@ mod tests {
                 mod_platform::testing::with_mods(mods.into(), || {
                     with_client_game(|window| {
                         let serving =
-                            Serving::fixture_with_reports(0, window.client_reports.clone());
+                            Serving::fixture_with_reports(0, window.client_reports.0.clone());
                         window.integrated = Some(Integrated::fixture_for(&serving));
                         with_game(|server| {
                             server.serving = Some(serving);

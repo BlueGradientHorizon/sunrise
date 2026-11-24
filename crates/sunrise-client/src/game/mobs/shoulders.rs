@@ -135,7 +135,7 @@ impl Game<'_> {
             .map(|m| (m.kind.id.as_str(), m.silent))
             .collect();
         let peaceful = self.ui.difficulty == 0;
-        let maps = self.world_tables.as_ref().map_or_else(
+        let maps = self.world_tables.0.as_ref().map_or_else(
             || sunrise_client::neoforge_mob_maps::NeoForgeMobMaps::vanilla().as_ref(),
             |tables| tables.data_maps.mob_maps.as_ref(),
         );
@@ -148,7 +148,7 @@ impl Game<'_> {
             &nearby,
         ) {
             let sound = sunrise_client::mobs::entity_sounds::full_id(sound);
-            self.audio.play(&sound, Some(at), volume, pitch);
+            self.audio.0.play(&sound, Some(at), volume, pitch);
         }
     }
 

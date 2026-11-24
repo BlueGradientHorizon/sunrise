@@ -126,10 +126,10 @@ impl Game<'_> {
         let credits = mod_api::client::music::Music::credits();
         self.client
             .music
-            .stop_playing_music(&credits, None, &mut self.audio);
+            .stop_playing_music(&credits, None, &mut self.audio.0);
         match win.finish {
             Finish::Options => self.set_screen(Screen::Options),
-            Finish::Closed if self.title.is_some() => self.set_screen(Screen::Playing),
+            Finish::Closed if self.title.0.is_some() => self.set_screen(Screen::Playing),
             Finish::RemoteRespawn | Finish::Closed => {
                 if win.finish == Finish::RemoteRespawn {
                     self.remote_respawn();

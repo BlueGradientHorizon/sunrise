@@ -363,7 +363,7 @@ impl<'g> Game<'g> {
         #[cfg(test)]
         BUILT.with(|n| n.set(n.get() + 1));
         let slots = self.slots();
-        let (origin, panel) = match self.renderer.as_ref() {
+        let (origin, panel) = match self.renderer.0.as_ref() {
             Some(r) => self.container_frame(&HudBatch::new(
                 [r.config.width, r.config.height],
                 self.settings.gui_scale_inputs(),

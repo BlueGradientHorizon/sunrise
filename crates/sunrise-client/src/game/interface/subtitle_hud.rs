@@ -21,14 +21,14 @@ impl Game<'_> {
     pub(in crate::game) fn tick_subtitles(&mut self) {
         let mut overlay = self.client.subtitles.overlay.borrow_mut();
         let listening = overlay.listening();
-        self.audio.record_heard = listening;
-        let heard = self.audio.take_heard();
+        self.audio.0.record_heard = listening;
+        let heard = self.audio.0.take_heard();
         if !listening {
             return;
         }
         let now = now_ms();
         for h in heard {
-            let at = h.at.unwrap_or(self.audio.listener);
+            let at = h.at.unwrap_or(self.audio.0.listener);
             overlay.on_play(Some(&h.subtitle), at, h.range, h.looping, now);
         }
     }

@@ -603,7 +603,7 @@ impl Game<'_> {
         let Some(flags) = self.creative_drop_features() else {
             return false;
         };
-        if thrown.is_empty() || !self.creative_screen.catalog().item_enabled(thrown, flags) {
+        if thrown.is_empty() || !self.creative_screen.0.catalog().item_enabled(thrown, flags) {
             return false;
         }
         let Some(item) = self.to_network(&Some(thrown.clone())) else {
@@ -674,10 +674,10 @@ impl Game<'_> {
         // container's keyboard focus must not outlive it (a Tab bound to the
         // inventory moves the focus and closes the container in one press).
         self.pad_clear_focus();
-        self.recipe_ui.reset_screen();
-        if self.mod_screen.take().is_some() {
+        self.recipe_ui.0.reset_screen();
+        if self.mod_screen.0.take().is_some() {
             self.clear_mod_book_placement_screen();
-            self.screen_state.build.reopened();
+            self.screen_state.0.build.reopened();
         }
         self.mount_menu_reset();
         // The client's menu has no level access: what it holds is the server's.
@@ -783,13 +783,14 @@ impl Game<'_> {
             log::warn!("no screen factory for menu {menu}");
             return;
         }
-        if self.remote.as_ref().and_then(|r| r.menu.as_ref()).is_some() || self.mod_screen.is_some()
+        if self.remote.as_ref().and_then(|r| r.menu.as_ref()).is_some()
+            || self.mod_screen.0.is_some()
         {
             // An in-place open has no intervening ContainerClose packet. Drop
             // the replaced menu's local state, not the screen or pointer grab.
             self.remote_close_local();
         } else {
-            self.recipe_ui.reset_screen();
+            self.recipe_ui.0.reset_screen();
         }
         if menu == "minecraft:lectern" {
             // LecternScreen: the book and page come in the menu's content and data.
@@ -901,7 +902,7 @@ impl Game<'_> {
                 return;
             }
         }
-        let native = self.mod_screen.is_some();
+        let native = self.mod_screen.0.is_some();
         self.set_screen(Screen::Inventory);
         if !native || self.native_screen_shown() {
             self.capture(false);
@@ -940,7 +941,7 @@ impl Game<'_> {
         else {
             return Ok(());
         };
-        if self.mod_screen.is_some() {
+        if self.mod_screen.0.is_some() {
             self.remote_close_local();
         }
         // `HorseInventoryMenu` lays out its chest slots only `if (inventoryColumns > 0)`

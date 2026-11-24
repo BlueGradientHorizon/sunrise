@@ -299,7 +299,7 @@ fn server_close_notifies_the_outgoing_receiver_and_only_opens_real_screens() {
                     };
                     take();
                     close(game);
-                    assert_eq!(game.title.as_ref().unwrap().mode.id(), "title");
+                    assert_eq!(game.title.0.as_ref().unwrap().mode.id(), "title");
                     assert_eq!(take(), [Event::Open("title"), paused]);
                 });
             });

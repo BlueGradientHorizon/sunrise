@@ -535,7 +535,7 @@ fn restock_after_hero_change(test: &str, before_work: bool) {
                 ) = (5, 10);
                 // The voice from opening the screen has finished its cooldown by work time.
                 game.mobs[0].ambient_timer = 0;
-                game.audio.capture = Some(Vec::new());
+                game.audio.0.capture = Some(Vec::new());
 
                 tick_work(game);
 
@@ -548,6 +548,7 @@ fn restock_after_hero_change(test: &str, before_work: bool) {
                 assert_eq!(screen.merchant.session.hero, (!before_work).then_some(0));
                 let feedback: Vec<_> = game
                     .audio
+                    .0
                     .capture
                     .as_ref()
                     .unwrap()

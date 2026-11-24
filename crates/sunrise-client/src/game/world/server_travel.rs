@@ -492,7 +492,7 @@ impl Game<'_> {
             });
             return true;
         }
-        if self.cmds.guest_cameras.contains_key(&conn) {
+        if self.cmds.0.guest_cameras.contains_key(&conn) {
             self.guest_set_camera(gi, None);
         }
         match name {
@@ -1413,7 +1413,7 @@ impl Game<'_> {
             .remove(&id)
             .unwrap_or(Vec3::ZERO);
         let carried = self.portals.carried_cooldown.remove(&id);
-        let Some(parked) = self.levels.parked_mut(source) else {
+        let Some(parked) = self.levels.0.parked_mut(source) else {
             return;
         };
         let before = parked
@@ -1821,6 +1821,7 @@ mod tests {
                 assert!(
                     !game
                         .levels
+                        .0
                         .parked_mut(source)
                         .unwrap()
                         .portal_states
@@ -2035,7 +2036,7 @@ mod tests {
                 game,
                 sunrise_core::position::ChunkPos::new(0, 0),
             );
-            game.tickets.add_portal((0, 0));
+            game.tickets.0.add_portal((0, 0));
             game.update_chunk_tickets();
             assert!(game.entity_ticking_area()(1, 2));
             // Supply the block's real inside notification, then exercise the actual
@@ -2182,7 +2183,7 @@ mod transfer_lifetime_tests {
         for kind in ["minecraft:minecart", "minecraft:oak_boat", "minecraft:pig"] {
             for bound in [true, false] {
                 super::super::native_entity_refs::tests::with_game(|game| {
-                    game.tickets.update(None);
+                    game.tickets.0.update(None);
                     let target = game
                         .summon_with_nbt(kind, [0.5, 70.0, 0.5], "{}")
                         .unwrap()
@@ -2239,7 +2240,7 @@ mod transfer_lifetime_tests {
                     game.arrive_vehicle(source, id, Vec3::ZERO, 0.0);
                     macro_rules! transferred {
                         ($list:ident) => {{
-                            let parked = game.levels.parked_mut(source).unwrap();
+                            let parked = game.levels.0.parked_mut(source).unwrap();
                             assert!(
                                 !parked
                                     .$list

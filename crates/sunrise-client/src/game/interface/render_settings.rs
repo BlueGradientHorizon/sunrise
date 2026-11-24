@@ -34,7 +34,7 @@ impl Game<'_> {
             self.options.offscreen,
             pack,
             gui,
-            self.renderer.as_ref(),
+            self.renderer.0.as_ref(),
             None,
             self.settings.sunrise.api,
             self.settings.sunrise.translucent_batching,
@@ -42,6 +42,7 @@ impl Game<'_> {
             &self.settings.sunrise,
             shader_packs::picked_pack_shape(&self.settings),
             self.renderer
+                .0
                 .as_ref()
                 .map(|r| r.display_reading())
                 .unwrap_or_default(),
@@ -80,6 +81,7 @@ impl Game<'_> {
         let request = shader_packs::picked_pack_shape(&self.settings).frame();
         let wanted = self
             .renderer
+            .0
             .as_ref()
             .map(|r| r.requested_frame(&self.settings.sunrise, request));
         if !self.client.frame_attempted.changed((wanted, path, outcome)) {
@@ -87,6 +89,7 @@ impl Game<'_> {
         }
         if self
             .renderer
+            .0
             .as_ref()
             .is_none_or(|r| r.frame_follows(&self.settings.sunrise, request))
         {
@@ -101,24 +104,24 @@ impl Game<'_> {
     /// pipelines that come out the same and the world the old one holds (`Renderer::take_world`):
     /// only what draws in the frame is made again, and no section is meshed again.
     fn rebuild_renderer(&mut self) -> Result<()> {
-        let Some(window) = self.window.clone() else {
+        let Some(window) = self.window.0.clone() else {
             return Ok(());
         };
         let started = std::time::Instant::now();
-        if let Some(renderer) = &mut self.renderer {
+        if let Some(renderer) = &mut self.renderer.0 {
             renderer.release_surface();
         }
         let mut renderer = match self.renderer_for(window, &self.pack, &self.gui) {
             Ok(renderer) => renderer,
             Err(error) => {
-                if let Some(renderer) = &mut self.renderer {
+                if let Some(renderer) = &mut self.renderer.0 {
                     renderer.recreate_surface()?;
                 }
                 return Err(error);
             }
         };
         let mut world_kept = false;
-        if let Some(old) = &mut self.renderer {
+        if let Some(old) = &mut self.renderer.0 {
             renderer.resize(old.config.width, old.config.height);
             renderer.screenshot = old.screenshot.take();
             renderer.screenshot_result = old.screenshot_result.take();
@@ -170,9 +173,9 @@ impl Game<'_> {
         if reload {
             self.all_sections_changed();
         }
-        self.audio.master = self.settings.master_volume as f32;
-        if self.settings.sound_device != self.audio.device() {
-            let _ = self.audio.set_device(&self.settings.sound_device);
+        self.audio.0.master = self.settings.master_volume as f32;
+        if self.settings.sound_device != self.audio.0.device() {
+            let _ = self.audio.0.set_device(&self.settings.sound_device);
         }
         self.apply_ui_settings();
     }
@@ -211,7 +214,7 @@ impl Game<'_> {
     /// LOD Distance as far terrain uses it (`graphics::lod_distance_capped`).
     pub(in crate::game) fn lod_distance(&self) -> u32 {
         let (distance, _) = self.far_terrain_choice();
-        match &self.renderer {
+        match &self.renderer.0 {
             Some(renderer) => {
                 sunrise_client::graphics::lod_distance_capped(distance, &renderer.info)
             }
@@ -222,7 +225,7 @@ impl Game<'_> {
     /// Only enabled LOD worlds extend the renderer's range, never simulation.
     pub(in crate::game) fn terrain_distance(&self) -> i32 {
         let distance = self.effective_render_distance();
-        if self.lod.is_some() {
+        if self.lod.0.is_some() {
             distance.max(self.lod_distance() as i32)
         } else {
             distance
@@ -267,11 +270,11 @@ impl Game<'_> {
         // on their way carry them.
         self.client.border_renderer.invalidate();
         renderer.keep_pack_sources(self.streaming.shader_pack);
-        self.renderer = Some(renderer);
+        self.renderer.0 = Some(renderer);
         self.forget_atlas_slots();
         if !world_kept {
             self.clear_lod();
-            self.pending_uploads.clear();
+            self.pending_uploads.0.clear();
             let context = self.worker_context();
             self.streaming.reload_resources(&mut self.world, context);
         }
@@ -285,8 +288,8 @@ impl Game<'_> {
     /// discarded, then every loaded section is rebuilt.
     pub(in crate::game) fn all_sections_changed(&mut self) {
         self.clear_lod();
-        self.pending_uploads.clear();
-        if let Some(renderer) = self.renderer.as_mut() {
+        self.pending_uploads.0.clear();
+        if let Some(renderer) = self.renderer.0.as_mut() {
             renderer.clear_sections(self.world.layout());
         }
         self.streaming.reload_sections(&mut self.world);

@@ -1206,7 +1206,7 @@ impl Game<'_> {
             .apply_block_speed(b.position, &mut b.velocity);
         self.boat_step_on(&mut b);
         self.boat_stuck_in_blocks(&mut b);
-        Self::tick_boat_paddles(&mut b, &mut self.audio);
+        Self::tick_boat_paddles(&mut b, &mut self.audio.0);
         b
     }
     /// `AbstractBoat.tick` advances the oars even when this client does not move the hull.
@@ -1473,7 +1473,7 @@ impl Game<'_> {
         use sunrise_client::particles::{ParticleOptions, ParticleType};
         let p = self.boats[i].position;
         let pitch = 0.8 + 0.4 * self.world.random.next_float();
-        self.audio.play(
+        self.audio.0.play(
             "minecraft:entity.generic.splash",
             Some([p.x, p.y, p.z]),
             1.0,
@@ -1481,7 +1481,7 @@ impl Game<'_> {
         );
         let x = p.x + f64::from(self.world.random.next_float());
         let z = p.z + f64::from(self.world.random.next_float());
-        self.particles.add(
+        self.particles.0.add(
             &ParticleOptions::simple(ParticleType::Splash),
             [x, p.y + 0.7, z],
             [0.0; 3],
@@ -1841,6 +1841,7 @@ impl Game<'_> {
     pub(super) fn lava_hurt_sound(&mut self, at: [f64; 3]) {
         let pitch = 2.0 + self.world.random.next_float() * 0.4;
         self.audio
+            .0
             .play("minecraft:entity.generic.burn", Some(at), 0.4, pitch);
     }
     /// Whether a vehicle's box, deflated by 1e-5, reaches into lava below its
@@ -2153,7 +2154,7 @@ impl Game<'_> {
         let vanilla =
             self.saved_refuses_damage(id as u32, "minecraft:player_attack", self.creative);
         let invulnerable =
-            crate::game::entity::damage_level_of!(self, self.combat.attack(), no_push, None)
+            crate::game::entity::damage_level_of!(self, self.combat.0.attack(), no_push, None)
                 .invulnerability_check(
                     sunrise_client::health::Hurting::Entity(id, &kind, source),
                     vanilla,

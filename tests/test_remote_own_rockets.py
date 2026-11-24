@@ -100,7 +100,7 @@ struct Rocket { id: u32, attached_to: Option<u32>, position: Vec3, velocity: Vec
 struct Game {
     remote: Option<Remote>, clock: Clock, player: Option<Player>, settings: Settings,
     hotbar: Option<ItemStack>, offhand: Option<ItemStack>, selected: usize,
-    rockets: Vec<Rocket>, yaw: f32, pitch: f32, world: World, particles: Particles,
+    rockets: Vec<Rocket>, yaw: f32, pitch: f32, world: World, particles: (Particles,),
 }
 impl Game {
 fn stack_in(&self, slot: usize) -> Option<&ItemStack> { self.hotbar.as_ref().filter(|_| slot == 3) }
@@ -128,7 +128,7 @@ fn game(runs: bool) -> Game {
         ],
         yaw: 90.0, pitch: 0.0,
         world: World { random: sunrise_core::random::LegacyRandom(vec![3.0, -2.0, 3.0, -2.0]) },
-        particles: Particles::default(),
+        particles: (Particles::default(),),
     }
 }
 fn near(a: [f64; 3], b: [f64; 3]) -> bool { a.iter().zip(b).all(|(a, b)| (a - b).abs() < 1e-4) }
@@ -155,7 +155,7 @@ fn main() {
     assert!(near(at(g.rockets[0].velocity), boosted));
     // One firework spark at the rocket, drifting against the boosted motion
     // with a gaussian spread of 0.05 across it.
-    let sparks = &g.particles.added;
+    let sparks = &g.particles.0.added;
     assert_eq!(sparks.len(), 1);
     assert!(near(sparks[0].0, right) && near(sparks[0].1, [0.15, 0.05, -0.1]), "{:?}", sparks);
     // Rockets of another entity, or free ones, tick with the other entities.
@@ -175,12 +175,12 @@ fn main() {
     g.tick_own_rockets();
     assert_eq!(g.player.as_ref().unwrap().velocity, Vec3::new(0.0, -0.2, 1.0));
     assert_eq!(g.rockets[0].position, Vec3::new(10.0, 70.0, 20.0));
-    assert_eq!(g.particles.added.len(), 1);
+    assert_eq!(g.particles.0.added.len(), 1);
 
     // A frozen level ticks no entities.
     let mut g = game(false);
     g.tick_own_rockets();
-    assert!(g.particles.added.is_empty());
+    assert!(g.particles.0.added.is_empty());
     assert_eq!(g.player.as_ref().unwrap().velocity, Vec3::new(0.0, -0.2, 1.0));
 }
 '''.replace("METHODS", methods)

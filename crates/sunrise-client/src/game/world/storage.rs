@@ -149,6 +149,7 @@ impl Game<'_> {
             _ => [0.0; 3],
         };
         self.audio
+            .0
             .play("minecraft:block.chest.locked", Some(at), 1.0, 1.0);
         true
     }
@@ -302,7 +303,7 @@ impl Game<'_> {
         // `Audio::play` captures the sound while the world is open to the
         // network and `lan_broadcast_effects` sends that tick to every guest,
         // so nothing is queued separately (a second queue played it twice).
-        self.audio.play(sound, Some(at), 0.5, pitch);
+        self.audio.0.play(sound, Some(at), 0.5, pitch);
     }
     /// Play the current block's sound when its opener count crosses zero
     /// (`ContainerOpenersCounter.onOpen` / `onClose`).
@@ -586,10 +587,10 @@ mod tests {
         ] {
             let state = game.pack.assets.registry.default_state(block).unwrap();
             game.world.set(8, 64, 8, state).unwrap();
-            game.audio.heard.clear();
+            game.audio.0.heard.clear();
             game.container_edge_sound((8, 64, 8), true);
             game.container_edge_sound((8, 64, 8), false);
-            let heard: Vec<_> = game.audio.heard.keys().cloned().collect();
+            let heard: Vec<_> = game.audio.0.heard.keys().cloned().collect();
             assert_eq!(
                 heard,
                 [format!("{sound}.close"), format!("{sound}.open")],

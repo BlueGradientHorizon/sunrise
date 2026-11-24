@@ -528,6 +528,7 @@ impl Game<'_> {
             }
             if let Some(at) = stare_sound {
                 self.audio
+                    .0
                     .play_unshared("minecraft:entity.enderman.stare", Some(at), 2.5, 1.0);
             }
         }

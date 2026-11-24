@@ -153,13 +153,13 @@ mod tests {
                 .registry
                 .default_state("minecraft:barrel")
                 .unwrap();
-            game.audio.capture = Some(Vec::new());
+            game.audio.0.capture = Some(Vec::new());
             mod_platform::testing::with_mods(
                 vec![ModEntry::new("replace_shulker", Box::new(Replace))].into(),
                 || game.guest_close_all(12),
             );
             assert_eq!(game.world.block(POS.0, POS.1, POS.2), barrel);
-            let captured = game.audio.capture.as_ref().unwrap();
+            let captured = game.audio.0.capture.as_ref().unwrap();
             let sounds = captured
                 .iter()
                 .map(|s| (s.event.as_str(), s.position))

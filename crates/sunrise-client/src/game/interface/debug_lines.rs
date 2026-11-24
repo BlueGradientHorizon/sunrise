@@ -47,8 +47,8 @@ impl Game<'_> {
             .iter()
             .map(|e| e.path)
             .filter(|path| {
-                self.debug_entries.enabled(
-                    &self.registered_debug_entries,
+                self.debug_entries.0.enabled(
+                    &self.registered_debug_entries.0,
                     path,
                     self.client.debug,
                     reduced,
@@ -117,7 +117,7 @@ impl Game<'_> {
                         d.group("memory", lines);
                     }
                 }
-                "particle_render_stats" => d.line(format!("P: {}", self.particles.len())),
+                "particle_render_stats" => d.line(format!("P: {}", self.particles.0.len())),
                 "player_position" | "player_section_position" => {
                     if let Some(cam) = self.camera_subject() {
                         let mut lines = overlay::position(
@@ -155,13 +155,13 @@ impl Game<'_> {
                 }
                 "simple_performance_impactors" => self.debug_performance_lines(d),
                 "sound_cache" => {
-                    let (buffers, bytes) = self.audio.cache_stats();
+                    let (buffers, bytes) = self.audio.0.cache_stats();
                     d.line(overlay::sound_cache_line(buffers, bytes));
                 }
                 "sound_mood" => {
                     if self.player.is_some() {
                         d.line(overlay::sound_mood_line(
-                            self.audio.engine.used_channels(),
+                            self.audio.0.engine.used_channels(),
                             [
                                 sunrise_client::sound_engine::STATIC_CHANNELS,
                                 sunrise_client::sound_engine::STREAMING_CHANNELS,
@@ -174,20 +174,20 @@ impl Game<'_> {
                     self.debug_system_lines(d, framebuffer);
                     // Sunrise's own: the shader pack's GPU time per pass (an
                     // empty group would move others).
-                    let pass_lines = self.renderer.as_ref().map_or_else(Vec::new, |r| {
+                    let pass_lines = self.renderer.0.as_ref().map_or_else(Vec::new, |r| {
                         overlay::shader_pass_lines(&r.shader_pass_times())
                     });
                     if self.client.debug && !pass_lines.is_empty() {
                         d.group("shader pack", pass_lines);
                     }
                     // Sunrise's own passes, in a group of their own.
-                    let own_lines = self.renderer.as_ref().map_or_else(Vec::new, |r| {
+                    let own_lines = self.renderer.0.as_ref().map_or_else(Vec::new, |r| {
                         overlay::labelled_pass_lines("Sunrise GPU", &r.own_pass_times())
                     });
                     if self.client.debug && !own_lines.is_empty() {
                         d.group("Sunrise passes", own_lines);
                     }
-                    let detail_lines = self.renderer.as_ref().map_or_else(Vec::new, |r| {
+                    let detail_lines = self.renderer.0.as_ref().map_or_else(Vec::new, |r| {
                         let support = r.pass_detail_support().filter(|_| r.pass_detail());
                         support.map_or_else(Vec::new, |support| {
                             overlay::pass_detail_lines(
@@ -229,9 +229,9 @@ impl Game<'_> {
         }
         // A native mod's entries come after vanilla's, in registration order.
         for (group, lines) in debug_entries::mod_lines(
-            &self.registered_debug_entries,
+            &self.registered_debug_entries.0,
             self,
-            &self.debug_entries,
+            &self.debug_entries.0,
             self.client.debug,
             reduced,
         ) {
@@ -278,7 +278,7 @@ impl Game<'_> {
     /// `SectionRenderDispatcher.getStats` (the meshes queued; Sunrise has
     /// no buffer pool, so no buffer is ever free).
     fn debug_chunk_render_line(&self, d: &mut Displayer) {
-        let Some(r) = self.renderer.as_ref() else {
+        let Some(r) = self.renderer.0.as_ref() else {
             return;
         };
         let distance = self.settings.render_distance;

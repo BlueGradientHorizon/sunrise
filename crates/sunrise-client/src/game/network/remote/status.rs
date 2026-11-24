@@ -61,7 +61,7 @@ impl Game<'_> {
         {
             // PlayerInfo.createSkinLookup: only the local player's own skin
             // may be unsigned.
-            let mut downloads = self.skin_downloads.borrow_mut();
+            let mut downloads = self.skin_downloads.0.borrow_mut();
             let mut resolve = |uuid, textures: &skins::Textures| {
                 if let skins::SkinLookup::Ready(skin) =
                     skins::lookup(textures, uuid != local, |kind, url| {
@@ -102,6 +102,7 @@ impl Game<'_> {
             {
                 // Kept for `again`, which finds no download or disk file for this cape.
                 self.skin_downloads
+                    .0
                     .borrow_mut()
                     .remember_image(OFFLINE, rgba);
                 self.store_skin(OFFLINE.into(), rgba.to_vec());
@@ -173,7 +174,7 @@ impl Game<'_> {
                         (None, Some(id)) => Some(sunrise_client::skins::NameOrId::Id(id)),
                         _ => None,
                     });
-                    key.and_then(|key| match self.skin_profiles.borrow_mut().state(&key) {
+                    key.and_then(|key| match self.skin_profiles.0.borrow_mut().state(&key) {
                         sunrise_client::skins::Resolve::Done(Some(profile)) => {
                             profile.textures().map(skins::unpack_insecure)
                         }
@@ -186,7 +187,7 @@ impl Game<'_> {
             .collect();
         let mut resolved: Vec<(usize, Option<String>, bool)> = Vec::new();
         for (id, textures) in mannequins {
-            let mut downloads = self.skin_downloads.borrow_mut();
+            let mut downloads = self.skin_downloads.0.borrow_mut();
             let (skin, slim) =
                 match skins::lookup(&textures, false, |kind, url| downloads.state(kind, url)) {
                     skins::SkinLookup::Ready(skin) => skin.custom_body.unzip(),
@@ -266,7 +267,7 @@ impl Game<'_> {
             // not while invisible).
             "own_body": self.player_model_shown() && self.own_body_visible(),
             "text_display_vertices": self.client.text_display_vertices,
-            "text_displays": self.text_displays.len(),
+            "text_displays": self.text_displays.0.len(),
             "health": r.health.0,
             "food": r.health.1,
             "decode_errors": r.decode_errors,

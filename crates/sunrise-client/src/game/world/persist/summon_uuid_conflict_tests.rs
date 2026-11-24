@@ -686,7 +686,7 @@ fn removed_root_retains_its_geometry_until_offlevel_passengers_dismount() {
 fn dimension_travel_admits_the_duplicate_child_before_the_copied_root() {
     with_game(|game, _| {
         game.options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        game.server.world_root = game.save.root.clone();
+        game.server.world_root = game.save.0.root.clone();
         game.enter_level(super::super::Dim::Nether).unwrap();
         assert_eq!(game.dim, super::super::Dim::Nether);
         game.world
@@ -897,7 +897,7 @@ fn reload_chunk(game: &mut Game<'_>) {
 fn vehicle_root_travel(expected: &RootTravel, dismount: Option<&str>) {
     with_game(|game, _| {
         game.options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        game.server.world_root = game.save.root.clone();
+        game.server.world_root = game.save.0.root.clone();
         let ticking = crate::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood;
         ticking(game, ChunkPos::new(0, 0));
         game.enter_level(super::super::Dim::Nether).unwrap();

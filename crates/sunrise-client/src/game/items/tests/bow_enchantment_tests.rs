@@ -49,7 +49,7 @@ fn game_with_player<'a>(
     );
     // A still player: `known_player_movement` is the last tick's step.
     game.previous_position = game.player.as_ref().expect("a player").position;
-    game.audio.capture = Some(Vec::new());
+    game.audio.0.capture = Some(Vec::new());
     game
 }
 

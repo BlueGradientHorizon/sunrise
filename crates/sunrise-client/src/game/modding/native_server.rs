@@ -662,7 +662,7 @@ impl Game<'_> {
         host.poses.remove(&guest.conn);
         host.mob_players.retain(|_, conn| *conn != guest.conn);
         self.client.destroying.remove(&guest.entity_id);
-        self.guest_combat.remove(&guest.conn);
+        self.guest_combat.0.remove(&guest.conn);
     }
 
     /// Remove a fake without treating it as a disconnect or saving it.
@@ -825,7 +825,7 @@ impl Game<'_> {
         };
         if !self.server.lan_guest_swaps.is_empty()
             || !self.transactions.is_empty()
-            || self.fake_action.acting()
+            || self.fake_action.0.acting()
         {
             return Err(ActionRefused::Busy);
         }
@@ -849,7 +849,7 @@ impl Game<'_> {
         conn: u32,
         action: PlayerAction,
     ) -> Result<ActionOutcome, ActionRefused> {
-        let acting = Acting::start(&self.fake_action);
+        let acting = Acting::start(&self.fake_action.0);
         let failed = std::mem::replace(&mut self.server.use_failed, false);
         let consumed = (|| match action {
             PlayerAction::UseOn { hand, pos, hit } => {
@@ -894,7 +894,7 @@ impl Game<'_> {
         if !self.server.lan_acting_fake {
             return false;
         }
-        self.fake_action.block(effect);
+        self.fake_action.0.block(effect);
         true
     }
 
@@ -995,7 +995,7 @@ impl Game<'_> {
     /// tickets keep them only while a mod listens (`update_chunk_tickets`).
     pub(in crate::game) fn run_chunk_ticket_level_updates(&mut self) {
         use sunrise_client::ticket_levels::UNLOADED;
-        let changes = self.tickets.take_changes();
+        let changes = self.tickets.0.take_changes();
         if changes.is_empty() {
             return;
         }
@@ -2021,8 +2021,8 @@ impl Game<'_> {
         };
         let outer = self.server.command_source.replace(server);
         let filter = std::mem::replace(&mut self.server.native_command_filter, true);
-        let outer_exec = std::mem::take(&mut self.exec);
-        let outer_results = self.cmds.results.take();
+        let outer_exec = std::mem::take(&mut self.exec.0);
+        let outer_results = self.cmds.0.results.take();
         let outer_capture = capture.then(|| self.server.chat_capture.replace(Vec::new()));
         let ok = self.as_console(|g| g.run_command(line));
         let lines = match outer_capture {
@@ -2031,8 +2031,8 @@ impl Game<'_> {
             }
             None => Vec::new(),
         };
-        self.exec = outer_exec;
-        self.cmds.results = outer_results;
+        self.exec.0 = outer_exec;
+        self.cmds.0.results = outer_results;
         self.server.native_command_filter = filter;
         self.server.command_source = outer;
         (ok, lines)
@@ -2259,7 +2259,7 @@ impl Game<'_> {
     /// happens where no world is open to players, and nothing for a server
     /// whose mods never call it. API @API:refresh_commands@.
     pub(super) fn native_refresh_commands(&mut self) {
-        self.native_commands.refresh = true;
+        self.native_commands.0.refresh = true;
     }
 
     /// Asks the mods what root commands each player's tree keeps
@@ -2326,7 +2326,7 @@ impl Game<'_> {
             .server
             .command_source
             .unwrap_or_else(|| self.player_source());
-        let origin = if let Some(id) = self.exec.functions.last() {
+        let origin = if let Some(id) = self.exec.0.functions.last() {
             CommandSource::Function {
                 id: mod_api::Identifier::parse(id).map_err(|_| err("command.failed", &[]))?,
                 permission,
@@ -2370,6 +2370,7 @@ impl Game<'_> {
             .filter(|&key| self.ui.dispatcher.0.owns_executor(key))
             .and_then(|key| {
                 self.native_commands
+                    .0
                     .registered
                     .as_ref()?
                     .executors
@@ -2542,7 +2543,7 @@ impl Game<'_> {
         quiet: bool,
     ) -> Option<bool> {
         let host = self.lan.as_ref()?;
-        if self.native_commands.level(line)? > permission {
+        if self.native_commands.0.level(line)? > permission {
             return None;
         }
         host.hub.guest(conn)?;
@@ -2563,7 +2564,7 @@ impl Game<'_> {
     /// usage is always allowed; a command no mod takes answers as vanilla's
     /// unknown command.
     pub(super) fn perform_native_console_command(&mut self, line: &str) -> bool {
-        if self.lan.is_none() || self.native_commands.level(line).is_none() {
+        if self.lan.is_none() || self.native_commands.0.level(line).is_none() {
             return false;
         }
         self.as_console_in_spawn_level(|game| {
@@ -2896,9 +2897,9 @@ mod tests {
                 });
             })
             .unwrap();
-            game.exec.functions.push("test:outer".into());
+            game.exec.0.functions.push("test:outer".into());
             assert!(game.native_run_command("list"));
-            assert_eq!(game.exec.functions, ["test:outer"]);
+            assert_eq!(game.exec.0.functions, ["test:outer"]);
         });
     }
 
@@ -4175,7 +4176,7 @@ mod tests {
                             changed.store(true, Ordering::Relaxed);
                             game.register_native_commands();
                             assert_eq!(registrations.load(Ordering::Relaxed), 1);
-                            let registered = game.native_commands.registered.as_ref().unwrap();
+                            let registered = game.native_commands.0.registered.as_ref().unwrap();
                             assert!(registered.levels.contains_key("before"));
                             mod_api::Commands::refresh_commands(game);
                             mod_api::Commands::refresh_commands(game);
@@ -4185,7 +4186,7 @@ mod tests {
                                 "requests are deferred"
                             );
                             game.register_native_commands();
-                            assert!(!game.native_commands.refresh);
+                            assert!(!game.native_commands.0.refresh);
                             assert_eq!(
                                 registrations.load(Ordering::Relaxed),
                                 2,
@@ -4215,7 +4216,7 @@ mod tests {
                                 [Some("refresh"), Some("replacement")]
                             );
                             assert!(mod_api::__private::set_mod_enabled("replacement", true));
-                            let commands = game.native_commands.registered.as_ref().unwrap();
+                            let commands = game.native_commands.0.registered.as_ref().unwrap();
                             assert!(!commands.levels.contains_key("before"));
                             assert!(commands.levels.contains_key("after"));
                             let dispatcher = &game.ui.dispatcher.0;
@@ -4242,7 +4243,7 @@ mod tests {
                             mod_api::Commands::refresh_commands(game);
                             game.register_native_commands();
                             assert_eq!(registrations.load(Ordering::Relaxed), 3);
-                            assert!(game.native_commands.level("after").is_some());
+                            assert!(game.native_commands.0.level("after").is_some());
                             changed.store(false, Ordering::Relaxed);
                             game.reload_datapacks(false, &game.level.enabled_features.clone())
                                 .unwrap();
@@ -4608,6 +4609,7 @@ mod tests {
                             };
                             game.ensure_datapacks();
                             game.fns
+                                .0
                                 .store
                                 .functions
                                 .insert(function.id.clone(), function.clone());
@@ -4625,7 +4627,7 @@ mod tests {
                                 game.server.chat_capture.take().unwrap().is_empty(),
                                 "functions suppress both success and failure"
                             );
-                            assert!(game.exec.functions.is_empty());
+                            assert!(game.exec.0.functions.is_empty());
                             game.ui.registries.permission = 4;
                             assert!(!game.run_command("unhandled"));
                             assert!(game.run_command(
@@ -6211,7 +6213,7 @@ pub(super) mod fake_action_tests {
                 ),
                 Err(ActionRefused::NotFake)
             );
-            let acting = Acting::start(&game.fake_action);
+            let acting = Acting::start(&game.fake_action.0);
             assert_eq!(
                 game.player_perform_action_scoped(
                     player,
@@ -6858,13 +6860,13 @@ pub(super) mod fake_action_tests {
                 Err(ActionRefused::NotFake)
             );
             // Inside another action, as a hook running during it would ask.
-            let acting = Acting::start(&game.fake_action);
+            let acting = Acting::start(&game.fake_action.0);
             assert_eq!(
                 game.player_perform_action(player, on_top([1, 63, 0])),
                 Err(ActionRefused::Busy)
             );
             drop(acting);
-            assert!(!game.fake_action.acting());
+            assert!(!game.fake_action.0.acting());
         });
     }
 

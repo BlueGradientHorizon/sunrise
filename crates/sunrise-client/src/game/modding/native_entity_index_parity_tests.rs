@@ -17,7 +17,7 @@ fn live_mob_ids(game: &Game<'_>, expected: usize) -> HashSet<u32> {
         "minecraft:the_nether",
         "minecraft:the_end",
     ] {
-        if let Some(parked) = game.levels.parked_of(dimension) {
+        if let Some(parked) = game.levels.0.parked_of(dimension) {
             ids.extend(parked.mobs.iter().map(|mob| mob.id));
         }
     }

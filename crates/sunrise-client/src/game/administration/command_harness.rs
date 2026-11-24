@@ -278,9 +278,9 @@ impl Game<'_> {
                 "cmd" => {
                     let command = op["cmd"].as_str().unwrap_or("");
                     self.server.chat_capture = Some(Vec::new());
-                    self.cmds.results = Some(Vec::new());
+                    self.cmds.0.results = Some(Vec::new());
                     let earlier = self.adv.announced.len();
-                    self.cmds.broadcast_announced = earlier;
+                    self.cmds.0.broadcast_announced = earlier;
                     self.harness_owner(|g| {
                         let previous = g.server.command_source;
                         if op["source"].as_str() == Some("console") {
@@ -302,7 +302,7 @@ impl Game<'_> {
                     // (`announce_guest_advancements`); the rest is left for the tick.
                     let earned: Vec<_> = {
                         let len = self.adv.announced.len();
-                        let end = self.cmds.broadcast_announced.clamp(earlier.min(len), len);
+                        let end = self.cmds.0.broadcast_announced.clamp(earlier.min(len), len);
                         self.adv.announced.drain(earlier.min(len)..end).collect()
                     };
                     if let Some(host) = self.lan.as_mut() {
@@ -315,7 +315,7 @@ impl Game<'_> {
                     }
                     let mut messages = earned;
                     messages.extend(self.server.chat_capture.take().unwrap_or_default());
-                    let results = self.cmds.results.take().unwrap_or_default();
+                    let results = self.cmds.0.results.take().unwrap_or_default();
                     if op["record"].as_bool() != Some(false) || op["trace"].as_bool() == Some(true)
                     {
                         let mut record = json!({

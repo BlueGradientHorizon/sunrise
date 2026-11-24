@@ -1378,7 +1378,7 @@ pub(in crate::game) mod tests {
             );
             stand.first_tick = false;
             game.armor_stands.push(stand);
-            game.audio.capture = Some(Vec::new());
+            game.audio.0.capture = Some(Vec::new());
             let items = game
                 .entity(40)
                 .unwrap()
@@ -1397,7 +1397,7 @@ pub(in crate::game) mod tests {
             assert_eq!(result, Err(()));
             assert!(game.armor_stands[0].equipment.get(4).is_none());
             assert!(
-                game.audio.capture.as_ref().unwrap().is_empty(),
+                game.audio.0.capture.as_ref().unwrap().is_empty(),
                 "aborted stand equip emitted sound"
             );
             assert!(super::super::dispense_fixture::stop_recording().is_empty());
@@ -1413,7 +1413,7 @@ pub(in crate::game) mod tests {
             });
             assert_eq!(result, Err(()));
             assert!(game.armor_stands[0].equipment.get(4).is_none());
-            assert!(game.audio.capture.as_ref().unwrap().is_empty());
+            assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
             assert!(super::super::dispense_fixture::stop_recording().is_empty());
 
             super::super::dispense_fixture::start_recording();
@@ -1435,7 +1435,7 @@ pub(in crate::game) mod tests {
             });
             assert_eq!(result, Ok(()));
             assert_eq!(game.armor_stands[0].equipment.get(4).unwrap().count, 1);
-            assert_eq!(game.audio.capture.as_ref().unwrap().len(), 1);
+            assert_eq!(game.audio.0.capture.as_ref().unwrap().len(), 1);
             let events = super::super::dispense_fixture::stop_recording();
             assert_eq!(events.len(), 1, "only one event at root commit: {events:?}");
             assert!(events[0].ends_with("minecraft:equip"));
@@ -1481,6 +1481,7 @@ pub(in crate::game) mod tests {
             // With no tickets every chunk is entity-ticking; the zombie must lie outside that
             // range for the tracker to describe it idle (`ChunkMap.tick`).
             game.tickets
+                .0
                 .update(Some(sunrise_client::ticket_levels::Sources {
                     players: vec![(40, 40)],
                     view_distance: 2,
@@ -1518,7 +1519,7 @@ pub(in crate::game) mod tests {
             );
             rx.try_iter().for_each(drop);
 
-            game.audio.capture = Some(Vec::new());
+            game.audio.0.capture = Some(Vec::new());
             let place = ItemPlace::Equipment { entity: id, slot };
             super::super::dispense_fixture::start_recording();
             game.storage_transaction(|host, tx| {
@@ -1530,7 +1531,7 @@ pub(in crate::game) mod tests {
                 })
             })
             .unwrap();
-            assert!(game.audio.capture.as_ref().unwrap().is_empty());
+            assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
             assert!(super::super::dispense_fixture::stop_recording().is_empty());
 
             let tracked = |game: &mut super::Game<'_>| {

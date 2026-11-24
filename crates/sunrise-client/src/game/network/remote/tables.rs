@@ -30,6 +30,7 @@ impl Game<'_> {
         };
         let base = self
             .world_tables
+            .0
             .as_ref()
             .map_or_else(|| self.res.items(), |tables| &tables.items);
         let mut items = base.with_tags(blocks, items);

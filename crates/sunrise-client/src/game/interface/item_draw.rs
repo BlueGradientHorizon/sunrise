@@ -468,8 +468,8 @@ impl Game<'_> {
         Host {
             banners: &self.stations().banners,
             sprites: &self.gui.atlas.sprites,
-            skins: &self.skin_downloads,
-            profiles: &self.skin_profiles,
+            skins: &self.skin_downloads.0,
+            profiles: &self.skin_profiles.0,
         }
     }
     /// The client level as item models read it: worked out once a frame (a
@@ -659,7 +659,7 @@ impl Game<'_> {
             }
         }
         state.hdr_tier = self.luminance().hdr_tier(&stack.item);
-        if state.hdr_tier > 0 && self.renderer.as_ref().is_some_and(|r| r.hdr_on()) {
+        if state.hdr_tier > 0 && self.renderer.0.as_ref().is_some_and(|r| r.hdr_on()) {
             state.hdr_light = self.luminance().of(&stack.item);
         }
         state
@@ -833,7 +833,7 @@ impl Game<'_> {
         light: u32,
         lights: (glam::Vec3, glam::Vec3),
     ) -> Option<((usize, usize, u32), Option<(glam::Vec3, glam::Vec3)>)> {
-        let mut models = self.skin_models.borrow_mut();
+        let mut models = self.skin_models.0.borrow_mut();
         let mut frame = self.client.skin_frame.borrow_mut();
         let mark = frame.mark();
         let mut skin = sunrise_client::mobs::skin::Skin::new(&mut models, &mut frame);
@@ -925,7 +925,7 @@ impl Game<'_> {
         out: &mut Vec<Vertex>,
     ) {
         // ItemPickupParticle: the render state extracted at partial tick 1.
-        let taken = self.pickups.live.iter().filter_map(|p| match &p.taken {
+        let taken = self.pickups.0.live.iter().filter_map(|p| match &p.taken {
             super::pickups::Taken::Item(item) => Some(ItemEntityDraw {
                 item,
                 at: super::pickups::position(p, alpha),

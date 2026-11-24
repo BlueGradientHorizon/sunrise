@@ -753,6 +753,7 @@ impl Game<'_> {
         {
             // TabManager.setCurrentTab(.., true): the click of a tab press.
             self.audio
+                .0
                 .play("minecraft:ui.button.click", None, 0.25, 1.0);
         }
     }
@@ -772,6 +773,7 @@ impl Game<'_> {
                 self.client.stats_ui.tab = i;
                 self.client.stats_ui.scroll.amount = 0.0;
                 self.audio
+                    .0
                     .play("minecraft:ui.button.click", None, 0.25, 1.0);
                 return true;
             }
@@ -784,6 +786,7 @@ impl Game<'_> {
             20.0,
         ) {
             self.audio
+                .0
                 .play("minecraft:ui.button.click", None, 0.25, 1.0);
             self.set_screen(Screen::Paused);
             return true;
@@ -803,6 +806,7 @@ impl Game<'_> {
                         _ => Some((c, -1)),
                     };
                     self.audio
+                        .0
                         .play("minecraft:ui.button.click", None, 0.25, 1.0);
                 }
             }

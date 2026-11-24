@@ -367,7 +367,7 @@ impl Game<'_> {
         if self.dim == level {
             return Some(f(self));
         }
-        if self.options.execution_role.is_client() || !self.levels.parked.contains_key(&level) {
+        if self.options.execution_role.is_client() || !self.levels.0.parked.contains_key(&level) {
             return None;
         }
         let back = self.dim;

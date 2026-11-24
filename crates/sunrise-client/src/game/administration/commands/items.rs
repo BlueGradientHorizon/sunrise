@@ -969,7 +969,7 @@ impl Game<'_> {
             Value::Array(list) => list.iter().fold(stack, |s, f| {
                 self.apply_item_modifier(f, s, rng, this, origin, depth + 1)
             }),
-            Value::String(id) => match self.fns.store.item_modifiers.get(id).cloned() {
+            Value::String(id) => match self.fns.0.store.item_modifiers.get(id).cloned() {
                 Some(f) => self.apply_item_modifier(&f, stack, rng, this, origin, depth + 1),
                 None => stack,
             },
@@ -1248,6 +1248,7 @@ impl Game<'_> {
             format!("minecraft:{raw}")
         };
         self.fns
+            .0
             .store
             .item_modifiers
             .get(&id)
@@ -1515,7 +1516,7 @@ impl Game<'_> {
             // (and its announcement) comes before the command's message.
             if changed > 0 && matches!(o, Owner::Entity(Target::Player)) && self.player.is_some() {
                 self.check_inventory_trigger();
-                self.cmds.broadcast_announced = self.adv.announced.len();
+                self.cmds.0.broadcast_announced = self.adv.announced.len();
             }
         }
         if selected == 0 {
@@ -2019,7 +2020,7 @@ mod mob_equipment_command_tests {
             std::fs::write(functions.join("ready.mcfunction"), "return 1\n").unwrap();
             let features = game.level.enabled_features.clone();
             let stack = game.reload_datapacks(false, &features).unwrap();
-            assert!(game.fns.store.functions.contains_key("wpenchant:ready"));
+            assert!(game.fns.0.store.functions.contains_key("wpenchant:ready"));
             let root = game.options.resources.clone();
             let prepared = game.prepare_world_reload(&stack, &root).unwrap();
             game.install_world_tables(prepared);
@@ -2812,6 +2813,7 @@ mod registered_slot_source_read_tests {
         game.ensure_datapacks();
         assert_eq!(
             game.fns
+                .0
                 .data_resource("data/parity/slot_source/first_three.json")
                 .unwrap()
                 .read()

@@ -291,7 +291,9 @@ impl Game<'_> {
             .player
             .as_ref()
             .map(|p| [p.position.x, p.position.y, p.position.z]);
-        self.audio.play("minecraft:item.spyglass.use", at, 1.0, 1.0);
+        self.audio
+            .0
+            .play("minecraft:item.spyglass.use", at, 1.0, 1.0);
         self.award_stat("used", "minecraft:spyglass", 1);
         self.start_using_item();
     }
@@ -299,6 +301,7 @@ impl Game<'_> {
     pub(in crate::game) fn stop_spyglass(&mut self) {
         let at = self.eye_position();
         self.audio
+            .0
             .play("minecraft:item.spyglass.stop_using", at, 1.0, 1.0);
     }
     /// `Hud.extractCameraOverlays`: the spyglass scope, its size easing

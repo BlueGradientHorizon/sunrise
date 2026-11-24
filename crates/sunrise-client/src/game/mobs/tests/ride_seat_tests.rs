@@ -119,7 +119,7 @@ fn a_marker_takes_no_rider() {
         return;
     };
     for (id, kind) in [(9, "minecraft:marker"), (10, "minecraft:item_display")] {
-        game.others.push(OtherEntity {
+        game.others.0.push(OtherEntity {
             size_answer: None,
             id,
             kind: kind.into(),

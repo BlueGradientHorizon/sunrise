@@ -95,6 +95,7 @@ impl Game<'_> {
     pub(in crate::game) fn install_fluid_interactions(&self) -> Result<(), String> {
         let items = self
             .world_tables
+            .0
             .as_ref()
             .map_or_else(|| self.items(), |t| &t.items);
         self.install_fluid_interactions_from(items)

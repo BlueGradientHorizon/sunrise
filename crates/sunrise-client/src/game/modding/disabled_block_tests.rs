@@ -335,6 +335,7 @@ mod tests {
             "reenabled_owner_resumes_held_scheduled_tick",
             |game, state, probe| {
                 game.tickets
+                    .0
                     .update(Some(sunrise_client::ticket_levels::Sources {
                         forced: vec![(0, 0)],
                         ..Default::default()
@@ -527,6 +528,7 @@ mod tests {
                     (target, state(block), state(source), state(target))
                 });
                 game.tickets
+                    .0
                     .update(Some(sunrise_client::ticket_levels::Sources {
                         forced: vec![(0, 0)],
                         ..Default::default()
@@ -635,8 +637,8 @@ mod tests {
                     .get_mut(&DISPENSER_SLOT)
                     .unwrap()
                     .slots_mut()[0] = Some(ItemStack::new("minecraft:stick", 65));
-                game.audio.capture = Some(Vec::new());
-                let particles = game.particles.len();
+                game.audio.0.capture = Some(Vec::new());
+                let particles = game.particles.0.len();
                 let notices = probe.dispenser_changes.load(Ordering::Relaxed);
                 for (enabled, count, writes) in [(false, 65, 0), (true, 64, 1)] {
                     assert!(mod_api::__private::set_mod_enabled("inert_test", enabled));
@@ -654,8 +656,8 @@ mod tests {
                         notices + writes
                     );
                     assert!(game.dropped.is_empty());
-                    assert!(game.audio.capture.as_ref().unwrap().is_empty());
-                    assert_eq!(game.particles.len(), particles);
+                    assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
+                    assert_eq!(game.particles.0.len(), particles);
                 }
             },
         );
@@ -668,8 +670,8 @@ mod tests {
             "rejected_dispense_reply_preserves_the_disabled_owners_fallback",
             |game, _, probe| {
                 let dispenser = place_dispenser(game);
-                game.audio.capture = Some(Vec::new());
-                let particles = game.particles.len();
+                game.audio.0.capture = Some(Vec::new());
+                let particles = game.particles.0.len();
                 for enabled in [false, true] {
                     assert!(mod_api::__private::set_mod_enabled("inert_test", enabled));
                     for (input, remaining, writes) in [(65, 65, 0), (4, 2, 1)] {
@@ -696,8 +698,8 @@ mod tests {
                             game.dropped.is_empty(),
                             "vanilla must not run a second behaviour"
                         );
-                        assert!(game.audio.capture.as_ref().unwrap().is_empty());
-                        assert_eq!(game.particles.len(), particles);
+                        assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
+                        assert_eq!(game.particles.0.len(), particles);
                     }
                 }
                 assert_eq!(probe.earlier_dispenses.load(Ordering::Relaxed), 4);

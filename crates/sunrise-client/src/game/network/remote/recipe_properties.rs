@@ -23,13 +23,13 @@ impl Game<'_> {
         // Camera.reset clears initialization while keeping the last aligned position.
         self.client.view.initialized = false;
         self.native_client_player_logging_out(player.map(|p| p.0), player.map(|p| p.1));
-        if self.mod_screen.is_some() {
+        if self.mod_screen.0.is_some() {
             self.remote_close_local();
         }
         self.native_lifecycle.begin_close();
         self.native_lifecycle_world_closed();
-        self.recipe_ui.server_properties = Default::default();
-        self.recipe_ui.server_stations = None;
+        self.recipe_ui.0.server_properties = Default::default();
+        self.recipe_ui.0.server_stations = None;
         self.refresh_recipe_property_context();
     }
 
@@ -37,13 +37,13 @@ impl Game<'_> {
         &mut self,
         packet: sunrise_protocol::packets::recipes::UpdateRecipes,
     ) {
-        self.recipe_ui.server_properties.replace(packet);
+        self.recipe_ui.0.server_properties.replace(packet);
         self.refresh_remote_stonecutter();
         self.refresh_recipe_property_context();
     }
 
     pub(in crate::game) fn refresh_remote_stonecutter(&mut self) {
-        self.recipe_ui.server_stations = self.remote.as_ref().map(|remote| {
+        self.recipe_ui.0.server_stations = self.remote.as_ref().map(|remote| {
             let item = |id: i32| {
                 remote
                     .builtin
@@ -68,7 +68,7 @@ impl Game<'_> {
                 tag: &tag,
             };
             self.stations().recipes.with_stonecutting(
-                names.stonecutting(&self.recipe_ui.server_properties.stonecutter, |stack| {
+                names.stonecutting(&self.recipe_ui.0.server_properties.stonecutter, |stack| {
                     self.decode_remote_stack(stack)
                 }),
             )

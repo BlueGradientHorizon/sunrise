@@ -8,7 +8,7 @@ impl Game<'_> {
     /// Playing, with nothing over the world: keys and zoom apply.
     pub(in crate::game) fn playing(&self) -> bool {
         self.client.screen == Screen::Playing
-            && self.title.is_none()
+            && self.title.0.is_none()
             && self.client.sign_edit.is_none()
             && self.client.book.is_none()
     }

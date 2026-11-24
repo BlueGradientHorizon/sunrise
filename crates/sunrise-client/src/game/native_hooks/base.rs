@@ -4182,6 +4182,7 @@ impl Game<'_> {
             ParticleType::Flame
         };
         self.particles
+            .0
             .add(&ParticleOptions::simple(kind), at, [0.0, 0.01, 0.0]);
     }
     /// Whether the player left mod `mod_id` on in Options > Mods. A mod
@@ -4438,9 +4439,9 @@ impl Game<'_> {
     /// guest-acting contexts). A gamepad can close it (B, Start) but not click on
     /// it: its clicks don't reach the mouse hooks.
     pub(in crate::game) fn mod_screen_open(&mut self, mod_id: &str) -> bool {
-        let unavailable = self.renderer.is_none()
+        let unavailable = self.renderer.0.is_none()
             || self.server.lan_acting.is_some()
-            || (self.player.is_none() && self.title.is_none())
+            || (self.player.is_none() && self.title.0.is_none())
             || self.remote_loading();
         let owner = if self.screen_over_playing() {
             None
@@ -4456,7 +4457,7 @@ impl Game<'_> {
                     self.observed_screen_view()
                         .unwrap_or_else(|| self.screen_change_view(self.client.screen))
                 } else if self.client.screen == Screen::Playing
-                    && let Some(title) = self.title.as_ref()
+                    && let Some(title) = self.title.0.as_ref()
                 {
                     let none = self.screen_change_view(Screen::Playing);
                     screen_view_with_id(&none, title.mode.id())

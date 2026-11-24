@@ -163,14 +163,14 @@ fn with_guest_probe(test: impl FnOnce(&mut super::Game<'_>, &Mutex<Vec<Seen>>)) 
 
 /// A blast centred on `at`, whose causing entity is `owner` (a player when `player`).
 fn blast(game: &mut super::Game<'_>, at: [f64; 3], owner: u32, player: bool, guest: Option<u32>) {
-    game.combat.blast_owner = Some((owner, sunrise_client::text::Text::literal("owner")));
-    game.combat.blast_owner_player = player;
-    game.combat.blast_guest = guest;
+    game.combat.0.blast_owner = Some((owner, sunrise_client::text::Text::literal("owner")));
+    game.combat.0.blast_owner_player = player;
+    game.combat.0.blast_guest = guest;
     game.server_explode(at, 3.0, super::explosion::BlockInteraction::Keep, false)
         .unwrap();
-    game.combat.blast_owner = None;
-    game.combat.blast_owner_player = false;
-    game.combat.blast_guest = None;
+    game.combat.0.blast_owner = None;
+    game.combat.0.blast_owner_player = false;
+    game.combat.0.blast_guest = None;
 }
 
 /// A projectile of `kind` owned by `owner`, at the origin.

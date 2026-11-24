@@ -111,7 +111,7 @@ pub(in crate::game) fn with_meddler(
                     max_players: 2,
                     integrated: true,
                     levels: game.server.level_shapes,
-                    level_seeds: game.levels.runtime.seeds(),
+                    level_seeds: game.levels.0.runtime.seeds(),
                 },
             )
             .unwrap();

@@ -18,6 +18,7 @@ impl Game<'_> {
         &self,
     ) -> std::sync::Arc<mod_api::__private::BiomeKeys> {
         self.world_tables
+            .0
             .as_ref()
             .map(|tables| tables.data_maps.biome_keys.clone())
             .unwrap_or_default()
@@ -35,7 +36,7 @@ impl Game<'_> {
             .end
             .locator()
             .iter()
-            .chain(self.levels.parked_terrains())
+            .chain(self.levels.0.parked_terrains())
         {
             terrain.set_biome_keys(&keys);
         }

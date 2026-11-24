@@ -224,7 +224,8 @@ impl Game<'_> {
             self,
             &self.creatures.projectiles,
             &self.resident_entities.general.rows,
-            &self.resident_entities.knots
+            &self.resident_entities.knots,
+            &self.others.0
         )
     }
 
@@ -236,7 +237,7 @@ impl Game<'_> {
     /// Health samples count every typed family using lengths only.
     pub(in crate::game) fn perf_world_counts(&self) -> WorldCounts {
         let (mut chunks, mut entities) = (self.world.chunks.len(), self.perf_entity_count());
-        for (_, world, view) in self.levels.parked_perf_views() {
+        for (_, world, view) in self.levels.0.parked_perf_views() {
             chunks += world.chunks.len();
             entities += view.total();
         }
@@ -272,6 +273,7 @@ impl Game<'_> {
         std::iter::once(level(self.dim, &self.world, self.active_perf_view()))
             .chain(
                 self.levels
+                    .0
                     .parked_perf_views()
                     .map(|(dim, world, view)| level(dim, world, view)),
             )

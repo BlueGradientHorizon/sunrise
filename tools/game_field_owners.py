@@ -220,6 +220,34 @@ KNOWN_GOOD_QUALIFIED_MACROS: dict[tuple[str, str], str] = {
     ("crates/sunrise-client/src/game/mobs/dragon/residency.rs", "crate::game::entity_residency::assign_resident_ids"): "repo assign_resident_ids! macro in entity_residency.rs",
     ("crates/sunrise-client/src/game/world/persist/lookup_order_tests.rs", "crate::game::entity_residency::assign_resident_ids"): "repo assign_resident_ids! macro in entity_residency.rs",
     ("crates/sunrise-client/src/game/mobs/creatures/mod.rs", "crate::game::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
+    ("crates/sunrise-client/src/game/interface/dedicated/report.rs", "super::super::levels::entity_count_view"): "repo entity_count_view! macro in levels.rs",
+    ("crates/sunrise-client/src/game/administration/commands/world_cmds.rs", "crate::game::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
+    ("crates/sunrise-client/src/game/administration/commands/world_cmds.rs", "serde_json::json"): "external serde_json::json! crate macro",
+    ("crates/sunrise-client/src/game/administration/functions.rs", "serde_json::json"): "external serde_json::json! crate macro",
+    ("crates/sunrise-client/src/game/entities/armor_stands.rs", "super::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
+    ("crates/sunrise-client/src/game/entities/boats/mod.rs", "crate::game::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
+    ("crates/sunrise-client/src/game/entities/explosion.rs", "crate::game::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
+    ("crates/sunrise-client/src/game/entities/item_hurt.rs", "crate::game::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
+    ("crates/sunrise-client/src/game/interface/pad/radial_play.rs", "serde_json::json"): "imported serde_json::json! crate macro",
+    ("crates/sunrise-client/src/game/interface/render_control.rs", "serde_json::json"): "imported serde_json::json! crate macro",
+    ("crates/sunrise-client/src/game/interface/wind.rs", "crate::game::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
+    ("crates/sunrise-client/src/game/items/potions.rs", "crate::game::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
+    ("crates/sunrise-client/src/game/items/special_attacks.rs", "crate::game::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
+    ("crates/sunrise-client/src/game/mobs/creatures/death_weapon.rs", "crate::game::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
+    ("crates/sunrise-client/src/game/mobs/creatures/projectile_targets.rs", "crate::game::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
+    ("crates/sunrise-client/src/game/mobs/dragon.rs", "super::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
+    ("crates/sunrise-client/src/game/mobs/raids/mod.rs", "serde_json::json"): "imported serde_json::json! crate macro",
+    ("crates/sunrise-client/src/game/mobs/spawner_client_tick_tests.rs", "serde_json::json"): "external serde_json::json! crate macro",
+    ("crates/sunrise-client/src/game/mobs/wither.rs", "crate::game::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
+    ("crates/sunrise-client/src/game/modding/native_entity_invulnerable.rs", "crate::game::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
+    ("crates/sunrise-client/src/game/network/lan/player_packet_tests.rs", "serde_json::json"): "imported serde_json::json! crate macro",
+    ("crates/sunrise-client/src/game/runtime/repro.rs", "serde_json::json"): "imported serde_json::json! crate macro",
+}
+
+# Audited file-local `macro_rules!` taking ordinary expressions as arguments.
+KNOWN_GOOD_LOCAL_EXPR_MACROS: set[tuple[str, str]] = {
+    ("crates/sunrise-client/src/game/entities/entity/taken_pass_tests.rs", "lookup"),
+    ("crates/sunrise-client/src/game/runtime/transactions/entities.rs", "apart"),
 }
 
 # Audited real-tree relative qualified calls resolving to indexed `crate::game::...` fns.
@@ -340,6 +368,8 @@ class AmbiguousSite:
 class WorkspaceIndex:
     # Struct name -> field names (or tuple indices "0", "1", ...) holding a `Game`
     struct_game_fields: dict[str, set[str]] = field(default_factory=dict)
+    # Struct name -> field name -> {closure_param_idx: kind} for `fn(...)` / `Fn*(...)` fields
+    struct_closure_fields: dict[str, dict[str, dict[int, str]]] = field(default_factory=dict)
     # Struct name -> set of 0-arg method names returning `&Game` / `&mut Game` / `Game`
     wrapper_game_returning_methods: dict[str, set[str]] = field(default_factory=dict)
     # Flat union of all 0-arg method names returning `Game` on any wrapper struct
@@ -378,6 +408,7 @@ class WorkspaceIndex:
 class FileLocalIndex:
     defined_structs: set[str] = field(default_factory=set)
     struct_game_fields: dict[str, set[str]] = field(default_factory=dict)
+    struct_closure_fields: dict[str, dict[str, dict[int, str]]] = field(default_factory=dict)
     defined_free_fns: set[str] = field(default_factory=set)
     game_returning_fns: dict[str, set[int | None]] = field(default_factory=dict)
     fn_closure_params: dict[str, ClosureArgMap] = field(default_factory=dict)
@@ -390,6 +421,61 @@ class FileLocalIndex:
     all_game_return_fn_names: set[str] = field(default_factory=set)
 
 
+WRAPPER_TYPES: dict[str, tuple[str, str]] = {
+    "client_only": ("client_side", "ClientOnly"),
+    "client_shared": ("client_side", "ClientShared"),
+    "server_only": ("server_side", "ServerOnly"),
+    "server_shared": ("server_side", "ServerShared"),
+}
+WRAPPER_KEY_BY_NAME: dict[str, str] = {name: key for key, (_, name) in WRAPPER_TYPES.items()}
+SIDE_WRAPPER_DEFS: dict[str, str] = {
+    "client": (
+        "\n#[allow(dead_code)]\n"
+        "#[repr(transparent)]\n"
+        "pub(in crate::game) struct ClientOnly<T>(pub(in crate::game::client_side) T);\n\n"
+        "#[allow(dead_code)]\n"
+        "impl<T> ClientOnly<T> {\n"
+        "    #[inline(always)]\n"
+        "    pub(in crate::game) fn new(value: T) -> Self {\n"
+        "        Self(value)\n"
+        "    }\n"
+        "}\n\n"
+        "#[allow(dead_code)]\n"
+        "#[repr(transparent)]\n"
+        "pub(in crate::game) struct ClientShared<T>(pub(in crate::game) T);\n\n"
+        "#[allow(dead_code)]\n"
+        "impl<T> ClientShared<T> {\n"
+        "    #[inline(always)]\n"
+        "    pub(in crate::game) fn new(value: T) -> Self {\n"
+        "        Self(value)\n"
+        "    }\n"
+        "}\n"
+    ),
+    "server": (
+        "\n#[allow(dead_code)]\n"
+        "#[repr(transparent)]\n"
+        "pub(in crate::game) struct ServerOnly<T>(pub(in crate::game::server_side) T);\n\n"
+        "#[allow(dead_code)]\n"
+        "impl<T> ServerOnly<T> {\n"
+        "    #[inline(always)]\n"
+        "    pub(in crate::game) fn new(value: T) -> Self {\n"
+        "        Self(value)\n"
+        "    }\n"
+        "}\n\n"
+        "#[allow(dead_code)]\n"
+        "#[repr(transparent)]\n"
+        "pub(in crate::game) struct ServerShared<T>(pub(in crate::game) T);\n\n"
+        "#[allow(dead_code)]\n"
+        "impl<T> ServerShared<T> {\n"
+        "    #[inline(always)]\n"
+        "    pub(in crate::game) fn new(value: T) -> Self {\n"
+        "        Self(value)\n"
+        "    }\n"
+        "}\n"
+    ),
+}
+
+
 def load_field_owners(table_path: Path) -> dict[str, str]:
     """Load `field -> owner` (`game` | `server` | `client`) from the TSV table."""
     owners: dict[str, str] = {}
@@ -399,6 +485,46 @@ def load_field_owners(table_path: Path) -> dict[str, str]:
             if owner in ("game", "server", "client"):
                 owners[row["field"].strip()] = owner
     return owners
+
+
+def load_field_wrappers(table_path: Path) -> dict[str, str]:
+    """Load `field -> wrapper` (`client_only` | `client_shared` | `server_only` | `server_shared`)."""
+    wrappers: dict[str, str] = {}
+    with table_path.open(newline="", encoding="utf-8") as fp:
+        reader = csv.DictReader(fp, delimiter="\t")
+        if not reader.fieldnames or "wrapper" not in reader.fieldnames:
+            return wrappers
+        for lineno, row in enumerate(reader, 2):
+            fld = row["field"].strip()
+            owner = row["owner"].strip()
+            reason = row["reason"].strip()
+            wrap = row["wrapper"].strip()
+            if owner in ("client", "server"):
+                if wrap != "-":
+                    raise SystemExit(
+                        f"{table_path}:{lineno}: {owner} field `{fld}` must have wrapper `-`, got {wrap!r}"
+                    )
+            elif owner == "game":
+                if reason.startswith("drop-order (client)"):
+                    if wrap not in ("client_only", "client_shared"):
+                        raise SystemExit(
+                            f"{table_path}:{lineno}: client drop-order field `{fld}` must have wrapper "
+                            f"`client_only` or `client_shared`, got {wrap!r}"
+                        )
+                    wrappers[fld] = wrap
+                elif reason.startswith("drop-order (server)"):
+                    if wrap not in ("server_only", "server_shared"):
+                        raise SystemExit(
+                            f"{table_path}:{lineno}: server drop-order field `{fld}` must have wrapper "
+                            f"`server_only` or `server_shared`, got {wrap!r}"
+                        )
+                    wrappers[fld] = wrap
+                else:
+                    if wrap != "-":
+                        raise SystemExit(
+                            f"{table_path}:{lineno}: shared/mode field `{fld}` must have wrapper `-`, got {wrap!r}"
+                        )
+    return wrappers
 
 
 def load_moved_fields(table_path: Path) -> dict[str, str]:
@@ -938,54 +1064,59 @@ def extract_generic_type_params(gen_toks: list[Token]) -> set[str]:
 
 def parse_game_rs_mod_map(root: Path) -> dict[str, tuple[str, ...]]:
     mod_map: dict[str, tuple[str, ...]] = {"crates/sunrise-client/src/game.rs": ("crate", "game")}
-    game_rs = root / "crates/sunrise-client/src/game.rs"
-    if not game_rs.is_file():
-        return mod_map
-    toks = tokenize_rust(game_rs.read_text(encoding="utf-8"))
-    n = len(toks)
-    depth = 0
-    pending_path: str | None = None
-    i = 0
-    while i < n:
-        tv = toks[i][1]
-        if tv == "{":
-            depth += 1
-            pending_path = None
-            i += 1
+    sources = [
+        (root / "crates/sunrise-client/src/game.rs", "crates/sunrise-client/src"),
+        (root / "crates/sunrise-client/src/game/client_side.rs", "crates/sunrise-client/src/game"),
+        (root / "crates/sunrise-client/src/game/server_side.rs", "crates/sunrise-client/src/game"),
+    ]
+    for mod_file, path_base in sources:
+        if not mod_file.is_file():
             continue
-        if tv == "}":
-            depth = max(0, depth - 1)
-            pending_path = None
-            i += 1
-            continue
-        if depth > 0:
-            i += 1
-            continue
-        if tv == "#" and i + 1 < n and toks[i + 1][1] == "[":
-            end = skip_balanced(toks, i + 1, "[", "]")
-            attr = toks[i + 2 : end - 1]
-            if len(attr) == 3 and attr[0][1] == "path" and attr[1][1] == "=" and attr[2][0] == "LIT":
-                lit = attr[2][1]
-                if len(lit) >= 2 and lit[0] == '"' and lit[-1] == '"':
-                    pending_path = lit[1:-1]
-            i = end
-            continue
-        if toks[i][0] == "IDENT" and tv == "mod" and i + 2 < n and toks[i + 1][0] == "IDENT":
-            mname = norm_ident(toks[i + 1][1])
-            if toks[i + 2][1] == ";":
-                if pending_path is not None:
-                    rel = f"crates/sunrise-client/src/{pending_path.lstrip('./')}"
-                    mod_map[rel] = ("crate", "game", mname)
-                else:
-                    mod_map[f"crates/sunrise-client/src/game/{mname}.rs"] = ("crate", "game", mname)
-                    mod_map[f"crates/sunrise-client/src/game/{mname}/mod.rs"] = ("crate", "game", mname)
+        toks = tokenize_rust(mod_file.read_text(encoding="utf-8"))
+        n = len(toks)
+        depth = 0
+        pending_path: str | None = None
+        i = 0
+        while i < n:
+            tv = toks[i][1]
+            if tv == "{":
+                depth += 1
                 pending_path = None
-                i += 3
+                i += 1
                 continue
-            pending_path = None
-        elif tv == ";":
-            pending_path = None
-        i += 1
+            if tv == "}":
+                depth = max(0, depth - 1)
+                pending_path = None
+                i += 1
+                continue
+            if depth > 0:
+                i += 1
+                continue
+            if tv == "#" and i + 1 < n and toks[i + 1][1] == "[":
+                end = skip_balanced(toks, i + 1, "[", "]")
+                attr = toks[i + 2 : end - 1]
+                if len(attr) == 3 and attr[0][1] == "path" and attr[1][1] == "=" and attr[2][0] == "LIT":
+                    lit = attr[2][1]
+                    if len(lit) >= 2 and lit[0] == '"' and lit[-1] == '"':
+                        pending_path = lit[1:-1]
+                i = end
+                continue
+            if toks[i][0] == "IDENT" and tv == "mod" and i + 2 < n and toks[i + 1][0] == "IDENT":
+                mname = norm_ident(toks[i + 1][1])
+                if toks[i + 2][1] == ";":
+                    if pending_path is not None:
+                        rel = f"{path_base}/{pending_path.lstrip('./')}"
+                        mod_map[rel] = ("crate", "game", mname)
+                    else:
+                        mod_map[f"crates/sunrise-client/src/game/{mname}.rs"] = ("crate", "game", mname)
+                        mod_map[f"crates/sunrise-client/src/game/{mname}/mod.rs"] = ("crate", "game", mname)
+                    pending_path = None
+                    i += 3
+                    continue
+                pending_path = None
+            elif tv == ";":
+                pending_path = None
+            i += 1
     return mod_map
 
 
@@ -1391,7 +1522,7 @@ def collect_shadowed_macros(
     for i in range(n - 2):
         if tokens[i][0] == "IDENT" and tokens[i][1] == "macro_rules" and tokens[i + 1][1] == "!" and tokens[i + 2][0] == "IDENT":
             mname = norm_ident(tokens[i + 2][1])
-            if not (in_game_tree and mname in GAME_MACROS):
+            if not (in_game_tree and (mname in GAME_MACROS or (rel_posix, mname) in KNOWN_GOOD_LOCAL_EXPR_MACROS)):
                 shadowed.add(mname)
     known_macros = EXPR_MACROS | TOKEN_ONLY_MACROS
     for segs, bound in use_imports:
@@ -1718,10 +1849,11 @@ def scan_structs(
     tokens: list[Token],
     ctx: GamePathContext | None = None,
     layout: FileLexicalLayout | None = None,
-) -> tuple[set[str], dict[str, set[str]]]:
-    """Return `(all_defined_structs, struct_name -> set of fields holding Game)`."""
+) -> tuple[set[str], dict[str, set[str]], dict[str, dict[str, dict[int, str]]]]:
+    """Return `(all_defined_structs, struct_name -> set of fields holding Game, struct_name -> field -> closure_params)`."""
     defined: set[str] = set()
     game_fields: dict[str, set[str]] = {}
+    closure_fields: dict[str, dict[str, dict[int, str]]] = {}
     n = len(tokens)
     scope_stack: list[ScopeDecls] = [layout.scope_decls[-1]] if layout is not None else []
     mod_stack: list[tuple[int, str]] = []
@@ -1776,8 +1908,12 @@ def scan_structs(
                             break
                     if k + 1 < len(part) and part[k][0] == "IDENT" and part[k + 1][1] == ":":
                         fname = norm_ident(part[k][1])
-                        if is_game_type_tokens(part[k + 2 :], None, ctx, lex):
+                        ftype = part[k + 2 :]
+                        if is_game_type_tokens(ftype, None, ctx, lex):
                             game_fields.setdefault(sname, set()).add(fname)
+                        cparams = extract_fn_trait_params(ftype, set(), None, ctx, lex)
+                        if cparams:
+                            closure_fields.setdefault(sname, {})[fname] = cparams
                 i = end
                 continue
             elif j < n and tokens[j][1] == "(":
@@ -1798,7 +1934,7 @@ def scan_structs(
                 i = end
                 continue
         i += 1
-    return defined, game_fields
+    return defined, game_fields, closure_fields
 
 
 def extract_fn_trait_params(
@@ -2022,9 +2158,11 @@ def build_workspace_index(extra_files: list[Path]) -> WorkspaceIndex:
         layout = build_file_lexical_layout(toks, rel_posix)
         if layout.scope_decls[-1].declares_game or layout.scope_decls[-1].foreign_game_import:
             continue
-        _, sfields = scan_structs(toks, ctx, layout)
+        _, sfields, scfields = scan_structs(toks, ctx, layout)
         for sname, fset in sfields.items():
             index.struct_game_fields.setdefault(sname, set()).update(fset)
+        for sname, cmap in scfields.items():
+            index.struct_closure_fields.setdefault(sname, {}).update(cmap)
         base_mod = file_canonical_mod_path(rel_posix, index.file_mod_map)
         tokenized.append((toks, ctx, layout, base_mod))
 
@@ -2096,7 +2234,7 @@ def build_file_local_index(
     base_mod_path: tuple[str, ...],
 ) -> FileLocalIndex:
     local = FileLocalIndex()
-    local.defined_structs, local.struct_game_fields = scan_structs(tokens, ctx, layout)
+    local.defined_structs, local.struct_game_fields, local.struct_closure_fields = scan_structs(tokens, ctx, layout)
     wrapper_structs = (global_wrapper_structs - local.defined_structs) | set(local.struct_game_fields)
 
     for fname, mod_path, _is_pub, impl_target, has_self, _non_self_count, ret_positions, arg_closure_map in scan_fn_signatures(
@@ -2625,8 +2763,10 @@ def scan_file(
     owners: dict[str, str],
     index: WorkspaceIndex,
     file_root_cache: dict[Path, frozenset[str]] | None = None,
+    wrappers: dict[str, str] | None = None,
 ) -> tuple[list[Edit], list[AmbiguousSite]]:
     """Scan one Rust file and return `(sorted_edits, sorted_ambiguous_sites)`."""
+    active_wrappers = wrappers or {}
     tokens = tokenize_rust(src)
     use_imports = collect_use_imports(tokens)
     ctx = build_game_path_context(tokens, use_imports, rel_posix)
@@ -2637,11 +2777,18 @@ def scan_file(
 
     local = build_file_local_index(tokens, set(effective_index.struct_game_fields), ctx, layout, base_mod_path)
     struct_game_fields: dict[str, set[str]] = dict(effective_index.struct_game_fields)
+    struct_closure_fields: dict[str, dict[str, dict[int, str]]] = {
+        k: dict(v) for k, v in effective_index.struct_closure_fields.items()
+    }
     for sname in local.defined_structs:
         if sname in local.struct_game_fields:
             struct_game_fields[sname] = local.struct_game_fields[sname]
         else:
             struct_game_fields.pop(sname, None)
+        if sname in local.struct_closure_fields:
+            struct_closure_fields[sname] = dict(local.struct_closure_fields[sname])
+        else:
+            struct_closure_fields.pop(sname, None)
     wrapper_structs = set(struct_game_fields) if ctx.in_game_tree else set()
 
     def lookup_free_fn_returns(fname: str, cur_mod_path: tuple[str, ...]) -> tuple[set[int | None] | None, bool]:
@@ -2877,11 +3024,32 @@ def scan_file(
                 )
                 return
             if expected == "game":
-                span = (tokens[first_idx][2], tokens[field_idx][2])
-                edits.setdefault(
-                    span,
-                    Edit(span[0], span[1], "", fname, f"{reason}:unmove", f"{first_name}.{fname}", fname),
+                already_dot0 = (
+                    field_idx + 2 < n
+                    and tokens[field_idx + 1][1] == "."
+                    and tokens[field_idx + 2][0] == "LIT"
+                    and tokens[field_idx + 2][1] == "0"
                 )
+                if fname in active_wrappers and not already_dot0:
+                    span = (tokens[first_idx][2], tokens[field_idx][3])
+                    edits.setdefault(
+                        span,
+                        Edit(
+                            span[0],
+                            span[1],
+                            f"{fname}.0",
+                            fname,
+                            f"{reason}:unmove-wrap",
+                            f"{first_name}.{fname}",
+                            f"{fname}.0",
+                        ),
+                    )
+                else:
+                    span = (tokens[first_idx][2], tokens[field_idx][2])
+                    edits.setdefault(
+                        span,
+                        Edit(span[0], span[1], "", fname, f"{reason}:unmove", f"{first_name}.{fname}", fname),
+                    )
             else:
                 span = (tokens[first_idx][2], tokens[first_idx][3])
                 edits.setdefault(
@@ -2892,11 +3060,20 @@ def scan_file(
 
         # Case 2: direct `<recv>.<field>`
         expected = owners.get(first_name)
-        if expected not in ("server", "client"):
+        is_wrapped = expected == "game" and first_name in active_wrappers
+        if expected not in ("server", "client") and not is_wrapped:
             return
         nxt = tokens[first_idx + 1][1] if first_idx + 1 < n else None
         if nxt in ("(", "::"):
             return
+        if is_wrapped:
+            if (
+                nxt == "."
+                and first_idx + 2 < n
+                and tokens[first_idx + 2][0] == "LIT"
+                and tokens[first_idx + 2][1] == "0"
+            ):
+                return
         if recv_kind == AMBIGUOUS:
             off = tokens[first_idx][2]
             ambiguous.setdefault(off, AmbiguousSite(off, first_name, reason))
@@ -2913,12 +3090,20 @@ def scan_file(
                 AmbiguousSite(off, first_name, f"outside crates/sunrise-client/src/game* ({reason})"),
             )
             return
-        off = tokens[first_idx][2]
-        span = (off, off)
-        edits.setdefault(
-            span,
-            Edit(off, off, f"{expected}.", first_name, reason, first_name, f"{expected}.{first_name}"),
-        )
+        if is_wrapped:
+            off = tokens[first_idx][3]
+            span = (off, off)
+            edits.setdefault(
+                span,
+                Edit(off, off, ".0", first_name, f"{reason}:wrap", first_name, f"{first_name}.0"),
+            )
+        else:
+            off = tokens[first_idx][2]
+            span = (off, off)
+            edits.setdefault(
+                span,
+                Edit(off, off, f"{expected}.", first_name, reason, first_name, f"{expected}.{first_name}"),
+            )
 
     def receiver_kind_before_dot(dot_idx: int) -> tuple[str | None, str | None]:
         """Classify the receiver ending at `dot_idx - 1`. Returns `(kind, edit_reason)`."""
@@ -3427,7 +3612,7 @@ def scan_file(
             elif mname in TOKEN_ONLY_MACROS:
                 i = mac_end
                 continue
-            elif mname not in EXPR_MACROS:
+            elif mname not in EXPR_MACROS and (rel_posix, mname) not in KNOWN_GOOD_LOCAL_EXPR_MACROS:
                 unknown_macro_stack.append((mac_end, mname))
             elif mname == "matches":
                 if not schedule_matches_macro_guard(i + 2, mac_end):
@@ -3634,7 +3819,7 @@ def scan_file(
                     if dc == 0:
                         break
                     dc -= 1
-                elif tv in (";", ".") and dc == 0:
+                elif tv in (";", ".") and da == 0 and dp == 0 and db == 0 and dc == 0:
                     break
                 elif tv == "|" and da == 0 and dp == 0 and db == 0 and dc == 0:
                     close_bar = j
@@ -3646,7 +3831,39 @@ def scan_file(
                 expected_params: dict[int, str] = {}
                 call_is_ambig = False
 
-                call_info = find_enclosing_call_and_arg(tokens, i) if ctx.in_game_tree else None
+                # Check struct literal field closure: `StructName { field: [move] |...| ... }`
+                if ctx.in_game_tree and struct_closure_fields:
+                    prev_c = i - 1
+                    if prev_c >= 0 and tokens[prev_c][1] == "move":
+                        prev_c -= 1
+                    if prev_c >= 1 and tokens[prev_c][1] == ":" and tokens[prev_c - 1][0] == "IDENT":
+                        lit_field = norm_ident(tokens[prev_c - 1][1])
+                        # Walk back to enclosing `{`
+                        sc = prev_c - 2
+                        sdp = sdb = sdc = 0
+                        while sc >= 0:
+                            sv = tokens[sc][1]
+                            if sv == "}":
+                                sdc += 1
+                            elif sv == "{":
+                                if sdc == 0:
+                                    if sc >= 1 and tokens[sc - 1][0] == "IDENT":
+                                        lit_struct = norm_ident(tokens[sc - 1][1])
+                                        if lit_field in struct_closure_fields.get(lit_struct, {}):
+                                            expected_params = struct_closure_fields[lit_struct][lit_field]
+                                    break
+                                sdc -= 1
+                            elif sv == ")":
+                                sdp += 1
+                            elif sv == "(":
+                                sdp = max(0, sdp - 1)
+                            elif sv == "]":
+                                sdb += 1
+                            elif sv == "[":
+                                sdb = max(0, sdb - 1)
+                            sc -= 1
+
+                call_info = find_enclosing_call_and_arg(tokens, i) if (ctx.in_game_tree and not expected_params) else None
                 if call_info is not None:
                     call_name, arg_idx, is_method, dot_idx = call_info
                     norm_call = norm_ident(call_name)
@@ -3876,9 +4093,377 @@ def find_edits(
     rel_posix: str,
     owners: dict[str, str],
     index: WorkspaceIndex,
+    wrappers: dict[str, str] | None = None,
 ) -> list[Edit]:
-    edits, _ = scan_file(src, rel_posix, owners, index)
+    edits, _ = scan_file(src, rel_posix, owners, index, wrappers=wrappers)
     return edits
+
+
+def unwrap_wrapper_type(src: str, ty_toks: list[Token]) -> tuple[str | None, str]:
+    """Return `(wrapper_key_or_None, inner_type_str)` for a `struct Game` field type."""
+    if not ty_toks:
+        return None, ""
+    full = src[ty_toks[0][2] : ty_toks[-1][3]].strip()
+    m = len(ty_toks)
+    # Match `[client_side::|server_side::](ClientOnly|ClientShared|ServerOnly|ServerShared)<...>`
+    idx = 0
+    if m >= 3 and ty_toks[0][0] == "IDENT" and ty_toks[0][1] in ("client_side", "server_side") and ty_toks[1][1] == "::":
+        idx = 2
+    if (
+        idx + 2 < m
+        and ty_toks[idx][0] == "IDENT"
+        and ty_toks[idx][1] in WRAPPER_KEY_BY_NAME
+        and ty_toks[idx + 1][1] == "<"
+        and skip_angle_generics(ty_toks, idx + 1) == m
+    ):
+        wkey = WRAPPER_KEY_BY_NAME[ty_toks[idx][1]]
+        inner_toks = ty_toks[idx + 2 : m - 1]
+        if inner_toks:
+            return wkey, src[inner_toks[0][2] : inner_toks[-1][3]].strip()
+    return None, full
+
+
+def unwrap_wrapper_ctor(src: str, expr_toks: list[Token]) -> tuple[str | None, str]:
+    """Return `(wrapper_key_or_None, inner_expr_str)` for a `Game { ... }` field initialiser."""
+    if not expr_toks:
+        return None, ""
+    full = src[expr_toks[0][2] : expr_toks[-1][3]].strip()
+    m = len(expr_toks)
+    idx = 0
+    if m >= 3 and expr_toks[0][0] == "IDENT" and expr_toks[0][1] in ("client_side", "server_side") and expr_toks[1][1] == "::":
+        idx = 2
+    if (
+        idx + 4 < m
+        and expr_toks[idx][0] == "IDENT"
+        and expr_toks[idx][1] in WRAPPER_KEY_BY_NAME
+        and expr_toks[idx + 1][1] == "::"
+        and expr_toks[idx + 2][1] == "new"
+        and expr_toks[idx + 3][1] == "("
+        and skip_balanced(expr_toks, idx + 3, "(", ")") == m
+    ):
+        wkey = WRAPPER_KEY_BY_NAME[expr_toks[idx][1]]
+        inner_toks = expr_toks[idx + 4 : m - 1]
+        if inner_toks:
+            return wkey, src[inner_toks[0][2] : inner_toks[-1][3]].strip()
+    return None, full
+
+
+def plan_game_struct_and_ctor_edits(
+    src: str,
+    owners: dict[str, str],
+    wrappers: dict[str, str],
+) -> tuple[list[Edit], list[str]]:
+    """Plan wrapper type and constructor edits for `struct Game` and `Game::finish_construct`."""
+    tokens = tokenize_rust(src)
+    n = len(tokens)
+    edits: list[Edit] = []
+    problems: list[str] = []
+
+    # 1. Locate top-level `struct Game<'a> { ... }`
+    depth = 0
+    struct_body: tuple[int, int] | None = None
+    i = 0
+    while i < n:
+        tv = tokens[i][1]
+        if tv == "{":
+            depth += 1
+        elif tv == "}":
+            depth = max(0, depth - 1)
+        elif depth == 0 and tokens[i][0] == "IDENT" and tv == "struct" and i + 1 < n and tokens[i + 1][1] == "Game":
+            j = i + 2
+            if j < n and tokens[j][1] == "<":
+                j = skip_angle_generics(tokens, j)
+            while j < n and tokens[j][1] not in ("{", ";"):
+                j += 1
+            if j < n and tokens[j][1] == "{":
+                end = skip_balanced(tokens, j, "{", "}")
+                struct_body = (j, end)
+                break
+        i += 1
+
+    if struct_body is None:
+        problems.append("crates/sunrise-client/src/game.rs: `struct Game` declaration not found")
+        return edits, problems
+
+    seen_struct_fields: set[str] = set()
+    for part in split_top_level(tokens[struct_body[0] + 1 : struct_body[1] - 1], ","):
+        k = 0
+        while k < len(part):
+            if part[k][1] == "#" and k + 1 < len(part) and part[k + 1][1] == "[":
+                k = skip_balanced(part, k + 1, "[", "]")
+            elif part[k][1] == "pub":
+                k += 1
+                if k < len(part) and part[k][1] == "(":
+                    k = skip_balanced(part, k, "(", ")")
+            else:
+                break
+        if k + 2 >= len(part) or part[k][0] != "IDENT" or part[k + 1][1] != ":":
+            continue
+        fname = norm_ident(part[k][1])
+        seen_struct_fields.add(fname)
+        ty_toks = part[k + 2 :]
+        actual_wrap, inner_ty = unwrap_wrapper_type(src, ty_toks)
+        expected_wrap = wrappers.get(fname)
+        if fname not in ("server", "client") and fname not in owners:
+            problems.append(f"crates/sunrise-client/src/game.rs: `Game::{fname}` missing from game_field_owners.tsv")
+            continue
+        if actual_wrap != expected_wrap:
+            ty_start, ty_end = ty_toks[0][2], ty_toks[-1][3]
+            if expected_wrap is not None:
+                smod, wname = WRAPPER_TYPES[expected_wrap]
+                new_ty = f"{smod}::{wname}<{inner_ty}>"
+            else:
+                new_ty = inner_ty
+            old_ty = src[ty_start:ty_end]
+            edits.append(
+                Edit(
+                    ty_start,
+                    ty_end,
+                    new_ty,
+                    fname,
+                    "struct-game-wrapper",
+                    f"{fname}: {old_ty}",
+                    f"{fname}: {new_ty}",
+                )
+            )
+            problems.append(
+                f"crates/sunrise-client/src/game.rs: `Game::{fname}` wrapper is `{actual_wrap or '-'}`, "
+                f"expected `{expected_wrap or '-'}` per game_field_owners.tsv"
+            )
+
+    for missing in sorted(set(wrappers) - seen_struct_fields):
+        problems.append(f"crates/sunrise-client/src/game.rs: wrapped field `{missing}` missing from `struct Game`")
+
+    # 2. Locate `Game { ... }` inside `fn finish_construct`
+    ctor_body: tuple[int, int] | None = None
+    i = 0
+    while i < n:
+        if tokens[i][0] == "IDENT" and tokens[i][1] == "fn" and i + 1 < n and tokens[i + 1][1] == "finish_construct":
+            j = i + 2
+            while j < n and tokens[j][1] != "{":
+                j += 1
+            if j < n:
+                fn_end = skip_balanced(tokens, j, "{", "}")
+                k = j + 1
+                while k < fn_end - 1:
+                    if tokens[k][0] == "IDENT" and tokens[k][1] == "Game" and tokens[k + 1][1] == "{":
+                        lit_end = skip_balanced(tokens, k + 1, "{", "}")
+                        ctor_body = (k + 1, lit_end)
+                        break
+                    k += 1
+                break
+        i += 1
+
+    if ctor_body is None:
+        problems.append("crates/sunrise-client/src/game.rs: `Game { ... }` literal in `finish_construct` not found")
+        return edits, problems
+
+    seen_ctor_fields: set[str] = set()
+    for part in split_top_level(tokens[ctor_body[0] + 1 : ctor_body[1] - 1], ","):
+        k = 0
+        while k < len(part) and part[k][1] == "#" and k + 1 < len(part) and part[k + 1][1] == "[":
+            k = skip_balanced(part, k + 1, "[", "]")
+        if k >= len(part) or part[k][0] != "IDENT":
+            continue
+        fname = norm_ident(part[k][1])
+        seen_ctor_fields.add(fname)
+        expected_wrap = wrappers.get(fname)
+        if k + 1 < len(part) and part[k + 1][1] == ":":
+            expr_toks = part[k + 2 :]
+            actual_wrap, inner_expr = unwrap_wrapper_ctor(src, expr_toks)
+            rep_start, rep_end = expr_toks[0][2], expr_toks[-1][3]
+            is_shorthand = False
+        elif k + 1 == len(part):
+            actual_wrap = None
+            inner_expr = part[k][1]
+            rep_start, rep_end = part[k][2], part[k][3]
+            is_shorthand = True
+        else:
+            continue
+        if actual_wrap != expected_wrap:
+            if expected_wrap is not None:
+                smod, wname = WRAPPER_TYPES[expected_wrap]
+                wrapped_expr = f"{smod}::{wname}::new({inner_expr})"
+                replacement = f"{fname}: {wrapped_expr}" if is_shorthand else wrapped_expr
+            else:
+                replacement = inner_expr
+            old_expr = src[rep_start:rep_end]
+            edits.append(
+                Edit(
+                    rep_start,
+                    rep_end,
+                    replacement,
+                    fname,
+                    "ctor-game-wrapper",
+                    f"{fname}: {old_expr}",
+                    f"{fname}: {replacement}",
+                )
+            )
+            problems.append(
+                f"crates/sunrise-client/src/game.rs: `finish_construct` `{fname}` uses wrapper "
+                f"`{actual_wrap or '-'}`, expected `{expected_wrap or '-'}`"
+            )
+
+    for missing in sorted(set(wrappers) - seen_ctor_fields):
+        problems.append(
+            f"crates/sunrise-client/src/game.rs: wrapped field `{missing}` missing from `Game::finish_construct`"
+        )
+
+    edits.sort(key=lambda e: (e.start, e.end))
+    return edits, problems
+
+
+def check_side_wrapper_defs(side_path: Path, side: str) -> tuple[bool, list[str]]:
+    """Verify wrapper structs in `{client,server}_side.rs`. Returns `(needs_append, problems)`."""
+    rel = side_path.as_posix()
+    if not side_path.is_file():
+        return False, [f"{rel}: side module file not found"]
+    src = side_path.read_text(encoding="utf-8")
+    tokens = tokenize_rust(src)
+    n = len(tokens)
+    smod = "client_side" if side == "client" else "server_side"
+    expected_structs = (
+        ("ClientOnly", ("pub", "(", "in", "crate", "::", "game", "::", "client_side", ")"))
+        if side == "client"
+        else ("ServerOnly", ("pub", "(", "in", "crate", "::", "game", "::", "server_side", ")"))
+    ), (
+        ("ClientShared", ("pub", "(", "in", "crate", "::", "game", ")"))
+        if side == "client"
+        else ("ServerShared", ("pub", "(", "in", "crate", "::", "game", ")"))
+    )
+    expected_names = {name for name, _ in expected_structs}
+    found_structs: set[str] = set()
+    problems: list[str] = []
+
+    i = 0
+    while i < n:
+        if tokens[i][0] == "IDENT" and tokens[i][1] == "struct" and i + 1 < n and tokens[i + 1][1] in expected_names:
+            sname = tokens[i + 1][1]
+            found_structs.add(sname)
+            exp_vis = dict(expected_structs)[sname]
+            # Collect contiguous attributes before `pub(in crate::game) struct <Name>`
+            vis_start = i
+            if vis_start >= 1 and tokens[vis_start - 1][1] == ")":
+                # walk back over `pub(...)`
+                k = vis_start - 1
+                dp = 0
+                while k >= 0:
+                    if tokens[k][1] == ")":
+                        dp += 1
+                    elif tokens[k][1] == "(":
+                        dp -= 1
+                        if dp == 0:
+                            break
+                    k -= 1
+                if k > 0 and tokens[k - 1][1] == "pub":
+                    vis_start = k - 1
+            elif vis_start >= 1 and tokens[vis_start - 1][1] == "pub":
+                vis_start -= 1
+            # Walk back over immediately preceding attributes `#[...]`
+            attr_end = vis_start
+            has_repr_transparent = False
+            while attr_end >= 1 and tokens[attr_end - 1][1] == "]":
+                k = attr_end - 1
+                db = 0
+                while k >= 0:
+                    if tokens[k][1] == "]":
+                        db += 1
+                    elif tokens[k][1] == "[":
+                        db -= 1
+                        if db == 0:
+                            break
+                    k -= 1
+                if k > 0 and tokens[k - 1][1] == "#":
+                    attr_toks = [t[1] for t in tokens[k + 1 : attr_end - 1]]
+                    if attr_toks == ["repr", "(", "transparent", ")"]:
+                        has_repr_transparent = True
+                    if attr_toks and attr_toks[0] == "derive":
+                        problems.append(f"{rel}: `{sname}` must not carry `#[derive(...)]`")
+                    attr_end = k - 1
+                else:
+                    break
+            if not has_repr_transparent:
+                problems.append(f"{rel}: `{sname}` must carry `#[repr(transparent)]`")
+            # Check outer visibility is `pub(in crate::game)`
+            outer_vis = tuple(t[1] for t in tokens[vis_start:i])
+            if outer_vis != ("pub", "(", "in", "crate", "::", "game", ")"):
+                problems.append(f"{rel}: `{sname}` must be `pub(in crate::game)`")
+            # Check tuple body `<T>(<exp_vis> T);`
+            j = i + 2
+            if j < n and tokens[j][1] == "<":
+                j = skip_angle_generics(tokens, j)
+            if j >= n or tokens[j][1] != "(":
+                problems.append(f"{rel}: `{sname}` must be a single-field tuple struct")
+            else:
+                pend = skip_balanced(tokens, j, "(", ")")
+                inner = tuple(t[1] for t in tokens[j + 1 : pend - 1])
+                if inner != exp_vis + ("T",):
+                    problems.append(
+                        f"{rel}: `{sname}` inner field must be `{' '.join(exp_vis)} T` (got `{' '.join(inner)}`)"
+                    )
+        # Check `impl` blocks for wrapper types: forbid Deref/AsRef and any wide method other than `new`.
+        elif tokens[i][0] == "IDENT" and tokens[i][1] == "impl":
+            j = i + 1
+            if j < n and tokens[j][1] == "<":
+                j = skip_angle_generics(tokens, j)
+            for_idx = None
+            brace_idx = None
+            while j < n and tokens[j][1] not in ("{", ";"):
+                if tokens[j][1] == "for" and for_idx is None:
+                    for_idx = j
+                j += 1
+            if j < n and tokens[j][1] == "{":
+                brace_idx = j
+                end = skip_balanced(tokens, j, "{", "}")
+                hdr_toks = [t[1] for t in tokens[i + 1 : brace_idx]]
+                target_toks = [t[1] for t in tokens[(for_idx + 1 if for_idx is not None else i + 1) : brace_idx]]
+                hit_name = next((nm for nm in expected_names if nm in target_toks), None)
+                if hit_name is not None:
+                    if for_idx is not None:
+                        trait_toks = [t[1] for t in tokens[i + 1 : for_idx]]
+                        for bad in ("Deref", "DerefMut", "AsRef", "AsMut", "Borrow", "BorrowMut", "Default", "Debug", "Clone"):
+                            if bad in trait_toks:
+                                problems.append(f"{rel}: `{hit_name}` must not implement `{bad}`")
+                    else:
+                        # Inherent impl: allow only `pub(in crate::game) fn new`
+                        k = brace_idx + 1
+                        while k < end - 1:
+                            if tokens[k][0] == "IDENT" and tokens[k][1] == "fn" and k + 1 < end:
+                                mname = norm_ident(tokens[k + 1][1])
+                                if mname != "new" and is_pub_before_fn(tokens, k):
+                                    # Allow only side-private methods if any; reject wider ones.
+                                    # Walk back to check visibility tokens.
+                                    vk = k - 1
+                                    while vk > brace_idx and tokens[vk][1] in ("const", "async", "unsafe"):
+                                        vk -= 1
+                                    vis_toks: list[str] = []
+                                    if tokens[vk][1] == ")":
+                                        vstart = vk
+                                        dp = 0
+                                        while vstart > brace_idx:
+                                            if tokens[vstart][1] == ")":
+                                                dp += 1
+                                            elif tokens[vstart][1] == "(":
+                                                dp -= 1
+                                                if dp == 0:
+                                                    break
+                                            vstart -= 1
+                                        if vstart > brace_idx and tokens[vstart - 1][1] == "pub":
+                                            vis_toks = [t[1] for t in tokens[vstart - 1 : vk + 1]]
+                                    elif tokens[vk][1] == "pub":
+                                        vis_toks = ["pub"]
+                                    if tuple(vis_toks) != ("pub", "(", "in", "crate", "::", "game", "::", smod, ")"):
+                                        problems.append(
+                                            f"{rel}: `{hit_name}::{mname}` must not be visible outside `{smod}`"
+                                        )
+                            k += 1
+        i += 1
+
+    missing = sorted(expected_names - found_structs)
+    needs_append = len(missing) == len(expected_names)
+    for m in missing:
+        problems.append(f"{rel}: missing wrapper struct `{m}`")
+    return needs_append, problems
 
 
 def collect_files(paths: list[Path]) -> list[Path]:
@@ -3929,6 +4514,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     owners = load_field_owners(args.table)
+    wrappers = load_field_wrappers(args.table)
     paths = args.paths if args.paths else list(DEFAULT_PATHS)
     files = collect_files(paths)
     root_resolved = ROOT.resolve()
@@ -3943,14 +4529,27 @@ def main(argv: list[str] | None = None) -> int:
 
     total_edits = 0
     total_ambiguous = 0
+    structural_problems: list[str] = []
     files_changed = 0
     changed_paths: list[Path] = []
     by_reason: dict[str, int] = {}
 
+    # Sync / check side wrapper definitions when scanning the real game tree with a wrapper table.
+    has_game_rs = any(rel == "crates/sunrise-client/src/game.rs" for _, rel in file_rels)
+    if wrappers and has_game_rs:
+        for side, fname in (("client", "client_side.rs"), ("server", "server_side.rs")):
+            side_path = root_resolved / "crates/sunrise-client/src/game" / fname
+            needs_append, probs = check_side_wrapper_defs(side_path, side)
+            if args.fix and needs_append:
+                side_path.write_text(side_path.read_text(encoding="utf-8") + SIDE_WRAPPER_DEFS[side], encoding="utf-8")
+                changed_paths.append(side_path)
+                _, probs = check_side_wrapper_defs(side_path, side)
+            structural_problems.extend(probs)
+
     file_root_cache: dict[Path, frozenset[str]] = {}
     for path, rel_posix in file_rels:
         src = path.read_text(encoding="utf-8")
-        edits, ambig = scan_file(src, rel_posix, owners, index, file_root_cache)
+        edits, ambig = scan_file(src, rel_posix, owners, index, file_root_cache, wrappers=wrappers)
         line_starts = compute_line_starts(src) if (ambig or (edits and (args.check or args.list))) else []
         for site in ambig:
             total_ambiguous += 1
@@ -3959,17 +4558,48 @@ def main(argv: list[str] | None = None) -> int:
                 f"{rel_posix}:{lineno}: ambiguous receiver for Game field `{site.field}` ({site.detail}) — review manually",
                 file=sys.stderr,
             )
-        if not edits:
+
+        struct_edits: list[Edit] = []
+        struct_probs: list[str] = []
+        if wrappers and rel_posix == "crates/sunrise-client/src/game.rs":
+            if args.fix:
+                src_after_access = apply_edits(src, edits) if edits else src
+                struct_edits, struct_probs = plan_game_struct_and_ctor_edits(src_after_access, owners, wrappers)
+                if edits or struct_edits:
+                    new_src = apply_edits(src_after_access, struct_edits) if struct_edits else src_after_access
+                    path.write_text(new_src, encoding="utf-8")
+                    changed_paths.append(path)
+                    files_changed += 1
+                all_e = edits + struct_edits
+                total_edits += len(all_e)
+                for e in all_e:
+                    by_reason[e.reason] = by_reason.get(e.reason, 0) + 1
+                # Re-verify structural problems after fix
+                if struct_edits:
+                    _, struct_probs = plan_game_struct_and_ctor_edits(
+                        path.read_text(encoding="utf-8"), owners, wrappers
+                    )
+                structural_problems.extend(struct_probs)
+                continue
+            else:
+                struct_edits, struct_probs = plan_game_struct_and_ctor_edits(src, owners, wrappers)
+                if args.check:
+                    structural_problems.extend(struct_probs)
+
+        all_e = edits + (struct_edits if args.list else [])
+        if not all_e:
             continue
         files_changed += 1
-        total_edits += len(edits)
-        for e in edits:
+        total_edits += len(all_e)
+        for e in all_e:
             by_reason[e.reason] = by_reason.get(e.reason, 0) + 1
         if args.fix:
             path.write_text(apply_edits(src, edits), encoding="utf-8")
             changed_paths.append(path)
         elif args.list:
-            for e in edits:
+            if not line_starts:
+                line_starts = compute_line_starts(src)
+            for e in all_e:
                 lineno = offset_to_line(line_starts, e.start)
                 print(f"{rel_posix}:{lineno}: `{e.old_expr}` -> `{e.new_expr}` [{e.reason}]")
         else:
@@ -3994,6 +4624,9 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(f"Found {total_edits} stale sites across {files_changed} files.")
 
+    for prob in structural_problems:
+        print(f"error: {prob}", file=sys.stderr)
+
     if total_ambiguous > 0:
         print(f"Reported {total_ambiguous} ambiguous site(s) for manual review.", file=sys.stderr)
 
@@ -4001,7 +4634,9 @@ def main(argv: list[str] | None = None) -> int:
         for reason, count in sorted(by_reason.items()):
             print(f"  {reason}: {count}")
 
-    if args.check and total_edits > 0:
+    if args.check and (total_edits > 0 or structural_problems):
+        return 1
+    if args.fix and structural_problems:
         return 1
     if total_ambiguous > 0 and not args.allow_ambiguous:
         return 1

@@ -168,6 +168,7 @@ impl Game<'_> {
             f64::from(pos[2]) + 0.5,
         ];
         self.audio
+            .0
             .play("minecraft:block.respawn_anchor.charge", Some(at), 1.0, 1.0);
         Ok(())
     }
@@ -290,7 +291,7 @@ impl Game<'_> {
                 f64::from(pos[1]) + 0.5,
                 f64::from(pos[2]) + 0.5,
             ];
-            self.audio.play(
+            self.audio.0.play(
                 "minecraft:block.respawn_anchor.set_spawn",
                 Some(at),
                 1.0,
@@ -346,7 +347,7 @@ impl Game<'_> {
             f64::from(head[1]) + 0.5,
             f64::from(head[2]) + 0.5,
         ];
-        self.audio.play(
+        self.audio.0.play(
             "minecraft:block.straw_bed.break_leave",
             Some(center),
             1.0,

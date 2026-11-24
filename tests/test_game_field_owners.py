@@ -931,5 +931,206 @@ class GameFieldOwnersRound3RegressionTests(unittest.TestCase):
         self.assertIn("let x = { game.client.screen };", out)
 
 
+class GameFieldOwnersWrapperTests(unittest.TestCase):
+    WRAP_OWNERS = {
+        "screen": "client",
+        "hoppers": "server",
+        "audio": "game",
+        "levels": "game",
+        "shared": "game",
+    }
+    WRAPPERS = {
+        "audio": "client_only",
+        "levels": "server_shared",
+    }
+
+    def test_wrapped_field_projection_idempotency_and_fail_closed(self):
+        src = (
+            "impl Game<'_> {\n"
+            "    fn demo(&mut self) {\n"
+            "        self.audio.play();\n"
+            "        self.audio.0.stop();\n"
+            "        let _ = self.audio();\n"
+            "        let _ = &mut self.levels;\n"
+            "        let _ = self.shared;\n"
+            "    }\n"
+            "}\n"
+            "fn f(game: &mut Game<'_>, other: Option<Other>) {\n"
+            "    if let Some(game) = other {\n"
+            "        let _ = game.audio;\n"
+            "    }\n"
+            "    let _ = unknown_macro!(game.levels);\n"
+            "}\n"
+        )
+        idx = gfo.WorkspaceIndex()
+        edits, ambig = gfo.scan_file(
+            src,
+            "crates/sunrise-client/src/game/demo.rs",
+            self.WRAP_OWNERS,
+            idx,
+            wrappers=self.WRAPPERS,
+        )
+        out = gfo.apply_edits(src, edits)
+        self.assertEqual([a.field for a in ambig], ["levels"])
+        self.assertEqual(len(edits), 2)
+        self.assertIn("self.audio.0.play();", out)
+        self.assertIn("self.audio.0.stop();", out)
+        self.assertIn("let _ = self.audio();", out)
+        self.assertIn("let _ = &mut self.levels.0;", out)
+        self.assertIn("if let Some(game) = other {\n        let _ = game.audio;", out)
+        self.assertIn("unknown_macro!(game.levels);", out)
+        # Re-scanning after rewrite produces zero new edits.
+        edits2, ambig2 = gfo.scan_file(
+            out,
+            "crates/sunrise-client/src/game/demo.rs",
+            self.WRAP_OWNERS,
+            idx,
+            wrappers=self.WRAPPERS,
+        )
+        self.assertEqual(edits2, [])
+        self.assertEqual([a.field for a in ambig2], ["levels"])
+
+    def test_array_param_closure_and_struct_field_closure_rewrite(self):
+        src = (
+            "struct Fixture {\n"
+            "    seed: fn(&mut Game<'_>),\n"
+            "}\n"
+            "fn demo(g: &mut Game<'_>) {\n"
+            "    let f = |game: &mut Game<'_>, pos: [f64; 3]| {\n"
+            "        let _ = game.audio;\n"
+            "        let _ = pos;\n"
+            "    };\n"
+            "    let _ = Fixture {\n"
+            "        seed: |game| {\n"
+            "            let _ = game.levels;\n"
+            "        },\n"
+            "    };\n"
+            "    f(g, [0.0; 3]);\n"
+            "}\n"
+        )
+        idx = gfo.WorkspaceIndex()
+        edits, ambig = gfo.scan_file(
+            src,
+            "crates/sunrise-client/src/game/demo.rs",
+            self.WRAP_OWNERS,
+            idx,
+            wrappers=self.WRAPPERS,
+        )
+        out = gfo.apply_edits(src, edits)
+        self.assertEqual(ambig, [])
+        self.assertEqual(len(edits), 2)
+        self.assertIn("let _ = game.audio.0;", out)
+        self.assertIn("let _ = game.levels.0;", out)
+
+    def test_cli_wrapper_fix_check_and_drift_rejection(self):
+        import io
+        from contextlib import redirect_stderr, redirect_stdout
+
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            table = td_path / "owners.tsv"
+            table.write_text(
+                "field\ttype\towner\treason\tdeclaration_index\twrapper\n"
+                "screen\ti32\tclient\tclient-only\t0\t-\n"
+                "hoppers\ti32\tserver\tserver-only\t1\t-\n"
+                "audio\tAudio\tgame\tdrop-order (client)\t2\tclient_only\n"
+                "levels\tLevels\tgame\tdrop-order (server)\t3\tserver_shared\n"
+                "shared\ti32\tgame\tshared\t4\t-\n",
+                encoding="utf-8",
+            )
+            src_dir = td_path / "crates/sunrise-client/src"
+            game_dir = src_dir / "game"
+            game_dir.mkdir(parents=True)
+            game_rs = src_dir / "game.rs"
+            game_rs.write_text(
+                "mod client_side;\n"
+                "mod server_side;\n"
+                "pub struct Game<'a> {\n"
+                "    audio: Audio,\n"
+                "    levels: Levels,\n"
+                "    shared: i32,\n"
+                "    server: server_side::ServerState,\n"
+                "    client: client_side::ClientState,\n"
+                "}\n"
+                "impl<'a> Game<'a> {\n"
+                "    fn finish_construct(audio: Audio, lv: Levels, shared: i32) -> Self {\n"
+                "        Game {\n"
+                "            audio,\n"
+                "            levels: lv,\n"
+                "            shared,\n"
+                "            server: server_side::ServerState::new(),\n"
+                "            client: client_side::ClientState::new(),\n"
+                "        }\n"
+                "    }\n"
+                "    fn use_it(&mut self) {\n"
+                "        let _ = self.audio;\n"
+                "        let _ = self.levels;\n"
+                "    }\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            client_rs = game_dir / "client_side.rs"
+            client_rs.write_text("pub(in crate::game) struct ClientState {}\n", encoding="utf-8")
+            server_rs = game_dir / "server_side.rs"
+            server_rs.write_text("pub(in crate::game) struct ServerState {}\n", encoding="utf-8")
+
+            old_root = gfo.ROOT
+            try:
+                gfo.ROOT = td_path
+                out_buf, err_buf = io.StringIO(), io.StringIO()
+                with redirect_stdout(out_buf), redirect_stderr(err_buf):
+                    rc_fix = gfo.main(["--fix", "--no-fmt", "--table", str(table), str(game_rs), str(game_dir)])
+                self.assertEqual(rc_fix, 0, err_buf.getvalue())
+
+                g_txt = game_rs.read_text(encoding="utf-8")
+                self.assertIn("audio: client_side::ClientOnly<Audio>,", g_txt)
+                self.assertIn("levels: server_side::ServerShared<Levels>,", g_txt)
+                self.assertIn("audio: client_side::ClientOnly::new(audio),", g_txt)
+                self.assertIn("levels: server_side::ServerShared::new(lv),", g_txt)
+                self.assertIn("let _ = self.audio.0;", g_txt)
+                self.assertIn("let _ = self.levels.0;", g_txt)
+                self.assertIn("struct ClientOnly<T>(pub(in crate::game::client_side) T);", client_rs.read_text(encoding="utf-8"))
+                self.assertIn("struct ServerShared<T>(pub(in crate::game) T);", server_rs.read_text(encoding="utf-8"))
+
+                out_buf, err_buf = io.StringIO(), io.StringIO()
+                with redirect_stdout(out_buf), redirect_stderr(err_buf):
+                    rc_check = gfo.main(["--check", "--table", str(table), str(game_rs), str(game_dir)])
+                self.assertEqual(rc_check, 0, err_buf.getvalue())
+
+                # Widening `ClientOnly` -> `ClientShared` in `game.rs` without updating the table fails `--check`.
+                drifted = g_txt.replace("client_side::ClientOnly<Audio>", "client_side::ClientShared<Audio>")
+                game_rs.write_text(drifted, encoding="utf-8")
+                out_buf, err_buf = io.StringIO(), io.StringIO()
+                with redirect_stdout(out_buf), redirect_stderr(err_buf):
+                    rc_drift = gfo.main(["--check", "--table", str(table), str(game_rs), str(game_dir)])
+                self.assertEqual(rc_drift, 1)
+                self.assertIn("wrapper is `client_shared`, expected `client_only`", err_buf.getvalue())
+
+                # Restore `game.rs` and verify adding `#[derive(Default)]` or `impl Deref` fails `--check`.
+                game_rs.write_text(g_txt, encoding="utf-8")
+                c_orig = client_rs.read_text(encoding="utf-8")
+                client_rs.write_text(
+                    c_orig.replace("#[repr(transparent)]", "#[derive(Default)]\n#[repr(transparent)]", 1),
+                    encoding="utf-8",
+                )
+                out_buf, err_buf = io.StringIO(), io.StringIO()
+                with redirect_stdout(out_buf), redirect_stderr(err_buf):
+                    rc_derive = gfo.main(["--check", "--table", str(table), str(game_rs), str(game_dir)])
+                self.assertEqual(rc_derive, 1)
+                self.assertIn("must not carry `#[derive(...)]`", err_buf.getvalue())
+
+                client_rs.write_text(
+                    c_orig + "\nimpl<T> std::ops::Deref for ClientOnly<T> { type Target = T; fn deref(&self) -> &T { &self.0 } }\n",
+                    encoding="utf-8",
+                )
+                out_buf, err_buf = io.StringIO(), io.StringIO()
+                with redirect_stdout(out_buf), redirect_stderr(err_buf):
+                    rc_deref = gfo.main(["--check", "--table", str(table), str(game_rs), str(game_dir)])
+                self.assertEqual(rc_deref, 1)
+                self.assertIn("must not implement `Deref`", err_buf.getvalue())
+            finally:
+                gfo.ROOT = old_root
+
+
 if __name__ == "__main__":
     unittest.main()

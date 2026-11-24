@@ -24,7 +24,7 @@ fn piglin_admire_preserves_components_on_death_and_finish() {
                 g.res.item_defaults(),
             )
             .unwrap();
-            g.server_loot.set(Some(std::sync::Arc::new(loot)));
+            g.server_loot.0.set(Some(std::sync::Arc::new(loot)));
             g.set_allow_commands(true);
             g.world.chunks.insert(
                 (0, 0),
@@ -77,7 +77,7 @@ fn piglin_admire_hit_keeps_baby_gold_and_cancels_adult_barter() {
                 g.res.item_defaults(),
             )
             .unwrap();
-            g.server_loot.set(Some(std::sync::Arc::new(loot)));
+            g.server_loot.0.set(Some(std::sync::Arc::new(loot)));
             g.set_allow_commands(true);
             g.world.chunks.insert(
                 (0, 0),

@@ -21,7 +21,7 @@ impl Game<'_> {
         };
         if (180..=200).contains(&t) {
             let o = off();
-            self.particles.add(
+            self.particles.0.add(
                 &ParticleOptions::simple(ParticleType::ExplosionEmitter),
                 [p.x + o[0], p.y + 2.0 + o[1], p.z + o[2]],
                 [0.0; 3],

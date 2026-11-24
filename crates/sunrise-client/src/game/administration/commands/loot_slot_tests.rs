@@ -59,7 +59,7 @@ fn server_loot_without_world_tables_owns_its_resource_root() {
             ).unwrap();
             game.options.resources = root.path().to_path_buf();
             game.load_server_loot();
-            let loot = game.server_loot.get().unwrap();
+            let loot = game.server_loot.0.get().unwrap();
             let drops = loot.roll_split(
                 "snapshot:reward",
                 &mut sunrise_core::random::LegacyRandom::new(0),

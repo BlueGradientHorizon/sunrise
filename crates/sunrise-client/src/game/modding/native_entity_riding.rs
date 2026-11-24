@@ -948,7 +948,7 @@ mod tests {
                     if vehicle_kind == "minecraft:armor_stand" {
                         game.armor_stands.push(ArmorStand::new(id, Vec3::ZERO, 0.0));
                     } else {
-                        game.others.push(super::super::commands::OtherEntity {
+                        game.others.0.push(super::super::commands::OtherEntity {
                             size_answer: None,
                             attachment_lifetime: Default::default(),
                             knot_check: None,
@@ -1641,7 +1641,7 @@ mod tests {
                 let vehicle = add_mob(game, 161, "minecraft:camel", at);
                 let holder = add_mob(game, 162, "minecraft:sheep", at);
                 assert!(cow.leash_to(game, holder));
-                game.audio.capture = Some(Vec::new());
+                game.audio.0.capture = Some(Vec::new());
 
                 // A refused mount must not consume the leash.
                 assert!(cow.start_riding(game, cow, true).is_err());
@@ -1661,7 +1661,7 @@ mod tests {
                 let seated = game.mob_object(160).unwrap().position;
                 take_one_lead(game, seated);
                 assert_eq!(*unleashed.lock().unwrap(), 1);
-                assert!(game.audio.capture.as_ref().unwrap().is_empty());
+                assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
             });
         });
     }
@@ -1684,7 +1684,7 @@ mod tests {
                 let vehicle = add_mob(game, 161, "minecraft:camel", at);
                 let holder = add_mob(game, 162, "minecraft:sheep", at);
                 assert!(cow.leash_to(game, holder));
-                game.audio.capture = Some(Vec::new());
+                game.audio.0.capture = Some(Vec::new());
 
                 game.mob_object_mut(160).unwrap().extra.boarding_cooldown = 1;
                 game.handle_mob_events(vec![MobEvent::StartRiding {
@@ -1713,7 +1713,7 @@ mod tests {
                 );
                 take_one_lead(game, at);
                 assert_eq!(*unleashed.lock().unwrap(), 1);
-                assert!(game.audio.capture.as_ref().unwrap().is_empty());
+                assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
             });
         });
     }
@@ -1946,7 +1946,7 @@ mod tests {
             assert_eq!(cow.dismount_location(game, LivingRef::new(player)), None);
             // A marker has a zero-sized box. Entity's default dismount answer is
             // still its position with the box's top as Y, even without a current ride.
-            game.others.push(super::super::commands::OtherEntity {
+            game.others.0.push(super::super::commands::OtherEntity {
                 size_answer: None,
                 attachment_lifetime: Default::default(),
                 knot_check: None,

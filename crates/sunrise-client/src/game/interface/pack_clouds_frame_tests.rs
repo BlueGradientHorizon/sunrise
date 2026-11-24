@@ -67,7 +67,7 @@ const CLOUDS: [(&str, &str); 2] = [
 
 /// The frame's pixels, RGBA, and its width.
 fn drawn_frame(game: &mut super::Game<'_>) -> (Vec<u8>, usize) {
-    game.renderer.as_mut().unwrap().screenshot = Some(ScreenshotRequest {
+    game.renderer.0.as_mut().unwrap().screenshot = Some(ScreenshotRequest {
         path: "unused.png".into(),
         size: None,
         scaled: false,
@@ -75,7 +75,7 @@ fn drawn_frame(game: &mut super::Game<'_>) -> (Vec<u8>, usize) {
     });
     game.render_with(|renderer, frame| renderer.render(frame))
         .unwrap();
-    let result = game.renderer.as_mut().unwrap().screenshot_result.take();
+    let result = game.renderer.0.as_mut().unwrap().screenshot_result.take();
     let mut pending = result.unwrap().unwrap();
     let image = pending.image_mut();
     (std::mem::take(&mut image.rgba), image.width as usize)
@@ -113,7 +113,7 @@ fn a_packs_clouds_draw_with_and_without_improved_transparency() {
         game.gui = crate::game::UiResources::load(&pack(&[]), std::path::Path::new("")).unwrap();
         assert!(game.gui.atlas.clouds_shader.is_none(), "no core/clouds");
         let _event_loop = frame_scene(game);
-        let renderer = game.renderer.as_mut().unwrap();
+        let renderer = game.renderer.0.as_mut().unwrap();
         renderer.improved_transparency = improved;
         if improved
             && !renderer
@@ -150,6 +150,7 @@ fn a_packs_clouds_draw_with_and_without_improved_transparency() {
             .clouds_shader;
         let programs = loaded.as_deref().expect("the pack's clouds");
         game.renderer
+            .0
             .as_mut()
             .unwrap()
             .set_clouds_shader(Some(programs))
@@ -173,6 +174,7 @@ fn a_packs_clouds_draw_with_and_without_improved_transparency() {
             .unwrap();
         let error = game
             .renderer
+            .0
             .as_mut()
             .unwrap()
             .set_clouds_shader(Some(&refused))
@@ -196,6 +198,7 @@ fn a_packs_clouds_draw_with_and_without_improved_transparency() {
         assert!(drawn_frame(game).0 == off.0, "no clouds drawn while off");
 
         game.renderer
+            .0
             .as_mut()
             .unwrap()
             .set_clouds_shader(None)

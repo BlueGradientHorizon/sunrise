@@ -23,17 +23,17 @@ impl Game<'_> {
 
     pub(super) fn defer_world_entry(&mut self, entry: PendingWorldEntry) -> Result<bool> {
         self.poll_world_rest()?;
-        if self.rest_loader.is_none() {
+        if self.rest_loader.0.is_none() {
             return Ok(false);
         }
         self.perf.world_opening();
-        if self.title.is_none() {
+        if self.title.0.is_none() {
             let title = self
                 .new_title(std::env::current_dir()?.join("saves"))
                 .with_user(|| self.options.player_name());
             self.show_title(title);
         }
-        self.pending_entry = Some(entry);
+        self.pending_entry.0 = Some(entry);
         log::info!("Sunrise: world entry waiting for world resources");
         Ok(true)
     }
@@ -42,10 +42,10 @@ impl Game<'_> {
         self.poll_integrated_start()?;
         self.poll_world_rest()?;
         self.poll_world_creation();
-        if self.rest_loader.is_some() {
+        if self.rest_loader.0.is_some() {
             return Ok(());
         }
-        let on_world_screens = self.title.as_ref().is_some_and(|title| {
+        let on_world_screens = self.title.0.as_ref().is_some_and(|title| {
             !matches!(
                 title.mode,
                 sunrise_client::title::Mode::Main | sunrise_client::title::Mode::Multiplayer(_)
@@ -60,7 +60,7 @@ impl Game<'_> {
         if std::mem::take(&mut self.client.pending_pack_reload) {
             self.reload_packs();
         }
-        match self.pending_entry.take() {
+        match self.pending_entry.0.take() {
             Some(PendingWorldEntry::Local {
                 folder,
                 name,
@@ -102,13 +102,13 @@ impl Game<'_> {
     /// data the create screen describes, on a worker, then open the screen
     /// (`title.preparing`).
     pub(super) fn poll_world_creation(&mut self) {
-        let Some(title) = self.title.as_ref() else {
+        let Some(title) = self.title.0.as_ref() else {
             return;
         };
         if !title.preparing() {
             return;
         }
-        if self.creation_job.is_none() {
+        if self.creation_job.0.is_none() {
             let dir = self.options.resources.join("worldgen");
             let registry = self.pack.assets.registry;
             // The chosen packs' worldgen over the game's own:
@@ -140,10 +140,10 @@ impl Game<'_> {
                     .map_err(|e| e.to_string())
                 });
             match job {
-                Ok(job) => self.creation_job = Some(job),
+                Ok(job) => self.creation_job.0 = Some(job),
                 Err(error) => {
                     log::warn!("Sunrise: world creation worker could not start: {error}");
-                    if let Some(title) = self.title.as_mut() {
+                    if let Some(title) = self.title.0.as_mut() {
                         title.finish_preparing();
                         title.failed(format!(
                             "{}: {error}",
@@ -156,13 +156,14 @@ impl Game<'_> {
         }
         if !self
             .creation_job
+            .0
             .as_ref()
             .is_none_or(std::thread::JoinHandle::is_finished)
         {
             return;
         }
-        let outcome = self.creation_job.take().and_then(|job| job.join().ok());
-        if let Some(title) = self.title.as_mut() {
+        let outcome = self.creation_job.0.take().and_then(|job| job.join().ok());
+        if let Some(title) = self.title.0.as_mut() {
             match outcome {
                 Some(Ok(())) => title.finish_preparing(),
                 // `applyNewPackConfig`'s failure: back out of the read with
@@ -189,10 +190,11 @@ impl Game<'_> {
     }
 
     pub(super) fn poll_world_rest(&mut self) -> Result<()> {
-        if let Some(loader) = &self.rest_loader
+        if let Some(loader) = &self.rest_loader.0
             && loader.ready()?
         {
             self.rest_loader
+                .0
                 .take()
                 .ok_or("missing world loader")?
                 .finish()?;
@@ -211,16 +213,17 @@ impl Game<'_> {
     pub(super) fn level_suffocation(
         &self,
     ) -> &sunrise_world::suffocation::SuffocationRegistry<'static> {
-        level_suffocation_of(&self.world_tables, &self.res)
+        level_suffocation_of(&self.world_tables.0, &self.res)
     }
     pub(super) fn recipes(&self) -> &Recipes {
-        match &self.world_tables {
+        match &self.world_tables.0 {
             Some(t) => &t.recipes,
             None => self.synced_recipes().unwrap_or_else(|| self.res.recipes()),
         }
     }
     pub(in crate::game) fn active_providers(&self) -> &Providers {
         self.world_tables
+            .0
             .as_ref()
             .map_or_else(|| self.res.providers(), |t| &t.providers)
     }
@@ -228,12 +231,13 @@ impl Game<'_> {
     /// stonecutter buttons by the list the server sent, else the world's own.
     pub(super) fn station_recipes(&self) -> &sunrise_client::stations::StationRecipes {
         self.recipe_ui
+            .0
             .server_stations
             .as_ref()
             .unwrap_or(&self.stations().recipes)
     }
     pub(super) fn stations(&self) -> &sunrise_client::stations::StationData {
-        match &self.world_tables {
+        match &self.world_tables.0 {
             Some(t) => &t.stations,
             None => self.res.stations(),
         }
@@ -253,7 +257,7 @@ impl Game<'_> {
         self.pack.context_with(self.mesh_biomes().clone())
     }
     pub(super) fn pack_files(&self) -> sunrise_world::loot::PackOverlay<'_> {
-        pack_files(&self.world_tables)
+        pack_files(&self.world_tables.0)
     }
     /// Load the world's data packs' content tables (`None`: the world has no
     /// packs, and `Resources.rest` stays in use). This re-reads the tables,
@@ -331,7 +335,7 @@ impl Game<'_> {
             priority_layers: &priority_layers,
         };
         let packed_registry_definitions =
-            if let Some(tables) = self.world_tables.as_ref().filter(|_| reload) {
+            if let Some(tables) = self.world_tables.0.as_ref().filter(|_| reload) {
                 Ok(tables.packed_registries.clone())
             } else {
                 // Admit the frozen pack definitions with this candidate's bound
@@ -627,7 +631,7 @@ impl Game<'_> {
         &mut self,
         staged: super::condition_reload_state::StagedWorldTables,
     ) -> Result<()> {
-        self.world_tables = staged.tables;
+        self.world_tables.0 = staged.tables;
         self.health_resources = staged.health;
         self.mods.datapack_registries = staged.datapack_registries.map(Arc::new);
         self.adv.tree = staged.advancements;
@@ -635,6 +639,7 @@ impl Game<'_> {
         self.load_server_loot();
         self.server.data_map_registries = self
             .world_tables
+            .0
             .as_ref()
             .map_or_else(Vec::new, |t| t.data_maps.registries());
         self.install_block_maps();
@@ -694,11 +699,12 @@ impl Game<'_> {
         }
         self.mods.datapack_registries = datapack_registries.map(Arc::new);
         self.health_resources = health;
-        self.world_tables = tables;
+        self.world_tables.0 = tables;
         // Publish the paired item and world evaluators before any callbacks.
         self.load_server_loot();
         self.server.data_map_registries = self
             .world_tables
+            .0
             .as_ref()
             .map_or_else(Vec::new, |t| t.data_maps.registries());
         self.install_block_maps();
@@ -709,7 +715,7 @@ impl Game<'_> {
         self.share_mob_maps();
         self.share_biome_keys();
         self.world.pois.clear();
-        for world in self.levels.parked_worlds() {
+        for world in self.levels.0.parked_worlds() {
             world.pois.clear();
         }
         sunrise_client::datapack_net::serve(self.mods.datapack_registries.clone());
@@ -747,12 +753,12 @@ impl Game<'_> {
     }
 
     pub(super) fn join_world_rest(&mut self) -> Result<()> {
-        if self.rest_loader.is_some() {
+        if self.rest_loader.0.is_some() {
             let waited = Instant::now();
             log::info!("Sunrise: waiting for world resources");
-            while self.rest_loader.is_some() {
+            while self.rest_loader.0.is_some() {
                 self.poll_world_rest()?;
-                if self.rest_loader.is_some() {
+                if self.rest_loader.0.is_some() {
                     std::thread::sleep(Duration::from_millis(10));
                 }
             }
@@ -774,18 +780,18 @@ impl Game<'_> {
     }
     /// Build and publish one server snapshot for this world load or reload.
     pub(super) fn load_server_loot(&mut self) {
-        if let Some(tables) = &self.world_tables {
+        if let Some(tables) = &self.world_tables.0 {
             self.server_items = Some(tables.items.clone());
             self.copy_loot_enchantment_answers(&tables.loot);
-            self.server_loot.set(Some(tables.loot.clone()));
+            self.server_loot.0.set(Some(tables.loot.clone()));
             global_loot_modifiers::bind_retained(
-                &self.reload_resources,
+                &self.reload_resources.0,
                 &tables.loot_modifier_manager,
             );
             return;
         }
         self.server_items = None;
-        let overlay = pack_files(&self.world_tables);
+        let overlay = pack_files(&self.world_tables.0);
         let loot = match sunrise_world::loot::LootData::load_with_bound_tags(
             &self.options.resources,
             &overlay,
@@ -802,13 +808,13 @@ impl Game<'_> {
                         Ok(context) => context,
                         Err(error) => {
                             log::warn!("Sunrise: server loot inventory unavailable: {error}");
-                            self.server_loot.set(None);
+                            self.server_loot.0.set(None);
                             return;
                         }
                     };
                     if let Err(error) = loot.apply_native_table_loads(&context) {
                         log::warn!("Sunrise: native loot tables refused: {error}");
-                        self.server_loot.set(None);
+                        self.server_loot.0.set(None);
                         return;
                     }
                 }
@@ -829,7 +835,7 @@ impl Game<'_> {
         if let Some(loot) = &loot {
             self.copy_loot_enchantment_answers(loot);
         }
-        self.server_loot.set(loot);
+        self.server_loot.0.set(loot);
     }
 
     pub(super) fn prepare_parts(&self, items: &Items) -> Result<PreparedParts> {

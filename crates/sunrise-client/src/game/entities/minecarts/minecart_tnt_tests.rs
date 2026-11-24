@@ -36,14 +36,14 @@ fn flint_and_steel_passes_on_a_tnt_cart_without_lighting_it() {
     };
     tnt_cart(&mut game, 42, false);
     game.inventory[game.selected] = Some(ItemStack::new("minecraft:flint_and_steel", 1));
-    game.audio.capture = Some(Vec::new());
+    game.audio.0.capture = Some(Vec::new());
     let used = game.interact_cart(Some(InteractTarget {
         id: 42,
         location: [0.0, 0.0, 0.0],
     }));
     assert!(!used, "Entity.interact passes to the held item");
     assert_eq!(game.carts[0].fuse, -1, "flint and steel lit the cart");
-    let sounds = game.audio.capture.take().unwrap();
+    let sounds = game.audio.0.capture.take().unwrap();
     assert!(sounds.is_empty(), "{sounds:?}");
 }
 
@@ -55,7 +55,7 @@ fn a_silent_tnt_cart_primes_without_its_sound() {
     };
     // Silent: the fuse is lit, the entity event goes out, no sound is played.
     tnt_cart(&mut game, 42, true);
-    game.audio.capture = Some(Vec::new());
+    game.audio.0.capture = Some(Vec::new());
     let mut silent = game.carts[0].clone();
     game.activate_cart(&mut silent, true);
     assert_eq!(silent.fuse, 80, "a silent cart still primes");
@@ -67,17 +67,17 @@ fn a_silent_tnt_cart_primes_without_its_sound() {
         "a silent cart still broadcasts EntityEvent.TNT_PRIME: {:?}",
         game.server.lan_entity_events
     );
-    let sounds = game.audio.capture.take().unwrap();
+    let sounds = game.audio.0.capture.take().unwrap();
     assert!(sounds.is_empty(), "a silent cart hissed: {sounds:?}");
 
     // Not silent: exactly one `entity.tnt.primed` at the cart, on the blocks
     // source (`SoundSource.BLOCKS` ordinal 4), volume and pitch 1.
     tnt_cart(&mut game, 43, false);
-    game.audio.capture = Some(Vec::new());
+    game.audio.0.capture = Some(Vec::new());
     let mut normal = game.carts[0].clone();
     game.activate_cart(&mut normal, true);
     assert_eq!(normal.fuse, 80);
-    let sounds = game.audio.capture.take().unwrap();
+    let sounds = game.audio.0.capture.take().unwrap();
     assert_eq!(sounds.len(), 1, "{sounds:?}");
     let sound = &sounds[0];
     assert_eq!(sound.event, "minecraft:entity.tnt.primed");

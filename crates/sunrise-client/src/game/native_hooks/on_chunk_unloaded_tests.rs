@@ -169,7 +169,7 @@ fn each_mod_block_entity_of_an_unloading_chunk_is_told_once() {
         // Closing the world, its chunks with it, tells nothing.
         game.begin_closing_save(false).unwrap();
         let deadline = Instant::now() + Duration::from_secs(120);
-        while game.pending_save.is_some() {
+        while game.pending_save.0.is_some() {
             assert!(Instant::now() < deadline, "the world did not close");
             game.poll_closing_save().unwrap();
         }

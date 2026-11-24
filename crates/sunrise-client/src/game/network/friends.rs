@@ -62,7 +62,7 @@ impl Game<'_> {
         }
         // Single player on its server thread shares that server, as Open to
         // LAN publishes it; another server can't be shared.
-        if self.title.is_some() || (self.remote.is_some() && self.integrated.is_none()) {
+        if self.title.0.is_some() || (self.remote.is_some() && self.integrated.is_none()) {
             return Err("open a singleplayer world first".into());
         }
         let opened_lan = self.lan_port().is_none();
@@ -193,7 +193,7 @@ impl Game<'_> {
             return;
         };
         use sunrise_client::clipboard::Clipboard;
-        self.clipboard.set(&code);
+        self.clipboard.0.set(&code);
         if let Some(s) = self.friends.as_mut() {
             s.copied = Some(Instant::now());
         }
@@ -223,7 +223,7 @@ impl Game<'_> {
         else {
             return false;
         };
-        self.audio.play_button_click();
+        self.audio.0.play_button_click();
         match action {
             Action::Share => {
                 if let Err(e) = self.friends_start() {

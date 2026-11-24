@@ -58,8 +58,8 @@ impl Game<'_> {
         let settings = &self.settings.controller;
         settings.enabled
             && settings.guide_detail != GuideDetail::Off
-            && self.pad.in_use
-            && !self.pad.keyboard_took_over
+            && self.pad.0.in_use
+            && !self.pad.0.keyboard_took_over
             // Hidden once the radial menu shows, not on the opener's press: a quick tap draws
             // nothing, so the guide doesn't blink.
             && !self.pad_radial_shown()
@@ -67,8 +67,8 @@ impl Game<'_> {
             && !self.screen_over_playing()
             && self.sleeping.is_none()
             && self.player.is_some()
-            && !self.debug_entries.any_enabled(
-                &self.registered_debug_entries,
+            && !self.debug_entries.0.any_enabled(
+                &self.registered_debug_entries.0,
                 self.client.debug,
                 self.reduced_debug_info(),
             )
@@ -81,11 +81,11 @@ impl Game<'_> {
             return;
         }
         // Once a tick: the hit tests and the dry click don't change faster than that.
-        let facts = match self.pad.guide_facts {
+        let facts = match self.pad.0.guide_facts {
             Some((tick, facts)) if tick == self.ticks => facts,
             _ => {
                 let facts = self.pad_guide_facts();
-                self.pad.guide_facts = Some((self.ticks, facts));
+                self.pad.0.guide_facts = Some((self.ticks, facts));
                 facts
             }
         };
@@ -144,10 +144,10 @@ impl Game<'_> {
         let settings = &self.settings.controller;
         if !settings.enabled
             || settings.guide_detail == GuideDetail::Off
-            || !self.pad.in_use
-            || self.pad.keyboard_took_over
+            || !self.pad.0.in_use
+            || self.pad.0.keyboard_took_over
             || self.prompt_open()
-            || self.title.is_some()
+            || self.title.0.is_some()
             || self.pad_keyboard_captures()
         {
             return;
@@ -263,7 +263,7 @@ impl Game<'_> {
             let plate = Plate::Backing { alpha };
             hint::draw_plated(batch, atlas, &line, &look, plate, [x, y, shown, h]);
             widest = widest.max(rect[2]);
-            self.pad.guide_shown.push(Shown {
+            self.pad.0.guide_shown.push(Shown {
                 left,
                 row: *row,
                 rect,
@@ -277,6 +277,7 @@ impl Game<'_> {
         let pad = &self.settings.controller;
         let column = |left: bool| -> Vec<Value> {
             self.pad
+                .0
                 .guide_shown
                 .iter()
                 .filter(|s| s.left == left)

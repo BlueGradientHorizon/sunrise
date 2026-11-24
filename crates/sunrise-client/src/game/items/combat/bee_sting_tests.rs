@@ -36,6 +36,7 @@ fn sting(game: &mut Game<'_>, bee_id: u32, who: Who) {
 
 fn sting_sounds(game: &mut Game<'_>) -> Vec<(f32, [f64; 3])> {
     game.audio
+        .0
         .capture
         .take()
         .unwrap_or_default()
@@ -53,7 +54,7 @@ fn a_refused_sting_leaves_the_bee_alone() {
     let mut game = crate::game::game_tests::tests::server_game(&mut resources);
     game.world.health_rules.difficulty = Difficulty::Normal;
     // `Invulnerable:1b`: `hurtServer` reports no hurt.
-    game.audio.capture = Some(Vec::new());
+    game.audio.0.capture = Some(Vec::new());
     let bee = spawn(&mut game, 41, "minecraft:bee", Vec3::new(1.5, 64.0, 0.5));
     let pig = spawn(&mut game, 42, "minecraft:pig", Vec3::new(0.5, 64.0, 0.5));
     game.mobs
@@ -72,7 +73,7 @@ fn a_refused_sting_leaves_the_bee_alone() {
     assert!(sting_sounds(&mut game).is_empty());
 
     game.mobs.clear();
-    game.audio.capture = Some(Vec::new());
+    game.audio.0.capture = Some(Vec::new());
     game.creative = true;
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
     game.player.as_mut().unwrap().invulnerable = true;
@@ -83,7 +84,7 @@ fn a_refused_sting_leaves_the_bee_alone() {
     assert!(sting_sounds(&mut game).is_empty());
 
     game.mobs.clear();
-    game.audio.capture = Some(Vec::new());
+    game.audio.0.capture = Some(Vec::new());
     game.creative = false;
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
     game.yaw = 0.0;
@@ -107,7 +108,7 @@ fn a_landed_sting_sets_the_stinger_and_poisons_on_normal_and_hard() {
     for (difficulty, poison_ticks) in [(Difficulty::Normal, 200), (Difficulty::Hard, 360)] {
         game.mobs.clear();
         game.world.health_rules.difficulty = difficulty;
-        game.audio.capture = Some(Vec::new());
+        game.audio.0.capture = Some(Vec::new());
         let bee = spawn(&mut game, 41, "minecraft:bee", Vec3::new(1.5, 64.0, 0.5));
         let pig = spawn(&mut game, 42, "minecraft:pig", Vec3::new(0.5, 64.0, 0.5));
         let bee_mob = game.mobs.iter_mut().find(|m| m.id == bee).unwrap();

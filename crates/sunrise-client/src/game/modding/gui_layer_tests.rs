@@ -287,7 +287,7 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
             .into(),
         );
         mods::register_gui_layers(ExecutionRole::Client);
-        game.title = None;
+        game.title.0 = None;
         game.client.screen = super::Screen::Playing;
         game.ui.hide_gui = false;
         game.set_mode_id(0);
@@ -355,7 +355,7 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
             for &(cancel_health, cancel_air) in vetoes {
                 game.client.health_hud.last_health = 17;
                 game.client.health_hud.last_bubble_pop_sound = 3;
-                game.audio.heard.remove(BUBBLE_POP);
+                game.audio.0.heard.remove(BUBBLE_POP);
                 *trace.lock().unwrap() = HealthTrace {
                     cancel_health,
                     cancel_air,
@@ -422,7 +422,10 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
                     }
                 );
                 // The sound is local-only; `heard` counts it even with the device disabled.
-                assert_eq!(game.audio.heard.get(BUBBLE_POP).copied(), pops.then_some(1));
+                assert_eq!(
+                    game.audio.0.heard.get(BUBBLE_POP).copied(),
+                    pops.then_some(1)
+                );
             }
         }
         // The last frame hid the vanilla HUD. The global veto still applies to its slots.
@@ -651,7 +654,7 @@ fn a_gui_wrapper_panic_is_contained_but_delegated_engine_paint_is_fatal() {
 }
 
 fn enter_test_world(game: &mut Game<'_>) {
-    game.title = None;
+    game.title.0 = None;
     game.set_screen(Screen::Playing);
     game.player = Some(
         sunrise_client::motion::PlayerMotion::new(
@@ -1179,7 +1182,7 @@ fn f1_hides_vanilla_paint_without_skipping_the_hud_walk() {
             mods::register_gui_layers(ExecutionRole::Client);
             let size = [640, 480];
             let screen_events = ["screen pre", "screen background", "screen post"];
-            game.title = Some(game.new_title(game.save.root.clone()));
+            game.title.0 = Some(game.new_title(game.save.0.root.clone()));
             game.open_options(true);
             game.hud_layers(size);
             assert_eq!(take(), screen_events, "title Options has no HUD walk");
@@ -1343,7 +1346,7 @@ fn f1_subtitles_paint_in_the_container_background_without_redispatch() {
                 let size = [640, 480];
                 game.hud(size); // Start listening before the sound plays.
                 assert_eq!(take(), ["subtitle pre", "subtitle post"]);
-                game.audio.engine.notifications.push(Notification {
+                game.audio.0.engine.notifications.push(Notification {
                     identifier: "minecraft:entity.player.levelup".into(),
                     subtitle: Some("subtitles.entity.player.levelup".into()),
                     position: game.client.view.position,

@@ -31,7 +31,7 @@ impl Game<'_> {
             && self.station.is_none()
             && self.craft_size == 2
             && !self.mount_active()
-            && self.mod_screen.is_none()
+            && self.mod_screen.0.is_none()
             && self.remote_menu_type().is_none()
     }
 
@@ -55,7 +55,7 @@ impl Game<'_> {
                 self.set_screen(Screen::Creative);
                 if self.client.screen == Screen::Creative {
                     self.refresh_creative_tabs();
-                    self.creative_screen.reopen();
+                    self.creative_screen.0.reopen();
                     self.refresh_saved_hotbars();
                 }
             }

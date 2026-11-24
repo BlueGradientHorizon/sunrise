@@ -60,11 +60,11 @@ impl Game<'_> {
     pub(super) fn pauses_game(&self) -> bool {
         self.has_singleplayer_server()
             && !self.is_published()
-            && self.title.is_none()
+            && self.title.0.is_none()
             && top_screen_pauses(
                 // A dialog (and its warning or waiting screen) is the
                 // screen Minecraft set, over whatever was open.
-                self.dialog_open().then(|| self.dialogs.pauses_world()),
+                self.dialog_open().then(|| self.dialogs.0.pauses_world()),
                 self.client.book.as_ref().map(|book| book.pauses_world()),
                 self.client.screen.is_pause_screen(),
                 self.win_screen_pauses(),
@@ -82,8 +82,8 @@ impl Game<'_> {
         self.dialog_open()
             || self.client.code_of_conduct.is_some()
             || self.client.link_prompt.is_some()
-            || self.command_prompt.is_some()
-            || self.server_packs.prompt.is_some()
+            || self.command_prompt.0.is_some()
+            || self.server_packs.0.prompt.is_some()
     }
     /// `Minecraft.pauseIfInactive`: a window without focus for more than 500 ms
     /// pauses the game. An open screen (books, signs, the pack prompt, a server
@@ -102,7 +102,7 @@ impl Game<'_> {
             && !self.pad_keeps_playing_unfocused()
             && self.client.book.is_none()
             && self.client.sign_edit.is_none()
-            && self.server_packs.prompt.is_none()
+            && self.server_packs.0.prompt.is_none()
             && !self.dialog_open()
         {
             self.client.pause_focus = None;
@@ -160,11 +160,11 @@ impl Game<'_> {
         // are screens over the world that keep the pointer, as does a screen a
         // mod's `screen_opening` answer kept or opened in place of none.
         if capture
-            && ((self.screen_state.answered.get() && self.client.screen != Screen::Playing)
+            && ((self.screen_state.0.answered.get() && self.client.screen != Screen::Playing)
                 || (!self.client.focused && !self.client.unclaimed_window && !self.scripted_run())
-                || self.server_packs.prompt.is_some()
+                || self.server_packs.0.prompt.is_some()
                 || self.dialog_open()
-                || self.command_prompt.is_some())
+                || self.command_prompt.0.is_some())
         {
             return;
         }
@@ -185,8 +185,8 @@ impl Game<'_> {
             // InputQuirks.RESTORE_KEY_STATE_AFTER_MOUSE_GRAB is off (macOS).
             self.restore_held_keys();
         }
-        let Some(window) = &self.window else { return };
-        let size = self.renderer.as_ref().map_or_else(
+        let Some(window) = &self.window.0 else { return };
+        let size = self.renderer.0.as_ref().map_or_else(
             || window.inner_size().into(),
             |r| [r.config.width, r.config.height],
         );
@@ -284,7 +284,7 @@ impl Game<'_> {
         // A regrab owed since an agent's `pad focus false` would take the pointer as the focus
         // catches up, and the press would then attack.
         self.client.regrab_on_refocus = false;
-        let Some(window) = &self.window else { return };
+        let Some(window) = &self.window.0 else { return };
         let (id, focused) = (window.id(), window.has_focus());
         if focused != self.client.focused {
             self.handle_window_event(
@@ -313,6 +313,7 @@ impl Game<'_> {
         if let Some(focused) = self.client.focus_after_run.take() {
             let id = self
                 .window
+                .0
                 .as_ref()
                 .map_or_else(WindowId::dummy, |w| w.id());
             self.handle_window_event(
@@ -340,7 +341,7 @@ impl Game<'_> {
             && self.client.captured
             && !self.options.offscreen
             && !self.internal_grab()
-            && let (Some(window), Some(mode)) = (&self.window, self.client.capture_mode)
+            && let (Some(window), Some(mode)) = (&self.window.0, self.client.capture_mode)
         {
             let other = match mode {
                 CursorGrabMode::Locked => CursorGrabMode::Confined,
@@ -374,7 +375,7 @@ impl Game<'_> {
         if effective == self.client.cursor_icon {
             return;
         }
-        if let Some(window) = &self.window {
+        if let Some(window) = &self.window.0 {
             window.set_cursor(match effective {
                 Cursor::Arrow => winit::window::CursorIcon::Default,
                 Cursor::PointingHand => winit::window::CursorIcon::Pointer,
@@ -389,7 +390,7 @@ impl Game<'_> {
     /// LevelLoadingScreen.onClose -> Gui.setScreen(null) -> grabMouse.
     pub(super) fn capture_loaded_world(&mut self) {
         // Loading may finish after focus was lost or another screen opened.
-        if self.title.is_none() && self.client.screen == Screen::Playing {
+        if self.title.0.is_none() && self.client.screen == Screen::Playing {
             self.capture(true);
         }
     }

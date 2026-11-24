@@ -5,6 +5,7 @@ impl Game<'_> {
         let (ox, oy) = self.inventory_origin(batch);
         let ghosts: Vec<GhostView> = self
             .recipe_ui
+            .0
             .ghost
             .iter()
             .filter_map(|ghost| {

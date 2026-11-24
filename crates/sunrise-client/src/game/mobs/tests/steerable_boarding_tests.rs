@@ -189,7 +189,7 @@ pub(in crate::game) fn run_interact_with_a_pig_or_strider() {
                     max_players: 16,
                     integrated: false,
                     levels: game.server.level_shapes,
-                    level_seeds: game.levels.runtime.seeds(),
+                    level_seeds: game.levels.0.runtime.seeds(),
                 },
             )
             .unwrap();

@@ -111,10 +111,10 @@ pub(in crate::game) fn run_a_bolt_summoned_with_nbt_strikes_and_goes() {
                     let cmd = step["cmd"].as_str().unwrap();
                     let line = cmd.strip_prefix('/').unwrap_or(cmd);
                     game.server.chat_capture = Some(Vec::new());
-                    game.cmds.results = Some(Vec::new());
+                    game.cmds.0.results = Some(Vec::new());
                     game.as_console(|g| g.run_command(line));
                     let messages = game.server.chat_capture.take().unwrap_or_default();
-                    let results = game.cmds.results.take().unwrap_or_default();
+                    let results = game.cmds.0.results.take().unwrap_or_default();
                     if step["record"].as_bool() != Some(false) {
                         let actual_messages = Value::Array(messages.iter().map(spans).collect());
                         let actual_results =
@@ -130,6 +130,7 @@ pub(in crate::game) fn run_a_bolt_summoned_with_nbt_strikes_and_goes() {
                     }
                     assert!(
                         game.others
+                            .0
                             .iter()
                             .all(|o| o.kind != "minecraft:lightning_bolt"),
                         "step {index} ({cmd}): lightning_bolt must never be stored in others"
@@ -212,7 +213,7 @@ fn silent_bolt_suppresses_sound_and_posts_strike_event_on_first_tick() {
         // Silent bolt: no event on spawn; strikes rod + posts event on tick 1 without playing thunder/impact audio.
         assert!(game.run_command("setblock 4 209 4 minecraft:lightning_rod"));
         crate::game::sculk::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
-        game.audio.capture = Some(Vec::new());
+        game.audio.0.capture = Some(Vec::new());
         assert!(game.run_command(
             "summon minecraft:lightning_bolt 4.5 210 4.5 {Silent:1b,Tags:[\"silent_bolt\"]}"
         ));
@@ -222,7 +223,7 @@ fn silent_bolt_suppresses_sound_and_posts_strike_event_on_first_tick() {
             "no lightning_strike game event at spawn"
         );
         assert!(
-            game.audio.capture.as_ref().unwrap().is_empty(),
+            game.audio.0.capture.as_ref().unwrap().is_empty(),
             "no sound played at spawn"
         );
         game.tick_server(false).unwrap();
@@ -232,7 +233,7 @@ fn silent_bolt_suppresses_sound_and_posts_strike_event_on_first_tick() {
             "lightning_strike event posted on first server tick"
         );
         assert!(
-            game.audio.capture.as_ref().unwrap().iter().all(|s| {
+            game.audio.0.capture.as_ref().unwrap().iter().all(|s| {
                 s.event != "minecraft:entity.lightning_bolt.thunder"
                     && s.event != "minecraft:entity.lightning_bolt.impact"
             }),
@@ -241,7 +242,7 @@ fn silent_bolt_suppresses_sound_and_posts_strike_event_on_first_tick() {
         assert!(game.run_command("execute if block 4 209 4 minecraft:lightning_rod[powered=true]"));
 
         // Audible bolt: no event on spawn; posts event and plays thunder + impact on tick 1.
-        game.audio.capture = Some(Vec::new());
+        game.audio.0.capture = Some(Vec::new());
         assert!(game.run_command("summon minecraft:lightning_bolt 8.5 210 4.5 {}"));
         assert_eq!(
             take_strike_events(),
@@ -254,7 +255,7 @@ fn silent_bolt_suppresses_sound_and_posts_strike_event_on_first_tick() {
             1,
             "lightning_strike event posted on first server tick"
         );
-        let sounds = game.audio.capture.take().unwrap();
+        let sounds = game.audio.0.capture.take().unwrap();
         assert!(
             sounds
                 .iter()

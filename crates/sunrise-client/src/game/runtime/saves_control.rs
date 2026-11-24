@@ -33,7 +33,7 @@ impl Game<'_> {
                 .ok_or_else(|| format!("{} FOLDER: the folder from worlds", words[0]))
         };
         let on_title = || {
-            if self.title.is_some() {
+            if self.title.0.is_some() {
                 Ok(())
             } else {
                 Err(format!(
@@ -71,7 +71,7 @@ impl Game<'_> {
                     .filter(|n| !n.is_empty())
                     .ok_or("world-rename FOLDER NAME: missing the new name")?;
                 title::world_management::rename(&saves()?, folder, name)?;
-                if let Some(title) = self.title.as_mut() {
+                if let Some(title) = self.title.0.as_mut() {
                     title.worlds_changed();
                 }
                 json!({ "ok": true, "folder": folder, "name": name })
@@ -86,7 +86,7 @@ impl Game<'_> {
                     .into());
                 }
                 title::world_management::delete(&saves()?, folder)?;
-                if let Some(title) = self.title.as_mut() {
+                if let Some(title) = self.title.0.as_mut() {
                     title.worlds_changed();
                 }
                 json!({ "ok": true, "deleted": folder })

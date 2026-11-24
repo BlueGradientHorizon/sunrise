@@ -44,15 +44,16 @@ impl Game<'_> {
     /// The box a typed character goes to (`type_chars_into_screen`'s choice), as it stands
     /// after `edited` when there is one, whose responders then run.
     fn focused_text_edit(&mut self, edited: Option<&TextEdit>) -> Option<TextEdit> {
-        if self.screen_state.widgets.has_focus() {
+        if self.screen_state.0.widgets.has_focus() {
             return self.mounted_focused_text_edit(edited);
         }
         if self.screen_over_playing() {
             return None;
         }
-        if control::title_owns_text(&self.client.screen, self.title.is_some()) {
+        if control::title_owns_text(&self.client.screen, self.title.0.is_some()) {
             let mut state = None;
             self.title
+                .0
                 .as_mut()?
                 .edit_focused_text_field(|field| state = Some(visit_box(field, edited)));
             return state;
@@ -67,7 +68,7 @@ impl Game<'_> {
                 let screen = if self.client.screen == Screen::Chat {
                     self.ui.chat_screen.as_mut()?
                 } else {
-                    &mut self.command_block_screen.as_mut()?.command
+                    &mut self.command_block_screen.0.as_mut()?.command
                 };
                 if let Some(edited) = edited {
                     screen.edit_input(&measure, &commands, |field| {
@@ -101,7 +102,7 @@ impl Game<'_> {
                 Some(state)
             }
             Screen::Inventory if self.recipe_search_focused() => {
-                Some(visit_box(self.recipe_ui.search.as_mut()?, edited))
+                Some(visit_box(self.recipe_ui.0.search.as_mut()?, edited))
             }
             Screen::Inventory if self.station_typing() => {
                 let state = visit_box(&mut self.station.as_mut()?.rename, edited);
@@ -111,12 +112,12 @@ impl Game<'_> {
                 Some(state)
             }
             Screen::Creative
-                if self.creative_screen.tab().search && !self.client.creative_ignore_text =>
+                if self.creative_screen.0.tab().search && !self.client.creative_ignore_text =>
             {
                 if edited.is_some() {
-                    self.creative_screen.scroll = 0.0;
+                    self.creative_screen.0.scroll = 0.0;
                 }
-                Some(visit_box(&mut self.creative_screen.search, edited))
+                Some(visit_box(&mut self.creative_screen.0.search, edited))
             }
             _ => None,
         }
@@ -295,10 +296,10 @@ mod tests {
                 menu.mode = title::Mode::Multiplayer(multiplayer::Screen::Direct {
                     address: "\u{1f600}".into(),
                 });
-                game.title = Some(menu);
+                game.title.0 = Some(menu);
                 game.screen_chars_typed(Some("y?"));
                 assert_eq!(taken(), ["y:\u{1f600}:1:1", "?:\u{1f600}y:2:2"]);
-                let (_, value, _) = game.title.as_mut().unwrap().focused_field().unwrap();
+                let (_, value, _) = game.title.0.as_mut().unwrap().focused_field().unwrap();
                 assert_eq!(value, "\u{1f600}y");
             });
         });

@@ -17,7 +17,7 @@ impl Game<'_> {
         self.native_music(&mut music, &mut volume);
         let mut layers = Vec::new();
         self.native_music_layers(&mut layers);
-        self.client.music_layers.tick(&layers, &mut self.audio);
+        self.client.music_layers.tick(&layers, &mut self.audio.0);
         // Options.musicFrequency's listener: MusicManager.setMinutesBetweenSongs.
         let frequency = MusicFrequency::parse(&self.settings.file.name("musicFrequency"));
         if frequency != self.client.music.frequency {
@@ -34,7 +34,7 @@ impl Game<'_> {
         // LevelLoadingScreen: no new track before the player is in the world.
         // A reconfiguration's ServerReconfigScreen is a plain Screen, not a
         // LevelLoadingScreen: its menu music starts as on any other screen.
-        let loading = self.title.is_none()
+        let loading = self.title.0.is_none()
             && self.player.is_none()
             && self.client.win.is_none()
             && !self
@@ -43,7 +43,7 @@ impl Game<'_> {
                 .is_some_and(|r| r.reconfiguring.is_some());
         self.client
             .music
-            .tick(music.as_ref(), volume, loading, &mut self.audio);
+            .tick(music.as_ref(), volume, loading, &mut self.audio.0);
         // Options.musicToast's listener: ToastManager.setMusicToastDisplayState.
         let state = self.settings.file.int("musicToast").clamp(0, 2) as u8;
         if state != self.client.music_toast_state {
@@ -62,11 +62,13 @@ impl Game<'_> {
     /// The Music page's groups: every track the loaded `sounds.json` can play,
     /// by situation (see `music::track_groups`).
     pub(in crate::game) fn music_groups(&self) -> Vec<MusicGroup> {
-        sunrise_client::music::track_groups(&self.audio.engine.registry)
+        sunrise_client::music::track_groups(&self.audio.0.engine.registry)
     }
     /// A Music page row: play this track of `event` now.
     pub(in crate::game) fn play_music_track(&mut self, event: &str, track: &str) {
-        self.client.music.play_track(event, track, &mut self.audio);
+        self.client
+            .music
+            .play_track(event, track, &mut self.audio.0);
     }
     /// `Options.getFinalSoundSourceVolume(SoundSource.MUSIC)`.
     fn final_music_volume(&self) -> f32 {
@@ -105,6 +107,7 @@ impl Game<'_> {
         let id = self.client.music.current_instance()?;
         let location = self
             .audio
+            .0
             .engine
             .instance(id)?
             .sound
@@ -165,15 +168,15 @@ impl Game<'_> {
     /// `pauseAllExcept(MUSIC, UI)` when the game pauses and `resume` when it
     /// carries on.
     pub(in crate::game) fn tick_sound_engine(&mut self) {
-        update_bound_entities(self.audio.engine.bound_entities(), |id| {
+        update_bound_entities(self.audio.0.engine.bound_entities(), |id| {
             self.sound_entity_state(id)
         });
 
         if self.pause != self.client.sound_paused {
             if self.pause {
-                self.audio.pause();
+                self.audio.0.pause();
             } else {
-                self.audio.resume();
+                self.audio.0.resume();
             }
             self.client.sound_paused = self.pause;
         }
@@ -193,7 +196,7 @@ impl Game<'_> {
         // elytra's flying sound.
         if player_fall_flying && !self.client.was_fall_flying {
             let instance = SoundInstance::elytra(player_position, random_source::create());
-            self.audio.play_instance(instance, false);
+            self.audio.0.play_instance(instance, false);
         }
         self.client.was_fall_flying = player_fall_flying;
         let ctx = TickContext {
@@ -207,21 +210,22 @@ impl Game<'_> {
             player_speed_sqr,
             player_fall_flying,
             ridden,
-            camera_position: self.audio.listener,
+            camera_position: self.audio.0.listener,
         };
         self.audio
+            .0
             .set_listener_reserve(self.settings.extras.ui_sound_reserve);
         // Client mods' sounds asked for since the last update start with it, then their stops
         // and fades apply.
         self.apply_mod_sounds();
-        self.audio.tick(self.pause, &ctx);
+        self.audio.0.tick(self.pause, &ctx);
     }
     /// `Minecraft.setLevel` -> `updateLevelInEngines`: `SoundManager.stop()`.
     /// The music manager keeps its stopped track and, on its next tick, waits
     /// the level's music delay before the next one.
     pub(in crate::game) fn stop_sounds_for_new_level(&mut self) {
-        self.client.ambience.clear(&mut self.audio);
-        self.audio.leave_level();
+        self.client.ambience.clear(&mut self.audio.0);
+        self.audio.0.leave_level();
         // Mod plays still queued for the next audio update go too.
         self.client.mod_sounds.clear();
     }
@@ -230,7 +234,7 @@ impl Game<'_> {
         // Login creates the client level before its first player teleport;
         // reconfiguration clears it again. Use the render camera's probe
         // while the level is present, not the local player's eyes.
-        let in_world = self.title.is_none()
+        let in_world = self.title.0.is_none()
             && (self.player.is_some() || self.remote.as_ref().is_some_and(|r| r.has_level()));
         let (background, probe_volume) = if in_world {
             let biome = self.biome_at(self.client.view.position);
@@ -341,7 +345,7 @@ impl Game<'_> {
             light: &light,
             bubble_column,
         };
-        self.client.ambience.tick(&ctx, &mut self.audio);
+        self.client.ambience.tick(&ctx, &mut self.audio.0);
     }
 }
 

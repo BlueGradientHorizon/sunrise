@@ -60,27 +60,27 @@ impl Game<'_> {
             Some("screenshot-sequence needs SUNRISE_STILL=1")
         } else if !self.clock.frozen() || self.clock.stepping() || self.clock.sprinting() {
             Some("screenshot-sequence needs the world frozen (/tick freeze), not stepping")
-        } else if self.title.is_some()
+        } else if self.title.0.is_some()
             || self.client.screen != Screen::Playing
             || self.player.is_none()
             || self.integrated_starting.is_some()
-            || self.pending_entry.is_some()
+            || self.pending_entry.0.is_some()
             || self.client.reload_overlay.is_some()
-            || self.pending_save.is_some()
+            || self.pending_save.0.is_some()
             || self
                 .remote
                 .as_ref()
                 .is_some_and(|r| r.level_load.is_active())
-            || self.flight.is_some()
+            || self.flight.0.is_some()
             || self.world.chunks.is_empty()
             || self.streaming.pending() != 0
-            || !self.pending_uploads.is_empty()
+            || !self.pending_uploads.0.is_empty()
             || self.remote_backlog() != 0
             || !self.world.dirty_light.is_empty()
             || !self.world.dirty_sections.is_empty()
         {
             Some("screenshot-sequence needs a loaded world in play, with nothing left to load")
-        } else if self.lod.is_some() || self.far_terrain_choice().0 > 0 {
+        } else if self.lod.0.is_some() || self.far_terrain_choice().0 > 0 {
             // Far tiles load and fade in on the wall clock.
             Some("screenshot-sequence needs far terrain off (LOD Distance 0)")
         } else if self.settings.chunk_fade != 0.0 || g.shadow_cache {
@@ -98,7 +98,7 @@ impl Game<'_> {
     fn sequence_scene(&mut self) -> Result<String> {
         let view = self.camera_view(1.0).ok_or("no camera")?;
         let (position, yaw, pitch) = self.native_camera_pose_now(1.0, view);
-        let renderer = self.renderer.as_ref().ok_or("no renderer")?;
+        let renderer = self.renderer.0.as_ref().ok_or("no renderer")?;
         Ok(format!(
             "{:?}",
             (
@@ -132,16 +132,16 @@ impl Game<'_> {
             .strip_prefix("screenshot-sequence")
             .unwrap_or("");
         if args.trim() == "cancel" {
-            let running = self.screenshot_sequence.is_some();
+            let running = self.screenshot_sequence.0.is_some();
             self.end_screenshot_sequence(Err("cancelled".into()));
             return Ok(Some(json!({ "ok": true, "cancelled": running })));
         }
         let (frames, step_ms, path) = parse(args)?;
-        if self.screenshot_sequence.is_some() {
+        if self.screenshot_sequence.0.is_some() {
             return Err("a screenshot sequence is already running".into());
         }
-        let renderer = self.renderer.as_ref().ok_or("no renderer yet")?;
-        if self.pending_screenshot.is_some() || renderer.screenshot.is_some() {
+        let renderer = self.renderer.0.as_ref().ok_or("no renderer yet")?;
+        if self.pending_screenshot.0.is_some() || renderer.screenshot.is_some() {
             return Err("a screenshot is already pending".into());
         }
         if let Some(refusal) = self.sequence_refusal() {
@@ -153,9 +153,9 @@ impl Game<'_> {
             return Err("the shader pack isn't running (still loading, or it failed)".into());
         }
         let scene = self.sequence_scene()?;
-        let renderer = self.renderer.as_mut().ok_or("no renderer yet")?;
+        let renderer = self.renderer.0.as_mut().ok_or("no renderer yet")?;
         renderer.reset_shader_pack_history();
-        self.screenshot_sequence = Some(Sequence {
+        self.screenshot_sequence.0 = Some(Sequence {
             frames,
             step_ms,
             next: 1,
@@ -176,7 +176,7 @@ impl Game<'_> {
         &mut self,
         command: Option<&str>,
     ) -> Result<()> {
-        if self.screenshot_sequence.is_none() || command.is_none_or(|c| READ_ONLY.contains(&c)) {
+        if self.screenshot_sequence.0.is_none() || command.is_none_or(|c| READ_ONLY.contains(&c)) {
             return Ok(());
         }
         if command == Some("quit") {
@@ -191,10 +191,10 @@ impl Game<'_> {
 
     /// Ends the running sequence, if any, and sends its reply.
     pub(in crate::game) fn end_screenshot_sequence(&mut self, outcome: Result<Value>) {
-        let Some(sequence) = self.screenshot_sequence.take() else {
+        let Some(sequence) = self.screenshot_sequence.0.take() else {
             return;
         };
-        if let Some(renderer) = &mut self.renderer
+        if let Some(renderer) = &mut self.renderer.0
             && renderer
                 .screenshot
                 .as_ref()
@@ -213,6 +213,7 @@ impl Game<'_> {
     pub(in crate::game) fn render_sequence_frame(&mut self) -> Result<bool> {
         let sequence = self
             .screenshot_sequence
+            .0
             .as_ref()
             .expect("a running sequence");
         let (last, path, scene) = (
@@ -231,7 +232,7 @@ impl Game<'_> {
                 return self.render_frame();
             }
         }
-        if last && let Some(renderer) = &mut self.renderer {
+        if last && let Some(renderer) = &mut self.renderer.0 {
             renderer.screenshot = Some(ScreenshotRequest {
                 path,
                 size: None,
@@ -241,7 +242,7 @@ impl Game<'_> {
             renderer.screenshot_result = None;
         }
         let drawn = self.render_frame();
-        let renderer = self.renderer.as_mut().ok_or("no renderer")?;
+        let renderer = self.renderer.0.as_mut().ok_or("no renderer")?;
         // Still queued when the frame wasn't drawn, or when the PNG is to be taken
         // again smaller (out of memory): not this sequence's frame.
         let queued = last && renderer.screenshot.take().is_some();
@@ -257,6 +258,7 @@ impl Game<'_> {
         }
         let sequence = self
             .screenshot_sequence
+            .0
             .as_mut()
             .expect("a running sequence");
         if !last {

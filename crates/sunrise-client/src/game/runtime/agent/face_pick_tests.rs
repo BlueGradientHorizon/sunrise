@@ -88,7 +88,7 @@ fn with_pig_and_server(run: impl FnOnce(&mut Game<'_>, &Mutex<Listener>, &mut Co
             finish_login(game, &mut server);
             game.native_lifecycle
                 .begin_open(mod_api::Authority::RemoteClient);
-            game.title = None;
+            game.title.0 = None;
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 1.0, 0.5)).unwrap());
             game.previous_position = Vec3::new(0.5, 1.0, 0.5);
             game.yaw = 90.0;

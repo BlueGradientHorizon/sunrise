@@ -557,7 +557,7 @@ fn console_output_is_logged_and_broadcast_once() {
                 // A vanilla reply the console broadcasts, through the dispatcher: once. `save-off`
                 // reads the dedicated server's lists.
                 let home = tempfile::tempdir().unwrap();
-                game.server_lists = Some(Arc::new(std::sync::Mutex::new(
+                game.server_lists.0 = Some(Arc::new(std::sync::Mutex::new(
                     crate::game::dedicated::Lists {
                         ops: OpList::new(home.path().join("ops.json")),
                         white: WhiteList::new(home.path().join("whitelist.json")),

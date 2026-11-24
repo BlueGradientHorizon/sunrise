@@ -108,11 +108,16 @@ mod tests {
                     chunk.block_entities.push(((x, 64, 1), holder(count)));
                 }
                 game.save
+                    .0
                     .save(&[Arc::new(chunk)], registry, world_biomes!(game))
                     .unwrap();
 
                 // The first resident instances come from a saved region, not from placement.
-                let mut chunk = game.save.load(0, 0, registry, world_biomes!(game)).unwrap();
+                let mut chunk = game
+                    .save
+                    .0
+                    .load(0, 0, registry, world_biomes!(game))
+                    .unwrap();
                 game.world.install_chunk_block_entities(&mut chunk);
                 game.world.chunks.insert((0, 0), Arc::new(chunk));
                 assert!(game.streaming.set_forced(0, 0, true));

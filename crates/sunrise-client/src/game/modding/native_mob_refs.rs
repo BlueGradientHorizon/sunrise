@@ -1011,7 +1011,7 @@ mod tests {
                 max_players: 2,
                 integrated: true,
                 levels: game.server.level_shapes,
-                level_seeds: game.levels.runtime.seeds(),
+                level_seeds: game.levels.0.runtime.seeds(),
             };
             game.lan_host(settings, net, config).unwrap();
             let (tx, _rx) = std::sync::mpsc::channel();
@@ -1501,17 +1501,17 @@ mod tests {
             let enderman_state = game.mobs.iter_mut().find(|m| m.id == 13).unwrap();
             enderman_state.age = 1234;
             enderman_state.extra.flag2 = true;
-            game.audio.capture = Some(Vec::new());
+            game.audio.0.capture = Some(Vec::new());
             assert!(enderman.set_target(game, Some(other)));
             let events =
                 std::mem::take(&mut game.mobs.iter_mut().find(|m| m.id == 13).unwrap().outbox);
             game.handle_mob_events(events).unwrap();
             assert_eq!(
-                game.audio.heard.get("minecraft:entity.enderman.stare"),
+                game.audio.0.heard.get("minecraft:entity.enderman.stare"),
                 Some(&1)
             );
             assert!(
-                game.audio.capture.as_ref().unwrap().is_empty(),
+                game.audio.0.capture.as_ref().unwrap().is_empty(),
                 "stare stays client-local"
             );
             let m = state(game, 13);
@@ -1581,12 +1581,13 @@ mod tests {
             assert!(actor.set_target(game, Some(target)));
             assert_eq!(game.mobs[0].extra.counter, 1);
             game.mobs[0].extra.counter2 = 0;
-            game.audio.capture = Some(Vec::new());
+            game.audio.0.capture = Some(Vec::new());
             game.tick_mobs().unwrap();
             assert_eq!(other.target(game), Some(target));
             game.tick_mobs().unwrap();
             assert!(
                 game.audio
+                    .0
                     .capture
                     .as_ref()
                     .unwrap()

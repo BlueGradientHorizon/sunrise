@@ -107,14 +107,14 @@ impl Game<'_> {
                 with_entity_mut!(self, handle, e => e.set_size_answer(answer));
             }
         }
-        for i in 0..self.others.len() {
-            let e = &self.others[i];
+        for i in 0..self.others.0.len() {
+            let e = &self.others.0[i];
             let (id, previous) = (e.id, e.size_answer);
             let Some(vanilla) = e.vanilla_dimensions() else {
                 continue;
             };
             if let Some(answer) = self.ask_entity_size(id, Pose::Standing, vanilla, previous) {
-                self.others.update(i, |e| e.size_answer = Some(answer));
+                self.others.0.update(i, |e| e.size_answer = Some(answer));
             }
         }
         for i in 0..self.crystals.len() {
@@ -1123,7 +1123,7 @@ mod tests {
             assert_eq!(white_outline(game), (min, max));
             // Aimed over a vanilla cart (y 70.7) but into the answered box: the crosshair
             // picks the cart.
-            game.title = None;
+            game.title.0 = None;
             game.player = Some(
                 sunrise_client::motion::PlayerMotion::new(
                     game.motion,
@@ -1143,8 +1143,8 @@ mod tests {
     /// The F3+B outline's white edges: their lowest and highest corner.
     fn white_outline(game: &mut crate::game::Game<'_>) -> ([f64; 3], [f64; 3]) {
         // F3+B, on entries with no file behind them: nothing is saved.
-        game.debug_entries = sunrise_client::debug_entries::DebugEntries::default();
-        game.debug_entries.toggle_status("entity_hitboxes", false);
+        game.debug_entries.0 = sunrise_client::debug_entries::DebugEntries::default();
+        game.debug_entries.0.toggle_status("entity_hitboxes", false);
         let gizmos = game.debug_gizmos(1.0, [0.0; 3]);
         let ends: Vec<[f64; 3]> = gizmos
             .lines
@@ -1227,7 +1227,7 @@ mod tests {
                 (9005, "minecraft:leash_knot"),
                 (9006, "minecraft:block_display"),
             ] {
-                game.others.push(crate::game::commands::OtherEntity {
+                game.others.0.push(crate::game::commands::OtherEntity {
                     size_answer: None,
                     attachment_lifetime: Default::default(),
                     knot_check: None,

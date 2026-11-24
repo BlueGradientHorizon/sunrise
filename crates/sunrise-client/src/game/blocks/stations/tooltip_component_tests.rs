@@ -2413,7 +2413,7 @@ fn item_tooltip_font_wraps_in_gather_pre_replaces_without_rewrap_and_anchor_quan
             ]),
         );
         game.gui.atlas.font = sunrise_client::font::Font::metrics(&source);
-        game.armor_stand_assets.extensions =
+        game.armor_stand_assets.0.extensions =
             Game::prepare_client_item_extensions(&game.gui).unwrap();
 
         let stick = ItemStack::new("minecraft:stick", 1);

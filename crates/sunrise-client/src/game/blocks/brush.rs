@@ -80,7 +80,7 @@ impl Game<'_> {
             self.brush_dust(hit, slot == super::shield::OFFHAND_SLOT);
         }
         let at = hit.pos.map(|v| f64::from(v) + 0.5);
-        self.audio.play(sound, Some(at), 1.0, 1.0);
+        self.audio.0.play(sound, Some(at), 1.0, 1.0);
         if brushable && self.brush_block(hit.pos, hit.face, slot) {
             self.damage_held(1);
         }
@@ -108,17 +108,22 @@ impl Game<'_> {
             [-1, 0, 0] => (-0.1, -1.0),
             _ => (0.1, 1.0),
         };
-        let count = 7 + self.particles.level_random().next_int_bound(5).unwrap_or(0);
+        let count = 7 + self
+            .particles
+            .0
+            .level_random()
+            .next_int_bound(5)
+            .unwrap_or(0);
         let x = hit.point[0] - if hit.face == [-1, 0, 0] { 1.0e-6 } else { 0.0 };
         let z = hit.point[2] - if hit.face == [0, 0, -1] { 1.0e-6 } else { 0.0 };
         for _ in 0..count {
-            let random = self.particles.level_random();
+            let random = self.particles.0.level_random();
             let v = [
                 dx * flip * 3.0 * random.next_double(),
                 0.0,
                 dz * flip * 3.0 * random.next_double(),
             ];
-            self.particles.add(&options, [x, hit.point[1], z], v);
+            self.particles.0.add(&options, [x, hit.point[1], z], v);
         }
     }
 
@@ -183,7 +188,7 @@ impl Game<'_> {
             self.res.items(),
         );
         self.trigger_loot_table(&table);
-        let loot = self.server_loot.get();
+        let loot = self.server_loot.0.get();
         let brusher = self.killer_loot_entity(None);
         let luck = self.acting_luck();
         let tool = self.stack_in(slot).map(super::creatures::to_loot);
@@ -396,7 +401,7 @@ impl Game<'_> {
         if !sound.is_empty() {
             let at = pos.map(|v| f64::from(v) + 0.5);
             // Each client plays it from the event itself.
-            self.audio.play_unshared(sound, Some(at), 1.0, 1.0);
+            self.audio.0.play_unshared(sound, Some(at), 1.0, 1.0);
         }
         self.destroy_particles(pos, state);
     }

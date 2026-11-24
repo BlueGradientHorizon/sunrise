@@ -192,10 +192,10 @@ impl Game<'_> {
                 true
             }
             Target::Other(id) => {
-                let Some(i) = self.others.iter().position(|o| o.id == id) else {
+                let Some(i) = self.others.0.iter().position(|o| o.id == id) else {
                     return false;
                 };
-                self.others.update(i, |o| {
+                self.others.0.update(i, |o| {
                     o.yaw = yaw;
                     o.pitch = pitch;
                 });
@@ -494,7 +494,7 @@ pub(in crate::game) mod tests {
                 ));
             let stand = game.entity(13).unwrap();
             assert!(!stand.set_rotation(game, 30.0, 10.0));
-            game.others.push(super::super::commands::OtherEntity {
+            game.others.0.push(super::super::commands::OtherEntity {
                 size_answer: None,
                 attachment_lifetime: Default::default(),
                 knot_check: None,

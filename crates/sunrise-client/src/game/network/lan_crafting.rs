@@ -2973,7 +2973,7 @@ mod empty_ingredient_placement_tests {
                         );
                         std::fs::remove_file(path).unwrap();
                     }
-                    game.world_tables = game
+                    game.world_tables.0 = game
                         .stage_world_tables(&stack, false, &resources)
                         .unwrap()
                         .tables;

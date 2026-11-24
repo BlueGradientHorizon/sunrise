@@ -150,7 +150,7 @@ fn entering_inventory_requests_catalogue_for_preinstalled_bound_screen() {
                 game.client.screen = Screen::Playing;
                 game.container = Some(key);
                 assert!(game.open_native_screen(key, None, 3, None));
-                let staged = game.mod_screen.as_ref().expect("bound screen staged");
+                let staged = game.mod_screen.0.as_ref().expect("bound screen staged");
                 assert_eq!(staged.menu.block, None);
                 let nonce = staged.layout_revision;
 
@@ -204,7 +204,7 @@ fn a_registered_recipe_book_screen_opens_for_a_blockless_menu() {
                         data: Vec::new(),
                     }),
                 ));
-                let screen = game.mod_screen.as_ref().expect("bound screen stages");
+                let screen = game.mod_screen.0.as_ref().expect("bound screen stages");
                 assert_eq!(
                     screen.layout().recipe_book.as_ref().unwrap().as_str(),
                     "bound:book"
@@ -314,7 +314,7 @@ fn a_bound_recipe_book_screen_refuses_bad_layouts_at_open() {
                         !game.open_native_screen(key, None, 3, None),
                         "accepted {case}"
                     );
-                    assert!(game.mod_screen.is_none(), "staged {case}");
+                    assert!(game.mod_screen.0.is_none(), "staged {case}");
                 }
                 // Initially inactive slots (`None`) and unknown `no_item_icon` sprites open cleanly.
                 for (case, adjust) in [
@@ -332,7 +332,7 @@ fn a_bound_recipe_book_screen_refuses_bad_layouts_at_open() {
                         game.open_native_screen(key, None, 3, None),
                         "refused {case}"
                     );
-                    assert!(game.mod_screen.is_some(), "did not stage {case}");
+                    assert!(game.mod_screen.0.is_some(), "did not stage {case}");
                 }
                 *edit.lock().unwrap() = None;
                 assert!(game.open_native_screen(key, None, 3, None));
@@ -370,11 +370,11 @@ fn authoritative_custom_book_rebuilds_cached_geometry_without_observe_screen() {
             game.settings.gui_scale = 1;
             // The fixture has no renderer; layout still needs the same viewport
             // used by geometry() to evaluate toggle gutters and book placement.
-            game.recipe_ui.test_viewport = Some([1280, 720]);
+            game.recipe_ui.0.test_viewport = Some([1280, 720]);
             game.client.screen = Screen::Inventory;
-            game.title = None;
+            game.title.0 = None;
             game.container = Some((i32::MIN, 0, 0));
-            game.mod_screen = Some(OpenNativeScreen {
+            game.mod_screen.0 = Some(OpenNativeScreen {
                 menu: OpenNativeMenu {
                     key: (i32::MIN, 0, 0),
                     window: 1,
@@ -562,11 +562,11 @@ fn a_moved_slot_takes_its_place_for_drawing_and_input_from_the_next_frame() {
         crate::game::native_entity_refs::tests::with_client_game(|game| {
             let generation = seed_native_menu(game, 1, MENU);
             game.settings.gui_scale = 1;
-            game.recipe_ui.test_viewport = Some([1280, 720]);
+            game.recipe_ui.0.test_viewport = Some([1280, 720]);
             game.client.screen = Screen::Inventory;
-            game.title = None;
+            game.title.0 = None;
             game.container = Some((i32::MIN, 0, 0));
-            game.mod_screen = Some(OpenNativeScreen {
+            game.mod_screen.0 = Some(OpenNativeScreen {
                 menu: OpenNativeMenu {
                     key: (i32::MIN, 0, 0),
                     window: 1,
@@ -689,11 +689,11 @@ fn a_hidden_slot_leaves_the_screen_and_comes_back_where_put() {
         crate::game::native_entity_refs::tests::with_client_game(|game| {
             let generation = seed_native_menu(game, 1, MENU);
             game.settings.gui_scale = 1;
-            game.recipe_ui.test_viewport = Some([1280, 720]);
+            game.recipe_ui.0.test_viewport = Some([1280, 720]);
             game.client.screen = Screen::Inventory;
-            game.title = None;
+            game.title.0 = None;
             game.container = Some((i32::MIN, 0, 0));
-            game.mod_screen = Some(OpenNativeScreen {
+            game.mod_screen.0 = Some(OpenNativeScreen {
                 menu: OpenNativeMenu {
                     key: (i32::MIN, 0, 0),
                     window: 1,
@@ -817,8 +817,8 @@ fn a_bound_books_catalogue_survives_slot_moves_and_hides() {
                     sunrise_protocol::registry::Ids::from_names(vec!["bound:menu".into()]),
                 );
                 game.settings.gui_scale = 1;
-                game.recipe_ui.test_viewport = Some([1280, 720]);
-                game.title = None;
+                game.recipe_ui.0.test_viewport = Some([1280, 720]);
+                game.title.0 = None;
                 let open = |game: &mut Game<'_>| {
                     game.handle_packet(Clientbound::OpenScreen(OpenScreen {
                         container: 1,

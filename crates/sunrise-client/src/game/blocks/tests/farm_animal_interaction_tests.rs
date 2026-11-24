@@ -110,10 +110,10 @@ fn milk_sounds_carry_pitch_one_and_draw_no_level_random() {
     ] {
         spawn(&mut game, kind, 7, [2.5, 64.0, 2.5]);
         game.inventory[0] = Some(ItemStack::new(item, 1));
-        game.audio.capture = Some(Vec::new());
+        game.audio.0.capture = Some(Vec::new());
         let before = game.world.random.state();
         assert!(game.interact_mob(target(7)).unwrap(), "{kind}");
-        let sounds = game.audio.capture.take().unwrap();
+        let sounds = game.audio.0.capture.take().unwrap();
         let heard: Vec<_> = sounds.iter().filter(|s| s.event == sound).collect();
         assert_eq!(heard.len(), 1, "{kind}: {sounds:?}");
         assert_eq!(heard[0].pitch, 1.0, "{kind} milk pitch");

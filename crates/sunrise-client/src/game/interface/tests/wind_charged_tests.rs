@@ -62,7 +62,7 @@ fn with_game<R>(f: impl FnOnce(&mut Game<'_>) -> R) -> Option<R> {
 
 /// How many times `sound` was played as a positional sound.
 fn heard(game: &Game<'_>, sound: &str) -> u32 {
-    game.audio.heard.get(sound).copied().unwrap_or(0)
+    game.audio.0.heard.get(sound).copied().unwrap_or(0)
 }
 
 /// An oak boat two blocks east of the burst's centre.
@@ -114,9 +114,9 @@ fn a_wind_charged_mob_bursts_with_the_breezes_sound_unless_it_is_silent() {
         for silent in [false, true] {
             let boat = boat(game);
             let (breeze, charge) = (heard(game, BREEZE_BURST), heard(game, WIND_CHARGE_BURST));
-            game.particles.requested = Some(Vec::new());
+            game.particles.0.requested = Some(Vec::new());
             a_wind_charged_zombie_dies(game, silent);
-            let gust = game.particles.requested.take().unwrap_or_default();
+            let gust = game.particles.0.requested.take().unwrap_or_default();
             outcome.push((
                 silent,
                 heard(game, BREEZE_BURST) - breeze,
@@ -157,7 +157,7 @@ fn a_silent_wind_charge_bursts_without_a_sound() {
         for silent in [false, true] {
             let boat = boat(game);
             let (charge, breeze) = (heard(game, WIND_CHARGE_BURST), heard(game, BREEZE_BURST));
-            game.particles.requested = Some(Vec::new());
+            game.particles.0.requested = Some(Vec::new());
             let nbt = if silent {
                 "{Silent:1b,Motion:[0.0,-1.0,0.0]}"
             } else {
@@ -169,7 +169,7 @@ fn a_silent_wind_charge_bursts_without_a_sound() {
             for _ in 0..40 {
                 game.tick_creatures().unwrap();
             }
-            let gust = game.particles.requested.take().unwrap_or_default();
+            let gust = game.particles.0.requested.take().unwrap_or_default();
             outcome.push((
                 silent,
                 heard(game, WIND_CHARGE_BURST) - charge,

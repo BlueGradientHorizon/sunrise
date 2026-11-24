@@ -378,7 +378,7 @@ impl Game<'_> {
                         }
                         let hurt = g.hurt_player_from(amount, from, ty, attacker, creative_source);
                         if hurt && let Some(credit) = by_player {
-                            g.combat.note_hurt_by_player(credit, now);
+                            g.combat.0.note_hurt_by_player(credit, now);
                         }
                         hurt
                     })
@@ -503,7 +503,7 @@ impl Game<'_> {
             direct: entity_id(direct),
             position,
         };
-        if crate::game::entity::damage_level_of!(self, self.combat.attack(), no_push, None)
+        if crate::game::entity::damage_level_of!(self, self.combat.0.attack(), no_push, None)
             .invulnerability_check(
                 sunrise_client::health::Hurting::Entity(id as i32, &entity_kind, source),
                 vanilla,
@@ -537,8 +537,9 @@ impl Game<'_> {
         let Some(index) = self.mob_index.find(&self.mobs, id) else {
             return false;
         };
-        let plan = self.prepare_knockback_credit(id as i32, damage.attacker, self.combat.attack());
-        let attack = self.combat.attack();
+        let plan =
+            self.prepare_knockback_credit(id as i32, damage.attacker, self.combat.0.attack());
+        let attack = self.combat.0.attack();
         let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
         let mob = &mut self.mobs[index];
         let (queued, old_health) = (mob.outbox.len(), mob.health);
@@ -814,7 +815,7 @@ impl Game<'_> {
                     host.hub.send_to(conn, &packet);
                 }
             }
-            None => self.audio.play_on(source, sound, Some(at), volume, pitch),
+            None => self.audio.0.play_on(source, sound, Some(at), volume, pitch),
         }
     }
     /// `StopSoundCommand`: each target's connection gets the packet; the
@@ -864,7 +865,7 @@ impl Game<'_> {
                         host.hub.send_to(conn, &packet);
                     }
                 }
-                None => self.audio.stop_sounds(sound, source),
+                None => self.audio.0.stop_sounds(sound, source),
             }
         }
     }
@@ -1123,7 +1124,7 @@ impl Game<'_> {
         if local && count <= 0 {
             // handleParticleEvent, count 0: one particle, the speed times
             // the delta as velocity (both sent as floats, multiplied as floats).
-            self.particles.create_with_world(
+            self.particles.0.create_with_world(
                 Some(&self.world),
                 &options,
                 pos,
@@ -1131,7 +1132,7 @@ impl Game<'_> {
             );
         } else if local {
             for _ in 0..count {
-                let r = self.particles.random();
+                let r = self.particles.0.random();
                 let p = [
                     pos[0] + r.next_gaussian() * delta[0],
                     pos[1] + r.next_gaussian() * delta[1],
@@ -1144,6 +1145,7 @@ impl Game<'_> {
                 ];
                 if !self
                     .particles
+                    .0
                     .create_with_world(Some(&self.world), &options, p, v)
                 {
                     break;
@@ -1568,12 +1570,12 @@ impl Game<'_> {
             }
             return mob.extra.armor_attributes.as_deref_mut();
         }
-        if !self.cmds.attributes.contains_key(&t) {
+        if !self.cmds.0.attributes.contains_key(&t) {
             let ty = self.target_type(t);
             let map = self.motion.attributes.create(&ty)?;
-            self.cmds.attributes.insert(t, map);
+            self.cmds.0.attributes.insert(t, map);
         }
-        self.cmds.attributes.get_mut(&t)
+        self.cmds.0.attributes.get_mut(&t)
     }
     /// A sulfur cube's body archetype attributes live on its own map, beside
     /// the archetype's transient modifiers.
@@ -1861,7 +1863,7 @@ impl Game<'_> {
             Target::Cart(id)
         } else if self.armor_stands.iter().any(|a| a.id == id) {
             Target::Stand(id)
-        } else if self.others.iter().any(|o| o.id == id) {
+        } else if self.others.0.iter().any(|o| o.id == id) {
             Target::Other(id)
         } else {
             Target::Mob(id)
@@ -3129,14 +3131,14 @@ mod vehicle_damage_command_tests {
                 ] {
                     let command = format!("attribute {target} minecraft:armor {operation}");
                     game.server.chat_capture = Some(Vec::new());
-                    game.cmds.results = Some(Vec::new());
+                    game.cmds.0.results = Some(Vec::new());
                     assert!(game.run_command(&command), "{command}");
                     let messages = game.server.chat_capture.take().unwrap();
                     assert_eq!(messages.len(), 1, "{command}");
                     let components: Vec<_> = messages.iter().map(|m| m.component()).collect();
                     println!(
                         "H082_EXISTING {}",
-                        serde_json::json!({"command":command,"messages":components,"results":game.cmds.results.take().unwrap()})
+                        serde_json::json!({"command":command,"messages":components,"results":game.cmds.0.results.take().unwrap()})
                     );
                 }
             }

@@ -139,7 +139,7 @@ impl Game<'_> {
             return None;
         }
         let name = self.native_client_menu_name(menu)?;
-        let renderer = self.renderer.as_ref()?;
+        let renderer = self.renderer.0.as_ref()?;
         let batch = super::HudBatch::new(
             [renderer.config.width, renderer.config.height],
             self.settings.gui_scale_inputs(),
@@ -904,8 +904,8 @@ mod tests {
     }
 
     fn creative_tab(game: &mut Game<'_>, pick: impl Fn(&sunrise_client::creative::Tab) -> bool) {
-        let tab = game.creative_screen.tabs.iter().position(pick).unwrap();
-        game.creative_screen.select(tab);
+        let tab = game.creative_screen.0.tabs.iter().position(pick).unwrap();
+        game.creative_screen.0.select(tab);
     }
 
     /// A hidden window's offscreen renderer over a joined level with the player's body in it,
@@ -914,7 +914,7 @@ mod tests {
     fn offscreen_window(game: &mut Game<'_>) -> winit::event_loop::EventLoop<()> {
         let (event_loop, window) = crate::game::native_entity_refs::tests::test_window([320, 240]);
         game.options.offscreen = true;
-        game.renderer = Some(game.new_renderer(window).unwrap());
+        game.renderer.0 = Some(game.new_renderer(window).unwrap());
         let remote = game.remote.as_mut().unwrap();
         remote.level_load.finish();
         let mut body = sunrise_client::motion::PlayerMotion::new(
@@ -928,7 +928,7 @@ mod tests {
     }
 
     fn window_batch(game: &Game<'_>) -> super::super::HudBatch {
-        let config = &game.renderer.as_ref().unwrap().config;
+        let config = &game.renderer.0.as_ref().unwrap().config;
         super::super::HudBatch::new(
             [config.width, config.height],
             game.settings.gui_scale_inputs(),
@@ -1093,21 +1093,21 @@ mod tests {
 
                     // Seven rows: scrolled to the bottom, the first shown row is the third.
                     creative_tab(game, |t| !t.inventory && !t.search && !t.items.is_empty());
-                    let tab = game.creative_screen.selected_index();
+                    let tab = game.creative_screen.0.selected_index();
                     let mut items = vec![ItemStack::new("minecraft:stone", 17); 63];
                     items[0] = sword.clone();
                     items[1].count = 0;
                     items[18] = potion;
-                    game.creative_screen.tabs[tab].items = items;
-                    game.creative_screen.forget_items();
+                    game.creative_screen.0.tabs[tab].items = items;
+                    game.creative_screen.0.forget_items();
                     is_sword(hover(game, Creative::DISPLAY));
                     assert_eq!(hover(game, Creative::DISPLAY + 1), None);
                     is_stone(hover(game, Creative::DISPLAY + 2));
                     is_sword(hover(game, 0));
-                    game.creative_screen.scroll = 1.0;
+                    game.creative_screen.0.scroll = 1.0;
                     is_potion(hover(game, Creative::DISPLAY));
 
-                    game.creative_screen = Creative::from_json(&serde_json::json!({
+                    game.creative_screen.0 = Creative::from_json(&serde_json::json!({
                         "schema": 4, "item_features": {}, "potion_features": {}, "tabs": [{
                             "id": "minecraft:search", "type": "SEARCH", "title": "Search Items",
                             "build": [], "search_metadata": [{
@@ -1295,7 +1295,7 @@ mod tests {
                 max_players: 10,
                 integrated: true,
                 levels: game.server.level_shapes,
-                level_seeds: game.levels.runtime.seeds(),
+                level_seeds: game.levels.0.runtime.seeds(),
             };
             let mut net = NetConfig::lan(0, "test".into(), 10);
             net.listen = false;
@@ -1416,7 +1416,7 @@ mod tests {
                 max_players: 10,
                 integrated: true,
                 levels: game.server.level_shapes,
-                level_seeds: game.levels.runtime.seeds(),
+                level_seeds: game.levels.0.runtime.seeds(),
             };
             let mut net = NetConfig::lan(0, "test".into(), 10);
             net.listen = false;

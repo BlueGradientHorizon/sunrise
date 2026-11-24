@@ -91,7 +91,7 @@ impl Game<'_> {
         for p in problems {
             log::warn!("Sunrise: a native mod's command was left out: {p}");
         }
-        let state = &mut self.native_commands;
+        let state = &mut self.native_commands.0;
         state.registered = Some(NativeCommands {
             levels,
             tree,
@@ -107,11 +107,11 @@ impl Game<'_> {
     /// Gives the hub the session's mod commands when it lacks them; first asks the mods again
     /// when one asked (`native_refresh_commands`), and then sends every player their tree.
     pub(in crate::game) fn register_native_commands(&mut self) {
-        let refresh = std::mem::take(&mut self.native_commands.refresh);
+        let refresh = std::mem::take(&mut self.native_commands.0.refresh);
         if self.lan.is_none() {
             return;
         }
-        if refresh || self.native_commands.registered.is_none() {
+        if refresh || self.native_commands.0.registered.is_none() {
             self.build_native_commands(&self.level.enabled_features.clone());
         }
         self.send_native_command_report(refresh);
@@ -123,7 +123,7 @@ impl Game<'_> {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
-        let state = &self.native_commands;
+        let state = &self.native_commands.0;
         if state.registered.is_none() {
             if force_resend {
                 self.resend_commands_filtered();
@@ -152,14 +152,14 @@ impl Game<'_> {
     /// Restore mod nodes (and rebind their executors) after vanilla replaces the tree.
     pub(in crate::game) fn restore_native_commands(&mut self) {
         if self.rebind_native_commands() {
-            let revision = &mut self.native_commands.display_revision;
+            let revision = &mut self.native_commands.0.display_revision;
             *revision = revision.wrapping_add(1);
         }
     }
 
     /// Rebind against the new node IDs. True if the display report changed too.
     fn rebind_native_commands(&mut self) -> bool {
-        let state = &mut self.native_commands;
+        let state = &mut self.native_commands.0;
         let Some(commands) = &state.registered else {
             return false;
         };

@@ -26,13 +26,13 @@ fn standing_game<'a>(
     game.update_chunk_tickets();
     assert!(game.entity_ticking_area()(8, 8));
     game.server.ticked_entities_through = u32::MAX;
-    game.audio.capture = Some(Vec::new());
+    game.audio.0.capture = Some(Vec::new());
     game
 }
 
 /// The one sound `event` played since the last call, with its volume.
 fn sound(game: &mut Game<'_>, event: &str) -> (f32, f32) {
-    let heard = game.audio.capture.replace(Vec::new()).unwrap_or_default();
+    let heard = game.audio.0.capture.replace(Vec::new()).unwrap_or_default();
     let sound = heard
         .iter()
         .find(|s| s.event == event)
@@ -207,7 +207,7 @@ pub(in crate::game) fn with_remote_game<R>(f: impl FnOnce(&mut Game<'_>) -> R) -
     .unwrap();
     let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
     game.connect_local(pipe, "Steve").unwrap();
-    game.audio.capture = Some(Vec::new());
+    game.audio.0.capture = Some(Vec::new());
     f(&mut game)
 }
 

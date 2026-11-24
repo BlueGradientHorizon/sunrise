@@ -45,7 +45,7 @@ fn serve(game: &mut super::Game<'_>) {
         max_players: 2,
         integrated: true,
         levels: game.server.level_shapes,
-        level_seeds: game.levels.runtime.seeds(),
+        level_seeds: game.levels.0.runtime.seeds(),
     };
     game.lan_host(settings, net, config).unwrap();
 }

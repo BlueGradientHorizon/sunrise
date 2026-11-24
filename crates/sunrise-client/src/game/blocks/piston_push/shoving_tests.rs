@@ -175,7 +175,7 @@ fn a_predicted_collider_shove_passes_the_server_move_check() {
                         .set_read_timeout(Some(std::time::Duration::from_secs(5)))
                         .unwrap();
                     finish_login(game, &mut wire);
-                    game.title = None;
+                    game.title.0 = None;
                     game.client.screen = crate::game::Screen::Playing;
                     empty_chunk(game);
                     let mut player = PlayerMotion::new(game.motion, from).unwrap();

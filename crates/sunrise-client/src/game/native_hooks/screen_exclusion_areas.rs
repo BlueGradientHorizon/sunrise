@@ -31,7 +31,7 @@ impl Game<'_> {
         let Some(view) = self.observed_screen_view() else {
             return Vec::new();
         };
-        let Some(renderer) = self.renderer.as_ref() else {
+        let Some(renderer) = self.renderer.0.as_ref() else {
             return Vec::new();
         };
         let batch = HudBatch::new(

@@ -81,7 +81,7 @@ impl Game<'_> {
             }
             keep
         });
-        self.others.retain(|o| {
+        self.others.0.retain(|o| {
             let keep = !gone(o.position) || ridden_roots.contains(&o.id);
             if !keep {
                 removed.push(o.id);

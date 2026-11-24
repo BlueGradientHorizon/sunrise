@@ -847,7 +847,7 @@ pub(in crate::game) fn run_camera_consumers_streaming_particles_debug_and_specta
         // 2. Particle camera follows camera entity eye (exact 26.3 camera.position() bits).
         game.tick_particles();
         assert_eq!(
-            game.particles.camera.map(f64::to_bits),
+            game.particles.0.camera.map(f64::to_bits),
             want_cam_pos_bits,
             "particles.camera must match 26.3 camera.position() bits"
         );
@@ -855,9 +855,11 @@ pub(in crate::game) fn run_camera_consumers_streaming_particles_debug_and_specta
         // 3. F3 debug entries report camera entity position, biome, and light.
         game.client.debug = true;
         game.debug_entries
+            .0
             .set_status("player_position", Status::InOverlay);
-        game.debug_entries.set_status("biome", Status::InOverlay);
+        game.debug_entries.0.set_status("biome", Status::InOverlay);
         game.debug_entries
+            .0
             .set_status("light_levels", Status::InOverlay);
         let mut displayer = Displayer::default();
         game.debug_entry_lines(&mut displayer, [1280, 800]);
@@ -879,8 +881,10 @@ pub(in crate::game) fn run_camera_consumers_streaming_particles_debug_and_specta
 
         // 4. F3 gizmos: chunk_borders bounds match 26.3 ChunkBorderRenderer; hitboxes follow EntityHitboxDebugRenderer.
         game.debug_entries
+            .0
             .set_status("chunk_borders", Status::AlwaysOn);
         game.debug_entries
+            .0
             .set_status("entity_hitboxes", Status::Never);
         let border_gizmos = game.debug_gizmos(1.0, [96.5, 301.62, 96.5]);
         let (mut min_x, mut max_x) = (f64::INFINITY, f64::NEG_INFINITY);
@@ -897,8 +901,10 @@ pub(in crate::game) fn run_camera_consumers_streaming_particles_debug_and_specta
         assert_eq!(max_z.to_bits(), want_max_z, "chunk_borders max_z");
 
         game.debug_entries
+            .0
             .set_status("chunk_borders", Status::Never);
         game.debug_entries
+            .0
             .set_status("entity_hitboxes", Status::AlwaysOn);
         let hitbox_gizmos = game.debug_gizmos(1.0, [96.5, 301.62, 96.5]);
         let has_player_box = hitbox_gizmos.lines.iter().any(|l| {
@@ -2213,8 +2219,9 @@ pub(in crate::game) fn run_particle_camera_before_first_frame_and_after_reset_26
     let after_reset = &w["after_camera_reset_before_next_frame"];
 
     let accepted = |game: &mut Game<'_>, pos: [f64; 3]| -> bool {
-        game.particles.clear();
+        game.particles.0.clear();
         game.particles
+            .0
             .add(&ParticleOptions::simple(ParticleType::Flame), pos, [0.0; 3]);
         // ParticleEngine::add queues into `pending` (vanilla `particlesToAdd`) until the next tick.
         let level = ParticleLevel {
@@ -2224,8 +2231,8 @@ pub(in crate::game) fn run_particle_camera_before_first_frame_and_after_reset_26
             player: None,
             cached_chunk: std::cell::Cell::new(None),
         };
-        game.particles.tick(&level);
-        game.particles.len() == 1
+        game.particles.0.tick(&level);
+        game.particles.0.len() == 1
     };
 
     with_client_game(|game| {
@@ -2273,7 +2280,7 @@ pub(in crate::game) fn run_particle_camera_before_first_frame_and_after_reset_26
         // Phase 1: tick before the first frame (Camera.update / alignWithEntity has never run).
         game.client.view = Default::default();
         game.client.fog.rain_fog_multiplier = 0.0;
-        game.particles.clear();
+        game.particles.0.clear();
         game.tick_fov();
         game.tick_particles();
 
@@ -2283,7 +2290,7 @@ pub(in crate::game) fn run_particle_camera_before_first_frame_and_after_reset_26
             "before_first_frame: initialized"
         );
         assert_eq!(
-            game.particles.camera.map(f64::to_bits),
+            game.particles.0.camera.map(f64::to_bits),
             vec3_bits_expected(&before["camera_pos_bits"]),
             "before_first_frame: particles.camera must be Vec3.ZERO (no camera_eye_position fallback)"
         );
@@ -2293,7 +2300,7 @@ pub(in crate::game) fn run_particle_camera_before_first_frame_and_after_reset_26
             "before_first_frame: rain_fog_multiplier must sample Camera.blockPosition() == (0,0,0)"
         );
         assert_eq!(
-            game.particles.len() as u64,
+            game.particles.0.len() as u64,
             before["rain_splash_count"].as_u64().unwrap(),
             "before_first_frame: rain splashes must center on (0,0,0)"
         );
@@ -2319,7 +2326,7 @@ pub(in crate::game) fn run_particle_camera_before_first_frame_and_after_reset_26
         }
         game.camera_view(1.0);
         game.client.fog.rain_fog_multiplier = 0.0;
-        game.particles.clear();
+        game.particles.0.clear();
         game.world.game_time = 1;
         game.tick_particles();
 
@@ -2329,7 +2336,7 @@ pub(in crate::game) fn run_particle_camera_before_first_frame_and_after_reset_26
             "after_first_frame: initialized"
         );
         assert_eq!(
-            game.particles.camera.map(f64::to_bits),
+            game.particles.0.camera.map(f64::to_bits),
             vec3_bits_expected(&after["camera_pos_bits"]),
             "after_first_frame: particles.camera"
         );
@@ -2339,7 +2346,7 @@ pub(in crate::game) fn run_particle_camera_before_first_frame_and_after_reset_26
             "after_first_frame: rain_fog_multiplier"
         );
         assert_eq!(
-            game.particles.len() as u64,
+            game.particles.0.len() as u64,
             after["rain_splash_count"].as_u64().unwrap(),
             "after_first_frame: rain_splash_count"
         );
@@ -2377,7 +2384,7 @@ pub(in crate::game) fn run_particle_camera_before_first_frame_and_after_reset_26
             "after_camera_reset_before_next_frame: initialized before next frame"
         );
         assert_eq!(
-            game.particles.camera.map(f64::to_bits),
+            game.particles.0.camera.map(f64::to_bits),
             vec3_bits_expected(&after_reset["camera_pos_bits"]),
             "after_camera_reset_before_next_frame: particles.camera must keep last aligned position"
         );

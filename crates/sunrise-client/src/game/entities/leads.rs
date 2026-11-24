@@ -172,7 +172,7 @@ impl Game<'_> {
         let facts = self.res.facts();
         let fences = self.res.items().block_tags.get("minecraft:fences");
         let mut untied = Vec::new();
-        self.others.retain_mut(|knot| {
+        self.others.0.retain_mut(|knot| {
             let Some(check) = knot.knot_check.as_mut() else {
                 return true;
             };
@@ -200,6 +200,7 @@ impl Game<'_> {
     }
     pub(super) fn lead_sound(&mut self, sound: &str, at: [f64; 3]) {
         self.audio
+            .0
             .play(&format!("minecraft:item.lead.{sound}"), Some(at), 1.0, 1.0);
     }
     /// `Leashable.canHaveALeashAttachedTo` for the mob at `index` and a
@@ -473,10 +474,11 @@ impl Game<'_> {
         }
         if let Some(i) = self
             .others
+            .0
             .iter()
             .position(|o| o.id == id && o.kind == "minecraft:leash_knot")
         {
-            let knot = self.others.remove(i);
+            let knot = self.others.0.remove(i);
             let at = knot.position.components();
             self.entity_killed_event_by(at, source);
             self.lead_sound("untied", at);
@@ -650,6 +652,7 @@ impl Game<'_> {
             if dropped {
                 self.lead_game_event("minecraft:shear", at);
                 self.audio
+                    .0
                     .play("minecraft:item.shears.snip", Some(at), 1.0, 1.0);
                 self.damage_held_tool();
                 return Some(LeashInteraction::WithItem);
@@ -735,6 +738,7 @@ impl Game<'_> {
             }
             self.drop_boat_leashes(&existing_boats);
             self.audio
+                .0
                 .play("minecraft:item.shears.snip", Some(at), 1.0, 1.0);
             self.damage_held_tool();
             return true;

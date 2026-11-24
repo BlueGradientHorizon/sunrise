@@ -138,7 +138,7 @@ fn a_cancelled_repeat_keeps_the_hold_and_a_cancelled_first_press_is_never_held()
     .into();
     with_mods(mods, || {
         crate::game::native_entity_refs::tests::with_game(|game| {
-            game.title = None;
+            game.title.0 = None;
             game.client.screen = Screen::Playing;
             let space = KeyCode::Space;
             // The first down is allowed and held; its repeat is cancelled but the hold stays.
@@ -157,7 +157,7 @@ fn a_cancelled_repeat_keeps_the_hold_and_a_cancelled_first_press_is_never_held()
     .into();
     with_mods(mods, || {
         crate::game::native_entity_refs::tests::with_game(|game| {
-            game.title = None;
+            game.title.0 = None;
             game.client.screen = Screen::Playing;
             let space = KeyCode::Space;
             // A cancelled first press is not held, and neither is its repeat.
@@ -187,7 +187,7 @@ fn a_cancelled_mapping_press_is_dropped_and_its_release_is_not() {
     .into();
     with_mods(mods, || {
         crate::game::native_entity_refs::tests::with_game(|game| {
-            game.title = None;
+            game.title.0 = None;
             game.client.screen = Screen::Playing;
             assert!(game.key_mapping_canceled(Some("key.keyboard.space"), true));
             assert!(!game.key_mapping_canceled(Some("key.keyboard.space"), false));
@@ -410,20 +410,20 @@ fn a_title_screen_opens_through_screen_opening() {
     run(|game, log, answer| {
         // No saves: Singleplayer opens Create New World.
         let saves = std::env::temp_dir().join("sunrise-title-gate-test-no-saves");
-        game.title = Some(game.new_title(saves));
+        game.title.0 = Some(game.new_title(saves));
         game.settle_title_mode();
-        assert!(game.title.as_ref().unwrap().gated);
+        assert!(game.title.0.as_ref().unwrap().gated);
         *answer.lock().unwrap() = Some(ScreenOpening::Cancel);
-        game.title.as_mut().unwrap().enter_singleplayer();
-        assert!(matches!(game.title.as_ref().unwrap().mode, Mode::Main));
+        game.title.0.as_mut().unwrap().enter_singleplayer();
+        assert!(matches!(game.title.0.as_ref().unwrap().mode, Mode::Main));
         game.settle_title_mode();
-        assert!(matches!(game.title.as_ref().unwrap().mode, Mode::Main));
+        assert!(matches!(game.title.0.as_ref().unwrap().mode, Mode::Main));
         assert_eq!(take(log), ["opening title->world_create"]);
         *answer.lock().unwrap() = None;
-        game.title.as_mut().unwrap().enter_singleplayer();
+        game.title.0.as_mut().unwrap().enter_singleplayer();
         game.settle_title_mode();
         assert!(matches!(
-            game.title.as_ref().unwrap().mode,
+            game.title.0.as_ref().unwrap().mode,
             Mode::Create { .. }
         ));
         assert_eq!(take(log), ["opening title->world_create", "closing title"]);
@@ -488,7 +488,7 @@ fn title_hook_requests_one_orderly_quit() {
     let mods = vec![ModEntry::new("quit", Box::new(QuitProbe(log.clone())))].into();
     with_mods(mods, || {
         with_client_game(|game| {
-            game.title = Some(game.new_title(game.save.root.clone()));
+            game.title.0 = Some(game.new_title(game.save.0.root.clone()));
             let event_loop = QuitLoop(Cell::new(0));
             let batch = HudBatch::scratch([854, 480]);
             let screen = game.title_screen_view(&batch).unwrap();
@@ -521,7 +521,7 @@ fn replacing_opening_opens_another_vanilla_screen_where_it_can() {
     use mod_api::ScreenTarget;
     run(|game, log, answer| {
         let saves = std::env::temp_dir().join("sunrise-title-gate-test-no-saves");
-        game.title = None;
+        game.title.0 = None;
         game.set_screen(Screen::Dead);
         take(log);
         *answer.lock().unwrap() = Some(ScreenOpening::Vanilla(ScreenTarget::Multiplayer));
@@ -529,7 +529,7 @@ fn replacing_opening_opens_another_vanilla_screen_where_it_can() {
         game.set_screen(Screen::Playing);
         assert_eq!(game.client.screen, Screen::Playing);
         game.show_title(game.new_title(saves));
-        assert_eq!(game.title.as_ref().unwrap().mode.id(), "multiplayer");
+        assert_eq!(game.title.0.as_ref().unwrap().mode.id(), "multiplayer");
         // The replacement fires nothing again.
         assert_eq!(
             take(log),
@@ -551,7 +551,7 @@ fn replacing_a_title_screen_opens_the_mods_screen_over_the_title() {
     run(|game, log, answer| {
         let saves = std::env::temp_dir().join("sunrise-title-gate-test-no-saves");
         game.player = None;
-        game.title = Some(game.new_title(saves));
+        game.title.0 = Some(game.new_title(saves));
         game.settle_title_mode();
         let back: [fn(&mut Game<'_>); 2] = [
             |game| game.key_pressed(KeyCode::Escape, KeyCode::Escape).unwrap(),
@@ -559,19 +559,19 @@ fn replacing_a_title_screen_opens_the_mods_screen_over_the_title() {
         ];
         for back in back {
             *answer.lock().unwrap() = Some(ScreenOpening::ModScreen);
-            game.title.as_mut().unwrap().set_mode(Mode::Select {
+            game.title.0.as_mut().unwrap().set_mode(Mode::Select {
                 worlds: Vec::new(),
                 selected: None,
             });
             game.settle_title_mode();
             assert_eq!(game.client.screen, Screen::Mod);
             assert_eq!(game.mod_screen(), Some("screens"));
-            assert!(matches!(game.title.as_ref().unwrap().mode, Mode::Main));
+            assert!(matches!(game.title.0.as_ref().unwrap().mode, Mode::Main));
             assert_eq!(take(log), ["opening title->world_select", "closing title"]);
             *answer.lock().unwrap() = None;
             back(game);
             assert_eq!(game.client.screen, Screen::Playing);
-            assert!(matches!(game.title.as_ref().unwrap().mode, Mode::Main));
+            assert!(matches!(game.title.0.as_ref().unwrap().mode, Mode::Main));
             assert_eq!(take(log), ["opening mod->title", "closing mod"]);
         }
     });
@@ -586,16 +586,16 @@ fn replacing_a_title_screen_opens_the_mods_screen_over_the_title() {
 fn the_title_appears_and_goes_through_screen_opening() {
     run(|game, log, answer| {
         let saves = std::env::temp_dir().join("sunrise-title-gate-test-no-saves");
-        game.title = None;
+        game.title.0 = None;
         *answer.lock().unwrap() = Some(ScreenOpening::Cancel);
         game.show_title(game.new_title(saves));
-        assert!(game.title.is_some());
+        assert!(game.title.0.is_some());
         assert_eq!(take(log), ["opening playing->title"]);
         game.observe_screen();
         assert!(take(log).is_empty());
         *answer.lock().unwrap() = None;
         game.hide_title();
-        assert!(game.title.is_none());
+        assert!(game.title.0.is_none());
         assert_eq!(take(log), ["opening title->playing", "closing title"]);
         game.observe_screen();
         assert!(take(log).is_empty());
@@ -668,7 +668,7 @@ fn an_overlay_replaced_by_a_vanilla_screen_fires_its_init_post() {
     let log = Arc::new(Mutex::new(Vec::new()));
     let mods = vec![ModEntry::new("pause", Box::new(ToPause(log.clone())))].into();
     with_game_of(mods, |game| {
-        game.title = None;
+        game.title.0 = None;
         game.open_sign_editor((0, 64, 0), true);
         assert!(game.client.sign_edit.is_none());
         assert_eq!(game.client.screen, Screen::Paused);
@@ -714,7 +714,7 @@ fn client_gui_state_matches_screen_init_hook() {
             assert!(!mod_api::prelude::ScreensClientHost::window_focused(game));
             game.client.focused = true;
             assert!(mod_api::prelude::ScreensClientHost::window_focused(game));
-            game.title = None;
+            game.title.0 = None;
             game.client.screen = Screen::Playing;
             assert!(mod_api::prelude::ScreensClientHost::observed_screen_id(game).is_none());
             game.client.screen = Screen::Inventory;
@@ -737,7 +737,7 @@ fn client_gui_state_matches_screen_init_hook() {
                     .unwrap(),
             );
             game.options.offscreen = true;
-            game.renderer = Some(game.new_renderer(window).unwrap());
+            game.renderer.0 = Some(game.new_renderer(window).unwrap());
             game.client.screen = Screen::Playing;
             assert!(mod_api::prelude::ScreensClientHost::observed_screen_id(game).is_none());
             game.set_screen(Screen::Inventory);
@@ -886,7 +886,7 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
     with_mods(mods, || {
         crate::game::native_entity_refs::tests::with_client_game(|game| {
             // 1) Refused when headless (`renderer.is_none()`).
-            assert!(game.renderer.is_none());
+            assert!(game.renderer.0.is_none());
             assert!(!game.mod_screen_open("mod_a"));
             assert_eq!(game.client.screen, Screen::Playing);
             assert!(take(&log).is_empty());
@@ -910,9 +910,9 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
                     .unwrap(),
             );
             game.options.offscreen = true;
-            game.window = Some(window.clone());
-            game.renderer = Some(game.new_renderer(window).unwrap());
-            game.title = None;
+            game.window.0 = Some(window.clone());
+            game.renderer.0 = Some(game.new_renderer(window).unwrap());
+            game.title.0 = None;
             game.player = Some(
                 sunrise_client::motion::PlayerMotion::new(
                     game.motion,
@@ -1155,7 +1155,7 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
             game.remote = None;
             game.player = None;
             let saves = tempfile::tempdir().unwrap();
-            game.title = Some(game.new_title(saves.path().to_path_buf()));
+            game.title.0 = Some(game.new_title(saves.path().to_path_buf()));
             take(&log);
             assert!(game.mod_screen_open("mod_a"));
             assert_eq!(game.client.screen, Screen::Mod);

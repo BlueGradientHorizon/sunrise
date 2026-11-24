@@ -248,6 +248,7 @@ impl Game<'_> {
         let owner = mod_api::content::crash::current_native_mod().unwrap_or("");
         let mut scenes = self
             .live_scenes
+            .0
             .try_borrow_mut()
             .map_err(|_| SceneError::Unavailable)?;
         let key = scene_key(blocks);
@@ -527,7 +528,7 @@ impl Game<'_> {
         owner: &str,
         id: u32,
     ) -> Vec<([f64; 3], [f64; 3], i32)> {
-        let scenes = self.live_scenes.borrow();
+        let scenes = self.live_scenes.0.borrow();
         scenes
             .live
             .iter()
@@ -542,7 +543,7 @@ impl Game<'_> {
     }
     /// The tick the mod's scene `id` last ran, when it is kept.
     pub(in crate::game) fn scene_tick(&self, owner: &str, id: u32) -> Option<u64> {
-        let scenes = self.live_scenes.borrow();
+        let scenes = self.live_scenes.0.borrow();
         scenes
             .live
             .iter()

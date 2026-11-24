@@ -94,7 +94,7 @@ fn with_server(role: ExecutionRole, test: impl FnOnce(&mut Game<'_>)) {
             max_players: 2,
             integrated: role == ExecutionRole::IntegratedServer,
             levels: game.server.level_shapes,
-            level_seeds: game.levels.runtime.seeds(),
+            level_seeds: game.levels.0.runtime.seeds(),
         };
         game.lan_host(
             LanSettings {

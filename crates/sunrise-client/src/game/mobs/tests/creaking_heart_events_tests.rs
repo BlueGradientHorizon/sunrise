@@ -74,7 +74,7 @@ fn heart_with_a_creaking(game: &mut Game<'_>) -> (u32, [f64; 3]) {
 fn a_heart_spawn_posts_entity_place_and_the_poof() {
     let mut resources = None;
     let mut game = game(&mut resources);
-    game.audio.capture = Some(Vec::new());
+    game.audio.0.capture = Some(Vec::new());
     crate::game::sculk::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
     let (id, at) = heart_with_a_creaking(&mut game);
     let events =

@@ -223,7 +223,10 @@ fn slotless_screen_draw_sees_full_width_updates_only_for_its_window() {
                 seen.lock().unwrap().cancel_opening = true;
                 open(game, 2, 1);
                 assert_eq!(game.client.screen, Screen::Playing);
-                assert!(game.mod_screen.is_none(), "a veto drops the staged screen");
+                assert!(
+                    game.mod_screen.0.is_none(),
+                    "a veto drops the staged screen"
+                );
                 assert!(game.remote.as_ref().unwrap().menu.as_ref().is_none());
                 assert_eq!(
                     seen.lock().unwrap().data,
@@ -411,12 +414,12 @@ fn a_mod_blocks_custom_menu_gets_its_registered_screen() {
                             .unwrap();
                         game.world.set(pos.0, pos.1, pos.2, state).unwrap();
                         assert!(game.open_native_screen(pos, Some(pos), 27, None));
-                        let open = game.mod_screen.as_ref().expect("the menu type's screen");
+                        let open = game.mod_screen.0.as_ref().expect("the menu type's screen");
                         assert_eq!(open.menu.block.as_deref(), Some("test:crate"));
                         assert_eq!(open.layout().height, 166.0);
                         assert!(open.layout().slots[4].is_none());
                         game.container = Some(pos);
-                        game.title = None;
+                        game.title.0 = None;
                         game.ui.hide_gui = true;
                         game.settings.gui_scale = 2;
                         game.level.recipe_book.open = [false; 4];
@@ -498,7 +501,7 @@ fn a_mod_menu_opened_without_a_block_gets_its_types_screen() {
                 let key = (i32::MIN, 0, 0);
                 seed_native_menu(game, 1, PACK);
                 assert!(game.open_native_screen(key, None, 9, None));
-                let open = game.mod_screen.as_ref().expect("the menu type's screen");
+                let open = game.mod_screen.0.as_ref().expect("the menu type's screen");
                 assert_eq!((open.layout().height, &open.menu.block), (133.0, &None));
                 assert_eq!(open.layout().slots, vec![None; 9]);
                 game.container = Some(key);
@@ -509,7 +512,7 @@ fn a_mod_menu_opened_without_a_block_gets_its_types_screen() {
                 seed_native_menu(game, 2, "minecraft:generic_9x3");
                 assert!(game.open_native_screen(key, None, 27, None));
                 assert!(
-                    game.mod_screen.is_none(),
+                    game.mod_screen.0.is_none(),
                     "a vanilla chest keeps its screen"
                 );
             });
@@ -706,7 +709,7 @@ fn custom_menu_screens_route_by_menu_type_and_allow_cross_mod_slot_controls() {
                             assert!(game.open_native_screen(pos, Some(pos), 5, None));
                             game.container = Some(pos);
                             game.set_screen(Screen::Inventory);
-                            let open = game.mod_screen.as_ref().expect("the machine's screen");
+                            let open = game.mod_screen.0.as_ref().expect("the machine's screen");
                             let (menu, open_block, base) = (
                                 open.menu.name.clone(),
                                 open.menu.block.clone().unwrap(),
@@ -777,7 +780,7 @@ fn custom_menu_screens_route_by_menu_type_and_allow_cross_mod_slot_controls() {
                         seed_native_menu(game, 3, "minecraft:hopper");
                         assert!(game.open_native_screen(pos, Some(pos), 5, None));
                         assert!(
-                            game.mod_screen.is_none(),
+                            game.mod_screen.0.is_none(),
                             "a vanilla hopper keeps its screen"
                         );
                         assert_eq!(game.menu_opener_block(pos, "minecraft:hopper"), None);
@@ -933,6 +936,7 @@ fn a_hopper_layout_mod_menu_opens_its_screen_from_block_packets() {
                         assert_eq!(game.client.screen, Screen::Inventory);
                         let open = game
                             .mod_screen
+                            .0
                             .as_ref()
                             .expect("registered screen for the mod menu");
                         assert_eq!(open.menu.name, MENU);
@@ -1010,13 +1014,13 @@ fn stock_menu_data_sync_round_trips_above_255_and_enforces_signed_short_boundary
                 game.world.set(pos.0, pos.1, pos.2, state).unwrap();
                 assert!(game.open_native_screen(pos, Some(pos), 27, None));
                 assert!(
-                    game.mod_screen.is_none(),
+                    game.mod_screen.0.is_none(),
                     "the stock menu has no mod factory"
                 );
                 // Stock screens cannot be replaced by registration. Stage a draw
                 // probe to inspect the data delivered by the stock packet handler.
                 let draw_seen = seen.clone();
-                game.mod_screen = Some(OpenNativeScreen {
+                game.mod_screen.0 = Some(OpenNativeScreen {
                     menu: OpenNativeMenu {
                         key: pos,
                         window: 1,

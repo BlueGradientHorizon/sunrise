@@ -42,6 +42,7 @@ impl Game<'_> {
                 zombie_villager::cure_sound(m)
         {
             self.audio
+                .0
                 .play_unshared(&format!("minecraft:{name}"), Some(at), volume, pitch);
         }
     }

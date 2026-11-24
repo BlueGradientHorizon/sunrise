@@ -70,7 +70,7 @@ impl Game<'_> {
         self.bind_local_player_residency();
         self.refresh_debug_renderers();
         // LocalPlayer.setReducedDebugInfo always rebuilds, also on a second login.
-        self.debug_entries.invalidate();
+        self.debug_entries.0.invalidate();
         self.streaming.radius = crate::game::entity_culling::streaming_radius_for(
             self.settings.render_distance,
             Some(p.chunk_radius),
@@ -95,13 +95,13 @@ impl Game<'_> {
     pub(super) fn apply_respawn_packet(&mut self, p: play::Respawn) {
         self.reset_client_item_use();
         // The new LocalPlayer copies reduced debug info through its setter.
-        self.debug_entries.invalidate();
+        self.debug_entries.0.invalidate();
         let old_player = self.remote.as_ref().map(|r| (r.entity_id, r.profile));
         if let Some((_, uuid)) = old_player {
             self.forget_entity_initialization(Holder::Player(uuid));
         }
         if let Some(r) = self.remote.as_ref() {
-            self.audio.remove_sound_entity(r.entity_id as u32);
+            self.audio.0.remove_sound_entity(r.entity_id as u32);
         }
         // A new player, without effects (the server sends them
         // again) and with no item in use.
@@ -193,7 +193,7 @@ impl Game<'_> {
             let (music, _) = self.situational_music();
             self.client
                 .music
-                .stop_playing(music.as_ref(), &mut self.audio);
+                .stop_playing(music.as_ref(), &mut self.audio.0);
         }
         self.set_screen(Screen::Playing);
         if let Some(r) = self.remote.as_mut() {
@@ -502,8 +502,8 @@ impl Game<'_> {
                 .any(|span| !span.text.is_empty())
                 .then_some(text)
         };
-        self.tab_list.header = text(&p.header);
-        self.tab_list.footer = text(&p.footer);
+        self.tab_list.0.header = text(&p.header);
+        self.tab_list.0.footer = text(&p.footer);
     }
 
     /// `C::Commands`: its arms of `apply_packet`, guard and order kept.

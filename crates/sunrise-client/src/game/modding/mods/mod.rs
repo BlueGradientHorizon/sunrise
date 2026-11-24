@@ -2067,7 +2067,7 @@ impl Game<'_> {
         self.refresh_recipe_property_context();
         self.setting_overrides.borrow_mut().clear();
         if let Some(audio) = context.audio {
-            self.audio.set_loop_context(audio);
+            self.audio.0.set_loop_context(audio);
         }
         if let Some(worldgen) = context.worldgen {
             sunrise_world::native_worldgen_hooks::publish_context(Arc::new(worldgen));

@@ -98,7 +98,7 @@ impl Game<'_> {
             return;
         };
         match entity {
-            Some(entity) => self.audio.play_entity_seeded(
+            Some(entity) => self.audio.0.play_entity_seeded(
                 &heard.name,
                 heard.source.index(),
                 heard.volume,
@@ -106,7 +106,7 @@ impl Game<'_> {
                 seed,
                 entity,
             ),
-            None => self.audio.play_on_seeded(
+            None => self.audio.0.play_on_seeded(
                 heard.source.index(),
                 &heard.name,
                 Some(at),
@@ -120,10 +120,10 @@ impl Game<'_> {
     /// A client-local level request without a packet seed. LocalPlayer.playSound
     /// asks AtEntity but still creates a positional, not entity-bound, instance.
     pub(in crate::game) fn play_client_local_sound(&mut self, sound: LevelSound<'_>) {
-        let seed = self.audio.next_sound_seed();
+        let seed = self.audio.0.next_sound_seed();
         let at = sound.at;
         if let Some(heard) = self.ask_level_sound(self.dim.id(), sound) {
-            self.audio.play_on_seeded(
+            self.audio.0.play_on_seeded(
                 heard.source.index(),
                 &heard.name,
                 Some(at),
@@ -166,10 +166,11 @@ impl Game<'_> {
         except: Option<u32>,
     ) {
         self.audio
+            .0
             .play_unshared(sound.name, Some(sound.at), sound.volume, sound.pitch);
         // Kept while the level's sounds are captured for others, as
         // `Audio.play` keeps the rest.
-        if self.audio.capture.is_some() {
+        if self.audio.0.capture.is_some() {
             self.server.bound_sounds.push(BoundSound {
                 name: sound.name.to_owned(),
                 at: sound.at,
@@ -200,6 +201,7 @@ impl Game<'_> {
     /// A synchronous level sound, not captured again at the end of the tick.
     pub(in crate::game) fn play_immediate_level_sound(&mut self, sound: LevelSound<'_>) {
         self.audio
+            .0
             .play_unshared(sound.name, Some(sound.at), sound.volume, sound.pitch);
         self.send_level_sound(sound, None);
     }
@@ -400,7 +402,7 @@ mod tests {
             max_players: 3,
             integrated: true,
             levels: game.server.level_shapes,
-            level_seeds: game.levels.runtime.seeds(),
+            level_seeds: game.levels.0.runtime.seeds(),
         };
         let settings = LanSettings {
             port: 0,
@@ -453,7 +455,7 @@ mod tests {
                     "asked at the end of the tick"
                 );
                 assert!(
-                    game.audio.capture.as_ref().unwrap().is_empty(),
+                    game.audio.0.capture.as_ref().unwrap().is_empty(),
                     "not also sent as a positional sound"
                 );
 
@@ -523,7 +525,7 @@ mod tests {
                     max_players: 3,
                     integrated: true,
                     levels: game.server.level_shapes,
-                    level_seeds: game.levels.runtime.seeds(),
+                    level_seeds: game.levels.0.runtime.seeds(),
                 };
                 let settings = LanSettings {
                     port: 0,
@@ -538,7 +540,7 @@ mod tests {
                 let at = [2.0, 64.0, 2.0];
 
                 // The tick's sounds, at their positions.
-                game.audio.capture = Some(
+                game.audio.0.capture = Some(
                     [
                         "minecraft:block.chest.locked",
                         "minecraft:entity.pig.ambient",

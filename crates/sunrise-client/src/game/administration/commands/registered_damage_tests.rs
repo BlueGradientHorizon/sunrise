@@ -515,11 +515,11 @@ fn live_damage_and_blast_warden_reactions_follow_source_entities_and_cooldown() 
                 Some(_) => "@s[type=minecraft:ender_dragon]",
                 None => "@s",
             };
-            game.cmds.results = Some(Vec::new());
+            game.cmds.0.results = Some(Vec::new());
             assert!(game.run_command(&format!(
                 "execute as {WARDEN} on target if entity {selector}"
             )));
-            let results = game.cmds.results.take().unwrap();
+            let results = game.cmds.0.results.take().unwrap();
             if expected.is_some() {
                 assert_eq!(results, [(true, 1)], "{selector}");
             } else {
@@ -764,7 +764,7 @@ pub(in crate::game) fn run_live_damage_and_blast_creaking_reactions_and_timed_pl
         // and sounds the resin before the Creaking sways.
         assert_eq!(heart_emitter(game), 0);
         TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
-        game.audio.capture = Some(Vec::new());
+        game.audio.0.capture = Some(Vec::new());
         clear_anim(game);
         assert!(
             game.run_command(
@@ -789,7 +789,7 @@ pub(in crate::game) fn run_live_damage_and_blast_creaking_reactions_and_timed_pl
                 .iter()
                 .all(|(event, _, source)| *event == "minecraft:block_place" && source.is_none())
         );
-        let sounds = game.audio.capture.as_ref().unwrap();
+        let sounds = game.audio.0.capture.as_ref().unwrap();
         assert_eq!(
             sounds.last().unwrap().event,
             "minecraft:entity.creaking.sway"
@@ -907,11 +907,11 @@ pub(in crate::game) fn run_live_damage_and_blast_creaking_reactions_and_timed_pl
                 p.velocity = Vec3::new(-1.0, 0.0, 0.0);
             }
         });
-        game.audio.capture.as_mut().unwrap().clear();
+        game.audio.0.capture.as_mut().unwrap().clear();
         game.server.lan_entity_events.clear();
         TEST_POSTED_EVENT_ORDER.with(|order| *order.borrow_mut() = Some(Vec::new()));
         let reaction = |game: &Game<'_>| {
-            let sounds = game.audio.capture.as_ref().unwrap();
+            let sounds = game.audio.0.capture.as_ref().unwrap();
             let is_hit_sound = |event: &str| {
                 matches!(
                     event,

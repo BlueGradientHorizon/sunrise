@@ -93,7 +93,7 @@ impl Game<'_> {
         if let Some((nutrition, saturation)) = sunrise_client::item_sync::food(stack, info.food) {
             let at = self.feet();
             let pitch = self.world.random.triangle_float(1.0, 0.4);
-            self.audio.play(&consumable.sound, at, 1.0, pitch);
+            self.audio.0.play(&consumable.sound, at, 1.0, pitch);
             if let Some(p) = self.player.as_mut() {
                 // FoodData.eat(nutrition, saturation)
                 let food = &mut p.health.food;
@@ -103,6 +103,7 @@ impl Game<'_> {
             // Mth.randomBetween(random, 0.9, 1.0)
             let pitch = self.world.random.next_float() * (1.0f32 - 0.9f32) + 0.9;
             self.audio
+                .0
                 .play("minecraft:entity.player.burp", self.feet(), 0.5, pitch);
         }
         // SuspiciousStewEffects.onConsume, a ConsumableListener: each entry is
@@ -516,13 +517,13 @@ impl Game<'_> {
         };
         let options = ParticleOptions::simple(ParticleType::Portal);
         for (p, v) in spawned {
-            self.particles.add(&options, p, v);
+            self.particles.0.add(&options, p, v);
         }
     }
     fn emit_living_teleport(&mut self, from: [f64; 3], to: [f64; 3], width: f64, height: f64) {
         let mut spawned = Vec::with_capacity(128);
         sunrise_client::particles::living_teleport_particles(
-            self.particles.random(),
+            self.particles.0.random(),
             from,
             to,
             width,
@@ -531,7 +532,7 @@ impl Game<'_> {
         );
         let options = ParticleOptions::simple(ParticleType::Portal);
         for (p, v) in spawned {
-            self.particles.add(&options, p, v);
+            self.particles.0.add(&options, p, v);
         }
     }
     /// `LivingEntity.stopRiding`.
@@ -621,7 +622,7 @@ impl EmissionWorld for Emitter<'_, '_> {
         if !self.0.is_logical_server() {
             self.0.play_client_player_sound(&sound, volume, pitch);
         } else if self.0.server.lan_acting.is_some() {
-            self.0.audio.play_unshared(&sound, at, volume, pitch);
+            self.0.audio.0.play_unshared(&sound, at, volume, pitch);
             if let Some(at) = at {
                 self.0
                     .server
@@ -629,7 +630,7 @@ impl EmissionWorld for Emitter<'_, '_> {
                     .push((sound, at, volume, pitch));
             }
         } else {
-            self.0.audio.play(&sound, at, volume, pitch);
+            self.0.audio.0.play(&sound, at, volume, pitch);
         }
         Ok(())
     }
@@ -728,7 +729,7 @@ impl TeleportConsumeWorld for Teleporter<'_, '_> {
         false
     }
     fn teleport_sound(&mut self, _: Dim, at: Vec3, _: bool) -> Result<(), Infallible> {
-        self.0.audio.play(
+        self.0.audio.0.play(
             "minecraft:item.chorus_fruit.teleport",
             Some([at.x, at.y, at.z]),
             1.0,
@@ -896,7 +897,7 @@ impl TeleportConsumeWorld for MobTeleporter<'_, '_> {
         matches!(self.usage, MobConsumption::Fox(_))
     }
     fn teleport_sound(&mut self, _: Dim, at: Vec3, fox: bool) -> Result<(), ()> {
-        self.game.audio.play(
+        self.game.audio.0.play(
             if fox {
                 "minecraft:entity.fox.teleport"
             } else {

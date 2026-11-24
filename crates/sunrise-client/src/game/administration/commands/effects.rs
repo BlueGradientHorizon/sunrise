@@ -100,7 +100,7 @@ impl Game<'_> {
                                     && let Some(sound) = super::super::potions::sound_on_added(name)
                                 {
                                     let at = [m.position.x, m.position.y, m.position.z];
-                                    self.audio.play(sound, Some(at), 1.0, 1.0);
+                                    self.audio.0.play(sound, Some(at), 1.0, 1.0);
                                 }
                                 self.mod_effect_added(name, Some(id as i32), amplifier, new);
                                 changed

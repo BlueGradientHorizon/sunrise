@@ -96,7 +96,7 @@ impl Game<'_> {
             return;
         }
         let sound = self.block_sound_type(pos, state, None, BlockSoundCause::Break);
-        self.audio.play(
+        self.audio.0.play(
             &sound.break_sound,
             Some(pos.map(|v| f64::from(v) + 0.5)),
             (sound.volume + 1.0) / 2.0,

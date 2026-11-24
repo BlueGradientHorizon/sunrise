@@ -132,7 +132,7 @@ impl Game<'_> {
         if !remote.has_level() {
             return None;
         }
-        self.text_displays.get(&id)
+        self.text_displays.0.get(&id)
     }
 
     /// What a handle names now, or None for a stale or foreign one.
@@ -282,7 +282,7 @@ impl Game<'_> {
             return Some(LevelRef::new(epoch, self.client_level_key(dimension)?));
         }
         let dim = std::iter::once(self.dim)
-            .chain(self.levels.parked_dims())
+            .chain(self.levels.0.parked_dims())
             .find(|d| d.id() == dimension)?;
         Some(self.level_ref(epoch, dim.key()))
     }
@@ -543,7 +543,8 @@ impl Game<'_> {
                 .map(|guest| guest.bounds()),
             Target::Other(_) if server => self
                 .others
-                .get(self.others.locate(join)?)?
+                .0
+                .get(self.others.0.locate(join)?)?
                 .display_marker_or_interaction_bounds(),
             Target::Hook(id) if server => self
                 .fishing_hooks_here()
@@ -999,12 +1000,13 @@ impl Game<'_> {
         } else {
             let dim = self
                 .levels
+                .0
                 .parked_dims()
                 .into_iter()
                 .find(|dim| dim.key() == level.dimension())?;
             (
-                self.levels.parked_world(dim)?,
-                self.levels.parked_anims(dim)?,
+                self.levels.0.parked_world(dim)?,
+                self.levels.0.parked_anims(dim)?,
             )
         };
         Some(self.state_shape_boxes(world, anims, state, pos, kind))
@@ -1168,6 +1170,7 @@ impl Game<'_> {
         };
         let (dim, parked) = self
             .levels
+            .0
             .parked
             .iter()
             .find(|(dim, _)| dim.key() == location.owner.dimension)?;
@@ -1762,7 +1765,7 @@ pub(in crate::game) mod tests {
                 max_players: 2,
                 integrated: true,
                 levels: game.server.level_shapes,
-                level_seeds: game.levels.runtime.seeds(),
+                level_seeds: game.levels.0.runtime.seeds(),
             },
         )
         .unwrap();
@@ -1975,7 +1978,7 @@ pub(in crate::game) mod tests {
         resolve_parts(&game).unwrap();
         // The title's save folder is under the working directory: give each test its own, so a
         // test that saves leaves the checkout clean and parallel tests don't share files.
-        game.save = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
+        game.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
             saves.path().to_path_buf(),
             sunrise_client::save::LevelShape::OVERWORLD,
             Some(Default::default()),
@@ -3273,7 +3276,7 @@ pub(in crate::game) mod tests {
                 max_players: 2,
                 integrated: true,
                 levels: game.server.level_shapes,
-                level_seeds: game.levels.runtime.seeds(),
+                level_seeds: game.levels.0.runtime.seeds(),
             };
             game.lan_host(settings, net, config).unwrap();
             let host = game.lan.as_mut().unwrap();
@@ -5406,7 +5409,7 @@ pub(in crate::game) mod tests {
                 assert_eq!(seen, [92, 55, 11, 31]);
 
                 let block = game.entity(92).unwrap();
-                game.text_displays.get_mut(&92).unwrap().metadata(&[
+                game.text_displays.0.get_mut(&92).unwrap().metadata(&[
                     (10, 1, Value::Int(3)),
                     (20, 2, Value::Float(4.0)),
                     (21, 2, Value::Float(4.0)),
@@ -5441,7 +5444,7 @@ pub(in crate::game) mod tests {
                 let culling_only_lo = [16.5, 67.0, 2.5];
                 let culling_only_hi = [16.75, 68.0, 3.5];
                 assert!(ids(game, level, culling_only_lo, culling_only_hi).is_empty());
-                let (lo, hi) = game.text_displays[&92].interpolated_bounding_box(1.0);
+                let (lo, hi) = game.text_displays.0[&92].interpolated_bounding_box(1.0);
                 let culling = super::aabb_extents((lo.to_array(), hi.to_array()));
                 let culling_only = super::aabb_extents((culling_only_lo, culling_only_hi));
                 assert!(culling.intersects(culling_only));
@@ -5644,7 +5647,7 @@ pub(in crate::game) mod tests {
                         // on this tick, the pig ahead of the display the display loop moved.
                         add(game, 70, "minecraft:pig", [14.5, 65.5, 3.0]);
                         add(game, 71, "minecraft:block_display", [13.5, 65.5, 3.0]);
-                        game.text_displays.get_mut(&71).unwrap().metadata(&[(
+                        game.text_displays.0.get_mut(&71).unwrap().metadata(&[(
                             10,
                             1,
                             Value::Int(3),

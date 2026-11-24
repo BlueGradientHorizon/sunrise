@@ -155,8 +155,9 @@ impl Game<'_> {
             min_y: world.bottom_y(),
             top: &top,
         };
-        let renderer = self.renderer.as_mut().map(|r| r as _);
+        let renderer = self.renderer.0.as_mut().map(|r| r as _);
         self.particles
+            .0
             .polytone_gpu_decide(renderer, camera, &source);
     }
 
@@ -164,8 +165,9 @@ impl Game<'_> {
     /// the renderer draws with their own shader go to it.
     pub(in crate::game) fn polytone_gpu_particles(&mut self, camera: glam::DVec3, alpha: f64) {
         let world = &self.world;
-        let renderer = self.renderer.as_mut().map(|r| r as _);
+        let renderer = self.renderer.0.as_mut().map(|r| r as _);
         self.particles
+            .0
             .polytone_gpu_hand_over(renderer, camera, alpha as f32, &|b| {
                 world.light(b[0], b[1], b[2])
             });
@@ -210,6 +212,7 @@ impl Game<'_> {
     pub(in crate::game) fn near_plane(&self) -> NearPlane {
         let [width, height] = self
             .renderer
+            .0
             .as_ref()
             .map_or([1, 1], |r| [r.config.width, r.config.height]);
         self.client.view.near_plane(
@@ -237,7 +240,7 @@ impl Game<'_> {
         let fog_type = self.camera_fog_type(at);
         let (rain, thunder) = self.view_weather(self.clock.fraction() as f32);
         let title_fog = sunrise_client::fog::FogTables::default();
-        let tables = if self.title.is_some() {
+        let tables = if self.title.0.is_some() {
             &title_fog
         } else {
             self.res.fog()
@@ -275,7 +278,7 @@ impl Game<'_> {
             water_fog_color,
             biome,
             render_distance_chunks: self.terrain_distance(),
-            distant_terrain: self.lod.is_some() && self.overworld_skybox(),
+            distant_terrain: self.lod.0.is_some() && self.overworld_skybox(),
             cloud_range_chunks: self.settings.cloud_range,
             camera_y: camera.y,
             min_y: self.level_min_y(),
@@ -300,7 +303,7 @@ impl Game<'_> {
         if !self.settings.sunrise.fog {
             sunrise_client::fog::clear_distance_fog(&mut fog, &input);
         }
-        if self.title.is_none() {
+        if self.title.0.is_none() {
             fog.color =
                 self.native_fog_color_now(self.clock.fraction() as f32, at, fog_type, fog.color);
             fog = self.native_fog_now(self.clock.fraction() as f32, at, fog_type, fog);
@@ -803,8 +806,8 @@ impl Game<'_> {
             update_rain_fog(&mut self.client.fog, rain, sky_light, rains, 1.0);
         }
         laps.lap("tp_fx");
-        self.particles.particle_level = self.settings.particles;
-        self.particles.camera = cam_pos;
+        self.particles.0.particle_level = self.settings.particles;
+        self.particles.0.camera = cam_pos;
         let (rain, thunder) = self.weather_levels(1.0);
         let ambient_attribute = attribute(AMBIENT_PARTICLES).expect("registered ambient particles");
         let marker = marker_particle_target(self.mode, self.stack_in(self.selected));
@@ -928,12 +931,13 @@ impl Game<'_> {
                 if !sampling.started() {
                     laps.lap("tp_ctx");
                     self.particles
+                        .0
                         .set_polytone(self.pack.polytone_particles.clone());
                     if let Some(registry) = &self.pack.polytone_particles {
                         registry.set_biomes(biomes);
                     }
                 }
-                if let Some(step) = sampling.run(self.res.animate(), &mut self.particles, &ctx) {
+                if let Some(step) = sampling.run(self.res.animate(), &mut self.particles.0, &ctx) {
                     match step {
                         AnimateStep::BlockPart(state, pos) => self.mod_animate_tick(state, pos),
                         AnimateStep::Ambient(options, at) => self.emit_model_ambient(&options, at),
@@ -1010,6 +1014,7 @@ impl Game<'_> {
                             f64::from(z) + bz,
                         ];
                         self.particles
+                            .0
                             .add(&ParticleOptions::simple(ty), p, [0.0; 3]);
                     }
                     // The last rain column of the tick makes the sound, more often the
@@ -1035,16 +1040,16 @@ impl Game<'_> {
                             let p = at.map(|c| f64::from(c) + 0.5);
                             // playLocalSound: guests make their own rain, so a host
                             // must not capture it for them.
-                            self.audio.play_unshared(name, Some(p), volume, pitch);
+                            self.audio.0.play_unshared(name, Some(p), volume, pitch);
                         }
                     }
                 }
             }
             // A client of a server ticks its campfires with the other block entities.
-            if let Some(r) = self.renderer.as_ref().filter(|_| self.remote.is_none()) {
+            if let Some(r) = self.renderer.0.as_ref().filter(|_| self.remote.is_none()) {
                 campfire_particles(
                     self.res.animate(),
-                    &mut self.particles,
+                    &mut self.particles.0,
                     &ctx,
                     r.block_entities(),
                     &|pos| match self.world.block_entities.get(&(pos[0], pos[1], pos[2])) {
@@ -1068,6 +1073,7 @@ impl Game<'_> {
         };
         if !self
             .particles
+            .0
             .admit_particle_at(at, override_limiter, false)
         {
             return;
@@ -1081,13 +1087,14 @@ impl Game<'_> {
                 .filter(|stack| self.items().get(&stack.item).is_some())
                 .map(|stack| self.item_particle(&stack)),
             PersistentOptions::ElderGuardian => {
-                self.particles.elder_guardian();
+                self.particles.0.elder_guardian();
                 return;
             }
             _ => unreachable!(),
         };
         if let Some(options) = options {
             self.particles
+                .0
                 .add_admitted_with_world(Some(&self.world), &options, at, [0.0; 3]);
         }
     }
@@ -1111,7 +1118,7 @@ impl Game<'_> {
                     p.position.z,
                 ]
             });
-        self.particles.set_scope_eye(scope_eye);
+        self.particles.0.set_scope_eye(scope_eye);
         let level = ParticleLevel {
             world,
             facts,
@@ -1128,10 +1135,12 @@ impl Game<'_> {
         if let Some(p) = &self.player {
             let feet = [p.position.x, p.position.y, p.position.z];
             self.particles
+                .0
                 .polytone_entity(&level, "minecraft:player", feet);
         }
         let bodies =
             self.particles
+                .0
                 .sample_tracking_bodies(|target| match target {
                     TrackingTarget::LocalPlayer => self.player.as_ref().map(player_tracking_body),
                     TrackingTarget::Entity(id) => {
@@ -1155,17 +1164,18 @@ impl Game<'_> {
                             .map(|i| mob_tracking_body(&self.mobs[i]))
                     }
                 });
-        self.particles.tick_tracking(&level, bodies);
+        self.particles.0.tick_tracking(&level, bodies);
         laps.lap("tp_engine");
         self.tick_pickups();
         laps.lap("tp_pickups");
-        let camera = self.particles.camera;
-        for (name, at, volume, pitch, delayed) in std::mem::take(&mut self.particles.sounds) {
+        let camera = self.particles.0.camera;
+        for (name, at, volume, pitch, delayed) in std::mem::take(&mut self.particles.0.sounds) {
             if delayed {
                 self.audio
+                    .0
                     .play_distance_delayed(name, at, volume, pitch, camera);
             } else {
-                self.audio.play(name, Some(at), volume, pitch);
+                self.audio.0.play(name, Some(at), volume, pitch);
             }
         }
     }
@@ -1227,7 +1237,7 @@ impl Game<'_> {
             std::mem::discriminant(&self.client.screen).hash(&mut hasher);
             hasher.finish()
         });
-        if let Some(renderer) = &mut self.renderer {
+        if let Some(renderer) = &mut self.renderer.0 {
             renderer.set_animation_inputs(day_time, [rain, thunder], Some(&frame), screen);
         }
     }
@@ -1240,14 +1250,14 @@ impl Game<'_> {
     /// ([`Self::world_runs`]). The frame's expression context is made only when needed.
     pub(in crate::game) fn reads_pack_expressions(&mut self) -> bool {
         let world = self.world_runs();
-        (self.renderer.as_mut()).is_some_and(|r| r.reads_pack_expressions(world))
+        (self.renderer.0.as_mut()).is_some_and(|r| r.reads_pack_expressions(world))
     }
 
     /// Whether an installed pack core shader reads Polytone's `PolyGlobals` this frame (the
     /// text's only where a world runs).
     pub(in crate::game) fn reads_poly_globals(&mut self) -> bool {
         let world = self.world_runs();
-        (self.renderer.as_mut()).is_some_and(|r| r.reads_poly_globals(world))
+        (self.renderer.0.as_mut()).is_some_and(|r| r.reads_poly_globals(world))
     }
 
     /// The frame's `PolyGlobals` for the pack core shaders that read them; none leaves them 0.
@@ -1256,7 +1266,7 @@ impl Game<'_> {
         globals: Option<&sunrise_client::polytone_post::PolyGlobals>,
     ) {
         let world = self.world_runs();
-        if let Some(renderer) = self.renderer.as_mut() {
+        if let Some(renderer) = self.renderer.0.as_mut() {
             renderer.set_poly_globals(globals.map(|g| g.bytes()).as_ref(), world);
         }
     }
@@ -1269,7 +1279,7 @@ impl Game<'_> {
         frame: Option<&sunrise_client::environment::Frame>,
     ) {
         let world = self.world_runs();
-        if let (Some(frame), Some(renderer)) = (frame, self.renderer.as_mut()) {
+        if let (Some(frame), Some(renderer)) = (frame, self.renderer.0.as_mut()) {
             renderer.evaluate_pack_expressions(frame, world);
         }
     }

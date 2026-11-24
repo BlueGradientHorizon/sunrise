@@ -87,7 +87,7 @@ fn a_panicking_hidden_status_replacement_leaves_other_rows() {
             .into(),
         );
         mods::register_gui_layers(ExecutionRole::Client);
-        game.title = None;
+        game.title.0 = None;
         game.client.screen = crate::game::Screen::Playing;
         game.ui.hide_gui = true;
         for (frame, expected) in [

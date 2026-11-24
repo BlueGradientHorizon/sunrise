@@ -343,7 +343,7 @@ pub(in crate::game) fn run_borrowed_creaking_hurt_finishes_before_the_tick_conti
             };
 
             game.server.lan_entity_events.clear();
-            game.audio.capture = Some(Vec::new());
+            game.audio.0.capture = Some(Vec::new());
             TEST_POSTED_EVENT_ORDER.with(|order| *order.borrow_mut() = Some(Vec::new()));
             let live_reaction = |game: &Game<'_>| {
                 let flap = (mob as i32, 66);
@@ -355,6 +355,7 @@ pub(in crate::game) fn run_borrowed_creaking_hurt_finishes_before_the_tick_conti
                     .count();
                 let sways = game
                     .audio
+                    .0
                     .capture
                     .as_ref()
                     .unwrap()
@@ -388,6 +389,7 @@ pub(in crate::game) fn run_borrowed_creaking_hurt_finishes_before_the_tick_conti
                 };
                 let sounds = game
                     .audio
+                    .0
                     .capture
                     .as_ref()
                     .unwrap()
@@ -481,6 +483,7 @@ pub(in crate::game) fn run_borrowed_creaking_hurt_finishes_before_the_tick_conti
                 assert_eq!(poison(pig(4)), Some(59));
                 let sounds: Vec<_> = game
                     .audio
+                    .0
                     .capture
                     .as_ref()
                     .unwrap()

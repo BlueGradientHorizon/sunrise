@@ -940,7 +940,7 @@ mod tests {
                 std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
             );
             let dir = tempfile::tempdir().unwrap();
-            game.session_lock =
+            game.session_lock.0 =
                 Some(sunrise_client::save::SessionLock::acquire(dir.path()).unwrap());
             let registry = game.pack.assets.registry;
             let chest = registry.default_state("minecraft:chest").unwrap();

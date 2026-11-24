@@ -46,7 +46,7 @@ fn playing(test: impl FnOnce(&mut Game)) {
         None,
     )
     .unwrap();
-    game.title = None;
+    game.title.0 = None;
     game.client.screen = Screen::Playing;
     test(&mut game);
 }
@@ -72,7 +72,7 @@ fn pad_press(game: &mut Game, button: Button, action: &str) {
             .actions_of(button)
             .contains(&action)
     );
-    game.pad.virtual_input = true;
+    game.pad.0.virtual_input = true;
     let mut state = PadState::default();
     // A trigger is held by how far it's pulled, not by a button bit.
     match button {
@@ -80,13 +80,13 @@ fn pad_press(game: &mut Game, button: Button, action: &str) {
         Button::RightTrigger => state.triggers[1] = 1.0,
         _ => state.set(button, true),
     }
-    game.pad.edges.update(&state, 0.4);
+    game.pad.0.edges.update(&state, 0.4);
     game.pad_button(&NoEventLoop, button, true).unwrap();
 }
 
 /// Release the sole held test button through the same dispatcher as its press.
 fn pad_release(game: &mut Game, button: Button) {
-    game.pad.edges.update(&PadState::default(), 0.4);
+    game.pad.0.edges.update(&PadState::default(), 0.4);
     game.pad_button(&NoEventLoop, button, false).unwrap();
 }
 
@@ -203,7 +203,7 @@ fn readers_of_the_movement_keys_see_the_stick() {
         game.client.focused = true;
         assert!(!forward_mapping.is_down(game).unwrap());
         // Up and to the left, on a diagonal: two keys, as a keyboard would hold.
-        game.pad.state.left = [-0.7, 0.7];
+        game.pad.0.state.left = [-0.7, 0.7];
         assert!(forward_mapping.is_down(game).unwrap());
         assert!(left_mapping.is_down(game).unwrap());
         assert!(!back_mapping.is_down(game).unwrap());
@@ -215,7 +215,7 @@ fn readers_of_the_movement_keys_see_the_stick() {
         // Forward is inside the eight-direction sector, left outside it. A direct
         // write on forward must not reclassify what remains of the stick.
         with_player(game);
-        game.pad.state.left = [-0.34, 0.93];
+        game.pad.0.state.left = [-0.34, 0.93];
         let before = game.sample_movement_keys(game.pad_move());
         assert!(forward_mapping.is_down(game).unwrap());
         assert!(!left_mapping.is_down(game).unwrap());
@@ -230,7 +230,7 @@ fn readers_of_the_movement_keys_see_the_stick() {
         assert_eq!(after.left, before.left);
         assert_eq!(after.direction(), [left, 0.0]);
 
-        game.pad.state.left = [-0.85, 0.0];
+        game.pad.0.state.left = [-0.85, 0.0];
         let [left, _] = game.pad_move().unwrap();
         forward_mapping.set_down(game, true).unwrap();
         let after = game.sample_movement_keys(game.pad_move());
@@ -240,15 +240,15 @@ fn readers_of_the_movement_keys_see_the_stick() {
 
         // A tilt below the digital threshold is new analog input and still
         // takes over. A changed left component does not take over forward.
-        game.pad.state.left = [0.0, 0.0];
+        game.pad.0.state.left = [0.0, 0.0];
         let before = game.pad_move();
         forward_mapping.set_down(game, false).unwrap();
-        game.pad.state.left = [-0.4, 0.0];
+        game.pad.0.state.left = [-0.4, 0.0];
         game.resume_stick_mappings(before);
         assert_eq!(game.client.keys.override_for(&KeyCode::KeyW), Some(false));
-        game.pad.state.left = [0.0, 0.0];
+        game.pad.0.state.left = [0.0, 0.0];
         let before = game.pad_move();
-        game.pad.state.left = [0.0, game.settings.controller.move_deadzone + 0.01];
+        game.pad.0.state.left = [0.0, game.settings.controller.move_deadzone + 0.01];
         game.resume_stick_mappings(before);
         let after = game.sample_movement_keys(game.pad_move());
         assert!(!after.forward);
@@ -270,7 +270,7 @@ fn resolved_mapping_reads_live_state_and_binding() {
         assert_eq!(forward.binding(game), Ok("key.keyboard.w"));
         assert_eq!(forward.is_down(game), Ok(false));
 
-        game.pad.state.left = [-0.7, 0.7];
+        game.pad.0.state.left = [-0.7, 0.7];
         assert_eq!(forward.is_down(game), Ok(true));
         assert_eq!(forward.binding(game), Ok("key.keyboard.w"));
 
@@ -280,7 +280,7 @@ fn resolved_mapping_reads_live_state_and_binding() {
         assert_eq!(forward.binding(game), Ok("key.keyboard.up"));
         assert_eq!(forward.is_down(game), Ok(true));
 
-        game.pad.state.left = [0.0, 0.0];
+        game.pad.0.state.left = [0.0, 0.0];
         assert_eq!(forward.is_down(game), Ok(false));
         assert_eq!(forward.binding(game), Ok("key.keyboard.up"));
     });

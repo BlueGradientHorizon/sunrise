@@ -358,8 +358,8 @@ fn send_column(
 /// they were made: a sound sits after the particles requested before it
 /// (`CapturedSound::particles_before`).
 fn event_stream(game: &mut Game<'_>, particles_at_start: u64) -> Vec<serde_json::Value> {
-    let particles = game.particles.requested.replace(Vec::new()).unwrap();
-    let sounds = game.audio.capture.replace(Vec::new()).unwrap();
+    let particles = game.particles.0.requested.replace(Vec::new()).unwrap();
+    let sounds = game.audio.0.capture.replace(Vec::new()).unwrap();
     let mut out = Vec::new();
     let mut particles = particles.into_iter();
     let mut taken = 0;
@@ -424,6 +424,7 @@ fn start_case(
     };
     game.level.player_uuid = Some(PLAYER);
     game.particles
+        .0
         .seed_randoms(0, case["seed"].as_i64().unwrap(), 0);
     // `EnchantingTableBlockEntity.RANDOM`, shared by every table: one stream per case.
     game.be_anims.book_random =
@@ -441,8 +442,8 @@ fn start_case(
     for (at, listed) in &columns {
         *reordered |= send_column(game, &entities, *at, listed, &case["fills"]);
     }
-    game.particles.requested = Some(Vec::new());
-    game.audio.capture = Some(Vec::new());
+    game.particles.0.requested = Some(Vec::new());
+    game.audio.0.capture = Some(Vec::new());
     entities
 }
 
@@ -618,14 +619,14 @@ fn client_tick_case(
         // Keys in their sorted order, as the harness hashes vanilla's log.
         ticks.push(serde_json::json!({
             "events": events,
-            "random": format!("{:x}", game.particles.level_random().state()),
+            "random": format!("{:x}", game.particles.0.level_random().state()),
             "states": states,
             "spins": spins.into_iter().map(|(_, s)| s).collect::<Vec<_>>(),
         }));
         game.world.game_time += 1;
     }
-    game.particles.requested = None;
-    game.audio.capture = None;
+    game.particles.0.requested = None;
+    game.audio.0.capture = None;
     serde_json::json!({ "ticks": ticks })
 }
 
@@ -926,16 +927,16 @@ fn a_campfires_smoke_joins_the_engine_in_the_tick_that_made_it() {
         );
         start_case(game, &case, &mut false);
         // The engine makes the particles, not the harness's log.
-        game.particles.requested = None;
+        game.particles.0.requested = None;
         game.remote.as_mut().unwrap().loaded_sent = true;
         for _ in 0..40 {
             game.tick_remote().unwrap();
             assert_eq!(
-                game.particles.pending_len(),
+                game.particles.0.pending_len(),
                 0,
                 "particles wait a tick to join the engine"
             );
         }
-        assert!(!game.particles.is_empty(), "the campfire made no smoke");
+        assert!(!game.particles.0.is_empty(), "the campfire made no smoke");
     });
 }

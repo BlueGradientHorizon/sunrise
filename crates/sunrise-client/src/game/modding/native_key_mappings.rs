@@ -223,7 +223,7 @@ impl Game<'_> {
     pub(in crate::game) fn mod_mappings_screen_open(&self) -> bool {
         !gameplay_has_keyboard(
             self.client.screen,
-            self.title.is_some(),
+            self.title.0.is_some(),
             self.screen_over_playing(),
         )
     }
@@ -260,7 +260,7 @@ mod tests {
     #[ignore = "daily"]
     fn opening_and_closing_a_direct_screen_discards_pending_clicks() {
         crate::game::native_entity_refs::tests::with_client_game(|game| {
-            game.title = None;
+            game.title.0 = None;
             game.player = Some(
                 sunrise_client::motion::PlayerMotion::new(
                     game.motion,

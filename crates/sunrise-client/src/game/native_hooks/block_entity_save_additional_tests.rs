@@ -385,9 +385,10 @@ mod tests {
                     ));
                 }
                 game.save
+                    .0
                     .save(&[Arc::new(chunk)], registry, game.res.biomes())
                     .unwrap();
-                let mut chunk = game.save.load(0, 0, registry, game.res.biomes()).unwrap();
+                let mut chunk = game.save.0.load(0, 0, registry, game.res.biomes()).unwrap();
                 game.world.install_chunk_block_entities(&mut chunk);
                 game.world.chunks.insert((0, 0), Arc::new(chunk));
                 assert!(game.streaming.set_forced(0, 0, true));
@@ -429,10 +430,11 @@ mod tests {
 
                 let capture = game.with_entities([&game.world.chunks[&(0, 0)]]);
                 game.save
+                    .0
                     .save_later(&capture, registry, game.res.biomes())
                     .unwrap();
-                game.save.flush().unwrap();
-                let reloaded = game.save.load(0, 0, registry, game.res.biomes()).unwrap();
+                game.save.0.flush().unwrap();
+                let reloaded = game.save.0.load(0, 0, registry, game.res.biomes()).unwrap();
                 for (x, items) in (1..=3).zip(&expected) {
                     let (_, BlockEntity::Mod(row)) = reloaded
                         .block_entities

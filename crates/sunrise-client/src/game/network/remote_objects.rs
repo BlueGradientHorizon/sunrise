@@ -66,7 +66,7 @@ impl Game<'_> {
                 }
             });
         } else if let Some(shows) = super::text_displays::Shows::from_kind(kind) {
-            self.text_displays.insert(
+            self.text_displays.0.insert(
                 id as i32,
                 super::text_displays::RemoteTextDisplay::new(shows, position, yaw)
                     .with_pitch(pitch),
@@ -180,7 +180,7 @@ impl Game<'_> {
 
     /// `handleSetEntityData` for an object: what changes how it looks.
     pub(in crate::game) fn remote_object_data(&mut self, id: i32, values: &[(u8, i32, Value)]) {
-        if self.text_displays.contains_key(&id) {
+        if self.text_displays.0.contains_key(&id) {
             // ItemDisplay.DATA_ITEM_STACK, read with the server's registries.
             let item = values
                 .iter()
@@ -188,7 +188,7 @@ impl Game<'_> {
                     (23, Value::Item(stack)) => Some(self.to_stack(stack)),
                     _ => None,
                 });
-            if let Some(display) = self.text_displays.get_mut(&id) {
+            if let Some(display) = self.text_displays.0.get_mut(&id) {
                 display.show(values, item);
                 display.metadata(values);
             }
@@ -455,7 +455,7 @@ impl Game<'_> {
                 }
             }
             if kind == super::minecarts::CartKind::Tnt && fuse {
-                self.particles.add(
+                self.particles.0.add(
                     &ParticleOptions::simple(ParticleType::Smoke),
                     [to.x, to.y + 0.5, to.z],
                     [0.0; 3],
@@ -465,7 +465,7 @@ impl Game<'_> {
                 && fuel > 0
                 && self.world.random.next_int_bound(4).unwrap_or(1) == 0
             {
-                self.particles.add(
+                self.particles.0.add(
                     &ParticleOptions::simple(ParticleType::LargeSmoke),
                     [to.x, to.y + 0.8, to.z],
                     [0.0; 3],
@@ -473,7 +473,7 @@ impl Game<'_> {
             }
             // MinecartTNT.tick: a primed cart counts its fuse down and sheds smoke.
             if kind == super::minecarts::CartKind::Tnt && fuse {
-                self.particles.add(
+                self.particles.0.add(
                     &ParticleOptions::simple(ParticleType::Smoke),
                     [to.x, to.y + 0.5, to.z],
                     [0.0; 3],
@@ -584,7 +584,7 @@ impl Game<'_> {
     /// the player (`ExperienceOrb.tick` on the client) and is never
     /// `playerTouch`ed.
     pub(in crate::game) fn clear_remote_objects(&mut self) {
-        self.text_displays.clear();
+        self.text_displays.0.clear();
         self.client.interactions.clear();
         self.ominous_spawners.clear();
         self.client.remote_knots.clear();
@@ -599,7 +599,7 @@ impl Game<'_> {
     }
 
     pub(in crate::game) fn remove_remote_object(&mut self, id: u32) {
-        self.text_displays.shift_remove(&(id as i32));
+        self.text_displays.0.shift_remove(&(id as i32));
         self.client.interactions.remove(&(id as i32));
         self.ominous_spawners.retain(|s| s.id != id);
         self.client.remote_knots.remove(&id);

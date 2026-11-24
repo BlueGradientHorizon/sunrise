@@ -50,8 +50,8 @@ fn animate(game: &mut Game<'_>, id: i32, action: u8) {
 
 fn capture_requests(game: &mut Game<'_>) -> LegacyRandom {
     const SEED: i64 = 719;
-    game.particles.seed_randoms(SEED, 11, 12);
-    game.particles.requested = Some(Vec::new());
+    game.particles.0.seed_randoms(SEED, 11, 12);
+    game.particles.0.requested = Some(Vec::new());
     LegacyRandom::new(SEED)
 }
 
@@ -83,6 +83,7 @@ fn assert_bursts(
     }
     let actual: Vec<_> = game
         .particles
+        .0
         .requested
         .as_mut()
         .unwrap()

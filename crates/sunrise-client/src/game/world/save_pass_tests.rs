@@ -44,13 +44,13 @@ fn save_requested_during_pickup_keeps_lifted_items_on_disk() {
         let calls = Arc::new(AtomicUsize::new(0));
         native_guest_turn_tests::with_guests(|game| {
             game.server.world_root = root.clone();
-            game.save = Arc::new(SaveDir::new(
+            game.save.0 = Arc::new(SaveDir::new(
                 root.clone(),
                 LevelShape::OVERWORLD,
                 Some(Default::default()),
             ));
             game.options.dedicated = Some(Vec::new());
-            game.server_lists = Some(Arc::new(Mutex::new(dedicated::Lists {
+            game.server_lists.0 = Some(Arc::new(Mutex::new(dedicated::Lists {
                 ops: OpList::new(root.join("ops.json")),
                 white: WhiteList::new(root.join("whitelist.json")),
                 bans: BanList::new(root.join("bans.json")),
@@ -124,9 +124,9 @@ fn save_requested_during_pickup_keeps_lifted_items_on_disk() {
                 "refused pickup and untouched row survive"
             );
             assert_eq!(game.dropped[0].stack.count, 7);
-            game.save.flush().unwrap();
+            game.save.0.flush().unwrap();
             assert!(
-                game.save.load_entities(0, 0).unwrap().is_empty(),
+                game.save.0.load_entities(0, 0).unwrap().is_empty(),
                 "refused save wrote rows"
             );
             game.save_game().unwrap();

@@ -83,7 +83,7 @@ impl Game<'_> {
     /// The damage type the blast deals: the mod's, else `DamageSources.explosion`'s
     /// (`minecraft:player_explosion` for a caused blast).
     pub(super) fn blast_damage_type(&self) -> &'static str {
-        match self.combat.blast_settings.damage {
+        match self.combat.0.blast_settings.damage {
             Some(damage) => damage.name,
             None => super::creatures::damage_type(
                 DamageKind::Explosion,
@@ -94,7 +94,7 @@ impl Game<'_> {
     /// The mobs' side of `blast_damage_type`: the mod's type, else the
     /// explosion kind, which tells a caused blast by its attacker.
     pub(super) fn blast_damage_kind(&self) -> DamageKind {
-        let damage = self.combat.blast_settings.damage;
+        let damage = self.combat.0.blast_settings.damage;
         damage.map_or(DamageKind::Explosion, DamageKind::Named)
     }
     /// What a ray's step through block `name` takes and whether the block is
@@ -106,7 +106,7 @@ impl Game<'_> {
     /// blast passes through a nether portal and spares it. None for the
     /// usual rule. The rays and every resistance read take it from here.
     pub(super) fn blast_calculator_step(&self, name: &str) -> Option<(Option<f32>, bool)> {
-        let settings = &self.combat.blast_settings;
+        let settings = &self.combat.0.blast_settings;
         if let (None, SourceCalculator::PortalProof) =
             (&settings.calculator, &settings.source_calculator)
         {
@@ -124,7 +124,7 @@ impl Game<'_> {
     /// passes one, which replaces every rule of the source's, else a wind
     /// charge's own. None for the default and portal-proof calculators.
     fn blast_simple_calculator(&self) -> Option<&BlastCalculator> {
-        let settings = &self.combat.blast_settings;
+        let settings = &self.combat.0.blast_settings;
         match (&settings.calculator, &settings.source_calculator) {
             (Some(c), _) | (None, SourceCalculator::WindCharge(c)) => Some(c),
             _ => None,
@@ -151,7 +151,7 @@ impl Game<'_> {
     }
     /// What players see and hear of the blast.
     pub(super) fn blast_effects(&self) -> BlastEffects {
-        match &self.combat.blast_settings.effects {
+        match &self.combat.0.blast_settings.effects {
             Some(effects) => (**effects).clone(),
             None => BlastEffects::default(),
         }

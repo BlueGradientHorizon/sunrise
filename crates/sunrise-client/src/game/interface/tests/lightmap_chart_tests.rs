@@ -34,6 +34,7 @@ fn the_lightmap_readback_is_asked_for_only_while_f3_charts_the_lightmap() {
     assert!(!game.debug_shows_lightmap(), "F3 closed again");
     // An always-on entry keeps the overlay drawn with F3 closed: no charts come with it.
     game.debug_entries
+        .0
         .set_status("fps", sunrise_client::debug_entries::Status::AlwaysOn);
     assert!(game.debug_overlay_visible());
     assert!(!game.debug_shows_lightmap(), "only always-on lines");

@@ -76,6 +76,7 @@ impl Game<'_> {
                 .map(|c| [c.position.x, c.position.y, c.position.z]),
             Target::Other(id) => self
                 .others
+                .0
                 .iter()
                 .find(|o| o.id == id)
                 .map(|o| [o.position.x, o.position.y, o.position.z]),
@@ -189,6 +190,7 @@ impl Game<'_> {
                 .map_or_else(|| "minecraft:minecart".into(), |c| c.kind.id().into()),
             Target::Other(id) => self
                 .others
+                .0
                 .iter()
                 .find(|o| o.id == id)
                 .map_or_else(String::new, |o| o.kind.clone()),

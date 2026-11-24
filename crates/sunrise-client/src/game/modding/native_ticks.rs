@@ -359,14 +359,15 @@ impl Game<'_> {
     /// in between. One the Pre canceled or took out of the level hears no Post.
     pub(in crate::game) fn native_other_tick_alone(&mut self, told: Told, i: usize) {
         let mut buffers = std::mem::take(&mut self.creatures.tick_hooks);
-        let (id, join) = (self.others[i].id, self.others[i].join);
-        buffers.names.push(&self.others[i].kind);
+        let (id, join) = (self.others.0[i].id, self.others.0[i].join);
+        buffers.names.push(&self.others.0[i].kind);
         if let Some(kind) = buffers.names.names().next() {
             let mut round = TickRound {
                 told,
                 ..TickRound::default()
             };
-            if self.native_tick_pre_one(&mut round, id, kind) && self.others.locate(join).is_some()
+            if self.native_tick_pre_one(&mut round, id, kind)
+                && self.others.0.locate(join).is_some()
             {
                 self.native_tick_post_one(&round, id, kind);
             }
@@ -385,7 +386,7 @@ impl Game<'_> {
         let ticking = self.entity_ticking_area();
         let buffers = std::mem::take(&mut self.creatures.tick_hooks);
         let (mut ids, mut names) = (buffers.ids, buffers.names);
-        for o in self.others.iter() {
+        for o in self.others.0.iter() {
             if o.join < born
                 && other_ticks(&o.kind)
                 && !told.alone_kind(&o.kind)

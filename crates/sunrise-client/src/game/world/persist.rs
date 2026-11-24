@@ -1490,7 +1490,7 @@ impl Game<'_> {
         if let Some(original) = quarantined {
             self.persist.raw.insert(id, original);
         }
-        self.others.push(other);
+        self.others.0.push(other);
         self.load_passengers(id, riders);
         Some(id)
     }
@@ -1668,6 +1668,7 @@ impl Game<'_> {
         } else {
             let other = self
                 .others
+                .0
                 .iter()
                 .find(|o| o.id == root && Self::other_takes_passengers(&o.kind))?;
             self.other_to_nbt(other, uuid)
@@ -1738,7 +1739,7 @@ impl Game<'_> {
         self.boats.retain(|b| !gone.contains(&b.id));
         self.carts.retain(|c| !gone.contains(&c.id));
         self.armor_stands.retain(|a| !gone.contains(&a.id));
-        self.others.retain(|o| !gone.contains(&o.id));
+        self.others.0.retain(|o| !gone.contains(&o.id));
         self.resident_entities
             .general
             .rows
@@ -2222,8 +2223,8 @@ impl Game<'_> {
                 .or_default()
                 .push((c.id, c.join_seq(), tag));
         }
-        for i in 0..self.others.len() {
-            let o = &self.others[i];
+        for i in 0..self.others.0.len() {
+            let o = &self.others.0[i];
             // EntityType.noSave: Entity.getEncodeId is null, so the chunk never stores it.
             if include(o.id, o.position) && o.kind.as_str() != "minecraft:leash_knot" {
                 let uuid = self
@@ -2291,9 +2292,9 @@ impl Game<'_> {
         let chunks = self.entity_chunks(&keys, false);
         self.prune_entity_memory();
         if wait {
-            self.save.save_entities(chunks)
+            self.save.0.save_entities(chunks)
         } else {
-            self.save.save_entities_later(chunks)
+            self.save.0.save_entities_later(chunks)
         }
     }
     /// Complete a removed vehicle's scoreboard callback at logical removal,
@@ -2444,7 +2445,7 @@ impl Game<'_> {
             .iter()
             .map(|(key, entities)| (*key, entities.len()))
             .collect();
-        if let Err(e) = self.save.save_entities_later(chunks) {
+        if let Err(e) = self.save.0.save_entities_later(chunks) {
             log::warn!("Sunrise: failed to save entities: {e}");
         }
         for (chunk, count) in counts {
@@ -2896,6 +2897,7 @@ mod interaction_saved_defaults_tests {
         assert!(game.run_command("summon pig 10.5 200 8.5 {UUID:[I;109,0,0,5],NoAI:1b,NoGravity:1b,PersistenceRequired:1b,Health:10f}"));
         let marker_id = game
             .others
+            .0
             .iter()
             .find(|o| game.persist.uuids.get(&o.id) == Some(&[109, 0, 0, 4]))
             .unwrap()
@@ -2913,6 +2915,7 @@ mod interaction_saved_defaults_tests {
             assert!(game.run_command(&format!("summon interaction {} 200 4.5 {{UUID:[I;109,0,0,{n}],Rotation:[15f,-30f],CustomName:\"audit\",Tags:[\"audit\"]{fields}}}", 1.5+3.0*f64::from(n-1))));
             let o = game
                 .others
+                .0
                 .iter()
                 .find(|o| game.persist.uuids.get(&o.id) == Some(&[109, 0, 0, n]))
                 .unwrap();
@@ -3338,6 +3341,7 @@ mod item_display_saved_transform_tests {
         assert!(game.run_command(&format!("summon item_display 6.5 200 6.5 {{UUID:[I;132,0,0,{n}],Rotation:[12.5f,-20f],NoGravity:1b,CustomName:\"display\",Tags:[\"h132\"],item:{{id:\"minecraft:diamond\",count:2,components:{{\"minecraft:custom_data\":{{h132:7}}}}}}{suffix}}}")));
         let o = game
             .others
+            .0
             .iter()
             .find(|o| game.persist.uuid_of(o.id) == Some([132, 0, 0, n]))
             .unwrap();
@@ -3490,6 +3494,7 @@ mod item_display_saved_transform_tests {
                 assert!(game.run_command(&format!("summon item_display 6.5 200 6.5 {{UUID:[I;132,0,0,{n}],transformation:{form},item:{{id:\"minecraft:diamond\",count:1}}}}")));
                 let id = game
                     .others
+                    .0
                     .iter()
                     .find(|o| game.persist.uuid_of(o.id) == Some([132, 0, 0, n]))
                     .unwrap()
@@ -3508,6 +3513,7 @@ mod item_display_saved_transform_tests {
                 )));
                 let id = game
                     .others
+                    .0
                     .iter()
                     .find(|o| game.persist.uuid_of(o.id) == Some([132, 0, 0, n]))
                     .unwrap()
@@ -5013,6 +5019,7 @@ mod summoned_knot_tests {
     }
     fn knot_id(game: &Game<'_>, n: i32) -> u32 {
         game.others
+            .0
             .iter()
             .find(|o| game.persist.uuid_of(o.id) == Some([129, 0, 0, n]))
             .unwrap()
@@ -5034,7 +5041,7 @@ mod summoned_knot_tests {
             let clock = game.world.game_time;
             let ids = summon_knots(game);
             for (i, id) in ids.into_iter().enumerate() {
-                let o = game.others.iter().find(|o| o.id == id).unwrap();
+                let o = game.others.0.iter().find(|o| o.id == id).unwrap();
                 assert_eq!(o.kind, "minecraft:leash_knot");
                 assert_eq!(game.persist.uuid_of(id), Some([129, 0, 0, i as i32 + 1]));
                 let expected = Vec3::new(6.5 + 4.0 * i as f64, 200.375, 6.5);
@@ -5088,6 +5095,7 @@ mod summoned_knot_tests {
             );
             let marker = game
                 .others
+                .0
                 .iter()
                 .find(|o| o.kind == "minecraft:marker")
                 .unwrap()
@@ -5101,21 +5109,22 @@ mod summoned_knot_tests {
                 }
                 if tick <= 100 {
                     assert!(
-                        ids.iter().all(|id| game.others.iter().any(|o| o.id == *id)),
+                        ids.iter()
+                            .all(|id| game.others.0.iter().any(|o| o.id == *id)),
                         "alive through tick{tick}"
                     );
                 }
             }
             assert!(
-                game.others.iter().any(|o| o.id == ids[0]),
+                game.others.0.iter().any(|o| o.id == ids[0]),
                 "actual fence survives"
             );
             assert!(
-                !game.others.iter().any(|o| o.id == ids[1]),
+                !game.others.0.iter().any(|o| o.id == ids[1]),
                 "unsupported actual entity gone at101"
             );
             assert!(
-                !game.others.iter().any(|o| o.id == ids[2]),
+                !game.others.0.iter().any(|o| o.id == ids[2]),
                 "removed support actual entity gone at101"
             );
             assert_eq!(
@@ -5132,7 +5141,13 @@ mod summoned_knot_tests {
             );
             assert!(game.command_target_nbt(Target::Other(ids[1])).is_none());
             assert!(game.run_command("kill @e[type=leash_knot]"));
-            assert!(!game.others.iter().any(|o| o.kind == "minecraft:leash_knot"));
+            assert!(
+                !game
+                    .others
+                    .0
+                    .iter()
+                    .any(|o| o.kind == "minecraft:leash_knot")
+            );
         });
     }
     #[test]
@@ -5146,7 +5161,7 @@ mod summoned_knot_tests {
             assert!(game.run_command("summon leash_knot -1.2 200.8 -2.1 {UUID:[I;129,0,0,5]}"));
             let id = knot_id(game, 5);
             assert_eq!(
-                game.others.iter().find(|o| o.id == id).unwrap().position,
+                game.others.0.iter().find(|o| o.id == id).unwrap().position,
                 Vec3::new(-1.5, 200.375, -2.5)
             );
         });
@@ -5160,13 +5175,19 @@ mod summoned_knot_tests {
             for _ in 0..100 {
                 game.tick().unwrap();
             }
-            assert!(ids.iter().all(|id| game.others.iter().any(|o| o.id == *id)));
+            assert!(
+                ids.iter()
+                    .all(|id| game.others.0.iter().any(|o| o.id == *id))
+            );
             assert!(game.run_command("tick freeze"));
             for _ in 0..3 {
                 game.tick().unwrap();
             }
             assert_eq!(game.world.game_time, clock + 100);
-            assert!(ids.iter().all(|id| game.others.iter().any(|o| o.id == *id)));
+            assert!(
+                ids.iter()
+                    .all(|id| game.others.0.iter().any(|o| o.id == *id))
+            );
             assert!(game.run_command("gamerule spectators_generate_chunks false"));
             assert!(game.run_command("gamemode spectator @s"));
             assert!(game.run_command("forceload remove all"));
@@ -5176,14 +5197,17 @@ mod summoned_knot_tests {
                 assert!(!game.entity_ticking_area()(10, 6));
             }
             assert_eq!(game.world.game_time, clock + 103);
-            assert!(ids.iter().all(|id| game.others.iter().any(|o| o.id == *id)));
+            assert!(
+                ids.iter()
+                    .all(|id| game.others.0.iter().any(|o| o.id == *id))
+            );
             assert!(game.run_command("gamemode creative @s"));
             assert!(game.run_command("forceload add 0 0"));
             game.tick().unwrap();
             assert!(game.entity_ticking_area()(10, 6));
-            assert!(game.others.iter().any(|o| o.id == ids[0]));
+            assert!(game.others.0.iter().any(|o| o.id == ids[0]));
             assert!(
-                !game.others.iter().any(|o| o.id == ids[1]),
+                !game.others.0.iter().any(|o| o.id == ids[1]),
                 "101 eligible ticks, not elapsed world time"
             );
         });
@@ -5218,7 +5242,7 @@ mod summoned_knot_tests {
                 .find(|m| game.persist.uuid_of(m.id) == Some([129, 0, 0, 99]))
                 .unwrap();
             assert_eq!(pig.extra.leash, Some(Holder::Knot([14, 200, 2])));
-            assert!(!game.others.iter().any(|o| o.id == ids[1]));
+            assert!(!game.others.0.iter().any(|o| o.id == ids[1]));
         });
     }
 }

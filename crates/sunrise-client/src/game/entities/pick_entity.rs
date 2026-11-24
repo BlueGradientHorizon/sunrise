@@ -95,7 +95,7 @@ impl Game<'_> {
 
     /// The stored frame decision on a window; original during dispatch.
     pub(super) fn crosshair_target(&self) -> Option<CrosshairTarget> {
-        if !self.native_window() || self.title.is_some() {
+        if !self.native_window() || self.title.0.is_some() {
             return None;
         }
         self.player.as_ref()?;
@@ -316,6 +316,7 @@ impl Game<'_> {
         self.natural_knot(id).or_else(|| {
             let knot = self
                 .others
+                .0
                 .iter()
                 .find(|o| o.id == id && o.knot_check.is_some())?;
             if self.level_entity(id as i32) != Some(super::commands::Target::Other(id)) {

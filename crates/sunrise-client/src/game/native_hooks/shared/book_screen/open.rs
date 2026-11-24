@@ -124,7 +124,7 @@ impl Game<'_> {
         }
         screen.slots.resize_with(backing_slots, || None);
         let title = remote.menu_title_snapshot().cloned();
-        self.mod_screen = Some(OpenNativeScreen {
+        self.mod_screen.0 = Some(OpenNativeScreen {
             menu: OpenNativeMenu {
                 key,
                 window: *window,

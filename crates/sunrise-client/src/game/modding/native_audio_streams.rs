@@ -27,6 +27,7 @@ impl Game<'_> {
             StreamPlacement::Flat | StreamPlacement::At(_) => None,
         };
         self.audio
+            .0
             .open_stream(calling_mod()?, spec, entity_pos, source)
             .map(AudioStreamRef::new)
     }
@@ -34,6 +35,7 @@ impl Game<'_> {
     /// tracks no such entity. Once a frame, beside the listener's own update.
     pub(in crate::game) fn follow_audio_stream_entities(&self) {
         self.audio
+            .0
             .follow_stream_entities(|entity| self.entity_position(entity));
     }
 
@@ -43,7 +45,7 @@ impl Game<'_> {
         if !self.native_window() {
             return Err(MicRefusal::OnServer);
         }
-        self.audio.microphone_devices()
+        self.audio.0.microphone_devices()
     }
 
     /// Opens a client microphone capture handle for
@@ -52,7 +54,7 @@ impl Game<'_> {
         if !self.native_window() {
             return Err(MicRefusal::OnServer);
         }
-        self.audio.open_microphone(spec).map(MicRef::new)
+        self.audio.0.open_microphone(spec).map(MicRef::new)
     }
 }
 

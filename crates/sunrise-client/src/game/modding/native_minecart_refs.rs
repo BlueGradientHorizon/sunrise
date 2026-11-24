@@ -441,7 +441,7 @@ mod tests {
 
             // TNT fuse.
             assert_eq!(tnt.fuse(game), Some(-1));
-            game.audio.capture = Some(Vec::new());
+            game.audio.0.capture = Some(Vec::new());
             assert!(tnt.prime_fuse(game));
             assert_eq!(tnt.fuse(game), Some(80));
             // MinecartTNT.primeFuse broadcasts entity event 70 for clients.
@@ -451,7 +451,7 @@ mod tests {
                     .iter()
                     .any(|e| (e.0, e.1) == (tnt.entity().id() as i32, 70))
             );
-            game.audio.capture = None;
+            game.audio.0.capture = None;
             assert_eq!(
                 game.carts[3]
                     .to_nbt([0; 4], None, game.res.items())

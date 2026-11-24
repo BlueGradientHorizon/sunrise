@@ -92,7 +92,7 @@ impl Game<'_> {
     /// Builds the pack at `path` when its files changed since it was last read.
     pub(in crate::game) fn tick_native_shader_pack(&mut self, path: &Path) {
         // A reload would replace the pack a `screenshot-sequence` draws: it waits for the reply.
-        if self.screenshot_sequence.is_some() {
+        if self.screenshot_sequence.0.is_some() {
             return;
         }
         let now = Instant::now();
@@ -107,7 +107,7 @@ impl Game<'_> {
         }
         let reload = state.stamp.is_some();
         state.stamp = stamp;
-        let Some(renderer) = &mut self.renderer else {
+        let Some(renderer) = &mut self.renderer.0 else {
             return;
         };
         let result = Pack::read(path).map_err(|e| vec![e]).and_then(|pack| {

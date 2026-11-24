@@ -43,7 +43,7 @@ fn game_event_key_registry_data_reload_and_unavailable_sides() {
                 std::fs::write(&file, format!(r#"{{"replace":true,"values":{{"minecraft:step":{{"frequency":{frequency}}}}}}}"#)).unwrap();
                 let packs = game.reload_datapacks(false, &[]).unwrap();
                 let resources = game.options.resources.clone();
-                game.world_tables = game
+                game.world_tables.0 = game
                     .stage_world_tables(&packs, frequency == 12, &resources)
                     .unwrap()
                     .tables;
@@ -68,7 +68,7 @@ fn game_event_key_registry_data_reload_and_unavailable_sides() {
                 Err(DataMapError::Unavailable)
             );
             game.options.dedicated = Some(Vec::new());
-            game.world_tables = None;
+            game.world_tables.0 = None;
             assert_eq!(
                 step.data(game, &Frequencies),
                 Err(DataMapError::Unavailable)

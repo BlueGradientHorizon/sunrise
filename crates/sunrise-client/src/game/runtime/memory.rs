@@ -558,7 +558,7 @@ impl Game<'_> {
     /// Copy one Arc per column, not its sections or block data.
     fn census_chunks(&self) -> Vec<Arc<Chunk>> {
         std::iter::once(&self.world)
-            .chain(self.levels.parked_worlds())
+            .chain(self.levels.0.parked_worlds())
             .flat_map(|w| w.chunks.values().cloned())
             .collect()
     }
@@ -606,9 +606,9 @@ impl Game<'_> {
                 self.boats.len(),
             ],
         );
-        for dim in self.levels.parked_dims() {
-            if let Some(mobs) = self.levels.parked_mobs(dim) {
-                let loose = self.levels.parked_entity_counts(dim).unwrap_or_default();
+        for dim in self.levels.0.parked_dims() {
+            if let Some(mobs) = self.levels.0.parked_mobs(dim) {
+                let loose = self.levels.0.parked_entity_counts(dim).unwrap_or_default();
                 level(mobs, loose);
             }
         }
@@ -636,7 +636,7 @@ impl Game<'_> {
             let q = self.streaming.queue_census();
             (q.generation, q.light)
         };
-        for streaming in self.levels.parked_streamings() {
+        for streaming in self.levels.0.parked_streamings() {
             let q = streaming.queue_census();
             generation = (generation.0 + q.generation.0, generation.1 + q.generation.1);
             light = (light.0 + q.light.0, light.1 + q.light.1);
@@ -660,7 +660,7 @@ impl Game<'_> {
     }
 
     fn memory_inputs(&self) -> MemoryInputs {
-        let far = self.lod.as_ref().map(|lod| {
+        let far = self.lod.0.as_ref().map(|lod| {
             let ((active, cached), (kept, kept_bytes)) = (lod.stats(), lod.kept());
             let tiles = FarTiles {
                 active,
@@ -677,7 +677,7 @@ impl Game<'_> {
                 .dedicated
                 .is_none()
                 .then(|| self.census_chunks()),
-            renderer: self.renderer.as_ref().map(|r| r.memory_snapshot()),
+            renderer: self.renderer.0.as_ref().map(|r| r.memory_snapshot()),
             far,
         }
     }

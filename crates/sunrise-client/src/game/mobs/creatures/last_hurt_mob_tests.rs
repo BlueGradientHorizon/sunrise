@@ -186,7 +186,7 @@ fn last_hurt_mob_follows_the_attacking_entity() {
                     .unwrap();
                 assert_eq!(zombie.last_hurt_mob(game), Some((pig, MOB_AGE as i32)));
                 // A later contact whose only effect was a refused hurt writes nothing.
-                game.combat.hit_landed = false;
+                game.combat.0.hit_landed = false;
                 game.handle_mob_events(stab(Who::Player, 2, true, false))
                     .unwrap();
                 assert_eq!(zombie.last_hurt_mob(game), Some((pig, MOB_AGE as i32)));

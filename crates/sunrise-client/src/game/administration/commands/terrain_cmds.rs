@@ -1608,11 +1608,11 @@ mod loot_mine_location_tests {
             )
             .unwrap();
             let stack = game.reload_datapacks(false, &[]).unwrap();
-            game.world_tables = game
+            game.world_tables.0 = game
                 .stage_world_tables(&stack, false, &game.options.resources.clone())
                 .unwrap()
                 .tables;
-            assert!(game.world_tables.is_some());
+            assert!(game.world_tables.0.is_some());
             game.ensure_datapacks();
             assert!(game.run_command("scoreboard objectives add h079 dummy"));
             game.run_command("function h079:admit");

@@ -148,8 +148,8 @@ impl PickFingerprint {
             ),
             crystals: (game.crystals.len(), game.crystals.last().map(|e| e.join)),
             displays: (
-                game.text_displays.len(),
-                game.text_displays.last().map(|(_, d)| d.join),
+                game.text_displays.0.len(),
+                game.text_displays.0.last().map(|(_, d)| d.join),
             ),
             items: (
                 game.dropped.len(),
@@ -530,7 +530,7 @@ pub(in crate::game) fn visit_section_members(
     }
 
     if let Some(remote) = &game.remote {
-        for (&id, d) in &game.text_displays {
+        for (&id, d) in &game.text_displays.0 {
             consider(
                 d.join.get(),
                 PickKind::RemoteDisplay,
@@ -789,7 +789,7 @@ impl Game<'_> {
     fn pick_member_seq(&self, kind: PickKind, id: u32) -> u64 {
         let id32 = id as i32;
         match kind {
-            PickKind::RemoteDisplay => self.text_displays.get(&id32).map(|d| d.join),
+            PickKind::RemoteDisplay => self.text_displays.0.get(&id32).map(|d| d.join),
             PickKind::Item => self
                 .dropped
                 .iter()
@@ -875,6 +875,7 @@ impl Game<'_> {
         match kind {
             PickKind::RemoteDisplay => self
                 .text_displays
+                .0
                 .get(&(id as i32))
                 .map(|d| d.position().to_array()),
             PickKind::Item => self

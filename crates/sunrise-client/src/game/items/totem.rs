@@ -221,13 +221,14 @@ impl Game<'_> {
     /// 30-tick emitter) and its sound, heard here only (`playLocalSound`),
     /// and the player's own rumble.
     pub(super) fn totem_event(&mut self, target: TrackingTarget, body: Body) {
-        self.particles.tracking_emitter_for(
+        self.particles.0.tracking_emitter_for(
             ParticleOptions::simple(ParticleType::TotemOfUndying),
             target,
             body.bounds,
             30,
         );
         self.audio
+            .0
             .play_unshared("minecraft:item.totem.use", Some(body.bounds.feet), 1.0, 1.0);
         if target == TrackingTarget::LocalPlayer {
             self.input_feedback(sunrise_client::input_source::Feedback::Totem);
@@ -239,7 +240,7 @@ impl Game<'_> {
             let totem = body.protector.unwrap_or_else(|| self.find_totem());
             self.client
                 .item_activation
-                .activate(totem, self.particles.random());
+                .activate(totem, self.particles.0.random());
         }
     }
     /// `ClientPacketListener.findTotem`: the first hand's item with

@@ -33,16 +33,17 @@ fn orb(at: Vec3) -> ExperienceOrb {
 /// starter (`NO_RENDER`), an item pickup (`ITEM_PICKUP`) and the elder guardian
 /// apparition (`ELDER_GUARDIANS`), each live after one particle tick.
 pub(in crate::game) fn fill(game: &mut super::Game<'_>) {
-    let at = game.particles.camera;
+    let at = game.particles.0.camera;
     for _ in 0..3 {
         game.particles
+            .0
             .add(&ParticleOptions::simple(ParticleType::Flame), at, [0.0; 3]);
     }
     let bursts = vec![FireworkExplosion::default(); 4];
-    game.particles.fireworks(at, [0.0; 3], bursts, at, true);
+    game.particles.0.fireworks(at, [0.0; 3], bursts, at, true);
     let v = Vec3::new(at[0], at[1], at[2]);
     game.add_pickup_toward(Taken::Orb(Box::new(orb(v))), Collector::Player, at);
-    game.particles.elder_guardian();
+    game.particles.0.elder_guardian();
     game.tick_particles();
 }
 
@@ -58,14 +59,14 @@ fn a_client_mod_counts_and_clears_particles() {
         let host: &dyn ClientHost = game;
         assert_eq!(host.particle_count(), 0);
         fill(game);
-        assert_eq!(game.pickups.live.len(), 1, "the pickup is live");
-        let engine = game.particles.group_count();
+        assert_eq!(game.pickups.0.live.len(), 1, "the pickup is live");
+        let engine = game.particles.0.group_count();
         assert_eq!(engine, 5, "three flames, one starter and one guardian");
         let host: &dyn ClientHost = game;
         assert_eq!(host.particle_count() as usize, engine + 1);
         // A clear asked between frames: it reads 0 at once, and the next frame clears
         // every group without a particle tick.
-        game.particles.tracking_emitter(
+        game.particles.0.tracking_emitter(
             ParticleOptions::simple(ParticleType::Crit),
             sunrise_client::particles::TrackingTarget::Entity(0),
             sunrise_client::particles::TrackingBody {
@@ -78,9 +79,9 @@ fn a_client_mod_counts_and_clears_particles() {
         let host: &dyn ClientHost = game;
         assert_eq!(host.particle_count(), 0);
         game.extras_frame(Duration::ZERO);
-        assert_eq!(game.particles.group_count(), 0);
-        assert!(game.pickups.live.is_empty());
-        assert!(game.particles.elder_guardians().is_empty());
+        assert_eq!(game.particles.0.group_count(), 0);
+        assert!(game.pickups.0.live.is_empty());
+        assert!(game.particles.0.elder_guardians().is_empty());
         // The emitter and the queue went too: a tick brings nothing back.
         game.tick_particles();
         assert_eq!(game.client_particle_count(), 0);
@@ -88,8 +89,8 @@ fn a_client_mod_counts_and_clears_particles() {
         fill(game);
         assert!(host_clear(game));
         game.tick_particles();
-        assert_eq!(game.particles.group_count(), 0);
-        assert!(game.pickups.live.is_empty());
+        assert_eq!(game.particles.0.group_count(), 0);
+        assert!(game.pickups.0.live.is_empty());
         let host: &dyn ClientHost = game;
         assert_eq!(host.particle_count(), 0);
         game.options.execution_role = super::ExecutionRole::IntegratedServer;
@@ -122,7 +123,7 @@ fn late_gui_clear_prevents_same_frame_particle_geometry_without_a_tick() {
             game.options.execution_role = super::ExecutionRole::Client;
             fill(game);
             game.extras_frame(Duration::ZERO);
-            let camera = glam::DVec3::from_array(game.particles.camera);
+            let camera = glam::DVec3::from_array(game.particles.0.camera);
             let mut before = Vec::new();
             game.client_particle_geometry(camera, 0.0, 70.0, None, &mut before);
             assert!(
@@ -171,7 +172,7 @@ fn a_model_callback_clear_discards_particle_geometry_already_extracted() {
         super::super::native_entity_refs::tests::with_client_game(|game| {
             game.options.execution_role = super::ExecutionRole::Client;
             fill(game);
-            let camera = glam::DVec3::from_array(game.particles.camera);
+            let camera = glam::DVec3::from_array(game.particles.0.camera);
             let mut out = Vec::new();
             game.client_particle_geometry(camera, 0.0, 70.0, None, &mut out);
             let previous = out.len();
@@ -195,7 +196,7 @@ fn a_model_callback_clear_discards_particle_geometry_already_extracted() {
                     )
                     .unwrap(),
                 );
-            let at = game.particles.camera;
+            let at = game.particles.0.camera;
             game.spawn_item(
                 sunrise_client::items::ItemStack::new("minecraft:stick", 1),
                 at,
@@ -316,8 +317,8 @@ pub(in crate::game) fn frame_scene(game: &mut super::Game<'_>) -> winit::event_l
             .unwrap(),
     );
     game.options.offscreen = true;
-    game.renderer = Some(game.new_renderer(window).unwrap());
-    game.title = None;
+    game.renderer.0 = Some(game.new_renderer(window).unwrap());
+    game.title.0 = None;
     game.settings.extras.dynamic_lights = true;
     game.settings.sunrise.particle_culling = sunrise_client::graphics::ParticleCullingMode::Off;
     let mut chunk = sunrise_client::chunk::Chunk::empty(0, 0);
@@ -327,7 +328,7 @@ pub(in crate::game) fn frame_scene(game: &mut super::Game<'_>) -> winit::event_l
     player.position = Vec3::new(0.5, 64.0, 0.5);
     game.previous_position = player.position;
     game.player = Some(player);
-    game.particles.camera = [0.5, 65.5, 1.5];
+    game.particles.0.camera = [0.5, 65.5, 1.5];
     // Ordinary (non-particle) entity geometry and an unrelated item light.
     game.spawn_item(
         sunrise_client::items::ItemStack::new("minecraft:torch", 1),
@@ -358,15 +359,15 @@ pub(in crate::game) fn frame_scene(game: &mut super::Game<'_>) -> winit::event_l
 fn add_frame_particles(game: &mut super::Game<'_>) {
     fill(game);
     for _ in 0..20 {
-        game.particles.add(
+        game.particles.0.add(
             &ParticleOptions::simple(ParticleType::Flame),
-            game.particles.camera,
+            game.particles.0.camera,
             [0.0; 3],
         );
     }
     game.spawn_item(
         sunrise_client::items::ItemStack::new("minecraft:stick", 1),
-        game.particles.camera,
+        game.particles.0.camera,
         [0.0; 3],
         0,
     );
@@ -374,7 +375,7 @@ fn add_frame_particles(game: &mut super::Game<'_>) {
     game.add_pickup_toward(
         Taken::Item(Box::new(item)),
         Collector::Player,
-        game.particles.camera,
+        game.particles.0.camera,
     );
     game.tick_particles();
 }
@@ -509,6 +510,7 @@ color = [0.0, 1.0, 0.0]
         .unwrap();
         let report = sunrise_shader_api::check(&pack).unwrap();
         game.renderer
+            .0
             .as_mut()
             .unwrap()
             .set_native_shader_pack(Some((

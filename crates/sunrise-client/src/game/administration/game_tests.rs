@@ -521,11 +521,11 @@ impl Game<'_> {
 
     /// `GameTestTicker.clear`: a pass in progress halts at its end.
     pub(in crate::game) fn clear_game_tests(&mut self) {
-        if self.game_tests.ticking {
-            self.game_tests.halting = true;
+        if self.game_tests.0.ticking {
+            self.game_tests.0.halting = true;
         } else {
-            self.game_tests.ticker.clear();
-            if self.game_tests.runner.take().is_some() {
+            self.game_tests.0.ticker.clear();
+            if self.game_tests.0.runner.take().is_some() {
                 // GameTestRunner.stop: endCurrentEnvironment.
                 self.end_test_environment();
             }
@@ -565,7 +565,7 @@ impl Game<'_> {
                 failed: false,
             })
             .collect();
-        self.game_tests.runner = Some(Runner {
+        self.game_tests.0.runner = Some(Runner {
             batches,
             current: 0,
             batch_pending: 0,
@@ -583,14 +583,14 @@ impl Game<'_> {
             summary_dimensions: Vec::new(),
         });
         // GameTestRunner.start runs the first batch inside the command.
-        self.game_tests.command_start = options.from_command;
+        self.game_tests.0.command_start = options.from_command;
         self.run_batch(0);
-        self.game_tests.command_start = false;
+        self.game_tests.0.command_start = false;
     }
 
     /// `GameTestRunner.runBatch`.
     fn run_batch(&mut self, index: usize) {
-        let Some(runner) = self.game_tests.runner.as_mut() else {
+        let Some(runner) = self.game_tests.0.runner.as_mut() else {
             return;
         };
         if index >= runner.batches.len() {
@@ -635,7 +635,7 @@ impl Game<'_> {
                 }
             });
         }
-        let Some(runner) = self.game_tests.runner.as_mut() else {
+        let Some(runner) = self.game_tests.0.runner.as_mut() else {
             return;
         };
         let Some(batch) = runner.batches.get_mut(index) else {
@@ -659,7 +659,7 @@ impl Game<'_> {
         match self.test_environment(&environment) {
             Some(definition) => {
                 let activation = self.activate_test_environment(definition);
-                self.game_tests.environment = Some(activation);
+                self.game_tests.0.environment = Some(activation);
             }
             None => log::error!("Missing test environment {environment}"),
         }
@@ -669,24 +669,24 @@ impl Game<'_> {
             "commands.test.batch.starting",
             &[Text::literal(environment), number(batch_number)],
         );
-        if self.game_tests.command_start {
+        if self.game_tests.0.command_start {
             self.feedback(starting);
         } else {
-            self.game_tests.outbox.push(Out::Console {
+            self.game_tests.0.outbox.push(Out::Console {
                 text: starting,
                 broadcast: true,
             });
         }
-        if let Some(runner) = self.game_tests.runner.as_mut() {
+        if let Some(runner) = self.game_tests.0.runner.as_mut() {
             runner.batch_pending = spawned.len();
             runner.last_batch = spawned.iter().map(|i| (i.dim, i.pos)).collect();
         }
-        self.game_tests.ticker.extend(spawned);
+        self.game_tests.0.ticker.extend(spawned);
     }
 
     /// `GameTestRunner.endCurrentEnvironment`.
     fn end_test_environment(&mut self) {
-        if let Some(activation) = self.game_tests.environment.take() {
+        if let Some(activation) = self.game_tests.0.environment.take() {
             self.tear_down_test_environment(activation);
         }
     }
@@ -694,7 +694,7 @@ impl Game<'_> {
     /// `GameTestRunner.runScheduledRerunTests`: the reruns are batched
     /// again and run, or the runner stops.
     fn run_scheduled_reruns(&mut self) {
-        let Some(runner) = self.game_tests.runner.as_mut() else {
+        let Some(runner) = self.game_tests.0.runner.as_mut() else {
             return;
         };
         if runner.scheduled.is_empty() {
@@ -718,9 +718,9 @@ impl Game<'_> {
 
     /// `GameTestRunner.rerunTest`.
     fn rerun_test(&mut self, info: &Info) {
-        let id = self.game_tests.next_id();
+        let id = self.game_tests.0.next_id();
         let copy = info.copy_reset(id);
-        let Some(runner) = self.game_tests.runner.as_mut() else {
+        let Some(runner) = self.game_tests.0.runner.as_mut() else {
             return;
         };
         runner.scheduled.push(copy);
@@ -733,20 +733,20 @@ impl Game<'_> {
     /// `GameTestTicker.SINGLETON.tick()`, for the tests of the level in place.
     pub(in crate::game) fn tick_game_tests(&mut self) {
         self.flush_game_test_output();
-        if self.game_tests.runner.is_none() {
+        if self.game_tests.0.runner.is_none() {
             return;
         }
         let dim = self.dim;
-        self.game_tests.ticking = true;
-        let mut infos = std::mem::take(&mut self.game_tests.ticker);
+        self.game_tests.0.ticking = true;
+        let mut infos = std::mem::take(&mut self.game_tests.0.ticker);
         for info in infos.iter_mut().filter(|i| i.dim == dim) {
             self.tick_test(info);
         }
         infos.retain(|i| !i.done);
-        infos.append(&mut self.game_tests.ticker);
-        self.game_tests.ticker = infos;
-        self.game_tests.ticking = false;
-        if std::mem::take(&mut self.game_tests.halting) {
+        infos.append(&mut self.game_tests.0.ticker);
+        self.game_tests.0.ticker = infos;
+        self.game_tests.0.ticking = false;
+        if std::mem::take(&mut self.game_tests.0.halting) {
             self.clear_game_tests();
         }
     }
@@ -773,6 +773,7 @@ impl Game<'_> {
     fn spawn_test_here(&mut self, info: &mut Info) -> bool {
         let in_place = !self
             .game_tests
+            .0
             .runner
             .as_ref()
             .is_some_and(|r| r.grid_for_existing);
@@ -786,6 +787,7 @@ impl Game<'_> {
         }
         let Some(mut grid) = self
             .game_tests
+            .0
             .runner
             .as_mut()
             .and_then(|runner| runner.grid.take())
@@ -824,7 +826,7 @@ impl Game<'_> {
                 }
             }
         }
-        if let Some(runner) = self.game_tests.runner.as_mut() {
+        if let Some(runner) = self.game_tests.0.runner.as_mut() {
             runner.grid = Some(grid);
         }
         prepared
@@ -870,7 +872,7 @@ impl Game<'_> {
 
     /// `ReportGameListener.testStructureLoaded`.
     fn test_structure_loaded(&mut self, info: &Info) {
-        if let Some(runner) = self.game_tests.runner.as_mut() {
+        if let Some(runner) = self.game_tests.0.runner.as_mut() {
             *report_of(&mut runner.reports, info.origin).0 += 1;
         }
     }
@@ -1289,7 +1291,7 @@ impl Game<'_> {
         self.report_game_test(info, passed);
         // TestSummaryDisplayer: only the tests the command started (the
         // listener is not passed on to a rerun's copy).
-        let Some(runner) = self.game_tests.runner.as_mut() else {
+        let Some(runner) = self.game_tests.0.runner.as_mut() else {
             return;
         };
         let tracked = runner.tracked.iter_mut().find(|t| t.id == info.id);
@@ -1316,7 +1318,7 @@ impl Game<'_> {
         let halt = runner.halt_on_error;
         if all_done {
             let context = runner.summary_source;
-            let out = &mut self.game_tests.outbox;
+            let out = &mut self.game_tests.0.outbox;
             out.push(summary_line(
                 context,
                 Text::translate("commands.test.summary", &[number(total as i32)])
@@ -1357,7 +1359,7 @@ impl Game<'_> {
         }
         // FailedTestTracker.rememberFailedTest
         if !passed && counted {
-            self.game_tests.failed.push(info.key.clone());
+            self.game_tests.0.failed.push(info.key.clone());
         }
         // GameTestRunner's batch listener clears forces in testInfo.getLevel(),
         // the level tick_test runs with in place.
@@ -1368,7 +1370,7 @@ impl Game<'_> {
             self.clear_game_tests();
             return;
         }
-        let Some(runner) = self.game_tests.runner.as_mut() else {
+        let Some(runner) = self.game_tests.0.runner.as_mut() else {
             return;
         };
         runner.batch_pending = runner.batch_pending.saturating_sub(1);
@@ -1381,7 +1383,7 @@ impl Game<'_> {
 
     /// `ReportGameListener.testPassed` and `testFailed`.
     fn report_game_test(&mut self, info: &Info, passed: bool) {
-        let Some(runner) = self.game_tests.runner.as_mut() else {
+        let Some(runner) = self.game_tests.0.runner.as_mut() else {
             return;
         };
         let (attempts, successes) = report_of(&mut runner.reports, info.origin);
@@ -1499,6 +1501,7 @@ impl Game<'_> {
     /// `ReportGameListener.say`.
     fn say(&mut self, color: u32, text: String) {
         self.game_tests
+            .0
             .outbox
             .push(Out::Players(Text::literal(text).with_color(color)));
     }
@@ -1506,7 +1509,7 @@ impl Game<'_> {
     /// Sends what the runner said: the server's console log (and the
     /// operators, when it broadcasts) and the players' chat.
     fn flush_game_test_output(&mut self) {
-        for out in std::mem::take(&mut self.game_tests.outbox) {
+        for out in std::mem::take(&mut self.game_tests.0.outbox) {
             match out {
                 Out::Console { text, broadcast } => self.test_console_output(text, broadcast),
                 Out::Source {
@@ -1908,6 +1911,7 @@ mod completed_test_coordinate_feedback_tests {
         assert!(game.run_command("execute if score success coords matches 1"));
         assert!(
             game.game_tests
+                .0
                 .ticker
                 .iter()
                 .any(|i| i.key == "minecraft:always_pass" && i.dim == Dim::Overworld)
@@ -1917,14 +1921,14 @@ mod completed_test_coordinate_feedback_tests {
         for _ in 0..8 {
             game.enter_command_level(Dim::Overworld);
             game.tick_game_tests();
-            for out in &game.game_tests.outbox {
+            for out in &game.game_tests.0.outbox {
                 if let Out::Console { text, .. } = out {
                     messages.push(text.component());
                 }
             }
             game.enter_command_level(Dim::Nether);
         }
-        let runner = game.game_tests.runner.as_ref().unwrap();
+        let runner = game.game_tests.0.runner.as_ref().unwrap();
         assert_eq!(runner.tracked.len(), 1);
         assert!(runner.tracked.iter().all(|t| t.done && !t.failed));
         messages.extend(
@@ -2071,7 +2075,7 @@ mod registered_game_test_tests {
                     .register("minecraft:always_pass", Arc::new(Fail))
                     .is_err()
             );
-            game.game_tests.runner = Some(Runner {
+            game.game_tests.0.runner = Some(Runner {
                 batches: Vec::new(),
                 current: 0,
                 batch_pending: 5,
@@ -2139,11 +2143,11 @@ mod registered_game_test_tests {
                 game.test_finished(&info);
                 outcomes.push((info.done, info.error.is_none()));
             }
-            let runner = game.game_tests.runner.as_ref().unwrap();
+            let runner = game.game_tests.0.runner.as_ref().unwrap();
             assert_eq!(runner.tracked.iter().filter(|t| t.done).count(), 5);
             assert_eq!(runner.tracked.iter().filter(|t| t.failed).count(), 3);
             assert_eq!(
-                game.game_tests.failed,
+                game.game_tests.0.failed,
                 ["example:panic", "example:fail", "example:missing"]
             );
             assert_eq!(

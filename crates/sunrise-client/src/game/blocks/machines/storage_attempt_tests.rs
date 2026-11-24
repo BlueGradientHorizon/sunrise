@@ -836,7 +836,7 @@ fn aborting_a_pot_insert_restores_its_named_loot_sequence() {
             )
             .unwrap();
             assert_eq!(loot.random_sequence(TABLE), Some(SEQUENCE));
-            game.server_loot.set(Some(Arc::new(loot)));
+            game.server_loot.0.set(Some(Arc::new(loot)));
 
             let pos = [4, 64, 0];
             place(game, (4, 64, 0), "minecraft:decorated_pot");
@@ -1511,6 +1511,7 @@ fn extract_notifications_cross_signal_each_tick_and_comparator_ticks_every_secon
                 }
             }
             game.tickets
+                .0
                 .update(Some(sunrise_client::ticket_levels::Sources {
                     forced: vec![(0, 0)],
                     ..Default::default()

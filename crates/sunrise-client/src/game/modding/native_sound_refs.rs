@@ -246,7 +246,7 @@ pub(in crate::game) mod tests {
                 max_players: 3,
                 integrated: true,
                 levels: game.server.level_shapes,
-                level_seeds: game.levels.runtime.seeds(),
+                level_seeds: game.levels.0.runtime.seeds(),
             };
             let settings = LanSettings {
                 port: 0,
@@ -361,7 +361,7 @@ pub(in crate::game) mod tests {
                 max_players: 3,
                 integrated: true,
                 levels: game.server.level_shapes,
-                level_seeds: game.levels.runtime.seeds(),
+                level_seeds: game.levels.0.runtime.seeds(),
             };
             let settings = LanSettings {
                 port: 0,

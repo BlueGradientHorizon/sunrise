@@ -32,7 +32,7 @@ fn quiet(game: &mut Game<'_>, heard: &Mutex<Vec<String>>) {
     game.world.modified.clear();
     game.world.dirty_sections.clear();
     game.world.block_log = Some(Default::default());
-    game.audio.capture = Some(Vec::new());
+    game.audio.0.capture = Some(Vec::new());
     heard.lock().unwrap().clear();
 }
 
@@ -43,7 +43,7 @@ fn assert_quiet(game: &Game<'_>, heard: &Mutex<Vec<String>>) {
     );
     assert!(game.level_events.is_empty());
     assert!(
-        game.audio.capture.as_ref().unwrap().is_empty(),
+        game.audio.0.capture.as_ref().unwrap().is_empty(),
         "sound escaped a transaction"
     );
     assert!(
@@ -267,6 +267,7 @@ fn sided_composter_transactions_preserve_literal_chance_and_defer_all_effects() 
                 assert_eq!(game.composter_level(POS), Some(8));
                 assert!(
                     game.audio
+                        .0
                         .capture
                         .as_ref()
                         .unwrap()
@@ -301,7 +302,7 @@ fn sided_composter_transactions_preserve_literal_chance_and_defer_all_effects() 
                 .unwrap();
                 assert_eq!(game.composter_level(POS), Some(0));
                 assert_eq!(heard.lock().unwrap().as_slice(), ["minecraft:block_change"]);
-                assert!(game.audio.capture.as_ref().unwrap().is_empty());
+                assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
                 assert!(game.dropped.is_empty());
 
                 // A real bulk consumer offers all remaining items up to 64, not a pre-trimmed

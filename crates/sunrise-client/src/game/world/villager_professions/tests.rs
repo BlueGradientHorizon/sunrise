@@ -571,14 +571,16 @@ fn villager_load_world_save_dir_preserves_custom_workstation() {
                 )
                 .unwrap();
             game.save
+                .0
                 .tables
                 .get_or_init(|| Arc::new(sunrise_client::save::SaveTables::new(&game.pack.assets)));
             let chunks = vec![game.world.chunks[&(0, 0)].clone()];
             game.save
+                .0
                 .save(&chunks, game.pack.assets.registry, world_biomes!(game))
                 .unwrap();
             let mut region =
-                sunrise_world::region::RegionFile::open(game.save.root.join("poi/r.0.0.mca"))
+                sunrise_world::region::RegionFile::open(game.save.0.root.join("poi/r.0.0.mca"))
                     .unwrap();
             let record = region
                 .read(sunrise_core::position::ChunkPos { x: 0, z: 0 })

@@ -251,7 +251,7 @@ fn minecart_keeps_its_general_passenger_after_the_rider_tick() {
         // Keep the chunk loaded but outside simulation range so the pass refreshes
         // the adjacency without rider movement invalidating it again.
         use sunrise_client::ticket_levels::{Sources, ViewedTicket};
-        game.tickets.update(Some(Sources {
+        game.tickets.0.update(Some(Sources {
             viewed: vec![ViewedTicket {
                 center: (0, 0),
                 radius: 0,
@@ -338,7 +338,7 @@ fn mixed_passengers_sit_and_unload_with_their_actual_root() {
             game.entity_start_riding(root_ref, leaf_ref, true),
             Err(StartRidingRefusal::Cycle)
         );
-        game.tickets.update(None);
+        game.tickets.0.update(None);
         game.begin_ordered_ticks();
         // The mobs' pass first, as tick_mobs runs it: it names the general vehicles mobs ride.
         game.position_riders();
@@ -560,7 +560,7 @@ fn general_row_unloads_with_its_chunk_and_reloads_once() {
 #[ignore = "daily"]
 fn quarantine_preserves_a_missing_mods_record_byte_for_byte() {
     with_types(|game| {
-        game.others.clear();
+        game.others.0.clear();
         let mut tag = record_tag("gone:robot", [7, 7, 7, 7], b"opaque", Vec::new());
         if let Tag::Compound(fields) = &mut tag {
             // Vanilla fallback loading strips these fields; an opaque mod record must not.
@@ -569,8 +569,8 @@ fn quarantine_preserves_a_missing_mods_record_byte_for_byte() {
         }
         let loaded = tag.clone();
         game.spawn_loaded_entity((0, 0), tag, None);
-        assert_eq!(game.others.len(), 1);
-        assert_eq!(game.others[0].kind, "gone:robot");
+        assert_eq!(game.others.0.len(), 1);
+        assert_eq!(game.others.0[0].kind, "gone:robot");
         // What leaves the chunk is the very compound that arrived.
         let mut chunks = game.entity_chunks(&HashSet::from([(0, 0)]), false);
         let (_, mut records) = chunks.remove(0);
@@ -590,13 +590,13 @@ fn loaded_mods_unknown_type_skips() {
         // No fixture declaration: the type is unknown precisely because no
         // loaded mod declared it.
         with_game(|game| {
-            game.others.clear();
+            game.others.0.clear();
             game.spawn_loaded_entity(
                 (0, 0),
                 record_tag("mymod:mystery", [7, 7, 7, 7], b"", Vec::new()),
                 None,
             );
-            assert!(game.others.is_empty());
+            assert!(game.others.0.is_empty());
             let chunks = game.entity_chunks(&HashSet::from([(0, 0)]), false);
             assert!(chunks.iter().all(|(_, records)| records.is_empty()));
         });
@@ -609,7 +609,7 @@ fn loaded_mods_unknown_type_skips() {
 #[ignore = "daily"]
 fn unknown_minecraft_kind_keeps_its_existing_path() {
     with_types(|game| {
-        game.others.clear();
+        game.others.0.clear();
         let mut oversized = record_tag("minecraft:mystery", [7, 7, 7, 7], b"", Vec::new());
         if let Tag::Compound(map) = &mut oversized {
             map.insert(
@@ -618,8 +618,8 @@ fn unknown_minecraft_kind_keeps_its_existing_path() {
             );
         }
         game.spawn_loaded_entity((0, 0), oversized, None);
-        assert_eq!(game.others.len(), 1);
-        assert_eq!(game.others[0].kind, "minecraft:mystery");
+        assert_eq!(game.others.0.len(), 1);
+        assert_eq!(game.others.0[0].kind, "minecraft:mystery");
     });
 }
 
@@ -629,7 +629,7 @@ fn unknown_minecraft_kind_keeps_its_existing_path() {
 #[ignore = "daily"]
 fn quarantine_record_limit_skips_one_byte_over() {
     with_types(|game| {
-        game.others.clear();
+        game.others.0.clear();
         let sized = |extra: u64| {
             let mut tag = record_tag("gone:robot", [7, 7, 7, 7], b"", Vec::new());
             if let Tag::Compound(map) = &mut tag {
@@ -642,9 +642,9 @@ fn quarantine_record_limit_skips_one_byte_over() {
         let fill = limits::QUARANTINE_RECORD_LIMIT - base;
         assert!(fill > 1, "the base record must sit below the bound");
         game.spawn_loaded_entity((0, 0), sized(fill), None);
-        assert_eq!(game.others.len(), 1, "a record at the bound is kept");
+        assert_eq!(game.others.0.len(), 1, "a record at the bound is kept");
         game.spawn_loaded_entity((0, 0), sized(fill + 1), None);
-        assert_eq!(game.others.len(), 1, "one byte over skips");
+        assert_eq!(game.others.0.len(), 1, "one byte over skips");
     });
 }
 
@@ -655,23 +655,23 @@ fn quarantine_record_limit_skips_one_byte_over() {
 #[ignore = "daily"]
 fn quarantine_chunk_limit_skips_past_256() {
     with_types(|game| {
-        game.others.clear();
+        game.others.0.clear();
         let at = |slot: usize| [slot as i32, 0, 0, 0];
         let tag = |slot: usize| record_tag("gone:robot", at(slot), b"", Vec::new());
         // Fill the chunk to one below the bound through the gate itself.
         for slot in 0..limits::QUARANTINE_CHUNK_LIMIT - 1 {
             game.spawn_loaded_entity((0, 0), tag(slot), None);
         }
-        assert_eq!(game.others.len(), limits::QUARANTINE_CHUNK_LIMIT - 1);
+        assert_eq!(game.others.0.len(), limits::QUARANTINE_CHUNK_LIMIT - 1);
         game.spawn_loaded_entity((0, 0), tag(250), None);
         assert_eq!(
-            game.others.len(),
+            game.others.0.len(),
             limits::QUARANTINE_CHUNK_LIMIT,
             "the bound's own record is kept"
         );
         game.spawn_loaded_entity((0, 0), tag(251), None);
         assert_eq!(
-            game.others.len(),
+            game.others.0.len(),
             limits::QUARANTINE_CHUNK_LIMIT,
             "the next record skips"
         );
@@ -688,7 +688,7 @@ fn quarantine_chunk_limit_skips_past_256() {
             );
         }
         game.spawn_loaded_entity((64, 0), elsewhere, None);
-        assert_eq!(game.others.len(), limits::QUARANTINE_CHUNK_LIMIT + 1);
+        assert_eq!(game.others.0.len(), limits::QUARANTINE_CHUNK_LIMIT + 1);
     });
 }
 
@@ -1567,7 +1567,7 @@ fn a_general_rider_keeps_minecart_drag_and_pickup_occupied() {
         // The pig touches the moving cart, but the coincident starting positions
         // mean it applies no initial push to the cart.
         game.mobs.push(Mob::new(pig_id, pig, at, 0.0));
-        game.tickets.update(None);
+        game.tickets.0.update(None);
         game.tick_carts();
         // The unpowered rail halves the speed. The occupied cart moves at
         // three quarters of that speed, then uses 0.997 rather than 0.96 drag.

@@ -67,6 +67,7 @@ impl Game<'_> {
     pub(in crate::game) fn gui_origin(&self) -> Result<(f32, f32)> {
         let size = self
             .renderer
+            .0
             .as_ref()
             .map(|r| [r.config.width, r.config.height])
             .ok_or("no renderer yet")?;

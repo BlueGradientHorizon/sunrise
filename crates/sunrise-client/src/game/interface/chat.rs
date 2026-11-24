@@ -766,7 +766,7 @@ impl Game<'_> {
             })
         });
         self.ui.registries.templates = ids.templates.clone();
-        self.ui.registries.sounds = self.audio.event_names();
+        self.ui.registries.sounds = self.audio.0.event_names();
         self.ui.registries.attributes = [
             "armor",
             "armor_toughness",
@@ -989,6 +989,7 @@ impl Game<'_> {
         self.refresh_dynamic_registries();
         let size = self
             .renderer
+            .0
             .as_ref()
             .map_or([1280, 720], |r| [r.config.width, r.config.height]);
         let b = HudBatch::new(size, self.settings.gui_scale_inputs());
@@ -1213,7 +1214,7 @@ impl Game<'_> {
                 registries: &self.ui.registries,
             };
             if let Some(screen) = self.ui.chat_screen.as_mut() {
-                screen.shortcut(&m, &c, shortcut, &mut self.clipboard);
+                screen.shortcut(&m, &c, shortcut, &mut self.clipboard.0);
                 return true;
             }
             return false;
@@ -1411,7 +1412,7 @@ impl Game<'_> {
     }
     pub(super) fn chat_click(&mut self) -> bool {
         let cursor = self.client.cursor;
-        let height = self.renderer.as_ref().map_or(720.0, |r| {
+        let height = self.renderer.0.as_ref().map_or(720.0, |r| {
             HudBatch::new(
                 [r.config.width, r.config.height],
                 self.settings.gui_scale_inputs(),
@@ -1424,7 +1425,7 @@ impl Game<'_> {
             registries: &self.ui.registries,
         };
         if self.ui.in_bed_chat && self.sleeping.is_some() {
-            let width = self.renderer.as_ref().map_or(1280.0, |r| {
+            let width = self.renderer.0.as_ref().map_or(1280.0, |r| {
                 HudBatch::new(
                     [r.config.width, r.config.height],
                     self.settings.gui_scale_inputs(),
@@ -1476,7 +1477,7 @@ impl Game<'_> {
                     .message_at(height as i32, cursor.0 as f64, cursor.1 as f64)
         {
             use sunrise_client::clipboard::Clipboard;
-            self.clipboard.set(message);
+            self.clipboard.0.set(message);
             let copied =
                 Text::translate_with_fallback("sunrise.chat.copied", "Message copied", &[]);
             self.client.titles.set_overlay(copied, false);
@@ -1499,7 +1500,7 @@ impl Game<'_> {
         match style.click {
             Some(ClickEvent::CopyToClipboard(value)) => {
                 use sunrise_client::clipboard::Clipboard;
-                self.clipboard.set(&value);
+                self.clipboard.0.set(&value);
                 true
             }
             Some(ClickEvent::OpenFile(path)) => {
@@ -1636,11 +1637,11 @@ impl Game<'_> {
             .link_prompt_layout(&url, self.gui_size())
             .pressed_at(self.client.cursor);
         if let Some(button) = pressed {
-            self.audio.play_button_click();
+            self.audio.0.play_button_click();
             if button == LINK_COPY {
                 // ConfirmLinkScreen.copyToClipboard, then the callback's no.
                 use sunrise_client::clipboard::Clipboard;
-                self.clipboard.set(&url);
+                self.clipboard.0.set(&url);
             }
             self.answer_link_prompt(button == LINK_YES);
         }
@@ -2297,7 +2298,7 @@ impl Game<'_> {
     }
     /// F2: ScreenShot.grab into `screenshots/` with vanilla's file name.
     pub(super) fn take_screenshot(&mut self) -> Option<std::path::PathBuf> {
-        if self.screenshot_sequence.is_some() {
+        if self.screenshot_sequence.0.is_some() {
             return None;
         }
         let dir = sunrise_client::logging::player_dir().join("screenshots");
@@ -2305,7 +2306,7 @@ impl Game<'_> {
             return None;
         }
         let name = screenshot_name(&dir, &self.ui.screenshot_messages);
-        let renderer = self.renderer.as_mut()?;
+        let renderer = self.renderer.0.as_mut()?;
         let path = dir.join(name);
         // A second shortcut before rendering replaces the queued frame. Release
         // that request's name: no readback will arrive to finish it.
@@ -3121,12 +3122,12 @@ mod enchantment_snapshot_tests {
         game.server.world_root = dir;
         let stack = game.reload_datapacks(false, &[]).unwrap();
         let root = game.options.resources.clone();
-        game.world_tables = game
+        game.world_tables.0 = game
             .stage_world_tables(&stack, false, &root)
             .unwrap()
             .tables;
         assert!(
-            game.world_tables.is_some(),
+            game.world_tables.0.is_some(),
             "the real active table container must be available"
         );
         let base = game.stations().enchantments.clone();
@@ -3141,8 +3142,8 @@ mod enchantment_snapshot_tests {
                 .unwrap()
                 .unwrap(),
         );
-        game.world_tables.as_mut().unwrap().stations.enchantments = synced.clone();
-        std::sync::Arc::make_mut(&mut game.world_tables.as_mut().unwrap().items).enchantments =
+        game.world_tables.0.as_mut().unwrap().stations.enchantments = synced.clone();
+        std::sync::Arc::make_mut(&mut game.world_tables.0.as_mut().unwrap().items).enchantments =
             synced;
         assert!(
             game.active_enchantment_definitions()
@@ -3186,8 +3187,8 @@ mod enchantment_snapshot_tests {
             assert_eq!(reg.ids("minecraft:item"), item_ids);
             assert_eq!(reg.effects, effects);
         }
-        game.world_tables.as_mut().unwrap().stations.enchantments = base.clone();
-        std::sync::Arc::make_mut(&mut game.world_tables.as_mut().unwrap().items).enchantments =
+        game.world_tables.0.as_mut().unwrap().stations.enchantments = base.clone();
+        std::sync::Arc::make_mut(&mut game.world_tables.0.as_mut().unwrap().items).enchantments =
             base;
         assert!(
             game.active_enchantment_definitions()
@@ -3277,7 +3278,7 @@ mod damage_type_registry_tests {
         game.server.world_root = dir;
         let stack = game.reload_datapacks(false, &[]).unwrap();
         let staged = game.stage_world_tables(&stack, false, &root).unwrap();
-        game.world_tables = staged.tables;
+        game.world_tables.0 = staged.tables;
         game.health_resources = staged.health;
         game.level.allow_commands = Some(true);
         game.build_registries();

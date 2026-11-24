@@ -34,7 +34,7 @@ impl Game<'_> {
         } else {
             Audio::play
         };
-        play(&mut self.audio, &sounds.hit, at, volume, pitch);
+        play(&mut self.audio.0, &sounds.hit, at, volume, pitch);
     }
 
     pub(in crate::game) fn native_play_hit_sound(

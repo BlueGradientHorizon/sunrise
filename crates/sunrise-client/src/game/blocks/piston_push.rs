@@ -1567,7 +1567,7 @@ impl Game<'_> {
                 if let Some(hit) = paused_hurt
                     && let Some(index) = self.mob_index.find(&self.mobs, hit.victim)
                 {
-                    self.paused_mob_hurt = Some(hit);
+                    self.paused_mob_hurt.0 = Some(hit);
                     self.finish_mob_damage_at(index);
                 }
             }
@@ -2565,7 +2565,7 @@ mod h255_mob_piston_ground_tests {
             game.world.random.set_seed(255);
             game.update_chunk_tickets();
             assert!(crate::game::ticking_chunk(&game.world, 0, 0));
-            assert!(game.tickets.levels().block_ticking(0, 0));
+            assert!(game.tickets.0.levels().block_ticking(0, 0));
             test(&mut game);
         });
     }

@@ -627,6 +627,7 @@ impl Game<'_> {
                 m.velocity = velocity;
             }
             self.audio
+                .0
                 .play("minecraft:entity.silverfish.hurt", Some(at), 1.0, 1.0);
         }
     }
@@ -827,7 +828,7 @@ impl Game<'_> {
                     }
                     _ => ("minecraft:entity.lingering_potion.throw", 0.5),
                 };
-                self.audio.play(sound, Some(eye), 0.5, pitch);
+                self.audio.0.play(sound, Some(eye), 0.5, pitch);
                 // Projectile.shootFromRotation(xRot, yRot, -20, power, 1.0), with
                 // what the thrower last moved (getKnownMovement).
                 let velocity = self.known_player_movement();
@@ -861,7 +862,7 @@ impl Game<'_> {
                         collect_dragon_breath(player.bounds(), &mut self.breath_clouds)
                 {
                     let player_pos = [player.position.x, player.position.y, player.position.z];
-                    self.audio.play(
+                    self.audio.0.play(
                         "minecraft:item.bottle.fill_dragonbreath",
                         Some(player_pos),
                         1.0,
@@ -899,6 +900,7 @@ impl Game<'_> {
                     return Ok(false);
                 };
                 self.audio
+                    .0
                     .play("minecraft:item.bottle.fill", Some(at), 1.0, 1.0);
                 self.post_block_game_event(
                     "minecraft:fluid_pickup",
@@ -933,6 +935,7 @@ impl Game<'_> {
         }
         let centre = pos.map(|v| f64::from(v) + 0.5);
         self.audio
+            .0
             .play("minecraft:entity.generic.splash", Some(centre), 1.0, 1.0);
         self.fill_held(ItemStack::new("minecraft:glass_bottle", 1));
         // PotionItem.useOn: five ServerLevel.sendParticles(SPLASH). The level
@@ -946,7 +949,7 @@ impl Game<'_> {
                 f64::from(pos[2]) + r.next_double(),
             ];
             let options = ParticleOptions::simple(ParticleType::Splash);
-            self.particles.add(&options, at, [0.0; 3]);
+            self.particles.0.add(&options, at, [0.0; 3]);
             self.lan_send_particles(super::lan_particles::QueuedParticle {
                 dimension: self.dim.id(),
                 options,
@@ -959,6 +962,7 @@ impl Game<'_> {
             });
         }
         self.audio
+            .0
             .play("minecraft:item.bottle.empty", Some(centre), 1.0, 1.0);
         self.post_block_game_event("minecraft:fluid_place", pos, None, None);
         if let Some(mud) = self.pack.assets.registry.default_state("minecraft:mud") {
@@ -999,6 +1003,7 @@ impl Game<'_> {
         if remaining > 0 && remaining <= 25 && remaining % 4 == 0 {
             let pitch = self.world.random.next_float() * 0.1 + 0.9;
             self.audio
+                .0
                 .play("minecraft:entity.generic.drink", Some(eye), 0.5, pitch);
         }
         // ItemStack.onUseTick: the item's own tick after the consumable's.
@@ -1130,7 +1135,7 @@ impl Game<'_> {
                                 m.damage(
                                     crate::game::entity::damage_level_of!(
                                         self,
-                                        self.combat.attack(),
+                                        self.combat.0.attack(),
                                         no_push,
                                         None
                                     ),
@@ -1184,7 +1189,7 @@ impl Game<'_> {
         };
         let rules = self.world.health_rules;
         let Some(p) = self.player.as_mut() else {
-            self.combat.forget_noted(false);
+            self.combat.0.forget_noted(false);
             return;
         };
         match action {
@@ -1201,7 +1206,7 @@ impl Game<'_> {
                     && let Ok(o) = p.hurt_blocking(
                         crate::game::entity::damage_level_of!(
                             self,
-                            self.combat.attack(),
+                            self.combat.0.attack(),
                             no_push,
                             None,
                             acting_equipment!(self)
@@ -1216,7 +1221,7 @@ impl Game<'_> {
                     canceled = o.canceled;
                 }
 
-                self.combat.forget_noted(canceled);
+                self.combat.0.forget_noted(canceled);
                 self.finish_guest_damage();
             }
             EffectAction::Poison => {
@@ -1226,7 +1231,7 @@ impl Game<'_> {
                     let _ = p.hurt(
                         crate::game::entity::damage_level_of!(
                             self,
-                            self.combat.attack(),
+                            self.combat.0.attack(),
                             no_push,
                             None,
                             acting_equipment!(self)
@@ -1503,7 +1508,7 @@ impl Game<'_> {
             && let Some(p) = self.player.as_ref()
         {
             let at = [p.position.x, p.position.y, p.position.z];
-            self.audio.play(sound, Some(at), 1.0, 1.0);
+            self.audio.0.play(sound, Some(at), 1.0, 1.0);
         }
         if id == "absorption"
             && let Some(p) = self.player.as_mut()
@@ -2631,9 +2636,9 @@ impl Game<'_> {
                     let source = Damage::indirect_magic(owner.who(), [at.x, at.y, at.z]);
                     let id = m.id;
                     let mut attack = self.potion_attack(owner.who(), owner.guest);
-                    attack.projectile = self.combat.attack().projectile;
-                    attack.projectile_kind = self.combat.attack().projectile_kind;
-                    attack.projectile_type = self.combat.attack().projectile_type;
+                    attack.projectile = self.combat.0.attack().projectile;
+                    attack.projectile_kind = self.combat.0.attack().projectile_kind;
+                    attack.projectile_type = self.combat.0.attack().projectile_type;
                     let plan = self.prepare_knockback_credit(id as i32, owner.who(), &attack);
                     let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
                     self.mobs[i].damage_by(
@@ -2789,6 +2794,7 @@ impl Game<'_> {
         }
         if let Some(answer) =
             self.screen_state
+                .0
                 .build
                 .effects_answer(self.client.frames, self.client.screen, *space)
         {
@@ -2807,7 +2813,7 @@ impl Game<'_> {
             &mut canceled,
         );
         layout.hidden = canceled;
-        self.screen_state.build.keep_effects_answer(
+        self.screen_state.0.build.keep_effects_answer(
             self.client.frames,
             self.client.screen,
             *space,
@@ -3069,11 +3075,11 @@ pub(super) mod tests {
                 r#"{Pos:[0d,80d,0d],Duration:200,WaitTime:0,Radius:3f,custom_particle:{type:"test:measured",measure:257,ignored:42}}"#,
             ).unwrap();
             let id = game.load_potion_cloud(&tag).unwrap();
-            game.particles.created_requests = Some(Vec::new());
+            game.particles.0.created_requests = Some(Vec::new());
             game.tick_potion_clouds();
             assert_eq!(game.breath_clouds[0].age, 1);
             assert!(
-                game.particles.created_requests.take().unwrap().is_empty(),
+                game.particles.0.created_requests.take().unwrap().is_empty(),
                 "a server tick must not submit client particles"
             );
 
@@ -4375,7 +4381,7 @@ mod sound_on_added_tests {
                 )
                 .unwrap(),
             );
-            game.audio.capture = Some(Vec::new());
+            game.audio.0.capture = Some(Vec::new());
             for (id, amplifier) in [
                 ("bad_omen", 0),
                 ("bad_omen", 1),
@@ -4387,6 +4393,7 @@ mod sound_on_added_tests {
             }
             let played: Vec<(String, [f64; 3])> = game
                 .audio
+                .0
                 .capture
                 .take()
                 .unwrap()

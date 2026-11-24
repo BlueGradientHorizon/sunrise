@@ -182,6 +182,7 @@ impl Game<'_> {
         let told = self.server.ordered.told;
         if told.listening() {
             self.others
+                .0
                 .iter()
                 .filter(|o| super::native_ticks::other_ticks(&o.kind) && told.alone_kind(&o.kind))
                 .for_each(|o| offer(o.join, Pending::Other));
@@ -264,10 +265,10 @@ impl Game<'_> {
                     }
                 }
                 Pending::Other => {
-                    let Some(i) = self.others.locate(join) else {
+                    let Some(i) = self.others.0.locate(join) else {
                         continue;
                     };
-                    let at = self.others[i].position;
+                    let at = self.others.0[i].position;
                     if entity_ticking(at.x.floor() as i32, at.z.floor() as i32) {
                         self.native_other_tick_alone(told, i);
                     }
@@ -412,7 +413,7 @@ impl Game<'_> {
                     let side = game_side!(self);
                     let o = &mut self.orbs[i];
                     o.velocity = velocity;
-                    let audio = &mut self.audio;
+                    let audio = &mut self.audio.0;
                     let lava_random = &mut self.server.ordered.lava_random;
                     let mut next_float = || {
                         lava_random
@@ -564,7 +565,7 @@ mod tests {
             }
             // Existing residents whose spawn packets were already announced.
             game.server.ordered.announced = sunrise_client::join_seq::JoinSeq::MAX;
-            game.tickets.update(None);
+            game.tickets.0.update(None);
             game.begin_ordered_ticks();
             game.run_ordered_ticks(sunrise_client::join_seq::JoinSeq::MAX, false)
                 .unwrap();
@@ -649,8 +650,8 @@ mod tests {
                         game.run_command(&format!("summon text_display {x} 70 4 {{text:\"x\"}}"))
                     );
                 }
-                ids = game.others.iter().map(|o| o.id).collect();
-                game.tickets.update(None);
+                ids = game.others.0.iter().map(|o| o.id).collect();
+                game.tickets.0.update(None);
                 game.begin_ordered_ticks();
                 game.run_ordered_ticks(sunrise_client::join_seq::JoinSeq::MAX, false)
                     .unwrap();

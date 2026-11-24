@@ -258,6 +258,7 @@ impl Game<'_> {
             m.extra.variant = weather;
             let p = [m.position.x, m.position.y, m.position.z];
             self.audio
+                .0
                 .play("minecraft:entity.copper_golem.spawn", Some(p), 1.0, 1.0);
         }
         self.process_level_events()

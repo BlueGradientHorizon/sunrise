@@ -56,7 +56,7 @@ fn buttons((w, h): (f32, f32)) -> [(f32, f32); 6] {
 impl Game<'_> {
     /// Opens the editor over the game, from the page (`from_options`) or the key.
     pub(in crate::game) fn open_hud_editor(&mut self, from_options: bool) {
-        if self.player.is_none() || self.title.is_some() {
+        if self.player.is_none() || self.title.0.is_some() {
             return;
         }
         self.release_mappings_on_screen_open();
@@ -185,12 +185,12 @@ impl Game<'_> {
                 0..4 => STYLE[i].cycle(pvp, back),
                 4 => pvp.layout = Layout::default(),
                 _ => {
-                    self.audio.play_button_click();
+                    self.audio.0.play_button_click();
                     self.close_hud_editor();
                     return true;
                 }
             }
-            self.audio.play_button_click();
+            self.audio.0.play_button_click();
             self.settings.save(&Self::options_path());
             return true;
         }

@@ -32,7 +32,7 @@ impl Game<'_> {
             })
             .collect();
         let mut sounds = Vec::new();
-        if let Some(capture) = self.audio.capture.as_mut() {
+        if let Some(capture) = self.audio.0.capture.as_mut() {
             let mut i = heard.min(capture.len());
             while i < capture.len() {
                 let (name, at) = (&capture[i].event, &capture[i].position);
@@ -51,7 +51,7 @@ impl Game<'_> {
             && changed.iter().all(|&(x, y, z)| {
                 crate::game::remote::hand_operated(behaviours, self.world.block(x, y, z))
             });
-        if hand_operated && let Some(capture) = self.audio.capture.as_mut() {
+        if hand_operated && let Some(capture) = self.audio.0.capture.as_mut() {
             sounds.extend(capture.drain(heard.min(capture.len())..));
         }
         for sound in sounds {
@@ -71,7 +71,7 @@ impl Game<'_> {
         else {
             return;
         };
-        let (Some(horn), Some(capture)) = (horn, self.audio.capture.as_mut()) else {
+        let (Some(horn), Some(capture)) = (horn, self.audio.0.capture.as_mut()) else {
             return;
         };
         let mut sounds = Vec::new();
@@ -98,7 +98,7 @@ impl Game<'_> {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
-        let Some(sounds) = self.audio.capture.as_mut() else {
+        let Some(sounds) = self.audio.0.capture.as_mut() else {
             return;
         };
         let blocks: Vec<_> = host
@@ -122,8 +122,8 @@ impl Game<'_> {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
-        let sounds = self.audio.capture.take().unwrap_or_default();
-        self.audio.capture = Some(Vec::new());
+        let sounds = self.audio.0.capture.take().unwrap_or_default();
+        self.audio.0.capture = Some(Vec::new());
         let blocks: Vec<[f64; 3]> = std::mem::take(&mut host.broken);
         for sound in sounds {
             // Block breaks are heard through the level event.
@@ -178,11 +178,11 @@ impl Game<'_> {
             return;
         };
         if !paused {
-            self.combat.stuck.tick();
+            self.combat.0.stuck.tick();
         }
         host.hub.guests.update_all(|g| {
             g.shoulders = crate::game::shoulders::shoulder_variants(g.saved.as_ref());
-            g.stuck = match self.guest_combat.get_mut(&g.conn) {
+            g.stuck = match self.guest_combat.0.get_mut(&g.conn) {
                 Some(combat) => {
                     if !paused {
                         combat.stuck.tick();

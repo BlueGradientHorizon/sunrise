@@ -11,9 +11,9 @@ impl Game<'_> {
     /// focus stays as the run found it (`held_focus`) and its pointer grab stays inside the game
     /// (`internal_grab`).
     pub(in crate::game) fn scripted_run(&self) -> bool {
-        self.screenshot_sequence.is_some()
+        self.screenshot_sequence.0.is_some()
             || self.client.tick_script.playing()
-            || self.repro.replaying()
+            || self.repro.0.replaying()
     }
 }
 
@@ -150,7 +150,7 @@ impl Game<'_> {
     ) {
         // A headless game has no window: its events (the frame, the control socket's input)
         // carry `WindowId::dummy()`.
-        let ours = match &self.window {
+        let ours = match &self.window.0 {
             Some(w) => w.id() == id,
             None => self.options.headless,
         };
@@ -218,7 +218,7 @@ impl Game<'_> {
             }
         ) && !self.input_made_pointer_event()
         {
-            self.pad.keyboard_took_over = true;
+            self.pad.0.keyboard_took_over = true;
         }
         if let WindowEvent::MouseInput { state, button, .. } = &event {
             if *state == ElementState::Pressed {
@@ -283,7 +283,7 @@ impl Game<'_> {
         self.client.client_quit.set(ClientQuit::Stopping);
         self.close_client_tasks();
         if self.error.is_none()
-            && let Some(renderer) = &mut self.renderer
+            && let Some(renderer) = &mut self.renderer.0
         {
             renderer.drop_hdr_marker();
         }
@@ -316,11 +316,11 @@ impl Game<'_> {
                 return;
             }
         }
-        if self.pending_save.is_some() {
+        if self.pending_save.0.is_some() {
             match self.poll_closing_save() {
                 Ok(true) => event_loop.exit(),
                 Ok(false) => {
-                    if let Some(window) = &self.window {
+                    if let Some(window) = &self.window.0 {
                         window.request_redraw();
                     }
                     // Yield between polls even when disk I/O is slow.
@@ -342,7 +342,7 @@ impl Game<'_> {
             return;
         }
         // The world a backup made before its upgrade opens (EditWorldScreen's callback).
-        if let Some(folder) = self.title.as_mut().and_then(|t| t.take_open_request())
+        if let Some(folder) = self.title.0.as_mut().and_then(|t| t.take_open_request())
             && let Err(error) = self.open_world(&folder, None, None, false, None)
         {
             self.error = Some(error);
@@ -350,7 +350,7 @@ impl Game<'_> {
             return;
         }
         // A Realm's address came back (GetServerDetailsTask hands over to ConnectScreen).
-        if let Some(action) = self.title.as_mut().and_then(|t| t.take_connect_request())
+        if let Some(action) = self.title.0.as_mut().and_then(|t| t.take_connect_request())
             && let Err(error) = self.title_action(action)
         {
             self.error = Some(error);
@@ -359,7 +359,7 @@ impl Game<'_> {
         }
         sunrise_client::spans::time("server_packs", || self.tick_server_packs());
         sunrise_client::spans::time("control", || self.poll_control(event_loop));
-        if self.pending_save.is_some() {
+        if self.pending_save.0.is_some() {
             return;
         }
         sunrise_client::spans::time("pads", || self.poll_pads(event_loop));
@@ -372,7 +372,7 @@ impl Game<'_> {
             event_loop.exit();
             return;
         }
-        if let Some(w) = &self.window {
+        if let Some(w) = &self.window.0 {
             if self.options.offscreen {
                 // Offscreen frames don't wait for the window to be drawn: an
                 // occluded window (a locked macOS session) gets no redraws.
@@ -408,7 +408,7 @@ impl Game<'_> {
 
 impl ApplicationHandler for Game<'_> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if self.window.is_some() {
+        if self.window.0.is_some() {
             return;
         }
         debug_keys::warm_debug_cpu();
@@ -451,13 +451,13 @@ impl ApplicationHandler for Game<'_> {
             sunrise_threads::system_menu::suppress(hwnd);
         }
         drop(window_step);
-        let pending = self.pending_initial_models.take();
+        let pending = self.pending_initial_models.0.take();
         let renderer = match &pending {
             Some(start) => self.renderer_for(window.clone(), &start.models.pack, &start.models.gui),
             None => self.new_renderer(window.clone()),
         };
         self.client.resize_state = Some(self.resize_state_of(window.inner_size()));
-        self.window = Some(window);
+        self.window.0 = Some(window);
         if let Some(pending) = pending {
             match self.apply_pending_client_start(*pending, renderer.map(Some)) {
                 Ok(true) => {
@@ -480,7 +480,7 @@ impl ApplicationHandler for Game<'_> {
         } else {
             match renderer {
                 Ok(renderer) => {
-                    self.renderer = Some(renderer);
+                    self.renderer.0 = Some(renderer);
                     self.client.world_renderer_ready = true;
                 }
                 Err(error) => {
@@ -496,7 +496,7 @@ impl ApplicationHandler for Game<'_> {
         self.previous = Instant::now();
     }
     fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
-        let key = if self.window.as_ref().is_some_and(|w| w.id() == id)
+        let key = if self.window.0.as_ref().is_some_and(|w| w.id() == id)
             && !self.scripted_run()
             && !self.client.unclaimed_window
             && let WindowEvent::KeyboardInput {
@@ -534,7 +534,7 @@ impl ApplicationHandler for Game<'_> {
     }
     fn device_event(&mut self, event_loop: &ActiveEventLoop, _: DeviceId, event: DeviceEvent) {
         // Offscreen runs do not use native pointer motion.
-        if self.pending_save.is_none()
+        if self.pending_save.0.is_none()
             && !self.scripted_run()
             && !self.client.unclaimed_window
             && self.client.captured

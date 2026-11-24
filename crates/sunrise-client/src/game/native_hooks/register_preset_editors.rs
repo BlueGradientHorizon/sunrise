@@ -18,6 +18,7 @@ impl Game<'_> {
             return None;
         }
         self.title
+            .0
             .as_ref()
             .filter(|title| title.preset_editor_session().is_some())
     }
@@ -386,13 +387,13 @@ mod tests {
             ];
             mod_platform::testing::with_mods(mods.into(), || {
                 with_client_game(|game| {
-                    sunrise_client::logging::init(&game.save.root, "Client thread");
+                    sunrise_client::logging::init(&game.save.0.root, "Client thread");
                     let mut editors = Vec::new();
                     Game::native_register_preset_editors(
                         &mod_api::RegistrationContext::new(),
                         &mut editors,
                     );
-                    let mut title = game.new_title(game.save.root.join("editor-saves"));
+                    let mut title = game.new_title(game.save.0.root.join("editor-saves"));
                     title.set_preset_editor_factories(PresetEditorFactories::bind(editors));
                     title.set_preset_data_source(game.pack.data_changes.clone());
                     title.set_mode(Mode::Create {
@@ -420,7 +421,7 @@ mod tests {
                         &mut |_, _| {},
                     );
                     assert!(!stock.vertices.is_empty());
-                    game.title = Some(title);
+                    game.title.0 = Some(title);
                     game.client.screen = Screen::Playing;
                     let frame = game.hud(size);
                     let (prefix, later) = frame.vertices.split_at(stock.vertices.len());
@@ -518,7 +519,7 @@ mod tests {
                         &mut editors,
                     );
                     assert_eq!(editors.len(), 1);
-                    let mut title = game.new_title(game.save.root.join("editor-saves"));
+                    let mut title = game.new_title(game.save.0.root.join("editor-saves"));
                     // Keep the data preset available when returning to Create World reloads its
                     // available presets, so the fixture reopens a freshly constructed editor.
                     let data = tempfile::tempdir().unwrap();
@@ -563,11 +564,11 @@ mod tests {
                         title.preset_editor_session().unwrap().title(),
                         Some("Islands Editor")
                     );
-                    game.title = Some(title);
+                    game.title.0 = Some(title);
                     game.client.screen = Screen::Playing;
                     game.settle_title_mode();
                     let mut batch = HudBatch::new([640, 480], game.settings.gui_scale_inputs());
-                    game.title.as_ref().unwrap().draw(
+                    game.title.0.as_ref().unwrap().draw(
                         &game.gui.atlas,
                         &mut batch,
                         (0.0, 0.0),
@@ -691,7 +692,7 @@ mod tests {
                     assert!(game.client.physical_keys.contains(&KeyCode::KeyQ));
                     game.control_command("key escape tap", &reply, &NoopLoop)
                         .unwrap();
-                    assert_eq!(game.title.as_ref().unwrap().mode.id(), "world_create");
+                    assert_eq!(game.title.0.as_ref().unwrap().mode.id(), "world_create");
                     for line in ["key shift up", "key q up"] {
                         game.control_command(line, &reply, &NoopLoop).unwrap();
                     }
@@ -721,11 +722,11 @@ mod tests {
                     const PRESET: &str = "world_preset_editor";
                     let open_editor = |game: &mut Game<'_>| {
                         let size = game.gui_size();
-                        let title = game.title.as_mut().unwrap();
+                        let title = game.title.0.as_mut().unwrap();
                         title.focused_button = Some(26);
                         title.confirm_key_size(size);
                         game.settle_title_mode();
-                        assert_eq!(game.title.as_ref().unwrap().mode.id(), PRESET);
+                        assert_eq!(game.title.0.as_ref().unwrap().mode.id(), PRESET);
                     };
                     let button_event = |game: &mut Game<'_>, state, button, millis| {
                         game.handle_window_event_inner(
@@ -791,7 +792,7 @@ mod tests {
                     // Done instead of moving from it to Cancel.
                     game.pad_clear_focus();
                     sunrise_client::widgets::end_frame(1);
-                    let renderer = game.renderer.as_ref().unwrap();
+                    let renderer = game.renderer.0.as_ref().unwrap();
                     let _ = game.hud_layers([renderer.config.width, renderer.config.height]);
                     sunrise_client::widgets::end_frame(2);
                     let (w, h) = game.gui_size();
@@ -807,10 +808,10 @@ mod tests {
                     game.client.cursor = done;
                     mouse.lock().unwrap().cancel_press = true;
                     assert_eq!(press(game, left, Some(2000)), [Pre(0, false)]);
-                    assert_eq!(game.title.as_ref().unwrap().mode.id(), PRESET);
+                    assert_eq!(game.title.0.as_ref().unwrap().mode.id(), PRESET);
                     mouse.lock().unwrap().cancel_press = false;
                     assert_eq!(game.key_focus_key(&NoopLoop, KeyCode::Tab), Some(false));
-                    assert_eq!(game.pad.menu.focus.map(|t| t.rect), Some(target.rect));
+                    assert_eq!(game.pad.0.menu.focus.map(|t| t.rect), Some(target.rect));
                     game.pad_clear_focus();
                     game.client.cursor = (20.0, 30.0);
                     editor_press(game, left, Some(2001), 0, true, true);
@@ -823,7 +824,7 @@ mod tests {
                         press(game, left, Some(2251)),
                         [Pre(0, false), Post(PRESET, 0, false, true, false)]
                     );
-                    assert_eq!(game.title.as_ref().unwrap().mode.id(), "world_create");
+                    assert_eq!(game.title.0.as_ref().unwrap().mode.id(), "world_create");
                     assert_eq!(
                         button_event(game, ElementState::Released, left, None),
                         [Release("world_create", 0, false)]
@@ -837,7 +838,7 @@ mod tests {
                         press(game, left, Some(2270)),
                         [Pre(0, true), Post(PRESET, 0, true, true, false)]
                     );
-                    assert_eq!(game.title.as_ref().unwrap().mode.id(), "world_create");
+                    assert_eq!(game.title.0.as_ref().unwrap().mode.id(), "world_create");
                 });
             },
         );

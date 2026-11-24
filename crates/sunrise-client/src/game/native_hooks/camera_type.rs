@@ -144,7 +144,7 @@ mod camera_type_tests {
         with_mods(mods, || {
             crate::game::native_entity_refs::tests::with_client_game(|game| {
                 game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-                game.title = None;
+                game.title.0 = None;
                 game.client.spectated_post_effect = Some("minecraft:creeper");
                 let vanilla = game.camera_view(1.0).unwrap();
                 assert_eq!(vanilla.0.z, 0.0);

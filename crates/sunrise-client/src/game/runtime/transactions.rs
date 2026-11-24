@@ -2483,7 +2483,7 @@ impl<'g> Game<'g> {
             } => {
                 let _ = self.with_effect_level(dim, |game| {
                     if let Some((sound, center)) = sound {
-                        game.audio.play(&sound, Some(center), 1.0, 1.0);
+                        game.audio.0.play(&sound, Some(center), 1.0, 1.0);
                     }
                     game.mob_equip_event(id, at, equips);
                 });
@@ -2526,7 +2526,7 @@ impl<'g> Game<'g> {
                     at,
                     volume,
                     pitch,
-                } => self.audio.play(sound, Some(at), volume, pitch),
+                } => self.audio.0.play(sound, Some(at), volume, pitch),
                 DeferredEffect::RestoreStatistics(player, values) => {
                     self.restore_player_statistics(player, *values);
                 }
@@ -2705,7 +2705,7 @@ impl<'g> Game<'g> {
             let world = if dim == self.dim {
                 Some(&mut self.world)
             } else {
-                self.levels.parked_mut(dim).map(|level| &mut level.world)
+                self.levels.0.parked_mut(dim).map(|level| &mut level.world)
             };
             if let Some(world) = world {
                 world.modified.insert(chunk);
@@ -3767,14 +3767,14 @@ mod tests {
             game.creative = false;
             game.inventory[0] = Some(ItemStack::new("minecraft:water_bucket", 1));
             let before = game.stats.get("custom", "minecraft:fill_cauldron");
-            game.audio.capture = Some(Vec::new());
+            game.audio.0.capture = Some(Vec::new());
             game.open_storage_transaction();
             assert_eq!(
                 game.use_on_cauldron(pos).unwrap(),
                 sunrise_client::cauldron::Outcome::Success
             );
             assert_eq!(game.stats.get("custom", "minecraft:fill_cauldron"), before);
-            assert!(game.audio.capture.as_ref().unwrap().is_empty());
+            assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
             game.close_storage_transaction(false);
             assert_eq!(game.world.block(pos[0], pos[1], pos[2]), empty);
             assert_eq!(
@@ -3782,7 +3782,7 @@ mod tests {
                 "minecraft:water_bucket"
             );
             assert_eq!(game.stats.get("custom", "minecraft:fill_cauldron"), before);
-            assert!(game.audio.capture.as_ref().unwrap().is_empty());
+            assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
             game.open_storage_transaction();
             game.open_storage_transaction();
             assert_eq!(
@@ -3797,7 +3797,7 @@ mod tests {
             );
             game.close_storage_transaction(true);
             assert_eq!(game.stats.get("custom", "minecraft:fill_cauldron"), before);
-            assert!(game.audio.capture.as_ref().unwrap().is_empty());
+            assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
             assert_eq!(
                 game.use_on_cauldron(pos).unwrap(),
                 sunrise_client::cauldron::Outcome::Success
@@ -3813,6 +3813,7 @@ mod tests {
             );
             assert_eq!(
                 game.audio
+                    .0
                     .capture
                     .as_ref()
                     .unwrap()

@@ -60,7 +60,7 @@ impl Game<'_> {
         // The pause menu: the same layout the game builds on open and resize.
         if kind == "pause" {
             self.client.screen = Screen::Paused;
-            self.title = None;
+            self.title.0 = None;
             let batch = HudBatch::new(
                 window,
                 GuiScale {
@@ -70,7 +70,7 @@ impl Game<'_> {
             );
             let gui = GuiSize::new(window, scale, false);
             let layout = self.pause_layout(batch.width, batch.height);
-            self.screen_state.build.sync(
+            self.screen_state.0.build.sync(
                 self.client.screen,
                 true,
                 None,
@@ -108,7 +108,7 @@ impl Game<'_> {
             _ => None,
         } {
             let gui = GuiSize::new(window, scale, false);
-            self.title = None;
+            self.title.0 = None;
             let rect = |x, y, w, h| serde_json::json!([x, y, w, h]);
             let mut widgets = Vec::new();
             match cart {
@@ -130,9 +130,10 @@ impl Game<'_> {
                     self.client.screen = Screen::CommandBlock;
                 }
             }
-            self.screen_state.build.reopened();
+            self.screen_state.0.build.reopened();
             let layout = self.text_screen_layout(None, gui);
             self.screen_state
+                .0
                 .build
                 .sync(self.client.screen, true, None, gui, layout);
             let (w, h) = (gui.size[0] as f32, gui.size[1] as f32);
@@ -142,7 +143,7 @@ impl Game<'_> {
                 let (x, y, bw, bh) = self.built_chat(w, h).ok_or("no build")?.leave_bed;
                 widgets.push(rect(x, y, bw, bh));
             }
-            if let Some(screen) = &self.command_block_screen {
+            if let Some(screen) = &self.command_block_screen.0 {
                 let (i, p) = (&screen.command.input, screen.previous());
                 widgets.push(rect(i.x, i.y, i.width, i.height));
                 widgets.push(rect(p[0] as i32, p[1] as i32, p[2] as i32, p[3] as i32));
@@ -152,7 +153,7 @@ impl Game<'_> {
                 }
             }
             self.ui.chat_screen = None;
-            self.command_block_screen = None;
+            self.command_block_screen.0 = None;
             return Ok(serde_json::json!({
                 "gui": [gui.scale, gui.size[0], gui.size[1]],
                 "widgets": widgets,
@@ -161,7 +162,7 @@ impl Game<'_> {
         // The case's screen: a survival/creative container in the inventory
         // screen, with the block entity the menu shows.
         self.client.screen = Screen::Inventory;
-        self.title = None;
+        self.title.0 = None;
         self.craft_size = 2;
         self.container = None;
         self.world.block_entities.clear();
@@ -232,7 +233,7 @@ impl Game<'_> {
         let layout = self.container_layout(&batch);
         // The frame's build, the way `observe_screen` makes it: the hit tests
         // and the panel readers below go through it.
-        self.screen_state.build.sync(
+        self.screen_state.0.build.sync(
             self.client.screen,
             true,
             None,

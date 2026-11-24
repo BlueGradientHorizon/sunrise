@@ -204,7 +204,7 @@ fn saved_block_and_fluid_ticks_unpack_when_the_chunk_starts_ticking() {
         "a ticking chunk"
     );
     assert!(
-        game.tickets.levels().loaded_ticking(key.0, key.1),
+        game.tickets.0.levels().loaded_ticking(key.0, key.1),
         "a ticking ticket level"
     );
     let pos = ChunkPos::new(key.0, key.1);

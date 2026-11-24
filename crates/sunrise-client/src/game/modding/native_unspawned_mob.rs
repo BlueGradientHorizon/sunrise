@@ -72,7 +72,7 @@ struct Withdraw<'a, 'g, 'm> {
 impl Drop for Withdraw<'_, '_, '_> {
     fn drop(&mut self) {
         let lent = {
-            let mut lent = self.game.lent_mobs.borrow_mut();
+            let mut lent = self.game.lent_mobs.0.borrow_mut();
             let at = lent.lends.iter().rposition(|l| l.handle == self.handle);
             at.map(|at| lent.lends.remove(at))
         };
@@ -97,7 +97,7 @@ pub(super) struct Edits<'a, 'g> {
 impl Game<'_> {
     /// A nested pending action must expire standalone lends too, including their metadata.
     pub(super) fn expire_standalone_lends(&self) {
-        for previous in &mut self.lent_mobs.borrow_mut().lends {
+        for previous in &mut self.lent_mobs.0.borrow_mut().lends {
             previous.valid = false;
         }
     }
@@ -119,7 +119,7 @@ impl Game<'_> {
     ) -> R {
         self.expire_standalone_lends();
         {
-            let lent = self.lent_mobs.borrow();
+            let lent = self.lent_mobs.0.borrow();
             lent.pending
                 .borrow_mut()
                 .suspend()
@@ -135,7 +135,7 @@ impl Game<'_> {
             Some((lent, slot)) => (Some(lent), Some(slot)),
             None => (None, None),
         };
-        self.lent_mobs.borrow_mut().lends.push(Lent {
+        self.lent_mobs.0.borrow_mut().lends.push(Lent {
             handle,
             kind: kind.to_owned(),
             position,
@@ -162,7 +162,7 @@ impl Game<'_> {
         handle: UnspawnedMobRef,
         read: impl FnOnce(&Lent) -> Result<T, UnspawnedMobError>,
     ) -> Result<T, UnspawnedMobError> {
-        let lent = self.lent_mobs.borrow();
+        let lent = self.lent_mobs.0.borrow();
         read(
             lent.lends
                 .last()
@@ -178,7 +178,7 @@ impl Game<'_> {
         read: impl FnOnce(&Mob) -> Result<T, UnspawnedMobError>,
     ) -> Result<T, UnspawnedMobError> {
         if let Some(key) = super::native_pending_children::pending_key(self, handle)? {
-            let arena = self.lent_mobs.borrow().pending.clone();
+            let arena = self.lent_mobs.0.borrow().pending.clone();
             let borrowed = arena.borrow();
             let child = borrowed
                 .get(key)
@@ -200,7 +200,7 @@ impl Game<'_> {
         edit: impl FnOnce(&Game<'_>, &mut Mob) -> Result<T, UnspawnedMobError>,
     ) -> Result<T, UnspawnedMobError> {
         if let Some(key) = super::native_pending_children::pending_key(self, handle)? {
-            let arena = self.lent_mobs.borrow().pending.clone();
+            let arena = self.lent_mobs.0.borrow().pending.clone();
             let mut borrowed = arena.borrow_mut();
             let child = borrowed
                 .get_mut(key)
@@ -210,7 +210,7 @@ impl Game<'_> {
             }
             return edit(self, &mut child.mob);
         }
-        let mut lent = self.lent_mobs.borrow_mut();
+        let mut lent = self.lent_mobs.0.borrow_mut();
         let l = lent
             .lends
             .last_mut()
@@ -954,7 +954,7 @@ mod tests {
                 }));
                 assert!(panicked.is_err());
                 assert!(
-                    game.lent_mobs.borrow().lends.is_empty(),
+                    game.lent_mobs.0.borrow().lends.is_empty(),
                     "the lend is withdrawn"
                 );
                 let kept = kept.expect("the call ran");

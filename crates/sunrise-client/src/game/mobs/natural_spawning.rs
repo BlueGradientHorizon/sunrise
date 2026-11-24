@@ -1294,7 +1294,7 @@ impl<'a> Game<'a> {
         scratch: &mut SpawnScratch,
     ) -> i32 {
         let tickets = self.streaming.mod_tickets();
-        let levels = self.tickets.levels();
+        let levels = self.tickets.0.levels();
         scratch.collect(
             players,
             |chunk| tickets.forces_natural_spawning(chunk),
@@ -1752,7 +1752,7 @@ mod tests {
                     game.world.chunks.insert((x, z), Arc::new(chunk));
                 }
             }
-            game.tickets.update(None);
+            game.tickets.0.update(None);
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 64.0, 8.5)).unwrap());
             game.border.set_center([8.0, 8.0]);
             game.border.set_size(2.0);
@@ -2279,7 +2279,7 @@ mod tests {
                 assert!(natural.checked.borrow().is_none(), "no created mob is left");
                 let used = natural.provisional.get();
                 drop(natural);
-                assert!(game.lent_mobs.borrow().is_empty(), "every lend ended");
+                assert!(game.lent_mobs.0.borrow().is_empty(), "every lend ended");
                 (
                     pending.iter().map(snap).collect::<Vec<_>>(),
                     used,
@@ -2364,7 +2364,7 @@ mod tests {
                 };
                 game.server_tick_spawner_of(key, &mut spawner, None)
                     .unwrap();
-                assert!(game.lent_mobs.borrow().is_empty(), "every lend ended");
+                assert!(game.lent_mobs.0.borrow().is_empty(), "every lend ended");
                 let added: Vec<Snap> = game.mobs[mobs..].iter().map(snap).collect();
                 let out = (
                     added,
@@ -2453,7 +2453,7 @@ mod tests {
                 };
                 game.server_tick_trial_spawner(key, &mut spawner, TrialState::Active, false)
                     .unwrap();
-                assert!(game.lent_mobs.borrow().is_empty(), "every lend ended");
+                assert!(game.lent_mobs.0.borrow().is_empty(), "every lend ended");
                 let added: Vec<Snap> = game.mobs[mobs..].iter().map(snap).collect();
                 let out = (
                     added,

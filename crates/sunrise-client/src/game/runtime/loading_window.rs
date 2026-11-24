@@ -323,7 +323,7 @@ pub(in crate::game) fn start_game<'a>(
     let mut game = Game::construct(res, pack, gui, options, settings, audio, prepared, stage)?;
     // `new DebugRenderer()` refreshes its list.
     game.refresh_debug_renderers();
-    game.rest_loader = rest_loader;
+    game.rest_loader.0 = rest_loader;
     game.ui.vanilla_root = vanilla_root;
     if game.options.benchmark.is_some() {
         // The same conditions on every machine: no VSync, no frame cap, no
@@ -381,7 +381,7 @@ pub(in crate::game) fn start_game<'a>(
     });
     if let Some((window, renderer)) = window {
         game.client.resize_state = Some(game.resize_state_of(window.inner_size()));
-        game.window = Some(window);
+        game.window.0 = Some(window);
         let ready = game.apply_pending_client_start(
             pending.expect("loading screen has a client"),
             Ok(Some(renderer)),
@@ -407,7 +407,7 @@ pub(in crate::game) fn start_game<'a>(
             let ready = game.apply_pending_client_start(pending, Ok(None))?;
             Ok(ready.then_some(game))
         } else {
-            game.pending_initial_models = Some(Box::new(pending));
+            game.pending_initial_models.0 = Some(Box::new(pending));
             Ok(Some(game))
         }
     } else {
@@ -423,7 +423,7 @@ impl Game<'_> {
         renderer: Result<Option<Renderer>>,
     ) -> Result<bool> {
         self.apply_initial_model_generation(pending.models, pending.applies, renderer?)?;
-        self.client.world_renderer_ready = self.renderer.is_some();
+        self.client.world_renderer_ready = self.renderer.0.is_some();
         self.finish_start_game(pending.pack_error, pending.handoff)
     }
 
@@ -493,7 +493,7 @@ impl Game<'_> {
                         .new_title(std::env::current_dir()?.join("saves"))
                         .with_user(|| game.options.player_name());
                     game.show_title(title);
-                    game.pending_entry = Some(PendingWorldEntry::Local {
+                    game.pending_entry.0 = Some(PendingWorldEntry::Local {
                         folder,
                         name: None,
                         seed: Some(seed),

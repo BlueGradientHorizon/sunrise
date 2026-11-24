@@ -1489,7 +1489,7 @@ impl Game<'_> {
                 }
                 if c.fuel > 0 && c.random.next_int_bound(4).unwrap_or(1) == 0 {
                     let at = [c.position.x, c.position.y + 0.8, c.position.z];
-                    self.particles.add(
+                    self.particles.0.add(
                         &ParticleOptions::simple(ParticleType::LargeSmoke),
                         at,
                         [0.0; 3],
@@ -1501,8 +1501,11 @@ impl Game<'_> {
                 if c.fuse > 0 {
                     c.fuse -= 1;
                     let at = [c.position.x, c.position.y + 0.5, c.position.z];
-                    self.particles
-                        .add(&ParticleOptions::simple(ParticleType::Smoke), at, [0.0; 3]);
+                    self.particles.0.add(
+                        &ParticleOptions::simple(ParticleType::Smoke),
+                        at,
+                        [0.0; 3],
+                    );
                 } else if c.fuse == 0 {
                     // explode(horizontalDistanceSqr()): a rising cart's
                     // vertical speed adds nothing.
@@ -1602,6 +1605,7 @@ impl Game<'_> {
         self.lan_entity_event(id, TNT_PRIME_EVENT, at);
         if !self.entity_silent(c.id) {
             self.audio
+                .0
                 .play_on(BLOCKS, "minecraft:entity.tnt.primed", Some(at), 1.0, 1.0);
         }
     }
@@ -2042,7 +2046,7 @@ impl Game<'_> {
         for cart in &carts {
             if !self.client.cart_sounds.contains(&cart.id) {
                 let instance = SoundInstance::minecart(cart, random_source::create());
-                let (_, res) = self.audio.play_instance(instance, false);
+                let (_, res) = self.audio.0.play_instance(instance, false);
                 if res != PlayResult::NotStarted {
                     self.client.cart_sounds.insert(cart.id);
                 }
@@ -2056,7 +2060,7 @@ impl Game<'_> {
             for underwater in [true, false] {
                 let instance =
                     SoundInstance::riding_minecart(cart, underwater, random_source::create());
-                let (_, res) = self.audio.play_instance(instance, false);
+                let (_, res) = self.audio.0.play_instance(instance, false);
                 if res == PlayResult::NotStarted {
                     started = false;
                 }

@@ -14,8 +14,8 @@ pub(super) fn extinguish_pitch(random: &mut impl RandomSource) -> f32 {
 impl Game<'_> {
     /// Entity.playEntityOnFireExtinguishedSound
     pub(super) fn extinguish_sound(&mut self, at: [f64; 3]) {
-        let pitch = extinguish_pitch(self.particles.random());
-        self.audio.play(
+        let pitch = extinguish_pitch(self.particles.0.random());
+        self.audio.0.play(
             "minecraft:entity.generic.extinguish_fire",
             Some(at),
             0.7,
@@ -78,7 +78,7 @@ impl Game<'_> {
             .as_ref()
             .map(|p| [p.position.x, p.position.y, p.position.z])
         {
-            self.audio.play(
+            self.audio.0.play(
                 "minecraft:item.bucket.fill_powder_snow",
                 Some(eye),
                 1.0,

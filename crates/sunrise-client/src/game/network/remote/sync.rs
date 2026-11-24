@@ -544,11 +544,13 @@ impl Game<'_> {
         let enabled = match &stack {
             Some(stack) => self
                 .creative_screen
+                .0
                 .catalog()
                 .item_enabled(stack, self.enabled_feature_ids()),
             None => {
                 air = ItemStack::new("minecraft:air", 0);
                 self.creative_screen
+                    .0
                     .catalog()
                     .item_enabled(&air, self.enabled_feature_ids())
             }

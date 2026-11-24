@@ -71,6 +71,7 @@ impl Game<'_> {
         scale: f32,
     ) {
         self.audio
+            .0
             .play("minecraft:entity.player.attack.sweep", from, 1.0, 1.0);
         if let Some((area, mob)) = target {
             self.sweep_damage(area, mob, scale);
@@ -78,7 +79,7 @@ impl Game<'_> {
         let arc = sunrise_client::particles::ParticleOptions::simple(
             sunrise_client::particles::ParticleType::SweepAttack,
         );
-        self.particles.add(&arc, at, [0.0; 3]);
+        self.particles.0.add(&arc, at, [0.0; 3]);
         // Player.sweepAttack's `sendParticles(SWEEP_ATTACK, ..., 0, dx, 0, dz, 0)`:
         // the offset is the one from the player to the particle.
         let origin = from.unwrap_or(at);
@@ -115,6 +116,7 @@ impl Game<'_> {
         let from = player.map(|p| [p.position.x, p.position.y, p.position.z]);
         if full && player.is_some_and(|p| p.sprinting) {
             self.audio
+                .0
                 .play("minecraft:entity.player.attack.knockback", from, 1.0, 1.0);
         }
         let crit = living.is_some() && crit;
@@ -123,6 +125,7 @@ impl Game<'_> {
         }
         if crit {
             self.audio
+                .0
                 .play("minecraft:entity.player.attack.crit", from, 1.0, 1.0);
             if let Some(id) = living {
                 self.area_critical_hit(id, area, false);
@@ -133,7 +136,7 @@ impl Game<'_> {
             } else {
                 "minecraft:entity.player.attack.weak"
             };
-            self.audio.play(sound, from, 1.0, 1.0);
+            self.audio.0.play(sound, from, 1.0, 1.0);
         }
         // Player.magicCrit: the enchantments added damage.
         if let Some(id) = magic {
@@ -307,6 +310,7 @@ impl Game<'_> {
         let from = player.map(|p| [p.position.x, p.position.y, p.position.z]);
         if knockback_attack {
             self.audio
+                .0
                 .play("minecraft:entity.player.attack.knockback", from, 1.0, 1.0);
         }
         let old_health = self.mobs[index].health;
@@ -409,7 +413,7 @@ impl Game<'_> {
                 let indicator = sunrise_client::particles::ParticleOptions::simple(
                     sunrise_client::particles::ParticleType::DamageIndicator,
                 );
-                self.particles.send_particles(
+                self.particles.0.send_particles(
                     &indicator,
                     [feet[0], feet[1] + height * 0.5, feet[2]],
                     [0.1, 0.0, 0.1],
@@ -445,7 +449,7 @@ impl Game<'_> {
                 self.sweep_attack(at, from, Some(target), scale);
             }
             if crit || sweep.is_none() {
-                self.audio.play(sound, from, 1.0, 1.0);
+                self.audio.0.play(sound, from, 1.0, 1.0);
             }
             self.remember_player_target(Some(id));
             // The hurt or death sound the mob raised (getHurtSound / getDeathSound,
@@ -464,6 +468,7 @@ impl Game<'_> {
                 match event {
                     sunrise_client::mobs::MobEvent::Sound(s, at, volume, pitch) => {
                         self.audio
+                            .0
                             .play(&format!("minecraft:{s}"), Some(at), volume, pitch);
                     }
                     sunrise_client::mobs::MobEvent::Infested { at, velocities } => {
@@ -493,6 +498,7 @@ impl Game<'_> {
             }
         } else {
             self.audio
+                .0
                 .play("minecraft:entity.player.attack.nodamage", from, 1.0, 1.0);
         }
     }

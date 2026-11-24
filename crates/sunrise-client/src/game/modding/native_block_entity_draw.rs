@@ -1258,6 +1258,7 @@ impl Game<'_> {
                 self.client.pack_ids.is_some(),
                 !self.client.native_shaders.picked.is_empty(),
                 self.renderer
+                    .0
                     .as_ref()
                     .and_then(|renderer| renderer.prepared_generation()),
                 self.client.standalone_geometry.generation(),
@@ -1341,6 +1342,7 @@ impl Game<'_> {
     ) -> Option<usize> {
         let room = self
             .renderer
+            .0
             .as_ref()
             .map(|renderer| renderer.prepared_instance_room(already, incoming));
         #[cfg(test)]
@@ -3389,7 +3391,7 @@ mod tests {
                 game.spawn_pack_reload(crate::game::packs::ReloadKind::Selection)
                     .unwrap();
                 let started = std::time::Instant::now();
-                while game.pack_reload.is_some() {
+                while game.pack_reload.0.is_some() {
                     assert!(
                         started.elapsed().as_secs() < 300,
                         "the reload never finished"

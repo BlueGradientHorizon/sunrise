@@ -51,7 +51,7 @@ impl Game<'_> {
             return false;
         }
         if self.client.screen == Screen::Playing
-            && let Some(title) = self.title.as_mut()
+            && let Some(title) = self.title.0.as_mut()
         {
             // A caret field, an append-only one (`focused_field`), or a game
             // rule's box (`has_caret_field` asks the rules screen itself, and
@@ -69,8 +69,12 @@ impl Game<'_> {
             // screen's search (OptionsUi::typing).
             Screen::Options => self.ui.options.typing(),
             Screen::WorldOptions => self.world_options_typing(),
-            Screen::Creative => self.mod_browser_typing() || self.creative_screen.tab().search,
-            Screen::BlockEditor => self.block_editor.as_ref().is_some_and(|s| s.text_focused()),
+            Screen::Creative => self.mod_browser_typing() || self.creative_screen.0.tab().search,
+            Screen::BlockEditor => self
+                .block_editor
+                .0
+                .as_ref()
+                .is_some_and(|s| s.text_focused()),
             Screen::Inventory => {
                 self.mod_browser_typing() || self.recipe_search_focused() || self.station_typing()
             }
@@ -82,7 +86,7 @@ impl Game<'_> {
     /// (so OS IME commits and text typing are enabled). Note that `ime_preedit`
     /// separately checks `mounted_widget_preedit`, never `captures_input()`.
     pub(in crate::game) fn text_field_focused(&mut self) -> bool {
-        if self.screen_state.widgets.has_focus() {
+        if self.screen_state.0.widgets.has_focus() {
             return self.mounted_widget_captures_input();
         }
         self.vanilla_text_field_focused()
@@ -97,8 +101,8 @@ impl Game<'_> {
             return None;
         }
         let mut h = std::collections::hash_map::DefaultHasher::new();
-        self.screen_state.screen_instance.hash(&mut h);
-        if let Some(id) = self.screen_state.widgets.focused_id() {
+        self.screen_state.0.screen_instance.hash(&mut h);
+        if let Some(id) = self.screen_state.0.widgets.focused_id() {
             1u8.hash(&mut h);
             id.raw().hash(&mut h);
         } else {
@@ -110,7 +114,7 @@ impl Game<'_> {
             self.mod_browser_typing().hash(&mut h);
             self.recipe_search_focused().hash(&mut h);
             self.station_typing().hash(&mut h);
-            if let Some(title) = self.title.as_mut() {
+            if let Some(title) = self.title.0.as_mut() {
                 title.mode.id().hash(&mut h);
                 title.focused_field().map(|(id, _, _)| id).hash(&mut h);
             }
@@ -123,13 +127,13 @@ impl Game<'_> {
     pub(in crate::game) fn sync_ime(&mut self) {
         let focus = self.ime_focus_identity();
         let want = focus.is_some();
-        if focus != self.screen_state.ime_focus {
-            self.screen_state.ime_focus = focus;
+        if focus != self.screen_state.0.ime_focus {
+            self.screen_state.0.ime_focus = focus;
             self.client.ime_area = None;
             preedit::reset();
         }
         if want != self.client.ime_allowed
-            && let Some(window) = &self.window
+            && let Some(window) = &self.window.0
         {
             window.set_ime_allowed(want);
             self.client.ime_allowed = want;
@@ -154,7 +158,7 @@ impl Game<'_> {
             || mod_api::__private::listened(mod_api::HookId::ScreenPreeditPost))
         .then(|| self.observed_input_screen())
         .flatten();
-        let initial_instance = self.screen_state.screen_instance;
+        let initial_instance = self.screen_state.0.screen_instance;
         let event = PreeditEvent::from_winit(text, cursor);
         // ScreenEvent.Preedit.Pre, then the screen's handler (the focused
         // child takes it), then Preedit.Post on the captured receiver when no
@@ -164,20 +168,20 @@ impl Game<'_> {
         if self.dispatch_preedit_pre_hook(preedit_receiver.as_ref(), &shown) {
             // A bound preset editor wants committed text, but the platform still owns
             // the composition (and its Enter/Escape) even when Pre cancels it.
-            if bound_editor && self.screen_state.screen_instance == initial_instance {
+            if bound_editor && self.screen_state.0.screen_instance == initial_instance {
                 preedit::set_preedit(event);
             }
             return;
         }
-        let taken = if self.screen_state.screen_instance != initial_instance {
+        let taken = if self.screen_state.0.screen_instance != initial_instance {
             false
-        } else if self.screen_state.widgets.has_focus() {
+        } else if self.screen_state.0.widgets.has_focus() {
             self.mounted_widget_preedit(event.as_ref())
         } else {
             self.vanilla_text_field_focused()
         };
         preedit::set_preedit(event.filter(|_| {
-            taken || (bound_editor && self.screen_state.screen_instance == initial_instance)
+            taken || (bound_editor && self.screen_state.0.screen_instance == initial_instance)
         }));
         if !taken {
             self.dispatch_preedit_post_hook(preedit_receiver.as_ref(), &shown);
@@ -242,7 +246,7 @@ impl Game<'_> {
         if self.client.ime_area == Some(area) {
             return;
         }
-        if let Some(window) = &self.window
+        if let Some(window) = &self.window.0
             && self.client.ime_allowed
         {
             window.set_ime_cursor_area(
@@ -277,7 +281,7 @@ impl Game<'_> {
     fn ime_type(&mut self, text: &str) -> bool {
         // Only a dialog has vanilla fields among the prompts. Mounted fields already heard it.
         if (self.prompt_open() && !self.dialog_open())
-            || self.screen_state.widgets.has_focus()
+            || self.screen_state.0.widgets.has_focus()
             || !self.vanilla_text_field_focused()
         {
             return false;
@@ -285,7 +289,7 @@ impl Game<'_> {
         if self.dialog_type(text) {
             return true;
         }
-        if self.client.screen == Screen::Playing && self.title.is_some() {
+        if self.client.screen == Screen::Playing && self.title.0.is_some() {
             self.title_edit(Some(text), false);
             true
         } else if self.client.book.is_some() {

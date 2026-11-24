@@ -167,7 +167,7 @@ impl Game<'_> {
             let at = block(s.position);
             let center = at.map(|v| f64::from(v) + 0.5);
             if s.tick_count == s.spawn_item_after - ABOUT_TO_SPAWN {
-                self.audio.play_on(
+                self.audio.0.play_on(
                     6, // SoundSource.NEUTRAL, as OminousItemSpawner.tickServer selects.
                     "minecraft:block.trial_spawner.about_to_spawn_item",
                     Some(center),
@@ -246,7 +246,7 @@ impl Game<'_> {
     /// particles from the spawner out to points around it.
     fn ominous_spawner_particles(&mut self, at: [f64; 3]) {
         let options = ParticleOptions::simple(ParticleType::OminousSpawning);
-        let r = self.particles.random();
+        let r = self.particles.0.random();
         let count = r.next_int_between_inclusive(1, 3).unwrap_or(1);
         let mut flights = Vec::new();
         for _ in 0..count {
@@ -255,7 +255,7 @@ impl Game<'_> {
             flights.push([from[0] - at[0], from[1] - at[1], from[2] - at[2]]);
         }
         for v in flights {
-            self.particles.add(&options, at, v);
+            self.particles.0.add(&options, at, v);
         }
     }
     /// `OminousItemSpawnerRenderer`: the item, full bright, growing over its

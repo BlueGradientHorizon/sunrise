@@ -394,7 +394,7 @@ impl Game<'_> {
         let border = if dim == self.dim {
             &self.border
         } else {
-            self.levels.parked_border(dim).unwrap_or(&self.border)
+            self.levels.0.parked_border(dim).unwrap_or(&self.border)
         };
         PortalSide::bounds_of(border)
     }
@@ -414,8 +414,8 @@ impl Game<'_> {
         }
         Some(PortalSide {
             dim,
-            world: self.levels.parked_world(dim)?,
-            border: self.levels.parked_border(dim)?,
+            world: self.levels.0.parked_world(dim)?,
+            border: self.levels.0.parked_border(dim)?,
         })
     }
     /// `ServerLevel.isAllowedToEnterPortal`.
@@ -597,7 +597,7 @@ impl Game<'_> {
         &self,
         plan: &Plan,
     ) -> Option<(BlockPos, FoundRectangle)> {
-        self.find_portal_in(&self.in_place_side(), Some(&self.save), plan)
+        self.find_portal_in(&self.in_place_side(), Some(&self.save.0), plan)
     }
     /// [`Self::find_exit_portal`] in `side`'s level, reading the chunks that are not
     /// loaded from `save` when it is given.
@@ -683,7 +683,7 @@ impl Game<'_> {
     /// Only a server holds levels with tickets of their own.
     pub(super) fn place_portal_ticket(&mut self, chunk: (i32, i32)) {
         if !self.options.execution_role.is_client() {
-            self.tickets.add_portal(chunk);
+            self.tickets.0.add_portal(chunk);
         }
     }
 
@@ -751,7 +751,7 @@ impl Game<'_> {
         let to_nether = plan.dim == Dim::Nether;
         let portals = self.portal_blocks(
             &self.in_place_side(),
-            Some(&self.save),
+            Some(&self.save.0),
             plan.approximate,
             PortalSide::search_radius(to_nether),
         );
@@ -794,6 +794,7 @@ impl Game<'_> {
         if self.client.screen_fx.portal == 0.0 {
             let pitch = self.world.random.next_float() * 0.4 + 0.8;
             self.audio
+                .0
                 .play("minecraft:block.portal.trigger", None, 0.25, pitch);
         }
         true
@@ -1459,7 +1460,7 @@ impl Game<'_> {
                 Target::Painting(_) => self.paintings.retain(|e| e.id != id),
                 Target::Falling(_) => self.falling.retain(|e| e.id != id),
                 Target::Cushion(_) => self.cushions.retain(|e| e.id != id),
-                Target::Other(_) => self.others.retain(|e| e.id != id),
+                Target::Other(_) => self.others.0.retain(|e| e.id != id),
                 Target::Fangs(_) => self.fangs.list.retain(|e| e.id != id),
                 Target::Crystal(_) => self.crystals.retain(|e| e.id != id),
                 Target::Dragon(_) => self.discard_resident_dragon(),
@@ -2059,7 +2060,7 @@ pub(in crate::game) mod tests {
             let child = game.mob_passenger_ids(root)[0];
             let leaf = game.mob_passenger_ids(child)[0];
             assert!(!game.mobs.iter().any(|m| m.id == child));
-            game.tickets.add_portal((0, 0));
+            game.tickets.0.add_portal((0, 0));
             game.update_chunk_tickets();
             assert!(game.entity_ticking_area()(0, 0));
             game.set_portal_cooldown(leaf);

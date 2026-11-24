@@ -1580,7 +1580,7 @@ mod attachment_membership_tests {
         with_game(|game| {
             game.reset_entity_residency();
             macro_rules! summon {
-                ($name:literal, $($field:ident).+) => {{
+                ($name:literal, $($field:tt).+) => {{
                     game.summon_with_nbt(concat!("minecraft:", $name), [0.5, 70.0, 0.5], "{}").unwrap();
                     game.lan_assign_ids();
                     let id = game$(.$field)+.last().unwrap().id;
@@ -1590,8 +1590,8 @@ mod attachment_membership_tests {
             summon!("pig", mobs);
             summon!("item_frame", item_frames);
             summon!("painting", paintings);
-            summon!("marker", others);
-            summon!("leash_knot", others);
+            summon!("marker", others.0);
+            summon!("leash_knot", others.0);
             summon!("area_effect_cloud", breath_clouds);
             summon!("end_crystal", crystals);
             summon!("cushion", cushions);

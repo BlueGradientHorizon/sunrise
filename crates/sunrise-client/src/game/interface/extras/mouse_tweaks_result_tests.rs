@@ -11,7 +11,7 @@ fn with_guest_grid(run: impl FnOnce(&mut Game<'_>)) {
     mod_platform::testing::with_mods(Vec::new().into(), || {
         with_client_game(|game| {
             let _server = logged_client(game);
-            game.title = None;
+            game.title.0 = None;
             game.craft_size = 2;
             game.craft_grid[0] = Some(ItemStack::new("minecraft:oak_log", 1));
             game.remote.as_mut().unwrap().craft_result =

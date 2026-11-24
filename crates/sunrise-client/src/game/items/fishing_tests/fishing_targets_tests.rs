@@ -140,7 +140,7 @@ fn clear_entities(game: &mut Game<'_>) {
     game.cushions.clear();
     game.crystals.clear();
     game.discard_resident_dragon();
-    game.others.clear();
+    game.others.0.clear();
     game.server.knot_ids.clear();
     game.server.broken_knots.clear();
     game.resident_entities.knots.clear();
@@ -175,7 +175,7 @@ fn reset_arena(game: &mut Game<'_>, target: &str) {
     game.selected = 0;
     game.inventory[0] = Some(ItemStack::new("minecraft:fishing_rod", 1));
     game.tick_server(false).unwrap();
-    game.audio.heard.clear();
+    game.audio.0.heard.clear();
 }
 
 #[derive(Clone, Copy)]
@@ -276,7 +276,7 @@ fn summon_target(game: &mut Game<'_>, target: &str) -> TrackedTarget {
         }
         "leash_knot" => {
             assert!(game.run_command("summon minecraft:leash_knot 3.5 64.375 4.5 {}"));
-            TrackedTarget::ExplicitKnot(game.others.last().unwrap().id)
+            TrackedTarget::ExplicitKnot(game.others.0.last().unwrap().id)
         }
         "leash_knot_tied" => {
             assert!(game.run_command(
@@ -448,7 +448,7 @@ fn run_case(
 
     let is_dragon = matches!(tracked, TrackedTarget::Dragon);
     for expected in &case.ticks {
-        game.audio.heard.clear();
+        game.audio.0.heard.clear();
         crate::game::sculk::TEST_POSTED_EVENTS.with(|e| {
             *e.borrow_mut() = Some(Vec::new());
         });
@@ -587,7 +587,7 @@ fn run_extra_case(
     game.world.random.set_seed(level_seed);
 
     for expected in &case.ticks {
-        game.audio.heard.clear();
+        game.audio.0.heard.clear();
         crate::game::sculk::TEST_POSTED_EVENTS.with(|e| {
             *e.borrow_mut() = Some(Vec::new());
         });
@@ -610,6 +610,7 @@ fn run_extra_case(
             .count();
         let got_deflect = game
             .audio
+            .0
             .heard
             .get("minecraft:entity.breeze.deflect")
             .copied()

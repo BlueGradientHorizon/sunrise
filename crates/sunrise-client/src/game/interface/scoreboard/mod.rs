@@ -426,7 +426,7 @@ impl Game<'_> {
                 for (id, negated) in &s.predicates {
                     // EntitySelectorOptions rejects a missing registry entry
                     // before applying the predicate's negation.
-                    let Some(json) = self.fns.store.predicates.get(id) else {
+                    let Some(json) = self.fns.0.store.predicates.get(id) else {
                         ok = false;
                         break;
                     };
@@ -989,7 +989,7 @@ impl Game<'_> {
     /// store any finished skin downloads into the atlas.
     pub(super) fn flush_skin_slots(&mut self) {
         let (ready, drawn) = {
-            let mut downloads = self.skin_downloads.borrow_mut();
+            let mut downloads = self.skin_downloads.0.borrow_mut();
             (downloads.take_ready(), downloads.take_drawn())
         };
         self.client.skin_slots.next_frame(drawn);
@@ -1025,7 +1025,7 @@ impl Game<'_> {
             count,
             has_objective,
         );
-        let changed = self.tab_list.set_visible(shown);
+        let changed = self.tab_list.0.set_visible(shown);
         if !tab_players_needed(shown, changed) {
             // World skins still need download polling and atlas residency checks.
             self.update_remote_skins();
@@ -1063,6 +1063,7 @@ impl Game<'_> {
         // The faces of the players the list shows.
         let faces: std::collections::HashSet<u128> = self
             .tab_list
+            .0
             .displayed_ids(&players, &self.score.board)
             .iter()
             .copied()
@@ -1084,7 +1085,7 @@ impl Game<'_> {
             background: tab_list::row_background(true, self.settings.text_background_opacity),
             upside_down: &up,
         };
-        let draws = self.tab_list.layout(&inputs, &self.gui.atlas.font);
+        let draws = self.tab_list.0.layout(&inputs, &self.gui.atlas.font);
         sunrise_client::hud_layout::paint(batch, &self.gui.atlas, &draws);
     }
 }

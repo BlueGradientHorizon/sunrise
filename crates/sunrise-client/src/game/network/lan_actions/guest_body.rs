@@ -623,7 +623,7 @@ impl Game<'_> {
                             f64::from(pos.y) + 0.5,
                             f64::from(pos.z) + 0.5,
                         ];
-                        self.audio.play_unshared(name, Some(at), volume, pitch);
+                        self.audio.0.play_unshared(name, Some(at), volume, pitch);
                         self.send_level_sound(LevelSound::new(name, at, volume, pitch), None);
                     }
                 }
@@ -637,7 +637,7 @@ impl Game<'_> {
                     ..
                 }) => {
                     if let Some(name) = sound.player_fall_sound() {
-                        self.audio.play_unshared(name, Some(at), volume, pitch);
+                        self.audio.0.play_unshared(name, Some(at), volume, pitch);
                         self.send_level_sound(LevelSound::new(name, at, volume, pitch), Some(conn));
                     }
                 }
@@ -683,7 +683,7 @@ impl Game<'_> {
                         entity,
                         mod_api::BlockSoundCause::Fall,
                     );
-                    self.audio.play_unshared(
+                    self.audio.0.play_unshared(
                         &sound.fall,
                         Some(at),
                         sound.volume * 0.5,
@@ -763,7 +763,7 @@ impl Game<'_> {
                     };
                     if sound {
                         let name = "minecraft:block.honey_block.slide";
-                        self.audio.play_unshared(name, Some(at), 1.0, 1.0);
+                        self.audio.0.play_unshared(name, Some(at), 1.0, 1.0);
                         self.send_level_sound(LevelSound::new(name, at, 1.0, 1.0), Some(conn));
                     }
                     if particles {

@@ -326,7 +326,7 @@ impl Game<'_> {
             self.all_sections_changed();
         }
         // The renderer keeps the meshes' sources while they carry them, and frees them after.
-        if let Some(renderer) = &mut self.renderer {
+        if let Some(renderer) = &mut self.renderer.0 {
             renderer.keep_pack_sources(shader_pack);
         }
         let separate_ao = self
@@ -354,13 +354,13 @@ impl Game<'_> {
             self.client.native_shaders.select(&picked);
             self.set_translucent_layers(Vec::new());
             self.client.pack_ids = None;
-            if let Some(renderer) = &mut self.renderer {
+            if let Some(renderer) = &mut self.renderer.0 {
                 renderer.drop_shader_packs();
             }
         }
         // A pack whose pipelines were building runs once they are built, or is turned off.
         if let Some((dimension, name, started, report)) =
-            self.renderer.as_mut().and_then(|r| r.poll_shader_pack())
+            self.renderer.0.as_mut().and_then(|r| r.poll_shader_pack())
         {
             match report {
                 Ok(Some((programs, notes))) => {
@@ -405,7 +405,7 @@ impl Game<'_> {
         {
             // One of Sunrise's own packs (game/modding/native_shaders.rs).
             self.tick_native_shader_pack(&path);
-        } else if let Some(renderer) = &mut self.renderer
+        } else if let Some(renderer) = &mut self.renderer.0
             && renderer.shader_pack_dimension() != Some(dimension)
             && !(super::native_shaders::linear_frame_switch() && refused(&path, fingerprint(&path)))
         {
@@ -718,7 +718,7 @@ impl Game<'_> {
     /// The Shader Options page opened: the picked pack's options, screens and names.
     pub(super) fn open_shader_options(&mut self) {
         let mut macros = Macros::standard();
-        if let Some(renderer) = &self.renderer {
+        if let Some(renderer) = &self.renderer.0 {
             renderer.define_pack_macros(&mut macros);
         }
         let name = &self.settings.sunrise.shader_pack;
@@ -732,7 +732,7 @@ impl Game<'_> {
         };
         write_shader_options(&options);
         self.client.pack_ids = None;
-        if let Some(renderer) = &mut self.renderer {
+        if let Some(renderer) = &mut self.renderer.0 {
             renderer.drop_shader_packs();
         }
     }
@@ -745,7 +745,7 @@ impl Game<'_> {
         remember(&path, fingerprint(&path), None);
         log::error!("shader pack {name}: turned off: {error}");
         self.client.pack_ids = None;
-        if let Some(renderer) = &mut self.renderer {
+        if let Some(renderer) = &mut self.renderer.0 {
             // Marks this dimension as loaded, without a pack, so it is not tried again (without
             // a pack this can't fail).
             let _ = renderer.set_shader_pack(dimension, None, &[]);
@@ -1698,13 +1698,13 @@ mod player_status_tests {
                     entity: None,
                     skip_hooks: false,
                 });
-            game.spill.orbs.push((at, 1, 0));
+            game.spill.0.orbs.push((at, 1, 0));
             rain_on_the_player(game, true);
 
             assert!(game.pack_player_status().wet, "rain");
             assert_eq!(game.creatures.lan_particles.len(), 1, "particles");
             assert_eq!(game.creatures.lan_sounds.len(), 1, "sounds");
-            assert_eq!(game.spill.orbs.len(), 1, "spill");
+            assert_eq!(game.spill.0.orbs.len(), 1, "spill");
             game.lan = None;
         });
     }

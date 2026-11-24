@@ -66,7 +66,7 @@ impl Game<'_> {
                 info.clone(),
                 lang.clone(),
                 item_data,
-                Arc::clone(&self.client_reports),
+                Arc::clone(&self.client_reports.0),
             ),
             (None, Some(cookies)) => Session::connect_transferred(
                 address,
@@ -76,7 +76,7 @@ impl Game<'_> {
                 lang.clone(),
                 cookies,
                 item_data,
-                Arc::clone(&self.client_reports),
+                Arc::clone(&self.client_reports.0),
             ),
             (None, None) => {
                 let connect = if lan {
@@ -91,7 +91,7 @@ impl Game<'_> {
                     info.clone(),
                     lang.clone(),
                     item_data,
-                    Arc::clone(&self.client_reports),
+                    Arc::clone(&self.client_reports.0),
                 )
             }
         };
@@ -182,7 +182,7 @@ impl Game<'_> {
         self.world
             .chunks
             .track_connection_groups(group_count.clone());
-        self.save = Arc::new(SaveDir::new(
+        self.save.0 = Arc::new(SaveDir::new(
             std::env::temp_dir().join("sunrise-remote-unused"),
             sunrise_client::save::LevelShape::OVERWORLD,
             None,
@@ -227,8 +227,8 @@ impl Game<'_> {
         self.hide_title();
         self.dim = Dim::Overworld;
         self.clear_lod();
-        self.pending_uploads.clear();
-        if let Some(r) = self.renderer.as_mut() {
+        self.pending_uploads.0.clear();
+        if let Some(r) = self.renderer.0.as_mut() {
             r.clear_sections(self.world.layout());
         }
         self.apply_settings();
@@ -473,7 +473,7 @@ impl Game<'_> {
         self.world
             .chunks
             .track_connection_groups(group_count.clone());
-        self.save = Arc::new(SaveDir::new(
+        self.save.0 = Arc::new(SaveDir::new(
             std::env::temp_dir().join("sunrise-replay-unused"),
             sunrise_client::save::LevelShape::OVERWORLD,
             None,
@@ -492,8 +492,8 @@ impl Game<'_> {
         self.clear_remote_projectiles();
         self.creatures.projectiles.clear();
         self.dropped.clear();
-        self.particles.clear();
-        self.pickups.clear();
+        self.particles.0.clear();
+        self.pickups.0.clear();
         self.orbs.clear();
         self.falling.clear();
         self.mining = None;
@@ -511,11 +511,11 @@ impl Game<'_> {
         self.ui.registries.permission = 0;
         self.ui.chat.clear();
         self.set_screen(Screen::Playing);
-        self.title = None;
+        self.title.0 = None;
         self.dim = Dim::Overworld;
         self.clear_lod();
-        self.pending_uploads.clear();
-        if let Some(r) = self.renderer.as_mut() {
+        self.pending_uploads.0.clear();
+        if let Some(r) = self.renderer.0.as_mut() {
             r.clear_sections(self.world.layout());
         }
         self.apply_settings();
@@ -775,13 +775,13 @@ impl Game<'_> {
         }
         // Minecraft.disconnect -> updateLevelInEngines(null), after logout and level
         // unload: stop even the sounds a listener started during teardown.
-        self.client.ambience.clear(&mut self.audio);
-        self.client.music.stop_playing(None, &mut self.audio);
-        self.audio.leave_level();
+        self.client.ambience.clear(&mut self.audio.0);
+        self.client.music.stop_playing(None, &mut self.audio.0);
+        self.audio.0.leave_level();
         self.client.mod_sounds.clear();
         self.update_window_title();
         self.gui.atlas.clear_object_skins();
-        before_pack_cleanup(&mut self.server_packs);
+        before_pack_cleanup(&mut self.server_packs.0);
         self.server_packs_disconnect();
         self.client.code_of_conduct = None;
         self.reset_tutorial();
@@ -822,13 +822,13 @@ impl Game<'_> {
         self.sleep_timer = 0;
         self.clear_entities();
         self.score.board = Default::default();
-        self.tab_list = Default::default();
+        self.tab_list.0 = Default::default();
         self.border = Default::default();
         self.set_screen(Screen::Playing);
         self.container = None;
         self.clear_lod();
-        self.pending_uploads.clear();
-        if let Some(r) = self.renderer.as_mut() {
+        self.pending_uploads.0.clear();
+        if let Some(r) = self.renderer.0.as_mut() {
             r.clear_sections(self.world.layout());
         }
         let saves = std::env::current_dir()?.join("saves");
@@ -1025,8 +1025,8 @@ impl Game<'_> {
                 r.awaiting_viewed_chunk_center = false;
             }
             self.clear_lod();
-            self.pending_uploads.clear();
-            if let Some(renderer) = self.renderer.as_mut() {
+            self.pending_uploads.0.clear();
+            if let Some(renderer) = self.renderer.0.as_mut() {
                 renderer.clear_sections(self.world.layout());
             }
             // The new ClientLevel is told before setLevel drops the old one.
@@ -1041,7 +1041,7 @@ impl Game<'_> {
             // Minecraft.setLevel -> updateLevelInEngines, after the old-level unload.
             self.stop_sounds_for_new_level();
         }
-        self.audio.set_world(&spawn.dimension);
+        self.audio.0.set_world(&spawn.dimension);
         self.streaming.relight_resent = relight_resent;
         let has_sky = self
             .remote
@@ -1051,6 +1051,7 @@ impl Game<'_> {
         self.streaming.nether_shading = self.nether_lighting();
         let player = self.player.as_ref();
         self.particles
+            .0
             .detach_tracking_target(TrackingTarget::LocalPlayer, || {
                 player.map(player_tracking_body)
             });

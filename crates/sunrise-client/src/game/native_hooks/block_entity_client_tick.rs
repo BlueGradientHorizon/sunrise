@@ -188,7 +188,7 @@ impl Game<'_> {
         let state = self.world.block(x, y, z).0;
         campfire_particle_tick(
             self.res.animate(),
-            &mut self.particles,
+            &mut self.particles.0,
             self.pack.assets.registry,
             [x, y, z],
             state,

@@ -75,7 +75,7 @@ fn tick_particles(game: &mut Game<'_>) {
         player: None,
         cached_chunk: std::cell::Cell::new(None),
     };
-    game.particles.tick(&level);
+    game.particles.0.tick(&level);
 }
 
 /// `FireworkParticles.Starter.playSound`: a silent rocket launches quietly (as
@@ -94,9 +94,9 @@ fn a_silent_rocket_bursts_without_blast_or_twinkle() {
         launching.silent = true;
         launching.lifetime = 100;
         game.rockets.push(launching);
-        game.audio.capture = Some(Vec::new());
+        game.audio.0.capture = Some(Vec::new());
         game.tick_rockets();
-        let heard = game.audio.capture.take().unwrap_or_default();
+        let heard = game.audio.0.capture.take().unwrap_or_default();
         assert!(
             heard
                 .iter()
@@ -123,12 +123,13 @@ fn a_silent_rocket_bursts_without_blast_or_twinkle() {
         loud.explosions = vec![twinkling()].into();
         game.explode_rocket(&quiet);
         game.explode_rocket(&loud);
-        game.particles.sounds.clear();
+        game.particles.0.sounds.clear();
         for _ in 0..20 {
             tick_particles(game);
         }
         let bursts: Vec<(&str, [f64; 3])> = game
             .particles
+            .0
             .sounds
             .iter()
             .filter(|s| s.0.starts_with("minecraft:entity.firework_rocket."))
@@ -143,7 +144,7 @@ fn a_silent_rocket_bursts_without_blast_or_twinkle() {
             "only the loud rocket bangs and twinkles, both at its own position"
         );
         assert!(
-            !game.particles.is_empty(),
+            !game.particles.0.is_empty(),
             "the silent rocket still drew its sparks and flash"
         );
     });
@@ -274,7 +275,7 @@ fn a_falling_rocket_hits_the_ground_and_one_in_water_splashes() {
                 "summon firework_rocket {x}.5 202 10.5 {{LifeTime:100,HasBeenShot:1b,ShotAtAngle:1b,Motion:[0d,-0.5d,0d]}}"
             )));
         }
-        game.audio.heard.clear();
+        game.audio.0.heard.clear();
         start_events();
         let mut falls = Vec::new();
         for _ in 0..6 {
@@ -297,7 +298,7 @@ fn a_falling_rocket_hits_the_ground_and_one_in_water_splashes() {
             [("minecraft:splash", 20), ("minecraft:hit_ground", 6)]
         );
         assert_eq!(
-            game.audio.heard.get("minecraft:entity.generic.splash"),
+            game.audio.0.heard.get("minecraft:entity.generic.splash"),
             Some(&1)
         );
     });

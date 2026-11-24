@@ -180,7 +180,7 @@ impl Game<'_> {
         frame_draw.capture_model = !modded
             && (added.is_some() || (listened && self.mob_render_post_listened(who.is_some())));
         if posable {
-            let mut models = self.skin_models.borrow_mut();
+            let mut models = self.skin_models.0.borrow_mut();
             let mut frame = self.client.skin_frame.borrow_mut();
             let mark = frame.mark();
             let mut skin = sunrise_client::mobs::skin::Skin::new(&mut models, &mut frame);

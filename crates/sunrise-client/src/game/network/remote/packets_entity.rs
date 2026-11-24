@@ -484,7 +484,7 @@ impl Game<'_> {
             && let Some(r) = self.remote.as_mut().filter(|r| r.entity_id == p.id)
         {
             r.reduced_debug_info = p.event == 22;
-            self.debug_entries.invalidate();
+            self.debug_entries.0.invalidate();
         }
         // Ravager.handleEntityEvent 69: the roar's puff and push.
         if p.event == 69 {

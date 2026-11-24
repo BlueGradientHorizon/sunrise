@@ -60,9 +60,9 @@ impl Game<'_> {
             }
             return Some(self.ui.death_confirm.is_none());
         }
-        if self.command_prompt.is_some() {
+        if self.command_prompt.0.is_some() {
             self.command_prompt_key(KeyCode::Escape);
-            return Some(self.command_prompt.is_none());
+            return Some(self.command_prompt.0.is_none());
         }
         if self.client.link_prompt.is_some() {
             self.answer_link_prompt(false);
@@ -71,7 +71,7 @@ impl Game<'_> {
         if self.client.code_of_conduct.is_some() {
             return Some(false);
         }
-        if self.server_packs.prompt.is_some() {
+        if self.server_packs.0.prompt.is_some() {
             if let Err(e) = self.answer_pack_prompt(false) {
                 log::warn!("Sunrise: declining the server's resource pack: {e:#}");
             }

@@ -12,13 +12,13 @@ use super::*;
 fn closing_options_opened_from_the_title_leaves_the_pointer_free() {
     crate::game::native_entity_refs::tests::with_game(|game| {
         let saves = tempfile::tempdir().unwrap();
-        game.title = Some(game.new_title(saves.path().to_path_buf()));
+        game.title.0 = Some(game.new_title(saves.path().to_path_buf()));
         game.client.focused = true;
         game.open_options(true);
         game.client.agent_pointer = true;
         game.leave_options();
         assert_eq!(game.client.screen, Screen::Playing);
-        assert!(game.title.is_some());
+        assert!(game.title.0.is_some());
         assert!(game.client.agent_pointer, "the title is shown: no grab");
     });
 }
@@ -29,7 +29,7 @@ fn closing_options_opened_from_the_title_leaves_the_pointer_free() {
 #[ignore = "daily"]
 fn closing_title_options_into_a_world_entered_behind_them_grabs() {
     crate::game::native_entity_refs::tests::with_game(|game| {
-        game.title = None;
+        game.title.0 = None;
         game.client.focused = true;
         game.open_options(true);
         game.client.agent_pointer = true;
@@ -48,7 +48,7 @@ fn closing_title_options_into_a_world_entered_behind_them_grabs() {
 #[ignore = "daily"]
 fn closing_pause_menu_options_leaves_the_pointer_free() {
     crate::game::native_entity_refs::tests::with_game(|game| {
-        game.title = None;
+        game.title.0 = None;
         game.client.focused = true;
         game.open_options(false);
         game.client.agent_pointer = true;

@@ -48,7 +48,7 @@ impl Game<'_> {
             if p.is_spectral_arrow() {
                 if !p.stuck {
                     let options = ParticleOptions::simple(ParticleType::Effect);
-                    self.particles.add(&options, [at.x, at.y, at.z], [0.0; 3]);
+                    self.particles.0.add(&options, [at.x, at.y, at.z], [0.0; 3]);
                 }
                 continue;
             }
@@ -80,11 +80,11 @@ impl Game<'_> {
         );
         for _ in 0..count {
             // getRandomX(0.5), getRandomY, getRandomZ(0.5).
-            let r = self.particles.random();
+            let r = self.particles.0.random();
             let x = at.x + SIZE * (2.0 * r.next_double() - 1.0) * 0.5;
             let y = at.y + SIZE * r.next_double();
             let z = at.z + SIZE * (2.0 * r.next_double() - 1.0) * 0.5;
-            self.particles.add(&options, [x, y, z], [0.0; 3]);
+            self.particles.0.add(&options, [x, y, z], [0.0; 3]);
         }
     }
 
@@ -109,7 +109,9 @@ impl Game<'_> {
     pub(super) fn smoke_trails(&mut self, at: impl IntoIterator<Item = Vec3>) {
         let smoke = ParticleOptions::simple(ParticleType::Smoke);
         for p in at {
-            self.particles.add(&smoke, [p.x, p.y + 0.5, p.z], [0.0; 3]);
+            self.particles
+                .0
+                .add(&smoke, [p.x, p.y + 0.5, p.z], [0.0; 3]);
         }
     }
 
@@ -125,7 +127,9 @@ impl Game<'_> {
             .map(|p| p.position)
             .collect();
         for p in at {
-            self.particles.add(&trail, [p.x, p.y + 0.5, p.z], [0.0; 3]);
+            self.particles
+                .0
+                .add(&trail, [p.x, p.y + 0.5, p.z], [0.0; 3]);
         }
     }
 
@@ -133,7 +137,7 @@ impl Game<'_> {
         let bubble = ParticleOptions::simple(ParticleType::Bubble);
         for (position, speed) in at {
             for _ in 0..4 {
-                self.particles.add(&bubble, position, speed);
+                self.particles.0.add(&bubble, position, speed);
             }
         }
     }
@@ -151,8 +155,8 @@ impl Game<'_> {
         let options = ParticleOptions::simple(ParticleType::EndRod);
         for at in bullets {
             for _ in 0..2 {
-                let p = shulker_bullet_trail_at(at, self.particles.random());
-                self.particles.add(&options, p, [0.0; 3]);
+                let p = shulker_bullet_trail_at(at, self.particles.0.random());
+                self.particles.0.add(&options, p, [0.0; 3]);
             }
         }
     }
@@ -313,6 +317,7 @@ impl Game<'_> {
                 };
                 if k == ProjectileKind::LlamaSpit {
                     self.particles
+                        .0
                         .llama_spit_burst(position, [velocity.x, velocity.y, velocity.z]);
                 }
                 let mut p = Projectile::new(k, at, None);
@@ -616,7 +621,9 @@ impl Game<'_> {
         let smoking: Vec<Vec3> = self.tnts.iter().map(|t| t.position).collect();
         let smoke = ParticleOptions::simple(ParticleType::Smoke);
         for p in smoking {
-            self.particles.add(&smoke, [p.x, p.y + 0.5, p.z], [0.0; 3]);
+            self.particles
+                .0
+                .add(&smoke, [p.x, p.y + 0.5, p.z], [0.0; 3]);
         }
         // Clients simulate motion and drag; only the server places/removes the landing block.
         let mut falling = self.falling.lift();
@@ -782,7 +789,7 @@ impl Game<'_> {
     fn tick_remote_clouds(&mut self) {
         for c in &mut self.potions.clouds {
             cloud_client_tick(
-                &mut self.particles,
+                &mut self.particles.0,
                 &self.world,
                 c.at,
                 c.radius,

@@ -15,9 +15,9 @@ impl Game<'_> {
     pub(in crate::game) fn hud_clock(&self) -> Clock {
         let still = self.pause
             || self.clock.still()
-            || self.screenshot_sequence.is_some()
-            || self.repro.recording_active()
-            || self.repro.replaying();
+            || self.screenshot_sequence.0.is_some()
+            || self.repro.0.recording_active()
+            || self.repro.0.replaying();
         Clock::new(std::time::Instant::now(), still)
     }
 

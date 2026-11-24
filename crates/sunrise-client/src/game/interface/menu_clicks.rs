@@ -88,10 +88,10 @@ impl Game<'_> {
         input: sunrise_client::menu::Input,
     ) {
         use sunrise_client::creative::{DisplayClick, click_display};
-        if self.creative_screen.tab().search {
+        if self.creative_screen.0.tab().search {
             // CreativeModeInventoryScreen.slotClicked: moveCursorToEnd, then
             // setHighlightPos(0), so typing replaces the whole query.
-            let search = &mut self.creative_screen.search;
+            let search = &mut self.creative_screen.0.search;
             search.move_cursor_to_end(false);
             search.highlight = 0;
         }
@@ -1028,6 +1028,7 @@ impl Game<'_> {
         }
         let Some(size) = self
             .renderer
+            .0
             .as_ref()
             .map(|r| [r.config.width, r.config.height])
         else {
@@ -1224,7 +1225,7 @@ impl Game<'_> {
             (0.8, 0.8 + self.world.random.next_float() * 0.4)
         };
         if self.is_logical_server() {
-            self.audio.play(sound, Some(at), volume, pitch);
+            self.audio.0.play(sound, Some(at), volume, pitch);
         } else {
             self.play_client_player_sound(sound, volume, pitch);
         }

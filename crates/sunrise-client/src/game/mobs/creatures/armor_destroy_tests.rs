@@ -10,7 +10,7 @@ fn body_armor_guards_and_break_event_are_preserved() {
     with_game(|game| {
         let kind = game.res.mob_types().get("minecraft:horse").unwrap().clone();
         game.mobs.push(Mob::new(21, kind, Vec3::ZERO, 0.0));
-        game.audio.capture = Some(Vec::new());
+        game.audio.0.capture = Some(Vec::new());
         let sword = ItemStack::new("minecraft:diamond_sword", 1);
         game.mobs[0].set_equipment_stack(EquipmentSlot::Body as usize, Some(sword.clone()));
         game.hurt_mob_armor(
@@ -123,7 +123,7 @@ fn sun_protection_uses_mob_draw_and_broadcasts_break() {
         let mut helmet = ItemStack::new("minecraft:diamond_helmet", 1);
         helmet.damage = game.items().get(&helmet.item).unwrap().max_damage - 1;
         game.mobs[0].set_equipment_stack(EquipmentSlot::Head as usize, Some(helmet));
-        game.audio.capture = Some(Vec::new());
+        game.audio.0.capture = Some(Vec::new());
         while game.mobs[0].random.clone().next_int_bound(2) != Ok(1) {
             let _ = game.mobs[0].random.next_int_bound(2);
         }

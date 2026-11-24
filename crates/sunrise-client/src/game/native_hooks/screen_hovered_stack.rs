@@ -13,6 +13,7 @@ impl Game<'_> {
         }
         let size = self
             .renderer
+            .0
             .as_ref()
             .map(|r| [r.config.width, r.config.height])?;
         let batch = HudBatch::new(size, self.settings.gui_scale_inputs());

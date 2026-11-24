@@ -26,7 +26,7 @@ impl Game<'_> {
     /// as the agent watching.
     pub(in crate::game) fn note_socket_line(&mut self, line: &str) {
         if is_read_only(line) || is_session_command(line) {
-            self.input_trace.agent_activity();
+            self.input_trace.0.agent_activity();
             return;
         }
         self.note_input(
@@ -42,7 +42,7 @@ impl Game<'_> {
     /// and mouse motion skips it, so a player who uses none of them pays
     /// nothing per input event.
     fn tracing_input(&self) -> bool {
-        self.control.is_some() || self.settings.extras.repro_keys || self.repro.recording_active()
+        self.control.is_some() || self.settings.extras.repro_keys || self.repro.0.recording_active()
     }
 
     /// Record an input event and, when a person steps into an agent's run, tell
@@ -59,10 +59,11 @@ impl Game<'_> {
             || self.events.has_waits();
         if self
             .input_trace
+            .0
             .record(self.ticks, origin, kind, agent_active)
         {
             let event = json!({ "event": "user-input", "input": kind_name });
-            self.repro.note_event(self.ticks, &event);
+            self.repro.0.note_event(self.ticks, &event);
             self.events.note(self.ticks, event);
             log::info!(
                 "Sunrise: {kind_name} input from a person while an agent was driving \

@@ -29,6 +29,7 @@ impl Game<'_> {
         self.world.infiniburn = Some(self.resolve_level_infiniburn(self.dimension_type()));
         let parked: Vec<_> = self
             .levels
+            .0
             .parked
             .keys()
             .copied()
@@ -40,7 +41,7 @@ impl Game<'_> {
             })
             .collect();
         for (dim, set) in parked {
-            self.levels.parked.get_mut(&dim).unwrap().world.infiniburn = Some(set);
+            self.levels.0.parked.get_mut(&dim).unwrap().world.infiniburn = Some(set);
         }
     }
 

@@ -38,7 +38,7 @@ fn biome_key_world_install_reload_and_unavailable_sides() {
                 std::fs::write(&file, format!(r#"{{"replace":true,"values":{{"minecraft:plains":{{"villager_type":"{value}"}}}}}}"#)).unwrap();
                 let packs = game.reload_datapacks(false, &[]).unwrap();
                 let resources = game.options.resources.clone();
-                game.world_tables = game
+                game.world_tables.0 = game
                     .stage_world_tables(&packs, previous.is_some(), &resources)
                     .unwrap()
                     .tables;
@@ -75,7 +75,7 @@ fn biome_key_world_install_reload_and_unavailable_sides() {
                 Err(DataMapError::Unavailable)
             );
             game.options.dedicated = Some(Vec::new());
-            game.world_tables = None;
+            game.world_tables.0 = None;
             assert_eq!(
                 key.data(game, &VillagerTypes),
                 Err(DataMapError::Unavailable)

@@ -1172,3 +1172,27 @@ impl ClientState {
         }
     }
 }
+
+#[allow(dead_code)]
+#[repr(transparent)]
+pub(in crate::game) struct ClientOnly<T>(pub(in crate::game::client_side) T);
+
+#[allow(dead_code)]
+impl<T> ClientOnly<T> {
+    #[inline(always)]
+    pub(in crate::game) fn new(value: T) -> Self {
+        Self(value)
+    }
+}
+
+#[allow(dead_code)]
+#[repr(transparent)]
+pub(in crate::game) struct ClientShared<T>(pub(in crate::game) T);
+
+#[allow(dead_code)]
+impl<T> ClientShared<T> {
+    #[inline(always)]
+    pub(in crate::game) fn new(value: T) -> Self {
+        Self(value)
+    }
+}

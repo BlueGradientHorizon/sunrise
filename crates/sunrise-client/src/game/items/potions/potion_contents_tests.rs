@@ -58,7 +58,7 @@ fn a_splash_potion_applies_its_custom_effects_and_duration_scale() {
         .data_mut()
         .potion_extra
         .push(("custom_color".into(), Tag::Int(0x0020_4080)));
-    game.particles.requested = Some(Vec::new());
+    game.particles.0.requested = Some(Vec::new());
     let at = Vec3::new(0.5, 64.0, 0.5);
     game.splash(
         &stack,
@@ -84,6 +84,7 @@ fn a_splash_potion_applies_its_custom_effects_and_duration_scale() {
     );
     let spell: Vec<[f32; 4]> = game
         .particles
+        .0
         .requested
         .as_ref()
         .unwrap()

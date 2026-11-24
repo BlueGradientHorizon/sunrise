@@ -325,7 +325,7 @@ impl Game<'_> {
             Ok((ctx, _)) => {
                 let ctx = ctx.clone();
                 let root = parse.context.clone();
-                self.exec = Default::default();
+                self.exec.0 = Default::default();
                 self.run_chain(&root, &ctx)
             }
         };
@@ -366,9 +366,9 @@ impl Game<'_> {
         &mut self,
         f: impl FnOnce(&mut Self) -> T,
     ) -> (T, Option<(bool, i32)>) {
-        let outer = self.cmds.results.replace(Vec::new());
+        let outer = self.cmds.0.results.replace(Vec::new());
         let out = f(self);
-        let results = std::mem::replace(&mut self.cmds.results, outer).unwrap_or_default();
+        let results = std::mem::replace(&mut self.cmds.0.results, outer).unwrap_or_default();
         let outcome = results
             .last()
             .map(|&(_, result)| (results.iter().any(|&(success, _)| success), result));
@@ -845,7 +845,7 @@ impl Game<'_> {
         candidates.extend(self.item_frames.iter().map(|f| Target::Frame(f.id)));
         candidates.extend(self.paintings.iter().map(|p| Target::Painting(p.id)));
         candidates.extend(self.cushions.iter().map(|c| Target::Cushion(c.id)));
-        candidates.extend(self.others.iter().map(|o| Target::Other(o.id)));
+        candidates.extend(self.others.0.iter().map(|o| Target::Other(o.id)));
         candidates.extend(self.fangs.list.iter().map(|f| Target::Fangs(f.id)));
         // The End crystals and the dragon (EndCrystal and EnderDragon
         // are entities of their own).
@@ -878,7 +878,7 @@ impl Game<'_> {
     /// overworld, the nether, the end (MinecraftServer.getAllLevels).
     pub(super) fn loaded_dims(&self) -> Vec<Dim> {
         let mut dims = vec![self.dim];
-        dims.extend(self.levels.parked_dims());
+        dims.extend(self.levels.0.parked_dims());
         dims.sort_by_key(|d| match d {
             Dim::Overworld => 0,
             Dim::Nether => 1,
@@ -1086,7 +1086,7 @@ impl Game<'_> {
                 {
                     // Players already have a live attribute dirty callback.
                     if !matches!(t[0], Target::Player | Target::Guest(_)) {
-                        self.cmds.waypoint_dirty.push(t[0]);
+                        self.cmds.0.waypoint_dirty.push(t[0]);
                     }
                 }
                 result
@@ -1655,8 +1655,8 @@ impl Game<'_> {
                 }
             }
             Target::Other(id) => {
-                if let Some(i) = self.others.iter().position(|e| e.id == id) {
-                    self.others.update(i, |o| {
+                if let Some(i) = self.others.0.iter().position(|e| e.id == id) {
+                    self.others.0.update(i, |o| {
                         o.position = v;
                         if let Some([yaw, pitch]) = rotation {
                             if yaw.is_finite() {
@@ -2394,7 +2394,7 @@ impl Game<'_> {
             Target::Other(id) => {
                 if self
                     .with_destroying_vehicle(t, |game| {
-                        game.others.retain(|o| o.id != id);
+                        game.others.0.retain(|o| o.id != id);
                         game.forget_entity(id);
                     })
                     .is_none()
@@ -4108,6 +4108,7 @@ impl Game<'_> {
             // drops what the lower sources put in (`TagLoader.load`).
             let packed = self
                 .fns
+                .0
                 .store
                 .files
                 .get(&format!("tags/{ns}:{registry}/{path}"))
@@ -4490,6 +4491,7 @@ capabilities = ["registries"]
             let trader = game.mobs.iter().find(|mob| mob.id == id).unwrap();
             assert!(trader.persistent && trader.no_ai);
             game.tickets
+                .0
                 .update(Some(sunrise_client::ticket_levels::Sources {
                     forced: vec![(0, 0)],
                     ..Default::default()

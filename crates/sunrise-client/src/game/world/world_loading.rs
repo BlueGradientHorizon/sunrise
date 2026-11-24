@@ -1707,6 +1707,7 @@ mod tests {
             game.save_level(true).unwrap();
             let reloaded = game
                 .save
+                .0
                 .load(8, 8, game.pack.assets.registry, world_biomes!(game))
                 .unwrap();
             assert_eq!(

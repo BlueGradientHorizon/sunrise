@@ -107,7 +107,7 @@ impl Game<'_> {
         }
         let section_block = position.floor().as_ivec3().to_array();
         if self.world.shape.contains_y(section_block[1])
-            && !self.renderer.as_ref().is_some_and(|renderer| {
+            && !self.renderer.0.as_ref().is_some_and(|renderer| {
                 renderer.entity_section_visible(
                     section_block,
                     self.settings.chunk_fade as f32,

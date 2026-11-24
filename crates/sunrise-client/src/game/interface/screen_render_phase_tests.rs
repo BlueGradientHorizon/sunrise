@@ -49,7 +49,7 @@ impl Hooks for PaintPhases {
 }
 
 fn chest(game: &mut Game<'_>) -> (u32, u32) {
-    game.title = None;
+    game.title.0 = None;
     game.client.screen = Screen::Inventory;
     game.ui.hide_gui = true;
     game.container = Some(POS);

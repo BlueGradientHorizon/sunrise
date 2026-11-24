@@ -94,7 +94,7 @@ fn join_overworld(game: &mut super::Game<'_>, height: f64) {
 
 /// A pixel left of the hotbar and the crosshair.
 fn drawn_pixel(game: &mut super::Game<'_>) -> [u8; 4] {
-    game.renderer.as_mut().unwrap().screenshot = Some(ScreenshotRequest {
+    game.renderer.0.as_mut().unwrap().screenshot = Some(ScreenshotRequest {
         path: "unused.png".into(),
         size: None,
         scaled: false,
@@ -102,7 +102,7 @@ fn drawn_pixel(game: &mut super::Game<'_>) -> [u8; 4] {
     });
     game.render_with(|renderer, frame| renderer.render(frame))
         .unwrap();
-    let result = game.renderer.as_mut().unwrap().screenshot_result.take();
+    let result = game.renderer.0.as_mut().unwrap().screenshot_result.take();
     let mut pending = result.unwrap().unwrap();
     let image = pending.image_mut();
     let at = (40 * image.width as usize + 20) * 4;

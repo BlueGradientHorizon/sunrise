@@ -502,6 +502,7 @@ fn a_mob_outside_the_entity_tick_list_checks_no_despawn() {
             game.mobs[1].position = Vec3::new(24.5, 80.0, 0.5);
             // Only chunk (0, 0) is forced: (1, 0) is loaded at the next level out.
             game.tickets
+                .0
                 .update(Some(sunrise_client::ticket_levels::Sources {
                     forced: vec![(0, 0)],
                     ..Default::default()

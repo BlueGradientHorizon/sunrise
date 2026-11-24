@@ -76,7 +76,7 @@ fn click_sign(
         .block_entities
         .insert((0, 70, 0), BlockEntity::Sign(sign));
     *game.held_mut() = Some(ItemStack::new("minecraft:oak_hanging_sign", 2));
-    game.audio.capture = Some(Vec::new());
+    game.audio.0.capture = Some(Vec::new());
     let hit = Hit {
         pos: [0, 70, 0],
         inside: false,
@@ -104,6 +104,7 @@ fn click_sign(
         held: game.held().map_or(0, |stack| stack.count),
         sounds: game
             .audio
+            .0
             .capture
             .take()
             .unwrap_or_default()

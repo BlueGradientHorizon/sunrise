@@ -333,6 +333,7 @@ impl Game<'_> {
         if self.remote.is_some()
             && !self
                 .creative_screen
+                .0
                 .catalog()
                 .item_enabled(&stack, self.enabled_feature_ids())
         {

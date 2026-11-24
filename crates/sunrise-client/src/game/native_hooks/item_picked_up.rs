@@ -165,6 +165,7 @@ impl Game<'_> {
         let mut random = sunrise_client::random_source::create();
         let pitch = ((random.next_float() - random.next_float()) * 0.7 + 1.0) * 2.0;
         self.audio
+            .0
             .play("minecraft:entity.item.pickup", Some(feet), 0.2, pitch);
     }
 

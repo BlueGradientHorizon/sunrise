@@ -82,7 +82,7 @@ impl Game<'_> {
     pub(super) fn cmd_pregen(&mut self, id: &str, ctx: &Context) -> R<i32> {
         match id {
             "pregen.start" => {
-                if self.cmds.pregen.is_some() {
+                if self.cmds.0.pregen.is_some() {
                     return Err(failure(
                         "Pregeneration is already running: /pregen cancel stops it",
                     ));
@@ -110,7 +110,7 @@ impl Game<'_> {
                         Shape::Circle => "circle",
                     },
                 )));
-                self.cmds.pregen = Some(PregenTask {
+                self.cmds.0.pregen = Some(PregenTask {
                     pregen,
                     dim: self.dim,
                     paused: false,
@@ -126,6 +126,7 @@ impl Game<'_> {
                 let pause = id == "pregen.pause";
                 let task = self
                     .cmds
+                    .0
                     .pregen
                     .as_mut()
                     .ok_or_else(|| failure("No pregeneration is running"))?;
@@ -149,6 +150,7 @@ impl Game<'_> {
             "pregen.cancel" => {
                 let task = self
                     .cmds
+                    .0
                     .pregen
                     .take()
                     .ok_or_else(|| failure("No pregeneration is running"))?;
@@ -161,6 +163,7 @@ impl Game<'_> {
             _ => {
                 let task = self
                     .cmds
+                    .0
                     .pregen
                     .as_ref()
                     .ok_or_else(|| failure("No pregeneration is running"))?;
@@ -176,7 +179,7 @@ impl Game<'_> {
     /// level's streaming, and report the progress now and then. Runs before
     /// each streaming update of the level in place.
     pub(in crate::game) fn tick_pregen(&mut self) {
-        let Some(task) = self.cmds.pregen.as_mut() else {
+        let Some(task) = self.cmds.0.pregen.as_mut() else {
             return;
         };
         if task.dim != self.dim || task.paused {
@@ -220,7 +223,7 @@ impl Game<'_> {
                 message = Text::literal("Done. ")
                     .append(message)
                     .with_color(text::GREEN);
-                self.cmds.pregen = None;
+                self.cmds.0.pregen = None;
             }
             self.pregen_report(owner, message);
         }
@@ -230,6 +233,7 @@ impl Game<'_> {
     /// between its ticks (`pump_chunks`).
     pub(in crate::game) fn pregen_runs_here(&self) -> bool {
         self.cmds
+            .0
             .pregen
             .as_ref()
             .is_some_and(|t| t.dim == self.dim && !t.paused)
@@ -237,7 +241,7 @@ impl Game<'_> {
 
     /// The level a running task needs ticked, whoever is in it.
     pub(in crate::game) fn pregen_level(&self) -> Option<Dim> {
-        self.cmds.pregen.as_ref().map(|t| t.dim)
+        self.cmds.0.pregen.as_ref().map(|t| t.dim)
     }
 
     /// Keep the workers fed until `until`: collect what they finished and

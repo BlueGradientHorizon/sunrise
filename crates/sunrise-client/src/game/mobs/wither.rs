@@ -214,12 +214,12 @@ impl Game<'_> {
             Some(Who::Player) => {
                 // WitherSkull.onHitEntity's source: the wither launched
                 // it, and `magic` names no entity and no position.
-                self.combat.projectile_owner = owner;
+                self.combat.0.projectile_owner = owner;
                 // EnchantmentHelper.doPostAttackEffects runs only on a
                 // target that lived.
-                self.combat.post_attack_if_alive = true;
+                self.combat.0.post_attack_if_alive = true;
                 if skull.from.is_none() {
-                    self.combat.projectile_direct = None;
+                    self.combat.0.projectile_direct = None;
                 }
                 let hit = self.hurt_player_from(
                     amount,
@@ -274,7 +274,7 @@ impl Game<'_> {
                         let plan = self.prepare_knockback_credit(
                             id as i32,
                             source.attacker,
-                            self.combat.attack(),
+                            self.combat.0.attack(),
                         );
                         // The hit's causing entity, lent to its listeners beside the victim.
                         let causing = self.causer_id(source.attacker);
@@ -285,7 +285,7 @@ impl Game<'_> {
                         let hit = victim.damage(
                             crate::game::entity::damage_level_of!(
                                 self,
-                                self.combat.attack(),
+                                self.combat.0.attack(),
                                 &mut credit,
                                 lend
                             ),
@@ -343,8 +343,8 @@ impl Game<'_> {
         }
         // Projectile.onHit emits PROJECTILE_LAND after onHitEntity and before WitherSkull.onHit explodes.
         self.projectile_hit_landed_event(p.id, p.owner, hit);
-        self.combat.explosion_owner = owner;
-        self.combat.explosion_in_water = p.touching_water;
+        self.combat.0.explosion_owner = owner;
+        self.combat.0.explosion_in_water = p.touching_water;
         // The blast's source names a player owner, for the dragon's kill credit.
         self.set_blast_by_player(live_owner == Some(Who::Player));
         // WitherSkull.getBlockExplosionResistance: only a blue skull's blast
@@ -353,9 +353,9 @@ impl Game<'_> {
             p.kind,
             sunrise_client::projectiles::ProjectileKind::WitherSkull { dangerous: true }
         ) {
-            self.combat.blast_resistance_cap = Some(0.8);
+            self.combat.0.blast_resistance_cap = Some(0.8);
         }
-        self.combat.explosion_direct = Some(p.id);
+        self.combat.0.explosion_direct = Some(p.id);
         let result = self.with_impacting_projectile(p, |g| {
             g.with_hive_emptying_blast(|g| {
                 g.explode(
@@ -372,11 +372,11 @@ impl Game<'_> {
                 )
             })
         });
-        self.combat.explosion_direct = None;
-        self.combat.blast_resistance_cap = None;
+        self.combat.0.explosion_direct = None;
+        self.combat.0.blast_resistance_cap = None;
         self.set_blast_by_player(false);
-        self.combat.explosion_owner = None;
-        self.combat.explosion_in_water = false;
+        self.combat.0.explosion_owner = None;
+        self.combat.0.explosion_in_water = false;
         result
     }
     /// Runs `blast` with the impacting projectile `p` back among the level's

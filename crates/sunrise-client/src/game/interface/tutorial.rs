@@ -50,7 +50,7 @@ impl super::Game<'_> {
         if self.options.dedicated.is_some()
             || self.serving.is_some()
             || self.server.lan_acting.is_some()
-            || self.title.is_some()
+            || self.title.0.is_some()
             || self.player.is_none()
         {
             return;
@@ -75,7 +75,7 @@ impl super::Game<'_> {
         if self.options.dedicated.is_some()
             || self.serving.is_some()
             || self.server.lan_acting.is_some()
-            || self.title.is_some()
+            || self.title.0.is_some()
             || self.player.is_none()
         {
             return;
@@ -90,7 +90,7 @@ impl super::Game<'_> {
     /// Tick the current step and queue `Gui.addSocialInteractionsToast` on the first server.
     pub(super) fn tick_tutorial(&mut self) {
         use sunrise_client::actions::Action;
-        if self.title.is_some()
+        if self.title.0.is_some()
             || self.player.is_none()
             || self.options.dedicated.is_some()
             || self.serving.is_some()

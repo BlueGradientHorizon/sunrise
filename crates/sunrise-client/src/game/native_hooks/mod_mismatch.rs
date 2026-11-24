@@ -42,7 +42,7 @@ impl Game<'_> {
     /// The mods hear the differences once (before the open, when a mod was missing and the
     /// open asked first: `ask_missing_mods`), and each one nobody resolved is a warning.
     pub(in crate::game) fn check_mod_mismatch(&mut self) {
-        let (mismatches, resolved) = match level_mods::take_answer(&self.save.root) {
+        let (mismatches, resolved) = match level_mods::take_answer(&self.save.0.root) {
             Some(answer) => answer,
             None => {
                 if self.level.saved_mods.is_none() {

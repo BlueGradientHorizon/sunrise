@@ -324,7 +324,7 @@ fn row_ids(game: &Game<'_>) -> Vec<u32> {
 /// its ordered runs, driven by hand. The spawn chunks tick with nobody
 /// watching, as vanilla's do (`tickets.update(None)`).
 fn tick(game: &mut Game<'_>) {
-    game.tickets.update(None);
+    game.tickets.0.update(None);
     game.begin_ordered_ticks();
     game.tick_general().unwrap();
 }
@@ -406,7 +406,7 @@ fn parent_ticks_before_its_depth_first_rider_subtree() {
 fn a_row_joined_during_the_tick_span_ticks_the_next_phase() {
     with_counter(|game, l| {
         let first = seeded_row(game, [1, 2, 3, 4], 40);
-        game.tickets.update(None);
+        game.tickets.0.update(None);
         game.begin_ordered_ticks();
         let late = spawn_tree(game, [5, 6, 7, 8], [0.5, 64.0, 0.5], Vec::new());
         game.tick_general().unwrap();
@@ -970,9 +970,9 @@ fn quarantine_then_reinstall_restores_the_counter() {
     // loaded package), and a save of that chunk writes the very same bytes
     // back.
     with_game(|game| {
-        game.others.clear();
+        game.others.0.clear();
         game.spawn_loaded_entity((0, 0), saved.clone(), None);
-        assert_eq!(game.others.len(), 1);
+        assert_eq!(game.others.0.len(), 1);
         let mut chunks = game.entity_chunks(&HashSet::from([(0, 0)]), false);
         let (_, mut records) = chunks.remove(0);
         assert_eq!(records.remove(0), saved, "the second save keeps the bytes");

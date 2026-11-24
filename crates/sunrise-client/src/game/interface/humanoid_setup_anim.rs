@@ -61,7 +61,7 @@ impl Game<'_> {
             entity_type,
             humanoid,
             partial_tick,
-            game_time: self.title.is_none().then_some(self.world.game_time),
+            game_time: self.title.0.is_none().then_some(self.world.game_time),
             parts: poses,
         });
     }

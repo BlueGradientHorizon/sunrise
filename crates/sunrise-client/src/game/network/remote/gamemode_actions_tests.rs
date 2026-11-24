@@ -153,7 +153,7 @@ fn out_of_range_entity_click_still_swings_without_attacking_or_resetting() {
         || {
             with_client_game(|game| {
                 let mut reader = logged_in(game);
-                game.title = None;
+                game.title.0 = None;
                 game.world
                     .chunks
                     .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -198,7 +198,7 @@ fn spectator_entity_use_sends_both_hands_without_feeding_or_swinging() {
         || {
             with_client_game(|game| {
                 let mut reader = logged_in(game);
-                game.title = None;
+                game.title.0 = None;
                 game.world
                     .chunks
                     .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -207,12 +207,12 @@ fn spectator_entity_use_sends_both_hands_without_feeding_or_swinging() {
                 let wheat = Some(ItemStack::new("minecraft:wheat", 3));
                 game.inventory[game.selected] = wheat.clone();
                 game.offhand = wheat.clone();
-                game.particles.requested = Some(Vec::new());
+                game.particles.0.requested = Some(Vec::new());
                 game.refresh_client_pick(1.0);
                 assert_eq!(game.crosshair_entity_id(), Some(101));
                 // Positive control: this is a feed that predicts a particle in survival.
                 assert!(game.remote_use_entity(Hand::Main));
-                let requested = game.particles.requested.as_mut().unwrap();
+                let requested = game.particles.0.requested.as_mut().unwrap();
                 assert_eq!(requested.len(), 1);
                 requested.clear();
                 outgoing(game, &mut reader);
@@ -297,7 +297,7 @@ fn spectator_entity_use_sends_both_hands_without_feeding_or_swinging() {
                             .iter()
                             .any(|p| matches!(p, S::UseItem(_) | S::UseItemOn(_) | S::Punch(_)))
                     );
-                    assert!(game.particles.requested.as_ref().unwrap().is_empty());
+                    assert!(game.particles.0.requested.as_ref().unwrap().is_empty());
                     assert_eq!(game.swings_started, swings);
                     assert_eq!(game.inventory[game.selected], wheat);
                     assert_eq!(game.offhand, wheat);

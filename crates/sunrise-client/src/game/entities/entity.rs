@@ -932,6 +932,7 @@ impl Game<'_> {
                 let at = [feet.x, feet.y, feet.z];
                 if !self.entity_silent(id) {
                     self.audio
+                        .0
                         .play("minecraft:block.honey_block.slide", Some(at), 1.0, 1.0);
                 }
                 self.lan_entity_event(id as i32, 54, at);
@@ -959,7 +960,7 @@ impl Game<'_> {
             && self.motion.landing.has_shelf_bounce(bounce.state)
         {
             let pos = bounce.position;
-            self.audio.play(
+            self.audio.0.play(
                 "minecraft:block.shelf_mushroom.bounce",
                 Some([
                     f64::from(pos.x) + 0.5,
@@ -1944,7 +1945,7 @@ macro_rules! damage_level_of {
         )
         .attacked_by($attack)
         .no_push()
-        .with_mob_hurt_handoff(&mut $game.paused_mob_hurt)
+        .with_mob_hurt_handoff(&mut $game.paused_mob_hurt.0)
         .with_effects(crate::game::entity::hit_effects_of!($game, $lend))
         .with_reads(crate::game::entity::hit_reads_of!($game))
         $(.with_player_equipment($equipment))?
@@ -1959,7 +1960,7 @@ macro_rules! damage_level_of {
         )
         .attacked_by($attack)
         .with_knockback_credit($credit)
-        .with_mob_hurt_handoff(&mut $game.paused_mob_hurt)
+        .with_mob_hurt_handoff(&mut $game.paused_mob_hurt.0)
         .with_effects(crate::game::entity::hit_effects_of!($game, $lend))
         .with_reads(crate::game::entity::hit_reads_of!($game))
     };
@@ -2175,7 +2176,7 @@ impl Game<'_> {
             .map(|e| e.id)
             .chain(self.item_frames.iter().map(|e| e.id))
             .chain(self.paintings.iter().map(|e| e.id))
-            .chain(self.others.iter().map(|e| e.id))
+            .chain(self.others.0.iter().map(|e| e.id))
             .chain(self.breath_clouds.iter().map(|e| e.id))
             .chain(self.bolts.iter().map(|e| e.id))
             .chain(self.fangs.list.iter().map(|e| e.id))

@@ -45,7 +45,7 @@ impl Game<'_> {
     }
 
     fn native_full_chunk_snapshot(&mut self, _chunk: &Chunk) {
-        self.bind_chunk_disk_worker(&self.save, self.dim);
+        self.bind_chunk_disk_worker(&self.save.0, self.dim);
     }
 
     /// The proto stays checked out until its immutable save record is submitted.
@@ -70,7 +70,7 @@ impl Game<'_> {
     }
 
     fn native_proto_snapshot(&mut self, _snapshot: ProtoSnapshot<'_>) {
-        self.bind_chunk_disk_worker(&self.save, self.dim);
+        self.bind_chunk_disk_worker(&self.save.0, self.dim);
     }
 }
 
@@ -104,6 +104,7 @@ impl Game<'_> {
             || self.clock.sprinting()
             || self
                 .server_lists
+                .0
                 .as_ref()
                 .is_some_and(|lists| !lists.lock().unwrap().autosave)
         {
@@ -119,15 +120,16 @@ impl Game<'_> {
         let mut modified = std::mem::take(&mut self.world.modified);
         modified.save_eagerly(
             now,
-            || Instant::now() < deadline && self.save.active_chunk_writes() < 128,
+            || Instant::now() < deadline && self.save.0.active_chunk_writes() < 128,
             // Only a lit column is a LevelChunk. An unlit one stays queued.
             |key| self.world.chunks.get(&key).map(|chunk| chunk.lit),
             |key, _| {
                 let chunks = self.with_entities([&self.world.chunks[&key]]);
-                match self
-                    .save
-                    .save_later(&chunks, self.pack.assets.registry, world_biomes!(self))
-                {
+                match self.save.0.save_later(
+                    &chunks,
+                    self.pack.assets.registry,
+                    world_biomes!(self),
+                ) {
                     Ok(_) => true,
                     Err(e) => {
                         log::warn!("Sunrise: failed to save changed chunks: {e}");
@@ -155,7 +157,7 @@ mod tests {
         mod_platform::testing::with_mods(Vec::new().into(), || {
             with_game(|game| {
                 game.server.world_root = dir.path().to_path_buf();
-                game.save = Arc::new(SaveDir::new(
+                game.save.0 = Arc::new(SaveDir::new(
                     game.server.world_root.clone(),
                     LevelShape::OVERWORLD,
                     Some(Default::default()),
@@ -168,6 +170,7 @@ mod tests {
                 let gold = registry.default_state("minecraft:gold_block").unwrap();
                 chunk.set(1, 64, 1, stone.0);
                 game.save
+                    .0
                     .save(&[Arc::new(chunk.clone())], registry, world_biomes!(game))
                     .unwrap();
                 chunk.set(1, 64, 1, gold.0);
@@ -181,16 +184,17 @@ mod tests {
 
                 let now = Instant::now();
                 game.save_chunks_eagerly_at(now);
-                game.save.flush().unwrap();
-                assert_eq!(game.save.record_save_failures(), 1);
+                game.save.0.flush().unwrap();
+                assert_eq!(game.save.0.record_save_failures(), 1);
 
                 // Advance beyond the ordinary cooldown and exercise all later save paths.
                 game.save_chunks_eagerly_at(now + Duration::from_secs(11));
                 game.save_game_with(false).unwrap();
                 game.save_game().unwrap();
-                assert_eq!(game.save.record_save_failures(), 1);
+                assert_eq!(game.save.0.record_save_failures(), 1);
                 assert_eq!(
                     game.save
+                        .0
                         .load(key.0, key.1, registry, world_biomes!(game))
                         .unwrap()
                         .block(1, 64, 1),
@@ -203,9 +207,10 @@ mod tests {
                     .remove(&"test:invalid".into());
                 game.world.modified.insert(key);
                 game.save_chunks_eagerly_at(now + Duration::from_secs(22));
-                game.save.flush().unwrap();
+                game.save.0.flush().unwrap();
                 assert_eq!(
                     game.save
+                        .0
                         .load(key.0, key.1, registry, world_biomes!(game))
                         .unwrap()
                         .block(1, 64, 1),

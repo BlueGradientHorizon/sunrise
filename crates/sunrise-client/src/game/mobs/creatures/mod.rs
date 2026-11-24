@@ -1388,14 +1388,14 @@ impl Game<'_> {
     /// `DistanceManager.inEntityTickingRange` in an entity-ticking chunk
     /// (block coordinates), from every player's tickets (`update_chunk_tickets`).
     pub(super) fn entity_ticking_area(&self) -> impl Fn(i32, i32) -> bool + use<> {
-        let levels = self.tickets.levels();
+        let levels = self.tickets.0.levels();
         move |x, z| levels.entity_ticking_at(x, z)
     }
     /// Whether the chunk's own status is entity-ticking (block coordinates), whatever the
     /// simulation distance: the chunks whose entities are on `ServerLevel`'s entity tick list
     /// (`Visibility.fromFullChunkStatus`), so they check despawning.
     pub(super) fn entity_tick_listed_area(&self) -> impl Fn(i32, i32) -> bool + use<> {
-        let levels = self.tickets.levels();
+        let levels = self.tickets.0.levels();
         move |x, z| levels.loaded_entity_ticking(x >> 4, z >> 4)
     }
     /// The entity phase of `tick_creatures`: every mob's tick, deaths, and the
@@ -1425,9 +1425,9 @@ impl Game<'_> {
         // waiting any more.
         // Resolve saved attacker UUIDs before the mobs run baseTick.
         self.resolve_last_hurt_by_refs();
-        self.combat.charged_exploders.clear();
-        self.combat.exploded.clear();
-        self.combat.exploded_kinds.clear();
+        self.combat.0.charged_exploders.clear();
+        self.combat.0.exploded.clear();
+        self.combat.0.exploded_kinds.clear();
         // EntityTickEvent.Pre for the mobs about to tick, before the loop holds them: once for
         // the family, then each mob it let through checks its sleep. A mob of a type a mod
         // named hears its Pre alone, inside the loop, right before its own tick
@@ -1755,14 +1755,14 @@ impl Game<'_> {
             sunrise_client::particles::ParticleType::Poof,
         );
         for _ in 0..20 {
-            let r = self.particles.level_random();
+            let r = self.particles.0.level_random();
             let xa = r.next_gaussian() * 0.02;
             let ya = r.next_gaussian() * 0.02;
             let za = r.next_gaussian() * 0.02;
             let x = at[0] + width * (2.0 * r.next_double() - 1.0) - xa * 10.0;
             let y = at[1] + height * r.next_double() - ya * 10.0;
             let z = at[2] + width * (2.0 * r.next_double() - 1.0) - za * 10.0;
-            self.particles.add(&options, [x, y, z], [xa, ya, za]);
+            self.particles.0.add(&options, [x, y, z], [xa, ya, za]);
         }
     }
     /// Run the owning-level steps of a suspended hit, then let its caller see the real result.
@@ -1786,10 +1786,11 @@ impl Game<'_> {
         let (id, join) = (victim.id, victim.join);
         while self
             .paused_mob_hurt
+            .0
             .as_ref()
             .is_some_and(|hit| hit.victim == id && hit.join == join)
         {
-            let mut paused = *self.paused_mob_hurt.take().expect("matching paused hit");
+            let mut paused = *self.paused_mob_hurt.0.take().expect("matching paused hit");
             // Nested hits from this callback are independent of the suspended hit.
             self.mobs[index].release_hurt_pause();
             match paused.action {
@@ -2285,7 +2286,7 @@ impl Game<'_> {
             self.settle_villager_hurt(index);
         }
         for (s, volume, pitch) in sounds {
-            self.audio.play(&full_id(s), Some(center), volume, pitch);
+            self.audio.0.play(&full_id(s), Some(center), volume, pitch);
         }
         if settle && let Some(index) = target_index {
             self.finish_mob_damage_at(index);
@@ -2304,7 +2305,7 @@ impl Game<'_> {
                 .iter()
                 .find(|m| m.id == attacker && m.species() == Species::Axolotl)
         {
-            self.audio.play(
+            self.audio.0.play(
                 "minecraft:entity.axolotl.attack",
                 Some([m.position.x, m.position.y, m.position.z]),
                 1.0,
@@ -2390,7 +2391,7 @@ impl Game<'_> {
             return;
         }
         let plan =
-            self.prepare_knockback_credit(victim as i32, source.attacker, self.combat.attack());
+            self.prepare_knockback_credit(victim as i32, source.attacker, self.combat.0.attack());
         let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
         if let Some(mob) = self.mobs.iter_mut().find(|mob| mob.id == victim) {
             sunrise_client::health::KnockbackCredit::accepted_mob_hit(&mut credit, mob);
@@ -2423,7 +2424,7 @@ impl Game<'_> {
     fn drop_gift_loot(&mut self, mob: u32, table: &'static str, at: [f64; 3]) -> bool {
         use sunrise_client::mobs::drops;
         use sunrise_world::loot::EntityLootParams;
-        let loot = self.server_loot.get();
+        let loot = self.server_loot.0.get();
         let this = self
             .mobs
             .iter()
@@ -2511,6 +2512,7 @@ impl Game<'_> {
         let at = [at[0], at[1] + 0.5 * height, at[2]];
         let options = ParticleOptions::simple(ParticleType::Explosion);
         self.particles
+            .0
             .send_particles(&options, at, [0.0; 3], 0.0, 1);
         self.lan_level_particles(&options, at, [0.0; 3], 0.0, 1, None);
     }
@@ -2534,12 +2536,14 @@ impl Game<'_> {
             let splash_options = ParticleOptions::simple(ParticleType::Splash);
             if draw_locally {
                 self.particles
+                    .0
                     .send_particles(&splash_options, splash, [0.0; 3], 1.0, 1);
             }
             self.lan_level_particles(&splash_options, splash, [0.0; 3], 1.0, 1, None);
             let bubble_options = ParticleOptions::simple(ParticleType::Bubble);
             if draw_locally {
                 self.particles
+                    .0
                     .send_particles(&bubble_options, bubble, [0.0, 0.01, 0.0], 0.2, 1);
             }
             self.lan_level_particles(&bubble_options, bubble, [0.0, 0.01, 0.0], 0.2, 1, None);
@@ -2553,7 +2557,7 @@ impl Game<'_> {
         // LlamaSpit.recreateFromPacket: the spit's burst on the client.
         if p.kind == ProjectileKind::LlamaSpit {
             let v = p.velocity;
-            self.particles.llama_spit_burst(at, [v.x, v.y, v.z]);
+            self.particles.0.llama_spit_burst(at, [v.x, v.y, v.z]);
         }
         self.spawn_mob_projectile(p);
     }
@@ -2680,6 +2684,7 @@ impl Game<'_> {
                     if let Some(ty) = sunrise_client::particles::ParticleType::from_name(kind) {
                         let options = sunrise_client::particles::ParticleOptions::simple(ty);
                         self.particles
+                            .0
                             .send_particles(&options, at, spread, speed, count);
                         self.lan_level_particles(&options, at, spread, speed, count, None);
                     }
@@ -2695,16 +2700,18 @@ impl Game<'_> {
                     let options =
                         self.item_particle(&sunrise_client::items::ItemStack::new(item, 1));
                     self.particles
+                        .0
                         .send_particles(&options, at, spread, speed, count);
                 }
                 MobEvent::Sound(name, at, volume, pitch) => {
-                    self.audio.play(&full_id(name), Some(at), volume, pitch)
+                    self.audio.0.play(&full_id(name), Some(at), volume, pitch)
                 }
                 MobEvent::ProfessionWorkSound(name, at, volume, pitch) => {
-                    self.audio.play(&name, Some(at), volume, pitch)
+                    self.audio.0.play(&name, Some(at), volume, pitch)
                 }
                 MobEvent::LocalSound(name, at, volume, pitch) => {
                     self.audio
+                        .0
                         .play_unshared(&full_id(name), Some(at), volume, pitch)
                 }
                 MobEvent::BoundSound {
@@ -2736,11 +2743,11 @@ impl Game<'_> {
                             self.world.game_time.wrapping_mul(341_873_128_712),
                         );
                         let pitch = (r.next_float() - r.next_float()) * spread + 1.0;
-                        self.audio.play(&full_id(sound), Some(at), volume, pitch)
+                        self.audio.0.play(&full_id(sound), Some(at), volume, pitch)
                     }
                 }
                 MobEvent::SoundId(name, at, volume, pitch) => {
-                    self.audio.play(&name, Some(at), volume, pitch)
+                    self.audio.0.play(&name, Some(at), volume, pitch)
                 }
                 MobEvent::GameEvent {
                     event, at, source, ..
@@ -2802,9 +2809,9 @@ impl Game<'_> {
                 // above use their movement's flyDist/nextFlap threshold.
                 MobEvent::GameEvent { .. } => {}
                 MobEvent::AttackPlayer(amount, from, attacker) => {
-                    self.combat.hit_landed =
+                    self.combat.0.hit_landed =
                         self.mob_hits_player(amount, from, "minecraft:mob_attack");
-                    if self.combat.hit_landed
+                    if self.combat.0.hit_landed
                         && let Some(attacker) = attacker
                     {
                         self.remember_mob_target(
@@ -2830,9 +2837,9 @@ impl Game<'_> {
                     ticks,
                     amplifier,
                 } => {
-                    self.combat.hit_landed =
+                    self.combat.0.hit_landed =
                         self.mob_hits_player(amount, from, "minecraft:mob_attack");
-                    if self.combat.hit_landed {
+                    if self.combat.0.hit_landed {
                         self.remember_mob_target(
                             attacker,
                             self.player.as_ref().map(|p| p.entity_id as u32),
@@ -2843,7 +2850,7 @@ impl Game<'_> {
                 MobEvent::DamagePlayer { amount, from, kind } => {
                     let hurt = self.mob_hits_player(amount, from, kind);
                     if kind == "minecraft:spear" {
-                        self.combat.hit_landed = hurt;
+                        self.combat.0.hit_landed = hurt;
                     }
                 }
                 MobEvent::ElderCurse { at, silent } => self.elder_curse(at, silent),
@@ -2917,7 +2924,7 @@ impl Game<'_> {
                     Who::Mob(id) => {
                         let attack = self.attack_of_who(source.attacker);
                         let plan =
-                            self.prepare_knockback_credit(id as i32, None, self.combat.attack());
+                            self.prepare_knockback_credit(id as i32, None, self.combat.0.attack());
                         let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
                         if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
                             let level = crate::game::entity::damage_level_of!(
@@ -2955,14 +2962,14 @@ impl Game<'_> {
                     in_water,
                     kind,
                 } => {
-                    self.combat.explosion_source = Some(mob);
-                    self.combat.explosion_in_water = in_water;
+                    self.combat.0.explosion_source = Some(mob);
+                    self.combat.0.explosion_in_water = in_water;
                     // The creeper causes the blast's damage, but it is out of
                     // the mob list already: its name comes with the event.
-                    self.combat.exploded.push((mob, name));
-                    self.combat.exploded_kinds.push((mob, kind));
+                    self.combat.0.exploded.push((mob, name));
+                    self.combat.0.exploded_kinds.push((mob, kind));
                     if charged {
-                        self.combat.charged_exploders.push(mob);
+                        self.combat.0.charged_exploders.push(mob);
                     }
                 }
                 MobEvent::LingeringCloud {
@@ -2976,8 +2983,8 @@ impl Game<'_> {
                 }
                 MobEvent::Explode(at, radius, species, silent) => {
                     // The exploding mob causes the damage (Creeper.explodeCreeper).
-                    let noted = self.combat.explosion_source.is_some();
-                    let source_mob = self.combat.explosion_source.or_else(|| {
+                    let noted = self.combat.0.explosion_source.is_some();
+                    let source_mob = self.combat.0.explosion_source.or_else(|| {
                         self.mobs
                             .iter()
                             .filter(|m| {
@@ -2987,8 +2994,8 @@ impl Game<'_> {
                             .map(|m| m.id)
                             .next()
                     });
-                    self.combat.explosion_source = source_mob;
-                    self.combat.explosion_source_named = noted;
+                    self.combat.0.explosion_source = source_mob;
+                    self.combat.0.explosion_source_named = noted;
                     let portal_proof = species == Species::SulfurCube
                         && source_mob.is_some_and(|id| {
                             self.portals
@@ -2996,7 +3003,7 @@ impl Game<'_> {
                                 .get(&id)
                                 .is_some_and(|p| p.cooldown > 0)
                         });
-                    self.combat.explosion_cause = match species {
+                    self.combat.0.explosion_cause = match species {
                         Species::Creeper => Some("minecraft:creeper"),
                         Species::Wither => Some("minecraft:wither"),
                         Species::SulfurCube => Some("minecraft:sulfur_cube"),
@@ -3041,10 +3048,10 @@ impl Game<'_> {
                         ),
                         _ => self.explode(source_mob, at, radius, source),
                     };
-                    self.combat.explosion_source = None;
-                    self.combat.explosion_source_named = false;
-                    self.combat.explosion_in_water = false;
-                    self.combat.explosion_cause = None;
+                    self.combat.0.explosion_source = None;
+                    self.combat.0.explosion_source_named = false;
+                    self.combat.0.explosion_in_water = false;
+                    self.combat.0.explosion_cause = None;
                     result?
                 }
                 MobEvent::AttackMob {
@@ -3053,9 +3060,9 @@ impl Game<'_> {
                     source,
                     remember_target,
                 } => {
-                    self.combat.hit_landed = self.mob_attacks_mob(target, amount, source);
+                    self.combat.0.hit_landed = self.mob_attacks_mob(target, amount, source);
                     if remember_target
-                        && self.combat.hit_landed
+                        && self.combat.0.hit_landed
                         && let Some(Who::Mob(attacker)) = source.attacker
                     {
                         self.remember_mob_target(attacker, Some(target));
@@ -3079,8 +3086,8 @@ impl Game<'_> {
                     // CaveSpider, Husk and WitherSkeleton.doHurtTarget: the
                     // effect sits inside the branch where the hit landed, and
                     // `LivingEntity.addEffect` takes a mob as well as a player.
-                    self.combat.hit_landed = self.mob_attacks_mob(target, amount, source);
-                    if self.combat.hit_landed {
+                    self.combat.0.hit_landed = self.mob_attacks_mob(target, amount, source);
+                    if self.combat.0.hit_landed {
                         if let Some(Who::Mob(attacker)) = source.attacker {
                             self.remember_mob_target(attacker, Some(target));
                         }
@@ -3194,7 +3201,7 @@ impl Game<'_> {
                         let at = m.center();
                         let sound = sunrise_client::mobs::finalize::variant_sound(m, "hiss")
                             .unwrap_or("entity.cat.hiss");
-                        self.audio.play(&full_id(sound), Some(at), 1.0, 1.0);
+                        self.audio.0.play(&full_id(sound), Some(at), 1.0, 1.0);
                     }
                 }
                 MobEvent::StabMemory {
@@ -3204,7 +3211,7 @@ impl Game<'_> {
                     attempted_damage,
                     otherwise_affected,
                 } => {
-                    if (otherwise_affected || (attempted_damage && self.combat.hit_landed))
+                    if (otherwise_affected || (attempted_damage && self.combat.0.hit_landed))
                         && self.latest_stab_contact(attacker, contact)
                     {
                         let target = match target {
@@ -3288,13 +3295,13 @@ impl Game<'_> {
                 MobEvent::Gift { target, item } => self.receive_gift(target, item),
                 MobEvent::HurtSelf { mob, kind, amount } => {
                     let plan =
-                        self.prepare_knockback_credit(mob as i32, None, self.combat.attack());
+                        self.prepare_knockback_credit(mob as i32, None, self.combat.0.attack());
                     let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
                     if let Some(index) = self.mob_index.find(&self.mobs, mob) {
                         self.mobs[index].damage(
                             crate::game::entity::damage_level_of!(
                                 self,
-                                self.combat.attack(),
+                                self.combat.0.attack(),
                                 &mut credit,
                                 None
                             ),
@@ -3364,7 +3371,7 @@ impl Game<'_> {
                     pitch,
                 } => {
                     if self.mob_crossbow_ammo(mob, &weapon) {
-                        self.audio.play(
+                        self.audio.0.play(
                             "minecraft:item.crossbow.loading_end",
                             Some(at),
                             1.0,
@@ -3757,7 +3764,7 @@ impl Game<'_> {
                         }
                         // Count 0: one particle exactly there, at rest.
                         if count == 0 {
-                            self.particles.add(&options, at, [0.0; 3]);
+                            self.particles.0.add(&options, at, [0.0; 3]);
                         }
                         for _ in 0..count {
                             let r = &mut self.world.random;
@@ -3771,7 +3778,7 @@ impl Game<'_> {
                                 r.next_gaussian() * 0.02,
                                 r.next_gaussian() * 0.02,
                             ];
-                            self.particles.add(&options, p, v);
+                            self.particles.0.add(&options, p, v);
                         }
                     }
                 }
@@ -3790,7 +3797,7 @@ impl Game<'_> {
                 MobEvent::ParticleAt { kind, at, velocity } => {
                     if let Some(ty) = sunrise_client::particles::ParticleType::from_name(kind) {
                         let options = sunrise_client::particles::ParticleOptions::simple(ty);
-                        self.particles.add(&options, at, velocity);
+                        self.particles.0.add(&options, at, velocity);
                     }
                 }
                 MobEvent::ParticleColored {
@@ -3801,7 +3808,7 @@ impl Game<'_> {
                         sunrise_client::particles::ParticleType::EntityEffect,
                         [r, g, b, 1.0],
                     );
-                    self.particles.add(&options, at, [0.0; 3]);
+                    self.particles.0.add(&options, at, [0.0; 3]);
                 }
                 MobEvent::Experience { at, amount } => self.add_orb(at, amount),
                 MobEvent::AxolotlSupportPlayer { mob } => {
@@ -3870,7 +3877,7 @@ impl Game<'_> {
                     }
                 }
                 MobEvent::Ignite(target, seconds) => self.ignite_entity(target, seconds)?,
-                MobEvent::ZombieIgnite(target, seconds) if self.combat.hit_landed => {
+                MobEvent::ZombieIgnite(target, seconds) if self.combat.0.hit_landed => {
                     self.ignite_entity(target, seconds)?
                 }
                 MobEvent::ZombieIgnite(..) => {}
@@ -4002,7 +4009,7 @@ impl Game<'_> {
                     for d in drops {
                         self.spawn_at_location(Vec3::new(at[0], at[1], at[2]), 0.0, d);
                     }
-                    self.audio.play(
+                    self.audio.0.play(
                         "minecraft:entity.armadillo.scute_drop",
                         Some(at),
                         1.0,
@@ -4016,6 +4023,7 @@ impl Game<'_> {
                     // anything dropped; only then the sound and the game event.
                     if self.drop_gift_loot(mob, "minecraft:gameplay/chicken_lay", at) {
                         self.audio
+                            .0
                             .play("minecraft:entity.chicken.egg", Some(at), 1.0, pitch);
                         let ctx = self.who_context(Some(Who::Mob(mob)), None);
                         self.post_game_event("minecraft:entity_place", at, ctx);
@@ -4576,9 +4584,10 @@ impl Game<'_> {
             // curse sound unless the elder is silent.
             if crate::mobs::guardian::elder_curse_param(silent) == 1.0 {
                 self.audio
+                    .0
                     .play("minecraft:entity.elder_guardian.curse", Some(at), 1.0, 1.0);
             }
-            self.particles.elder_guardian();
+            self.particles.0.elder_guardian();
         }
         true
     }
@@ -4593,10 +4602,10 @@ impl Game<'_> {
         known: Option<Option<u32>>,
         by_creative_player: bool,
     ) -> bool {
-        let post_attack_if_alive = std::mem::take(&mut self.combat.post_attack_if_alive);
-        let rocket = std::mem::take(&mut self.combat.rocket_hit);
-        let pierce = std::mem::take(&mut self.combat.piercing_hit);
-        let melee = self.combat.melee_mob.take();
+        let post_attack_if_alive = std::mem::take(&mut self.combat.0.post_attack_if_alive);
+        let rocket = std::mem::take(&mut self.combat.0.rocket_hit);
+        let pierce = std::mem::take(&mut self.combat.0.piercing_hit);
+        let melee = self.combat.0.melee_mob.take();
         // A projectile entity dealt it: `#is_projectile`, or a firework
         // rocket (its `fireworks` type is not in the tag).
         let projectile = rocket
@@ -4627,31 +4636,31 @@ impl Game<'_> {
                 }),
         };
         // The causing entity for the death message.
-        let owner = self.combat.projectile_owner.take();
+        let owner = self.combat.0.projectile_owner.take();
         // The mob that caused the hit, else the attack the caller landed it in (a projectile's
         // owner, another player's blow): `combat.attack`, read through `current_attack`.
         let mut attack = match attacker.or(owner) {
             Some(id) => self.attack_of(id as i32),
             None => self.current_attack(),
         };
-        attack.projectile = self.combat.attack().projectile;
-        attack.projectile_kind = self.combat.attack().projectile_kind;
-        attack.projectile_type = self.combat.attack().projectile_type;
-        attack.direct = self.combat.attack().direct;
-        attack.direct_kind = self.combat.attack().direct_kind;
+        attack.projectile = self.combat.0.attack().projectile;
+        attack.projectile_kind = self.combat.0.attack().projectile_kind;
+        attack.projectile_type = self.combat.0.attack().projectile_type;
+        attack.direct = self.combat.0.attack().direct;
+        attack.direct_kind = self.combat.0.attack().direct_kind;
         attack
             .direct_type
-            .clone_from(&self.combat.attack().direct_type);
+            .clone_from(&self.combat.0.attack().direct_type);
         attack.position = from;
-        attack.projectile_weapon = self.combat.attack().projectile_weapon.clone();
+        attack.projectile_weapon = self.combat.0.attack().projectile_weapon.clone();
         if let Some(a) = attacker.or(owner) {
             self.note_attacker(damage_type, a);
         }
-        if let Some((id, name)) = self.combat.projectile_attacker.take() {
+        if let Some((id, name)) = self.combat.0.projectile_attacker.take() {
             self.note_named_attacker(damage_type, id, name);
         }
         // The projectile is the direct entity: named when it has no owner.
-        if let Some(name) = self.combat.projectile_direct.take() {
+        if let Some(name) = self.combat.0.projectile_direct.take() {
             self.note_direct_entity(damage_type, name);
         }
         // DamageSource.scalesWithDifficulty: a mob (or its projectile's
@@ -4728,12 +4737,13 @@ impl Game<'_> {
         {
             let at = [p.position.x, p.position.y, p.position.z];
             self.audio
+                .0
                 .play("minecraft:enchant.thorns.hit", Some(at), 1.0, 1.0);
         }
         // LivingEntity.hurtServer: ENTITY_HURT_PLAYER, unless it returned
         // early (invulnerable, or inside the hurt cooldown).
         // A hit a native mod canceled records no damage (hurtServer never ran).
-        self.combat.forget_noted(outcome.canceled);
+        self.combat.0.forget_noted(outcome.canceled);
         // Player motion queues accepted-hit memory events; the normal drain runs after
         // this function returns. A knockback listener must see those memories already
         // committed, including absorbed/blocked hits that still reach Criterion.
@@ -4845,7 +4855,7 @@ impl Game<'_> {
         {
             canceled = o.canceled;
         }
-        self.combat.forget_noted(canceled);
+        self.combat.0.forget_noted(canceled);
         self.finish_guest_damage();
     }
     /// `Player.aiStep` touching arrows in its box grown by (1, 0.5, 1):
@@ -4896,7 +4906,7 @@ impl Game<'_> {
             if taken {
                 let r = &mut self.world.random;
                 let pitch = (r.next_float() - r.next_float()) * 1.4 + 2.0;
-                self.audio.play(
+                self.audio.0.play(
                     "minecraft:entity.item.pickup",
                     Some([at.x, at.y, at.z]),
                     0.2,
@@ -5920,7 +5930,7 @@ impl Game<'_> {
                 kind: k,
                 position,
                 velocity,
-            } => self.particles.add(
+            } => self.particles.0.add(
                 &ParticleOptions::simple(kind(k)),
                 [position.x, position.y, position.z],
                 [velocity.x, velocity.y, velocity.z],
@@ -5947,6 +5957,7 @@ impl Game<'_> {
                 // NEUTRAL, which neither AbstractArrow nor ThrownTrident overrides. The
                 // name-based guess would put `entity.arrow.*` and `item.*` on PLAYERS.
                 self.audio
+                    .0
                     .play_on(6, name, Some([at.x, at.y, at.z]), volume, pitch);
             }
             ArrowEvent::BubbleColumnParticles { pos } => self.bubble_column_particles(pos),
@@ -6088,13 +6099,13 @@ impl Game<'_> {
             .as_ref()
             .map(|s| s.0)
             .or_else(|| (arrow.owner == Some(Who::Player)).then(|| self.own_entity_id() as u32));
-        let prev_attacker = self.combat.projectile_attacker.take();
-        let prev_effect = self.combat.enchantment_projectile_attacker.take();
-        self.combat.projectile_attacker = shooter;
-        self.combat.enchantment_projectile_attacker = effect_attacker;
+        let prev_attacker = self.combat.0.projectile_attacker.take();
+        let prev_effect = self.combat.0.enchantment_projectile_attacker.take();
+        self.combat.0.projectile_attacker = shooter;
+        self.combat.0.enchantment_projectile_attacker = effect_attacker;
         let outcome = self.arrow_hit_one_entity(arrow, Who::Player, amount);
-        self.combat.projectile_attacker = prev_attacker;
-        self.combat.enchantment_projectile_attacker = prev_effect;
+        self.combat.0.projectile_attacker = prev_attacker;
+        self.combat.0.enchantment_projectile_attacker = prev_effect;
         outcome
     }
 
@@ -6125,16 +6136,17 @@ impl Game<'_> {
             .as_ref()
             .map_or(self.own_entity_id() as u32, |s| s.0);
         let result = self.guest_hit_by(victim_conn, |g| {
-            g.combat.refuse_player_hit = refused;
-            g.combat.projectile_attacker = shooter;
+            g.combat.0.refuse_player_hit = refused;
+            g.combat.0.projectile_attacker = shooter;
             let saved_effect_attacker = g
                 .combat
+                .0
                 .enchantment_projectile_attacker
                 .replace(effect_attacker);
             let res = g.arrow_hit_one_entity(arrow, Who::Player, amount);
-            g.combat.refuse_player_hit = false;
-            g.combat.projectile_attacker = None;
-            g.combat.enchantment_projectile_attacker = saved_effect_attacker;
+            g.combat.0.refuse_player_hit = false;
+            g.combat.0.projectile_attacker = None;
+            g.combat.0.enchantment_projectile_attacker = saved_effect_attacker;
             res
         });
         result.unwrap_or(Ok(EntityHit::Refused))
@@ -6202,11 +6214,11 @@ impl Game<'_> {
         who: Who,
         amount: f32,
     ) -> Result<EntityHit> {
-        self.combat.projectile_owner = match arrow.owner {
+        self.combat.0.projectile_owner = match arrow.owner {
             Some(Who::Mob(id)) => Some(id),
             _ => None,
         };
-        self.combat.projectile_direct = match who {
+        self.combat.0.projectile_direct = match who {
             Who::Player => Some(self.target_name(super::commands::Target::Projectile(arrow.id))),
             Who::Mob(_) => None,
         };
@@ -6277,7 +6289,7 @@ impl Game<'_> {
             Who::Player => {
                 let hurt = self.arrow_hits_player(amount, arrow);
                 if hurt && arrow.arrow.as_ref().is_some_and(|a| (a.pierce as i8) <= 0) {
-                    self.combat.stuck.add_arrow();
+                    self.combat.0.stuck.add_arrow();
                 }
                 hurt
             }
@@ -6708,6 +6720,7 @@ impl Game<'_> {
                 m.previous_head_pitch = m.head_pitch;
             }
             game.audio
+                .0
                 .play("minecraft:entity.player.teleport", Some(target), 1.0, 1.0);
             Ok(())
         });
@@ -6791,11 +6804,11 @@ impl Game<'_> {
             self.projectile_block_impact(&ProjectileHitter::of(p), pos, at, face)?;
             self.projectile_breaks_block(p, pos);
         }
-        self.combat.projectile_owner = match p.owner {
+        self.combat.0.projectile_owner = match p.owner {
             Some(Who::Mob(id)) => Some(id),
             _ => None,
         };
-        self.combat.projectile_direct = match hit {
+        self.combat.0.projectile_direct = match hit {
             Hit::Entity {
                 who: Who::Player, ..
             } => Some(self.target_name(super::commands::Target::Projectile(p.id))),
@@ -7231,7 +7244,7 @@ impl Game<'_> {
                     }
                     section_steps::teleport_player(self, to);
                     self.hurt_player_by("minecraft:ender_pearl", damage);
-                    self.audio.play(
+                    self.audio.0.play(
                         "minecraft:entity.player.teleport",
                         Some([to.x, to.y, to.z]),
                         1.0,
@@ -7347,11 +7360,11 @@ impl Game<'_> {
                     }
                 }
                 self.projectile_hit_landed_event(p.id, p.owner, hit);
-                self.combat.explosion_owner = owner;
-                self.combat.explosion_in_water = p.touching_water;
+                self.combat.0.explosion_owner = owner;
+                self.combat.0.explosion_in_water = p.touching_water;
                 self.set_blast_by_player(p.owner == Some(Who::Player));
                 let fire = self.large_fireball_fire(p.owner, p.guest);
-                self.combat.explosion_direct = Some(p.id);
+                self.combat.0.explosion_direct = Some(p.id);
                 let result = self.explode_mob(
                     atp,
                     *power as f32,
@@ -7364,10 +7377,10 @@ impl Game<'_> {
                             sunrise_client::health::DirectEntity::LargeFireball,
                         ),
                 );
-                self.combat.explosion_direct = None;
+                self.combat.0.explosion_direct = None;
                 self.set_blast_by_player(false);
-                self.combat.explosion_owner = None;
-                self.combat.explosion_in_water = false;
+                self.combat.0.explosion_owner = None;
+                self.combat.0.explosion_in_water = false;
                 result?;
             }
             (kind @ (ProjectileKind::Potion(..) | ProjectileKind::ExperienceBottle), hit) => {
@@ -7513,6 +7526,7 @@ impl Game<'_> {
             }
             (ProjectileKind::ShulkerBullet { .. }, Hit::Block { .. }) => {
                 self.audio
+                    .0
                     .play("minecraft:entity.shulker_bullet.hit", Some(atp), 1.0, 1.0);
                 if let Some(ty) = sunrise_client::particles::ParticleType::from_name("explosion") {
                     let options = sunrise_client::particles::ParticleOptions::simple(ty);
@@ -7523,7 +7537,7 @@ impl Game<'_> {
                             atp[1] + r.next_gaussian() * 0.2,
                             atp[2] + r.next_gaussian() * 0.2,
                         ];
-                        self.particles.add(&options, at, [0.0; 3]);
+                        self.particles.0.add(&options, at, [0.0; 3]);
                     }
                 }
                 self.projectile_hit_landed_event(p.id, p.owner, hit);
@@ -7554,7 +7568,7 @@ impl Game<'_> {
         let egg = item == "minecraft:egg";
         for _ in 0..8 {
             let v = if egg {
-                let r = self.particles.random();
+                let r = self.particles.0.random();
                 [
                     (f64::from(r.next_float()) - 0.5) * 0.08,
                     (f64::from(r.next_float()) - 0.5) * 0.08,
@@ -7563,7 +7577,7 @@ impl Game<'_> {
             } else {
                 [0.0; 3]
             };
-            self.particles.add(&options, at, v);
+            self.particles.0.add(&options, at, v);
         }
     }
     /// `AgeableMob.mobInteract`: whether a click with `item` on `m` gets to
@@ -7627,7 +7641,7 @@ impl Game<'_> {
         } else {
             "minecraft:item.golden_dandelion.unuse"
         };
-        self.audio.play(sound, Some(at), 1.0, 1.0);
+        self.audio.0.play(sound, Some(at), 1.0, 1.0);
     }
     /// The mob a normal interaction can reach: a packet's exact validated ID,
     /// or the crosshair's mob before its blocking shape.
@@ -7738,6 +7752,7 @@ impl Game<'_> {
                 &self.mobs[index],
             )));
             self.audio
+                .0
                 .play(sound, Some(self.mobs[index].center()), 1.0, 1.0);
             self.trigger_item("minecraft:filled_bucket", &filled);
             // PlayerInteractTrigger: the water bucket as it was, and the mob picked up.
@@ -8005,7 +8020,7 @@ impl Game<'_> {
                 }
             }
             Species::Sheep if shears && !m.extra.sheared && !m.is_baby() => {
-                self.audio.play_bound(
+                self.audio.0.play_bound(
                     "minecraft:entity.sheep.shear",
                     7,
                     1.0,
@@ -8473,6 +8488,7 @@ impl Game<'_> {
             // shortcut: scalar speed models DEFAULT randomization; 26.3 sends
             // ALTERNATIVE_WITH_SPEED with a per-axis maximum speed.
             self.particles
+                .0
                 .send_particles(&options, at, spread, 0.2, count);
             self.lan_send_particles(super::lan_particles::QueuedParticle {
                 dimension: self.dim.id(),
@@ -8513,7 +8529,7 @@ impl Game<'_> {
                 self.play_bound_sound(sound, id, None);
             }
             Some((s, volume, pitch)) => {
-                self.audio.play(&full_id(s), Some(feet), volume, pitch);
+                self.audio.0.play(&full_id(s), Some(feet), volume, pitch);
             }
             None => {}
         }
@@ -8525,7 +8541,7 @@ impl Game<'_> {
                     LevelSound::new(&name, feet, volume, pitch).in_source(SoundSource::Neutral);
                 self.play_bound_sound(sound, id, None);
             } else {
-                self.audio.play(&name, Some(feet), volume, pitch);
+                self.audio.0.play(&name, Some(feet), volume, pitch);
             }
         }
         if consume && !creative {
@@ -8689,6 +8705,7 @@ impl Game<'_> {
             self.spawn_at_location(at, 0.0, d);
         }
         self.audio
+            .0
             .play("minecraft:entity.armadillo.brush", Some(feet), 1.0, 1.0);
         let ctx = self.who_context(Some(Who::Mob(id)), None);
         self.post_game_event("minecraft:entity_interact", feet, ctx);
@@ -8758,7 +8775,7 @@ impl Game<'_> {
             _ => "minecraft:entity.ender_pearl.throw",
         };
         let pitch = 0.4 / (self.world.random.next_float() * 0.4 + 0.8);
-        self.audio.play(sound, Some(eye), 0.5, pitch);
+        self.audio.0.play(sound, Some(eye), 0.5, pitch);
         self.swing_arm();
         self.consume_held();
         if kind == ProjectileKind::Egg
@@ -9018,7 +9035,7 @@ impl Game<'_> {
         for (at, width, height, view) in swimming {
             for _ in 0..2 {
                 let (x, y, z) = {
-                    let r = self.particles.random();
+                    let r = self.particles.0.random();
                     (r.next_double(), r.next_double(), r.next_double())
                 };
                 let p = [
@@ -9026,7 +9043,7 @@ impl Game<'_> {
                     at[1] + height * y - view[1] * 1.5,
                     at[2] + width * (2.0 * z - 1.0) * 0.5 - view[2] * 1.5,
                 ];
-                self.particles.add(&bubble, p, [0.0; 3]);
+                self.particles.0.add(&bubble, p, [0.0; 3]);
             }
         }
         for (eye, target, scale) in beams {
@@ -9035,13 +9052,13 @@ impl Game<'_> {
             if length <= 0.0 {
                 continue;
             }
-            let mut dist = self.particles.random().next_double();
+            let mut dist = self.particles.0.random().next_double();
             while dist < length {
-                let r = self.particles.random();
+                let r = self.particles.0.random();
                 dist += 1.8 - scale + r.next_double() * (1.7 - scale);
                 let f = dist / length;
                 let p = [eye[0] + d[0] * f, eye[1] + d[1] * f, eye[2] + d[2] * f];
-                self.particles.add(&bubble, p, [0.0; 3]);
+                self.particles.0.add(&bubble, p, [0.0; 3]);
             }
         }
     }
@@ -9050,10 +9067,10 @@ impl Game<'_> {
     /// poses entities: a new frame of draws, the store restarted when the
     /// renderer's no longer matches. Once per frame, before any entity draws.
     pub(super) fn begin_skinning(&self) {
-        let renderer = self.renderer.as_ref().filter(|r| r.skins_entities());
+        let renderer = self.renderer.0.as_ref().filter(|r| r.skins_entities());
         match renderer.and_then(|r| r.skinned_models()) {
             Some(stored) => {
-                let mut models = self.skin_models.borrow_mut();
+                let mut models = self.skin_models.0.borrow_mut();
                 // Reuse helps CPU-bound crowds, but regressed TAA frame tails in
                 // windowed measurements. Keep the original arithmetic with TAA on.
                 models.set_rotation_cache_enabled(!self.settings.sunrise.taa);
@@ -9067,6 +9084,7 @@ impl Game<'_> {
     /// Whether this frame's models can be posed on the GPU (`begin_skinning`).
     pub(super) fn skinning(&self) -> bool {
         self.renderer
+            .0
             .as_ref()
             .is_some_and(|r| r.skins_entities() && r.skinned_models().is_some())
     }
@@ -9086,7 +9104,7 @@ impl Game<'_> {
                 && self.cull_entity_camera_bounds(lo, hi)
                 && let Some((mark, _)) = skinned
             {
-                if self.occlusion.shadow_casters.0 {
+                if self.occlusion.0.shadow_casters.0 {
                     let mut frame = self.client.skin_frame.borrow_mut();
                     let end = frame.vertices as usize;
                     sunrise_client::gfx::pack_draw::EntitySpan::hide(
@@ -9144,12 +9162,13 @@ impl Game<'_> {
         let precheck = self.settings.sunrise.entity_culling == EntityCullingMode::Asynchronous
             && self
                 .occlusion
+                .0
                 .async_culler
                 .as_ref()
                 .is_some_and(|culler| culler.camera_is_stationary())
             && self.settings.sunrise.entity_culling_precheck != 0
             && self.mobs.len() >= self.settings.sunrise.entity_culling_precheck as usize
-            && !self.occlusion.shadow_casters.0
+            && !self.occlusion.0.shadow_casters.0
             && mod_api::__private::mods().is_empty();
         self.client.rendered_mobs.set(0);
         // What custom entity model animations read of the frame.
@@ -9253,7 +9272,7 @@ impl Game<'_> {
         out: &mut Vec<Vertex>,
     ) {
         // ItemPickupParticle: a picked-up arrow flying to its collector.
-        let taken = self.pickups.live.iter().filter_map(|p| match &p.taken {
+        let taken = self.pickups.0.live.iter().filter_map(|p| match &p.taken {
             super::pickups::Taken::Arrow(a) => Some((&**a, super::pickups::position(p, alpha))),
             _ => None,
         });

@@ -179,7 +179,7 @@ impl Game<'_> {
     }
 
     fn spawn_level_current(&self, level: SpawnLevel) -> bool {
-        Dim::exists(level.id) && self.levels.runtime.generation_of(level.id) == level.generation
+        Dim::exists(level.id) && self.levels.0.runtime.generation_of(level.id) == level.generation
     }
 
     /// PlayerList's unknown-dimension path uses the Overworld. A runtime level's
@@ -240,7 +240,7 @@ impl Game<'_> {
                     .id();
                 let level = SpawnLevel {
                     id: dimension,
-                    generation: self.levels.runtime.generation_of(dimension),
+                    generation: self.levels.0.runtime.generation_of(dimension),
                 };
                 let rotation = saved.rotation.unwrap_or(self.level.world_spawn_angle);
                 if let Some(position) = saved.position {
@@ -253,6 +253,7 @@ impl Game<'_> {
                     self.enter_level(Dim::from_id(dimension))
                         .map_err(|e| e.to_string())?;
                     self.tickets
+                        .0
                         .add_spawn(prepared.chunk(), SpawnTicketKind::Player);
                     self.enter_level(back).map_err(|e| e.to_string())?;
                     return Ok(SpawnTask::Load(prepared));
@@ -293,11 +294,12 @@ impl Game<'_> {
                         rotation,
                     };
                     self.tickets
+                        .0
                         .add_spawn(prepared.chunk(), SpawnTicketKind::Player);
                     SpawnTask::Load(prepared)
                 }
                 Err(chunk) => {
-                    self.tickets.add_spawn(chunk, SpawnTicketKind::Search);
+                    self.tickets.0.add_spawn(chunk, SpawnTicketKind::Search);
                     SpawnTask::Find {
                         level,
                         suggestion,
@@ -310,6 +312,7 @@ impl Game<'_> {
                 if spawn_area_full(&self.world, prepared.chunk(), PLAYER_SPAWN_RADIUS) {
                     // Hand off the pending load range to a fresh Ready ticket.
                     self.tickets
+                        .0
                         .add_spawn(prepared.chunk(), SpawnTicketKind::Player);
                     SpawnTask::Ready(prepared)
                 } else {
@@ -318,6 +321,7 @@ impl Game<'_> {
             }
             SpawnTask::Ready(prepared) => {
                 self.tickets
+                    .0
                     .add_spawn(prepared.chunk(), SpawnTicketKind::Player);
                 SpawnTask::Ready(prepared)
             }
@@ -328,12 +332,13 @@ impl Game<'_> {
     }
 
     pub(in crate::game) fn tick_spawn_tickets(&mut self, running: bool, notify: bool) {
-        if self.tickets.spawn_areas().next().is_some() {
+        if self.tickets.0.spawn_areas().next().is_some() {
             // ServerChunkCache.tick doesn't purge in a frozen level, nor
             // does pause-when-empty tick the cache (it only polls chunk work).
             if running {
                 let streaming = &self.streaming;
                 self.tickets
+                    .0
                     .tick_spawn(|center| streaming.chunk_ready_for_saving(center));
             }
             self.rebuild_chunk_tickets(notify);

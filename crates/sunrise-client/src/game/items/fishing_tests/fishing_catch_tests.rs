@@ -61,7 +61,7 @@ fn run(mode: Option<u8>) -> (Vec<(String, u32)>, usize, i32, u32, i64, bool) {
         crate::game::native_entity_refs::tests::with_game(|game| {
             let scratch = tempfile::tempdir().unwrap();
             game.server.world_root = scratch.path().into();
-            game.save = Arc::new(sunrise_client::save::SaveDir::new(
+            game.save.0 = Arc::new(sunrise_client::save::SaveDir::new(
                 scratch.path().join("save"),
                 sunrise_client::save::LevelShape::OVERWORLD,
                 Some(Default::default()),
@@ -86,7 +86,7 @@ fn run(mode: Option<u8>) -> (Vec<(String, u32)>, usize, i32, u32, i64, bool) {
                 game.res.item_defaults(),
             )
             .unwrap();
-            game.server_loot.set(Some(Arc::new(loot)));
+            game.server_loot.0.set(Some(Arc::new(loot)));
             let mut hook = Hook {
                 uuid: [0; 4],
                 attachment_lifetime: Default::default(),

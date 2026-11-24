@@ -9,6 +9,7 @@ impl Game<'_> {
     pub(in crate::game) fn reopen_data_packs(&mut self) -> Result<()> {
         let action = self
             .title
+            .0
             .as_mut()
             .and_then(|t| t.reopen_data_packs_action());
         if let Some(action) = action {
@@ -36,7 +37,7 @@ impl Game<'_> {
             Action::OpenUri(uri) => packs::open_uri(&uri),
             Action::CopyText(text) => {
                 use sunrise_client::clipboard::Clipboard;
-                self.clipboard.set(&text);
+                self.clipboard.0.set(&text);
             }
             Action::Play { folder } => self.open_world(&folder, None, None, false, None)?,
             Action::Create {
@@ -90,7 +91,7 @@ impl Game<'_> {
         // openWorldLoadLevelData: an existing world whose level data does not read opens
         // RecoverWorldDataScreen instead.
         if create.is_none()
-            && let Some(title) = self.title.as_mut()
+            && let Some(title) = self.title.0.as_mut()
             && title.open_recover(folder)
         {
             return Ok(());
@@ -112,7 +113,7 @@ impl Game<'_> {
             if !level_mods::is_confirmed(&dir) {
                 let missing = self.ask_missing_mods(&dir);
                 if !missing.is_empty() {
-                    if let Some(title) = self.title.as_mut() {
+                    if let Some(title) = self.title.0.as_mut() {
                         title.ask_missing_mods(folder, missing);
                         return Ok(());
                     }
@@ -207,7 +208,7 @@ impl Game<'_> {
             graphics: s.graphics_preset.clone(),
         };
         // Again now: on Wayland the window is on a screen only once it has been shown.
-        if let Some(window) = &self.window {
+        if let Some(window) = &self.window.0 {
             sunrise_client::telemetry::note_display(window);
         }
         self.perf
@@ -217,9 +218,9 @@ impl Game<'_> {
     pub(in crate::game) fn save_for_exit(&mut self) -> Result<()> {
         // Native application termination can bypass CloseRequested. Finish any
         // save screen synchronously here, before the process can go away.
-        while self.pending_save.is_some() {
+        while self.pending_save.0.is_some() {
             self.poll_closing_save()?;
-            if self.pending_save.is_some() {
+            if self.pending_save.0.is_some() {
                 std::thread::sleep(Duration::from_millis(1));
             }
         }
@@ -227,7 +228,7 @@ impl Game<'_> {
         self.repro_on_exit();
         self.finish_perf();
         self.connection_left(sunrise_hooks::connection::Left::Quit);
-        if self.title.is_some() || self.client.saved_for_exit {
+        if self.title.0.is_some() || self.client.saved_for_exit {
             return Ok(());
         }
         // exitWorldAndClose disconnects the client from its world.
@@ -275,7 +276,7 @@ impl Game<'_> {
         self.client.post_effects.clear();
         self.clear_spectated_entity_post_effect();
         // Mod screens' living scenes go with the world their entities were copied from.
-        self.live_scenes.get_mut().clear();
+        self.live_scenes.0.get_mut().clear();
         if self.external_server() {
             return self.leave_server(None);
         }

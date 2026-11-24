@@ -263,7 +263,7 @@ pub(in crate::game) fn run_a_moved_thrown_item_projectile_saves_its_loaded_item(
         // Unload the chunk through the real chunk entity unload/save path and confirm removal.
         let chunk = game.world.chunks.remove(&key).unwrap();
         game.unload_entities(std::slice::from_ref(&chunk));
-        game.save.flush().unwrap();
+        game.save.0.flush().unwrap();
         assert!(
             game.creatures.projectiles.is_empty(),
             "chunk unload failed to remove resident projectiles"
@@ -278,7 +278,7 @@ pub(in crate::game) fn run_a_moved_thrown_item_projectile_saves_its_loaded_item(
         }
 
         // Reload the chunk from disk and compare the full typed Item by UUID.
-        let records = game.save.load_entities(key.0, key.1).unwrap();
+        let records = game.save.0.load_entities(key.0, key.1).unwrap();
         assert_eq!(
             records.len(),
             cases.len(),

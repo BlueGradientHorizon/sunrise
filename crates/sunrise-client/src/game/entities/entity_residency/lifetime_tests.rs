@@ -22,7 +22,7 @@ static VALUE: AttachmentType<i32> = AttachmentType {
 // published batch alive when dropping the actual owner: neither may retain
 // registration authority. Moving the actual owner out and back must retain it.
 macro_rules! check_list {
-    ($game:ident, $($field:ident).+) => {{
+    ($game:ident, $($field:tt).+) => {{
         let id = $game$(.$field)+[0].id;
         let holder = $game.entity(id).expect(stringify!($($field).+));
         let id = NonZeroU32::new(id).unwrap();
@@ -59,7 +59,7 @@ fn resident_new_family_lifetimes_bind_move_and_retire() {
         game.summon_with_nbt("minecraft:marker", [0.5, 70.0, 0.5], "{}")
             .unwrap();
         game.lan_assign_ids();
-        check_list!(game, others);
+        check_list!(game, others.0);
 
         game.add_fangs([0.5, 70.0, 0.5], 0.0, 0, 0);
         check_list!(game, fangs.list);

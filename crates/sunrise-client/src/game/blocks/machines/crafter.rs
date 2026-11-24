@@ -410,6 +410,7 @@ impl Game<'_> {
         }
         let pitch = if enabled { 1.0 } else { 0.75 };
         self.audio
+            .0
             .play("minecraft:ui.button.click", None, 0.4, pitch);
     }
 }

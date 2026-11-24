@@ -42,7 +42,7 @@ fn with_loading_client(run: impl FnOnce(&mut Game<'_>)) {
         None,
     )
     .unwrap();
-    game.rest_loader = loaded.rest_loader;
+    game.rest_loader.0 = loaded.rest_loader;
     assert!(game.options.is_client_start());
     run(&mut game);
 }
@@ -55,7 +55,7 @@ fn a_client_start_joins_the_world_rest_worker_before_it_resolves_the_renderers()
             crate::game::client_reload::PreparedClientReload::Vanilla(()),
         ])
         .unwrap();
-        assert!(game.rest_loader.is_none(), "the worker was joined");
+        assert!(game.rest_loader.0.is_none(), "the worker was joined");
         assert!(game.res.rest.get().is_some(), "the rest tables are there");
         assert!(
             game.res.mob_types().contains_key("minecraft:zombie"),
@@ -99,12 +99,12 @@ fn title_ticks_join_world_resources_without_the_desktop_model_publication() {
             // The scoped mod fixture has its own key table, independent of startup's.
             mod_api::__private::resolve_items(["minecraft:stone"]).unwrap();
             // Alternate window frontends need not have run publish_initial_client_models.
-            game.title = Some(game.new_title(game.save.root.clone()));
-            assert!(game.rest_loader.is_some());
+            game.title.0 = Some(game.new_title(game.save.0.root.clone()));
+            assert!(game.rest_loader.0.is_some());
             game.client_tick_steps(0, None).unwrap();
-            assert!(game.rest_loader.is_some(), "an empty frame need not wait");
+            assert!(game.rest_loader.0.is_some(), "an empty frame need not wait");
             game.client_tick_steps(1, None).unwrap();
-            assert!(game.rest_loader.is_none(), "the tick joined the loader");
+            assert!(game.rest_loader.0.is_none(), "the tick joined the loader");
             assert!(
                 game.res.rest.get().is_some(),
                 "menu hooks have their tables"

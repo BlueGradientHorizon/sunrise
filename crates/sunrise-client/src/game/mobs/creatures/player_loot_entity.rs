@@ -11,6 +11,7 @@ impl Game<'_> {
     ) -> sunrise_world::loot::LootEntity {
         let capture_nbt = self
             .server_loot
+            .0
             .get()
             .is_some_and(|data| data.copies_entity_nbt());
         let own = |g: &mut Self| {

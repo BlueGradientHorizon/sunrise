@@ -10,22 +10,22 @@ impl Game<'_> {
         if let Some(remote) = &self.remote {
             remote.session.cancel_far_terrain();
         }
-        self.lod = None;
+        self.lod.0 = None;
         self.client.lod_source_attempted = false;
         self.client.lod_observe.clear();
-        self.lod_blue_map = None;
+        self.lod_blue_map.0 = None;
         self.client.lod_covered_at = None;
-        if let Some(renderer) = &mut self.renderer {
+        if let Some(renderer) = &mut self.renderer.0 {
             renderer.clear_lods();
         }
     }
     pub(super) fn prepare_lod(&mut self) {
         let enabled = self.far_terrain_choice().0 > 0
-            && self.renderer.is_some()
+            && self.renderer.0.is_some()
             && self.player.is_some()
-            && self.title.is_none();
+            && self.title.0.is_none();
         if !enabled {
-            if self.lod.is_some() || self.client.lod_source_attempted {
+            if self.lod.0.is_some() || self.client.lod_source_attempted {
                 self.clear_lod();
             }
             return;
@@ -93,13 +93,13 @@ impl Game<'_> {
                     map.start();
                     map
                 });
-                self.lod_blue_map = blue_map.clone();
+                self.lod_blue_map.0 = blue_map.clone();
                 terrain::ServerTerrain::new(dir, blue_map) as _
             }),
             _ => Some(self.streaming.lod_source()),
         };
         if let Some(source) = source {
-            self.lod = Some(sunrise_client::lod::Lod::new(source, self.worker_context()));
+            self.lod.0 = Some(sunrise_client::lod::Lod::new(source, self.worker_context()));
             self.client
                 .lod_observe
                 .extend(self.world.chunks.keys().copied());
@@ -117,6 +117,7 @@ impl Game<'_> {
         // or went) and dropped every section and far tile: meshed again, as for a new one.
         if self
             .renderer
+            .0
             .as_mut()
             .is_some_and(Renderer::take_dropped_sections)
         {
@@ -128,7 +129,7 @@ impl Game<'_> {
         // as this window last saw them: summarized again (taken every tick, far terrain on or off, so none waits).
         if self.remote.is_some() {
             let changed = sunrise_client::lan::handoff::take_changed();
-            if let Some(lod) = &mut self.lod {
+            if let Some(lod) = &mut self.lod.0 {
                 for chunk in changed {
                     let column = (chunk.x, chunk.z);
                     if self.world.chunks.contains_key(&column) {
@@ -141,7 +142,9 @@ impl Game<'_> {
         self.observe_light_edits();
         self.ask_edited_light_emission();
         let camera_pos = self.visual_camera_position();
-        if let (Some(map), Some(pos), Some(lod)) = (&self.lod_blue_map, camera_pos, &mut self.lod) {
+        if let (Some(map), Some(pos), Some(lod)) =
+            (&self.lod_blue_map.0, camera_pos, &mut self.lod.0)
+        {
             map.set_center(pos[0].floor() as i32, pos[2].floor() as i32);
             for change in map.take_changed() {
                 lod.refresh(change.area, change.widths);
@@ -155,7 +158,7 @@ impl Game<'_> {
         // A headless game has nothing to draw sections with: like a server's, they aren't
         // meshed while it has no renderer.
         if self.options.headless {
-            self.streaming.mesh = self.renderer.is_some();
+            self.streaming.mesh = self.renderer.0.is_some();
         }
         if self.defer_chunk_disk_save() {
             return;
@@ -165,6 +168,7 @@ impl Game<'_> {
         // `extra` finishes chunks through radius + 1, even with no players.
         self.streaming.extra.extend(
             self.tickets
+                .0
                 .spawn_areas()
                 .map(|(center, radius)| (center, radius - 1)),
         );
@@ -175,7 +179,7 @@ impl Game<'_> {
                     .lan
                     .configuration_tasks
                     .loading_spawns(dim.id())
-                    .filter(|&center| !self.tickets.holds_player_spawn(center))
+                    .filter(|&center| !self.tickets.0.holds_player_spawn(center))
                     .map(|center| {
                         (
                             center,
@@ -196,7 +200,7 @@ impl Game<'_> {
             .extend(waiting.into_iter().map(|chunk| (chunk, 0)));
         // `Level.getChunk`'s tickets keep their columns until they expire.
         self.streaming.hold_unknown_tickets();
-        self.streaming.upload_backlog = self.pending_uploads.len();
+        self.streaming.upload_backlog = self.pending_uploads.0.len();
         let plan = sunrise_client::spans::time("streaming_plan", || {
             let mut step = self.streaming.begin_plan_update(&mut self.world);
             loop {
@@ -239,6 +243,7 @@ impl Game<'_> {
         if !modified.is_empty()
             && let Err(e) = sunrise_client::spans::time("save_chunks", || {
                 self.save
+                    .0
                     .save_later(&modified, self.pack.assets.registry, world_biomes!(self))
             })
         {
@@ -254,7 +259,7 @@ impl Game<'_> {
         for chunk in &unloaded {
             self.world.modified.unloaded(&(chunk.x, chunk.z));
         }
-        if let Some(lod) = &mut self.lod {
+        if let Some(lod) = &mut self.lod.0 {
             self.client
                 .lod_observe
                 .extend(uploads.iter().map(|upload| (upload.key.0, upload.key.2)));
@@ -322,17 +327,19 @@ impl Game<'_> {
         // this function. Cheap: trigonometry on one angle, or None when the
         // view is not zoomed.
         let lod_aim = camera_pos.and_then(|camera| self.lod_aim(camera));
-        if let Some(renderer) = self.renderer.as_mut() {
+        if let Some(renderer) = self.renderer.0.as_mut() {
             let g = &self.settings.sunrise;
             let budgeted = g.chunk_updates > 0 || g.upload_budget_kib > 0;
-            let mut raw_flight = self.flight.as_mut().filter(|flight| flight.raw);
+            let mut raw_flight = self.flight.0.as_mut().filter(|flight| flight.raw);
             let vertex_bytes = |mesh: &sunrise_client::mesher::SectionMesh| {
                 ((mesh.solid.len() + mesh.translucent.len())
                     * std::mem::size_of::<sunrise_client::mesher::TerrainVertex>())
                     as u64
             };
             // The meshes, once copied, are freed by a worker (`Streaming::free`).
-            if !budgeted && self.pending_uploads.is_empty() && uploads.len() <= AUTO_UPLOADS_AT_ONCE
+            if !budgeted
+                && self.pending_uploads.0.is_empty()
+                && uploads.len() <= AUTO_UPLOADS_AT_ONCE
             {
                 sunrise_client::spans::time("upload", || {
                     for upload in &uploads {
@@ -350,7 +357,7 @@ impl Game<'_> {
                 // sections go first, the rest wait for later frames; a newer
                 // mesh of a waiting section replaces it, and sections of
                 // chunks no longer loaded are dropped.
-                let pending = &mut self.pending_uploads;
+                let pending = &mut self.pending_uploads.0;
                 let order_span = sunrise_client::spans::guard("order_uploads");
                 let fresh: sunrise_client::fast_hash::FxHashSet<(i32, i32, i32)> =
                     uploads.iter().map(|upload| upload.key).collect();
@@ -377,7 +384,7 @@ impl Game<'_> {
                 let work = order_uploads(
                     pending,
                     &mut uploads,
-                    &mut self.pending_uploads_merge,
+                    &mut self.pending_uploads_merge.0,
                     self.client.pending_uploads_order == order,
                     priority,
                 );
@@ -426,12 +433,12 @@ impl Game<'_> {
             }
             renderer.remove_columns(unloaded.iter().map(|c| (c.x, c.z)));
             // Meshes in the works are the view's terrain while it is new, then edits'.
-            let meshing = self.streaming.busy() || !self.pending_uploads.is_empty();
-            let sampling = self.lod.as_ref().is_some_and(|lod| lod.sampling());
+            let meshing = self.streaming.busy() || !self.pending_uploads.0.is_empty();
+            let sampling = self.lod.0.as_ref().is_some_and(|lod| lod.sampling());
             renderer.set_terrain_loading(
                 arriving || (meshing && self.client.view_arrival.recent(now)) || sampling,
             );
-            if let (Some(lod), Some(player)) = (&mut self.lod, &self.player) {
+            if let (Some(lod), Some(player)) = (&mut self.lod.0, &self.player) {
                 let lod_distance =
                     sunrise_client::graphics::lod_distance_capped(far_distance, &renderer.info);
                 lod.set_near_loading(self.streaming.terrain_loading());

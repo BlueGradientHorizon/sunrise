@@ -126,7 +126,7 @@ fn a_tame_zombie_nautilus_at_full_health_falls_in_love() {
         game.mobs[0].extra.tame = true;
         game.mobs[0].extra.owner = Some([1, 2, 3, 4]);
         game.inventory[0] = Some(ItemStack::new("minecraft:cod", 2));
-        game.audio.capture = Some(Vec::new());
+        game.audio.0.capture = Some(Vec::new());
         assert!(game.interact_entity(target(id)).unwrap(), "{kind}");
         assert_eq!(game.mobs[0].extra.in_love, 600, "{kind}");
         assert_eq!(game.mobs[0].extra.age, 0, "{kind}");
@@ -135,7 +135,7 @@ fn a_tame_zombie_nautilus_at_full_health_falls_in_love() {
             Some(1),
             "{kind}: the fish is eaten"
         );
-        let sounds = game.audio.capture.take().unwrap();
+        let sounds = game.audio.0.capture.take().unwrap();
         assert!(
             sounds.iter().any(|s| s.event == eat),
             "{kind}: it eats: {sounds:?}"

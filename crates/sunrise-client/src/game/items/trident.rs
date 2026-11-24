@@ -158,6 +158,7 @@ impl Game<'_> {
             self.bolts.update(last, |bolt| bolt.cause = Some(guest));
         }
         self.audio
+            .0
             .play("minecraft:item.trident.thunder", Some(at), 5.0, 1.0);
     }
     /// `minecraft:hit_block` of Channeling (`AbstractArrow.hitBlockEnchantmentEffects`):
@@ -309,7 +310,7 @@ impl Game<'_> {
                             LevelSound::new(&sound, at, 1.0, 1.0).in_source(SoundSource::Players);
                         self.play_bound_sound(sound, player, None);
                     }
-                    _ => self.audio.play(&sound, at, 1.0, 1.0),
+                    _ => self.audio.0.play(&sound, at, 1.0, 1.0),
                 }
                 if let (Some(player), Some(name)) = (
                     self.server.lan_acting_uuid,
@@ -454,11 +455,11 @@ impl Game<'_> {
         let from = [t.previous.x, t.previous.y, t.previous.z];
         self.guest_hit_by(conn, |g| {
             g.with_attack(attack, |g| {
-                g.combat.refuse_player_hit = refused;
-                g.combat.projectile_attacker = shooter;
+                g.combat.0.refuse_player_hit = refused;
+                g.combat.0.projectile_attacker = shooter;
                 let hurt = g.mob_hits_player(damage, from, "minecraft:trident");
-                g.combat.refuse_player_hit = false;
-                g.combat.projectile_attacker = None;
+                g.combat.0.refuse_player_hit = false;
+                g.combat.0.projectile_attacker = None;
                 hurt
             })
         })
@@ -534,7 +535,7 @@ impl Game<'_> {
             let pitch = ((self.world.random.next_float() - self.world.random.next_float()) * 0.7
                 + 1.0)
                 * 2.0;
-            self.audio.play(
+            self.audio.0.play(
                 "minecraft:entity.item.pickup",
                 Some([by.feet.x, by.feet.y, by.feet.z]),
                 0.2,
@@ -556,7 +557,7 @@ impl Game<'_> {
         };
         if extinguished {
             let pitch = 1.6 + (t.random.next_float() - t.random.next_float()) * 0.4;
-            self.audio.play(
+            self.audio.0.play(
                 "minecraft:entity.generic.extinguish_fire",
                 Some([to.x, to.y, to.z]),
                 0.7,
@@ -688,7 +689,7 @@ impl Game<'_> {
                 let to = t.position;
                 self.entity_section_step(t.id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
                 if t.returning == 0 {
-                    self.audio.play(
+                    self.audio.0.play(
                         "minecraft:item.trident.return",
                         Some([t.position.x, t.position.y, t.position.z]),
                         10.0,
@@ -815,7 +816,7 @@ impl Game<'_> {
                         if t.deflected_by != Some(breeze_id) {
                             let sound_at =
                                 [breeze.position.x, breeze.position.y, breeze.position.z];
-                            self.audio.play(
+                            self.audio.0.play(
                                 "minecraft:entity.breeze.deflect",
                                 Some(sound_at),
                                 1.0,
@@ -1083,7 +1084,7 @@ impl Game<'_> {
                                 t.velocity.y * (-0.5 * 0.2),
                                 t.velocity.z * (-0.5 * 0.02),
                             );
-                            self.audio.play(
+                            self.audio.0.play(
                                 "minecraft:item.trident.hit",
                                 Some([t.position.x, t.position.y, t.position.z]),
                                 1.0,
@@ -1137,6 +1138,7 @@ impl Game<'_> {
                         t.shake = 7;
                         let sound = t.hit_ground_sound();
                         self.audio
+                            .0
                             .play(&sound, Some([stop.x, stop.y, stop.z]), 1.0, 1.0);
                     }
                 }
@@ -1257,7 +1259,7 @@ impl Game<'_> {
     ) {
         // ItemPickupParticle: a picked-up trident flying to its collector,
         // drawn with the render state extracted at partial tick 1.
-        let taken = self.pickups.live.iter().filter_map(|p| match &p.taken {
+        let taken = self.pickups.0.live.iter().filter_map(|p| match &p.taken {
             super::pickups::Taken::Trident(t) => Some((&**t, super::pickups::position(p, alpha))),
             _ => None,
         });

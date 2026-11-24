@@ -10,7 +10,7 @@ impl Game<'_> {
         if !self.is_logical_server() {
             return ProfileResolution::Done(None);
         }
-        match self.skin_profiles.borrow_mut().state(&key) {
+        match self.skin_profiles.0.borrow_mut().state(&key) {
             Resolve::Pending => ProfileResolution::Pending,
             Resolve::Done(profile) => ProfileResolution::Done(profile.map(|profile| {
                 AccountProfile {

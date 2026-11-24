@@ -90,7 +90,7 @@ impl Game<'_> {
         let image = self.container_image_parts(batch);
         let origin = self.inventory_origin_unbuilt(batch);
         // A title over the inventory draws no book or effects of its own.
-        let covered = self.client.screen == Screen::Inventory && self.title.is_some();
+        let covered = self.client.screen == Screen::Inventory && self.title.0.is_some();
         let book = (!covered).then(|| self.recipe_book_rect(batch)).flatten();
         let shows_effects = !covered
             && match self.client.screen {

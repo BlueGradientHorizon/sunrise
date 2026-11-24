@@ -233,7 +233,7 @@ impl Game<'_> {
             self.journal_travel(source, id);
         }
         let now = self.world.game_time;
-        self.levels.note_travel(state.source, id, now);
+        self.levels.0.note_travel(state.source, id, now);
         if state.died {
             self.server.died.insert(id);
         }

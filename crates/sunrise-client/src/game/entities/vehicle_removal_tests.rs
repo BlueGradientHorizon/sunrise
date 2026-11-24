@@ -346,7 +346,7 @@ fn wind_charged_mob_removal_cannot_reenter_through_its_own_burst() {
         assert_eq!(events.bursts.load(Ordering::Relaxed), 1);
         assert_eq!(events.leaves.load(Ordering::Relaxed), 1);
         assert_eq!(
-            game.audio.heard.get("minecraft:entity.breeze.wind_burst"),
+            game.audio.0.heard.get("minecraft:entity.breeze.wind_burst"),
             Some(&1)
         );
     });

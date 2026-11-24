@@ -38,7 +38,7 @@ impl Game<'_> {
     /// The entity the view follows (`Minecraft.getCameraEntity`): the entity a server attached
     /// the camera to, else the local player. None outside a client world.
     pub(in crate::game) fn camera_entity(&self) -> Option<EntityRef> {
-        if !self.native_window() || self.title.is_some() {
+        if !self.native_window() || self.title.0.is_some() {
             return None;
         }
         self.player.as_ref()?;

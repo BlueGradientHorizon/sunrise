@@ -291,6 +291,7 @@ impl Game<'_> {
                     &self.world
                 } else {
                     self.levels
+                        .0
                         .parked_world_of(&guest.dimension)
                         .ok_or(LevelWriteError::Unavailable)?
                 };
@@ -369,6 +370,7 @@ impl Game<'_> {
             Target::Other(id) => {
                 return self
                     .others
+                    .0
                     .iter()
                     .find(|e| e.id == id)?
                     .display_marker_or_interaction_bounds()

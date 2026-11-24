@@ -148,9 +148,9 @@ impl Game<'_> {
         let guest = &host.hub.guests[gi];
         let (conn, own, uuid, name) = (guest.conn, guest.entity_id, guest.uuid, guest.name.clone());
         let level = super::Dim::from_id(&guest.dimension);
-        let previous = self.cmds.guest_cameras.get(&conn).map(|c| c.id);
+        let previous = self.cmds.0.guest_cameras.get(&conn).map(|c| c.id);
         let camera = camera.filter(|id| *id != own);
-        if self.cmds.guest_cameras.get(&conn).map(|c| c.id) == camera {
+        if self.cmds.0.guest_cameras.get(&conn).map(|c| c.id) == camera {
             return;
         }
         // A target with no state (gone, dead, in another level) is no camera: nothing changes
@@ -172,11 +172,12 @@ impl Game<'_> {
         match camera {
             Some(id) => {
                 self.cmds
+                    .0
                     .guest_cameras
                     .insert(conn, GuestCamera { id, teleports: 0 });
             }
             None => {
-                self.cmds.guest_cameras.remove(&conn);
+                self.cmds.0.guest_cameras.remove(&conn);
             }
         }
         // ServerPlayer.broadcastToPlayer: a spectator with a camera is shown to nobody.
@@ -202,7 +203,7 @@ impl Game<'_> {
                 }),
             );
             let teleports = host.hub.guests[gi].teleport_counter;
-            if let Some(c) = self.cmds.guest_cameras.get_mut(&conn) {
+            if let Some(c) = self.cmds.0.guest_cameras.get_mut(&conn) {
                 c.teleports = teleports;
             }
             if let Some(entity_id) = camera {
@@ -221,7 +222,7 @@ impl Game<'_> {
     /// The camera part of `ServerPlayer.tick` for every guest, after the
     /// `/spectate` requests commands queued.
     pub(super) fn tick_guest_cameras(&mut self) {
-        for (conn, id) in std::mem::take(&mut self.cmds.camera_requests) {
+        for (conn, id) in std::mem::take(&mut self.cmds.0.camera_requests) {
             if let Some(gi) = self
                 .lan
                 .as_ref()
@@ -232,6 +233,7 @@ impl Game<'_> {
         }
         let cameras: Vec<(u32, GuestCamera)> = self
             .cmds
+            .0
             .guest_cameras
             .iter()
             .map(|(c, v)| (*c, *v))
@@ -241,7 +243,7 @@ impl Game<'_> {
                 return;
             };
             let Some(gi) = host.hub.guests.iter().position(|g| g.conn == conn) else {
-                self.cmds.guest_cameras.remove(&conn);
+                self.cmds.0.guest_cameras.remove(&conn);
                 continue;
             };
             // A mod canceled this player's ServerPlayer.tick: its camera stays as it is.

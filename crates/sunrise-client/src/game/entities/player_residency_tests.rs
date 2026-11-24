@@ -318,7 +318,7 @@ fn production_login_and_local_body_constructor_admit_profile_and_real_loan() {
             max_players: 2,
             integrated: true,
             levels: game.server.level_shapes,
-            level_seeds: game.levels.runtime.seeds(),
+            level_seeds: game.levels.0.runtime.seeds(),
         };
         game.lan_host(settings, net, config).unwrap();
         let motion = sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();

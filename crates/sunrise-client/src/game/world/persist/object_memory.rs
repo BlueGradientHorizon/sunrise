@@ -711,7 +711,7 @@ impl Game<'_> {
         } else if self.armor_stands.iter().any(|stand| stand.id == root) {
             (VehicleTreeKind::Stand, "minecraft:armor_stand".to_owned())
         } else {
-            let other = self.others.iter().find(|other| other.id == root)?;
+            let other = self.others.0.iter().find(|other| other.id == root)?;
             (VehicleTreeKind::Other, other.kind.clone())
         };
         let passengers = self

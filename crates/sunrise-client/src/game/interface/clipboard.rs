@@ -23,7 +23,7 @@ impl Game<'_> {
     /// so no mod reads the clipboard without the player doing something, and None on a
     /// server.
     pub(in crate::game) fn clipboard_text(&self) -> Option<String> {
-        (self.native_window() && self.client.user_input.get()).then(|| self.clipboard.text())
+        (self.native_window() && self.client.user_input.get()).then(|| self.clipboard.0.text())
     }
     /// Puts `text` on the clipboard (`KeyboardHandler.setClipboard`) on the same terms as
     /// `clipboard_text` reads it. False, with nothing copied, at any other moment or
@@ -32,7 +32,7 @@ impl Game<'_> {
         if !self.native_window() || !self.client.user_input.get() {
             return false;
         }
-        self.clipboard.set_text(text);
+        self.clipboard.0.set_text(text);
         true
     }
     /// `InputWithModifiers.isSelectAll`/`isCopy`/`isPaste`/`isCut` of a key
@@ -97,13 +97,13 @@ impl Game<'_> {
     /// screens of the jigsaw, structure and test blocks.
     pub(in crate::game) fn text_input_focused(&self) -> bool {
         self.mounted_widget_captures_input()
-            || (self.client.screen == Screen::Chat && self.title.is_none())
+            || (self.client.screen == Screen::Chat && self.title.0.is_none())
             || self.client.sign_edit.is_some()
             || matches!(
                 self.client.book,
                 Some(super::books::BookScreen::Edit { .. })
             )
-            || (self.client.screen == Screen::Creative && self.creative_screen.tab().search)
+            || (self.client.screen == Screen::Creative && self.creative_screen.0.tab().search)
             || self.recipe_search_focused()
             || self.station_typing()
             || self.dialog_typing()
@@ -129,16 +129,16 @@ impl Game<'_> {
     }
     /// Shortcuts on the title, world creation and server screens.
     pub(in crate::game) fn title_shortcut(&mut self, shortcut: EditShortcut) {
-        let Some(title) = self.title.as_mut() else {
+        let Some(title) = self.title.0.as_mut() else {
             return;
         };
         if title.has_caret_field() {
-            return title.field_shortcut(shortcut, &mut self.clipboard);
+            return title.field_shortcut(shortcut, &mut self.clipboard.0);
         }
         if let Some((id, value, max)) = title.focused_field() {
             let changed = Self::append_shortcut(
                 &mut self.client.text_selection,
-                &mut self.clipboard,
+                &mut self.clipboard.0,
                 id,
                 value,
                 shortcut,
@@ -152,7 +152,7 @@ impl Game<'_> {
     /// Typing or a backspace in a title-screen field. A field that still only
     /// appends replaces a Select All selection before the edit.
     pub(in crate::game) fn title_edit(&mut self, typed: Option<&str>, backspace: bool) {
-        let Some(title) = self.title.as_mut() else {
+        let Some(title) = self.title.0.as_mut() else {
             return;
         };
         let cleared = !title.has_caret_field()
@@ -174,10 +174,11 @@ impl Game<'_> {
     pub(in crate::game) fn creative_search_shortcut(&mut self, shortcut: EditShortcut) {
         if self
             .creative_screen
+            .0
             .search
-            .shortcut(shortcut, &mut self.clipboard)
+            .shortcut(shortcut, &mut self.clipboard.0)
         {
-            self.creative_screen.scroll = 0.0;
+            self.creative_screen.0.scroll = 0.0;
         }
     }
     /// A backspace in the creative search box: with Ctrl, the whole word
@@ -185,15 +186,16 @@ impl Game<'_> {
     /// A selection is what it deletes, as in `EditBox.keyPressed`.
     pub(in crate::game) fn creative_search_backspace(&mut self, ctrl: bool) {
         self.creative_screen
+            .0
             .search
             .key(KeyCode::Backspace, ctrl, false);
-        self.creative_screen.scroll = 0.0;
+        self.creative_screen.0.scroll = 0.0;
     }
     /// Typing in the creative search box.
     pub(in crate::game) fn creative_search_edit(&mut self, typed: Option<&str>) {
         if let Some(text) = typed {
-            self.creative_screen.search.insert_text(text);
-            self.creative_screen.scroll = 0.0;
+            self.creative_screen.0.search.insert_text(text);
+            self.creative_screen.0.scroll = 0.0;
         }
     }
 }
@@ -254,7 +256,7 @@ mod tests {
             crate::game::native_entity_refs::tests::with_game(|game| {
                 game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
                 game.options.headless = true;
-                game.clipboard.set_text("pasted");
+                game.clipboard.0.set_text("pasted");
 
                 game.native_client_tick_pre();
                 game.native_render_gui_pre(&mut false);
@@ -279,7 +281,7 @@ mod tests {
                         ("tick", None, false),
                     ]
                 );
-                assert_eq!(game.clipboard.text(), "click");
+                assert_eq!(game.clipboard.0.text(), "click");
             });
         });
     }

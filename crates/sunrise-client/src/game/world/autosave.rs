@@ -37,14 +37,14 @@ impl Game<'_> {
     }
 
     pub(super) fn finish_player_autosaves(&mut self, wait: bool) -> Result<bool> {
-        let saved = self.player_autosaves.completed(wait);
+        let saved = self.player_autosaves.0.completed(wait);
         if !saved.is_empty() {
             let directory = sunrise_client::lan::playerdata::directory(&self.server.world_root);
             for player in saved {
                 self.native_player_save_to_file(player.uuid, &player.name, &directory);
             }
         }
-        self.player_autosaves.writes_finished()
+        self.player_autosaves.0.writes_finished()
     }
 
     pub(super) fn save_game_metadata(&mut self) -> Result<()> {
@@ -97,7 +97,7 @@ impl Game<'_> {
                                 "progress":g.advancements.to_json(&self.adv.tree, sunrise_world::DATA_VERSION)})
                         );
                     }
-                    self.player_autosaves.enqueue(g, &self.server.world_root, self.res.items());
+                    self.player_autosaves.0.enqueue(g, &self.server.world_root, self.res.items());
                 }
             });
         }

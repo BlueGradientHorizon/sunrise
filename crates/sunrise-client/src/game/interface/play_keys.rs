@@ -18,7 +18,7 @@ impl Game<'_> {
         if self.instabuild() {
             self.set_screen(Screen::Creative);
             self.refresh_creative_tabs();
-            self.creative_screen.reopen();
+            self.creative_screen.0.reopen();
             self.refresh_saved_hotbars();
         } else {
             self.set_screen(Screen::Inventory);
@@ -163,7 +163,8 @@ impl Game<'_> {
             },
             KeyCode::F11 => self.toggle_fullscreen(),
             KeyCode::KeyE
-                if self.client.screen == Screen::Creative && self.creative_screen.tab().search => {}
+                if self.client.screen == Screen::Creative
+                    && self.creative_screen.0.tab().search => {}
             KeyCode::KeyE => match self.client.screen {
                 Screen::Creative | Screen::Inventory => self.close_inventory_key(),
                 _ => {}
@@ -258,7 +259,7 @@ impl Game<'_> {
             if self.client.tutorial.open_inventory() {
                 self.persist_tutorial_step();
             }
-            self.recipe_ui.reset_screen();
+            self.recipe_ui.0.reset_screen();
             self.craft_size = 2;
             self.open_player_inventory();
         }

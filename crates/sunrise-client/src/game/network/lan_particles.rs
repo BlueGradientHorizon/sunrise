@@ -301,7 +301,7 @@ impl Game<'_> {
                 at[2].floor() as i32,
             ];
             if let Some((sprite, tint)) = self.particle_sprite(state, block) {
-                self.particles.send_particles(
+                self.particles.0.send_particles(
                     &ParticleOptions::block(ParticleType::Block, sprite, tint)
                         .with_source(&self.res.facts().get(state).name),
                     at,
@@ -382,7 +382,7 @@ impl Game<'_> {
     pub(in crate::game) fn snowflake_particle(&mut self, at: [f64; 3], velocity: [f64; 3]) {
         let options = ParticleOptions::simple(ParticleType::Snowflake);
         if self.options.execution_role.is_client() {
-            self.particles.add(&options, at, velocity);
+            self.particles.0.add(&options, at, velocity);
         }
         self.lan_send_particles(QueuedParticle {
             dimension: self.dim.id(),
@@ -518,7 +518,7 @@ impl Game<'_> {
         let Some(remote) = &mut self.remote else {
             return;
         };
-        self.particles.handle_level_particles(
+        self.particles.0.handle_level_particles(
             &mut remote.particle_packet_random,
             &self.world,
             p,
@@ -532,7 +532,8 @@ impl Game<'_> {
     pub(in crate::game) fn remote_explode(&mut self, p: &play::Explode) {
         if p.play_sound {
             let pitch = (1.0
-                + (self.particles.random().next_float() - self.particles.random().next_float())
+                + (self.particles.0.random().next_float()
+                    - self.particles.0.random().next_float())
                     * 0.2)
                 * 0.7;
             // The packet's explosionSound: a wind charge's burst, a bed's
@@ -540,10 +541,10 @@ impl Game<'_> {
             let sound = self
                 .remote_sound_name(&p.sound)
                 .unwrap_or_else(|| "minecraft:entity.generic.explode".to_owned());
-            self.audio.play(&sound, Some(p.center), 4.0, pitch);
+            self.audio.0.play(&sound, Some(p.center), 4.0, pitch);
         }
         if let Some(options) = self.received_particle(&p.particle, p.center) {
-            self.particles.add_with_world(
+            self.particles.0.add_with_world(
                 Some(&self.world),
                 &options,
                 p.center,
@@ -565,7 +566,7 @@ impl Game<'_> {
                 })
             })
             .collect();
-        self.particles.track_explosion(
+        self.particles.0.track_explosion(
             p.center,
             p.radius,
             p.block_count.max(0) as usize,
@@ -759,13 +760,13 @@ impl Game<'_> {
         let options = ParticleOptions::simple(ParticleType::LargeSmoke);
         let at = pos.map(f64::from);
         for _ in 0..8 {
-            let r = self.particles.random();
+            let r = self.particles.0.random();
             let p = [
                 at[0] + r.next_double(),
                 at[1] + r.next_double(),
                 at[2] + r.next_double(),
             ];
-            self.particles.add(&options, p, [0.0; 3]);
+            self.particles.0.add(&options, p, [0.0; 3]);
         }
         self.lan_send_particles(QueuedParticle {
             dimension: self.dim.id(),

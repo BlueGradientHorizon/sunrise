@@ -162,10 +162,11 @@ fn with_batch(remove: bool, test: impl FnOnce(&mut Game<'_>, [u32; 3], [JoinSeq;
             let before = index.lock().unwrap().snapshot(&key);
             assert_eq!(before.len(), 2);
             observed.lock().unwrap().remove = remove.then_some(ids[1]);
-            game.audio.capture = Some(Vec::new());
+            game.audio.0.capture = Some(Vec::new());
             game.tick_projectiles().unwrap();
             assert!(
                 game.audio
+                    .0
                     .capture
                     .as_ref()
                     .unwrap()
@@ -355,10 +356,10 @@ fn terminal_egg(action: Action, abort: bool) {
         let join = game.creatures.projectiles[0].join;
         let handle = game.entity(71).unwrap();
         game.native_joins_skip();
-        game.audio.capture = Some(Vec::new());
+        game.audio.0.capture = Some(Vec::new());
         *game.world.random = LegacyRandom::new(4135);
         let random = game.world.random.state();
-        let particles = game.particles.len();
+        let particles = game.particles.0.len();
         game.tick_projectiles().unwrap();
         game.native_leaves_flush();
         {
@@ -371,7 +372,7 @@ fn terminal_egg(action: Action, abort: bool) {
         assert_eq!(observed.lands.load(Ordering::Relaxed), 0);
         assert_eq!(observed.deaths.load(Ordering::Relaxed), 0);
         assert!(game.server.lan_entity_events.is_empty());
-        assert_eq!(game.particles.len(), particles);
+        assert_eq!(game.particles.0.len(), particles);
         assert_eq!(game.world.random.state(), random);
         assert!(game.mobs.is_empty());
         if abort {
@@ -475,7 +476,7 @@ fn an_arrow_does_not_stick_when_the_impact_listener_clears_its_block() {
         Action::Allow
     };
     with_probe(action, true, |game, observed| {
-        game.audio.capture = Some(Vec::new());
+        game.audio.0.capture = Some(Vec::new());
         shoot_arrow_at_wall(game, 2, 0.5);
         let hits = observed.hits.lock().unwrap();
         assert_eq!(hits.len(), 1);
@@ -500,6 +501,7 @@ fn an_arrow_does_not_stick_when_the_impact_listener_clears_its_block() {
         assert_eq!(observed.lands.load(Ordering::Relaxed), usize::from(!clear));
         assert_eq!(
             game.audio
+                .0
                 .capture
                 .as_ref()
                 .unwrap()

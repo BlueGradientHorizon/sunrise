@@ -58,7 +58,7 @@ impl Game<'_> {
             // the block's sprite it shows, never the level's random.
             let options = ParticleOptions::block(ParticleType::Block, sprite, tint);
             for _ in 0..amount {
-                self.particles.add(&options, at, [0.0; 3]);
+                self.particles.0.add(&options, at, [0.0; 3]);
             }
         }
     }
@@ -150,7 +150,7 @@ mod tests {
             sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 66.0, 16.5))
                 .unwrap(),
         );
-        game.particles.camera = [8.5, 66.0, 16.5];
+        game.particles.0.camera = [8.5, 66.0, 16.5];
         let kind = game.res.mob_types()["minecraft:breeze"].clone();
         game.mobs.push(Mob::new(13001, kind, feet, 0.0));
         game
@@ -189,7 +189,7 @@ mod tests {
         game.tick_breeze_effects();
 
         assert_eq!(
-            game.particles.made().get("block").copied().unwrap_or(0),
+            game.particles.0.made().get("block").copied().unwrap_or(0),
             1,
             "vanilla emits one crumb of the fence the breeze stands on"
         );
@@ -231,7 +231,10 @@ mod tests {
             level,
             "the crumb's constructor draws belong to the particle, not the level"
         );
-        assert_eq!(game.particles.made().get("block").copied().unwrap_or(0), 1);
+        assert_eq!(
+            game.particles.0.made().get("block").copied().unwrap_or(0),
+            1
+        );
     }
 
     /// `Entity.getOnPos(1.0E-5F)` keeps a fence's, a wall's or a fence gate's

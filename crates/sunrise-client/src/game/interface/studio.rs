@@ -539,7 +539,7 @@ impl Game<'_> {
         if (self.client.studio.freecam.active || self.replay.driver.is_some())
             && button == winit::event::MouseButton::Right
         {
-            if let Some(renderer) = &self.renderer {
+            if let Some(renderer) = &self.renderer.0 {
                 let batch = super::HudBatch::new(
                     [renderer.config.width, renderer.config.height],
                     self.settings.gui_scale_inputs(),
@@ -582,6 +582,7 @@ impl Game<'_> {
         {
             let size = self
                 .renderer
+                .0
                 .as_ref()
                 .map(|renderer| [renderer.config.width, renderer.config.height])
                 .unwrap_or([1, 1]);

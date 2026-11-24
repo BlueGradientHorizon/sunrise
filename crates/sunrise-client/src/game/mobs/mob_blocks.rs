@@ -81,7 +81,7 @@ impl Game<'_> {
     /// `ElderGuardianParticleGroup`: the ghostly elder guardian that swings
     /// up in front of the camera while the curse is laid, fading in and out.
     pub(in crate::game) fn elder_apparition_geometry(&self, alpha: f64, out: &mut Vec<Vertex>) {
-        for &left in self.particles.elder_guardians() {
+        for &left in self.particles.0.elder_guardians() {
             self.elder_guardian_geometry(left, alpha, out);
         }
     }

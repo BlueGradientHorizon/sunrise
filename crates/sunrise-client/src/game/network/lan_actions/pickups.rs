@@ -335,7 +335,7 @@ impl Game<'_> {
         let mut random = sunrise_client::random_source::create(); // the listener's own stream
         let pitch = (random.next_float() - random.next_float()) * 0.35 + 0.9;
         let p = orb.position;
-        self.audio.play(
+        self.audio.0.play(
             "minecraft:entity.experience_orb.pickup",
             Some([p.x, p.y, p.z]),
             0.1,

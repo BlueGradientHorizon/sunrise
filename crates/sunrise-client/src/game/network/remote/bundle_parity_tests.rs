@@ -409,7 +409,7 @@ fn entity_data_validation_inline_painting_and_pre_login_bundle_case(case_name: &
         "before_login_metadata" => {
             // 1. SetEntityData before Login disconnects with disconnect.packetError.
             with_client_game(|game| {
-                game.title = None;
+                game.title.0 = None;
                 let (client, _server) = Pipe::pair();
                 game.connect_local(client, "MetadataBeforeLogin").unwrap();
                 let (session, mut peer) = Session::play_loop_probe();
@@ -438,7 +438,7 @@ fn entity_data_validation_inline_painting_and_pre_login_bundle_case(case_name: &
                     "SetEntityData before Login must disconnect"
                 );
                 let Some(Mode::Multiplayer(multiplayer::Screen::Disconnected { reason, .. })) =
-                    game.title.as_ref().map(|t| &t.mode)
+                    game.title.0.as_ref().map(|t| &t.mode)
                 else {
                     panic!("missing Disconnected screen for SetEntityData before Login");
                 };
@@ -451,7 +451,7 @@ fn entity_data_validation_inline_painting_and_pre_login_bundle_case(case_name: &
         "metadata_validation_and_inline_painting" => {
             // 2. Absent entity, repeated valid flags, valid prefix before invalid entry, bundle failure, and inline painting.
             with_client_game(|game| {
-                game.title = None;
+                game.title.0 = None;
                 let (client, _server) = Pipe::pair();
                 game.connect_local(client, "MetadataValidation").unwrap();
                 let spawn = SpawnInfo {
@@ -644,7 +644,7 @@ fn entity_data_validation_inline_painting_and_pre_login_bundle_case(case_name: &
                 );
                 assert!(!saw_pong, "bundle must stop before trailing Ping(55)");
                 let Some(Mode::Multiplayer(multiplayer::Screen::Disconnected { reason, .. })) =
-                    game.title.as_ref().map(|t| &t.mode)
+                    game.title.0.as_ref().map(|t| &t.mode)
                 else {
                     panic!("missing Disconnected screen after bundle metadata error");
                 };
@@ -675,7 +675,7 @@ fn entity_data_validation_inline_painting_and_pre_login_bundle_case(case_name: &
             );
             let registries = std::sync::Arc::new(reg);
             with_client_game(|game| {
-                game.title = None;
+                game.title.0 = None;
                 let (client, _server) = Pipe::pair();
                 game.connect_local(client, "SyncedPaintingOverride")
                     .unwrap();
@@ -789,7 +789,7 @@ fn entity_data_validation_inline_painting_and_pre_login_bundle_case(case_name: &
         "pre_login_disconnect_bundle" => {
             // 4. Pre-Login bundle [Disconnect("server kick"), PostEffects, Ping(88)] preserves first reason and stops.
             with_client_game(|game| {
-                game.title = None;
+                game.title.0 = None;
                 game.client.post_effects.clear();
                 let (client, _server) = Pipe::pair();
                 game.connect_local(client, "PreLoginDisconnectBundle")
@@ -830,7 +830,7 @@ fn entity_data_validation_inline_painting_and_pre_login_bundle_case(case_name: &
                 assert!(!saw_pong, "bundle must stop before Ping(88)");
                 assert!(game.client.post_effects.is_empty());
                 let Some(Mode::Multiplayer(multiplayer::Screen::Disconnected { reason, .. })) =
-                    game.title.as_ref().map(|t| &t.mode)
+                    game.title.0.as_ref().map(|t| &t.mode)
                 else {
                     panic!("missing Disconnected screen");
                 };
@@ -844,7 +844,7 @@ fn entity_data_validation_inline_painting_and_pre_login_bundle_case(case_name: &
         "pre_login_post_effects_bundle" => {
             // 5. Pre-Login bundle [PostEffects, Ping(89)] stops before Ping(89) with disconnect.packetError.
             with_client_game(|game| {
-                game.title = None;
+                game.title.0 = None;
                 game.client.post_effects.clear();
                 let (client, _server) = Pipe::pair();
                 game.connect_local(client, "PreLoginPostEffectsBundle")
@@ -882,7 +882,7 @@ fn entity_data_validation_inline_painting_and_pre_login_bundle_case(case_name: &
                 assert!(!saw_pong, "bundle must stop before Ping(89)");
                 assert!(game.client.post_effects.is_empty());
                 let Some(Mode::Multiplayer(multiplayer::Screen::Disconnected { reason, .. })) =
-                    game.title.as_ref().map(|t| &t.mode)
+                    game.title.0.as_ref().map(|t| &t.mode)
                 else {
                     panic!("missing Disconnected screen");
                 };
@@ -933,7 +933,7 @@ fn entity_data_validation_inline_painting_and_pre_login_bundle_case(case_name: &
             let expected = &bundle["disconnect_notify_after_shutdown"];
             let expected_reason = expected["reason_text"].as_str().unwrap();
             with_client_game(|game| {
-                game.title = None;
+                game.title.0 = None;
                 let (client, _server) = Pipe::pair();
                 game.connect_local(client, "ShutdownOrder").unwrap();
                 game.connection_starts("play.example.test", "ShutdownOrder", false);

@@ -66,7 +66,7 @@ mod menu_extra_data_tests {
     #[ignore = "daily"]
     fn malformed_menu_extra_payload_disconnects_client() {
         crate::game::native_entity_refs::tests::with_client_game(|game| {
-            game.title = None;
+            game.title.0 = None;
             let (pipe, _server) = Pipe::pair();
             game.connect_local(pipe, "Malformed menu extra").unwrap();
             assert!(game.remote.is_some());
@@ -76,7 +76,7 @@ mod menu_extra_data_tests {
             }))
             .unwrap();
             assert!(game.remote.is_none());
-            let mode = &game.title.as_ref().expect("the disconnect screen").mode;
+            let mode = &game.title.0.as_ref().expect("the disconnect screen").mode;
             assert!(matches!(
                 mode,
                 Mode::Multiplayer(sunrise_client::multiplayer::Screen::Disconnected { reason, .. })

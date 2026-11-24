@@ -9,7 +9,7 @@ impl Game<'_> {
     pub(in crate::game) fn shows_panorama(&self) -> bool {
         // The two cases that always had one: the title screen and waiting on
         // a server. Left exactly as they were.
-        self.title.is_some() || self.remote_loading() || self.screen_wants_panorama()
+        self.title.0.is_some() || self.remote_loading() || self.screen_wants_panorama()
     }
     /// Whether the screen on top asked for the panorama through
     /// [`sunrise_client::screen_draw::Backdrop`].
@@ -104,7 +104,7 @@ impl Game<'_> {
             *len += 1;
         }
         let mut len = 0;
-        if self.title.is_none() && self.player.is_some() {
+        if self.title.0.is_none() && self.player.is_some() {
             set_slot(out, &mut len, "minecraft:end_of_frame");
             for effect in &self.client.post_effects {
                 set_slot(out, &mut len, effect);
@@ -129,11 +129,11 @@ impl Game<'_> {
     /// HUD, when `menuBackgroundBlurriness` is at least 1.
     pub(in crate::game) fn menu_blur(&self) -> Option<f32> {
         let blurred = self.remote_loading()
-            || self.title.as_ref().is_some_and(|t| {
+            || self.title.0.as_ref().is_some_and(|t| {
                 matches!(self.client.screen, Screen::Options | Screen::Win)
                     || !matches!(t.mode, sunrise_client::title::Mode::Main)
             })
-            || (self.title.is_none()
+            || (self.title.0.is_none()
                 && self.player.is_some()
                 && (self.client.screen.blurs_background(self.client.pause_menu)
                     || self.dialog_open()
@@ -270,7 +270,7 @@ impl Game<'_> {
     ) -> Option<mod_api::ScreenView<'_>> {
         let screen = self.client.screen;
         if screen == Screen::Playing
-            || self.server_packs.prompt.is_some()
+            || self.server_packs.0.prompt.is_some()
             || self.client.book.is_some()
             || !self.screen_render_listened()
         {

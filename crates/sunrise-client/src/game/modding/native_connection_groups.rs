@@ -420,8 +420,8 @@ mod tests {
                 }],
                 ..Sources::default()
             };
-            game.tickets.update(Some(non_ticking.clone()));
-            assert!(!game.tickets.levels().block_ticking(0, 0));
+            game.tickets.0.update(Some(non_ticking.clone()));
+            assert!(!game.tickets.0.levels().block_ticking(0, 0));
 
             let level = game.level("minecraft:overworld").unwrap();
             let stone = state(game, "minecraft:stone");
@@ -611,11 +611,11 @@ mod tests {
             );
 
             // A same-state transaction can also publish a new group without adding vanilla traffic.
-            game.tickets.update(Some(Sources {
+            game.tickets.0.update(Some(Sources {
                 forced: vec![(0, 0)],
                 ..Sources::default()
             }));
-            assert!(game.tickets.levels().block_ticking(0, 0));
+            assert!(game.tickets.0.levels().block_ticking(0, 0));
             assert_eq!(level.connection_group(game, [7, 65, 7]), Ok(None));
             game.world.connection_group_log.as_mut().unwrap().clear();
             game.storage_scope(|game, _| {
@@ -639,7 +639,7 @@ mod tests {
                 game.world.connection_group_log.as_ref().unwrap(),
                 &[(7, 65, 7)].into_iter().collect()
             );
-            game.tickets.update(Some(non_ticking));
+            game.tickets.0.update(Some(non_ticking));
 
             // Cross-position cascade on held non-ticking column: `set_connection_group(torch)`
             // followed by breaking its support pops the torch, clears its group, and drops the

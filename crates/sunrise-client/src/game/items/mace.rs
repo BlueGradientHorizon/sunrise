@@ -501,7 +501,7 @@ impl Game<'_> {
         } else {
             "minecraft:item.mace.smash_air"
         };
-        self.audio.play(sound, Some(feet), 1.0, 1.0);
+        self.audio.0.play(sound, Some(feet), 1.0, 1.0);
         Some(fall)
     }
     /// What a server's guest does after their hit landed on another player:
@@ -814,7 +814,7 @@ impl Game<'_> {
         let near = f64::from(0.2f32);
         let mut i = 0;
         while (i as f32) < count as f32 / 3.0 {
-            let r = self.particles.random();
+            let r = self.particles.0.random();
             let x = center[0] + r.next_gaussian() / 2.0;
             let z = center[2] + r.next_gaussian() / 2.0;
             let v = [
@@ -822,13 +822,13 @@ impl Game<'_> {
                 r.next_gaussian() * near,
                 r.next_gaussian() * near,
             ];
-            self.particles.add(&options, [x, center[1], z], v);
+            self.particles.0.add(&options, [x, center[1], z], v);
             i += 1;
         }
         let far = f64::from(0.05f32);
         let mut i = 0;
         while (i as f32) < count as f32 / 1.5 {
-            let r = self.particles.random();
+            let r = self.particles.0.random();
             let angle = f64::from(i);
             let x = center[0] + KNOCKBACK_RADIUS * angle.cos() + r.next_gaussian() / 2.0;
             let z = center[2] + KNOCKBACK_RADIUS * angle.sin() + r.next_gaussian() / 2.0;
@@ -837,7 +837,7 @@ impl Game<'_> {
                 r.next_gaussian() * far,
                 r.next_gaussian() * far,
             ];
-            self.particles.add(&options, [x, center[1], z], v);
+            self.particles.0.add(&options, [x, center[1], z], v);
             i += 1;
         }
     }
