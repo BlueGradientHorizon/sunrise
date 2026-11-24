@@ -38,9 +38,3 @@ pub trait Hooks {
         cancel: &mut bool,
     );
 }
-
-/// Original upstream notes; the existing fork event above owns this moment.
-pub trait UpstreamNotes {
-    #[notes = r###"farmland trampling: `farmland_trample(host, event)` is heard when a player or mob that fell onto farmland is about to turn it to dirt, after vanilla's chance and checks (NeoForge's `FarmlandTrampleEvent`, Bukkit's physical `PlayerInteractEvent` and `EntityInteractEvent`). Cancel and the farmland stays. Version 5 keeps a completed listener's writes on cancellation or stale state, skipping only the trample apply (matching NeoForge's `CommonHooks.onFarmlandTrample`). A failed callback rolls back only its own writes and does not cancel; later eligible listeners still run. Otherwise bodies are lifted before the base block is written and `BLOCK_CHANGE` is posted. Fall damage follows either way."###]
-    fn trample();
-}

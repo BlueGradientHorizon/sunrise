@@ -58,10 +58,10 @@ notices. Mod-owned memory, live level random draws, and direct operations such a
 `LivingRef::set_equipment` are not made reversible by a transaction. Use journaled
 [capabilities](capabilities.md) instead when an operation must be reversible.
 
-Ordinary block, `destroy_block` and fluid writes expose tentative states before publishing
-replacement effects; `destroy_block` runs its particles, drops, experience and `block_destroy`
-game event at root commit in vanilla's order (and returns `Ok(None)` with `collect` inside a
-transaction). Bulk block edits have their own publication rules. See [Block Parts](parts/block-parts.md)
+Ordinary block and fluid writes expose tentative states before publishing replacement effects.
+Bulk block edits have their own publication rules; `destroy_block` prepares loot and experience
+against the still-standing block, and its item entities, experience, break effects and game event
+publish only on commit. See [Block Parts](parts/block-parts.md)
 and [World fluid](capabilities/block-fluids.md#world-fluid) for examples.
 
 ## Deferred level, entity, and player effects
