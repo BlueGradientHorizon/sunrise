@@ -29,6 +29,9 @@ const PLAYERS: [(u32, &str); 4] = [
 
 struct Announce;
 
+/// A key in the dedicated console's `BROADCAST` list.
+const RELOADED: &str = "commands.whitelist.reloaded";
+
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for Announce {
     fn register_commands(&self, _: &mut dyn ServerHost, event: &mut RegisterCommandsEvent<'_>) {
@@ -44,6 +47,20 @@ impl mod_api::Hooks for Announce {
             Command::new("announce_quietly").executes(|host, _, _| {
                 host.commands()
                     .feedback(Text::literal("Disbanded team"), false)
+                    .unwrap();
+                Ok(1)
+            }),
+            // Translated replies whose key the dedicated console's own commands broadcast
+            // (`BROADCAST`): the flag alone decides.
+            Command::new("reload_lists").executes(|host, _, _| {
+                host.commands()
+                    .feedback(Text::translate(RELOADED, vec![]), true)
+                    .unwrap();
+                Ok(1)
+            }),
+            Command::new("reload_lists_quietly").executes(|host, _, _| {
+                host.commands()
+                    .feedback(Text::translate(RELOADED, vec![]), false)
                     .unwrap();
                 Ok(1)
             }),
@@ -101,10 +118,21 @@ fn with_operators(test: impl FnOnce(&mut Game<'_>, &[(u32, mpsc::Receiver<Out>)]
                 game.next_entity = game.next_entity.max(NON_OP);
                 game.ensure_datapacks();
                 game.build_registries();
+                // A dedicated server's command tree (`save-off`), as `run_dedicated` selects it
+                // (process-wide: each test runs in its own process).
+                sunrise_client::command::vanilla::set_dedicated_commands(true);
                 game.register_native_commands();
                 game.world
                     .chunks
                     .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                let back = game.enter_command_level(super::Dim::Nether);
+                assert_eq!(game.dim, super::Dim::Nether, "the fixture has a Nether");
+                game.world
+                    .chunks
+                    .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                if let Some(back) = back {
+                    game.enter_command_level(back);
+                }
                 // A dedicated server's log (`dedicated::log`), which the tests read.
                 game.options.execution_role =
                     crate::game::execution_role::ExecutionRole::DedicatedServer;
@@ -172,7 +200,7 @@ fn shape(line: &Value) -> Value {
     assert_eq!(with.len(), 2, "{line}");
     json!({
         "translate": line["translate"],
-        "name": with[0]["text"],
+        "name": with[0].as_str().map_or_else(|| with[0]["text"].clone(), Value::from),
         "message": with[1],
         "color": line["color"],
         "italic": line["italic"],
@@ -340,11 +368,11 @@ fn a_tracking_command_block_is_logged_while_feedback_is_off() {
                     }
                     _ => panic!("the command block is gone"),
                 };
-                let run = |game: &mut Game<'_>| {
+                let run = |game: &mut Game<'_>, command: &str| {
                     game.world.block_entities.insert(
                         (1, 64, 1),
                         BlockEntity::CommandBlock(Box::new(CommandBlock {
-                            command: "announce".into(),
+                            command: command.into(),
                             condition_met: true,
                             track_output: true,
                             ..Default::default()
@@ -357,11 +385,17 @@ fn a_tracking_command_block_is_logged_while_feedback_is_off() {
                 set_rules(game, false, true);
                 assert!(game.ui.rules.set("command_block_output", Rule::Bool(true)));
                 assert_eq!(
-                    run(game),
+                    run(game, "announce"),
+                    vec!["System chat: [@: Disbanded team]".to_owned()]
+                );
+                // `execute in` another level: the block, read in its own level, still informs
+                // the operators (`BaseCommandBlock.shouldInformAdmins`).
+                assert_eq!(
+                    run(game, "execute in minecraft:the_nether run announce"),
                     vec!["System chat: [@: Disbanded team]".to_owned()]
                 );
                 assert_eq!(last_output(game), None);
-                game.send_admin_feedback(None);
+                game.send_admin_feedback();
                 assert!(
                     chats(game, receivers)
                         .iter()
@@ -369,21 +403,220 @@ fn a_tracking_command_block_is_logged_while_feedback_is_off() {
                     "an operator heard the block with sendCommandFeedback off"
                 );
 
+                // A block's line still queued when an operator's command drains the queue:
+                // it keeps the block as its source, so that operator hears it too.
+                set_rules(game, true, true);
+                assert!(game.ui.rules.set("command_block_output", Rule::Bool(true)));
+                chats(game, receivers);
+                run(game, "announce");
+                game.guest_command(SOURCE, "announce_quietly", None);
+                game.run_guest_commands();
+                let sent: Vec<(u32, Vec<Value>)> = chats(game, receivers)
+                    .into_iter()
+                    .map(|(conn, lines)| (conn, lines.iter().map(shape).collect()))
+                    .collect();
+                assert_eq!(
+                    sent,
+                    vec![
+                        (SOURCE, vec![json!({"text": "Disbanded team"}), admin("@")]),
+                        (TARGET, vec![admin("@")]),
+                        (LEVEL_0_OP, vec![admin("@")]),
+                        (NON_OP, Vec::new()),
+                    ]
+                );
+
                 // The block does not inform the operators: its own output only.
                 set_rules(game, true, true);
                 assert!(game.ui.rules.set("command_block_output", Rule::Bool(false)));
-                assert_eq!(run(game), Vec::<String>::new());
+                assert_eq!(run(game, "announce"), Vec::<String>::new());
                 assert!(
                     last_output(game).is_some_and(|line| line.ends_with("Disbanded team")),
                     "{:?}",
                     last_output(game)
                 );
-                game.send_admin_feedback(None);
+                game.send_admin_feedback();
                 assert!(
                     chats(game, receivers)
                         .iter()
                         .all(|(_, lines)| lines.is_empty())
                 );
+            });
+        },
+    );
+}
+
+/// The queued ops lines, sent (`send_admin_feedback`) and shaped, by conn.
+fn admin_lines(
+    game: &mut Game<'_>,
+    receivers: &[(u32, mpsc::Receiver<Out>)],
+) -> Vec<(u32, Vec<Value>)> {
+    game.send_admin_feedback();
+    chats(game, receivers)
+        .into_iter()
+        .map(|(conn, lines)| (conn, lines.iter().map(shape).collect()))
+        .collect()
+}
+
+/// `execute in` another level `as` a mob there: the operators' line carries that mob's name
+/// (`getDisplayName` is the entity's, wherever it is), read in the level the command executes
+/// in, not the source's own.
+#[test]
+#[ignore = "daily"]
+fn an_entity_in_another_level_names_the_admin_line() {
+    crate::game::in_own_process(
+        "game::native_success_broadcast_tests::an_entity_in_another_level_names_the_admin_line",
+        || {
+            with_operators(|game, receivers| {
+                assert!(game.native_run_command(
+                    "execute in minecraft:the_nether run summon minecraft:pig 0.5 64 0.5 {CustomName:\"Porky\",NoAI:1b,NoGravity:1b}"
+                ));
+                chats(game, receivers);
+                set_rules(game, true, true);
+                let logged = admin_log(|| {
+                    game.guest_command(
+                        SOURCE,
+                        "execute in minecraft:the_nether as @e[type=minecraft:pig,limit=1] run announce",
+                        None,
+                    );
+                    game.run_guest_commands();
+                });
+                assert_eq!(
+                    logged,
+                    vec!["System chat: [Porky: Disbanded team]".to_owned()]
+                );
+                assert_eq!(
+                    admin_lines(game, receivers),
+                    vec![
+                        (SOURCE, vec![json!({"text": "Disbanded team"})]),
+                        (TARGET, vec![admin("Porky")]),
+                        (LEVEL_0_OP, vec![admin("Porky")]),
+                        (NON_OP, Vec::new()),
+                    ]
+                );
+            });
+        },
+    );
+}
+
+/// A console or RCON command's output is logged once and broadcast once: a mod line with
+/// `broadcast_to_admins` false tells no operator, a broadcast one tells each operator once
+/// (`[Server: ...]`, never logged as the console's own admin line), and a vanilla command whose
+/// reply the console broadcasts (`save-off` through `execute`) is not broadcast a second time.
+#[test]
+#[ignore = "daily"]
+fn console_output_is_logged_and_broadcast_once() {
+    crate::game::in_own_process(
+        "game::native_success_broadcast_tests::console_output_is_logged_and_broadcast_once",
+        || {
+            use sunrise_client::server::user_lists::{BanList, IpBanList, OpList, WhiteList};
+            with_operators(|game, receivers| {
+                chats(game, receivers);
+                set_rules(game, true, true);
+                let console = |game: &mut Game<'_>, rcon: bool, line: &str| {
+                    game.console_broadcast = Some(true);
+                    game.rcon_source = rcon;
+                    let logged =
+                        crate::game::dedicated::capture_log(|| game.console_dispatch(line));
+                    game.console_broadcast = None;
+                    game.rcon_source = false;
+                    logged
+                };
+                let nobody = vec![
+                    (SOURCE, Vec::new()),
+                    (TARGET, Vec::new()),
+                    (LEVEL_0_OP, Vec::new()),
+                    (NON_OP, Vec::new()),
+                ];
+                let every_op = |line: Value| {
+                    vec![
+                        (SOURCE, vec![line.clone()]),
+                        (TARGET, vec![line.clone()]),
+                        (LEVEL_0_OP, vec![line]),
+                        (NON_OP, Vec::new()),
+                    ]
+                };
+
+                // `broadcast_to_admins` false: the console's own line, no operator, from the
+                // console and from RCON (whose reply is that one line).
+                for rcon in [false, true] {
+                    assert_eq!(
+                        console(game, rcon, "announce_quietly"),
+                        vec!["System chat: Disbanded team".to_owned()],
+                        "rcon {rcon}"
+                    );
+                    assert_eq!(admin_lines(game, receivers), nobody, "rcon {rcon}");
+                }
+
+                // Broadcast: each operator once.
+                assert_eq!(
+                    console(game, false, "announce"),
+                    vec!["System chat: Disbanded team".to_owned()]
+                );
+                assert_eq!(admin_lines(game, receivers), every_op(admin("Server")));
+
+                // A vanilla reply the console broadcasts, through the dispatcher: once. `save-off`
+                // reads the dedicated server's lists.
+                let home = tempfile::tempdir().unwrap();
+                game.server_lists = Some(Arc::new(std::sync::Mutex::new(
+                    crate::game::dedicated::Lists {
+                        ops: OpList::new(home.path().join("ops.json")),
+                        white: WhiteList::new(home.path().join("whitelist.json")),
+                        bans: BanList::new(home.path().join("banned-players.json")),
+                        ip_bans: IpBanList::new(home.path().join("banned-ips.json")),
+                        use_whitelist: false,
+                        enforce_whitelist: false,
+                        op_level: 4,
+                        player_idle_timeout: 0,
+                        stop: false,
+                        autosave: true,
+                    },
+                )));
+                let logged = console(game, false, "execute run save-off");
+                assert_eq!(logged.len(), 1, "{logged:?}");
+                let sent = admin_lines(game, receivers);
+                for (conn, lines) in &sent {
+                    let expected = usize::from(*conn != NON_OP);
+                    assert_eq!(lines.len(), expected, "{conn}: {sent:?}");
+                    if let Some(line) = lines.first() {
+                        assert_eq!(
+                            line["message"]["translate"], "commands.save.disabled",
+                            "{line}"
+                        );
+                        assert_eq!(line["name"], "Server", "{line}");
+                    }
+                }
+                assert_eq!(console(game, false, "execute run save-on").len(), 1);
+                let sent = admin_lines(game, receivers);
+                let told: usize = sent.iter().map(|(_, lines)| lines.len()).sum();
+                assert_eq!(
+                    told, 3,
+                    "one line for each of the three operators: {sent:?}"
+                );
+
+                // A mod's translated line with a key the console's own commands broadcast:
+                // false tells no operator, true tells each once, from the console and RCON.
+                for rcon in [false, true] {
+                    assert_eq!(
+                        console(game, rcon, "reload_lists_quietly").len(),
+                        1,
+                        "rcon {rcon}"
+                    );
+                    assert_eq!(admin_lines(game, receivers), nobody, "rcon {rcon}");
+                    assert_eq!(console(game, rcon, "reload_lists").len(), 1, "rcon {rcon}");
+                    let sent = admin_lines(game, receivers);
+                    let name = if rcon { "Rcon" } else { "Server" };
+                    for (conn, lines) in &sent {
+                        assert_eq!(
+                            lines.len(),
+                            usize::from(*conn != NON_OP),
+                            "{conn}: {sent:?}"
+                        );
+                        if let Some(line) = lines.first() {
+                            assert_eq!(line["message"]["translate"], RELOADED, "{line}");
+                            assert_eq!(line["name"], name, "{line}");
+                        }
+                    }
+                }
             });
         },
     );

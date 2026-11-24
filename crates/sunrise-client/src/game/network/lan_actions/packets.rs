@@ -1046,7 +1046,7 @@ impl Game<'_> {
                             }),
                         );
                     }
-                    self.send_admin_feedback(Some(conn));
+                    self.send_admin_feedback();
                 }
             }
             S::ChangeGameMode(p) => {

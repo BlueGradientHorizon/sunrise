@@ -2850,7 +2850,7 @@ impl Game<'_> {
             self.run_level_teleports();
         }
         if !self.admin_feedback.is_empty() {
-            self.send_admin_feedback(None);
+            self.send_admin_feedback();
         }
         // An animal whose rider left the game (or the level) stops taking
         // its input.

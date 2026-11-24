@@ -38,7 +38,7 @@ fn flush_to_operator(
     game: &mut Game<'_>,
     receiver: &mpsc::Receiver<sunrise_client::lan::Out>,
 ) -> Vec<serde_json::Value> {
-    game.send_admin_feedback(None);
+    game.send_admin_feedback();
     for g in &game.lan.as_ref().unwrap().hub.guests {
         g.sender.flush();
     }

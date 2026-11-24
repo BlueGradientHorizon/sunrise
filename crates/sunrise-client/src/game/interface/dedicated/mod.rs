@@ -1736,7 +1736,7 @@ impl Game<'_> {
         });
         if self.lan.is_some() {
             self.run_level_teleports();
-            self.send_admin_feedback(None);
+            self.send_admin_feedback();
         }
         self.admin_feedback.clear();
     }

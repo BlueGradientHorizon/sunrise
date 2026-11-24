@@ -4417,8 +4417,10 @@ struct Game<'a> {
     /// Sounds bound to an entity this tick, for the players (`game/interface/level_sounds.rs`).
     bound_sounds: Vec<level_sounds::BoundSound>,
     /// `broadcastToAdmins` lines for the other operators that a command queued,
-    /// sent once it returns (`send_admin_feedback`).
-    admin_feedback: Vec<sunrise_client::text::Text>,
+    /// sent once it returns (`send_admin_feedback`), each with the guest whose
+    /// command it was (`commandSource() != source`): None for a block, a
+    /// minecart, the console or the host.
+    admin_feedback: Vec<(sunrise_client::text::Text, Option<u32>)>,
     /// The server console is running a command: whether its feedback goes to
     /// the operators (`DedicatedServer.shouldInformAdmins`,
     /// `broadcast-console-to-ops`).
