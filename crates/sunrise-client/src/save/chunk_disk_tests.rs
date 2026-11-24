@@ -126,8 +126,9 @@ fn a_disk_encoder_panic_leaves_the_original_readable_and_siblings_durable() {
         let save = open();
         context(&save);
         let key = (2, -3);
-        let mut wrapped =
-            save.capture_disk_record(Record::Chunk(Arc::new(chunk(0)), encoding, None));
+        let mut wrapped = save
+            .capture_disk_record(Record::Chunk(Arc::new(chunk(0)), encoding, None))
+            .expect("disk capture must succeed");
         let Record::Disk(disk) = &mut wrapped else {
             panic!("save callback must be captured")
         };

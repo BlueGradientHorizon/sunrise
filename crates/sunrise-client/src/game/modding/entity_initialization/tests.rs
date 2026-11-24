@@ -596,7 +596,7 @@ fn a_loaded_entity_reads_its_saved_attachments_over_the_listeners_and_is_named_b
             if let Tag::Compound(c) = &mut pig {
                 c.insert(
                     sunrise_mod_runtime::attachments::ATTACHMENTS_KEY.into(),
-                    Tag::Compound(saved.to_nbt()),
+                    Tag::Compound(saved.try_to_nbt().unwrap()),
                 );
             }
             game.world.loaded_entities.push(((0, 0), vec![pig.into()]));
@@ -625,7 +625,7 @@ fn a_loaded_entity_reads_its_saved_attachments_over_the_listeners_and_is_named_b
             if let Tag::Compound(c) = &mut child {
                 c.insert(
                     sunrise_mod_runtime::attachments::ATTACHMENTS_KEY.into(),
-                    Tag::Compound(saved.to_nbt()),
+                    Tag::Compound(saved.try_to_nbt().unwrap()),
                 );
             }
             let ghost = game.load_mob(child.clone(), Some(id)).unwrap();
@@ -654,7 +654,8 @@ fn a_loaded_entity_reads_its_saved_attachments_over_the_listeners_and_is_named_b
                 7
             );
             // Serialize by object ID: the child's equal UUID cannot select the root's map.
-            crate::game::persist::write_attachments(&mut child, ghost, &game.entity_attachments);
+            crate::game::persist::write_attachments(&mut child, ghost, &game.entity_attachments)
+                .unwrap();
             let child_state = game.take_transferred_entity_state(ghost);
             let parent_state = game.take_transferred_entity_state(id);
             game.persist.off_level.remove(&ghost);

@@ -2612,17 +2612,24 @@ macro_rules! with_entity_mut {
 pub(super) use with_entity_mut;
 
 macro_rules! save_lists {
-    (($game:expr, $keys:expr, $out:expr, $include_transient:expr)
+    (($game:expr, $keys:expr, $out:expr, $failed:expr, $include_transient:expr)
      $($kind:ident($ty:ty) $field:ident: $($list:ident).+,)*) => {
         $(for i in 0..$game$(.$list)+.len() {
             let id = $game$(.$list)+[i].id();
-            if ($include_transient || !$game.persist.transient.contains(&id))
-                && let Some((key, mut tag)) = <$ty as $crate::game::entity::Entity>::save_nbt($game, i, $keys)
-            {
-                if !<$ty as $crate::game::entity::Entity>::SERIALIZES_ATTACHMENTS {
-                    $crate::game::persist::write_attachments(&mut tag, id, &$game.entity_attachments);
+            if ($include_transient || !$game.persist.transient.contains(&id)) {
+                $game.persist.attachment_encode_error = None;
+                if let Some((key, mut tag)) = <$ty as $crate::game::entity::Entity>::save_nbt($game, i, $keys) {
+                    if !<$ty as $crate::game::entity::Entity>::SERIALIZES_ATTACHMENTS {
+                        $game.write_entity_attachments(&mut tag, id);
+                    }
+                    if let Some(error) = $game.persist.attachment_encode_error.take() {
+                        $failed.entry(key).or_insert(error);
+                    } else {
+                        $out.entry(key).or_default().push((id, $game$(.$list)+[i].join_seq(), tag));
+                    }
+                } else {
+                    $game.persist.attachment_encode_error = None;
                 }
-                $out.entry(key).or_default().push((id, $game$(.$list)+[i].join_seq(), tag));
             }
         })*
     };
@@ -2635,8 +2642,15 @@ pub(crate) use save_lists;
 /// nothing allocated beyond the tags. A kind added to the lists cannot be left
 /// out, since `save_nbt` has no default.
 macro_rules! save_entities_of_every_kind {
-    ($game:expr, $keys:expr, $out:expr, $include_transient:expr) => {
-        $crate::game::entity::entity_lists!(save_lists, $game, $keys, $out, $include_transient)
+    ($game:expr, $keys:expr, $out:expr, $failed:expr, $include_transient:expr) => {
+        $crate::game::entity::entity_lists!(
+            save_lists,
+            $game,
+            $keys,
+            $out,
+            $failed,
+            $include_transient
+        )
     };
 }
 
@@ -2794,9 +2808,10 @@ impl Game<'_> {
         &mut self,
         keys: &HashSet<ChunkKey>,
         out: &mut HashMap<ChunkKey, Vec<(u32, JoinSeq, Tag)>>,
+        failed: &mut HashMap<ChunkKey, sunrise_mod_runtime::attachments::AttachmentEncodeError>,
         include_transient: bool,
     ) {
-        save_entities_of_every_kind!(self, keys, out, include_transient);
+        save_entities_of_every_kind!(self, keys, out, failed, include_transient);
     }
 }
 

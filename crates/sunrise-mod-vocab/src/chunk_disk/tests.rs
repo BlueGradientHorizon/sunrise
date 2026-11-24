@@ -124,7 +124,9 @@ fn host_borrows_the_captured_context() {
 fn capture_7_callback_8_live_9() {
     with_listener(|calls, value| {
         let mut live = store(&value, 7);
-        let job = ChunkDiskJob::capture(&context(ChunkDiskPhase::Save), &live).unwrap();
+        let job = ChunkDiskJob::capture(&context(ChunkDiskPhase::Save), &live)
+            .unwrap()
+            .unwrap();
         value
             .live()
             .unwrap()
@@ -148,7 +150,9 @@ fn capture_7_callback_8_live_9() {
 #[test]
 fn load_disk_8_callback_increment_publishes_9_once() {
     with_listener(|calls, value| {
-        let job = ChunkDiskJob::capture(&context(ChunkDiskPhase::Load), &store(&value, 8)).unwrap();
+        let job = ChunkDiskJob::capture(&context(ChunkDiskPhase::Load), &store(&value, 8))
+            .unwrap()
+            .unwrap();
         assert_eq!(read(&value, &run(&job)), 9);
         assert_eq!(read(&value, &run(&job)), 9);
         assert_eq!(calls.load(Ordering::Relaxed), 1);
@@ -195,12 +199,16 @@ fn panicking_chunk_listener_restores_only_its_edits_and_poison_does_not_stop_oth
     .collect::<Vec<_>>();
     testing::with_dispatch(mods.into(), || {
         let original = store(&value, 7);
-        let first = ChunkDiskJob::capture(&context(ChunkDiskPhase::Save), &original).unwrap();
+        let first = ChunkDiskJob::capture(&context(ChunkDiskPhase::Save), &original)
+            .unwrap()
+            .unwrap();
         let entries = run(&first);
         assert_eq!(read(&value, &entries), 8);
         assert_eq!(read(&other, &entries), 18);
         assert_eq!(calls.load(Ordering::Relaxed), 3);
-        let second = ChunkDiskJob::capture(&context(ChunkDiskPhase::Save), &original).unwrap();
+        let second = ChunkDiskJob::capture(&context(ChunkDiskPhase::Save), &original)
+            .unwrap()
+            .unwrap();
         assert_eq!(run(&second), entries);
         assert_eq!(calls.load(Ordering::Relaxed), 5);
     });
@@ -226,7 +234,7 @@ fn codec_failure_is_local_to_its_typed_operation() {
         )]),
         ..Default::default()
     });
-    let saved = store(&good, 7).to_nbt();
+    let saved = store(&good, 7).try_to_nbt().unwrap();
     let mut data = ChunkDiskData::from_nbt(saved);
     // Propagating one refusal aborts the savepoint, including an earlier edit.
     assert!(
@@ -323,7 +331,11 @@ fn zero_subscribers_over_100_saves_creates_no_jobs_or_callbacks() {
         let snapshot = store(&value, 7);
         let context = context(ChunkDiskPhase::Save);
         for _ in 0..100 {
-            assert!(ChunkDiskJob::capture(&context, &snapshot).is_none());
+            assert!(
+                ChunkDiskJob::capture(&context, &snapshot)
+                    .unwrap()
+                    .is_none()
+            );
         }
     });
 }
@@ -345,7 +357,7 @@ fn type_without_persistence_codec_refuses_locally_naming_type_and_capability() {
         )]),
         ..Default::default()
     });
-    let saved = store(&value, 7).to_nbt();
+    let saved = store(&value, 7).try_to_nbt().unwrap();
     let mut data = ChunkDiskData::from_nbt(saved);
     let refusal = data.get(&unsaved).unwrap_err();
     assert_eq!(refusal.key, "disk_fixture:unsaved");
@@ -361,7 +373,7 @@ fn type_without_persistence_codec_refuses_locally_naming_type_and_capability() {
 #[test]
 fn stale_key_refuses_locally_without_poisoning_unrelated_edits() {
     let stale = install_value();
-    let saved = store(&stale, 7).to_nbt();
+    let saved = store(&stale, 7).try_to_nbt().unwrap();
     let (fresh_record, fresh) = crate::parts::registered_attachment_fixture(
         "disk_fixture",
         AttachmentDescriptor::new("disk_fixture:value", || 0i32).serialize(value_codec()),

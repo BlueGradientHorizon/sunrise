@@ -1115,7 +1115,7 @@ mod tests {
         let mut level = FakeLevel(Attachments::default());
         key_v1.set_in(&mut level, Holder::Level, 7).unwrap();
 
-        let mut saved = level.0.to_nbt();
+        let mut saved = level.0.try_to_nbt().unwrap();
         let Some(Tag::Compound(names)) = saved.get(&"mod_a".into()) else {
             panic!("saved namespace missing");
         };
@@ -1173,7 +1173,7 @@ mod tests {
             AttachmentDescriptor::new("mod_a:dual", || 0i32).serialize(disk_codec),
         );
         assert!(reloaded.0.synced(project).is_empty());
-        assert_eq!(reloaded.0.to_nbt(), saved);
+        assert_eq!(reloaded.0.try_to_nbt().unwrap(), saved);
     }
 
     #[test]
@@ -1205,7 +1205,7 @@ mod tests {
         let mut level = FakeLevel(Attachments::default());
         bad_key.set_in(&mut level, Holder::Level, 19).unwrap();
         good_key.set_in(&mut level, Holder::Level, 42).unwrap();
-        level.0 = Attachments::from_nbt(level.0.to_nbt());
+        level.0 = Attachments::from_nbt(level.0.try_to_nbt().unwrap());
         let mut failures = Vec::new();
         let mut project = |ns: &JavaString, name: &JavaString, input: AttachmentSyncInput<'_>| {
             match attachment_sync_projection()(ns, name, input) {
@@ -1340,7 +1340,7 @@ mod tests {
             let old = install_attachment_fixture("owner", saved);
             let mut level = FakeLevel(Attachments::default());
             old.set_in(&mut level, Holder::Level, 17).unwrap();
-            let mut level = FakeLevel(Attachments::from_nbt(level.0.to_nbt()));
+            let mut level = FakeLevel(Attachments::from_nbt(level.0.try_to_nbt().unwrap()));
 
             let current = if saved_copy {
                 descriptor()

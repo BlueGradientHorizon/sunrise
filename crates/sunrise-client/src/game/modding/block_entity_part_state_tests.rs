@@ -337,7 +337,8 @@ fn part_state_is_per_block_entity_through_ticks_transactions_and_replacement() {
             .block_entities
             .attachments((1, 64, 1))
             .unwrap()
-            .to_nbt();
+            .try_to_nbt()
+            .unwrap();
         let refused = press_part.edit_state(game, a, |host, _tx, n| {
             keys.scratch
                 .set(host, Holder::BlockEntity([1, 64, 1]), 8)
@@ -361,7 +362,8 @@ fn part_state_is_per_block_entity_through_ticks_transactions_and_replacement() {
                 .block_entities
                 .attachments((1, 64, 1))
                 .unwrap()
-                .to_nbt(),
+                .try_to_nbt()
+                .unwrap(),
             saved
         );
 
@@ -370,7 +372,7 @@ fn part_state_is_per_block_entity_through_ticks_transactions_and_replacement() {
         bad.insert("n".into(), Tag::String("ten".into()));
         let mut saved = Attachments::default();
         PROGRESS.set(&mut saved, Holder::Level, 0).unwrap();
-        let mut raw = saved.to_nbt();
+        let mut raw = saved.try_to_nbt().unwrap();
         let Some(Tag::Compound(names)) = raw.get_mut(&"part_state".into()) else {
             unreachable!()
         };
@@ -403,7 +405,8 @@ fn part_state_is_per_block_entity_through_ticks_transactions_and_replacement() {
                 .block_entities
                 .attachments((2, 64, 1))
                 .unwrap()
-                .to_nbt(),
+                .try_to_nbt()
+                .unwrap(),
             raw
         );
 
@@ -836,7 +839,12 @@ impl Hooks for NativeFixture {
 
 /// The fixture's value at `pos`, read from its saved form.
 fn saved_value(game: &Game<'_>, pos: (i32, i32, i32), name: &str) -> Option<i32> {
-    let saved = game.world.block_entities.attachments(pos)?.to_nbt();
+    let saved = game
+        .world
+        .block_entities
+        .attachments(pos)?
+        .try_to_nbt()
+        .unwrap();
     let Some(Tag::Compound(names)) = saved.get(&"part_state_fixture".into()) else {
         return None;
     };
@@ -942,7 +950,13 @@ fn part_state_counts_ticks_across_chunk_reload() {
                 );
 
                 // An undecodable saved count: refused, bytes kept, and the Part continues.
-                let mut raw = game.world.block_entities.attachments(pos).unwrap().to_nbt();
+                let mut raw = game
+                    .world
+                    .block_entities
+                    .attachments(pos)
+                    .unwrap()
+                    .try_to_nbt()
+                    .unwrap();
                 let Some(Tag::Compound(names)) = raw.get_mut(&"part_state_fixture".into()) else {
                     unreachable!()
                 };
@@ -957,7 +971,13 @@ fn part_state_counts_ticks_across_chunk_reload() {
                     .block_entities
                     .restore_attachments(pos, Attachments::from_nbt(raw.clone()));
                 tick_in(game, pos, 1);
-                let after = game.world.block_entities.attachments(pos).unwrap().to_nbt();
+                let after = game
+                    .world
+                    .block_entities
+                    .attachments(pos)
+                    .unwrap()
+                    .try_to_nbt()
+                    .unwrap();
                 let Some(Tag::Compound(names)) = after.get(&"part_state_fixture".into()) else {
                     unreachable!()
                 };

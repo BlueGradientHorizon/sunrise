@@ -76,7 +76,16 @@ impl SaveDir {
         attachments: &sunrise_mod_runtime::attachments::Attachments,
     ) -> Result<()> {
         let path = self.attachments_path();
-        let data = attachments.to_nbt();
+        let data = match attachments.try_to_nbt() {
+            Ok(data) => data,
+            Err(error) => {
+                log::error!(
+                    "Sunrise: refusing level attachments save at {}: {error}",
+                    path.display()
+                );
+                return Err(error.into());
+            }
+        };
         // Emptied after a Horizon file was read: an empty file under Sunrise's name keeps it unread.
         if data.is_empty()
             && !path.exists()
@@ -598,7 +607,7 @@ impl SaveDir {
                 let key = (c.x, c.z);
                 match compression_pool::catch_encoding_panic(|| {
                     let blending = self.calculated_blending(c.x, c.z);
-                    Ok(encode_saved(
+                    encode_saved(
                         c,
                         registry,
                         biomes,
@@ -606,7 +615,8 @@ impl SaveDir {
                         self.shape,
                         blending.as_deref(),
                         items,
-                    ))
+                    )
+                    .map_err(std::io::Error::other)
                 }) {
                     Ok(tag) => Some((key, Some(tag))),
                     Err(error) => {

@@ -800,7 +800,8 @@ mod tests {
                         .guests
                         .attachments_mut(12)
                         .unwrap()
-                        .to_nbt(),
+                        .try_to_nbt()
+                        .unwrap(),
                 );
                 assert_eq!(
                     saved.get("removed_package").unwrap().get("opaque"),
@@ -1490,7 +1491,7 @@ mod tests {
                     let attachments = host.hub.guests.attachments_mut(12).unwrap();
                     RETAINED.set(attachments, Holder::Level, 17).unwrap();
                     SAVED.set(attachments, Holder::Level, 31).unwrap();
-                    let saved = Attachments::from_nbt(attachments.to_nbt());
+                    let saved = Attachments::from_nbt(attachments.try_to_nbt().unwrap());
                     attachments.replace_contents(saved);
                     VALUE.set(attachments, Holder::Level, 73).unwrap();
                     game.guest_respawn(12);

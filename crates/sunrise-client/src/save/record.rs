@@ -99,7 +99,7 @@ impl Record {
             Self::Disk(record) => record.without_block_entity_edits(),
             Self::Chunk(chunk, e, blending) => {
                 chunk.saved.as_ref()?.block_entity_save_edits.as_ref()?;
-                Some(Self::chunk_tag(
+                Self::chunk_tag(
                     chunk,
                     e,
                     blending.as_deref(),
@@ -107,7 +107,8 @@ impl Record {
                         block_entities: false,
                         attachments,
                     },
-                ))
+                )
+                .ok()
             }
             #[cfg(test)]
             Self::TestEncode(encode) => encode(false),
@@ -118,12 +119,12 @@ impl Record {
     pub(super) fn tag(&self) -> Option<Arc<NamedTag>> {
         if let Self::EditedChunk(record) = self {
             return if *record.admitted.wait() {
-                record.original.tag_for_write()
+                record.original.tag_for_write().ok().flatten()
             } else {
                 record.original.without_block_entity_edits()
             };
         }
-        self.encode_tag(false, None)
+        self.encode_tag(false, None).ok().flatten()
     }
 
     /// Metadata and far terrain do not consume a block entity's saved payload.
@@ -134,7 +135,7 @@ impl Record {
         self.tag()
     }
 
-    pub(super) fn tag_for_write(&self) -> Option<Arc<NamedTag>> {
+    pub(super) fn tag_for_write(&self) -> std::io::Result<Option<Arc<NamedTag>>> {
         self.encode_tag(true, None)
     }
 
@@ -142,12 +143,12 @@ impl Record {
         &self,
         edits: bool,
         attachments: Option<&Compound>,
-    ) -> Option<Arc<NamedTag>> {
+    ) -> std::io::Result<Option<Arc<NamedTag>>> {
         match self {
             Record::EditedChunk(record) => record.original.encode_tag(edits, attachments),
-            Record::Disk(record) => record.read(),
-            Record::Tag(t) => Some(t.clone()),
-            Record::Chunk(c, e, blending) => Some(Self::chunk_tag(
+            Record::Disk(record) => Ok(record.read()),
+            Record::Tag(t) => Ok(Some(t.clone())),
+            Record::Chunk(c, e, blending) => Ok(Some(Self::chunk_tag(
                 c,
                 e,
                 blending.as_deref(),
@@ -155,22 +156,25 @@ impl Record {
                     block_entities: edits,
                     attachments,
                 },
-            )),
-            Record::Proto(p, e) => Some(Arc::new(encode_proto_with_attachments(
-                p,
-                e.registry,
-                &e.biomes,
-                e.tables.as_deref(),
-                e.shape,
-                &e.items,
-                attachments,
+            )?)),
+            Record::Proto(p, e) => Ok(Some(Arc::new(
+                encode_proto_with_attachments(
+                    p,
+                    e.registry,
+                    &e.biomes,
+                    e.tables.as_deref(),
+                    e.shape,
+                    &e.items,
+                    attachments,
+                )
+                .map_err(std::io::Error::other)?,
             ))),
             Record::Poi(c, t, professions) => {
-                encode_poi(c, t, professions.as_deref()).map(Arc::new)
+                Ok(encode_poi(c, t, professions.as_deref()).map(Arc::new))
             }
-            Record::Delete => None,
+            Record::Delete => Ok(None),
             #[cfg(test)]
-            Record::TestEncode(encode) => encode(edits),
+            Record::TestEncode(encode) => Ok(encode(edits)),
         }
     }
 
@@ -179,7 +183,7 @@ impl Record {
         e: &Encoding,
         blending: Option<&BlendingData>,
         edits: ChunkEncodingEdits<'_>,
-    ) -> Arc<NamedTag> {
+    ) -> std::io::Result<Arc<NamedTag>> {
         let mut tag = encode_full(
             c,
             e.registry,
@@ -188,10 +192,11 @@ impl Record {
             e.shape,
             &e.items,
             edits,
-        );
+        )
+        .map_err(std::io::Error::other)?;
         if let Some(data) = blending {
             put_calculated_blending(&mut tag, data);
         }
-        Arc::new(tag)
+        Ok(Arc::new(tag))
     }
 }

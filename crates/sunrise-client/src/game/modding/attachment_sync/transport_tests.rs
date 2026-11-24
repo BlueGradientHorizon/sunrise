@@ -418,7 +418,7 @@ fn attachment_sync_follows_the_negotiated_route() {
                     let map = server
                         .attachment_map_quiet(Holder::Level, AttachmentAccess::Existing)
                         .unwrap();
-                    map.replace_contents(Attachments::from_nbt(map.to_nbt()));
+                    map.replace_contents(Attachments::from_nbt(map.try_to_nbt().unwrap()));
                 })
                 .unwrap();
 

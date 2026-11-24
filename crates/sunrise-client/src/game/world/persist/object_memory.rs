@@ -959,7 +959,7 @@ impl Game<'_> {
         // final passenger list, as in the persistent mob tree.
         let paused = self.mob_at(object).ai.ai_paused;
         entity_nbt::write_ai_paused(paused, &mut retained);
-        write_attachments(&mut retained, id, &self.entity_attachments);
+        self.write_entity_attachments(&mut retained, id);
         entity_nbt::write_ai_paused(paused, &mut retained);
         let mut out = entity_nbt::EntityTagWriter::from_saved(retained);
         entity_nbt::write_mob(

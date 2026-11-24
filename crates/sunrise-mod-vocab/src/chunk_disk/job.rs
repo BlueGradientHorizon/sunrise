@@ -17,19 +17,22 @@ pub struct ChunkDiskJob {
 impl ChunkDiskJob {
     /// Capture encoded state only when the phase has a subscriber. The empty
     /// route does not clone the identity or store, allocate, or invoke a codec.
-    pub fn capture(context: &ChunkDiskContext, store: &Attachments) -> Option<Self> {
+    pub fn capture(
+        context: &ChunkDiskContext,
+        store: &Attachments,
+    ) -> Result<Option<Self>, AttachmentEncodeError> {
         let hook = match context.phase {
             ChunkDiskPhase::Load => HookId::ChunkDataLoad,
             ChunkDiskPhase::Save => HookId::ChunkDataSave,
         };
         if !crate::listened(hook) {
-            return None;
+            return Ok(None);
         }
-        Some(Self {
+        Ok(Some(Self {
             context: context.clone(),
-            captured: store.to_nbt(),
+            captured: store.try_to_nbt()?,
             completed: OnceLock::new(),
-        })
+        }))
     }
 
     /// Run on the owning server thread. Repeated inspection or recovery

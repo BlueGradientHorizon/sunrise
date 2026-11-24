@@ -374,7 +374,7 @@ fn public_store_only_writes_the_issued_descriptor_type_and_policy() {
 
     key.set(&mut host, Holder::Level, 9).unwrap();
     let map = host.maps.get_mut(&Holder::Level).unwrap();
-    assert!(map.to_nbt().is_empty());
+    assert!(map.try_to_nbt().unwrap().is_empty());
     let changes = map.take_sync_changes(|namespace, name, input| {
         crate::__private::attachment_sync_projection()(namespace, name, input).unwrap()
     });
@@ -515,7 +515,7 @@ fn an_issued_promotion_cannot_retarget_a_binding_or_write_into_a_malformed_names
         key.get_existing(&mut host, to, |value| value.cloned()),
         Err(AttachmentError::Decode)
     );
-    assert_eq!(host.maps[&to].to_nbt(), counter_on_disk(1));
+    assert_eq!(host.maps[&to].try_to_nbt().unwrap(), counter_on_disk(1));
     host.read_from = None;
     assert_eq!(
         key.get_existing(&mut host, to, |value| value.cloned()),
@@ -530,7 +530,7 @@ fn an_issued_promotion_cannot_retarget_a_binding_or_write_into_a_malformed_names
         key.set(&mut host, to, 42),
         Err(AttachmentError::InvalidNamespace)
     );
-    assert_eq!(host.maps[&to].to_nbt(), malformed);
+    assert_eq!(host.maps[&to].try_to_nbt().unwrap(), malformed);
 }
 
 #[test]
@@ -612,7 +612,7 @@ fn assert_single_drop_after_attachment_refusals() {
     };
     run(&mut host, false);
     assert_eq!(DROPS.load(Relaxed), 1);
-    assert_eq!(host.maps[&to].to_nbt(), counter_on_disk(1));
+    assert_eq!(host.maps[&to].try_to_nbt().unwrap(), counter_on_disk(1));
 
     // No entry is visible to the read adapter, but the real store must refuse the
     // default because its destination preserves a malformed namespace.
@@ -623,5 +623,5 @@ fn assert_single_drop_after_attachment_refusals() {
     run(&mut host, true);
     assert_eq!(DROPS.load(Relaxed), 2);
     assert_eq!(CLONES.load(Relaxed), 0);
-    assert_eq!(host.maps[&to].to_nbt(), malformed);
+    assert_eq!(host.maps[&to].try_to_nbt().unwrap(), malformed);
 }

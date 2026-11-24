@@ -18,6 +18,6 @@ pub use sunrise_mod_runtime::attachments::{
 // hidden: the game's storage backends, not part of the typed mod surface.
 #[doc(hidden)]
 pub use sunrise_mod_runtime::attachments::{
-    AttachmentAccess, AttachmentBinding, AttachmentHost, AttachmentLoan, AttachmentStore,
-    AttachmentStoreKey, AttachmentStoreWrite, Attachments,
+    AttachmentAccess, AttachmentBinding, AttachmentEncodeError, AttachmentHost, AttachmentLoan,
+    AttachmentStore, AttachmentStoreKey, AttachmentStoreWrite, Attachments,
 };

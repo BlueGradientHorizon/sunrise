@@ -177,6 +177,10 @@ impl SaveDir {
         self.save_reporting.report(folder, key, error);
     }
 
+    pub fn report_entity_record_failure(&self, key: (i32, i32), error: &std::io::Error) {
+        self.save_reporting.report(Folder::Entities, key, error);
+    }
+
     /// Queue `records` for the writer thread. With `wait`, wait for these and all earlier
     /// write attempts. Individual failures are reported; a failed sync fails the wait.
     pub(super) fn write_records(
@@ -212,14 +216,30 @@ impl SaveDir {
     ) -> Result<()> {
         if !records.is_empty() {
             // Run snapshot callbacks before publishing pending records or taking writer locks.
-            let records = if folder == Folder::Region {
+            let records: Vec<_> = if folder == Folder::Region {
                 records
                     .into_iter()
-                    .map(|(key, record)| (key, self.capture_disk_record(record)))
+                    .filter_map(|(key, record)| match self.capture_disk_record(record) {
+                        Ok(record) => Some((key, record)),
+                        Err(error) => {
+                            if let Some(eviction) = eviction {
+                                eviction.refuse(key);
+                            }
+                            self.report_record_failure(
+                                Folder::Region,
+                                key,
+                                &std::io::Error::other(error),
+                            );
+                            None
+                        }
+                    })
                     .collect()
             } else {
                 records
             };
+            if records.is_empty() {
+                return Ok(());
+            }
             let mut writer = self.writer.lock().map_err(|_| "writer poisoned")?;
             let writer = writer.get_or_insert_with(|| {
                 self.start_writer(fs::File::sync_data, RegionFile::sync_all)

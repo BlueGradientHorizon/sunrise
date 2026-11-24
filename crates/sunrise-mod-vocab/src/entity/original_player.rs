@@ -288,7 +288,7 @@ mod tests {
             .unwrap()
             .set(&mut seed, Holder::Level, 77)
             .unwrap();
-        let attachments = Attachments::from_nbt(seed.to_nbt());
+        let attachments = Attachments::from_nbt(seed.try_to_nbt().unwrap());
 
         let mut persistent = Compound::new();
         persistent.insert("tag".into(), Tag::Int(12));

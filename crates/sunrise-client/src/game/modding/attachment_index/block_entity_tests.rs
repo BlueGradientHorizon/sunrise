@@ -23,7 +23,7 @@ static VALUE: AttachmentType<i32> = AttachmentType {
 fn saved(value: i32) -> Attachments {
     let mut map = Attachments::default();
     VALUE.set(&mut map, Holder::Level, value).unwrap();
-    Attachments::from_nbt(map.to_nbt())
+    Attachments::from_nbt(map.try_to_nbt().unwrap())
 }
 
 #[test]

@@ -316,7 +316,7 @@ fn entity_part_state_is_per_entity_through_edits_transactions_and_panics() {
         // An undecodable saved value refuses before the closure runs and keeps its bytes.
         let mut saved = Attachments::default();
         CHARGE.set(&mut saved, Holder::Level, 0).unwrap();
-        let mut raw = saved.to_nbt();
+        let mut raw = saved.try_to_nbt().unwrap();
         let Some(Tag::Compound(names)) = raw.get_mut(&"part_state".into()) else {
             unreachable!()
         };
@@ -342,7 +342,7 @@ fn entity_part_state_is_per_entity_through_edits_transactions_and_panics() {
             Err(decode)
         );
         assert!(!ran);
-        assert_eq!(game.entity_attachments[&b.id()].to_nbt(), raw);
+        assert_eq!(game.entity_attachments[&b.id()].try_to_nbt().unwrap(), raw);
 
         // A mob out of its list for its own tick can't be reached until it is back.
         let taken = game.mobs.lift();

@@ -246,6 +246,9 @@ pub struct EntityMemory {
     /// lookup from the call on, taken out of their lists at the next sweep of
     /// departed entities. Mobs go at once and never wait here.
     pub(super) removals: Vec<super::commands::Target>,
+    /// First attachment persistence error raised while building the current entity record.
+    pub(super) attachment_encode_error:
+        Option<sunrise_mod_runtime::attachments::AttachmentEncodeError>,
 }
 
 impl EntityMemory {
@@ -463,13 +466,13 @@ pub(super) fn write_attachments(
     tag: &mut Tag,
     id: u32,
     maps: &super::native_colliders::EntityMaps,
-) {
+) -> std::result::Result<(), sunrise_mod_runtime::attachments::AttachmentEncodeError> {
     if let Tag::Compound(root) = tag {
         maps.write_collider(root, id);
         if let Some(map) = maps.get(&id)
             && attachment_compound(root.get(&ATTACHMENTS_KEY.into())).is_ok()
         {
-            let data = map.to_nbt();
+            let data = map.try_to_nbt()?;
             if data.is_empty() {
                 root.remove(&ATTACHMENTS_KEY.into());
             } else {
@@ -477,6 +480,7 @@ pub(super) fn write_attachments(
             }
         }
     }
+    Ok(())
 }
 
 fn painting_center(p: &sunrise_client::entities::Painting) -> Vec3 {
@@ -689,9 +693,18 @@ impl Game<'_> {
             extras
                 .block_entities
                 .retain(|tag| block_entity_pos(tag) != [p.x, p.y, p.z]);
-            extras
-                .block_entities
-                .push(self.saved_moving_piston(*p, piston));
+            match self.saved_moving_piston(*p, piston) {
+                Ok(tag) => extras.block_entities.push(tag),
+                Err(_) => {
+                    if let Some(carried) = self.world.block_entities.carried(&(p.x, p.y, p.z))
+                        && let Some(attachments) = carried.attachments.as_ref()
+                    {
+                        extras
+                            .block_entity_attachments
+                            .push(((p.x, p.y, p.z), attachments.clone()));
+                    }
+                }
+            }
         }
         // TheEndGatewayBlockEntity saves its Age (the server copy's).
         for tag in &mut extras.block_entities {
@@ -1576,6 +1589,12 @@ impl Game<'_> {
         None
     }
 
+    pub(super) fn write_entity_attachments(&mut self, tag: &mut Tag, id: u32) {
+        if let Err(error) = write_attachments(tag, id, &self.entity_attachments) {
+            self.persist.attachment_encode_error.get_or_insert(error);
+        }
+    }
+
     /// The root vehicle `root` with its passengers (`Entity.save`).
     pub(super) fn vehicle_tree_nbt(&mut self, root: u32) -> Option<Tag> {
         self.vehicle_tree_nbt_for(root, false)
@@ -1593,7 +1612,7 @@ impl Game<'_> {
             let b = self.boat_object(root)?;
             let mut tag = b.to_nbt(uuid, self.persist.raw.get(&root), self.res.items());
             self.put_passengers_for(&mut tag, root, transferring);
-            write_attachments(&mut tag, root, &self.entity_attachments);
+            self.write_entity_attachments(&mut tag, root);
             return Some(tag);
         }
         if self.general_row(root).is_some() {
@@ -1621,7 +1640,7 @@ impl Game<'_> {
             self.other_to_nbt(other, uuid)
         };
         self.put_passengers_for(&mut tag, root, transferring);
-        write_attachments(&mut tag, root, &self.entity_attachments);
+        self.write_entity_attachments(&mut tag, root);
         Some(tag)
     }
     /// `ServerPlayer.saveParentVehicle`: a player riding `vehicle` saves
@@ -2025,8 +2044,12 @@ impl Game<'_> {
         let include_transient = matches!(purpose, EntitySnapshot::Structure);
         // Each root with its id and join number, ordered once all are in.
         let mut roots: HashMap<ChunkKey, Vec<(u32, JoinSeq, Tag)>> = HashMap::new();
+        let mut failed_chunks: HashMap<
+            ChunkKey,
+            sunrise_mod_runtime::attachments::AttachmentEncodeError,
+        > = HashMap::new();
         // Every kind in `entity_lists!` saves itself (`Entity::save_nbt`).
-        self.save_every_entity(keys, &mut roots, include_transient);
+        self.save_every_entity(keys, &mut roots, &mut failed_chunks, include_transient);
         // Owned, since saving a passenger tree borrows `self` mutably.
         let transient = self.persist.transient.clone();
         let include = |id, at| {
@@ -2043,20 +2066,30 @@ impl Game<'_> {
                 d.to_nbt(uuid, raw.as_ref(), self.res.items()),
                 self.persist.raw.get(&d.id),
             );
-            write_attachments(&mut tag, d.id, &self.entity_attachments);
-            roots
-                .entry(chunk_of(d.position))
-                .or_default()
-                .push((d.id, d.join_seq(), tag));
+            let key = chunk_of(d.position);
+            match write_attachments(&mut tag, d.id, &self.entity_attachments) {
+                Ok(()) => roots
+                    .entry(key)
+                    .or_default()
+                    .push((d.id, d.join_seq(), tag)),
+                Err(error) => {
+                    failed_chunks.entry(key).or_insert(error);
+                }
+            }
         }
         for c in &self.crystals {
             if include(c.id, c.position) {
                 let mut tag = self.crystal_nbt(c);
-                write_attachments(&mut tag, c.id, &self.entity_attachments);
-                roots
-                    .entry(chunk_of(c.position))
-                    .or_default()
-                    .push((c.id, c.join_seq(), tag));
+                let key = chunk_of(c.position);
+                match write_attachments(&mut tag, c.id, &self.entity_attachments) {
+                    Ok(()) => roots
+                        .entry(key)
+                        .or_default()
+                        .push((c.id, c.join_seq(), tag)),
+                    Err(error) => {
+                        failed_chunks.entry(key).or_insert(error);
+                    }
+                }
             }
         }
         for s in &self.ominous_spawners {
@@ -2070,11 +2103,16 @@ impl Game<'_> {
                     s.raw.as_deref(),
                     self.res.items(),
                 );
-                write_attachments(&mut tag, s.id, &self.entity_attachments);
-                roots
-                    .entry(chunk_of(at))
-                    .or_default()
-                    .push((s.id, s.join_seq(), tag));
+                let key = chunk_of(at);
+                match write_attachments(&mut tag, s.id, &self.entity_attachments) {
+                    Ok(()) => roots
+                        .entry(key)
+                        .or_default()
+                        .push((s.id, s.join_seq(), tag)),
+                    Err(error) => {
+                        failed_chunks.entry(key).or_insert(error);
+                    }
+                }
             }
         }
         for f in &self.item_frames {
@@ -2097,11 +2135,16 @@ impl Game<'_> {
                     self.persist.raw.get(&f.id),
                     self.res.items(),
                 );
-                write_attachments(&mut tag, f.id, &self.entity_attachments);
-                roots
-                    .entry(chunk_of(at))
-                    .or_default()
-                    .push((f.id, f.join_seq(), tag));
+                let key = chunk_of(at);
+                match write_attachments(&mut tag, f.id, &self.entity_attachments) {
+                    Ok(()) => roots
+                        .entry(key)
+                        .or_default()
+                        .push((f.id, f.join_seq(), tag)),
+                    Err(error) => {
+                        failed_chunks.entry(key).or_insert(error);
+                    }
+                }
             }
         }
         for c in &self.cushions {
@@ -2113,11 +2156,16 @@ impl Game<'_> {
                     .copied()
                     .unwrap_or_else(random_uuid);
                 let mut tag = entity_nbt::cushion_to_nbt(c, uuid, self.persist.raw.get(&c.id));
-                write_attachments(&mut tag, c.id, &self.entity_attachments);
-                roots
-                    .entry(chunk_of(c.position))
-                    .or_default()
-                    .push((c.id, c.join_seq(), tag));
+                let key = chunk_of(c.position);
+                match write_attachments(&mut tag, c.id, &self.entity_attachments) {
+                    Ok(()) => roots
+                        .entry(key)
+                        .or_default()
+                        .push((c.id, c.join_seq(), tag)),
+                    Err(error) => {
+                        failed_chunks.entry(key).or_insert(error);
+                    }
+                }
             }
         }
         for p in &self.paintings {
@@ -2130,11 +2178,16 @@ impl Game<'_> {
                     .copied()
                     .unwrap_or_else(random_uuid);
                 let mut tag = entity_nbt::painting_to_nbt(p, uuid, self.persist.raw.get(&p.id));
-                write_attachments(&mut tag, p.id, &self.entity_attachments);
-                roots
-                    .entry(chunk_of(at))
-                    .or_default()
-                    .push((p.id, p.join_seq(), tag));
+                let key = chunk_of(at);
+                match write_attachments(&mut tag, p.id, &self.entity_attachments) {
+                    Ok(()) => roots
+                        .entry(key)
+                        .or_default()
+                        .push((p.id, p.join_seq(), tag)),
+                    Err(error) => {
+                        failed_chunks.entry(key).or_insert(error);
+                    }
+                }
             }
         }
         for f in &self.fangs.list {
@@ -2147,11 +2200,16 @@ impl Game<'_> {
                     .copied()
                     .unwrap_or_else(random_uuid);
                 let mut tag = self.fangs_to_nbt(f, uuid);
-                write_attachments(&mut tag, f.id, &self.entity_attachments);
-                roots
-                    .entry(chunk_of(at))
-                    .or_default()
-                    .push((f.id, f.join_seq(), tag));
+                let key = chunk_of(at);
+                match write_attachments(&mut tag, f.id, &self.entity_attachments) {
+                    Ok(()) => roots
+                        .entry(key)
+                        .or_default()
+                        .push((f.id, f.join_seq(), tag)),
+                    Err(error) => {
+                        failed_chunks.entry(key).or_insert(error);
+                    }
+                }
             }
         }
         // `AreaEffectCloud.addAdditionalSaveData`: a lingering potion's cloud is
@@ -2169,11 +2227,16 @@ impl Game<'_> {
                 .copied()
                 .unwrap_or_else(random_uuid);
             let mut tag = super::potions::potion_cloud_to_nbt(c, uuid, self.persist.raw.get(&c.id));
-            write_attachments(&mut tag, c.id, &self.entity_attachments);
-            roots
-                .entry(chunk_of(at))
-                .or_default()
-                .push((c.id, c.join_seq(), tag));
+            let key = chunk_of(at);
+            match write_attachments(&mut tag, c.id, &self.entity_attachments) {
+                Ok(()) => roots
+                    .entry(key)
+                    .or_default()
+                    .push((c.id, c.join_seq(), tag)),
+                Err(error) => {
+                    failed_chunks.entry(key).or_insert(error);
+                }
+            }
         }
         for i in 0..self.others.len() {
             let o = &self.others[i];
@@ -2186,6 +2249,8 @@ impl Game<'_> {
                     .copied()
                     .unwrap_or_else(random_uuid);
                 let (id, position, join) = (o.id, o.position, o.join_seq());
+                let key = chunk_of(position);
+                self.persist.attachment_encode_error = None;
                 let tag = if super::general::quarantined_kind(&o.kind)
                     && let Some(raw) = self.persist.raw.get(&o.id)
                 {
@@ -2193,13 +2258,14 @@ impl Game<'_> {
                 } else {
                     let mut tag = self.other_to_nbt(o, uuid);
                     self.put_passengers(&mut tag, id);
-                    write_attachments(&mut tag, id, &self.entity_attachments);
+                    self.write_entity_attachments(&mut tag, id);
                     tag
                 };
-                roots
-                    .entry(chunk_of(position))
-                    .or_default()
-                    .push((id, join, tag));
+                if let Some(error) = self.persist.attachment_encode_error.take() {
+                    failed_chunks.entry(key).or_insert(error);
+                } else {
+                    roots.entry(key).or_default().push((id, join, tag));
+                }
             }
         }
         // `PersistentEntitySectionManager.storeChunkSections`: section by
@@ -2207,20 +2273,30 @@ impl Game<'_> {
         // yet given an id is not a lookup member: its join stands in.
         let mut out: HashMap<(i32, i32), Vec<Tag>> =
             keys.iter().map(|k| (*k, Vec::new())).collect();
+        for (key, error) in failed_chunks {
+            out.remove(&key);
+            if !matches!(purpose, EntitySnapshot::Structure) {
+                self.save
+                    .report_entity_record_failure(key, &std::io::Error::other(error));
+            }
+        }
         {
             let entry = self.resident_entities.table.get_mut().section_entry_order();
             for (key, mut tags) in roots {
+                let Some(dest) = out.get_mut(&key) else {
+                    continue;
+                };
                 tags.sort_by_cached_key(|(id, join, tag)| {
                     (section_order(tag), entry(*id).unwrap_or(*join))
                 });
-                out.entry(key)
-                    .or_default()
-                    .extend(tags.into_iter().map(|(_, _, tag)| tag));
+                dest.extend(tags.into_iter().map(|(_, _, tag)| tag));
             }
         }
         for key in keys {
-            if let Some(list) = self.persist.unknown.get(key) {
-                out.entry(*key).or_default().extend(list.iter().cloned());
+            if let Some(dest) = out.get_mut(key)
+                && let Some(list) = self.persist.unknown.get(key)
+            {
+                dest.extend(list.iter().cloned());
             }
         }
         if matches!(purpose, EntitySnapshot::Unload) {

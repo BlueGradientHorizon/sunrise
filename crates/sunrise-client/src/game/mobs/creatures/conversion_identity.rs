@@ -31,7 +31,19 @@ impl Game<'_> {
     /// gave it. A value without a codec stays behind. The copy is not synced on its own: the new
     /// mob's spawn carries its synced values. A mob with no attachments costs one lookup.
     pub(super) fn copy_conversion_attachments(&mut self, from: u32, to: u32, kind: &str) {
-        let Some(saved) = self.entity_attachments.get(&from).map(|map| map.to_nbt()) else {
+        let Some(saved) =
+            self.entity_attachments
+                .get(&from)
+                .and_then(|map| match map.try_to_nbt() {
+                    Ok(saved) => Some(saved),
+                    Err(error) => {
+                        log::error!(
+                            "Sunrise: conversion attachment copy skipped for entity {from}: {error}"
+                        );
+                        None
+                    }
+                })
+        else {
             return;
         };
         if saved.is_empty() {

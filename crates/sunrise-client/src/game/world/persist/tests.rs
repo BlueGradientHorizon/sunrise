@@ -749,7 +749,7 @@ fn entity_attachment_boundary_does_not_alias_equal_uuid_passengers() {
             )])]),
         ),
     ]);
-    write_attachments(&mut root, 12, &maps);
+    write_attachments(&mut root, 12, &maps).unwrap();
     let Some(Tag::List(children)) = root.get("Passengers") else {
         panic!("passenger missing");
     };
@@ -789,7 +789,7 @@ fn saved_attachments_read_over_a_constructed_map_but_not_a_live_one() {
     saved.set(&mut data, Holder::Level, 7).unwrap();
     let tag = Tag::compound([
         ("UUID", Tag::IntArray(uuid.to_vec())),
-        (ATTACHMENTS_KEY, Tag::Compound(data.to_nbt())),
+        (ATTACHMENTS_KEY, Tag::Compound(data.try_to_nbt().unwrap())),
     ]);
     let listener = || {
         let mut map = Attachments::default();

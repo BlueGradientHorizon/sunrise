@@ -1741,16 +1741,22 @@ impl Game<'_> {
             // (`guest_turn`); otherwise their record holds it, whoever acts.
             let live =
                 (self.lan_acting_uuid == Some(uuid)).then(|| self.player_state.attachments.clone());
+            let mut store_ok = true;
             host.hub.guests.update(i, |g| {
                 let held = live.map(|a| std::mem::replace(&mut g.attachments, a));
-                playerdata::store(g, &mut self.level, vehicle);
+                if let Err(error) = playerdata::try_store(g, &mut self.level, vehicle) {
+                    log::error!("Sunrise: the owner's playerdata is not saved: {error}");
+                    store_ok = false;
+                }
                 if let Some(held) = held {
                     g.attachments = held;
                 }
             });
             let g = &host.hub.guests[i];
             self.save_guest_records(&host, g);
-            stored = Some(g.name.clone());
+            if store_ok {
+                stored = Some(g.name.clone());
+            }
         }
         self.lan = Some(host);
         stored.map(|name| (uuid, name))

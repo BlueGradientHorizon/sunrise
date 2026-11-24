@@ -560,7 +560,7 @@ mod tests {
     fn saved_entries_join_without_a_typed_read_and_remain_snapshot_values() {
         let mut source = Attachments::default();
         VALUE.set(&mut source, Holder::Level, 42).unwrap();
-        let nbt = source.to_nbt();
+        let nbt = source.try_to_nbt().unwrap();
         let loaded = Attachments::from_nbt(nbt.clone());
         let raw = loaded.entry("test", "value").unwrap().unwrap().clone();
         let mut index = AttachmentIndex::default();
@@ -572,7 +572,7 @@ mod tests {
         index.set(&owner, &key("value"), entry(99)).into_result();
         assert_eq!(values(&before), [(1, 42)]);
         assert_eq!(values(&index.snapshot(&key("value"))), [(1, 99)]);
-        assert_eq!(loaded.to_nbt(), nbt);
+        assert_eq!(loaded.try_to_nbt().unwrap(), nbt);
     }
 
     #[test]

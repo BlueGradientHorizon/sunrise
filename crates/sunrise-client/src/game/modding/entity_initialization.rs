@@ -140,7 +140,15 @@ impl Game<'_> {
             .lan
             .as_mut()
             .and_then(|host| host.hub.guests.attachments_mut(conn))
-            .map(|attachments| attachments.to_nbt());
+            .and_then(|attachments| match attachments.try_to_nbt() {
+                Ok(data) => Some(data),
+                Err(error) => {
+                    log::warn!(
+                        "Sunrise: guest player attachments could not be snapshotted: {error}"
+                    );
+                    None
+                }
+            });
         self.initialize_entity(Holder::Player(uuid), "minecraft:player");
         if let Some(data) = data
             && let Some(attachments) = self

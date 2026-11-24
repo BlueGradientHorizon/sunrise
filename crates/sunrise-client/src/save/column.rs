@@ -188,12 +188,20 @@ pub(super) fn encode_saved(
     shape: LevelShape,
     blending: Option<&BlendingData>,
     items: &crate::items::Items,
-) -> NamedTag {
-    let mut root = encode_with(chunk, registry, biomes, tables, shape, items);
+) -> std::result::Result<NamedTag, sunrise_mod_runtime::attachments::AttachmentEncodeError> {
+    let mut root = encode_full(
+        chunk,
+        registry,
+        biomes,
+        tables,
+        shape,
+        items,
+        ChunkEncodingEdits::default(),
+    )?;
     if let Some(data) = blending {
         put_calculated_blending(&mut root, data);
     }
-    root
+    Ok(root)
 }
 pub(super) fn put_calculated_blending(root: &mut NamedTag, data: &BlendingData) {
     let Tag::Compound(map) = &mut root.tag else {
@@ -239,6 +247,7 @@ pub fn encode_with(
         items,
         ChunkEncodingEdits::default(),
     )
+    .expect("chunk attachments encode cleanly")
 }
 
 pub(super) struct ChunkEncodingEdits<'a> {
@@ -263,7 +272,7 @@ pub(super) fn encode_full(
     shape: LevelShape,
     items: &crate::items::Items,
     edits: ChunkEncodingEdits<'_>,
-) -> NamedTag {
+) -> std::result::Result<NamedTag, sunrise_mod_runtime::attachments::AttachmentEncodeError> {
     let sky_light = shape.sky_light;
     let mut sections = Vec::new();
     // Sky layers below the highest section with light other than 15 are
@@ -516,16 +525,16 @@ pub(super) fn encode_full(
                 && let Tag::Compound(map) = &mut saved
                 && attachment_compound(map.get(&ATTACHMENTS_KEY.into())).is_ok()
             {
-                let data = attachments.to_nbt();
+                let data = attachments.try_to_nbt()?;
                 if data.is_empty() {
                     map.remove(&ATTACHMENTS_KEY.into());
                 } else {
                     map.insert(ATTACHMENTS_KEY.into(), Tag::Compound(data));
                 }
             }
-            saved
+            Ok(saved)
         })
-        .collect();
+        .collect::<std::result::Result<Vec<_>, _>>()?;
     if let Some(extras) = extras {
         for raw in &extras.block_entities {
             let pos = (
@@ -559,11 +568,16 @@ pub(super) fn encode_full(
         put(&mut root, key, value);
     }
     if let Some(Tag::Compound(map)) = Some(&mut root) {
-        if let Some(attachments) = edits.attachments.cloned().or_else(|| {
-            let extras = extras?;
-            attachment_compound(map.get(&ATTACHMENTS_KEY.into())).ok()?;
-            Some(extras.attachments.to_nbt())
-        }) {
+        let attachments = if let Some(attachments) = edits.attachments {
+            Some(attachments.clone())
+        } else if let Some(extras) = extras
+            && attachment_compound(map.get(&ATTACHMENTS_KEY.into())).is_ok()
+        {
+            Some(extras.attachments.try_to_nbt()?)
+        } else {
+            None
+        };
+        if let Some(attachments) = attachments {
             if attachments.is_empty() {
                 map.remove(&ATTACHMENTS_KEY.into());
             } else {
@@ -623,10 +637,10 @@ pub(super) fn encode_full(
         put(&mut root, "block_ticks", tick_list(blocks, names));
         put(&mut root, "fluid_ticks", tick_list(fluids, fluid_name));
     }
-    NamedTag {
+    Ok(NamedTag {
         name: "".into(),
         tag: root,
-    }
+    })
 }
 /// Root keys `encode_with` regenerates; everything else is kept as loaded.
 const GENERATED_KEYS: [&str; 14] = [
@@ -837,6 +851,7 @@ pub fn encode_proto(
     items: &crate::items::Items,
 ) -> NamedTag {
     encode_proto_with_attachments(proto, registry, biomes, tables, shape, items, None)
+        .expect("proto chunk attachments encode cleanly")
 }
 
 pub(super) fn encode_proto_with_attachments(
@@ -847,7 +862,7 @@ pub(super) fn encode_proto_with_attachments(
     shape: LevelShape,
     items: &crate::items::Items,
     attachments: Option<&Compound>,
-) -> NamedTag {
+) -> std::result::Result<NamedTag, sunrise_mod_runtime::attachments::AttachmentEncodeError> {
     let mut root = encode_full(
         &proto.column,
         registry,
@@ -859,7 +874,7 @@ pub(super) fn encode_proto_with_attachments(
             block_entities: true,
             attachments,
         },
-    );
+    )?;
     let status = if proto.decorated {
         ChunkStatus::Features
     } else {
@@ -887,7 +902,7 @@ pub(super) fn encode_proto_with_attachments(
     ] {
         put(&mut root.tag, key, value);
     }
-    root
+    Ok(root)
 }
 /// A proto chunk generation can resume: `terrain` (written to by a
 /// neighbour's decoration) up to `spawn`. Earlier statuses hold nothing that

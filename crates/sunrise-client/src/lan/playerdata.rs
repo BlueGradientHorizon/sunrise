@@ -166,8 +166,11 @@ pub fn save_owner(
     // — the server's own profile on every save, never the stale `singleplayer_uuid` a
     // world arrived with (a Realms download, a server world). The player file written is
     // then the owner's own, not another player's the world happened to name.
+    if let Err(error) = try_store(guest, level, None) {
+        log::error!("Sunrise: the owner's playerdata is not saved: {error}");
+        return false;
+    }
     level.player_uuid = Some(uuid_ints(guest.uuid));
-    store(guest, level, None);
     match level.write_player(world, items) {
         Ok(()) => true,
         Err(e) => {
@@ -392,19 +395,34 @@ pub fn apply(guest: &mut Guest, level: &Level) {
 
 /// The shared player compound for logout and autosave snapshots, and for
 /// `player-export`'s record (`arrivals::export_record`).
-pub fn player_tag(guest: &Guest, items: &crate::items::Items) -> Tag {
+pub fn try_player_tag(
+    guest: &Guest,
+    items: &crate::items::Items,
+) -> Result<Tag, sunrise_mod_runtime::attachments::AttachmentEncodeError> {
     let mut level = Level {
         player_uuid: Some(uuid_ints(guest.uuid)),
         ..Level::default()
     };
-    store(guest, &mut level, None);
-    level.player_tag(items)
+    try_store(guest, &mut level, None)?;
+    Ok(level.player_tag(items))
+}
+
+/// The shared player compound for tests and callers whose attachments are known to encode.
+pub fn player_tag(guest: &Guest, items: &crate::items::Items) -> Tag {
+    try_player_tag(guest, items).expect("player attachments encode cleanly")
 }
 
 /// Save a leaving guest, including its saved vehicle tree. Returns whether the file was replaced.
 pub fn save(guest: &Guest, world: &Path, items: &crate::items::Items) -> bool {
     let file = path(world, guest.uuid);
-    match write_dat(&file, player_tag(guest, items)) {
+    let tag = match try_player_tag(guest, items) {
+        Ok(tag) => tag,
+        Err(error) => {
+            log::error!("Sunrise: {} is not saved: {error}", file.display());
+            return false;
+        }
+    };
+    match write_dat(&file, tag) {
         Ok(()) => true,
         Err(e) => {
             log::warn!("Sunrise: {} is not saved: {e}", file.display());
@@ -417,7 +435,9 @@ pub fn save(guest: &Guest, world: &Path, items: &crate::items::Items) -> bool {
 /// point (`player-confirm`) answers only once it is.
 pub fn save_now(guest: &Guest, world: &Path, items: &crate::items::Items) -> Result<(), String> {
     let file = path(world, guest.uuid);
-    crate::save::write_dat_durable(&file, player_tag(guest, items))
+    let tag = try_player_tag(guest, items)
+        .map_err(|error| format!("{} is not saved: {error}", file.display()))?;
+    crate::save::write_dat_durable(&file, tag)
         .map_err(|e| format!("{} is not saved: {e}", file.display()))
 }
 
@@ -462,11 +482,19 @@ pub struct Autosaves {
 
 impl Autosaves {
     pub fn enqueue(&mut self, guest: &Guest, world: &Path, items: &crate::items::Items) {
+        let file = path(world, guest.uuid);
+        let tag = match try_player_tag(guest, items) {
+            Ok(tag) => tag,
+            Err(error) => {
+                log::error!("Sunrise: {} is not saved: {error}", file.display());
+                return;
+            }
+        };
         let snapshot = Snapshot {
             uuid: guest.uuid,
             name: guest.name.clone(),
-            file: path(world, guest.uuid),
-            tag: player_tag(guest, items),
+            file,
+            tag,
         };
         if self.writer.is_none() {
             let (send, receive) = std::sync::mpsc::channel::<Snapshot>();
@@ -569,7 +597,24 @@ impl Drop for Autosaves {
 
 /// Put a guest's state in `level`'s player fields; `vehicle` is the
 /// RootVehicle compound of the ride (`ServerPlayer.saveParentVehicle`).
-pub fn store(guest: &Guest, level: &mut Level, vehicle: Option<Tag>) {
+/// Refuses the update without modifying `level` if any persistent attachment fails to encode.
+pub fn try_store(
+    guest: &Guest,
+    level: &mut Level,
+    vehicle: Option<Tag>,
+) -> Result<(), sunrise_mod_runtime::attachments::AttachmentEncodeError> {
+    let encoded_attachments = if attachment_compound(
+        guest
+            .saved
+            .as_ref()
+            .and_then(|tag| tag.get(ATTACHMENTS_KEY)),
+    )
+    .is_ok()
+    {
+        Some(guest.attachments.try_to_nbt()?)
+    } else {
+        None
+    };
     level.player_impulse_grace = guest.motion.as_ref().map(|p| p.impulse.reset_grace_time);
     level.player_fall_particles = guest
         .motion
@@ -614,9 +659,8 @@ pub fn store(guest: &Guest, level: &mut Level, vehicle: Option<Tag>) {
         .player_extra
         .get_or_insert_with(|| Tag::Compound(Default::default()));
     if let Tag::Compound(map) = extra
-        && attachment_compound(map.get(&ATTACHMENTS_KEY.into())).is_ok()
+        && let Some(data) = encoded_attachments
     {
-        let data = guest.attachments.to_nbt();
         if data.is_empty() {
             map.remove(&ATTACHMENTS_KEY.into());
         } else {
@@ -728,6 +772,12 @@ pub fn store(guest: &Guest, level: &mut Level, vehicle: Option<Tag>) {
             put(saved, &guest.equipment[slot]);
         }
     }
+    Ok(())
+}
+
+/// Put a guest's state in `level`'s player fields for tests whose attachments are known to encode.
+pub fn store(guest: &Guest, level: &mut Level, vehicle: Option<Tag>) {
+    try_store(guest, level, vehicle).expect("player attachments encode cleanly");
 }
 
 #[cfg(test)]

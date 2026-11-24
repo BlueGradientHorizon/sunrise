@@ -131,7 +131,7 @@ impl Game<'_> {
         if let Some(uuid) = uuid {
             self.persist.uuids.insert(id, uuid);
         }
-        if attachments.has_index_entries() || !attachments.to_nbt().is_empty() {
+        if !attachments.is_empty() {
             self.entity_attachments
                 .entry(id)
                 .or_default()

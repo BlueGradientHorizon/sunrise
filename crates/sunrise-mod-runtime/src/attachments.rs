@@ -139,6 +139,26 @@ pub enum AttachmentError {
     StaleKey,
 }
 
+/// Encoding a persistent attachment for disk failed.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AttachmentEncodeError {
+    pub namespace: String,
+    pub name: String,
+    pub error: AttachmentError,
+}
+
+impl fmt::Display for AttachmentEncodeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "attachment '{}:{}' encode failed ({:?})",
+            self.namespace, self.name, self.error
+        )
+    }
+}
+
+impl std::error::Error for AttachmentEncodeError {}
+
 /// NBT key reserved for server-owned attachment maps.
 pub const ATTACHMENTS_KEY: &str = "sunrise:attachments";
 
@@ -1174,8 +1194,11 @@ struct Decoded {
 }
 
 impl Decoded {
-    fn encode_current(&self) -> Option<Compound> {
-        self.persistence.as_ref()?.as_ref()(self.value.as_ref()).ok()
+    fn encode_current(&self) -> Result<Option<Compound>, AttachmentError> {
+        self.persistence
+            .as_ref()
+            .map(|encode| encode(self.value.as_ref()))
+            .transpose()
     }
 }
 
@@ -1675,6 +1698,11 @@ impl Attachments {
             }
         }
     }
+    /// Whether this map holds neither entries nor preserved unknown NBT.
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty() && self.raw.is_none()
+    }
+
     /// Whether a save must run a live codec before handing the immutable record to a worker.
     pub fn has_live_persistence(&self) -> bool {
         self.entries.values().any(
@@ -1684,7 +1712,8 @@ impl Attachments {
 
     /// Save canonical objects with their persistence codec. Unread entries and
     /// unrecognized tags stay as received; replica-only values are not saved.
-    pub fn to_nbt(&self) -> Compound {
+    /// Returns an error naming the failing attachment if any persistence codec fails.
+    pub fn try_to_nbt(&self) -> Result<Compound, AttachmentEncodeError> {
         self.saved_nbt(Decoded::encode_current)
     }
 
@@ -1692,10 +1721,14 @@ impl Attachments {
     /// rather than invoking the codec a second time.
     #[doc(hidden)]
     pub fn to_staged_nbt(&self) -> Compound {
-        self.saved_nbt(|value| value.encoded.clone())
+        self.saved_nbt(|value| Ok(value.encoded.clone()))
+            .expect("staged attachment encoding is infallible")
     }
 
-    fn saved_nbt(&self, encode: impl Fn(&Decoded) -> Option<Compound>) -> Compound {
+    fn saved_nbt(
+        &self,
+        encode: impl Fn(&Decoded) -> Result<Option<Compound>, AttachmentError>,
+    ) -> Result<Compound, AttachmentEncodeError> {
         let mut raw = self.raw.as_deref().cloned().unwrap_or_default();
         for ((namespace, name), entry) in &self.entries {
             let value = match &entry.state {
@@ -1708,9 +1741,13 @@ impl Attachments {
                     kind: AttachmentRawKind::Synced,
                     ..
                 } => continue,
-                Entry::Decoded(decoded) => {
-                    encode(decoded).map(|value| envelope(value, decoded.policy.copy_on_death))
-                }
+                Entry::Decoded(decoded) => encode(decoded)
+                    .map_err(|error| AttachmentEncodeError {
+                        namespace: String::from_utf16_lossy(&namespace.0),
+                        name: String::from_utf16_lossy(&name.0),
+                        error,
+                    })?
+                    .map(|value| envelope(value, decoded.policy.copy_on_death)),
             };
             if let Some(value) = value {
                 let tag = raw
@@ -1724,7 +1761,7 @@ impl Attachments {
                 names.remove(name);
             }
         }
-        raw
+        Ok(raw)
     }
     /// Copy serializable entries through their disk encoding for a player clone
     /// (NeoForge's `AttachmentInternals.copyEntityAttachments`).
@@ -1764,7 +1801,7 @@ impl Attachments {
                 Entry::Decoded(value)
                     if !is_death || current.unwrap_or(value.policy.copy_on_death) =>
                 {
-                    value.encode_current().map(|encoded| {
+                    value.encode_current().ok().flatten().map(|encoded| {
                         envelope(encoded, current.unwrap_or(value.policy.copy_on_death))
                     })
                 }
@@ -2114,7 +2151,7 @@ mod tests {
         let mut source = Attachments::default();
         COUNTER.set(&mut source, Holder::Level, 5).unwrap();
         COUNTED.set(&mut source, Holder::Level, 6).unwrap();
-        let mut map = Attachments::from_nbt(source.to_nbt());
+        let mut map = Attachments::from_nbt(source.try_to_nbt().unwrap());
         MEMORY.set(&mut map, Holder::Level, 8).unwrap();
         let mut host = ReadOnlyHost { map };
         let (one, two) = (Holder::Entity(1), Holder::Entity(2));
@@ -2172,7 +2209,7 @@ mod tests {
         let mut source = Attachments::default();
         COUNTER.set(&mut source, Holder::Level, 42).unwrap();
         SYNCED.set(&mut source, Holder::Level, 8).unwrap();
-        let saved = source.to_nbt();
+        let saved = source.try_to_nbt().unwrap();
         let mut map = Attachments::from_nbt(saved.clone());
         let index = Arc::new(Mutex::new(index::AttachmentIndex::default()));
         map.bind_index(&index, 1);
@@ -2183,7 +2220,7 @@ mod tests {
         ));
         assert_eq!(indexed_values(&index, &COUNTER), [(1, 42)]);
         assert_eq!(indexed_values(&index, &SYNCED), [(1, 8)]);
-        assert_eq!(map.to_nbt(), saved);
+        assert_eq!(map.try_to_nbt().unwrap(), saved);
         assert!(map.take_sync_changes(project_standard).is_empty());
         assert_eq!(COUNTER.get_existing(&mut map, Holder::Level), Ok(Some(42)));
         let decoded = rows(&index, &COUNTER);
@@ -2193,7 +2230,7 @@ mod tests {
             map.entry("test", "counter").unwrap().unwrap()
         ));
         assert_eq!(before[0].entry.read(&COUNTER), Ok(&42));
-        assert_eq!(map.to_nbt(), saved);
+        assert_eq!(map.try_to_nbt().unwrap(), saved);
         assert!(map.take_sync_changes(project_standard).is_empty());
     }
 
@@ -2290,13 +2327,13 @@ mod tests {
         MEMORY.set(&mut map, Holder::Level, 20).unwrap();
         map.bind_index(&index, 1);
         let kept = map.clone();
-        let saved = kept.to_nbt();
+        let saved = kept.try_to_nbt().unwrap();
         SYNCED.set(&mut map, Holder::Level, 11).unwrap();
         MEMORY.remove(&mut map, Holder::Level).unwrap();
         COUNTER.set(&mut map, Holder::Level, 30).unwrap();
         let aborted = rows(&index, &SYNCED);
         map.replace_contents(kept);
-        assert_eq!(map.to_nbt(), saved);
+        assert_eq!(map.try_to_nbt().unwrap(), saved);
         assert_eq!(
             map.take_sync_changes(project_standard),
             [change("synced", Some(10))]
@@ -2467,7 +2504,7 @@ mod tests {
         map.bind_index(index, 1);
         assert_eq!(key.get(&mut map, Holder::Level), Ok(5));
         key.set(&mut map, Holder::Level, 6).unwrap();
-        let mut loaded = Attachments::from_nbt(map.to_nbt());
+        let mut loaded = Attachments::from_nbt(map.try_to_nbt().unwrap());
         loaded.bind_index(index, 1);
         assert_eq!(indexed_values(index, &key), [(1, 6)]);
         assert_eq!(key.get_existing(&mut loaded, Holder::Level), Ok(Some(6)));
@@ -2477,7 +2514,7 @@ mod tests {
     fn saved_values_read_over_a_map_replace_only_their_own_keys() {
         let mut source = Attachments::from_nbt([("unknown".into(), Tag::Int(5))].into());
         COUNTER.set(&mut source, Holder::Level, 42).unwrap();
-        let saved = source.to_nbt();
+        let saved = source.try_to_nbt().unwrap();
         // What the constructing listeners set before the load.
         let mut map = Attachments::default();
         COUNTER.set(&mut map, Holder::Level, 1).unwrap();
@@ -2485,15 +2522,18 @@ mod tests {
         map.read_saved_over(saved);
         assert_eq!(COUNTER.get(&mut map, Holder::Level), Ok(42));
         assert_eq!(SYNCED.get(&mut map, Holder::Level), Ok(9));
-        let mut reloaded = Attachments::from_nbt(map.to_nbt());
+        let mut reloaded = Attachments::from_nbt(map.try_to_nbt().unwrap());
         assert_eq!(COUNTER.get(&mut reloaded, Holder::Level), Ok(42));
         assert_eq!(SYNCED.get(&mut reloaded, Holder::Level), Ok(9));
-        assert_eq!(reloaded.to_nbt().get(&"unknown".into()), Some(&Tag::Int(5)));
+        assert_eq!(
+            reloaded.try_to_nbt().unwrap().get(&"unknown".into()),
+            Some(&Tag::Int(5))
+        );
 
         // A map with saved data of its own keeps it beside what is read over it.
         let mut own = Attachments::from_nbt([("kept".into(), Tag::Int(1))].into());
         own.read_saved_over([("unknown".into(), Tag::Int(5))].into());
-        let nbt = own.to_nbt();
+        let nbt = own.try_to_nbt().unwrap();
         assert_eq!(nbt.get(&"kept".into()), Some(&Tag::Int(1)));
         assert_eq!(nbt.get(&"unknown".into()), Some(&Tag::Int(5)));
     }
@@ -2513,7 +2553,7 @@ mod tests {
         let mut map = Attachments::default();
         SYNCED.set(&mut map, Holder::Level, 1).unwrap();
         map.take_sync_changes(project_standard);
-        let loaded = Attachments::from_nbt(map.to_nbt());
+        let loaded = Attachments::from_nbt(map.try_to_nbt().unwrap());
         for mut map in [map, loaded] {
             let mut snapshot = map.clone();
             let entry = map.entry("test", "synced").unwrap().unwrap().clone();
@@ -2521,7 +2561,7 @@ mod tests {
                 &entry,
                 snapshot.entry("test", "synced").unwrap().unwrap()
             ));
-            let saved = snapshot.to_nbt();
+            let saved = snapshot.try_to_nbt().unwrap();
 
             SYNCED.set(&mut map, Holder::Level, 2).unwrap();
             assert_eq!(entry.read(&SYNCED), Ok(&1));
@@ -2533,7 +2573,7 @@ mod tests {
                 SYNCED.get_existing(&mut snapshot, Holder::Level),
                 Ok(Some(1))
             );
-            assert_eq!(snapshot.to_nbt(), saved);
+            assert_eq!(snapshot.try_to_nbt().unwrap(), saved);
             assert!(snapshot.take_sync_changes(project_standard).is_empty());
             assert_eq!(
                 map.take_sync_changes(project_standard),
@@ -2565,7 +2605,7 @@ mod tests {
         };
         let mut original = Attachments::default();
         COUNTER.set(&mut original, Holder::Level, 42).unwrap();
-        let saved = original.to_nbt();
+        let saved = original.try_to_nbt().unwrap();
         let mut map = Attachments::from_nbt(saved.clone());
         let snapshot = map.clone();
         assert!(Arc::ptr_eq(
@@ -2587,7 +2627,7 @@ mod tests {
         ));
         assert_eq!(DECODES.load(Ordering::Relaxed), 1);
         assert!(map.decoded("test", "counter").unwrap().is_none());
-        assert_eq!(map.to_nbt(), saved);
+        assert_eq!(map.try_to_nbt().unwrap(), saved);
         assert!(map.synced(project_standard).is_empty());
         assert!(map.take_sync_changes(project_standard).is_empty());
         assert!(
@@ -2606,7 +2646,7 @@ mod tests {
             decoded.read(&key),
             Err(AttachmentError::TypeMismatch)
         ));
-        assert_eq!(map.to_nbt(), saved);
+        assert_eq!(map.try_to_nbt().unwrap(), saved);
         assert!(map.take_sync_changes(project_standard).is_empty());
         assert_eq!(entry.read(&key).unwrap().0, 42);
     }
@@ -2646,14 +2686,14 @@ mod tests {
         };
         let mut map = Attachments::default();
         map.apply_sync(change("synced", Some(9)));
-        let saved = map.to_nbt();
+        let saved = map.try_to_nbt().unwrap();
         let entry = map.entry("test", "synced").unwrap().unwrap();
         assert_eq!(entry.read(&key), Err(AttachmentError::Decode));
         assert_eq!(entry.read(&key), Ok(&9));
         assert_eq!(entry.read(&key), Ok(&9));
         assert_eq!(ATTEMPTS.load(Ordering::Relaxed), 2);
         assert!(map.decoded("test", "synced").unwrap().is_none());
-        assert_eq!(map.to_nbt(), saved);
+        assert_eq!(map.try_to_nbt().unwrap(), saved);
         assert!(map.take_sync_changes(project_standard).is_empty());
     }
     #[test]
@@ -2673,11 +2713,11 @@ mod tests {
         let mut map = Attachments::default();
         COUNTER.set(&mut map, Holder::Level, 42).unwrap();
         MEMORY.set(&mut map, Holder::Level, 8).unwrap();
-        let mut loaded = Attachments::from_nbt(map.to_nbt());
+        let mut loaded = Attachments::from_nbt(map.try_to_nbt().unwrap());
         assert_eq!(COUNTER.get(&mut loaded, Holder::Level), Ok(42));
         assert_eq!(MEMORY.get(&mut loaded, Holder::Level), Ok(3));
         assert_eq!(COUNTER.remove(&mut loaded, Holder::Level), Ok(Some(42)));
-        let mut reopened = Attachments::from_nbt(loaded.to_nbt());
+        let mut reopened = Attachments::from_nbt(loaded.try_to_nbt().unwrap());
         assert_eq!(COUNTER.get(&mut reopened, Holder::Level), Ok(0));
     }
     #[test]
@@ -2693,7 +2733,7 @@ mod tests {
         let mut original = Attachments::default();
         keep.set(&mut original, Holder::Level, 42).unwrap();
         COUNTER.set(&mut original, Holder::Level, 5).unwrap();
-        let loaded = Attachments::from_nbt(original.to_nbt());
+        let loaded = Attachments::from_nbt(original.try_to_nbt().unwrap());
         let mut respawned = loaded.copy_on_death(|_, _| None);
         assert_eq!(keep.get(&mut respawned, Holder::Level), Ok(42));
         assert_eq!(COUNTER.get(&mut respawned, Holder::Level), Ok(0));
@@ -2709,10 +2749,10 @@ mod tests {
         };
         let mut original = Attachments::default();
         key.set(&mut original, Holder::Level, 31).unwrap();
-        let saved = original.to_nbt();
+        let saved = original.try_to_nbt().unwrap();
         let mut loaded = Attachments::from_nbt(saved.clone());
         assert_eq!(key.get_existing(&mut loaded, Holder::Level), Ok(Some(31)));
-        assert_eq!(loaded.to_nbt(), saved);
+        assert_eq!(loaded.try_to_nbt().unwrap(), saved);
         assert!(loaded.take_sync_changes(project_standard).is_empty());
         let mut unread = Attachments::from_nbt(saved);
         assert_eq!(key.remove(&mut unread, Holder::Level), Ok(Some(31)));
@@ -2797,7 +2837,7 @@ mod tests {
                 .swap(42, Ordering::Relaxed)),
             Ok(7)
         );
-        let mut saved = Attachments::from_nbt(holder.to_nbt());
+        let mut saved = Attachments::from_nbt(holder.try_to_nbt().unwrap());
         let mut copied = holder.copy_on_death(|_, _| None);
         for replacement in [&mut saved, &mut copied] {
             assert_eq!(
@@ -2814,10 +2854,10 @@ mod tests {
         assert!(!COUNTER.has(&mut map, Holder::Level).unwrap());
         assert_eq!(COUNTER.get_existing(&mut map, Holder::Level), Ok(None));
         assert!(!COUNTER.has(&mut map, Holder::Level).unwrap());
-        assert_eq!(map.to_nbt(), Compound::new());
+        assert_eq!(map.try_to_nbt().unwrap(), Compound::new());
         assert_eq!(COUNTER.get(&mut map, Holder::Level), Ok(0));
         assert!(COUNTER.has(&mut map, Holder::Level).unwrap());
-        assert_ne!(map.to_nbt(), Compound::new());
+        assert_ne!(map.try_to_nbt().unwrap(), Compound::new());
         COUNTER.set(&mut map, Holder::Level, 5).unwrap();
         assert_eq!(COUNTER.get_existing(&mut map, Holder::Level), Ok(Some(5)));
     }
@@ -2826,14 +2866,14 @@ mod tests {
         let mut map = Attachments::default();
         COUNTER.set(&mut map, Holder::Level, 42).unwrap();
         MEMORY.set(&mut map, Holder::Level, 8).unwrap();
-        let saved = map.to_nbt();
+        let saved = map.try_to_nbt().unwrap();
         let mut loaded = Attachments::from_nbt(saved.clone());
         assert!(COUNTER.has(&mut loaded, Holder::Level).unwrap());
         assert_eq!(
             COUNTER.get_existing(&mut loaded, Holder::Level),
             Ok(Some(42))
         );
-        assert_eq!(loaded.to_nbt(), saved);
+        assert_eq!(loaded.try_to_nbt().unwrap(), saved);
         assert!(!MEMORY.has(&mut loaded, Holder::Level).unwrap());
         assert_eq!(MEMORY.get_existing(&mut loaded, Holder::Level), Ok(None));
     }
@@ -2867,7 +2907,7 @@ mod tests {
             COUNTER.get(&mut map, Holder::Level),
             Err(AttachmentError::Decode)
         );
-        assert_eq!(map.to_nbt(), saved);
+        assert_eq!(map.try_to_nbt().unwrap(), saved);
         assert_eq!(
             COUNTER.remove(&mut map, Holder::Level),
             Err(AttachmentError::Decode)
@@ -2990,7 +3030,7 @@ mod tests {
             [change("ephemeral", Some(5))]
         );
         sync_only.set(&mut server, Holder::Level, 11).unwrap();
-        assert_eq!(server.to_nbt(), Compound::new());
+        assert_eq!(server.try_to_nbt().unwrap(), Compound::new());
         assert_eq!(
             server.synced(project_type(&sync_only)),
             [change("ephemeral", Some(11))]
@@ -3002,7 +3042,7 @@ mod tests {
         for update in updates {
             client.apply_sync(update);
         }
-        assert_eq!(client.to_nbt(), Compound::new());
+        assert_eq!(client.try_to_nbt().unwrap(), Compound::new());
         assert_eq!(
             client
                 .entry("test", "ephemeral")
@@ -3015,7 +3055,7 @@ mod tests {
             sync_only.get_existing(&mut client, Holder::Level),
             Ok(Some(11))
         );
-        assert_eq!(client.to_nbt(), Compound::new());
+        assert_eq!(client.try_to_nbt().unwrap(), Compound::new());
 
         // copy_on_death still requires a persistence codec even when sync_codec is present.
         let bad_copy = AttachmentType {
@@ -3081,7 +3121,7 @@ mod tests {
         );
 
         // Saved disk envelope carries only persistence data (no sync flag or sync_value).
-        let saved = server.to_nbt();
+        let saved = server.try_to_nbt().unwrap();
         let Some(Tag::Compound(names)) = saved.get(&"test".into()) else {
             panic!("namespace saved");
         };
@@ -3138,14 +3178,14 @@ mod tests {
         };
         assert!(reloaded.synced(project_type(&no_sync)).is_empty());
         assert!(reloaded.synced(|_, _, _| None).is_empty());
-        assert_eq!(reloaded.to_nbt(), saved);
+        assert_eq!(reloaded.try_to_nbt().unwrap(), saved);
 
         assert_eq!(
             reloaded.entry("test", "dual").unwrap().unwrap().read(&dual),
             Ok(&7)
         );
         assert_eq!(dual.get_existing(&mut reloaded, Holder::Level), Ok(Some(7)));
-        assert_eq!(reloaded.to_nbt(), saved);
+        assert_eq!(reloaded.try_to_nbt().unwrap(), saved);
 
         // Client decodes synced packets with sync_codec without touching the persistence codec.
         let client_view = AttachmentType {
@@ -3169,14 +3209,14 @@ mod tests {
             client_view.get_existing(&mut client, Holder::Level),
             Ok(Some(7))
         );
-        assert_eq!(client.to_nbt(), Compound::new());
+        assert_eq!(client.try_to_nbt().unwrap(), Compound::new());
     }
     #[test]
     fn saved_entries_sync_only_through_active_descriptors_and_preserve_unknown_entries() {
         let mut map = Attachments::default();
         SYNCED.set(&mut map, Holder::Level, 5).unwrap();
         COUNTER.set(&mut map, Holder::Level, 6).unwrap();
-        let mut saved = map.to_nbt();
+        let mut saved = map.try_to_nbt().unwrap();
         let Some(Tag::Compound(names)) = saved.get(&"test".into()) else {
             panic!("namespace saved");
         };
@@ -3207,7 +3247,7 @@ mod tests {
             loaded.synced(project_type(&counter_now_synced)),
             [change("counter", Some(6))]
         );
-        assert_eq!(loaded.to_nbt(), saved);
+        assert_eq!(loaded.try_to_nbt().unwrap(), saved);
     }
     #[test]
     fn applied_changes_decode_through_the_codec_and_removals_clear() {
@@ -3351,7 +3391,76 @@ mod tests {
             store.take_sync_changes(project_type(sync_only.as_type())),
             [change("sync_only", Some(7)), change("sync_only", Some(11))]
         );
-        assert!(store.to_nbt().is_empty());
+        assert!(store.try_to_nbt().unwrap().is_empty());
+    }
+
+    #[test]
+    fn encode_failure_refuses_serialization_with_attachment_id() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        #[derive(Clone)]
+        struct Toggle {
+            value: i32,
+            fail: Arc<AtomicBool>,
+        }
+
+        fn encode_toggle(t: &Toggle) -> Result<Compound, AttachmentError> {
+            if t.fail.load(Ordering::Relaxed) {
+                return Err(AttachmentError::Encode);
+            }
+            Ok([(JavaString::from("v"), Tag::Int(t.value))].into())
+        }
+        fn decode_toggle(c: &Compound) -> Result<Toggle, AttachmentError> {
+            match c.get(&"v".into()) {
+                Some(Tag::Int(value)) => Ok(Toggle {
+                    value: *value,
+                    fail: Arc::new(AtomicBool::new(false)),
+                }),
+                _ => Err(AttachmentError::Decode),
+            }
+        }
+        static TOGGLE: AttachmentType<Toggle> = AttachmentType {
+            namespace: "example_mod",
+            name: "counter",
+            default: || Toggle {
+                value: 0,
+                fail: Arc::new(AtomicBool::new(false)),
+            },
+            codec: Some(AttachmentCodec {
+                encode: encode_toggle,
+                decode: decode_toggle,
+            }),
+            copy_on_death: false,
+            sync_codec: None,
+        };
+
+        let fail = Arc::new(AtomicBool::new(false));
+        let mut store = Attachments::default();
+        TOGGLE
+            .set(
+                &mut store,
+                Holder::Level,
+                Toggle {
+                    value: 17,
+                    fail: fail.clone(),
+                },
+            )
+            .unwrap();
+        let saved = store.try_to_nbt().unwrap();
+        fail.store(true, Ordering::Relaxed);
+        let error = store.try_to_nbt().unwrap_err();
+        assert_eq!(error.namespace, "example_mod");
+        assert_eq!(error.name, "counter");
+        assert_eq!(error.error, AttachmentError::Encode);
+        // The previously saved NBT still decodes the original value.
+        let mut reloaded = Attachments::from_nbt(saved);
+        assert_eq!(
+            TOGGLE
+                .get_existing(&mut reloaded, Holder::Level)
+                .unwrap()
+                .map(|t| t.value),
+            Some(17)
+        );
     }
 }
 
