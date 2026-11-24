@@ -91,20 +91,24 @@ impl Receiver {
     }
 
     pub fn accept_chunk(&mut self, packet: &[u8]) -> Result<(), String> {
-        let _ = self.accept_chunk_completed(packet)?;
+        if let Some(received) = self.decode_chunk(packet)? {
+            self.received = Some(Arc::new(received));
+        }
         Ok(())
     }
 
-    /// Accept one snapshot fragment, returning `true` when a complete snapshot finished
-    /// validating and replaced [`Self::received`].
-    pub fn accept_chunk_completed(&mut self, packet: &[u8]) -> Result<bool, String> {
+    /// Accept one snapshot fragment, returning the validated set when a complete snapshot
+    /// finishes decoding without mutating [`Self::received`].
+    pub fn decode_chunk(
+        &mut self,
+        packet: &[u8],
+    ) -> Result<Option<mod_api::DatapackRegistrySet>, String> {
         if let Some(bytes) = self.assembly.push(packet)? {
             let declarations = mod_api::__private::datapack_registry_declarations();
             let received = receive(declarations, &bytes)?;
-            self.received = Some(Arc::new(received));
-            return Ok(true);
+            return Ok(Some(received));
         }
-        Ok(false)
+        Ok(None)
     }
 
     /// Replace the received set after the client binds vanilla value handles on the game thread.

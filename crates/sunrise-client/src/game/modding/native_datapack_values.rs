@@ -660,20 +660,15 @@ impl Game<'_> {
         }
     }
 
-    /// Re-decode every vanilla value in the client's received datapack snapshot against the
-    /// client's current registries and tags, swapping both the bound set and the live value table
-    /// atomically.
-    pub(in crate::game) fn bind_client_datapack_values(&mut self) -> sunrise_client::Result<()> {
-        let Some(received) = self
-            .remote
-            .as_ref()
-            .and_then(|remote| remote.datapacks.received().cloned())
-        else {
-            if let Some(remote) = self.remote.as_mut() {
-                remote.datapack_vanilla_values = None;
-            }
-            return Ok(());
-        };
+    /// Re-decode every vanilla value in `received` against the client's current registries and
+    /// tags, returning the bound set and its live value table without mutating `self.remote`.
+    fn bind_client_datapack_set(
+        &self,
+        received: &mod_api::DatapackRegistrySet,
+    ) -> sunrise_client::Result<(
+        Arc<mod_api::DatapackRegistrySet>,
+        Option<Arc<DatapackVanillaValues>>,
+    )> {
         let declarations = mod_api::__private::datapack_registry_declarations();
         let (block_tags, fluid_tags, biome_tags) = self.client_datapack_tags();
         let live_features = self.res.behaviours().live_features();
@@ -696,17 +691,49 @@ impl Game<'_> {
         )
         .map_err(|e| format!("client datapack vanilla values: {e}"))?;
         let bound = mod_api::__private::rebind_datapack_vanilla_values(
-            &received,
+            received,
             declarations,
             &mut decoder,
         )
         .map_err(|error| {
             format!("The server's mod registries contain an invalid vanilla value: {error:?}")
         })?;
-        let values = Arc::new(decoder.finish());
+        Ok((Arc::new(bound), Some(Arc::new(decoder.finish()))))
+    }
+
+    /// Atomically bind `set` and swap both `remote.datapacks` and `remote.datapack_vanilla_values`
+    /// only on success.
+    pub(in crate::game) fn install_client_datapack_set(
+        &mut self,
+        set: &mod_api::DatapackRegistrySet,
+    ) -> sunrise_client::Result<()> {
+        let (bound, values) = self.bind_client_datapack_set(set)?;
         if let Some(remote) = self.remote.as_mut() {
-            remote.datapacks.replace_received(Arc::new(bound));
-            remote.datapack_vanilla_values = Some(values);
+            remote.datapacks.replace_received(bound);
+            remote.datapack_vanilla_values = values;
+        }
+        Ok(())
+    }
+
+    /// Atomically install a configuration-phase `datapacks` receiver: if it carries a set, bind
+    /// its vanilla values before swapping `remote.datapacks` and `remote.datapack_vanilla_values`.
+    pub(in crate::game) fn install_client_datapack_receiver(
+        &mut self,
+        mut datapacks: sunrise_client::datapack_net::Receiver,
+    ) -> sunrise_client::Result<()> {
+        let bound = match datapacks.received() {
+            Some(received) => Some(self.bind_client_datapack_set(received)?),
+            None => None,
+        };
+        if let Some((set, values)) = bound {
+            datapacks.replace_received(set);
+            if let Some(remote) = self.remote.as_mut() {
+                remote.datapacks = datapacks;
+                remote.datapack_vanilla_values = values;
+            }
+        } else if let Some(remote) = self.remote.as_mut() {
+            remote.datapacks = datapacks;
+            remote.datapack_vanilla_values = None;
         }
         Ok(())
     }
@@ -1608,10 +1635,170 @@ mod tests {
                         Ok(false)
                     );
                     // Re-binding a new client snapshot invalidates the previous client handles.
-                    game.bind_client_datapack_values().unwrap();
+                    let current_set = game
+                        .remote
+                        .as_ref()
+                        .unwrap()
+                        .datapacks
+                        .received()
+                        .unwrap()
+                        .clone();
+                    game.install_client_datapack_set(&current_set).unwrap();
                     assert_eq!(
                         c_int.unwrap().sample(game, &mut rng),
                         Err(DatapackValueError::Stale)
+                    );
+
+                    // 9. Atomic client binding + clean disconnect on invalid vanilla value.
+                    //    Read fresh handles from the current live client generation first.
+                    let mut live_int = None;
+                    let mut live_tag = None;
+                    client_level
+                        .datapack_read(
+                            game,
+                            "ubm_test:bone_meal_rule",
+                            "ubm_test:cactus",
+                            &mut |entry| {
+                                live_int = entry
+                                    .get("blocks_to_grow")
+                                    .and_then(DatapackValue::as_int_provider);
+                                live_tag = entry
+                                    .get("tag_targets")
+                                    .and_then(DatapackValue::as_holder_set);
+                            },
+                        )
+                        .unwrap();
+                    let live_int = live_int.unwrap();
+                    let live_tag = live_tag.unwrap();
+
+                    // Build a wire-valid snapshot whose HolderSet references a tag the client lacks.
+                    let declarations = mod_api::__private::datapack_registry_declarations();
+                    let bad_files = vec![(
+                        "data/ubm_test/ubm_test/bone_meal_rule/cactus.json".to_owned(),
+                        vec![(
+                            "bad".to_owned(),
+                            br##"{
+                                "blocks_to_grow": 5,
+                                "increase": 2,
+                                "vegetation": {"id":"minecraft:sugar_cane","properties":{"age":"0"}},
+                                "ground_state": {"id":"minecraft:fern"},
+                                "predicate": {"type":"minecraft:solid"},
+                                "spread_sources": "minecraft:stone",
+                                "tag_targets": "#ubm_test:missing_client_tag",
+                                "single_target": "minecraft:cactus",
+                                "variant": {"type":"ubm_test:random_tick","growth_attempts":4}
+                            }"##
+                            .to_vec(),
+                        )],
+                    )];
+                    struct AcceptAllVanilla;
+                    impl VanillaValueDecoder for AcceptAllVanilla {
+                        fn decode_int_provider(
+                            &mut self,
+                            _: &str,
+                            _: i32,
+                            _: i32,
+                        ) -> Result<IntProviderValue, String> {
+                            Ok(IntProviderValue::from_raw(99, 0))
+                        }
+                        fn decode_block_state_provider(
+                            &mut self,
+                            _: &str,
+                        ) -> Result<BlockStateProviderValue, String> {
+                            Ok(BlockStateProviderValue::from_raw(99, 0))
+                        }
+                        fn decode_block_predicate(
+                            &mut self,
+                            _: &str,
+                        ) -> Result<BlockPredicateValue, String> {
+                            Ok(BlockPredicateValue::from_raw(99, 0))
+                        }
+                        fn decode_holder_set(
+                            &mut self,
+                            _: &str,
+                            _: &str,
+                        ) -> Result<HolderSetValue, String> {
+                            Ok(HolderSetValue::from_raw(99, 0))
+                        }
+                    }
+                    let bad_candidate = mod_api::__private::build_datapack_candidate_with_decoder(
+                        declarations,
+                        &bad_files,
+                        &mut AcceptAllVanilla,
+                    )
+                    .unwrap();
+                    let bad_set = mod_api::DatapackRegistrySet::from_candidate(bad_candidate);
+                    let offered = mod_api::DatapackSnapshot::decode_offer(&offer).unwrap();
+                    let bad_bytes = bad_set
+                        .snapshot_for(declarations, &offered)
+                        .unwrap()
+                        .encode()
+                        .unwrap();
+                    let bad_chunks: Vec<Vec<u8>> =
+                        datapack_net::chunks(&bad_bytes).unwrap().collect();
+                    assert_eq!(bad_chunks.len(), 1);
+                    let bad_packet = sunrise_protocol::packets::play::Clientbound::CustomPayload(
+                        sunrise_protocol::packets::configuration::CustomPayload {
+                            channel: datapack_net::CHANNEL.into(),
+                            data: bad_chunks[0].clone(),
+                        },
+                    );
+                    // Direct apply_packet fails with PacketError and keeps the previous generation live.
+                    let err = game.apply_packet(bad_packet.clone()).expect_err(
+                        "invalid vanilla value on Play reload must fail with PacketError",
+                    );
+                    assert!(
+                        err.is::<crate::game::remote::raw_ingress::PacketError>(),
+                        "expected PacketError, got: {err}"
+                    );
+                    assert_eq!(live_int.sample(game, &mut rng), Ok(5));
+                    assert_eq!(
+                        live_tag.contains(game, key(game, "minecraft:clay")),
+                        Ok(true)
+                    );
+
+                    // Dispatching the bad Play packet through poll_remote_events disconnects cleanly.
+                    let (bad_tx, bad_rx) = sunrise_client::ingress::channel(1024, |_| 1).unwrap();
+                    bad_tx
+                        .send(sunrise_client::net::Event::Packet(Box::new(bad_packet)))
+                        .unwrap();
+                    let (event, credit) = bad_rx.try_recv_owned().unwrap().into_parts();
+                    game.remote
+                        .as_mut()
+                        .unwrap()
+                        .backlog
+                        .push_back(crate::game::remote::Received::Event(event, credit));
+                    game.poll_remote_events(true).unwrap();
+                    assert!(
+                        game.remote.is_none(),
+                        "invalid Play datapack vanilla value must disconnect the client"
+                    );
+
+                    // Event::Joined with an invalid vanilla value also disconnects cleanly.
+                    let _server2 = logged_client(game);
+                    let mut bad_receiver = datapack_net::Receiver::default();
+                    for chunk in &bad_chunks {
+                        bad_receiver.accept_chunk(chunk).unwrap();
+                    }
+                    let joined_registries = game.remote.as_ref().unwrap().registries.clone();
+                    bad_tx
+                        .send(sunrise_client::net::Event::Joined {
+                            registries: joined_registries,
+                            datapacks: bad_receiver,
+                            name: "tester".into(),
+                            uuid: 1,
+                        })
+                        .unwrap();
+                    let (event, credit) = bad_rx.try_recv_owned().unwrap().into_parts();
+                    game.remote
+                        .as_mut()
+                        .unwrap()
+                        .backlog
+                        .push_back(crate::game::remote::Received::Event(event, credit));
+                    game.poll_remote_events(true).unwrap();
+                    assert!(
+                        game.remote.is_none(),
+                        "invalid Joined datapack vanilla value must disconnect the client"
                     );
                 });
             },

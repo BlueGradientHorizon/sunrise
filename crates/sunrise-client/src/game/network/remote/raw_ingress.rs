@@ -386,12 +386,15 @@ impl Game<'_> {
                 name,
                 uuid,
             } => {
-                if let Some(remote) = &mut self.remote {
-                    remote.datapacks = datapacks;
-                    remote.datapack_vanilla_values = None;
-                }
                 self.set_registries(registries);
-                self.bind_client_datapack_values()?;
+                // Vanilla `ClientConfigurationPacketListenerImpl.handleConfigurationFinished` ->
+                // `RegistryDataCollector.collectGameRegistries` throws on registry decode failure
+                // and disconnects via `ClientCommonPacketListenerImpl.onPacketError`.
+                if let Err(error) = self.install_client_datapack_receiver(datapacks) {
+                    log::warn!("Sunrise: failed to bind datapack vanilla values: {error}");
+                    self.record_packet_error(turn, packet_error_notice);
+                    return Ok(());
+                }
                 self.connection_joined();
                 self.close_dialogs();
                 if let Some(r) = self.remote.as_mut() {
@@ -502,7 +505,7 @@ impl Game<'_> {
                 self.score.board = Default::default();
                 self.clear_waypoints();
                 if let Some(r) = self.remote.as_mut() {
-                    r.datapacks = datapacks;
+                    r.datapacks = Default::default();
                     r.datapack_vanilla_values = None;
                     r.clear_attachments();
                     r.players.clear();
@@ -517,7 +520,13 @@ impl Game<'_> {
                 }
                 self.ui.registries.custom_completions.clear();
                 self.set_registries(registries);
-                self.bind_client_datapack_values()?;
+                // Vanilla `ClientConfigurationPacketListenerImpl.handleConfigurationFinished` ->
+                // `RegistryDataCollector.collectGameRegistries` disconnects via `onPacketError`.
+                if let Err(error) = self.install_client_datapack_receiver(datapacks) {
+                    log::warn!("Sunrise: failed to bind datapack vanilla values: {error}");
+                    self.record_packet_error(turn, packet_error_notice);
+                    return Ok(());
+                }
             }
             Event::Transfer(task) => {
                 if let Some(packet) = task.into_eligible_packet() {
@@ -636,7 +645,7 @@ impl Game<'_> {
 
 /// Protocol error raised while handling a play packet (`ClientCommonPacketListenerImpl.onPacketError`).
 #[derive(Debug)]
-pub(super) struct PacketError(pub(super) &'static str);
+pub(in crate::game) struct PacketError(pub(super) &'static str);
 
 impl std::fmt::Display for PacketError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
