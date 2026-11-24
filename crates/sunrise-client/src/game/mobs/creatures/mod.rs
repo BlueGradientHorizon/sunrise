@@ -522,15 +522,13 @@ impl Game<'_> {
         Some((uuid, id))
     }
     /// A sulfur cube's attribute map (`LivingEntity.attributes`), from its
-    /// type's defaults, before its first tick adopts the body's archetype
-    /// modifiers. A map already there (commands, armor) is kept.
+    /// type's defaults and what its save kept (`finalize::attribute_map`),
+    /// before its first tick adopts the body's archetype modifiers. A map
+    /// already there (commands, armor) is kept.
     fn init_sulfur_attribute_maps(&mut self) {
         for m in &mut self.mobs {
-            if m.species() == sunrise_client::mobs::Species::SulfurCube
-                && m.extra.generic_attributes.is_none()
-            {
-                m.extra.generic_attributes =
-                    self.motion.attributes.create(&m.kind.id).map(Box::new);
+            if m.species() == sunrise_client::mobs::Species::SulfurCube {
+                sunrise_client::mobs::finalize::attribute_map(m, &self.motion.attributes);
             }
         }
     }

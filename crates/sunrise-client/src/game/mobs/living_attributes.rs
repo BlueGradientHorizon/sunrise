@@ -487,6 +487,13 @@ impl Game<'_> {
             .ok()?;
         if done {
             self.write_live_attributes(t, name, write, default);
+            // `onAttributeUpdated(SCALE)`: the mob's dimensions follow.
+            if name == "minecraft:scale"
+                && let Target::Mob(id) = t
+                && let Some(m) = self.mobs.iter_mut().find(|m| m.id == id && !m.removed)
+            {
+                sunrise_client::mobs::finalize::scale_changed(m);
+            }
         }
         Some(done)
     }

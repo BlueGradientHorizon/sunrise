@@ -1501,18 +1501,16 @@ impl Game<'_> {
 
     /// The attribute map of a living entity whose attributes Sunrise does
     /// not model, created from its type's defaults on first use. A mob keeps
-    /// its own (`generic_attributes`), which its effects' modifiers reach too.
+    /// its own (`generic_attributes`), which its effects' modifiers reach
+    /// too, made with what its live map kept (`finalize::attribute_map`):
+    /// a reloaded mob reports and removes its saved modifiers.
     pub(in crate::game) fn generic_attributes(
         &mut self,
         t: Target,
     ) -> Option<&mut sunrise_world::attributes::entity::EntityAttributes> {
         if let Target::Mob(id) = t {
             let mob = self.mobs.iter_mut().find(|m| m.id == id)?;
-            if mob.extra.generic_attributes.is_none() {
-                mob.extra.generic_attributes =
-                    self.motion.attributes.create(&mob.kind.id).map(Box::new);
-            }
-            return mob.extra.generic_attributes.as_deref_mut();
+            return sunrise_client::mobs::finalize::attribute_map(mob, &self.motion.attributes);
         }
         if !self.cmds.attributes.contains_key(&t) {
             let ty = self.target_type(t);

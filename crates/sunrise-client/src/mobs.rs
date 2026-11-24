@@ -4969,13 +4969,17 @@ impl Mob {
             }
             keep
         });
-        // LivingEntity.onAttributeUpdated clamps the absorption to the
-        // remaining maximum; removing Absorption does not subtract the hearts
-        // it granted.
+        // One `onEffectsRemoved` for all of them: each effect's modifiers
+        // come off, then `refreshDirtyAttributes` runs once, so the
+        // absorption is clamped to the maximum the whole batch leaves
+        // (`onAttributeUpdated`); removing Absorption does not subtract the
+        // hearts it granted.
+        let mut dirty = finalize::DirtyAttributes::default();
         for (effect, index) in removed {
             let def = index.and_then(sunrise_client_core::potions::effect_by_index);
-            self.set_effect_modifiers(effect, def, None);
+            dirty.merge(self.write_effect_modifiers(effect, def, None));
         }
+        self.refresh_dirty_attributes(dirty);
         let changed = self.extra.effects.len() != before;
         if changed {
             self.extra.effects_revision += 1;
@@ -5197,13 +5201,12 @@ impl Mob {
                 self.retain_effects(|_| false);
             }
             // `RemoveStatusEffectsConsumeEffect.apply`: `removeEffect` for each,
-            // `onEffectsRemoved` for what the mob had.
+            // in the component's order, each its own `onEffectsRemoved`.
             ConsumeEffect::RemoveEffects(ids) => {
-                self.retain_effects(|e| {
-                    let held = e.id.trim_start_matches("minecraft:");
-                    !ids.iter()
-                        .any(|id| id.trim_start_matches("minecraft:") == held)
-                });
+                for id in ids {
+                    let id = id.trim_start_matches("minecraft:");
+                    self.retain_effects(|e| e.id.trim_start_matches("minecraft:") != id);
+                }
             }
             // `ApplyStatusEffectsConsumeEffect.apply`: one random draw, even at
             // probability 1.
