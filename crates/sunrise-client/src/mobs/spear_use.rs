@@ -983,7 +983,10 @@ mod tests {
                     matches!(
                         event,
                         MobEvent::WeaponAttack(WeaponHit {
-                            attack: WeaponAttack::Stab { dismounts: true, .. },
+                            attack: WeaponAttack::Stab {
+                                dismounts: true,
+                                ..
+                            },
                             ..
                         })
                     )

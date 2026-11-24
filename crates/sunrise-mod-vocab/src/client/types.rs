@@ -1325,7 +1325,6 @@ pub enum PanelEvent {
     },
 }
 
-
 /// `ParticleStatus`: how many particles a client shows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
