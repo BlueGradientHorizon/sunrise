@@ -3363,7 +3363,7 @@ struct Game<'a> {
     /// The window's inbox for server notices, kept across world disconnects.
     client_reports: Arc<sunrise_client::chunk_io::Reports>,
     /// The link a chat click asks to open (`ConfirmLinkScreen`).
-    link_prompt: Option<String>,
+    link_prompt: Option<chat::LinkPrompt>,
     /// A command the player didn't type, waiting for their answer
     /// (game/network/remote_chat.rs).
     command_prompt: Option<remote_chat::CommandPrompt>,
