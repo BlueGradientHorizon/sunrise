@@ -83,6 +83,43 @@ SIDE_ALLOWED_STRUCTS = {
 SIDE_OLD_FILE = {"client": "client_state.rs", "server": "server_state.rs"}
 SIDE_NEW_FILE = {"client": "client_side.rs", "server": "server_side.rs"}
 SIDE_CONTAINERS = frozenset({"client_state", "server_state", "client_side", "server_side"})
+MIRROR_MOD_RE = re.compile(r"^([A-Za-z0-9_]+)_(client|server)$")
+
+# Audited macros expanding directly to Game state or wrapped drop-order fields.
+GAME_FIELD_MACROS: dict[str, tuple[tuple[str, str, bool], ...]] = {
+    "game_side": (
+        ("server", "lan_acting_uuid", False),
+        ("server", "levels", True),
+        ("server", "session_lock", True),
+    ),
+    "world_items": (("server", "world_tables", True),),
+    "world_recipes": (("server", "world_tables", True),),
+    "world_stations": (("server", "world_tables", True),),
+    "hit_reads_of": (("server", "lan_acting_uuid", False),),
+    "player_resolver": (("server", "lan_acting_uuid", False),),
+    "damage_level_of": (
+        ("server", "lan_acting_uuid", False),
+        ("server", "world_tables", True),
+        ("server", "paused_mob_hurt", True),
+    ),
+    "motion_phase": (
+        ("server", "lan_acting", False),
+        ("server", "lan_acting_uuid", False),
+        ("server", "levels", True),
+        ("server", "session_lock", True),
+    ),
+    "blocked_damage": (("server", "combat", True),),
+    "section_scene": (("client", "pending_uploads", True), ("client", "renderer", True)),
+    "server_ctx": (("server", "next_entity", False),),
+    "transferred": (("server", "levels", True),),
+}
+LOCAL_ONLY_MACROS: dict[str, str] = {
+    "motion_phase": "crates/sunrise-client/src/game/blocks/piston_push.rs",
+    "blocked_damage": "crates/sunrise-client/src/game/entities/explosion.rs",
+    "section_scene": "crates/sunrise-client/src/game/interface/particle_culling.rs",
+    "server_ctx": "crates/sunrise-client/src/game/world/server_travel.rs",
+    "transferred": "crates/sunrise-client/src/game/world/server_travel.rs",
+}
 
 # Keywords that can precede `!` as logical negation rather than a macro call.
 NON_MACRO_KEYWORDS = frozenset({
@@ -518,6 +555,7 @@ class FieldSpec:
     field: str
     owner: str
     visibility: str
+    wrapper: str = "-"
 
 
 @dataclass(frozen=True)
@@ -950,10 +988,12 @@ def parse_field_specs_rows(text: str, label: str) -> dict[str, FieldSpec] | None
         raise SystemExit(f"{label}: expected columns including field, owner")
     if "visibility" not in reader.fieldnames:
         return None
+    has_wrapper = "wrapper" in reader.fieldnames
     for lineno, row in enumerate(reader, 2):
         fld = row["field"].strip()
         owner = row["owner"].strip()
         vis = row["visibility"].strip()
+        wrap = (row.get("wrapper") or "-").strip() if has_wrapper else "-"
         if owner in ("client", "server") and vis not in ("side", "game"):
             raise SystemExit(
                 f"{label}:{lineno}: {owner} field `{fld}` must have visibility `side` or `game`, got {vis!r}"
@@ -962,7 +1002,15 @@ def parse_field_specs_rows(text: str, label: str) -> dict[str, FieldSpec] | None
             raise SystemExit(
                 f"{label}:{lineno}: game field `{fld}` has unexpected visibility {vis!r}"
             )
-        specs[fld] = FieldSpec(field=fld, owner=owner, visibility=vis)
+        if owner in ("client", "server") and wrap != "-":
+            raise SystemExit(
+                f"{label}:{lineno}: {owner} field `{fld}` must have wrapper `-`, got {wrap!r}"
+            )
+        if owner == "game" and wrap not in ("-", "client_only", "client_shared", "server_only", "server_shared"):
+            raise SystemExit(
+                f"{label}:{lineno}: game field `{fld}` has unexpected wrapper {wrap!r}"
+            )
+        specs[fld] = FieldSpec(field=fld, owner=owner, visibility=vis, wrapper=wrap)
     return specs
 
 
@@ -1523,7 +1571,9 @@ def analyze_file_visibility(
                 pending_attrs.clear()
                 mname = tokens[i][1]
                 call_end = skip_balanced(tokens, i + 2)
-                if mname != "include":
+                if mname == "thread_local":
+                    walk(i + 3, call_end - 1, mod_depth)
+                elif mname != "include":
                     for hit in find_rel_vis_in_token_range(tokens, i + 3, call_end - 1, src, line_index, mod_depth):
                         errors.append(
                             f"{rel}:{hit.line}: macro invocation `{mname}!` contains relative visibility `{hit.raw}`"
@@ -1880,6 +1930,7 @@ def check_side_file_structure(
     rel: str,
     game_dir: Path,
     table: dict[str, tuple[str, str, tuple[str, ...] | None]],
+    expected_mirrors: set[str] | frozenset[str] = frozenset(),
 ) -> list[str]:
     """Enforce the strict structural allowlist for `client_side.rs` and `server_side.rs`."""
     smod = SIDE_MOD_NAME[side]
@@ -1909,7 +1960,7 @@ def check_side_file_structure(
         if item.kind == "mod_decl" and item.mod_arm is not None:
             if seen_state_struct:
                 problems.append(f"{rel}:{item.line}: `mod {item.name};` must appear before `struct {sname}`")
-            if item.name not in table:
+            if item.name not in table and item.name not in expected_mirrors:
                 problems.append(f"{rel}:{item.line}: module `{item.name}` is missing from game_module_sides.tsv")
             continue
 
@@ -2181,14 +2232,144 @@ def has_out_of_side_field_access(
     return False
 
 
+def tokens_access_macro_field(
+    tokens: list[Token], rel_posix: str, side: str, target_field: str | None = None
+) -> bool:
+    """Return True if `tokens` invoke an audited `GAME_FIELD_MACROS` expanding to `side` (or `target_field`)."""
+    n = len(tokens)
+    i = 0
+    while i < n:
+        if tokens[i][0] == "IDENT" and tokens[i][1] == "macro_rules" and i + 3 < n and tokens[i + 1][1] == "!":
+            if tokens[i + 3][1] in ("(", "[", "{"):
+                i = skip_balanced(tokens, i + 3)
+                continue
+        if (
+            tokens[i][0] == "IDENT"
+            and i + 2 < n
+            and tokens[i + 1][1] == "!"
+            and tokens[i + 2][1] in ("(", "[", "{")
+        ):
+            mname = norm_ident(tokens[i][1])
+            entries = GAME_FIELD_MACROS.get(mname)
+            if entries is not None:
+                owner_file = LOCAL_ONLY_MACROS.get(mname)
+                if owner_file is None or owner_file == rel_posix:
+                    skip_lan_uuid = False
+                    if mname == "game_side":
+                        end_m = skip_balanced(tokens, i + 2)
+                        depth = 0
+                        for tk in tokens[i + 3 : end_m - 1]:
+                            if tk[1] in ("(", "[", "{"):
+                                depth += 1
+                            elif tk[1] in (")", "]", "}"):
+                                depth = max(0, depth - 1)
+                            elif tk[1] == "," and depth == 0:
+                                skip_lan_uuid = True
+                                break
+                    for mside, mfld, _is_drop in entries:
+                        if skip_lan_uuid and mfld == "lan_acting_uuid":
+                            continue
+                        if mside == side and (target_field is None or mfld == target_field):
+                            return True
+        i += 1
+    return False
+
+
+def has_out_of_side_wrapper_access(
+    root: Path,
+    field: str,
+    side: str,
+    in_side_file_side: dict[Path, str],
+    tok_cache: dict[Path, tuple[str, list[Token]]] | None = None,
+) -> bool:
+    """Return True if any `.rs` file outside `side` accesses `.<field>.0` or an audited macro reading `field`."""
+    src_root = (root / "crates/sunrise-client/src").resolve()
+    side_file = (src_root / "game" / SIDE_NEW_FILE[side]).resolve()
+    macro_names = {
+        mname
+        for mname, entries in GAME_FIELD_MACROS.items()
+        if any(ms == side and mf == field and is_drop for ms, mf, is_drop in entries)
+    }
+    for path in sorted(src_root.rglob("*.rs")):
+        resolved = path.resolve()
+        if resolved == side_file or in_side_file_side.get(resolved) == side:
+            continue
+        if tok_cache is not None and resolved in tok_cache:
+            txt, tokens = tok_cache[resolved]
+        else:
+            txt = resolved.read_text(encoding="utf-8")
+            if field not in txt and not any(m in txt for m in macro_names):
+                continue
+            tokens = tokenize_rust(txt)
+            if tok_cache is not None:
+                tok_cache[resolved] = (txt, tokens)
+        if field in txt:
+            n = len(tokens)
+            for i in range(n - 3):
+                if (
+                    tokens[i][1] == "."
+                    and tokens[i + 1][0] == "IDENT"
+                    and norm_ident(tokens[i + 1][1]) == field
+                    and tokens[i + 2][1] == "."
+                    and tokens[i + 3][0] == "NUM"
+                    and tokens[i + 3][1] == "0"
+                ):
+                    return True
+        if macro_names and any(m in txt for m in macro_names):
+            rel = resolved.relative_to(root).as_posix()
+            if tokens_access_macro_field(tokens, rel, side, target_field=field):
+                return True
+    return False
+
+
+def collect_module_subtree_files(
+    root: Path,
+    entries: list[Path],
+    arms: list[ModArm],
+    tok_cache: dict[Path, tuple[str, list[Token]]] | None = None,
+) -> list[Path]:
+    """Return all `.rs` files in a module's subtree (entry files, child mods, and literal includes)."""
+    visited: set[Path] = set()
+    ordered: list[Path] = []
+
+    def walk(path: Path, is_path_loaded: bool) -> None:
+        resolved = path.resolve()
+        if resolved in visited or not resolved.is_file():
+            return
+        visited.add(resolved)
+        ordered.append(resolved)
+        txt, tokens = read_tokens_cached(resolved, tok_cache)
+        for site in scan_includes_in_tokens(tokens, txt, resolved):
+            if site.is_literal and site.target is not None and site.target.is_file():
+                walk(site.target, is_path_loaded)
+        children, _ = scan_child_mod_decls(txt, resolved, root, 0, is_path_loaded, tokens=tokens)
+        for child_path, _child_depth, child_path_loaded in children:
+            walk(child_path, child_path_loaded)
+
+    for idx, entry in enumerate(entries):
+        has_path = arms[idx].path_value is not None if idx < len(arms) else False
+        walk(entry, has_path)
+    return ordered
+
+
 def module_touches_side_state(
     entries: list[Path],
     side: str,
     tok_cache: dict[Path, tuple[str, list[Token]]] | None = None,
+    *,
+    root: Path | None = None,
+    arms: list[ModArm] | None = None,
+    field_specs: dict[str, FieldSpec] | None = None,
 ) -> bool:
-    """Return True if any entry file of a module accesses `.<side>.` or names its state struct."""
+    """Return True if any file in a module's subtree accesses `side`'s grouped or wrapped state."""
     state_name = SIDE_STRUCT_NAME[side]
-    for path in entries:
+    wrapped_fields = (
+        {f for f, sp in field_specs.items() if sp.wrapper.startswith(f"{side}_")}
+        if field_specs
+        else set()
+    )
+    files = collect_module_subtree_files(root, entries, arms or [], tok_cache) if root is not None else entries
+    for path in files:
         resolved = path.resolve()
         if not resolved.is_file():
             continue
@@ -2196,8 +2377,24 @@ def module_touches_side_state(
         if state_name in txt:
             if any(t[0] == "IDENT" and norm_ident(t[1]) == state_name for t in tokens):
                 return True
-        for i in range(len(tokens) - 2):
+        n = len(tokens)
+        for i in range(n - 2):
             if tokens[i][1] == "." and tokens[i + 1][0] == "IDENT" and tokens[i + 1][1] == side and tokens[i + 2][1] == ".":
+                return True
+            if (
+                wrapped_fields
+                and i + 3 < n
+                and tokens[i][1] == "."
+                and tokens[i + 1][0] == "IDENT"
+                and norm_ident(tokens[i + 1][1]) in wrapped_fields
+                and tokens[i + 2][1] == "."
+                and tokens[i + 3][0] == "NUM"
+                and tokens[i + 3][1] == "0"
+            ):
+                return True
+        if root is not None:
+            rel = resolved.relative_to(root).as_posix()
+            if tokens_access_macro_field(tokens, rel, side):
                 return True
     return False
 
@@ -2211,8 +2408,11 @@ def check_baseline_ratchet(
     resolved_entries: dict[str, list[Path]],
     moved_file_side: dict[Path, str],
     tok_cache: dict[Path, tuple[str, list[Token]]] | None = None,
+    *,
+    all_arms: dict[str, list[ModArm]] | None = None,
+    file_to_mod: dict[Path, str] | None = None,
 ) -> list[str]:
-    """Fail when protected fields, modules, paths, or includes relax relative to `base_rev` without source cause."""
+    """Fail when protected fields, wrappers, modules, paths, or includes relax relative to `base_rev`."""
     problems: list[str] = []
     short_rev = base_rev[:10]
     src_root = (root / "crates/sunrise-client/src").resolve()
@@ -2241,7 +2441,28 @@ def check_baseline_ratchet(
                         problems.append(
                             f"tools/game_field_owners.tsv: new `{cur.owner}` field `{SIDE_STRUCT_NAME[cur.owner]}::{fname}` marked `visibility=game` since {short_rev} with no out-of-side source access"
                         )
+                if prev is not None and prev.wrapper in ("client_only", "server_only"):
+                    prev_wside = "client" if prev.wrapper == "client_only" else "server"
+                    if not cur.wrapper.startswith(f"{prev_wside}_"):
+                        problems.append(
+                            f"tools/game_field_owners.tsv: wrapped field `{fname}` relaxed from `{prev.wrapper}` to `{cur.wrapper}` since {short_rev}"
+                        )
+                    elif cur.wrapper == f"{prev_wside}_shared":
+                        if not has_out_of_side_wrapper_access(root, fname, prev_wside, moved_file_side, tok_cache):
+                            problems.append(
+                                f"tools/game_field_owners.tsv: wrapped field `{fname}` widened from `{prev.wrapper}` to `{cur.wrapper}` since {short_rev} with no out-of-side source access"
+                            )
+                elif cur.wrapper in ("client_shared", "server_shared"):
+                    cur_wside = "client" if cur.wrapper == "client_shared" else "server"
+                    was_shared = prev is not None and prev.wrapper == cur.wrapper
+                    if not was_shared and not has_out_of_side_wrapper_access(
+                        root, fname, cur_wside, moved_file_side, tok_cache
+                    ):
+                        problems.append(
+                            f"tools/game_field_owners.tsv: wrapped field `{fname}` marked `{cur.wrapper}` since {short_rev} with no out-of-side source access"
+                        )
 
+    base_mods: dict[str, tuple[str, str, tuple[str, ...] | None]] = {}
     base_mods_text = git_text_at(root, base_rev, "tools/game_module_sides.tsv")
     if base_mods_text is not None:
         base_mods = parse_module_sides_rows(base_mods_text, f"{short_rev}:tools/game_module_sides.tsv")
@@ -2251,9 +2472,17 @@ def check_baseline_ratchet(
                 continue
             prev_side, _, prev_paths = prev_entry
             if prev_side != cur_side and cur_side in ("client", "server"):
-                if not module_touches_side_state(resolved_entries.get(mod_name, []), cur_side, tok_cache):
+                mod_arms = all_arms.get(mod_name, []) if all_arms is not None else []
+                if not module_touches_side_state(
+                    resolved_entries.get(mod_name, []),
+                    cur_side,
+                    tok_cache,
+                    root=root,
+                    arms=mod_arms,
+                    field_specs=field_specs,
+                ):
                     problems.append(
-                        f"tools/game_module_sides.tsv: module `{mod_name}` promoted from `{prev_side}` to `{cur_side}` since {short_rev} without accessing `{SIDE_STRUCT_NAME[cur_side]}`"
+                        f"tools/game_module_sides.tsv: module `{mod_name}` promoted from `{prev_side}` to `{cur_side}` since {short_rev} without accessing `{SIDE_STRUCT_NAME[cur_side]}` or `{cur_side}`-wrapped fields"
                     )
             if prev_paths is not None and cur_paths is not None and cur_paths != prev_paths:
                 retained_old = [p for p in set(prev_paths) - set(cur_paths) if (src_root / p).is_file()]
@@ -2266,9 +2495,24 @@ def check_baseline_ratchet(
     if base_inc_text is not None:
         base_incs = parse_allowed_includes_rows(base_inc_text, f"{short_rev}:tools/game_module_includes.tsv")
         for frel, carg in sorted(set(allowed_includes) - set(base_incs)):
-            problems.append(
-                f"tools/game_module_includes.tsv: new moved-subtree include `{frel}` ({carg}) added since {short_rev}"
-            )
+            carried_by_promotion = False
+            owner_mod = file_to_mod.get((root / frel).resolve()) if file_to_mod else None
+            if (
+                owner_mod is not None
+                and owner_mod in base_mods
+                and base_mods[owner_mod][0] == "game"
+                and owner_mod in table
+                and table[owner_mod][0] in ("client", "server")
+            ):
+                base_src = git_text_at(root, base_rev, frel)
+                if base_src is not None:
+                    base_sites = scan_includes_in_tokens(tokenize_rust(base_src), base_src, root / frel)
+                    if any(s.canon_arg == carg for s in base_sites):
+                        carried_by_promotion = True
+            if not carried_by_promotion:
+                problems.append(
+                    f"tools/game_module_includes.tsv: new moved-subtree include `{frel}` ({carg}) added since {short_rev}"
+                )
 
     return problems
 
@@ -2280,6 +2524,7 @@ def rewrite_state_file(
     field_specs: dict[str, FieldSpec],
     root: Path,
     src_rel: str | None = None,
+    mirror_arms: list[ModArm] | None = None,
 ) -> tuple[str, list[str]]:
     """Build the updated `{client,server}_side.rs` text and return `(new_text, errors)`."""
     side_mod = SIDE_MOD_NAME[side]
@@ -2349,6 +2594,19 @@ def rewrite_state_file(
                 continue
             mod_lines.append(rebased)
         mod_lines.append(f"{side_vis} mod {arm.name};\n")
+    mirror_lines: list[str] = []
+    for arm in mirror_arms or []:
+        side_vis, _, vis_err = validate_and_map_mod_vis(arm)
+        if vis_err:
+            errors.append(vis_err)
+            continue
+        for attr in arm.attrs:
+            rebased, rerr = rebase_attr_path(attr, arm.parent_dir, side_dir, src_root)
+            if rerr:
+                errors.append(f"{arm.file_rel}: {rerr}")
+                continue
+            mirror_lines.append(rebased)
+        mirror_lines.append(f"{side_vis} mod {arm.name};\n")
     if errors:
         return src_text, errors
 
@@ -2356,6 +2614,8 @@ def rewrite_state_file(
     header += f"#[allow(unused_imports)]\npub(in crate::game::{side_mod}) use super::*;\n\n"
     if mod_lines:
         header += "".join(mod_lines) + "\n"
+    if mirror_lines:
+        header += "".join(mirror_lines) + "\n"
     header += "".join(struct_attr_lines)
 
     rest = src_text[decl_start:]
@@ -2640,7 +2900,9 @@ def rewrite_ignored_exceptions_json(text: str, mod_to_side: dict[str, str]) -> s
     return json.dumps(data, indent=2, ensure_ascii=False) + "\n"
 
 
-def rewrite_test_areas_toml(text: str, mod_to_side: dict[str, str]) -> str:
+def rewrite_test_areas_toml(
+    text: str, mod_to_side: dict[str, str], fn_mirrors: dict[str, set[str]] | None = None
+) -> str:
     """Rewrite `tools/test_areas.toml` `sunrise-client` `game::` filters from the module table."""
     lines = text.splitlines(keepends=True)
     out: list[str] = []
@@ -2676,6 +2938,10 @@ def rewrite_test_areas_toml(text: str, mod_to_side: dict[str, str]) -> str:
             matching_sides = {
                 side for mod, side in mod_to_side.items() if mod.startswith(mod_or_prefix)
             }
+            if fn_mirrors:
+                for side in ("client", "server"):
+                    if any(mm.startswith(mod_or_prefix) for mm in fn_mirrors.get(side, ())):
+                        matching_sides.add(side)
             if not matching_sides:
                 out.extend(lines[i:j])
             else:
@@ -2707,7 +2973,75 @@ def rewrite_doc_file(text: str, mod_to_side: dict[str, str]) -> str:
     return pat.sub(repl, new)
 
 
-def collect_all_arms(root: Path) -> tuple[dict[str, list[ModArm]], dict[str, str], dict[str, list[Path]], list[str]]:
+def is_mirror_mod_arm(
+    parent: str, arm: ModArm, regular_names: set[str] | frozenset[str] = frozenset()
+) -> bool:
+    """Return True if `arm` declares a function-side mirror `<m>_{client,server}`."""
+    if parent not in ("client", "server") or arm.name in regular_names:
+        return False
+    m = MIRROR_MOD_RE.match(arm.name)
+    if not m or m.group(2) != parent:
+        return False
+    return arm.path_value is not None and arm.path_value.endswith(f"_{parent}.rs")
+
+
+def load_optional_fn_mirrors(root: Path) -> dict[str, set[str]]:
+    """Return expected mirror module names from `tools/game_fn_sides.tsv` if present."""
+    fn_table = root / "tools/game_fn_sides.tsv"
+    res: dict[str, set[str]] = {"client": set(), "server": set()}
+    if not fn_table.is_file():
+        return res
+    with fn_table.open(newline="", encoding="utf-8") as fp:
+        for row in csv.DictReader(fp, delimiter="\t"):
+            side = (row.get("side") or "").strip()
+            mod = (row.get("module") or "").strip()
+            if side in ("client", "server") and mod:
+                res[side].add(f"{mod.split('::', 1)[0]}_{side}")
+    return res
+
+
+def collect_mirror_arms(
+    root: Path, regular_names: set[str] | frozenset[str] = frozenset()
+) -> dict[str, list[ModArm]]:
+    """Collect function-side mirror `mod <m>_{client,server};` arms in `{client,server}_side.rs`."""
+    game_dir = (root / "crates/sunrise-client/src/game").resolve()
+    mirrors: dict[str, list[ModArm]] = {"client": [], "server": []}
+    for side in ("client", "server"):
+        path = game_dir / SIDE_NEW_FILE[side]
+        if not path.is_file():
+            continue
+        rel = path.relative_to(root).as_posix()
+        items, _ = scan_top_level_items(path.read_text(encoding="utf-8"), rel, game_dir)
+        by_name: dict[str, list[ModArm]] = {}
+        for item in items:
+            if item.kind == "mod_decl" and item.mod_arm is not None:
+                if is_mirror_mod_arm(side, item.mod_arm, regular_names):
+                    by_name.setdefault(item.mod_arm.name, []).append(item.mod_arm)
+        for name in sorted(by_name):
+            mirrors[side].extend(by_name[name])
+    return mirrors
+
+
+def collect_mirror_file_sides(
+    root: Path,
+    existing_mirrors: dict[str, list[ModArm]],
+    tok_cache: dict[Path, tuple[str, list[Token]]] | None = None,
+) -> dict[Path, str]:
+    """Map every `.rs` file inside any declared mirror module subtree to its owning side."""
+    file_side: dict[Path, str] = {}
+    for side in ("client", "server"):
+        for arm in existing_mirrors[side]:
+            entry, err = resolve_arm_entry_file(root, arm)
+            if err or entry is None:
+                continue
+            for fp in collect_module_subtree_files(root, [entry], [arm], tok_cache):
+                file_side[fp] = side
+    return file_side
+
+
+def collect_all_arms(
+    root: Path, regular_names: set[str] | frozenset[str] = frozenset()
+) -> tuple[dict[str, list[ModArm]], dict[str, str], dict[str, list[Path]], list[str]]:
     """Collect out-of-line gameplay `mod <name>;` declarations across `game.rs`, `client_side.rs`, `server_side.rs`."""
     src_root = (root / "crates/sunrise-client/src").resolve()
     game_rs = src_root / "game.rs"
@@ -2731,7 +3065,7 @@ def collect_all_arms(root: Path) -> tuple[dict[str, list[ModArm]], dict[str, str
             if item.kind != "mod_decl" or item.mod_arm is None:
                 continue
             arm = item.mod_arm
-            if arm.name in SIDE_CONTAINERS:
+            if arm.name in SIDE_CONTAINERS or is_mirror_mod_arm(parent, arm, regular_names):
                 continue
             if arm.name in parents and parents[arm.name] != parent:
                 errors.append(
@@ -2940,7 +3274,7 @@ def selector_targets(
     areas_path = root / "tools/test_areas.toml"
     if areas_path.is_file():
         old = areas_path.read_text(encoding="utf-8")
-        new = rewrite_test_areas_toml(old, mod_to_side)
+        new = rewrite_test_areas_toml(old, mod_to_side, load_optional_fn_mirrors(root))
         if new != old:
             updates.append((areas_path, new))
 
@@ -3024,7 +3358,9 @@ def run_fix(
     mod_to_side = {m: s for m, (s, _, _) in table.items()}
     tok_cache: dict[Path, tuple[str, list[Token]]] = {}
 
-    all_arms, current_parents, resolved_entries, errors = collect_all_arms(root)
+    regular_names = set(table)
+    all_arms, current_parents, resolved_entries, errors = collect_all_arms(root, regular_names)
+    existing_mirrors = collect_mirror_arms(root, regular_names)
     for m in sorted(set(all_arms) - set(table)):
         errors.append(f"module `{m}` (in {current_parents[m]}) is missing from game_module_sides.tsv")
 
@@ -3048,7 +3384,9 @@ def run_fix(
             continue
         src_text = src_path.read_text(encoding="utf-8")
         src_rel = src_path.relative_to(root.resolve()).as_posix()
-        new_text, errs = rewrite_state_file(src_text, side, side_arms[side], field_specs, root, src_rel)
+        new_text, errs = rewrite_state_file(
+            src_text, side, side_arms[side], field_specs, root, src_rel, existing_mirrors[side]
+        )
         errors.extend(errs)
         if not errs:
             if not new_path.is_file() or new_path.read_text(encoding="utf-8") != new_text:
@@ -3149,8 +3487,17 @@ def run_check(
     game_text = game_rs.read_text(encoding="utf-8")
     problems.extend(check_game_side_containers(game_text, root))
 
-    all_arms, current_parents, resolved_entries, collect_errs = collect_all_arms(root)
+    regular_names = set(table)
+    all_arms, current_parents, resolved_entries, collect_errs = collect_all_arms(root, regular_names)
     problems.extend(collect_errs)
+    existing_mirrors = collect_mirror_arms(root, regular_names)
+    expected_mirrors = load_optional_fn_mirrors(root)
+    for side in ("client", "server"):
+        for arm in existing_mirrors[side]:
+            if arm.name not in expected_mirrors[side]:
+                problems.append(
+                    f"{SIDE_NEW_FILE[side]}: mirror module `{arm.name}` is not backed by game_fn_sides.tsv"
+                )
     for mod_name in sorted(set(all_arms) - set(table)):
         problems.append(
             f"module `{mod_name}` declared in `{current_parents[mod_name]}` is missing from game_module_sides.tsv"
@@ -3202,7 +3549,7 @@ def run_check(
         path = game_dir / SIDE_NEW_FILE[side]
         rel = path.relative_to(root).as_posix()
         txt = path.read_text(encoding="utf-8")
-        problems.extend(check_side_file_structure(txt, side, rel, game_dir, table))
+        problems.extend(check_side_file_structure(txt, side, rel, game_dir, table, expected_mirrors[side]))
         try:
             fields = parse_struct_fields(txt, sname, rel)
         except ValueError as err:
@@ -3245,6 +3592,17 @@ def run_check(
     )
     problems.extend(sub_errs)
 
+    mirror_file_side = collect_mirror_file_sides(root, existing_mirrors, tok_cache=tok_cache)
+    in_side_file_side = {**moved_file_side, **mirror_file_side}
+
+    for fname, spec in sorted(field_specs.items()):
+        if spec.wrapper in ("client_shared", "server_shared"):
+            wside = "client" if spec.wrapper == "client_shared" else "server"
+            if not has_out_of_side_wrapper_access(root, fname, wside, in_side_file_side, tok_cache):
+                problems.append(
+                    f"tools/game_field_owners.tsv: wrapped field `{fname}` is `{spec.wrapper}` with no out-of-side source access (narrow to `{wside}_only`)"
+                )
+
     observed_includes: set[tuple[str, str]] = set()
     for frel, carg, scope_str, lineno in moved_includes:
         key = (frel, carg)
@@ -3280,6 +3638,13 @@ def run_check(
 
     if against is not None:
         base_rev = resolve_baseline_ref(root, against, pull_request_merge)
+        file_to_mod: dict[Path, str] = {}
+        for mod_name in sorted(set(all_arms) & set(table)):
+            if table[mod_name][0] in ("client", "server"):
+                for fp in collect_module_subtree_files(
+                    root, resolved_entries.get(mod_name, []), all_arms[mod_name], tok_cache
+                ):
+                    file_to_mod[fp] = mod_name
         problems.extend(
             check_baseline_ratchet(
                 root,
@@ -3288,8 +3653,10 @@ def run_check(
                 field_specs,
                 allowed_includes,
                 resolved_entries,
-                moved_file_side,
+                in_side_file_side,
                 tok_cache=tok_cache,
+                all_arms=all_arms,
+                file_to_mod=file_to_mod,
             )
         )
 
@@ -3310,7 +3677,7 @@ def run_list(
     table: dict[str, tuple[str, str, tuple[str, ...] | None]],
     field_specs: dict[str, FieldSpec],
 ) -> int:
-    all_arms, current_parents, _, errs = collect_all_arms(root)
+    all_arms, current_parents, _, errs = collect_all_arms(root, set(table))
     for e in errs:
         print(f"error: {e}", file=sys.stderr)
     if errs:

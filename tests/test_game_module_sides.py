@@ -1487,6 +1487,66 @@ class GameModuleSidesTests(unittest.TestCase):
             self.assertIn("missing:", err)
             self.assertIn("additional in after:", err)
 
+    def test_wrapped_silent_widening_refused_and_wrapped_promotion_accepted(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_synthetic_tree(root)
+            (root / "tools/game_field_owners.tsv").write_text(
+                "field\ttype\towner\treason\tdeclaration_index\tvisibility\twrapper\n"
+                "private_flag\tbool\tclient\tclient\t0\tside\t-\n"
+                "wide_flag\tstd::cell::Cell<bool>\tclient\tclient\t1\tgame\t-\n"
+                "private_tick\tu64\tserver\tserver\t2\tside\t-\n"
+                "wide_tick\tu64\tserver\tserver\t3\tgame\t-\n"
+                "audio\tu32\tgame\tdrop-order (client)\t4\t-\tclient_only\n"
+                "levels\tu32\tgame\tdrop-order (server)\t5\t-\tserver_shared\n",
+                encoding="utf-8",
+            )
+            shared_rs = root / "crates/sunrise-client/src/game/world/shared.rs"
+            shared_rs.write_text(
+                shared_rs.read_text(encoding="utf-8") + "\nfn touch_levels(g: &Game) -> u32 { g.levels.0 }\n",
+                encoding="utf-8",
+            )
+            hud_rs = root / "crates/sunrise-client/src/game/ui/hud.rs"
+            hud_rs.write_text(
+                hud_rs.read_text(encoding="utf-8") + "\nfn touch_audio(g: &Game) -> u32 { g.audio.0 }\n",
+                encoding="utf-8",
+            )
+            rc, _, err = run_cli("--fix", "--no-fmt", "--root", str(root))
+            self.assertEqual(rc, 0, err)
+            rc, _, err = run_cli("--check", "--root", str(root))
+            self.assertEqual(rc, 0, err)
+
+            # Widening `audio` from `client_only` to `client_shared` with no out-of-side access fails --check.
+            ftsv = root / "tools/game_field_owners.tsv"
+            orig_f = ftsv.read_text(encoding="utf-8")
+            ftsv.write_text(orig_f.replace("client_only", "client_shared"), encoding="utf-8")
+            rc, _, err = run_cli("--check", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("wrapped field `audio` is `client_shared` with no out-of-side source access", err)
+
+            # Adding an out-of-side access in `shared.rs` lets `client_shared` pass.
+            shared_rs.write_text(
+                shared_rs.read_text(encoding="utf-8") + "\nfn touch_audio_out(g: &Game) -> u32 { g.audio.0 }\n",
+                encoding="utf-8",
+            )
+            rc, _, err = run_cli("--check", "--root", str(root))
+            self.assertEqual(rc, 0, err)
+
+    def test_thread_local_pub_super_rewritten(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_fixture_tree(
+                root,
+                files={
+                    "game/moved.rs": "thread_local! {\n    pub(super) static TLS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };\n}\n",
+                },
+            )
+            rc, _, err = run_cli("--fix", "--no-fmt", "--root", str(root))
+            self.assertEqual(rc, 0, err)
+            moved = (root / "crates/sunrise-client/src/game/moved.rs").read_text(encoding="utf-8")
+            self.assertIn("pub(in crate::game) static TLS:", moved)
+            self.assertEqual(run_cli("--check", "--root", str(root))[0], 0)
+
 
 if __name__ == "__main__":
     unittest.main()
