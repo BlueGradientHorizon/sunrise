@@ -19,7 +19,8 @@ only reads those dimensions. Invalid width, scale or non-finite scaled geometry 
 `TextLayoutError` without visiting any lines. To paint a label, use [the canvas's wrapped draw](screens.md#labels-wrapped-text-without-a-widget)
 rather than retaining and redrawing the lines.
 
-Build an owned `Text` directly with `Text::literal`, `Text::translate` or
+Build an owned `Text` directly with `Text::literal`, `Text::translate`,
+`Text::translate_with_fallback` (a template a language without the key formats instead) or
 `Text::new(TextContent::…)`. Use `with_style` to set the style and `append` to
 add an ordered child, then pass `&text` to the host read. In-process text reads
 (`text_string`, `text_width`, `text_split`, `visit_text_visual_order`, and

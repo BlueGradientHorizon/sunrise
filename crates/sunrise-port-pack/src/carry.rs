@@ -1150,10 +1150,6 @@ pub fn carry(
                         &mut v,
                         &processor_data,
                         &mut types.processors_carried,
-                    ) | crate::processors::rule_tests(
-                        kind,
-                        &mut v,
-                        &mut types.rule_tests_carried,
                     );
                     let changed =
                         crate::worldgen::upgrade(kind, &mut v, types, &set_tags) || carried;
@@ -1183,7 +1179,6 @@ pub fn carry(
                         &processor_data,
                         &mut types.processors_carried,
                     );
-                    crate::processors::rule_tests(kind, &mut added, &mut types.rule_tests_carried);
                     crate::worldgen::upgrade(kind, &mut added, types, &set_tags);
                     let to = format!(
                         "data/{id}/worldgen/{kind}/{}/{path}",

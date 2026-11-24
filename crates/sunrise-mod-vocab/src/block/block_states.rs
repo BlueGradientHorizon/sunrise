@@ -248,6 +248,12 @@ impl BlockStatesBackend for NoBlockTables {
     fn block_state_friction(&self, _: BlockState) -> Option<f32> {
         None
     }
+    fn block_state_speed_factor(&self, _: BlockState) -> Option<f32> {
+        None
+    }
+    fn block_state_jump_factor(&self, _: BlockState) -> Option<f32> {
+        None
+    }
     fn block_state_is_solid_render(&self, _: BlockState) -> Option<bool> {
         None
     }
@@ -428,6 +434,18 @@ impl BlockStates<'_> {
     /// for ice, 0.8 for slime. None as for `replaceable`.
     pub fn friction(&self, state: BlockState) -> Option<f32> {
         self.backend.block_state_friction(state)
+    }
+    /// The speed factor of `state`'s block (`Block.getSpeedFactor`): 1.0 for most blocks, 0.4 for
+    /// soul sand and honey. The block's declared value; what its parts answer where an entity
+    /// stands is the `block_speed_factor` hook's. None as for `replaceable`.
+    pub fn speed_factor(&self, state: BlockState) -> Option<f32> {
+        self.backend.block_state_speed_factor(state)
+    }
+    /// The jump factor of `state`'s block (`Block.getJumpFactor`): 1.0 for most blocks, 0.5 for
+    /// honey. The block's declared value; what its parts answer where an entity jumps is the
+    /// `block_jump_factor` hook's. None as for `replaceable`.
+    pub fn jump_factor(&self, state: BlockState) -> Option<f32> {
+        self.backend.block_state_jump_factor(state)
     }
     /// `BlockState.isSolidRender()`: whether the state is a full, occluding cube for rendering
     /// and light (stone yes; glass, leaves and slabs no). This is not redstone conduction.

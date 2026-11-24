@@ -727,6 +727,7 @@ mod tests {
             &mut |gui| gui.blit("test:unknown", DST, REGION, WHITE, Blend::Vignette),
             GuiDrawError::UnknownTexture,
         );
+        let standalone = mod_api::Identifier::parse("test:textures/gui/standalone.png").unwrap();
         for (region, error) in [
             (
                 GuiBlitRegion {
@@ -745,6 +746,10 @@ mod tests {
         ] {
             refuses(
                 &mut |gui| gui.blit("test:live", DST, region, WHITE, Blend::Textured),
+                error.clone(),
+            );
+            refuses(
+                &mut |gui| gui.texture(&standalone, DST, region, WHITE),
                 error,
             );
         }
