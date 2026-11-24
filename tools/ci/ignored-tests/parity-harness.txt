@@ -98,3 +98,7 @@ sunrise-client-lib mobs::ai::noai_breather_air_tests::noai_breathers_keep_air_ab
 sunrise-client-lib mobs::ai::noai_breather_air_tests::noai_breathers_match_the_pinned_oracle tools/test_noai_breather_air_parity.py harness
 sunrise-client game::commands::data::portal_cooldown_tests::a_mob_saves_its_live_portal_cooldown tools/test_mob_portal_cooldown_parity.py harness
 sunrise-client game::commands::data::stand_living_tests::an_armor_stand_ticks_its_living_counters tools/test_stand_living_counters_parity.py harness
+sunrise-client-lib mobs::fox::pounce_turn_tests::the_pounce_turn_matches_the_pinned_oracle tools/test_mob_turn_parity.py harness
+sunrise-client-lib mobs::dolphin::jump_turn_tests::the_jump_turn_matches_the_pinned_oracle tools/test_mob_turn_parity.py harness
+sunrise-client game::dragon::tests::the_scanning_turn_matches_the_pinned_oracle tools/test_mob_turn_parity.py harness
+sunrise-client game::remote::tests::client_read_tests::look_at_matches_the_pinned_oracle tools/test_mob_turn_parity.py harness
