@@ -150,6 +150,18 @@ fn generated_block_entity(block: &str, nbt: &Compound) -> Option<BlockEntity> {
         }
     });
     let id = declared.or_else(|| fallback.as_ref().map(BlockEntity::id))?;
+    // A mod container loads as a saved one does: its declared slots, its table before
+    // its items.
+    if declared.is_some() && crate::save::block_has_mod_item_slots(block) {
+        let mut tag = nbt.clone();
+        tag.insert("id".into(), Tag::String(id.into()));
+        for axis in ["x", "y", "z"] {
+            tag.insert(axis.into(), Tag::Int(0));
+        }
+        return crate::save::decode_block_entity_for_block(&Tag::Compound(tag), block)
+            .map(|(_, entity)| entity)
+            .or(fallback);
+    }
     let mut tag = nbt.clone();
     // RandomizableContainer.tryLoadLootTable: with a table the items are not read.
     if declared.is_none() && text(&tag, "LootTable").is_some() {
@@ -180,18 +192,28 @@ pub fn block_entities(
     let mut pending = std::collections::HashMap::new();
     for (pos, nbt) in &chunk.block_entities {
         let [x, y, z] = *pos;
-        let Some(entity) = generated_block_entity(chunk.block_name(x, y, z), nbt) else {
+        let Some((entity, loot)) = generated_container(chunk.block_name(x, y, z), nbt) else {
             continue;
         };
-        if matches!(entity, BlockEntity::Chest(_))
-            && let Some(loot) =
-                crate::save::PendingContainerLoot::from_tag(&Tag::Compound(nbt.clone()))
-        {
+        if let Some(loot) = loot {
             pending.insert((x, y, z), loot);
         }
         out.push(((x, y, z), entity));
     }
     (out, pending)
+}
+
+/// One generated block entity at `block`, and the loot table its container waits with
+/// (a chest's, or a mod container's: `RandomizableContainer`).
+pub fn generated_container(
+    block: &str,
+    nbt: &Compound,
+) -> Option<(BlockEntity, Option<crate::save::PendingContainerLoot>)> {
+    let entity = generated_block_entity(block, nbt)?;
+    let loot = crate::save::randomizable_container(&entity, block)
+        .then(|| crate::save::PendingContainerLoot::from_tag(&Tag::Compound(nbt.clone())))
+        .flatten();
+    Some((entity, loot))
 }
 
 #[cfg(test)]

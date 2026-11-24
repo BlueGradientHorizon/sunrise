@@ -184,8 +184,24 @@ pub fn randomizable_container(e: &crate::containers::BlockEntity, block: &str) -
     }
 }
 
+/// `RandomizableContainerBlockEntity.loadAdditional` for a container with a valid
+/// `LootTable` (`tryLoadLootTable`): the inventory starts empty and `Items` is not read. The
+/// table and seed leave the payload too, to wait beside the block entity. None without a
+/// valid table.
+fn without_container_loot(tag: &Tag) -> Option<Tag> {
+    PendingContainerLoot::from_tag(tag)?;
+    let Tag::Compound(map) = tag else {
+        return None;
+    };
+    let mut map = map.clone();
+    for key in ["Items", "LootTable", "LootTableSeed"] {
+        map.remove(&key.into());
+    }
+    Some(Tag::Compound(map))
+}
+
 /// Whether a mod block owns the saved `Items` field as engine-managed inventory.
-pub(super) fn block_has_mod_item_slots(block: &str) -> bool {
+pub fn block_has_mod_item_slots(block: &str) -> bool {
     mod_api::__private::parts_installation::block_container(block).is_some_and(|c| c.slots > 0)
 }
 
@@ -207,6 +223,8 @@ pub fn decode_block_entity_replacing(
 ) -> Option<((i32, i32, i32), crate::containers::BlockEntity)> {
     let slots = mod_api::__private::parts_installation::block_container(block)
         .map_or(0, |container| container.slots);
+    let loot_first = (slots > 0).then(|| without_container_loot(tag)).flatten();
+    let tag = loot_first.as_ref().unwrap_or(tag);
     let mut decoded = decode_block_entity_with_history(tag, previous, slots > 0)?;
     // Several vanilla types share a decoded representation (for example barrel
     // and chest). Membership belongs to the saved type, not that representation.

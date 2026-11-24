@@ -709,7 +709,7 @@ fn decode_column(
                 None
             };
             match decoded {
-                Some(mut be) => {
+                Some(be) => {
                     if let Ok(Some(data)) = attachment_compound(e.get(ATTACHMENTS_KEY)) {
                         extras.block_entity_attachments.push((
                             be.0,
@@ -736,11 +736,6 @@ fn decode_column(
                     let randomizable = randomizable_container(&be.1, block);
                     if randomizable && let Some(pending) = PendingContainerLoot::from_tag(e) {
                         extras.pending_loot.insert(be.0, pending);
-                        // A mod container's table waits beside it, not in its own payload.
-                        if let crate::containers::BlockEntity::Mod(m) = &mut be.1 {
-                            m.nbt.remove(&"LootTable".into());
-                            m.nbt.remove(&"LootTableSeed".into());
-                        }
                     }
                     let mut source = e.clone();
                     if randomizable && let Tag::Compound(map) = &mut source {
