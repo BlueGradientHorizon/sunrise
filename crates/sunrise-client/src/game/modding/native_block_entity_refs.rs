@@ -2202,7 +2202,11 @@ mod tests {
             assert_ne!(fresh_chest, chest_ref);
             let fresh_data = fresh_chest.data(game).unwrap();
             assert!(
-                matches!(fresh_data.get(&"Items".into()), None | Some(Tag::List(items)) if items.is_empty()),
+                match fresh_data.get(&"Items".into()) {
+                    None => true,
+                    Some(Tag::List(items)) => items.is_empty(),
+                    _ => false,
+                },
                 "freshly recreated chest must be empty, got {fresh_data:?}"
             );
 
@@ -2393,7 +2397,7 @@ mod tests {
                 let handle = event.subject.with_view(|view| view.handle()).unwrap();
                 let host = event.subject.host();
                 handle.remove(host).unwrap();
-                if event.subject.with_view(|view| view.handle()).is_err() {
+                if event.subject.with_view(|view| view.handle()).is_none() {
                     self.after_remove_stale.fetch_add(1, Ordering::Relaxed);
                 }
             }
