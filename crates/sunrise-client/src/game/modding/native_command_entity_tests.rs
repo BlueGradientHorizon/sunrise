@@ -228,9 +228,9 @@ fn execute_as_at_rotated_and_facing_set_the_entity_and_rotation() {
     );
 }
 
-/// A command block starts with no entity, a command-block minecart and a player-run function as
-/// themselves; a function keeps its caller's entity and rotation; a target that no longer
-/// resolves is None.
+/// A command block starts with no entity at its facing, a command-block minecart and a player-run
+/// function as themselves; a function keeps its caller's entity and rotation; a target that no
+/// longer resolves is None.
 #[test]
 #[ignore = "daily"]
 fn blocks_carts_and_functions_keep_their_entity() {
@@ -249,30 +249,43 @@ fn blocks_carts_and_functions_keep_their_entity() {
                 set_rotation(game, 12, 12.0, -8.0);
 
                 // A command block: no entity; its rotation faces its `facing` (north: yaw 180,
-                // `Direction.toYRot`).
+                // `Direction.toYRot`), the rotation its local coordinates use.
                 let state = game
                     .pack
                     .assets
                     .registry
                     .default_state("minecraft:command_block")
                     .unwrap();
-                game.world.set(1, 64, 1, state).unwrap();
-                game.world.block_entities.insert(
-                    (1, 64, 1),
-                    BlockEntity::CommandBlock(Box::new(CommandBlock {
-                        command: "where".into(),
-                        condition_met: true,
-                        ..Default::default()
-                    })),
-                );
-                game.command_block_tick(BlockPos::new(1, 64, 1));
-                let (source, command) = last(heard);
+                let block = |game: &mut Game<'_>, x: i32, line: &str| {
+                    game.world.set(x, 64, 1, state).unwrap();
+                    game.world.block_entities.insert(
+                        (x, 64, 1),
+                        BlockEntity::CommandBlock(Box::new(CommandBlock {
+                            command: line.into(),
+                            condition_met: true,
+                            ..Default::default()
+                        })),
+                    );
+                    game.command_block_tick(BlockPos::new(x, 64, 1));
+                    last(heard)
+                };
+                let (source, command) = block(game, 1, "where");
                 assert!(
                     matches!(source, CommandSource::CommandBlock { .. }),
                     "{source:?}"
                 );
                 assert_eq!((command.entity, command.player()), (None, None));
                 assert_eq!(command.rotation, [180.0, 0.0]);
+                let (_, command) = block(game, 2, "execute positioned ^ ^ ^1 run where");
+                assert_eq!(command.rotation, [180.0, 0.0]);
+                let [x, y, z] = command.position;
+                assert!(
+                    (x - 2.5).abs() < 1e-6 && y == 64.5 && (z - 0.5).abs() < 1e-6,
+                    "one block north of the block's centre: {:?}",
+                    command.position
+                );
+                let (_, command) = block(game, 3, "execute rotated ~10 ~ run where");
+                assert_eq!(command.rotation, [190.0, 0.0]);
 
                 // A command-block minecart executes as itself, at its yaw.
                 let mut cart = super::minecarts::Minecart::new(
