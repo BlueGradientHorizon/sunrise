@@ -505,4 +505,173 @@ mod tests {
             }
         });
     }
+
+    #[test]
+    #[ignore = "daily"]
+    fn detached_generator_covers_overworld_noise_surface_features_light_nether_and_parked_level() {
+        use crate::game::Dim;
+
+        with_game(|game| {
+            let directory = game.options.resources.join("worldgen");
+            let overworld_terrain = Arc::new(
+                VanillaTerrain::for_world(
+                    TerrainResources {
+                        data: Some(&game.pack.data_changes),
+                        dir: &directory,
+                        registry: game.pack.assets.registry,
+                        biomes: world_biomes!(game),
+                        item_data: &game.res.core.item_data,
+                    },
+                    424242,
+                    "minecraft:normal",
+                    "minecraft:overworld",
+                    false,
+                )
+                .expect("overworld terrain"),
+            );
+            game.end.set_locator(Some(overworld_terrain.clone()));
+            let overworld = game.level("minecraft:overworld").unwrap();
+            let generator = overworld
+                .detached_generator(game)
+                .expect("overworld detached generator");
+
+            let pos = [3, -5];
+            let stone_key = mod_api::__private::block_key("minecraft:stone").unwrap();
+            let deepslate_key = mod_api::__private::block_key("minecraft:deepslate").unwrap();
+            let bedrock_key = mod_api::__private::block_key("minecraft:bedrock").unwrap();
+            let air_key = mod_api::__private::block_key("minecraft:air").unwrap();
+
+            // 1. Non-superflat Overworld Biomes: all air, biomes present, unlit.
+            let biomes_snap = generator
+                .generate_chunk(pos, GenerationStage::Biomes)
+                .expect("overworld biomes");
+            assert!(!biomes_snap.has_light());
+            assert_eq!(biomes_snap.min_y(), -64);
+            assert_eq!(biomes_snap.section_count(), 24);
+            assert!(biomes_snap.biome(0, 64, 0).is_some());
+            assert_eq!(biomes_snap.block_state(0, -64, 0).unwrap().block(), air_key);
+
+            // 2. Non-superflat Overworld Noise: stone/water/air generated, NO bedrock/surface yet
+            // (bedrock is placed by surface rules, not noise).
+            let noise_snap = generator
+                .generate_chunk(pos, GenerationStage::Noise)
+                .expect("overworld noise");
+            assert!(!noise_snap.has_light());
+            let bottom_noise = noise_snap.block_state(0, -64, 0).unwrap().block();
+            assert_eq!(
+                bottom_noise, stone_key,
+                "Noise stage stops before surface rules paint bedrock/deepslate"
+            );
+
+            // 3. Non-superflat Overworld Surface: applies surface rules (bedrock at y=-64,
+            // deepslate below y=0), and restores `worker.surface_rule` so a second Surface call
+            // on the same pooled worker produces bit-identical output.
+            let surface_1 = generator
+                .generate_chunk(pos, GenerationStage::Surface)
+                .expect("overworld surface #1");
+            let surface_2 = generator
+                .generate_chunk(pos, GenerationStage::Surface)
+                .expect("overworld surface #2 (reused worker)");
+            assert!(!surface_1.has_light());
+            assert_eq!(
+                surface_1.block_state(0, -64, 0).unwrap().block(),
+                bedrock_key,
+                "Surface stage paints bedrock at y=-64"
+            );
+            assert!(
+                (0..16).any(|x| (0..16).any(|z| {
+                    surface_1.block_state(x, -32, z).unwrap().block() == deepslate_key
+                })),
+                "Surface stage paints deepslate underground"
+            );
+            for y in -64..320 {
+                for z in 0..16u8 {
+                    for x in 0..16u8 {
+                        assert_eq!(
+                            surface_1.block_state(x, y, z),
+                            surface_2.block_state(x, y, z),
+                            "reused worker surface_rule restoration mismatch at ({x}, {y}, {z})"
+                        );
+                    }
+                }
+            }
+
+            // 4. Non-superflat Overworld Features and Light stages.
+            let features_snap = generator
+                .generate_chunk(pos, GenerationStage::Features)
+                .expect("overworld features");
+            assert!(!features_snap.has_light());
+            assert_eq!(
+                features_snap.block_state(0, -64, 0).unwrap().block(),
+                bedrock_key
+            );
+
+            let light_snap = generator
+                .generate_chunk(pos, GenerationStage::Light)
+                .expect("overworld light");
+            assert!(light_snap.has_light());
+            assert_eq!(
+                light_snap.sky_light(8, 318, 8),
+                Some(15),
+                "open sky at top of Overworld has skylight 15"
+            );
+            assert_eq!(
+                light_snap.sky_light(8, -60, 8),
+                Some(0),
+                "deep underground has skylight 0"
+            );
+
+            // 5. Nether parked level (`sky_light == false`, `LevelShape::NETHER` 0..256):
+            // open Nether, attach its VanillaTerrain, park it behind Overworld, and obtain its
+            // `DetachedChunkGenerator` via `levels.parked_locator_of`.
+            let nether_terrain = Arc::new(
+                VanillaTerrain::for_world(
+                    TerrainResources {
+                        data: Some(&game.pack.data_changes),
+                        dir: &directory,
+                        registry: game.pack.assets.registry,
+                        biomes: world_biomes!(game),
+                        item_data: &game.res.core.item_data,
+                    },
+                    424242,
+                    "minecraft:normal",
+                    "minecraft:the_nether",
+                    false,
+                )
+                .expect("nether terrain"),
+            );
+            let back = game.dim;
+            game.enter_level(Dim::Nether).unwrap();
+            game.end.set_locator(Some(nether_terrain));
+            game.enter_level(back).unwrap();
+            assert_eq!(game.dim, Dim::Overworld);
+
+            let nether = game.level("minecraft:the_nether").unwrap();
+            let nether_gen = nether
+                .detached_generator(game)
+                .expect("parked Nether detached generator available");
+            let nether_light = nether_gen
+                .generate_chunk([1, 1], GenerationStage::Light)
+                .expect("nether light stage");
+            assert!(nether_light.has_light());
+            assert_eq!(nether_light.min_y(), 0);
+            assert_eq!(nether_light.height(), 256);
+            assert_eq!(nether_light.section_count(), 16);
+            assert_eq!(
+                nether_light.block_state(0, 0, 0).unwrap().block(),
+                bedrock_key,
+                "Nether floor bedrock at y=0"
+            );
+            assert_eq!(
+                nether_light.block_state(0, 127, 0).unwrap().block(),
+                bedrock_key,
+                "Nether roof bedrock at y=127"
+            );
+            // Nether has no sky light (`sky_light == false`), so even above the roof skylight is 0.
+            assert_eq!(nether_light.sky_light(8, 200, 8), Some(0));
+
+            game.close_detached_generators_for_dim(Dim::Nether);
+            game.close_detached_generators_for_dim(Dim::Overworld);
+        });
+    }
 }
