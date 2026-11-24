@@ -255,7 +255,7 @@ mod tests {
             mod_platform::__private::part_tests::install_parts_fixture(mod_api::__private::mods())
                 .unwrap();
             let Tag::Compound(nbt) = sunrise_core::nbt::parse_snbt(
-                r#"{id:"minecraft:banner",energy:900L,LootTable:"test:loot",Items:[{Slot:0b,id:"minecraft:stone",count:3},{Slot:255,id:"minecraft:dirt",count:7}]}"#,
+                r#"{id:"minecraft:banner",energy:900L,LootTable:"test:loot",Items:[{Slot:0b,id:"minecraft:stone",count:3},{Slot:-1b,id:"minecraft:dirt",count:7}]}"#,
             ).unwrap().0 else {
                 panic!("not a compound");
             };
