@@ -1296,11 +1296,10 @@ mod tests {
     /// `fluid_passage` closes one side of a cell: water beside an open east cell spreads every
     /// other way, and the east cell stays dry while the closing stands.
     #[test]
+    #[ignore = "daily"]
     fn a_closed_side_is_not_flowed_into() {
         use super::super::tests::{World, fixture};
-        let Some(f) = fixture() else {
-            return;
-        };
+        let f = fixture().expect("prepared resources");
         let mut w = World::new(f);
         w.floor(0, 10, "stone");
         let origin = BlockPos::new(0, 1, 0);
@@ -1327,11 +1326,10 @@ mod tests {
     /// The hook is asked only after the game's own answer is true: a level that never closes
     /// anything (it answers true everywhere) does not let water into a wall.
     #[test]
+    #[ignore = "daily"]
     fn an_open_answer_does_not_open_a_wall() {
         use super::super::tests::{World, fixture};
-        let Some(f) = fixture() else {
-            return;
-        };
+        let f = fixture().expect("prepared resources");
         let mut w = World::new(f);
         w.floor(0, 10, "stone");
         let wall = BlockPos::new(1, 1, 0);
