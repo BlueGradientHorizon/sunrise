@@ -494,6 +494,9 @@ mod early_game_rules_tests;
 #[cfg(test)]
 #[path = "game/blocks/empty_contents_tests.rs"]
 mod empty_contents_tests;
+#[cfg(test)]
+#[path = "game/items/enchant_effect_dispatch_tests.rs"]
+mod enchant_effect_dispatch_tests;
 #[path = "game/items/enchant_effects.rs"]
 mod enchant_effects;
 #[cfg(test)]
@@ -3617,6 +3620,8 @@ struct Game<'a> {
     debug_renderers_version: Option<u64>,
     /// Next undrawn mod layer in HUD `gui_layers::order`; `None` while hidden or outside its pass.
     hud_layer_next: Option<usize>,
+    /// The status columns' heights in this HUD pass (NeoForge's `Hud.leftHeight`, `rightHeight`).
+    hud_status_heights: hud_layout::StatusBarHeights,
     /// The mod block entities' view distances, asked of the parts once (`native_block_entity_draw`).
     mod_view_distances: std::cell::OnceCell<native_block_entity_draw::ViewDistances>,
     /// What drawing a block entity asks of its block, by state id (`block_entity_reach`):
@@ -7600,6 +7605,7 @@ impl Game<'_> {
         );
         let dispatch_hud = !gui_canceled && !replaying;
         self.hud_layer_next = dispatch_hud.then_some(0);
+        self.hud_status_heights = Default::default();
         self.ui.room = self.hud_room(w, h, show_hud);
         let mut guide_from = 0;
         if dispatch_hud {
@@ -7705,7 +7711,6 @@ impl Game<'_> {
 
             // NeoForge's Hud.registerVanillaLayers: each status row owns its own extraction.
             // The installed vanilla bodies share the column heights and a scratch draw list.
-            let mut status_heights = hud_layout::StatusBarHeights::default();
             let mut status_rows = Vec::new();
             let mount = if !show_hud {
                 None
@@ -7730,7 +7735,7 @@ impl Game<'_> {
                         kind,
                         wi,
                         hi,
-                        &mut status_heights,
+                        &mut g.hud_status_heights,
                         &mut status_rows,
                     );
                     hud_layout::paint(batch, &g.gui.atlas, &status_rows);
@@ -7744,7 +7749,7 @@ impl Game<'_> {
                     return;
                 };
                 status_rows.clear();
-                hud_layout::armor_level(armor, wi, hi, &mut status_heights, &mut status_rows);
+                hud_layout::armor_level(armor, wi, hi, &mut g.hud_status_heights, &mut status_rows);
                 hud_layout::paint(batch, &g.gui.atlas, &status_rows);
             });
             self.gui_layer(VanillaGuiLayer::FoodLevel, &mut batch, &mut |g, batch| {
@@ -7755,8 +7760,13 @@ impl Game<'_> {
                     return;
                 };
                 status_rows.clear();
-                g.health_hud
-                    .food_level(&inputs, wi, hi, &mut status_heights, &mut status_rows);
+                g.health_hud.food_level(
+                    &inputs,
+                    wi,
+                    hi,
+                    &mut g.hud_status_heights,
+                    &mut status_rows,
+                );
                 hud_layout::paint(batch, &g.gui.atlas, &status_rows);
             });
             self.gui_layer(
@@ -7772,7 +7782,7 @@ impl Game<'_> {
                         hi,
                         hearts,
                         health,
-                        &mut status_heights,
+                        &mut g.hud_status_heights,
                         &mut status_rows,
                     );
                     hud_layout::paint(batch, &g.gui.atlas, &status_rows);
@@ -7786,9 +7796,13 @@ impl Game<'_> {
                     return;
                 };
                 status_rows.clear();
-                let pop_sound =
-                    g.health_hud
-                        .air_level(&inputs, wi, hi, &mut status_heights, &mut status_rows);
+                let pop_sound = g.health_hud.air_level(
+                    &inputs,
+                    wi,
+                    hi,
+                    &mut g.hud_status_heights,
+                    &mut status_rows,
+                );
                 hud_layout::paint(batch, &g.gui.atlas, &status_rows);
                 // Hud.playAirBubblePoppedSound: Player.playSound (PLAYERS), heard by this
                 // client only, so another player's bubbles pop silently.
@@ -13889,6 +13903,7 @@ impl<'a> Game<'a> {
             debug_renderers: Vec::new(),
             debug_renderers_version: None,
             hud_layer_next: None,
+            hud_status_heights: Default::default(),
             mod_view_distances: Default::default(),
             block_entity_reach: Default::default(),
             item_level_cache: Default::default(),
