@@ -110,15 +110,10 @@ impl Game<'_> {
             self.adopt_transferred_entity_state(id, state);
         }
         self.remember_uuid(id, saved, &tag);
-        // Entity.load's `setXRot` keeps the pitch in -90..90 and its `setRot`
-        // takes both `% 360`; the save writes the rotation back from this tag.
-        let floats = sunrise_client::entity_nbt::loaded_rotation(&tag)
-            .map(|v| sunrise_core::nbt::Tag::Float(v.to_bits()));
+        // Entity.load's `setYRot`, `setXRot`, and `setRot`; the save writes the rotation back from this tag.
+        let rotation = sunrise_client::entity_nbt::loaded_rotation(&tag);
         if let sunrise_core::nbt::Tag::Compound(map) = &mut tag {
-            map.insert(
-                "Rotation".into(),
-                sunrise_core::nbt::Tag::List(floats.into()),
-            );
+            map.insert("Rotation".into(), sunrise_client::save::floats(&rotation));
         }
         let uuid = self.uuid_for(id);
         self.ominous_spawners.push(OminousItemSpawner {

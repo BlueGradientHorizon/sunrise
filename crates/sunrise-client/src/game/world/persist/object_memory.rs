@@ -244,7 +244,8 @@ impl Game<'_> {
             self.falling.push(FallingBlock {
                 size_answer: None,
                 attachment_lifetime: Default::default(),
-                rotation: [0.0, 0.0],
+                // Entity.load's rotation, which nothing turns afterwards.
+                rotation: entity_nbt::loaded_rotation(&tag),
                 join: Default::default(),
                 id: self.next_entity,
                 state,

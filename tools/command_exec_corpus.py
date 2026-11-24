@@ -7580,6 +7580,152 @@ def ominous_spawner_loaded_entity_fields():
                                  f'/forceload remove {x0} {z0}')
 
 
+CLOUD_FALLING_ROTATION_GROUP = 'cloud and falling block loaded rotation'
+CLOUD_FALLING_ROTATION_CASES = [
+    ('normal', 'Rotation:[45.0f,10.0f]'),
+    ('default', ''),
+    ('neg_yaw_high_pitch', 'Rotation:[-560.0f,100.0f]'),
+    ('neg_pitch_wrap', 'Rotation:[10.0f,-450.0f]'),
+    ('pos_yaw_pitch_wrap', 'Rotation:[405.5f,-370.25f]'),
+    ('neg_zero', 'Rotation:[-0.0f,-360.0f]'),
+]
+CLOUD_FALLING_ROTATION_MERGES = [
+    ('falling_merge_normal', 'Rotation:[45.0f,10.0f]'),
+    ('falling_merge_neg_yaw_high_pitch', 'Rotation:[-560.0f,100.0f]'),
+    ('falling_merge_neg_zero', 'Rotation:[-0.0f,-360.0f]'),
+]
+CLOUD_FALLING_ROTATION_ENTITIES = (
+    ('cloud', 'area_effect_cloud', 'Duration:2000'),
+    ('falling', 'falling_block', 'BlockState:{Name:"minecraft:sand"},Time:1,NoGravity:1b'),
+)
+
+
+def _cloud_falling_rotation_specs():
+    specs = []
+    n = 0
+    for short, kind, base in CLOUD_FALLING_ROTATION_ENTITIES:
+        for label, rot in CLOUD_FALLING_ROTATION_CASES:
+            n += 1
+            sep = ',' if rot else ''
+            specs.append((n, f'0000396d-0000-0000-0000-{n:04x}00000001', f'{short}_{label}', kind, f'{base}{sep}{rot}'))
+    return specs
+
+
+def cloud_and_falling_block_loaded_rotation():
+    """Vanilla 26.3: area_effect_cloud and falling_block keep their loaded Rotation across tick, merge and chunk reload (#2680)."""
+    x0, y0, z0 = 5504, 300, 5120
+    specs = _cloud_falling_rotation_specs()
+    merge_n = len(specs) + 1
+    merge_uid = f'0000396d-0000-0000-0000-{merge_n:04x}00000001'
+    merge_base = CLOUD_FALLING_ROTATION_ENTITIES[1][2]
+    ops = [*setup(f'/forceload add {x0} {z0}'), {'op': 'wait_chunks', 'chunks': [[x0 >> 4, z0 >> 4]]}]
+    for n, _, _, kind, fields in specs:
+        x = x0 + 2 + ((n - 1) % len(CLOUD_FALLING_ROTATION_CASES)) * 2
+        z = z0 + 4 + ((n - 1) // len(CLOUD_FALLING_ROTATION_CASES)) * 4
+        ops.append(cmd(f'/summon {kind} {x}.5 {y0} {z}.5 {{UUID:[I;14701,0,{n},1],{fields}}}', expect_result=1))
+    ops.append(cmd(f'/summon falling_block {x0 + 2}.5 {y0} {z0 + 12}.5 {{UUID:[I;14701,0,{merge_n},1],{merge_base}}}',
+                   expect_result=1))
+
+    def reads():
+        return [cmd(f'/data get entity {uid} Rotation') for _, uid, _, _, _ in specs]
+
+    ops += reads() + [{'op': 'tick', 'n': 1}] + reads()
+    for _, rot in CLOUD_FALLING_ROTATION_MERGES:
+        ops.append(cmd(f'/data merge entity {merge_uid} {{{rot}}}', expect_result=1))
+        ops.append(cmd(f'/data get entity {merge_uid} Rotation'))
+    ops += [*setup(f'/forceload remove {x0} {z0}'), {'op': 'tick', 'n': 60},
+            cmd(f'/execute unless loaded {x0} {y0} {z0}', expect_result=1),
+            *setup(f'/forceload add {x0} {z0}'), {'op': 'wait_chunks', 'chunks': [[x0 >> 4, z0 >> 4]]}]
+    return ops + reads() + setup(f'/kill @e[type=!player,x={x0},y={y0 - 8},z={z0},dx=16,dy=24,dz=16]',
+                                 f'/forceload remove {x0} {z0}')
+
+
+def extract_cloud_falling_rotation_witness(records, version, server_jar_sha256, java_version, java_release):
+    """Extract the exact 26.3 Rotation witness from VanillaCommandExecOracle records."""
+    import re
+    import struct
+
+    def parse_rotation(record, expected_cmd):
+        if record.get('cmd') != expected_cmd:
+            raise ValueError(f'unexpected record cmd: {record.get("cmd")!r} != {expected_cmd!r}')
+        if record.get('results') != [[True, 2]]:
+            raise ValueError(f'unexpected /data get Rotation results for {expected_cmd}: {record.get("results")!r}')
+        messages = record.get('messages') or []
+        if len(messages) != 1:
+            raise ValueError(f'expected one feedback line for {expected_cmd}: {messages!r}')
+        text = ''.join(span[0] for span in messages[0])
+        prefix = ' has the following entity data: '
+        if prefix not in text:
+            raise ValueError(f'unexpected Rotation feedback: {text!r}')
+        snbt = text.split(prefix, 1)[1]
+        match = re.fullmatch(r'\[(-?\d+(?:\.\d+)?(?:E[+-]?\d+)?)f, (-?\d+(?:\.\d+)?(?:E[+-]?\d+)?)f\]', snbt)
+        if not match:
+            raise ValueError(f'unexpected Rotation SNBT: {snbt!r}')
+        bits = [struct.unpack('>I', struct.pack('>f', float(match.group(i))))[0] for i in (1, 2)]
+        return snbt, bits
+
+    specs = _cloud_falling_rotation_specs()
+    merge_n = len(specs) + 1
+    merge_uid = f'0000396d-0000-0000-0000-{merge_n:04x}00000001'
+    merge_base = CLOUD_FALLING_ROTATION_ENTITIES[1][2]
+    count = len(specs)
+    expected_total = (count + 1) + count + count + 2 * len(CLOUD_FALLING_ROTATION_MERGES) + 1 + count
+    if len(records) != expected_total:
+        raise ValueError(f'expected {expected_total} witness records, got {len(records)}')
+    pos = count + 1
+    summon_reads = [parse_rotation(records[pos + i], f'/data get entity {uid} Rotation')
+                    for i, (_, uid, _, _, _) in enumerate(specs)]
+    pos += count
+    tick_reads = [parse_rotation(records[pos + i], f'/data get entity {uid} Rotation')
+                  for i, (_, uid, _, _, _) in enumerate(specs)]
+    pos += count
+    merges = []
+    for label, rot in CLOUD_FALLING_ROTATION_MERGES:
+        merge_cmd = f'/data merge entity {merge_uid} {{{rot}}}'
+        if records[pos].get('cmd') != merge_cmd or records[pos].get('results') != [[True, 1]]:
+            raise ValueError(f'unexpected merge record: {records[pos]!r}')
+        pos += 1
+        snbt, bits = parse_rotation(records[pos], f'/data get entity {merge_uid} Rotation')
+        pos += 1
+        merges.append({
+            'label': label,
+            'kind': 'minecraft:falling_block',
+            'initial_nbt': f'{{{merge_base}}}',
+            'merge_nbt': f'{{{rot}}}',
+            'after_merge_snbt': snbt,
+            'after_merge_bits': bits,
+        })
+    if records[pos].get('cmd') != '/execute unless loaded 5504 300 5120' or records[pos].get('results') != [[True, 1]]:
+        raise ValueError(f'unexpected unload guard record: {records[pos]!r}')
+    pos += 1
+    reload_reads = [parse_rotation(records[pos + i], f'/data get entity {uid} Rotation')
+                    for i, (_, uid, _, _, _) in enumerate(specs)]
+    cases = []
+    for (_, _, label, kind, fields), (s_snbt, s_bits), (t_snbt, t_bits), (r_snbt, r_bits) in zip(
+            specs, summon_reads, tick_reads, reload_reads):
+        cases.append({
+            'label': label,
+            'kind': f'minecraft:{kind}',
+            'summon_nbt': f'{{{fields}}}',
+            'after_summon_snbt': s_snbt,
+            'after_summon_bits': s_bits,
+            'after_tick_snbt': t_snbt,
+            'after_tick_bits': t_bits,
+            'after_reload_snbt': r_snbt,
+            'after_reload_bits': r_bits,
+        })
+    return {
+        'minecraft': version,
+        'oracle': 'VanillaCommandExecOracle',
+        'group': CLOUD_FALLING_ROTATION_GROUP,
+        'java': java_version,
+        'java_release': java_release,
+        'server_jar_sha256': server_jar_sha256,
+        'cases': cases,
+        'merges': merges,
+    }
+
+
 def thrown_projectile_rotation():
     """`ThrowableProjectile.tick` and `LlamaSpit.tick` end their move with `Projectile.updateRotation`:
     the pitch and yaw go a fifth of the way (`lerpRotation`) from the last tick's towards the
@@ -8571,6 +8717,7 @@ def groups():
         ('living short timers', living_short_timers()),
         ('projectile fall distance', projectile_fall_distance()),
         ('ominous spawner loaded fields', ominous_spawner_loaded_entity_fields()),
+        (CLOUD_FALLING_ROTATION_GROUP, cloud_and_falling_block_loaded_rotation()),
         ('thrown projectile rotation', thrown_projectile_rotation()),
         ('item frame rotation', item_frame_rotation()),
         ('item fall distance', item_fall_distance()),

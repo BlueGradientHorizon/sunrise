@@ -1174,5 +1174,13 @@
     "path": "crates/sunrise-client/src/projectiles.rs",
     "reason": "run by tools/test_shulker_bullet_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_shulker_bullet_parity.py records the vanilla 26.3 shulker bullet turn witness into .local and runs this test against it through SUNRISE_SHULKER_BULLET_TURN_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::commands::data::rotation_tests::a_cloud_and_a_falling_block_save_the_rotation_they_were_loaded_with",
+    "path": "crates/sunrise-client/src/game/administration/commands/data/rotation_tests.rs",
+    "reason": "run by tools/test_cloud_falling_loaded_rotation_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_cloud_falling_loaded_rotation_parity.py records the vanilla 26.3 cloud and falling-block loaded Rotation witness into .local and runs this test against it through SUNRISE_CLOUD_FALLING_ROTATION_WITNESS, so no recorded vanilla data is committed."
   }
 ]

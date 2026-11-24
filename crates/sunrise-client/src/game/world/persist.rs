@@ -152,14 +152,20 @@ pub(super) fn write_static_entity_fields(tag: &mut Tag) {
 
     let int = |key, default| tag.get(key).and_then(int_value).unwrap_or(default);
     let motion = entity_nbt::loaded_motion(tag);
-    let double = |value: f64| Tag::Double(if value == 0.0 { 0 } else { value.to_bits() });
     let fall_distance = float(tag.get("fall_distance")).unwrap_or(0.0);
     let values = [
         (
             "Motion",
-            Tag::List([motion.x, motion.y, motion.z].map(double).to_vec()),
+            sunrise_client::save::doubles(&[motion.x, motion.y, motion.z]),
         ),
-        ("fall_distance", double(fall_distance)),
+        (
+            "fall_distance",
+            Tag::Double(if fall_distance == 0.0 {
+                0
+            } else {
+                fall_distance.to_bits()
+            }),
+        ),
         ("Fire", Tag::Short(int("Fire", 0) as i16)),
         ("Air", Tag::Short(int("Air", 300) as i16)),
         (
@@ -558,18 +564,20 @@ fn transformation_tag(
     scale: [f32; 3],
     right_rotation: [f32; 4],
 ) -> Tag {
-    let floats = |v: &[f32]| {
-        Tag::List(
-            v.iter()
-                .map(|x| Tag::Float(if *x == 0.0 { 0 } else { x.to_bits() }))
-                .collect(),
-        )
-    };
     let mut t = sunrise_core::nbt::Compound::new();
-    t.insert("translation".into(), floats(&translation));
-    t.insert("left_rotation".into(), floats(&left_rotation));
-    t.insert("scale".into(), floats(&scale));
-    t.insert("right_rotation".into(), floats(&right_rotation));
+    t.insert(
+        "translation".into(),
+        sunrise_client::save::floats(&translation),
+    );
+    t.insert(
+        "left_rotation".into(),
+        sunrise_client::save::floats(&left_rotation),
+    );
+    t.insert("scale".into(), sunrise_client::save::floats(&scale));
+    t.insert(
+        "right_rotation".into(),
+        sunrise_client::save::floats(&right_rotation),
+    );
     Tag::Compound(t)
 }
 
@@ -1508,18 +1516,11 @@ impl Game<'_> {
             }
             c.insert(
                 "Pos".into(),
-                Tag::List(
-                    [o.position.x, o.position.y, o.position.z]
-                        .map(|v| Tag::Double(v.to_bits()))
-                        .to_vec(),
-                ),
+                sunrise_client::save::doubles(&[o.position.x, o.position.y, o.position.z]),
             );
             c.insert(
                 "Rotation".into(),
-                Tag::List(vec![
-                    Tag::Float(o.yaw.to_bits()),
-                    Tag::Float(o.pitch.to_bits()),
-                ]),
+                sunrise_client::save::floats(&[o.yaw, o.pitch]),
             );
             c.insert("UUID".into(), Tag::IntArray(uuid.to_vec()));
         }
@@ -1540,7 +1541,7 @@ impl Game<'_> {
             let m = eye.motion;
             c.insert(
                 "Motion".into(),
-                Tag::List([m.x, m.y, m.z].map(|v| Tag::Double(v.to_bits())).to_vec()),
+                sunrise_client::save::doubles(&[m.x, m.y, m.z]),
             );
             c.entry("Fire".into()).or_insert(Tag::Short(0));
         }
