@@ -92,18 +92,28 @@ pub struct Judged<E> {
     pub unjudged: Vec<String>,
 }
 
-/// How the native mod `manifest`, made for build `made_for`, stands against build `build`, by `table`, the list of what it uses (or why it has none this tool reads). `build`'s surface is `surface`'s, its tool builds with horizon-mixins revision `mixins_rev`, and `game` gives where the game code the mod declares is in it ([`game_uses::entries`]). `made_for_surface`, when at hand, gives `made_for`'s `surface.json`, whose hook versions complete a list an older tool wrote, into `table`. Each is asked for only when the verdict needs it; `Err` is what one returned, and then the verdict is not known.
-#[allow(clippy::too_many_arguments)]
-pub fn judge<E>(
+/// The builds a fit compares: the one a mod was made for, the one it is judged against, and the horizon-mixins revision that one's tool builds with.
+#[derive(Clone, Copy, Debug)]
+pub struct Builds<'a> {
+    pub made_for: &'a str,
+    pub build: &'a str,
+    pub mixins_rev: &'a str,
+}
+
+/// How the native mod `manifest` stands against `builds.build`, by `table`, the list of what it uses (or why it has none this tool reads). `surface` gives the build's surface, and `game` where the game code the mod declares is in it ([`game_uses::entries`]). `made_for_surface`, when at hand, gives the `surface.json` of the build the mod was made for, whose hook versions complete a list an older tool wrote, into the table. Each is asked for only when the verdict needs it; `Err` is what one returned, or why the made-for surface could not be read, and then the verdict is not known.
+pub fn judge<'t, E: From<String>>(
     manifest: &Manifest,
-    made_for: &str,
-    table: Result<&mut UsesTable, Unlisted>,
-    build: &str,
-    mixins_rev: &str,
+    builds: Builds<'_>,
+    table: impl FnOnce() -> Result<&'t mut UsesTable, Unlisted>,
     surface: &mut dyn FnMut() -> Result<Rc<mod_surface::Surface>, E>,
     game: &mut dyn FnMut() -> Result<Vec<(String, game_uses::Now)>, E>,
     made_for_surface: Option<&mut dyn FnMut() -> Result<Vec<u8>, E>>,
 ) -> Result<Judged<E>, E> {
+    let Builds {
+        made_for,
+        build,
+        mixins_rev,
+    } = builds;
     let made_for = made_for.to_owned();
     let verdict = |verdict| Judged {
         verdict,
@@ -117,7 +127,7 @@ pub fn judge<E>(
     if let Some(why) = game_uses::unjudged(manifest) {
         return Ok(verdict(Verdict::Exact { made_for, why }));
     }
-    let table = match table {
+    let table = match table() {
         Ok(table) if table.made_for == made_for => table,
         why => {
             let why = why.map_or_else(|why| why, |_| Unlisted::OtherBuild);
@@ -155,8 +165,14 @@ pub fn judge<E>(
         && matches!(report.verdict, Fit::Unversioned(_))
         && table.schema < uses::PLAIN_SCHEMA
         && let Some(made_for_surface) = made_for_surface
-        && table.pin_hook_versions(&made_for_surface()?).is_ok()
     {
+        table
+            .pin_hook_versions(&made_for_surface()?)
+            .map_err(|e| {
+                E::from(format!(
+                    "the list holds no hook versions, and the surface of the build it was made for cannot be read for them: {e}"
+                ))
+            })?;
         report = api(table);
         if let Fit::DoesNotFit(changed) = &mut report.verdict {
             misfits.append(changed);
@@ -242,6 +258,12 @@ enum Lack {
     Refused(String),
 }
 
+impl From<String> for Lack {
+    fn from(why: String) -> Self {
+        Self::Unread(why)
+    }
+}
+
 /// Checks `plan`'s mods against its build.
 pub fn check(plan: &Plan) -> Result<Reply, String> {
     let found = scan_bundles(&plan.mods)?;
@@ -295,13 +317,17 @@ pub fn check(plan: &Plan) -> Result<Reply, String> {
                 Ok(Verdict::MadeFor)
             })()
         } else {
-            let mut table = table(&bundle.dir);
+            // Read only when the verdict needs it.
+            let mut read = None;
+            let read = &mut read;
             judge(
                 &bundle.manifest,
-                &native.sunrise,
-                table.as_mut().map_err(|why| *why),
-                &plan.build,
-                crate::MIXINS_REV,
+                Builds {
+                    made_for: &native.sunrise,
+                    build: &plan.build,
+                    mixins_rev: crate::MIXINS_REV,
+                },
+                move || read.insert(table(&bundle.dir)).as_mut().map_err(|why| *why),
                 &mut || {
                     if let Some(read) = &surface {
                         return Ok(read.clone());

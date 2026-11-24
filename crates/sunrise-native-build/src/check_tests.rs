@@ -54,12 +54,15 @@ fn judged_with(
 ) -> Verdict {
     let bundle = crate::bundle_in(dir).unwrap().unwrap();
     let target = Rc::new(target.clone());
+    let mut read = table(&bundle.dir);
     judge(
         &bundle.manifest,
-        &bundle.native().sunrise,
-        table(&bundle.dir).as_mut().map_err(|why| *why),
-        build,
-        crate::MIXINS_REV,
+        Builds {
+            made_for: &bundle.native().sunrise,
+            build,
+            mixins_rev: crate::MIXINS_REV,
+        },
+        || read.as_mut().map_err(|why| *why),
         &mut || Ok::<_, String>(target.clone()),
         &mut || match data {
             Some(data) => game_uses::entries(&bundle.manifest, data, build),
@@ -182,12 +185,15 @@ fn an_older_list_is_completed_by_the_build_it_was_made_for_and_its_unchecked_ent
     let judge_with = |target: &serde_json::Value, made_for_surface: Result<String, String>| {
         let bundle = crate::bundle_in(&dir).unwrap().unwrap();
         let target = Rc::new(serde_json::from_value(target.clone()).unwrap());
+        let mut read = table(&bundle.dir);
         judge(
             &bundle.manifest,
-            &made_for,
-            table(&bundle.dir).as_mut().map_err(|why| *why),
-            OTHER_BUILD,
-            crate::MIXINS_REV,
+            Builds {
+                made_for: &made_for,
+                build: OTHER_BUILD,
+                mixins_rev: crate::MIXINS_REV,
+            },
+            || read.as_mut().map_err(|why| *why),
             &mut || Ok::<_, String>(Rc::clone(&target)),
             &mut || Err("no game code declared: never read".to_owned()),
             Some(&mut || made_for_surface.clone().map(String::into_bytes)),
@@ -205,13 +211,37 @@ fn an_older_list_is_completed_by_the_build_it_was_made_for_and_its_unchecked_ent
             None
         )
     );
-    let judged = judge_with(&hook(2), Ok(hook(1).to_string())).unwrap();
+    let moved = |named, now| Verdict::DoesNotFit {
+        made_for: made_for.clone(),
+        misfits: vec![Misfit {
+            id: "hook:joined".into(),
+            change: Change::Version { named, now },
+        }],
+    };
+    assert_eq!(
+        judge_with(&hook(2), Ok(hook(1).to_string()))
+            .unwrap()
+            .verdict,
+        moved(1, 2)
+    );
+    // Without the versions the verdict is not known: the surface could not be had, or not read.
+    assert_eq!(judge_with(&hook(1), unread()).unwrap_err(), "unread");
+    let unreadable = judge_with(&hook(1), Ok("{".into())).unwrap_err();
     assert!(
-        matches!(&judged.verdict, Verdict::DoesNotFit { misfits, .. } if misfits.iter().all(|m| m.id == "hook:joined")),
+        unreadable.contains("surface of the build it was made for cannot be read"),
+        "{unreadable}"
+    );
+    // With something already known to have changed, the build it was made for is not asked for.
+    list(1, serde_json::json!([{"id": "hook:joined", "hash": "h0"}]));
+    let judged = judge_with(&hook(1), unread());
+    assert!(
+        matches!(
+            &judged,
+            Ok(Judged { verdict: Verdict::DoesNotFit { misfits, .. }, .. })
+                if misfits == &[Misfit { id: "hook:joined".into(), change: Change::Changed }]
+        ),
         "{judged:?}"
     );
-    // Without the versions the verdict is not known.
-    assert_eq!(judge_with(&hook(1), unread()).unwrap_err(), "unread");
     // A list this tool's scan wrote is never completed: its build is not asked for.
     list(
         uses::USES_SCHEMA,

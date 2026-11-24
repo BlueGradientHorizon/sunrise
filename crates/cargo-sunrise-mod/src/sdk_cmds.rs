@@ -16,7 +16,7 @@ use sunrise_mod_package::{
     manifest::MAX_USES,
     sdk::{self, ChangeNote, Index},
 };
-use sunrise_native_build::check::{self, Judged, Unlisted, Verdict};
+use sunrise_native_build::check::{self, Builds, Judged, Unlisted, Verdict};
 use sunrise_native_build::game_uses;
 
 /// One searchable record: its id, its doc text and its names in other mod APIs.
@@ -357,6 +357,9 @@ fn fit_lines(entry: ChildEntry, package: Option<&Path>, builds: &[&str]) -> Resu
         Subject::NotApplicable { message, .. } => return Ok(Answer::NotApplicable(message)),
     };
     let made_for = table.made_for.clone();
+    // The surface of the build the list was made for, fetched at most once whatever the builds:
+    // asked for only when a target leaves nothing else to judge.
+    let mut made_for_surface: Option<Result<Vec<u8>, String>> = None;
     println!("{name}:");
     let (mut all, mut known) = (true, true);
     // Each build gets its own verdict: one that cannot be fetched or compared is not known, and
@@ -382,23 +385,29 @@ fn fit_lines(entry: ChildEntry, package: Option<&Path>, builds: &[&str]) -> Resu
         let judged = mixins_rev(&target).and_then(|mixins_rev| {
             check::judge(
                 &manifest,
-                &made_for,
-                Ok(&mut table),
-                &target.build,
-                &mixins_rev,
+                Builds {
+                    made_for: &made_for,
+                    build: &target.build,
+                    mixins_rev: &mixins_rev,
+                },
+                || Ok(&mut table),
                 &mut || Ok(target_surface.clone()),
                 &mut || build_data(&manifest, &target),
                 Some(&mut || {
-                    fetch_build(project, &made_for)
-                        .and_then(|made| {
-                            std::fs::read(&made.surface)
-                                .map_err(|e| format!("{}: {e}", made.surface.display()))
+                    made_for_surface
+                        .get_or_insert_with(|| {
+                            fetch_build(project, &made_for)
+                                .and_then(|made| {
+                                    std::fs::read(&made.surface)
+                                        .map_err(|e| format!("{}: {e}", made.surface.display()))
+                                })
+                                .map_err(|why| {
+                                    format!(
+                                        "the list holds no hook versions, and the build it was made for could not be read for them ({why})"
+                                    )
+                                })
                         })
-                        .map_err(|why| {
-                            format!(
-                                "the list holds no hook versions, and the build it was made for could not be read for them ({why})"
-                            )
-                        })
+                        .clone()
                 }),
             )
         });
