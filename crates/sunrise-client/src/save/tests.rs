@@ -4638,6 +4638,8 @@ fn a_moving_blocks_attachment_encode_failure_refuses_its_chunk_record() {
         Arc::new(chunk)
     };
 
+    // Setting a value encodes it once, so the codec starts out working and fails only from
+    // the save that should be refused.
     let carried_fails = Arc::new(AtomicBool::new(false));
     save.save_later(&[saved(42, &carried_fails)], reg, &biomes)
         .unwrap();
@@ -4648,9 +4650,9 @@ fn a_moving_blocks_attachment_encode_failure_refuses_its_chunk_record() {
         Some(42)
     );
 
+    let refused = saved(9, &carried_fails);
     carried_fails.store(true, Ordering::Relaxed);
-    save.save_later(&[saved(9, &carried_fails)], reg, &biomes)
-        .unwrap();
+    save.save_later(&[refused], reg, &biomes).unwrap();
     save.flush().unwrap();
     assert_eq!(save.record_save_failures(), 1);
     assert_eq!(

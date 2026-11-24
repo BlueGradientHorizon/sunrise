@@ -1378,7 +1378,8 @@ mod refused_entity_unload {
                     .unwrap()
                     .unwrap();
                 let id = game.resident_target_id(target).unwrap();
-                let fail = Arc::new(AtomicBool::new(true));
+                // Setting a value encodes it once; the codec fails from the next encode on.
+                let fail = Arc::new(AtomicBool::new(false));
                 FALLIBLE
                     .set(
                         game.entity_attachments.entry(id).or_default(),
@@ -1389,6 +1390,7 @@ mod refused_entity_unload {
                         },
                     )
                     .unwrap();
+                fail.store(true, Ordering::Relaxed);
 
                 // The ticket goes, but the entity record cannot be written: nothing unloads.
                 assert!(game.run_command("forceload remove 1600 1600"));
