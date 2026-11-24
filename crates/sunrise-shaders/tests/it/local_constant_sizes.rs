@@ -53,6 +53,18 @@ fn local_array_sizes(program: &Program) -> Vec<u32> {
         .collect()
 }
 
+/// The labels of every `switch`, in order.
+fn case_labels(program: &Program) -> Vec<naga::SwitchValue> {
+    functions(program)
+        .flat_map(|f| f.body.iter())
+        .filter_map(|s| match s {
+            naga::Statement::Switch { cases, .. } => Some(cases.iter().map(|c| c.value)),
+            _ => None,
+        })
+        .flatten()
+        .collect()
+}
+
 #[test]
 fn a_const_local_sizes_arrays_where_it_is_the_innermost_name() {
     let program = fragment(
@@ -93,18 +105,39 @@ fn a_const_local_labels_a_case() {
          }\n",
     )
     .unwrap_or_else(|e| panic!("{e:?}"));
-    let labels: Vec<_> = functions(&program)
-        .flat_map(|f| f.body.iter())
-        .filter_map(|s| match s {
-            naga::Statement::Switch { cases, .. } => Some(cases.iter().map(|c| c.value)),
-            _ => None,
-        })
-        .flatten()
-        .collect();
     assert_eq!(
-        labels,
+        case_labels(&program),
         [naga::SwitchValue::I32(3), naga::SwitchValue::Default]
     );
+}
+
+/// An array constructor inside an array size or a `case` label: its own size is a constant
+/// expression nested in the outer one, and still sees the names where the outer one is written,
+/// also over a global of the same name (whose 2 would make each constructor too long).
+fn nested(body: &str) -> [Program; 2] {
+    let local = format!(
+        "uniform int pick;\nvoid main() {{\nconst int n = 3;\n{body}gl_FragColor = vec4(1.0);\n}}\n"
+    );
+    let shadowing = format!("const int n = 2;\n{local}");
+    [local, shadowing].map(|source| fragment(&source).unwrap_or_else(|e| panic!("{e:?}")))
+}
+
+#[test]
+fn a_constructor_in_an_array_size_is_sized_by_the_const_local() {
+    for program in nested("float a[int[n](4, 5, 6)[2]];\na[0] = 1.0;\n") {
+        assert_eq!(local_array_sizes(&program), [6]);
+    }
+}
+
+#[test]
+fn a_constructor_in_a_case_label_is_sized_by_the_const_local() {
+    for program in nested("switch (pick) {\ncase int[n](7, 8, 9)[1]: break;\ndefault: break;\n}\n")
+    {
+        assert_eq!(
+            case_labels(&program),
+            [naga::SwitchValue::I32(8), naga::SwitchValue::Default]
+        );
+    }
 }
 
 #[test]

@@ -209,7 +209,9 @@ impl<'source> ParsingContext<'source> {
             frontend,
             ctx.module,
             ctx.global_expression_kind_tracker,
-            &ctx.symbol_table,
+            // Inside another constant expression, the names in scope are still those where
+            // the outermost one is written.
+            ctx.enclosing.unwrap_or(&ctx.symbol_table),
         )?;
 
         let res = ctx.module.to_ctx().get_const_val(const_expr);

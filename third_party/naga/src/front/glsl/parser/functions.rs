@@ -198,7 +198,7 @@ impl ParsingContext<'_> {
                                 frontend,
                                 ctx.module,
                                 ctx.global_expression_kind_tracker,
-                                &ctx.symbol_table,
+                                ctx.enclosing.unwrap_or(&ctx.symbol_table),
                             )?;
 
                             match ctx.module.global_expressions[const_expr] {
