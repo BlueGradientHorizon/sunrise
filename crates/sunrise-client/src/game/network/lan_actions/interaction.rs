@@ -322,7 +322,7 @@ impl Game<'_> {
                 return Ok(true);
             }
             let logged = self.world.block_log.as_ref().map_or(0, Vec::len);
-            let heard = self.audio.0.capture.as_ref().map_or(0, Vec::len);
+            let heard = self.audio_capture_len();
             let used = self.as_guest_at(gi, conn, |g| {
                 let attempt = g.was_block_placement_attempt(hand);
                 let saved = (g.server.forced_hit, g.server.guest_use);
@@ -426,12 +426,7 @@ impl Game<'_> {
         let Some(held) = held.filter(|s| s.count != 0 && s.item.as_ref() != "minecraft:air") else {
             return Ok(false);
         };
-        if !self
-            .creative_screen
-            .0
-            .catalog()
-            .item_enabled(held, self.enabled_feature_ids())
-        {
+        if !self.creative_item_enabled(held, self.enabled_feature_ids()) {
             return Ok(false);
         }
         let (spectator, spawn_egg) = (g.spectator(), held.item.ends_with("_spawn_egg"));
@@ -464,7 +459,7 @@ impl Game<'_> {
                 return Err(ActionRefused::Protected);
             }
         }
-        let heard = self.audio.0.capture.as_ref().map_or(0, Vec::len);
+        let heard = self.audio_capture_len();
         let used = self
             .as_guest_at(gi, conn, |g| {
                 // A horn's sound, inline instruments included.
@@ -777,5 +772,22 @@ impl Game<'_> {
             host.hub.guests.update(gi, |guest| guest.pitch = value);
         }
         Ok(true)
+    }
+
+    #[inline]
+    pub(in crate::game) fn audio_capture_len(&self) -> usize {
+        self.audio.0.capture.as_ref().map_or(0, Vec::len)
+    }
+
+    #[inline]
+    pub(in crate::game) fn creative_item_enabled(
+        &self,
+        stack: &ItemStack,
+        features: &[String],
+    ) -> bool {
+        self.creative_screen
+            .0
+            .catalog()
+            .item_enabled(stack, features)
     }
 }

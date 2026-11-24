@@ -1034,9 +1034,12 @@ impl Game<'_> {
                     if !state.converted.contains(&m.id) {
                         state.converted.push(m.id);
                         m.extra.variant = 1 - m.extra.variant.min(1);
-                        self.audio
-                            .0
-                            .play("minecraft:entity.mooshroom.convert", Some(at), 2.0, 1.0);
+                        self.client_audio_play(
+                            "minecraft:entity.mooshroom.convert",
+                            Some(at),
+                            2.0,
+                            1.0,
+                        );
                     }
                     continue;
                 }
@@ -1286,6 +1289,16 @@ impl Game<'_> {
             &mut cancel,
         );
         !cancel
+    }
+
+    pub(in crate::game) fn client_audio_play(
+        &mut self,
+        event: &str,
+        at: Option<[f64; 3]>,
+        volume: f32,
+        pitch: f32,
+    ) {
+        self.audio.0.play(event, at, volume, pitch);
     }
 }
 

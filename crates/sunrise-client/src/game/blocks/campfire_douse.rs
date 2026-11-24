@@ -111,9 +111,7 @@ impl Game<'_> {
         // then the block change game event from the player.
         if self.server.lan_acting.is_none() {
             let signal = state.properties.get("signal_fire").map(String::as_str) == Some("true");
-            for _ in 0..20 {
-                make_campfire_smoke(&mut self.particles.0, pos, signal, true);
-            }
+            self.use_campfire_douse_client(pos, signal);
         }
         self.post_block_game_event("minecraft:block_change", pos, self.sculk_actor(), None);
         self.level_set(pos, unlit)?;
@@ -121,5 +119,11 @@ impl Game<'_> {
         // ServerPlayerGameMode.useItemOn: the action was consumed.
         self.trigger_block("minecraft:item_used_on_block", pos, &used);
         Ok(true)
+    }
+
+    pub(in crate::game) fn use_campfire_douse_client(&mut self, pos: [i32; 3], signal: bool) {
+        for _ in 0..20 {
+            make_campfire_smoke(&mut self.particles.0, pos, signal, true);
+        }
     }
 }

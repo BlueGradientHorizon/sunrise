@@ -545,6 +545,12 @@ impl Game<'_> {
         let bed = self.sleeping.map_or(0, |head| self.bed_facing(head));
         let spectator = self.own_player_is_spectator();
         let ridden = self.ridden_body();
+        // LivingEntity.DATA_ARROW_COUNT_ID and DATA_STINGER_COUNT_ID: as the
+        // server synced them, else the local body's own.
+        let stuck = match &self.remote {
+            Some(r) => (r.own_arrows, r.own_stingers),
+            None => self.local_stuck_counts(),
+        };
         let Some(m) = self.client.player_model.as_mut() else {
             return;
         };
@@ -640,12 +646,7 @@ impl Game<'_> {
         m.extra.fall_flying = fall_flying;
         m.extra.fall_fly_ticks = fly_ticks;
         m.extra.auto_spin_attack = spinning;
-        // LivingEntity.DATA_ARROW_COUNT_ID and DATA_STINGER_COUNT_ID: as the
-        // server synced them, else the local body's own.
-        (m.extra.stuck.arrows, m.extra.stuck.stingers) = match &self.remote {
-            Some(r) => (r.own_arrows, r.own_stingers),
-            None => (self.combat.0.stuck.arrows, self.combat.0.stuck.stingers),
-        };
+        (m.extra.stuck.arrows, m.extra.stuck.stingers) = stuck;
         m.extra.shoulder_parrots = match &self.remote {
             Some(r) => r.own_shoulders,
             None => shoulder_variants(self.level.player_extra.as_ref()),
@@ -682,6 +683,11 @@ impl Game<'_> {
             .unwrap()
             .extra
             .held_arm_pose = poses;
+    }
+    /// Arrows and bee stingers stuck in the local player's body.
+    #[inline]
+    pub(in crate::game) fn local_stuck_counts(&self) -> (i32, i32) {
+        (self.combat.0.stuck.arrows, self.combat.0.stuck.stingers)
     }
     /// `Entity.turn` for the player, by the mouse, a pad, the arrow keys or an
     /// agent's `turn`.

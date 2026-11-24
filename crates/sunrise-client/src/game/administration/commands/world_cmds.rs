@@ -815,8 +815,18 @@ impl Game<'_> {
                     host.hub.send_to(conn, &packet);
                 }
             }
-            None => self.audio.0.play_on(source, sound, Some(at), volume, pitch),
+            None => self.client_audio_play_on(source, sound, Some(at), volume, pitch),
         }
+    }
+    pub(in crate::game) fn client_audio_play_on(
+        &mut self,
+        source: usize,
+        event: &str,
+        at: Option<[f64; 3]>,
+        volume: f32,
+        pitch: f32,
+    ) {
+        self.audio.0.play_on(source, event, at, volume, pitch);
     }
     /// `StopSoundCommand`: each target's connection gets the packet; the
     /// window's own player stops its sounds. `/stopsound` and a native mod's
@@ -865,9 +875,16 @@ impl Game<'_> {
                         host.hub.send_to(conn, &packet);
                     }
                 }
-                None => self.audio.0.stop_sounds(sound, source),
+                None => self.client_audio_stop_sounds(sound, source),
             }
         }
+    }
+    pub(in crate::game) fn client_audio_stop_sounds(
+        &mut self,
+        event: Option<&str>,
+        source: Option<usize>,
+    ) {
+        self.audio.0.stop_sounds(event, source);
     }
     pub(super) fn cmd_stopsound(&mut self, ctx: &Context) -> R<i32> {
         let targets = self.entities(ctx, "targets", true)?;
@@ -1121,16 +1138,33 @@ impl Game<'_> {
         if sent == 0 {
             return Err(err("commands.particle.failed", &[]));
         }
-        if local && count <= 0 {
+        if local {
+            self.cmd_particle_client(&options, pos, delta, speed, count);
+        }
+        self.feedback(Text::translate(
+            "commands.particle.success",
+            &[Text::literal(name)],
+        ));
+        Ok(sent)
+    }
+    pub(in crate::game) fn cmd_particle_client(
+        &mut self,
+        options: &sunrise_client::particles::ParticleOptions,
+        pos: [f64; 3],
+        delta: [f64; 3],
+        speed: f32,
+        count: i32,
+    ) {
+        if count <= 0 {
             // handleParticleEvent, count 0: one particle, the speed times
             // the delta as velocity (both sent as floats, multiplied as floats).
             self.particles.0.create_with_world(
                 Some(&self.world),
-                &options,
+                options,
                 pos,
                 delta.map(|d| f64::from(speed * d as f32)),
             );
-        } else if local {
+        } else {
             for _ in 0..count {
                 let r = self.particles.0.random();
                 let p = [
@@ -1146,17 +1180,12 @@ impl Game<'_> {
                 if !self
                     .particles
                     .0
-                    .create_with_world(Some(&self.world), &options, p, v)
+                    .create_with_world(Some(&self.world), options, p, v)
                 {
                     break;
                 }
             }
         }
-        self.feedback(Text::translate(
-            "commands.particle.success",
-            &[Text::literal(name)],
-        ));
-        Ok(sent)
     }
 
     // ---- /attribute ---------------------------------------------------------------------

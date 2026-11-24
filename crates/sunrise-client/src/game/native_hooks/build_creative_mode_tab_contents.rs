@@ -89,6 +89,15 @@ impl Game<'_> {
         }
     }
 
+    #[inline]
+    pub(in crate::game) fn shared_items(&self) -> Arc<Items> {
+        match (&self.server_items, &self.world_tables.0) {
+            (Some(items), _) => Arc::clone(items),
+            (_, Some(tables)) => Arc::clone(&tables.items),
+            _ => self.res.shared_items(),
+        }
+    }
+
     pub(in crate::game) fn build_creative(
         &mut self,
         permissions: CreativeTabPermissions,
@@ -115,11 +124,7 @@ impl Game<'_> {
         let holders = self
             .creative_holders()
             .ok_or(CreativeTabReadError::Unavailable)?;
-        let items = match (&self.server_items, &self.world_tables.0) {
-            (Some(items), _) => Arc::clone(items),
-            (_, Some(tables)) => Arc::clone(&tables.items),
-            _ => self.res.shared_items(),
-        };
+        let items = self.shared_items();
         let catalog = self.creative_screen.0.catalog().clone();
         let prior = self
             .creative_contents

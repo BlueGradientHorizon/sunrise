@@ -197,13 +197,20 @@ impl Game<'_> {
         let sound = golem.kind.sounds[0];
         if !sound.is_empty() {
             let at = golem.center();
-            self.audio
-                .0
-                .play(&format!("minecraft:{sound}"), Some(at), 1.0, 1.0);
+            self.client_audio_play(&format!("minecraft:{sound}"), Some(at), 1.0, 1.0);
         }
         self.mobs.push(golem);
         self.native_mobs_joined(self.mobs.len() - 1, false);
         true
+    }
+    pub(in crate::game) fn client_audio_play(
+        &mut self,
+        event: &str,
+        at: Option<[f64; 3]>,
+        volume: f32,
+        pitch: f32,
+    ) {
+        self.audio.0.play(event, at, volume, pitch);
     }
 
     /// `VillagerMakeLove.tryToGiveBirth`: both eat, a free bed within 48

@@ -272,9 +272,7 @@ impl Game<'_> {
                 TrialEvent::BlockUpdated => self.mark_block_entity_updated(key),
                 TrialEvent::LevelEvent(id, at, data) => self.level_event_at(id, at, data),
                 TrialEvent::Sound(name) => {
-                    self.audio
-                        .0
-                        .play(&format!("minecraft:{name}"), Some(center), 1.0, 1.0)
+                    self.client_audio_play(&format!("minecraft:{name}"), Some(center), 1.0, 1.0)
                 }
                 // Written with the state above.
                 TrialEvent::OminousSet(_) => {}
@@ -295,7 +293,7 @@ impl Game<'_> {
                         self.remove_mob_now(id, false);
                     }
                 }
-                TrialEvent::SoundAt(name, at, pitch) => self.audio.0.play(
+                TrialEvent::SoundAt(name, at, pitch) => self.client_audio_play(
                     &format!("minecraft:{name}"),
                     Some(at.map(|v| f64::from(v) + 0.5)),
                     1.0,
@@ -356,10 +354,17 @@ impl Game<'_> {
             })
         };
         if let Some(at) = feet {
-            self.audio
-                .0
-                .play("minecraft:event.mob_effect.trial_omen", Some(at), 1.0, 1.0);
+            self.client_audio_play("minecraft:event.mob_effect.trial_omen", Some(at), 1.0, 1.0);
         }
+    }
+    pub(in crate::game) fn client_audio_play(
+        &mut self,
+        event: &str,
+        at: Option<[f64; 3]>,
+        volume: f32,
+        pitch: f32,
+    ) {
+        self.audio.0.play(event, at, volume, pitch);
     }
     /// `sendBlockUpdated` of a block entity: the clients load its new update tag.
     pub(in crate::game) fn mark_block_entity_updated(&mut self, key: Pos) {

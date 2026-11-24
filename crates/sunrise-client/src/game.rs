@@ -5111,7 +5111,7 @@ impl Game<'_> {
             f64::from(base) + 0.5 + 0.1 * f64::from(-facing[i]) + 0.2 * f64::from(-connected[i])
         };
         let p = [at(pos[0], 0), at(pos[1], 1), at(pos[2], 2)];
-        self.particles.0.add(
+        self.client_particles_add(
             &sunrise_client::particles::ParticleOptions::dust([1.0, 0.0, 0.0], 1.0),
             p,
             [0.0; 3],
@@ -5316,9 +5316,7 @@ impl Game<'_> {
                 } => {
                     self.growth_particles(pos, data);
                     let at = [pos.x, pos.y, pos.z].map(|v| f64::from(v) + 0.5);
-                    self.audio
-                        .0
-                        .play("minecraft:item.bone_meal.use", Some(at), 1.0, 1.0);
+                    self.client_audio_play("minecraft:item.bone_meal.use", Some(at), 1.0, 1.0);
                 }
                 LevelEvent::LevelEvent {
                     id: 2015,
@@ -5409,28 +5407,7 @@ impl Game<'_> {
                 // EnderDragonFight.spawnNewGateway: an always-visible burst
                 // and a sound at the gateway for every nearby player.
                 LevelEvent::LevelEvent { id: 3000, pos, .. } => {
-                    let at = [
-                        f64::from(pos.x) + 0.5,
-                        f64::from(pos.y) + 0.5,
-                        f64::from(pos.z) + 0.5,
-                    ];
-                    self.particles.0.add_with(
-                        &sunrise_client::particles::ParticleOptions::simple(
-                            sunrise_client::particles::ParticleType::ExplosionEmitter,
-                        ),
-                        at,
-                        [0.0; 3],
-                        true,
-                        true,
-                    );
-                    let random = self.particles.0.level_random();
-                    let pitch = (1.0 + (random.next_float() - random.next_float()) * 0.2) * 0.7;
-                    self.audio.0.play_unshared(
-                        "minecraft:block.end_gateway.spawn",
-                        Some(at),
-                        10.0,
-                        pitch,
-                    );
+                    self.process_level_events_end_gateway_client(pos);
                 }
                 // LevelEventHandler 3009: a sniffer egg cracking.
                 LevelEvent::LevelEvent { id: 3009, pos, .. } => {
@@ -5450,14 +5427,7 @@ impl Game<'_> {
                 // so a positional play would not be heard; at None is the
                 // relative sound, and it is not captured for other players.
                 LevelEvent::LevelEvent { id: 1032, .. } => {
-                    let pitch = self.particles.0.level_random().next_float() * 0.4 + 0.8;
-                    self.audio.0.play_on(
-                        sunrise_client::sound_engine::AMBIENT,
-                        "minecraft:block.portal.travel",
-                        None,
-                        0.25,
-                        pitch,
-                    );
+                    self.process_level_events_portal_travel_client();
                 }
                 LevelEvent::LevelEvent { id, pos, .. } => {
                     let c = Some([
@@ -5501,58 +5471,7 @@ impl Game<'_> {
                         _ => None,
                     };
                     if let Some((name, volume)) = sound {
-                        let pitch = match id {
-                            1009 => {
-                                2.6 + (self.world.random.next_float()
-                                    - self.world.random.next_float())
-                                    * 0.8
-                            }
-                            // LevelEventHandler draws these from the client
-                            // level's random, before 1501's and 1502's smoke.
-                            1501 | 1502 => {
-                                let r = self.particles.0.level_random();
-                                2.6 + (r.next_float() - r.next_float()) * 0.8
-                            }
-                            1039 | 1045 | 1046 | 1047 | 1052 | 1053 | 1054 => {
-                                // LevelEventHandler draws these from the client
-                                // level's random, not the server's.
-                                self.particles.0.level_random().next_float() * 0.1 + 0.9
-                            }
-                            1029 | 1030 | 1042 | 1043 | 1044 => {
-                                self.world.random.next_float() * 0.1 + 0.9
-                            }
-                            1026 | 1027 => {
-                                let r = self.particles.0.level_random();
-                                (r.next_float() - r.next_float()) * 0.2 + 1.0
-                            }
-                            1019 | 1021 => {
-                                (self.world.random.next_float() - self.world.random.next_float())
-                                    * 0.2
-                                    + 1.0
-                            }
-                            _ => 1.0,
-                        };
-                        if matches!(
-                            id,
-                            1019 | 1021
-                                | 1026
-                                | 1027
-                                | 1029
-                                | 1030
-                                | 1039
-                                | 1045
-                                | 1052
-                                | 1053
-                                | 1054
-                                | 1501
-                                | 1503
-                        ) {
-                            // Clients play these sounds from their level events;
-                            // capturing it also sends a duplicate sound packet.
-                            self.audio.0.play_unshared(name, c, volume, pitch);
-                        } else {
-                            self.audio.0.play(name, c, volume, pitch);
-                        }
+                        self.process_level_events_sound_client(id, c, name, volume);
                     }
                     // LevelEventHandler draws smoke after the sound.
                     match id {
@@ -5601,7 +5520,7 @@ impl Game<'_> {
                     };
                     match source {
                         Some(sunrise_world::level::LevelSoundSource::Blocks) => {
-                            self.audio.0.play_on(
+                            self.client_audio_play_on(
                                 mod_api::SoundSource::Blocks.index(),
                                 &name,
                                 Some(c),
@@ -5609,7 +5528,7 @@ impl Game<'_> {
                                 pitch,
                             )
                         }
-                        None => self.audio.0.play(&name, Some(c), volume, pitch),
+                        None => self.client_audio_play(&name, Some(c), volume, pitch),
                     }
                 }
                 // Handled as the behaviour emits it (GameLevel::emit).
@@ -5734,9 +5653,7 @@ impl Game<'_> {
                         f64::from(pos.y) + 0.5,
                         f64::from(pos.z) + 0.5,
                     ];
-                    self.audio
-                        .0
-                        .play("minecraft:block.frogspawn.hatch", Some(at), 1.0, 1.0);
+                    self.client_audio_play("minecraft:block.frogspawn.hatch", Some(at), 1.0, 1.0);
                     let count = 2 + self.world.random.next_int_bound(4).unwrap_or(0);
                     for _ in 0..count {
                         // getRandomTadpolePositionOffset: 0.2..0.8 inside the block.
@@ -5804,7 +5721,7 @@ impl Game<'_> {
                         .state(state)
                         .and_then(|s| s.properties.get("note")?.parse::<f64>().ok())
                         .unwrap_or(0.0);
-                    self.particles.0.add(
+                    self.client_particles_add(
                         &ParticleOptions::simple(ParticleType::Note),
                         [
                             f64::from(pos.x) + 0.5,
@@ -5821,17 +5738,7 @@ impl Game<'_> {
                     kind: "note_custom_sound",
                     ..
                 } => {
-                    if let Some(BlockEntity::Skull(skull)) =
-                        self.world.block_entities.get(&(pos.x, pos.y + 1, pos.z))
-                        && let Some(sound) = skull.note_block_sound.as_deref()
-                    {
-                        let at = [
-                            f64::from(pos.x) + 0.5,
-                            f64::from(pos.y) + 0.5,
-                            f64::from(pos.z) + 0.5,
-                        ];
-                        self.audio.0.play(sound, Some(at), 3.0, 1.0);
-                    }
+                    self.process_level_events_note_custom_sound_client(pos);
                 }
                 // `level.addParticle`: only the local player's own click draws it.
                 LevelEvent::BlockEvent {
@@ -5862,6 +5769,107 @@ impl Game<'_> {
             }
         }
         Ok(())
+    }
+    pub(in crate::game) fn process_level_events_end_gateway_client(&mut self, pos: BlockPos) {
+        let at = [
+            f64::from(pos.x) + 0.5,
+            f64::from(pos.y) + 0.5,
+            f64::from(pos.z) + 0.5,
+        ];
+        self.particles.0.add_with(
+            &sunrise_client::particles::ParticleOptions::simple(
+                sunrise_client::particles::ParticleType::ExplosionEmitter,
+            ),
+            at,
+            [0.0; 3],
+            true,
+            true,
+        );
+        let random = self.particles.0.level_random();
+        let pitch = (1.0 + (random.next_float() - random.next_float()) * 0.2) * 0.7;
+        self.audio.0.play_unshared(
+            "minecraft:block.end_gateway.spawn",
+            Some(at),
+            10.0,
+            pitch,
+        );
+    }
+    pub(in crate::game) fn process_level_events_portal_travel_client(&mut self) {
+        let pitch = self.particles.0.level_random().next_float() * 0.4 + 0.8;
+        self.audio.0.play_on(
+            sunrise_client::sound_engine::AMBIENT,
+            "minecraft:block.portal.travel",
+            None,
+            0.25,
+            pitch,
+        );
+    }
+    pub(in crate::game) fn process_level_events_sound_client(
+        &mut self,
+        id: i32,
+        c: Option<[f64; 3]>,
+        name: &str,
+        volume: f32,
+    ) {
+        let pitch = match id {
+            1009 => {
+                2.6 + (self.world.random.next_float() - self.world.random.next_float()) * 0.8
+            }
+            // LevelEventHandler draws these from the client
+            // level's random, before 1501's and 1502's smoke.
+            1501 | 1502 => {
+                let r = self.particles.0.level_random();
+                2.6 + (r.next_float() - r.next_float()) * 0.8
+            }
+            1039 | 1045 | 1046 | 1047 | 1052 | 1053 | 1054 => {
+                // LevelEventHandler draws these from the client
+                // level's random, not the server's.
+                self.particles.0.level_random().next_float() * 0.1 + 0.9
+            }
+            1029 | 1030 | 1042 | 1043 | 1044 => self.world.random.next_float() * 0.1 + 0.9,
+            1026 | 1027 => {
+                let r = self.particles.0.level_random();
+                (r.next_float() - r.next_float()) * 0.2 + 1.0
+            }
+            1019 | 1021 => {
+                (self.world.random.next_float() - self.world.random.next_float()) * 0.2 + 1.0
+            }
+            _ => 1.0,
+        };
+        if matches!(
+            id,
+            1019 | 1021
+                | 1026
+                | 1027
+                | 1029
+                | 1030
+                | 1039
+                | 1045
+                | 1052
+                | 1053
+                | 1054
+                | 1501
+                | 1503
+        ) {
+            // Clients play these sounds from their level events;
+            // capturing it also sends a duplicate sound packet.
+            self.audio.0.play_unshared(name, c, volume, pitch);
+        } else {
+            self.audio.0.play(name, c, volume, pitch);
+        }
+    }
+    pub(in crate::game) fn process_level_events_note_custom_sound_client(&mut self, pos: BlockPos) {
+        if let Some(BlockEntity::Skull(skull)) =
+            self.world.block_entities.get(&(pos.x, pos.y + 1, pos.z))
+            && let Some(sound) = skull.note_block_sound.as_deref()
+        {
+            let at = [
+                f64::from(pos.x) + 0.5,
+                f64::from(pos.y) + 0.5,
+                f64::from(pos.z) + 0.5,
+            ];
+            self.audio.0.play(sound, Some(at), 3.0, 1.0);
+        }
     }
     /// Menus opened by PlayerEffect::OpenMenu.
     fn open_block_effect_menu(&mut self, pos: [i32; 3]) {
@@ -5990,12 +5998,9 @@ impl Game<'_> {
         } else if self.open_station(pos, &name) {
             // Workstation menus: game/blocks/stations.rs.
         } else {
-            self.client.message = Some((
-                format!(
-                    "{} is not available yet",
-                    name.trim_start_matches("minecraft:").replace('_', " ")
-                ),
-                Instant::now(),
+            self.set_client_message(format!(
+                "{} is not available yet",
+                name.trim_start_matches("minecraft:").replace('_', " ")
             ));
             return;
         }
@@ -7284,7 +7289,7 @@ impl Game<'_> {
         self.reset_inventory_clicks();
         self.close_station();
         self.mount_closed();
-        self.recipe_ui.0.reset_screen();
+        self.client_recipe_ui_reset_screen();
         if self.remote.is_some() {
             return self.remote_close_container();
         }
@@ -8681,7 +8686,7 @@ impl Game<'_> {
         book.recipes.retain(|r| index.contains(r));
         book.to_be_displayed.retain(|r| index.contains(r));
         self.enter_opened_dim(dim);
-        self.audio.0.set_world(dim.id());
+        self.client_audio_set_world(dim.id());
         self.finish_open_world_client_set_world_icon(&save_root);
         self.world_flat = sunrise_client::save::WorldGen::read(&save_root)
             .is_some_and(|w| w.preset == sunrise_client::save::WorldPreset::Flat);
@@ -8727,10 +8732,7 @@ impl Game<'_> {
         self.set_screen(Screen::Playing);
         self.hide_title();
         self.clear_lod();
-        self.pending_uploads.0.clear();
-        if let Some(r) = self.renderer.0.as_mut() {
-            r.clear_sections(self.world.layout());
-        }
+        self.finish_open_world_sections_client();
         self.apply_settings();
         let facts = self.dimension_type_of(dim);
         self.streaming.sky_light = facts.height.has_skylight;
@@ -8755,6 +8757,12 @@ impl Game<'_> {
             last_attempt: None,
         });
     }
+    pub(in crate::game) fn finish_open_world_sections_client(&mut self) {
+        self.pending_uploads.0.clear();
+        if let Some(r) = self.renderer.0.as_mut() {
+            r.clear_sections(self.world.layout());
+        }
+    }
     fn finish_close_world(&mut self) -> Result<()> {
         self.client.ambience.clear(&mut self.audio.0);
         // updateLevelInEngines(null): every sound stops; the music manager
@@ -8768,11 +8776,7 @@ impl Game<'_> {
         // The save screen has finished every write before releasing storage.
         self.ui.dispatcher = Default::default();
         self.reset_creative_contents();
-        self.server_loot.0.set(None);
-        self.server_items = None;
-        self.session_lock.0 = None;
-        self.clear_world_parts();
-        self.finish_close_world_server_clear_world_flags();
+        self.finish_close_world_server();
         self.client.world_icon = None;
         sunrise_client::crash::clear_detail("World");
         self.client.debug_charts.reset();
@@ -8811,7 +8815,11 @@ impl Game<'_> {
         self.capture(false);
         Ok(())
     }
-    pub(in crate::game) fn finish_close_world_server_clear_world_flags(&mut self) {
+    pub(in crate::game) fn finish_close_world_server(&mut self) {
+        self.server_loot.0.set(None);
+        self.server_items = None;
+        self.session_lock.0 = None;
+        self.clear_world_parts();
         self.server.world_adopted = false;
         self.server.startup_ticket_restore_pending = false;
     }
@@ -9129,12 +9137,12 @@ impl Game<'_> {
             f64::from(pos[2]) + 0.5,
         ];
         if self.server.lan_acting.is_some() {
-            self.audio.0.play_unshared(&sound, Some(at), 1.0, 1.0);
+            self.client_audio_play_unshared(&sound, Some(at), 1.0, 1.0);
             self.server
                 .guest_player_sounds
                 .push((sound.clone(), at, 1.0, 1.0));
         } else {
-            self.audio.0.play(&sound, Some(at), 1.0, 1.0);
+            self.client_audio_play(&sound, Some(at), 1.0, 1.0);
         }
         // ItemStack.useOn: a use that acted counts as one of the item.
         self.award_stat("used", &stack.item, 1);
@@ -9150,12 +9158,12 @@ impl Game<'_> {
     fn wax_on_sound(&mut self, at: [f64; 3]) {
         let sound = "minecraft:item.honeycomb.wax_on";
         if self.server.lan_acting.is_some() {
-            self.audio.0.play_unshared(sound, Some(at), 1.0, 1.0);
+            self.client_audio_play_unshared(sound, Some(at), 1.0, 1.0);
             self.server
                 .guest_block_sounds
                 .push((sound.to_owned(), at, 1.0, 1.0));
         } else {
-            self.audio.0.play(sound, Some(at), 1.0, 1.0);
+            self.client_audio_play(sound, Some(at), 1.0, 1.0);
         }
     }
     /// `BlockTransformer.transformBlock`'s `COPPER_CHEST` extra: a double
@@ -9276,7 +9284,7 @@ impl Game<'_> {
             } else {
                 "minecraft:item.bucket.fill"
             };
-            self.audio.0.play(sound, Some(at(hit.pos)), 1.0, 1.0);
+            self.client_audio_play(sound, Some(at(hit.pos)), 1.0, 1.0);
             self.post_block_game_event(
                 "minecraft:fluid_pickup",
                 hit.pos,
@@ -14089,6 +14097,52 @@ impl Game<'_> {
         } else {
             PresenceStatus::Online
         }
+    }
+    pub(in crate::game) fn client_audio_play(
+        &mut self,
+        event: &str,
+        at: Option<[f64; 3]>,
+        volume: f32,
+        pitch: f32,
+    ) {
+        self.audio.0.play(event, at, volume, pitch);
+    }
+    pub(in crate::game) fn client_audio_play_unshared(
+        &mut self,
+        event: &str,
+        at: Option<[f64; 3]>,
+        volume: f32,
+        pitch: f32,
+    ) {
+        self.audio.0.play_unshared(event, at, volume, pitch);
+    }
+    pub(in crate::game) fn client_audio_play_on(
+        &mut self,
+        source: usize,
+        event: &str,
+        at: Option<[f64; 3]>,
+        volume: f32,
+        pitch: f32,
+    ) {
+        self.audio.0.play_on(source, event, at, volume, pitch);
+    }
+    pub(in crate::game) fn client_audio_set_world(&mut self, world: &str) {
+        self.audio.0.set_world(world);
+    }
+    pub(in crate::game) fn client_particles_add(
+        &mut self,
+        options: &sunrise_client::particles::ParticleOptions,
+        p: [f64; 3],
+        v: [f64; 3],
+    ) {
+        self.particles.0.add(options, p, v);
+    }
+    pub(in crate::game) fn client_recipe_ui_reset_screen(&mut self) {
+        self.recipe_ui.0.reset_screen();
+    }
+    #[inline]
+    pub(in crate::game) fn set_client_message(&mut self, text: String) {
+        self.client.message = Some((text, Instant::now()));
     }
 }
 

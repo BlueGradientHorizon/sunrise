@@ -1357,8 +1357,12 @@ impl Game<'_> {
             states_next_entity: None,
             idle_states: Default::default(),
         });
-        self.audio.0.capture = Some(Vec::new());
+        self.start_lan_hub_client();
         Ok(())
+    }
+
+    pub(in crate::game) fn start_lan_hub_client(&mut self) {
+        self.audio.0.capture = Some(Vec::new());
     }
 
     /// IntegratedServer.unpublishServer: the guests are sent away.
@@ -1403,7 +1407,7 @@ impl Game<'_> {
         self.world.block_log = None;
         self.world.connection_group_log = None;
         self.world.light_log = None;
-        self.audio.0.capture = None;
+        self.lan_disconnect_client();
         self.server.bound_sounds.clear();
         self.server.lan_events.clear();
         self.server.lan_songs.clear();
@@ -1416,6 +1420,10 @@ impl Game<'_> {
                 &[],
             ));
         }
+    }
+
+    pub(in crate::game) fn lan_disconnect_client(&mut self) {
+        self.audio.0.capture = None;
     }
 
     /// `PlayerList.removeAll`: every guest leaves in turn, the vehicle it
@@ -3396,7 +3404,7 @@ impl Game<'_> {
         &mut self,
         events: &[sunrise_world::level::LevelEvent],
     ) {
-        if self.audio.0.capture.is_none() {
+        if !self.audio_capture_active() {
             return;
         }
         for e in events {
@@ -3431,14 +3439,14 @@ impl Game<'_> {
 
     /// `Level.blockEvent` for the guests (`ClientboundBlockEventPacket`).
     pub(in crate::game) fn lan_block_event(&mut self, pos: [i32; 3], b0: i32, b1: i32) {
-        if self.audio.0.capture.is_some() {
+        if self.audio_capture_active() {
             let state = self.world.block(pos[0], pos[1], pos[2]).0;
             self.server.lan_block_events.push((pos, b0, b1, state));
         }
     }
     /// `Level.broadcastEntityEvent` for the guests.
     pub(in crate::game) fn lan_entity_event(&mut self, id: i32, event: i8, at: [f64; 3]) {
-        if self.audio.0.capture.is_some() {
+        if self.audio_capture_active() {
             self.server.lan_entity_events.push((id, event));
         }
         self.lan_entity_event_local(id, event, at);
@@ -3448,7 +3456,7 @@ impl Game<'_> {
     pub(in crate::game) fn deliver_entity_event(&mut self, id: i32, event: i8, at: [f64; 3]) {
         if let Some(host) = self.lan.as_ref() {
             host.hub.entity_event(id, event);
-        } else if self.audio.0.capture.is_some() {
+        } else if self.audio_capture_active() {
             self.server.lan_entity_events.push((id, event));
         }
         self.lan_entity_event_local(id, event, at);
@@ -3557,14 +3565,23 @@ impl Game<'_> {
             },
             super::render_tick::mob_tracking_body,
         );
-        self.particles.0.tracking_emitter(
+        self.client_particles_tracking_emitter(
             ParticleOptions::simple(particle),
             TrackingTarget::Entity(id),
             body,
         );
-        if self.audio.0.capture.is_some() {
+        if self.audio_capture_active() {
             self.server.lan_critical_hits.push((attacker, id, magic));
         }
+    }
+
+    pub(in crate::game) fn client_particles_tracking_emitter(
+        &mut self,
+        options: sunrise_client::particles::ParticleOptions,
+        target: sunrise_client::particles::TrackingTarget,
+        body: sunrise_client::particles::TrackingBody,
+    ) {
+        self.particles.0.tracking_emitter(options, target, body);
     }
     /// Send the tick's level events, sounds and mob animations.
     pub(in crate::game) fn lan_flush_effects(&mut self) {

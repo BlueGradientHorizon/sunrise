@@ -768,17 +768,7 @@ impl Game<'_> {
                 in_raid && local_first,
             )
         {
-            // This window only. A positioned `play` would be broadcast to
-            // every guest on top of the packet each of them is sent.
-            let capture = self.audio.0.capture.take();
-            let neutral = sunrise_client::settings::SOUND_SOURCES
-                .iter()
-                .position(|s| *s == "neutral")
-                .unwrap_or(0);
-            self.audio
-                .0
-                .play_on(neutral, "minecraft:event.raid.horn", Some(at), 64.0, 1.0);
-            self.audio.0.capture = capture;
+            self.raid_horn_client(at);
         }
         let Some(host) = self.lan.as_ref() else {
             return;
@@ -808,6 +798,19 @@ impl Game<'_> {
                     .sound_packet("minecraft:event.raid.horn", at, 64.0, 1.0, neutral, seed);
             host.hub.send_to(conn, &packet);
         }
+    }
+    pub(in crate::game) fn raid_horn_client(&mut self, at: [f64; 3]) {
+        // This window only. A positioned `play` would be broadcast to
+        // every guest on top of the packet each of them is sent.
+        let capture = self.audio.0.capture.take();
+        let neutral = sunrise_client::settings::SOUND_SOURCES
+            .iter()
+            .position(|s| *s == "neutral")
+            .unwrap_or(0);
+        self.audio
+            .0
+            .play_on(neutral, "minecraft:event.raid.horn", Some(at), 64.0, 1.0);
+        self.audio.0.capture = capture;
     }
     /// `Raid.spawnGroup`: a wave of raiders at `pos`, the leader wearing the
     /// banner, ravagers carrying their riders.
@@ -1254,10 +1257,13 @@ impl Game<'_> {
         // Villager.customServerAiStep: a 1 in 100 chance each tick, in an
         // ongoing raid, of entity event 42 (`handleEntityEvent` splashes).
         for id in ongoing {
-            if self.particles.0.random().next_int_bound(100) == Ok(0) {
+            if self.sync_villager_raids_client() {
                 self.mob_raid_splash(id);
             }
         }
+    }
+    pub(in crate::game) fn sync_villager_raids_client(&mut self) -> bool {
+        self.particles.0.random().next_int_bound(100) == Ok(0)
     }
     /// Entity event 42 for villager `id`: the guests get the byte, and this
     /// game draws `AbstractVillager.addParticlesAroundSelf(SPLASH)` itself.

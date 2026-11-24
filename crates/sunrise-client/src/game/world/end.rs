@@ -367,6 +367,16 @@ impl SummonedEye {
 }
 
 impl Game<'_> {
+    pub(in crate::game) fn client_audio_play(
+        &mut self,
+        event: &str,
+        at: Option<[f64; 3]>,
+        volume: f32,
+        pitch: f32,
+    ) {
+        self.audio.0.play(event, at, volume, pitch);
+    }
+
     /// `EyeOfEnder.tick` for the summoned and loaded eyes: they fly on by
     /// their motion and shatter on tick 81, dropping nothing.
     pub(super) fn tick_summoned_eyes(&mut self) {
@@ -395,9 +405,7 @@ impl Game<'_> {
             false
         });
         for at in shattered {
-            self.audio
-                .0
-                .play("minecraft:entity.ender_eye.death", Some(at), 1.0, 1.0);
+            self.client_audio_play("minecraft:entity.ender_eye.death", Some(at), 1.0, 1.0);
             self.level_event_at(2003, at.map(|v| v.floor() as i32), 0);
         }
     }

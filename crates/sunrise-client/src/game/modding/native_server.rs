@@ -661,8 +661,12 @@ impl Game<'_> {
         host.forget_menus(guest.conn);
         host.poses.remove(&guest.conn);
         host.mob_players.retain(|_, conn| *conn != guest.conn);
-        self.client.destroying.remove(&guest.entity_id);
+        self.cleanup_fake_player_client(guest.entity_id);
         self.guest_combat.0.remove(&guest.conn);
+    }
+
+    pub(in crate::game) fn cleanup_fake_player_client(&mut self, entity_id: i32) {
+        self.client.destroying.remove(&entity_id);
     }
 
     /// Remove a fake without treating it as a disconnect or saving it.

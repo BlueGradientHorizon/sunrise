@@ -438,7 +438,7 @@ impl Game<'_> {
         };
         let harm = self.player_may_harm(harm_attacker, victim_id, s.team.as_ref(), team);
         if s.knockback_attack {
-            self.audio.0.play(
+            self.client_audio_play(
                 "minecraft:entity.player.attack.knockback",
                 Some(s.from),
                 1.0,
@@ -551,9 +551,19 @@ impl Game<'_> {
         }
         // A critical hit a mod let sweep has both sounds (attackVisualEffects).
         if swept.is_none() || s.crit {
-            self.audio.0.play(sound, Some(s.from), 1.0, 1.0);
+            self.client_audio_play(sound, Some(s.from), 1.0, 1.0);
         }
         hurt
+    }
+
+    pub(in crate::game) fn client_audio_play(
+        &mut self,
+        event: &str,
+        at: Option<[f64; 3]>,
+        volume: f32,
+        pitch: f32,
+    ) {
+        self.audio.0.play(event, at, volume, pitch);
     }
 
     /// What follows a player's blow on a player as the victim's hurt ends:

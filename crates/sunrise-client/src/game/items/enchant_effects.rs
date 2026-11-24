@@ -1283,7 +1283,7 @@ impl Game<'_> {
             &mut random_source::entity(),
         );
         if let Some(pitch) = pitch {
-            self.audio.0.play(
+            self.client_audio_play(
                 "minecraft:particle.soul_escape",
                 Some([position.x, position.y, position.z]),
                 0.6,
@@ -1291,6 +1291,15 @@ impl Game<'_> {
             );
         }
         particle
+    }
+    pub(in crate::game) fn client_audio_play(
+        &mut self,
+        event: &str,
+        at: Option<[f64; 3]>,
+        volume: f32,
+        pitch: f32,
+    ) {
+        self.audio.0.play(event, at, volume, pitch);
     }
     /// `ItemStack.hurtAndBreak` on the worn boots (`change_item_damage`):
     /// Unbreaking applies, and they break when worn out.

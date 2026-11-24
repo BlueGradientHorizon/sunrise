@@ -45,7 +45,7 @@ impl Game<'_> {
             self.server.stabbed.retain(|(who, _), _| *who != actor);
             if let Some(p) = &self.player {
                 let at = [p.position.x, p.position.y, p.position.z];
-                self.audio.0.play(kinetic.sound, Some(at), 1.0, 1.0);
+                self.client_audio_play(kinetic.sound, Some(at), 1.0, 1.0);
             }
         }
         true
@@ -228,7 +228,7 @@ impl Game<'_> {
             return;
         };
         let actor = self.server.lan_acting;
-        if self.audio.0.capture.is_some() {
+        if self.audio_capture_active() {
             self.server.lan_kinetic_hits.push(actor);
         }
         let who = actor.map_or(OWN, |conn| conn as i32);
@@ -488,10 +488,28 @@ impl Game<'_> {
             .is_none_or(|&t| now - t > HIT_FEEDBACK_TICKS)
         {
             self.server.kinetic_feedback.insert(entity, now);
-            self.audio
-                .0
-                .play_unshared(kinetic.hit_sound, Some(at), 1.0, 1.0);
+            self.client_audio_play_unshared(kinetic.hit_sound, Some(at), 1.0, 1.0);
         }
+    }
+
+    pub(in crate::game) fn client_audio_play(
+        &mut self,
+        event: &str,
+        at: Option<[f64; 3]>,
+        volume: f32,
+        pitch: f32,
+    ) {
+        self.audio.0.play(event, at, volume, pitch);
+    }
+
+    pub(in crate::game) fn client_audio_play_unshared(
+        &mut self,
+        event: &str,
+        at: Option<[f64; 3]>,
+        volume: f32,
+        pitch: f32,
+    ) {
+        self.audio.0.play_unshared(event, at, volume, pitch);
     }
 
     /// `getTicksSinceLastKineticHitFeedback` of this window's player.

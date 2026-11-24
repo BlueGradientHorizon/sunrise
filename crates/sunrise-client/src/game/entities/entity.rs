@@ -960,7 +960,7 @@ impl Game<'_> {
             && self.motion.landing.has_shelf_bounce(bounce.state)
         {
             let pos = bounce.position;
-            self.audio.0.play(
+            self.client_audio_play(
                 "minecraft:block.shelf_mushroom.bounce",
                 Some([
                     f64::from(pos.x) + 0.5,
@@ -993,6 +993,16 @@ impl Game<'_> {
         self.post_game_event("minecraft:bounce", [feet.x, feet.y, feet.z], context);
         self.persist.sync_body_position.insert(id);
         movement
+    }
+
+    pub(in crate::game) fn client_audio_play(
+        &mut self,
+        event: &str,
+        at: Option<[f64; 3]>,
+        volume: f32,
+        pitch: f32,
+    ) {
+        self.audio.0.play(event, at, volume, pitch);
     }
 }
 

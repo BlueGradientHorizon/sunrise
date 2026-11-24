@@ -165,12 +165,10 @@ impl Game<'_> {
         emitter: u32,
         except: Option<u32>,
     ) {
-        self.audio
-            .0
-            .play_unshared(sound.name, Some(sound.at), sound.volume, sound.pitch);
+        self.client_audio_play_unshared(sound.name, Some(sound.at), sound.volume, sound.pitch);
         // Kept while the level's sounds are captured for others, as
         // `Audio.play` keeps the rest.
-        if self.audio.0.capture.is_some() {
+        if self.audio_capturing() {
             self.server.bound_sounds.push(BoundSound {
                 name: sound.name.to_owned(),
                 at: sound.at,
@@ -181,6 +179,21 @@ impl Game<'_> {
                 except,
             });
         }
+    }
+
+    pub(in crate::game) fn client_audio_play_unshared(
+        &mut self,
+        event: &str,
+        at: Option<[f64; 3]>,
+        volume: f32,
+        pitch: f32,
+    ) {
+        self.audio.0.play_unshared(event, at, volume, pitch);
+    }
+
+    #[inline]
+    pub(in crate::game) fn audio_capturing(&self) -> bool {
+        self.audio.0.capture.is_some()
     }
 
     /// The tick's bound sounds, in the order they played, for the players.

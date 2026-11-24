@@ -316,7 +316,7 @@ impl Game<'_> {
                 if environment.should_play_lava_hurt_sound(item.ticks) {
                     // `Entity.lavaHurt` pitches the burn from `this.random`, the item's own.
                     let pitch = 2.0 + item.random.next_float() * 0.4;
-                    self.audio.0.play(
+                    self.client_audio_play(
                         "minecraft:entity.generic.burn",
                         Some([item.position.x, item.position.y, item.position.z]),
                         0.4,
@@ -799,7 +799,7 @@ impl Game<'_> {
             let mut r = random_source::create();
             let pitch = (r.next_float() - r.next_float()) * 0.35 + 0.9;
             let at = [o.position.x, o.position.y, o.position.z];
-            self.audio.0.play(
+            self.client_audio_play(
                 "minecraft:entity.experience_orb.pickup",
                 Some(at),
                 0.1,
@@ -1064,6 +1064,16 @@ impl Game<'_> {
             );
             self.spawn_orbs(at, xp);
         }
+    }
+
+    pub(in crate::game) fn client_audio_play(
+        &mut self,
+        event: &str,
+        at: Option<[f64; 3]>,
+        volume: f32,
+        pitch: f32,
+    ) {
+        self.audio.0.play(event, at, volume, pitch);
     }
 }
 

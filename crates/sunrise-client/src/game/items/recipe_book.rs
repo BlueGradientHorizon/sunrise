@@ -483,33 +483,34 @@ impl Game<'_> {
             return;
         }
         let known = &self.level.recipe_book.recipes;
-        let index = &world_stations!(self).recipe_index;
-        let ui = &mut self.recipe_ui.0;
-        match ui.client_known.as_ref() {
+        match self.recipe_ui.0.client_known.as_ref() {
             Some(previous) if previous == known => return,
             Some(previous) => {
                 for id in previous.difference(known) {
-                    for d in index.display_ids(id) {
-                        ui.client.remove(d);
+                    let displays = self.stations().recipe_index.display_ids(id);
+                    for d in displays {
+                        self.recipe_ui.0.client.remove(d);
                     }
                 }
                 for id in known.difference(previous) {
-                    for d in index.display_ids(id) {
-                        ui.client.add(d);
+                    let displays = self.stations().recipe_index.display_ids(id);
+                    for d in displays {
+                        self.recipe_ui.0.client.add(d);
                     }
                 }
             }
             None => {
-                ui.client.clear();
+                self.recipe_ui.0.client.clear();
                 for id in known {
-                    for d in index.display_ids(id) {
-                        ui.client.add(d);
+                    let displays = self.stations().recipe_index.display_ids(id);
+                    for d in displays {
+                        self.recipe_ui.0.client.add(d);
                     }
                 }
             }
         }
-        ui.client_known = Some(known.clone());
-        ui.client_version += 1;
+        self.recipe_ui.0.client_known = Some(known.clone());
+        self.recipe_ui.0.client_version += 1;
     }
     /// Every entry of the book, in its order (`native_recipes`).
     pub(in crate::game) fn recipe_book_entries(&mut self) -> Vec<Entry> {
@@ -1845,38 +1846,32 @@ impl Game<'_> {
         &mut self,
         p: sunrise_protocol::packets::recipes::RecipeBookAdd,
     ) {
-        let ui = &mut self.recipe_ui.0;
-        // `display_index`, borrowed by field beside the book.
-        let index = match &self.recipe_tables.synced_index {
-            Some(index) => index,
-            None => &world_stations!(self).recipe_index,
-        };
         if p.replace {
-            ui.client.clear();
-            ui.server_entries.clear();
+            self.recipe_ui.0.client.clear();
+            self.recipe_ui.0.server_entries.clear();
         }
         let mut toast = Vec::new();
         for e in &p.entries {
-            ui.client.add(e.id);
-            ui.server_entries.insert(e.id, e.clone());
+            self.recipe_ui.0.client.add(e.id);
+            self.recipe_ui.0.server_entries.insert(e.id, e.clone());
             if e.flags & 2 != 0 {
-                ui.client.highlight.insert(e.id);
+                self.recipe_ui.0.client.highlight.insert(e.id);
             }
             if e.flags & 1 != 0
-                && let Some(id) = index.recipe_of_display(e.id)
+                && let Some(id) = self.display_index().recipe_of_display(e.id)
                 && !toast.iter().any(|t| t == id)
             {
                 toast.push(id.to_owned());
             }
         }
         // A local world opened later syncs its book from scratch.
-        ui.client_known = None;
-        ui.client_version += 1;
+        self.recipe_ui.0.client_known = None;
+        self.recipe_ui.0.client_version += 1;
         // A replacing packet starts the book again from its own recipes; a
         // later one puts its entries over the book as it is.
         if p.replace {
-            ui.book = None;
-        } else if let Some(mut book) = ui.book.take() {
+            self.recipe_ui.0.book = None;
+        } else if let Some(mut book) = self.recipe_ui.0.book.take() {
             self.server_entries_over(&mut book, p.entries.iter());
             self.recipe_ui.0.book = Some(book);
         }

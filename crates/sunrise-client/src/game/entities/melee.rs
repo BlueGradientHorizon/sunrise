@@ -309,9 +309,7 @@ impl Game<'_> {
         let player = self.player.as_ref();
         let from = player.map(|p| [p.position.x, p.position.y, p.position.z]);
         if knockback_attack {
-            self.audio
-                .0
-                .play("minecraft:entity.player.attack.knockback", from, 1.0, 1.0);
+            self.client_audio_play("minecraft:entity.player.attack.knockback", from, 1.0, 1.0);
         }
         let old_health = self.mobs[index].health;
         let source = match from {
@@ -413,7 +411,7 @@ impl Game<'_> {
                 let indicator = sunrise_client::particles::ParticleOptions::simple(
                     sunrise_client::particles::ParticleType::DamageIndicator,
                 );
-                self.particles.0.send_particles(
+                self.client_particles_send_particles(
                     &indicator,
                     [feet[0], feet[1] + height * 0.5, feet[2]],
                     [0.1, 0.0, 0.1],
@@ -449,7 +447,7 @@ impl Game<'_> {
                 self.sweep_attack(at, from, Some(target), scale);
             }
             if crit || sweep.is_none() {
-                self.audio.0.play(sound, from, 1.0, 1.0);
+                self.client_audio_play(sound, from, 1.0, 1.0);
             }
             self.remember_player_target(Some(id));
             // The hurt or death sound the mob raised (getHurtSound / getDeathSound,
@@ -467,9 +465,7 @@ impl Game<'_> {
             for event in queued {
                 match event {
                     sunrise_client::mobs::MobEvent::Sound(s, at, volume, pitch) => {
-                        self.audio
-                            .0
-                            .play(&format!("minecraft:{s}"), Some(at), volume, pitch);
+                        self.client_audio_play(&format!("minecraft:{s}"), Some(at), volume, pitch);
                     }
                     sunrise_client::mobs::MobEvent::Infested { at, velocities } => {
                         infested.push((at, velocities))
@@ -497,9 +493,7 @@ impl Game<'_> {
                 p.cause_food_exhaustion(0.1);
             }
         } else {
-            self.audio
-                .0
-                .play("minecraft:entity.player.attack.nodamage", from, 1.0, 1.0);
+            self.client_audio_play("minecraft:entity.player.attack.nodamage", from, 1.0, 1.0);
         }
     }
     /// `Player.attack`'s damage against `target_kind` (with the attack
@@ -549,5 +543,26 @@ impl Game<'_> {
         // Enchantment damage (sharpness, smite, bane) scaled by the attack strength.
         amount += enchant_bonus * scale;
         ((amount, scale, crit, enchant_bonus * scale > 0.0), damaging)
+    }
+
+    pub(in crate::game) fn client_audio_play(
+        &mut self,
+        event: &str,
+        at: Option<[f64; 3]>,
+        volume: f32,
+        pitch: f32,
+    ) {
+        self.audio.0.play(event, at, volume, pitch);
+    }
+
+    pub(in crate::game) fn client_particles_send_particles(
+        &mut self,
+        options: &sunrise_client::particles::ParticleOptions,
+        at: [f64; 3],
+        spread: [f64; 3],
+        speed: f64,
+        count: u32,
+    ) {
+        self.particles.0.send_particles(options, at, spread, speed, count);
     }
 }

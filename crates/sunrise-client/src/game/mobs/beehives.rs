@@ -373,17 +373,13 @@ impl Game<'_> {
             ) {
                 self.pop_resource(pos, stack);
             }
-            self.audio
-                .0
-                .play("minecraft:block.beehive.shear", at, 1.0, 1.0);
+            self.client_audio_play("minecraft:block.beehive.shear", at, 1.0, 1.0);
             self.damage_held(1);
             self.post_block_game_event("minecraft:shear", pos, self.sculk_actor(), None);
         } else {
             // shrink(1), then the honey bottle in the hand, the inventory or
             // on the ground.
-            self.audio
-                .0
-                .play("minecraft:item.bottle.fill", at, 1.0, 1.0);
+            self.client_audio_play("minecraft:item.bottle.fill", at, 1.0, 1.0);
             self.consume_player_slot(self.held_slot(), 1);
             let bottle = ItemStack::new("minecraft:honey_bottle", 1);
             if self.held().is_none() {
@@ -489,6 +485,15 @@ impl Game<'_> {
                 .unwrap_or(0) as usize;
             self.set_event_ai_target(self.mobs[i].id, Some(Who::Player), players[pick]);
         }
+    }
+    pub(in crate::game) fn client_audio_play(
+        &mut self,
+        event: &str,
+        at: Option<[f64; 3]>,
+        volume: f32,
+        pitch: f32,
+    ) {
+        self.audio.0.play(event, at, volume, pitch);
     }
 }
 

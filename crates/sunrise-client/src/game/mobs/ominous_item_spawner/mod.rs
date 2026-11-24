@@ -167,7 +167,7 @@ impl Game<'_> {
             let at = block(s.position);
             let center = at.map(|v| f64::from(v) + 0.5);
             if s.tick_count == s.spawn_item_after - ABOUT_TO_SPAWN {
-                self.audio.0.play_on(
+                self.client_audio_play_on(
                     6, // SoundSource.NEUTRAL, as OminousItemSpawner.tickServer selects.
                     "minecraft:block.trial_spawner.about_to_spawn_item",
                     Some(center),
@@ -299,6 +299,16 @@ impl Game<'_> {
                 self.submit_item_world(&state, copy, vertex_light(0xFF), out);
             }
         }
+    }
+    pub(in crate::game) fn client_audio_play_on(
+        &mut self,
+        source: usize,
+        event: &str,
+        at: Option<[f64; 3]>,
+        volume: f32,
+        pitch: f32,
+    ) {
+        self.audio.0.play_on(source, event, at, volume, pitch);
     }
 }
 

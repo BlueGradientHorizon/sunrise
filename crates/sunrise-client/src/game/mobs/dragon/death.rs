@@ -21,7 +21,7 @@ impl Game<'_> {
         };
         if (180..=200).contains(&t) {
             let o = off();
-            self.particles.0.add(
+            self.client_particles_add(
                 &ParticleOptions::simple(ParticleType::ExplosionEmitter),
                 [p.x + o[0], p.y + 2.0 + o[1], p.z + o[2]],
                 [0.0; 3],
@@ -82,5 +82,13 @@ impl Game<'_> {
         };
         self.post_game_event("minecraft:entity_die", at, ctx);
         self.catalyst_takes_experience(at, |_| 0);
+    }
+    pub(in crate::game) fn client_particles_add(
+        &mut self,
+        options: &ParticleOptions,
+        p: [f64; 3],
+        v: [f64; 3],
+    ) {
+        self.particles.0.add(options, p, v);
     }
 }

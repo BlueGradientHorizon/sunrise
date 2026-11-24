@@ -733,6 +733,25 @@ impl Game<'_> {
         self.adv.marks.blast = Some(([at.x, at.y, at.z], cause));
         (!flying).then_some(push)
     }
+    #[inline]
+    pub(in crate::game) fn client_audio_play(
+        &mut self,
+        event: &str,
+        at: Option<[f64; 3]>,
+        volume: f32,
+        pitch: f32,
+    ) {
+        self.audio.0.play(event, at, volume, pitch);
+    }
+    #[inline]
+    pub(in crate::game) fn client_particles_add(
+        &mut self,
+        options: &ParticleOptions,
+        p: [f64; 3],
+        v: [f64; 3],
+    ) {
+        self.particles.0.add(options, p, v);
+    }
     /// The burst: knockback, the blocks that react, the gust and the sound.
     pub(super) fn wind_burst(
         &mut self,
@@ -805,7 +824,7 @@ impl Game<'_> {
             let pitch = (1.0
                 + (super::explosion::client_float() - super::explosion::client_float()) * 0.2)
                 * 0.7;
-            self.audio.0.play(src.sound, Some(center), 4.0, pitch);
+            self.client_audio_play(src.sound, Some(center), 4.0, pitch);
         }
         // Explosion.isSmall: below a radius of 2.
         let ty = if radius < 2.0 {
@@ -813,9 +832,7 @@ impl Game<'_> {
         } else {
             ParticleType::GustEmitterLarge
         };
-        self.particles
-            .0
-            .add(&ParticleOptions::simple(ty), center, [1.0, 0.0, 0.0]);
+        self.client_particles_add(&ParticleOptions::simple(ty), center, [1.0, 0.0, 0.0]);
         self.lan_wind_burst(center, radius, src.sound, block_count, &pushed);
         Ok(())
     }

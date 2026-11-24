@@ -706,6 +706,12 @@ impl Game<'_> {
 
     // ---- posting ----
 
+    #[cfg(test)]
+    #[inline]
+    pub(in crate::game) fn captured_sound_count(&self) -> usize {
+        self.audio.0.capture.as_ref().map_or(0, Vec::len)
+    }
+
     /// `Level.gameEvent`: tell the listeners within reach.
     pub(in crate::game) fn post_game_event(
         &mut self,
@@ -726,7 +732,7 @@ impl Game<'_> {
                     event,
                     ctx.source.and_then(|source| source.actor()),
                     self.server.lan_entity_events.len(),
-                    self.audio.0.capture.as_ref().map_or(0, Vec::len),
+                    self.captured_sound_count(),
                 ));
             }
         });
@@ -2198,12 +2204,17 @@ impl Game<'_> {
         }
     }
 
+    #[inline]
+    pub(in crate::game) fn is_lan_acting(&self) -> bool {
+        self.server.lan_acting.is_some()
+    }
+
     /// `RedStoneOreBlock.spawnParticles`: a red dust puff for each face of the
     /// ore that is not against a solid block. Non-axis coordinates draw from
     /// the client level random, x then y then z. It is `level.addParticle`, so
     /// only the local player's own click or step draws it, not a guest's turn.
     pub(super) fn redstone_ore_particles(&mut self, pos: [i32; 3]) {
-        if self.server.lan_acting.is_some()
+        if self.is_lan_acting()
             || !matches!(
                 &*self.block_name(pos),
                 "minecraft:redstone_ore" | "minecraft:deepslate_redstone_ore"

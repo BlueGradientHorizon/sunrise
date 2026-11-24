@@ -169,16 +169,14 @@ impl Game<'_> {
             match e {
                 HeartEvent::SetBlock(at, state) => self.level_set(at, state)?,
                 HeartEvent::Sound(name, at, volume, pitch) => {
-                    self.audio
-                        .0
-                        .play(&format!("minecraft:{name}"), Some(at), volume, pitch)
+                    self.client_audio_play(&format!("minecraft:{name}"), Some(at), volume, pitch)
                 }
                 HeartEvent::Trail {
                     at,
                     target,
                     color,
                     duration,
-                } => self.particles.0.add(
+                } => self.client_particles_add(
                     &ParticleOptions::trail(target, color, duration),
                     at,
                     [0.0; 3],
@@ -193,6 +191,23 @@ impl Game<'_> {
         self.handle_mob_events(mob_events)?;
         let _ = key;
         Ok(())
+    }
+    pub(in crate::game) fn client_audio_play(
+        &mut self,
+        event: &str,
+        at: Option<[f64; 3]>,
+        volume: f32,
+        pitch: f32,
+    ) {
+        self.audio.0.play(event, at, volume, pitch);
+    }
+    pub(in crate::game) fn client_particles_add(
+        &mut self,
+        options: &ParticleOptions,
+        p: [f64; 3],
+        v: [f64; 3],
+    ) {
+        self.particles.0.add(options, p, v);
     }
     /// After `Creaking.hurtServer` posts ENTITY_ACTION, check the live protector, let
     /// a player-credited hit reach the heart, then play the mob's hurt sound.

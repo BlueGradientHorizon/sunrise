@@ -201,9 +201,7 @@ impl Game<'_> {
             (lo[1] + hi[1]) / 2.0,
             (lo[2] + hi[2]) / 2.0,
         ];
-        self.audio
-            .0
-            .play("minecraft:entity.painting.place", Some(at), 1.0, 1.0);
+        self.client_audio_play("minecraft:entity.painting.place", Some(at), 1.0, 1.0);
         // HangingEntityItem.useOn: ENTITY_PLACE at the painting, by the player, before it is
         // added; ItemStack.useOn then counts the use.
         let ctx = self.player_context(None);
@@ -570,6 +568,15 @@ impl Game<'_> {
             );
             self.finish_entity_occlusion(culling, p, out, entity_start);
         }
+    }
+    pub(in crate::game) fn client_audio_play(
+        &mut self,
+        event: &str,
+        at: Option<[f64; 3]>,
+        volume: f32,
+        pitch: f32,
+    ) {
+        self.audio.0.play(event, at, volume, pitch);
     }
 }
 

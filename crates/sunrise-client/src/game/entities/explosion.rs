@@ -1869,14 +1869,14 @@ impl Game<'_> {
         let effects = self.blast_effects();
         if !source.silent {
             let pitch = (1.0 + (client_float() - client_float()) * 0.2) * 0.7;
-            self.audio.0.play(&effects.sound, Some(center), 4.0, pitch);
+            self.client_audio_play(&effects.sound, Some(center), 4.0, pitch);
         }
         // ServerLevel.explode sends toBlow.size() whatever the interaction, and
         // `ServerExplosion.isSmall` also covers an explosion that keeps blocks.
         let block_count = targets.len();
         let small = radius < 2.0 || interaction == BlockInteraction::Keep;
         let emitter = effects.emitter(small);
-        self.particles.0.explosion(
+        self.client_particles_explosion(
             center,
             emitter,
             block_count,
@@ -1885,6 +1885,27 @@ impl Game<'_> {
         );
         self.lan_explode(center, small, radius, block_count, pushed, effects);
         Ok(())
+    }
+    pub(in crate::game) fn client_audio_play(
+        &mut self,
+        event: &str,
+        at: Option<[f64; 3]>,
+        volume: f32,
+        pitch: f32,
+    ) {
+        self.audio.0.play(event, at, volume, pitch);
+    }
+    pub(in crate::game) fn client_particles_explosion(
+        &mut self,
+        center: [f64; 3],
+        emitter: &sunrise_client::particles::ParticleOptions,
+        block_count: usize,
+        radius: f32,
+        particles: &[sunrise_client::particles::ExplosionParticle],
+    ) {
+        self.particles
+            .0
+            .explosion(center, emitter, block_count, radius, particles);
     }
     /// `InfestedBlock.spawnAfterBreak` without a tool that prevents it: while
     /// blocks drop, its silverfish (`spawnInfestation`) comes out at the

@@ -363,7 +363,7 @@ impl Game<'_> {
         (mod_api::__private::listened(mod_api::HookId::ScreenOpening)
             || mod_api::__private::listened(mod_api::HookId::ScreenClosing))
             && self.options.execution_role.is_client()
-            && self.server.lan_acting.is_none()
+            && !self.is_lan_acting()
             && !self.screen_state.0.replacing
     }
     /// The hooks' answer to a change from `current` to `new`, for every path
@@ -412,7 +412,7 @@ impl Game<'_> {
         title_available: bool,
     ) -> ScreenDecision {
         let blocked = if clears_overlays {
-            self.server.lan_acting.is_some()
+            self.is_lan_acting()
                 || (self.player.is_none() && !title_available)
                 || self.remote_loading()
         } else {
@@ -508,7 +508,7 @@ impl Game<'_> {
         self.build_screen();
         let observed = self.observed_now();
         self.screen_state.0.observed = observed.clone();
-        if !self.options.execution_role.is_client() || self.server.lan_acting.is_some() {
+        if !self.options.execution_role.is_client() || self.is_lan_acting() {
             return;
         }
         if let Some(obs) = observed {
@@ -624,7 +624,7 @@ impl Game<'_> {
     /// dialog or a prompt, with neither the title nor a player, with a
     /// world loading, or on a guest's behalf.
     fn mod_screen_blocked(&self) -> bool {
-        self.server.lan_acting.is_some()
+        self.is_lan_acting()
             || (self.player.is_none() && self.title.0.is_none())
             || self.screen_over_playing()
             || self.remote_loading()
@@ -766,7 +766,7 @@ impl Game<'_> {
         let heard = self.screen_hooks_heard();
         let gated = heard
             || (self.options.execution_role.is_client()
-                && self.server.lan_acting.is_none()
+                && !self.is_lan_acting()
                 && !self.screen_state.0.replacing
                 && mod_api::__private::listened(mod_api::HookId::ScreenInitPost));
         let Some(title) = self.title.0.as_mut() else {
@@ -921,7 +921,7 @@ impl Game<'_> {
             self.screen_state.0.observed = current.clone();
             if let Some(new) = &current
                 && self.options.execution_role.is_client()
-                && self.server.lan_acting.is_none()
+                && !self.is_lan_acting()
             {
                 self.init_screen_widgets(&new.view());
             }

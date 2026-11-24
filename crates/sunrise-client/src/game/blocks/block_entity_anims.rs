@@ -620,7 +620,7 @@ impl Game<'_> {
                 } else {
                     "minecraft:block.conduit.deactivate"
                 };
-                self.audio.0.play(sound, Some(centre), 1.0, 1.0);
+                self.client_audio_play(sound, Some(centre), 1.0, 1.0);
             }
             if let Some(frames) = check.frames {
                 self.conduit_apply_effects(pos, frames);
@@ -629,12 +629,10 @@ impl Game<'_> {
         }
         let (ambient, short) = conduit.ambient(time, &mut self.world.random);
         if ambient {
-            self.audio
-                .0
-                .play("minecraft:block.conduit.ambient", Some(centre), 1.0, 1.0);
+            self.client_audio_play("minecraft:block.conduit.ambient", Some(centre), 1.0, 1.0);
         }
         if short {
-            self.audio.0.play(
+            self.client_audio_play(
                 "minecraft:block.conduit.ambient.short",
                 Some(centre),
                 1.0,
@@ -762,9 +760,7 @@ impl Game<'_> {
             Damage::of(DamageKind::Magic),
         );
         self.finish_mob_damage_at(index);
-        self.audio
-            .0
-            .play("minecraft:block.conduit.attack.target", Some(at), 1.0, 1.0);
+        self.client_audio_play("minecraft:block.conduit.attack.target", Some(at), 1.0, 1.0);
     }
     /// `ConduitBlockEntity.selectNewTarget`: one of the enemies in water or
     /// rain whose box meets the conduit's block inflated by 8.
@@ -990,6 +986,15 @@ impl Game<'_> {
             }
         }
         Some(skin.fallback.to_owned())
+    }
+    pub(in crate::game) fn client_audio_play(
+        &mut self,
+        event: &str,
+        at: Option<[f64; 3]>,
+        volume: f32,
+        pitch: f32,
+    ) {
+        self.audio.0.play(event, at, volume, pitch);
     }
 }
 

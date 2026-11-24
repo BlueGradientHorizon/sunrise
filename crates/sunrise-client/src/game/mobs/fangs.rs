@@ -191,7 +191,7 @@ impl Game<'_> {
                 f.started = true;
                 self.lan_entity_event(f.id as i32, 4, f.pos);
                 let pitch = fang_attack_pitch(&mut f.random);
-                self.audio.0.play_unshared(
+                self.client_audio_play_unshared(
                     "minecraft:entity.evoker_fangs.attack",
                     Some(f.pos),
                     1.0,
@@ -204,6 +204,15 @@ impl Game<'_> {
         self.fangs
             .list
             .restore(list, sunrise_client::join_seq::RestoreOrder::SurvivorsFirst);
+    }
+    pub(in crate::game) fn client_audio_play_unshared(
+        &mut self,
+        event: &str,
+        at: Option<[f64; 3]>,
+        volume: f32,
+        pitch: f32,
+    ) {
+        self.audio.0.play_unshared(event, at, volume, pitch);
     }
     /// `Entity.baseTick`'s `updateFluidInteraction` for fangs (0.5F x 0.8F): the
     /// currents of the water and lava the box touches add to the motion.

@@ -293,7 +293,7 @@ impl Game<'_> {
         if self.cushion_in_fire(&self.cushions[placed]) {
             self.break_cushion(placed, false);
         }
-        self.audio.0.play(
+        self.client_audio_play(
             "minecraft:entity.cushion.place",
             Some([position.x, position.y, position.z]),
             0.75,
@@ -485,7 +485,7 @@ impl Game<'_> {
         // Guest actions temporarily take self.lan; flush once the hub is back.
         // Queue before resolving a sprite: a dedicated server has no renderer.
         if self.audio.0.capture.is_some() {
-            self.server.lan_cushion_breaks.push((state, particle_at));
+            self.cushion_break_particles_server(state, particle_at);
         }
         let at = [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32];
         let Some((sprite, tint)) = self.particle_sprite(state, at) else {
@@ -499,6 +499,14 @@ impl Game<'_> {
         self.particles
             .0
             .send_particles(&options, particle_at, [0.25, 0.0625, 0.25], 0.05, 10);
+    }
+
+    pub(in crate::game) fn cushion_break_particles_server(
+        &mut self,
+        state: sunrise_world::registry::BlockStateId,
+        particle_at: [f64; 3],
+    ) {
+        self.server.lan_cushion_breaks.push((state, particle_at));
     }
 
     /// `BlockAttachedEntity.tick`: survive and burn checks after the post-increment reaches 100.
@@ -768,6 +776,16 @@ impl Game<'_> {
             );
             self.finish_entity_occlusion(culling, c, out, entity_start);
         }
+    }
+
+    pub(in crate::game) fn client_audio_play(
+        &mut self,
+        event: &str,
+        at: Option<[f64; 3]>,
+        volume: f32,
+        pitch: f32,
+    ) {
+        self.audio.0.play(event, at, volume, pitch);
     }
 }
 

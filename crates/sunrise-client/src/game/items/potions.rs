@@ -807,6 +807,17 @@ pub(super) fn collect_dragon_breath(
 }
 
 impl Game<'_> {
+    #[inline]
+    pub(in crate::game) fn client_audio_play(
+        &mut self,
+        event: &str,
+        at: Option<[f64; 3]>,
+        volume: f32,
+        pitch: f32,
+    ) {
+        self.audio.0.play(event, at, volume, pitch);
+    }
+
     /// Right-click with a potion, splash/lingering potion or glass bottle.
     pub(super) fn use_potion_item(&mut self, stack: &ItemStack) -> sunrise_client::Result<bool> {
         match &*stack.item {
@@ -828,7 +839,7 @@ impl Game<'_> {
                     }
                     _ => ("minecraft:entity.lingering_potion.throw", 0.5),
                 };
-                self.audio.0.play(sound, Some(eye), 0.5, pitch);
+                self.client_audio_play(sound, Some(eye), 0.5, pitch);
                 // Projectile.shootFromRotation(xRot, yRot, -20, power, 1.0), with
                 // what the thrower last moved (getKnownMovement).
                 let velocity = self.known_player_movement();
@@ -862,7 +873,7 @@ impl Game<'_> {
                         collect_dragon_breath(player.bounds(), &mut self.breath_clouds)
                 {
                     let player_pos = [player.position.x, player.position.y, player.position.z];
-                    self.audio.0.play(
+                    self.client_audio_play(
                         "minecraft:item.bottle.fill_dragonbreath",
                         Some(player_pos),
                         1.0,
@@ -899,9 +910,7 @@ impl Game<'_> {
                 else {
                     return Ok(false);
                 };
-                self.audio
-                    .0
-                    .play("minecraft:item.bottle.fill", Some(at), 1.0, 1.0);
+                self.client_audio_play("minecraft:item.bottle.fill", Some(at), 1.0, 1.0);
                 self.post_block_game_event(
                     "minecraft:fluid_pickup",
                     hit.pos,

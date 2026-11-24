@@ -89,20 +89,12 @@ impl Game<'_> {
         }
     }
 
-    /// A level sound's old emitter must still be known at playback. Keep
-    /// sounds needing a new pairing queued, with their later removals held.
-    pub(in crate::game) fn lan_prepare_captured_sounds(
-        &mut self,
-        entities: &[sunrise_client::lan::entity::EntityState],
-    ) {
-        let Some(host) = self.lan.as_mut() else {
-            return;
+    #[inline]
+    pub(in crate::game) fn lan_broken_block_positions(&self) -> Vec<[f64; 3]> {
+        let Some(host) = self.lan.as_ref() else {
+            return Vec::new();
         };
-        let Some(sounds) = self.audio.0.capture.as_mut() else {
-            return;
-        };
-        let blocks: Vec<_> = host
-            .broken
+        host.broken
             .iter()
             .copied()
             .chain(
@@ -112,7 +104,25 @@ impl Game<'_> {
                     .filter(|event| event.kind == 2001)
                     .map(|event| event.pos.map(f64::from)),
             )
-            .collect();
+            .collect()
+    }
+
+    /// A level sound's old emitter must still be known at playback. Keep
+    /// sounds needing a new pairing queued, with their later removals held.
+    pub(in crate::game) fn lan_prepare_captured_sounds(
+        &mut self,
+        entities: &[sunrise_client::lan::entity::EntityState],
+    ) {
+        if self.lan.is_none() || self.audio.0.capture.is_none() {
+            return;
+        }
+        let blocks = self.lan_broken_block_positions();
+        let Some(host) = self.lan.as_ref() else {
+            return;
+        };
+        let Some(sounds) = self.audio.0.capture.as_mut() else {
+            return;
+        };
         sounds.retain(|sound| !captured_block_break(sound, &blocks));
         host.hub.prepare_captured_sounds(sounds, entities);
     }

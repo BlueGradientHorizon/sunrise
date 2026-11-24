@@ -274,6 +274,10 @@ impl Game<'_> {
         self.tick_camera();
         self.tick_waypoints();
     }
+    #[inline]
+    pub(in crate::game) fn is_playing_screen(&self) -> bool {
+        self.client.screen == super::Screen::Playing
+    }
     /// The camera part of `ServerPlayer.tick`: follow a living camera, drop a
     /// removed one, and stop when the player sneaks or leaves spectator mode.
     fn tick_camera(&mut self) {
@@ -284,8 +288,7 @@ impl Game<'_> {
             self.set_camera(None);
             return;
         }
-        let sneaking =
-            self.held_mapping(Action::Sneak) && self.client.screen == super::Screen::Playing;
+        let sneaking = self.held_mapping(Action::Sneak) && self.is_playing_screen();
         match self.target_position(t) {
             Some(p) if !sneaking => {
                 let rot = self.target_rotation(t);
@@ -885,17 +888,18 @@ impl Game<'_> {
     /// Whether a `/fetchprofile` lookup is still in flight (the command
     /// harness waits for them, as vanilla's oracle resolves at once).
     pub(in crate::game) fn profile_fetches_pending(&mut self) -> bool {
+        self.profile_fetches_pending_client(&self.cmds.0.profile_fetches)
+    }
+    pub(in crate::game) fn profile_fetches_pending_client(&self, fetches: &[ProfileFetch]) -> bool {
         let mut resolver = self.skin_profiles.0.borrow_mut();
-        self.cmds
-            .0
-            .profile_fetches
+        fetches
             .iter()
             .any(|f| matches!(resolver.state(&f.key), Resolve::Pending))
     }
     fn tick_profile_fetches(&mut self) {
         let fetches = std::mem::take(&mut self.cmds.0.profile_fetches);
         for fetch in fetches {
-            let state = self.skin_profiles.0.borrow_mut().state(&fetch.key);
+            let state = self.tick_profile_fetches_client(&fetch.key);
             match state {
                 Resolve::Pending => self.cmds.0.profile_fetches.push(fetch),
                 Resolve::Done(result) => {
@@ -915,6 +919,9 @@ impl Game<'_> {
                 }
             }
         }
+    }
+    pub(in crate::game) fn tick_profile_fetches_client(&self, key: &NameOrId) -> Resolve {
+        self.skin_profiles.0.borrow_mut().state(key)
     }
     /// `FetchProfileCommand.reportResolvedProfile`: the profile as
     /// `ResolvableProfile.CODEC` encodes it (`id`, `name`, and `properties`

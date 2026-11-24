@@ -148,8 +148,18 @@ impl Game<'_> {
             &nearby,
         ) {
             let sound = sunrise_client::mobs::entity_sounds::full_id(sound);
-            self.audio.0.play(&sound, Some(at), volume, pitch);
+            self.client_audio_play(&sound, Some(at), volume, pitch);
         }
+    }
+
+    pub(in crate::game) fn client_audio_play(
+        &mut self,
+        event: &str,
+        at: Option<[f64; 3]>,
+        volume: f32,
+        pitch: f32,
+    ) {
+        self.audio.0.play(event, at, volume, pitch);
     }
 
     /// `ServerPlayer.removeEntitiesOnShoulder` (not within a second of the

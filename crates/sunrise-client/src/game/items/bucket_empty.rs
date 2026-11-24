@@ -60,25 +60,30 @@ impl Game<'_> {
         if self.server.lan_acting.is_none() {
             return;
         }
+        let moved = self.keep_guest_bucket_sounds_client(sound);
+        self.server.guest_player_sounds.extend(moved);
+    }
+
+    pub(in crate::game) fn keep_guest_bucket_sounds_client(
+        &mut self,
+        sound: &str,
+    ) -> Vec<(String, [f64; 3], f32, f32)> {
         let Some(capture) = self.audio.0.capture.as_mut() else {
-            return;
+            return Vec::new();
         };
         let want = sound.trim_start_matches("minecraft:");
         let mut keep = Vec::with_capacity(capture.len());
+        let mut moved = Vec::new();
         for entry in capture.drain(..) {
             let name = entry.event.trim_start_matches("minecraft:");
             if name == want || name == "block.fire.extinguish" {
-                self.server.guest_player_sounds.push((
-                    entry.event,
-                    entry.position,
-                    entry.volume,
-                    entry.pitch,
-                ));
+                moved.push((entry.event, entry.position, entry.volume, entry.pitch));
             } else {
                 keep.push(entry);
             }
         }
         *capture = keep;
+        moved
     }
 
     /// `bucket_contents` for the pour a server's client predicts: none for an

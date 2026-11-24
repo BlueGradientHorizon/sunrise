@@ -16,6 +16,11 @@ impl Game<'_> {
             .is_some_and(|name| self.loop_context.mod_recipe_property_contains(set, name))
     }
 
+    #[inline]
+    pub(in crate::game) fn has_world_tables(&self) -> bool {
+        self.world_tables.0.is_some()
+    }
+
     /// Publish once per owning load or server update, never from a slot read.
     pub(super) fn refresh_recipe_property_context(&mut self) {
         let mut sets = HashMap::<String, HashSet<String>>::new();
@@ -34,7 +39,7 @@ impl Game<'_> {
                     sets.insert(key.clone(), items);
                 }
             }
-        } else if self.world_tables.0.is_some() || self.res.rest.get().is_some() {
+        } else if self.has_world_tables() || self.res.rest.get().is_some() {
             for (key, names) in self.recipes().custom_property_sets() {
                 let items = names
                     .iter()

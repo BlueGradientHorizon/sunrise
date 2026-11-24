@@ -308,7 +308,7 @@ impl Game<'_> {
         // Creating the targets must not move the stream the dispenser draws from.
         self.world.random.set_seed(seed);
         self.world.block_log = Some(Vec::new());
-        self.audio.0.capture = Some(Vec::new());
+        self.dispense_case_client_start();
         LOG.with(|log| *log.borrow_mut() = Some(Vec::new()));
         let old_mobs: Vec<u32> = self.mobs.iter().map(|m| m.id).collect();
         let old_stands: Vec<u32> = self.armor_stands.iter().map(|s| s.id).collect();
@@ -500,9 +500,7 @@ impl Game<'_> {
             out.push(line);
             out.extend(sound);
         }
-        for sound in self.audio.0.capture.take().unwrap_or_default() {
-            out.push(format!("S {} {}", floor_pos(sound.position), sound.event));
-        }
+        self.dispense_case_client_finish(&mut out);
         // The sounds bound to an entity (a sheared mob's) are the server's too.
         for s in std::mem::take(&mut self.server.bound_sounds) {
             out.push(format!("S {} {}", floor_pos(s.at), s.name));
@@ -510,6 +508,16 @@ impl Game<'_> {
         out.extend(used);
         out.push(format!("rng {}", self.world.random.next_long()));
         Ok(out)
+    }
+
+    pub(in crate::game) fn dispense_case_client_start(&mut self) {
+        self.audio.0.capture = Some(Vec::new());
+    }
+
+    pub(in crate::game) fn dispense_case_client_finish(&mut self, out: &mut Vec<String>) {
+        for sound in self.audio.0.capture.take().unwrap_or_default() {
+            out.push(format!("S {} {}", floor_pos(sound.position), sound.event));
+        }
     }
 
     /// Actual player combat and blocking-item side effects, without a window or connection.
@@ -864,9 +872,7 @@ impl Game<'_> {
                 // The hurt sound the mob raised, where it stands.
                 for event in std::mem::take(&mut self.mobs[index].outbox) {
                     if let sunrise_client::mobs::MobEvent::Sound(s, at, volume, pitch) = event {
-                        self.audio
-                            .0
-                            .play(&format!("minecraft:{s}"), Some(at), volume, pitch);
+                        self.client_audio_play(&format!("minecraft:{s}"), Some(at), volume, pitch);
                     }
                 }
                 if hurt {
@@ -992,6 +998,16 @@ impl Game<'_> {
             canon_stack(self.inventory[self.selected].as_ref(), self.res.items())
         ));
         Ok(out)
+    }
+
+    pub(in crate::game) fn client_audio_play(
+        &mut self,
+        event: &str,
+        at: Option<[f64; 3]>,
+        volume: f32,
+        pitch: f32,
+    ) {
+        self.audio.0.play(event, at, volume, pitch);
     }
 
     /// A stack in a block entity's slot: a container's, a jukebox's record, a

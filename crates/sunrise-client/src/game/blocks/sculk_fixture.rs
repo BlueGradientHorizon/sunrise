@@ -497,7 +497,7 @@ impl Game<'_> {
         self.server.next_entity = self.server.next_entity.max(200_000);
         self.world.day_time = 6000;
         self.world.random.set_seed(s.level_seed);
-        self.audio.0.capture = Some(Vec::new());
+        self.sculk_scenario_set_capture_client(true);
         let mut known: HashSet<u32> = self.mobs.iter().map(|m| m.id).collect();
         let mut seeded: HashSet<u32> = HashSet::new();
         let mut known_items = self.dropped.len();
@@ -633,11 +633,7 @@ impl Game<'_> {
                 .into_iter()
                 .map(|s| (s.name, s.at, s.volume, s.pitch));
             for (sound, at, volume, pitch) in self
-                .audio
-                .0
-                .capture
-                .replace(Vec::new())
-                .unwrap_or_default()
+                .sculk_scenario_drain_capture_client()
                 .into_iter()
                 .map(|s| (s.event, s.position, s.volume, s.pitch))
                 .chain(bound)
@@ -663,8 +659,18 @@ impl Game<'_> {
                 let _ = writeln!(out, "{t} {line}");
             }
         }
-        self.audio.0.capture = None;
+        self.sculk_scenario_set_capture_client(false);
         Ok(out)
+    }
+
+    pub(in crate::game) fn sculk_scenario_set_capture_client(&mut self, enabled: bool) {
+        self.audio.0.capture = enabled.then(Vec::new);
+    }
+
+    pub(in crate::game) fn sculk_scenario_drain_capture_client(
+        &mut self,
+    ) -> Vec<sunrise_client::audio::CapturedSound> {
+        self.audio.0.capture.replace(Vec::new()).unwrap_or_default()
     }
 
     /// One `ServerLevel.tick` of a scenario.

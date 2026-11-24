@@ -245,53 +245,24 @@ impl Game<'_> {
                     Ok(false)
                 }
                 Stage::Chunks(keys) => {
-                    let started = Instant::now();
-                    for _ in 0..per_frame {
-                        let Some(&key) = keys.front() else { break };
-                        // ChunkMap.save consumes the dirty mark before capturing the snapshot.
-                        self.world.modified.remove(&key);
-                        let chunks = self.with_entities(self.world.chunks.get(&key));
-                        self.native_full_chunk_snapshots(&chunks);
-                        self.save.0.save_later(
-                            &chunks,
-                            self.pack.assets.registry,
-                            world_biomes!(self),
-                        )?;
-                        keys.pop_front();
-                        if started.elapsed() >= budget {
-                            break;
-                        }
-                    }
-                    if keys.is_empty() {
-                        self.spawn_loaded_entities();
-                        save.stage = Stage::Entities(self.world.chunks.keys().copied().collect());
+                    if let Some(entities) =
+                        self.poll_closing_save_chunks_server(keys, per_frame, budget)?
+                    {
+                        save.stage = Stage::Entities(entities);
                     }
                     Ok(false)
                 }
                 Stage::Entities(keys) => {
-                    let started = Instant::now();
-                    for _ in 0..per_frame {
-                        let Some(&key) = keys.front() else { break };
-                        let chunks = self.entity_chunks(&HashSet::from([key]), false);
-                        self.save.0.save_entities_later(chunks)?;
-                        keys.pop_front();
-                        if started.elapsed() >= budget {
-                            break;
-                        }
-                    }
-                    if keys.is_empty() {
-                        self.prune_entity_memory();
-                        self.save_raids();
-                        self.save.0.save_attachments(&self.world.attachments)?;
-                        self.save_chunk_tickets()?;
-                        self.save_game_metadata()?;
-                        save.stage = Stage::Writes(Some(self.save.0.flush_later()?));
+                    if let Some(flush) =
+                        self.poll_closing_save_entities_server(keys, per_frame, budget)?
+                    {
+                        save.stage = Stage::Writes(Some(flush));
                     }
                     Ok(false)
                 }
                 Stage::Writes(flush) => {
                     let Some(receive) = flush else {
-                        *flush = Some(self.save.0.flush_later()?);
+                        *flush = Some(self.poll_closing_save_flush_server()?);
                         return Ok(false);
                     };
                     if !self.finish_player_autosaves(false)? {
@@ -354,6 +325,71 @@ impl Game<'_> {
                 other
             }
         }
+    }
+
+    pub(in crate::game) fn poll_closing_save_chunks_server(
+        &mut self,
+        keys: &mut VecDeque<(i32, i32)>,
+        per_frame: usize,
+        budget: Duration,
+    ) -> Result<Option<VecDeque<(i32, i32)>>> {
+        let started = Instant::now();
+        for _ in 0..per_frame {
+            let Some(&key) = keys.front() else { break };
+            // ChunkMap.save consumes the dirty mark before capturing the snapshot.
+            self.world.modified.remove(&key);
+            let chunks = self.with_entities(self.world.chunks.get(&key));
+            self.native_full_chunk_snapshots(&chunks);
+            self.save.0.save_later(
+                &chunks,
+                self.pack.assets.registry,
+                world_biomes!(self),
+            )?;
+            keys.pop_front();
+            if started.elapsed() >= budget {
+                break;
+            }
+        }
+        if keys.is_empty() {
+            self.spawn_loaded_entities();
+            Ok(Some(self.world.chunks.keys().copied().collect()))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub(in crate::game) fn poll_closing_save_entities_server(
+        &mut self,
+        keys: &mut VecDeque<(i32, i32)>,
+        per_frame: usize,
+        budget: Duration,
+    ) -> Result<Option<Receiver<std::io::Result<()>>>> {
+        let started = Instant::now();
+        for _ in 0..per_frame {
+            let Some(&key) = keys.front() else { break };
+            let chunks = self.entity_chunks(&HashSet::from([key]), false);
+            self.save.0.save_entities_later(chunks)?;
+            keys.pop_front();
+            if started.elapsed() >= budget {
+                break;
+            }
+        }
+        if keys.is_empty() {
+            self.prune_entity_memory();
+            self.save_raids();
+            self.save.0.save_attachments(&self.world.attachments)?;
+            self.save_chunk_tickets()?;
+            self.save_game_metadata()?;
+            Ok(Some(self.save.0.flush_later()?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub(in crate::game) fn poll_closing_save_flush_server(
+        &self,
+    ) -> Result<Receiver<std::io::Result<()>>> {
+        self.save.0.flush_later()
     }
 
     pub(super) fn render_closing_save(&mut self) -> Result<()> {

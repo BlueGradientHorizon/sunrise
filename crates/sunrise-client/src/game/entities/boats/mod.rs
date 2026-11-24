@@ -1206,8 +1206,11 @@ impl Game<'_> {
             .apply_block_speed(b.position, &mut b.velocity);
         self.boat_step_on(&mut b);
         self.boat_stuck_in_blocks(&mut b);
-        Self::tick_boat_paddles(&mut b, &mut self.audio.0);
+        self.tick_boat_client(&mut b);
         b
+    }
+    pub(in crate::game) fn tick_boat_client(&mut self, b: &mut Boat) {
+        Self::tick_boat_paddles(b, &mut self.audio.0);
     }
     /// `AbstractBoat.tick` advances the oars even when this client does not move the hull.
     pub(super) fn tick_boat_paddles(b: &mut Boat, audio: &mut super::Audio) {

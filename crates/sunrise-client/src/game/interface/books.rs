@@ -1035,9 +1035,7 @@ impl Game<'_> {
             f64::from(pos[1]) + 0.5,
             f64::from(pos[2]) + 0.5,
         ];
-        self.audio
-            .0
-            .play("minecraft:item.book.put", Some(at), 1.0, 1.0);
+        self.client_audio_play("minecraft:item.book.put", Some(at), 1.0, 1.0);
         self.container_changed(key);
         if let (Some(player), Some(name)) = (
             self.server.lan_acting_uuid,
@@ -1756,6 +1754,15 @@ impl Game<'_> {
             }
             self.component_hover_effect(batch, &style, (mx, my));
         }
+    }
+    pub(in crate::game) fn client_audio_play(
+        &mut self,
+        event: &str,
+        at: Option<[f64; 3]>,
+        volume: f32,
+        pitch: f32,
+    ) {
+        self.audio.0.play(event, at, volume, pitch);
     }
 }
 pub(super) use sunrise_gameplay::lectern::lectern_signal;

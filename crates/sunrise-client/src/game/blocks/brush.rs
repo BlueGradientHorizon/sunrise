@@ -80,10 +80,20 @@ impl Game<'_> {
             self.brush_dust(hit, slot == super::shield::OFFHAND_SLOT);
         }
         let at = hit.pos.map(|v| f64::from(v) + 0.5);
-        self.audio.0.play(sound, Some(at), 1.0, 1.0);
+        self.client_audio_play(sound, Some(at), 1.0, 1.0);
         if brushable && self.brush_block(hit.pos, hit.face, slot) {
             self.damage_held(1);
         }
+    }
+
+    pub(in crate::game) fn client_audio_play(
+        &mut self,
+        event: &str,
+        at: Option<[f64; 3]>,
+        volume: f32,
+        pitch: f32,
+    ) {
+        self.audio.0.play(event, at, volume, pitch);
     }
 
     /// `BrushItem.spawnDustParticles`.

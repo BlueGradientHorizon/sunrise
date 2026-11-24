@@ -182,11 +182,7 @@ impl Game<'_> {
         self.world
             .chunks
             .track_connection_groups(group_count.clone());
-        self.save.0 = Arc::new(SaveDir::new(
-            std::env::temp_dir().join("sunrise-remote-unused"),
-            sunrise_client::save::LevelShape::OVERWORLD,
-            None,
-        ));
+        self.install_remote_session_server();
         self.inventory = vec![None; 36];
         self.offhand = None;
         self.armor = [None, None, None, None];
@@ -422,6 +418,15 @@ impl Game<'_> {
         self.stats = Default::default();
         Ok(())
     }
+
+    pub(in crate::game) fn install_remote_session_server(&mut self) {
+        self.save.0 = Arc::new(SaveDir::new(
+            std::env::temp_dir().join("sunrise-remote-unused"),
+            sunrise_client::save::LevelShape::OVERWORLD,
+            None,
+        ));
+    }
+
     /// Prepare a client session and remote state to receive packets from a studio replay.
     /// A replayed or viewed world checks its players' signed properties as a joined
     /// client does.
@@ -473,11 +478,7 @@ impl Game<'_> {
         self.world
             .chunks
             .track_connection_groups(group_count.clone());
-        self.save.0 = Arc::new(SaveDir::new(
-            std::env::temp_dir().join("sunrise-replay-unused"),
-            sunrise_client::save::LevelShape::OVERWORLD,
-            None,
-        ));
+        self.init_remote_for_replay_server();
         self.inventory = vec![None; 36];
         self.offhand = None;
         self.armor = [None, None, None, None];
@@ -703,6 +704,15 @@ impl Game<'_> {
         self.stats = Default::default();
         Ok(())
     }
+
+    pub(in crate::game) fn init_remote_for_replay_server(&mut self) {
+        self.save.0 = Arc::new(SaveDir::new(
+            std::env::temp_dir().join("sunrise-replay-unused"),
+            sunrise_client::save::LevelShape::OVERWORLD,
+            None,
+        ));
+    }
+
     /// Refuse a bad Play payload with the normal connection-error screen.
     pub(in crate::game) fn refuse_play_payload(
         &mut self,

@@ -507,7 +507,7 @@ impl Game<'_> {
                 _ => "minecraft:entity.horse.eat",
             };
             let pitch = (m.random.next_float() - m.random.next_float()) * 0.2 + 1.0;
-            self.audio.0.play(sound, Some(at), 1.0, pitch);
+            self.client_audio_play(sound, Some(at), 1.0, pitch);
         }
         // gameEvent(GameEvent.EAT): at the mount, from the mount.
         let ctx = self.who_context(Some(Who::Mob(id)), None);
@@ -612,7 +612,7 @@ impl Game<'_> {
                 // playJumpSound, which the server broadcasts for a guest.
                 let sound = format!("minecraft:{}", equine::jump_sound(m));
                 let at = m.center();
-                self.audio.0.play(&sound, Some(at), 0.4, 1.0);
+                self.client_audio_play(&sound, Some(at), 0.4, 1.0);
             }
         }
         let sprint = keys.sprint || self.held_mapping(Action::Sprint);
@@ -1061,6 +1061,15 @@ impl Game<'_> {
         );
         let draws = sunrise_client::hud_overlays::jump_bar(w, h, cooldown, self.mount.jump_scale);
         sunrise_client::hud_layout::paint(batch, &self.gui.atlas, &draws);
+    }
+    pub(in crate::game) fn client_audio_play(
+        &mut self,
+        event: &str,
+        at: Option<[f64; 3]>,
+        volume: f32,
+        pitch: f32,
+    ) {
+        self.audio.0.play(event, at, volume, pitch);
     }
 }
 

@@ -38,7 +38,7 @@ impl Game<'_> {
                 .is_ok_and(|id| self.controls_boat(id) && self.boats.iter().any(|b| b.id == id));
         let mob = self
             .mob_index
-            .get_mut(&mut self.mobs, id as u32)
+            .find(&self.mobs, id as u32)
             .filter(|_| !dragon);
         let tracked = self
             .remote
@@ -50,8 +50,10 @@ impl Game<'_> {
             .map(Path::end)
             .or(tracked)
             .or_else(|| {
-                mob.as_ref()
-                    .map(|m| [m.position.x, m.position.y, m.position.z])
+                mob.map(|i| {
+                    let m = &self.mobs[i];
+                    [m.position.x, m.position.y, m.position.z]
+                })
             })
             .unwrap_or([0.0; 3]);
         if let Some(r) = self.remote.as_mut() {
@@ -94,7 +96,8 @@ impl Game<'_> {
                 // (`interpolate_driven_mount`, the boat's own), with no new steps.
                 return;
             }
-            if let Some(m) = mob {
+            if let Some(mob_index) = mob {
+                let m = &mut self.mobs[mob_index];
                 // Shulker.createInterpolationHandler is NO_OP, so a move packet
                 // is setPos at once. The 6-tick slide starts from the block
                 // the shulker occupied before this packet.
@@ -112,13 +115,7 @@ impl Game<'_> {
                         m.yaw += wrap_degrees(yaw - m.yaw);
                         m.head_pitch = (pitch % 360.0).clamp(-90.0, 90.0);
                     }
-                    let _ = m.update_retained_ground(
-                        &self.world,
-                        self.collision,
-                        &world_items!(self).entity_type_tags,
-                        on_ground,
-                        None,
-                    );
+                    self.move_entity_with_old_mob_ground_server(mob_index, on_ground);
                     return;
                 }
                 // A living entity: LivingEntity.createInterpolationHandler's
@@ -146,18 +143,13 @@ impl Game<'_> {
                 }
                 // ClientPacketListener sets onGround after moving or queuing the
                 // interpolation; the support probe uses the current bounds.
-                let _ = m.update_retained_ground(
-                    &self.world,
-                    self.collision,
-                    &world_items!(self).entity_type_tags,
-                    on_ground,
-                    None,
-                );
+                self.move_entity_with_old_mob_ground_server(mob_index, on_ground);
                 return;
             }
             // An armor stand is a living entity too: the same handler, over
             // its type's update interval, stepped in `tick_remote_entities`.
-            if let Some(a) = self.armor_stands.iter_mut().find(|a| a.id == id as u32) {
+            if let Some(stand_index) = self.armor_stands.iter().position(|a| a.id == id as u32) {
+                let a = &mut self.armor_stands[stand_index];
                 let entity = PosRot {
                     position: [a.position.x, a.position.y, a.position.z],
                     yaw: a.yaw,
@@ -180,13 +172,7 @@ impl Game<'_> {
                         a.previous_pitch = (old.pitch % 360.0).clamp(-90.0, 90.0);
                     }
                 }
-                let _ = a.update_retained_ground(
-                    &self.world,
-                    self.collision,
-                    &world_items!(self).entity_type_tags,
-                    on_ground,
-                    None,
-                );
+                self.move_entity_with_old_armor_stand_ground_server(stand_index, on_ground);
                 return;
             }
             // Interaction extends Entity and keeps its NO_OP interpolation
@@ -360,6 +346,34 @@ impl Game<'_> {
             }
         }
         self.turn_remote_projectile(id, rotation);
+    }
+
+    pub(in crate::game) fn move_entity_with_old_mob_ground_server(
+        &mut self,
+        mob_index: usize,
+        on_ground: bool,
+    ) {
+        let _ = self.mobs[mob_index].update_retained_ground(
+            &self.world,
+            self.collision,
+            &world_items!(self).entity_type_tags,
+            on_ground,
+            None,
+        );
+    }
+
+    pub(in crate::game) fn move_entity_with_old_armor_stand_ground_server(
+        &mut self,
+        stand_index: usize,
+        on_ground: bool,
+    ) {
+        let _ = self.armor_stands[stand_index].update_retained_ground(
+            &self.world,
+            self.collision,
+            &world_items!(self).entity_type_tags,
+            on_ground,
+            None,
+        );
     }
     /// `handleMoveVehicle`'s `getInterpolation().cancel()` for the mount this
     /// client drives.

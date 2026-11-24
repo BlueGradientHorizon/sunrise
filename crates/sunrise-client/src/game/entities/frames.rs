@@ -121,6 +121,16 @@ fn visual_rotation_y_degrees(f: &ItemFrame) -> f32 {
     )
 }
 impl Game<'_> {
+    #[inline]
+    pub(in crate::game) fn client_audio_play(
+        &mut self,
+        event: &str,
+        at: Option<[f64; 3]>,
+        volume: f32,
+        pitch: f32,
+    ) {
+        self.audio.0.play(event, at, volume, pitch);
+    }
     /// `ItemFrame.survives` (not fixed): no collision, a solid block behind
     /// (or a diode for wall frames), no overlapping hanging entity.
     fn frame_survives(&self, f: &ItemFrame) -> bool {
@@ -245,9 +255,7 @@ impl Game<'_> {
             return true;
         }
         self.server.next_entity += 1;
-        self.audio
-            .0
-            .play(&sound(&frame, "place"), Some(center(&frame)), 1.0, 1.0);
+        self.client_audio_play(&sound(&frame, "place"), Some(center(&frame)), 1.0, 1.0);
         // HangingEntityItem.useOn: ENTITY_PLACE at the frame, by the player, before it is
         // added; ItemStack.useOn then counts the use.
         let ctx = self.player_context(None);
@@ -340,12 +348,15 @@ impl Game<'_> {
             }
             self.item_frames[i].set_item(Some(held));
             action = "put";
-            self.audio
-                .0
-                .play(&sound(&self.item_frames[i], "add_item"), Some(at), 1.0, 1.0);
+            self.client_audio_play(
+                &sound(&self.item_frames[i], "add_item"),
+                Some(at),
+                1.0,
+                1.0,
+            );
         } else {
             let s = sound(&self.item_frames[i], "rotate_item");
-            self.audio.0.play(&s, Some(at), 1.0, 1.0);
+            self.client_audio_play(&s, Some(at), 1.0, 1.0);
             let f = &mut self.item_frames[i];
             f.rotation = (f.rotation + 1) % 8;
             action = "rotate";
@@ -488,7 +499,7 @@ impl Game<'_> {
         } else {
             // BlockAttachedEntity.kill precedes ItemFrame.dropItem's break sound.
             self.entity_killed_event_by(at, source);
-            self.audio.0.play(&sound(&f, "break"), Some(at), 1.0, 1.0);
+            self.client_audio_play(&sound(&f, "break"), Some(at), 1.0, 1.0);
         }
         // ItemFrame.dropItem clears the item (updating comparators) before drops.
         if f.item.is_some() {
@@ -529,9 +540,7 @@ impl Game<'_> {
         self.post_game_event("minecraft:block_change", at, ctx);
         if !with_frame {
             // ItemFrame.hurtServer plays this after the event.
-            self.audio
-                .0
-                .play(&sound(&f, "remove_item"), Some(at), 1.0, 1.0);
+            self.client_audio_play(&sound(&f, "remove_item"), Some(at), 1.0, 1.0);
         }
         self.world.modified.insert((f.pos[0] >> 4, f.pos[2] >> 4));
         if by_player

@@ -157,9 +157,7 @@ impl Game<'_> {
         if let Some(last) = self.bolts.len().checked_sub(1) {
             self.bolts.update(last, |bolt| bolt.cause = Some(guest));
         }
-        self.audio
-            .0
-            .play("minecraft:item.trident.thunder", Some(at), 5.0, 1.0);
+        self.client_audio_play("minecraft:item.trident.thunder", Some(at), 5.0, 1.0);
     }
     /// `minecraft:hit_block` of Channeling (`AbstractArrow.hitBlockEnchantmentEffects`):
     /// the block the trident's path first hits, if it is a lightning rod, with
@@ -310,7 +308,7 @@ impl Game<'_> {
                             LevelSound::new(&sound, at, 1.0, 1.0).in_source(SoundSource::Players);
                         self.play_bound_sound(sound, player, None);
                     }
-                    _ => self.audio.0.play(&sound, at, 1.0, 1.0),
+                    _ => self.client_audio_play(&sound, at, 1.0, 1.0),
                 }
                 if let (Some(player), Some(name)) = (
                     self.server.lan_acting_uuid,
@@ -689,7 +687,7 @@ impl Game<'_> {
                 let to = t.position;
                 self.entity_section_step(t.id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
                 if t.returning == 0 {
-                    self.audio.0.play(
+                    self.client_audio_play(
                         "minecraft:item.trident.return",
                         Some([t.position.x, t.position.y, t.position.z]),
                         10.0,
@@ -816,7 +814,7 @@ impl Game<'_> {
                         if t.deflected_by != Some(breeze_id) {
                             let sound_at =
                                 [breeze.position.x, breeze.position.y, breeze.position.z];
-                            self.audio.0.play(
+                            self.client_audio_play(
                                 "minecraft:entity.breeze.deflect",
                                 Some(sound_at),
                                 1.0,
@@ -1084,7 +1082,7 @@ impl Game<'_> {
                                 t.velocity.y * (-0.5 * 0.2),
                                 t.velocity.z * (-0.5 * 0.02),
                             );
-                            self.audio.0.play(
+                            self.client_audio_play(
                                 "minecraft:item.trident.hit",
                                 Some([t.position.x, t.position.y, t.position.z]),
                                 1.0,
@@ -1137,9 +1135,7 @@ impl Game<'_> {
                         t.last_state = Some(self.world.block(block.x, block.y, block.z));
                         t.shake = 7;
                         let sound = t.hit_ground_sound();
-                        self.audio
-                            .0
-                            .play(&sound, Some([stop.x, stop.y, stop.z]), 1.0, 1.0);
+                        self.client_audio_play(&sound, Some([stop.x, stop.y, stop.z]), 1.0, 1.0);
                     }
                 }
                 if !t.in_ground {
@@ -1351,6 +1347,16 @@ impl Game<'_> {
             }
         }
         self.mark_motion(out.len(), 0);
+    }
+
+    pub(in crate::game) fn client_audio_play(
+        &mut self,
+        event: &str,
+        at: Option<[f64; 3]>,
+        volume: f32,
+        pitch: f32,
+    ) {
+        self.audio.0.play(event, at, volume, pitch);
     }
 }
 #[cfg(test)]

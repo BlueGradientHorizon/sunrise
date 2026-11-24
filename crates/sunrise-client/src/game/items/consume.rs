@@ -590,6 +590,26 @@ impl Game<'_> {
             self.release_removed_vehicle(vehicle);
         }
     }
+
+    pub(in crate::game) fn client_audio_play(
+        &mut self,
+        event: &str,
+        at: Option<[f64; 3]>,
+        volume: f32,
+        pitch: f32,
+    ) {
+        self.audio.0.play(event, at, volume, pitch);
+    }
+
+    pub(in crate::game) fn client_audio_play_unshared(
+        &mut self,
+        event: &str,
+        at: Option<[f64; 3]>,
+        volume: f32,
+        pitch: f32,
+    ) {
+        self.audio.0.play_unshared(event, at, volume, pitch);
+    }
 }
 
 /// `Consumable.emitParticlesAndSounds` against the local player.
@@ -622,7 +642,7 @@ impl EmissionWorld for Emitter<'_, '_> {
         if !self.0.is_logical_server() {
             self.0.play_client_player_sound(&sound, volume, pitch);
         } else if self.0.server.lan_acting.is_some() {
-            self.0.audio.0.play_unshared(&sound, at, volume, pitch);
+            self.0.client_audio_play_unshared(&sound, at, volume, pitch);
             if let Some(at) = at {
                 self.0
                     .server
@@ -630,7 +650,7 @@ impl EmissionWorld for Emitter<'_, '_> {
                     .push((sound, at, volume, pitch));
             }
         } else {
-            self.0.audio.0.play(&sound, at, volume, pitch);
+            self.0.client_audio_play(&sound, at, volume, pitch);
         }
         Ok(())
     }

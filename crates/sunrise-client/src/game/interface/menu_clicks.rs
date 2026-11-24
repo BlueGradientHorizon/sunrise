@@ -87,7 +87,7 @@ impl Game<'_> {
         button: i32,
         input: sunrise_client::menu::Input,
     ) {
-        use sunrise_client::creative::{DisplayClick, click_display};
+        use sunrise_client::creative::DisplayClick;
         if self.creative_screen.0.tab().search {
             // CreativeModeInventoryScreen.slotClicked: moveCursorToEnd, then
             // setHighlightPos(0), so typing replaces the whole query.
@@ -101,9 +101,7 @@ impl Game<'_> {
             return;
         }
         let shown = self.creative_display_stack(slot);
-        let catalog = world_items!(self);
-        let max = |s: &ItemStack| catalog.get(&s.item).map_or(64, |i| i.max_stack);
-        match click_display(&mut self.carried, shown.as_ref(), max, button, input) {
+        match self.creative_display_click_server(shown.as_ref(), button, input) {
             DisplayClick::Hotbar(i, stack) if i < self.inventory.len() => {
                 self.inventory[i] = Some(stack);
             }
@@ -120,6 +118,16 @@ impl Game<'_> {
         if self.remote.is_some() {
             self.send_creative_slots();
         }
+    }
+    pub(in crate::game) fn creative_display_click_server(
+        &mut self,
+        shown: Option<&ItemStack>,
+        button: i32,
+        input: sunrise_client::menu::Input,
+    ) -> sunrise_client::creative::DisplayClick {
+        let catalog = world_items!(self);
+        let max = |s: &ItemStack| catalog.get(&s.item).map_or(64, |i| i.max_stack);
+        sunrise_client::creative::click_display(&mut self.carried, shown, max, button, input)
     }
     /// Several clicks on one menu instance (a quick craft drag is three).
     pub(in crate::game) fn menu_ops(
@@ -800,13 +808,8 @@ impl Game<'_> {
         if kind == Kind::CrafterBlock {
             self.apply_crafter_slot_states(&menu);
         }
-        if matches!(kind, Kind::Furnace(_))
-            && let Some(BlockEntity::Furnace(f)) = self
-                .container
-                .and_then(|k| self.world.block_entities.get_mut(&k))
-        {
-            // AbstractFurnaceBlockEntity.setItem: only a new input restarts cooking.
-            f.input_clicked(&self.loop_context, world_recipes!(self), before[0].clone());
+        if matches!(kind, Kind::Furnace(_)) {
+            self.menu_session_with_game_server(&before);
         }
         match equipment_before {
             Some(before) => self.player_equipment_changed(&before),
@@ -821,6 +824,15 @@ impl Game<'_> {
             self.register_made_maps(maps);
         }
         true
+    }
+    pub(in crate::game) fn menu_session_with_game_server(&mut self, before: &[Option<ItemStack>]) {
+        if let Some(BlockEntity::Furnace(f)) = self
+            .container
+            .and_then(|k| self.world.block_entities.get_mut(&k))
+        {
+            // AbstractFurnaceBlockEntity.setItem: only a new input restarts cooking.
+            f.input_clicked(&self.loop_context, world_recipes!(self), before[0].clone());
+        }
     }
     /// Deliver `anvil_update` for a client anvil menu whenever `AnvilMenu.createResult` ran
     /// with a left input (matching NeoForge `CommonHooks.onAnvilUpdate` on the client side).
@@ -1013,6 +1025,16 @@ impl Game<'_> {
             self.container_changed(key);
         }
     }
+    #[inline]
+    pub(in crate::game) fn hovered_inventory_slot(&self) -> Option<usize> {
+        let size = self
+            .renderer
+            .0
+            .as_ref()
+            .map(|r| [r.config.width, r.config.height])?;
+        let batch = HudBatch::new(size, self.settings.gui_scale_inputs());
+        self.slot_at(&batch, self.client.cursor.0, self.client.cursor.1)
+    }
     pub(in crate::game) fn click_inventory(&mut self, right: bool) -> bool {
         if self.mod_browser_press(right) || self.mount_click(right) {
             return true;
@@ -1026,16 +1048,7 @@ impl Game<'_> {
         if self.remote.is_some() {
             return self.remote_click(right);
         }
-        let Some(size) = self
-            .renderer
-            .0
-            .as_ref()
-            .map(|r| [r.config.width, r.config.height])
-        else {
-            return false;
-        };
-        let batch = HudBatch::new(size, self.settings.gui_scale_inputs());
-        let Some(slot) = self.slot_at(&batch, self.client.cursor.0, self.client.cursor.1) else {
+        let Some(slot) = self.hovered_inventory_slot() else {
             return false;
         };
         let held_shift = self.has_shift_down();

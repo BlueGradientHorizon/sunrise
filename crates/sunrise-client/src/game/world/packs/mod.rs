@@ -634,7 +634,7 @@ impl Game<'_> {
                 .0
                 .apply_resources(armor_stand_assets);
             game.armor_stand_assets.0.extensions = item_extensions;
-            game.random_tick_sections.0.clear();
+            game.apply_staged_pack_server();
             game.portals.sections.clear();
             game.options.resources = root.clone();
             game.client.falling_vertices.get_mut().clear();
@@ -740,6 +740,9 @@ impl Game<'_> {
         });
         self.native_client_resources_reloaded();
         Ok(())
+    }
+    pub(in crate::game) fn apply_staged_pack_server(&mut self) {
+        self.random_tick_sections.0.clear();
     }
 }
 

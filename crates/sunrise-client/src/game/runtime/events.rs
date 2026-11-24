@@ -234,6 +234,13 @@ fn parse_wait(words: &[&str]) -> Result<(Condition, Duration, Option<u64>)> {
 }
 
 impl Game<'_> {
+    #[inline]
+    pub(in crate::game) fn combat_last_hit(
+        &self,
+    ) -> Option<(i64, String, Option<f32>, Option<String>)> {
+        self.combat.0.last_hit()
+    }
+
     fn snapshot(&self) -> Snapshot {
         let world = self.title.0.is_none().then(|| self.level.name.clone());
         Snapshot {
@@ -257,7 +264,7 @@ impl Game<'_> {
             hit: if self.remote.is_some() {
                 self.events.remote_hit.clone()
             } else {
-                self.combat.0.last_hit()
+                self.combat_last_hit()
             },
             world,
         }

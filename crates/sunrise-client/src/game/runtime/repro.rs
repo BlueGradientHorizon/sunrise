@@ -554,10 +554,7 @@ impl Game<'_> {
                 Some(server) => {
                     server.ask(|reply| OwnerRequest::Control(ControlRequest::WorldRoot(reply)))
                 }
-                None if !self.server.world_root.as_os_str().is_empty() => {
-                    Some(self.server.world_root.clone())
-                }
-                None => None,
+                None => self.world_dir(),
             }
         } else {
             None
