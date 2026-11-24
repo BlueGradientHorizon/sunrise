@@ -1605,7 +1605,7 @@ fn a_slot_changing_client_part_keeps_the_original_slot_for_the_block_request() {
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
             let mut reader = logged_in(game);
-            game.set_mode_id(1);
+            game.set_local_mode(sunrise_client::command::args::GameMode::Creative);
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
