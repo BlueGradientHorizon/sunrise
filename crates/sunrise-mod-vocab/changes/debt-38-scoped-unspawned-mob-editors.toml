@@ -63,8 +63,8 @@ ids = [
     "type:PendingChildEditor",
     "type:BabyEntitySpawnChild",
     "type:MobSplitChildren",
-    "method:BabyEntitySpawnChild::construct",
-    "method:MobSplitChildren::construct",
+    "handle:BabyEntitySpawnChild::construct",
+    "handle:MobSplitChildren::construct",
 ]
 why = """\
 Replace lease IDs, the slot arena, per-listener expiry, parent-staleness aborts and count/depth caps with scoped Rust borrows and owned `UnspawnedMob` values. Constructing a detached child posts `entity_constructing` immediately, even if the listener discards it. Detached children carry unpublished state and discard it on drop without rolling back other Host writes. `UnspawnedMobError` and `PendingMobSpec` no longer implement `Wire`.

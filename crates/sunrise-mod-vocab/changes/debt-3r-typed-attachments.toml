@@ -8,7 +8,6 @@
 ids = [
     # Decoupled sync codec and AttachmentStore
     "type:AttachmentCodec",
-    "type:AttachmentForm.synced",
     "method:AttachmentStore::saved",
     "method:AttachmentStore::store",
     "method:AttachmentStore::validate_attachment",
@@ -16,6 +15,9 @@ ids = [
     "method:AttachmentStore::decoded",
     "method:AttachmentStore::discard",
     "method:AttachmentStore::queue_sync",
+    # The raw store value and write enum became engine-private behind AttachmentStoreWrite.
+    "type:AttachmentValue",
+    "type:AttachmentWrite",
     "type:AttachmentForm",
     # Retired AttachmentType
     "type:AttachmentType",
@@ -117,6 +119,7 @@ ids = [
     "handle:ChunkDiskData::finish",
     "handle:ChunkDiskData::from_nbt",
     "type:ChunkDiskFailureKind",
+    "type:ChunkDiskFailure.reason",
     "hook:chunk_data_load",
     "hook:chunk_data_save",
     "behaviour:hook_dispatch_panic_containment",
@@ -150,4 +153,5 @@ migrate = '''
 - `key.set(...)` can refuse persistence encoding but no longer calls the sync encoder. `key.sync_data(...)` queues a value or removal for a synced key and is a no-op for an unsynced one. Removing an absent synced value returns `None` but clears replicas if the holder already has a map. Entity, player, chunk and level updates keep acceptance order; block entity updates coalesce. Encoding runs in the send pass and its refusals are logged. To retain an attachment through player death, opt in on its current descriptor with `.copy_on_death()`; the flag in old saves only applies to absent mods.
 - Rebuild `chunk_data_load` and `chunk_data_save` listeners against hook version 4. Pass `&key` to `data.get/set/remove` and handle each returned error. A refusal changes no envelope; match `ChunkDiskFailureKind` on `err.reason`, including when a proposed edit would not round-trip through normal saved NBT. If several operations must succeed together, return the error from `data.transaction(...)` to undo that group. There is no sticky `data.failure()` job veto. `ChunkDiskData::from_nbt` is now engine-only; use the store lent to the hook. `data.finish()` returns the accepted `Compound`, not a `Result`. A panic discards only that listener's edits, disables its callback for the session and does not cancel publication.
 - The erased store is an engine adapter. Replace raw string operations with methods on an issued key, and capture unbound snapshots with `host.capture(&key)` instead of `host.attachment_query(namespace, name)`. Custom `AttachmentTypesRegistrar` implementations implement `submit_attachment` and `lookup_attachment`; the typed helpers refuse replies with a mismatched ID or Rust type.
+- `AttachmentValue` and `AttachmentWrite` are no longer public. Go through an `AttachmentKey<T>` instead of raw values; an `AttachmentStore` backend receives one `AttachmentStoreWrite` in `store`.
 '''
