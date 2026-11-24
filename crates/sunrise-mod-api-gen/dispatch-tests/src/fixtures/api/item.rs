@@ -18,8 +18,10 @@ pub mod item {
         pub struct GrindstoneTakeEdits;
         pub struct StackedOnOther<'a>(pub std::marker::PhantomData<&'a mut ()>);
         impl StackedOnOther<'_> {
-            pub fn checkpoint(&self) {}
-            pub fn rollback(&mut self, _: ()) {}
+            pub fn checkpoint(&self) -> usize {
+                0
+            }
+            pub fn rollback(&mut self, _: usize) {}
         }
     }
     pub mod stations {

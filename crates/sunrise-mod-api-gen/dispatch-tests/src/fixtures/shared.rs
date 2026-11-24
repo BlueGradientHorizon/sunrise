@@ -282,6 +282,7 @@ mod generated {
             ClientCommandRegistration, CommandRegistration, Dispensed, InteractionResult,
             MapDecoration, MapInfo,
         };
+        pub(super) use super::super::{LevelRef, PlayerRef};
         #[derive(Clone)]
         pub struct FluidModel;
         #[derive(Clone, Copy)]
@@ -388,6 +389,10 @@ impl GoalRegistrar<'_> {
         "test:mob"
     }
     fn set_owner(&mut self, _: &'static str, _: &'static str) {}
+    fn checkpoint(&self) -> usize {
+        0
+    }
+    fn rollback(&mut self, _: usize) {}
 }
 /// The behavior registrar of the generated `EntityPart` (#824), as the fixture sees it.
 struct BehaviorRegistrar<'a> {
@@ -398,6 +403,10 @@ impl BehaviorRegistrar<'_> {
         "test:mob"
     }
     fn set_owner(&mut self, _: &'static str, _: &'static str) {}
+    fn checkpoint(&self) -> usize {
+        0
+    }
+    fn rollback(&mut self, _: usize) {}
 }
 /// Scope fixtures install their own Parts. Block attachments retain their API keys;
 /// other scopes keep their existing single-target fixture tables.
@@ -906,8 +915,18 @@ fn part(id: u32, calls: &Arc<Mutex<Vec<u32>>>) -> &'static Mod {
     })
 }
 
+// The vocabulary's own list type, so a list hook's fixture drives the real journal; the
+// fixtures use only part of it.
+#[allow(dead_code)]
+mod hook_list {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../sunrise-mod-vocab/src/hook_list.rs"
+    ));
+}
 mod stubs {
     pub(super) use super::generated::mod_api::LivingRef;
+    pub(super) use super::hook_list::{HookList, HookListJournal, HookListStorage};
     pub(super) use crate::tests::mod_api::mod_api::DamageContainer;
 }
 mod crate_root {
