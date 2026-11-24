@@ -45,13 +45,27 @@ pub trait ConfigHost {
     /// The folder the game runs in (`--player-dir` moves a player's options
     /// and servers only, not the instance). Nothing is created.
     fn instance_dir(&self) -> PathBuf;
+    /// Side: both.
+    /// Read this side's live value of an owner-bound setting registered through
+    /// [`SettingsRegistrar::register_setting`](crate::SettingsRegistrar::register_setting).
+    /// Writes are the side's own (`set_setting` on `ClientHost` or `ServerHost`).
+    fn setting(&self, key: SettingKey) -> Result<SettingValue, SettingAccessError>;
+    /// Side: both.
+    /// Read a toggle setting through its owner-bound [`SettingKey`].
+    fn setting_bool(&self, key: SettingKey) -> Result<bool, SettingAccessError>;
+    /// Side: both.
+    /// Read a choice setting's selected index through its owner-bound [`SettingKey`].
+    fn setting_choice(&self, key: SettingKey) -> Result<u32, SettingAccessError>;
+    /// Side: both.
+    /// Read a range setting's number through its owner-bound [`SettingKey`].
+    fn setting_f64(&self, key: SettingKey) -> Result<f64, SettingAccessError>;
+    /// Side: both.
+    /// Read a colour setting (`0xRRGGBB`) through its owner-bound [`SettingKey`].
+    fn setting_color(&self, key: SettingKey) -> Result<u32, SettingAccessError>;
 }
 /// The server host's methods of the `config` area, implemented by the game and reached through [`ServerHost`].
 #[sunrise_mod_api_macros::host_area]
 pub trait ConfigServerHost {
-    /// Read the live value of an owner-bound setting registered through
-    /// [`SettingsRegistrar::register_setting`](crate::SettingsRegistrar::register_setting).
-    fn setting(&self, key: SettingKey) -> Result<SettingValue, SettingAccessError>;
     /// Persist and publish a setting on this server and synchronously notify its owner.
     /// Returns `Ok(true)` if the value changed (`Range` values compare by bits),
     /// or `Ok(false)` if it was already equal.
@@ -151,9 +165,6 @@ pub trait ConfigServerHost {
 /// The client host's methods of the `config` area, implemented by the game and reached through [`crate::ClientHost`].
 #[sunrise_mod_api_macros::host_area]
 pub trait ConfigClientHost {
-    /// Read the live value of an owner-bound setting registered through
-    /// [`SettingsRegistrar::register_setting`](crate::SettingsRegistrar::register_setting).
-    fn setting(&self, key: SettingKey) -> Result<SettingValue, SettingAccessError>;
     /// Persist and publish a setting, update Options > Mods, and synchronously notify its owner.
     /// Returns `Ok(true)` if the value changed (`Range` values compare by bits),
     /// or `Ok(false)` if it was already equal.
@@ -166,16 +177,4 @@ pub trait ConfigClientHost {
     /// The selected language's text for a translation key (`Component.translatable`'s lookup), `None`
     /// when no language layer defines it.
     fn translate(&self, key: &str) -> Option<String>;
-    /// Side: client.
-    /// Read a toggle setting through its owner-bound [`SettingKey`].
-    fn setting_bool(&self, key: SettingKey) -> Result<bool, SettingAccessError>;
-    /// Side: client.
-    /// Read a choice setting's selected index through its owner-bound [`SettingKey`].
-    fn setting_choice(&self, key: SettingKey) -> Result<u32, SettingAccessError>;
-    /// Side: client.
-    /// Read a range setting's number through its owner-bound [`SettingKey`].
-    fn setting_f64(&self, key: SettingKey) -> Result<f64, SettingAccessError>;
-    /// Side: client.
-    /// Read a colour setting (`0xRRGGBB`) through its owner-bound [`SettingKey`].
-    fn setting_color(&self, key: SettingKey) -> Result<u32, SettingAccessError>;
 }
