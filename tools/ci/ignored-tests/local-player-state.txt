@@ -2,3 +2,5 @@
 sunrise-client-lib motion::tests::client_air_stays_synced_while_server_air_drops lib daily resources
 sunrise-client game::native_small_reads_tests::client_player_state_reads_its_own_copy_only lib daily resources
 sunrise-client game::native_small_reads_tests::client_abilities_follow_predicted_flying_between_packets lib daily resources
+sunrise-client game::native_small_reads_tests::client_tracked_entities_read_their_synced_pose lib daily resources
+sunrise-client game::native_small_reads_tests::a_server_reads_a_mobs_jump_cooldown lib daily resources

@@ -102,6 +102,7 @@ pub(super) const GOAL_VIEW_READS: &[&str] = &[
     "living_is_sleeping",
     "living_sleeping_pos",
     "living_is_jumping",
+    "living_no_jump_delay",
     "living_baby",
     "living_equipment",
     "living_hand_item",
