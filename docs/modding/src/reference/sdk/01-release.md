@@ -5,7 +5,7 @@ Every SDK is the release `sdk-<build id>` of this repository, at
 
 {{#sdk-assets}}
 
-The compiled slices exist once per [host](06-hosts.md); a file named `…-server.tar.xz` is the dedicated server's.
+The compiled slices exist once per [host](#hosts); a file named `…-server.tar.xz` is the dedicated server's.
 Everything else exists once per build. `.tar.xz` files are tar archives compressed with xz; `surface.json` is the
 file itself.
 
@@ -63,3 +63,34 @@ it came from, and refuse it by name at the first step that fails:
 
 An SDK newer than the launcher reads (its schema, package format or Rust) asks for a launcher update; one made with
 an older Rust than the launcher compiles with asks for a newer game build.
+
+## Hosts
+
+The compiled slices are built for these computers, the game's and, where listed, the dedicated server's:
+
+{{#sdk-hosts}}
+
+Building a native mod requires a matching prebuilt game slice. Sunrise does not publish game or SDK builds for
+Intel Macs, Windows on ARM or musl Linux. Dedicated server slices are available only for Linux x86-64.
+
+Authoring a mod can use the API source in `.sunrise/sdk/` on any host where Cargo runs. Running native
+`cargo sunrise-mod check` or `cargo sunrise-mod build` requires matching compiled SDK slices for the target host.
+
+## Retention
+
+An SDK release is never deleted whole. Pruning deletes only the assets whose `kind` in the release's signed
+`sdk.json` is `runtime`, `api` or `engine`. A pruned build keeps `sdk.json`, `surface.json`, `build-data.tar.xz`,
+`api-source.tar.xz`, `SHA256SUMS` and `SHA256SUMS.sig`, so for it:
+
+- `cargo sunrise-mod sdk diff` and `check --build`, and the launcher's fit test, keep working;
+- a mod project pinned to it still fetches its `.sunrise/sdk/`;
+- building a mod against it on a player's computer needs its compiled slices, which are gone.
+
+The set kept whole is every build a current or dated Nightly ships, and the ten newest other SDKs. Automatic pruning
+is not switched on yet: until it is, every published SDK stays whole. The policy, with how the kept set is computed,
+is in the release flow's
+[retention design](https://github.com/sunrise-org/sunrise/blob/main/docs/release-flow.md#prebuilt-sdk-retention-design-3011).
+Releases of the older `prebuilt-<sha>` form are outside it and removed by hand.
+
+The launcher keeps its own copies under its own rules ([Cache and disk](../../how-to/native-mods/10-cache-and-disk.md)):
+a build's small files are kept, so a mod's fit is told offline, and its compiled slices are evicted with the build.

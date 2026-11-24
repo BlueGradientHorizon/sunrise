@@ -29,7 +29,7 @@ in the same transaction.
 For a provider-backed or decoded place, the view lends the value produced for that read. A
 provider-backed menu slot reads its live backing, not the menu's display copy. A dropped
 item narrowed to an `ItemEntityRef` has its own
-[`with_stack`](../../how-to/world/block-entity-item-drops.md).
+[`with_stack`](../../how-to/world/block-entities.md#dropped-items-during-block-entity-ticks).
 
 ## Item capabilities
 

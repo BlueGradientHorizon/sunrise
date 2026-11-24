@@ -53,18 +53,25 @@ fn judged_with(
     data: Option<&Path>,
 ) -> Verdict {
     let bundle = crate::bundle_in(dir).unwrap().unwrap();
-    let project = api::Project::read(&bundle).unwrap();
     let target = Rc::new(target.clone());
+    let mut read = table(&bundle.dir);
     judge(
-        &project,
-        build,
+        &bundle.manifest,
+        Builds {
+            made_for: &bundle.native().sunrise,
+            build,
+            mixins_rev: crate::MIXINS_REV,
+        },
+        || read.as_mut().map_err(|why| *why),
         &mut || Ok::<_, String>(target.clone()),
         &mut || match data {
             Some(data) => game_uses::entries(&bundle.manifest, data, build),
             None => Err("no game code declared: never read".to_owned()),
         },
+        None,
     )
     .unwrap()
+    .verdict
 }
 
 fn pin(dir: &Path) -> String {
@@ -153,6 +160,119 @@ fn a_list_that_holds_no_version_of_a_hook_cannot_show_the_mod_fits() {
             why: Unlisted::NewerSchema,
             hooks: Vec::new(),
         }
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn an_older_list_is_completed_by_the_build_it_was_made_for_and_its_unchecked_entries_are_carried() {
+    let dir = project_dir("fit-older-list", None, None);
+    let made_for = pin(&dir);
+    let list = |schema: u32, entries: serde_json::Value| {
+        let table = serde_json::json!({"schema": schema, "made_for": made_for, "entries": entries});
+        std::fs::write(dir.join(uses::USES_FILE), table.to_string()).unwrap();
+    };
+    let hook = |version: u64| {
+        serde_json::json!({
+            "schema": mod_surface::SCHEMA, "hash": "s",
+            "hooks": [{
+                "id": "hook:joined", "hash": "h1", "engine": {"target": "t"}, "call": "c",
+                "version": version, "side": "server", "contract": "listen", "cancellable": false, "arguments": [],
+            }],
+        })
+    };
+    // `made_for_surface` gives the build it was made for's surface, or why it cannot.
+    let judge_with = |target: &serde_json::Value, made_for_surface: Result<String, String>| {
+        let bundle = crate::bundle_in(&dir).unwrap().unwrap();
+        let target = Rc::new(serde_json::from_value(target.clone()).unwrap());
+        let mut read = table(&bundle.dir);
+        judge(
+            &bundle.manifest,
+            Builds {
+                made_for: &made_for,
+                build: OTHER_BUILD,
+                mixins_rev: crate::MIXINS_REV,
+            },
+            || read.as_mut().map_err(|why| *why),
+            &mut || Ok::<_, String>(Rc::clone(&target)),
+            &mut || Err("no game code declared: never read".to_owned()),
+            Some(&mut || made_for_surface.clone().map(String::into_bytes)),
+        )
+    };
+    let unread = || Err("unread".to_owned());
+    list(1, serde_json::json!([{"id": "hook:joined", "hash": "h1"}]));
+    let judged = judge_with(&hook(1), Ok(hook(1).to_string())).unwrap();
+    assert_eq!(
+        (judged.verdict, judged.deferred),
+        (
+            Verdict::Fits {
+                made_for: made_for.clone()
+            },
+            None
+        )
+    );
+    let moved = |named, now| Verdict::DoesNotFit {
+        made_for: made_for.clone(),
+        misfits: vec![Misfit {
+            id: "hook:joined".into(),
+            change: Change::Version { named, now },
+        }],
+    };
+    assert_eq!(
+        judge_with(&hook(2), Ok(hook(1).to_string()))
+            .unwrap()
+            .verdict,
+        moved(1, 2)
+    );
+    // Without the versions the hooks stay unversioned, beside why: the surface could not be
+    // had, or not read.
+    let unversioned = Verdict::NoList {
+        made_for: made_for.clone(),
+        why: Unlisted::HookVersions,
+        hooks: vec!["hook:joined".into()],
+    };
+    let judged = judge_with(&hook(1), unread()).unwrap();
+    assert_eq!(
+        (judged.verdict, judged.unpinned.as_deref()),
+        (unversioned.clone(), Some("unread"))
+    );
+    let judged = judge_with(&hook(1), Ok("{".into())).unwrap();
+    assert_eq!(judged.verdict, unversioned);
+    assert!(judged.unpinned.is_some(), "{judged:?}");
+    // With something already known to have changed, the build it was made for is not asked for.
+    list(1, serde_json::json!([{"id": "hook:joined", "hash": "h0"}]));
+    let judged = judge_with(&hook(1), unread());
+    assert!(
+        matches!(
+            &judged,
+            Ok(Judged { verdict: Verdict::DoesNotFit { misfits, .. }, .. })
+                if misfits == &[Misfit { id: "hook:joined".into(), change: Change::Changed }]
+        ),
+        "{judged:?}"
+    );
+    // A list this tool's scan wrote is never completed: its build is not asked for.
+    list(
+        uses::USES_SCHEMA,
+        serde_json::json!([{"id": "hook:joined", "hash": "h1"}]),
+    );
+    assert_eq!(
+        judge_with(&hook(1), unread()).unwrap().verdict,
+        Verdict::NoList {
+            made_for: made_for.clone(),
+            why: Unlisted::HookVersions,
+            hooks: vec!["hook:joined".into()],
+        }
+    );
+    // A record an old list names that the build no longer has is left to the compile: said beside the fit, not refused.
+    list(2, serde_json::json!([{"id": "fn:gone", "hash": "h"}]));
+    let judged = judge_with(&hook(1), unread()).unwrap();
+    assert_eq!(judged.verdict, Verdict::Fits { made_for });
+    assert!(
+        judged
+            .deferred
+            .as_deref()
+            .is_some_and(|note| note.contains("`fn:gone`")),
+        "{judged:?}"
     );
     std::fs::remove_dir_all(dir).unwrap();
 }
@@ -869,6 +989,85 @@ fn a_mod_with_rows_no_list_can_judge_is_exact_whatever_its_list_says() {
         Verdict::Exact {
             made_for: pin(&dir),
             why: "[[native.module]]"
+        }
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn hook_versions_from_the_build_it_was_made_for_count_whatever_the_game_code_shows() {
+    const TARGET: &str = "sunrise_client::game::f";
+    let dir = project_dir("fit-older-list-mixin", None, None);
+    let manifest = dir.join(crate::NATIVE_MANIFEST);
+    let declared = std::fs::read_to_string(&manifest).unwrap()
+        + &format!(
+            "[[native.mixin]]\nid = \"m\"\ntarget = \"{TARGET}\"\nkind = \"HEAD\"\nhelper = \"src/m.rs\"\n"
+        );
+    std::fs::write(dir.join("src/m.rs"), "{}").unwrap();
+    let made_for = pin(&dir);
+    let list = serde_json::json!({
+        "schema": 1, "made_for": made_for,
+        "entries": [{"id": "hook:joined", "hash": "h1"}, {"id": format!("game:fn:{TARGET}"), "hash": "sig:body"}],
+    });
+    std::fs::write(dir.join(uses::USES_FILE), list.to_string()).unwrap();
+    let hook = |version: u64| {
+        serde_json::json!({
+            "schema": mod_surface::SCHEMA, "hash": "s",
+            "hooks": [{
+                "id": "hook:joined", "hash": "h1", "engine": {"target": "t"}, "call": "c",
+                "version": version, "side": "server", "contract": "listen", "cancellable": false, "arguments": [],
+            }],
+        })
+    };
+    let moved = Misfit {
+        id: "hook:joined".into(),
+        change: Change::Version { named: 1, now: 2 },
+    };
+    // The build's data cannot be read, so the declared game code is not compared.
+    let judge_with = |manifest_text: String| {
+        std::fs::write(&manifest, manifest_text).unwrap();
+        let bundle = crate::bundle_in(&dir).unwrap().unwrap();
+        let target = Rc::new(serde_json::from_value(hook(2)).unwrap());
+        let mut read = table(&bundle.dir);
+        judge(
+            &bundle.manifest,
+            Builds {
+                made_for: &made_for,
+                build: OTHER_BUILD,
+                mixins_rev: crate::MIXINS_REV,
+            },
+            || read.as_mut().map_err(|why| *why),
+            &mut || Ok::<_, String>(Rc::clone(&target)),
+            &mut || Err("no build data".to_owned()),
+            Some(&mut || Ok(hook(1).to_string().into_bytes())),
+        )
+        .unwrap()
+    };
+    // Nothing else known: the hook's new version is the answer, not the missing build data.
+    let judged = judge_with(declared.replace(crate::tests::B, crate::MIXINS_REV));
+    assert_eq!(
+        (judged.verdict, judged.uncompared.as_deref()),
+        (
+            Verdict::DoesNotFit {
+                made_for: made_for.clone(),
+                misfits: vec![moved.clone()],
+            },
+            Some("no build data")
+        )
+    );
+    // Another horizon-mixins revision is a misfit too: the hook is named beside it.
+    let judged = judge_with(declared);
+    assert_eq!(
+        judged.verdict,
+        Verdict::DoesNotFit {
+            made_for,
+            misfits: vec![
+                Misfit {
+                    id: format!("{}tool:horizon-mixins", game_uses::PREFIX),
+                    change: Change::Changed,
+                },
+                moved,
+            ],
         }
     );
     std::fs::remove_dir_all(dir).unwrap();

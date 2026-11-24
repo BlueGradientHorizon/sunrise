@@ -8,6 +8,8 @@
 //! copy: the local player and the entities the server told it of, in the level
 //! it shows. The entities are those of the level in place (the one a hook runs
 //! in) and the server's players, whatever their level.
+#[path = "native_entity_refs/death_loot.rs"]
+mod death_loot;
 #[path = "native_entity_refs/dragon_parts_table.rs"]
 pub(in crate::game) mod dragon_parts_table;
 #[path = "native_entity_refs/dragon_query.rs"]
@@ -3203,6 +3205,7 @@ pub(super) mod tests {
                 mob.extra.set_body_stack(Some(stack.clone()));
                 let index = game.mobs.len();
                 game.mobs.push(mob);
+                game.inventory[game.selected] = Some(ItemStack::new("minecraft:shears", 1));
                 let used = if item.ends_with("carpet") {
                     game.interact_llama(index, "minecraft:shears")
                 } else {
