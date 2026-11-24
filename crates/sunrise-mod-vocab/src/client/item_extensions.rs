@@ -197,7 +197,8 @@ pub trait ClientItemExtensions: Send + Sync + 'static {
     /// Whether a dropped stack of several copies draws them spread apart
     /// (`IClientItemExtensions.shouldSpreadAsEntity`).
     ///
-    /// Asked with the dropped stack each time it is drawn on the client. `false` draws every copy
+    /// Asked with the dropped stack each time it is drawn on the client, picked-up stacks flying
+    /// to their collector included. `false` draws every copy
     /// at the same place and in the same pose, so the stack looks like one item. If the callback
     /// panics, the copies spread as vanilla's do.
     fn should_spread_as_entity(&self, host: &dyn ClientHost, stack: &ItemStack) -> bool {

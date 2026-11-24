@@ -1980,7 +1980,7 @@ pub fn item_spin(age_in_ticks: f32, bob_offset: f32) -> f32 {
 /// nothing when its item does not bob (NeoForge's `shouldBobAsEntity`).
 pub fn item_bob(age_in_ticks: f32, bob_offset: f32, bobs: bool) -> f32 {
     if bobs {
-        (age_in_ticks / 10.0 + bob_offset).sin() * 0.1 + 0.1
+        sunrise_core::geometry::trig::sin(f64::from(age_in_ticks / 10.0 + bob_offset)) * 0.1 + 0.1
     } else {
         0.0
     }
@@ -2017,7 +2017,9 @@ pub fn dropped_copy_poses(
     depth: f32,
     spreads: bool,
 ) -> Vec<Mat4> {
-    if spreads {
+    if amount == 0 {
+        Vec::new()
+    } else if spreads {
         cluster_poses_with_depth(pose, amount, seed, depth)
     } else {
         vec![pose]
@@ -2703,12 +2705,11 @@ mod tests {
 
     #[test]
     fn a_dropped_stack_that_does_not_bob_keeps_its_height() {
-        let (age, offset) = (17.5, 0.3);
-        assert_eq!(item_bob(age, offset, false), 0.0);
-        assert_eq!(
-            item_bob(age, offset, true),
-            (age / 10.0 + offset).sin() * 0.1 + 0.1
-        );
+        assert_eq!(item_bob(17.5, 0.3, false), 0.0);
+        // A quarter turn lands on `Mth.SIN`'s entry 16384, which is exactly 1.
+        assert_eq!(item_bob(15.0, 0.070_796_37, true), 0.2);
+        // Below one table step the sine is entry 0, exactly 0, where `f32::sin` is not.
+        assert_eq!(item_bob(0.0, 0.000_09, true), 0.1);
     }
     #[test]
     fn a_stack_whose_copies_do_not_spread_draws_once_in_its_pose() {
@@ -2717,6 +2718,7 @@ mod tests {
         let amount = rendered_amount(8);
         for depth in [0.0625, 0.5] {
             assert_eq!(dropped_copy_poses(pose, amount, 42, depth, false), [pose]);
+            assert!(dropped_copy_poses(pose, 0, 42, depth, false).is_empty());
             assert_eq!(
                 dropped_copy_poses(pose, amount, 42, depth, true),
                 cluster_poses_with_depth(pose, amount, 42, depth)
