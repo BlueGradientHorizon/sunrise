@@ -770,6 +770,16 @@ mod tests {
             .into_iter()
             .map(|id| ModEntry::new(id, Box::new(TaskOwner)))
             .collect();
+        // The log keeps only its recent lines, and each panic's backtrace fills them, so each
+        // panic's attributed line is read before the next panic.
+        let assert_logged = |owner: &str, message: &str| {
+            assert!(
+                sunrise_client::logging::recent_lines()
+                    .iter()
+                    .any(|line| line.contains(owner) && line.contains(message)),
+                "{owner}'s panic is logged with its message"
+            );
+        };
         mod_platform::testing::with_mods(mods.into(), || {
             with_game(|game| {
                 game.native_lifecycle.world_open_ready().unwrap();
@@ -785,6 +795,7 @@ mod tests {
                     assert_eq!(current_native_mod(), Some(HEALTHY));
                     assert!(!game.cancel_task(cancelled));
                 }
+                assert_logged(CANCELLED, "cancelled capture panicked");
                 let closed = {
                     let _owner = enter(CLOSED, "schedule fixture");
                     let capture = PanickingCapture("closing capture panicked");
@@ -819,16 +830,7 @@ mod tests {
                         hook: "schedule_task_drop",
                     }),
                 );
-                let logs = sunrise_client::logging::recent_lines();
-                for (owner, message) in [
-                    (CANCELLED, "cancelled capture panicked"),
-                    (CLOSED, "closing capture panicked"),
-                ] {
-                    assert!(
-                        logs.iter()
-                            .any(|line| line.contains(owner) && line.contains(message))
-                    );
-                }
+                assert_logged(CLOSED, "closing capture panicked");
 
                 game.native_lifecycle
                     .begin_open(Some(Authority::IntegratedServer));
