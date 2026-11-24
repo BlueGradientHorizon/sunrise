@@ -427,6 +427,16 @@ impl<'a> BlockTables<'a> {
         self.pack.assets.registry.state(state)?;
         Some(self.res.behaviours().is_air(state))
     }
+    /// `PoiTypes.forState`, mods' additions included. None for an unknown state or one in no
+    /// POI type.
+    pub(in crate::game) fn block_state_poi_type(
+        &self,
+        state: BlockStateId,
+    ) -> Option<mod_api::Identifier> {
+        let table = &self.res.stations().professions;
+        let state = self.pack.assets.registry.state(state)?;
+        mod_api::Identifier::parse(table.pois.name(table.pois.classify(state)?)?).ok()
+    }
     /// `BlockState.isRedstoneConductor` for a state alone, not a block in a level.
     pub(in crate::game) fn block_state_is_redstone_conductor(
         &self,

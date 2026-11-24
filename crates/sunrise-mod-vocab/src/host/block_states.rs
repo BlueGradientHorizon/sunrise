@@ -168,6 +168,12 @@ pub trait BlockStatesBackend {
     /// None for an unknown state.
     fn block_state_is_solid_render(&self, state: BlockState) -> Option<bool>;
     /// Side: both.
+    /// `PoiTypes.forState`: the point of interest type the state belongs to (`minecraft:home`
+    /// for a bed's head, `minecraft:librarian` for a lectern, `minecraft:meeting` for a bell),
+    /// the states mods add with `extend_poi_types` included. None for a state that is in no
+    /// POI type and for an unknown state.
+    fn block_state_poi_type(&self, state: BlockState) -> Option<Identifier>;
+    /// Side: both.
     /// `BlockState.propagatesSkylightDown()`: whether sky light passes down through the state
     /// unchanged, the block's own answer included (glass, barriers and vegetation override the
     /// shape's). None for an unknown state.

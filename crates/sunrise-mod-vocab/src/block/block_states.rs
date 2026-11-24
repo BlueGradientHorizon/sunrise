@@ -272,6 +272,9 @@ macro_rules! impl_block_states_without_tables {
                 fn block_state_is_solid_render(&self, _: BlockState) -> Option<bool> {
                     None
                 }
+                fn block_state_poi_type(&self, _: BlockState) -> Option<crate::Identifier> {
+                    None
+                }
                 fn block_state_propagates_skylight_down(&self, _: BlockState) -> Option<bool> {
                     None
                 }
@@ -534,6 +537,13 @@ impl BlockStates<'_> {
     /// None as for `replaceable`.
     pub fn is_solid_render(&self, state: BlockState) -> Option<bool> {
         self.backend.block_state_is_solid_render(state)
+    }
+    /// `PoiTypes.forState`: the point of interest type `state` belongs to (`minecraft:home`,
+    /// `minecraft:librarian`, `minecraft:meeting`...), the states mods add with
+    /// `extend_poi_types` included; it says whether a placed block becomes a job site or a
+    /// bed a villager can claim. None for a state in no POI type, and as for `replaceable`.
+    pub fn poi_type(&self, state: BlockState) -> Option<crate::Identifier> {
+        self.backend.block_state_poi_type(state)
     }
     /// `BlockState.propagatesSkylightDown()`: whether sky light passes down through `state`
     /// unchanged, the block's own answer included (glass, barriers and vegetation override what
