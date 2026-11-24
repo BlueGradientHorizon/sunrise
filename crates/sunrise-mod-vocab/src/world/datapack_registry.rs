@@ -96,6 +96,41 @@ pub enum DatapackFieldKind {
         /// What the field holds when it is present.
         of: Box<DatapackFieldKind>,
     },
+    /// A JSON object whose `key` field names one of `variants`, with that variant's fields beside
+    /// it (vanilla's `Codec.dispatch`, `KeyDispatchCodec`). The id reads as `byNameCodec` reads
+    /// one (`growing` is `minecraft:growing`); an id no variant declares, or an absent key, fails
+    /// the entry. The variants are the declaring mod's alone: a dispatch other mods extend is a
+    /// custom registry of variant types, as vanilla's `BLOCK_PREDICATE_TYPE` is.
+    Dispatch {
+        /// The key naming the variant (`type`).
+        key: String,
+        /// The variants, each an id and the fields that follow it.
+        variants: Vec<DatapackVariant>,
+    },
+}
+
+/// One variant of a [`DatapackFieldKind::Dispatch`]: the id its key names and the record of
+/// fields beside the key, with the rules of [`DatapackFieldKind::Record`]'s fields.
+///
+/// Recursive over the Wire with [`DatapackField`], bounded as [`DatapackFieldKind`] is.
+#[derive(Clone, Debug, PartialEq)]
+// exhaustive: a variant is its id and fields; a mod builds it directly
+#[derive(sunrise_mod_api_macros::Wire)]
+pub struct DatapackVariant {
+    /// The variant's namespaced id (`example:growing_plant`).
+    pub id: String,
+    /// The fields beside the key, in the order the decoded variant lists them.
+    pub fields: Vec<DatapackField>,
+}
+
+impl DatapackVariant {
+    /// The variant `id` with `fields`.
+    pub fn new(id: &str, fields: Vec<DatapackField>) -> Self {
+        Self {
+            id: id.to_owned(),
+            fields,
+        }
+    }
 }
 
 /// What a [`DatapackFieldKind::Map`]'s keys are.
@@ -147,6 +182,14 @@ pub enum DatapackValue {
     Record(Vec<(String, DatapackValue)>),
     /// A [`DatapackFieldKind::Optional`] field the entry left out; `get` reports it as `None`.
     Absent,
+    /// A [`DatapackFieldKind::Dispatch`]: the variant's id, normalised to `namespace:path`, and
+    /// its fields' `(field name, value)` in the variant's schema order.
+    Variant {
+        /// The variant's id.
+        id: String,
+        /// The variant's fields.
+        fields: Vec<(String, DatapackValue)>,
+    },
 }
 
 impl DatapackValue {
@@ -167,11 +210,19 @@ impl DatapackValue {
         }
     }
 
-    /// The field `name` of a record, or a map's value at the key `name`; `None` for anything
-    /// else, and for an optional field the entry left out.
+    /// The id of a [`DatapackFieldKind::Dispatch`]'s variant.
+    pub fn variant_id(&self) -> Option<&str> {
+        match self {
+            Self::Variant { id, .. } => Some(id),
+            _ => None,
+        }
+    }
+
+    /// The field `name` of a record or a variant, or a map's value at the key `name`; `None`
+    /// for anything else, and for an optional field the entry left out.
     pub fn get(&self, name: &str) -> Option<&DatapackValue> {
         match self {
-            Self::Record(pairs) | Self::Map(pairs) => pairs
+            Self::Record(pairs) | Self::Map(pairs) | Self::Variant { fields: pairs, .. } => pairs
                 .iter()
                 .find(|(key, _)| key == name)
                 .map(|(_, value)| value)
@@ -275,11 +326,13 @@ pub enum DatapackRegistrationError {
     InvalidKey,
     /// A built-in registry or another declaration already covers the registry key.
     Duplicate,
-    /// A field name is empty or repeated.
+    /// A field name is empty or repeated, or a dispatch variant's field is named like the
+    /// dispatch's key.
     InvalidFieldName,
     /// A field's kind is unusable: bounds that are not finite or `min > max`,
     /// a scalar text field's `max_len` of 0, a list's `min_len` over its `max_len`, an
-    /// optional kind nested in another, or a reference to a malformed registry key, at any depth.
+    /// optional kind nested in another, a reference to a malformed registry key, or a dispatch
+    /// with an empty key, no variants, or a variant id that is malformed or repeated, at any depth.
     InvalidFieldKind,
     /// A default is not a value of its field's kind, or is out of its bounds.
     InvalidDefault,
@@ -358,6 +411,13 @@ pub enum DatapackDecodeError {
     DuplicateKey {
         /// The repeated key's path, as the file spells it.
         field: String,
+    },
+    /// A dispatch key naming no variant the schema declares.
+    UnknownVariant {
+        /// The key's path (`behavior.type`).
+        field: String,
+        /// The id it names, normalised.
+        id: String,
     },
 }
 
@@ -445,6 +505,20 @@ impl DatapackFieldKind {
                 of.check_nested()?;
                 true
             }
+            Self::Dispatch { key, variants } => {
+                for (index, variant) in variants.iter().enumerate() {
+                    if !canonical_id(&variant.id)
+                        || variants[..index].iter().any(|seen| seen.id == variant.id)
+                    {
+                        return Err(DatapackRegistrationError::InvalidFieldKind);
+                    }
+                    if variant.fields.iter().any(|field| field.name == *key) {
+                        return Err(DatapackRegistrationError::InvalidFieldName);
+                    }
+                    check_schema(&variant.fields)?;
+                }
+                !key.is_empty() && !variants.is_empty()
+            }
         };
         if ok {
             Ok(())
@@ -491,14 +565,14 @@ impl DatapackFieldKind {
                     .all(|(k, v)| key.accepts(k) && seen.insert(k.as_str()) && value.accepts(v))
             }
             (Self::Record { fields }, DatapackValue::Record(pairs)) => {
-                pairs.len() == fields.len()
-                    && fields
-                        .iter()
-                        .zip(pairs)
-                        .all(|(field, (name, v))| *name == field.name && field.kind.accepts(v))
+                record_accepts(fields, pairs)
             }
             (Self::Optional { .. }, DatapackValue::Absent) => true,
             (Self::Optional { of }, value) => of.accepts(value),
+            (Self::Dispatch { variants, .. }, DatapackValue::Variant { id, fields }) => variants
+                .iter()
+                .find(|variant| variant.id == *id)
+                .is_some_and(|variant| record_accepts(&variant.fields, fields)),
             _ => false,
         }
     }
@@ -511,10 +585,19 @@ impl DatapackFieldKind {
             Self::Text { .. } => "string",
             Self::Identifier | Self::Reference { .. } => "identifier string",
             Self::List { .. } => "array",
-            Self::Map { .. } | Self::Record { .. } => "object",
+            Self::Map { .. } | Self::Record { .. } | Self::Dispatch { .. } => "object",
             Self::Optional { of } => of.expected(),
         }
     }
+}
+
+/// Whether `pairs` are a record of `fields`: each field's value, by name and in schema order.
+fn record_accepts(fields: &[DatapackField], pairs: &[(String, DatapackValue)]) -> bool {
+    pairs.len() == fields.len()
+        && fields
+            .iter()
+            .zip(pairs)
+            .all(|(field, (name, v))| *name == field.name && field.kind.accepts(v))
 }
 
 /// Every reference in `value` of `kind`: `(path, registry, target)`, at any depth, so a nested
@@ -546,6 +629,14 @@ pub(super) fn references<'v>(
         }
         (DatapackFieldKind::Record { fields }, DatapackValue::Record(pairs)) => {
             for (field, (_, v)) in fields.iter().zip(pairs) {
+                references(&field.kind, v, &joined(path, &field.name), out);
+            }
+        }
+        (DatapackFieldKind::Dispatch { variants, .. }, DatapackValue::Variant { id, fields }) => {
+            let Some(variant) = variants.iter().find(|variant| variant.id == *id) else {
+                return;
+            };
+            for (field, (_, v)) in variant.fields.iter().zip(fields) {
                 references(&field.kind, v, &joined(path, &field.name), out);
             }
         }
@@ -582,7 +673,9 @@ pub(crate) fn check_schema(fields: &[DatapackField]) -> Result<(), DatapackRegis
 fn repeats_a_key(value: &DatapackValue) -> bool {
     match value {
         DatapackValue::List(items) => items.iter().any(repeats_a_key),
-        DatapackValue::Record(pairs) => pairs.iter().any(|(_, v)| repeats_a_key(v)),
+        DatapackValue::Record(pairs) | DatapackValue::Variant { fields: pairs, .. } => {
+            pairs.iter().any(|(_, v)| repeats_a_key(v))
+        }
         DatapackValue::Map(pairs) => {
             let mut seen = std::collections::BTreeSet::new();
             pairs
@@ -617,6 +710,9 @@ fn normalize_kind(kind: &mut DatapackFieldKind) -> Result<(), DatapackRegistrati
         }
         DatapackFieldKind::Map { value, .. } => normalize_kind(value),
         DatapackFieldKind::Record { fields } => normalize_defaults(fields),
+        DatapackFieldKind::Dispatch { variants, .. } => variants
+            .iter_mut()
+            .try_for_each(|variant| normalize_defaults(&mut variant.fields)),
         _ => Ok(()),
     }
 }
@@ -654,6 +750,17 @@ fn normalize_value(
             .try_for_each(|(field, (_, v))| normalize_value(&field.kind, v)),
         (DatapackFieldKind::Optional { .. }, DatapackValue::Absent) => Ok(()),
         (DatapackFieldKind::Optional { of }, value) => normalize_value(of, value),
+        (DatapackFieldKind::Dispatch { variants, .. }, DatapackValue::Variant { id, fields }) => {
+            normalize_id(id)?;
+            let Some(variant) = variants.iter().find(|variant| variant.id == *id) else {
+                return Ok(());
+            };
+            variant
+                .fields
+                .iter()
+                .zip(fields.iter_mut())
+                .try_for_each(|(field, (_, v))| normalize_value(&field.kind, v))
+        }
         _ => Ok(()),
     }
 }
@@ -1017,6 +1124,28 @@ fn decode_value(
             decode_fields(fields, object, RecordMetadata::None, path).map(DatapackValue::Record)
         }
         DatapackFieldKind::Optional { of } => decode_value(of, json, path),
+        DatapackFieldKind::Dispatch { key, variants } => {
+            let object = json.as_object().ok_or_else(wrong)?;
+            let at = joined(path, key);
+            let named = object
+                .iter()
+                .find_map(|(k, v)| (k == key).then_some(v))
+                .ok_or_else(|| DatapackDecodeError::MissingField { field: at.clone() })?;
+            let named = named
+                .as_str()
+                .ok_or_else(|| DatapackDecodeError::WrongType {
+                    field: at.clone(),
+                    expected: "identifier string",
+                })?;
+            let id = Identifier::parse(named)
+                .map_err(|_| DatapackDecodeError::InvalidIdentifier { field: at.clone() })?
+                .to_string();
+            let Some(variant) = variants.iter().find(|variant| variant.id == id) else {
+                return Err(DatapackDecodeError::UnknownVariant { field: at, id });
+            };
+            let fields = decode_fields(&variant.fields, object, &[key.as_str()], path)?;
+            Ok(DatapackValue::Variant { id, fields })
+        }
     }
 }
 
@@ -1782,6 +1911,222 @@ pub(crate) mod tests {
                 },
                 DatapackValue::List(Vec::new())
             )]),
+            Err(E::InvalidDefault)
+        );
+    }
+
+    /// `example:behavior`: a `behavior` field dispatched on `type` (`Codec.dispatch`), as Universal
+    /// Bone Meal's growth rules are: `growing_plant` with an int and a reference, `random_tick`
+    /// with a defaulted int.
+    fn behaviors() -> DatapackRegistryDeclaration {
+        DatapackRegistryDeclaration {
+            fields: vec![DatapackField::required(
+                "behavior",
+                DatapackFieldKind::Dispatch {
+                    key: "type".into(),
+                    variants: vec![
+                        DatapackVariant::new(
+                            "example:growing_plant",
+                            vec![
+                                DatapackField::required(
+                                    "max_height",
+                                    DatapackFieldKind::Int { min: 1, max: 64 },
+                                ),
+                                DatapackField::required(
+                                    "next",
+                                    DatapackFieldKind::Reference {
+                                        registry: "example:spell".into(),
+                                    },
+                                ),
+                            ],
+                        ),
+                        DatapackVariant::new(
+                            "example:random_tick",
+                            vec![DatapackField::with_default(
+                                "growth_attempts",
+                                DatapackFieldKind::Int { min: 1, max: 16 },
+                                DatapackValue::Int(1),
+                            )],
+                        ),
+                    ],
+                },
+            )],
+            ..spell()
+        }
+    }
+
+    #[test]
+    fn a_dispatched_field_decodes_the_variant_its_key_names() {
+        let schema = behaviors();
+        assert_eq!(check_schema(&schema.fields), Ok(()));
+        let entry = schema
+            .decode_entry(
+                r#"{"behavior":{"type":"example:growing_plant","max_height":16,"next":"fire"}}"#,
+            )
+            .unwrap();
+        let behavior = entry.get("behavior").unwrap();
+        assert_eq!(behavior.variant_id(), Some("example:growing_plant"));
+        assert_eq!(behavior.get("max_height"), Some(&DatapackValue::Int(16)));
+        assert_eq!(
+            behavior.get("next"),
+            Some(&DatapackValue::Text("minecraft:fire".into()))
+        );
+        let mut refs = Vec::new();
+        references(&schema.fields[0].kind, behavior, "behavior", &mut refs);
+        assert_eq!(
+            refs,
+            [(
+                "behavior.next".to_owned(),
+                "example:spell",
+                "minecraft:fire"
+            )]
+        );
+        // The other variant, its field defaulted.
+        let entry = schema
+            .decode_entry(r#"{"behavior":{"type":"example:random_tick"}}"#)
+            .unwrap();
+        let behavior = entry.get("behavior").unwrap();
+        assert_eq!(behavior.variant_id(), Some("example:random_tick"));
+        assert_eq!(
+            behavior.get("growth_attempts"),
+            Some(&DatapackValue::Int(1))
+        );
+        assert!(schema.fields[0].kind.accepts(behavior));
+    }
+
+    #[test]
+    fn a_dispatch_refuses_unknown_missing_and_foreign_keys() {
+        let schema = behaviors();
+        let fails = |json: &str| schema.decode_entry(json).unwrap_err();
+        assert_eq!(
+            fails(r#"{"behavior":{"type":"example:wither","max_height":1}}"#),
+            DatapackDecodeError::UnknownVariant {
+                field: "behavior.type".into(),
+                id: "example:wither".into()
+            }
+        );
+        // `byNameCodec` reads a bare id in `minecraft`, which declares no variant here.
+        assert_eq!(
+            fails(r#"{"behavior":{"type":"random_tick"}}"#),
+            DatapackDecodeError::UnknownVariant {
+                field: "behavior.type".into(),
+                id: "minecraft:random_tick".into()
+            }
+        );
+        assert_eq!(
+            fails(r#"{"behavior":{"growth_attempts":2}}"#),
+            DatapackDecodeError::MissingField {
+                field: "behavior.type".into()
+            }
+        );
+        assert_eq!(
+            fails(r#"{"behavior":{"type":3}}"#),
+            DatapackDecodeError::WrongType {
+                field: "behavior.type".into(),
+                expected: "identifier string"
+            }
+        );
+        // A field of the other variant is not this one's.
+        assert_eq!(
+            fails(r#"{"behavior":{"type":"example:random_tick","max_height":1}}"#),
+            DatapackDecodeError::UnknownField {
+                field: "behavior.max_height".into()
+            }
+        );
+        assert_eq!(
+            fails(r#"{"behavior":{"type":"example:growing_plant","max_height":99,"next":"a"}}"#),
+            DatapackDecodeError::OutOfRange {
+                field: "behavior.max_height".into()
+            }
+        );
+    }
+
+    #[test]
+    fn dispatch_schemas_are_checked_at_registration() {
+        use DatapackRegistrationError as E;
+        let dispatch = |key: &str, variants| {
+            vec![DatapackField::required(
+                "a",
+                DatapackFieldKind::Dispatch {
+                    key: key.into(),
+                    variants,
+                },
+            )]
+        };
+        let bool_field = || vec![DatapackField::required("x", DatapackFieldKind::Bool)];
+        assert_eq!(
+            check_schema(&dispatch("type", Vec::new())),
+            Err(E::InvalidFieldKind)
+        );
+        assert_eq!(
+            check_schema(&dispatch(
+                "",
+                vec![DatapackVariant::new("example:a", bool_field())]
+            )),
+            Err(E::InvalidFieldKind)
+        );
+        assert_eq!(
+            check_schema(&dispatch(
+                "type",
+                vec![
+                    DatapackVariant::new("example:a", bool_field()),
+                    DatapackVariant::new("example:a", Vec::new()),
+                ]
+            )),
+            Err(E::InvalidFieldKind)
+        );
+        assert_eq!(
+            check_schema(&dispatch(
+                "type",
+                vec![DatapackVariant::new("a", bool_field())]
+            )),
+            Err(E::InvalidFieldKind)
+        );
+        // A variant field named like the key could never be read.
+        assert_eq!(
+            check_schema(&dispatch(
+                "x",
+                vec![DatapackVariant::new("example:a", bool_field())]
+            )),
+            Err(E::InvalidFieldName)
+        );
+        // A variant's own schema is checked as a record's.
+        assert_eq!(
+            check_schema(&dispatch(
+                "type",
+                vec![DatapackVariant::new(
+                    "example:a",
+                    vec![DatapackField::required(
+                        "x",
+                        DatapackFieldKind::Int { min: 2, max: 1 }
+                    )]
+                )]
+            )),
+            Err(E::InvalidFieldKind)
+        );
+        // A default must name a declared variant with fitting fields.
+        let defaulted = |default| {
+            vec![DatapackField::with_default(
+                "a",
+                DatapackFieldKind::Dispatch {
+                    key: "type".into(),
+                    variants: vec![DatapackVariant::new("example:a", bool_field())],
+                },
+                default,
+            )]
+        };
+        assert_eq!(
+            check_schema(&defaulted(DatapackValue::Variant {
+                id: "example:a".into(),
+                fields: vec![("x".into(), DatapackValue::Bool(true))],
+            })),
+            Ok(())
+        );
+        assert_eq!(
+            check_schema(&defaulted(DatapackValue::Variant {
+                id: "example:b".into(),
+                fields: vec![("x".into(), DatapackValue::Bool(true))],
+            })),
             Err(E::InvalidDefault)
         );
     }

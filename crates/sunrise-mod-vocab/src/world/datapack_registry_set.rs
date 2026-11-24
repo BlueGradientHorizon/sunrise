@@ -430,17 +430,24 @@ fn datapack_value_heap_bytes(value: &DatapackValue) -> usize {
             items.capacity().saturating_mul(size_of::<DatapackValue>()),
             |bytes, item| bytes.saturating_add(datapack_value_heap_bytes(item)),
         ),
-        DatapackValue::Map(pairs) | DatapackValue::Record(pairs) => pairs.iter().fold(
-            pairs
-                .capacity()
-                .saturating_mul(size_of::<(String, DatapackValue)>()),
-            |bytes, (key, val)| {
-                bytes
-                    .saturating_add(key.capacity())
-                    .saturating_add(datapack_value_heap_bytes(val))
-            },
-        ),
+        DatapackValue::Map(pairs) | DatapackValue::Record(pairs) => pairs_heap_bytes(pairs),
+        DatapackValue::Variant { id, fields } => {
+            id.capacity().saturating_add(pairs_heap_bytes(fields))
+        }
     }
+}
+
+fn pairs_heap_bytes(pairs: &Vec<(String, DatapackValue)>) -> usize {
+    pairs.iter().fold(
+        pairs
+            .capacity()
+            .saturating_mul(size_of::<(String, DatapackValue)>()),
+        |bytes, (key, val)| {
+            bytes
+                .saturating_add(key.capacity())
+                .saturating_add(datapack_value_heap_bytes(val))
+        },
+    )
 }
 
 /// Charge a synchronized set in the ordered configuration handoff. It is retained by an Arc.

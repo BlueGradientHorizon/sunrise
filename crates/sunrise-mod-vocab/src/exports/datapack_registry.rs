@@ -1,6 +1,7 @@
 pub use world::datapack_registry::{
     DatapackDecodeError, DatapackEntry, DatapackField, DatapackFieldKind, DatapackKeyKind,
     DatapackRegistrationError, DatapackRegistryDeclaration, DatapackRegistrySync, DatapackValue,
+    DatapackVariant,
 };
 pub use world::datapack_registry_set::{
     DatapackCandidate, DatapackLoadError, DatapackLoadReason, DatapackReadError,

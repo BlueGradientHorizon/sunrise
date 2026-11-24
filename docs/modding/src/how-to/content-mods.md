@@ -1117,7 +1117,12 @@ entry's record schema. Its scalar kinds are `Bool`, `Int { min, max }`, `Float {
   `as_map` returns a file's pairs in file order, and a default's in its declared order, on the server and on clients. Two keys naming the same id (`zombie` and
   `minecraft:zombie`) are a duplicate. A text map key with `max_len: 0` accepts only the empty key;
 - `Record { fields }` is a nested object with the same field rules as the entry's own (a nested
-  `RecordCodecBuilder`).
+  `RecordCodecBuilder`);
+- `Dispatch { key, variants }` is an object whose `key` field (usually `type`) names one of the
+  `DatapackVariant`s the schema lists, with that variant's fields beside it (`Codec.dispatch`). The id reads as
+  vanilla's `byNameCodec` reads one (`growing` is `minecraft:growing`), and an id no variant declares fails the
+  entry. `variant_id` names the variant, and `get` reads its fields. Only the declaring mod lists variants; there
+  is no way for another mod to add one.
 
 Each field, at any depth, is required (`DatapackField::required`), given a default (`with_default`) or optional with
 no default (`DatapackField::optional`, `optionalFieldOf`), which reads as `None` when left out. An optional kind
