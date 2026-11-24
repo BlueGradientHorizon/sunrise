@@ -88,8 +88,10 @@ pub fn item_to_nbt(stack: &crate::items::ItemStack, items: &crate::items::Items)
 }
 /// A stack from a command or data file, without legacy save handling. `ItemStack.CODEC`
 /// ignores unknown fields (including `Count`); `count` defaults to 1. A present count
-/// must be numeric and in 1 to 99 after Java's `Number.intValue`. A `components` patch
-/// naming a transient component makes no stack.
+/// must be numeric and in 1 to 99 after Java's `Number.intValue`. A present `components`
+/// must be a compound (`DataComponentPatch.CODEC` reads a map, and `optionalFieldOf` fails
+/// on a present value it cannot read), and a patch naming a transient component makes no
+/// stack.
 pub fn item_from_persistent_nbt(tag: &Tag) -> Option<crate::items::ItemStack> {
     let count = match tag.get("count") {
         Some(value) => as_number(value)
@@ -99,6 +101,9 @@ pub fn item_from_persistent_nbt(tag: &Tag) -> Option<crate::items::ItemStack> {
     };
     let components = tag.get("components");
     if let Some(components) = components {
+        if !matches!(components, Tag::Compound(_)) {
+            return None;
+        }
         sunrise_world::item_defaults::validate_component_map_tag(components).ok()?;
     }
     let stack = decode_stack(tag, count, components, None)?;
@@ -246,6 +251,29 @@ mod tests {
         let (tag, _) = sunrise_core::nbt::parse_snbt(r#"{id:"stone",count:4294967301L}"#).unwrap();
         assert_eq!(item_from_persistent_nbt(&tag).unwrap().count, 5);
         assert_eq!(item_from_nbt(&tag).unwrap().count, 1);
+    }
+
+    /// `ItemStackTemplate.CODEC`'s `components` is `DataComponentPatch.CODEC.optionalFieldOf`:
+    /// absent is the empty patch, a present non-map value fails the stack.
+    #[test]
+    fn persistent_components_must_be_a_compound() {
+        let with = |components: Option<Tag>| {
+            let mut tag = Tag::compound([("id", string("minecraft:stone"))]);
+            if let (Tag::Compound(map), Some(components)) = (&mut tag, components) {
+                map.insert("components".into(), components);
+            }
+            item_from_persistent_nbt(&tag)
+        };
+        assert!(with(None).is_some());
+        assert!(
+            with(Some(Tag::compound([(
+                "minecraft:repair_cost",
+                Tag::Int(2)
+            )])))
+            .is_some()
+        );
+        assert!(with(Some(string("not-a-compound"))).is_none());
+        assert!(with(Some(Tag::Int(1))).is_none());
     }
 
     #[test]
