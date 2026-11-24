@@ -106,6 +106,7 @@ pub mod tests {
             named(Some("other:flowing"), true, None),
             named(None, true, Some("other:bucket")),
             named(Some("Bad Name"), true, None),
+            named(Some("refused"), true, None),
         ] {
             let before = registrar.refused.len();
             registrar.declare_world_fluid("refused", refused);
@@ -822,12 +823,14 @@ impl FluidsRegistrar for PartRegistrar {
         };
         fluid.flowing = Some(flowing.clone());
         fluid.bucket_item = bucket_item;
-        if [id.as_str(), flowing.as_str()].iter().any(|id| {
-            self.registry_keys
-                .borrow()
-                .declared_fluids
-                .contains_key(*id)
-        }) {
+        if flowing == id
+            || [id.as_str(), flowing.as_str()].iter().any(|id| {
+                self.registry_keys
+                    .borrow()
+                    .declared_fluids
+                    .contains_key(*id)
+            })
+        {
             self.refused
                 .push(format!("world fluid {id}: name declared twice"));
             return mod_vocab::__private::parts_installation::fluid_key(u32::MAX);

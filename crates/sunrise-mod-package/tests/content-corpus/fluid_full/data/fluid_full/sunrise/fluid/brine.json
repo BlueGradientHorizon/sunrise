@@ -5,7 +5,7 @@
   "density": 1100,
   "viscosity": 1200,
   "light_level": 7,
-  "bucket_item": "minecraft:water_bucket",
+  "bucket_item": "fluid_full:brine_jar",
   "world": {
     "tick_delay": 11,
     "drop_off": 2,

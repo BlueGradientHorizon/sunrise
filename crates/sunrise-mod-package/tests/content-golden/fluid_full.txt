@@ -122,7 +122,7 @@ Content {
                 },
             ),
             bucket_item: Some(
-                "minecraft:water_bucket",
+                "fluid_full:brine_jar",
             ),
             measures: FluidMeasures {
                 temperature: 295,

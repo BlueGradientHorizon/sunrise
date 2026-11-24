@@ -228,12 +228,6 @@ fn fluid_shape(fluid: EngineFluidState, above: Option<EngineFluidState>) -> Opti
 }
 
 /// The fluid a registry id names, with or without `minecraft:`.
-/// The bucket `sound` of a tank-only fluid, as a mod world fluid has it: none when the fluid
-/// names no bucket.
-fn tank_bucket_sound(fluid: &str, sound: &'static str) -> Option<&'static str> {
-    sunrise_client::mod_content::fluid_bucket(fluid).map(|_| sound)
-}
-
 fn fluid_kind(fluid: &str) -> Option<FluidKind> {
     FluidKind::from_name(&sunrise_client::command::args::normalized(fluid))
 }
@@ -442,14 +436,45 @@ impl Game<'_> {
 
     /// The bucket item that picks `fluid` up (`Fluid.getBucket`), `minecraft:water_bucket` for
     /// water and flowing water, the bucket a mod's fluid names, a tank-only one's too. None for
-    /// `minecraft:empty`, whose bucket is air, for a fluid with no bucket, and for a name no
-    /// fluid or item has.
+    /// `minecraft:empty`, whose bucket is air, for a fluid with no bucket, for a name no
+    /// registered fluid has, for a named item no item has, and for one that is the game's
+    /// bucket of another fluid.
     pub(super) fn fluid_bucket(&self, fluid: &str) -> Option<mod_api::ItemKey> {
-        match fluid_kind(fluid) {
-            Some(kind) => mod_api::__private::item_key(sunrise_world::level::fluid_bucket(kind)?),
-            None => {
-                mod_api::__private::item_key(&sunrise_client::mod_content::fluid_bucket(fluid)?)
+        let item = match fluid_kind(fluid) {
+            Some(FluidKind::Mod(mod_fluid) | FluidKind::ModFlowing(mod_fluid)) => {
+                mod_api::__private::item_key(&sunrise_client::mod_content::fluid_bucket(
+                    &mod_fluid.get().id,
+                )?)?
             }
+            Some(kind) => mod_api::__private::item_key(sunrise_world::level::fluid_bucket(kind)?)?,
+            // A fluid file alone registers no tank-only fluid.
+            None => {
+                mod_api::__private::fluid_key(fluid)?;
+                mod_api::__private::item_key(&sunrise_client::mod_content::fluid_bucket(fluid)?)?
+            }
+        };
+        // Filling the game's bucket of another fluid would turn this fluid into that one.
+        match self.bucket_fluid(item) {
+            Some(held)
+                if !mod_api::__private::fluid_id(held)
+                    .is_some_and(|held| self.fluid_is_same(held, fluid)) =>
+            {
+                None
+            }
+            _ => Some(item),
+        }
+    }
+
+    /// The fluid a filled bucket the game registers holds (`BucketItem.content`): water for
+    /// `minecraft:water_bucket`, lava for `minecraft:lava_bucket`, a mod world fluid's source
+    /// for its generated bucket. None for any other item.
+    pub(super) fn bucket_fluid(&self, bucket: mod_api::ItemKey) -> Option<mod_api::FluidKey> {
+        let item = mod_api::__private::item_key_id(bucket)?;
+        match sunrise_client::items::bucket_contents(item)? {
+            (sunrise_world::level::BucketContent::Fluid(kind), ..) => {
+                mod_api::__private::fluid_key(kind.name())
+            }
+            _ => None,
         }
     }
 
@@ -460,7 +485,9 @@ impl Game<'_> {
     pub(super) fn fluid_pickup_sound(&self, fluid: &str) -> Option<&'static str> {
         match fluid_kind(fluid) {
             Some(kind) => sunrise_world::level::fluid_pickup_sound(kind),
-            None => tank_bucket_sound(fluid, "minecraft:item.bucket.fill"),
+            None => self
+                .fluid_bucket(fluid)
+                .map(|_| "minecraft:item.bucket.fill"),
         }
     }
 
@@ -471,7 +498,9 @@ impl Game<'_> {
     pub(super) fn fluid_empty_sound(&self, fluid: &str) -> Option<&'static str> {
         match fluid_kind(fluid) {
             Some(kind) => sunrise_world::level::fluid_empty_sound(kind),
-            None => tank_bucket_sound(fluid, "minecraft:item.bucket.empty"),
+            None => self
+                .fluid_bucket(fluid)
+                .map(|_| "minecraft:item.bucket.empty"),
         }
     }
 

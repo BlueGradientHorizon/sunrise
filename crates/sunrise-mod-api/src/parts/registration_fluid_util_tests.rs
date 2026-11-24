@@ -137,10 +137,11 @@ mod tests {
         );
     }
 
-    /// A mod's fluid that names its bucket (`Fluid.getBucket`), here a tank-only one, fills an
-    /// empty bucket into that item with its fill sound, as water and lava do.
+    /// A mod's fluid fills an empty bucket into the bucket the game registers for it
+    /// (`Fluid.getBucket`) with its fill sound, as water and lava do, and that bucket, looked up
+    /// afresh, empties back into the tank.
     #[test]
-    fn an_empty_bucket_fills_with_a_mod_fluid_into_its_named_bucket() {
+    fn an_empty_bucket_fills_with_a_mod_fluid_into_its_bucket_and_empties_back() {
         let mut host = host("minecraft:bucket", 1);
         host.level.block_entity(TANK).tanks[0].held = Some(fluid("maker:xp", 1000));
         assert!(click(&mut host));
@@ -151,6 +152,9 @@ mod tests {
             "minecraft:item.bucket.fill",
             "minecraft:fluid_pickup",
         );
+        assert!(click(&mut host));
+        assert_eq!(held(&host), Some(fluid("maker:xp", 1000)));
+        assert_eq!(hand(&host), Some(stack("minecraft:bucket", 1)));
     }
 
     #[test]

@@ -72,8 +72,8 @@ impl FakeRegistries {
         self.fluid_sounds.insert(fluid.to_owned(), (pickup, empty));
         self
     }
-    /// Gives fluid `fluid` the bucket `item`, as `fluid_bucket` answers; a fluid not given one
-    /// has none.
+    /// Gives fluid `fluid` the bucket `item` the game registers for it, as `fluid_bucket`
+    /// answers and `bucket_fluid` answers back; a fluid not given one has none.
     pub fn fluid_bucket(&mut self, fluid: &str, item: &str) -> &mut Self {
         self.fluid_buckets.insert(fluid.to_owned(), item.to_owned());
         self
@@ -114,6 +114,15 @@ impl FakeRegistries {
     /// The bucket `fluid` was given, resolved.
     pub(super) fn bucket_of(&self, fluid: &str) -> Option<crate::ItemKey> {
         crate::content::registry_keys::item_key(self.fluid_buckets.get(fluid)?)
+    }
+    /// The fluid whose bucket `bucket` was given as, resolved.
+    pub(super) fn fluid_of(&self, bucket: crate::ItemKey) -> Option<crate::FluidKey> {
+        let item = crate::content::registry_keys::item_id(bucket)?;
+        let (fluid, _) = self
+            .fluid_buckets
+            .iter()
+            .find(|(_, known)| *known == item)?;
+        crate::content::registry_keys::fluid_key(fluid)
     }
     pub(super) fn is_loaded(&self, id: &str) -> bool {
         self.loaded.contains(id)

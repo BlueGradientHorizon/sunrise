@@ -336,25 +336,21 @@ impl ResourceHandler<FluidResource> for GameFluids {
 /// Fluid held by an item, as NeoForge 26.3's `Capabilities.Fluid.ITEM`: a handler for the item at
 /// one place, whose changes rewrite the item there with an [`exchange`](ItemPlace::exchange) of
 /// one, so from a stack of more than one the changed item splits off. The game answers it for
-/// vanilla's buckets (NeoForge's `BucketResourceHandler`): one tank of a bucket, filled and drained
-/// whole, an empty bucket taking any plain fluid whose
-/// [`fluid_bucket`](crate::prelude::TagsHost::fluid_bucket) names an item, and turning into it.
+/// the buckets it registers (NeoForge's `BucketResourceHandler`), vanilla's and a mod world fluid's
+/// generated one: one tank of a bucket, filled and drained whole, holding what
+/// [`bucket_fluid`](crate::prelude::TagsHost::bucket_fluid) answers, an empty bucket taking any
+/// plain fluid whose [`fluid_bucket`](crate::prelude::TagsHost::fluid_bucket) names an item, and
+/// turning into it.
 pub const ITEM_FLUIDS: ItemCapabilityKey<dyn ResourceHandler<FluidResource>> = ItemCapabilityKey {
     name: "sunrise:item_fluids",
     default: Some(ItemCapabilityDefault::Item(|host, place, item| {
-        let buckets = [
-            host.item_key(&BUCKET_IDS[0])?,
-            host.item_key(&BUCKET_IDS[1])?,
-            host.item_key(&BUCKET_IDS[2])?,
-        ];
-        if !buckets.contains(&item) {
+        let empty = host.item_key(&BUCKET_IDS[0])?;
+        if item != empty && host.bucket_fluid(item).is_none() {
             return None;
         }
         Some(Box::new(GameBucket {
             place: place.clone(),
-            water: host.fluid_key("minecraft:water")?,
-            lava: host.fluid_key("minecraft:lava")?,
-            buckets,
+            empty,
         }))
     })),
     handler: PhantomData,
@@ -381,21 +377,14 @@ const BUCKET: u32 = 1000;
 /// The game's own [`ITEM_FLUIDS`] for one bucket place.
 struct GameBucket {
     place: ItemPlace,
-    water: FluidKey,
-    lava: FluidKey,
-    buckets: [crate::ItemKey; 3],
+    /// `minecraft:bucket`.
+    empty: crate::ItemKey,
 }
 impl GameBucket {
     /// What the bucket here holds: none for an empty one, or where no bucket is now.
     fn held(&self, host: &mut dyn ServerHost) -> Option<FluidKey> {
         let item = self.place.with_stack(host, |stack| stack.item())?;
-        if item == self.buckets[1] {
-            Some(self.water)
-        } else if item == self.buckets[2] {
-            Some(self.lava)
-        } else {
-            None
-        }
+        host.bucket_fluid(item)
     }
     /// The bucket holding `fluid` (`Fluid.getBucket`); none for a fluid with components or
     /// no bucket.
@@ -458,7 +447,7 @@ impl ResourceHandler<FluidResource> for GameBucket {
         if !host.transaction_matches(Some(tx)) {
             return Err(TransactionError::InvalidContext);
         }
-        let empty = self.place.with_stack(host, |stack| stack.item()) == Some(self.buckets[0]);
+        let empty = self.place.with_stack(host, |stack| stack.item()) == Some(self.empty);
         match Self::bucket_of(host, resource) {
             Some(full) if index == 0 && empty && amount >= BUCKET => self.exchange(host, tx, full),
             _ => Ok(0),
@@ -478,7 +467,7 @@ impl ResourceHandler<FluidResource> for GameBucket {
         let held = self.resource(host, index);
         match held {
             Some(held) if held == *resource && amount >= BUCKET => {
-                self.exchange(host, tx, self.buckets[0])
+                self.exchange(host, tx, self.empty)
             }
             _ => Ok(0),
         }

@@ -48,7 +48,8 @@ pub trait FluidsRegistrar {
 
     /// Declare a fluid that exists in the world (NeoForge's `RegisterEvent` for a `FluidType`),
     /// with its block, its flowing form and, as `fluid` says, its bucket, under the ids `fluid`
-    /// names. A name outside the fluid's namespace, or a generated bucket outside it, is refused.
+    /// names. A name outside the fluid's namespace, a generated bucket outside it, or a flowing
+    /// form named as the fluid itself, is refused.
     /// Its `data/<namespace>/sunrise/fluid/<path>.json`, if any, says how it looks and states its
     /// `temperature`, `density`, `viscosity` and `light_level`, as for
     /// [`declare_fluid`](Self::declare_fluid); its `bucket_item` applies when `fluid` names none

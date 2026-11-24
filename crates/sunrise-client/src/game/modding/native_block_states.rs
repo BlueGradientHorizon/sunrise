@@ -568,7 +568,8 @@ mod tests {
 
     /// A mod's fluid file through the real content loader: the numbers it states, its light
     /// level among them, for its source and flowing forms alike, `FluidType.Properties`' defaults
-    /// for keys it leaves out, and the bucket it names, a tank-only fluid's too. Loading a mod replaces process-wide fluid tables, so this runs in its own process.
+    /// for keys it leaves out, and the bucket it names, which must be a live item that keeps the
+    /// fluid. Loading a mod replaces process-wide fluid tables, so this runs in its own process.
     #[test]
     #[ignore = "daily"]
     fn a_mod_fluid_file_states_its_temperature_density_and_viscosity() {
@@ -594,11 +595,27 @@ mod tests {
         )
         .unwrap();
         std::fs::write(fluids.join("plain.json"), br#"{"world":{}}"#).unwrap();
-        std::fs::write(
-            fluids.join("essence.json"),
-            br#"{"bucket_item":"minecraft:honey_bottle"}"#,
-        )
-        .unwrap();
+        for (name, body) in [
+            // A file alone registers no tank-only fluid.
+            (
+                "essence",
+                &br#"{"bucket_item":"minecraft:honey_bottle"}"#[..],
+            ),
+            (
+                "salt",
+                br#"{"bucket_item":"minecraft:water_bucket","world":{"bucket":false}}"#,
+            ),
+            (
+                "shared",
+                br#"{"bucket_item":"measured:plain_bucket","world":{"bucket":false}}"#,
+            ),
+            (
+                "lost",
+                br#"{"bucket_item":"measured:no_such_jar","world":{"bucket":false}}"#,
+            ),
+        ] {
+            std::fs::write(fluids.join(format!("{name}.json")), body).unwrap();
+        }
         let mut sources = super::super::mods::ModsState {
             dev: vec![dir.path().to_path_buf()],
             ..Default::default()
@@ -633,7 +650,9 @@ mod tests {
                 // `FluidType.getLightLevel` is the file's, though the block emits none.
                 assert_eq!(read("measured:flowing_brine").light_level, 10);
                 assert_eq!(read("measured:plain").light_level, 0);
-                // `Fluid.getBucket`: the named bucket, the default one, a tank-only fluid's item.
+                // `Fluid.getBucket`: the named bucket and the default one, each holding its
+                // fluid back; none for an unregistered fluid, a missing item or the game's
+                // bucket of another fluid.
                 let bucket = |fluid: &str| host.fluid_bucket(fluid);
                 let item = |id: &str| mod_api::__private::item_key(id);
                 assert_eq!(
@@ -642,8 +661,27 @@ mod tests {
                 );
                 assert!(item("measured:brine_bucket").is_none());
                 assert_eq!(bucket("measured:plain"), item("measured:plain_bucket"));
-                assert_eq!(bucket("measured:essence"), item("minecraft:honey_bottle"));
-                assert!(bucket("measured:essence").is_some());
+                for (bucket, fluid) in [
+                    ("measured:brine_pail", "measured:brine"),
+                    ("measured:plain_bucket", "measured:plain"),
+                    ("minecraft:water_bucket", "minecraft:water"),
+                ] {
+                    assert_eq!(
+                        host.bucket_fluid(item(bucket).unwrap()),
+                        host.fluid_key(fluid)
+                    );
+                }
+                assert_eq!(host.bucket_fluid(item("minecraft:bucket").unwrap()), None);
+                for fluid in [
+                    "measured:essence",
+                    "measured:salt",
+                    "measured:shared",
+                    "measured:lost",
+                ] {
+                    assert_eq!(bucket(fluid), None, "{fluid}");
+                }
+                assert_eq!(host.fluid_pickup_sound("measured:essence"), None);
+                assert_eq!(host.fluid_empty_sound("measured:essence"), None);
             },
         );
     }

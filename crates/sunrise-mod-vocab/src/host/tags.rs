@@ -41,8 +41,17 @@ pub trait TagsHost {
     /// The bucket item that picks `fluid` up (`Fluid.getBucket`), `minecraft:water_bucket` for
     /// water and flowing water, and for a mod's fluid, tank-only or not, the `bucket_item` it
     /// names (a world fluid's generated `<id>_bucket` by default). None for `minecraft:empty`,
-    /// whose bucket is air, for a fluid with no bucket, and for a name no fluid or item has.
+    /// whose bucket is air, for a fluid with no bucket, for a name no registered fluid has, for
+    /// a named item no item has, and for a named item that is the game's bucket of another fluid
+    /// (a mod fluid naming `minecraft:water_bucket`), which would not keep it.
     fn fluid_bucket(&self, fluid: &str) -> Option<ItemKey>;
+    /// Side: both.
+    /// The fluid a filled bucket the game registers holds (`BucketItem.content`), the inverse of
+    /// [`fluid_bucket`](Self::fluid_bucket) for those buckets: `minecraft:water` for
+    /// `minecraft:water_bucket`, `minecraft:lava` for `minecraft:lava_bucket`, a mod world
+    /// fluid's source for its generated bucket. None for any other item, the empty bucket and an
+    /// item a mod declares itself among them.
+    fn bucket_fluid(&self, bucket: ItemKey) -> Option<FluidKey>;
     /// Side: both.
     /// The sound event a bucket plays as it picks `fluid` up (`Fluid.getPickupSound`),
     /// `minecraft:item.bucket.fill_lava` for lava and flowing lava, `minecraft:item.bucket.fill`

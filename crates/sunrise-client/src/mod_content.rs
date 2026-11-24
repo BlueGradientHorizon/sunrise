@@ -168,7 +168,8 @@ pub fn register_world_fluids(
         sunrise_world::fluid::register_mod_fluid(sunrise_world::fluid::ModFluidType {
             id: look.id.clone(),
             flowing_id,
-            bucket: look.bucket_id(),
+            // Only a bucket the game registers pours this fluid; one the mod names keeps its own.
+            bucket: look.bucket_id().filter(|_| world.bucket),
             rules: sunrise_world::fluid::ModFluidRules {
                 tick_delay: world.tick_delay,
                 drop_off: world.drop_off,

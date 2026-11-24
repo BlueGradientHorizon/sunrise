@@ -868,9 +868,11 @@ impl FluidLook {
             if world
                 .flowing
                 .as_deref()
-                .is_some_and(|flowing| !own(flowing))
+                .is_some_and(|flowing| !own(flowing) || flowing == self.id)
             {
-                return Err("world: flowing is an id in the fluid's namespace".into());
+                return Err(
+                    "world: flowing is an id in the fluid's namespace, not the fluid's own".into(),
+                );
             }
         }
         if let Some(item) = &self.bucket_item {
@@ -4644,6 +4646,7 @@ capabilities = ["registries"]
             (br#"{"bucket_item":"jar"}"#, "bucket_item"),
             (br#"{"bucket_item":"other:jar","world":{}}"#, "bucket_item"),
             (br#"{"world":{"flowing":"other:oil_flowing"}}"#, "flowing"),
+            (br#"{"world":{"flowing":"ruby:oil"}}"#, "flowing"),
         ] {
             let bad: &[(&str, &[u8])] = &[("data/ruby/sunrise/fluid/oil.json", body)];
             let e = smod("bad-named-fluid", MANIFEST_TEXT, bad).unwrap_err();

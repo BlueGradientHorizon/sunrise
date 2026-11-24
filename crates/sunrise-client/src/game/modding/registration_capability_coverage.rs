@@ -56,7 +56,9 @@ pub(super) fn builtin(by: ProvidedBy, capability: &str, kind: &str) -> bool {
         ProvidedBy::Item => {
             mod_api::__private::parts_installation::builtin_item_capability_registered(
                 capability, kind,
-            )
+            ) || (capability == mod_api::ITEM_FLUIDS.name
+                // The bucket the game registers for a mod's world fluid.
+                && sunrise_world::fluid::mod_fluid_of_bucket(kind).is_some())
         }
         // Registration asks for block coverage, not block-entity type coverage.
         ProvidedBy::BlockEntity => false,
