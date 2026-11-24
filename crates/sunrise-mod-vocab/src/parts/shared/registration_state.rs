@@ -16,8 +16,8 @@ pub(crate) struct Installed {
     pub(crate) recipe_book_filters: HashMap<String, crate::RecipeBookFilterLook>,
     pub(crate) game_rule_categories: Vec<String>,
     pub(crate) game_rules: Vec<crate::GameRuleDecl>,
-    pub(crate) attachment_types: HashMap<String, HashMap<String, bool>>,
-    pub(crate) attachment_owners: HashMap<String, HashMap<String, &'static str>>,
+    pub(crate) attachment_types:
+        HashMap<&'static str, HashMap<&'static str, crate::RegisteredAttachment>>,
     pub(crate) custom_stats: Vec<String>,
     pub(crate) custom_stat_owners: Vec<&'static str>,
     pub(crate) entity_tick_each: crate::parts::EntityTickEach,
@@ -59,7 +59,11 @@ pub(crate) struct Installed {
     pub(crate) arm_poses: Vec<crate::client::arm_pose::PoseInfo>,
     pub(crate) structure_types: Vec<crate::world::structure_type::StructureTypeInfo>,
     pub(crate) pool_element_types: Vec<crate::world::pool_element::PoolElementTypeInfo>,
+    pub(crate) structure_processor_types:
+        Vec<crate::world::structure_processor::StructureProcessorTypeInfo>,
     pub(crate) feature_types: Vec<crate::world::feature_type::FeatureTypeInfo>,
+    pub(crate) placement_modifier_types:
+        Vec<crate::world::placement_modifier::PlacementModifierTypeInfo>,
     pub(crate) loot_modifier_serializers:
         Vec<crate::parts::loot_modifiers::LootModifierSerializerInfo>,
     pub(crate) loot_function_types: Vec<crate::parts::loot_types::LootFunctionTypeInfo>,
