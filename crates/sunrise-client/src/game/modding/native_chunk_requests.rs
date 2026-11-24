@@ -430,7 +430,7 @@ impl Game<'_> {
                 }
             } else {
                 queue.push_back(req);
-                if scanned.is_multiple_of(64) && !self.server_has_time() {
+                if processed > 0 && scanned.is_multiple_of(64) && !self.server_has_time() {
                     break;
                 }
             }
@@ -449,7 +449,6 @@ impl Game<'_> {
         if released_any {
             self.rebuild_chunk_tickets(false);
         }
-        let _ = processed;
     }
 }
 
