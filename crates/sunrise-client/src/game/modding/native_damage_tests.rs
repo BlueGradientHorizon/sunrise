@@ -108,7 +108,7 @@ fn brainless_villager_wakes_before_damage_listeners() {
             assert!(!villager::sleeping(mob));
             assert!(villager::ext(mob).unwrap().brain.is_none());
 
-            villager_brain::init(mob, 89, 14000, i64::from(id), None);
+            villager_brain::init(mob, 89, 14000, i64::from(id));
             let mut written = Vec::new();
             villager::write_memories(mob, &mut written);
             let memories = Tag::compound(written);
@@ -1186,7 +1186,7 @@ impl Hooks for PufferfishProbe {
         host: mod_api::HostSide<'_>,
         event: &mut mod_api::EntityTickPostEvent<'_>,
     ) {
-        if event.entities == [self.fish]
+        if event.entity == self.fish
             && let mod_api::HostSide::Server(host) = host
         {
             let victim = host.living(host.entity(self.first).unwrap()).unwrap();
@@ -1775,7 +1775,7 @@ impl Hooks for MobLandingProbe {
         host: mod_api::HostSide<'_>,
         event: &mut mod_api::EntityTickPostEvent<'_>,
     ) {
-        if event.entities.contains(&self.id)
+        if event.entity == self.id
             && let mod_api::HostSide::Server(host) = host
         {
             let entity = host.entity(self.id).unwrap();

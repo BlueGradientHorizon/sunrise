@@ -343,52 +343,115 @@ pub fn has_brain(s: Species) -> bool {
     )
 }
 
-/// Ask the installed entity parts for the mob's behaviors (#824), each into
-/// `backend` — the brain module's own, which knows its activities. The parts
-/// are named in a panic the way `register_goals` names them.
-pub fn attach(
-    mob_id: &str,
-    backend: &mut dyn BehaviorRegistrarBackend,
-    host: &dyn super::part_goals::GoalHost,
-) {
-    if !mod_api::__private::has_scoped_hook(mod_api::HookId::RegisterBehaviors) {
-        return;
-    }
-    let mut registrar = mod_api::BehaviorRegistrar::new(backend, mob_id, "", "");
-    host.register_behaviors(&mut registrar);
+/// Which brain instance (if any) a staged `register_behaviors` dispatch targets.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BehaviorTarget {
+    /// A species with no brain: every add refuses with [`mod_api::BehaviorRefusal::NoBrain`].
+    NoBrain,
+    /// Villager brain carrying `generation`.
+    Villager(u64),
+    /// Animal brain (axolotl, sniffer, ghastling, copper golem, tadpole) carrying `generation`.
+    Animal(u64),
+    /// Monster brain (breeze, creaking) carrying `generation`.
+    Monster(u64),
+    /// Warden brain carrying `generation`.
+    Warden(u64),
 }
 
-/// `register_behaviors` for a type with no brain (#824): every add refuses
-/// with the typed error, so the mod learns at construction that its behavior
-/// runs nowhere on this type. Asked beside `part_goals::attach` at every
-/// `Mob` construction.
-pub fn attach_refused(mob_id: &str, host: &dyn super::part_goals::GoalHost) {
-    struct Refused<'a>(&'a str);
-    impl BehaviorRegistrarBackend for Refused<'_> {
-        fn add_behavior(
-            &mut self,
-            _registration: RegisteredBehavior,
-        ) -> Result<(), mod_api::BehaviorRefusal> {
-            Err(mod_api::BehaviorRefusal::NoBrain)
-        }
-        fn mob_id(&self) -> &str {
-            self.0
-        }
+/// Discard staged behavior registrations behind each registering mod's panic fence.
+pub(super) fn discard_registrations(registrations: Vec<RegisteredBehavior>) {
+    for registration in registrations {
+        mod_api::runtime::discard_registration(
+            (mod_api::HookId::RegisterBehaviors, "register_behaviors"),
+            Some(registration.mod_id),
+            registration,
+        );
     }
-    attach(mob_id, &mut Refused(mob_id), host);
 }
 
-/// The construction-time half of #824, beside `part_goals::attach`: a type
-/// whose species has no brain gets its `register_behaviors` asked with a
-/// registrar that refuses every add. A brain-driven type joins its behaviors to the brain the
-/// mob already has; a brain built later (the villager's, the breeze's and creaking's, at the
-/// first tick) asks where it is built, so nothing is asked or built twice.
-pub fn attach_at_construction(m: &mut Mob, host: &dyn super::part_goals::GoalHost) {
-    if !has_brain(m.species()) {
-        attach_refused(&m.kind.id, host);
-        return;
+/// Staged `register_behaviors` additions collected at the owning `Game` boundary
+/// and applied to the mob's original brain inside the listener's transaction.
+pub struct StagedBehaviors {
+    mob_id: String,
+    target: BehaviorTarget,
+    added: Vec<RegisteredBehavior>,
+}
+
+impl StagedBehaviors {
+    /// Start an empty staged behavior buffer for `mob_id` targeting `target`.
+    pub fn new(mob_id: String, target: BehaviorTarget) -> Self {
+        Self {
+            mob_id,
+            target,
+            added: Vec::new(),
+        }
     }
-    super::animal_brain::join_mod_behaviors(m, host);
-    super::monster_brain::join_mod_behaviors(m, host);
-    super::warden::join_mod_behaviors(m, host);
+
+    /// Re-check that `m` still holds the original brain instance `self.target` and
+    /// apply the staged behaviors to it. Returns `false` (discarding the staged
+    /// behaviors safely) if the brain is gone or was rebuilt while listeners ran.
+    pub fn apply_to(self, m: &mut Mob) -> bool {
+        match self.target {
+            BehaviorTarget::NoBrain => {
+                let ok = !has_brain(m.species());
+                discard_registrations(self.added);
+                ok
+            }
+            BehaviorTarget::Villager(generation) => {
+                super::villager_brain::apply_staged(m, generation, self.added)
+            }
+            BehaviorTarget::Animal(generation) => {
+                super::animal_brain::apply_staged(m, generation, self.added)
+            }
+            BehaviorTarget::Monster(generation) => {
+                super::monster_brain::apply_staged(m, generation, self.added)
+            }
+            BehaviorTarget::Warden(generation) => {
+                super::warden_brain::apply_staged(m, generation, self.added)
+            }
+        }
+    }
+
+    /// Discard all staged behaviors behind each registering mod's panic fence.
+    pub fn discard(self) {
+        discard_registrations(self.added);
+    }
+}
+
+impl BehaviorRegistrarBackend for StagedBehaviors {
+    fn add_behavior(
+        &mut self,
+        registration: RegisteredBehavior,
+    ) -> Result<(), mod_api::BehaviorRefusal> {
+        match self.target {
+            BehaviorTarget::NoBrain => return Err(mod_api::BehaviorRefusal::NoBrain),
+            BehaviorTarget::Villager(_) => {
+                super::villager_brain::validate_activity(registration.activity)?;
+            }
+            BehaviorTarget::Animal(_) => {
+                super::animal_brain::validate_activity(registration.activity)?;
+            }
+            BehaviorTarget::Monster(_) => {
+                super::monster_brain::validate_activity(registration.activity)?;
+            }
+            BehaviorTarget::Warden(_) => {
+                super::warden_brain::validate_activity(registration.activity)?;
+            }
+        }
+        self.added.push(registration);
+        Ok(())
+    }
+
+    fn mob_id(&self) -> &str {
+        &self.mob_id
+    }
+
+    fn checkpoint(&self) -> usize {
+        self.added.len()
+    }
+
+    fn rollback(&mut self, checkpoint: usize) {
+        let discarded = self.added.split_off(checkpoint);
+        discard_registrations(discarded);
+    }
 }

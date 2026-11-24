@@ -398,14 +398,11 @@ mod item_destroyed_tests {
                 if !self.armed.load(Ordering::Relaxed) {
                     return;
                 }
-                for (&id, &kind) in event.entities.iter().zip(event.kinds.iter()) {
-                    if kind == "minecraft:item" && self.armed.swap(false, Ordering::Relaxed) {
-                        let entity = mod_api::prelude::EntitiesHost::entity(&**server, id)
-                            .expect("ticked item entity ref");
-                        let hit = entity.hurt(*server, "minecraft:magic", 10.0, None, None);
-                        self.hurt_results.lock().unwrap().push(hit);
-                        break;
-                    }
+                if event.kind == "minecraft:item" && self.armed.swap(false, Ordering::Relaxed) {
+                    let entity = mod_api::prelude::EntitiesHost::entity(&**server, event.entity)
+                        .expect("ticked item entity ref");
+                    let hit = entity.hurt(*server, "minecraft:magic", 10.0, None, None);
+                    self.hurt_results.lock().unwrap().push(hit);
                 }
             }
         }

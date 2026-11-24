@@ -270,6 +270,7 @@ fn registered_types_bind_once_and_preserve_both_evaluators_order_short_circuit_a
                     kind: "minecraft:player_attack".into(),
                     source: Some(attacker),
                     direct: None,
+                    is_direct: false,
                 }),
                 ..Default::default()
             };

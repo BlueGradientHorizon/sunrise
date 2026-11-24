@@ -2107,10 +2107,78 @@ impl Game<'_> {
         }
     }
 
-    /// The guests' open mod menus with linked slots (`links`): the mods name
-    /// the containers behind them again (`native_menu_links`), before the
-    /// hub sends the tick's slot changes, so a tab the player picked or a
-    /// chest placed or broken shows in the same tick.
+    /// One guest's open mod menu with linked slots (`links`): the mods name the containers
+    /// behind them again (`native_menu_links`), before the hub sends the tick's slot changes.
+    pub(super) fn lan_menu_links_tick_one(&mut self, conn: u32) {
+        if !mod_api::__private::listened(mod_api::HookId::MenuLinks) {
+            return;
+        }
+        let Some(host) = self.lan.as_ref() else {
+            return;
+        };
+        let Some(gi) = host.hub.guests.connection_index(conn) else {
+            return;
+        };
+        self.lan_menu_links_tick_at(gi);
+    }
+
+    fn lan_menu_links_tick_at(&mut self, gi: usize) {
+        let host = self.lan.as_ref().unwrap();
+        let g = &host.hub.guests[gi];
+        let Some((t, pos)) = g
+            .menu
+            .as_ref()
+            .filter(|_| host.hub.here(g) && !self.player_tick_canceled(g.conn))
+            .and_then(|m| match (m.mod_type, m.slots) {
+                (Some(t), Slots::Block(pos)) if t.links.is_some() => Some((t, pos)),
+                _ => None,
+            })
+        else {
+            return;
+        };
+        let (conn, uuid, window, generation) = (
+            g.conn,
+            g.uuid,
+            g.menu.as_ref().map_or(0, |m| m.window),
+            g.menu_generation,
+        );
+        let mut scratch = std::mem::take(&mut self.creatures.link_scratch);
+        scratch.asked.clear();
+        self.native_menu_links(uuid, t.id, [pos.0, pos.1, pos.2], &mut scratch.asked);
+        scratch.links.clear();
+        scratch.seen.clear();
+        for &at in &scratch.asked {
+            let at = (at[0], at[1], at[2]);
+            if at == pos || !scratch.seen.insert(at) {
+                continue;
+            }
+            if self.linkable_container(at).is_some() {
+                scratch.links.push(at);
+            }
+        }
+        // A writable listener may have replaced the menu while the answers were collected:
+        // they belong to the original level's menu instance only.
+        let still = self
+            .lan
+            .as_ref()
+            .and_then(|host| host.hub.guests.iter().position(|g| g.conn == conn))
+            .filter(|&gi| {
+                let g = &self.lan.as_ref().unwrap().hub.guests[gi];
+                g.menu_generation == generation
+                    && g.menu.as_ref().is_some_and(|m| m.window == window)
+            });
+        if let Some(gi) = still {
+            self.lan.as_mut().unwrap().hub.guests.update(gi, |g| {
+                if let Some(m) = g.menu.as_mut() {
+                    m.links.clear();
+                    m.links.extend(scratch.links.iter().copied());
+                }
+            });
+        }
+        self.creatures.link_scratch = scratch;
+    }
+
+    #[cfg(test)]
     pub(super) fn lan_menu_links_tick(&mut self) {
         if !mod_api::__private::listened(mod_api::HookId::MenuLinks) {
             return;
@@ -2119,59 +2187,7 @@ impl Game<'_> {
             return;
         };
         for gi in 0..count {
-            let host = self.lan.as_ref().unwrap();
-            let g = &host.hub.guests[gi];
-            let Some((t, pos)) = g
-                .menu
-                .as_ref()
-                .filter(|_| host.hub.here(g) && !self.player_tick_canceled(g.conn))
-                .and_then(|m| match (m.mod_type, m.slots) {
-                    (Some(t), Slots::Block(pos)) if t.links.is_some() => Some((t, pos)),
-                    _ => None,
-                })
-            else {
-                continue;
-            };
-            let (conn, uuid, window, generation) = (
-                g.conn,
-                g.uuid,
-                g.menu.as_ref().map_or(0, |m| m.window),
-                g.menu_generation,
-            );
-            let mut scratch = std::mem::take(&mut self.creatures.link_scratch);
-            scratch.asked.clear();
-            self.native_menu_links(uuid, t.id, [pos.0, pos.1, pos.2], &mut scratch.asked);
-            scratch.links.clear();
-            scratch.seen.clear();
-            for &at in &scratch.asked {
-                let at = (at[0], at[1], at[2]);
-                if at == pos || !scratch.seen.insert(at) {
-                    continue;
-                }
-                if self.linkable_container(at).is_some() {
-                    scratch.links.push(at);
-                }
-            }
-            // A writable listener may have replaced the menu while the answers were collected:
-            // they belong to the original level's menu instance only.
-            let still = self
-                .lan
-                .as_ref()
-                .and_then(|host| host.hub.guests.iter().position(|g| g.conn == conn))
-                .filter(|&gi| {
-                    let g = &self.lan.as_ref().unwrap().hub.guests[gi];
-                    g.menu_generation == generation
-                        && g.menu.as_ref().is_some_and(|m| m.window == window)
-                });
-            if let Some(gi) = still {
-                self.lan.as_mut().unwrap().hub.guests.update(gi, |g| {
-                    if let Some(m) = g.menu.as_mut() {
-                        m.links.clear();
-                        m.links.extend(scratch.links.iter().copied());
-                    }
-                });
-            }
-            self.creatures.link_scratch = scratch;
+            self.lan_menu_links_tick_at(gi);
         }
     }
 
@@ -2254,72 +2270,70 @@ impl Game<'_> {
         }
     }
 
-    /// `CraftingMenu.slotsChanged` for the guests' mod crafting menus: the
-    /// result each is shown follows its block entity's grid, which another
-    /// player, a hopper or the mod may have changed, made again only when
-    /// the grid changed.
+    /// `CraftingMenu.slotsChanged` for one guest's mod crafting menu.
+    pub(super) fn lan_mod_crafting_tick_one(&mut self, conn: u32) {
+        let Some(gi) = self
+            .lan
+            .as_ref()
+            .and_then(|host| host.hub.guests.connection_index(conn))
+        else {
+            return;
+        };
+        self.lan_mod_crafting_tick_at(gi);
+    }
+
+    fn lan_mod_crafting_tick_at(&mut self, gi: usize) {
+        let Some(host) = self.lan.as_ref() else {
+            return;
+        };
+        let g = &host.hub.guests[gi];
+        let Some((t, pos)) = g
+            .menu
+            .as_ref()
+            .filter(|_| host.hub.here(g) && !self.player_tick_canceled(g.conn))
+            .and_then(|m| match (m.mod_type, m.slots) {
+                (Some(t), Slots::Block(pos)) if t.crafting.is_some() => Some((t, pos)),
+                _ => None,
+            })
+        else {
+            return;
+        };
+        let Some(BlockEntity::Mod(m)) = self.world.block_entities.get(&pos) else {
+            return;
+        };
+        let mut items = m.items.clone();
+        items.resize(t.slots, None);
+        if Self::lan_mod_craft_shown(host, gi, &items).is_some() {
+            return;
+        }
+        let mut menu = Menu::new(Kind::Mod(t));
+        self.guest_menu_op(gi, &mut menu, |menu, env| {
+            menu.load_container(env, &items, None);
+        });
+        self.lan_mod_craft_settle(gi, pos, &mut menu);
+    }
+
+    #[cfg(test)]
     pub(super) fn lan_mod_crafting_tick(&mut self) {
         let Some(count) = self.lan.as_ref().map(|host| host.hub.guests.len()) else {
             return;
         };
         for gi in 0..count {
-            let Some(host) = self.lan.as_ref() else {
-                return;
-            };
-            let g = &host.hub.guests[gi];
-            let Some((t, pos)) = g
-                .menu
-                .as_ref()
-                .filter(|_| host.hub.here(g) && !self.player_tick_canceled(g.conn))
-                .and_then(|m| match (m.mod_type, m.slots) {
-                    (Some(t), Slots::Block(pos)) if t.crafting.is_some() => Some((t, pos)),
-                    _ => None,
-                })
-            else {
-                continue;
-            };
-            let Some(BlockEntity::Mod(m)) = self.world.block_entities.get(&pos) else {
-                continue;
-            };
-            let mut items = m.items.clone();
-            items.resize(t.slots, None);
-            if Self::lan_mod_craft_shown(host, gi, &items).is_some() {
-                continue;
-            }
-            let mut menu = Menu::new(Kind::Mod(t));
-            self.guest_menu_op(gi, &mut menu, |menu, env| {
-                menu.load_container(env, &items, None);
-            });
-            self.lan_mod_craft_settle(gi, pos, &mut menu);
+            self.lan_mod_crafting_tick_at(gi);
         }
     }
 
     /// `ServerPlayer.tick`'s `stillValid`: a guest's crafting table closes
     /// once it is gone or out of reach, giving its grid back.
-    pub(super) fn lan_tables_tick(&mut self) {
-        let Some(host) = self.lan.as_ref() else {
+    pub(super) fn lan_table_tick_one(&mut self, conn: u32) {
+        let Some(window) = self.lan.as_ref().and_then(|host| {
+            let (window, _, _, pos) = host.menus.get(&conn)?.crafting.table.as_ref()?;
+            let g = host.hub.guest(conn).filter(|g| host.hub.here(g))?;
+            (!self.lan_table_valid(g, *pos)).then_some(*window)
+        }) else {
             return;
         };
-        let invalid: Vec<(u32, i32)> = host
-            .menus
-            .iter()
-            .filter_map(|(c, p)| p.crafting.table.as_ref().map(|t| (*c, t.0, t.3)))
-            .filter(|&(c, _, pos)| {
-                host.hub
-                    .guests
-                    .iter()
-                    .find(|g| g.conn == c)
-                    .is_some_and(|g| {
-                        host.hub.here(g)
-                            && !self.player_tick_canceled(c)
-                            && !self.lan_table_valid(g, pos)
-                    })
-            })
-            .map(|(c, window, _)| (c, window))
-            .collect();
-        for (conn, window) in invalid {
-            self.reply_menu_click(conn, super::lan_menus::ClickReply::Close(window));
-        }
+        self.reply_menu_click(conn, super::lan_menus::ClickReply::Close(window));
     }
 
     /// The whole crafting table menu for the client (`sendAllDataToRemote`).

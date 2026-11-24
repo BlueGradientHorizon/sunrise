@@ -23,7 +23,8 @@ mod tests {
             &self,
             _: mod_api::HostSide<'_>,
             _: &mut mod_api::EntityTickPreEvent<'_>,
-        ) {
+        ) -> mod_api::Flow {
+            mod_api::Flow::Continue
         }
         fn entity_tick_post(
             &self,
@@ -95,7 +96,6 @@ mod tests {
                             // An observer activates the same dispatch without writing entity state.
                             let round = game.native_tick_round();
                             assert_eq!(round.listening(), listening);
-                            game.native_tick_post_batch(round);
                             let joins: Vec<_> =
                                 game.falling.iter().map(|block| block.join).collect();
                             // Continuing falls keep every resident's identity and order;

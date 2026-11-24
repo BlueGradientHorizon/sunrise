@@ -152,12 +152,6 @@ impl Game<'_> {
         };
         // The heart's additions go after every slot the index holds.
         self.mob_index = index;
-        // A creaking made during the tick is constructed now: its parts register with the
-        // game's read host, as vanilla's constructor runs `registerGoals` and `makeBrain`.
-        let mut added = added;
-        for mob in &mut added {
-            mob.attach_mod_parts(&*self);
-        }
         mobs.extend(added);
         self.mobs
             .restore(mobs, sunrise_client::join_seq::RestoreOrder::SurvivorsFirst);

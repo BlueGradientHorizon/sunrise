@@ -1158,53 +1158,34 @@ impl Game<'_> {
 
     /// `ServerPlayer.doTick`'s `stillValid`: a guest's station closes once its
     /// block is gone or the guest is out of reach (`isWithinBlockInteractionRange(pos, 4)`).
-    pub(super) fn lan_stations_tick(&mut self) {
-        self.lan_lecterns_tick();
-        let conns: Vec<u32> = self
-            .lan
-            .as_ref()
-            .map(|host| {
-                host.menus
-                    .iter()
-                    .filter(|(_, p)| p.station.is_some())
-                    .map(|(c, _)| *c)
-                    .collect()
-            })
-            .unwrap_or_default();
-        for conn in conns {
-            let Some(host) = self.lan.as_ref() else {
-                continue;
-            };
-            let Some(g) = host
-                .hub
-                .guests
-                .iter()
-                .find(|g| g.conn == conn && host.hub.here(g))
-                .filter(|_| !self.player_tick_canceled(conn))
-            else {
-                continue;
-            };
-            let Some(gs) = host.menus.get(&conn).and_then(|p| p.station.as_ref()) else {
-                continue;
-            };
-            let (window, beacon, pos) = (gs.window, gs.kind == StationKind::Beacon, gs.pos);
-            let invalid = !self.lan_station_valid(g, gs);
-            if invalid {
-                self.reply_menu_click(conn, super::lan_menus::ClickReply::Close(window));
-            } else if beacon {
-                // The beacon's data slots follow its block entity.
-                let data = self.beacon_data(pos);
-                if let Some(gs) = self
-                    .lan
-                    .as_mut()
-                    .and_then(|host| host.menus.get_mut(&conn))
-                    .and_then(|p| p.station.as_mut())
-                    && gs.kind == StationKind::Beacon
-                    && gs.menu.data[..] != data[..]
-                {
-                    gs.menu.data.copy_from_slice(&data);
-                    self.lan_send_station(conn);
-                }
+    pub(super) fn lan_station_tick_one(&mut self, conn: u32) {
+        self.lan_lectern_tick_one(conn);
+        let Some(host) = self.lan.as_ref() else {
+            return;
+        };
+        let Some(g) = host.hub.guest(conn).filter(|g| host.hub.here(g)) else {
+            return;
+        };
+        let Some(gs) = host.menus.get(&conn).and_then(|p| p.station.as_ref()) else {
+            return;
+        };
+        let (window, beacon, pos) = (gs.window, gs.kind == StationKind::Beacon, gs.pos);
+        let invalid = !self.lan_station_valid(g, gs);
+        if invalid {
+            self.reply_menu_click(conn, super::lan_menus::ClickReply::Close(window));
+        } else if beacon {
+            // The beacon's data slots follow its block entity.
+            let data = self.beacon_data(pos);
+            if let Some(gs) = self
+                .lan
+                .as_mut()
+                .and_then(|host| host.menus.get_mut(&conn))
+                .and_then(|p| p.station.as_mut())
+                && gs.kind == StationKind::Beacon
+                && gs.menu.data[..] != data[..]
+            {
+                gs.menu.data.copy_from_slice(&data);
+                self.lan_send_station(conn);
             }
         }
     }
@@ -1237,33 +1218,27 @@ impl Game<'_> {
         ) && g.within_block_range([key.0, key.1, key.2], 4.0)
     }
 
-    /// The guests' lecterns each tick: `stillValid` (the block entity, its
-    /// book, the reach) closes them, and `broadcastChanges` sends a book or
-    /// page another player changed.
-    fn lan_lecterns_tick(&mut self) {
+    /// One guest's lectern each tick: `stillValid` (the block entity, its book, the reach)
+    /// closes it, and `broadcastChanges` sends a book or page another player changed.
+    fn lan_lectern_tick_one(&mut self, conn: u32) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
-        let open: Vec<(u32, i32, (i32, i32, i32))> = host
+        let Some((window, key)) = host
             .play
-            .iter()
-            .filter_map(|(c, p)| p.lectern.as_ref().map(|l| (*c, l.window, l.key)))
-            .collect();
-        for (conn, window, key) in open {
-            let Some(host) = self.lan.as_ref() else {
-                return;
-            };
-            let Some(g) = host.hub.guests.iter().find(|g| g.conn == conn) else {
-                continue;
-            };
-            if !host.hub.here(g) || self.player_tick_canceled(conn) {
-                continue;
-            }
-            if self.lan_lectern_valid(g, key) {
-                self.lan_send_lectern(conn, false);
-            } else {
-                self.reply_menu_click(conn, super::lan_menus::ClickReply::Close(window));
-            }
+            .get(&conn)
+            .and_then(|p| p.lectern.as_ref())
+            .map(|l| (l.window, l.key))
+        else {
+            return;
+        };
+        let Some(g) = host.hub.guest(conn).filter(|g| host.hub.here(g)) else {
+            return;
+        };
+        if self.lan_lectern_valid(g, key) {
+            self.lan_send_lectern(conn, false);
+        } else {
+            self.reply_menu_click(conn, super::lan_menus::ClickReply::Close(window));
         }
     }
 }

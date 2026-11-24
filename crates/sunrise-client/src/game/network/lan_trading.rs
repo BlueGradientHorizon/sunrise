@@ -679,54 +679,63 @@ impl Game<'_> {
                 && guest_within_entity_range(g, &m.bounds(), 4.0)
         })
     }
-    /// `ServerPlayer.tick`: broadcast menu changes before checking `stillValid`.
+    /// `ServerPlayer.tick`: broadcast menu changes before checking `stillValid` for one guest.
+    pub(super) fn lan_merchant_tick_one(&mut self, conn: u32) {
+        let Some((window, sync_result, close)) = self.lan.as_ref().and_then(|host| {
+            let gm = host.menus.get(&conn)?.merchant.as_ref()?;
+            let g = host.hub.guest(conn).filter(|g| host.hub.here(g))?;
+            let sync_result = gm.slots[2] != gm.sent_result;
+            let close = gm
+                .merchant
+                .mob
+                .is_some_and(|id| !self.lan_merchant_valid(g, id));
+            (sync_result || close).then_some((gm.window, sync_result, close))
+        }) else {
+            return;
+        };
+        if sync_result
+            && let Some(host) = self.lan.as_mut()
+            && let Some(gm) = host
+                .menus
+                .get_mut(&conn)
+                .and_then(|menu| menu.merchant.as_mut())
+            && gm.window == window
+            && gm.slots[2] != gm.sent_result
+        {
+            gm.state = (gm.state + 1) & 0x7FFF;
+            gm.sent_result.clone_from(&gm.slots[2]);
+            let item = host.hub.stack(&gm.sent_result);
+            host.hub.send_to(
+                conn,
+                &C::ContainerSetSlot(play::ContainerSetSlot {
+                    container: window,
+                    state: gm.state,
+                    slot: 2,
+                    item,
+                }),
+            );
+        }
+        if close {
+            self.reply_menu_click(conn, super::lan_menus::ClickReply::Close(window));
+        }
+    }
+
+    #[cfg(test)]
     pub(super) fn lan_merchant_tick(&mut self) {
-        let changes: Vec<_> =
-            self.lan
-                .as_ref()
-                .map(|host| {
-                    host.menus
-                        .iter()
-                        .filter_map(|(conn, p)| {
-                            let gm = p.merchant.as_ref()?;
-                            let g = host.hub.guest(*conn).filter(|g| {
-                                host.hub.here(g) && !self.player_tick_canceled(*conn)
-                            })?;
-                            let sync_result = gm.slots[2] != gm.sent_result;
-                            let close = gm
-                                .merchant
-                                .mob
-                                .is_some_and(|id| !self.lan_merchant_valid(g, id));
-                            (sync_result || close).then_some((*conn, gm.window, sync_result, close))
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
-        for (conn, window, sync_result, close) in changes {
-            if sync_result
-                && let Some(host) = self.lan.as_mut()
-                && let Some(gm) = host
-                    .menus
-                    .get_mut(&conn)
-                    .and_then(|menu| menu.merchant.as_mut())
-                && gm.window == window
-                && gm.slots[2] != gm.sent_result
-            {
-                gm.state = (gm.state + 1) & 0x7FFF;
-                gm.sent_result.clone_from(&gm.slots[2]);
-                let item = host.hub.stack(&gm.sent_result);
-                host.hub.send_to(
-                    conn,
-                    &C::ContainerSetSlot(play::ContainerSetSlot {
-                        container: window,
-                        state: gm.state,
-                        slot: 2,
-                        item,
-                    }),
-                );
-            }
-            if close {
-                self.reply_menu_click(conn, super::lan_menus::ClickReply::Close(window));
+        let conns: Vec<u32> = self
+            .lan
+            .as_ref()
+            .map(|host| {
+                host.menus
+                    .iter()
+                    .filter(|(_, p)| p.merchant.is_some())
+                    .map(|(c, _)| *c)
+                    .collect()
+            })
+            .unwrap_or_default();
+        for conn in conns {
+            if !self.player_tick_canceled(conn) {
+                self.lan_merchant_tick_one(conn);
             }
         }
     }

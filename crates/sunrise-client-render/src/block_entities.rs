@@ -67,7 +67,7 @@ pub struct BlockEntityLease {
 /// transaction journal before a tentative removal and restored only on abort.
 #[derive(Clone, Copy)]
 pub struct TakenLeaseSnapshot {
-    token: u64,
+    taken: Taken,
     generation: u64,
     is_mod: bool,
     shows_box: bool,
@@ -89,6 +89,7 @@ pub enum TakenType {
 }
 
 /// The lease of a block entity taken out, and its type.
+#[derive(Clone, Copy)]
 struct Taken {
     token: u64,
     kind: TakenType,
@@ -1041,7 +1042,7 @@ impl BlockEntities {
     }
     /// Snapshot the active in-flight lease at `pos`, if an owner holds it via `take`.
     pub fn taken_lease_snapshot(&self, pos: &Pos) -> Option<TakenLeaseSnapshot> {
-        let token = *self.out.get(pos)?;
+        let taken = *self.out.get(pos)?;
         let generation = *self.generations.get(pos)?;
         let is_mod = self
             .mods
@@ -1049,7 +1050,7 @@ impl BlockEntities {
             .is_some_and(|set| set.contains(pos));
         let shows_box = self.boxes.contains(pos);
         Some(TakenLeaseSnapshot {
-            token,
+            taken,
             generation,
             is_mod,
             shows_box,
@@ -1061,7 +1062,7 @@ impl BlockEntities {
         assert!(!self.map.contains_key(&pos));
         self.replaced.remove(&pos);
         self.generations.insert(pos, snapshot.generation);
-        self.out.insert(pos, snapshot.token);
+        self.out.insert(pos, snapshot.taken);
         if snapshot.is_mod {
             self.mods.entry(chunk_of(pos)).or_default().insert(pos);
         }

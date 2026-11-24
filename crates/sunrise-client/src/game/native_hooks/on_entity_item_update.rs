@@ -5,15 +5,14 @@ use sunrise_core::geometry::Vec3;
 /// The hook points. Each does nothing in Sunrise.
 impl Game<'_> {
     pub(in crate::game) fn item_update_round(&mut self) -> native_ticks::TickRound {
-        // EntityTickEvent.Pre for the items about to tick, and the Post after them.
         let mut round = self.native_tick_round();
         let merging = self.remote.is_none();
         // One read says whether any item part listens; with none, no stack is looked at.
         let update_hook =
             merging && mod_api::__private::has_part_hook(mod_api::HookId::OnEntityItemUpdate);
-        // Items hear their Pre, and then their part, alone in
-        // their own turn (`tick_dropped_items`).
-        if (round.listening() || update_hook) && !round.alone_kind(native_ticks::ITEM) {
+        // When entity tick hooks are subscribed, each item hears its Pre and then its part in its
+        // own turn (`tick_dropped_items`). Without tick hooks, run `on_entity_item_update` here.
+        if !round.told_listening() && update_hook {
             let ticking = self.entity_ticking_area();
             let mut i = 0;
             while let Some(item) = self.dropped.get(i) {
@@ -22,26 +21,13 @@ impl Game<'_> {
                     item.position.x.floor() as i32,
                     item.position.z.floor() as i32,
                 );
-                if !(merging && self.joined_during_entity_pass(id)) && ticking(x, z) {
-                    if round.listening() {
-                        round.add(id, native_ticks::TickKind::Fixed(native_ticks::ITEM));
-                    } else if update_hook && self.item_update_halts(i) {
-                        round.halt(id);
-                    }
+                if !(merging && self.joined_during_entity_pass(id))
+                    && ticking(x, z)
+                    && self.item_update_halts(i)
+                {
+                    round.halt(id);
                 }
                 i += 1;
-            }
-            self.native_tick_pre_batch(&mut round);
-            // Each item the Pre let through, in order, hears its part.
-            let (mut n, mut from) = (0, 0);
-            while update_hook && let Some(id) = round.let_through(n) {
-                if let Some(i) = native_ticks::place(&self.dropped, from, |item| item.id == id) {
-                    if self.item_update_halts(i) {
-                        round.halt(id);
-                    }
-                    from = i + 1;
-                }
-                n += 1;
             }
         }
         round
@@ -294,15 +280,16 @@ mod on_entity_item_update_tests {
             &self,
             _: mod_api::HostSide<'_>,
             event: &mut mod_api::EntityTickPreEvent<'_>,
-        ) {
-            told(event.entities, "pre");
+        ) -> mod_api::Flow {
+            told(std::slice::from_ref(&event.entity), "pre");
+            mod_api::Flow::Continue
         }
         fn entity_tick_post(
             &self,
             _: mod_api::HostSide<'_>,
             event: &mut mod_api::EntityTickPostEvent<'_>,
         ) {
-            told(event.entities, "post");
+            told(std::slice::from_ref(&event.entity), "post");
         }
         fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
             for part in &self.0 {

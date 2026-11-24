@@ -418,13 +418,15 @@ impl Warden {
 }
 
 pub fn register(m: &mut Mob) {
-    // The brain at construction; a mod part's behaviors join it where the game constructs
-    // the mob (`join_mod_behaviors`, #824).
+    // The brain at construction; authoritative mobs stage mod behaviors for it
+    // when `attach_mod_parts` runs.
+    let generation = m.next_brain_generation();
     let st = Warden {
-        brain: Brain::new(0),
+        brain: Brain::new(generation, 0),
         ..Warden::default()
     };
     m.extra.warden = Some(Box::new(st));
+    m.stage_brain_behaviors(super::mod_behaviors::BehaviorTarget::Warden(generation));
     m.ai.nav.can_float = true;
     m.set_malus(PathType::UnpassableRail, 0.0);
     m.set_malus(PathType::Damaging, 8.0);
@@ -444,22 +446,18 @@ pub fn delay_sensors(m: &mut Mob) {
 }
 /// A brain whose `RunOne` shuffles with `seed` (vanilla seeds it from the
 /// clock; harnesses seed both sides alike), its sensors delayed again.
-pub fn init_brain(m: &mut Mob, seed: i64, host: Option<&dyn super::part_goals::GoalHost>) {
+pub fn init_brain(m: &mut Mob, seed: i64) {
+    let generation = m.next_brain_generation();
+    let mut built = false;
     if let Some(st) = m.extra.warden.as_mut() {
         let mem = std::mem::take(&mut st.brain.mem);
-        st.brain = Brain::new(seed);
+        st.brain = Brain::new(generation, seed);
         st.brain.mem = mem;
+        built = true;
     }
     delay_sensors(m);
-    if let Some(host) = host {
-        join_mod_behaviors(m, host);
-    }
-}
-/// The parts' behaviors join the warden's brain (#824), asked with the game's read host.
-pub fn join_mod_behaviors(m: &mut Mob, host: &dyn super::part_goals::GoalHost) {
-    let id = m.kind.id.clone();
-    if let Some(st) = m.extra.warden.as_mut() {
-        st.brain.join_mod_behaviors(&id, host);
+    if built {
+        m.stage_brain_behaviors(super::mod_behaviors::BehaviorTarget::Warden(generation));
     }
 }
 /// `Warden.finalizeSpawn`: a minute until it digs back down; a summoned

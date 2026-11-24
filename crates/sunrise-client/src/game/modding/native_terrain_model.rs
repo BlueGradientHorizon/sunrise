@@ -266,10 +266,7 @@ mod tests {
             );
             draw.unlit(unlit);
             let options = TerrainModelOptions::default().with_shade(TerrainShade::Model);
-            assert_eq!(
-                draw_terrain_model(&mut draw, &faces, sprite, options),
-                Ok(())
-            );
+            draw_terrain_model(&mut draw, &faces, sprite, options);
             draw.into_vertices()
         };
         let unlit = drawn(true);

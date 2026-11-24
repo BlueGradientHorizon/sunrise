@@ -27,14 +27,6 @@ use sunrise_client::{
     hud_layout, hud_overlays,
 };
 
-fn fov_use_item(item: &str) -> UseItem {
-    match item {
-        "minecraft:bow" => UseItem::Bow,
-        "minecraft:spyglass" => UseItem::Spyglass,
-        _ => UseItem::Other,
-    }
-}
-
 fn valid_fov_modifier(modifier: f32, fallback: f32) -> f32 {
     if modifier.is_finite() && (0.01..=10.0).contains(&modifier) {
         modifier

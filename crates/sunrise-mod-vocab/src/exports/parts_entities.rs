@@ -3,4 +3,3 @@ pub use parts::{
     EntityCapabilityProvider, EntityProvider, EntityProviders, entity_providers,
     has_entity_providers,
 };
-mod __private {}

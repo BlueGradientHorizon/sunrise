@@ -1589,7 +1589,7 @@ impl Game<'_> {
             self.with_source(context.source.clone(), |g| match kind {
                 SummaryKind::Success { broadcast: true } => {
                     g.feedback(text);
-                    g.send_admin_feedback(None);
+                    g.send_admin_feedback();
                 }
                 SummaryKind::Success { broadcast: false } => g.feedback_unbroadcast(text),
                 SummaryKind::Failure => g.command_failure(text),

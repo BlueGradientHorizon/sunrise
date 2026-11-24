@@ -252,7 +252,7 @@ impl crate::crafting::CraftingRemainder for Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mod_api::{FluidDefinition, FluidStateError, FluidTypeProperties};
+    use mod_api::{FluidDefinition, FluidStateError, FluidTypeProperties, HostBlockStates};
 
     /// Air, a stair with two properties (its default `facing=north,half=bottom`)
     /// and wheat with an integer `age`, as `parse` reads them.

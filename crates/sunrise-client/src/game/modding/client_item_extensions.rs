@@ -281,7 +281,7 @@ impl Game<'_> {
         else {
             return DroppedStackMotion::VANILLA;
         };
-        if !part.attached.enabled() || part.failed.load(Ordering::Relaxed) {
+        if !part.owner().is_enabled() {
             return DroppedStackMotion::VANILLA;
         }
         let Ok(api_stack) = stack.try_into_api() else {
@@ -362,9 +362,9 @@ fn dispatch_dropped_stack_motion(
     part: &ItemExtensionsPart,
     stack: &mod_api::ItemStack,
 ) -> DroppedStackMotion {
-    let provider = &**part.attached.part();
+    let provider = &**part.value();
     let ask = |operation, answer: MotionAnswer| {
-        part.callback_owner
+        part.owner()
             .call("client_item_extensions", operation, || {
                 answer(provider, host, stack)
             })

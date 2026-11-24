@@ -857,11 +857,7 @@ impl Hooks for WindContinuationObserver {
         _: mod_api::HostSide<'_>,
         event: &mut mod_api::EntityTickPostEvent<'_>,
     ) {
-        self.observed
-            .alone_ticks
-            .lock()
-            .unwrap()
-            .extend_from_slice(event.entities);
+        self.observed.alone_ticks.lock().unwrap().push(event.entity);
     }
 
     fn entity_join_level(

@@ -311,7 +311,7 @@ impl Hooks for Lights {
     }
     fn block_tool_modification(
         &self,
-        host: &dyn Host,
+        host: &dyn mod_api::Host,
         event: &mut mod_api::BlockToolModificationEvent<'_>,
     ) -> mod_api::Flow {
         HEARD

@@ -1136,6 +1136,23 @@ pub enum Pause {
     Trample(sunrise_world::block_landing::FarmlandTrample),
     /// A vehicle must propagate the selected fall before this move continues.
     FallToPassengers(super::living::PassengerFall),
+    /// A brain was constructed or rebuilt during the tick and needs the owning
+    /// game to fire `register_behaviors` with a scoped `ServerHost`.
+    RegisterBehaviors {
+        was_on_fire: bool,
+        stage: BrainStage,
+    },
+}
+
+/// Where a mob tick paused for staged `register_behaviors`.
+#[derive(Clone, Copy, Debug)]
+pub enum BrainStage {
+    /// Brain was just built or rebuilt before running its brain tick.
+    BeforeBrain,
+    /// Villager brain refreshed itself during `villager::tick_brain`.
+    AfterVillagerBrain,
+    /// A brain was rebuilt during `AgeableMob.aiStep` (`age_boundary_reached`).
+    AfterAgeBoundary { no_ai: bool, after_water: bool },
 }
 
 /// The remainder of the mob tick after a drink finishes on its owning level.
@@ -1204,6 +1221,21 @@ enum BaseStage {
 enum AiPause {
     Movement(MovementPhase),
     BeeDamage(super::bee::ServerAiStage),
+    RegisterBehaviors(BrainStage),
+}
+
+enum ServerAiPause {
+    BeeDamage(super::bee::ServerAiStage),
+    RegisterBehaviors(BrainStage),
+}
+
+impl From<ServerAiPause> for AiPause {
+    fn from(pause: ServerAiPause) -> Self {
+        match pause {
+            ServerAiPause::BeeDamage(stage) => Self::BeeDamage(stage),
+            ServerAiPause::RegisterBehaviors(stage) => Self::RegisterBehaviors(stage),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -1333,7 +1365,10 @@ pub fn tick(
                 resume_after_damage(m, w, level, events, resume, None)
             }
             TickProgress::Paused(
-                Pause::Equipment { .. } | Pause::Trample(_) | Pause::FallToPassengers(_),
+                Pause::Equipment { .. }
+                | Pause::Trample(_)
+                | Pause::FallToPassengers(_)
+                | Pause::RegisterBehaviors { .. },
             ) => unreachable!("a hostless tick cannot reach this pause"),
         };
     }
@@ -1578,6 +1613,33 @@ fn after_using_item(
     resume_after_equipment(m, w, level, was_on_fire, events, movement)
 }
 
+/// Continue `finish_server_ai_step` after the owning game flushed staged
+/// `register_behaviors` for a freshly built or rebuilt brain.
+pub(super) fn resume_after_register_behaviors(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    was_on_fire: bool,
+    stage: BrainStage,
+    events: &mut Vec<MobEvent>,
+    movement: Option<&mut Option<MobMovement>>,
+) -> TickProgress {
+    let pause_owner = movement.is_some();
+    if let BrainStage::AfterAgeBoundary { no_ai, after_water } = stage {
+        let next = if after_water {
+            AiStage::Finish
+        } else {
+            AiStage::AfterWater
+        };
+        return continue_ai_tail(m, w, level, events, was_on_fire, no_ai, pause_owner, next);
+    }
+    let progress = match finish_server_ai_step_from(m, w, level, events, Some(stage), pause_owner) {
+        ControlFlow::Continue(()) => ai_step_after_server_ai(m, w, level, events, pause_owner),
+        ControlFlow::Break(next) => ControlFlow::Break(next.into()),
+    };
+    finish_ai_progress(m, w, level, events, was_on_fire, movement, progress)
+}
+
 /// Continue without redoing base tick, item use or equipment detection.
 pub(super) fn resume_after_equipment(
     m: &mut Mob,
@@ -1753,6 +1815,9 @@ fn finish_ai_progress(
                 tail: DamageTail::BeeServerAi { next, was_on_fire },
             }))
         }
+        ControlFlow::Break(AiPause::RegisterBehaviors(stage)) => {
+            TickProgress::Paused(Pause::RegisterBehaviors { was_on_fire, stage })
+        }
     }
 }
 
@@ -1895,6 +1960,15 @@ fn continue_ai_tail(
                 AiStage::Finish
             }
             AiStage::Finish => {
+                if pause_damage && m.staged_parts.pending_behaviors.is_some() {
+                    return TickProgress::Paused(Pause::RegisterBehaviors {
+                        was_on_fire,
+                        stage: BrainStage::AfterAgeBoundary {
+                            no_ai,
+                            after_water: true,
+                        },
+                    });
+                }
                 return TickProgress::Complete(finish_tick(m, w, level, was_on_fire, events));
             }
         };
@@ -1907,6 +1981,13 @@ fn continue_ai_tail(
                     no_ai,
                 },
             }));
+        }
+        if pause_damage && m.staged_parts.pending_behaviors.is_some() {
+            let after_water = matches!(next, AiStage::Finish);
+            return TickProgress::Paused(Pause::RegisterBehaviors {
+                was_on_fire,
+                stage: BrainStage::AfterAgeBoundary { no_ai, after_water },
+            });
         }
     }
 }
@@ -1966,9 +2047,9 @@ pub(super) fn resume_movement(
                 if m.removed {
                     return TickProgress::Complete(false);
                 }
-                match finish_server_ai_step(m, w, level, events) {
+                match finish_server_ai_step_from(m, w, level, events, None, true) {
                     ControlFlow::Continue(()) => ai_step_after_server_ai(m, w, level, events, true),
-                    ControlFlow::Break(next) => ControlFlow::Break(AiPause::BeeDamage(next)),
+                    ControlFlow::Break(next) => ControlFlow::Break(next.into()),
                 }
             }
         }
@@ -4794,50 +4875,80 @@ fn server_ai_step(
             }
         }
     }
-    finish_server_ai_step(m, w, level, events).map_break(AiPause::BeeDamage)
+    finish_server_ai_step_from(m, w, level, events, None, pause_movement).map_break(Into::into)
 }
 
-fn finish_server_ai_step(
+fn finish_server_ai_step_from(
     m: &mut Mob,
     w: &MobWorld,
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
-) -> ControlFlow<super::bee::ServerAiStage> {
+    stage: Option<BrainStage>,
+    pause_owner: bool,
+) -> ControlFlow<ServerAiPause> {
     // A creaking looked at stands still: its navigation, move, look and jump
     // controls wait (CreakingPathNavigation and the Creaking*Control).
     let frozen = super::creaking::is_creaking(m) && !super::creaking::can_move(m);
-    // The bee's navigation waits while it pollinates.
-    if !frozen && !super::bee::pollinating(m) {
-        m.nav_tick(w);
+    let animal_brain_active = m.species() == Species::Sniffer
+        || m.species() == Species::HappyGhast && m.is_baby()
+        || m.species() == Species::CopperGolem
+        || m.species() == Species::Axolotl
+        || m.species() == Species::Tadpole;
+    if stage.is_none() {
+        // The bee's navigation waits while it pollinates.
+        if !frozen && !super::bee::pollinating(m) {
+            m.nav_tick(w);
+        }
+        if pause_owner {
+            if super::monster_brain::has_brain(m.species()) {
+                super::monster_brain::ensure_brain(m);
+            }
+            if m.species() == Species::Villager {
+                super::villager_brain::ensure_brain(m, w.game_time, w.day_time);
+            }
+            if animal_brain_active {
+                super::animal_brain::ensure_brain(m);
+            }
+            if m.staged_parts.pending_behaviors.is_some() {
+                return ControlFlow::Break(ServerAiPause::RegisterBehaviors(
+                    BrainStage::BeforeBrain,
+                ));
+            }
+        }
     }
-    if super::monster_brain::has_brain(m.species()) {
-        // Breeze/Creaking.customServerAiStep: the brain, then updateActivity.
-        super::monster_brain::tick(m, w, level, events);
+    if !matches!(stage, Some(BrainStage::AfterVillagerBrain)) {
+        if super::monster_brain::has_brain(m.species()) {
+            // Breeze/Creaking.customServerAiStep: the brain, then updateActivity.
+            super::monster_brain::tick(m, w, level, events);
+        }
+        if m.species() == Species::Villager {
+            // Villager.customServerAiStep: the brain, then the raid sound roll.
+            super::villager::tick_brain(m, w, level, events);
+            if pause_owner && m.staged_parts.pending_behaviors.is_some() {
+                return ControlFlow::Break(ServerAiPause::RegisterBehaviors(
+                    BrainStage::AfterVillagerBrain,
+                ));
+            }
+        }
+        if m.species() == Species::Warden {
+            // Warden.customServerAiStep: the brain and its bookkeeping.
+            super::warden::server_ai_step(m, w, level, events);
+        }
+        // Sniffer and HappyGhast.customServerAiStep: the brain (a happy ghast's
+        // only while it is a ghastling), then updateActivity.
+        if animal_brain_active {
+            super::animal_brain::tick(m, w, level, events);
+        }
     }
     if m.species() == Species::Villager {
-        // Villager.customServerAiStep: the brain, then the raid sound roll.
-        super::villager::tick_brain(m, w, level, events);
         if let Some(player) = super::villager::ext_mut(m).last_traded_player.take() {
             events.push(MobEvent::VillagerTrade { mob: m.id, player });
         }
         let _ = m.random.next_int_bound(100);
     }
-    if m.species() == Species::Warden {
-        // Warden.customServerAiStep: the brain and its bookkeeping.
-        super::warden::server_ai_step(m, w, level, events);
-    }
-    // Sniffer and HappyGhast.customServerAiStep: the brain (a happy ghast's
-    // only while it is a ghastling), then updateActivity.
-    if m.species() == Species::Sniffer
-        || m.species() == Species::HappyGhast && m.is_baby()
-        || m.species() == Species::CopperGolem
-        || m.species() == Species::Axolotl
-        || m.species() == Species::Tadpole
-    {
-        super::animal_brain::tick(m, w, level, events);
-    }
     if m.species() == Species::Bee {
-        return bee_server_ai_step(m, w, level, events, super::bee::ServerAiStage::Start);
+        return bee_server_ai_step(m, w, level, events, super::bee::ServerAiStage::Start)
+            .map_break(ServerAiPause::BeeDamage);
     }
     custom_server_ai_step(m, &mut Cx { w, level, events });
     tick_ai_controls(m, w, events, frozen);

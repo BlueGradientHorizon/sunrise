@@ -319,6 +319,7 @@ const SENSOR_RATES: [i64; 9] = [20, 20, 20, 20, 20, 20, 20, 40, 200];
 /// A villager's brain.
 #[derive(Clone, Debug)]
 pub struct Brain {
+    pub(super) generation: u64,
     pub mem: Memories,
     sensors: [i64; 9],
     /// The active non-core activity (`CORE` is always active).
@@ -344,10 +345,13 @@ fn brain(m: &Mob) -> Option<&Brain> {
     super::villager::ext(m).and_then(|e| e.brain.as_deref())
 }
 fn brain_mut(m: &mut Mob) -> &mut Brain {
-    super::villager::ext_mut(m)
-        .brain
-        .as_deref_mut()
-        .expect("the villager brain is built before it is used")
+    let (baby, farmer) = (m.is_baby(), super::villager::is_farmer(m));
+    if brain(m).is_none() {
+        let generation = m.next_brain_generation();
+        super::villager::ext_mut(m).brain = Some(Box::new(Brain::new(generation, baby, 0, farmer)));
+        m.stage_brain_behaviors(super::mod_behaviors::BehaviorTarget::Villager(generation));
+    }
+    super::villager::ext_mut(m).brain.as_deref_mut().unwrap()
 }
 pub(super) fn mem(m: &mut Mob) -> &mut Memories {
     &mut brain_mut(m).mem
@@ -361,8 +365,9 @@ pub(super) fn mem_ref(m: &Mob) -> Option<&Memories> {
 }
 
 impl Brain {
-    fn new(baby: bool, shuffle_seed: i64, farmer: bool) -> Self {
+    fn new(generation: u64, baby: bool, shuffle_seed: i64, farmer: bool) -> Self {
         let mut b = Brain {
+            generation,
             mem: Memories::default(),
             sensors: [0; 9],
             activity: Act::Idle,
@@ -376,16 +381,6 @@ impl Brain {
         };
         b.list = packages(baby, shuffle_seed, farmer);
         b
-    }
-    /// The parts' behaviors join before the sort, so each lands after vanilla's of its
-    /// priority and activity (#824), asked with the game's read host where the brain is built.
-    /// Nothing joins a type no part attached to, and nothing is asked or built then.
-    fn join_mod_behaviors(&mut self, mob_id: &str, host: &dyn super::part_goals::GoalHost) {
-        let before = self.list.len();
-        attach_behaviors(mob_id, &mut self.list, host);
-        if self.list.len() > before {
-            self.list.sort_by_key(|e| (e.prio, e.act.slot()));
-        }
     }
     fn requirements_met(&self, a: Act) -> bool {
         match a {
@@ -437,22 +432,20 @@ fn schedule(baby: bool, day_time: i64) -> Act {
 /// `Brain.Provider.makeBrain` and `Villager.registerBrainGoals`: a new brain
 /// from the packed memories (the sensors' first scans are delayed by draws
 /// from the mob's random), on the timeline's activity.
-fn make_brain(
-    m: &mut Mob,
-    packed: Memories,
-    shuffle_seed: i64,
-    w_times: (i64, i64),
-    host: Option<&dyn super::part_goals::GoalHost>,
-) -> Brain {
-    let mut b = Brain::new(m.is_baby(), shuffle_seed, super::villager::is_farmer(m));
+fn make_brain(m: &mut Mob, packed: Memories, shuffle_seed: i64, w_times: (i64, i64)) -> Brain {
+    let generation = m.next_brain_generation();
+    let mut b = Brain::new(
+        generation,
+        m.is_baby(),
+        shuffle_seed,
+        super::villager::is_farmer(m),
+    );
     for (i, rate) in SENSOR_RATES.iter().enumerate() {
         b.sensors[i] = i64::from(m.random.next_int_bound(*rate as i32).unwrap_or(0));
     }
     b.mem = packed;
     b.update_from_schedule(w_times.0, w_times.1);
-    if let Some(host) = host {
-        b.join_mod_behaviors(&m.kind.id, host);
-    }
+    m.stage_brain_behaviors(super::mod_behaviors::BehaviorTarget::Villager(generation));
     b
 }
 
@@ -469,16 +462,10 @@ fn initial_memories(m: &Mob) -> Memories {
 
 /// Builds the villager's brain as its constructor does, at this game time:
 /// the memories it remembers (job site, bed, bell) come from the mob.
-pub fn init(
-    m: &mut Mob,
-    game_time: i64,
-    day_time: i64,
-    shuffle_seed: i64,
-    host: Option<&dyn super::part_goals::GoalHost>,
-) {
+pub fn init(m: &mut Mob, game_time: i64, day_time: i64, shuffle_seed: i64) {
     let saved = super::villager::ext_mut(m).saved_memories.take();
     let packed = saved.map_or_else(|| initial_memories(m), |saved| *saved);
-    let b = make_brain(m, packed, shuffle_seed, (game_time, day_time), host);
+    let b = make_brain(m, packed, shuffle_seed, (game_time, day_time));
     super::villager::ext_mut(m).brain = Some(Box::new(b));
 }
 
@@ -492,12 +479,18 @@ pub struct Bx<'a, 'w, 'l> {
     refresh: bool,
 }
 
-/// `Brain.tick` (from `Villager.customServerAiStep`).
-pub fn tick(m: &mut Mob, w: &MobWorld, level: &mut DamageLevel<'_>, events: &mut Vec<MobEvent>) {
+/// Ensure the villager's brain is initialized before a brain tick so any staged
+/// `register_behaviors` dispatch can run on the owning `Game` first.
+pub fn ensure_brain(m: &mut Mob, game_time: i64, day_time: i64) {
     if brain(m).is_none() {
         let seed = i64::from(m.id);
-        init(m, w.game_time, w.day_time, seed, w.goal_host);
+        init(m, game_time, day_time, seed);
     }
+}
+
+/// `Brain.tick` (from `Villager.customServerAiStep`).
+pub fn tick(m: &mut Mob, w: &MobWorld, level: &mut DamageLevel<'_>, events: &mut Vec<MobEvent>) {
+    ensure_brain(m, w.game_time, w.day_time);
     // forgetOutdatedMemories
     mem(m).tick();
     tick_sensors(m, w, level.random());
@@ -572,13 +565,7 @@ fn refresh(m: &mut Mob, list: &mut [Entry], current: usize, cx: &mut Bx) {
     let b = brain_mut(m);
     let packed = b.mem.pack();
     let seed = b.shuffle_seed;
-    let nb = make_brain(
-        m,
-        packed,
-        seed,
-        (cx.w.game_time, cx.w.day_time),
-        cx.w.goal_host,
-    );
+    let nb = make_brain(m, packed, seed, (cx.w.game_time, cx.w.day_time));
     super::villager::ext_mut(m).brain = Some(Box::new(nb));
 }
 
@@ -4348,32 +4335,41 @@ fn packages(baby: bool, seed: i64, farmer: bool) -> Vec<Entry> {
 
 // ---- Mod behaviors ------------------------------------------------------
 
-/// The parts' behaviors for this villager's brain (#824): each joins the
-/// list with its activity and priority, refused where the villager brain has
-/// no such activity.
-fn attach_behaviors(mob_id: &str, list: &mut Vec<Entry>, host: &dyn super::part_goals::GoalHost) {
-    struct Reg<'a> {
-        list: &'a mut Vec<Entry>,
-        mob_id: &'a str,
+/// Validate that this brain keeps a slot for `activity`.
+pub(super) fn validate_activity(
+    activity: mod_api::Activity,
+) -> Result<(), mod_api::BehaviorRefusal> {
+    act_of(activity).map(|_| ())
+}
+
+/// Apply staged mod behaviors to the villager brain if it is still the same
+/// `generation` instance; otherwise discard them safely and return `false`.
+pub(super) fn apply_staged(
+    m: &mut Mob,
+    generation: u64,
+    staged: Vec<mod_api::RegisteredBehavior>,
+) -> bool {
+    let Some(b) = super::villager::ext_mut(m).brain.as_deref_mut() else {
+        super::mod_behaviors::discard_registrations(staged);
+        return false;
+    };
+    if b.generation != generation {
+        super::mod_behaviors::discard_registrations(staged);
+        return false;
     }
-    impl mod_api::BehaviorRegistrarBackend for Reg<'_> {
-        fn add_behavior(
-            &mut self,
-            r: mod_api::RegisteredBehavior,
-        ) -> Result<(), mod_api::BehaviorRefusal> {
-            let act = act_of(r.activity)?;
-            self.list.push(Entry {
-                prio: r.priority,
-                act,
-                b: B::Mod(super::mod_behaviors::ModBehavior::new(r)),
-            });
-            Ok(())
-        }
-        fn mob_id(&self) -> &str {
-            self.mob_id
-        }
+    let before = b.list.len();
+    for r in staged {
+        let act = act_of(r.activity).expect("staged activity was validated on add");
+        b.list.push(Entry {
+            prio: r.priority,
+            act,
+            b: B::Mod(super::mod_behaviors::ModBehavior::new(r)),
+        });
     }
-    super::mod_behaviors::attach(mob_id, &mut Reg { list, mob_id }, host);
+    if b.list.len() > before {
+        b.list.sort_by_key(|e| (e.prio, e.act.slot()));
+    }
+    true
 }
 
 /// The villager brain's slot for a mod-api activity.

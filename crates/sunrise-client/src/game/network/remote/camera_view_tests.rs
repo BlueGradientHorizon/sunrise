@@ -598,12 +598,16 @@ fn a_canceled_tick_counts_no_effect_down() {
     struct Cancel(Heard);
     #[mod_api::__subscriptions]
     impl Hooks for Cancel {
-        fn entity_tick_pre(&self, _: HostSide<'_>, event: &mut EntityTickPreEvent<'_>) {
-            self.0.lock().unwrap().extend_from_slice(event.entities);
-            for id in [ZOMBIE as u32, HUSK as u32] {
-                if event.entities.contains(&id) {
-                    event.canceled.push(id);
-                }
+        fn entity_tick_pre(
+            &self,
+            _: HostSide<'_>,
+            event: &mut EntityTickPreEvent<'_>,
+        ) -> mod_api::Flow {
+            self.0.lock().unwrap().push(event.entity);
+            if event.entity == ZOMBIE as u32 || event.entity == HUSK as u32 {
+                mod_api::Flow::Cancel
+            } else {
+                mod_api::Flow::Continue
             }
         }
     }

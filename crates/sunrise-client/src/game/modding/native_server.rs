@@ -2649,6 +2649,7 @@ impl Game<'_> {
             arguments,
             self.native_level_key(),
             position,
+            rotation,
         ))
     }
 

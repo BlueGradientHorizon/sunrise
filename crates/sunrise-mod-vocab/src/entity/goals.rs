@@ -7,7 +7,7 @@
 //! ```no_run
 //! # use mod_api::{
 //! #     EntityPart, Goal, GoalContext, GoalFlags, Hooks, RegisterGoalsEvent, Registrar,
-//! #     RegistrationContext,
+//! #     RegistrationContext, ServerHost,
 //! # };
 //! # use std::sync::atomic::{AtomicU32, Ordering};
 //! #[derive(Default)]
@@ -16,7 +16,11 @@
 //! struct ZombieGoals;
 //! #[mod_api::sunrise_part]
 //! impl EntityPart for ZombieGoals {
-//!     fn register_goals(&self, _host: &dyn Host, event: &mut RegisterGoalsEvent<'_, '_>) {
+//!     fn register_goals(
+//!         &self,
+//!         _host: &mut dyn ServerHost,
+//!         event: &mut RegisterGoalsEvent<'_, '_>,
+//!     ) {
 //!         event.goals.add_goal(7, Stare::default());
 //!     }
 //! }
@@ -165,6 +169,12 @@ impl<'a> GoalRegistrar<'a> {
         self.mod_id = mod_id;
         self.part = part;
     }
+    pub(crate) fn checkpoint(&self) -> (usize, usize) {
+        self.inner.checkpoint()
+    }
+    pub(crate) fn rollback(&mut self, checkpoint: (usize, usize)) {
+        self.inner.rollback(checkpoint);
+    }
     /// `GoalSelector.addGoal(priority, goal)` on the mob's goal selector.
     pub fn add_goal<P: Goal>(&mut self, priority: i32, goal: P) {
         self.inner
@@ -225,6 +235,10 @@ pub trait GoalRegistrarBackend {
     );
     /// The entity type id of the mob being built.
     fn mob_id(&self) -> &str;
+    /// Checkpoint staged goal counts before a listener runs.
+    fn checkpoint(&self) -> (usize, usize);
+    /// Discard staged goals added since `checkpoint` when a listener aborts.
+    fn rollback(&mut self, checkpoint: (usize, usize));
 }
 
 // no wire: borrowed host or registrar backend; access stays scoped to the owning call.
@@ -382,6 +396,13 @@ mod tests {
         }
         fn mob_id(&self) -> &str {
             "minecraft:zombie"
+        }
+        fn checkpoint(&self) -> (usize, usize) {
+            (self.goals.len(), self.targets.len())
+        }
+        fn rollback(&mut self, (goals, targets): (usize, usize)) {
+            self.goals.truncate(goals);
+            self.targets.truncate(targets);
         }
     }
 

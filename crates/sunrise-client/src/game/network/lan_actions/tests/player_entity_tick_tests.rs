@@ -21,13 +21,14 @@ struct Players {
 
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for Players {
-    fn entity_tick_pre(&self, host: HostSide<'_>, event: &mut EntityTickPreEvent<'_>) {
-        self.heard
-            .lock()
-            .unwrap()
-            .push(("pre", event.entities.to_vec()));
+    fn entity_tick_pre(
+        &self,
+        host: HostSide<'_>,
+        event: &mut EntityTickPreEvent<'_>,
+    ) -> mod_api::Flow {
+        self.heard.lock().unwrap().push(("pre", vec![event.entity]));
         if let Some(id) = *self.cancel.lock().unwrap()
-            && event.entities.contains(&id)
+            && event.entity == id
         {
             if let (Some(immunity), HostSide::Server(host)) = (self.rider_immunity_at_pre, host) {
                 assert_eq!(
@@ -35,21 +36,22 @@ impl mod_api::Hooks for Players {
                     Some(immunity)
                 );
             }
-            event.canceled.push(id);
+            return mod_api::Flow::Cancel;
         }
+        mod_api::Flow::Continue
     }
     fn entity_tick_post(&self, host: HostSide<'_>, event: &mut mod_api::EntityTickPostEvent<'_>) {
         self.heard
             .lock()
             .unwrap()
-            .push(("post", event.entities.to_vec()));
-        if let HostSide::Server(host) = host {
-            self.post_positions.lock().unwrap().extend(
-                event
-                    .entities
-                    .iter()
-                    .filter_map(|&id| Some((id, host.entity(id)?.position(host)?))),
-            );
+            .push(("post", vec![event.entity]));
+        if let HostSide::Server(host) = host
+            && let Some(pos) = host.entity(event.entity).and_then(|e| e.position(host))
+        {
+            self.post_positions
+                .lock()
+                .unwrap()
+                .push((event.entity, pos));
         }
     }
 }
@@ -133,15 +135,15 @@ fn a_canceled_player_skips_its_server_player_tick_while_the_others_run_it() {
                 [
                     ("pre", vec![first]),
                     ("pre", vec![second]),
-                    ("post", vec![second])
+                    ("post", vec![second]),
                 ]
             );
         });
     });
 }
 
-/// #1142's second test: a pig ridden by a player, both told alone. The pig is told
-/// alone around its own tick in the mobs' pass and the player around its own in the players';
+/// #1142's second test: a pig ridden by a player. The pig is bracketed individually around
+/// its own tick in the mobs' pass and each player around its own in the players' pass;
 /// canceling the player's Pre stops its tick (its far chest stays open) and its Post.
 #[test]
 #[ignore = "daily"]
@@ -202,8 +204,18 @@ fn a_player_riding_a_pig_is_told_its_own_tick_as_the_pig_is() {
             );
 
             *cancel.lock().unwrap() = None;
+            heard.lock().unwrap().clear();
             game.mobs[0].position.x += 1.0;
             game.tick_guests();
+            assert_eq!(
+                *heard.lock().unwrap(),
+                [
+                    ("pre", vec![rider]),
+                    ("post", vec![rider]),
+                    ("pre", vec![other]),
+                    ("post", vec![other]),
+                ]
+            );
             assert!(
                 post_positions.lock().unwrap().contains(&(rider, seated)),
                 "the rider's Post still sees the old seat position"

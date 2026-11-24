@@ -187,42 +187,13 @@ impl Game<'_> {
                 }
             }
         }
-        // EntityTickEvent.Pre for the mobs and players this client ticks, once for the family
-        // before their tick, and the Post after it (below). A canceled one keeps its state. One
-        // of a type a mod named is told alone, right before and right after its own turn below.
+        // EntityTickEvent.Pre and .Post bracket each mob and remote player individually right
+        // before and right after its own turn below.
         let mut round = self.native_tick_round();
         // The mount this client moves ticks in `remote_ride` instead, as its
         // authoritative side (LivingEntity.tick with travelRidden).
         let driven = self.driven_mount().map(|m| m.id);
-        let alone_player = round.alone_kind(PLAYER);
-        let mut alone_any = false;
-        if round.listening() {
-            let players = self.remote.as_ref().map(|r| &r.level_players);
-            for m in self.mobs.iter() {
-                let player = players.is_some_and(|p| p.contains_key(&(m.id as i32)));
-                let ticks = running
-                    || player
-                    || self
-                        .remote
-                        .as_ref()
-                        .is_some_and(|r| self.entity_ticks_while_frozen(r, m.id));
-                if ticks && driven != Some(m.id) {
-                    let alone = if player {
-                        alone_player
-                    } else {
-                        round.alone_mob(&m.kind)
-                    };
-                    if alone {
-                        alone_any = true;
-                    } else if player {
-                        round.add(m.id, TickKind::Fixed(PLAYER));
-                    } else {
-                        round.add(m.id, TickKind::Mob(m.kind.clone()));
-                    }
-                }
-            }
-            self.native_tick_pre_batch(&mut round);
-        }
+        let told = round.told_listening();
         // EntityFluidInteraction.update for the entities this window only displays: the
         // server never sends the fluid contact, and the renderers read it (cod, salmon and
         // tropical fish lie on their side without `in_water`, #1591).
@@ -277,23 +248,9 @@ impl Game<'_> {
         // The window's own player already splashes from its motion tick.
         let own = self.remote.as_ref().map(|r| r.entity_id);
         for i in 0..self.mobs.len() {
-            let mob = &self.mobs[i];
-            let id = mob.id;
-            let told_alone = round.pre()
-                && alone_any
-                && if self
-                    .remote
-                    .as_ref()
-                    .unwrap()
-                    .level_players
-                    .contains_key(&(id as i32))
-                {
-                    alone_player
-                } else {
-                    round.alone_mob(&mob.kind)
-                };
-            // One told alone takes this step in its own turn, after its Pre (below).
-            if round.canceled(id) || told_alone && fluids[i].is_some() && driven != Some(id) {
+            let id = self.mobs[i].id;
+            // When Pre is subscribed, each entity takes its fluid step in its own turn after Pre.
+            if round.pre() && fluids[i].is_some() && driven != Some(id) {
                 continue;
             }
             client_fluid_step(
@@ -399,9 +356,9 @@ impl Game<'_> {
         let mut mob_fx = water_fx;
         let tick_listened = mod_api::__private::listened(mod_api::HookId::PlayerTickPre)
             || mod_api::__private::listened(mod_api::HookId::PlayerTickPost);
-        // A mob told alone hears its hooks with the list in place: each slot's mob is kept by id,
-        // and where it is once a hook changed the list.
-        let slots: Vec<u32> = if alone_any {
+        // When tick hooks are subscribed, each entity hears them with the list in place: keep
+        // each slot's id so row shifts during hooks still resolve the remaining slots.
+        let slots: Vec<u32> = if told {
             self.mobs.iter().map(|m| m.id).collect()
         } else {
             Vec::new()
@@ -440,14 +397,15 @@ impl Game<'_> {
             if round.canceled(id) {
                 continue;
             }
-            // Of a type a mod named: its own Pre, then its fluid step and its tick.
-            let alone = if player {
-                alone_player.then_some(TickKind::Fixed(PLAYER))
-            } else {
-                (alone_any && round.alone_mob(&self.mobs[i].kind))
-                    .then(|| TickKind::Mob(self.mobs[i].kind.clone()))
-            };
-            if let Some(kind) = &alone
+            // Its own Pre, then its fluid step and its tick.
+            let kind = told.then(|| {
+                if player {
+                    TickKind::Fixed(PLAYER)
+                } else {
+                    TickKind::Mob(self.mobs[i].kind.clone())
+                }
+            });
+            if let Some(kind) = &kind
                 && round.pre()
             {
                 let stamp = self.mobs.stamp();
@@ -744,7 +702,7 @@ impl Game<'_> {
                 self.remote_entity_section_step(section_id, section_from, section_to);
             }
             // Its own Post, right after its turn.
-            if let Some(kind) = &alone
+            if let Some(kind) = &kind
                 && round.post()
             {
                 let stamp = self.mobs.stamp();
@@ -756,7 +714,6 @@ impl Game<'_> {
                 }
             }
         }
-        self.native_tick_post_batch(round);
         // ExperienceOrb.tick runs on a client too (all but the merges and the
         // push out of a block, which are the server's): gravity, buoyancy,
         // collisions and the pull of the nearest player between the server's
@@ -1055,13 +1012,6 @@ impl Game<'_> {
             .as_ref()
             .and_then(|r| r.entities.get(&(id as i32)))
             .is_some_and(|t| t.vehicle.is_some())
-    }
-    /// The visit of a told entity whose Pre answered `ticks`: a root counts only when it ticks,
-    /// a passenger always.
-    pub(in crate::game) fn count_told_client_tick(&mut self, id: u32, ticks: bool) {
-        if ticks || self.client_passenger(id) {
-            self.count_client_tick(id);
-        }
     }
     /// `LocalPlayer.aiStep` (877-883): water vision reads the local body's `Entity.baseTick`
     /// `isEyeInFluid(FluidTags.WATER)` sample and `this.isSpectator()`.

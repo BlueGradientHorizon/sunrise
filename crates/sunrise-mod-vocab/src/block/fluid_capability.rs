@@ -1,6 +1,7 @@
 //! The fluid capability (arismoko/horizon#41 §7): [`FLUIDS`], as NeoForge 26.3's
 //! `Capabilities.Fluid.BLOCK`, a [`ResourceHandler`] of [`FluidResource`]s as
 //! [`ITEMS`](crate::ITEMS) is of items. Amounts are millibuckets: a bucket is 1000.
+use super::block_states::HostBlockStates;
 use super::item_place::ItemCapabilityDefault;
 use crate::__private::ingredient_parser::WalkedIngredient;
 use crate::Components;

@@ -308,30 +308,25 @@ impl Game<'_> {
     /// mount's and the inventory's slots. Only the level the player is in
     /// checks its menu (`ServerPlayer.tick`): another level ticking has
     /// none of its mobs (#5331).
-    pub(super) fn tick_lan_mount_menus(&mut self) {
+    pub(super) fn tick_lan_mount_menu_one(&mut self, conn: u32) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
-        let open: Vec<(u32, u32, i32)> = host
+        let Some((mob, window)) = host
             .play
-            .iter()
-            .filter_map(|(c, p)| p.mount_window.as_ref().map(|m| (*c, m.mob, m.window)))
-            .collect();
-        for (conn, mob, window) in open {
-            let Some(host) = self.lan.as_ref() else {
-                return;
-            };
-            let Some(g) = host.hub.guests.iter().find(|g| g.conn == conn) else {
-                continue;
-            };
-            if !host.hub.here(g) || self.player_tick_canceled(conn) {
-                continue;
-            }
-            if self.lan_mount_valid(g, mob) {
-                self.lan_send_mount(conn, false);
-            } else {
-                self.reply_menu_click(conn, super::lan_menus::ClickReply::Close(window));
-            }
+            .get(&conn)
+            .and_then(|p| p.mount_window.as_ref())
+            .map(|m| (m.mob, m.window))
+        else {
+            return;
+        };
+        let Some(g) = host.hub.guest(conn).filter(|g| host.hub.here(g)) else {
+            return;
+        };
+        if self.lan_mount_valid(g, mob) {
+            self.lan_send_mount(conn, false);
+        } else {
+            self.reply_menu_click(conn, super::lan_menus::ClickReply::Close(window));
         }
     }
 }

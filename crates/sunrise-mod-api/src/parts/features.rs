@@ -273,7 +273,7 @@ impl FeaturesRegistrar for PartRegistrar {
         name: &str,
         ty: Arc<dyn crate::PlacementModifierType>,
     ) {
-        let id = match self.owned_declaration_id(name) {
+        let id = match self.declaration_id(name) {
             Ok(id) => id,
             Err(reason) => {
                 self.refused.push(reason);

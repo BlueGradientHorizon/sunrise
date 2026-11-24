@@ -657,15 +657,16 @@ pub(super) fn emit<'a>(
             let custom_spawners = event_type == "ModifyCustomSpawnersEvent" && name == "spawners";
             // The lent click checkpoints its working stacks and edit log; it cannot be cloned.
             let stacked_click = event_type == "ItemStackedOnOtherEvent" && name == "click";
+            let staged_mob_registrar = (event_type == "RegisterGoalsEvent" && name == "goals")
+                || (event_type == "RegisterBehaviorsEvent" && name == "behaviors");
             if scalar || task_registration || custom_spawners || stacked_click {
+                rollback.push((name.clone(), false));
+            } else if staged_mob_registrar {
+                surfaces.push(name.clone());
                 rollback.push((name.clone(), false));
             } else if matches!(&field_ty, Type::Reference(reference) if reference.mutability.is_some())
             {
                 if matches!(&field_ty, Type::Reference(reference) if matches!(*reference.elem, Type::TraitObject(_)))
-                    || matches!(
-                        ty.to_token_stream().to_string().as_str(),
-                        "& mut GoalRegistrar < '_ >" | "& mut BehaviorRegistrar < '_ >"
-                    )
                 {
                     surfaces.push(name.clone());
                 }
@@ -1287,7 +1288,7 @@ pub(super) fn emit<'a>(
         // owning sink handles publication; drawing and other live views are not registrars.
         for (field, by_reference) in rollback
             .iter()
-            .filter(|(field, _)| !surfaces.contains(field))
+            .filter(|(field, by_reference)| !surfaces.contains(field) || !*by_reference)
         {
             // A rebuilt event's owned scalars cannot escape an aborted listener.
             if hook.event_per_listener && !by_reference {
@@ -1306,6 +1307,8 @@ pub(super) fn emit<'a>(
             if (event_type == "RegisterConfigurationTasksEvent" && field == "registration")
                 || (event_type == "ModifyCustomSpawnersEvent" && field == "spawners")
                 || (event_type == "ItemStackedOnOtherEvent" && field == "click")
+                || (event_type == "RegisterGoalsEvent" && field == "goals")
+                || (event_type == "RegisterBehaviorsEvent" && field == "behaviors")
             {
                 snaps.push(format!("{event}.{field}.checkpoint()"));
                 let restore = format!("{event}.{field}.rollback({saved}.{index});");
@@ -1499,6 +1502,8 @@ pub(super) fn emit<'a>(
                     | "farmland_trample"
                     | "on_sheared"
                     | "register_configuration_tasks"
+                    | "register_goals"
+                    | "register_behaviors"
             ) {
                 // Let the existing journal see the unwind before invoke catches it.
                 let (host, host_param) = host.as_ref().unwrap();

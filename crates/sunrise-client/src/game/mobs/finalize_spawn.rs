@@ -91,7 +91,7 @@ impl finalize::FinalizeLevel for FinalizeGame<'_, '_> {
         }
         let t = t.clone();
         self.game.next_entity += 1;
-        Some(self.game.new_mob(self.game.next_entity, t, Vec3::ZERO, 0.0))
+        Some(Mob::new(self.game.next_entity, t, Vec3::ZERO, 0.0))
     }
     fn spawn_data(&self) -> finalize::SpawnData<'_> {
         self.game.finalize_spawn_data()

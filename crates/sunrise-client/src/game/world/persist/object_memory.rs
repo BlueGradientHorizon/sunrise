@@ -542,9 +542,6 @@ impl Game<'_> {
         admitted: Option<bool>,
     ) -> u32 {
         self.resolve_loaded_profession(&mut m);
-        // A loaded mob is constructed here, as a spawned one is: the species' goals and brain
-        // first, then the entity parts' `register_goals` and `register_behaviors`.
-        m.attach_mod_parts(&*self);
         if sunrise_client::mobs::camel::is_camel(m.species()) {
             sunrise_client::mobs::camel::finish_load(&mut m, self.world.game_time);
         }
@@ -607,10 +604,13 @@ impl Game<'_> {
         if resident {
             self.bind_saved_entity_attachments(id, &mut m.attachment_lifetime);
             self.mobs.push(m);
+            let join = self.mobs.last().unwrap().join;
+            self.flush_resident_mob_parts(id, join);
             if restore_target {
                 self.native_restore_loaded_target(id, anger_uuid);
             }
         } else {
+            self.flush_unjoined_mob_parts(&mut m);
             self.persist.off_level.insert(id, OffLevel::Mob(m));
         }
         id

@@ -147,7 +147,7 @@ impl Game<'_> {
     pub(super) fn create_triggered(&mut self, kind: &str, at: [f64; 3], yaw: f32) -> Option<u32> {
         let t = self.res.mob_types().get(kind).cloned()?;
         self.next_entity += 1;
-        let mut mob = self.new_mob(
+        let mut mob = sunrise_client::mobs::Mob::new(
             self.next_entity,
             t,
             sunrise_core::geometry::Vec3::new(at[0], at[1], at[2]),

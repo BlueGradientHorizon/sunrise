@@ -252,7 +252,7 @@ impl Drop for ModBlockEntity {
 /// An empty mod block entity with no type id, for tests and defaults.
 impl Default for ModBlockEntity {
     fn default() -> Self {
-        Self::with_type(String::new(), None, ModBlockEntityFields::default())
+        Self::with_type(String::new(), None, None, ModBlockEntityFields::default())
     }
 }
 impl Clone for ModBlockEntity {

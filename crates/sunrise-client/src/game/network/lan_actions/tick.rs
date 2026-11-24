@@ -49,114 +49,129 @@ impl Game<'_> {
                 self.advance_guest_entity_clock(conn);
             }
         }
-        // For a root player the common tick is part of the cancellable
-        // round, even for a spectator touching an unloaded chunk.
-        let round = self.native_players_tick_pre();
+        self.apply_guest_camera_requests();
+        self.creatures.canceled_players.clear();
+        let mut round = self.native_tick_round();
+        // For a root player the common tick is part of the cancellable round,
+        // even for a spectator touching an unloaded chunk. Each guest's Pre,
+        // ServerPlayer.tick work, and Post bracket that guest individually.
         for &(conn, passenger) in &turns {
-            if !passenger && !self.player_tick_canceled(conn) && !self.on_server_trip(conn) {
+            let Some(entity_id) = self.lan.as_ref().and_then(|host| {
+                let g = host.hub.guest(conn).filter(|g| host.hub.here(g))?;
+                Some(g.entity_id as u32)
+            }) else {
+                continue;
+            };
+            if round.pre()
+                && !self.native_tick_pre_one(
+                    &mut round,
+                    entity_id,
+                    crate::game::native_ticks::PLAYER,
+                )
+            {
+                self.creatures.canceled_players.push(conn);
+                continue;
+            }
+            if self
+                .lan
+                .as_ref()
+                .is_none_or(|host| host.hub.guest(conn).is_none_or(|g| !host.hub.here(g)))
+            {
+                continue;
+            }
+            if !passenger && !self.on_server_trip(conn) {
                 self.advance_guest_entity_clock(conn);
             }
-        }
-        self.tick_guest_cameras();
-        self.lan_merchant_tick();
-        self.lan_stations_tick();
-        self.lan_tables_tick();
-        self.lan_mod_crafting_tick();
-        self.lan_menu_links_tick();
-        self.lan_containers_tick();
-        self.tick_lan_mount_menus();
-        self.announce_guest_advancements();
-        let mut told = None;
-        for &(conn, _) in &turns {
-            self.native_player_tick_post_alone(&round, &mut told);
-            let canceled = self.player_tick_canceled(conn);
-            let Some(host) = self.lan.as_mut() else {
-                break;
-            };
-            let Some(gi) = host
-                .hub
-                .guests
-                .connection_index(conn)
-                .filter(|&i| host.hub.here(&host.hub.guests[i]))
-            else {
-                continue;
-            };
-            if !canceled && round.alone_kind_post(crate::game::native_ticks::PLAYER) {
-                told = Some(host.hub.guests[gi].entity_id as u32);
-            }
+            self.tick_guest_camera_one(conn);
+            self.lan_merchant_tick_one(conn);
+            self.lan_station_tick_one(conn);
+            self.lan_table_tick_one(conn);
+            self.lan_mod_crafting_tick_one(conn);
+            self.lan_menu_links_tick_one(conn);
+            self.lan_container_tick_one(conn);
+            self.tick_lan_mount_menu_one(conn);
+            self.announce_guest_advancements();
             // A player waiting for a teleport destination cannot dig there yet.
-            if canceled || self.on_server_trip(conn) {
-                continue;
-            }
-            let host = self.lan.as_mut().unwrap();
-            if let Some((pos, _)) = host.play.get(&conn).and_then(|play| play.digging)
-                && self
-                    .res
-                    .facts()
-                    .is_air(self.world.block(pos[0], pos[1], pos[2]))
-                && let Some(play) = host.play.get_mut(&conn)
+            if !self.on_server_trip(conn)
+                && let Some(host) = self.lan.as_mut()
+                && let Some(gi) = host
+                    .hub
+                    .guests
+                    .connection_index(conn)
+                    .filter(|&i| host.hub.here(&host.hub.guests[i]))
             {
-                play.digging = None;
-                play.mining = None;
-            }
-            let play = host.play.entry(conn).or_default();
-            let digging = play.digging;
-            if digging.is_some() || play.mining.is_some() || play.destroy_delay > 0 {
-                let _ = self.as_guest_at(gi, conn, |g| {
-                    if let Some((pos, face)) = digging {
-                        g.forced_hit = Some(Hit {
-                            pos,
-                            face,
-                            point: [
-                                f64::from(pos[0]) + 0.5,
-                                f64::from(pos[1]) + 0.5,
-                                f64::from(pos[2]) + 0.5,
-                            ],
-                            inside: false,
-                        });
-                    }
-                    let _ = g.tick_mining();
-                    g.forced_hit = None;
-                });
-                // Instant STARTs complete without a STOP; do not break a later
-                // block planted in the same position again.
-                if digging.is_some()
-                    && let Some(host) = self.lan.as_mut()
+                if let Some((pos, _)) = host.play.get(&conn).and_then(|play| play.digging)
+                    && self
+                        .res
+                        .facts()
+                        .is_air(self.world.block(pos[0], pos[1], pos[2]))
                     && let Some(play) = host.play.get_mut(&conn)
-                    && (host.hub.guest(conn).is_some_and(|g| g.creative()) || play.mining.is_none())
                 {
                     play.digging = None;
+                    play.mining = None;
+                }
+                let play = host.play.entry(conn).or_default();
+                let digging = play.digging;
+                if digging.is_some() || play.mining.is_some() || play.destroy_delay > 0 {
+                    let _ = self.as_guest_at(gi, conn, |g| {
+                        if let Some((pos, face)) = digging {
+                            g.forced_hit = Some(Hit {
+                                pos,
+                                face,
+                                point: [
+                                    f64::from(pos[0]) + 0.5,
+                                    f64::from(pos[1]) + 0.5,
+                                    f64::from(pos[2]) + 0.5,
+                                ],
+                                inside: false,
+                            });
+                        }
+                        let _ = g.tick_mining();
+                        g.forced_hit = None;
+                    });
+                    // Instant STARTs complete without a STOP; do not break a later
+                    // block planted in the same position again.
+                    if digging.is_some()
+                        && let Some(host) = self.lan.as_mut()
+                        && let Some(play) = host.play.get_mut(&conn)
+                        && (host.hub.guest(conn).is_some_and(|g| g.creative())
+                            || play.mining.is_none())
+                    {
+                        play.digging = None;
+                    }
+                }
+                self.guest_delayed_destroy(conn);
+                self.guest_dig_feedback(conn);
+                let _ = self.as_guest(conn, |g| {
+                    if let Some(player) = g.player.as_mut() {
+                        player.health.advance_damage_cooldown();
+                    }
+                    // ServerPlayer.tick: the TICK and LEVITATION triggers,
+                    // player attributes, then PlayerAdvancements.flushDirty.
+                    g.tick_level_advancements();
+                    g.update_player_attributes();
+                });
+                if let Some(host) = self.lan.as_mut() {
+                    host.hub.flush_progress(conn);
+                    if !host.hub.native_advancement_grants.is_empty() {
+                        self.run_native_advancement_grants();
+                    }
+                }
+                if let Some(host) = self.lan.as_mut()
+                    && let Some(gi) = host.hub.guests.connection_index(conn)
+                    && host.hub.here(&host.hub.guests[gi])
+                    && host.hub.guests[gi].post_effects_dirty
+                {
+                    host.hub.send_post_effects(gi);
                 }
             }
-            self.guest_delayed_destroy(conn);
-            self.guest_dig_feedback(conn);
-            let _ = self.as_guest(conn, |g| {
-                if let Some(player) = g.player.as_mut() {
-                    player.health.advance_damage_cooldown();
-                }
-                // ServerPlayer.tick: the TICK and LEVITATION triggers,
-                // player attributes, then PlayerAdvancements.flushDirty.
-                g.tick_level_advancements();
-                g.update_player_attributes();
-            });
-            if let Some(host) = self.lan.as_mut() {
-                host.hub.flush_progress(conn);
-                if !host.hub.native_advancement_grants.is_empty() {
-                    self.run_native_advancement_grants();
-                }
-            }
-            if let Some(host) = self.lan.as_mut()
-                && let Some(gi) = host.hub.guests.connection_index(conn)
-                && host.hub.here(&host.hub.guests[gi])
-                && host.hub.guests[gi].post_effects_dirty
-            {
-                host.hub.send_post_effects(gi);
+            if round.post() {
+                self.native_tick_post_one(&round, entity_id, crate::game::native_ticks::PLAYER);
             }
         }
-        self.native_player_tick_post_alone(&round, &mut told);
-        self.native_tick_post_batch(round);
-        // Entity.rideTick positions the rider after its tick (and after Post
-        // even for batched listeners). Canceling the tick does not stop this.
+        self.announce_guest_advancements();
+        // Entity.rideTick positions the rider after its tick (and after Post).
+        // Canceling the tick does not stop this.
         for (conn, passenger) in turns {
             if passenger && !self.on_server_trip(conn) {
                 self.guest_vehicle_tick(conn);

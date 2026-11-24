@@ -2127,7 +2127,6 @@ impl Game<'_> {
                     ],
                 ));
             }
-            "say" if !rest.is_empty() => self.dedicated_console_say(rest.join(" ")),
             _ => self.console_dispatch(line),
         }
     }

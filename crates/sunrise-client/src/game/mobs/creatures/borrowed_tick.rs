@@ -319,15 +319,17 @@ impl Game<'_> {
                         // The row's mob left the list at a boundary: the
                         // tick view must answer a removed handle with nothing.
                         snapshot[slot].removed = true;
-                        let equipment_finished =
-                            matches!(resume.take(), Some(Pause::Equipment { .. }));
+                        let equipment_finished = matches!(
+                            resume.take(),
+                            Some(Pause::Equipment { .. } | Pause::RegisterBehaviors { .. })
+                        );
                         movement = None;
                         resume_selection = None;
                         resume_sampled = None;
                         cursor += 1;
                         // A discard in the equipment event ended a tick that had already started.
                         let mob = &snapshot[slot];
-                        if equipment_finished && round.alone_mob_post(&mob.kind) {
+                        if equipment_finished && round.post() {
                             tell_post = Some((mob.id, std::sync::Arc::clone(&mob.kind)));
                             break;
                         }
@@ -516,8 +518,8 @@ impl Game<'_> {
                                 })
                         })
                         .flatten();
-                    // A mob of a type a mod named: its own Pre, right before its tick.
-                    if !checked && round.alone_mob_pre(&m.kind) {
+                    // Its own Pre, right before its tick.
+                    if !checked && round.pre() {
                         tell_pre = Some((m.id, std::sync::Arc::clone(&m.kind), i));
                         break;
                     }
@@ -603,7 +605,11 @@ impl Game<'_> {
                         let mut selection = resume_selection.take();
                         if matches!(
                             resume,
-                            Some(Pause::AfterDamage(_) | Pause::Equipment { .. })
+                            Some(
+                                Pause::AfterDamage(_)
+                                    | Pause::Equipment { .. }
+                                    | Pause::RegisterBehaviors { .. }
+                            )
                         ) && let Some(selection) = &mut selection
                         {
                             selection.refresh_views(|player| {
@@ -746,6 +752,18 @@ impl Game<'_> {
                                 &w,
                                 &mut level,
                                 was_on_fire,
+                                &mut events,
+                                &mut movement,
+                            )
+                        }
+                        Some(Pause::RegisterBehaviors { was_on_fire, stage }) => {
+                            sunrise_client::mobs::riders::resume_after_register_behaviors(
+                                &mut mobs,
+                                i,
+                                &w,
+                                &mut level,
+                                was_on_fire,
+                                stage,
                                 &mut events,
                                 &mut movement,
                             )
@@ -963,7 +981,7 @@ impl Game<'_> {
                     keep[slot] = kept;
                     gone_rows |= !kept;
                     // Its own Post, right after its tick, also when it died or went in it.
-                    if round.alone_mob_post(&m.kind) {
+                    if round.post() {
                         tell_post = Some((m.id, std::sync::Arc::clone(&m.kind)));
                     }
                     // ServerLevel ticks entities one after another: the ones
@@ -1177,6 +1195,9 @@ impl Game<'_> {
                         }
                         Pause::Equipment { first, .. } => {
                             self.detect_mob_equipment_updates(id, join, *first);
+                        }
+                        Pause::RegisterBehaviors { .. } => {
+                            self.flush_resident_mob_parts(id, join);
                         }
                         Pause::AfterDamage(_) => {
                             if self.mobs[i].has_protected_hurt()

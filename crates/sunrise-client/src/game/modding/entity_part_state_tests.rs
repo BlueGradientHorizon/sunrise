@@ -47,7 +47,7 @@ struct Charge;
 impl EntityPart for Charge {
     fn register_goals(
         &self,
-        _: &dyn mod_api::Host,
+        _host: &mut dyn mod_api::ServerHost,
         event: &mut mod_api::RegisterGoalsEvent<'_, '_>,
     ) {
         let _ = event;

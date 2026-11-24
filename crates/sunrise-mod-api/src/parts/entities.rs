@@ -14,7 +14,7 @@ pub mod tests {
         impl super::EntityPart for Once {
             fn register_goals(
                 &self,
-                _host: &dyn Host,
+                _host: &mut dyn crate::ServerHost,
                 event: &mut crate::RegisterGoalsEvent<'_, '_>,
             ) {
                 let _ = event;
@@ -25,7 +25,7 @@ pub mod tests {
         impl super::EntityPart for Twice {
             fn register_goals(
                 &self,
-                _host: &dyn Host,
+                _host: &mut dyn crate::ServerHost,
                 event: &mut crate::RegisterGoalsEvent<'_, '_>,
             ) {
                 let _ = event;

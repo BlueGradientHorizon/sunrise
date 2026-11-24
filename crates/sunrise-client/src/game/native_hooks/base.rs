@@ -3617,32 +3617,30 @@ impl Game<'_> {
     ) {
         self.fire_entity_mount(call);
     }
-    /// The entities `entities` are about to tick in the level `dimension`, and `kinds` holds
-    /// the type of each, in the same order (NeoForge's `EntityTickEvent.Pre`, right before each
-    /// entity's tick in `tickNonPassenger`). Entity families may be observed on either side;
-    /// see the hook catalog for coverage. Some routes run one call per entity, while others
-    /// batch the family. Only IDs offered to this call may enter its cancellation output.
+    /// The entity `entity` of type `kind` is about to tick in the level `dimension` (NeoForge's
+    /// `EntityTickEvent.Pre`, right before each entity's tick in `tickNonPassenger`). Entity
+    /// families may be observed on either side; see the hook catalog for coverage. Sets `canceled`
+    /// when a listener returns `Flow::Cancel`.
     pub(in crate::game) fn native_entity_tick_pre(
         &mut self,
         dimension: &str,
-        entities: &[u32],
-        kinds: &[&str],
-        canceled: &mut Vec<u32>,
+        entity: u32,
+        kind: &str,
+        canceled: &mut bool,
     ) {
-        self.fire_entity_tick_pre(dimension, entities, kinds, canceled);
+        self.fire_entity_tick_pre(dimension, entity, kind, canceled);
     }
-    /// The entities `entities` ticked in the level `dimension`, and `kinds` holds the type of
-    /// each, in the same order (NeoForge's `EntityTickEvent.Post`): those
-    /// `native_entity_tick_pre` was told and did not cancel, also one that died or was removed in
-    /// its tick. An entity told alone in its Pre is told alone here, right after its own tick; a
-    /// family once, after its last tick. On the server and on a client.
+    /// The entity `entity` of type `kind` ticked in the level `dimension` (NeoForge's
+    /// `EntityTickEvent.Post`): one `native_entity_tick_pre` was told and did not cancel,
+    /// including one that died or was removed in its tick. Told right after its own tick, on the
+    /// server and on a client.
     pub(in crate::game) fn native_entity_tick_post(
         &mut self,
         dimension: &str,
-        entities: &[u32],
-        kinds: &[&str],
+        entity: u32,
+        kind: &str,
     ) {
-        self.fire_entity_tick_post(dimension, entities, kinds);
+        self.fire_entity_tick_post(dimension, entity, kind);
     }
     /// Whether the experience orb `into` takes the orb `from` in (vanilla's
     /// `ExperienceOrb.canMerge`): the same value, and ids a multiple of 40 apart. Asked
@@ -3702,18 +3700,18 @@ impl Game<'_> {
     /// A dropped item reaches its lifespan on the server (`ItemEntity.tick`,
     /// NeoForge's `EventHooks.onItemExpire` / `ItemExpireEvent`), before
     /// removal. Every mod may set or add to `extra_life`, in ticks, which
-    /// starts at zero, and may query the live item entity through `Host`.
+    /// starts at zero, and may query or mutate the live item entity through
+    /// `item` (including lending its stack with `ItemEntityRef::with_stack`).
     /// Afterward `lifespan` gets `extra_life` by signed 32-bit wrapping
     /// addition, then is clamped to `0..=32766` (`Short.MAX_VALUE - 1`)
     /// without rewinding `age`. If `age >= lifespan`, the item is discarded
     /// and `entity_leave_level` fires before the next drop ticks.
     pub(in crate::game) fn native_item_expire(
         &mut self,
-        entity: u32,
-        stack: &ItemStack,
+        item: mod_api::ItemEntityRef,
         extra_life: &mut i32,
     ) {
-        self.fire_item_expire(entity, stack, extra_life);
+        self.fire_item_expire(item, extra_life);
     }
     /// The food level of the server player `player` (`name`) is about to change
     /// from `from` to `to` (Bukkit's `FoodLevelChangeEvent`):

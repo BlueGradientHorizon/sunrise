@@ -237,8 +237,7 @@ impl Game<'_> {
         if !mod_api::__private::listened(mod_api::HookId::MobSplit) {
             for i in 0..drawn {
                 self.next_entity += 1;
-                let mut child =
-                    self.new_mob(self.next_entity, dying.kind.clone(), dying.position, 0.0);
+                let mut child = Mob::new(self.next_entity, dying.kind.clone(), dying.position, 0.0);
                 sunrise_client::mobs::cube::split_child(dying, &mut child, i);
                 self.mobs.push(child);
                 self.admit_new_mobs(self.mobs.len() - 1);
@@ -250,7 +249,7 @@ impl Game<'_> {
         let first = self.next_entity + 1;
         let children = (0..drawn)
             .map(|i| {
-                let mut child = self.new_mob(first + i, dying.kind.clone(), dying.position, 0.0);
+                let mut child = Mob::new(first + i, dying.kind.clone(), dying.position, 0.0);
                 sunrise_client::mobs::cube::split_child(dying, &mut child, i);
                 child.id = 0;
                 child

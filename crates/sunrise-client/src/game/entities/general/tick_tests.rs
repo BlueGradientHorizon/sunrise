@@ -161,27 +161,26 @@ impl Hooks for Declare {
             },
         );
     }
-    fn entity_tick_pre(&self, host: HostSide<'_>, event: &mut EntityTickPreEvent<'_>) {
+    fn entity_tick_pre(&self, host: HostSide<'_>, event: &mut EntityTickPreEvent<'_>) -> Flow {
         let HostSide::Server(host) = host else {
             panic!("server fixture");
         };
-        for &entity in event.entities {
-            self.events.lock().unwrap().push((entity, "pre"));
-            if self.pre_on.load(std::sync::atomic::Ordering::Relaxed) == entity {
-                let victim = self.pre_victim.load(std::sync::atomic::Ordering::Relaxed);
-                let victim = host
-                    .entity(victim)
-                    .expect("the victim is a live row at the remover's Pre");
-                assert!(victim.discard(host));
-            }
-            if self.cancel_on.load(std::sync::atomic::Ordering::Relaxed) == entity {
-                event.canceled.push(entity);
-            }
+        let entity = event.entity;
+        self.events.lock().unwrap().push((entity, "pre"));
+        if self.pre_on.load(std::sync::atomic::Ordering::Relaxed) == entity {
+            let victim = self.pre_victim.load(std::sync::atomic::Ordering::Relaxed);
+            let victim = host
+                .entity(victim)
+                .expect("the victim is a live row at the remover's Pre");
+            assert!(victim.discard(host));
         }
+        if self.cancel_on.load(std::sync::atomic::Ordering::Relaxed) == entity {
+            return Flow::Cancel;
+        }
+        Flow::Continue
     }
     fn entity_tick_post(&self, _: HostSide<'_>, event: &mut mod_api::EntityTickPostEvent<'_>) {
-        let mut events = self.events.lock().unwrap();
-        events.extend(event.entities.iter().map(|&entity| (entity, "post")));
+        self.events.lock().unwrap().push((event.entity, "post"));
     }
     fn entity_join_level(
         &self,

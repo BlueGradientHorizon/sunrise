@@ -44,11 +44,15 @@ struct MoveOnPre {
 
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for MoveOnPre {
-    fn entity_tick_pre(&self, host: HostSide<'_>, event: &mut EntityTickPreEvent<'_>) {
+    fn entity_tick_pre(
+        &self,
+        host: HostSide<'_>,
+        event: &mut EntityTickPreEvent<'_>,
+    ) -> mod_api::Flow {
         let HostSide::Server(host) = host else {
             panic!("server fixture");
         };
-        if event.entities.contains(&self.id) {
+        if event.entity == self.id {
             let entity = host.entity(self.id).expect("a live handle in its own Pre");
             let at = entity
                 .position(host)
@@ -59,6 +63,7 @@ impl mod_api::Hooks for MoveOnPre {
                 "the tick view writes its position"
             );
         }
+        mod_api::Flow::Continue
     }
 }
 
@@ -356,8 +361,8 @@ struct ExtendLife {
 
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for ExtendLife {
-    fn item_expire(&self, _: &mut dyn ServerHost, event: &mut mod_api::ItemExpireEvent<'_>) {
-        if event.entity == self.id.load(Ordering::Relaxed) {
+    fn item_expire(&self, _: &mut dyn ServerHost, event: &mut mod_api::ItemExpireEvent) {
+        if event.item.entity().id() == self.id.load(Ordering::Relaxed) {
             event.extra_life += 100;
         }
     }
@@ -430,11 +435,15 @@ struct DiscardOnPre {
 
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for DiscardOnPre {
-    fn entity_tick_pre(&self, host: HostSide<'_>, event: &mut EntityTickPreEvent<'_>) {
+    fn entity_tick_pre(
+        &self,
+        host: HostSide<'_>,
+        event: &mut EntityTickPreEvent<'_>,
+    ) -> mod_api::Flow {
         let HostSide::Server(host) = host else {
             panic!("server fixture");
         };
-        if event.entities.contains(&self.id) {
+        if event.entity == self.id {
             let victim = host
                 .entity(self.victim)
                 .expect("the other mob is live at the Pre");
@@ -445,6 +454,7 @@ impl mod_api::Hooks for DiscardOnPre {
                 .unwrap()
                 .push((self.victim, discarded, self_live));
         }
+        mod_api::Flow::Continue
     }
 }
 
@@ -527,25 +537,27 @@ type TickCalls = Vec<(&'static str, Vec<u32>, Option<[f64; 3]>)>;
 
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for TickTiming {
-    fn entity_tick_pre(&self, _: HostSide<'_>, event: &mut EntityTickPreEvent<'_>) {
+    fn entity_tick_pre(
+        &self,
+        _: HostSide<'_>,
+        event: &mut EntityTickPreEvent<'_>,
+    ) -> mod_api::Flow {
         let mut heard = self.heard.lock().unwrap();
-        heard.push(("pre", event.entities.to_vec(), None));
-        if self.replace_cancels {
-            event.canceled.clear();
-            if event.entities == [71] {
-                event.canceled.push(71);
-            }
+        heard.push(("pre", vec![event.entity], None));
+        if self.replace_cancels && event.entity == 71 {
+            return mod_api::Flow::Cancel;
         }
+        mod_api::Flow::Continue
     }
     fn entity_tick_post(&self, host: HostSide<'_>, event: &mut mod_api::EntityTickPostEvent<'_>) {
         let HostSide::Server(host) = host else {
             panic!("server fixture");
         };
         let at = host
-            .entity(event.entities[0])
+            .entity(event.entity)
             .and_then(|entity| entity.position(host));
         let mut heard = self.heard.lock().unwrap();
-        heard.push(("post", event.entities.to_vec(), at));
+        heard.push(("post", vec![event.entity], at));
     }
 }
 
@@ -617,7 +629,7 @@ impl mod_api::Hooks for TraderDrinkPost {
         let HostSide::Server(host) = host else {
             panic!("server fixture");
         };
-        if event.entities == [71] {
+        if event.entity == 71 {
             let living = host.living(host.entity(71).unwrap()).unwrap();
             let invisibility = host.effect_key("minecraft:invisibility").unwrap();
             let invisible = living.effect(host, invisibility).is_some();
@@ -705,32 +717,26 @@ fn a_named_pre_cannot_clear_an_earlier_turns_cancellation() {
     );
 }
 
-/// A listener of only `entity_tick_post` hears each mob's Post after that mob's own tick.
+/// Any subscribed listener hears each mob's own Pre and Post without any opt-in flag.
 #[test]
 #[ignore = "daily"]
-fn a_post_only_listener_hears_each_mob_after_its_own_tick() {
-    struct PostOnly(Arc<Mutex<Vec<Vec<u32>>>>);
-    #[mod_api::__subscriptions]
-    impl mod_api::Hooks for PostOnly {
-        fn entity_tick_post(&self, _: HostSide<'_>, event: &mut mod_api::EntityTickPostEvent<'_>) {
-            self.0.lock().unwrap().push(event.entities.to_vec());
-        }
-    }
-    let heard = Arc::new(Mutex::new(Vec::new()));
-    let mods: mod_api::Mods = vec![ModEntry::new(
-        "post-only",
-        Box::new(PostOnly(heard.clone())),
-    )]
-    .into();
-    mod_platform::testing::with_mods(mods, || {
-        with_two_pigs(|game| {
-            game.tick_creature_entities().unwrap();
-        });
-    });
-    assert_eq!(*heard.lock().unwrap(), [vec![71], vec![72]]);
+fn an_unnamed_family_hears_one_pre_and_one_post() {
+    let phases: Vec<_> = pig_ticks(false)
+        .into_iter()
+        .map(|(phase, entities, _)| (phase, entities))
+        .collect();
+    assert_eq!(
+        phases,
+        [
+            ("pre", vec![71]),
+            ("post", vec![71]),
+            ("pre", vec![72]),
+            ("post", vec![72]),
+        ]
+    );
 }
 
-/// Two arrows of a type a mod names, on the server: each told alone, its Post right after its own
+/// Two arrows on the server: each bracketed individually, its Post right after its own
 /// flight and before the next arrow's Pre, and a Post handle reads where its flight took it.
 #[test]
 #[ignore = "daily"]
@@ -780,8 +786,7 @@ fn named_projectiles_hear_each_their_own_pre_and_post() {
     );
 }
 
-/// Moves pig 72 into a second arrow's path in the Post of the arrow `first` (an arrow named to
-/// so told alone).
+/// Moves pig 72 into a second arrow's path in the Post of the arrow `first`.
 struct MoveOnArrowPost {
     first: Arc<AtomicU32>,
 }
@@ -792,7 +797,7 @@ impl mod_api::Hooks for MoveOnArrowPost {
         let HostSide::Server(host) = host else {
             panic!("server fixture");
         };
-        if event.entities == [self.first.load(Ordering::Relaxed)] {
+        if event.entity == self.first.load(Ordering::Relaxed) {
             let pig = host.entity(72).expect("the pig");
             assert!(pig.teleport_to(host, [4.0, 80.0, 5.5], None));
         }
@@ -860,8 +865,13 @@ fn named_mobs_and_projectiles_yield_only_for_subscribed_phase() {
     struct PreOnly(Recorded);
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for PreOnly {
-        fn entity_tick_pre(&self, host: HostSide<'_>, event: &mut EntityTickPreEvent<'_>) {
-            record(&self.0, &host, "pre", event.entities);
+        fn entity_tick_pre(
+            &self,
+            host: HostSide<'_>,
+            event: &mut EntityTickPreEvent<'_>,
+        ) -> mod_api::Flow {
+            record(&self.0, &host, "pre", std::slice::from_ref(&event.entity));
+            mod_api::Flow::Continue
         }
     }
 
@@ -873,7 +883,7 @@ fn named_mobs_and_projectiles_yield_only_for_subscribed_phase() {
             host: HostSide<'_>,
             event: &mut mod_api::EntityTickPostEvent<'_>,
         ) {
-            record(&self.0, &host, "post", event.entities);
+            record(&self.0, &host, "post", std::slice::from_ref(&event.entity));
         }
     }
 
@@ -961,12 +971,17 @@ fn mob_equipment_change_fires_before_post_and_skips_canceled_ticks() {
 
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for OrderProbe {
-        fn entity_tick_pre(&self, _: HostSide<'_>, event: &mut EntityTickPreEvent<'_>) {
-            for &id in event.entities {
-                self.log.lock().unwrap().push(("pre", id, None, None));
-                if id == 72 && self.cancel_72.load(Ordering::Relaxed) {
-                    event.canceled.push(72);
-                }
+        fn entity_tick_pre(
+            &self,
+            _: HostSide<'_>,
+            event: &mut EntityTickPreEvent<'_>,
+        ) -> mod_api::Flow {
+            let id = event.entity;
+            self.log.lock().unwrap().push(("pre", id, None, None));
+            if id == 72 && self.cancel_72.load(Ordering::Relaxed) {
+                mod_api::Flow::Cancel
+            } else {
+                mod_api::Flow::Continue
             }
         }
         fn living_equipment_change(
@@ -982,9 +997,10 @@ fn mob_equipment_change_fires_before_post_and_skips_canceled_ticks() {
             ));
         }
         fn entity_tick_post(&self, _: HostSide<'_>, event: &mut mod_api::EntityTickPostEvent<'_>) {
-            for &id in event.entities {
-                self.log.lock().unwrap().push(("post", id, None, None));
-            }
+            self.log
+                .lock()
+                .unwrap()
+                .push(("post", event.entity, None, None));
         }
     }
 

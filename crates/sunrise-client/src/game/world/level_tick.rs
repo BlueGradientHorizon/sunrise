@@ -121,7 +121,7 @@ impl Game<'_> {
             // general rows (#792), then the mobile kinds' remainder.
             self.ordered_before(ordered_tick::Batch::General)?;
             sunrise_client::spans::time("tick_general", || self.tick_general())?;
-            // Orbs, primed TNT and falling blocks still to tick, in join order.
+            // Orbs, primed TNT, falling blocks and observed unsimulated entities still to tick.
             self.run_ordered_ticks(sunrise_client::join_seq::JoinSeq::MAX, false)?;
             sunrise_client::spans::time("tick_experience", || self.tick_experience());
             // Merged, despawned or picked up.
