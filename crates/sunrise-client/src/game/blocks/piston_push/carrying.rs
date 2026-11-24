@@ -9,7 +9,8 @@
 //! A body's support is the one collider box under it: the highest top, a tie to the lower
 //! collider entity id. The supports form a forest, and it is carried from the roots: a collider
 //! that stands on another collider is carried first, and the bodies on it use its whole
-//! displacement. Then a translating collider shoves nearby bodies in the path of its boxes.
+//! displacement. Then a moved collider shoves nearby bodies in its way: pure translation
+//! sweeps the path of its boxes, and a turn resolves the final pose.
 //! A body that rides something follows its vehicle. The server moves what it simulates, each
 //! client its own player.
 #[path = "shoving.rs"]
@@ -93,8 +94,8 @@ impl Game<'_> {
         }
     }
 
-    /// Carries bodies on colliders that moved this tick, then shoves bodies in the path of a
-    /// translating collider. `start` is the colliders as the tick began. A tick where none
+    /// Carries bodies on colliders that moved this tick, then shoves bodies in a moving collider's
+    /// way. `start` is the colliders as the tick began. A tick where none
     /// moved does nothing.
     pub(in crate::game) fn carry_pass(&mut self, start: &Prepared) {
         // The client handles entity movement packets before its tick (Minecraft.runTick).

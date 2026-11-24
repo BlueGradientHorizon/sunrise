@@ -559,6 +559,31 @@ impl OrientedCollider {
         Some(enter)
     }
 
+    /// The minimum-separation push for `mover` at this collider's current pose. Each overlapping
+    /// box gives the least translation on a SAT axis that separates it from the body, plus
+    /// `clearance`; boxes are resolved once, in index order, against a scratch body already moved
+    /// by the boxes before it. `None` when no box overlaps deeper than the collision epsilon.
+    pub fn minimum_separation(&self, mover: Aabb, clearance: f64) -> Option<Vec3> {
+        let axes = self.axes(DEGENERATE_AXIS);
+        self.with_candidates(mover, |candidates| {
+            let mut moved = mover;
+            let mut separation = None;
+            for &index in candidates {
+                let obb = self.obb(self.boxes.boxes[index as usize]);
+                let (axis, depth, distance) = self.overlap(&axes, moved, &obb);
+                if depth <= COLLISION_EPSILON {
+                    continue;
+                }
+                // Centred boxes have no side to favour; the first minimum axis pushes negatively.
+                let toward_mover = if distance < 0.0 { 1.0 } else { -1.0 };
+                let push = axis.scale(toward_mover * (depth + clearance));
+                moved = moved.move_by(push);
+                separation = Some(push.add_vector(separation.unwrap_or(Vec3::ZERO)));
+            }
+            separation
+        })
+    }
+
     /// Whether the entity box overlaps any box deeper than the collision epsilon.
     pub fn intersects(&self, mover: Aabb) -> bool {
         let axes = self.axes(DEGENERATE_AXIS);
@@ -632,14 +657,23 @@ impl OrientedCollider {
         (obb.centre.dot(axis) - m.dot(axis), rm + rb)
     }
 
+    /// The axis of the smallest overlap, that depth, and the directed distance from `mover`'s
+    /// centre to the box's on that axis. Positive depth means the boxes interpenetrate.
+    fn overlap(&self, axes: &Axes, mover: Aabb, obb: &Obb) -> (Vec3, f64, f64) {
+        let mut least = (Vec3::ZERO, f64::INFINITY, 0.0);
+        for axis in axes.iter() {
+            let (distance, radii) = self.extents(mover, obb, axis);
+            let depth = radii - distance.abs();
+            if depth < least.1 {
+                least = (axis, depth, distance);
+            }
+        }
+        least
+    }
+
     /// The smallest overlap over all axes: positive when the boxes interpenetrate.
     fn overlap_depth(&self, axes: &Axes, mover: Aabb, obb: &Obb) -> f64 {
-        axes.iter()
-            .map(|axis| {
-                let (distance, radii) = self.extents(mover, obb, axis);
-                radii - distance.abs()
-            })
-            .fold(f64::INFINITY, f64::min)
+        self.overlap(axes, mover, obb).1
     }
 
     /// How far along `direction` (one axis, signed) the box travels before meeting `obb`, if it
@@ -1066,6 +1100,75 @@ mod tests {
             free.step_heights(mover, Vec3::new(1.0, 0.0, 0.0), 2.0, &mut heights);
             assert!(heights.is_empty(), "{heights:?}");
         }
+    }
+
+    /// The separation follows the least SAT axis, adds the clearance, and skips a graze or a
+    /// separated corner even when the world bounds meet.
+    #[test]
+    fn minimum_separation_uses_the_least_axis_at_the_final_pose() {
+        let collider = OrientedCollider::new(
+            Frame::translation(Vec3::ZERO),
+            Arc::new(ColliderBoxes::new(vec![b([0.0; 3], [2.0; 3])])),
+        );
+        let mover = b([0.5, 1.5, 0.5], [1.5, 2.5, 1.5]);
+        assert_eq!(
+            collider.minimum_separation(mover, 0.0),
+            Some(Vec3::new(0.0, 0.5, 0.0))
+        );
+        assert_eq!(
+            collider.minimum_separation(mover, 0.01),
+            Some(Vec3::new(0.0, 0.51, 0.0))
+        );
+        assert_eq!(
+            collider.minimum_separation(b([2.0, 0.0, 0.0], [3.0; 3]), 0.01),
+            None
+        );
+
+        let diamond = OrientedCollider::new(
+            yaw(Vec3::ZERO, 45.0),
+            Arc::new(ColliderBoxes::new(vec![b([-0.5; 3], [0.5; 3])])),
+        );
+        let face = b([0.5, -0.5, -0.5], [1.5, 0.5, 0.5]);
+        let expected = (2.0_f64.sqrt() - 1.0) / 2.0;
+        let separation = diamond.minimum_separation(face, 0.0).unwrap();
+        assert!((separation.x - expected).abs() < 1.0e-12, "{separation:?}");
+        assert_eq!(separation.y, 0.0);
+        assert_eq!(separation.z, 0.0);
+
+        let corner = b([0.15, -0.25, 0.15], [0.65, 0.25, 0.65]);
+        let separation = diamond.minimum_separation(corner, 0.0).unwrap();
+        let component = 2.0_f64.sqrt() / 4.0 - 0.15;
+        for actual in [separation.x, separation.z] {
+            assert!((actual - component).abs() < 1.0e-12, "{separation:?}");
+        }
+        let separated = b([0.55, -0.25, 0.55], [1.05, 0.25, 1.05]);
+        assert_eq!(diamond.minimum_separation(separated, 0.01), None);
+
+        let aligned = OrientedCollider::new(
+            Frame::translation(Vec3::ZERO),
+            Arc::new(ColliderBoxes::new(vec![b([-0.5; 3], [0.5; 3])])),
+        );
+        assert_eq!(
+            aligned.minimum_separation(b([-0.5; 3], [0.5; 3]), 0.0),
+            Some(Vec3::new(-1.0, 0.0, 0.0))
+        );
+    }
+
+    /// Boxes are resolved in index order against the already-moved body, once, with no second
+    /// pass and no per-axis maximum.
+    #[test]
+    fn minimum_separation_resolves_each_box_against_the_moved_body() {
+        let collider = OrientedCollider::new(
+            Frame::translation(Vec3::ZERO),
+            Arc::new(ColliderBoxes::new(vec![
+                b([0.0; 3], [1.0; 3]),
+                b([0.0, 0.0, -1.0], [2.0, 1.25, 3.0]),
+            ])),
+        );
+        assert_eq!(
+            collider.minimum_separation(b([0.5; 3], [1.5; 3]), 0.0),
+            Some(Vec3::new(0.5, 0.75, 0.0))
+        );
     }
 
     /// One check for a box and a rotation, whichever way they arrive.

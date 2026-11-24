@@ -87,12 +87,18 @@ under its feet with the highest top (a tie goes to the lower entity id). A colli
 collider is carried first, and the bodies on it take its whole displacement. A body that rides something is not carried itself; it
 follows its vehicle. The server carries the entities it simulates, and each Sunrise client its own player.
 
-After carrying, a collider that translated without turning shoves bodies in the path of its boxes,
-in its direction of travel. This also uses `MoveCause::Carried`. Changing a box's bounds does not
-sweep that box between the old and new shape. Turning colliders carry bodies but do not shove them.
-A shove does not cancel velocity into the collider; the ordinary entity move handles velocity when
-the body hits an obstacle. The client predicts a shove for its own player, and ordinary server movement
-checks still apply.
+After carrying, a moving collider shoves bodies in its way, with `MoveCause::Carried`. Pure translation
+keeps the swept advance of its boxes. A turn, alone or combined with a translation, uses only the final
+pose: each overlapping box gives its minimum separation, in box order against the body as already moved,
+then one collided move applies the result. No rotational path is swept between poses. Changing a box's
+bounds does not sweep that box between the old and new shape.
+
+The velocity response follows Create's `ContraptionCollider.collideEntities`. Once a shove actually moves
+a body, the component of its velocity pointing into the shove is removed; velocity along the shove and
+tangential to it stay. An upward shove sets vertical velocity to the collider's own vertical speed. Riders
+already carried by the collider are not shoved again. Vanilla pistons and shulkers keep their ordinary
+velocity behaviour. The server shoves non-player entities and never a player; the client predicts the
+shove for its own player, and ordinary server movement checks still apply.
 
 Neither carrying nor shoving pushes through a wall, and the collider is never stopped by a body in
 its way. A squeezed body stays where the collision leaves it. A living body still takes `in_wall`

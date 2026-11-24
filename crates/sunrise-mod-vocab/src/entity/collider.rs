@@ -25,11 +25,21 @@ pub struct ColliderBox {
 ///
 /// A collider that moves or turns carries the bodies standing on it: once a tick, after the
 /// level's entities ticked, each moves by the displacement of its contact point as a collided
-/// move with `MoveCause::Carried`. After carrying, a collider that translated without turning
-/// shoves bodies in the path of its boxes, in its direction of travel, with the same move cause.
-/// The shove does not cancel velocity into the collider; ordinary collision handles velocity.
-/// A body caught between the collider and a wall stays where the move leaves it, and a living
-/// one takes `in_wall` damage while a box covers its eyes. Passengers follow their vehicle.
+/// move with `MoveCause::Carried`. After carrying, a moving collider shoves bodies in its way
+/// with the same move cause. Pure translation sweeps the advancing boxes along their travel.
+/// A turn, alone or combined with a translation, resolves only the final pose: each overlapping
+/// box gives its minimum separation, resolved once in box order, then one move collides with the
+/// world. No rotational path is swept between the poses. Riders already carried are not shoved
+/// again, and a body caught between the collider and a wall stays where the move leaves it.
+///
+/// Following Create's `ContraptionCollider.collideEntities`, a shove that actually moves a body
+/// removes only the component of its velocity that points into the shove; tangential velocity
+/// stays. An upward shove sets vertical velocity to the collider's own vertical speed. Vanilla
+/// pistons and shulkers keep their velocity behaviour.
+///
+/// The server shoves non-player entities and never a player; each Sunrise client predicts the
+/// shove of its own player through the ordinary movement checks. A living body still takes `in_wall`
+/// damage while a box covers its eyes. Passengers follow their vehicle.
 ///
 /// A vanilla client has none of this: the server sends a collider only to a Sunrise client that
 /// tracks the entity, and a vanilla client sees the entity and walks through it.

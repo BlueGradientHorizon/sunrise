@@ -32,24 +32,37 @@ fn holder(game: &mut Game<'_>, x: f64) -> u32 {
     game.options.dedicated = Some(Vec::new());
     game.native_level_opened(game.dim);
     game.native_joins_skip();
-    let id = game
-        .summon(
-            game.dim.id(),
-            "minecraft:pig",
-            [x, PIG_Y, 4.5],
-            [
-                ("NoGravity".into(), Tag::Byte(1)),
-                ("NoAI".into(), Tag::Byte(1)),
-            ]
-            .into_iter()
-            .collect(),
-        )
-        .unwrap();
+    let id = pig(game, [x, PIG_Y, 4.5]);
     game.entity(id)
         .unwrap()
         .set_collider(game, Some(shape()))
         .unwrap();
     id
+}
+
+fn pig(game: &mut Game<'_>, at: [f64; 3]) -> u32 {
+    game.summon(
+        game.dim.id(),
+        "minecraft:pig",
+        at,
+        [
+            ("NoGravity".into(), Tag::Byte(1)),
+            ("NoAI".into(), Tag::Byte(1)),
+        ]
+        .into_iter()
+        .collect(),
+    )
+    .unwrap()
+}
+
+fn turn(game: &mut Game<'_>, holder: u32, degrees: f32) {
+    let start = game.placed_moving_colliders();
+    let half = degrees.to_radians() / 2.0;
+    game.entity(holder)
+        .unwrap()
+        .set_collider_transform(game, [0.0, half.sin(), 0.0, half.cos()])
+        .unwrap();
+    game.carry_pass(&start);
 }
 
 fn shove(game: &mut Game<'_>, holder: u32, x: f64) {
@@ -88,7 +101,7 @@ fn a_collider_shoves_a_body_crossed_only_mid_sweep() {
                     game.dropped[0].position,
                     Vec3::new(6.75 + 0.125 + 0.01, 70.25, 4.5)
                 );
-                assert_eq!(game.dropped[0].velocity, velocity);
+                assert_eq!(game.dropped[0].velocity, Vec3::new(0.0, 0.0, 0.0625));
                 assert_eq!(game.dropped[1].position, Vec3::new(4.5, 70.25, 5.375));
             });
         },
@@ -155,6 +168,336 @@ fn a_later_shove_collides_with_a_holder_already_displaced() {
                 // The first item's box began behind the second item. After the first shove,
                 // its west face stops the second item before the source's end position.
                 assert_eq!(game.dropped[1].position.x, first_x - 1.0 - 0.125);
+            });
+        },
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_turning_collider_shoves_a_body_and_cancels_only_inward_velocity() {
+    crate::game::in_own_process(
+        "game::piston_push::carrying::shoving::tests::a_turning_collider_shoves_a_body_and_cancels_only_inward_velocity",
+        || {
+            with_game(|game| {
+                empty_chunk(game);
+                let holder = holder(game, 4.5);
+                game.dropped
+                    .push(item(80, 5.2, 4.5, Vec3::new(-0.3, 0.0, 0.2)));
+                turn(game, holder, 90.0);
+                assert_eq!(
+                    game.dropped[0].position,
+                    Vec3::new(5.25 + 0.125 + 0.01, 70.25, 4.5)
+                );
+                assert_eq!(game.dropped[0].velocity.y, 0.0);
+                assert!(game.dropped[0].velocity.x.abs() < 1.0e-12);
+                assert!((game.dropped[0].velocity.z - 0.2).abs() < 1.0e-12);
+
+                game.dropped[0].position.x = 5.2;
+                game.dropped[0].velocity = Vec3::new(0.3, 0.0, 0.2);
+                turn(game, holder, 180.0);
+                assert_eq!(game.dropped[0].velocity, Vec3::new(0.3, 0.0, 0.2));
+            });
+        },
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_turning_collider_shove_stops_at_a_wall_and_keeps_tangential_velocity() {
+    crate::game::in_own_process(
+        "game::piston_push::carrying::shoving::tests::a_turning_collider_shove_stops_at_a_wall_and_keeps_tangential_velocity",
+        || {
+            with_game(|game| {
+                empty_chunk(game);
+                let holder = holder(game, 4.5);
+                let target = pig(game, [5.5, 70.0, 4.5]);
+                let i = game.mobs.iter().position(|m| m.id == target).unwrap();
+                let half_width = game.mobs[i].bounds().max_position().x - game.mobs[i].position.x;
+                game.mobs
+                    .update(i, |m| m.velocity = Vec3::new(-0.4, 0.0, 0.2));
+                let stone = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:stone")
+                    .unwrap();
+                game.world.set(6, 70, 4, stone).unwrap();
+                turn(game, holder, 90.0);
+                assert_eq!(game.mobs[i].position.x, 6.0 - half_width);
+                assert_eq!(game.mobs[i].velocity, Vec3::new(0.0, 0.0, 0.2));
+            });
+        },
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_cancelled_turning_shove_leaves_velocity_alone() {
+    use mod_api::{EntityMoveEvent, Flow, Hooks, LoopContext, ModEntry};
+    struct CancelShove;
+    #[mod_api::__subscriptions]
+    impl Hooks for CancelShove {
+        fn entity_move(&self, _: &dyn LoopContext, _: &mut EntityMoveEvent<'_>) -> Flow {
+            Flow::Cancel
+        }
+    }
+    let mods: mod_api::Mods = vec![ModEntry::new("cancel_shove", Box::new(CancelShove))].into();
+    crate::game::in_own_process(
+        "game::piston_push::carrying::shoving::tests::a_cancelled_turning_shove_leaves_velocity_alone",
+        || {
+            mod_platform::testing::with_mods(mods, || {
+                with_game(|game| {
+                    empty_chunk(game);
+                    let holder = holder(game, 4.5);
+                    let from = Vec3::new(5.2, 70.25, 4.5);
+                    let velocity = Vec3::new(-0.3, 0.0, 0.2);
+                    game.dropped.push(item(80, 5.2, 4.5, velocity));
+                    turn(game, holder, 90.0);
+                    assert_eq!(game.dropped[0].position, from);
+                    assert_eq!(game.dropped[0].velocity, velocity);
+                });
+            });
+        },
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_combined_turn_and_translation_shoves_at_the_final_pose() {
+    crate::game::in_own_process(
+        "game::piston_push::carrying::shoving::tests::a_combined_turn_and_translation_shoves_at_the_final_pose",
+        || {
+            with_game(|game| {
+                empty_chunk(game);
+                let holder = holder(game, 4.5);
+                game.dropped
+                    .push(item(80, 5.2, 4.5, Vec3::new(-0.3, 0.0, 0.2)));
+                let start = game.placed_moving_colliders();
+                let half = std::f32::consts::FRAC_1_SQRT_2;
+                game.entity(holder)
+                    .unwrap()
+                    .set_collider_transform(game, [0.0, half, 0.0, half])
+                    .unwrap();
+                let i = game.mobs.iter().position(|m| m.id == holder).unwrap();
+                game.mobs.update(i, |m| m.position.x = 4.4);
+                game.carry_pass(&start);
+                assert_eq!(game.dropped[0].position, Vec3::new(5.285, 70.25, 4.5));
+                assert_eq!(game.dropped[0].velocity.y, 0.0);
+                assert!(game.dropped[0].velocity.x.abs() < 1.0e-12);
+                assert!((game.dropped[0].velocity.z - 0.2).abs() < 1.0e-12);
+            });
+        },
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn an_upward_shove_leaves_the_colliders_vertical_speed() {
+    crate::game::in_own_process(
+        "game::piston_push::carrying::shoving::tests::an_upward_shove_leaves_the_colliders_vertical_speed",
+        || {
+            with_game(|game| {
+                empty_chunk(game);
+                let holder = holder(game, 4.5);
+                game.entity(holder)
+                    .unwrap()
+                    .set_collider(
+                        game,
+                        Some(Collider {
+                            boxes: vec![ColliderBox {
+                                min: [-1.0, -3.0, -1.0],
+                                max: [1.0, -2.9, 1.0],
+                            }],
+                            ..Collider::default()
+                        }),
+                    )
+                    .unwrap();
+                game.dropped
+                    .push(item(80, 4.0, 4.5, Vec3::new(0.0, -0.4, 0.0)));
+                game.dropped
+                    .push(item(81, 5.0, 4.5, Vec3::new(0.0, 0.5, 0.0)));
+                let start = game.placed_moving_colliders();
+                let rise = (PIG_Y + 0.3) - PIG_Y;
+                let i = game.mobs.iter().position(|m| m.id == holder).unwrap();
+                game.mobs.update(i, |m| m.position.y = PIG_Y + 0.3);
+                game.carry_pass(&start);
+                assert!(
+                    (game.dropped[0].position.y - 70.41).abs() < 1.0e-6,
+                    "falling body: {}",
+                    game.dropped[0].position.y
+                );
+                assert_eq!(game.dropped[0].velocity, Vec3::new(0.0, rise, 0.0));
+                assert!(
+                    (game.dropped[1].position.y - 70.41).abs() < 1.0e-6,
+                    "rising body: {}",
+                    game.dropped[1].position.y
+                );
+                assert_eq!(game.dropped[1].velocity, Vec3::new(0.0, 0.5, 0.0));
+            });
+        },
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_server_side_turning_shove_never_moves_the_local_player() {
+    crate::game::in_own_process(
+        "game::piston_push::carrying::shoving::tests::a_server_side_turning_shove_never_moves_the_local_player",
+        || {
+            with_game(|game| {
+                empty_chunk(game);
+                let holder = holder(game, 4.5);
+                let from = Vec3::new(5.2, 70.0, 4.5);
+                let velocity = Vec3::new(-0.4, 0.0, 0.25);
+                game.player = Some(PlayerMotion::new(game.motion, from).unwrap());
+                game.player.as_mut().unwrap().velocity = velocity;
+                turn(game, holder, 90.0);
+                assert_eq!(game.player.as_ref().unwrap().position, from);
+                assert_eq!(game.player.as_ref().unwrap().velocity, velocity);
+            });
+        },
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_client_side_turning_shove_moves_the_local_player() {
+    crate::game::in_own_process(
+        "game::piston_push::carrying::shoving::tests::a_client_side_turning_shove_moves_the_local_player",
+        || {
+            with_client_game(|game| {
+                empty_chunk(game);
+                let _wire = Connection::local(logged_client(game));
+                let mut player = PlayerMotion::new(game.motion, Vec3::new(5.2, 70.0, 4.5)).unwrap();
+                player.entity_id = PLAYER as i32;
+                player.client_side = true;
+                player.velocity = Vec3::new(-0.4, 0.0, 0.25);
+                game.player = Some(player);
+                let source = 80;
+                game.spawn_entity(source, "minecraft:pig", [4.5, PIG_Y, 4.5], [0.0; 3]);
+                let remote = game.remote.as_mut().unwrap();
+                remote.entity_id = PLAYER as i32;
+                remote.colliders.insert(
+                    source as u32,
+                    sunrise_client::colliders::ColliderState::from_api(&shape()).unwrap(),
+                );
+                let start = game.placed_moving_colliders();
+                let half = std::f32::consts::FRAC_1_SQRT_2;
+                let mut rotated =
+                    sunrise_client::colliders::ColliderState::from_api(&shape()).unwrap();
+                rotated.set_rotation([0.0, half, 0.0, half]);
+                game.remote
+                    .as_mut()
+                    .unwrap()
+                    .colliders
+                    .insert(source as u32, rotated);
+                game.carry_pass(&start);
+                let player = game.player.as_ref().unwrap();
+                assert!(
+                    (player.position.x - (5.25 + 0.3 + 0.01)).abs() < 1.0e-6,
+                    "predicted shove: {}",
+                    player.position.x
+                );
+                assert_eq!(player.position.y, 70.0);
+                assert_eq!(player.position.z, 4.5);
+                assert_eq!(player.velocity.y, 0.0);
+                assert!(player.velocity.x.abs() < 1.0e-12);
+                assert!((player.velocity.z - 0.25).abs() < 1.0e-12);
+            });
+        },
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_rider_on_a_turning_collider_is_carried_and_not_shoved_again() {
+    crate::game::in_own_process(
+        "game::piston_push::carrying::shoving::tests::a_rider_on_a_turning_collider_is_carried_and_not_shoved_again",
+        || {
+            with_game(|game| {
+                empty_chunk(game);
+                let holder = holder(game, 4.5);
+                game.entity(holder)
+                    .unwrap()
+                    .set_collider(
+                        game,
+                        Some(Collider {
+                            boxes: vec![ColliderBox {
+                                min: [-1.0, -3.0, -1.0],
+                                max: [1.0, -2.75, 1.0],
+                            }],
+                            ..Collider::default()
+                        }),
+                    )
+                    .unwrap();
+                let mut rider = item(80, 5.5, 4.5, Vec3::new(-0.3, 0.0, 0.2));
+                rider.ground.on_ground = true;
+                game.dropped.push(rider);
+                turn(game, holder, 90.0);
+                assert_eq!(game.dropped[0].position, Vec3::new(4.5, 70.25, 3.5));
+                assert_eq!(game.dropped[0].velocity, Vec3::new(-0.3, 0.0, 0.2));
+            });
+        },
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_vanilla_piston_shove_leaves_the_players_velocity_alone() {
+    crate::game::in_own_process(
+        "game::piston_push::carrying::shoving::tests::a_vanilla_piston_shove_leaves_the_players_velocity_alone",
+        || {
+            with_game(|game| {
+                let stone = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:stone")
+                    .unwrap();
+                let moving = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:moving_piston")
+                    .unwrap();
+                let mut chunk = Chunk::empty(0, 0);
+                chunk.set(5, 200, 5, moving.0);
+                game.world.chunks.insert((0, 0), Arc::new(chunk));
+                let mut player =
+                    PlayerMotion::new(game.motion, Vec3::new(5.5, 200.0, 5.5)).unwrap();
+                player.velocity = Vec3::new(-0.4, -0.2, 0.1);
+                game.player = Some(player);
+                let pos = BlockPos::new(5, 200, 5);
+                let piston = MovingPiston {
+                    moved_state: stone,
+                    direction: Direction::East,
+                    extending: true,
+                    source: false,
+                    progress: 0.0,
+                    progress_o: 0.0,
+                    last_ticked: 0,
+                    death_ticks: 0,
+                    id: 1,
+                };
+                game.block_ticks.moving_pistons = vec![(
+                    pos,
+                    MovingPiston {
+                        progress: 0.5,
+                        ..piston
+                    },
+                )];
+                game.sync_moving_pistons();
+                game.push_piston_entities(vec![(pos, piston, 0.5)]);
+                assert!(
+                    (game.player.as_ref().unwrap().position.x - 5.81).abs() < 1.0e-6,
+                    "piston shove: {}",
+                    game.player.as_ref().unwrap().position.x
+                );
+                assert_eq!(
+                    game.player.as_ref().unwrap().velocity,
+                    Vec3::new(-0.4, -0.2, 0.1)
+                );
             });
         },
     );
