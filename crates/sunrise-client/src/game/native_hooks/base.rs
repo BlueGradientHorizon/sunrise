@@ -3580,32 +3580,30 @@ impl Game<'_> {
     ) {
         self.fire_entity_mount(call);
     }
-    /// The entities `entities` are about to tick in the level `dimension`, and `kinds` holds
-    /// the type of each, in the same order (NeoForge's `EntityTickEvent.Pre`, right before each
-    /// entity's tick in `tickNonPassenger`). Entity families may be observed on either side;
-    /// see the hook catalog for coverage. Some routes run one call per entity, while others
-    /// batch the family. Only IDs offered to this call may enter its cancellation output.
+    /// The entity `entity` of type `kind` is about to tick in the level `dimension` (NeoForge's
+    /// `EntityTickEvent.Pre`, right before each entity's tick in `tickNonPassenger`). Entity
+    /// families may be observed on either side; see the hook catalog for coverage. Sets `canceled`
+    /// when a listener returns `Flow::Cancel`.
     pub(in crate::game) fn native_entity_tick_pre(
         &mut self,
         dimension: &str,
-        entities: &[u32],
-        kinds: &[&str],
-        canceled: &mut Vec<u32>,
+        entity: u32,
+        kind: &str,
+        canceled: &mut bool,
     ) {
-        self.fire_entity_tick_pre(dimension, entities, kinds, canceled);
+        self.fire_entity_tick_pre(dimension, entity, kind, canceled);
     }
-    /// The entities `entities` ticked in the level `dimension`, and `kinds` holds the type of
-    /// each, in the same order (NeoForge's `EntityTickEvent.Post`): those
-    /// `native_entity_tick_pre` was told and did not cancel, also one that died or was removed in
-    /// its tick. An entity told alone in its Pre is told alone here, right after its own tick; a
-    /// family once, after its last tick. On the server and on a client.
+    /// The entity `entity` of type `kind` ticked in the level `dimension` (NeoForge's
+    /// `EntityTickEvent.Post`): one `native_entity_tick_pre` was told and did not cancel,
+    /// including one that died or was removed in its tick. Told right after its own tick, on the
+    /// server and on a client.
     pub(in crate::game) fn native_entity_tick_post(
         &mut self,
         dimension: &str,
-        entities: &[u32],
-        kinds: &[&str],
+        entity: u32,
+        kind: &str,
     ) {
-        self.fire_entity_tick_post(dimension, entities, kinds);
+        self.fire_entity_tick_post(dimension, entity, kind);
     }
     /// Whether the experience orb `into` takes the orb `from` in (vanilla's
     /// `ExperienceOrb.canMerge`): the same value, and ids a multiple of 40 apart. Asked

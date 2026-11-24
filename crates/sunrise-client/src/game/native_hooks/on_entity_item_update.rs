@@ -280,15 +280,16 @@ mod on_entity_item_update_tests {
             &self,
             _: mod_api::HostSide<'_>,
             event: &mut mod_api::EntityTickPreEvent<'_>,
-        ) {
-            told(event.entities, "pre");
+        ) -> mod_api::Flow {
+            told(std::slice::from_ref(&event.entity), "pre");
+            mod_api::Flow::Continue
         }
         fn entity_tick_post(
             &self,
             _: mod_api::HostSide<'_>,
             event: &mut mod_api::EntityTickPostEvent<'_>,
         ) {
-            told(event.entities, "post");
+            told(std::slice::from_ref(&event.entity), "post");
         }
         fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
             let _ = self.1;

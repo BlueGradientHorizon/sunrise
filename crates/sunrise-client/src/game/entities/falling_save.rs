@@ -23,7 +23,8 @@ mod tests {
             &self,
             _: mod_api::HostSide<'_>,
             _: &mut mod_api::EntityTickPreEvent<'_>,
-        ) {
+        ) -> mod_api::Flow {
+            mod_api::Flow::Continue
         }
         fn entity_tick_post(
             &self,

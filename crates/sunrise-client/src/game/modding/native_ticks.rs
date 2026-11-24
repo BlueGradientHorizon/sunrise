@@ -119,8 +119,6 @@ pub(in crate::game) struct TickRound {
     sections: bool,
     /// The entities a Pre canceled.
     canceled: Vec<u32>,
-    /// Scratch output owned by one hook dispatch, never shared with earlier turns.
-    call_canceled: Vec<u32>,
     /// The items whose part ended their tick (`on_entity_item_update`): they are not
     /// canceled, so they still hear their Post.
     halted: Vec<u32>,
@@ -172,7 +170,6 @@ impl Game<'_> {
             told,
             sections,
             canceled: Vec::new(),
-            call_canceled: Vec::new(),
             halted: Vec::new(),
         }
     }
@@ -192,14 +189,8 @@ impl Game<'_> {
         if !round.told.pre {
             return true;
         }
-        self.native_entity_tick_pre(
-            self.dim.id(),
-            std::slice::from_ref(&id),
-            std::slice::from_ref(&kind),
-            &mut round.call_canceled,
-        );
-        let canceled = round.call_canceled.contains(&id);
-        round.call_canceled.clear();
+        let mut canceled = false;
+        self.native_entity_tick_pre(self.dim.id(), id, kind, &mut canceled);
         if canceled {
             round.canceled.push(id);
         }
@@ -209,11 +200,7 @@ impl Game<'_> {
     /// `native_entity_tick_post` for one entity, right after its tick, its move filed and told.
     pub(super) fn native_tick_post_one(&mut self, round: &TickRound, id: u32, kind: &str) {
         if round.told.post {
-            self.native_entity_tick_post(
-                self.dim.id(),
-                std::slice::from_ref(&id),
-                std::slice::from_ref(&kind),
-            );
+            self.native_entity_tick_post(self.dim.id(), id, kind);
         }
     }
 
@@ -296,7 +283,13 @@ mod tests {
         struct PreOnly;
         #[mod_api::__subscriptions]
         impl mod_api::Hooks for PreOnly {
-            fn entity_tick_pre(&self, _: HostSide<'_>, _: &mut EntityTickPreEvent<'_>) {}
+            fn entity_tick_pre(
+                &self,
+                _: HostSide<'_>,
+                _: &mut EntityTickPreEvent<'_>,
+            ) -> mod_api::Flow {
+                mod_api::Flow::Continue
+            }
         }
 
         struct PostOnly;

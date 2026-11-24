@@ -1605,18 +1605,17 @@ mod expire_tests {
 
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for AloneDiscardListener {
-        fn entity_tick_pre(&self, _: HostSide<'_>, event: &mut EntityTickPreEvent<'_>) {
-            let mut log = self.0.lock().unwrap();
-            for &id in event.entities {
-                log.events.push(("pre", id));
-            }
+        fn entity_tick_pre(
+            &self,
+            _: HostSide<'_>,
+            event: &mut EntityTickPreEvent<'_>,
+        ) -> mod_api::Flow {
+            self.0.lock().unwrap().events.push(("pre", event.entity));
+            mod_api::Flow::Continue
         }
 
         fn entity_tick_post(&self, _: HostSide<'_>, event: &mut EntityTickPostEvent<'_>) {
-            let mut log = self.0.lock().unwrap();
-            for &id in event.entities {
-                log.events.push(("post", id));
-            }
+            self.0.lock().unwrap().events.push(("post", event.entity));
         }
 
         fn item_expire(&self, host: &mut dyn ServerHost, event: &mut ItemExpireEvent<'_>) {

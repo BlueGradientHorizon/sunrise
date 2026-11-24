@@ -87,25 +87,33 @@ impl Observe {
 
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for Observe {
-    fn entity_tick_pre(&self, host: HostSide<'_>, event: &mut mod_api::EntityTickPreEvent<'_>) {
-        let HostSide::Server(host) = host else { return };
-        for &id in event.entities {
-            let immunity = host
-                .entity(id)
-                .and_then(|entity| entity.invulnerable_time(host));
-            self.events
-                .lock()
-                .unwrap()
-                .push(Event::EntityPre(id, immunity));
-            if id == self.cancel {
-                event.canceled.push(id);
-            }
+    fn entity_tick_pre(
+        &self,
+        host: HostSide<'_>,
+        event: &mut mod_api::EntityTickPreEvent<'_>,
+    ) -> mod_api::Flow {
+        let HostSide::Server(host) = host else {
+            return mod_api::Flow::Continue;
+        };
+        let id = event.entity;
+        let immunity = host
+            .entity(id)
+            .and_then(|entity| entity.invulnerable_time(host));
+        self.events
+            .lock()
+            .unwrap()
+            .push(Event::EntityPre(id, immunity));
+        if id == self.cancel {
+            mod_api::Flow::Cancel
+        } else {
+            mod_api::Flow::Continue
         }
     }
     fn entity_tick_post(&self, _: HostSide<'_>, event: &mut mod_api::EntityTickPostEvent<'_>) {
-        for &id in event.entities {
-            self.events.lock().unwrap().push(Event::EntityPost(id));
-        }
+        self.events
+            .lock()
+            .unwrap()
+            .push(Event::EntityPost(event.entity));
     }
     fn block_break_progress_update(
         &self,

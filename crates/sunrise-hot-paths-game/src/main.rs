@@ -53,7 +53,9 @@ impl Hooks for Listener {
         }
     }
 
-    fn entity_tick_pre(&self, _: HostSide<'_>, _: &mut EntityTickPreEvent<'_>) {}
+    fn entity_tick_pre(&self, _: HostSide<'_>, _: &mut EntityTickPreEvent<'_>) -> mod_api::Flow {
+        mod_api::Flow::Continue
+    }
     fn entity_tick_post(&self, _: HostSide<'_>, _: &mut EntityTickPostEvent<'_>) {}
 }
 
@@ -100,8 +102,9 @@ struct FanoutListener(usize);
 
 #[mod_api::__subscriptions]
 impl Hooks for FanoutListener {
-    fn entity_tick_pre(&self, _: HostSide<'_>, _: &mut EntityTickPreEvent<'_>) {
+    fn entity_tick_pre(&self, _: HostSide<'_>, _: &mut EntityTickPreEvent<'_>) -> mod_api::Flow {
         note_hot_paths_listener_call(self.0);
+        mod_api::Flow::Continue
     }
 
     fn server_started(&self, _: &mut dyn ServerHost, _: &mut ServerStartedEvent) {

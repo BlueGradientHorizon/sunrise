@@ -1519,15 +1519,26 @@ mod entity_tick_tests {
             &self,
             host: mod_api::HostSide<'_>,
             event: &mut mod_api::EntityTickPreEvent<'_>,
-        ) {
-            self.record(&host, "pre", event.entities, event.kinds);
+        ) -> mod_api::Flow {
+            self.record(
+                &host,
+                "pre",
+                std::slice::from_ref(&event.entity),
+                std::slice::from_ref(&event.kind),
+            );
+            mod_api::Flow::Continue
         }
         fn entity_tick_post(
             &self,
             host: mod_api::HostSide<'_>,
             event: &mut mod_api::EntityTickPostEvent<'_>,
         ) {
-            self.record(&host, "post", event.entities, event.kinds);
+            self.record(
+                &host,
+                "post",
+                std::slice::from_ref(&event.entity),
+                std::slice::from_ref(&event.kind),
+            );
         }
     }
 
@@ -1540,15 +1551,26 @@ mod entity_tick_tests {
             &self,
             host: mod_api::HostSide<'_>,
             event: &mut mod_api::EntityTickPreEvent<'_>,
-        ) {
-            Listener(self.0.clone()).record(&host, "pre", event.entities, event.kinds);
+        ) -> mod_api::Flow {
+            Listener(self.0.clone()).record(
+                &host,
+                "pre",
+                std::slice::from_ref(&event.entity),
+                std::slice::from_ref(&event.kind),
+            );
+            mod_api::Flow::Continue
         }
         fn entity_tick_post(
             &self,
             host: mod_api::HostSide<'_>,
             event: &mut mod_api::EntityTickPostEvent<'_>,
         ) {
-            Listener(self.0.clone()).record(&host, "post", event.entities, event.kinds);
+            Listener(self.0.clone()).record(
+                &host,
+                "post",
+                std::slice::from_ref(&event.entity),
+                std::slice::from_ref(&event.kind),
+            );
         }
     }
 
@@ -1660,8 +1682,14 @@ mod entity_tick_tests {
                 &self,
                 host: mod_api::HostSide<'_>,
                 event: &mut mod_api::EntityTickPreEvent<'_>,
-            ) {
-                Listener(self.0.clone()).record(&host, "pre", event.entities, event.kinds);
+            ) -> mod_api::Flow {
+                Listener(self.0.clone()).record(
+                    &host,
+                    "pre",
+                    std::slice::from_ref(&event.entity),
+                    std::slice::from_ref(&event.kind),
+                );
+                mod_api::Flow::Continue
             }
         }
 
@@ -1673,7 +1701,12 @@ mod entity_tick_tests {
                 host: mod_api::HostSide<'_>,
                 event: &mut mod_api::EntityTickPostEvent<'_>,
             ) {
-                Listener(self.0.clone()).record(&host, "post", event.entities, event.kinds);
+                Listener(self.0.clone()).record(
+                    &host,
+                    "post",
+                    std::slice::from_ref(&event.entity),
+                    std::slice::from_ref(&event.kind),
+                );
             }
         }
 

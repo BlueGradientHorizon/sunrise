@@ -585,8 +585,8 @@ mod tests {
         });
     }
 
-    /// A listener's calls, in order: the phase and the entities told.
-    type Heard = std::sync::Arc<std::sync::Mutex<Vec<(&'static str, Vec<u32>)>>>;
+    /// A listener's calls, in order: the phase and the entity told.
+    type Heard = std::sync::Arc<std::sync::Mutex<Vec<(&'static str, u32)>>>;
 
     /// Hears every entity tick.
     struct Displays {
@@ -599,23 +599,22 @@ mod tests {
             &self,
             _: mod_api::HostSide<'_>,
             event: &mut mod_api::EntityTickPreEvent<'_>,
-        ) {
-            let entities = event.entities.to_vec();
-            self.heard.lock().unwrap().push(("pre", entities));
+        ) -> mod_api::Flow {
+            self.heard.lock().unwrap().push(("pre", event.entity));
+            mod_api::Flow::Continue
         }
         fn entity_tick_post(
             &self,
             _: mod_api::HostSide<'_>,
             event: &mut mod_api::EntityTickPostEvent<'_>,
         ) {
-            let entities = event.entities.to_vec();
-            self.heard.lock().unwrap().push(("post", entities));
+            self.heard.lock().unwrap().push(("post", event.entity));
         }
     }
 
     /// Two text displays, which the server keeps without simulating them, through a level's
     /// entity phase: their ids and what the listener heard.
-    fn display_ticks() -> (Vec<u32>, Vec<(&'static str, Vec<u32>)>) {
+    fn display_ticks() -> (Vec<u32>, Vec<(&'static str, u32)>) {
         let heard = Heard::default();
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
             "display-ticks",
@@ -651,36 +650,20 @@ mod tests {
         (ids, heard)
     }
 
-    /// Displays are told one by one at their place in the join order, each Pre right before its Post.
+    /// Displays are bracketed one by one at their place in the join order, each Pre right before
+    /// its Post.
     #[test]
     #[ignore = "daily"]
-    fn named_displays_are_told_at_their_place_in_the_join_order() {
+    fn displays_are_bracketed_one_by_one_in_join_order() {
         let (ids, heard) = display_ticks();
         assert_eq!(ids.len(), 2);
         assert_eq!(
             heard,
             [
-                ("pre", vec![ids[0]]),
-                ("post", vec![ids[0]]),
-                ("pre", vec![ids[1]]),
-                ("post", vec![ids[1]]),
-            ]
-        );
-    }
-
-    /// Subscribed displays are bracketed individually without any opt-in flag.
-    #[test]
-    #[ignore = "daily"]
-    fn unnamed_displays_are_told_once_for_the_family() {
-        let (ids, heard) = display_ticks();
-        assert_eq!(ids.len(), 2);
-        assert_eq!(
-            heard,
-            [
-                ("pre", vec![ids[0]]),
-                ("post", vec![ids[0]]),
-                ("pre", vec![ids[1]]),
-                ("post", vec![ids[1]]),
+                ("pre", ids[0]),
+                ("post", ids[0]),
+                ("pre", ids[1]),
+                ("post", ids[1]),
             ]
         );
     }

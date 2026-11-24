@@ -175,14 +175,18 @@ fn the_client_count_follows_the_entity_tick_not_the_motion() {
             struct Seen(Arc<Mutex<Vec<(u32, Option<i32>)>>>);
             #[mod_api::__subscriptions]
             impl mod_api::Hooks for Seen {
-                fn entity_tick_pre(&self, host: HostSide<'_>, event: &mut EntityTickPreEvent<'_>) {
+                fn entity_tick_pre(
+                    &self,
+                    host: HostSide<'_>,
+                    event: &mut EntityTickPreEvent<'_>,
+                ) -> mod_api::Flow {
                     let HostSide::Client(host) = host else {
-                        return;
+                        return mod_api::Flow::Continue;
                     };
-                    for &id in event.entities {
-                        let count = host.entity(id).and_then(|e| e.tick_count(host));
-                        self.0.lock().unwrap().push((id, count));
-                    }
+                    let id = event.entity;
+                    let count = host.entity(id).and_then(|e| e.tick_count(host));
+                    self.0.lock().unwrap().push((id, count));
+                    mod_api::Flow::Continue
                 }
                 fn player_tick_pre(&self, host: HostSide<'_>, event: &mut PlayerTickPreEvent) {
                     let HostSide::Client(host) = host else {
@@ -259,16 +263,21 @@ fn a_canceled_root_does_not_count_and_a_passenger_does() {
             struct Cancel(Arc<Mutex<Vec<(u32, Option<i32>)>>>);
             #[mod_api::__subscriptions]
             impl mod_api::Hooks for Cancel {
-                fn entity_tick_pre(&self, host: HostSide<'_>, event: &mut EntityTickPreEvent<'_>) {
+                fn entity_tick_pre(
+                    &self,
+                    host: HostSide<'_>,
+                    event: &mut EntityTickPreEvent<'_>,
+                ) -> mod_api::Flow {
                     let HostSide::Client(host) = host else {
-                        return;
+                        return mod_api::Flow::Continue;
                     };
-                    for &id in event.entities {
-                        let count = host.entity(id).and_then(|e| e.tick_count(host));
-                        self.0.lock().unwrap().push((id, count));
-                        if id == 20 || id == 22 {
-                            event.canceled.push(id);
-                        }
+                    let id = event.entity;
+                    let count = host.entity(id).and_then(|e| e.tick_count(host));
+                    self.0.lock().unwrap().push((id, count));
+                    if id == 20 || id == 22 {
+                        mod_api::Flow::Cancel
+                    } else {
+                        mod_api::Flow::Continue
                     }
                 }
             }
@@ -343,10 +352,16 @@ fn callbacks_read_other_entities_counts_as_their_visits_left_them() {
             }
             #[mod_api::__subscriptions]
             impl mod_api::Hooks for Read {
-                fn entity_tick_pre(&self, host: HostSide<'_>, event: &mut EntityTickPreEvent<'_>) {
-                    self.read(host, "pre", event.entities);
-                    if event.entities.contains(&21) {
-                        event.canceled.push(21);
+                fn entity_tick_pre(
+                    &self,
+                    host: HostSide<'_>,
+                    event: &mut EntityTickPreEvent<'_>,
+                ) -> mod_api::Flow {
+                    self.read(host, "pre", std::slice::from_ref(&event.entity));
+                    if event.entity == 21 {
+                        mod_api::Flow::Cancel
+                    } else {
+                        mod_api::Flow::Continue
                     }
                 }
                 fn entity_tick_post(
@@ -354,7 +369,7 @@ fn callbacks_read_other_entities_counts_as_their_visits_left_them() {
                     host: HostSide<'_>,
                     event: &mut EntityTickPostEvent<'_>,
                 ) {
-                    self.read(host, "post", event.entities);
+                    self.read(host, "post", std::slice::from_ref(&event.entity));
                 }
             }
             let seen = Arc::new(Mutex::new(Vec::new()));

@@ -242,11 +242,7 @@ impl mod_api::Hooks for Hooks {
         event: &mut mod_api::EntityTickPostEvent<'_>,
     ) {
         if self.panics {
-            self.probe
-                .posts
-                .lock()
-                .unwrap()
-                .extend_from_slice(event.entities);
+            self.probe.posts.lock().unwrap().push(event.entity);
         }
     }
     fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
@@ -1074,11 +1070,7 @@ impl mod_api::Hooks for Consumer {
         event: &mut mod_api::EntityTickPostEvent<'_>,
     ) {
         if self.panics {
-            self.probe
-                .posts
-                .lock()
-                .unwrap()
-                .extend_from_slice(event.entities);
+            self.probe.posts.lock().unwrap().push(event.entity);
         }
     }
 }

@@ -2588,14 +2588,16 @@ pub(in crate::game) mod tests {
         struct Named(Calls);
         #[mod_api::__subscriptions]
         impl Hooks for Named {
-            fn entity_tick_pre(&self, _: HostSide<'_>, event: &mut EntityTickPreEvent<'_>) {
-                self.0.lock().unwrap().push((true, event.entities.to_vec()));
+            fn entity_tick_pre(
+                &self,
+                _: HostSide<'_>,
+                event: &mut EntityTickPreEvent<'_>,
+            ) -> mod_api::Flow {
+                self.0.lock().unwrap().push((true, vec![event.entity]));
+                mod_api::Flow::Continue
             }
             fn entity_tick_post(&self, _: HostSide<'_>, event: &mut EntityTickPostEvent<'_>) {
-                self.0
-                    .lock()
-                    .unwrap()
-                    .push((false, event.entities.to_vec()));
+                self.0.lock().unwrap().push((false, vec![event.entity]));
             }
         }
         let heard: Calls = Arc::default();
