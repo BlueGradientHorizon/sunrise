@@ -6,8 +6,8 @@ use crate::game::{
     api_values::{TryIntoEngine, stack_value},
 };
 use mod_api::{
-    GuiBlitRegion, GuiCanvas, GuiDrawError, GuiSpriteRegion, ItemStack, Text, TextLayoutSize,
-    TextLayoutSpec,
+    GuiBlitRegion, GuiCanvas, GuiDrawError, GuiSpriteRegion, GuiVertex, ItemStack, Text,
+    TextLayoutSize, TextLayoutSpec,
 };
 use sunrise_client::{
     hud::{GuiSprite, HudAtlas, HudBatch},
@@ -265,6 +265,19 @@ impl GuiCanvas for GameGuiCanvas<'_, '_> {
     fn fill_gradient(&mut self, rect: [f32; 4], top: u32, bottom: u32) -> Result<(), GuiDrawError> {
         rect_end(rect)?;
         self.paint(|batch, atlas| paint_fill_gradient(batch, atlas, rect, top, bottom))
+    }
+
+    fn triangles(&mut self, triangles: &[[GuiVertex; 3]]) -> Result<(), GuiDrawError> {
+        // `paint` refuses a corner that is not finite once posed, the identity pose included.
+        self.paint(|batch, atlas| {
+            for triangle in triangles {
+                batch.fill_triangle_shaded(
+                    atlas,
+                    triangle.map(|corner| corner.pos),
+                    triangle.map(|corner| abgr(corner.argb)),
+                );
+            }
+        })
     }
 
     fn text(
@@ -971,5 +984,57 @@ mod tests {
         })
         .unwrap();
         assert!(batch.vertices.is_empty());
+    }
+
+    #[test]
+    fn triangles_are_posed_with_their_corner_colours_and_a_non_finite_corner_draws_none() {
+        let atlas = HudAtlas::build(&ResourceSource::directory(
+            "/nonexistent/sunrise-test-assets".into(),
+        ))
+        .unwrap();
+        let mut batch = HudBatch::scratch([320, 240]);
+        let corner = |pos, argb| GuiVertex { pos, argb };
+        let white = |pos| corner(pos, 0xFFFF_FFFF);
+        GameGuiCanvas::draw(&mut batch, &atlas, None, None, &mut |root| {
+            root.scope(
+                &[PoseOp::Translate(10.0, 20.0), PoseOp::Scale(2.0, 2.0)],
+                None,
+                &mut |panel| {
+                    panel.triangles(&[[
+                        corner([0.0, 0.0], 0xFF11_2233),
+                        corner([4.0, 0.0], 0x8044_5566),
+                        corner([0.0, 3.0], 0x0077_8899),
+                    ]])
+                },
+            )?;
+            // One bad corner refuses the whole call, the finite triangle before it included.
+            assert_eq!(
+                root.triangles(&[
+                    [white([0.0, 0.0]), white([1.0, 0.0]), white([0.0, 1.0])],
+                    [white([f32::NAN, 0.0]), white([1.0, 0.0]), white([0.0, 1.0])],
+                ]),
+                Err(GuiDrawError::NotFinite)
+            );
+            assert_eq!(
+                root.scope(&[PoseOp::Scale(f32::MAX, 1.0)], None, &mut |wide| {
+                    wide.triangles(&[[white([0.0, 0.0]), white([2.0, 0.0]), white([0.0, 1.0])]])
+                }),
+                Err(GuiDrawError::NotFinite)
+            );
+            Ok(())
+        })
+        .unwrap();
+        let corners = batch.vertices.iter().map(|v| (v.pos, v.color));
+        assert_eq!(
+            corners.collect::<Vec<_>>(),
+            [
+                ([10.0, 20.0], 0xFF33_2211),
+                ([18.0, 20.0], 0x8066_5544),
+                ([10.0, 26.0], 0x0099_8877),
+                ([10.0, 20.0], 0xFF33_2211),
+                ([10.0, 26.0], 0x0099_8877),
+                ([10.0, 26.0], 0x0099_8877),
+            ]
+        );
     }
 }
