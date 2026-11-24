@@ -1,3 +1,14 @@
+/// Declare a mod's own event; see the [`Event`](trait@crate::Event) trait.
+///
+/// A cancellable event needs a `cancelled: bool` field:
+///
+/// ```compile_fail
+/// #[derive(mod_api::Event)]
+/// #[event(id = "demo:ping", cancellable)]
+/// #[non_exhaustive]
+/// pub struct Ping;
+/// ```
+pub use sunrise_mod_api_macros::Event;
 /// Encode an owned value with the Wire codec.
 ///
 /// Fields are encoded in declaration order. Enum tags are zero-based declaration
@@ -25,17 +36,6 @@
 /// struct MissingConversions(u32);
 /// ```
 pub use sunrise_mod_api_macros::Wire;
-/// Declare a mod's own event; see the [`Event`](trait@crate::Event) trait.
-///
-/// A cancellable event needs a `cancelled: bool` field:
-///
-/// ```compile_fail
-/// #[derive(mod_api::Event)]
-/// #[event(id = "demo:ping", cancellable)]
-/// #[non_exhaustive]
-/// pub struct Ping;
-/// ```
-pub use sunrise_mod_api_macros::Event;
 
 /// Internal test-fixture attribute for modules with multiple hook sets; mods use `#[mod_api::sunrise_mod]`.
 #[doc(hidden)]
