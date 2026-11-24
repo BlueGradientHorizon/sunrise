@@ -4242,7 +4242,7 @@ impl Game<'_> {
         if let Some(capture) = self.server.chat_capture.as_mut() {
             capture.push(line.clone());
         }
-        let focused = self.client.screen == Screen::Chat;
+        let focused = self.chat_screen_focused();
         self.ui.chat.add(
             &self.gui.atlas,
             line,
@@ -4252,6 +4252,10 @@ impl Game<'_> {
             focused,
         );
         Ok(1)
+    }
+    #[inline]
+    pub(in crate::game) fn chat_screen_focused(&self) -> bool {
+        self.client.screen == Screen::Chat
     }
     /// MessageArgument: `@p`-style selectors in a message become names.
     pub(super) fn expand_selectors(&mut self, raw: &str) -> Text {

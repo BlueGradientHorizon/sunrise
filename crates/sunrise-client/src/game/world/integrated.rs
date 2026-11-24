@@ -862,11 +862,8 @@ impl Game<'_> {
                             started.elapsed().as_secs_f32() * 1000.0,
                             on_cpu.map(|(end, start)| (end - start).as_secs_f32() * 1000.0),
                         );
-                        self.client
-                            .debug_charts
-                            .log_tick(started, started.elapsed());
                         flags.smoothed_tick_ms.store(
-                            self.client.debug_charts.smoothed_tick_ms.to_bits(),
+                            self.integrated_tick_loop_client(started).to_bits(),
                             Ordering::Relaxed,
                         );
                         if let (Some(terrain), Ok(mut terrains)) =
@@ -922,6 +919,11 @@ impl Game<'_> {
             return Err(error);
         }
         Ok(())
+    }
+
+    pub(in crate::game) fn integrated_tick_loop_client(&mut self, started: Instant) -> f32 {
+        self.client.debug_charts.log_tick(started, started.elapsed());
+        self.client.debug_charts.smoothed_tick_ms
     }
 
     /// After the level of `dim` ticked: the window's debug entries' server

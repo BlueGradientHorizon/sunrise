@@ -18,15 +18,22 @@ impl Game<'_> {
                 ),
             );
         } else if self.options.dedicated.is_none() {
-            self.client.titles.set_overlay(message, false);
+            self.send_overlay_message_client(message);
         }
+    }
+    pub(in crate::game) fn send_overlay_message_client(&mut self, message: Text) {
+        self.client.titles.set_overlay(message, false);
     }
     /// `Hud.setOverlayMessage(line, animate_color)` on this window's HUD, outside a borrowed
     /// server guest's turn: no chat, narration or packet, as the direct setter does none.
     pub(in crate::game) fn set_overlay_message(&mut self, line: Text, animate_color: bool) {
-        if self.native_window() && self.server.lan_acting.is_none() {
+        if self.native_window() && self.overlay_outside_guest_turn() {
             self.client.titles.set_overlay(line, animate_color);
         }
+    }
+    #[inline]
+    pub(in crate::game) fn overlay_outside_guest_turn(&self) -> bool {
+        self.server.lan_acting.is_none()
     }
 
     /// `Hud.extractOverlayMessage`: the action bar.

@@ -302,6 +302,9 @@ impl Game<'_> {
     /// `Player.resetAttackStrengthTicker`.
     pub(super) fn reset_attack_strength(&mut self) {
         self.server.attack_ticks = 0;
+        self.reset_attack_strength_client();
+    }
+    pub(in crate::game) fn reset_attack_strength_client(&mut self) {
         self.client.hand_strength.reset();
     }
     /// The window tick already picked before key handling. Simulation keeps its own ray.
@@ -817,13 +820,8 @@ impl Game<'_> {
             rest: format!("{} {} {:?}", s.count, s.damage, s.extra),
         });
         let changed = self.client.hand_strength.main_hand_changed(&held);
-        if self.client.hand_strength.tick(held) {
-            self.server.attack_ticks = 0;
-        }
-        if changed {
-            self.apply_equipment();
-        }
-        self.server.attack_item = main.as_ref().map(|s| s.item.clone());
+        let reset = self.client.hand_strength.tick(held);
+        self.tick_hand_server(reset, changed, main.as_ref());
         let next = [(self.selected, main), (OFFHAND, self.offhand.clone())];
         let mut changed = [false; 2];
         for h in 0..2 {
@@ -849,6 +847,21 @@ impl Game<'_> {
                 self.client.hands_replaced[h] = false;
             }
         }
+    }
+
+    pub(in crate::game) fn tick_hand_server(
+        &mut self,
+        reset: bool,
+        changed: bool,
+        main: Option<&ItemStack>,
+    ) {
+        if reset {
+            self.server.attack_ticks = 0;
+        }
+        if changed {
+            self.apply_equipment();
+        }
+        self.server.attack_item = main.map(|s| s.item.clone());
     }
 
     /// `IItemExtension.shouldCauseReequipAnimation` for hand `h` (0 main, 1

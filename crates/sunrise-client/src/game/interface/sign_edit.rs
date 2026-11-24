@@ -255,11 +255,14 @@ impl Game<'_> {
                     overlay: true,
                 }));
         } else {
-            self.client.message = Some((
-                self.translate_with_fallback(KEY, "Click actions are disabled for this sign"),
-                std::time::Instant::now(),
-            ));
+            self.sign_click_actions_disabled_client(KEY);
         }
+    }
+    pub(in crate::game) fn sign_click_actions_disabled_client(&mut self, key: &str) {
+        self.client.message = Some((
+            self.translate_with_fallback(key, "Click actions are disabled for this sign"),
+            std::time::Instant::now(),
+        ));
     }
     /// `SignBlock.useWithoutItem` (the block's `OpenMenu` effect): the side
     /// the player faces runs its click commands first; then a waxed sign
@@ -507,6 +510,9 @@ impl Game<'_> {
             game.set_mapping_held("key.use", false);
             game.capture(false);
         });
+        self.open_sign_editor_server(pos, front);
+    }
+    pub(in crate::game) fn open_sign_editor_server(&mut self, pos: (i32, i32, i32), front: bool) {
         if let (Some(player), Some(name)) = (
             self.server.lan_acting_uuid,
             self.server.lan_acting_name.clone(),

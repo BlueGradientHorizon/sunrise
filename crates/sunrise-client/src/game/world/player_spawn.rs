@@ -97,6 +97,16 @@ impl Game<'_> {
             .map_or(0, |s| s.enchantment_level("minecraft:respiration") as i32);
         player.pitch = self.pitch;
         player.glider = self.glider_worn();
+        self.spawn_player_client(player, feet, entering);
+        Ok(())
+    }
+
+    pub(in crate::game) fn spawn_player_client(
+        &mut self,
+        player: PlayerMotion,
+        feet: Vec3,
+        entering: bool,
+    ) {
         // A saved death already dropped inventory/XP and counted the death.
         if player.health.dead_or_dying() {
             self.set_screen(Screen::Dead);
@@ -124,6 +134,5 @@ impl Game<'_> {
         self.client.previous_eye = 1.62;
         self.clock.reset();
         self.capture_loaded_world();
-        Ok(())
     }
 }

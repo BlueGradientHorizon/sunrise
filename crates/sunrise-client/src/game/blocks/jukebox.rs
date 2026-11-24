@@ -300,6 +300,9 @@ impl Game<'_> {
         self.client.titles.set_overlay(message, true);
         self.update_song_volumes();
         self.notify_record_playing(pos, true);
+        self.start_song_server(pos, song);
+    }
+    pub(in crate::game) fn start_song_server(&mut self, pos: [i32; 3], song: &str) {
         if self.audio.0.capture.is_some() {
             self.server.lan_songs.push((pos, Some(song.to_owned())));
         }

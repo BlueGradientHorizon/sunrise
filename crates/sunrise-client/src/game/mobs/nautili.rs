@@ -45,6 +45,11 @@ impl Game<'_> {
             self.mobs[index].persistent = true;
         }
     }
+    #[inline]
+    pub(in crate::game) fn nautilus_sneak_held(&self) -> bool {
+        self.held_mapping(Action::Sneak)
+            || self.client.keys.raw(&winit::keyboard::KeyCode::ShiftRight)
+    }
     /// `AbstractNautilus.mobInteract`. Returns whether the click was used.
     pub(super) fn interact_nautilus(&mut self, index: usize, item: &str) -> bool {
         let m = &self.mobs[index];
@@ -59,8 +64,7 @@ impl Game<'_> {
             .map(|t| t.iter().cloned().collect())
             .unwrap_or_default();
         let food = nautilus::is_food(m, item, &taming);
-        let sneaking = self.held_mapping(Action::Sneak)
-            || self.client.keys.raw(&winit::keyboard::KeyCode::ShiftRight);
+        let sneaking = self.nautilus_sneak_held();
         let tame = m.extra.tame;
         if m.is_baby() {
             // Animal.mobInteract: food grows a baby up by a tenth.

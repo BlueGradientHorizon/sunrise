@@ -463,9 +463,12 @@ impl Game<'_> {
             kept.insert("Team".into(), team.clone());
         }
         self.remember(id, Some(uuid), sunrise_core::nbt::Tag::Compound(kept));
-        self.client.lightning_seen[0] += 1;
+        self.load_bolt_client();
         self.bolts.push(bolt);
         Some(id)
+    }
+    pub(in crate::game) fn load_bolt_client(&mut self) {
+        self.client.lightning_seen[0] += 1;
     }
     /// Remove a live bolt and release its UUID and scoreboard membership.
     pub(in crate::game) fn remove_bolt(&mut self, id: u32) {

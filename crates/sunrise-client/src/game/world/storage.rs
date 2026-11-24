@@ -362,8 +362,7 @@ impl Game<'_> {
             })
         {
             self.close_container();
-            self.client.screen = super::Screen::Playing;
-            self.capture(true);
+            self.tick_container_reach_client();
             return;
         }
         let range = self.reach() + 4.0;
@@ -375,6 +374,10 @@ impl Game<'_> {
             self.set_screen(super::Screen::Playing);
             self.capture(true);
         }
+    }
+    pub(in crate::game) fn tick_container_reach_client(&mut self) {
+        self.client.screen = super::Screen::Playing;
+        self.capture(true);
     }
     /// `CraftingMenu.stillValid`: the open crafting table closes once its
     /// block is no longer a crafting table or the player's eyes are out of

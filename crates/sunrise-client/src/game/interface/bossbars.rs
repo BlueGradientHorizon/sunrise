@@ -525,7 +525,7 @@ impl Game<'_> {
             let desired = self.boss_events_for(viewer);
             for event in self.diff_boss_events(viewer, desired) {
                 if viewer.local {
-                    self.client.boss_overlay.apply(&event, now);
+                    self.publish_boss_bars_client(&event, now);
                 } else if let Some(conn) = viewer.conn {
                     packets.push((conn, C::BossEvent(event)));
                 }
@@ -540,6 +540,13 @@ impl Game<'_> {
         for (conn, packet) in &packets {
             host.hub.send_to(*conn, packet);
         }
+    }
+    pub(in crate::game) fn publish_boss_bars_client(
+        &mut self,
+        event: &play::BossEvent,
+        now: u128,
+    ) {
+        self.client.boss_overlay.apply(event, now);
     }
     /// `EnderDragonFight.updateDragon`: the fight's dragon's custom name
     /// becomes the bar's, and stays after the name is removed.

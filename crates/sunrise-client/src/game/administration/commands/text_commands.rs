@@ -348,7 +348,7 @@ impl Game<'_> {
                 }
                 Target::Player => {
                     if let Some(local) = local.take() {
-                        local(&mut self.client.titles);
+                        self.titles_or_packet_client(local);
                     }
                 }
                 Target::Guest(conn) => {
@@ -359,6 +359,9 @@ impl Game<'_> {
                 _ => {}
             }
         }
+    }
+    pub(in crate::game) fn titles_or_packet_client(&mut self, local: impl FnOnce(&mut Titles)) {
+        local(&mut self.client.titles);
     }
 }
 

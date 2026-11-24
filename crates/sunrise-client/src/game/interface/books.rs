@@ -1095,6 +1095,16 @@ impl Game<'_> {
         self.lectern_menu_done(key, &menu);
         self.follow_lectern();
     }
+    #[inline]
+    pub(in crate::game) fn lectern_book_open(&self) -> bool {
+        matches!(
+            self.client.book,
+            Some(BookScreen::View {
+                lectern: Some(_),
+                ..
+            })
+        )
+    }
     /// LecternScreen's Take Book: the menu's button 3. The book leaves the
     /// lectern, so the screen closes (the server closes the menu once the
     /// book is gone; a server's client closes at once rather than wait).
@@ -1114,15 +1124,7 @@ impl Game<'_> {
         ) {
             self.native_player_take_lectern_book(player, &name, [key.0, key.1, key.2], &book.item);
         }
-        if self.may_build()
-            && matches!(
-                self.client.book,
-                Some(BookScreen::View {
-                    lectern: Some(_),
-                    ..
-                })
-            )
-        {
+        if self.may_build() && self.lectern_book_open() {
             self.close_book();
         }
     }

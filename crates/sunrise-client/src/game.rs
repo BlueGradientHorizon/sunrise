@@ -6312,12 +6312,16 @@ impl Game<'_> {
             self.server.guest_cooldowns.push((group, ticks));
         }
     }
+    #[inline]
+    pub(in crate::game) fn mining_screen_is_playing(&self) -> bool {
+        self.client.screen == Screen::Playing
+    }
     fn tick_mining(&mut self) -> Result<()> {
         if self.server.destroy_delay > 0 {
             self.server.destroy_delay -= 1;
         }
         if !self.mapped_key_down("key.attack")
-            || self.client.screen != Screen::Playing
+            || !self.mining_screen_is_playing()
             || self.dialog_open()
         {
             self.mining = None;
@@ -9638,11 +9642,13 @@ impl Game<'_> {
                 ),
             );
         } else if overlay {
-            self.client.message =
-                Some((self.translate_with_fallback(key, fallback), Instant::now()));
+            self.tell_sleeper_client(key, fallback);
         } else {
             self.system_message(sunrise_client::text::Text::translate(key, &[]));
         }
+    }
+    pub(in crate::game) fn tell_sleeper_client(&mut self, key: &str, fallback: &str) {
+        self.client.message = Some((self.translate_with_fallback(key, fallback), Instant::now()));
     }
     /// ServerPlayer.startSleepInBed: in reach, not obstructed, night or thunder,
     /// and (outside creative) no monsters within 8 blocks; the bed becomes the
@@ -9919,6 +9925,10 @@ impl Game<'_> {
             }
         }
     }
+    #[inline]
+    pub(in crate::game) fn sleep_chat_screen_open(&self) -> bool {
+        self.client.screen == Screen::Chat
+    }
     fn tick_sleep(&mut self) {
         self.sleep_timer = tick_sleep_timer(self.sleep_timer, self.sleeping.is_some());
         if let Some(head) = self.sleeping {
@@ -9934,7 +9944,7 @@ impl Game<'_> {
                     .as_ref()
                     .is_none_or(|p| p.health.dead_or_dying());
             if wake_immediately
-                || (self.client.screen != Screen::Chat && self.held_mapping(Mapping::Sneak))
+                || (!self.sleep_chat_screen_open() && self.held_mapping(Mapping::Sneak))
             {
                 self.wake_up(wake_immediately, true);
                 return;

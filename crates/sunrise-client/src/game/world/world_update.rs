@@ -188,16 +188,7 @@ impl Game<'_> {
                     }),
             );
         }
-        self.streaming.extra.extend(
-            self.server
-                .server_trips
-                .iter()
-                .flat_map(|trip| trip.spawn_destination_areas(dim)),
-        );
-        let waiting = std::mem::take(&mut self.server.spawn_wait);
-        self.streaming
-            .extra
-            .extend(waiting.into_iter().map(|chunk| (chunk, 0)));
+        self.update_world_server(dim);
         // `Level.getChunk`'s tickets keep their columns until they expire.
         self.streaming.hold_unknown_tickets();
         self.streaming.upload_backlog = self.pending_uploads.0.len();
@@ -481,6 +472,18 @@ impl Game<'_> {
                 });
             }
         }
+    }
+    pub(in crate::game) fn update_world_server(&mut self, dim: Dim) {
+        self.streaming.extra.extend(
+            self.server
+                .server_trips
+                .iter()
+                .flat_map(|trip| trip.spawn_destination_areas(dim)),
+        );
+        let waiting = std::mem::take(&mut self.server.spawn_wait);
+        self.streaming
+            .extra
+            .extend(waiting.into_iter().map(|chunk| (chunk, 0)));
     }
 }
 

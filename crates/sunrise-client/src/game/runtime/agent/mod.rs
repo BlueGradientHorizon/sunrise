@@ -552,6 +552,11 @@ impl Game<'_> {
         json!({ "kind": kind, "block": block, "entity": entity })
     }
 
+    #[inline]
+    pub(in crate::game) fn shield_cooldown(&self) -> u32 {
+        self.server.shield_cooldown
+    }
+
     pub(super) fn state_value(&self) -> Value {
         let player = self.player.as_ref().map(|p| {
             json!({
@@ -578,7 +583,7 @@ impl Game<'_> {
                 "portal_effect": self.client.screen_fx.portal,
                 "food": p.health.food.food,
                 "saturation": p.health.food.saturation,
-                "shield_cooldown": self.server.shield_cooldown,
+                "shield_cooldown": self.shield_cooldown(),
                 // ItemCooldowns.getCooldownPercent of the shield: what this window's hotbar draws
                 // over it (on a server's client, only what the server's Cooldown packets told it).
                 "shield_cooldown_shown": self.cooldowns.percent("minecraft:shield", 0.0),

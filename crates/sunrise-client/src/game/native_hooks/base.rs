@@ -4440,7 +4440,7 @@ impl Game<'_> {
     /// it: its clicks don't reach the mouse hooks.
     pub(in crate::game) fn mod_screen_open(&mut self, mod_id: &str) -> bool {
         let unavailable = self.renderer.0.is_none()
-            || self.server.lan_acting.is_some()
+            || self.mod_screen_guest_acting()
             || (self.player.is_none() && self.title.0.is_none())
             || self.remote_loading();
         let owner = if self.screen_over_playing() {
@@ -4485,6 +4485,10 @@ impl Game<'_> {
         self.close_replaced_screen_for_mod();
         self.apply_screen(Screen::Mod, Some(mod_id));
         self.mod_screen() == Some(mod_id)
+    }
+    #[inline]
+    pub(in crate::game) fn mod_screen_guest_acting(&self) -> bool {
+        self.server.lan_acting.is_some()
     }
     /// Closes mod `mod_id`'s own screen, if it is open.
     pub(in crate::game) fn mod_screen_close(&mut self, mod_id: &str) {

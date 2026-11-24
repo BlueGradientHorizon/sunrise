@@ -107,7 +107,7 @@ impl Game<'_> {
                         self.world.shulkers.remove(&p);
                         self.world.chest_openers.remove(&at);
                         self.server.lid_openers.remove(&at);
-                        self.client.test_highlights.remove(&at);
+                        self.finish_piston_position_changes_client(at);
                     }
                     self.server
                         .mod_container_viewers
@@ -171,5 +171,9 @@ impl Game<'_> {
                 }
             }
         }
+    }
+
+    pub(in crate::game) fn finish_piston_position_changes_client(&mut self, at: Pos) {
+        self.client.test_highlights.remove(&at);
     }
 }

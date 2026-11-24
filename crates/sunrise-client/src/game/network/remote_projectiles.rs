@@ -575,6 +575,18 @@ impl Game<'_> {
         );
     }
 
+    #[inline]
+    pub(in crate::game) fn remote_projectiles_acting_uuid(&self) -> Option<u128> {
+        self.server.lan_acting_uuid
+    }
+
+    #[inline]
+    pub(in crate::game) fn remote_projectiles_game_side(
+        &self,
+    ) -> crate::game::native_surface::GameSide<'_> {
+        game_side!(self)
+    }
+
     /// One tick of interpolation, as `tick_remote_objects`.
     pub(super) fn tick_remote_projectiles(&mut self, mut step: impl FnMut(u32, Vec3) -> Vec3) {
         self.tick_remote_fangs();
@@ -591,7 +603,45 @@ impl Game<'_> {
             Some(self.border.geometry()),
             Some(&self.res.motion().blocks),
         );
-        let side = game_side!(self);
+        // Build `GameSide` with field-level borrows while reading `lan_acting_uuid` through a server helper.
+        let acting_uuid = self.remote_projectiles_acting_uuid();
+        let side = crate::game::native_surface::GameSide {
+            dim: self.dim,
+            level: self.native_lifecycle.epoch().and_then(|epoch| {
+                let key = self.dim.key();
+                let id = mod_api::__private::dimension_id(key)?;
+                Some(mod_api::LevelRef::with_generation(
+                    epoch,
+                    key,
+                    self.levels.runtime.generation_of(id),
+                ))
+            }),
+            facts: self.res.facts(),
+            biomes: world_biomes!(self),
+            behaviours: self.res.behaviours(),
+            features: self
+                .remote
+                .as_ref()
+                .map_or(self.level.enabled_features.as_arc(), |remote| {
+                    &remote.features
+                }),
+            items: self.res.items(),
+            damage_types: &self.health_resources.damage,
+            player_equipment: acting_equipment!(self),
+            hit_borrows: crate::game::native_surface::HitBorrows {
+                living_types: self.res.living_type_keys(),
+                attributes: &self.motion.attributes,
+                player_effects: &self.potions.effects,
+                player_uuid: acting_uuid,
+                player_attachments: &self.player_state.attachments,
+                entity_attachments: &*self.entity_attachments,
+            },
+            tag_items: if self.options.execution_role.is_client() {
+                self.remote.as_ref().and_then(|remote| remote.tags.as_ref())
+            } else {
+                self.session_lock.is_some().then(|| self.res.items())
+            },
+        };
         let sections = self.client.client_pick.sections.get_mut();
         self.tnts.retain_mut(|t| {
             // A fluid lookup that fails leaves it where its move put it.
@@ -752,7 +802,7 @@ impl Game<'_> {
         #[cfg(test)]
         nested_spawn_tests::after_lift(self, nested_spawn_tests::Point::RemoteRocket);
         for r in &mut rockets {
-            r.remote_step(self.body_motion(&game_side!(self)));
+            r.remote_step(self.body_motion(&self.remote_projectiles_game_side()));
             if let Some(target) = r.attached_to {
                 if me == Some(target) {
                     self.pick_section_move(r.id, r.position.components());
