@@ -1,2 +1,1 @@
-sunrise-client game::native_hooks::sound_events::play_sound_tests::play_sound_receives_client_host_and_refuses_an_instance_released_before_apply lib daily resources
 sunrise-client game::native_local_sounds::tests::a_client_muffle_accepts_more_than_sixty_four_exempt_events lib daily resources

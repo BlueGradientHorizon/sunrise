@@ -231,39 +231,14 @@ impl Ambience {
     /// `LocalPlayer.updateIsUnderwater`, then the `ambientSoundHandlers`
     /// (underwater, bubble column, biome) as `LocalPlayer.tick` runs them.
     pub fn tick(&mut self, ctx: &AmbientContext, sounds: &mut impl Sounds) {
-        self.tick_with(
-            ctx.sounds,
-            ctx.position,
-            ctx.eye_y,
-            ctx.underwater,
-            ctx.spectator,
-            ctx.bubble_column,
-            |_, b| (ctx.light)(b),
-            sounds,
-        );
-    }
-    /// Like [`Self::tick`], reading block light through `sounds` so callers can pass a `Sounds`
-    /// wrapper that holds mutable access to the game without borrowing the world across hooks.
-    #[allow(clippy::too_many_arguments)]
-    pub fn tick_with<S: Sounds>(
-        &mut self,
-        ambient: &AmbientSounds,
-        position: [f64; 3],
-        eye_y: f64,
-        underwater: bool,
-        spectator: bool,
-        bubble_column: Option<bool>,
-        mut light: impl FnMut(&S, [i32; 3]) -> (u8, u8),
-        sounds: &mut S,
-    ) {
         let old = self.was_underwater;
-        self.was_underwater = underwater;
-        if !spectator {
-            if !old && underwater {
+        self.was_underwater = ctx.underwater;
+        if !ctx.spectator {
+            if !old && ctx.underwater {
                 self.play_local(
                     "minecraft:ambient.underwater.enter",
                     AMBIENT,
-                    position,
+                    ctx.position,
                     sounds,
                 );
                 let instance = SoundInstance::under_liquid_loop(
@@ -272,36 +247,30 @@ impl Ambience {
                 );
                 sounds.play_instance(instance, false);
             }
-            if old && !underwater {
+            if old && !ctx.underwater {
                 self.play_local(
                     "minecraft:ambient.underwater.exit",
                     AMBIENT,
-                    position,
+                    ctx.position,
                     sounds,
                 );
             }
         }
         self.tick_underwater(sounds);
-        self.tick_bubble_column(position, spectator, bubble_column, sounds);
-        self.tick_biome(ambient, position, eye_y, &mut light, sounds);
+        self.tick_bubble_column(ctx, sounds);
+        self.tick_biome(ctx, sounds);
     }
     /// `BubbleColumnAmbientSoundHandler.tick`: entering a column plays its
     /// inside sound (`LocalPlayer.playSound`, on PLAYERS).
-    fn tick_bubble_column(
-        &mut self,
-        position: [f64; 3],
-        spectator: bool,
-        bubble_column: Option<bool>,
-        sounds: &mut impl Sounds,
-    ) {
-        if let Some(drag_down) = bubble_column {
-            if !self.was_in_bubble_column && !self.first_tick && !spectator {
+    fn tick_bubble_column(&mut self, ctx: &AmbientContext, sounds: &mut impl Sounds) {
+        if let Some(drag_down) = ctx.bubble_column {
+            if !self.was_in_bubble_column && !self.first_tick && !ctx.spectator {
                 let event = if drag_down {
                     "minecraft:block.bubble_column.whirlpool_inside"
                 } else {
                     "minecraft:block.bubble_column.upwards_inside"
                 };
-                self.play_local(event, PLAYERS, position, sounds);
+                self.play_local(event, PLAYERS, ctx.position, sounds);
             }
             self.was_in_bubble_column = true;
         } else {
@@ -331,14 +300,7 @@ impl Ambience {
         }
     }
     /// `BiomeAmbientSoundsHandler.tick`.
-    fn tick_biome<S: Sounds>(
-        &mut self,
-        ambient: &AmbientSounds,
-        position: [f64; 3],
-        eye_y: f64,
-        light: &mut impl FnMut(&S, [i32; 3]) -> (u8, u8),
-        sounds: &mut S,
-    ) {
+    fn tick_biome(&mut self, ctx: &AmbientContext, sounds: &mut impl Sounds) {
         let mut kept = Vec::new();
         for (event, id) in std::mem::take(&mut self.loops) {
             if sounds.engine().instance(id).is_some_and(|i| i.stopped) {
@@ -348,7 +310,8 @@ impl Ambience {
             }
         }
         self.loops = kept;
-        let current = ambient
+        let current = ctx
+            .sounds
             .r#loop
             .as_deref()
             .map(crate::sound_events::normalize);
@@ -375,24 +338,24 @@ impl Ambience {
                 }
             }
         }
-        for (sound, chance) in &ambient.additions {
+        for (sound, chance) in &ctx.sounds.additions {
             if self.random.next_double() < *chance {
                 let event = crate::sound_events::normalize(sound);
                 let instance = SoundInstance::for_ambient_addition(&event, random_source::create());
                 sounds.play_instance(instance, false);
             }
         }
-        let Some(mood) = &ambient.mood else { return };
+        let Some(mood) = &ctx.sounds.mood else { return };
         let extent = mood.block_search_extent;
         let span = extent * 2 + 1;
-        let x = position[0] + f64::from(self.random.next_int_bound(span).unwrap_or(0))
+        let x = ctx.position[0] + f64::from(self.random.next_int_bound(span).unwrap_or(0))
             - f64::from(extent);
-        let y =
-            eye_y + f64::from(self.random.next_int_bound(span).unwrap_or(0)) - f64::from(extent);
-        let z = position[2] + f64::from(self.random.next_int_bound(span).unwrap_or(0))
+        let y = ctx.eye_y + f64::from(self.random.next_int_bound(span).unwrap_or(0))
+            - f64::from(extent);
+        let z = ctx.position[2] + f64::from(self.random.next_int_bound(span).unwrap_or(0))
             - f64::from(extent);
         let sample = [x.floor() as i32, y.floor() as i32, z.floor() as i32];
-        let (sky, block) = light(sounds, sample);
+        let (sky, block) = (ctx.light)(sample);
         if sky > 0 {
             self.moodiness -= f32::from(sky) / 15.0 * 0.001;
         } else {
@@ -402,15 +365,15 @@ impl Ambience {
             let sample_x = f64::from(sample[0]) + 0.5;
             let sample_y = f64::from(sample[1]) + 0.5;
             let sample_z = f64::from(sample[2]) + 0.5;
-            let dx = sample_x - position[0];
-            let dy = sample_y - eye_y;
-            let dz = sample_z - position[2];
+            let dx = sample_x - ctx.position[0];
+            let dy = sample_y - ctx.eye_y;
+            let dz = sample_z - ctx.position[2];
             let distance = (dx * dx + dy * dy + dz * dz).sqrt();
             let source = distance + mood.offset;
             let at = [
-                position[0] + dx / distance * source,
-                eye_y + dy / distance * source,
-                position[2] + dz / distance * source,
+                ctx.position[0] + dx / distance * source,
+                ctx.eye_y + dy / distance * source,
+                ctx.position[2] + dz / distance * source,
             ];
             // The mood sound draws from the level random itself.
             let event = crate::sound_events::normalize(&mood.sound);

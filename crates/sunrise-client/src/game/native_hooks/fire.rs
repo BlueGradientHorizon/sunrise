@@ -5,7 +5,6 @@ use super::*;
 use crate::game::{native_level_signals::ReadLevel, native_surface::FrictionView};
 use mod_api::{
     BlockEntityDataView, BlockFace, BlockRemovalEffects, EmissiveSpriteRegistration, RandomSource,
-    SoundPlay,
 };
 
 include!(concat!(env!("OUT_DIR"), "/mod_api_fire_generated.rs"));

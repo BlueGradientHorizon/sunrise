@@ -1,10 +1,9 @@
 //! `Minecraft.getSituationalMusic` and `getMusicVolume` for the music manager,
 //! the local player's ambient sound handlers and the sound engine tick.
-use super::{Game, native_hooks::GameSounds};
+use super::Game;
 use sunrise_client::{
-    ambience::Ambience,
     blocks::Fluid,
-    music::{BackgroundMusic, Music, MusicFrequency, MusicManager, Situation},
+    music::{BackgroundMusic, Music, MusicFrequency, Situation},
     options_ui::MusicGroup,
     random_source,
     sound_engine::{SoundInstance, Sounds, TickContext},
@@ -18,9 +17,7 @@ impl Game<'_> {
         self.native_music(&mut music, &mut volume);
         let mut layers = Vec::new();
         self.native_music_layers(&mut layers);
-        let mut music_layers = std::mem::take(&mut self.music_layers);
-        music_layers.tick(&layers, &mut GameSounds(self));
-        self.music_layers = music_layers;
+        self.music_layers.tick(&layers, &mut self.audio);
         // Options.musicFrequency's listener: MusicManager.setMinutesBetweenSongs.
         let frequency = MusicFrequency::parse(&self.settings.file.name("musicFrequency"));
         if frequency != self.music.frequency {
@@ -44,9 +41,8 @@ impl Game<'_> {
                 .remote
                 .as_ref()
                 .is_some_and(|r| r.reconfiguring.is_some());
-        let mut manager = std::mem::replace(&mut self.music, MusicManager::new(0));
-        manager.tick(music.as_ref(), volume, loading, &mut GameSounds(self));
-        self.music = manager;
+        self.music
+            .tick(music.as_ref(), volume, loading, &mut self.audio);
         // Options.musicToast's listener: ToastManager.setMusicToastDisplayState.
         let state = self.settings.file.int("musicToast").clamp(0, 2) as u8;
         if state != self.music_toast_state {
@@ -69,9 +65,7 @@ impl Game<'_> {
     }
     /// A Music page row: play this track of `event` now.
     pub(super) fn play_music_track(&mut self, event: &str, track: &str) {
-        let mut manager = std::mem::replace(&mut self.music, MusicManager::new(0));
-        manager.play_track(event, track, &mut GameSounds(self));
-        self.music = manager;
+        self.music.play_track(event, track, &mut self.audio);
     }
     /// `Options.getFinalSoundSourceVolume(SoundSource.MUSIC)`.
     fn final_music_volume(&self) -> f32 {
@@ -219,10 +213,7 @@ impl Game<'_> {
         // Client mods' sounds asked for since the last update start with it, then their stops
         // and fades apply.
         self.apply_mod_sounds();
-        // Flush any sounds staged before the engine tick so starts keep vanilla order.
-        self.flush_play_sound();
         self.audio.tick(self.pause, &ctx);
-        self.flush_play_sound();
     }
     /// `Minecraft.setLevel` -> `updateLevelInEngines`: `SoundManager.stop()`.
     /// The music manager keeps its stopped track and, on its next tick, waits
@@ -322,6 +313,10 @@ impl Game<'_> {
                 .at(self.dim.id(), biome, world_biomes!(self).pack_file(biome));
         let underwater = self.eye_in_water(feet[0], eye_y, feet[2]);
         let world = &self.world;
+        let light = |b: [i32; 3]| {
+            let l = world.light(b[0], b[1], b[2]);
+            (l >> 4, l & 15)
+        };
         let (half, height) = (
             f64::from(p.dimensions.width / 2.0),
             f64::from(p.dimensions.height),
@@ -347,28 +342,16 @@ impl Game<'_> {
                 })
             },
         );
-        let spectator = self.own_player_is_spectator();
-        // Keep `enchant_power` and `moodiness` visible on `self.ambience` while `play_sound`
-        // listeners can inspect `ClientHost` during ambient playback.
-        let enchant_power = std::mem::take(&mut self.ambience.enchant_power);
-        let mut ambience = std::mem::replace(&mut self.ambience, Ambience::new(0));
-        self.ambience.enchant_power = enchant_power;
-        self.ambience.moodiness = ambience.moodiness;
-        ambience.tick_with(
-            &sounds,
-            feet,
+        let ctx = sunrise_client::ambience::AmbientContext {
+            sounds: &sounds,
+            position: feet,
             eye_y,
             underwater,
-            spectator,
+            spectator: self.own_player_is_spectator(),
+            light: &light,
             bubble_column,
-            |game, b| {
-                let l = game.0.world.light(b[0], b[1], b[2]);
-                (l >> 4, l & 15)
-            },
-            &mut GameSounds(self),
-        );
-        ambience.enchant_power = std::mem::take(&mut self.ambience.enchant_power);
-        self.ambience = ambience;
+        };
+        self.ambience.tick(&ctx, &mut self.audio);
     }
 }
 

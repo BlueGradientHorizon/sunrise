@@ -549,7 +549,6 @@ impl ApplicationHandler for Game<'_> {
                 game.key_input(name, layout_key, raw_code, action, modifiers);
             });
         }
-        self.flush_play_sound();
     }
     fn device_event(&mut self, event_loop: &ActiveEventLoop, _: DeviceId, event: DeviceEvent) {
         // Offscreen runs do not use native pointer motion.
@@ -582,7 +581,6 @@ impl ApplicationHandler for Game<'_> {
         // device, an occluded window) must still end after a server crash.
         self.exit_after_server_crash();
         self.idle(event_loop);
-        self.flush_play_sound();
     }
     /// The application is ending. On macOS, Quit (Cmd+Q) ends it through
     /// applicationWillTerminate without a CloseRequested; vanilla's GLFW

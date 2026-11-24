@@ -422,7 +422,6 @@ impl Game<'_> {
                 // only without a level (on the title screen's options).
                 Event::Volume(source, volume) if self.title.is_some() => {
                     self.audio.preview(source, volume);
-                    self.flush_play_sound();
                 }
                 Event::Volume(..) => {}
                 Event::CopyAgentDetails => {

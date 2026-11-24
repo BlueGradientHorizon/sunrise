@@ -110,7 +110,6 @@ impl Game<'_> {
                 seed,
             ),
         }
-        self.flush_play_sound();
     }
 
     /// A client-local level request without a packet seed. LocalPlayer.playSound
@@ -127,7 +126,6 @@ impl Game<'_> {
                 heard.pitch,
                 seed,
             );
-            self.flush_play_sound();
         }
     }
 

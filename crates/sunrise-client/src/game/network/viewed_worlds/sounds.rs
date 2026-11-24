@@ -104,7 +104,6 @@ impl Game<'_> {
                 play.pitch,
                 play.seed,
             );
-            self.flush_play_sound();
         }
         Ok(())
     }
