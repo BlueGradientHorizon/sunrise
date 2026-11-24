@@ -521,7 +521,18 @@ impl Game<'_> {
         let Some(stack) = held else {
             return false;
         };
+        let starter = super::super::item_abilities::ability::FIRESTARTER_LIGHT;
         match &*stack.item {
+            // TntBlock.useItemOn primes TNT for any stack a part grants `firestarter_light`
+            // (the vanilla starters are predicted below), unless sneaking with hands full.
+            _ if &*self.block_name(hit.pos) == "minecraft:tnt"
+                && self.stack_can_perform(stack, starter, false)
+                && !(self.remote_shift_down()
+                    && (self.stack_in(self.selected).is_some() || self.offhand.is_some())) =>
+            {
+                self.with_hand(hand, Game::swing_arm);
+                return true;
+            }
             "minecraft:debug_stick" => {
                 // The client answers SUCCESS and swings; only the server changes the block.
                 self.with_hand(hand, Game::swing_arm);

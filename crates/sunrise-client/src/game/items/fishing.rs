@@ -514,7 +514,7 @@ impl Game<'_> {
             .is_some_and(|i| i.is("minecraft:fishing_rod"))
     }
     /// Whether `stack` holds a cast line as a rod does (`fishing_rod_cast`).
-    pub(super) fn casts(&self, stack: &ItemStack) -> bool {
+    fn casts(&self, stack: &ItemStack) -> bool {
         self.stack_can_perform(stack, ability::FISHING_ROD_CAST, self.is_rod(stack))
     }
     /// `FishingHook.shouldStopFishing`: a hand still holds a casting stack.

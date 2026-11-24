@@ -226,6 +226,12 @@ impl Game<'_> {
         {
             return true;
         }
+        // Sheep.mobInteract: shears, sheared or not, answer CONSUME on a client.
+        if m.species() == Species::Sheep
+            && stack.is_some_and(|s| self.stack_shears(s, ability::SHEARS_HARVEST))
+        {
+            return false;
+        }
         mob_swings(m, item)
     }
     /// `AbstractHorse.handleEating` (`Llama`'s and `Camel`'s too) on this

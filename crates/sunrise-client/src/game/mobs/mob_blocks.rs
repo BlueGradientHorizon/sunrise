@@ -469,7 +469,13 @@ impl Game<'_> {
                 fishing_cast_item(
                     mob.id,
                     active.map(|hook| hook.owner),
-                    mob.extra.main_hand_stack().is_some_and(|s| self.casts(s)),
+                    mob.extra.main_hand_stack().is_some_and(|s| {
+                        self.stack_can_perform(
+                            s,
+                            super::item_abilities::ability::FISHING_ROD_CAST,
+                            &*s.item == "minecraft:fishing_rod",
+                        )
+                    }),
                     off_hand,
                 )
             };
