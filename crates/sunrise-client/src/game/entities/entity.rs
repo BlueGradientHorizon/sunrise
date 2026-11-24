@@ -1836,6 +1836,95 @@ macro_rules! hit_reads_of {
     };
 }
 pub(super) use hit_reads_of;
+/// A hit's one decision about its causing entity `$causing` (an entity id, 0 for none), taken
+/// before the site borrows the game's fields for the hit: whether a `HitHost` hook listens,
+/// the causer's place in `$game.mobs` when it is a mob, and otherwise, when it is not the player
+/// in place either, the parked guest it may be (see [`Game::native_parked_causer`]). Expands to
+/// `(i32, bool, Option<usize>, Option<u32>)`: the causing id with the three; without a
+/// listener it looks nothing up.
+macro_rules! causer_decision {
+    ($game:ident, $causing:expr) => {{
+        let causing: i32 = $causing;
+        let listened = causing != 0 && sunrise_client::health::hit_host_listened();
+        let mob = listened
+            .then(|| $game.mobs.iter().position(|m| m.id as i32 == causing))
+            .flatten();
+        let in_place = $game
+            .player
+            .as_ref()
+            .is_some_and(|p| p.entity_id == causing);
+        let parked = (listened && mob.is_none() && !in_place)
+            .then(|| $game.native_parked_causer(causing))
+            .flatten();
+        (causing, listened, mob, parked)
+    }};
+}
+pub(super) use causer_decision;
+/// The causing entity `$causing` a hit on the mob at `$index` of `$game.mobs` lends its
+/// listeners, beside that victim, as `$decision` ([`causer_decision`]) decided: another mob of
+/// the list (split with `get_disjoint_mut`), the player in place, or a parked guest's record
+/// (read-only, as its `LivingRef` reads answer from it). A mob that caused its own hit is not
+/// lent again: the listener reads it as the victim. Expands to `(&mut Mob, Option<HitLend>)`.
+macro_rules! victim_and_causer {
+    ($game:ident, $index:expr, $causing:expr, $decision:expr) => {{
+        let (index, causing): (usize, i32) = ($index, $causing);
+        let (_, listened, mob, parked): (i32, bool, Option<usize>, Option<u32>) = $decision;
+        match mob {
+            Some(other) if other != index => {
+                let [victim, causer] = $game
+                    .mobs
+                    .get_disjoint_mut([index, other])
+                    .expect("the victim and its causer are two mobs");
+                (victim, sunrise_client::health::HitLend::mob(causer))
+            }
+            Some(_) => (&mut $game.mobs[index], None),
+            None => (
+                &mut $game.mobs[index],
+                if listened {
+                    sunrise_client::health::HitLend::attacking_player(
+                        $game.player.as_mut(),
+                        causing,
+                        &$game.potions.effects,
+                        acting_equipment!($game),
+                    )
+                    .or_else(|| {
+                        sunrise_client::health::HitLend::parked_guest(
+                            $game.lan.as_ref().map(|lan| &lan.hub),
+                            parked?,
+                        )
+                    })
+                } else {
+                    None
+                },
+            ),
+        }
+    }};
+}
+pub(super) use victim_and_causer;
+/// The causing entity a hit on the player in place lends its listeners, as `$decision`
+/// ([`causer_decision`]) decided: a mob of `$game.mobs`, or a parked guest's record. The player
+/// causing its own hit is not lent again: the listener reads it as the victim.
+macro_rules! player_victim_causer {
+    ($game:ident, $decision:expr) => {{
+        let (causing, _, mob, parked): (i32, bool, Option<usize>, Option<u32>) = $decision;
+        match mob {
+            // The decision may be older than this level (the player's hurt builds three): the
+            // row must still be the causer.
+            Some(index) => $game
+                .mobs
+                .get_mut(index)
+                .filter(|m| m.id as i32 == causing)
+                .and_then(sunrise_client::health::HitLend::mob),
+            None => parked.and_then(|conn| {
+                sunrise_client::health::HitLend::parked_guest(
+                    $game.lan.as_ref().map(|lan| &lan.hub),
+                    conn,
+                )
+            }),
+        }
+    }};
+}
+pub(super) use player_victim_causer;
 /// The level `$game` ticks, lent to a hit's damage hooks with its block registry and merged
 /// tag tables, so a mob or the player beside them can take the hit. `$attack` is the
 /// [`Attack`](sunrise_client::health::Attack) the site took first. Every site names what it
