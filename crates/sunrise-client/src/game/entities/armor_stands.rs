@@ -313,25 +313,44 @@ impl Game<'_> {
     }
     /// `HumanoidArmorLayer` for the player: (model, texture rect, colour,
     /// overlay) of each worn piece, head to feet.
-    pub(super) fn player_armor_layers(&self) -> Vec<WornLayer<'_>> {
-        self.stack_armor_layers(&self.armor)
+    pub(super) fn player_armor_layers(
+        &self,
+        hidden_layers: mod_api::StockLayerMask,
+    ) -> Vec<WornLayer<'_>> {
+        self.stack_armor_layers(&self.armor, hidden_layers)
     }
     /// `HumanoidArmorLayer` for worn stacks (head to feet), trims included.
-    pub(super) fn stack_armor_layers(&self, armor: &[Option<ItemStack>; 4]) -> Vec<WornLayer<'_>> {
+    pub(super) fn stack_armor_layers(
+        &self,
+        armor: &[Option<ItemStack>; 4],
+        hidden_layers: mod_api::StockLayerMask,
+    ) -> Vec<WornLayer<'_>> {
         self.armor_layers(
             armor
                 .each_ref()
                 .map(|s| s.as_ref().map(EquipmentRead::resident)),
+            hidden_layers,
         )
     }
     /// `HumanoidArmorLayer` for another player's model: the armour it wears
     /// (`extra.equipment`, head to feet).
-    pub(super) fn worn_armor_layers(&self, m: &Mob) -> Vec<WornLayer<'_>> {
+    pub(super) fn worn_armor_layers(
+        &self,
+        m: &Mob,
+        hidden_layers: mod_api::StockLayerMask,
+    ) -> Vec<WornLayer<'_>> {
         use sunrise_core::equipment_slot::EquipmentSlot::{Chest, Feet, Head, Legs};
-        self.armor_layers([Head, Chest, Legs, Feet].map(|slot| finalize::equipment_slot(m, slot)))
+        self.armor_layers(
+            [Head, Chest, Legs, Feet].map(|slot| finalize::equipment_slot(m, slot)),
+            hidden_layers,
+        )
     }
     /// The layers of the armour items `worn`, head to feet.
-    fn armor_layers(&self, worn: [Option<EquipmentRead<'_>>; 4]) -> Vec<WornLayer<'_>> {
+    fn armor_layers(
+        &self,
+        worn: [Option<EquipmentRead<'_>>; 4],
+        hidden_layers: mod_api::StockLayerMask,
+    ) -> Vec<WornLayer<'_>> {
         let assets = &self.armor_stand_assets;
         let mut out = Vec::new();
         for (item, (layer, slot)) in worn.into_iter().zip([
@@ -354,13 +373,16 @@ impl Game<'_> {
                 &stack,
                 super::equipment_piece::EquipmentPass::Draw,
             ) {
+                let Some(overlay) = material.visible_overlay(piece.slot, hidden_layers) else {
+                    continue;
+                };
                 out.push((
                     material.model.map_or(WornModel::Vanilla(part), |model| {
                         WornModel::Override(model, piece.slot)
                     }),
                     material.binding.uv,
                     material.color,
-                    material.overlay,
+                    overlay,
                     material.glows,
                 ));
             }

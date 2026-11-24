@@ -257,14 +257,25 @@ impl Game<'_> {
         camera: DVec3,
         out: &mut Vec<Vertex>,
     ) {
-        let added = self.mod_layers(mob);
+        let is_player = &*mob.kind.id == "minecraft:player";
+        let resolved = self.entity_layers(mob);
+        let added = resolved.layers;
         // A mod's renderer for the type draws in place of the model only: the mods' layers
         // still follow, as in the world.
         let modded =
             self.mod_living_renderer_geometry(mob, partial, camera, FULL_BRIGHT, false, out);
+        let hidden = if modded {
+            mod_api::StockLayerMask::EMPTY
+        } else {
+            resolved.hidden
+        };
         let mut frame_draw = FrameDraw::new(!modded && added.is_some());
         let atlas = &self.gui.atlas;
         let lookup = |name: &str| atlas.sprites.get(name).map(|r| [r.u0, r.v0, r.u1, r.v1]);
+        let data = super::humanoid_setup_anim::HiddenLayersData {
+            game: self,
+            hidden_layers: hidden,
+        };
         // A screen's entity: custom entity model animations see is_in_gui = 1.
         sunrise_client::mobs::cem_anim::in_gui(|| {
             if modded {
@@ -276,17 +287,34 @@ impl Game<'_> {
                 camera,
                 &lookup,
                 FULL_BRIGHT,
-                self,
+                &data,
                 &[],
                 &mut frame_draw,
                 out,
             );
         });
+        let stock_ctx = super::native_entity_layers::StockLayerContext {
+            is_player,
+            local_player: false,
+            invisible: mob.is_invisible(),
+            in_world: false,
+            player_name: None,
+            alpha: f64::from(partial),
+            camera,
+            light: FULL_BRIGHT,
+            supported: if modded {
+                mod_api::StockLayerMask::EMPTY
+            } else {
+                resolved.supported
+            },
+            hidden,
+        };
         self.mod_layer_geometry(
             mob,
             None,
             frame_draw.model(),
             added,
+            &stock_ctx,
             partial,
             camera,
             FULL_BRIGHT,
@@ -304,6 +332,9 @@ impl Game<'_> {
 fn seen_quads(verts: &[Vertex], gui: Mat4, quads: &mut Vec<SeenQuad>) {
     quads.clear();
     for q in verts.as_chunks::<4>().0 {
+        if (q[0].layer & 0xffff) == sunrise_client_render::gfx::ARMOR_GLINT_ONLY_OVERLAY {
+            continue;
+        }
         let p: [Vec3; 4] =
             std::array::from_fn(|i| gui.transform_point3(Vec3::from_array(q[i].pos)));
         let n = (p[1] - p[0]).cross(p[2] - p[0]);

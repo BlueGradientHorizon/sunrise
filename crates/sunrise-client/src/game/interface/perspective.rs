@@ -955,11 +955,9 @@ impl Game<'_> {
         }
         // AvatarRenderer.shouldRenderLayers: a spectator draws no layers.
         let show_layers = sunrise_client::mobs::render::layers_shown(m);
-        let layers = if show_layers {
-            self.mod_layers(m)
-        } else {
-            None
-        };
+        let resolved = self.entity_layers(m);
+        let hidden = resolved.hidden;
+        let layers = if show_layers { resolved.layers } else { None };
         frame_draw.capture_model =
             layers.is_some() || (listened && self.mob_render_post_listened(true));
         // A spectator still draws its own model in third person: the poses'
@@ -974,7 +972,7 @@ impl Game<'_> {
                 &lookup,
                 packed,
                 self,
-                &self.player_armor_layers(),
+                &self.player_armor_layers(hidden),
                 &mut frame_draw,
                 out,
             );
@@ -986,7 +984,7 @@ impl Game<'_> {
                 &lookup,
                 packed,
                 self,
-                &self.player_armor_layers(),
+                &self.player_armor_layers(hidden),
                 &mut frame_draw,
                 out,
             );
@@ -994,31 +992,56 @@ impl Game<'_> {
         let model = frame_draw.model();
         if show_layers {
             let chest = self.armor[1].as_ref().map(|s| &*s.item);
-            // CapeLayer: no cape on an invisible player (`isInvisible`, whoever looks).
-            if !self.own_invisible() {
+            let invisible = self.own_invisible();
+            // CapeLayer and Deadmau5EarsLayer: `!state.isInvisible`, whoever sees the body.
+            if !invisible && !hidden.contains(mod_api::StockLayer::Cape) {
                 self.player_cape_geometry(m, chest, camera, alpha as f32, packed, out);
             }
-            self.player_ears_geometry(
+            if !invisible && !hidden.contains(mod_api::StockLayer::Deadmau5Ears) {
+                self.player_ears_geometry(m, &name, camera, alpha as f32, packed, out);
+            }
+            if !hidden.contains(mod_api::StockLayer::Wings) {
+                self.player_elytra_geometry(m, chest, camera, alpha as f32, packed, out);
+            }
+            if !hidden.contains(mod_api::StockLayer::SpinAttackEffect) {
+                self.spin_attack_geometry(m, camera, alpha as f32, packed, out);
+            }
+            if !hidden.contains(mod_api::StockLayer::ParrotOnShoulder) {
+                self.shoulder_parrots_geometry(m, camera, alpha as f32, packed, out);
+            }
+            self.stuck_in_body_geometry(
                 m,
-                &self.own_profile_name(),
+                self.own_entity_id(),
                 camera,
                 alpha as f32,
                 packed,
+                hidden,
                 out,
             );
-            self.player_elytra_geometry(m, chest, camera, alpha as f32, packed, out);
-            self.spin_attack_geometry(m, camera, alpha as f32, packed, out);
-            self.shoulder_parrots_geometry(m, camera, alpha as f32, packed, out);
-            self.stuck_in_body_geometry(m, self.own_entity_id(), camera, alpha as f32, packed, out);
-            self.held_item_geometry(m, camera, alpha, packed, true, None, out);
+            self.held_item_geometry(m, camera, alpha, packed, true, hidden, None, out);
             // CustomHeadLayer: a pumpkin, skull or other head item.
-            self.head_item_geometry(m, camera, alpha, packed, true, out);
+            if !hidden.contains(mod_api::StockLayer::CustomHead) {
+                self.head_item_geometry(m, camera, alpha, packed, true, out);
+            }
             // Mods' layers (`register_entity_layers`), over vanilla's.
+            let stock_ctx = super::native_entity_layers::StockLayerContext {
+                is_player: true,
+                local_player: true,
+                invisible,
+                in_world: true,
+                player_name: Some(&name),
+                alpha,
+                camera,
+                light: packed,
+                supported: resolved.supported,
+                hidden,
+            };
             self.mod_layer_geometry(
                 m,
                 Some(who),
                 model,
                 layers,
+                &stock_ctx,
                 alpha as f32,
                 camera,
                 packed,
@@ -1101,16 +1124,28 @@ impl Game<'_> {
         // A spectator preview still draws its own model: the poses'
         // visibility hides body parts, leaving the head and its layers.
         let body = self.own_body_visible() || self.own_player_is_spectator();
+        let resolved = self.entity_layers(&m);
+        let hidden = resolved.hidden;
+        let layers = resolved.layers;
+        let mut frame_draw = FrameDraw::new(layers.is_some());
         let (data, armour) = (
             self as &dyn sunrise_client::mobs::render::RenderDataSource,
-            self.player_armor_layers(),
+            self.player_armor_layers(hidden),
         );
+        let light = 240 | 240 << 8;
         // A screen preview: custom entity model animations see is_in_gui = 1.
         sunrise_client::mobs::cem_anim::in_gui(|| {
-            let light = 240 | 240 << 8;
             if body {
-                sunrise_client::mobs::render::render_with(
-                    &m, 1.0, camera, &lookup, light, data, &armour, &mut verts,
+                sunrise_client::mobs::render::render_with_frame(
+                    &m,
+                    1.0,
+                    camera,
+                    &lookup,
+                    light,
+                    data,
+                    &armour,
+                    &mut frame_draw,
+                    &mut verts,
                 );
             } else {
                 sunrise_client::mobs::render::render_layers(
@@ -1121,32 +1156,64 @@ impl Game<'_> {
                     light,
                     data,
                     &armour,
-                    &mut FrameDraw::default(),
+                    &mut frame_draw,
                     &mut verts,
                 );
             }
         });
         let chest = self.armor[1].as_ref().map(|s| &*s.item);
-        if !self.own_invisible() {
-            self.player_cape_geometry(&m, chest, camera, 1.0, 240 | 240 << 8, &mut verts);
+        let invisible = self.own_invisible();
+        let name = self.own_profile_name();
+        if !invisible && !hidden.contains(mod_api::StockLayer::Cape) {
+            self.player_cape_geometry(&m, chest, camera, 1.0, light, &mut verts);
         }
-        self.player_ears_geometry(
-            &m,
-            &self.own_profile_name(),
-            camera,
-            1.0,
-            240 | 240 << 8,
-            &mut verts,
-        );
+        if !invisible && !hidden.contains(mod_api::StockLayer::Deadmau5Ears) {
+            self.player_ears_geometry(&m, &name, camera, 1.0, light, &mut verts);
+        }
         // `WingsLayer` draws through `RenderTypes.armorCutoutNoCull`: the
         // wings' faces show from both sides (the elytra texture is empty on
         // the face that looks at the body).
         let wings_start = verts.len();
-        self.player_elytra_geometry(&m, chest, camera, 1.0, 240 | 240 << 8, &mut verts);
-        let wings = wings_start..verts.len();
-        self.shoulder_parrots_geometry(&m, camera, 1.0, 240 | 240 << 8, &mut verts);
-        self.held_item_geometry(&m, camera, 1.0, 240 | 240 << 8, false, None, &mut verts);
-        self.head_item_geometry(&m, camera, 1.0, 240 | 240 << 8, false, &mut verts);
+        if !hidden.contains(mod_api::StockLayer::Wings) {
+            self.player_elytra_geometry(&m, chest, camera, 1.0, light, &mut verts);
+        }
+        let mut wings = wings_start..verts.len();
+        if !hidden.contains(mod_api::StockLayer::ParrotOnShoulder) {
+            self.shoulder_parrots_geometry(&m, camera, 1.0, light, &mut verts);
+        }
+        self.held_item_geometry(&m, camera, 1.0, light, false, hidden, None, &mut verts);
+        if !hidden.contains(mod_api::StockLayer::CustomHead) {
+            self.head_item_geometry(&m, camera, 1.0, light, false, &mut verts);
+        }
+        let who = PlayerRender {
+            name: &name,
+            local: true,
+        };
+        let stock_ctx = super::native_entity_layers::StockLayerContext {
+            is_player: true,
+            local_player: true,
+            invisible,
+            in_world: false,
+            player_name: Some(&name),
+            alpha: 1.0,
+            camera,
+            light,
+            supported: resolved.supported,
+            hidden,
+        };
+        if let Some(redrawn_wings) = self.mod_layer_geometry(
+            &m,
+            Some(who),
+            frame_draw.model(),
+            layers,
+            &stock_ctx,
+            1.0,
+            camera,
+            light,
+            &mut verts,
+        ) {
+            wings = redrawn_wings;
+        }
         let height = if m.extra.crouching { 1.5 } else { 1.8 };
         // PictureInPictureRenderer: the box centre, (size, size, -size);
         // then the translation and Rz(pi) * Rx(y_angle * 20 degrees).
@@ -1492,6 +1559,7 @@ impl Game<'_> {
     /// `ArrowLayer` and `BeeStingerLayer` (`StuckInBodyLayer`) for a player:
     /// the arrows and bee stingers stuck in the body, placed from the entity
     /// id `id`.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn stuck_in_body_geometry(
         &self,
         m: &Mob,
@@ -1499,24 +1567,30 @@ impl Game<'_> {
         camera: glam::DVec3,
         partial: f32,
         light: u32,
+        hidden_layers: mod_api::StockLayerMask,
         out: &mut Vec<sunrise_client_render::render_geometry::Vertex>,
     ) {
         let sprites = &self.gui.atlas.sprites;
         let layers = [
             (
+                mod_api::StockLayer::Arrow,
                 m.extra.stuck.arrows,
                 false,
                 self.arrow_model.as_ref(),
                 "entity/projectiles/arrow",
             ),
             (
+                mod_api::StockLayer::BeeStinger,
                 m.extra.stuck.stingers,
                 true,
                 self.bee_stinger_model.as_ref(),
                 "entity/bee/bee_stinger",
             ),
         ];
-        for (count, on_surface, model, texture) in layers {
+        for (stock, count, on_surface, model, texture) in layers {
+            if hidden_layers.contains(stock) {
+                continue;
+            }
             let (true, Some(model), Some(rect)) = (count > 0, model, sprites.get(texture)) else {
                 continue;
             };
@@ -1648,7 +1722,10 @@ pub(super) fn player_preview_quads_no_cull(
     }
     let mut quads: Vec<(f32, [[f32; 3]; 4], [[f32; 2]; 4], u32)> = Vec::new();
     for (index, q) in verts.as_chunks::<4>().0.iter().enumerate() {
-        if (q[0].layer & 0xffff) == sunrise_client::gfx::GLINT_ONLY_OVERLAY {
+        if matches!(
+            q[0].layer & 0xffff,
+            sunrise_client::gfx::GLINT_ONLY_OVERLAY | sunrise_client::gfx::ARMOR_GLINT_ONLY_OVERLAY
+        ) {
             continue;
         }
         let p: [glam::Vec3; 4] =
@@ -1709,7 +1786,8 @@ pub(super) fn preview_glint_quads(
     let mut out = Vec::new();
     for (index, q) in verts.as_chunks::<4>().0.iter().enumerate() {
         let armor = match q[0].layer & 0xffff {
-            sunrise_client::mobs::render::ARMOR_GLINT => true,
+            sunrise_client::mobs::render::ARMOR_GLINT
+            | sunrise_client::gfx::ARMOR_GLINT_ONLY_OVERLAY => true,
             7
             | 8
             | sunrise_client::gfx::TRANSLUCENT_GLINT_ITEM_OVERLAY

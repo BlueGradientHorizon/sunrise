@@ -7,16 +7,57 @@ impl render::RenderDataSource for Game<'_> {
     }
 
     fn equipment_layers(&self, mob: &Mob) -> Vec<render::Layer> {
-        self.mob_equipment_layers(mob, super::equipment_piece::EquipmentPass::Draw)
+        self.mob_equipment_layers(
+            mob,
+            super::equipment_piece::EquipmentPass::Draw,
+            mod_api::StockLayerMask::EMPTY,
+        )
     }
 
     fn equipment_inventory(&self, mob: &Mob) -> Vec<render::Layer> {
-        self.mob_equipment_layers(mob, super::equipment_piece::EquipmentPass::TextureInventory)
+        self.mob_equipment_layers(
+            mob,
+            super::equipment_piece::EquipmentPass::TextureInventory,
+            mod_api::StockLayerMask::EMPTY,
+        )
     }
 
     fn humanoid_setup(&self) -> Option<&dyn anim::HumanoidSetup> {
         mod_api::__private::listened(mod_api::HookId::HumanoidSetupAnim)
             .then_some(self as &dyn anim::HumanoidSetup)
+    }
+}
+
+/// A living-entity draw adapter that lends a target's hidden stock-layer mask to the model
+/// renderer's equipment lookup, including on the GPU skinning path.
+pub(in crate::game) struct HiddenLayersData<'a, 'game> {
+    pub(in crate::game) game: &'a Game<'game>,
+    pub(in crate::game) hidden_layers: mod_api::StockLayerMask,
+}
+
+impl render::RenderDataSource for HiddenLayersData<'_, '_> {
+    fn mob_data(&self) -> &sunrise_client::mobs::MobData {
+        self.game.res.mob_data()
+    }
+
+    fn equipment_layers(&self, mob: &Mob) -> Vec<render::Layer> {
+        self.game.mob_equipment_layers(
+            mob,
+            super::equipment_piece::EquipmentPass::Draw,
+            self.hidden_layers,
+        )
+    }
+
+    fn equipment_inventory(&self, mob: &Mob) -> Vec<render::Layer> {
+        self.game.mob_equipment_layers(
+            mob,
+            super::equipment_piece::EquipmentPass::TextureInventory,
+            mod_api::StockLayerMask::EMPTY,
+        )
+    }
+
+    fn humanoid_setup(&self) -> Option<&dyn anim::HumanoidSetup> {
+        render::RenderDataSource::humanoid_setup(self.game)
     }
 }
 
