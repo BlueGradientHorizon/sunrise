@@ -14,7 +14,7 @@ mod shapes;
 pub fn is_vanilla_condition(kind: &str) -> bool {
     shapes::contains(kind, false)
 }
-pub(crate) use shapes::{validate_environment_value, validate_particle_options};
+pub(crate) use shapes::validate_environment_value;
 #[cfg(test)]
 #[path = "loot_types/tests.rs"]
 mod tests;

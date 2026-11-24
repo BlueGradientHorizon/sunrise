@@ -2825,8 +2825,14 @@ impl Game<'_> {
             self.lan_level_particles(&splash_options, splash, [0.0; 3], 1.0, 1, None);
             let bubble_options = ParticleOptions::simple(ParticleType::Bubble);
             if draw_locally {
-                self.particles
-                    .send_particles(&bubble_options, bubble, [0.0, 0.01, 0.0], 0.2, 1, None);
+                self.particles.send_particles(
+                    &bubble_options,
+                    bubble,
+                    [0.0, 0.01, 0.0],
+                    0.2,
+                    1,
+                    None,
+                );
             }
             self.lan_level_particles(&bubble_options, bubble, [0.0, 0.01, 0.0], 0.2, 1, None);
         }

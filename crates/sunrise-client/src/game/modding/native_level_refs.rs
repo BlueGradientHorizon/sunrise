@@ -399,7 +399,7 @@ impl Game<'_> {
         if !world.chunks.contains_key(&key) {
             return None;
         }
-        if let Some(streaming) = self.native_level_streaming(level) {
+        if let Ok(streaming) = self.native_level_streaming(level) {
             streaming.note_full_read(world, key);
         }
         Some(mod_api::__private::game::chunk_ref(level, pos))

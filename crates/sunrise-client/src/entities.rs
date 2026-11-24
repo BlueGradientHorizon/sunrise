@@ -508,13 +508,13 @@ impl ItemEntity {
         if self.health > 0 {
             return None;
         }
-        Some(self.spill_destroyed_contents())
+        Some(self.spill_destroyed_contents(items))
     }
     /// Built-in `ItemStack.onDestroyed` spills (`BundleItem.onDestroyed` and
     /// `BlockItem.onDestroyed` for shulker boxes) computed without modifying
     /// `self.stack`, so `ItemPart::item_destroyed` sees the original intact
     /// stack (`ItemEntity.hurtServer` -> `ItemStack.onDestroyed` -> `discard()`).
-    pub fn peek_destroyed_contents(&self) -> Vec<ItemStack> {
+    pub fn peek_destroyed_contents(&self, items: &Items) -> Vec<ItemStack> {
         let Some(data) = self.stack.data() else {
             return Vec::new();
         };
@@ -522,13 +522,13 @@ impl ItemEntity {
             return Vec::new();
         }
         let mut copy = self.stack.clone();
-        let mut spilled = crate::bundle::destroyed(&mut copy);
+        let mut spilled = crate::bundle::destroyed(items, &mut copy);
         spilled.extend(crate::item_data::destroyed_container(&mut copy));
         spilled
     }
     /// Clears built-in container contents (`bundle_contents`, `container`) in place
     /// and returns them for dropping (`ItemStack.onDestroyed`).
-    pub fn spill_destroyed_contents(&mut self) -> Vec<ItemStack> {
+    pub fn spill_destroyed_contents(&mut self, items: &Items) -> Vec<ItemStack> {
         // `ItemStack.onDestroyed` runs the item's own arm, and the component
         // the stack holds is the dispatch: a bundle's (`BundleItem.onDestroyed`)
         // `bundle_contents` and a container item's (`BlockItem.onDestroyed`)
@@ -2753,9 +2753,11 @@ mod fire_environment_tests {
         };
         let mut protected = make("minecraft:oak_planks");
         let mut heard = Vec::new();
+        let empty_items = Items::empty();
         let result = protected.environment_tick_with_hook(
             &mut world,
             facts,
+            &empty_items,
             assets.registry,
             &can_hurt,
             |_, damage| {
@@ -2772,7 +2774,7 @@ mod fire_environment_tests {
         );
         let mut wood = make("minecraft:oak_planks");
         let mut metal = make("minecraft:netherite_ingot");
-        let first = wood.environment_tick(&world, facts, assets.registry, &can_hurt);
+        let first = wood.environment_tick(&world, facts, &empty_items, assets.registry, &can_hurt);
         assert!(first.alive && first.lava_hurt);
         assert!(
             !first.should_play_lava_hurt_sound(1),
@@ -2783,7 +2785,7 @@ mod fire_environment_tests {
             wood.fire_ticks > 0,
             "lava contact must ignite dropped items"
         );
-        let last = wood.environment_tick(&world, facts, assets.registry, &can_hurt);
+        let last = wood.environment_tick(&world, facts, &empty_items, assets.registry, &can_hurt);
         assert!(
             !last.alive && last.lava_hurt,
             "lethal lava damage still emits burn sound"
@@ -2794,7 +2796,7 @@ mod fire_environment_tests {
         );
         for _ in 0..40 {
             let (result, allocations) = sunrise_threads::allocation_probe::measure(|| {
-                metal.environment_tick(&world, facts, assets.registry, &can_hurt)
+                metal.environment_tick(&world, facts, &empty_items, assets.registry, &can_hurt)
             });
             assert_eq!(
                 allocations.calls, 0,
@@ -2814,7 +2816,8 @@ mod fire_environment_tests {
             )
             .unwrap();
         let mut burning = make("minecraft:oak_planks");
-        let result = burning.environment_tick(&world, facts, assets.registry, &can_hurt);
+        let result =
+            burning.environment_tick(&world, facts, &empty_items, assets.registry, &can_hurt);
         assert!(result.alive && !result.lava_hurt);
         assert!(burning.fire_ticks > 0);
         world
@@ -2829,7 +2832,7 @@ mod fire_environment_tests {
             )
             .unwrap();
         let mut soul = make("minecraft:oak_planks");
-        soul.environment_tick(&world, facts, assets.registry, &can_hurt);
+        soul.environment_tick(&world, facts, &empty_items, assets.registry, &can_hurt);
         assert_eq!(soul.health, 3);
         let mut stand = ArmorStand::new(2, at, 0.0);
         world
@@ -2948,9 +2951,12 @@ mod destroyed_bundle_environment_tests {
             was_touching_water: false,
         };
         // 5 health against 4 a tick: the first tick leaves 1 and nothing out.
-        let first = bundle.environment_tick(&world, facts, assets.registry, &can_hurt);
+        let empty_items = Items::empty();
+        let first =
+            bundle.environment_tick(&world, facts, &empty_items, assets.registry, &can_hurt);
         assert!(first.alive && first.spilled.is_empty());
-        let second = bundle.environment_tick(&world, facts, assets.registry, &can_hurt);
+        let second =
+            bundle.environment_tick(&world, facts, &empty_items, assets.registry, &can_hurt);
         assert!(!second.alive);
         assert_eq!(
             second
@@ -2992,6 +2998,8 @@ mod destroyed_bundle_environment_tests {
             ground: Default::default(),
             vertical_collision: false,
             age: 0,
+            stack_revision: 0,
+            lifespan: ItemEntity::LIFETIME,
             pickup_delay: 0,
             bob_offset: 0.0,
             ticks: 0,
@@ -3030,14 +3038,16 @@ mod destroyed_bundle_environment_tests {
             explosion_resistance: 0.0,
             item: text("minecraft:air"),
             pick_item: text("minecraft:air"),
-            sounds: sunrise_items::blocks::Sounds {
+            sounds: mod_api::BlockSoundType {
+                identity: mod_api::BlockSoundTypeIdentity::Other,
                 volume: 1.0,
                 pitch: 1.0,
-                break_sound: text(""),
-                step: text(""),
-                place: text(""),
-                hit: text(""),
-                fall: text(""),
+                break_sound: mod_api::SoundEventKey::parse("minecraft:intentionally_empty")
+                    .unwrap(),
+                step: mod_api::SoundEventKey::parse("minecraft:intentionally_empty").unwrap(),
+                place: mod_api::SoundEventKey::parse("minecraft:intentionally_empty").unwrap(),
+                hit: mod_api::SoundEventKey::parse("minecraft:intentionally_empty").unwrap(),
+                fall: mod_api::SoundEventKey::parse("minecraft:intentionally_empty").unwrap(),
             },
             fluid: Fluid::None,
             fluid_level: 0,
@@ -3069,17 +3079,18 @@ mod destroyed_bundle_environment_tests {
         let mut stack = ItemStack::new("minecraft:bundle", 1);
         stack.data_mut().bundle_contents = vec![ItemStack::new("minecraft:diamond", 2)];
         let (world, facts, registry) = air_world_and_facts();
+        let items = Items::empty();
         let can_hurt = |_: &ItemStack, _: &str| true;
 
         let mut burning = test_item_entity(1, 20, stack.clone());
-        let result = burning.environment_tick(&world, &facts, &registry, &can_hurt);
+        let result = burning.environment_tick(&world, &facts, &items, &registry, &can_hurt);
         assert!(!result.alive);
         assert_eq!(result.destroyed_by, Some("minecraft:on_fire"));
         assert_eq!(result.spilled.len(), 1);
         assert_eq!(&*result.spilled[0].item, "minecraft:diamond");
 
         let mut pre_killed = test_item_entity(0, 0, stack);
-        let result = pre_killed.environment_tick(&world, &facts, &registry, &can_hurt);
+        let result = pre_killed.environment_tick(&world, &facts, &items, &registry, &can_hurt);
         assert!(!result.alive);
         assert_eq!(result.destroyed_by, Some("minecraft:generic"));
         assert_eq!(result.spilled.len(), 1);
@@ -3091,12 +3102,14 @@ mod destroyed_bundle_environment_tests {
         let mut stack = ItemStack::new("minecraft:bundle", 1);
         stack.data_mut().bundle_contents = vec![ItemStack::new("minecraft:diamond", 3)];
         let (mut world, facts, registry) = air_world_and_facts();
+        let items = Items::empty();
         let can_hurt = |_: &ItemStack, _: &str| true;
 
         let mut burning = test_item_entity(1, 20, stack);
         let result = burning.environment_tick_with_hook_deferring_spill(
             &mut world,
             &facts,
+            &items,
             &registry,
             &can_hurt,
             |_, _| false,
@@ -3110,12 +3123,12 @@ mod destroyed_bundle_environment_tests {
         assert_eq!(&*intact[0].item, "minecraft:diamond");
         assert_eq!(intact[0].count, 3);
 
-        let peeked = burning.peek_destroyed_contents();
+        let peeked = burning.peek_destroyed_contents(&items);
         assert_eq!(peeked.len(), 1);
         assert_eq!(peeked[0].count, 3);
         assert_eq!(burning.stack.data().unwrap().bundle_contents.len(), 1);
 
-        let spilled = burning.spill_destroyed_contents();
+        let spilled = burning.spill_destroyed_contents(&items);
         assert_eq!(spilled.len(), 1);
         assert_eq!(spilled[0].count, 3);
         assert!(
@@ -4887,10 +4900,11 @@ mod item_destroyed_tests {
             "minecraft:bundle",
             &[("minecraft:stone", 3), ("minecraft:diamond", 1)],
         );
+        let items = Items::empty();
         // Above zero after the hit: nothing leaves the bundle.
-        assert_eq!(bundle.hurt(1), None);
+        assert_eq!(bundle.hurt(&items, 1), None);
         assert_eq!(bundle.health, 4);
-        let spent = bundle.hurt(4).expect("the hit that destroys it");
+        let spent = bundle.hurt(&items, 4).expect("the hit that destroys it");
         assert_eq!(
             spent
                 .iter()
@@ -4907,7 +4921,7 @@ mod item_destroyed_tests {
         );
         // A second hit has nothing left to spill, and an item that holds
         // nothing never reports any.
-        assert_eq!(bundle.hurt(1), Some(Vec::new()));
+        assert_eq!(bundle.hurt(&items, 1), Some(Vec::new()));
         assert_eq!(
             item("minecraft:stone", &[]).hurt(&Items::empty(), 5),
             Some(Vec::new())

@@ -23,7 +23,7 @@ pub(crate) fn sound_type(
         return None;
     }
     let mut sound = own.clone();
-    FrictionView(level).native_sound_type(pos, state, entity, cause, &mut sound);
+    FrictionView(level, None).native_sound_type(pos, state, entity, cause, &mut sound);
     Some(sound)
 }
 

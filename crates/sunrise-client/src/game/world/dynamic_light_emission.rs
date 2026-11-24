@@ -10,7 +10,7 @@ impl Game<'_> {
     /// `ServerChunkCache.getChunk`: drive an authoritative FULL read on the level owner.
     /// Receive columns, prepare their contextual emission, then schedule lighting.
     pub(super) fn load_full_column(&mut self, column: (i32, i32)) -> bool {
-        self.load_full_chunk(None, column)
+        self.load_full_chunk(None, column).is_ok()
     }
 
     /// The chunks the workers brought into this level, asked before a light job reads them.

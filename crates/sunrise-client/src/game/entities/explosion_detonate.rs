@@ -285,11 +285,14 @@ mod tests {
                     join: Default::default(),
                     id: CRYSTAL,
                     position: Vec3::new(1.0, 1.0, 0.0),
+                    rotation: [0.0, 0.0],
+                    fire: 0,
                     show_bottom: false,
                     time: 0,
                     beam: None,
                     invulnerable: false,
                     fall: (false, 0.0),
+                    size_answer: None,
                 });
                 explode(game);
             });

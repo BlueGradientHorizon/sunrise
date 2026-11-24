@@ -168,10 +168,7 @@ impl<W: FeatureWorld + PlacementContext> ModFeatureTarget for PlacingWorld<'_, W
         self.0.block_matches_tag(position, tag).ok()
     }
     fn biome(&mut self, position: [i32; 3]) -> Option<BiomeKey> {
-        if !self.charge() {
-            return None;
-        }
-        self.world.biome_key(position).ok()
+        self.0.biome_key(position).ok()
     }
     fn min_y(&mut self) -> Option<i32> {
         self.0.min_y().ok()

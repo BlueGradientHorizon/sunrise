@@ -6839,7 +6839,8 @@ impl Game<'_> {
         // loaded to read it, and what it holds, air included, is the subject of the break
         // callback (`ServerPlayerGameMode.destroyBlock` has no air filter).
         if !self.world.is_loaded_at(x, y, z)
-            && !(self.native_authoritative() && self.load_full_chunk(None, (x >> 4, z >> 4)))
+            && !(self.native_authoritative()
+                && self.load_full_chunk(None, (x >> 4, z >> 4)).is_ok())
         {
             return Ok(false);
         }

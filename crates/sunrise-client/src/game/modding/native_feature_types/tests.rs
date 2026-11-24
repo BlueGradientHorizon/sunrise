@@ -41,7 +41,7 @@ impl ModFeatureTarget for Ground {
         if pos[1] < 0 {
             return None;
         }
-        self.biomes[usize::from(pos[0] >= 0)]
+        self.biomes[usize::from(pos[0] >= 0)].clone()
     }
     fn min_y(&mut self) -> Option<i32> {
         Some(-64)
@@ -118,7 +118,7 @@ fn the_books_pillar_places_through_the_adapter_on_a_worker() {
                 registry: Some(registry),
                 writes: Vec::new(),
                 entities: Vec::new(),
-                biomes: [None; 2],
+                biomes: [None, None],
             };
             let result = adapter.place(
                 &mut ground,
@@ -180,7 +180,7 @@ fn block_entity_data_must_fit_its_block_and_a_registry_is_required() {
             registry: Some(registry),
             writes: vec![(log, BlockStateId(2), 3), (chest, BlockStateId(5), 3)],
             entities: Vec::new(),
-            biomes: [None; 2],
+            biomes: [None, None],
         };
         let mut random = Random(LegacyRandom::new(0));
         assert!(
@@ -211,7 +211,7 @@ fn block_entity_data_must_fit_its_block_and_a_registry_is_required() {
             registry: None,
             writes: Vec::new(),
             entities: Vec::new(),
-            biomes: [None; 2],
+            biomes: [None, None],
         };
         let placed = adapter.place(
             &mut bare,
@@ -373,16 +373,20 @@ impl FeatureType for ByBiome {
 #[test]
 fn a_feature_places_by_the_biome_it_reads() {
     let registry = registry(&[]);
-    let keys = mod_api::__private::BiomeKeys::new(7, ["minecraft:desert", "minecraft:plains"]);
-    let [plains, desert] = ["minecraft:plains", "minecraft:desert"].map(|id| keys.key(id).unwrap());
+    let keys = mod_api::__private::BiomeKeys::new(
+        7,
+        ["minecraft:desert", "minecraft:plains"].map(|id| BiomeKey::parse(id).unwrap()),
+    );
+    let [plains, desert] =
+        ["minecraft:plains", "minecraft:desert"].map(|id| keys.view(id).unwrap().key().clone());
     let index = &WorkerResources::get(registry).unwrap().index;
     let [dirt, log] = [1, 2].map(|state| index.to_api(BlockStateId(state)).unwrap().block());
     let adapter = Adapter {
         owner: CallbackOwner::for_mod("test_biome"),
         schema: vec![],
         inner: Arc::new(ByBiome {
-            plains,
-            desert,
+            plains: plains.clone(),
+            desert: desert.clone(),
             dirt,
             log,
         }),
@@ -394,7 +398,7 @@ fn a_feature_places_by_the_biome_it_reads() {
                 registry: Some(registry),
                 writes: Vec::new(),
                 entities: Vec::new(),
-                biomes: [Some(plains), Some(desert)],
+                biomes: [Some(plains.clone()), Some(desert.clone())],
             };
             let result = adapter.place(
                 &mut ground,

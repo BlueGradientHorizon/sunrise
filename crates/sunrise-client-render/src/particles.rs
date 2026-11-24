@@ -1754,14 +1754,14 @@ impl ParticleEngine {
 
     /// An option its caller admitted already (`ClientLevel.doAddParticle` admits before it
     /// invokes a provider): a capture takes it as `add`'s, else it is created.
-    pub fn add_admitted_with_world(
+    pub fn add_admitted_with_level(
         &mut self,
-        world: Option<&World>,
+        level: Option<&ParticleLevel<'_>>,
         options: &ParticleOptions,
         p: [f64; 3],
         v: [f64; 3],
     ) -> bool {
-        self.capture(options, p, v) || self.create_with_world(world, options, p, v)
+        self.capture(options, p, v) || self.create_with_level(level, options, p, v)
     }
 
     /// `ClientLevel.doAddParticle`'s admission step, before invoking a provider.

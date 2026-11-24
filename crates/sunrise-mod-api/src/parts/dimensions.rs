@@ -43,7 +43,7 @@ const VANILLA_CLOCKS: [&str; 2] = ["minecraft:overworld", "minecraft:the_end"];
 
 impl DimensionsRegistrar for PartRegistrar {
     fn add_world_clock(&mut self, name: &str) {
-        let id = match self.owned_declaration_id(name) {
+        let id = match self.declaration_id(name) {
             Ok(id) => id,
             Err(reason) => {
                 self.refused.push(reason);

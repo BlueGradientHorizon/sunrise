@@ -212,7 +212,7 @@ mod give_stack {
                     let synced = game.remote.as_ref().unwrap().synced.clone();
                     game.remote.as_mut().unwrap().features = Vec::<String>::new().into();
                     assert_eq!(
-                        game.give_stack(&stone),
+                        local.give_creative(game, &stone),
                         Err(CreativeGiveError::FeatureDisabled)
                     );
                     assert_eq!(game.remote.as_ref().unwrap().synced, synced);

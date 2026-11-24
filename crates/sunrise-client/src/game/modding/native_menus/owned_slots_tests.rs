@@ -2247,9 +2247,10 @@ impl MenuPart for ProcessingPart {
                     1,
                 )
                 .unwrap();
-                // The write settles with the click's own transaction.
+                // Under P3-11 `menu_clicked` runs directly on the live menu and opens its own
+                // transaction when editing container slots.
                 let inserted = host
-                    .current_transaction(|host, tx| {
+                    .transaction(|host, tx| {
                         ItemPlace::MenuSlot { menu, slot: 0 }.insert(
                             host,
                             tx,
@@ -2258,7 +2259,7 @@ impl MenuPart for ProcessingPart {
                         )
                     })
                     .expect("click transaction");
-                assert_eq!(inserted, Ok(1));
+                assert_eq!(inserted, 1);
                 Flow::Cancel
             }
         }
@@ -2362,8 +2363,6 @@ impl Hooks for ProcessingMod {
     fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
         r.menu_part(MOD_MENU, ProcessingPart);
     }
-
-
 }
 
 fn with_processing_owned_menu(test: impl FnOnce(&mut Game<'_>, mpsc::Receiver<Out>, MenuKey)) {
@@ -2429,7 +2428,7 @@ fn raw_click(game: &mut Game<'_>, conn: u32, window: i32, slot: i16, button: i8,
 fn processing_owned_menu_computes_results_via_slot_changed_and_rejects_invalid_writes() {
     with_processing_owned_menu(|game, rx, key| {
         let player = game.player(123).unwrap();
-        let window = game
+        let menu = game
             .as_guest(1, |game| {
                 let mut req = mod_api::ModMenuOpen::new(key, mod_api::Text::literal("Processor"));
                 req.pos = Some([5, 64, 5]);
@@ -2438,6 +2437,7 @@ fn processing_owned_menu_computes_results_via_slot_changed_and_rejects_invalid_w
             .unwrap()
             .unwrap()
             .unwrap();
+        let window = menu.container_id(game).unwrap();
         sent(&rx);
 
         let stick = |n| Some(ItemStack::new("minecraft:stick", n));
@@ -2535,7 +2535,7 @@ fn processing_owned_menu_computes_results_via_slot_changed_and_rejects_invalid_w
 fn owned_menu_slot_changed_fires_on_item_place_writes_and_deduplicates_per_transaction() {
     with_processing_owned_menu(|game, rx, key| {
         let player = game.player(123).unwrap();
-        let window = game
+        let menu = game
             .as_guest(1, |game| {
                 player.open_mod_menu(
                     game,
@@ -2545,7 +2545,7 @@ fn owned_menu_slot_changed_fires_on_item_place_writes_and_deduplicates_per_trans
             .unwrap()
             .unwrap()
             .unwrap();
-        let menu = game.player_container_menu(player).unwrap();
+        let window = menu.container_id(game).unwrap();
         sent(&rx);
 
         let stick_api = ItemStack::new("minecraft:stick", 1).try_into_api().unwrap();
@@ -2648,8 +2648,8 @@ fn owned_menu_slot_changed_fires_on_item_place_writes_and_deduplicates_per_trans
             [stick(1), dirt(2), stone(2)]
         );
 
-        // 4. Invalid output write inside menu_slot_changed during Flow::Cancel rolls back
-        // menu_clicked's ItemPlace write too.
+        // 4. Invalid output write inside menu_slot_changed during Flow::Cancel aborts the
+        // listener's outputs while menu_clicked's committed transaction stands.
         game.transaction(|host, tx| {
             assert_eq!(
                 ItemPlace::MenuSlot { menu, slot: 0 }.extract(
@@ -2667,8 +2667,8 @@ fn owned_menu_slot_changed_fires_on_item_place_writes_and_deduplicates_per_trans
         click(game, window, 0);
         assert_eq!(
             game.lan.as_ref().unwrap().hub.guest(1).unwrap().native_menu,
-            [None, dirt(2), None],
-            "failed menu_slot_changed must roll back Flow::Cancel menu_clicked edits"
+            [stick(1), dirt(2), None],
+            "failed menu_slot_changed aborts its own outputs while menu_clicked's committed write stands"
         );
     });
 }
@@ -2678,7 +2678,7 @@ fn owned_menu_slot_changed_fires_on_item_place_writes_and_deduplicates_per_trans
 fn owned_menu_slot_changed_batches_multi_slot_drag_and_covers_swap_throw_pickup_all() {
     with_processing_owned_menu(|game, _rx, key| {
         let player = game.player(123).unwrap();
-        let window = game
+        let menu = game
             .as_guest(1, |game| {
                 player.open_mod_menu(
                     game,
@@ -2688,6 +2688,7 @@ fn owned_menu_slot_changed_batches_multi_slot_drag_and_covers_swap_throw_pickup_
             .unwrap()
             .unwrap()
             .unwrap();
+        let window = menu.container_id(game).unwrap();
         let stick = |n| Some(ItemStack::new("minecraft:stick", n));
         let dirt = |n| Some(ItemStack::new("minecraft:dirt", n));
         let stone = |n| Some(ItemStack::new("minecraft:stone", n));
@@ -2761,7 +2762,7 @@ fn owned_menu_slot_changed_batches_multi_slot_drag_and_covers_swap_throw_pickup_
 fn owned_menu_slot_changed_rolls_back_listener_item_place_writes_on_invalid_output_or_panic() {
     with_processing_owned_menu(|game, rx, key| {
         let player = game.player(123).unwrap();
-        let window = game
+        let menu = game
             .as_guest(1, |game| {
                 player.open_mod_menu(
                     game,
@@ -2771,6 +2772,7 @@ fn owned_menu_slot_changed_rolls_back_listener_item_place_writes_on_invalid_outp
             .unwrap()
             .unwrap()
             .unwrap();
+        let window = menu.container_id(game).unwrap();
         let stick = |n| Some(ItemStack::new("minecraft:stick", n));
         for bad in [
             ChangeMode::WriteItemPlaceThenInvalid,
@@ -3350,7 +3352,7 @@ fn processing_owned_menu_returns_inputs_on_close_drops_overflow_and_discards_res
 
         // 1. Live close with room in inventory: returns non-result inputs, discards result slot 2,
         // and delivers empty owned_slots to menu_removed so items cannot be duplicated.
-        let window = game
+        let menu = game
             .as_guest(1, |game| {
                 player.open_mod_menu(
                     game,
@@ -3360,6 +3362,7 @@ fn processing_owned_menu_returns_inputs_on_close_drops_overflow_and_discards_res
             .unwrap()
             .unwrap()
             .unwrap();
+        let window = menu.container_id(game).unwrap();
         game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
             g.inventory.fill(None);
             g.carried = None;
@@ -3395,7 +3398,7 @@ fn processing_owned_menu_returns_inputs_on_close_drops_overflow_and_discards_res
         assert!(game.dropped.is_empty());
 
         // 2. Live close with full inventory: drops overflow inputs at player and discards results.
-        let window = game
+        let menu = game
             .as_guest(1, |game| {
                 player.open_mod_menu(
                     game,
@@ -3405,6 +3408,7 @@ fn processing_owned_menu_returns_inputs_on_close_drops_overflow_and_discards_res
             .unwrap()
             .unwrap()
             .unwrap();
+        let window = menu.container_id(game).unwrap();
         game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
             for slot in g.inventory.iter_mut() {
                 *slot = Some(ItemStack::new("minecraft:cobblestone", 64));

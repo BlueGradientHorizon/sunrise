@@ -734,7 +734,7 @@ impl Game<'_> {
         before_pack_cleanup: impl FnOnce(&mut crate::game::server_packs::ServerPackState),
     ) -> Result<()> {
         self.client_logging_out();
-        self.finish_leave_server(reason)
+        self.finish_leave_server_with(reason, before_pack_cleanup)
     }
 
     /// Tear down the client's server session without firing `client_logging_out`:
@@ -743,6 +743,14 @@ impl Game<'_> {
     /// attempts that never reached `ClientCommonPacketListenerImpl` or
     /// `Minecraft.disconnect`.
     pub(in crate::game) fn finish_leave_server(&mut self, reason: Option<Text>) -> Result<()> {
+        self.finish_leave_server_with(reason, |_| {})
+    }
+
+    fn finish_leave_server_with(
+        &mut self,
+        reason: Option<Text>,
+        before_pack_cleanup: impl FnOnce(&mut crate::game::server_packs::ServerPackState),
+    ) -> Result<()> {
         self.finish_perf();
         // The one boundary every network session passes when it closes here: the player leaving,
         // or this client ending it with a reason (a raw disconnect closed it already, with the

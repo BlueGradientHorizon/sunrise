@@ -592,17 +592,19 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_mod_feature_places_by_the_biome_it_reads() {
+        let desert = mod_api::BiomeKey::parse("minecraft:desert").unwrap();
+        let plains = mod_api::BiomeKey::parse("minecraft:plains").unwrap();
         let keys = Arc::new(mod_api::__private::BiomeKeys::new(
             7,
-            ["minecraft:desert", "minecraft:plains"],
+            [desert.clone(), plains.clone()],
         ));
-        let marker = BiomeMarker {
-            plains: keys.key("minecraft:plains").unwrap(),
-            desert: keys.key("minecraft:desert").unwrap(),
-        };
+        let marker = BiomeMarker { plains, desert };
         let types: crate::worldgen::mod_features::ModFeatureTypes = [(
             "test:biome_marker".to_owned(),
-            Arc::new(marker) as Arc<dyn crate::worldgen::mod_features::ModFeatureType>,
+            Arc::new(crate::worldgen::mod_features::ModFeatureEntry {
+                mod_id: "test",
+                ty: Arc::new(marker),
+            }),
         )]
         .into();
         crate::worldgen::mod_features::with_test_feature_types(&types, || {
@@ -631,7 +633,7 @@ mod tests {
             // The block at the middle of chunk `x` 0's surface (the slab's top is y 70) once
             // that chunk is decorated, with the level's keys published or not.
             let marked = |x: i32, published: bool| {
-                let level = OverworldGenerator::for_mod(
+                let level = for_mod(
                     data.clone(),
                     12345,
                     "minecraft:overworld",

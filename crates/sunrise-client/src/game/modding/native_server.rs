@@ -5634,11 +5634,7 @@ mod tests {
             fn parse(&self, input: &str) -> Result<String, mod_api::CommandArgumentError> {
                 Ok(format!("{input} items"))
             }
-            fn suggest(
-                &self,
-                _: Option<&mod_api::CommandSender>,
-                _: &str,
-            ) -> Vec<mod_api::CommandSuggestion> {
+            fn suggest(&self, _: &mod_api::SuggestionRequest) -> Vec<mod_api::Suggestion> {
                 Vec::new()
             }
         }

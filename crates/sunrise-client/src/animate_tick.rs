@@ -653,7 +653,8 @@ struct AmbientEmissions {
 impl AmbientEmissions {
     /// Resume after each game-resolved particle so its limiter/provider draws happen
     /// before testing the next entry's spawn chance.
-    fn emit(&mut self, engine: &mut ParticleEngine, world: &World) -> Option<AnimateStep> {
+    fn emit(&mut self, engine: &mut ParticleEngine, ctx: &AnimateContext) -> Option<AnimateStep> {
+        let level = crate::particles::ParticleLevel::new(ctx.world, ctx.facts, ctx.collision);
         while let Some(entry) = self.entries.get(self.next) {
             self.next += 1;
             let random = engine.level_random();
@@ -666,7 +667,7 @@ impl AmbientEmissions {
                     z + random.next_double(),
                 ];
                 if let Some(options) = ParticleOptions::from_persistent(&entry.particle) {
-                    engine.add_with_world(Some(world), &options, at, [0.0; 3], false, false);
+                    engine.add_with(Some(&level), &options, at, [0.0; 3], false, false);
                 } else {
                     return Some(AnimateStep::Ambient(Arc::clone(&entry.particle), at));
                 }
@@ -700,7 +701,7 @@ impl AnimateSampling {
     ) -> Option<AnimateStep> {
         loop {
             if let Some(ambient) = self.ambient.as_mut()
-                && let Some(step) = ambient.emit(engine, ctx.world)
+                && let Some(step) = ambient.emit(engine, ctx)
             {
                 return Some(step);
             }
@@ -772,7 +773,7 @@ fn do_animate_tick(
 ) {
     let pos = pick(engine, center, r);
     if let Some(mut ambient) = animate_at(tables, engine, ctx, pos, center, level) {
-        assert!(ambient.emit(engine, ctx.world).is_none());
+        assert!(ambient.emit(engine, ctx).is_none());
     }
 }
 

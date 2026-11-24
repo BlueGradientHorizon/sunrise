@@ -471,7 +471,7 @@ impl Hub {
                 menu: kind,
                 title,
             }));
-            let mod_type = crate::containers::mod_menu_type(menu_kind);
+            let mod_type = mod_type.or_else(|| crate::containers::mod_menu_type(menu_kind));
             let slot_changed_seen = mod_type.map(|t| {
                 let mut seen = items.clone();
                 seen.resize(t.slots, None);

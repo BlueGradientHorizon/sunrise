@@ -1522,7 +1522,7 @@ pub(super) fn emit<'a>(
                                      Err(TransactionError::Aborted(never)) => match never {{}},\
                                      Err(error @ (TransactionError::InvalidContext | TransactionError::Unavailable | TransactionError::CommitRefused)) => {{\
                                          log::warn!(\"mod {{}}: {name} callback refused: {{error:?}}\", {mod_id_expr});\
-                                         {restore_statement} {no_answer}\
+                                         {restore_in_place} {no_answer}\
                                      }}\
                                  }},\
                                  HostSide::Client(side) => {{ let mut {host} = HostSide::Client(&mut **side); {expression} }}\

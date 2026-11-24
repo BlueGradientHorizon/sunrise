@@ -1748,7 +1748,7 @@ fn a_custom_integer_argument_is_bounded_before_its_parser() {
             parsed.lock().unwrap().push(input.to_owned());
             Ok(format!("{input} items"))
         },
-        |_, _| Vec::new(),
+        |_, _, _| Vec::new(),
     ));
     let mut dispatcher = Dispatcher::new();
     let command = dispatcher.literal(0, "stack");
@@ -2245,7 +2245,7 @@ fn a_declared_provider_is_asked_with_the_prefix_the_earlier_arguments_and_the_se
 fn a_provider_answer_is_capped_after_rejecting_candidates() {
     let calls: ProviderCalls = Default::default();
     let none = |text: String, tooltip: Option<String>| Suggestion {
-        tooltip: tooltip.map(Into::into),
+        tooltip,
         ..sug((0, 2), text)
     };
     // Candidates the engine rejects (past STRING_UTF8's 32767 UTF-16 code units, a tooltip past
@@ -2298,7 +2298,7 @@ fn a_provider_answer_is_capped_after_rejecting_candidates() {
 #[test]
 fn candidates_equal_to_the_input_or_repeated_spend_none_of_the_cap() {
     let none = |text: &str, tooltip: Option<String>| Suggestion {
-        tooltip: tooltip.map(Into::into),
+        tooltip,
         ..sug((0, 2), text)
     };
     let answer = |mut candidates: Vec<Suggestion>| {

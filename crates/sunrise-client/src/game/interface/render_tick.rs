@@ -1085,8 +1085,13 @@ impl Game<'_> {
             _ => unreachable!(),
         };
         if let Some(options) = options {
+            let level = sunrise_client::particles::ParticleLevel::new(
+                &self.world,
+                self.res.facts(),
+                self.collision,
+            );
             self.particles
-                .add_admitted_with_world(Some(&self.world), &options, at, [0.0; 3]);
+                .add_admitted_with_level(Some(&level), &options, at, [0.0; 3]);
         }
     }
 

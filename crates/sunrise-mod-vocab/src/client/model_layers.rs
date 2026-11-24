@@ -766,12 +766,12 @@ impl ModelPart {
         path: &mut Vec<u32>,
         accept: &mut impl FnMut(&'a str, &[u32]),
     ) {
-        for (index, (name, _)) in self.children.iter().enumerate() {
+        for (index, (name, _)) in self.children.0.iter().enumerate() {
             path.push(index as u32);
             accept(name, path);
             path.pop();
         }
-        for (index, (_, child)) in self.children.iter().enumerate() {
+        for (index, (_, child)) in self.children.0.iter().enumerate() {
             path.push(index as u32);
             child.add_all_children(path, accept);
             path.pop();
@@ -782,7 +782,7 @@ impl ModelPart {
     fn descendant(&self, path: &[u32]) -> Option<&ModelPart> {
         let mut part = self;
         for &index in path {
-            part = &part.children.get(index as usize)?.1;
+            part = &part.children.0.get(index as usize)?.1;
         }
         Some(part)
     }

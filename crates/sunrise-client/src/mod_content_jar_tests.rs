@@ -741,7 +741,11 @@ fn modify_biome_sets_ambient_particles_sounds_and_music() {
             music_volume: Some(0.25),
         },
     };
-    let declared = [["zinc".to_owned(), "declared:oasis".to_owned(), typed.json()]];
+    let declared = [[
+        "zinc".to_owned(),
+        "data/zinc/neoforge/biome_modifier/oasis.json".to_owned(),
+        typed.json(),
+    ]];
     let packs = sunrise_world::worldgen::overrides::WorldgenOverrides::default();
     let overridden = biome_modifiers_over_packs(&out, &packs, &declared)
         .unwrap()

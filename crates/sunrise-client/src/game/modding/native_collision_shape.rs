@@ -306,7 +306,7 @@ mod tests {
                 if event.query.kind() == mod_api::CollisionEntityKind::Player
                     && event.query.entity() == Some(7)
                 {
-                    *event.shape = Some(Vec::new());
+                    *event.shape = Some(mod_api::VoxelShape::empty());
                 }
             }
         }

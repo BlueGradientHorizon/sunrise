@@ -137,11 +137,33 @@ fn a_pack_biome_is_sent_with_its_data_and_read_back_by_a_client() {
         client.get(client.id("minecraft:plains")).grass
     );
 
+    let ambient_attr = sunrise_world::environment_attributes::attribute(
+        sunrise_world::environment_attributes::AMBIENT_PARTICLES,
+    )
+    .unwrap();
     for name in ["minecraft:tundra_x", "minecraft:zz_append"] {
-        let particles = &client.get(client.id(name)).ambient_particles;
+        let particles = match client.get(client.id(name)).attributes.get(ambient_attr) {
+            Some(
+                sunrise_world::environment_attributes::Entry::Override(
+                    sunrise_world::environment_attributes::Value::AmbientParticles(particles),
+                )
+                | sunrise_world::environment_attributes::Entry::AppendAmbientParticles(particles),
+            ) => particles,
+            other => panic!("{name}: expected visual/ambient_particles, got {other:?}"),
+        };
         assert_eq!(particles.len(), 1, "{name}");
-        assert_eq!(particles[0].0.name(), "ash");
-        assert_eq!(particles[0].1.to_bits(), 1.0_f32.to_bits(), "{name}");
+        assert_eq!(
+            *particles[0].particle,
+            sunrise_world::particle_options::ParticleOptions::Simple(
+                sunrise_world::particle_type::ParticleType::Ash,
+            ),
+            "{name}"
+        );
+        assert_eq!(
+            particles[0].probability.to_bits(),
+            1.0_f32.to_bits(),
+            "{name}"
+        );
     }
 
     // Data a client already has in its own file is nothing new, sent or not.

@@ -174,7 +174,8 @@ pub trait PlayersClientBackendMut {
     /// container menu is open. `Ok(Some(remainder))` is what did not fit; nothing is dropped.
     /// Refuses outside a client world (`Unavailable`), for a stale or non-local handle
     /// (`Stale`), outside creative mode (`NotCreative`), or for a stack the item boundary
-    /// refuses (`Stack`). A [`CreativeGiveError`] gives nothing.
+    /// refuses (`Stack`). A [`CreativeGiveError`] gives nothing (including `FeatureDisabled` when
+    /// the connected server does not enable the item's required feature flags).
     #[forward_api_inputs]
     #[forward_api_output]
     fn player_give_creative(

@@ -142,7 +142,7 @@ fn owner_launch_reports_explicit_guest_to_join_listeners() {
             event: &mut EntityJoinLevelEvent<'_>,
         ) -> Flow {
             if event.kind == "minecraft:snowball" {
-                let projectile = host.projectile(host.entity(event.entity).unwrap()).unwrap();
+                let projectile = host.projectile(event.subject).unwrap();
                 let owner = projectile.owner(host).unwrap();
                 self.owners.lock().unwrap().push(owner.uuid(host));
                 if self.cancel.load(Ordering::Relaxed) {

@@ -259,7 +259,7 @@ fn a_mod_type_assembles_from_pools_past_the_jigsaw_types_depth() {
     let inputs = link_inputs();
     let mut random = WorldgenRandom::new(LegacyRandom::new(0));
     random.set_large_feature_seed(0, 0, 0);
-    let (_, pieces) = Adapter::new("testmod:deep", Arc::new(Deep))
+    let (_, pieces) = Adapter::new("testmod:deep", "testmod", Arc::new(Deep))
         .find_generation_point(
             &mut StubContext,
             &inputs,
@@ -1294,6 +1294,7 @@ fn start_panic_skips_only_that_callback_without_disabling_independent_type() {
                     min: [0, 64, 0],
                     max: [2, 66, 2],
                 })],
+                pool_pieces: Vec::new(),
             })
         }
         fn load_piece(
@@ -1490,6 +1491,7 @@ fn piece_metadata_and_save_panics_stay_local_and_debug_skips_mod_fmt() {
                         save_calls: self.0.clone(),
                     }),
                 ],
+                pool_pieces: Vec::new(),
             })
         }
         fn load_piece(
@@ -1713,6 +1715,7 @@ fn failing_mod_piece_preserves_writes_draws_and_continues_via_place_in_chunk() {
                         log: self.log.clone(),
                     }),
                 ],
+                pool_pieces: Vec::new(),
             })
         }
         fn load_piece(
@@ -1775,8 +1778,10 @@ fn failing_mod_piece_preserves_writes_draws_and_continues_via_place_in_chunk() {
         writes: Vec::new(),
     };
     let mut piece_random = LegacyRandom::new(0);
-    let mut place_feature =
-        |_: &mut ChunkWorld, _: &mut LegacyRandom, _: &str, _: [i32; 3]| Ok(false);
+    let mut place_feature = |_: &mut ChunkWorld,
+                             _: &mut LegacyRandom,
+                             _: sunrise_world::worldgen::structure::jigsaw::FeatureKey<'_>,
+                             _: [i32; 3]| Ok(false);
     for cx in [0, 1] {
         let chunk_box = BoundingBox::new([cx * 16, -64, 0], [cx * 16 + 15, 319, 15]);
         place_in_chunk(
@@ -2101,6 +2106,7 @@ fn piece_and_after_place_panics_poison_only_their_operation_with_toast_notices()
             Some(FoundStructure {
                 position: [0, 64, 0],
                 pieces,
+                pool_pieces: Vec::new(),
             })
         }
         fn load_piece(
@@ -2273,7 +2279,10 @@ fn piece_and_after_place_panics_poison_only_their_operation_with_toast_notices()
             };
             let mut piece_random = LegacyRandom::new(0);
             let mut place_feature =
-                |_: &mut ChunkWorld, _: &mut LegacyRandom, _: &str, _: [i32; 3]| Ok(false);
+                |_: &mut ChunkWorld,
+                 _: &mut LegacyRandom,
+                 _: sunrise_world::worldgen::structure::jigsaw::FeatureKey<'_>,
+                 _: [i32; 3]| Ok(false);
             let chunk0 = BoundingBox::new([0, -64, 0], [15, 319, 15]);
             let chunk1 = BoundingBox::new([16, -64, 0], [31, 319, 15]);
 

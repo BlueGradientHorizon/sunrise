@@ -1048,6 +1048,7 @@ fn block_items_patch_their_template_item() {
     let items = r##"{"minecraft:iron_block": {"minecraft:max_stack_size": 64,
         "minecraft:item_name": {"translate": "block.minecraft.iron_block"}},
         "minecraft:netherite_block": {"minecraft:damage_resistant": {"types": "#minecraft:is_fire"}}}"##;
+    fs::write(base.join("items.json"), items).unwrap();
     let block = |dir: &str, components: &str| {
         folder_mod(
             &scratch.join(dir),

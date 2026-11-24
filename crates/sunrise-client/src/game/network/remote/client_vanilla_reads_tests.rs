@@ -343,13 +343,6 @@ fn callbacks_read_other_entities_counts_as_their_visits_left_them() {
             }
             #[mod_api::__subscriptions]
             impl mod_api::Hooks for Read {
-                fn register(
-                    &self,
-                    registrar: &mut dyn mod_api::Registrar,
-                    _: &mod_api::RegistrationContext,
-                ) {
-                    registrar.entity_tick_each("minecraft:pig");
-                }
                 fn entity_tick_pre(&self, host: HostSide<'_>, event: &mut EntityTickPreEvent<'_>) {
                     self.read(host, "pre", event.entities);
                     if event.entities.contains(&21) {

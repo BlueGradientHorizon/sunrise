@@ -137,12 +137,7 @@ impl Hooks for Listener {
             panic!("a listener failed");
         }
         event.click.handled = s.handled;
-        edit_click(
-            &mut event.click,
-            s.take_clicked,
-            s.set_clicked,
-            s.set_carried,
-        );
+        edit_click(event.click, s.take_clicked, s.set_clicked, s.set_carried);
         if s.cancel {
             event.cancelled = true;
             return Flow::Cancel;
@@ -1398,7 +1393,7 @@ mod item_part_tests {
                     ),
                     StackedOnOtherDirection::Event => (false, None, None, None),
                 };
-            edit_click(&mut event.click, phase_take, phase_clicked, phase_carried);
+            edit_click(event.click, phase_take, phase_clicked, phase_carried);
             if should_cancel {
                 Flow::Cancel
             } else {

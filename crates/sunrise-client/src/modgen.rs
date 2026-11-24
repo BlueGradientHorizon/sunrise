@@ -381,7 +381,7 @@ mod tests {
             .unwrap()
         };
         let broken = build("test:broken");
-        let error = broken.proto(&mut (), 0, 0).err().expect("the column fails");
+        let error = broken.proto(&mut (), 0, 0).expect_err("the column fails");
         assert!(error.contains("panicked"), "{error}");
         let healthy = build("test:oasis");
         assert!(healthy.proto(&mut (), 0, 0).is_ok());

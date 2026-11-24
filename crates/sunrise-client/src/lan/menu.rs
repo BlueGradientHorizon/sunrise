@@ -4491,11 +4491,13 @@ pub(crate) mod tests {
             craft: None,
             links: Vec::new(),
             asks_still_valid: false,
+            opener_block: None,
             opening_item: None,
+            removed: false,
             slot_changed_seen: None,
         };
 
-        let proc_menu = make(processing);
+        let mut proc_menu = make(processing);
         assert!(proc_menu.is_processing_owned());
         let mut storage = vec![
             Some(ItemStack::new("minecraft:stick", 2)),
@@ -4506,17 +4508,19 @@ pub(crate) mod tests {
         assert_eq!(inputs, vec![ItemStack::new("minecraft:stick", 2)]);
         assert!(storage.is_empty());
         assert_eq!(
-            proc_menu.native_closed(7, 1, &mut storage),
+            proc_menu.native_removed(7, 1, &mut storage, false),
             Some(NativeMenuEvent::Closed {
                 uuid: 7,
                 window: 1,
                 generation: 1,
+                menu: processing.id.into(),
+                block: None,
                 opening_hand: None,
                 owned_slots: Vec::new(),
             })
         );
 
-        let generic_menu = make(generic);
+        let mut generic_menu = make(generic);
         assert!(!generic_menu.is_processing_owned());
         let mut generic_storage = vec![Some(ItemStack::new("minecraft:stick", 1)), None];
         assert!(
@@ -4525,11 +4529,13 @@ pub(crate) mod tests {
                 .is_empty()
         );
         assert_eq!(
-            generic_menu.native_closed(7, 2, &mut generic_storage),
+            generic_menu.native_removed(7, 2, &mut generic_storage, false),
             Some(NativeMenuEvent::Closed {
                 uuid: 7,
                 window: 1,
                 generation: 2,
+                menu: generic.id.into(),
+                block: None,
                 opening_hand: None,
                 owned_slots: vec![Some(ItemStack::new("minecraft:stick", 1)), None],
             })

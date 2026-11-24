@@ -1661,7 +1661,12 @@ impl PlacementContext for World<'_> {
         let biome = self.biome_identity(position)?;
         self.biome_names
             .get(biome.0 as usize)
-            .and_then(|name| self.biome_keys.key(name))
+            .and_then(|name| {
+                self.biome_keys
+                    .view(name)
+                    .ok()
+                    .map(|view| view.key().clone())
+            })
             .ok_or(PlacementQueryError::Unavailable)
     }
     fn biome_allows_feature(
@@ -1942,6 +1947,7 @@ mod tests {
         let center = ChunkPos::new(0, 0);
         let biome_quarts = biomes[4].quart_range();
         let mut random = LegacyRandom::new(0);
+        let biome_keys = Arc::new(mod_api::__private::BiomeKeys::new(0, []));
         let mut world = World {
             full: vec![ChunkPos::new(-1, 0)],
             dependencies: None,
@@ -1951,6 +1957,7 @@ mod tests {
             structure_mobs: None,
             starts: Vec::new(),
             biome_names: &[],
+            biome_keys,
             blocks: None,
             region: TerrainRegion::new(chunks, WorldGenerationContext::new(-64, 128, 0)).unwrap(),
             biomes: BiomeRegion::new(biomes, obfuscate_seed(0)).unwrap(),
@@ -2102,6 +2109,7 @@ mod tests {
             .unwrap()
             .with_block_bindings(&decoration.bindings)
             .unwrap();
+        let biome_keys = Arc::new(mod_api::__private::BiomeKeys::new(0, []));
         let mut world = World {
             full: Vec::new(),
             dependencies: Some(&outer),
@@ -2111,6 +2119,7 @@ mod tests {
             structure_mobs: None,
             starts: Vec::new(),
             biome_names: &[],
+            biome_keys,
             blocks: None,
             region,
             biomes: BiomeRegion::new(biomes, obfuscate_seed(0)).unwrap(),

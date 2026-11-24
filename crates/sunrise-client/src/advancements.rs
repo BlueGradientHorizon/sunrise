@@ -3630,8 +3630,8 @@ mod tests {
             .player
             .as_ref()
             .unwrap();
-        assert!(!holds(&good, &ctx, &Flat));
-        assert!(holds(&good, &ctx, &raining));
+        assert!(!holds(good, &ctx, &Flat));
+        assert!(holds(good, &ctx, &raining));
     }
 
     #[test]
@@ -3717,7 +3717,7 @@ mod tests {
             calls.set(i + 1);
             [(true, false), (false, true), (false, false)][i]
         });
-        assert!(holds(&player, &ctx, &weather));
+        assert!(holds(player, &ctx, &weather));
         assert_eq!(calls.get(), 3);
         drop(tree);
     }

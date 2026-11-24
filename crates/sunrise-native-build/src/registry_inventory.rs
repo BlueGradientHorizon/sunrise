@@ -390,16 +390,18 @@ mod tests {
                 "target": "x86_64-unknown-linux-gnu",
                 "side": "client",
                 "registry_lock": lock,
+                "registry_patches": {},
                 "native_links": [{"name": "native-sys", "version": version, "library": "example"}],
+                "facade_crates": [],
+                "game_features": [],
+                "slices": {"runtime": [], "api": []},
             })
             .to_string(),
         )
         .unwrap();
         let sdk = super::super::prebuilt::identity(dir.path()).unwrap();
-        let plan =
-            super::super::registry_plan::Plan::read(sdk.registry_lock.as_ref().unwrap(), &[], &[])
-                .unwrap();
-        (plan, sdk.native_links.unwrap())
+        let plan = super::super::registry_plan::Plan::read(&sdk.registry_lock, &[], &[]).unwrap();
+        (plan, sdk.native_links)
     }
 
     #[test]
