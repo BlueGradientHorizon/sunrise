@@ -12,7 +12,11 @@ use sunrise_world::loot::PackOverlay;
 mod offer;
 pub use offer::{ItemCost, MerchantOffer};
 use serde_json::Value;
-use std::{collections::HashMap, path::Path, sync::Arc};
+use std::{
+    collections::{BTreeMap, HashMap},
+    path::Path,
+    sync::Arc,
+};
 
 /// `VillagerData.NEXT_LEVEL_XP_THRESHOLDS`.
 pub const LEVEL_XP: [i32; 5] = [0, 10, 70, 150, 250];
@@ -439,20 +443,23 @@ pub fn trade_update_pitch(
 /// The trade registries.
 pub struct Trades {
     pub professions: std::sync::Arc<crate::mobs::villager::ResolvedProfessions>,
-    pub trades: HashMap<String, Value>,
+    pub trades: BTreeMap<String, Value>,
     /// villager_trade tags, ordered.
     pub tags: HashMap<String, Vec<String>>,
-    pub sets: HashMap<String, Value>,
+    pub sets: BTreeMap<String, Value>,
     /// potion tags, ordered (`set_random_potion` options).
     pub potion_tags: HashMap<String, Vec<String>>,
 }
 /// The `.json` files under `dir` as `<ns>:<path>` ids, through `json_folder` (from the
 /// prepared data file when there is one); a file that doesn't parse is left out.
-fn walk(dir: &Path, ns: &str, out: &mut HashMap<String, Value>) {
+fn walk(dir: &Path, ns: &str, out: &mut BTreeMap<String, Value>) {
     let Ok(folder) = sunrise_world::json_folder::read(dir) else {
         return;
     };
     for file in &folder.files {
+        if !sunrise_world::json_folder::valid_resource_path(ns, &file.name) {
+            continue;
+        }
         if let Ok(value) = serde_json::from_slice(file.bytes().unwrap_or_default()) {
             out.insert(format!("{ns}:{}", file.name), value);
         }
@@ -464,8 +471,9 @@ impl Trades {
     /// (`SimpleJsonResourceReloadListener`, `TagLoader`).
     pub fn load(root: &Path, overlay: &sunrise_world::loot::PackOverlay) -> Self {
         let data = root.join("data");
-        let (mut trades, mut raw_tags, mut sets) = (HashMap::new(), HashMap::new(), HashMap::new());
-        let mut raw_potions = HashMap::new();
+        let (mut trades, mut raw_tags, mut sets) =
+            (BTreeMap::new(), BTreeMap::new(), BTreeMap::new());
+        let mut raw_potions = BTreeMap::new();
         for ns in sunrise_world::json_folder::namespaces(&data) {
             let ns_dir = data.join(&ns);
             walk(&ns_dir.join("villager_trade"), &ns, &mut trades);
@@ -1309,7 +1317,7 @@ mod tests {
     fn offers_follow_the_trade_data() {
         let items = items();
         let e = crate::enchant::tests::sample();
-        let mut trades = HashMap::new();
+        let mut trades = BTreeMap::new();
         trades.insert("minecraft:t/boots".into(), json!({"gives":{"id":"minecraft:iron_boots"},"max_uses":12,"reputation_discount":0.2,"wants":{"count":4,"id":"minecraft:emerald"}}));
         trades.insert("minecraft:t/helmet".into(), json!({"gives":{"id":"minecraft:iron_helmet"},"max_uses":12,"reputation_discount":0.2,"wants":{"count":5,"id":"minecraft:emerald"}}));
         trades.insert("minecraft:t/desert".into(), json!({"gives":{"id":"minecraft:sand"},"wants":{"id":"minecraft:emerald"},"merchant_predicate":{"entity":"this","predicate":{"minecraft:predicates":{"minecraft:villager/variant":"minecraft:desert"}},"type":"minecraft:entity_properties"}}));
@@ -1322,7 +1330,7 @@ mod tests {
                 "minecraft:t/desert".into(),
             ],
         );
-        let mut sets = HashMap::new();
+        let mut sets = BTreeMap::new();
         sets.insert(
             "minecraft:t/level_1".into(),
             json!({"amount": 5, "trades": "#minecraft:t/level_1"}),
@@ -1380,10 +1388,10 @@ mod tests {
         let items = items();
         let e = crate::enchant::tests::sample();
         let t = Trades {
-            trades: HashMap::new(),
+            trades: BTreeMap::new(),
             tags: HashMap::new(),
             professions: std::sync::Arc::new(crate::mobs::villager::ResolvedProfessions::vanilla()),
-            sets: HashMap::new(),
+            sets: BTreeMap::new(),
             potion_tags: HashMap::new(),
         };
         let ctx = TradeContext {
@@ -1421,9 +1429,9 @@ mod enchant_select_tests {
         let items = crate::enchant::tests::sample_items();
         let e = crate::enchant::tests::sample();
         let trades = Trades {
-            trades: HashMap::new(),
+            trades: BTreeMap::new(),
             tags: HashMap::new(),
-            sets: HashMap::new(),
+            sets: BTreeMap::new(),
             professions: std::sync::Arc::new(crate::mobs::villager::ResolvedProfessions::vanilla()),
             potion_tags: HashMap::new(),
         };
