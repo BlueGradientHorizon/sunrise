@@ -17,7 +17,8 @@ impl Game<'_> {
             return;
         };
         let project = |metadata| crate::game::api_values::project_stack(stack, metadata).ok();
-        let context = mod_api::ItemAbilityContext::new(mod_api::Host::tags(self));
+        let host: &dyn mod_api::Host = self;
+        let context = mod_api::ItemAbilityContext::new(host.tags());
         Self::fire_can_perform_action(
             &context,
             mod_api::__private::CanPerformActionCall {

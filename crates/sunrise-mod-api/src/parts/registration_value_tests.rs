@@ -1263,7 +1263,7 @@ fn an_ability_question_reaches_only_the_parts_of_the_asked_item_and_names_the_ab
     let diamond = crate::parts::tests::stack("minecraft:diamond", 1, 0);
     let ask = |stack: &ItemStack, ability: &str, vanilla: bool| {
         let mut can_perform = vanilla;
-        let context = ItemAbilityContext::new(host.tags());
+        let context = ItemAbilityContext::new((&host as &dyn crate::Host).tags());
         let project = |_| -> Option<ItemStack> {
             panic!("ability routing and scalar reads must not project the stack")
         };
