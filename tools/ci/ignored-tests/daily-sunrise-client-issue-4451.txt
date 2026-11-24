@@ -2387,7 +2387,6 @@ sunrise-client game::server_travel::hold_tests::a_hold_places_the_player_once_th
 sunrise-client game::server_travel::hold_tests::a_world_spawn_search_keeps_movement_held_between_candidate_chunks lib daily resources
 sunrise-client game::server_travel::hold_tests::respawn_arrivals_hold_movement_then_resume_damage_and_pickups lib daily resources
 sunrise-client game::server_travel::tests::arriving_vehicle_is_announced_once_after_destination_entities lib daily resources
-sunrise-client game::server_travel::tests::guest_portal_entry_uses_body_sleep_and_vehicle lib daily resources
 sunrise-client game::server_travel::tests::natural_carrier_moves_full_objects_and_readmits_the_tree_in_order lib daily resources
 sunrise-client game::server_travel::tests::natural_carrier_retains_a_vehicle_root_refused_by_its_passenger lib daily resources
 sunrise-client game::server_travel::tests::natural_portal_schedules_a_player_on_a_retained_indirect_vehicle lib daily resources
