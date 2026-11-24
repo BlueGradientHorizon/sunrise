@@ -4,7 +4,7 @@ use super::native_guest_turn_tests::with_guests;
 use mod_api::{Identifier, PlayerWorldRefusal, prelude::*};
 use std::sync::{Arc, mpsc::Receiver};
 use sunrise_client::lan::{Out, PlayerSender};
-use sunrise_protocol::{Reader, packets::play::Clientbound as C};
+use sunrise_protocol::{buf::Reader, packets::play::Clientbound as C};
 
 fn id(text: &str) -> Identifier {
     Identifier::parse(text).unwrap()
