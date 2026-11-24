@@ -2461,6 +2461,7 @@ pub(crate) use launch_options::Options;
 pub use native_block_entity_draw::BlockEntityDraw;
 pub use native_configs::ConfigFile;
 pub use native_data_maps::DataMapType;
+pub(crate) use native_hooks::is_scaffolding;
 pub use native_hooks::{PhantomSpawnResult, Shake, SleepProblem};
 pub use native_mob_draw::{MobRender, PlayerRender};
 use std::{

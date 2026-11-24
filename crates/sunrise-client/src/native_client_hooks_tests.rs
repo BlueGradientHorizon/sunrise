@@ -183,6 +183,9 @@ pub(crate) fn install() {
             is_ladder: |context, _, _, _, ladder| {
                 *ladder |= context.setting("rules_mod", "stack").is_some();
             },
+            is_scaffolding: |context, _, _, _, scaffolding| {
+                *scaffolding |= context.setting("rules_mod", "stack").is_some();
+            },
             makes_open_trapdoor_above_climbable: |context, _, _, _, climbable| {
                 *climbable |= context.setting("rules_mod", "stack").is_some();
             },

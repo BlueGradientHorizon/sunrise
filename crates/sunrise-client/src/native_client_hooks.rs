@@ -27,6 +27,7 @@ pub struct NativeClientHooks {
     pub block_jump_factor: fn(&LoopContext, BlockStateId, &mut f32),
     pub block_speed_factor: fn(&LoopContext, BlockStateId, &mut f32),
     pub is_ladder: fn(&LoopContext, u32, BlockPos, BlockStateId, &mut bool),
+    pub is_scaffolding: fn(&LoopContext, u32, BlockPos, BlockStateId, &mut bool),
     pub makes_open_trapdoor_above_climbable:
         fn(&LoopContext, BlockStateId, BlockPos, BlockStateId, &mut bool),
     pub friction:
@@ -251,6 +252,18 @@ pub(crate) fn is_ladder(
 ) {
     if let Some(hooks) = HOOKS.get() {
         (hooks.is_ladder)(context, entity, pos, state, ladder);
+    }
+}
+
+pub(crate) fn is_scaffolding(
+    context: &LoopContext,
+    entity: u32,
+    pos: BlockPos,
+    state: BlockStateId,
+    scaffolding: &mut bool,
+) {
+    if let Some(hooks) = HOOKS.get() {
+        (hooks.is_scaffolding)(context, entity, pos, state, scaffolding);
     }
 }
 

@@ -339,6 +339,8 @@ mod is_pathfindable;
 mod is_piglin_currency;
 mod is_possible_to_respawn_in;
 mod is_primary_item_for;
+mod is_scaffolding;
+pub(crate) use is_scaffolding::is_scaffolding;
 mod item_after_vertical_collision;
 mod item_attack;
 mod item_container;
