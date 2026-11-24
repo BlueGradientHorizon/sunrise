@@ -11,6 +11,8 @@ pub struct HudRenderer {
     /// The shared atlas texture, for run-time glyph uploads.
     pub atlas_texture: Option<wgpu::Texture>,
     pub(super) pipeline: Pipeline,
+    /// A standalone picture's: `pipeline` without the glint markers at u >= 2.
+    pub(super) picture_pipeline: Pipeline,
     /// `RenderPipelines.CROSSHAIR`.
     invert_pipeline: Pipeline,
     additive_pipeline: Pipeline,
@@ -211,6 +213,12 @@ impl HudRenderer {
             Pipeline::new(device, &desc, source, coverage).expect("the HUD's coverage")
         };
         let pipeline = create("HUD", wgpu::BlendState::ALPHA_BLENDING, "fs_main", None);
+        let picture_pipeline = create(
+            "HUD picture",
+            wgpu::BlendState::ALPHA_BLENDING,
+            "fs_picture",
+            None,
+        );
         let depth_pipeline = create(
             "HUD model",
             wgpu::BlendState::ALPHA_BLENDING,
@@ -299,6 +307,7 @@ impl HudRenderer {
             atlas_texture: None,
             sprite_animations: Vec::new(),
             pipeline,
+            picture_pipeline,
             invert_pipeline,
             additive_pipeline,
             depth_pipeline,

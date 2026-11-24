@@ -366,14 +366,15 @@ fn draw_chapter(draw: &mut dyn DrawContext, art: &Identifier) -> Result<(), GuiP
   any namespace, a mod's own included, and a resource pack can replace it. Nothing is added to it, so name the
   `textures/` folder and the `.png` yourself. Only packed resources are read: not files, URLs or dynamic
   textures.
-- **When it loads.** The image is decoded the first time it is drawn and kept until the next resource reload,
-  which loads the new one. Drawing it every frame costs one quad.
+- **When it loads.** The image is decoded and uploaded the first time it is drawn and kept until the next resource
+  reload, which loads the new one, even while no screen draws it. Drawing it every frame costs one quad.
 - **Coordinates.** The quad samples from `uv / tex` to `(uv + src) / tex`, as `innerBlit` does, without
   clamping: past 1 the image repeats (or clamps, below), and a negative `src` or `tex` flips that axis.
 - **Sampler.** As the image's `.png.mcmeta` says, from the image's pack or a pack above it: `"blur": true`
   filters linearly, `"clamp": true` clamps to the edge; otherwise nearest and repeat. No mipmaps.
-- **Missing images.** An id with no image, or one that doesn't decode, draws vanilla's magenta and black missing
-  texture in its place, in order with the other ops. The buffer isn't refused for it.
+- **Missing images.** An id with no image, one that doesn't decode, or one whose `.png.mcmeta` isn't valid JSON or
+  has a `texture` section vanilla's codec refuses, draws vanilla's magenta and black missing texture in its place, in
+  order with the other ops. The buffer isn't refused for it.
 - **Refused.** A `tex` with a zero side, or a NaN or infinite `uv`, refuses the whole buffer with
   `GuiPaintError::TextureSize`: its coordinates would not be finite.
 - **Pose and clip.** The quad follows the buffer's pose (`Push`) and the hook call's clip (`push_clip`), as

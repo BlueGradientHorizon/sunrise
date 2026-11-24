@@ -101,8 +101,9 @@ pub enum GuiDraw {
     /// to `(uv + src) / tex` unclamped (a negative span flips that axis) with the sampler its
     /// winning `.png.mcmeta` sets: `blur` filters linearly, `clamp` clamps to the edge, else
     /// nearest and repeat, no mipmaps. It loads on first use and stays loaded until the next
-    /// resource reload. A missing or undecodable image draws vanilla's missing texture in its
-    /// place. A `tex` with a zero side or a NaN or infinite `uv` refuses the buffer.
+    /// resource reload. A missing or undecodable image, or a `.png.mcmeta` vanilla cannot read,
+    /// draws vanilla's missing texture in its place. A `tex` with a zero side or a NaN or
+    /// infinite `uv` refuses the buffer.
     Texture {
         id: Identifier,
         x: i32,

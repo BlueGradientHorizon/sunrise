@@ -301,3 +301,132 @@ fn a_missing_or_undecodable_texture_draws_the_missing_texture_in_its_place() {
     assert_eq!(missing.flags, TextureFlags::default());
     fs::remove_dir_all(&root).unwrap();
 }
+
+#[test]
+fn a_texture_run_across_a_clip_ends_where_its_clipped_draw_does() {
+    let root = temp_root("gui-texture-clip");
+    png_at(&root.join("base"), CHAPTER, &[[1, 2, 3, 255]]);
+    let atlas = stack(&root, &[]);
+    let at = |x, y| {
+        texture(
+            "demo:textures/chapter.png",
+            [x, y, 8, 8],
+            [0.0, 0.0],
+            [1, 1],
+            [1, 1],
+        )
+    };
+    let fill = GuiDraw::Fill {
+        x0: 0,
+        y0: 0,
+        x1: 4,
+        y1: 4,
+        color: 0xFFFF_FFFF,
+    };
+    // The texture, then the same texture under a clip (one run of the picture so far), then a
+    // fill after the clip ends.
+    for (second, kept) in [((40, 40), 0), ((4, 4), 6)] {
+        let mut batch = HudBatch::scratch([854, 480]);
+        paint(&mut batch, &atlas, &[at(0, 0)]);
+        let start = batch.vertices.len();
+        paint(&mut batch, &atlas, &[at(second.0, second.1)]);
+        let id = batch.pictures[0].id;
+        assert_eq!(batch.blends, [(0..12, Blend::Picture(id))]);
+        batch.clip_since(start, 0.0, 0.0, 10.0, 10.0);
+        paint(&mut batch, &atlas, std::slice::from_ref(&fill));
+        // Culled, the run is the first draw alone; cut, it ends with the cut quad. The fill
+        // after it is never drawn with the picture bound.
+        let end = (6 + kept) as u32;
+        assert_eq!(batch.vertices.len(), end as usize + 6);
+        assert_eq!(batch.blends, [(0..end, Blend::Picture(id))]);
+    }
+    fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn a_texture_with_metadata_vanilla_cannot_read_is_the_missing_texture() {
+    let root = temp_root("gui-texture-meta");
+    let pack = root.join("pack");
+    png_at(&pack, CHAPTER, &[[1, 2, 3, 255]]);
+    let meta = pack.join(format!("{CHAPTER}.mcmeta"));
+    let id = Identifier::parse("demo:textures/chapter.png").unwrap();
+    let load = |json: &str| {
+        fs::write(&meta, json).unwrap();
+        // A fresh generation each time, as a reload would open.
+        let mut cache = Cache::new(
+            &crate::resource_source::ResourceSource::directory(pack.clone()),
+            &crate::resource_source::ResourceSource::directory(root.join("defaults")),
+        );
+        let texture = cache.texture(&id);
+        (texture.pixels.len() == 4, texture.flags)
+    };
+    // `ResourceMetadata.fromJsonStream` or the section's codec throws: `loadContentsSafe` loads
+    // the missing texture.
+    for refused in [
+        "not json",
+        "[]",
+        r#"{"texture": true}"#,
+        r#"{"texture": {"blur": "yes"}}"#,
+        r#"{"texture": {"clamp": 1}}"#,
+        r#"{"texture": {"mipmap_strategy": "fancy"}}"#,
+        r#"{"texture": {"alpha_cutoff_bias": "high"}}"#,
+    ] {
+        assert_eq!(load(refused), (false, TextureFlags::default()), "{refused}");
+    }
+    // Absent sections, `null` fields and keys the codec does not know draw the image.
+    let blur = TextureFlags {
+        blur: true,
+        clamp: false,
+    };
+    for (read, flags) in [
+        ("{}", TextureFlags::default()),
+        (
+            r#"{"animation": {"frametime": "x"}}"#,
+            TextureFlags::default(),
+        ),
+        (
+            r#"{"texture": {"blur": true, "clamp": null, "extra": 1}}"#,
+            blur,
+        ),
+        (
+            r#"{"texture": {"blur": true, "mipmap_strategy": "dark_cutout"}}"#,
+            blur,
+        ),
+    ] {
+        assert_eq!(load(read), (true, flags), "{read}");
+    }
+    fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn a_default_texture_takes_its_metadata_from_the_pack_above_it() {
+    // `createStackMetadataFinder`: the topmost `.mcmeta` from the image's root or above, so a
+    // pack can set the sampler of a texture only the built-in defaults hold.
+    let root = temp_root("gui-texture-defaults");
+    let (pack, defaults) = (root.join("pack"), root.join("defaults"));
+    png_at(&defaults, CHAPTER, &[[1, 2, 3, 255]]);
+    write(
+        &defaults,
+        &format!("{CHAPTER}.mcmeta"),
+        br#"{"texture":{"blur":true}}"#,
+    );
+    write(
+        &pack,
+        &format!("{CHAPTER}.mcmeta"),
+        br#"{"texture":{"clamp":true}}"#,
+    );
+    let mut cache = Cache::new(
+        &crate::resource_source::ResourceSource::directory(pack),
+        &crate::resource_source::ResourceSource::directory(defaults),
+    );
+    let texture = cache.texture(&Identifier::parse("demo:textures/chapter.png").unwrap());
+    assert_eq!(texture.pixels, [1, 2, 3, 255]);
+    assert_eq!(
+        texture.flags,
+        TextureFlags {
+            blur: false,
+            clamp: true
+        }
+    );
+    fs::remove_dir_all(&root).unwrap();
+}

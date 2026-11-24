@@ -43,9 +43,12 @@ impl Cache {
     }
     /// The standalone texture `id`, the exact resource `assets/<namespace>/<path>`, from the
     /// first root that has it (`ResourceManager.getResource`), sampled as its `.mcmeta` says:
-    /// the pack stack keeps only a `.mcmeta` from the image's pack or above
-    /// (`FallbackResourceManager`). Decoded once per resource generation; a missing or
-    /// undecodable image is vanilla's missing texture (`TextureContents.createMissing`).
+    /// the topmost one from the image's root or a root above it
+    /// (`FallbackResourceManager.createStackMetadataFinder`), as the pack stack itself keeps only
+    /// a `.mcmeta` from the image's pack or above. Decoded once per resource generation; a missing
+    /// or undecodable image, or a `.mcmeta` that cannot be read or parsed
+    /// ([`TextureFlags::read_mcmeta`]), is vanilla's missing texture
+    /// (`TextureManager.loadContentsSafe`, `TextureContents.createMissing`).
     fn texture(&mut self, id: &Identifier) -> Arc<Picture> {
         let (namespace, path) = (id.namespace(), id.path());
         if let Some(texture) = self.textures.get(namespace).and_then(|t| t.get(path)) {
@@ -53,16 +56,18 @@ impl Cache {
         }
         let name = format!("assets/{namespace}/{path}");
         let found = crate::resource_source::stays_inside(&name)
-            .then(|| self.roots.iter().find(|root| root.contains(&name)))
+            .then(|| self.roots.iter().position(|root| root.contains(&name)))
             .flatten()
-            .and_then(|root| {
-                let (width, height, pixels) = decode_resource(root, &name).ok()?;
-                let flags = root
-                    .read_to_string(&format!("{name}.mcmeta"))
-                    .ok()
-                    .as_deref()
-                    .and_then(TextureFlags::from_mcmeta)
-                    .unwrap_or_default();
+            .and_then(|winner| {
+                let (width, height, pixels) = decode_resource(&self.roots[winner], &name).ok()?;
+                let meta = format!("{name}.mcmeta");
+                let flags = match self.roots[..=winner].iter().find(|r| r.contains(&meta)) {
+                    None => TextureFlags::default(),
+                    Some(root) => {
+                        let text = root.read_to_string(&meta).ok()?;
+                        TextureFlags::read_mcmeta(&text).ok()?
+                    }
+                };
                 Some(Arc::new(Picture {
                     id: next_id(),
                     width,
@@ -225,7 +230,7 @@ impl HudRenderer {
     ) {
         if let Some((_, group)) = self.pictures.get(&id) {
             pass.set_bind_group(0, group, &[]);
-            pass.set_pipeline(self.pipeline.get(coverage));
+            pass.set_pipeline(self.picture_pipeline.get(coverage));
             pass.draw(range, 0..1);
             pass.set_bind_group(0, &self.group, &[]);
         }
@@ -238,8 +243,13 @@ impl HudRenderer {
         encoder: &mut wgpu::CommandEncoder,
         batch: &HudBatch,
     ) {
-        self.pictures
-            .retain(|id, _| batch.pictures.iter().any(|p| p.id == *id));
+        // A picture this frame doesn't draw keeps its texture while something besides the renderer
+        // holds it: a standalone texture, which its atlas holds until the next resource reload, so
+        // returning to its screen uploads nothing. A Realms picture, held weakly, is released as
+        // soon as no frame holds it.
+        self.pictures.retain(|id, (picture, _)| {
+            Arc::strong_count(picture) > 1 || batch.pictures.iter().any(|p| p.id == *id)
+        });
         for picture in &batch.pictures {
             if picture.width > device.limits().max_texture_dimension_2d
                 || picture.height > device.limits().max_texture_dimension_2d

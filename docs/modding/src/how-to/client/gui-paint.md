@@ -45,6 +45,7 @@ items this way too. To draw a stack the player doesn't hold, use `DrawContext::i
 | `ItemNotFinite { index }` | An `Item` whose `scale` or `pivot` is NaN or infinite. |
 | `BlitTexture { index, texture }` | A `Blit` of a texture the GUI atlas does not hold. |
 | `BlitSize { index }` | A `Blit` whose `tex` size is not positive, or whose `uv` is NaN or infinite. |
+| `TextureSize { index }` | A `Texture` whose `tex` size has a zero side, or whose `uv` is NaN or infinite. A missing or undecodable image is not refused: it draws the missing texture. |
 | `Sprite { index, sprite }` | A `Sprite` or `AtlasSprite` the GUI atlas does not hold, a mob effect sprite (`mob_effect/...`, namespaced or not) included. |
 | `SpriteRegion { index }` | A `Sprite` whose `region` has a sprite width or height of zero (or less). |
 | `SpriteBlend { index, blend }` | A `Sprite` with the `Nausea` or `Vignette` blend, which sprites cannot be drawn with. |
