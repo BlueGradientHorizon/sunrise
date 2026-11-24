@@ -397,6 +397,45 @@ impl Game<'_> {
         world_stations!(self).enchantments.compatible(a, b)
     }
     /// Roll through the game's enchantment registry and the active level's random source.
+    /// `ItemStack.hurtAndBreak(amount, level, player, onBreak)` on a stack nobody wears, with the
+    /// acting player swapped in when one is named: the stack after the wear, None once it broke
+    /// away. Refused off the server, for another level than the one in place, or a player who is
+    /// not here.
+    pub(in crate::game) fn item_stack_hurt_and_break(
+        &mut self,
+        stack: &ItemStack,
+        level: mod_api::LevelRef,
+        amount: i32,
+        player: Option<mod_api::PlayerRef>,
+    ) -> Result<Option<ItemStack>, mod_api::StackWriteError> {
+        use super::durability::Wearer;
+        use mod_api::StackWriteError::Unavailable;
+        if !self.is_logical_server()
+            || level.dimension() != self.dim.key()
+            || self.native_level_world(level).is_none()
+        {
+            return Err(Unavailable);
+        }
+        let (worn, _broken) = match player {
+            None => self.damage_stack_worn(stack, amount, Wearer::Nobody),
+            Some(player) => {
+                let target = self
+                    .native_entity_target(player.entity())
+                    .filter(|t| {
+                        matches!(
+                            t,
+                            super::commands::Target::Player | super::commands::Target::Guest(_)
+                        )
+                    })
+                    .ok_or(Unavailable)?;
+                self.for_player(target, |game| {
+                    game.damage_stack_worn(stack, amount, Wearer::Player)
+                })
+                .ok_or(Unavailable)?
+            }
+        };
+        Ok(worn)
+    }
     pub(in crate::game) fn item_resource_enchant_randomly(
         &mut self,
         stack: &ItemStack,
