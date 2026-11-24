@@ -940,7 +940,12 @@ mod tests {
         let (registry, biomes) = super::super::loot_tests::fixture();
         let registry = Box::leak(Box::new(registry));
         let biomes = Arc::new(biomes);
-        let save = SaveDir::new(dir.path().to_path_buf(), LevelShape::OVERWORLD, None);
+        let save = SaveDir::new(
+            dir.path().to_path_buf(),
+            LevelShape::OVERWORLD,
+            Some(Default::default()),
+        );
+        super::super::chunk_disk_tests::context(&save);
         let sync_data_calls = Arc::new(AtomicUsize::new(0));
         let force_calls = Arc::new(AtomicUsize::new(0));
         let sd = sync_data_calls.clone();
