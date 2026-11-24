@@ -1,6 +1,12 @@
 {
+  "concepts/attachments/block-entity-attachment": "concepts/parts/block-entity-types",
+  "concepts/capabilities/answer-limits": "concepts/capabilities",
+  "concepts/capabilities/entity-automation": "concepts/capabilities/entity-items",
+  "concepts/capabilities/entity-energy-and-fluids": "concepts/capabilities/entity-items",
   "concepts/injections": "concepts/hooks-and-the-host",
   "concepts/injections/typed-api": "concepts/hooks-and-the-host",
+  "concepts/native-route/choosing": "concepts/native-route",
+  "concepts/native-route/native-state": "concepts/native-route",
   "concepts/native-route/wasmtime": "concepts/native-route",
   "crafting-recipe-kinds": "how-to/items/crafting-recipe-kinds",
   "how-to/client/block-screen-position": "how-to/client/screens",
