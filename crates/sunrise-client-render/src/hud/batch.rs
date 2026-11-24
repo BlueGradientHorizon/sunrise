@@ -558,9 +558,15 @@ impl HudBatch {
         }
         moved.push(self.vertices.len() as u32);
         let at = |v: u32| moved[((v as usize).saturating_sub(start) / 6).min(moved.len() - 1)];
+        // A run that began before `start` (two draws of one picture, the second clipped) keeps
+        // its beginning and ends where its last clipped quad now does.
         for (range, _) in &mut self.blends {
-            if range.start as usize >= start {
-                *range = at(range.start)..at(range.end);
+            if range.end as usize > start {
+                let begin = match range.start as usize >= start {
+                    true => at(range.start),
+                    false => range.start,
+                };
+                *range = begin..at(range.end);
             }
         }
         self.blends.retain(|(range, _)| !range.is_empty());

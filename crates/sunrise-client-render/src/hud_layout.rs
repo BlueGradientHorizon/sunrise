@@ -7,6 +7,7 @@
 use crate::{font::Font, text::Text};
 pub use mod_api::client::hud_layout::{Blend, HeartKind, PoseOp};
 use std::borrow::Cow;
+use sunrise_core::identifier::Identifier;
 use sunrise_core::random::{LegacyRandom, RandomSource};
 
 /// One `GuiGraphicsExtractor` call.
@@ -40,6 +41,19 @@ pub enum GuiDraw {
     Blit {
         texture: Cow<'static, str>,
         blend: Blend,
+        x: i32,
+        y: i32,
+        w: i32,
+        h: i32,
+        uv: [f32; 2],
+        src: [i32; 2],
+        tex: [i32; 2],
+        color: u32,
+    },
+    /// `blit(pipeline, id, x, y, u, v, w, h, srcW, srcH, texW, texH, color)` of the standalone
+    /// texture `id`, an exact resource name ([`crate::hud::HudBatch::texture`]).
+    Texture {
+        id: Identifier,
         x: i32,
         y: i32,
         w: i32,
@@ -1012,6 +1026,17 @@ fn paint_with<'a>(
                     Blend::Crosshair => batch.invert_since(start),
                 }
             }
+            GuiDraw::Texture {
+                id,
+                x,
+                y,
+                w,
+                h,
+                uv,
+                src,
+                tex,
+                color,
+            } => batch.texture(atlas, id, [*x, *y, *w, *h], *uv, *src, *tex, abgr(*color)),
             GuiDraw::Item {
                 slot,
                 x,

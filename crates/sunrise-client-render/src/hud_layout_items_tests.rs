@@ -229,6 +229,43 @@ fn an_op_the_paint_cannot_draw_refuses_the_buffer_and_draws_nothing_of_it() {
     assert_eq!(refused_alone(&atlas, cases.to_vec()), cases.len());
 }
 
+fn texture(uv: [f32; 2], tex: [i32; 2]) -> GuiDraw {
+    GuiDraw::Texture {
+        id: sunrise_core::identifier::Identifier::parse("test:textures/missing.png").unwrap(),
+        x: 0,
+        y: 0,
+        w: 4,
+        h: 4,
+        uv,
+        src: [4, 4],
+        tex,
+        color: 0xFFFF_FFFF,
+    }
+}
+
+#[test]
+fn a_texture_whose_coordinates_would_not_be_finite_refuses_the_buffer() {
+    // `innerBlit` divides by `tex`: a zero side, or a NaN or infinite `uv`, has no finite UV.
+    let atlas = atlas();
+    let cases = vec![
+        (texture([0.0, 0.0], [0, 16]), Undrawable::TextureSize),
+        (texture([0.0, 0.0], [16, 0]), Undrawable::TextureSize),
+        (texture([f32::NAN, 0.0], [16, 16]), Undrawable::TextureSize),
+        (
+            texture([0.0, f32::INFINITY], [16, 16]),
+            Undrawable::TextureSize,
+        ),
+    ];
+    assert_eq!(refused_alone(&atlas, cases), 4);
+    // A negative size flips the axis and an unknown id draws the missing texture: both draw.
+    for op in [
+        texture([0.0, 0.0], [-16, 16]),
+        texture([0.0, 0.0], [16, 16]),
+    ] {
+        assert_eq!(undrawable(&atlas, &[op]), None);
+    }
+}
+
 /// Each case refused after a fill and an item, at index 2, with nothing of the buffer drawn;
 /// answers how many were checked.
 fn refused_alone(atlas: &HudAtlas, cases: Vec<(GuiDraw, Undrawable)>) -> usize {
