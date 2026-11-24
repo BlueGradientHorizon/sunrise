@@ -3,10 +3,15 @@
 
 Builds nothing. Build the benchmark's game and the control tool first:
 
-    cargo build --release -p sunrise-mod-host --example mod_pipeline_bench -p sunrise-client-lib --bin sunrise-ctl
+    cargo build --release -p sunrise-mod-host --example mod_pipeline_bench
+    cargo build --release -p sunrise-client-lib --bin sunrise-ctl
+
+(two commands: built together, Cargo unifies `sunrise-client-lib`'s test-only features into the
+game, and its integrated server stops at startup).
 
 The game is Sunrise with `tools/fixtures/mod-pipeline-bench` linked in. This script stages the
-mod's package beside it (with its generated shaders) and runs three rows on a virtual screen,
+mod's package beside it (with its generated shaders) and runs three rows on `vscreen`'s virtual
+screen, or on the X display it was started with (`xvfb-run`) when `vscreen` isn't installed,
 each in a fresh seeded creative world:
 
 - `no mod`: the same binary with no mod loaded;
@@ -70,7 +75,7 @@ def stage(game):
 def run_row(args, ctl, game_exe, name, extra_env, home):
     cwd = Path(tempfile.mkdtemp(prefix="run-", dir=args.scratch))
     (cwd / "options.txt").write_text(gb.OPTIONS.format(distance=args.distance))
-    env = gb.vscreen_env()
+    env = gb.vscreen_env() if shutil.which("vscreen") else lab.game_env()
     env.update(extra_env)
     env["SUNRISE_HOME"] = str(home)
     env["XDG_CACHE_HOME"] = str(home / "cache")
@@ -162,7 +167,10 @@ def main():
     stage(game_exe)
     args.scratch = ROOT / ".local/mod-pipeline-bench"
     args.scratch.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["vscreen", "up"], cwd=ROOT, check=True, capture_output=True)
+    if shutil.which("vscreen"):
+        subprocess.run(["vscreen", "up"], cwd=ROOT, check=True, capture_output=True)
+    elif "DISPLAY" not in os.environ:
+        sys.exit("no vscreen and no DISPLAY: run under xvfb-run or install vscreen")
     commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT,
                             capture_output=True, text=True).stdout.strip()
     runs = []
