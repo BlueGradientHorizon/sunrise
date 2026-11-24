@@ -45,8 +45,8 @@ use mod_api::{
     InteractionAttempt, InteractionKey, ItemEntityRef, LifecycleContext, LivingRef, LoadConditions,
     NoteBlockChange, ParticleProviders, PathComputationType, Placement, PlayerRef,
     PoiTypeExtensions, RecipeBookCategory, ScreenId, ScreenOpening, ScreenTarget, ScreenWidgets,
-    ScreenshotImage, ServerReloadListeners, ServerTickPhase, SpecialModelRenderers, ToolUse,
-    VillagerProfessions, WorldPhase,
+    ScreenshotImage, ServerReloadListeners, ServerTickPhase, SpecialModelRenderers,
+    TicketController, ToolUse, VillagerProfessions,
 };
 use mod_api::{
     ActiveEffect, AttachmentStore, BlockClick, BlockUpdateFlags, BonemealSource, ChunkRef,
@@ -459,6 +459,7 @@ mod portal_spawn;
 mod potion_brew_post;
 mod potion_brew_pre;
 mod pre_remove_side_effects;
+mod prepare_render_buffers;
 mod preset_title;
 mod rails;
 mod recipe_book_categories;

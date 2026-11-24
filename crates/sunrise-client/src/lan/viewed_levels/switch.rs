@@ -98,6 +98,7 @@ impl Hub {
                 .extend(kept.into_iter().map(|(x, z)| AttachmentSnapshot {
                     player,
                     holder: Holder::Chunk([x, z]),
+                    paired_sync_from: None,
                 }));
         }
         weather

@@ -31,8 +31,14 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn panicking_hud_draw_discards_quads_and_clips_before_next_listener() {
-        use mod_api::{ClientHost, Hooks, ModEntry, RenderGuiPostEvent};
+    fn panicking_hud_draw_discards_quads_and_reservations_before_next_listener() {
+        use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game};
+        use mod_api::{ClientHost, Corner, Hooks, ModEntry, RenderGuiPostEvent};
+
+        const NAME: &str = "game::native_hooks::render_gui_post::tests::panicking_hud_draw_discards_quads_and_reservations_before_next_listener";
+        if run_fresh_cases(NAME, "SUNRISE_GUI_POST_PANIC", &["run"]) {
+            return;
+        }
 
         struct Draws(bool);
         #[mod_api::__subscriptions]
@@ -40,9 +46,13 @@ mod tests {
             fn render_gui_post(&self, _: &dyn ClientHost, event: &mut RenderGuiPostEvent<'_>) {
                 let (x, y) = (2.0, 2.0);
                 if self.0 {
-                    event.draw.push_clip([x, y, 5.0, 5.0]).unwrap();
-                    event.draw.fill([x, y, 12.0, 12.0], 0xffff_0000);
-                    panic!("discard my drawing");
+                    event
+                        .draw
+                        .with_scissor([x, y, 5.0, 5.0], &mut |draw| {
+                            draw.fill([x, y, 12.0, 12.0], 0xffff_0000);
+                            panic!("discard my drawing");
+                        })
+                        .unwrap();
                 }
                 event.draw.fill([x, y, 12.0, 12.0], 0xff00_ff00);
             }
@@ -54,7 +64,7 @@ mod tests {
         ]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            crate::game::native_entity_refs::tests::with_client_game(|game| {
+            with_client_game(|game| {
                 let mut batch = HudBatch::scratch([640, 480]);
                 game.native_render_gui_post(&mut batch);
                 assert_eq!(batch.vertices.len(), 6);

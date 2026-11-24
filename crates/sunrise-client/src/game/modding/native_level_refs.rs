@@ -2727,7 +2727,7 @@ mod tests {
             let fresh = overworld
                 .add_water_ticket(game, [0, 64, 0], [5, 65, 5])
                 .unwrap();
-            game.native_levels_closing();
+            game.close_loaded_levels_for_stop();
             assert!(!overworld.has_water_ticket(game, [0, 64, 0]));
             assert!(!nether.has_water_ticket(game, [3, 64, 3]));
             assert!(!fresh.remove(game));
@@ -2778,12 +2778,13 @@ mod tests {
                 .unwrap();
             let root = game.save.root.clone();
             let shape = game.world.shape;
-            game.native_levels_closing();
+            game.close_loaded_levels_for_stop();
             let save = SaveDir::new(root, shape, Some(Default::default()));
             let chunk = save.load(0, 0, registry, game.res.biomes()).unwrap();
             game.world = World::new(registry.default_state("minecraft:air").unwrap(), 0);
             game.world.chunks.insert((0, 0), Arc::new(chunk));
             game.save = Arc::new(save);
+            game.levels.active_closed = false;
             game.native_lifecycle
                 .begin_open(Some(mod_api::Authority::IntegratedServer));
             let reopened = game.level(game.dim.id()).unwrap();

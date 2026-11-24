@@ -3142,7 +3142,7 @@ pub(super) mod tests {
             let entity = host.entity(500).unwrap();
             let items = entity.capability(host, &ENTITY_ITEMS, ()).unwrap();
             game.native_lifecycle.begin_close();
-            game.native_lifecycle.world_close_final();
+            game.native_lifecycle.retire();
             assert!(entity.capability(game, &ENTITY_ITEMS, ()).is_none());
             let host: &mut dyn ServerHost = game;
             let sticks =
@@ -3404,19 +3404,11 @@ pub(super) mod tests {
     ) {
         use crate::game::maps::MapData;
         use mod_api::{
-            AttachedItems, AttachmentType, Holder, MenuReplace, MenuSlotPlace, ResourceHandler,
-            StackList, TransactionContext,
+            AttachedItems, AttachmentDescriptor, AttachmentKey, Holder, MenuReplace, MenuSlotPlace,
+            ResourceHandler, StackList, TransactionContext,
         };
+        use std::sync::{Arc, Mutex};
         use sunrise_core::nbt::{JavaString, Tag};
-
-        static MAP_SLOT: AttachmentType<StackList<ItemResource>> = AttachmentType {
-            namespace: "crafted_map_fixture",
-            name: "slot",
-            default: StackList::new,
-            codec: None,
-            copy_on_death: false,
-            sync: false,
-        };
 
         struct MapSlotHandler {
             inner: AttachedItems,
@@ -3479,11 +3471,19 @@ pub(super) mod tests {
 
         struct MapStorage {
             accepts_replacement: bool,
+            slot: Arc<Mutex<Option<AttachmentKey<StackList<ItemResource>>>>>,
             on_insert: Option<sunrise_client::lan::PlayerSender>,
         }
         #[mod_api::__subscriptions]
         impl mod_api::Hooks for MapStorage {
             fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+                let slot = r
+                    .register_attachment_type(AttachmentDescriptor::new(
+                        "crafted_map_fixture:slot",
+                        Vec::<Option<(ItemResource, u32)>>::new,
+                    ))
+                    .unwrap();
+                *self.slot.lock().unwrap() = Some(slot.clone());
                 let valid: fn(&ItemResource) -> bool = if self.accepts_replacement {
                     |_| true
                 } else {
@@ -3496,7 +3496,7 @@ pub(super) mod tests {
                     move |_, entity, ()| {
                         Some(Box::new(MapSlotHandler {
                             inner: AttachedItems::single(
-                                &MAP_SLOT,
+                                &slot,
                                 Holder::Entity(entity.id()),
                                 1,
                                 valid,
@@ -3508,10 +3508,12 @@ pub(super) mod tests {
             }
         }
 
+        let slot = Arc::new(Mutex::new(None));
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
             "crafted_map_fixture",
             Box::new(MapStorage {
                 accepts_replacement,
+                slot: slot.clone(),
                 on_insert,
             }),
         )]
@@ -3544,7 +3546,8 @@ pub(super) mod tests {
                     .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
                 pig(game, 700, 64.0);
                 let entity = game.entity(700).unwrap();
-                MAP_SLOT
+                let map_slot = slot.lock().unwrap().clone().expect("MapStorage registered");
+                map_slot
                     .set(
                         game,
                         Holder::Entity(entity.id()),

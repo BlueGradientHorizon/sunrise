@@ -1,11 +1,11 @@
 //! Stock storage a mod attaches to an entity, a player, a chunk or the level, as NeoForge 26.3
 //! mods keep an `ItemStacksResourceHandler`, a `FluidStacksResourceHandler` or a
-//! `SimpleEnergyHandler` in an attachment: handlers over an [`AttachmentType`] the mod declares,
+//! `SimpleEnergyHandler` in an attachment: handlers over an [`AttachmentKey`] the mod registers,
 //! saved by its codec. Every write is an attachment write, so the game's transaction journal,
 //! which keeps each holder's attachment map, puts it back on an abort.
 use crate::content::registry_keys::{fluid_id, fluid_key, item_id, item_key_by_identifier};
 use crate::{
-    AttachmentCodec, AttachmentError, AttachmentType, Components, Compound, EnergyHandler,
+    AttachmentCodec, AttachmentError, AttachmentKey, Components, Compound, EnergyHandler,
     FluidIdentity, FluidResource, FluidStack, Holder, Identifier, ItemResource, ItemStack,
     Overanswered, ResourceHandler, ServerHost, Tag, TransactionContext, TransactionError,
 };
@@ -47,7 +47,7 @@ impl StackedResource for FluidResource {}
 // no wire: a mod-side handler, invoked where it was built; never crosses the boundary.
 // exhaustive: its fields are private, so mods cannot build or destructure it
 pub struct AttachedStacks<R: 'static> {
-    attachment: &'static AttachmentType<StackList<R>>,
+    attachment: AttachmentKey<StackList<R>>,
     holder: Holder,
     size: usize,
     capacity: u32,
@@ -71,14 +71,14 @@ impl<R: StackedResource> AttachedStacks<R> {
     /// accepts. Only occupied indices take space. A codec, if declared, may refuse a write it
     /// cannot represent.
     pub fn new(
-        attachment: &'static AttachmentType<StackList<R>>,
+        attachment: &AttachmentKey<StackList<R>>,
         holder: Holder,
         size: usize,
         capacity: u32,
         valid: fn(&R) -> bool,
     ) -> Self {
         Self {
-            attachment,
+            attachment: attachment.clone(),
             holder,
             size,
             capacity,
@@ -87,7 +87,7 @@ impl<R: StackedResource> AttachedStacks<R> {
     }
     /// One index (`ItemStackResourceHandler`, a single tank).
     pub fn single(
-        attachment: &'static AttachmentType<StackList<R>>,
+        attachment: &AttachmentKey<StackList<R>>,
         holder: Holder,
         capacity: u32,
         valid: fn(&R) -> bool,
@@ -98,29 +98,24 @@ impl<R: StackedResource> AttachedStacks<R> {
     fn read_stacks<T>(
         &self,
         host: &mut dyn ServerHost,
-        read: impl Fn(&StackList<R>) -> T,
+        read: impl FnOnce(&StackList<R>) -> T,
     ) -> Option<T> {
-        match self
-            .attachment
-            .with_decoded(host, self.holder, |list| list.map(&read))
-            .ok()?
-        {
-            Some(part) => Some(part),
-            None => self
-                .attachment
-                .get_existing(host, self.holder)
-                .ok()?
-                .as_ref()
-                .map(read),
-        }
+        self.attachment
+            .get_existing(host, self.holder, |list| list.map(read))
+            .ok()
+            .flatten()
     }
-    /// What index `index` holds; none past the handler's `size`, or where the holder has none
-    /// or is gone. Only the entry is cloned when the map is decoded.
-    fn at(&self, host: &mut dyn ServerHost, index: usize) -> Option<(R, u32)> {
+    /// Project from the occupied slot without cloning the resource for count-only reads.
+    fn with_entry<T>(
+        &self,
+        host: &mut dyn ServerHost,
+        index: usize,
+        read: impl FnOnce(&(R, u32)) -> T,
+    ) -> Option<T> {
         if index >= self.size {
             return None;
         }
-        self.read_stacks(host, |list| list.get(&index).cloned())
+        self.read_stacks(host, |list| list.get(&index).map(read))
             .flatten()
     }
     /// Update just this index, preserving entries outside this view's logical size.
@@ -130,9 +125,9 @@ impl<R: StackedResource> AttachedStacks<R> {
         index: usize,
         now: Option<(R, u32)>,
     ) -> Result<(), StackWriteError> {
-        let mut list = self
-            .attachment
-            .get_existing(host, self.holder)
+        let checked = self.attachment.live().map_err(StackWriteError::Write)?;
+        let mut list = checked
+            .get_existing(host.attachments(), self.holder, |list| list.cloned())
             .map_err(|_| StackWriteError::Read)?
             .unwrap_or_default();
         if let Some(held) = now.filter(|(_, amount)| *amount > 0) {
@@ -141,9 +136,9 @@ impl<R: StackedResource> AttachedStacks<R> {
             list.remove(&index);
         }
         if list.is_empty() {
-            self.attachment.remove(host, self.holder).map(|_| ())
+            checked.remove(host.attachments(), self.holder).map(|_| ())
         } else {
-            self.attachment.set(host, self.holder, list)
+            checked.set(host.attachments(), self.holder, list)
         }
         .map_err(StackWriteError::Write)
     }
@@ -160,7 +155,7 @@ impl<R: StackedResource> AttachedStacks<R> {
             return ControlFlow::Break(());
         }
         let room = self.capacity(host, index, Some(resource));
-        let have = match self.at(host, index) {
+        let have = match self.with_entry(host, index, Clone::clone) {
             Some((held, _)) if held != *resource => return ControlFlow::Continue(0),
             Some((_, have)) => have,
             None => 0,
@@ -216,10 +211,11 @@ impl<R: StackedResource> ResourceHandler<R> for AttachedStacks<R> {
         indices.end.min(self.size)
     }
     fn resource(&self, host: &mut dyn ServerHost, index: usize) -> Option<R> {
-        self.at(host, index).map(|(resource, _)| resource)
+        self.with_entry(host, index, |(resource, _)| resource.clone())
     }
     fn amount(&self, host: &mut dyn ServerHost, index: usize) -> u32 {
-        self.at(host, index).map_or(0, |(_, amount)| amount)
+        self.with_entry(host, index, |(_, amount)| *amount)
+            .unwrap_or(0)
     }
     fn capacity(&self, host: &mut dyn ServerHost, index: usize, resource: Option<&R>) -> u32 {
         // The physical limit of an in-range index; capacity is not permission to insert
@@ -283,7 +279,10 @@ impl<R: StackedResource> ResourceHandler<R> for AttachedStacks<R> {
         if !host.transaction_matches(Some(tx)) {
             return Err(TransactionError::InvalidContext);
         }
-        let Some((held, have)) = self.at(host, index).filter(|(held, _)| held == resource) else {
+        let Some((held, have)) = self
+            .with_entry(host, index, Clone::clone)
+            .filter(|(held, _)| held == resource)
+        else {
             return Ok(0);
         };
         Ok(match amount.min(have) {
@@ -299,7 +298,7 @@ impl<R: StackedResource> ResourceHandler<R> for AttachedStacks<R> {
 // no wire: a mod-side handler, invoked where it was built; never crosses the boundary.
 // exhaustive: its fields are private, so mods cannot build or destructure it
 pub struct AttachedEnergy {
-    attachment: &'static AttachmentType<u32>,
+    attachment: AttachmentKey<u32>,
     holder: Holder,
     capacity: u32,
     max_insert: u32,
@@ -310,14 +309,14 @@ impl AttachedEnergy {
     /// `attachment` on `holder`, holding up to `capacity`, at most `max_insert` in and
     /// `max_extract` out per call.
     pub fn new(
-        attachment: &'static AttachmentType<u32>,
+        attachment: &AttachmentKey<u32>,
         holder: Holder,
         capacity: u32,
         max_insert: u32,
         max_extract: u32,
     ) -> Self {
         Self {
-            attachment,
+            attachment: attachment.clone(),
             holder,
             capacity,
             max_insert,
@@ -336,9 +335,7 @@ impl AttachedEnergy {
 impl EnergyHandler for AttachedEnergy {
     fn amount(&self, host: &mut dyn ServerHost) -> u32 {
         self.attachment
-            .get_existing(host, self.holder)
-            .ok()
-            .flatten()
+            .get_existing(host, self.holder, |value| value.copied().unwrap_or(0))
             .unwrap_or(0)
     }
     fn capacity(&self, _: &mut dyn ServerHost) -> u32 {

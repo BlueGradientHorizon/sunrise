@@ -73,6 +73,7 @@ use sunrise_client::{
     streaming::{ChunkGenerator, Proto, Streaming},
     tab_list::SPECTATOR,
     text::Text,
+    world::World,
 };
 use sunrise_core::{geometry::Vec3, profile::AccountProperty, random::RandomSource};
 use sunrise_protocol::{
@@ -399,6 +400,12 @@ pub(in crate::game) enum RemoteDimensionEntry {
     DeathRespawn,
 }
 
+pub(super) struct ConstructingClientLevel {
+    pub(super) handle: mod_api::LevelRef,
+    pub(super) world: World,
+    pub(super) facts: Option<Arc<sunrise_world::dimension_type::DimensionFacts>>,
+}
+
 pub(super) struct Remote {
     pub(super) professions: Arc<sunrise_client::mobs::villager::ResolvedProfessions>,
     pub session: Session,
@@ -533,6 +540,9 @@ pub(super) struct Remote {
     /// The dimension of the client level the mods heard made
     /// (`native_client_level_load`), to be told dropped once.
     pub(super) heard_level: Option<String>,
+    pub(in crate::game) datapacks: sunrise_client::datapack_net::Receiver,
+    /// The constructor's level is visible by name during Load, before Minecraft.setLevel.
+    pub(super) constructing_level: Option<ConstructingClientLevel>,
     /// `ClientPacketListener.levelLoadTracker`: the loading screen after a login
     /// or respawn, until the player's section is shown.
     pub(super) level_load: sunrise_client::level_loading::LevelLoadTracker,
@@ -1214,7 +1224,9 @@ impl Game<'_> {
             }
             // The server's next generation of mod registries: all of it or the connection.
             C::CustomPayload(p) if p.channel == sunrise_client::datapack_net::CHANNEL => {
-                sunrise_client::datapack_net::accept_chunk(&p.data)?;
+                if let Some(remote) = &mut self.remote {
+                    remote.datapacks.accept_chunk(&p.data)?;
+                }
             }
             C::CustomPayload(p)
                 if p.channel == sunrise_client::lan::commands::selector_sync::CHANNEL =>
@@ -2472,6 +2484,15 @@ mod respawn_motion_tests;
 #[cfg(test)]
 mod riptide_tests;
 impl Remote {
+    pub(super) fn constructing(
+        &self,
+        level: mod_api::LevelRef,
+    ) -> Option<&ConstructingClientLevel> {
+        self.constructing_level
+            .as_ref()
+            .filter(|pending| pending.handle == level)
+    }
+
     /// Project the session address for display once, dropping the memory transport's marker.
     pub(super) fn display_address_for(address: &str) -> Option<String> {
         (address != "local").then(|| sunrise_client::net::shown_address(address))

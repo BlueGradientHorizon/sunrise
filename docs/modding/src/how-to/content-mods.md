@@ -234,11 +234,12 @@ server), but it is never compared at join, so players joining need not have it. 
 load when it carries what every joining client must know: registry declarations (`data/<id>/sunrise/`, or blocks,
 items, block entity types and fluids its code declares), a listener on a client-side hook, a part that listens to one,
 a required payload the server sends to clients, or a synced attachment type it declares.
-For attachments, “carries” means **declares**: a server package may use another loaded package A's synced
+For attachments, “carries” means **declares**: a server package may look up and use another loaded package A's synced
 attachment, because clients compare A and decode the value through A. If A is itself a server package, A is the
-declarer refused by name. Attachment load checks declaration conflicts (duplicates and malformed ids) first,
-then undeclared uses naming the calling package and id, then server-package declarations; no content is admitted
-after a refusal. See [attachments](../concepts/attachments.md) for the declaration API.
+declarer refused by name. Attachment load checks registration refusals (invalid descriptors, duplicate IDs, and stale
+part-state keys) first, then server-package synced declarations (matched by the declaring package's owner ID
+regardless of attachment namespace); no content is admitted after a refusal. See [attachments](../concepts/attachments.md)
+for the declaration API.
 Assets, lang and data vanilla syncs itself (recipes, loot, tags) are allowed. Where a hook runs is still the hook's own side: the manifest says what a client must have, not where a
 hook runs. A vanilla or other
 non-Sunrise client is refused when the server needs both-side mods, with their names and versions and an English
@@ -1204,18 +1205,18 @@ Read `entry.values` in schema order or use `entry.get(name)` by field name. The 
 set stays pinned until the visitor returns, with no registry lock held and no disk access. Keep
 IDs to look up again, or copy only the fields you need to retain as a snapshot.
 
-The entry callback runs once on success, never on error. On the logical server, both
-the active dimension and loaded parked dimensions are accepted, matching vanilla
-`Level.registryAccess()`. Both reads refuse with `DatapackReadError::UnknownRegistry`
-if the registry or published set is absent or the level is stale or unloaded. Without
-World access or a world backend they return `Unavailable`; a missing entry in an
-available registry returns `MissingEntry` from `datapack_read`. The ID visit returns
-`Ok(Break(()))` on early stop or `Ok(Continue(()))` on completion, including for an empty
-registry. The client sees the snapshot it last received at join or reload; a declared
-registry omitted from that snapshot has no IDs to visit.
-A failed local reload leaves the published generation in place. A client can only read
-registries in its most recent complete, validated snapshot; server-only and unnegotiated
-registries are unavailable to it.
+The visitor runs once on success, never on error. On the logical server, both the active
+dimension and any loaded parked server dimension are accepted (matching vanilla
+`Level.registryAccess()`); stale epochs and unloaded dimensions are refused. Unknown or
+unavailable registries, stale or unloaded levels, and a missing published set give
+`UnknownRegistry`; a registry without the entry gives `MissingEntry`. A host without a backend
+returns `Unavailable`. The ID visit returns `Ok(Break(()))` on early stop or `Ok(Continue(()))`
+on completion, including for an empty registry. Once a client receives a valid snapshot at join
+or reload, it reads those entries; any of its declared registries omitted from the snapshot have
+no entries there. Resolve `host.level(event.dimension)` in `client_level_load` or
+`client_level_unload` to read the available synchronized registries through the entering or
+retiring level. Unload still sees its old configuration during a server reconfiguration; the
+next Load sees the new set. A retiring `LevelRef` is stale after Unload.
 
 #### Block entity containers
 

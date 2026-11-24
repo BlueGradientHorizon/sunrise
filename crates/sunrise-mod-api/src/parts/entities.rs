@@ -4,7 +4,6 @@ use super::*;
 /// Fixtures that tests of other crates use to install Parts.
 #[cfg(any(test, feature = "testing"))]
 pub mod tests {
-    use crate::parts::tests::*;
     use crate::*;
 
     #[test]
@@ -57,11 +56,72 @@ pub mod tests {
         );
     }
 
-    pub(crate) struct EntityBattery(pub(crate) EntityRef);
+    #[test]
+    fn entity_part_with_state_refuses_stale_key_and_accepts_live_key() {
+        struct Charged(AttachmentKey<u32>);
+        #[mod_api::sunrise_part]
+        impl super::EntityPart for Charged {}
+        impl EntityPartState for Charged {
+            type Data = u32;
+            fn state_key(&self) -> &AttachmentKey<u32> {
+                &self.0
+            }
+        }
+        struct StaleMod(AttachmentKey<u32>);
+        #[mod_api::__subscriptions]
+        impl crate::Hooks for StaleMod {
+            fn register(&self, r: &mut dyn Registrar, _: &crate::RegistrationContext) {
+                let err = r
+                    .entity_part_with_state("minecraft:cow", Charged(self.0.clone()))
+                    .unwrap_err();
+                assert!(matches!(
+                    err,
+                    EntityPartStateError::State {
+                        kind: "minecraft:cow",
+                        namespace: "test",
+                        name: "charge",
+                        reason: PartStateRefusal::StaleKey,
+                        ..
+                    }
+                ));
+            }
+        }
+        struct LiveMod;
+        #[mod_api::__subscriptions]
+        impl crate::Hooks for LiveMod {
+            fn register(&self, r: &mut dyn Registrar, _: &crate::RegistrationContext) {
+                let live = r
+                    .register_attachment_type(AttachmentDescriptor::new("test:charge", || 0_u32))
+                    .unwrap();
+                r.entity_part_with_state("minecraft:cow", Charged(live))
+                    .unwrap();
+            }
+        }
+        let stale = crate::testing::registered_attachment_fixture(
+            "test",
+            AttachmentDescriptor::new("test:charge", || 0_u32),
+        )
+        .1;
+        let refused_registrar = crate::parts::shared::register_all(
+            &[ModEntry::new("test", Box::new(StaleMod(stale)))],
+            |_| false,
+        );
+        assert_eq!(refused_registrar.refused.len(), 1);
+        assert!(refused_registrar.refused[0].contains("test:charge"));
+
+        let ok_registrar =
+            crate::parts::shared::register_all(&[ModEntry::new("test", Box::new(LiveMod))], |_| {
+                false
+            });
+        assert!(ok_registrar.refused.is_empty());
+        assert_eq!(ok_registrar.entity_part_states.len(), 1);
+    }
+
+    pub(crate) struct EntityBattery(pub(crate) EntityRef, pub(crate) AttachmentKey<u32>);
     impl EnergyHandler for EntityBattery {
         fn amount(&self, host: &mut dyn ServerHost) -> u32 {
-            ROBOT_ENERGY
-                .get_existing(host, Holder::Entity(self.0.id()))
+            self.1
+                .get_existing(host, Holder::Entity(self.0.id()), |value| value.copied())
                 .unwrap()
                 .unwrap_or(0)
         }
@@ -77,7 +137,7 @@ pub mod tests {
             assert!(host.transaction_matches(Some(tx)));
             let held = self.amount(host);
             let moved = amount.min(1000 - held);
-            ROBOT_ENERGY
+            self.1
                 .set(host, Holder::Entity(self.0.id()), held + moved)
                 .unwrap();
             Ok(moved)
@@ -91,14 +151,14 @@ pub mod tests {
             assert!(host.transaction_matches(Some(tx)));
             let held = self.amount(host);
             let moved = amount.min(held);
-            ROBOT_ENERGY
+            self.1
                 .set(host, Holder::Entity(self.0.id()), held - moved)
                 .unwrap();
             Ok(moved)
         }
     }
 
-    pub(crate) struct EntityTank(pub(crate) EntityRef);
+    pub(crate) struct EntityTank(pub(crate) EntityRef, pub(crate) AttachmentKey<u32>);
     impl ResourceHandler<FluidResource> for EntityTank {
         fn size(&self, _: &mut dyn ServerHost) -> usize {
             1
@@ -112,8 +172,8 @@ pub mod tests {
             })
         }
         fn amount(&self, host: &mut dyn ServerHost, _: usize) -> u32 {
-            ROBOT_FLUID
-                .get_existing(host, Holder::Entity(self.0.id()))
+            self.1
+                .get_existing(host, Holder::Entity(self.0.id()), |value| value.copied())
                 .unwrap()
                 .unwrap_or(0)
         }
@@ -151,7 +211,7 @@ pub mod tests {
                 self.capacity(host, index, Some(resource))
                     .saturating_sub(held),
             );
-            ROBOT_FLUID
+            self.1
                 .set(host, Holder::Entity(self.0.id()), held + moved)
                 .unwrap();
             Ok(moved)
@@ -171,7 +231,7 @@ pub mod tests {
             } else {
                 0
             };
-            ROBOT_FLUID
+            self.1
                 .set(host, Holder::Entity(self.0.id()), held - moved)
                 .unwrap();
             Ok(moved)
@@ -193,7 +253,7 @@ impl EntitiesRegistrar for PartRegistrar {
         // 🤖 Agent: one leaked id per declaration, once at startup, so a refusal can name the
         // type in the `Copy` refusal it shares with block entities.
         let kind: &'static str = Box::leak(entity.into());
-        match self.check_part_state(declaration) {
+        match self.check_part_state(&declaration) {
             Ok(()) => {
                 self.entity_part_states.push(
                     mod_vocab::__private::EntityPartStateDeclaration::new(

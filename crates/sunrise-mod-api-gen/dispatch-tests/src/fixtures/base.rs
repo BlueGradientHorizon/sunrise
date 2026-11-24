@@ -825,8 +825,6 @@ mod stubs {
     pub(super) struct Load(pub &'static str);
     #[derive(Clone, Copy)]
     pub(super) struct ServerTickPhase;
-    #[derive(Clone, Copy)]
-    pub(super) struct WorldPhase;
 }
 
 mod api {

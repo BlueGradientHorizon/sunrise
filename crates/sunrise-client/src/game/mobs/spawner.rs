@@ -249,8 +249,8 @@ impl Game<'_> {
         } else {
             // The tree the spawner loaded before its position check, else a trial spawner's
             // (which has no such check) loads it now.
-            let (tree, key) = match l.take_configured(r.id, r.position) {
-                Some(loaded) => loaded,
+            let (tree, key) = match l.take_checked_tree() {
+                Some(tree) => (tree, l.provisional_id()),
                 None => self.load_configured_entity(l, r.entity, r.position, r.yaw)?,
             };
             Planned::Loaded(tree, key)
@@ -285,28 +285,33 @@ impl Game<'_> {
             mob.extra.spawn_tags.clone_from(given);
         }
         let mut group = None;
-        let decision = self.finalize_spawn_decision(mob, reason, source, &mut group);
+        let (decision, difficulty) = self.finalize_spawn_event(mob, reason, source, &mut group);
         // NeoForge's EventHooks.finalizeMobSpawnSpawner always posts FinalizeSpawnEvent
         // for spawners, runs Mob.finalizeSpawn iff !event.isCanceled() && def
         // (vanilla's hasNoConfiguration), and leaves spawn_cancelled to be enforced at
         // admission (NeoForgeEventHandler.builtinMobSpawnBlocker).
-        if r.finalize && !decision.skip_finalize {
+        if r.finalize && !decision.skip_initialization {
             let mut level = super::natural_spawning::PassLevel::new(l);
             let mut cx = sunrise_client::mobs::finalize::Ctx {
                 level: &mut level,
                 random,
-                difficulty: decision.difficulty,
+                difficulty,
                 created: Vec::new(),
                 jockey_rider: None,
             };
             sunrise_client::mobs::finalize::finalize(&mut cx, mob, reason, group);
-            if decision.spawn_cancelled {
+            if decision.veto_admission {
                 l.rides.borrow_mut().retain(|&(_, rider)| rider != mob.id);
             } else {
                 for m in cx.created {
                     l.record_pending(&m);
                     l.spawned.borrow_mut().push(m);
                 }
+            }
+            // TrialSpawner.spawnMob sets persistence after finalization.
+            mob.persistent |= r.trial;
+            if event.veto_admission {
+                return None;
             }
             // Shulker.finalizeSpawn faces it south.
             if mob.species() == sunrise_client::mobs::Species::Shulker {
@@ -329,7 +334,7 @@ impl Game<'_> {
             self.equip_mob_from_table(mob, table, random, sequences);
         }
         // NeoForgeEventHandler.builtinMobSpawnBlocker vetoes admission on spawn_cancelled.
-        if decision.spawn_cancelled {
+        if decision.veto_admission {
             return None;
         }
         let key = mob.id;
@@ -374,6 +379,22 @@ impl Game<'_> {
         }
         planned.push(plan);
         Some(SpawnerAdded { id: key, mob: true })
+    }
+    pub(super) fn decode_spawner_tree(
+        &self,
+        entity: &sunrise_core::nbt::Compound,
+        position: [f64; 3],
+        yaw: f32,
+    ) -> Option<SpawnTree> {
+        let mut tag = entity.clone();
+        tag.insert(
+            "Rotation".into(),
+            Tag::List(vec![Tag::Float(yaw.to_bits()), Tag::Float(0f32.to_bits())]),
+        );
+        let mut tag = Tag::Compound(tag);
+        // EntityType.loadEntityRecursive runs the placement callback for every member.
+        super::commands::place_summoned(&mut tag, position);
+        SpawnTree::decode(self, tag)
     }
     /// What a spawner's tick or a spawn egg did, shown and sent.
     fn apply_spawner_events(

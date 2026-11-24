@@ -651,7 +651,7 @@ pub(super) fn emit<'a>(
                 ));
             }
             // The task sink checkpoints its append-only queue and diagnostic;
-            // it cannot clone the listener-owned tasks.
+            // inside-block callbacks stage per listener instead of snapshotting.
             let task_registration =
                 event_type == "RegisterConfigurationTasksEvent" && name == "registration";
             let custom_spawners = event_type == "ModifyCustomSpawnersEvent" && name == "spawners";
@@ -659,12 +659,14 @@ pub(super) fn emit<'a>(
             let stacked_click = event_type == "ItemStackedOnOtherEvent" && name == "click";
             let staged_mob_registrar = (event_type == "RegisterGoalsEvent" && name == "goals")
                 || (event_type == "RegisterBehaviorsEvent" && name == "behaviors");
+            let inside_effects = event_type == "EntityInsideEvent" && name == "effects";
             if scalar || task_registration || custom_spawners || stacked_click {
                 rollback.push((name.clone(), false));
             } else if staged_mob_registrar {
                 surfaces.push(name.clone());
                 rollback.push((name.clone(), false));
-            } else if matches!(&field_ty, Type::Reference(reference) if reference.mutability.is_some())
+            } else if !inside_effects
+                && matches!(&field_ty, Type::Reference(reference) if reference.mutability.is_some())
             {
                 if matches!(&field_ty, Type::Reference(reference) if matches!(*reference.elem, Type::TraitObject(_)))
                 {
@@ -682,6 +684,7 @@ pub(super) fn emit<'a>(
                     "pub(super)"
                 }
                 None if task_registration
+                    || inside_effects
                     || matches!(
                         (event_type.as_str(), name.as_str()),
                         ("ApplyEffectTickEvent", "changes")
@@ -1226,7 +1229,7 @@ pub(super) fn emit<'a>(
         if declaration_only {
             continue;
         }
-        let build = if declaration.is_some() {
+        let build = if declaration.is_some() || name == "entity_inside" {
             String::new()
         } else {
             format!(
@@ -1504,6 +1507,18 @@ pub(super) fn emit<'a>(
                     | "register_configuration_tasks"
                     | "register_goals"
                     | "register_behaviors"
+                    | "server_about_to_start"
+                    | "server_starting"
+                    | "server_started"
+                    | "server_stopping"
+                    | "server_stopped"
+                    | "config_unloading"
+                    | "level_load"
+                    | "level_save"
+                    | "level_unload"
+                    | "create_spawn_position"
+                    | "player_save_to_file"
+                    | "world_saved"
             ) {
                 // Let the existing journal see the unwind before invoke catches it.
                 let (host, host_param) = host.as_ref().unwrap();
@@ -1549,6 +1564,28 @@ pub(super) fn emit<'a>(
                      }}"
                     )
                 }
+            } else if matches!(name, "level_tick_pre" | "level_tick_post") {
+                // Only the server Host owns a journal. The client side still uses invoke
+                // for panic/phase refusal handling, as do the client Load and Unload hooks.
+                let (host, _) = host.as_ref().unwrap();
+                format!(
+                    "match {host}.reborrow() {{\
+                        HostSide::Server({host}) => {{\
+                            use super::item::transaction::{{HostTransaction, TransactionError}};\
+                            match HostTransaction::transaction({host}, |{host}, _| -> Result<(), core::convert::Infallible> {{\
+                                let mut {host} = HostSide::Server({host});\
+                                {expression}; Ok(())\
+                            }}) {{\
+                                Ok(()) => {{}}\
+                                Err(TransactionError::Aborted(never)) => match never {{}},\
+                                Err(error @ (TransactionError::InvalidContext | TransactionError::Unavailable | TransactionError::CommitRefused)) => {{\
+                                    log::warn!(\"mod {{}}: {name} callback refused: {{error:?}}\", {mod_id_expr});\
+                                }}\
+                            }}\
+                        }}\
+                        mut {host} => {expression},\
+                    }}"
+                )
             } else {
                 expression
             }
@@ -1901,6 +1938,18 @@ pub(super) fn emit<'a>(
                          {} Ok(())",
                         call(&part_item, &listener_id, "return Err(());", ""),
                     )
+                } else if name == "entity_inside" {
+                    let inside_stage = fresh_name("inside_stage", &mut used);
+                    let invoke_inside = call(&part_item, &listener_id, "return false;", "break");
+                    format!(
+                        "for ({listener_id}, {part_item}) in super::entered_parts(HookId::{hook_id}, {part_list}, \"{name}\") {{
+                             effects.stage({listener_id}, |{inside_stage}| {{
+                                 let mut {event} = {event_type} {{ dimension, entity, kind, state, pos, precise, effects: {inside_stage} }};
+                                 {invoke_inside}
+                                 true
+                             }});
+                         }}"
+                    )
                 } else if name == "tooltip_image" {
                     let o = out.unwrap();
                     // Retained payloads poison this registration rather than all the mod's item Parts.
@@ -2069,8 +2118,6 @@ fn engine_types(ty: &mut Type, carrier: bool) {
                 }
             } else if path.path.is_ident("LandingWrite") {
                 syn::parse_quote!(sunrise_world::level::LandingWrite)
-            } else if path.path.is_ident("InsideWrite") {
-                syn::parse_quote!(sunrise_world::level::InsideWrite)
             } else {
                 return syn::visit_mut::visit_type_mut(self, ty);
             };
@@ -2265,6 +2312,7 @@ fn stack_crossing_routed(
         }
         if surfaces.contains_key(name.as_str())
             || matches!(ty, Type::Reference(r) if matches!(&*r.elem, Type::TraitObject(_)))
+            || contains_boundary(ty, &["InsideEffects"])
             || (kind.is_none() && (!mutable || checked))
         {
             arguments.push(name.clone());

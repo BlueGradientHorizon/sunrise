@@ -64,11 +64,41 @@ never names a later open of the same id: it reads as stale, like a handle from a
 A folder that exists under the id is reopened as it was saved, a persistent level after an
 unload or a restart. Nothing reopens a runtime level by itself at the next start: the mod
 reopens what it keeps, and a player saved in a level that was not reopened keeps the usual
-fallback. At server startup the Overworld, Nether and End are published in that order, each
-firing `level_load` before the next is available. The server then validates and activates their
-saved tickets and waits for the ticketed chunks before `server_started`, even if no player
-visits those levels. The [controller's validator](#validating-saved-chunk-tickets) can remove
-its own saved tickets before they take hold.
+fallback. At server startup every configured level (including datapack dimensions) fires
+`level_load` (v4) before the next is available. The Overworld opens first and, if needed, selects the
+initial world spawn before the other levels open, waiting for the spawn search's chunks to reach
+FULL. The owner's player spawn is prepared separately. `create_spawn_position` runs during the
+world spawn search for normal fresh worlds; the Debug preset uses its fixed spawn without that hook. The remaining levels follow
+the `LEVEL_STEM` registry traversal; mods must not assume a particular order among them.
+`host.levels().visit_levels(...)`, ticks of eligible levels, saves and shutdown use that creation order.
+A player's saved dimension does not add to the registry. The server then validates and activates
+saved tickets and waits for the ticketed chunks before `server_started` (v2), even if no player visits
+those levels. In `Hooks::validate_tickets`, a controller's owning mod can remove saved tickets
+through `event.validation`. The callback sees its removals immediately. As with
+[staged registration](../../concepts/load-phases.md#registration-and-setup), a panic or phase
+refusal discards those edits before the saved tickets take hold. Other controllers still validate.
+
+On a full server save, `player_save_to_file` notifications for successfully saved placed players
+come before `level_save`, then `world_saved` follows the world metadata write. During shutdown,
+a failed player file write emits no `player_save_to_file` for that player; it does not prevent the
+world metadata save. Startup's integrated
+save completes before `server_starting` and `server_started`. It writes levels and world metadata,
+naming a known profile for a new world without creating or overwriting the owner's player file.
+The initial save is outside the `server_started` listener's transaction journal.
+
+Lifecycle hooks follow the [shared failure rules](../../concepts/hooks-and-the-host.md#failures-and-panics).
+A panicking listener does not fail a successful save or skip another listener's level close
+notice. On the server, the existing transaction journal discards that callback's journaled
+writes, including edits committed by a nested `host.transaction`. Effects outside the journal,
+such as a mod writing its own file or editing client state, are not undone.
+
+On the client, resolve the level in `client_level_load` with `host.level(event.dimension)` before it
+is installed. Its chunks arrive later, but it can already read the datapack registries synchronized
+by its server for that configuration. On dimension replacement, `client_level_unload` follows
+for the retiring level: its handle, loaded chunks and available synchronized registries still
+resolve until that callback finishes. On reconfiguration, Unload reads the retiring configuration
+and the next Load reads the new one, even if the new registry set arrived before Unload ran.
+The new level's handle remains valid when that level is installed.
 
 Success means queue admission, not apply completion. Apply failures are logged with the
 requesting mod and level id. `Unavailable` means there is no open logical server world or its
@@ -104,11 +134,13 @@ only that validator for the rest of the session. Other controllers still validat
 `unload(id)` saves the level and drops it, keeping the folder. It refuses with `PlayersInside`
 while a player, or an arrival that has not landed, is in the level, both when it is called and
 when it is applied: move the players out first with `entity.teleport_to_level`. `NotOpen` is the
-answer for a level that is not open (or still waiting to open). The idle close the game gives
-custom levels without players applies to runtime levels too: a runtime level nobody is in and
-no forced chunk holds is saved and dropped from memory after 300 ticks (`level_unload` fires), but
-it stays open: `is_open` still says true, and the level opens again from its folder, with
-`level_load`, when a player or a mod enters it. Only `unload` or `delete` closes it for good.
+answer for a level that is not open (or still waiting to open). A parked non-Overworld level that
+has no players, views, tickets, or other work keeping it active can evict its chunks and entities
+without closing: `is_open` stays true, neither `level_unload` nor `level_save` fires, and revisiting
+it does not fire `level_load` again. An unload listener that activates another level keeps it
+resident before its turn. The sweep leaves a column and its live entities resident if a required
+record cannot be saved; other eligible columns can still evict. Only `unload`, `delete`, or server
+shutdown closes the level and fires `level_unload`.
 
 ## Deleting
 

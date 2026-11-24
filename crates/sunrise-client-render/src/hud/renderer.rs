@@ -376,6 +376,38 @@ impl HudRenderer {
     }
     /// Stage the batch's `patches` and `image_patches` (client mods' dynamic textures) into
     /// the shared atlas texture.
+    pub fn upload_glyph_patches(
+        &self,
+        uploads: &mut crate::gfx::upload::Uploads,
+        encoder: &mut wgpu::CommandEncoder,
+        patches: &[crate::font::Patch],
+    ) {
+        let Some(texture) = &self.atlas_texture else {
+            return;
+        };
+        for p in patches {
+            if p.x.saturating_add(p.width) <= texture.width()
+                && p.y.saturating_add(p.height) <= texture.height()
+            {
+                uploads.texture(
+                    encoder,
+                    wgpu::TexelCopyTextureInfo {
+                        texture,
+                        mip_level: 0,
+                        origin: wgpu::Origin3d {
+                            x: p.x,
+                            y: p.y,
+                            z: 0,
+                        },
+                        aspect: wgpu::TextureAspect::All,
+                    },
+                    p.width,
+                    p.height,
+                    &p.rgba,
+                );
+            }
+        }
+    }
     pub fn upload_patches(
         &self,
         uploads: &mut crate::gfx::upload::Uploads,
@@ -548,66 +580,88 @@ impl HudRenderer {
             });
             pass.set_bind_group(0, &self.group, &[]);
             pass.set_vertex_buffer(0, self.buffer.slice(..));
-            if let Some(clip) = clip {
-                let Some([x, y, w, h]) = batch::hud_scissor(clip, size, self.zoom) else {
-                    at = end;
-                    continue;
-                };
-                pass.set_scissor_rect(x, y, w, h);
-            }
+            let full = [0, 0, size[0], size[1]];
+            let depth_clip = clip.map_or(full, |clip| {
+                let [x, y, w, h] = clip.map(|v| (v as f32 * self.zoom) as u32);
+                [
+                    x.min(size[0]),
+                    y.min(size[1]),
+                    x.saturating_add(w).min(size[0]),
+                    y.saturating_add(h).min(size[1]),
+                ]
+            });
+            let mut previous = full;
             for (range, blend) in &runs[at..end] {
-                let pipeline = match blend {
-                    Blend::Picture(id) => {
-                        self.draw_picture(&mut pass, *id, range.clone(), coverage.is_some());
+                for (range, clip) in batch.scissors_in(range.clone()) {
+                    let [x0, y0, x1, y1] = clip.map_or(depth_clip, |rect| {
+                        let scale = batch.scale * self.zoom;
+                        // Fractional engine clips retain the old pixel-centre coverage;
+                        // integer GUI rectangles at vanilla's integer scale are exact.
+                        let [l, t, r, b] = rect.map(|v| (v * scale - 0.5).ceil() as u32);
+                        let [x0, y0, x1, y1] = depth_clip;
+                        [l.max(x0), t.max(y0), r.min(x1), b.min(y1)]
+                    });
+                    if x0 >= x1 || y0 >= y1 {
                         continue;
                     }
-                    Blend::AtlasPage(page, blend) => {
-                        let Some(page) = self.atlas_pages.get(*page).and_then(Option::as_ref)
-                        else {
+                    let scissor = [x0, y0, x1 - x0, y1 - y0];
+                    if scissor != previous {
+                        pass.set_scissor_rect(scissor[0], scissor[1], scissor[2], scissor[3]);
+                        previous = scissor;
+                    }
+                    let pipeline = match blend {
+                        Blend::Picture(id) => {
+                            self.draw_picture(&mut pass, *id, range, coverage.is_some());
                             continue;
-                        };
-                        let pipeline = match blend {
-                            AtlasBlend::Alpha => &self.pipeline,
-                            AtlasBlend::Invert => &self.invert_pipeline,
-                            AtlasBlend::Additive => &self.additive_pipeline,
-                            AtlasBlend::Vignette => &self.vignette_pipeline,
-                        };
-                        pass.set_bind_group(0, &page.group, &[]);
-                        pass.set_pipeline(pipeline.get(coverage.is_some()));
-                        pass.draw(range.clone(), 0..1);
-                        pass.set_bind_group(0, &self.group, &[]);
-                        continue;
-                    }
-                    Blend::Alpha => &self.pipeline,
-                    Blend::Invert => &self.invert_pipeline,
-                    Blend::Additive => &self.additive_pipeline,
-                    Blend::Depth(_) => &self.depth_pipeline,
-                    Blend::DepthGlint(_) => &self.depth_glint_pipeline,
-                    Blend::Vignette => &self.vignette_pipeline,
-                    Blend::EndPortal => &self.end_portal_pipeline,
-                    Blend::CitGlint(blend) => {
-                        if let Some(cit) = &self.cit_glint {
-                            cit.draw(&mut pass, *blend, range.clone(), coverage.is_some());
                         }
-                        continue;
-                    }
-                };
-                let pipeline = pipeline.get(coverage.is_some());
-                match &self.pack_text {
-                    Some(pack_text) if *blend == Blend::Alpha => {
-                        for (part, text) in pack_text::text_runs(&batch.vertices, range.clone()) {
-                            if text {
-                                pack_text.draw(&mut pass, part, coverage.is_some());
-                                pass.set_bind_group(0, &self.group, &[]);
-                            } else {
-                                pass.set_pipeline(pipeline);
-                                pass.draw(part, 0..1);
+                        Blend::AtlasPage(page, blend) => {
+                            let Some(page) = self.atlas_pages.get(*page).and_then(Option::as_ref)
+                            else {
+                                continue;
+                            };
+                            let pipeline = match blend {
+                                AtlasBlend::Alpha => &self.pipeline,
+                                AtlasBlend::Invert => &self.invert_pipeline,
+                                AtlasBlend::Additive => &self.additive_pipeline,
+                                AtlasBlend::Vignette => &self.vignette_pipeline,
+                            };
+                            pass.set_bind_group(0, &page.group, &[]);
+                            pass.set_pipeline(pipeline.get(coverage.is_some()));
+                            pass.draw(range, 0..1);
+                            pass.set_bind_group(0, &self.group, &[]);
+                            continue;
+                        }
+                        Blend::Alpha => &self.pipeline,
+                        Blend::Invert => &self.invert_pipeline,
+                        Blend::Additive => &self.additive_pipeline,
+                        Blend::Depth(_) => &self.depth_pipeline,
+                        Blend::DepthGlint(_) => &self.depth_glint_pipeline,
+                        Blend::Vignette => &self.vignette_pipeline,
+                        Blend::EndPortal => &self.end_portal_pipeline,
+                        Blend::CitGlint(blend) => {
+                            if let Some(cit) = &self.cit_glint {
+                                cit.draw(&mut pass, *blend, range, coverage.is_some());
+                            }
+                            continue;
+                        }
+                    };
+                    let pipeline = pipeline.get(coverage.is_some());
+                    match &self.pack_text {
+                        Some(pack_text) if *blend == Blend::Alpha => {
+                            for (part, text) in pack_text::text_runs(&batch.vertices, range) {
+                                if text {
+                                    pack_text.draw(&mut pass, part, coverage.is_some());
+                                    pass.set_bind_group(0, &self.group, &[]);
+                                } else {
+                                    pass.set_pipeline(pipeline);
+                                    pass.draw(part, 0..1);
+                                }
                             }
                         }
-                    }
-                    _ => {
-                        pass.set_pipeline(pipeline);
-                        pass.draw(range.clone(), 0..1);
+                        _ => {
+                            pass.set_pipeline(pipeline);
+                            pass.draw(range, 0..1);
+                        }
                     }
                 }
             }

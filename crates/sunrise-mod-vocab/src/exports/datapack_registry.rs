@@ -20,4 +20,5 @@ mod __private {
             DatapackCandidateBuilder, datapack_entry_id, datapack_tag_members,
         };
     }
+    pub use crate::world::datapack_registry_set::queued_datapack_set_bytes;
 }

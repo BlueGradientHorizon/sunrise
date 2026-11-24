@@ -25,7 +25,9 @@ Register each managed config file from `Hooks::register` with
 - **Owner-bound delivery:** The optional `Arc<ConfigListener>` is bound to that registration's owner and
   receives only that config's events (`ConfigEvent::Loading`, `Reloading`, `Unloading`) with
   `&ConfigSnapshot` (`mod_id`, `kind`, registered `file`, resolved on-disk `path`, and `text`). Pass `None`
-  if the file needs no callback.
+  if the file needs no callback. A `Server` config loads before `server_about_to_start` from the world's
+  `serverconfig/`, remains available through final level saves and unloads, and unloads after `server_stopped`.
+  `Client` and `Common` configs load once and stay until the game quits.
 
 ```rust,ignore
 use mod_api::{

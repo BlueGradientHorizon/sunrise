@@ -2287,36 +2287,22 @@ fn cross_level_sound_listener_player_attachment_writes_rollback_to_original_and_
     in_isolated_process(
         "cross_level_sound_listener_player_attachment_writes_rollback_to_original_and_preserve_nested_merge",
         || {
-            use mod_api::{Flow, HostSide, ServerHost};
+            use mod_api::{AttachmentKey, Flow, HostSide, ServerHost};
+            use std::sync::Mutex;
             use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
             use sunrise_core::nbt::{Compound, Tag};
-            use sunrise_mod_runtime::attachments::{
-                AttachmentCodec, AttachmentError, AttachmentType, Holder,
-            };
+            use sunrise_mod_runtime::attachments::{AttachmentCodec, AttachmentError, Holder};
 
             const ORIGINAL: i32 = 10;
             const TENTATIVE_OVERWORLD: i32 = 20;
             const TENTATIVE_NETHER: i32 = 30;
-            const MARK: AttachmentType<i32> = AttachmentType {
-                namespace: "cross_level_sound_test",
-                name: "mark",
-                default: || 0,
-                codec: Some(AttachmentCodec {
-                    encode: |value| Ok(Compound::from([("n".into(), Tag::Int(*value))])),
-                    decode: |data| match data.get(&"n".into()) {
-                        Some(Tag::Int(n)) => Ok(*n),
-                        _ => Err(AttachmentError::Decode),
-                    },
-                }),
-                copy_on_death: true,
-                sync: false,
-            };
 
             struct NetherPlayerAttachmentHook {
                 player_uuid: u128,
                 expect_before: Arc<std::sync::atomic::AtomicI32>,
                 nested_tx: Arc<AtomicBool>,
                 calls: Arc<AtomicUsize>,
+                mark: Arc<Mutex<Option<AttachmentKey<i32>>>>,
             }
             #[mod_api::__subscriptions]
             impl mod_api::Hooks for NetherPlayerAttachmentHook {
@@ -2325,8 +2311,25 @@ fn cross_level_sound_listener_player_attachment_writes_rollback_to_original_and_
                     r: &mut dyn mod_api::Registrar,
                     _: &mod_api::RegistrationContext,
                 ) {
-                    r.register_attachment_type("cross_level_sound_test:mark", false)
+                    let key = r
+                        .register_attachment_type(
+                            mod_api::AttachmentDescriptor::new(
+                                "cross_level_sound_test:mark",
+                                || 0i32,
+                            )
+                            .serialize(AttachmentCodec {
+                                encode: |value| {
+                                    Ok(Compound::from([("n".into(), Tag::Int(*value))]))
+                                },
+                                decode: |data| match data.get(&"n".into()) {
+                                    Some(Tag::Int(n)) => Ok(*n),
+                                    _ => Err(AttachmentError::Decode),
+                                },
+                            })
+                            .copy_on_death(),
+                        )
                         .unwrap();
+                    *self.mark.lock().unwrap() = Some(key);
                 }
 
                 fn play_level_sound_at_position(
@@ -2339,14 +2342,15 @@ fn cross_level_sound_listener_player_attachment_writes_rollback_to_original_and_
                     }
                     self.calls.fetch_add(1, Ordering::SeqCst);
                     if let HostSide::Server(server) = host {
+                        let mark = self.mark.lock().unwrap().clone().unwrap();
                         let holder = Holder::Player(self.player_uuid);
                         assert_eq!(
-                            MARK.get_existing(server, holder),
+                            mark.get_existing(server, holder, |v| v.copied()),
                             Ok(Some(self.expect_before.load(Ordering::SeqCst))),
                             "Nether listener reaches the same live player-owned attachment map"
                         );
                         let write = |server: &mut dyn ServerHost| {
-                            MARK.set(server, holder, TENTATIVE_NETHER).unwrap();
+                            mark.set(server, holder, TENTATIVE_NETHER).unwrap();
                         };
                         if self.nested_tx.load(Ordering::SeqCst) {
                             let merged = server.transaction(|server, _| {
@@ -2365,19 +2369,23 @@ fn cross_level_sound_listener_player_attachment_writes_rollback_to_original_and_
             let expect_before = Arc::new(std::sync::atomic::AtomicI32::new(TENTATIVE_OVERWORLD));
             let nested_tx = Arc::new(AtomicBool::new(false));
             let calls = Arc::new(AtomicUsize::new(0));
-            let mods = vec![mod_api::ModEntry::new(
+            let mark = Arc::new(Mutex::new(None));
+            let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
                 "cross_level_sound_test",
                 Box::new(NetherPlayerAttachmentHook {
                     player_uuid: 12,
                     expect_before: Arc::clone(&expect_before),
                     nested_tx: Arc::clone(&nested_tx),
                     calls: Arc::clone(&calls),
+                    mark: Arc::clone(&mark),
                 }),
             )]
             .into();
 
-            mod_platform::testing::with_mods(mods, || {
+            mod_platform::testing::with_mods(mods.clone(), || {
+                crate::game::api_values::install_parts(&mods).unwrap();
                 with_guests(|game| {
+                    let mark = mark.lock().unwrap().clone().unwrap();
                     game.options.dedicated = Some(Vec::new());
                     // Load Nether once so it sits in `levels.parked` while Overworld is active.
                     game.enter_level(super::Dim::Nether).unwrap();
@@ -2390,8 +2398,11 @@ fn cross_level_sound_listener_player_attachment_writes_rollback_to_original_and_
 
                     {
                         let host: &mut dyn ServerHost = game;
-                        MARK.set(host, holder, ORIGINAL).unwrap();
-                        assert_eq!(MARK.get_existing(host, holder), Ok(Some(ORIGINAL)));
+                        mark.set(host, holder, ORIGINAL).unwrap();
+                        assert_eq!(
+                            mark.get_existing(host, holder, |v| v.copied()),
+                            Ok(Some(ORIGINAL))
+                        );
                     }
 
                     game.as_guest(12, |game| {
@@ -2402,7 +2413,7 @@ fn cross_level_sound_listener_player_attachment_writes_rollback_to_original_and_
                             let aborted = game.storage_transaction(|game, _| {
                                 {
                                     let host: &mut dyn ServerHost = game;
-                                    MARK.set(host, holder, TENTATIVE_OVERWORLD).unwrap();
+                                    mark.set(host, holder, TENTATIVE_OVERWORLD).unwrap();
                                 }
                                 assert!(game.level_play_sound(
                                     nether,
@@ -2417,7 +2428,7 @@ fn cross_level_sound_listener_player_attachment_writes_rollback_to_original_and_
                                 {
                                     let host: &mut dyn ServerHost = game;
                                     assert_eq!(
-                                        MARK.get_existing(host, holder),
+                                        mark.get_existing(host, holder, |v| v.copied()),
                                         Ok(Some(TENTATIVE_NETHER))
                                     );
                                 }
@@ -2426,7 +2437,7 @@ fn cross_level_sound_listener_player_attachment_writes_rollback_to_original_and_
                             assert!(aborted.is_err());
                             let host: &mut dyn ServerHost = game;
                             assert_eq!(
-                                MARK.get_existing(host, holder),
+                                mark.get_existing(host, holder, |v| v.copied()),
                                 Ok(Some(ORIGINAL)),
                                 "round {round}: direct cross-level abort must restore ORIGINAL"
                             );
@@ -2441,7 +2452,7 @@ fn cross_level_sound_listener_player_attachment_writes_rollback_to_original_and_
                             let aborted = game.storage_transaction(|game, _| {
                                 {
                                     let host: &mut dyn ServerHost = game;
-                                    MARK.set(host, holder, TENTATIVE_OVERWORLD).unwrap();
+                                    mark.set(host, holder, TENTATIVE_OVERWORLD).unwrap();
                                 }
                                 assert!(game.level_play_sound(
                                     nether,
@@ -2455,7 +2466,7 @@ fn cross_level_sound_listener_player_attachment_writes_rollback_to_original_and_
                                 {
                                     let host: &mut dyn ServerHost = game;
                                     assert_eq!(
-                                        MARK.get_existing(host, holder),
+                                        mark.get_existing(host, holder, |v| v.copied()),
                                         Ok(Some(TENTATIVE_NETHER))
                                     );
                                 }
@@ -2464,7 +2475,7 @@ fn cross_level_sound_listener_player_attachment_writes_rollback_to_original_and_
                             assert!(aborted.is_err());
                             let host: &mut dyn ServerHost = game;
                             assert_eq!(
-                                MARK.get_existing(host, holder),
+                                mark.get_existing(host, holder, |v| v.copied()),
                                 Ok(Some(ORIGINAL)),
                                 "round {round}: nested-merge cross-level abort must restore ORIGINAL"
                             );
@@ -2475,7 +2486,7 @@ fn cross_level_sound_listener_player_attachment_writes_rollback_to_original_and_
                         let committed = game.storage_transaction(|game, _| {
                             {
                                 let host: &mut dyn ServerHost = game;
-                                MARK.set(host, holder, TENTATIVE_OVERWORLD).unwrap();
+                                mark.set(host, holder, TENTATIVE_OVERWORLD).unwrap();
                             }
                             assert!(game.level_play_sound(
                                 nether,
@@ -2493,7 +2504,7 @@ fn cross_level_sound_listener_player_attachment_writes_rollback_to_original_and_
                         {
                             let host: &mut dyn ServerHost = game;
                             assert_eq!(
-                                MARK.get_existing(host, holder),
+                                mark.get_existing(host, holder, |v| v.copied()),
                                 Ok(Some(TENTATIVE_NETHER))
                             );
                         }
@@ -2505,8 +2516,11 @@ fn cross_level_sound_listener_player_attachment_writes_rollback_to_original_and_
                     // rollback still restores the parked guest's attachment map.
                     {
                         let host: &mut dyn ServerHost = game;
-                        assert_eq!(MARK.get_existing(host, holder), Ok(Some(TENTATIVE_NETHER)));
-                        MARK.set(host, holder, ORIGINAL).unwrap();
+                        assert_eq!(
+                            mark.get_existing(host, holder, |v| v.copied()),
+                            Ok(Some(TENTATIVE_NETHER))
+                        );
+                        mark.set(host, holder, ORIGINAL).unwrap();
                     }
                     expect_before.store(ORIGINAL, Ordering::SeqCst);
                     let parked_abort = game.storage_transaction(|game, _| {
@@ -2528,7 +2542,7 @@ fn cross_level_sound_listener_player_attachment_writes_rollback_to_original_and_
                     assert_eq!(calls.load(Ordering::SeqCst), 34);
                     let host: &mut dyn ServerHost = game;
                     assert_eq!(
-                        MARK.get_existing(host, holder),
+                        mark.get_existing(host, holder, |v| v.copied()),
                         Ok(Some(ORIGINAL)),
                         "parked guest attachment restores even when first written in Nether"
                     );
@@ -2549,7 +2563,9 @@ fn same_uuid_fake_players_across_levels_rollback_attachment_health_and_inventory
     in_isolated_process(
         "same_uuid_fake_players_across_levels_rollback_attachment_health_and_inventory_independently",
         || {
-            use mod_api::{Flow, HostSide, ItemPlace, ItemResource, LivingRef, ServerHost};
+            use mod_api::{
+                AttachmentKey, Flow, HostSide, ItemPlace, ItemResource, LivingRef, ServerHost,
+            };
             use std::sync::Mutex;
             use std::sync::atomic::{AtomicUsize, Ordering};
             use sunrise_client::items::ItemStack;
@@ -2576,7 +2592,7 @@ fn same_uuid_fake_players_across_levels_rollback_attachment_health_and_inventory
                     },
                 }),
                 copy_on_death: false,
-                sync: false,
+                sync_codec: None,
             };
 
             #[derive(Clone, Copy)]
@@ -2625,6 +2641,7 @@ fn same_uuid_fake_players_across_levels_rollback_attachment_health_and_inventory
             struct NetherFakeWriteHook {
                 plan: Arc<Mutex<Option<FakeWritePlan>>>,
                 calls: Arc<AtomicUsize>,
+                mark: Arc<Mutex<Option<AttachmentKey<i32>>>>,
             }
             #[mod_api::__subscriptions]
             impl mod_api::Hooks for NetherFakeWriteHook {
@@ -2633,8 +2650,24 @@ fn same_uuid_fake_players_across_levels_rollback_attachment_health_and_inventory
                     r: &mut dyn mod_api::Registrar,
                     _: &mod_api::RegistrationContext,
                 ) {
-                    r.register_attachment_type("cross_level_fake_test:mark", false)
+                    let key = r
+                        .register_attachment_type(
+                            mod_api::AttachmentDescriptor::new(
+                                "cross_level_fake_test:mark",
+                                || 0i32,
+                            )
+                            .serialize(AttachmentCodec {
+                                encode: |value| {
+                                    Ok(Compound::from([("n".into(), Tag::Int(*value))]))
+                                },
+                                decode: |data| match data.get(&"n".into()) {
+                                    Some(Tag::Int(n)) => Ok(*n),
+                                    _ => Err(AttachmentError::Decode),
+                                },
+                            }),
+                        )
                         .unwrap();
+                    *self.mark.lock().unwrap() = Some(key);
                 }
 
                 fn play_level_sound_at_position(
@@ -2650,9 +2683,10 @@ fn same_uuid_fake_players_across_levels_rollback_attachment_health_and_inventory
                     };
                     self.calls.fetch_add(1, Ordering::SeqCst);
                     if let HostSide::Server(server) = host {
+                        let mark = self.mark.lock().unwrap().clone().unwrap();
                         let apply =
                             |server: &mut dyn ServerHost, tx: &mod_api::TransactionContext| {
-                                MARK.set(server, Holder::Player(FAKE_UUID), plan.mark)
+                                mark.set(server, Holder::Player(FAKE_UUID), plan.mark)
                                     .unwrap();
                                 replace_fake_slot0(server, tx, plan.item, plan.count);
                                 assert!(plan.living.set_health(server, plan.health));
@@ -2675,17 +2709,21 @@ fn same_uuid_fake_players_across_levels_rollback_attachment_health_and_inventory
 
             let plan = Arc::new(Mutex::new(None));
             let calls = Arc::new(AtomicUsize::new(0));
-            let mods = vec![mod_api::ModEntry::new(
+            let mark = Arc::new(Mutex::new(None));
+            let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
                 "cross_level_fake_test",
                 Box::new(NetherFakeWriteHook {
                     plan: Arc::clone(&plan),
                     calls: Arc::clone(&calls),
+                    mark: Arc::clone(&mark),
                 }),
             )]
             .into();
 
-            mod_platform::testing::with_mods(mods, || {
+            mod_platform::testing::with_mods(mods.clone(), || {
+                crate::game::api_values::install_parts(&mods).unwrap();
                 with_guests(|game| {
+                    let mark = mark.lock().unwrap().clone().unwrap();
                     game.options.dedicated = Some(Vec::new());
                     let holder = Holder::Player(FAKE_UUID);
                     let place = ItemPlace::PlayerSlot {
@@ -2699,7 +2737,7 @@ fn same_uuid_fake_players_across_levels_rollback_attachment_health_and_inventory
                     let ow_living = LivingRef::new(ow_fake.entity());
                     {
                         let host: &mut dyn ServerHost = game;
-                        MARK.set(host, holder, OW_MARK).unwrap();
+                        mark.set(host, holder, OW_MARK).unwrap();
                         assert!(ow_living.set_health(host, OW_HEALTH));
                         let seeded = host.transaction(|host, tx| {
                             replace_fake_slot0(host, tx, "minecraft:apple", 2);
@@ -2716,7 +2754,7 @@ fn same_uuid_fake_players_across_levels_rollback_attachment_health_and_inventory
                     let nether_living = LivingRef::new(nether_fake.entity());
                     {
                         let host: &mut dyn ServerHost = game;
-                        MARK.set(host, holder, NETHER_MARK).unwrap();
+                        mark.set(host, holder, NETHER_MARK).unwrap();
                         assert!(nether_living.set_health(host, NETHER_HEALTH));
                         let seeded = host.transaction(|host, tx| {
                             replace_fake_slot0(host, tx, "minecraft:emerald", 5);
@@ -2811,10 +2849,13 @@ fn same_uuid_fake_players_across_levels_rollback_attachment_health_and_inventory
                     {
                         let host: &mut dyn ServerHost = game;
                         let aborted = host.transaction(|host, tx| {
-                            MARK.set(host, holder, 99).unwrap();
+                            mark.set(host, holder, 99).unwrap();
                             assert!(nether_living.set_health(host, 4.0));
                             replace_fake_slot0(host, tx, "minecraft:stick", 1);
-                            assert_eq!(MARK.get_existing(host, holder), Ok(Some(99)));
+                            assert_eq!(
+                                mark.get_existing(host, holder, |v| v.copied()),
+                                Ok(Some(99))
+                            );
                             assert_eq!(nether_living.health(host), Some(4.0));
                             assert_eq!(place.with_stack(host, |s| s.count()), Some(1));
                             Err::<(), ()>(())
@@ -2847,17 +2888,20 @@ fn same_uuid_fake_players_across_levels_rollback_attachment_health_and_inventory
                     {
                         let host: &mut dyn ServerHost = game;
                         let aborted = host.transaction(|host, tx| {
-                            MARK.set(host, holder, 50).unwrap();
+                            mark.set(host, holder, 50).unwrap();
                             assert!(nether_living.set_health(host, 12.0));
                             replace_fake_slot0(host, tx, "minecraft:coal", 3);
                             let inner = host.transaction(|host, inner_tx| {
-                                MARK.set(host, holder, 99).unwrap();
+                                mark.set(host, holder, 99).unwrap();
                                 replace_fake_slot0(host, inner_tx, "minecraft:stick", 1);
                                 assert!(nether_living.set_health(host, 0.0));
                                 Ok::<(), ()>(())
                             });
                             assert!(inner.is_ok());
-                            assert_eq!(MARK.get_existing(host, holder), Ok(Some(99)));
+                            assert_eq!(
+                                mark.get_existing(host, holder, |v| v.copied()),
+                                Ok(Some(99))
+                            );
                             assert_eq!(nether_living.health(host), Some(0.0));
                             Err::<(), ()>(())
                         });

@@ -16,7 +16,7 @@ pub trait Hooks {
     /// and random draws, not arbitrary writes. Update flag 256 skips the call.
     #[notes = r#"- `pre_remove_side_effects` is the server's `BlockEntity.preRemoveSideEffects`: the block is being
   replaced or broken with side effects (not under flag 256). Read the outgoing row via `event.entity`
-  and its attachments with `TYPE.get(host, Holder::BlockEntity(pos))`. Submit effects with `event.effects`.
+  and its attachments with `key.get_in(host, Holder::BlockEntity(pos), read)`. Submit effects with `event.effects`.
   Base contents scatter first unless suppressed; contributed slots, positioned items with default pickup delay,
   and experience follow in that order. Order within each group is preserved. `drop_slot(None)` draws an empty
   slot's scatter position without spawning. An invalid stack or nonfinite position refuses only that call.
