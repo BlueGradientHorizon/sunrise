@@ -649,14 +649,17 @@ impl Game<'_> {
             catalog,
         )
         .map_err(|error| format!("datapack vanilla value decoder: {error}"))?;
-        let candidate =
-            mod_api::DatapackCandidate::build_with_decoder(declarations, &files, &mut decoder)
-                .map_err(|error| {
-                    format!(
-                        "datapack registry {} entry {} (pack {}, file {}): {:?}",
-                        error.registry, error.entry, error.pack, error.file, error.reason
-                    )
-                })?;
+        let candidate = mod_api::__private::build_datapack_candidate_with_decoder(
+            declarations,
+            &files,
+            &mut decoder,
+        )
+        .map_err(|error| {
+            format!(
+                "datapack registry {} entry {} (pack {}, file {}): {:?}",
+                error.registry, error.entry, error.pack, error.file, error.reason
+            )
+        })?;
         Ok(Some((candidate, decoder.finish())))
     }
     /// A world open's tables, and the first generation of the registries the mods declared.

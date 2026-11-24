@@ -264,8 +264,8 @@ impl DatapackSnapshot {
 
     /// [`Self::candidate`] with the engine's decoder for vanilla value kinds: re-decodes every
     /// vanilla value from its JSON into `decoder`'s table and refuses the snapshot if any fails.
-    #[doc(hidden)]
-    pub fn candidate_with_decoder(
+    #[cfg(test)]
+    pub(super) fn candidate_with_decoder(
         &self,
         declarations: &[DatapackRegistryDeclaration],
         decoder: &mut dyn VanillaValueDecoder,

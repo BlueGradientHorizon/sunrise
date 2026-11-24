@@ -126,8 +126,7 @@ impl DatapackCandidate {
 
     /// [`Self::build`] with the engine's decoder for vanilla value kinds (`IntProvider`,
     /// `BlockStateProvider`, `BlockPredicate`, `HolderSet`).
-    #[doc(hidden)]
-    pub fn build_with_decoder(
+    pub(crate) fn build_with_decoder(
         declarations: &[DatapackRegistryDeclaration],
         files: &[(String, Vec<(String, Vec<u8>)>)],
         decoder: &mut dyn VanillaValueDecoder,
@@ -385,8 +384,7 @@ impl DatapackRegistrySet {
     /// Re-decode every vanilla value in this set against `decoder`, binding fresh per-load
     /// handles into `decoder`'s table. Used on clients after a snapshot arrives once their
     /// registries and tags are installed.
-    #[doc(hidden)]
-    pub fn rebind_vanilla_values(
+    pub(crate) fn rebind_vanilla_values(
         &self,
         declarations: &[DatapackRegistryDeclaration],
         decoder: &mut dyn VanillaValueDecoder,
@@ -512,6 +510,24 @@ fn pairs_heap_bytes(pairs: &Vec<(String, DatapackValue)>) -> usize {
                 .saturating_add(datapack_value_heap_bytes(val))
         },
     )
+}
+
+/// Build a [`DatapackCandidate`] using the engine's decoder for vanilla value kinds.
+pub fn build_datapack_candidate_with_decoder(
+    declarations: &[DatapackRegistryDeclaration],
+    files: &[(String, Vec<(String, Vec<u8>)>)],
+    decoder: &mut dyn VanillaValueDecoder,
+) -> Result<DatapackCandidate, Box<DatapackLoadError>> {
+    DatapackCandidate::build_with_decoder(declarations, files, decoder)
+}
+
+/// Re-decode every vanilla value in `set` against `decoder`, binding fresh per-load handles.
+pub fn rebind_datapack_vanilla_values(
+    set: &DatapackRegistrySet,
+    declarations: &[DatapackRegistryDeclaration],
+    decoder: &mut dyn VanillaValueDecoder,
+) -> Result<DatapackRegistrySet, super::datapack_snapshot::DatapackSnapshotError> {
+    set.rebind_vanilla_values(declarations, decoder)
 }
 
 /// Charge a synchronized set in the ordered configuration handoff. It is retained by an Arc.

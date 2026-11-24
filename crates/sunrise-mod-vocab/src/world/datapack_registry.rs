@@ -186,18 +186,21 @@ impl IntProviderValue {
     };
 
     /// Construct a handle for the engine's active decoded table.
+    // hidden: only the engine constructs bound handles for its decoded vanilla value table.
     #[doc(hidden)]
     pub const fn from_raw(generation: u64, index: u32) -> Self {
         Self { generation, index }
     }
 
     /// The load generation this handle belongs to (`0` when unbound).
+    // hidden: only the engine checks a handle's load generation against its active table.
     #[doc(hidden)]
     pub const fn generation(self) -> u64 {
         self.generation
     }
 
     /// The slot index within the load's decoded table.
+    // hidden: only the engine indexes its decoded vanilla value table by slot.
     #[doc(hidden)]
     pub const fn index(self) -> u32 {
         self.index
@@ -236,18 +239,21 @@ impl BlockStateProviderValue {
     };
 
     /// Construct a handle for the engine's active decoded table.
+    // hidden: only the engine constructs bound handles for its decoded vanilla value table.
     #[doc(hidden)]
     pub const fn from_raw(generation: u64, index: u32) -> Self {
         Self { generation, index }
     }
 
     /// The load generation this handle belongs to (`0` when unbound).
+    // hidden: only the engine checks a handle's load generation against its active table.
     #[doc(hidden)]
     pub const fn generation(self) -> u64 {
         self.generation
     }
 
     /// The slot index within the load's decoded table.
+    // hidden: only the engine indexes its decoded vanilla value table by slot.
     #[doc(hidden)]
     pub const fn index(self) -> u32 {
         self.index
@@ -289,18 +295,21 @@ impl BlockPredicateValue {
     };
 
     /// Construct a handle for the engine's active decoded table.
+    // hidden: only the engine constructs bound handles for its decoded vanilla value table.
     #[doc(hidden)]
     pub const fn from_raw(generation: u64, index: u32) -> Self {
         Self { generation, index }
     }
 
     /// The load generation this handle belongs to (`0` when unbound).
+    // hidden: only the engine checks a handle's load generation against its active table.
     #[doc(hidden)]
     pub const fn generation(self) -> u64 {
         self.generation
     }
 
     /// The slot index within the load's decoded table.
+    // hidden: only the engine indexes its decoded vanilla value table by slot.
     #[doc(hidden)]
     pub const fn index(self) -> u32 {
         self.index
@@ -340,18 +349,21 @@ impl HolderSetValue {
     };
 
     /// Construct a handle for the engine's active decoded table.
+    // hidden: only the engine constructs bound handles for its decoded vanilla value table.
     #[doc(hidden)]
     pub const fn from_raw(generation: u64, index: u32) -> Self {
         Self { generation, index }
     }
 
     /// The load generation this handle belongs to (`0` when unbound).
+    // hidden: only the engine checks a handle's load generation against its active table.
     #[doc(hidden)]
     pub const fn generation(self) -> u64 {
         self.generation
     }
 
     /// The slot index within the load's decoded table.
+    // hidden: only the engine indexes its decoded vanilla value table by slot.
     #[doc(hidden)]
     pub const fn index(self) -> u32 {
         self.index
@@ -370,10 +382,8 @@ impl HolderSetValue {
     }
 }
 
-/// Engine-supplied decoder for vanilla datapack value kinds, passed into
-/// [`DatapackCandidate::build_with_decoder`](super::datapack_registry_set::DatapackCandidate::build_with_decoder)
-/// and [`DatapackSnapshot::candidate_with_decoder`](super::datapack_snapshot::DatapackSnapshot::candidate_with_decoder).
-#[doc(hidden)]
+/// Engine-supplied decoder for vanilla datapack value kinds, exported through `__private`
+/// for `build_datapack_candidate_with_decoder` and `rebind_datapack_vanilla_values`.
 pub trait VanillaValueDecoder {
     /// Decode `IntProviders.codec(min, max)`.
     fn decode_int_provider(
@@ -1431,8 +1441,7 @@ impl DatapackRegistryDeclaration {
 
     /// Decode one entry file, handing any vanilla value kinds (`IntProvider`,
     /// `BlockStateProvider`, `BlockPredicate`, `HolderSet`) to `decoder`.
-    #[doc(hidden)]
-    pub fn decode_entry_with_decoder(
+    pub(super) fn decode_entry_with_decoder(
         &self,
         text: &str,
         ignored: &[&str],

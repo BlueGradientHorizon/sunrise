@@ -695,11 +695,14 @@ impl Game<'_> {
             catalog,
         )
         .map_err(|e| format!("client datapack vanilla values: {e}"))?;
-        let bound = received
-            .rebind_vanilla_values(declarations, &mut decoder)
-            .map_err(|error| {
-                format!("The server's mod registries contain an invalid vanilla value: {error:?}")
-            })?;
+        let bound = mod_api::__private::rebind_datapack_vanilla_values(
+            &received,
+            declarations,
+            &mut decoder,
+        )
+        .map_err(|error| {
+            format!("The server's mod registries contain an invalid vanilla value: {error:?}")
+        })?;
         let values = Arc::new(decoder.finish());
         if let Some(remote) = self.remote.as_mut() {
             remote.datapacks.replace_received(Arc::new(bound));
