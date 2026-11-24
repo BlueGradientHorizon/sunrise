@@ -378,3 +378,58 @@ fn blocks_carts_and_functions_keep_their_entity() {
         },
     );
 }
+
+/// `execute on origin` of a fake player's projectile executes as that fake player, and as no
+/// entity once the fake is gone.
+#[test]
+#[ignore = "daily"]
+fn execute_on_origin_reaches_a_fake_players_projectile() {
+    crate::game::in_own_process(
+        "game::native_command_entity_tests::execute_on_origin_reaches_a_fake_players_projectile",
+        || {
+            use sunrise_client::{
+                mobs::Who,
+                projectiles::{Projectile, ProjectileKind},
+            };
+            use sunrise_core::geometry::Vec3;
+            with_where(|game, heard| {
+                let level = game.level(game.dim.id()).unwrap();
+                let fake = game.fake_player(level, 77, "machine").unwrap();
+                assert_eq!(game.player(77), None, "a fake is not an online player");
+                let conn = game
+                    .lan
+                    .as_ref()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .iter()
+                    .find(|guest| guest.uuid == 77)
+                    .unwrap()
+                    .conn;
+                let mut snowball = Projectile::new(
+                    ProjectileKind::Snowball,
+                    Vec3::new(0.5, 64.0, 0.5),
+                    Some(Who::Player),
+                );
+                game.next_entity += 1;
+                snowball.id = game.next_entity;
+                snowball.guest = Some(conn);
+                game.creatures.projectiles.push(snowball);
+
+                let line = "execute as @e[type=minecraft:snowball] on origin run where";
+                assert!(game.native_run_command(line));
+                let (_, command) = last(heard);
+                assert_eq!(command.entity, Some(fake.entity()));
+                assert_eq!(command.player(), Some(fake));
+
+                // Removed, the fake no longer resolves. `on origin` still forks to its old
+                // connection (Sunrise keeps the projectile's guest), so the executor runs as no
+                // entity, never the player in place.
+                assert!(game.player_remove_fake(fake));
+                assert!(game.native_run_command(line));
+                let (_, command) = last(heard);
+                assert_eq!((command.entity, command.player()), (None, None));
+            });
+        },
+    );
+}
