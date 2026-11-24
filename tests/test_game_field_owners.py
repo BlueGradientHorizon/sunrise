@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import subprocess
 import sys
 import tempfile
@@ -9,8 +10,13 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "tools"))
-import game_field_owners as gfo  # noqa: E402
+_GFO_SPEC = importlib.util.spec_from_file_location(
+    "game_field_owners", ROOT / "tools" / "game_field_owners.py"
+)
+assert _GFO_SPEC is not None and _GFO_SPEC.loader is not None
+gfo = importlib.util.module_from_spec(_GFO_SPEC)
+sys.modules["game_field_owners"] = gfo
+_GFO_SPEC.loader.exec_module(gfo)
 
 OWNERS: dict[str, str] = {
     "screen": "client",
