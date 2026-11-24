@@ -119,6 +119,32 @@ impl<'r> FeatureBlockBindings<'r> {
     pub fn registry(&self) -> &'r BlockRegistry {
         self.registry
     }
+    /// All bound states of a block by canonical id (e.g. `minecraft:stone`).
+    pub fn block_states(&self, name: &str) -> Option<&Arc<BTreeSet<BlockStateId>>> {
+        self.blocks.get(name)
+    }
+    /// All bound states of a block tag by canonical id (without leading `#`).
+    pub fn tag_states(&self, name: &str) -> Option<&Arc<BTreeSet<BlockStateId>>> {
+        self.tags.get(name)
+    }
+    /// Decode one vanilla block-state JSON object (`{"Name": ..., "Properties": ...}`).
+    pub fn decode_block_state(&self, json: &str) -> Result<BlockStateId, DecodeError> {
+        self.codec
+            .decode(json, false)
+            .map_err(|e| DecodeError::Registry(e.to_string()))
+    }
+    /// Air states (`air`, `cave_air`, `void_air`).
+    pub fn air_states(&self) -> [BlockStateId; 3] {
+        self.air
+    }
+    /// Bound fluid-state table.
+    pub fn fluid_table(&self) -> &Arc<crate::fluid::FluidStateTable> {
+        self.fluids.table()
+    }
+    /// Bound `can_occlude` property table, when block properties were loaded.
+    pub fn can_occlude(&self) -> Option<&BoundBlockProperty> {
+        self.can_occlude.as_ref()
+    }
 
     /// Bind provider resources and precompiled placement operations to this registry.
     pub fn with_state_providers(
@@ -461,7 +487,10 @@ impl ReplaceBlockFeature {
     ) -> Result<bool, BlockFeatureError<W::Error>> {
         for (rule, state) in &self.targets {
             let current = world.block(origin).map_err(BlockFeatureError::World)?;
-            if rule.test(current, origin, random) {
+            if rule
+                .test(current, origin, random)
+                .map_err(|e| BlockFeatureError::Query(PlacementQueryError::Failed(e)))?
+            {
                 world
                     .set_block(origin, *state, 2)
                     .map_err(BlockFeatureError::World)?;

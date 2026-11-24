@@ -1682,6 +1682,8 @@ mod native_resources;
 mod native_ride_player;
 #[path = "game/modding/native_rotate.rs"]
 pub(crate) mod native_rotate;
+#[path = "game/modding/native_rule_tests.rs"]
+mod native_rule_tests;
 #[path = "game/modding/native_scene.rs"]
 mod native_scene;
 #[path = "game/modding/native_scene_live.rs"]
@@ -14661,6 +14663,21 @@ pub(crate) fn run_with(
         .is_err()
         {
             log::warn!("Mod structure processor types already installed; keeping the first table");
+        }
+        // Their rule test and position rule test types, before any processor list or feature decodes.
+        if sunrise_world::worldgen::mod_rule_tests::install_mod_rule_test_types(
+            native_rule_tests::installed_rule_test_types(),
+        )
+        .is_err()
+        {
+            log::warn!("Mod rule test types already installed; keeping the first table");
+        }
+        if sunrise_world::worldgen::mod_rule_tests::install_mod_pos_rule_test_types(
+            native_rule_tests::installed_pos_rule_test_types(),
+        )
+        .is_err()
+        {
+            log::warn!("Mod position rule test types already installed; keeping the first table");
         }
         // Their feature types, before any world decodes its configured features.
         if sunrise_world::worldgen::mod_features::install_mod_feature_types(
