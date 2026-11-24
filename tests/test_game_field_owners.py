@@ -664,5 +664,272 @@ class GameFieldOwnersRound2RegressionTests(unittest.TestCase):
         self.assertEqual([a.field for a in ambig], ["screen"])
 
 
+class GameFieldOwnersRound3RegressionTests(unittest.TestCase):
+    COMMON = "struct Client { screen: i32 }\nstruct Other { screen: i32, client: Client }\n"
+
+    def _assert_cli_fails_closed(self, snippet: str, rel: str, expected_field: str = "screen") -> None:
+        import io
+        from contextlib import redirect_stderr, redirect_stdout
+
+        src = self.COMMON + snippet + "\n"
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            table = td_path / "owners.tsv"
+            lines = ["field\ttype\towner\treason\tdeclaration_index"]
+            for i, (fname, owner) in enumerate(OWNERS.items()):
+                lines.append(f"{fname}\tT\t{owner}\ttest\t{i}")
+            table.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            target = td_path / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(src, encoding="utf-8")
+            old_root = gfo.ROOT
+            try:
+                gfo.ROOT = td_path
+                for mode in ("--list", "--fix", "--check"):
+                    out_buf, err_buf = io.StringIO(), io.StringIO()
+                    argv = [mode, "--table", str(table), str(target)]
+                    if mode == "--fix":
+                        argv.insert(1, "--no-fmt")
+                    with redirect_stdout(out_buf), redirect_stderr(err_buf):
+                        rc = gfo.main(argv)
+                    self.assertNotEqual(rc, 0, f"{mode} exited 0 for: {snippet}")
+                    self.assertIn(f"Game field `{expected_field}`", err_buf.getvalue())
+                    self.assertEqual(target.read_text(encoding="utf-8"), src)
+            finally:
+                gfo.ROOT = old_root
+
+    def test_repro_finding2_matches_pattern_binding_shadows_guard(self):
+        self._assert_cli_fails_closed(
+            "fn f(game: &Game<'_>, other: Option<Other>) -> bool { matches!(other, Some(game) if game.screen > 0) }",
+            "crates/sunrise-client/src/game/probe.rs",
+        )
+
+    def test_finding2_pattern_macros_and_non_shadowed_matches_guard(self):
+        src_std_matches = (
+            "fn f(game: &Game<'_>, other: Option<Other>) -> bool {\n"
+            "    std::matches!(other, Some(game) if game.screen > 0)\n"
+            "}\n"
+        )
+        out, edits, ambig = run_scan(src_std_matches)
+        self.assertEqual(out, src_std_matches)
+        self.assertEqual(edits, [])
+        self.assertEqual([a.field for a in ambig], ["screen"])
+
+        src_assert_matches = (
+            "fn f(game: &Game<'_>, other: Option<Other>) {\n"
+            "    assert_matches!(other, Some(game) if game.screen > 0);\n"
+            "    select! { game = fut => { let _ = game.hoppers; } }\n"
+            "}\n"
+        )
+        out, edits, ambig = run_scan(src_assert_matches)
+        self.assertEqual(out, src_assert_matches)
+        self.assertEqual(edits, [])
+        self.assertEqual({a.field for a in ambig}, {"screen", "hoppers"})
+
+        src_with_entity = (
+            "fn f(game: &Game<'_>, h: u32) -> i32 {\n"
+            "    with_entity!(game, h, game => game.screen)\n"
+            "}\n"
+        )
+        out, edits, ambig = run_scan(src_with_entity)
+        self.assertEqual(out, src_with_entity)
+        self.assertEqual(edits, [])
+        self.assertEqual([a.field for a in ambig], ["screen"])
+
+        # Non-shadowing `matches!` pattern still rewrites outer `game` in the guard.
+        src_ok = (
+            "fn f(game: &Game<'_>, other: Option<Other>) -> bool {\n"
+            "    matches!(other, Some(x) if game.screen > 0 && x.screen > 0)\n"
+            "}\n"
+        )
+        out, edits, ambig = run_scan(src_ok)
+        self.assertEqual(ambig, [])
+        self.assertEqual(len(edits), 1)
+        self.assertIn("if game.client.screen > 0 && x.screen > 0", out)
+
+    def test_repro_finding3_qualified_macro_shadowed_by_local_mod_std(self):
+        self._assert_cli_fails_closed(
+            "mod std { macro_rules! tokens { ($($t:tt)*) => { stringify!($($t)*) }; } pub(super) use tokens as dbg; } "
+            "fn f(game: &Game<'_>) -> &'static str { std::dbg!(game.screen) }",
+            "crates/sunrise-client/src/game/probe.rs",
+        )
+
+    def test_finding3_qualified_macro_roots_aliases_and_enclosing_modules(self):
+        for snippet in (
+            "use other as std;\nfn f(game: &Game<'_>) { let _ = std::dbg!(game.screen); }\n",
+            "extern crate other as core;\nfn f(game: &Game<'_>) { let _ = core::format_args!(\"{:?}\", game.screen); }\n",
+            "mod std {}\nmod inner { fn f(game: &super::Game<'_>) { let _ = std::dbg!(game.screen); } }\n",
+            "fn f(game: &Game<'_>) { let _ = log::warn!(\"{:?}\", game.screen); }\n",
+            "fn f(game: &Game<'_>) { let _ = std::sub::dbg!(game.screen); }\n",
+        ):
+            out, edits, ambig = run_scan(snippet)
+            self.assertEqual(out, snippet)
+            self.assertEqual(edits, [])
+            self.assertEqual([a.field for a in ambig], ["screen"])
+
+        # Enclosing parent module file declaring `mod std` fails closed too.
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            mod_dir = td_path / "crates/sunrise-client/src/game/sub"
+            mod_dir.mkdir(parents=True)
+            (mod_dir / "mod.rs").write_text("mod std {}\n", encoding="utf-8")
+            child_rel = "crates/sunrise-client/src/game/sub/child.rs"
+            child_src = "fn f(game: &Game<'_>) { let _ = std::dbg!(game.screen); }\n"
+            (td_path / child_rel).write_text(child_src, encoding="utf-8")
+            old_root = gfo.ROOT
+            try:
+                gfo.ROOT = td_path
+                out, edits, ambig = run_scan(child_src, rel=child_rel)
+            finally:
+                gfo.ROOT = old_root
+            self.assertEqual(out, child_src)
+            self.assertEqual(edits, [])
+            self.assertEqual([a.field for a in ambig], ["screen"])
+
+        # Unshadowed `std::dbg!` still rewrites cleanly.
+        src_ok = "fn f(game: &Game<'_>) { let _ = std::dbg!(game.screen); }\n"
+        out, edits, ambig = run_scan(src_ok)
+        self.assertEqual(ambig, [])
+        self.assertEqual(len(edits), 1)
+        self.assertIn("std::dbg!(game.client.screen)", out)
+
+    def test_repro_finding4_parent_mod_super_game_and_generic_game(self):
+        self._assert_cli_fails_closed(
+            "mod parent { pub struct Game<'a> { pub screen: i32, pub client: super::Client, pub life: &'a () } "
+            "mod child { fn f(game: &super::Game<'_>) -> i32 { game.screen } } }",
+            "crates/sunrise-client/src/game/probe.rs",
+        )
+        self._assert_cli_fails_closed(
+            "fn f<Game: std::ops::Deref<Target = Other>>(game: &Game) -> i32 { game.screen }",
+            "crates/sunrise-client/src/game/probe.rs",
+        )
+
+    def test_finding4_local_item_declarations_self_game_and_sibling_isolation(self):
+        for decl in (
+            "struct Game { screen: i32 }",
+            "enum Game { A }",
+            "union Game { x: i32 }",
+            "trait Game {}",
+            "type Game = Other;",
+            "use other::Thing as Game;",
+        ):
+            src = f"{decl}\nfn f(game: &Game) -> i32 {{ game.screen }}\n"
+            out, edits, ambig = run_scan(src)
+            self.assertEqual(out, src, decl)
+            self.assertEqual(edits, [], decl)
+            self.assertEqual([a.field for a in ambig], ["screen"], decl)
+
+        src_self_game = "mod m { struct Game { screen: i32 } fn f(game: &self::Game) -> i32 { game.screen } }\n"
+        out, edits, ambig = run_scan(src_self_game)
+        self.assertEqual(out, src_self_game)
+        self.assertEqual(edits, [])
+        self.assertEqual([a.field for a in ambig], ["screen"])
+
+        src_impl_generic = (
+            "struct Holder<T>(T);\n"
+            "impl<Game> Holder<Game> {\n"
+            "    fn f(game: &Game) -> i32 { game.screen }\n"
+            "}\n"
+        )
+        out, edits, ambig = run_scan(src_impl_generic)
+        self.assertEqual(out, src_impl_generic)
+        self.assertEqual(edits, [])
+        self.assertEqual([a.field for a in ambig], ["screen"])
+
+        # A sibling module's `struct Game` does not shadow root's `Game`, unless glob-imported.
+        src_sibling = (
+            "mod sibling { pub struct Game { pub screen: i32 } }\n"
+            "fn f(game: &Game<'_>) -> i32 { game.screen }\n"
+        )
+        out, edits, ambig = run_scan(src_sibling)
+        self.assertEqual(ambig, [])
+        self.assertEqual(len(edits), 1)
+        self.assertIn("game.client.screen", out)
+
+        src_glob_foreign = (
+            "mod foreign { pub struct Game<'a> { pub screen: i32, pub client: super::Client, pub life: &'a () } }\n"
+            "use foreign::*;\n"
+            "fn f(game: &Game<'_>) -> i32 { game.screen }\n"
+        )
+        out, edits, ambig = run_scan(src_glob_foreign)
+        self.assertEqual(out, src_glob_foreign)
+        self.assertEqual(edits, [])
+        self.assertEqual([a.field for a in ambig], ["screen"])
+
+    def test_repro_finding5_qualified_free_function_does_not_infer_game(self):
+        self._assert_cli_fails_closed(
+            "fn make_game<'a, 'g>(game: &'a Game<'g>) -> &'a Game<'g> { game } "
+            "mod other { pub fn make_game() -> super::Other { "
+            "super::Other { screen: 11, client: super::Client { screen: 29 } } } } "
+            "fn f() -> i32 { let obj = other::make_game(); obj.screen }",
+            "crates/sunrise-client/src/game/probe.rs",
+        )
+
+    def test_finding5_resolved_vs_unresolved_qualified_calls(self):
+        # Unresolved qualified call reports ambiguous when accessing a moved field.
+        src_unknown = "fn f() -> i32 { let obj = unknown_mod::make_thing(); obj.screen }\n"
+        out, edits, ambig = run_scan(src_unknown)
+        self.assertEqual(out, src_unknown)
+        self.assertEqual(edits, [])
+        self.assertEqual([a.field for a in ambig], ["screen"])
+
+        # Same-module unqualified, `self::`, `Self::`, and indexed `crate::game::...` calls rewrite.
+        idx = gfo.WorkspaceIndex()
+        idx.indexed_fn_returns[("crate", "game", "helper", "make_remote")] = {None}
+        src_resolved = (
+            "fn make_local<'a, 'g>(g: &'a Game<'g>) -> &'a Game<'g> { g }\n"
+            "impl Game<'_> {\n"
+            "    fn clone_ref(&self) -> &Self { self }\n"
+            "    fn make_self<'a>(g: &'a Self) -> &'a Self { g }\n"
+            "    fn demo(&self) {\n"
+            "        let a = make_local(self);\n"
+            "        let _ = a.screen;\n"
+            "        let b = self::make_local(self);\n"
+            "        let _ = b.hoppers;\n"
+            "        let c = Self::make_self(self);\n"
+            "        let _ = c.screen;\n"
+            "        let d = crate::game::helper::make_remote();\n"
+            "        let _ = d.hoppers;\n"
+            "    }\n"
+            "}\n"
+        )
+        out, edits, ambig = run_scan(src_resolved, index=idx)
+        self.assertEqual(ambig, [])
+        self.assertEqual(len(edits), 4)
+        self.assertIn("a.client.screen", out)
+        self.assertIn("b.server.hoppers", out)
+        self.assertIn("c.client.screen", out)
+        self.assertIn("d.server.hoppers", out)
+
+    def test_repro_followup_game_alias_and_block_let_alias(self):
+        self._assert_cli_fails_closed(
+            "use sunrise_client::game::Game as GameAlias; fn f(game: &GameAlias<'_>) { let _ = game.screen; }",
+            "external/probe.rs",
+        )
+        self._assert_cli_fails_closed(
+            "use super::Game as GameAlias; fn f(game: &GameAlias<'_>) { let _ = game.screen; }",
+            "crates/sunrise-client/src/game/probe.rs",
+        )
+        self._assert_cli_fails_closed(
+            "fn f(game: &Game<'_>) { let alias = { game }; let _ = alias.screen; }",
+            "crates/sunrise-client/src/game/probe.rs",
+        )
+
+    def test_followup_compound_alias_variants_and_non_aliasing_block(self):
+        for rhs in ("unsafe { game }", "(game)", "{ let _ = 1; game }"):
+            src = f"fn f(game: &Game<'_>) {{ let alias = {rhs}; let _ = alias.screen; }}\n"
+            out, edits, ambig = run_scan(src)
+            self.assertEqual(out, src, rhs)
+            self.assertEqual(edits, [], rhs)
+            self.assertEqual([a.field for a in ambig], ["screen"], rhs)
+
+        # A block projecting a field off `game` rewrites `game.screen` and does not flag `x`.
+        src_proj = "fn f(game: &Game<'_>) { let x = { game.screen }; let _ = x.hoppers; }\n"
+        out, edits, ambig = run_scan(src_proj)
+        self.assertEqual(ambig, [])
+        self.assertEqual(len(edits), 1)
+        self.assertIn("let x = { game.client.screen };", out)
+
+
 if __name__ == "__main__":
     unittest.main()
