@@ -650,6 +650,32 @@ fn has_channel_follows_what_the_server_negotiated() {
     );
 }
 
+/// `Entity.showVehicleHealth` is `instanceof LivingEntity` with no override: on a client the
+/// local player and a tracked horse answer true, a tracked boat and minecart false.
+#[test]
+#[ignore = "daily"]
+fn a_client_reads_whether_a_vehicle_shows_its_health_from_its_type() {
+    crate::game::in_own_process(
+        "game::remote::tests::client_vanilla_reads_tests::a_client_reads_whether_a_vehicle_shows_its_health_from_its_type",
+        || {
+            with_client_game(|game| {
+                let _connection = join(game);
+                add(game, 30, "minecraft:horse");
+                add(game, 31, "minecraft:oak_boat");
+                add(game, 32, "minecraft:minecart");
+                let shows = |game: &Game<'_>, id: u32| {
+                    game.entity(id)?
+                        .shows_vehicle_health(game as &dyn ClientHost)
+                };
+                assert_eq!(shows(game, PLAYER), Some(true));
+                assert_eq!(shows(game, 30), Some(true));
+                assert_eq!(shows(game, 31), Some(false));
+                assert_eq!(shows(game, 32), Some(false));
+            });
+        },
+    );
+}
+
 /// `LevelData.isHardcore` on a client is the login packet's flag (`ClientPacketListener.handleLogin`
 /// builds the client level's data from it), read through the level the client is in.
 #[test]
