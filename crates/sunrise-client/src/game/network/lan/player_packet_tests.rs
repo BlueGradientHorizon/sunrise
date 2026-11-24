@@ -358,7 +358,7 @@ fn spectate(game: &mut Game<'_>, rx: &mpsc::Receiver<Out>, rows: &mut Map<String
             json!([
                 packets,
                 viewer.vehicle.is_none(),
-                !viewer.watching && !game.server.cmds.guest_cameras.contains_key(&VIEWER),
+                !viewer.watching && !game.cmds.guest_cameras.contains_key(&VIEWER),
                 body.fall_distance.to_bits() as i64,
                 vector_bits(body.velocity),
                 viewer.first_good == viewer.position,

@@ -340,7 +340,7 @@ fn patrols_and_sieges_bypass_registered_predicates_and_placement_listeners() {
             with_game(|game| {
                 game.set_difficulty_forced(2);
                 game.world.day_time = 6000;
-                game.server.raiding.attributes = Some(Arc::new(GameplayAttributes::default()));
+                game.raiding.attributes = Some(Arc::new(GameplayAttributes::default()));
                 game.player =
                     Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
                 let stone = game
@@ -391,7 +391,7 @@ fn patrols_and_sieges_bypass_registered_predicates_and_placement_listeners() {
                     .extra
                     .home = Some([8, 64, 8]);
                 game.world.random = LevelRandom::for_level(LegacyRandom::new(7));
-                game.server.raiding.siege = VillageSiege {
+                game.raiding.siege = VillageSiege {
                     tonight: true,
                     set_up: true,
                     zombies_to_spawn: 1,

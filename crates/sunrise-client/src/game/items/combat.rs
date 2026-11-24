@@ -267,14 +267,14 @@ impl Game<'_> {
     /// the one implicit scope left, because the player-victim path (`hurt_player_from`,
     /// `mob_hits_player`) has ~30 callers that would all pass it through.
     pub(super) fn with_attack<R>(&mut self, attack: Attack, f: impl FnOnce(&mut Self) -> R) -> R {
-        let outer = std::mem::replace(&mut self.server.combat.attack, attack);
+        let outer = std::mem::replace(&mut self.combat.attack, attack);
         let result = f(self);
-        self.server.combat.attack = outer;
+        self.combat.attack = outer;
         result
     }
     /// The attack the hits on the player land in now (a reader of `combat.attack`).
     pub(super) fn current_attack(&self) -> Attack {
-        self.server.combat.attack.clone()
+        self.combat.attack.clone()
     }
 
     /// `LivingEntity.makeDrownParticles`: `count` bubbles around the entity
@@ -347,7 +347,7 @@ impl Game<'_> {
     }
     /// `getLastHurtByMob`: the last mob to hurt the player, for 100 ticks.
     pub(super) fn player_hurt_by(&self) -> Option<(sunrise_client::mobs::Who, i64)> {
-        let ((id, _), at) = self.server.combat.last_hurt_by.as_ref()?;
+        let ((id, _), at) = self.combat.last_hurt_by.as_ref()?;
         (self.world.game_time - at <= 100).then_some((sunrise_client::mobs::Who::Mob(*id), *at))
     }
     /// Remember who deals the next `damage_type` damage to the player.
@@ -370,8 +370,8 @@ impl Game<'_> {
         name: Text,
         item: Option<Text>,
     ) {
-        self.server.combat.mark();
-        self.server.combat.pending.push(PendingAttacker {
+        self.combat.mark();
+        self.combat.pending.push(PendingAttacker {
             damage_type: damage_type.to_owned(),
             attacker: (id, name),
             item,
@@ -389,8 +389,8 @@ impl Game<'_> {
         item: Option<Text>,
         living: bool,
     ) {
-        self.server.combat.mark();
-        self.server.combat.pending.push(PendingAttacker {
+        self.combat.mark();
+        self.combat.pending.push(PendingAttacker {
             damage_type: damage_type.to_owned(),
             attacker: (id, name),
             item,
@@ -402,9 +402,8 @@ impl Game<'_> {
     /// nothing caused it (a splash potion nobody threw): the death message
     /// names it instead (`getLocalizedDeathMessage`). It is no kill credit.
     pub(super) fn note_direct_entity(&mut self, damage_type: &str, name: Text) {
-        self.server.combat.mark();
-        self.server
-            .combat
+        self.combat.mark();
+        self.combat
             .pending_direct
             .push((damage_type.to_owned(), name));
     }
@@ -432,14 +431,12 @@ impl Game<'_> {
                         })
                     });
                 if let Some(uuid) = uuid {
-                    self.server
-                        .combat
-                        .note_hurt_by_player(PlayerCredit(uuid), now);
+                    self.combat.note_hurt_by_player(PlayerCredit(uuid), now);
                 }
             }
             // `instanceof Wolf`: a content mod's type copying the wolf is one.
             Some(m) if m.extra.tame && m.species() == Species::Wolf => {
-                self.server.combat.last_hurt_by_player = m.extra.owner.map(|o| {
+                self.combat.last_hurt_by_player = m.extra.owner.map(|o| {
                     let owner = sunrise_client::lan::playerdata::ints_uuid(o);
                     (PlayerCredit(owner), now)
                 });
@@ -454,14 +451,14 @@ impl Game<'_> {
         damage_type: &str,
         attack: Option<&Attack>,
     ) {
-        let Some(pending) = self.server.combat.pending.iter().find(|p| {
+        let Some(pending) = self.combat.pending.iter().find(|p| {
             p.damage_type == damage_type
                 && attack.is_none_or(|attack| p.attacker.0 == attack.attacker as u32)
         }) else {
             return;
         };
         let id = pending.attacker.0;
-        self.server.combat.last_hurt_by = pending
+        self.combat.last_hurt_by = pending
             .credit
             .then(|| (pending.attacker.clone(), self.world.game_time));
         self.resolve_player_responsible_for_player(
@@ -526,7 +523,6 @@ impl Game<'_> {
                 _ => continue,
             };
             let (attacker, item, living, credit) = self
-                .server
                 .combat
                 .pending
                 .iter()
@@ -538,35 +534,34 @@ impl Game<'_> {
                         living,
                         credit,
                         ..
-                    } = self.server.combat.pending.remove(i);
+                    } = self.combat.pending.remove(i);
                     (Some(attacker), item, living, credit)
                 })
                 .unwrap_or_default();
             let direct = match attacker {
                 Some(_) => None,
                 None => self
-                    .server
                     .combat
                     .pending_direct
                     .iter()
                     .position(|(t, _)| *t == name)
-                    .map(|i| self.server.combat.pending_direct.remove(i).1),
+                    .map(|i| self.combat.pending_direct.remove(i).1),
             };
             let (fall_location, fall_distance) = self.fall_location();
             let now = self.world.game_time;
             if let Some(a) = &attacker {
                 if living {
-                    self.server.combat.last_hurt_by = credit.then(|| (a.clone(), now));
+                    self.combat.last_hurt_by = credit.then(|| (a.clone(), now));
                 }
                 recorded = Some((name.clone(), a.0));
-                if living && !self.server.combat.in_combat {
-                    self.server.combat.in_combat = true;
+                if living && !self.combat.in_combat {
+                    self.combat.in_combat = true;
                 }
             }
             if let Some(tenths) = damage_taken_award(amount) {
                 self.award_custom_stat("damage_taken", tenths);
             }
-            self.server.combat.entries.push(Entry {
+            self.combat.entries.push(Entry {
                 damage_type: name,
                 damage: amount,
                 fall_location,
@@ -575,21 +570,21 @@ impl Game<'_> {
                 item,
                 direct,
             });
-            self.server.combat.last_damage = now;
+            self.combat.last_damage = now;
         }
-        self.server.combat.pending.clear();
-        self.server.combat.pending_direct.clear();
-        self.server.combat.noted_since = None;
-        self.server.combat.projectile_direct = None;
-        self.server.combat.projectile_attacker = None;
-        self.server.combat.fall_before = self.player.as_ref().map_or(0.0, |p| p.fall_distance);
+        self.combat.pending.clear();
+        self.combat.pending_direct.clear();
+        self.combat.noted_since = None;
+        self.combat.projectile_direct = None;
+        self.combat.projectile_attacker = None;
+        self.combat.fall_before = self.player.as_ref().map_or(0.0, |p| p.fall_distance);
     }
     /// `FallLocation.getCurrentFallLocation` and the fall distance so far.
     fn fall_location(&self) -> (Option<&'static str>, f32) {
         let Some(p) = self.player.as_ref() else {
             return (None, 0.0);
         };
-        let distance = p.fall_distance.max(self.server.combat.fall_before) as f32;
+        let distance = p.fall_distance.max(self.combat.fall_before) as f32;
         let location = if let Some(c) = p.last_climbable {
             let name = self
                 .res
@@ -613,16 +608,11 @@ impl Game<'_> {
     }
     /// `CombatTracker.recheckStatus`: forget old fights.
     fn recheck_combat(&mut self) {
-        let reset = if self.server.combat.in_combat {
-            300
-        } else {
-            100
-        };
-        if !self.server.combat.entries.is_empty()
-            && self.world.game_time - self.server.combat.last_damage > reset
+        let reset = if self.combat.in_combat { 300 } else { 100 };
+        if !self.combat.entries.is_empty() && self.world.game_time - self.combat.last_damage > reset
         {
-            self.server.combat.entries.clear();
-            self.server.combat.in_combat = false;
+            self.combat.entries.clear();
+            self.combat.in_combat = false;
         }
     }
     /// Whether damage type `name` is in `tag` (with or without its `minecraft:`) in the
@@ -637,7 +627,7 @@ impl Game<'_> {
     fn most_significant_fall(&self) -> Option<usize> {
         let (mut result, mut alternative) = (None, None);
         let (mut best_fall, mut alt_damage) = (0.0f32, 0.0f32);
-        for (i, e) in self.server.combat.entries.iter().enumerate() {
+        for (i, e) in self.combat.entries.iter().enumerate() {
             let fake = self.damage_in_tag(&e.damage_type, "always_most_significant_fall");
             let distance = if fake { f32::MAX } else { e.fall_distance };
             if (self.damage_in_tag(&e.damage_type, "is_fall") || fake)
@@ -700,8 +690,8 @@ impl Game<'_> {
     /// `me`: a server's guest is not `PLAYER_NAME`.
     pub(super) fn combat_death_message_for(&mut self, me: Text) -> Text {
         self.recheck_combat();
-        let entries = std::mem::take(&mut self.server.combat.entries);
-        self.server.combat.in_combat = false;
+        let entries = std::mem::take(&mut self.combat.entries);
+        self.combat.in_combat = false;
         let Some(killing) = entries.last() else {
             return Text::translate("death.attack.generic", &[me]);
         };
@@ -712,9 +702,9 @@ impl Game<'_> {
             .and_then(|id| self.health_resources.damage.definition(id))
             .map(|d| (d.message_id.clone(), d.death_message_type.clone()))
             .unwrap_or_else(|| ("generic".into(), "default".into()));
-        self.server.combat.entries = entries;
+        self.combat.entries = entries;
         let knock = self.most_significant_fall();
-        let entries = std::mem::take(&mut self.server.combat.entries);
+        let entries = std::mem::take(&mut self.combat.entries);
         let killing = entries.last().expect("checked above");
         let killer = killing.attacker.clone();
         let direct = killing.direct.clone();
@@ -772,7 +762,7 @@ impl Game<'_> {
             return Text::translate(&key, &[me, name]);
         }
         // getKillCredit: the last mob that hurt the player in the past 100 ticks.
-        if let Some(((_, name), at)) = &self.server.combat.last_hurt_by
+        if let Some(((_, name), at)) = &self.combat.last_hurt_by
             && self.world.game_time - at <= 100
         {
             return Text::translate(&format!("{key}.player"), &[me, name.clone()]);
@@ -862,8 +852,7 @@ impl Game<'_> {
             Who::Mob(id) => g
                 .mob_display_name(id)
                 .or_else(|| {
-                    g.server
-                        .combat
+                    g.combat
                         .exploded
                         .iter()
                         .find(|(e, _)| *e == id)
@@ -918,9 +907,9 @@ impl Game<'_> {
             last_hurt_by: credit.map(|c| (c, now)),
             ..CombatTracker::default()
         };
-        std::mem::swap(&mut self.server.combat, &mut tracker);
+        std::mem::swap(&mut self.combat, &mut tracker);
         let text = self.combat_death_message_for(me);
-        std::mem::swap(&mut self.server.combat, &mut tracker);
+        std::mem::swap(&mut self.combat, &mut tracker);
         text
     }
 }
@@ -1106,7 +1095,7 @@ impl Game<'_> {
             }
             Who::Mob(id) => self.mob_attacks_mob(id, amount, source),
         };
-        self.server.combat.hit_landed = landed;
+        self.combat.hit_landed = landed;
         if !landed {
             if let Some(b) = mob.and_then(|id| self.mobs.iter_mut().find(|m| m.id == id)) {
                 sunrise_client::mobs::bee::sting_refused(b);
@@ -1115,7 +1104,7 @@ impl Game<'_> {
         }
         match target {
             Who::Player => {
-                self.server.combat.stuck.add_stinger();
+                self.combat.stuck.add_stinger();
                 if poison_ticks > 0 {
                     self.give_player_effect("minecraft:poison", poison_ticks, 0);
                 }
@@ -1305,17 +1294,14 @@ mod pet_credit_tests {
                 (Arc::new(hound.clone()), true, Some(12)),
                 (Arc::new(hound), false, None),
             ] {
-                game.server.combat.last_hurt_by_player = None;
+                game.combat.last_hurt_by_player = None;
                 game.mobs.clear();
                 let mut pet = Mob::new(7, kind, Vec3::ZERO, 0.0);
                 pet.extra.tame = tame;
                 pet.extra.owner = Some(uuid_ints(12));
                 game.mobs.push(pet);
                 game.resolve_player_responsible_for_player(7, None);
-                assert_eq!(
-                    game.server.combat.last_hurt_by_player.map(|(c, _)| c.0),
-                    credit
-                );
+                assert_eq!(game.combat.last_hurt_by_player.map(|(c, _)| c.0), credit);
             }
         });
     }
@@ -1365,13 +1351,11 @@ mod guest_hit_tests {
                 },
             ];
             for hit in hits {
-                game.server.combat.pending.clear();
+                game.combat.pending.clear();
                 game.guest_mob_event(5, hit);
-                let noted: Vec<u32> = (game.server.combat.pending.iter())
-                    .map(|p| p.attacker.0)
-                    .collect();
+                let noted: Vec<u32> = (game.combat.pending.iter()).map(|p| p.attacker.0).collect();
                 assert_eq!(noted, [5]);
-                assert_eq!(game.server.combat.melee_mob, None, "the hit used it up");
+                assert_eq!(game.combat.melee_mob, None, "the hit used it up");
             }
         });
     }

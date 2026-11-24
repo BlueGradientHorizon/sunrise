@@ -21,8 +21,7 @@ impl Game<'_> {
         let mut laps = sunrise_client::spans::laps();
         // ServerChunkCache.tick: the tickets that time out.
         let world = &self.world;
-        self.server
-            .tickets
+        self.tickets
             .tick_portal(|ticket| portal_ticket_can_expire(world, ticket));
         self.sync_tick_chunks();
         self.start_ticking_chunks();
@@ -303,7 +302,7 @@ impl Game<'_> {
     /// order is the same every run; vanilla's exact order is its fastutil
     /// table's slot order, which follows that table's whole history.
     pub(super) fn random_tick_chunks(&self, out: &mut Vec<(i32, i32)>) {
-        let levels = self.server.tickets.levels();
+        let levels = self.tickets.levels();
         let bounds = levels.random_tick_bounds();
         out.clear();
         out.extend(self.world.chunks.keys().copied().filter(|&(x, z)| {
@@ -327,7 +326,7 @@ impl Game<'_> {
             self.register_chunk_ticks(key);
         }
         for &key in self.server.tick_chunks.removed() {
-            self.server.random_tick_sections.remove(&key);
+            self.random_tick_sections.remove(&key);
             self.portals.sections.remove(&key);
             self.block_ticks
                 .remove_chunk(sunrise_core::position::ChunkPos::new(key.0, key.1));

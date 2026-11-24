@@ -257,7 +257,7 @@ impl Game<'_> {
             hit: if self.remote.is_some() {
                 self.events.remote_hit.clone()
             } else {
-                self.server.combat.last_hit()
+                self.combat.last_hit()
             },
             world,
         }

@@ -137,7 +137,7 @@ fn a_given_invisibility_hides_a_mobs_waypoint_and_a_loaded_one_does_not() {
             game.tick_waypoints();
         };
         set_range(game);
-        let tracked = |game: &Game<'_>| game.server.cmds.waypoints.clone().unwrap_or_default();
+        let tracked = |game: &Game<'_>| game.cmds.waypoints.clone().unwrap_or_default();
         assert!(tracked(game).contains(&given));
         assert!(tracked(game).contains(&loaded));
         assert!(

@@ -325,7 +325,7 @@ impl Game<'_> {
             Ok((ctx, _)) => {
                 let ctx = ctx.clone();
                 let root = parse.context.clone();
-                self.server.exec = Default::default();
+                self.exec = Default::default();
                 self.run_chain(&root, &ctx)
             }
         };
@@ -366,9 +366,9 @@ impl Game<'_> {
         &mut self,
         f: impl FnOnce(&mut Self) -> T,
     ) -> (T, Option<(bool, i32)>) {
-        let outer = self.server.cmds.results.replace(Vec::new());
+        let outer = self.cmds.results.replace(Vec::new());
         let out = f(self);
-        let results = std::mem::replace(&mut self.server.cmds.results, outer).unwrap_or_default();
+        let results = std::mem::replace(&mut self.cmds.results, outer).unwrap_or_default();
         let outcome = results
             .last()
             .map(|&(_, result)| (results.iter().any(|&(success, _)| success), result));
@@ -1086,7 +1086,7 @@ impl Game<'_> {
                 {
                     // Players already have a live attribute dirty callback.
                     if !matches!(t[0], Target::Player | Target::Guest(_)) {
-                        self.server.cmds.waypoint_dirty.push(t[0]);
+                        self.cmds.waypoint_dirty.push(t[0]);
                     }
                 }
                 result
@@ -4489,8 +4489,7 @@ capabilities = ["registries"]
             let id = game.load_mob(saved, None).unwrap();
             let trader = game.mobs.iter().find(|mob| mob.id == id).unwrap();
             assert!(trader.persistent && trader.no_ai);
-            game.server
-                .tickets
+            game.tickets
                 .update(Some(sunrise_client::ticket_levels::Sources {
                     forced: vec![(0, 0)],
                     ..Default::default()

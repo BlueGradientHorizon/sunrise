@@ -74,7 +74,7 @@ impl Game<'_> {
             // the /list reply), however busy the machine, up to 15 s.
             let shown = self.remote.as_ref().map_or(0, |r| r.chat.len());
             let answered = shown > chat_at
-                || self.client.command_prompt.is_some()
+                || self.command_prompt.is_some()
                 || now - step_at > Duration::from_secs(15);
             if let Some(tag) = &entity_tag
                 && (step != 0 || spawned_at.is_some() && count > 0)

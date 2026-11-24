@@ -427,7 +427,6 @@ impl Game<'_> {
             return Ok(false);
         };
         if !self
-            .client
             .creative_screen
             .catalog()
             .item_enabled(held, self.enabled_feature_ids())

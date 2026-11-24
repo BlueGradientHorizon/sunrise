@@ -4739,7 +4739,7 @@ impl Game<'_> {
                 .server
                 .lan_acting
                 .is_some()
-                .then(|| self.server.lan_building_boxes.boxes(self.dim));
+                .then(|| self.lan_building_boxes.boxes(self.dim));
             let fire_players: Vec<[f64; 3]> = self
                 .player
                 .iter()
@@ -4887,8 +4887,8 @@ impl Game<'_> {
             rand_sequences: &mut self.server.rand_sequences,
             pending: &mut self.pending,
             spill: &mut self.spill,
-            tickets: self.server.tickets.levels(),
-            random_tick_sections: &mut self.server.random_tick_sections,
+            tickets: self.tickets.levels(),
+            random_tick_sections: &mut self.random_tick_sections,
             lid_openers: &mut self.server.lid_openers,
             open_containers: &open_containers,
             golem_chests: &golem_chests,
@@ -5155,12 +5155,12 @@ impl Game<'_> {
         });
         // The levels' changes are kept only for a listener, so that a tick
         // with none looks at no chunk.
-        self.server.tickets.record_changes(
+        self.tickets.record_changes(
             notify
                 && self.is_logical_server()
                 && mod_api::__private::listened(mod_api::HookId::ChunkTicketLevelUpdated),
         );
-        self.server.tickets.update(sources);
+        self.tickets.update(sources);
         if notify {
             self.run_chunk_ticket_level_updates();
         }
@@ -5170,7 +5170,7 @@ impl Game<'_> {
     /// (block ticking, with its neighbours loaded). Chunks become ticking
     /// between ticks in vanilla: before this tick's clock advanced.
     fn start_ticking_chunks(&mut self) {
-        let levels = self.server.tickets.levels();
+        let levels = self.tickets.levels();
         let world = &self.world;
         let started = self
             .server
@@ -6628,7 +6628,7 @@ impl Game<'_> {
             self.hud_layers(size)
         };
         // Vanilla's confirmation replaces the dialog as the screen.
-        if self.client.command_prompt.is_none() {
+        if self.command_prompt.is_none() {
             self.draw_dialog(&mut batch);
         }
         self.draw_pack_prompt(&mut batch);
@@ -7713,7 +7713,7 @@ impl Game<'_> {
             // and current-position distance fade as `EntityRenderer.extractShadow`.
             let display_scale = self.view_scale();
             let display_now = std::time::Instant::now();
-            casters.extend(self.client.text_displays.iter().filter_map(|(&id, d)| {
+            casters.extend(self.text_displays.iter().filter_map(|(&id, d)| {
                 let entity_partial = self.display_partial(id, a);
                 if !self.display_visible(
                     id,
@@ -8632,7 +8632,7 @@ impl Game<'_> {
         self.save = self.with_profession_save_snapshot(save);
         // MinecraftServer.prepareLevels restores the saved tickets after the
         // built-in levels have been published.
-        self.server.tickets = Default::default();
+        self.tickets = Default::default();
         self.server.startup_ticket_restore_pending =
             self.options.execution_role.is_logical_server();
         // The ride the player's file names, once the vehicle is in the world.
@@ -8811,8 +8811,7 @@ impl Game<'_> {
         self.client.entity_spans.borrow_mut().clear();
         self.client.entity_motion.borrow_mut().clear();
         self.client.entity_motion_posed.borrow_mut().clear();
-        self.client
-            .skin_models
+        self.skin_models
             .borrow_mut()
             .restart(&mut self.client.skin_frame.borrow_mut());
         self.client.skin_frame.borrow_mut().clear_draws();
@@ -11534,7 +11533,7 @@ impl Game<'_> {
     ) -> Result<bool> {
         let left = button == MouseButton::Left;
         let left_press = pressed && left;
-        if self.client.command_prompt.is_some() {
+        if self.command_prompt.is_some() {
             return Ok(left_press && self.command_prompt_click());
         }
         if self.client.link_prompt.is_some() {
@@ -11708,8 +11707,7 @@ impl Game<'_> {
                 true
             }
             Screen::Creative => {
-                self.inventory_mouse_release(!left)
-                    || (left && self.client.creative_screen.release())
+                self.inventory_mouse_release(!left) || (left && self.creative_screen.release())
             }
             Screen::Paused if left_press && self.client.pause_menu => self.pause_click()?,
             Screen::WorldOptions if left_press => self.world_options_click(),
@@ -12060,11 +12058,9 @@ impl Game<'_> {
                     if self.client.screen == Screen::Creative
                         && d != 0.0
                         && !bundle
-                        && self.client.creative_screen.can_scroll(&self.pack.names)
+                        && self.creative_screen.can_scroll(&self.pack.names)
                     {
-                        self.client
-                            .creative_screen
-                            .wheel(f64::from(d), &self.pack.names);
+                        self.creative_screen.wheel(f64::from(d), &self.pack.names);
                         screen_scrolled = true;
                     }
                     if self.client.screen == Screen::Inventory
@@ -12582,7 +12578,6 @@ impl Game<'_> {
                 let (_, oy) = Self::creative_origin(&batch);
                 (left
                     && self
-                        .client
                         .creative_screen
                         .drag_scrollbar(self.client.cursor.1 - oy))
                     || self.inventory_drag_move()
@@ -13936,7 +13931,7 @@ mod nested_orb_spawn_tests {
             );
             assert_eq!(game.orbs[2].age, 0);
             game.server.ordered.announced = sunrise_client::join_seq::JoinSeq::MAX;
-            game.server.tickets.update(None);
+            game.tickets.update(None);
             game.begin_ordered_ticks();
             game.run_ordered_ticks(sunrise_client::join_seq::JoinSeq::MAX, false)
                 .unwrap();

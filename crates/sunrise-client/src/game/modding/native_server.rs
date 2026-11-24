@@ -662,7 +662,7 @@ impl Game<'_> {
         host.poses.remove(&guest.conn);
         host.mob_players.retain(|_, conn| *conn != guest.conn);
         self.client.destroying.remove(&guest.entity_id);
-        self.server.guest_combat.remove(&guest.conn);
+        self.guest_combat.remove(&guest.conn);
     }
 
     /// Remove a fake without treating it as a disconnect or saving it.
@@ -825,7 +825,7 @@ impl Game<'_> {
         };
         if !self.server.lan_guest_swaps.is_empty()
             || !self.transactions.is_empty()
-            || self.server.fake_action.acting()
+            || self.fake_action.acting()
         {
             return Err(ActionRefused::Busy);
         }
@@ -849,7 +849,7 @@ impl Game<'_> {
         conn: u32,
         action: PlayerAction,
     ) -> Result<ActionOutcome, ActionRefused> {
-        let acting = Acting::start(&self.server.fake_action);
+        let acting = Acting::start(&self.fake_action);
         let failed = std::mem::replace(&mut self.server.use_failed, false);
         let consumed = (|| match action {
             PlayerAction::UseOn { hand, pos, hit } => {
@@ -894,7 +894,7 @@ impl Game<'_> {
         if !self.server.lan_acting_fake {
             return false;
         }
-        self.server.fake_action.block(effect);
+        self.fake_action.block(effect);
         true
     }
 
@@ -995,7 +995,7 @@ impl Game<'_> {
     /// tickets keep them only while a mod listens (`update_chunk_tickets`).
     pub(in crate::game) fn run_chunk_ticket_level_updates(&mut self) {
         use sunrise_client::ticket_levels::UNLOADED;
-        let changes = self.server.tickets.take_changes();
+        let changes = self.tickets.take_changes();
         if changes.is_empty() {
             return;
         }
@@ -2021,8 +2021,8 @@ impl Game<'_> {
         };
         let outer = self.server.command_source.replace(server);
         let filter = std::mem::replace(&mut self.server.native_command_filter, true);
-        let outer_exec = std::mem::take(&mut self.server.exec);
-        let outer_results = self.server.cmds.results.take();
+        let outer_exec = std::mem::take(&mut self.exec);
+        let outer_results = self.cmds.results.take();
         let outer_capture = capture.then(|| self.server.chat_capture.replace(Vec::new()));
         let ok = self.as_console(|g| g.run_command(line));
         let lines = match outer_capture {
@@ -2031,8 +2031,8 @@ impl Game<'_> {
             }
             None => Vec::new(),
         };
-        self.server.exec = outer_exec;
-        self.server.cmds.results = outer_results;
+        self.exec = outer_exec;
+        self.cmds.results = outer_results;
         self.server.native_command_filter = filter;
         self.server.command_source = outer;
         (ok, lines)
@@ -2326,7 +2326,7 @@ impl Game<'_> {
             .server
             .command_source
             .unwrap_or_else(|| self.player_source());
-        let origin = if let Some(id) = self.server.exec.functions.last() {
+        let origin = if let Some(id) = self.exec.functions.last() {
             CommandSource::Function {
                 id: mod_api::Identifier::parse(id).map_err(|_| err("command.failed", &[]))?,
                 permission,
@@ -2896,9 +2896,9 @@ mod tests {
                 });
             })
             .unwrap();
-            game.server.exec.functions.push("test:outer".into());
+            game.exec.functions.push("test:outer".into());
             assert!(game.native_run_command("list"));
-            assert_eq!(game.server.exec.functions, ["test:outer"]);
+            assert_eq!(game.exec.functions, ["test:outer"]);
         });
     }
 
@@ -4625,7 +4625,7 @@ mod tests {
                                 game.server.chat_capture.take().unwrap().is_empty(),
                                 "functions suppress both success and failure"
                             );
-                            assert!(game.server.exec.functions.is_empty());
+                            assert!(game.exec.functions.is_empty());
                             game.ui.registries.permission = 4;
                             assert!(!game.run_command("unhandled"));
                             assert!(game.run_command(
@@ -6211,7 +6211,7 @@ pub(super) mod fake_action_tests {
                 ),
                 Err(ActionRefused::NotFake)
             );
-            let acting = Acting::start(&game.server.fake_action);
+            let acting = Acting::start(&game.fake_action);
             assert_eq!(
                 game.player_perform_action_scoped(
                     player,
@@ -6858,13 +6858,13 @@ pub(super) mod fake_action_tests {
                 Err(ActionRefused::NotFake)
             );
             // Inside another action, as a hook running during it would ask.
-            let acting = Acting::start(&game.server.fake_action);
+            let acting = Acting::start(&game.fake_action);
             assert_eq!(
                 game.player_perform_action(player, on_top([1, 63, 0])),
                 Err(ActionRefused::Busy)
             );
             drop(acting);
-            assert!(!game.server.fake_action.acting());
+            assert!(!game.fake_action.acting());
         });
     }
 

@@ -454,11 +454,11 @@ impl Game<'_> {
         let from = [t.previous.x, t.previous.y, t.previous.z];
         self.guest_hit_by(conn, |g| {
             g.with_attack(attack, |g| {
-                g.server.combat.refuse_player_hit = refused;
-                g.server.combat.projectile_attacker = shooter;
+                g.combat.refuse_player_hit = refused;
+                g.combat.projectile_attacker = shooter;
                 let hurt = g.mob_hits_player(damage, from, "minecraft:trident");
-                g.server.combat.refuse_player_hit = false;
-                g.server.combat.projectile_attacker = None;
+                g.combat.refuse_player_hit = false;
+                g.combat.projectile_attacker = None;
                 hurt
             })
         })

@@ -601,18 +601,13 @@ impl Game<'_> {
     /// every player's tickets (`update_chunk_tickets`), its entities loaded
     /// (`ServerLevel.areEntitiesLoaded`).
     pub(super) fn block_ticking_area(&self) -> impl Fn(i32, i32) -> bool + use<> {
-        let levels = self.server.tickets.levels();
+        let levels = self.tickets.levels();
         let pending = self.world.entities_pending.clone();
         move |x, z| block_ticking_at(&levels, &pending, x, z)
     }
     /// Single-position read without copying the pending-entity set.
     pub(super) fn block_ticking_at(&self, x: i32, z: i32) -> bool {
-        block_ticking_at(
-            &self.server.tickets.levels(),
-            &self.world.entities_pending,
-            x,
-            z,
-        )
+        block_ticking_at(&self.tickets.levels(), &self.world.entities_pending, x, z)
     }
     /// `DaylightDetectorBlock.tickEntity` of the detector at `pos`.
     fn tick_daylight_detector(&mut self, pos: Pos) {

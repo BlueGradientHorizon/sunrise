@@ -1497,7 +1497,7 @@ impl Game<'_> {
             C::ShowDialog(p) => self.show_play_dialog(&p.dialog),
             C::ClearDialog(_) => self.clear_dialog(),
             // ClientPacketListener.handleLowDiskSpaceWarning.
-            C::LowDiskSpaceWarning(_) => self.client.client_reports.report_low_disk_space(),
+            C::LowDiskSpaceWarning(_) => self.client_reports.report_low_disk_space(),
             C::ClearTitles(p) => self.apply_clear_titles_packet(p),
             _ => {}
         }

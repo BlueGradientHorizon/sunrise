@@ -827,7 +827,7 @@ impl Game<'_> {
         light: u32,
         lights: (glam::Vec3, glam::Vec3),
     ) -> Option<((usize, usize, u32), Option<(glam::Vec3, glam::Vec3)>)> {
-        let mut models = self.client.skin_models.borrow_mut();
+        let mut models = self.skin_models.borrow_mut();
         let mut frame = self.client.skin_frame.borrow_mut();
         let mark = frame.mark();
         let mut skin = sunrise_client::mobs::skin::Skin::new(&mut models, &mut frame);

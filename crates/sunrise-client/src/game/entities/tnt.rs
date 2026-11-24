@@ -629,8 +629,8 @@ impl Game<'_> {
             // ExplosionInteraction.TNT: the tnt_explosion_drop_decay rule.
             let interaction =
                 self.destroy_type(sunrise_client::gamerules::vanilla::TNT_EXPLOSION_DROP_DECAY);
-            self.server.combat.explosion_in_water = in_water;
-            self.server.combat.explosion_direct = Some(id);
+            self.combat.explosion_in_water = in_water;
+            self.combat.explosion_direct = Some(id);
             self.set_blast_owner(owner, guest);
             let result = self.with_hive_emptying_blast(|g| {
                 g.server_explode_from(
@@ -648,11 +648,11 @@ impl Game<'_> {
                         ),
                 )
             });
-            self.server.combat.blast_owner = None;
-            self.server.combat.blast_owner_player = false;
-            self.server.combat.blast_guest = None;
-            self.server.combat.explosion_in_water = false;
-            self.server.combat.explosion_direct = None;
+            self.combat.blast_owner = None;
+            self.combat.blast_owner_player = false;
+            self.combat.blast_guest = None;
+            self.combat.explosion_in_water = false;
+            self.combat.explosion_direct = None;
             result?;
         }
         Ok(())
@@ -724,8 +724,8 @@ impl Game<'_> {
     /// `blast_attacker`, the damage type and kill credit read. A player is the
     /// one on `guest`, the player in place without one.
     pub(super) fn set_blast_owner(&mut self, owner: Option<Who>, guest: Option<u32>) {
-        self.server.combat.blast_guest = guest;
-        self.server.combat.blast_owner = tnt_blast_owner(
+        self.combat.blast_guest = guest;
+        self.combat.blast_owner = tnt_blast_owner(
             owner,
             || match guest {
                 Some(_) => self.player_attacker(guest),
@@ -736,20 +736,19 @@ impl Game<'_> {
             },
             |id| self.mob_display_name(id),
         );
-        self.server.combat.blast_owner_player =
-            owner == Some(Who::Player) && self.server.combat.blast_owner.is_some();
+        self.combat.blast_owner_player =
+            owner == Some(Who::Player) && self.combat.blast_owner.is_some();
     }
     /// The attack a player-owned blast's hits land in: its causing player's,
     /// so a mob it kills is that player's kill.
     pub(super) fn blast_owner_attack(&self) -> sunrise_client::health::Attack {
         let id = self
-            .server
             .combat
             .blast_owner
             .as_ref()
             .map_or(0, |(id, _)| *id as i32);
         let mut attack = self.attack_of(id);
-        attack.player_uuid = self.player_uuid_of(self.server.combat.blast_guest);
+        attack.player_uuid = self.player_uuid_of(self.combat.blast_guest);
         attack
     }
     /// `PrimedTnt.getOwner` for TNT loaded with an `owner`: looked up when

@@ -1289,7 +1289,7 @@ impl<'a> Game<'a> {
         scratch: &mut SpawnScratch,
     ) -> i32 {
         let tickets = self.streaming.mod_tickets();
-        let levels = self.server.tickets.levels();
+        let levels = self.tickets.levels();
         scratch.collect(
             players,
             |chunk| tickets.forces_natural_spawning(chunk),
@@ -1747,7 +1747,7 @@ mod tests {
                     game.world.chunks.insert((x, z), Arc::new(chunk));
                 }
             }
-            game.server.tickets.update(None);
+            game.tickets.update(None);
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 64.0, 8.5)).unwrap());
             game.border.set_center([8.0, 8.0]);
             game.border.set_size(2.0);

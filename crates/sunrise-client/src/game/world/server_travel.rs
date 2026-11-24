@@ -487,7 +487,7 @@ impl Game<'_> {
             });
             return true;
         }
-        if self.server.cmds.guest_cameras.contains_key(&conn) {
+        if self.cmds.guest_cameras.contains_key(&conn) {
             self.guest_set_camera(gi, None);
         }
         match name {
@@ -2020,7 +2020,7 @@ mod tests {
                 game,
                 sunrise_core::position::ChunkPos::new(0, 0),
             );
-            game.server.tickets.add_portal((0, 0));
+            game.tickets.add_portal((0, 0));
             game.update_chunk_tickets();
             assert!(game.entity_ticking_area()(1, 2));
             // Supply the block's real inside notification, then exercise the actual
@@ -2167,7 +2167,7 @@ mod transfer_lifetime_tests {
         for kind in ["minecraft:minecart", "minecraft:oak_boat", "minecraft:pig"] {
             for bound in [true, false] {
                 super::super::native_entity_refs::tests::with_game(|game| {
-                    game.server.tickets.update(None);
+                    game.tickets.update(None);
                     let target = game
                         .summon_with_nbt(kind, [0.5, 70.0, 0.5], "{}")
                         .unwrap()

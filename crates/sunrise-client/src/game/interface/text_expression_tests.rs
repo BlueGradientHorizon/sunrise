@@ -97,7 +97,7 @@ fn a_packs_text_draws_its_expression_uniforms() {
             0,
             sunrise_protocol::entity_data::Value::Text(sunrise_core::nbt::Tag::String("W".into())),
         )]);
-        game.client.text_displays.insert(1, display);
+        game.text_displays.insert(1, display);
         game.tick_text_displays(game.clock.runs_normally());
         // Fullbright, in its own process, is on from the first frame: it changes nothing.
         game.renderer.as_mut().unwrap().fullbright = fullbright;

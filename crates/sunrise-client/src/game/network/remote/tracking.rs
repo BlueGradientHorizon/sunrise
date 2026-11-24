@@ -170,7 +170,6 @@ impl Game<'_> {
                 [x, y, z]
             }
             _ => self
-                .client
                 .text_displays
                 .get(&id)
                 .map(|display| display.position().to_array())

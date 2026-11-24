@@ -231,7 +231,7 @@ impl Game<'_> {
     /// (a proxy's reconfiguration too), but the chat: joining clears it and a
     /// reconfiguration keeps it (`ChatComponent.storeState`).
     pub(super) fn hud_disconnected(&mut self) {
-        self.client.tab_list.reset();
+        self.tab_list.reset();
         self.client.boss_overlay.reset();
         self.client.toast_manager = Default::default();
         self.client.debug_charts.reset();

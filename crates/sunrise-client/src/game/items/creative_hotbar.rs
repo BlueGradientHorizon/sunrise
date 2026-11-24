@@ -15,7 +15,7 @@ impl Game<'_> {
     /// row's nine stacks, or for an empty row a locked paper in that row's own
     /// slot, named after the keys that save it (`inventory.hotbarInfo`).
     pub(super) fn refresh_saved_hotbars(&mut self) {
-        if !self.client.creative_screen.tab().hotbar {
+        if !self.creative_screen.tab().hotbar {
             return;
         }
         let path = Self::options_path().with_file_name("hotbar.nbt");
@@ -61,7 +61,7 @@ impl Game<'_> {
                 items.push(paper);
             }
         }
-        self.client.creative_screen.set_saved_hotbars(items);
+        self.creative_screen.set_saved_hotbars(items);
     }
     /// `CreativeModeInventoryScreen.handleHotbarLoadOrSave` for the hotbar key
     /// `index`: load puts the saved row in the hotbar and, on a server, sends

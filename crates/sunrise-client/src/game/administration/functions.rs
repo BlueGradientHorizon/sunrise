@@ -266,7 +266,7 @@ impl Game<'_> {
             &resources,
             data,
             changes,
-            self.server.cmds.vanilla_disabled,
+            self.cmds.vanilla_disabled,
             enabled_features,
             &additional,
         );
@@ -623,7 +623,7 @@ impl Game<'_> {
         if self.remote.is_some() {
             return;
         }
-        self.server.exec = ExecState::default();
+        self.exec = ExecState::default();
         let source = self.server_source();
         if self.fns.load_pending {
             self.fns.load_pending = false;
@@ -642,7 +642,7 @@ impl Game<'_> {
         if self.remote.is_some() {
             return;
         }
-        self.server.exec = ExecState::default();
+        self.exec = ExecState::default();
         let source = self.server_source();
         let now = self.world.game_time;
         loop {
@@ -667,7 +667,7 @@ impl Game<'_> {
         }
     }
     fn run_function_by_id(&mut self, id: &str, args: Option<&Tag>, source: Source) {
-        self.server.exec.commands = 0;
+        self.exec.commands = 0;
         if let Some(f) = self.fns.store.functions.get(id).cloned() {
             // `ServerFunctionManager.execute` logs a function that failed to
             // instantiate or run; its lines' own failures stay silent.
@@ -703,9 +703,9 @@ impl Game<'_> {
             .fns
             .permission
             .replace(sunrise_client::command::vanilla::GAMEMASTERS);
-        let callback = self.server.exec.callback.take();
+        let callback = self.exec.callback.take();
         let result = self.run_function(&function, None, source);
-        self.server.exec.callback = callback;
+        self.exec.callback = callback;
         self.fns.permission = permission;
         if let Err(error) = result {
             log::warn!(
@@ -736,11 +736,11 @@ impl Game<'_> {
         if let Err((key, a)) = self.parse_macro_lines(f, &lines) {
             return Err(failure(&key, &a));
         }
-        if self.server.exec.functions.len() >= 128 {
+        if self.exec.functions.len() >= 128 {
             return Ok(Outcome::NoReturn);
         }
-        self.server.exec.functions.push(f.id.clone());
-        let outer = self.server.exec.returned.take();
+        self.exec.functions.push(f.id.clone());
+        let outer = self.exec.returned.take();
         let level = std::mem::replace(&mut self.ui.registries.permission, self.fns.command_level());
         let inner = Source {
             silent: true,
@@ -749,10 +749,10 @@ impl Game<'_> {
         };
         for line in lines {
             let _ = self.execute_line(&line, inner);
-            if self.server.exec.returned.is_some() {
+            if self.exec.returned.is_some() {
                 break;
             }
-            if self.server.exec.commands
+            if self.exec.commands
                 > self
                     .ui
                     .rules
@@ -763,8 +763,8 @@ impl Game<'_> {
             }
         }
         self.ui.registries.permission = level;
-        let returned = std::mem::replace(&mut self.server.exec.returned, outer);
-        self.server.exec.functions.pop();
+        let returned = std::mem::replace(&mut self.exec.returned, outer);
+        self.exec.functions.pop();
         Ok(match returned {
             None => Outcome::NoReturn,
             Some(Some(v)) => Outcome::Value(v),
@@ -864,13 +864,12 @@ impl Game<'_> {
             .command_source
             .unwrap_or_else(|| self.player_source());
         let call = if self
-            .server
             .exec
             .prepared_function
             .as_ref()
             .is_some_and(|p| p.matches(ctx, source))
         {
-            std::sync::Arc::unwrap_or_clone(self.server.exec.prepared_function.take().unwrap().call)
+            std::sync::Arc::unwrap_or_clone(self.exec.prepared_function.take().unwrap().call)
         } else {
             let Some(call) = self.prepare_function_call(ctx)? else {
                 return Ok(0);
@@ -976,7 +975,7 @@ impl Game<'_> {
                 }
             }
         }
-        self.server.exec.callback = Some(if failed && sum == 0 {
+        self.exec.callback = Some(if failed && sum == 0 {
             Some((false, 0))
         } else if any {
             Some((true, sum))
@@ -994,8 +993,8 @@ impl Game<'_> {
     ) -> Option<Vec<PreparedFunctionCall>> {
         if !self.fns.loaded
             || sources.len() < 2
-            || !self.server.exec.functions.is_empty()
-            || self.server.exec.prepared_function.is_some()
+            || !self.exec.functions.is_empty()
+            || self.exec.prepared_function.is_some()
             || sources.iter().any(|s| s.silent)
             || ctx.has("with")
             || ctx.get("arguments").is_some()
@@ -1013,7 +1012,7 @@ impl Game<'_> {
             .rules
             .int_at(sunrise_client::gamerules::vanilla::MAX_COMMAND_SEQUENCE_LENGTH)
             .max(1) as u32;
-        if sources.len() > limit.saturating_sub(self.server.exec.commands) as usize {
+        if sources.len() > limit.saturating_sub(self.exec.commands) as usize {
             return None;
         }
         // No start or slot is published until the existing validation succeeds.
@@ -1038,7 +1037,7 @@ impl Game<'_> {
     pub(super) fn cmd_return(&mut self, id: &str, ctx: &Context) -> R<i32> {
         if id == "return.fail" {
             self.finish_return(None);
-            self.server.exec.callback = Some(Some((false, 0)));
+            self.exec.callback = Some(Some((false, 0)));
             return Ok(0);
         }
         let value = match ctx.get("value") {
@@ -1184,7 +1183,7 @@ impl Game<'_> {
     }
     /// The selected packs, lowest priority first.
     fn selected_packs(&self) -> Vec<String> {
-        let vanilla = (!self.server.cmds.vanilla_disabled).then(|| "vanilla".to_owned());
+        let vanilla = (!self.cmds.vanilla_disabled).then(|| "vanilla".to_owned());
         vanilla
             .into_iter()
             .chain(self.fns.enabled.iter().cloned())
@@ -1279,7 +1278,7 @@ impl Game<'_> {
         };
         let selected = self.selected_packs();
         let previous_enabled = self.fns.enabled.clone();
-        let previous_vanilla_disabled = self.server.cmds.vanilla_disabled;
+        let previous_vanilla_disabled = self.cmds.vanilla_disabled;
         // `DataPackCommand.listAvailablePacks`: a feature pack the world's
         // features do not cover is not available.
         let mut available: Vec<String> = std::iter::once("vanilla".to_owned())
@@ -1350,7 +1349,7 @@ impl Game<'_> {
                     ));
                 }
                 if name == "vanilla" {
-                    self.server.cmds.vanilla_disabled = false;
+                    self.cmds.vanilla_disabled = false;
                 } else {
                     let existing = match ctx.get("existing") {
                         Some(Arg::Str(e)) => Some(e.clone()),
@@ -1423,7 +1422,7 @@ impl Game<'_> {
                     ));
                 }
                 if name == "vanilla" {
-                    self.server.cmds.vanilla_disabled = true;
+                    self.cmds.vanilla_disabled = true;
                 } else {
                     self.fns.enabled.retain(|p| p != &name);
                 }
@@ -1453,7 +1452,7 @@ impl Game<'_> {
             &self.options.resources,
             &self.pack.data_source,
             &self.pack.data_changes,
-            self.server.cmds.vanilla_disabled,
+            self.cmds.vanilla_disabled,
             &self.level.enabled_features,
             &additional,
         );
@@ -1463,7 +1462,7 @@ impl Game<'_> {
             Ok(prepared) => prepared,
             Err(error) => {
                 self.fns.enabled = previous_enabled;
-                self.server.cmds.vanilla_disabled = previous_vanilla_disabled;
+                self.cmds.vanilla_disabled = previous_vanilla_disabled;
                 return Err(Self::reload_failure(error));
             }
         };
@@ -1472,7 +1471,7 @@ impl Game<'_> {
             Ok(context) => context,
             Err(error) => {
                 self.fns.enabled = previous_enabled;
-                self.server.cmds.vanilla_disabled = previous_vanilla_disabled;
+                self.cmds.vanilla_disabled = previous_vanilla_disabled;
                 return Err(Self::reload_failure(ReloadStageError::DataSource(
                     error.to_string(),
                 )));
@@ -1482,7 +1481,7 @@ impl Game<'_> {
             Ok(world) => world,
             Err(error) => {
                 self.fns.enabled = previous_enabled;
-                self.server.cmds.vanilla_disabled = previous_vanilla_disabled;
+                self.cmds.vanilla_disabled = previous_vanilla_disabled;
                 return Err(Self::reload_failure(ReloadStageError::DataSource(
                     error.to_string(),
                 )));
@@ -1939,13 +1938,13 @@ mod tests {
             }
             fn capture(g: &mut Game<'_>, line: &str) -> (Vec<String>, Vec<(bool, i32)>) {
                 g.server.chat_capture = Some(Vec::new());
-                g.server.cmds.results = Some(Vec::new());
+                g.cmds.results = Some(Vec::new());
                 assert!(g.run_command(line));
                 let texts = g.server.chat_capture.take().unwrap();
-                let callbacks = g.server.cmds.results.take().unwrap();
+                let callbacks = g.cmds.results.take().unwrap();
                 println!("causal raw {line}: {texts:?} callbacks={callbacks:?}");
                 assert!(
-                    g.server.exec.prepared_function.is_none(),
+                    g.exec.prepared_function.is_none(),
                     "no prepared call after command/error/return"
                 );
                 (
@@ -2250,10 +2249,10 @@ mod tests {
                         _ => "",
                     };
                     game.server.chat_capture = Some(Vec::new());
-                    game.server.cmds.results = Some(Vec::new());
+                    game.cmds.results = Some(Vec::new());
                     let accepted = game.run_command(&format!("execute store result score #r h155 store success score #s h155 {middle}run function h155:{name}"));
                     let messages = game.server.chat_capture.take().unwrap();
-                    let callbacks = game.server.cmds.results.take().unwrap();
+                    let callbacks = game.cmds.results.take().unwrap();
                     assert!(accepted, "actual registered function command");
                     let count = if route == "two" { 2 } else { 1 };
                     assert_eq!(
@@ -2300,10 +2299,10 @@ mod tests {
                 }
             }
             assert!(game.run_command("scoreboard players set #plain h155 0"));
-            game.server.cmds.results = Some(Vec::new());
+            game.cmds.results = Some(Vec::new());
             assert!(game.run_command("execute as @e[type=pig,tag=h155u,sort=nearest,limit=2] run scoreboard players add #plain h155 1"));
             assert_eq!(
-                game.server.cmds.results.take().unwrap(),
+                game.cmds.results.take().unwrap(),
                 vec![(true, 1), (true, 2)]
             );
             assert_eq!(game.score.board.score("#plain", "h155").unwrap().value, 2);
@@ -2330,13 +2329,13 @@ mod tests {
                 lines: vec![FunctionLine::Command("return 1".into())],
                 parameters: vec![],
             };
-            game.server.exec.functions.push("test:outer".into());
+            game.exec.functions.push("test:outer".into());
             let source = game.server_source();
             game.run_function(&inner, None, source).unwrap();
-            assert_eq!(game.server.exec.functions, ["test:outer"]);
-            game.server.exec.functions.clear();
+            assert_eq!(game.exec.functions, ["test:outer"]);
+            game.exec.functions.clear();
             game.run_function(&inner, None, source).unwrap();
-            assert!(game.server.exec.functions.is_empty());
+            assert!(game.exec.functions.is_empty());
         });
         assert!(ran, "the prepared-resource fixture must run this case");
     }
@@ -2769,7 +2768,7 @@ mod tests {
         }
         game.server.world_root = dir.clone();
         let run = |game: &mut Game<'_>, line: &str| {
-            game.server.exec = ExecState::default();
+            game.exec = ExecState::default();
             let source = game.player_source();
             game.execute_line(line, source)
         };
@@ -2927,7 +2926,7 @@ mod tests {
         }
         game.server.world_root = dir.clone();
         let run = |game: &mut Game<'_>, line: &str| {
-            game.server.exec = ExecState::default();
+            game.exec = ExecState::default();
             let source = game.player_source();
             game.execute_line(line, source)
         };
@@ -3008,7 +3007,7 @@ mod tests {
         game.set_allow_commands(true);
         game.fns.loaded = true;
         let run = |game: &mut Game<'_>, line: &str| {
-            game.server.exec = ExecState::default();
+            game.exec = ExecState::default();
             let source = game.player_source();
             game.execute_line(line, source).unwrap();
         };
@@ -3406,7 +3405,7 @@ mod entity_score_tests {
         }
         game.server.world_root = dir.clone();
         let run = |game: &mut Game<'_>, line: &str| {
-            game.server.exec = ExecState::default();
+            game.exec = ExecState::default();
             let source = game.player_source();
             game.execute_line(line, source)
         };
@@ -3552,7 +3551,7 @@ mod required_tag_tests {
         game.build_registries();
         game.set_allow_commands(true);
         let run = |game: &mut Game<'_>, line: &str| {
-            game.server.exec = ExecState::default();
+            game.exec = ExecState::default();
             let source = game.player_source();
             if let Err(error) = game.execute_line(line, source) {
                 assert!(line.contains("function #h145:"), "{line}: {error:?}");
@@ -3749,7 +3748,7 @@ mod required_tag_tests {
                     .contains(&"h121:reference".into())
             );
             let run = |game: &mut Game<'_>, line: &str| {
-                game.server.exec = ExecState::default();
+                game.exec = ExecState::default();
                 let source = game.player_source();
                 game.execute_line(line, source).unwrap();
             };

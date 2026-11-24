@@ -298,7 +298,7 @@ impl Game<'_> {
                 m.extra.passenger = true;
             }
         }
-        for (id, display) in &mut self.client.text_displays {
+        for (id, display) in &mut self.text_displays {
             if passengers.contains(id) {
                 display.vehicle = Some(vehicle_id);
             } else if display.vehicle == Some(vehicle_id) {
@@ -444,7 +444,6 @@ impl Game<'_> {
             let index = std::collections::HashMap::new();
             if let Some(at) = self.passenger_riding_position(id, None, None, &index) {
                 let before = self
-                    .client
                     .text_displays
                     .get(&(id as i32))
                     .map(|d| d.seat().1)

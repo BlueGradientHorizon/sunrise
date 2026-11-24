@@ -828,9 +828,8 @@ impl Game<'_> {
     /// in whichever loaded level it is now (`credited_entity`).
     pub(super) fn living_kill_credit(&self, living: LivingRef) -> Option<EntityRef> {
         let credit = match self.native_living_target(living)? {
-            Target::Player => self.server.combat.player_credit(self.world.game_time),
+            Target::Player => self.combat.player_credit(self.world.game_time),
             Target::Guest(conn) => self
-                .server
                 .guest_combat
                 .get(&conn)
                 .and_then(|combat| combat.player_credit(self.world.game_time)),
@@ -854,12 +853,10 @@ impl Game<'_> {
     pub(super) fn living_last_attacker(&self, living: LivingRef) -> Option<EntityRef> {
         match self.native_living_target(living)? {
             Target::Player => self
-                .server
                 .combat
                 .kill_credit(self.world.game_time)
                 .and_then(|id| self.credited_entity(id)),
             Target::Guest(conn) => self
-                .server
                 .guest_combat
                 .get(&conn)?
                 .kill_credit(self.world.game_time)
@@ -2145,7 +2142,7 @@ pub(in crate::game) mod tests {
             send_to_the_nether(game, zombie);
             let living = game.living(game.entity(pig).unwrap()).unwrap();
             credited = living.kill_credit(game).unwrap().id() as i32;
-            let plan = game.prepare_knockback_credit(pig as i32, None, game.server.combat.attack());
+            let plan = game.prepare_knockback_credit(pig as i32, None, game.combat.attack());
             let mut credit = plan.lend(&mut game.server.last_hurt_by_player);
             let i = game.mobs.iter().position(|m| m.id == pig).unwrap();
             let mob = &mut game.mobs[i];
@@ -2365,7 +2362,7 @@ pub(in crate::game) mod tests {
             let mut attackers = Vec::new();
             let mut health = Vec::new();
             for absorption in [0.0, 8.0] {
-                game.server.combat = Default::default();
+                game.combat = Default::default();
                 let mut player = PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
                 player.entity_id = 20;
                 player

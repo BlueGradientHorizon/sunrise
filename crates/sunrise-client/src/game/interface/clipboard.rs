@@ -96,7 +96,7 @@ impl Game<'_> {
                 self.client.book,
                 Some(super::books::BookScreen::Edit { .. })
             )
-            || (self.client.screen == Screen::Creative && self.client.creative_screen.tab().search)
+            || (self.client.screen == Screen::Creative && self.creative_screen.tab().search)
             || self.recipe_search_focused()
             || self.station_typing()
             || self.dialog_typing()
@@ -166,29 +166,27 @@ impl Game<'_> {
     /// Shortcuts in the creative inventory's search box (an `EditBox` of 50).
     pub(super) fn creative_search_shortcut(&mut self, shortcut: EditShortcut) {
         if self
-            .client
             .creative_screen
             .search
             .shortcut(shortcut, &mut self.clipboard)
         {
-            self.client.creative_screen.scroll = 0.0;
+            self.creative_screen.scroll = 0.0;
         }
     }
     /// A backspace in the creative search box: with Ctrl, the whole word
     /// before the caret (`EditBox.deleteWords(-1)`), otherwise one character.
     /// A selection is what it deletes, as in `EditBox.keyPressed`.
     pub(super) fn creative_search_backspace(&mut self, ctrl: bool) {
-        self.client
-            .creative_screen
+        self.creative_screen
             .search
             .key(KeyCode::Backspace, ctrl, false);
-        self.client.creative_screen.scroll = 0.0;
+        self.creative_screen.scroll = 0.0;
     }
     /// Typing in the creative search box.
     pub(super) fn creative_search_edit(&mut self, typed: Option<&str>) {
         if let Some(text) = typed {
-            self.client.creative_screen.search.insert_text(text);
-            self.client.creative_screen.scroll = 0.0;
+            self.creative_screen.search.insert_text(text);
+            self.creative_screen.scroll = 0.0;
         }
     }
 }

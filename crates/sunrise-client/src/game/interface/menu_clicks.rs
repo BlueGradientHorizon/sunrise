@@ -88,10 +88,10 @@ impl Game<'_> {
         input: sunrise_client::menu::Input,
     ) {
         use sunrise_client::creative::{DisplayClick, click_display};
-        if self.client.creative_screen.tab().search {
+        if self.creative_screen.tab().search {
             // CreativeModeInventoryScreen.slotClicked: moveCursorToEnd, then
             // setHighlightPos(0), so typing replaces the whole query.
-            let search = &mut self.client.creative_screen.search;
+            let search = &mut self.creative_screen.search;
             search.move_cursor_to_end(false);
             search.highlight = 0;
         }

@@ -50,7 +50,7 @@ fn save_requested_during_pickup_keeps_lifted_items_on_disk() {
                 Some(Default::default()),
             ));
             game.options.dedicated = Some(Vec::new());
-            game.server.server_lists = Some(Arc::new(Mutex::new(dedicated::Lists {
+            game.server_lists = Some(Arc::new(Mutex::new(dedicated::Lists {
                 ops: OpList::new(root.join("ops.json")),
                 white: WhiteList::new(root.join("whitelist.json")),
                 bans: BanList::new(root.join("bans.json")),

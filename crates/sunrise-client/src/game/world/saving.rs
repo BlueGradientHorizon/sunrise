@@ -45,10 +45,8 @@ impl Game<'_> {
         if self.server.startup_ticket_restore_pending {
             return Ok(());
         }
-        self.save.save_chunk_tickets(
-            self.streaming.commanded(),
-            self.server.tickets.portal_tickets(),
-        )?;
+        self.save
+            .save_chunk_tickets(self.streaming.commanded(), self.tickets.portal_tickets())?;
         self.save
             .save_mod_tickets(self.streaming.mod_tickets(), |slot| {
                 mod_api::TicketController::from_slot(slot).map(|c| c.id())

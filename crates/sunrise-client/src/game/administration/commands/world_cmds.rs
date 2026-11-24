@@ -378,7 +378,7 @@ impl Game<'_> {
                         }
                         let hurt = g.hurt_player_from(amount, from, ty, attacker, creative_source);
                         if hurt && let Some(credit) = by_player {
-                            g.server.combat.note_hurt_by_player(credit, now);
+                            g.combat.note_hurt_by_player(credit, now);
                         }
                         hurt
                     })
@@ -503,7 +503,7 @@ impl Game<'_> {
             direct: entity_id(direct),
             position,
         };
-        if crate::game::entity::damage_level_of!(self, self.server.combat.attack(), no_push, None)
+        if crate::game::entity::damage_level_of!(self, self.combat.attack(), no_push, None)
             .invulnerability_check(
                 sunrise_client::health::Hurting::Entity(id as i32, &entity_kind, source),
                 vanilla,
@@ -537,9 +537,8 @@ impl Game<'_> {
         let Some(index) = self.mob_index.find(&self.mobs, id) else {
             return false;
         };
-        let plan =
-            self.prepare_knockback_credit(id as i32, damage.attacker, self.server.combat.attack());
-        let attack = self.server.combat.attack();
+        let plan = self.prepare_knockback_credit(id as i32, damage.attacker, self.combat.attack());
+        let attack = self.combat.attack();
         let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
         let mob = &mut self.mobs[index];
         let (queued, old_health) = (mob.outbox.len(), mob.health);
@@ -1569,12 +1568,12 @@ impl Game<'_> {
             }
             return mob.extra.armor_attributes.as_deref_mut();
         }
-        if !self.server.cmds.attributes.contains_key(&t) {
+        if !self.cmds.attributes.contains_key(&t) {
             let ty = self.target_type(t);
             let map = self.motion.attributes.create(&ty)?;
-            self.server.cmds.attributes.insert(t, map);
+            self.cmds.attributes.insert(t, map);
         }
-        self.server.cmds.attributes.get_mut(&t)
+        self.cmds.attributes.get_mut(&t)
     }
     /// A sulfur cube's body archetype attributes live on its own map, beside
     /// the archetype's transient modifiers.
@@ -3130,14 +3129,14 @@ mod vehicle_damage_command_tests {
                 ] {
                     let command = format!("attribute {target} minecraft:armor {operation}");
                     game.server.chat_capture = Some(Vec::new());
-                    game.server.cmds.results = Some(Vec::new());
+                    game.cmds.results = Some(Vec::new());
                     assert!(game.run_command(&command), "{command}");
                     let messages = game.server.chat_capture.take().unwrap();
                     assert_eq!(messages.len(), 1, "{command}");
                     let components: Vec<_> = messages.iter().map(|m| m.component()).collect();
                     println!(
                         "H082_EXISTING {}",
-                        serde_json::json!({"command":command,"messages":components,"results":game.server.cmds.results.take().unwrap()})
+                        serde_json::json!({"command":command,"messages":components,"results":game.cmds.results.take().unwrap()})
                     );
                 }
             }

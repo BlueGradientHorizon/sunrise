@@ -321,7 +321,6 @@ impl Game<'_> {
                         continue;
                     };
                     let before = self
-                        .client
                         .text_displays
                         .get(&(v as i32))
                         .map(|d| d.seat().1)
@@ -421,7 +420,6 @@ impl Game<'_> {
         // A rider of a rider settles over a few passes, as the mobs above.
         for _ in 0..3 {
             let mut vehicles: Vec<u32> = self
-                .client
                 .text_displays
                 .values()
                 .filter_map(|d| d.vehicle)
@@ -437,7 +435,7 @@ impl Game<'_> {
                 })
                 .collect();
             let sections = self.client.client_pick.sections.get_mut();
-            for (&id, display) in &mut self.client.text_displays {
+            for (&id, display) in &mut self.text_displays {
                 if let Some(at) = display.vehicle.and_then(|v| seats.get(&v)) {
                     display.ride(*at);
                     sections.move_id(id as u32, display.position().to_array());
@@ -613,7 +611,7 @@ impl Game<'_> {
             let at = riders::seat(attachment, 0.0, v.position, v.yaw);
             return Some(glam::DVec3::new(at.x, at.y, at.z));
         }
-        if let Some(d) = self.client.text_displays.get(&(vehicle as i32)) {
+        if let Some(d) = self.text_displays.get(&(vehicle as i32)) {
             return if let Some(parent) = d.vehicle {
                 self.passenger_riding_position_inner(parent, me, own_seat, index, path)
             } else {

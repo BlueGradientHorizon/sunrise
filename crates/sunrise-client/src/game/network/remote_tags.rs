@@ -50,7 +50,7 @@ impl Game<'_> {
                     .collect(),
             )
         });
-        self.client.creative_screen.set_item_tags(tags.as_ref());
+        self.creative_screen.set_item_tags(tags.as_ref());
     }
 
     /// Make the server's tags what native mods read, then tell them. Snapshot client

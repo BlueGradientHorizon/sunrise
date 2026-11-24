@@ -188,7 +188,7 @@ impl Game<'_> {
     fn run_sign_command(&mut self, pos: [i32; 3], command: &str) {
         let source = self.sign_command_source(pos);
         let line = command.strip_prefix('/').unwrap_or(command);
-        self.server.exec = Default::default();
+        self.exec = Default::default();
         let permission = std::mem::replace(&mut self.ui.registries.permission, 2);
         let _ = self.execute_line(line, source);
         self.ui.registries.permission = permission;

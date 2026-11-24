@@ -708,7 +708,7 @@ impl Game<'_> {
         if screen == Screen::Creative {
             // `CreativeModeInventoryScreen.extractTabButton`: 26 x 32 each.
             let (ox, oy) = (layout.image[0], layout.image[1]);
-            let creative = &self.client.creative_screen;
+            let creative = &self.creative_screen;
             for tab in creative.tabs.iter().filter(|t| creative.on_page(t)) {
                 let (x, y) = sunrise_client::creative::Creative::tab_position(tab);
                 out.push(ScreenRegion::new(
@@ -1016,13 +1016,12 @@ mod tests {
             game.client.screen = Screen::Creative;
             check(game);
             let inventory = game
-                .client
                 .creative_screen
                 .tab_headers()
                 .iter()
                 .position(|tab| tab.inventory)
                 .unwrap();
-            game.client.creative_screen.select(inventory);
+            game.creative_screen.select(inventory);
             check(game);
         });
     }

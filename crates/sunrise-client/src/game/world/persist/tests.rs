@@ -1213,7 +1213,7 @@ fn an_orb_saves_its_live_portal_cooldown() {
         // One tick: the orb's own (ordered) tick, then Entity.handlePortal's
         // pass over the entities.
         game.server.ordered.announced = sunrise_client::join_seq::JoinSeq::MAX;
-        game.server.tickets.update(None);
+        game.tickets.update(None);
         game.begin_ordered_ticks();
         game.run_ordered_ticks(sunrise_client::join_seq::JoinSeq::MAX, false)
             .unwrap();

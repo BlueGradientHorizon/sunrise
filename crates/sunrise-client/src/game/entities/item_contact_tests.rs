@@ -703,12 +703,10 @@ fn step_on_edits_grounded_bodies_before_inside_effects_and_settle() {
                     assert_eq!(clear_calls(), [(client, 77, floor, true)]);
 
                     if !client {
-                        game.server
-                            .tickets
-                            .update(Some(crate::ticket_levels::Sources {
-                                forced: vec![(0, 0)],
-                                ..Default::default()
-                            }));
+                        game.tickets.update(Some(crate::ticket_levels::Sources {
+                            forced: vec![(0, 0)],
+                            ..Default::default()
+                        }));
                         let mut stand = sunrise_client::entities::ArmorStand::new(
                             78,
                             Vec3::new(4.5, 64.25, 4.5),
@@ -964,7 +962,7 @@ fn step_on_can_hurt_only_living_bodies_on_the_same_block() {
                         .default_state("minecraft:stone")
                         .unwrap();
                     game.world.set(4, 63, 4, stone).unwrap();
-                    game.server.tickets.update(None);
+                    game.tickets.update(None);
 
                     let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
                     let mut pig =
@@ -1380,7 +1378,7 @@ fn contact_hurt_uses_the_orbs_level_fall_immunity_tag() {
                     .default_state("minecraft:terracotta")
                     .unwrap();
                 game.world.set(4, 63, 4, block).unwrap();
-                game.server.tickets.update(None);
+                game.tickets.update(None);
                 for tagged in [false, true] {
                     let mut items = world_items!(game).clone();
                     let mut tags = items.entity_type_tags.ordered().clone();

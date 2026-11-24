@@ -34,7 +34,6 @@ impl Game<'_> {
             }
         }
         for id in self
-            .client
             .text_displays
             .values()
             .filter_map(|d| d.vehicle)

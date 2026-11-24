@@ -320,7 +320,7 @@ fn a_removed_or_unloaded_entity_is_stale_and_a_reloaded_one_reads_its_saved_valu
         // No declaration means no allocation: a mob type no Part keeps state on gets no
         // attachment map and no index row from its spawn, a tick and a save.
         let sheep = mob(game, "minecraft:sheep", 20);
-        game.server.tickets.update(None);
+        game.tickets.update(None);
         game.tick_creature_entities().unwrap();
         let saved = game.entity_chunks(&HashSet::from([(0, 0)]), false);
         assert!(
@@ -437,7 +437,7 @@ fn a_spawn_or_removal_inside_an_aborted_action_keeps_the_bindings() {
         assert_eq!(Charge::state(game, cow), Err(PartStateError::Stale));
         // The removal ran at the root commit; its row goes when the mob does, at the sweep.
         game.native_removals_flush();
-        game.server.tickets.update(None);
+        game.tickets.update(None);
         game.tick_creature_entities().unwrap();
         assert!(game.mobs.iter().all(|m| m.id != cow.id()));
         assert!(indexed(game, Dim::Overworld).is_empty());
@@ -539,7 +539,7 @@ fn a_lone_mob_or_general_row_moves_under_a_new_id_and_a_ridden_pig_keeps_its_han
             game,
             sunrise_core::position::ChunkPos::new(0, 0),
         );
-        game.server.tickets.add_portal((0, 0));
+        game.tickets.add_portal((0, 0));
         game.update_chunk_tickets();
         game.portals
             .entities

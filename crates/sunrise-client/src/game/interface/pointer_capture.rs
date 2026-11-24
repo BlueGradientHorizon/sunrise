@@ -64,8 +64,7 @@ impl Game<'_> {
             && top_screen_pauses(
                 // A dialog (and its warning or waiting screen) is the
                 // screen Minecraft set, over whatever was open.
-                self.dialog_open()
-                    .then(|| self.client.dialogs.pauses_world()),
+                self.dialog_open().then(|| self.dialogs.pauses_world()),
                 self.client.book.as_ref().map(|book| book.pauses_world()),
                 self.client.screen.is_pause_screen(),
                 self.win_screen_pauses(),
@@ -83,7 +82,7 @@ impl Game<'_> {
         self.dialog_open()
             || self.client.code_of_conduct.is_some()
             || self.client.link_prompt.is_some()
-            || self.client.command_prompt.is_some()
+            || self.command_prompt.is_some()
             || self.server_packs.prompt.is_some()
     }
     /// `Minecraft.pauseIfInactive`: a window without focus for more than 500 ms
@@ -165,7 +164,7 @@ impl Game<'_> {
                 || (!self.client.focused && !self.client.unclaimed_window && !self.scripted_run())
                 || self.server_packs.prompt.is_some()
                 || self.dialog_open()
-                || self.client.command_prompt.is_some())
+                || self.command_prompt.is_some())
         {
             return;
         }

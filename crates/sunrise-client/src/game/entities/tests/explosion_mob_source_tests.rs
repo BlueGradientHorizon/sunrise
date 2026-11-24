@@ -20,8 +20,8 @@ fn blast_boat(
     game.boats
         .push(Boat::new(1, "oak".into(), Vec3::new(16.2, 64.0, 8.5), 0.0));
     assert!(game.ui.rules.set("mob_griefing", Value::Bool(mob_griefing)));
-    game.server.combat.blast_owner = owner;
-    game.server.combat.blast_owner_player = player;
+    game.combat.blast_owner = owner;
+    game.combat.blast_owner_player = player;
     game.server_explode([8.5, 64.0, 8.5], 4.0, BlockInteraction::Destroy, false)
         .unwrap();
     assert_eq!(game.boats.len(), 1, "the boat survives the blast");
@@ -124,7 +124,7 @@ fn a_projectiles_owner_primes_tnt_and_a_gone_owner_does_not() {
         .unwrap();
     // `LargeFireball.onHit` and `WitherSkull.onHit` name the projectile's owner
     // as the blast's indirect source (`Explosion.getIndirectSourceEntity`).
-    game.server.combat.explosion_owner = Some(ghast);
+    game.combat.explosion_owner = Some(ghast);
     game.world.set(9, 64, 8, tnt).unwrap();
     game.server_explode([8.5, 64.0, 8.5], 3.0, BlockInteraction::Destroy, false)
         .unwrap();
@@ -147,5 +147,5 @@ fn a_projectiles_owner_primes_tnt_and_a_gone_owner_does_not() {
         .unwrap();
     assert_eq!(game.tnts.len(), 1, "the blast primed the TNT block again");
     assert_eq!(game.tnts[0].owner, None, "a gone owner primes no one");
-    game.server.combat.explosion_owner = None;
+    game.combat.explosion_owner = None;
 }

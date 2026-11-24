@@ -2856,7 +2856,7 @@ mod modern_literal_tests {
         game.build_registries();
         game.set_allow_commands(true);
         let run = |g: &mut Game<'_>, line: &str| {
-            g.server.exec = ExecState::default();
+            g.exec = ExecState::default();
             let source = g.player_source();
             g.execute_line(line, source)
         };

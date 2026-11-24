@@ -156,12 +156,8 @@ mod tests {
             game.ui.registries.permission = 4;
             game.server.chat_capture = Some(Vec::new());
             game.audio.capture = Some(Vec::new());
-            let (id, _) = game
-                .server
-                .raiding
-                .raids
-                .create_or_extend([0, 64, 0], 2, None, 3);
-            assert!(!game.server.raiding.raids.get(id).unwrap().started);
+            let (id, _) = game.raiding.raids.create_or_extend([0, 64, 0], 2, None, 3);
+            assert!(!game.raiding.raids.get(id).unwrap().started);
 
             assert_eq!(run_dev(game, "raid check"), 1);
             let lines: Vec<String> = game

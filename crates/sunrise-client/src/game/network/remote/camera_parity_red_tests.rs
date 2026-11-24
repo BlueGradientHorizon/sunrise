@@ -854,14 +854,10 @@ pub(in crate::game) fn run_camera_consumers_streaming_particles_debug_and_specta
 
         // 3. F3 debug entries report camera entity position, biome, and light.
         game.client.debug = true;
-        game.client
-            .debug_entries
+        game.debug_entries
             .set_status("player_position", Status::InOverlay);
-        game.client
-            .debug_entries
-            .set_status("biome", Status::InOverlay);
-        game.client
-            .debug_entries
+        game.debug_entries.set_status("biome", Status::InOverlay);
+        game.debug_entries
             .set_status("light_levels", Status::InOverlay);
         let mut displayer = Displayer::default();
         game.debug_entry_lines(&mut displayer, [1280, 800]);
@@ -882,11 +878,9 @@ pub(in crate::game) fn run_camera_consumers_streaming_particles_debug_and_specta
         );
 
         // 4. F3 gizmos: chunk_borders bounds match 26.3 ChunkBorderRenderer; hitboxes follow EntityHitboxDebugRenderer.
-        game.client
-            .debug_entries
+        game.debug_entries
             .set_status("chunk_borders", Status::AlwaysOn);
-        game.client
-            .debug_entries
+        game.debug_entries
             .set_status("entity_hitboxes", Status::Never);
         let border_gizmos = game.debug_gizmos(1.0, [96.5, 301.62, 96.5]);
         let (mut min_x, mut max_x) = (f64::INFINITY, f64::NEG_INFINITY);
@@ -902,11 +896,9 @@ pub(in crate::game) fn run_camera_consumers_streaming_particles_debug_and_specta
         assert_eq!(min_z.to_bits(), want_min_z, "chunk_borders min_z");
         assert_eq!(max_z.to_bits(), want_max_z, "chunk_borders max_z");
 
-        game.client
-            .debug_entries
+        game.debug_entries
             .set_status("chunk_borders", Status::Never);
-        game.client
-            .debug_entries
+        game.debug_entries
             .set_status("entity_hitboxes", Status::AlwaysOn);
         let hitbox_gizmos = game.debug_gizmos(1.0, [96.5, 301.62, 96.5]);
         let has_player_box = hitbox_gizmos.lines.iter().any(|l| {

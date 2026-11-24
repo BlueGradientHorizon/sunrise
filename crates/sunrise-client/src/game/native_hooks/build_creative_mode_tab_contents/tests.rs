@@ -323,8 +323,8 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
     ]
     .into();
     let check = |game: &mut Game<'_>, side| {
-        game.client.creative_screen = Creative::from_json(&catalog).unwrap();
-        assert!(!game.client.creative_screen.has_contents());
+        game.creative_screen = Creative::from_json(&catalog).unwrap();
+        assert!(!game.creative_screen.has_contents());
         let flags = |game: &mut Game<'_>, ids: [&str; 2]| {
             let flags = ids.map(str::to_owned);
             if let Some(remote) = &mut game.remote {
@@ -460,7 +460,7 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
         });
         with_game_role(fixture_root(), ExecutionRole::DedicatedServer, |game| {
             install_dedicated_holders(game, 4);
-            game.client.creative_screen = Creative::from_json(&catalog).unwrap();
+            game.creative_screen = Creative::from_json(&catalog).unwrap();
             check_replacement(game, dedicated.as_deref().unwrap());
         });
         with_client_game(|game| {
@@ -474,7 +474,7 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
             game.native_lifecycle.begin_close();
             game.native_lifecycle_world_closed();
             assert!(game.native_lifecycle.epoch().is_none());
-            assert!(game.client.creative_contents.published.is_some());
+            assert!(game.creative_contents.published.is_some());
             let host: &dyn mod_api::Host = game;
             assert_eq!(
                 host.built_creative_tabs(),

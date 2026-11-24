@@ -419,7 +419,7 @@ impl Game<'_> {
             }
             // The anvil's rename box, while it has an input to name.
             Screen::Inventory if self.station_typing() => self.station_text(Some(text), false),
-            Screen::Creative if self.client.creative_screen.tab().search => {
+            Screen::Creative if self.creative_screen.tab().search => {
                 // CreativeModeInventoryScreen.charTyped: the chat key that
                 // opened the tab does not type its letter.
                 if std::mem::take(&mut self.client.creative_ignore_text) {

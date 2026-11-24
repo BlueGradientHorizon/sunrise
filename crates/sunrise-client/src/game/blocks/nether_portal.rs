@@ -683,7 +683,7 @@ impl Game<'_> {
     /// Only a server holds levels with tickets of their own.
     pub(super) fn place_portal_ticket(&mut self, chunk: (i32, i32)) {
         if !self.options.execution_role.is_client() {
-            self.server.tickets.add_portal(chunk);
+            self.tickets.add_portal(chunk);
         }
     }
 
@@ -2059,7 +2059,7 @@ pub(in crate::game) mod tests {
             let child = game.mob_passenger_ids(root)[0];
             let leaf = game.mob_passenger_ids(child)[0];
             assert!(!game.mobs.iter().any(|m| m.id == child));
-            game.server.tickets.add_portal((0, 0));
+            game.tickets.add_portal((0, 0));
             game.update_chunk_tickets();
             assert!(game.entity_ticking_area()(0, 0));
             game.set_portal_cooldown(leaf);

@@ -1333,9 +1333,9 @@ impl Game<'_> {
         // Ability, spectator and death refusals belong to hurtServer, after
         // its invulnerability observation (also for an attached target).
         // No mob ever owns a rocket.
-        self.server.combat.projectile_owner = None;
-        self.server.combat.rocket_hit = true;
-        self.server.combat.projectile_direct =
+        self.combat.projectile_owner = None;
+        self.combat.rocket_hit = true;
+        self.combat.projectile_direct =
             Some(Text::translate("entity.minecraft.firework_rocket", &[]));
         let at = [from.x, from.y, from.z];
         self.hurt_player_from(amount, Some(at), "minecraft:fireworks", Some(None), false);

@@ -32,7 +32,7 @@ impl Game<'_> {
         amount: f32,
         p: &sunrise_client::projectiles::Projectile,
     ) -> bool {
-        self.server.combat.piercing_hit = p.arrow.as_ref().is_some_and(|a| a.pierce > 0);
+        self.combat.piercing_hit = p.arrow.as_ref().is_some_and(|a| a.pierce > 0);
         self.mob_hits_player(
             amount,
             [p.previous.x, p.previous.y, p.previous.z],
@@ -208,7 +208,7 @@ impl Game<'_> {
         }
         let Some(id) = attacker else {
             // Another player's melee hit has no mob behind it.
-            if let Some((from, disable)) = self.server.combat.player_attacker {
+            if let Some((from, disable)) = self.combat.player_attacker {
                 let fully = outcome.fully_blocked;
                 let attacker = ([from[0], from[2]], disable);
                 self.blocked_by_attacker(

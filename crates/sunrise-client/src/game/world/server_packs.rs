@@ -507,7 +507,7 @@ impl Game<'_> {
     /// Admit new server reports in the receiving window. `SystemToast.addOrUpdate`
     /// resets an existing chunk toast instead of admitting a second one.
     pub(super) fn add_server_report_toasts(&mut self) {
-        let pending = self.client.client_reports.take();
+        let pending = self.client_reports.take();
         let toasts = [
             pending
                 .low_disk_space
@@ -929,7 +929,7 @@ mod tests {
                 mod_platform::testing::with_mods(mods.into(), || {
                     with_client_game(|window| {
                         let serving =
-                            Serving::fixture_with_reports(0, window.client.client_reports.clone());
+                            Serving::fixture_with_reports(0, window.client_reports.clone());
                         window.integrated = Some(Integrated::fixture_for(&serving));
                         window.begin_closing_save(false).unwrap();
                         assert!(window.pending_save.is_some());
@@ -1040,7 +1040,7 @@ mod tests {
                 mod_platform::testing::with_mods(mods.into(), || {
                     with_client_game(|window| {
                         let serving =
-                            Serving::fixture_with_reports(0, window.client.client_reports.clone());
+                            Serving::fixture_with_reports(0, window.client_reports.clone());
                         window.integrated = Some(Integrated::fixture_for(&serving));
                         with_game(|server| {
                             server.serving = Some(serving);

@@ -74,7 +74,7 @@ impl Game<'_> {
                 let before_atlas = self.settings.texture_atlas_settings();
                 self.settings = self.settings.with_option(key, value)?;
                 if self.settings.reduced_debug_info != reduced {
-                    self.client.debug_entries.invalidate();
+                    self.debug_entries.invalidate();
                 }
                 // As the options screen applies a change (OptionInstance.set
                 // runs the narrator's onValueUpdate for a new value only).
@@ -406,7 +406,7 @@ impl Game<'_> {
         for e in events {
             match e {
                 Event::ButtonClick => self.audio.play_button_click(),
-                Event::DebugEntriesChanged => self.client.debug_entries.invalidate(),
+                Event::DebugEntriesChanged => self.debug_entries.invalidate(),
                 Event::Changed => {
                     self.settings.save(&Self::options_path());
                     self.settings.keys.sync_action_bindings();
@@ -574,7 +574,7 @@ impl Game<'_> {
         lang::set(lang::Language::load(&[&self.pack.source], code));
         self.refresh_remote_language();
         self.ui.chat.rescale(&self.gui.atlas);
-        self.client.creative_screen.forget_items();
+        self.creative_screen.forget_items();
     }
     /// Window.updateFullscreenIfChanged: only a changed option asks the
     /// window to change, so applying settings never undoes a fullscreen
@@ -583,7 +583,6 @@ impl Game<'_> {
         if let Some(w) = self.window.clone() {
             let monitor = w.current_monitor().or_else(|| w.primary_monitor());
             if let Some(modes) = self
-                .client
                 .video_modes
                 .refresh(monitor, sunrise_client::window::monitor_video_modes)
             {

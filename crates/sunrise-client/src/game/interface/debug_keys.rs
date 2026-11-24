@@ -73,7 +73,7 @@ impl Game<'_> {
     fn set_debug_overlay(&mut self, visible: bool) {
         if self.client.debug != visible {
             self.client.debug = visible;
-            self.client.debug_entries.invalidate();
+            self.debug_entries.invalidate();
         }
     }
 
@@ -129,7 +129,7 @@ impl Game<'_> {
                 | Screen::BlockEditor
         ) || self.client.sign_edit.is_some()
             || self.client.book.is_some()
-            || (self.client.screen == Screen::Creative && self.client.creative_screen.tab().search)
+            || (self.client.screen == Screen::Creative && self.creative_screen.tab().search)
             || self.recipe_search_focused()
             || self.station_typing()
             || (self.title_input_active()
@@ -340,7 +340,7 @@ impl Game<'_> {
     /// Whether this client's debug overlay passes the draw gate this frame.
     pub(in crate::game) fn debug_overlay_visible(&self) -> bool {
         let screen_open = self.title.is_some() || self.client.screen != Screen::Playing;
-        self.client.debug_entries.any_enabled(
+        self.debug_entries.any_enabled(
             &self.registered_debug_entries,
             self.client.debug,
             self.reduced_debug_info(),
@@ -680,7 +680,7 @@ impl Game<'_> {
     }
     /// `DebugScreenEntryList.isCurrentlyEnabled` for an entry's path.
     pub(super) fn debug_entry(&self, path: &str) -> bool {
-        self.client.debug_entries.enabled(
+        self.debug_entries.enabled(
             &self.registered_debug_entries,
             path,
             self.client.debug,
@@ -714,7 +714,6 @@ impl Game<'_> {
             }
             DebugAction::ShowHitboxes if player => {
                 let on = self
-                    .client
                     .debug_entries
                     .toggle_status("entity_hitboxes", self.client.debug);
                 self.debug_translated(if on {
@@ -731,7 +730,6 @@ impl Game<'_> {
             }
             DebugAction::ShowChunkBorders if player => {
                 let on = self
-                    .client
                     .debug_entries
                     .toggle_status("chunk_borders", self.client.debug);
                 self.debug_translated(if on {

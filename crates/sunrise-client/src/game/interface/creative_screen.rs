@@ -3,20 +3,18 @@
 use super::*;
 impl Game<'_> {
     pub(super) fn creative_inventory_open(&self) -> bool {
-        self.client.screen == Screen::Creative && self.client.creative_screen.tab().inventory
+        self.client.screen == Screen::Creative && self.creative_screen.tab().inventory
     }
     /// An item tab of the creative screen (its ItemPickerMenu).
     pub(super) fn creative_tab_open(&self) -> bool {
-        self.client.screen == Screen::Creative && !self.client.creative_screen.tab().inventory
+        self.client.screen == Screen::Creative && !self.creative_screen.tab().inventory
     }
     /// The stack at a resolved display slot on the active item tab, accounting for scroll.
     pub(super) fn creative_display_stack(&self, slot: usize) -> Option<ItemStack> {
         let names = &self.pack.names;
         let cell = slot - Creative::DISPLAY;
-        let first_row = self.client.creative_screen.first_row(names);
-        self.client
-            .creative_screen
-            .shown(names, first_row * 9 + cell)
+        let first_row = self.creative_screen.first_row(names);
+        self.creative_screen.shown(names, first_row * 9 + cell)
     }
     pub(super) fn creative_origin(batch: &HudBatch) -> (f32, f32) {
         batch.centered_origin(Creative::WIDTH, Creative::HEIGHT)
@@ -62,7 +60,7 @@ impl Game<'_> {
         stack: &ItemStack,
         grid: bool,
     ) -> Vec<(sunrise_client::text::Text, u32)> {
-        let screen = &self.client.creative_screen;
+        let screen = &self.creative_screen;
         let tab = screen.tab();
         let category = !tab.search && !tab.inventory;
         if !sunrise_client::creative::tooltip_lists_tabs(category, grid) {
@@ -91,9 +89,9 @@ impl Game<'_> {
         // CreativeModeInventoryScreen: `CommonComponents.EMPTY` for a title.
         screen_info::begin_container("creative");
         let (ox, oy) = Self::creative_origin(batch);
-        let selected = self.client.creative_screen.selected_index();
+        let selected = self.creative_screen.selected_index();
         // Only what is drawn of the tabs: their stacks stay where they are.
-        let tabs = self.client.creative_screen.tab_headers();
+        let tabs = self.creative_screen.tab_headers();
         let Some(tab) = tabs.get(selected.min(tabs.len().saturating_sub(1))) else {
             return false;
         };
@@ -108,7 +106,7 @@ impl Game<'_> {
         self.render_transparent_background("creative", batch);
         // Unselected tabs behind the panel, then the panel, then the selected tab.
         for (i, t) in tabs.iter().enumerate() {
-            if i != selected && self.client.creative_screen.on_page(t) {
+            if i != selected && self.creative_screen.on_page(t) {
                 let (tx, ty) = Creative::tab_position(t);
                 batch.sprite(&self.gui.atlas, &tab_sprite(t, false), ox + tx, oy + ty);
                 let mouse = (self.client.cursor.0 - ox, self.client.cursor.1 - oy);
@@ -134,10 +132,7 @@ impl Game<'_> {
         let (tx, ty) = Creative::tab_position(tab);
         batch.sprite(&self.gui.atlas, &tab_sprite(tab, true), ox + tx, oy + ty);
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
-        for t in tabs
-            .iter()
-            .filter(|t| self.client.creative_screen.on_page(t))
-        {
+        for t in tabs.iter().filter(|t| self.creative_screen.on_page(t)) {
             let (tx, ty) = Creative::tab_position(t);
             let stack = ItemStack {
                 item: Arc::from(t.icon.as_str()),
@@ -171,7 +166,7 @@ impl Game<'_> {
         }
         if tab.search {
             // CreativeModeInventoryScreen: an unbordered EditBox of 50 at (82, 6).
-            let search = &mut self.client.creative_screen.search;
+            let search = &mut self.creative_screen.search;
             search.x = ox + 82.0;
             search.y = oy + 6.0;
             search.width = 80.0;
@@ -211,8 +206,8 @@ impl Game<'_> {
             }
             self.draw_hovered_slot_highlight(batch, true, ox, oy);
         } else {
-            let items = self.client.creative_screen.items(&self.pack.names);
-            let first = self.client.creative_screen.first_row(&self.pack.names);
+            let items = self.creative_screen.items(&self.pack.names);
+            let first = self.creative_screen.first_row(&self.pack.names);
             for r in 0..5 {
                 for c in 0..9 {
                     let Some(stack) = items.get((first + r) * 9 + c).filter(|s| s.count > 0) else {
@@ -243,7 +238,7 @@ impl Game<'_> {
                     hovered = self.inventory[c].clone().map(|s| (s, false));
                 }
             }
-            let scrollable = self.client.creative_screen.rows(&self.pack.names) > 5;
+            let scrollable = self.creative_screen.rows(&self.pack.names) > 5;
             let scroller = if scrollable {
                 "container/creative_inventory/scroller"
             } else {
@@ -253,7 +248,7 @@ impl Game<'_> {
                 &self.gui.atlas,
                 scroller,
                 ox + Creative::SCROLL_X,
-                oy + Creative::SCROLL_Y + self.client.creative_screen.scroller_offset(),
+                oy + Creative::SCROLL_Y + self.creative_screen.scroller_offset(),
             );
         }
         let effect_tip = self.draw_inventory_effects(batch, (ox, oy), Creative::WIDTH as i32);
@@ -301,7 +296,6 @@ impl Game<'_> {
         }
         // CreativeModeInventoryScreen.checkTabHovering: a tab says its name.
         if let Some(i) = self
-            .client
             .creative_screen
             .hovered_tab((ox, oy), self.client.cursor)
             && let Some(t) = tabs.get(i)
@@ -347,7 +341,7 @@ impl Game<'_> {
     }
     /// The page buttons and "page / pages" between them.
     pub(super) fn draw_creative_pages(&self, batch: &mut HudBatch, ox: f32, oy: f32) {
-        let pages = self.client.creative_screen.pages();
+        let pages = self.creative_screen.pages();
         if pages <= 1 {
             return;
         }
@@ -355,7 +349,7 @@ impl Game<'_> {
         let y = oy - 50.0;
         for (x, label, step) in [(ox, "<", -1), (ox + Creative::WIDTH - 20.0, ">", 1)] {
             let hover = Self::creative_page_button(ox, oy, self.client.cursor, pages) == Some(step);
-            let page = self.client.creative_screen.page as i64 + step;
+            let page = self.creative_screen.page as i64 + step;
             let active = (0..pages as i64).contains(&page);
             let sprite = match (active, hover) {
                 (false, _) => "widget/button_disabled",
@@ -371,7 +365,7 @@ impl Game<'_> {
             let w = HudBatch::text_width(atlas, label);
             batch.text(atlas, label, x + (20.0 - w) / 2.0, y + 6.0, color, true);
         }
-        let text = format!("{} / {}", self.client.creative_screen.page + 1, pages);
+        let text = format!("{} / {}", self.creative_screen.page + 1, pages);
         let w = HudBatch::text_width(atlas, &text);
         batch.text(
             atlas,
@@ -398,22 +392,22 @@ impl Game<'_> {
         let (cx, cy) = self.client.cursor;
         // NeoForge's page buttons, when mods add tabs.
         if let Some(step) =
-            Self::creative_page_button(ox, oy, (cx, cy), self.client.creative_screen.pages())
+            Self::creative_page_button(ox, oy, (cx, cy), self.creative_screen.pages())
         {
             // Page buttons are outside the inventory panel; their release must
             // not throw a carried stack, including when the button is disabled.
             self.client.inv_clicks.skip_release();
-            let page = self.client.creative_screen.page as i64 + step;
-            if (0..self.client.creative_screen.pages() as i64).contains(&page) {
+            let page = self.creative_screen.page as i64 + step;
+            if (0..self.creative_screen.pages() as i64).contains(&page) {
                 self.audio.play_button_click();
-                self.client.creative_screen.set_page(page as u32);
+                self.creative_screen.set_page(page as u32);
                 self.refresh_saved_hotbars();
             }
             return true;
         }
         // Only the clicked tab's index is needed: cloning the tabs here copied
         // every tab's items on each click, saved hotbars' stacks included.
-        let creative = &self.client.creative_screen;
+        let creative = &self.creative_screen;
         let clicked = creative.tabs.iter().position(|t| {
             let (tx, ty) = Creative::tab_position(t);
             creative.on_page(t)
@@ -423,11 +417,7 @@ impl Game<'_> {
                 && cy < oy + ty + 32.0
         });
         if let Some(i) = clicked {
-            select_creative_tab(
-                &mut self.client.creative_screen,
-                &mut self.client.inv_clicks,
-                i,
-            );
+            select_creative_tab(&mut self.creative_screen, &mut self.client.inv_clicks, i);
             self.build_screen();
             self.refresh_saved_hotbars();
             self.client.inv_drag = None;
@@ -462,7 +452,6 @@ impl Game<'_> {
         // Holding the scrollbar scrolls as the mouse moves (mouseDragged).
         if !right
             && self
-                .client
                 .creative_screen
                 .press_scrollbar(cx - ox, cy - oy, &self.pack.names)
         {
@@ -475,7 +464,7 @@ impl Game<'_> {
     }
     /// A click on the search tab's box (`EditBox.onClick`).
     pub(super) fn creative_search_click(&mut self, ox: f32, oy: f32) -> bool {
-        if !self.client.creative_screen.tab().search {
+        if !self.creative_screen.tab().search {
             return false;
         }
         let (x, y, w, h) = (ox + 82.0, oy + 6.0, 80.0, 9.0);
@@ -484,7 +473,7 @@ impl Game<'_> {
             return false;
         }
         let shift = self.has_shift_down();
-        let search = &mut self.client.creative_screen.search;
+        let search = &mut self.creative_screen.search;
         search.x = x;
         search.y = y;
         search.width = w;

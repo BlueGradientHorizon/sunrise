@@ -81,7 +81,7 @@ fn bound_boat_case(client: bool, tick: impl Fn(&mut Game<'_>, i32)) {
         } else {
             None
         };
-        game.server.tickets.update(None);
+        game.tickets.update(None);
         game.boats
             .push(Boat::new(71, "oak".into(), Vec3::new(0.5, 70.0, 0.5), 0.0));
         game.boats.update(0, |boat| boat.hurt_time = 6);

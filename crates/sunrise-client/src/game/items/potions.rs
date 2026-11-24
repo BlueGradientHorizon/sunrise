@@ -1130,7 +1130,7 @@ impl Game<'_> {
                                 m.damage(
                                     crate::game::entity::damage_level_of!(
                                         self,
-                                        self.server.combat.attack(),
+                                        self.combat.attack(),
                                         no_push,
                                         None
                                     ),
@@ -1184,7 +1184,7 @@ impl Game<'_> {
         };
         let rules = self.world.health_rules;
         let Some(p) = self.player.as_mut() else {
-            self.server.combat.forget_noted(false);
+            self.combat.forget_noted(false);
             return;
         };
         match action {
@@ -1201,7 +1201,7 @@ impl Game<'_> {
                     && let Ok(o) = p.hurt_blocking(
                         crate::game::entity::damage_level_of!(
                             self,
-                            self.server.combat.attack(),
+                            self.combat.attack(),
                             no_push,
                             None,
                             acting_equipment!(self)
@@ -1216,7 +1216,7 @@ impl Game<'_> {
                     canceled = o.canceled;
                 }
 
-                self.server.combat.forget_noted(canceled);
+                self.combat.forget_noted(canceled);
                 self.finish_guest_damage();
             }
             EffectAction::Poison => {
@@ -1226,7 +1226,7 @@ impl Game<'_> {
                     let _ = p.hurt(
                         crate::game::entity::damage_level_of!(
                             self,
-                            self.server.combat.attack(),
+                            self.combat.attack(),
                             no_push,
                             None,
                             acting_equipment!(self)
@@ -2631,9 +2631,9 @@ impl Game<'_> {
                     let source = Damage::indirect_magic(owner.who(), [at.x, at.y, at.z]);
                     let id = m.id;
                     let mut attack = self.potion_attack(owner.who(), owner.guest);
-                    attack.projectile = self.server.combat.attack().projectile;
-                    attack.projectile_kind = self.server.combat.attack().projectile_kind;
-                    attack.projectile_type = self.server.combat.attack().projectile_type;
+                    attack.projectile = self.combat.attack().projectile;
+                    attack.projectile_kind = self.combat.attack().projectile_kind;
+                    attack.projectile_type = self.combat.attack().projectile_type;
                     let plan = self.prepare_knockback_credit(id as i32, owner.who(), &attack);
                     let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
                     self.mobs[i].damage_by(

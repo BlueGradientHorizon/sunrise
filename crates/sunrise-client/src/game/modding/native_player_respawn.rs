@@ -133,7 +133,7 @@ impl Game<'_> {
             match self.search_spawn([x, y, z].map(|v| v.floor() as i32), &mut None) {
                 Ok(at) => at,
                 Err(chunk) => {
-                    self.server.tickets.add_spawn(
+                    self.tickets.add_spawn(
                         chunk,
                         sunrise_client::ticket_levels::SpawnTicketKind::Search,
                     );

@@ -103,7 +103,6 @@ impl Game<'_> {
             || self.agent.hold_server
             || self.clock.sprinting()
             || self
-                .server
                 .server_lists
                 .as_ref()
                 .is_some_and(|lists| !lists.lock().unwrap().autosave)

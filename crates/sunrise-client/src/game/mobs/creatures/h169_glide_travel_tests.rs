@@ -78,7 +78,7 @@ fn with_role_game(
     game.world.random.set_seed(169);
     game.update_chunk_tickets();
     assert!(crate::game::ticking_chunk(&game.world, 0, 0));
-    assert!(game.server.tickets.levels().block_ticking(0, 0));
+    assert!(game.tickets.levels().block_ticking(0, 0));
     test(&mut game);
 }
 

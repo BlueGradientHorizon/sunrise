@@ -259,7 +259,7 @@ impl Game<'_> {
                     };
                     batch.text_styled(atlas, &name, cx, cy + 5.0, u32::MAX, true);
                     let xs = button_xs(cx);
-                    let status = self.client.debug_entries.status(entry.path);
+                    let status = self.debug_entries.status(entry.path);
                     for ((status_of, key, color), x) in BUTTONS.into_iter().zip(xs) {
                         let selected = status == status_of;
                         let label = Text::translate(key, &[]).with_color(if selected {
@@ -321,11 +321,8 @@ impl Game<'_> {
             Text::translate("gui.done", &[]),
         ];
         let active = [
-            !self.client.debug_entries.is_using_profile(Profile::Default),
-            !self
-                .client
-                .debug_entries
-                .is_using_profile(Profile::Performance),
+            !self.debug_entries.is_using_profile(Profile::Default),
+            !self.debug_entries.is_using_profile(Profile::Performance),
             true,
             true,
         ];
@@ -397,7 +394,7 @@ impl Game<'_> {
             for (i, row) in rows.iter().enumerate() {
                 let Row::Option(entry) = row else { continue };
                 let cy = top + 2.0 - s.scroll.amount.trunc() + i as f32 * ITEM + 2.0;
-                let status = self.client.debug_entries.status(entry.path);
+                let status = self.debug_entries.status(entry.path);
                 for ((status_of, _, _), x) in BUTTONS.into_iter().zip(button_xs(left + 2.0)) {
                     if status != status_of && ui::hovered(self.client.cursor, x, cy, BUTTON, 16.0) {
                         clicked = Some((entry.path, status_of));
@@ -410,7 +407,7 @@ impl Game<'_> {
         if let Some((path, status)) = clicked {
             // OptionEntry.setValue.
             self.audio.play_button_click();
-            self.client.debug_entries.set_status(path, status);
+            self.debug_entries.set_status(path, status);
             return true;
         }
         let (xs, fy) = footer(w, h);
@@ -426,11 +423,11 @@ impl Game<'_> {
                 } else {
                     Profile::Performance
                 };
-                if self.client.debug_entries.is_using_profile(profile) {
+                if self.debug_entries.is_using_profile(profile) {
                     return search;
                 }
                 self.audio.play_button_click();
-                self.client.debug_entries.load_profile(profile);
+                self.debug_entries.load_profile(profile);
             }
             2 => {
                 self.audio.play_button_click();
@@ -713,9 +710,7 @@ pub(in crate::game) mod tests {
         game.debug_key(KeyCode::F3, KeyAction::Press);
         game.debug_key(KeyCode::F3, KeyAction::Release);
         assert!(!game.client.debug);
-        game.client
-            .debug_entries
-            .set_status("fps", Status::AlwaysOn);
+        game.debug_entries.set_status("fps", Status::AlwaysOn);
         assert!(ScreensClientHost::debug_overlay_visible(&game));
 
         // With no screen open, the hidden HUD suppresses even an always-on entry.

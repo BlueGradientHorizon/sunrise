@@ -336,7 +336,7 @@ impl Game<'_> {
                         }
                     });
                 }
-            } else if !self.client.text_displays.contains_key(&id) {
+            } else if !self.text_displays.contains_key(&id) {
                 // AbstractInterpolationHandler.interpolateTo: without a
                 // rotation, the one it was heading for.
                 let rotation = rotation.or_else(|| r.lerps.get(&id).and_then(|l| l.rotation));

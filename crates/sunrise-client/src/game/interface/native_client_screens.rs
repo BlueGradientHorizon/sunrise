@@ -60,9 +60,9 @@ impl Game<'_> {
             }
             return Some(self.ui.death_confirm.is_none());
         }
-        if self.client.command_prompt.is_some() {
+        if self.command_prompt.is_some() {
             self.command_prompt_key(KeyCode::Escape);
-            return Some(self.client.command_prompt.is_none());
+            return Some(self.command_prompt.is_none());
         }
         if self.client.link_prompt.is_some() {
             self.answer_link_prompt(false);

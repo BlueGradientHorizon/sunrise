@@ -1025,7 +1025,7 @@ impl Game<'_> {
             count,
             has_objective,
         );
-        let changed = self.client.tab_list.set_visible(shown);
+        let changed = self.tab_list.set_visible(shown);
         if !tab_players_needed(shown, changed) {
             // World skins still need download polling and atlas residency checks.
             self.update_remote_skins();
@@ -1062,7 +1062,6 @@ impl Game<'_> {
         }
         // The faces of the players the list shows.
         let faces: std::collections::HashSet<u128> = self
-            .client
             .tab_list
             .displayed_ids(&players, &self.score.board)
             .iter()
@@ -1085,7 +1084,7 @@ impl Game<'_> {
             background: tab_list::row_background(true, self.settings.text_background_opacity),
             upside_down: &up,
         };
-        let draws = self.client.tab_list.layout(&inputs, &self.gui.atlas.font);
+        let draws = self.tab_list.layout(&inputs, &self.gui.atlas.font);
         sunrise_client::hud_layout::paint(batch, &self.gui.atlas, &draws);
     }
 }

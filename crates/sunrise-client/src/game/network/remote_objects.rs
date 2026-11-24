@@ -66,7 +66,7 @@ impl Game<'_> {
                 }
             });
         } else if let Some(shows) = super::text_displays::Shows::from_kind(kind) {
-            self.client.text_displays.insert(
+            self.text_displays.insert(
                 id as i32,
                 super::text_displays::RemoteTextDisplay::new(shows, position, yaw)
                     .with_pitch(pitch),
@@ -180,7 +180,7 @@ impl Game<'_> {
 
     /// `handleSetEntityData` for an object: what changes how it looks.
     pub(super) fn remote_object_data(&mut self, id: i32, values: &[(u8, i32, Value)]) {
-        if self.client.text_displays.contains_key(&id) {
+        if self.text_displays.contains_key(&id) {
             // ItemDisplay.DATA_ITEM_STACK, read with the server's registries.
             let item = values
                 .iter()
@@ -188,7 +188,7 @@ impl Game<'_> {
                     (23, Value::Item(stack)) => Some(self.to_stack(stack)),
                     _ => None,
                 });
-            if let Some(display) = self.client.text_displays.get_mut(&id) {
+            if let Some(display) = self.text_displays.get_mut(&id) {
                 display.show(values, item);
                 display.metadata(values);
             }
@@ -579,7 +579,7 @@ impl Game<'_> {
     /// the player (`ExperienceOrb.tick` on the client) and is never
     /// `playerTouch`ed.
     pub(super) fn clear_remote_objects(&mut self) {
-        self.client.text_displays.clear();
+        self.text_displays.clear();
         self.client.interactions.clear();
         self.ominous_spawners.clear();
         self.client.remote_knots.clear();
@@ -594,7 +594,7 @@ impl Game<'_> {
     }
 
     pub(super) fn remove_remote_object(&mut self, id: u32) {
-        self.client.text_displays.shift_remove(&(id as i32));
+        self.text_displays.shift_remove(&(id as i32));
         self.client.interactions.remove(&(id as i32));
         self.ominous_spawners.retain(|s| s.id != id);
         self.client.remote_knots.remove(&id);

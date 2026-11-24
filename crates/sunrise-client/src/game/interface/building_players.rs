@@ -294,9 +294,9 @@ mod tests {
             assert_eq!(g.dim, Dim::Nether);
             // for_player already switched the level before entering the guest.
             // The host's body must not become a phantom blocker in the Nether.
-            assert!(g.server.lan_building_boxes.boxes(Dim::Nether).is_empty());
+            assert!(g.lan_building_boxes.boxes(Dim::Nether).is_empty());
             assert_eq!(
-                g.server.lan_building_boxes.boxes(Dim::Overworld),
+                g.lan_building_boxes.boxes(Dim::Overworld),
                 vec![(
                     original.min_position().components(),
                     original.max_position().components()

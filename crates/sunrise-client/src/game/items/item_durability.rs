@@ -45,7 +45,7 @@ impl Game<'_> {
                 causing,
                 creative_source,
                 helmet,
-                !self.server.combat.refuse_player_hit,
+                !self.combat.refuse_player_hit,
                 armor_weapon,
             )?;
         if let Some(damage) = hit.helmet_damage() {

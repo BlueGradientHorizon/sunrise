@@ -45,7 +45,7 @@ mod tests {
         with_game(|game| {
             let level = game.level("minecraft:overworld").unwrap();
             prepare_entity_ticking_neighborhood(game, ChunkPos::new(-1, -1));
-            game.server.tickets.update(Some(Sources {
+            game.tickets.update(Some(Sources {
                 players: vec![(-1, -1)],
                 view_distance: 2,
                 simulation_distance: 2,
@@ -70,9 +70,9 @@ mod tests {
             );
             game.world.entities_pending.clear();
             assert_reads(game, level, [-17, 64, -17], Some(true));
-            game.server.tickets.update(None);
+            game.tickets.update(None);
             assert_reads(game, level, [-17, 64, -17], Some(true));
-            game.server.tickets.update(Some(Sources::default()));
+            game.tickets.update(Some(Sources::default()));
             assert_reads(game, level, [-17, 64, -17], Some(false));
         });
     }
@@ -83,7 +83,7 @@ mod tests {
         with_game(|game| {
             let level = game.level("minecraft:overworld").unwrap();
             prepare_entity_ticking_neighborhood(game, ChunkPos::new(0, 0));
-            game.server.tickets.update(None);
+            game.tickets.update(None);
             assert_reads(game, level, [0, 64, 0], Some(true));
             let stale = LevelRef::new(
                 mod_api::WorldEpoch::new(level.epoch().get() + 1),
@@ -98,7 +98,7 @@ mod tests {
         with_game(|game| {
             let level = game.level("minecraft:overworld").unwrap();
             prepare_entity_ticking_neighborhood(game, ChunkPos::new(0, 0));
-            game.server.tickets.update(None);
+            game.tickets.update(None);
             assert_reads(game, level, [0, 64, 0], Some(true));
             game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
             assert_reads(game, level, [0, 64, 0], None);

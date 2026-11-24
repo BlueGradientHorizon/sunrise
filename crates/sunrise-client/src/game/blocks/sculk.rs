@@ -1130,7 +1130,7 @@ impl Game<'_> {
         // every player's tickets (`update_chunk_tickets`), once the chunk is
         // lit: asked once per chunk, as the sensors share few chunks. Nothing
         // a sculk tick does loads, unloads or lights a chunk or moves a ticket.
-        let levels = self.server.tickets.levels();
+        let levels = self.tickets.levels();
         let chunks = &self.world.chunks;
         let pending = &self.world.entities_pending;
         let mut ticking = FxHashMap::<(i32, i32), bool>::default();

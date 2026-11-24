@@ -1022,7 +1022,7 @@ impl Game<'_> {
         let told = |id: i32| {
             let id = id as u32;
             self.mob_index.get_ref(&self.mobs, id).is_some()
-                || self.client.text_displays.contains_key(&(id as i32))
+                || self.text_displays.contains_key(&(id as i32))
                 || flying.contains(&id)
         };
         if running {

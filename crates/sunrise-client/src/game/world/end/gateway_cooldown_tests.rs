@@ -159,12 +159,10 @@ fn game_gateway_phases() -> [[i32; 2]; 4] {
         game.creatures.projectiles[0].kind,
         ProjectileKind::EnderPearl
     ));
-    game.server
-        .tickets
-        .update(Some(crate::ticket_levels::Sources {
-            forced: vec![(0, 0)],
-            ..Default::default()
-        }));
+    game.tickets.update(Some(crate::ticket_levels::Sources {
+        forced: vec![(0, 0)],
+        ..Default::default()
+    }));
     assert!(game.entity_ticking_area()(4, 4));
     for &id in &ids {
         let mut state = Traveller::default();

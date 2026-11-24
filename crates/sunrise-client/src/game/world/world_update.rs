@@ -164,8 +164,7 @@ impl Game<'_> {
         // The configuration connection is not a guest and owns no player area.
         // `extra` finishes chunks through radius + 1, even with no players.
         self.streaming.extra.extend(
-            self.server
-                .tickets
+            self.tickets
                 .spawn_areas()
                 .map(|(center, radius)| (center, radius - 1)),
         );
@@ -176,7 +175,7 @@ impl Game<'_> {
                     .lan
                     .configuration_tasks
                     .loading_spawns(dim.id())
-                    .filter(|&center| !self.server.tickets.holds_player_spawn(center))
+                    .filter(|&center| !self.tickets.holds_player_spawn(center))
                     .map(|center| {
                         (
                             center,

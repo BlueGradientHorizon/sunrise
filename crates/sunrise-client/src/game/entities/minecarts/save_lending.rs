@@ -66,9 +66,9 @@ impl Game<'_> {
             self.destroy_type(sunrise_client::gamerules::vanilla::TNT_EXPLOSION_DROP_DECAY);
         // MinecartTNT.isPrimed (fuse > -1): a cart that ran into a wall or
         // fell unprimed blows rails up like any blast.
-        self.server.combat.rail_proof_blast = c.fuse >= 0;
-        self.server.combat.explosion_in_water = self.bounds_in_water(c.bounds());
-        self.server.combat.explosion_direct = Some(c.id);
+        self.combat.rail_proof_blast = c.fuse >= 0;
+        self.combat.explosion_in_water = self.bounds_in_water(c.bounds());
+        self.combat.explosion_direct = Some(c.id);
         let _ = self.with_hive_emptying_blast(|g| {
             g.server_explode_from(
                 at,
@@ -84,9 +84,9 @@ impl Game<'_> {
                     ),
             )
         });
-        self.server.combat.explosion_direct = None;
-        self.server.combat.explosion_in_water = false;
-        self.server.combat.rail_proof_blast = false;
+        self.combat.explosion_direct = None;
+        self.combat.explosion_in_water = false;
+        self.combat.rail_proof_blast = false;
         true
     }
     /// Accepted damage is distinct from survival, destruction, or TNT priming.

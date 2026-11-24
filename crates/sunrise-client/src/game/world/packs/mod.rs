@@ -594,9 +594,7 @@ impl Game<'_> {
         // in the listener order. All renderer and model validation is finished.
         self.apply_client_reload(client_applies, |game| {
             // Refresh modifiers from the newly staged packs, including removals.
-            game.client
-                .creative_screen
-                .set_pack_modifiers(tab_modifiers);
+            game.creative_screen.set_pack_modifiers(tab_modifiers);
             game.refresh_creative_search_names();
             [
                 game.client.frame_model,
@@ -607,7 +605,7 @@ impl Game<'_> {
             game.client.waypoint_styles = waypoint_styles;
             game.armor_stand_assets.apply_resources(armor_stand_assets);
             game.armor_stand_assets.extensions = item_extensions;
-            game.server.random_tick_sections.clear();
+            game.random_tick_sections.clear();
             game.portals.sections.clear();
             game.options.resources = root.clone();
             game.client.falling_vertices.get_mut().clear();

@@ -77,7 +77,7 @@ impl Game<'_> {
         source: Damage,
         aim: Option<sunrise_client::mobs::Aim>,
     ) -> bool {
-        if self.server.combat.attack().projectile != Some(projectile.id as i32) {
+        if self.combat.attack().projectile != Some(projectile.id as i32) {
             let attack = self.projectile_attack(projectile);
             return self.with_attack(attack, |game| {
                 game.damage_projectile_with_weapon(projectile, id, amount, source, aim)
@@ -90,21 +90,15 @@ impl Game<'_> {
         else {
             return false;
         };
-        let plan =
-            self.prepare_knockback_credit(id as i32, source.attacker, self.server.combat.attack());
+        let plan = self.prepare_knockback_credit(id as i32, source.attacker, self.combat.attack());
         // The projectile's shooter, the hit's causing entity.
-        let shooter = self.server.combat.attack().attacker;
+        let shooter = self.combat.attack().attacker;
         let decision = crate::game::entity::causer_decision!(self, shooter);
         let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
         let (victim, lend) =
             crate::game::entity::victim_and_causer!(self, index, shooter, decision);
         let hurt = victim.damage_projectile(
-            crate::game::entity::damage_level_of!(
-                self,
-                self.server.combat.attack(),
-                &mut credit,
-                lend
-            ),
+            crate::game::entity::damage_level_of!(self, self.combat.attack(), &mut credit, lend),
             amount,
             source,
             aim,
@@ -168,7 +162,6 @@ impl Game<'_> {
         let player = self.own_entity_id() as u32;
         let attacker = shot.owner.map(|owner| match owner {
             Who::Player => self
-                .server
                 .combat
                 .enchantment_projectile_attacker
                 .or_else(|| self.player_attacker(shot.guest).map(|s| s.0))
@@ -294,8 +287,7 @@ impl Game<'_> {
                     .then(|| self.target_loot_entity(crate::game::commands::Target::Mob(id)))
                     // A charged creeper's blast kills after the creeper left the list.
                     .or_else(|| {
-                        self.server
-                            .combat
+                        self.combat
                             .charged_exploders
                             .contains(&id)
                             .then(|| LootEntity {
@@ -425,7 +417,7 @@ impl Game<'_> {
         });
         if skulls && let Some(Who::Mob(id)) = m.last_damage.and_then(|(d, _)| d.attacker) {
             // Creeper.droppedSkulls: one head per charged explosion.
-            self.server.combat.charged_exploders.retain(|c| *c != id);
+            self.combat.charged_exploders.retain(|c| *c != id);
             if let Some(creeper) = self.mobs.iter_mut().find(|o| o.id == id) {
                 creeper.extra.charged = false;
             }

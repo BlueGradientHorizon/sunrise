@@ -3937,7 +3937,7 @@ mod random_chance_command_tests {
             assert!(game.fns.store.predicates.contains_key(&name));
             game.world.random.set_seed(seed);
             game.run_command("scoreboard players set branch h122 -99");
-            game.server.exec = Default::default();
+            game.exec = Default::default();
             let source = game.player_source();
             game.execute_line(&format!("execute as 0000007a-0000-0000-0000-000000000001 if predicate {name} run scoreboard players set branch h122 1"),source).unwrap();
             assert_eq!(

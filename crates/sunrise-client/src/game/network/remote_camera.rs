@@ -448,7 +448,7 @@ impl Game<'_> {
             || self.dropped.iter().any(|d| d.id == id)
             || self.falling.iter().any(|f| f.id == id)
             || self.crystals.iter().any(|c| c.id == id)
-            || self.client.text_displays.contains_key(&(id as i32))
+            || self.text_displays.contains_key(&(id as i32))
             || self.hook.as_ref().is_some_and(|h| h.id() == id)
             || self.client.remote_hooks.iter().any(|h| h.id() == id)
             || self.potions.remote_thrown_pose(id).is_some()
@@ -1386,7 +1386,7 @@ impl Game<'_> {
                 "minecraft:fishing_bobber",
             ));
         }
-        if let Some(d) = self.client.text_displays.get(&id) {
+        if let Some(d) = self.text_displays.get(&id) {
             let mut camera = d.camera_entity();
             camera.mount = mount;
             return Some(non_living_subject(

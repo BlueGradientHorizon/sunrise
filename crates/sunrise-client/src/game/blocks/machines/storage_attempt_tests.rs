@@ -1510,8 +1510,7 @@ fn extract_notifications_cross_signal_each_tick_and_comparator_ticks_every_secon
                     }
                 }
             }
-            game.server
-                .tickets
+            game.tickets
                 .update(Some(sunrise_client::ticket_levels::Sources {
                     forced: vec![(0, 0)],
                     ..Default::default()

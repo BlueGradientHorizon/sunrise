@@ -667,7 +667,7 @@ fn server_reload_delivers_mod_files_overrides_and_preserves_all_data_on_failure(
             let old_function = game.fns.store.functions["reload_test:keep"].clone();
             let old_selection = std::fs::read(world.join("datapacks.json")).unwrap();
             let old_enabled = game.fns.enabled().to_vec();
-            let old_vanilla_disabled = game.server.cmds.vanilla_disabled;
+            let old_vanilla_disabled = game.cmds.vanilla_disabled;
             write(&data, "4");
             write(&function, "say new");
             reject.store(true, Ordering::Relaxed);
@@ -699,7 +699,7 @@ fn server_reload_delivers_mod_files_overrides_and_preserves_all_data_on_failure(
                 "the refused change publishes nothing"
             );
             assert_eq!(
-                game.server.cmds.vanilla_disabled, old_vanilla_disabled,
+                game.cmds.vanilla_disabled, old_vanilla_disabled,
                 "the refused change flips no command switch"
             );
             assert!(game.fns.store.functions.contains_key("reload_test:keep"));

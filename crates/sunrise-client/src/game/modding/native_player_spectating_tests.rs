@@ -95,7 +95,7 @@ const FAR: [f64; 3] = [9.5, 70.0, 9.5];
 const NEAR: [f64; 3] = [3.0, 64.0, 5.0];
 
 fn camera(game: &super::Game<'_>, conn: u32) -> Option<i32> {
-    game.server.cmds.guest_cameras.get(&conn).map(|c| c.id)
+    game.cmds.guest_cameras.get(&conn).map(|c| c.id)
 }
 
 #[test]

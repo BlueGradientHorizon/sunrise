@@ -37,10 +37,8 @@ impl Game<'_> {
     /// What is stuck in the player or the mob a handle names.
     fn native_living_stuck(&mut self, living: LivingRef) -> Option<&mut Stuck> {
         match self.native_living_target(living)? {
-            Target::Player => Some(&mut self.server.combat.stuck),
-            Target::Guest(conn) => {
-                Some(&mut self.server.guest_combat.entry(conn).or_default().stuck)
-            }
+            Target::Player => Some(&mut self.combat.stuck),
+            Target::Guest(conn) => Some(&mut self.guest_combat.entry(conn).or_default().stuck),
             Target::Mob(id) => self
                 .mobs
                 .iter_mut()
@@ -1167,7 +1165,7 @@ mod tests {
             assert!(game.living_set_stinger_count(player, 2));
             assert!(game.living_set_arrow_removal_ticks(player, 7));
             assert!(game.living_set_stinger_removal_ticks(player, 9));
-            let stuck = &game.server.guest_combat[&12].stuck;
+            let stuck = &game.guest_combat[&12].stuck;
             assert_eq!((stuck.arrows, stuck.stingers), (4, 2));
             assert_eq!((stuck.remove_arrow_time, stuck.remove_stinger_time), (7, 9));
             assert_eq!(game.living_arrow_count(player), Some(4));

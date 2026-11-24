@@ -49,8 +49,8 @@ impl Game<'_> {
         Some(tab_list(
             &remote.listed_tab_players(),
             &self.score.board,
-            self.client.tab_list.header.as_ref(),
-            self.client.tab_list.footer.as_ref(),
+            self.tab_list.header.as_ref(),
+            self.tab_list.footer.as_ref(),
         ))
     }
 

@@ -69,14 +69,8 @@ impl Game<'_> {
             // screen's search (OptionsUi::typing).
             Screen::Options => self.ui.options.typing(),
             Screen::WorldOptions => self.world_options_typing(),
-            Screen::Creative => {
-                self.mod_browser_typing() || self.client.creative_screen.tab().search
-            }
-            Screen::BlockEditor => self
-                .client
-                .block_editor
-                .as_ref()
-                .is_some_and(|s| s.text_focused()),
+            Screen::Creative => self.mod_browser_typing() || self.creative_screen.tab().search,
+            Screen::BlockEditor => self.block_editor.as_ref().is_some_and(|s| s.text_focused()),
             Screen::Inventory => {
                 self.mod_browser_typing() || self.recipe_search_focused() || self.station_typing()
             }

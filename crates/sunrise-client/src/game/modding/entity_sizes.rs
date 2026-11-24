@@ -1143,10 +1143,8 @@ mod tests {
     /// The F3+B outline's white edges: their lowest and highest corner.
     fn white_outline(game: &mut crate::game::Game<'_>) -> ([f64; 3], [f64; 3]) {
         // F3+B, on entries with no file behind them: nothing is saved.
-        game.client.debug_entries = sunrise_client::debug_entries::DebugEntries::default();
-        game.client
-            .debug_entries
-            .toggle_status("entity_hitboxes", false);
+        game.debug_entries = sunrise_client::debug_entries::DebugEntries::default();
+        game.debug_entries.toggle_status("entity_hitboxes", false);
         let gizmos = game.debug_gizmos(1.0, [0.0; 3]);
         let ends: Vec<[f64; 3]> = gizmos
             .lines

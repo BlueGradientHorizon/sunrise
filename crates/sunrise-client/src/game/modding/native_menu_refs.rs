@@ -904,14 +904,8 @@ mod tests {
     }
 
     fn creative_tab(game: &mut Game<'_>, pick: impl Fn(&sunrise_client::creative::Tab) -> bool) {
-        let tab = game
-            .client
-            .creative_screen
-            .tabs
-            .iter()
-            .position(pick)
-            .unwrap();
-        game.client.creative_screen.select(tab);
+        let tab = game.creative_screen.tabs.iter().position(pick).unwrap();
+        game.creative_screen.select(tab);
     }
 
     /// A hidden window's offscreen renderer over a joined level with the player's body in it,
@@ -1099,21 +1093,21 @@ mod tests {
 
                     // Seven rows: scrolled to the bottom, the first shown row is the third.
                     creative_tab(game, |t| !t.inventory && !t.search && !t.items.is_empty());
-                    let tab = game.client.creative_screen.selected_index();
+                    let tab = game.creative_screen.selected_index();
                     let mut items = vec![ItemStack::new("minecraft:stone", 17); 63];
                     items[0] = sword.clone();
                     items[1].count = 0;
                     items[18] = potion;
-                    game.client.creative_screen.tabs[tab].items = items;
-                    game.client.creative_screen.forget_items();
+                    game.creative_screen.tabs[tab].items = items;
+                    game.creative_screen.forget_items();
                     is_sword(hover(game, Creative::DISPLAY));
                     assert_eq!(hover(game, Creative::DISPLAY + 1), None);
                     is_stone(hover(game, Creative::DISPLAY + 2));
                     is_sword(hover(game, 0));
-                    game.client.creative_screen.scroll = 1.0;
+                    game.creative_screen.scroll = 1.0;
                     is_potion(hover(game, Creative::DISPLAY));
 
-                    game.client.creative_screen = Creative::from_json(&serde_json::json!({
+                    game.creative_screen = Creative::from_json(&serde_json::json!({
                         "schema": 4, "item_features": {}, "potion_features": {}, "tabs": [{
                             "id": "minecraft:search", "type": "SEARCH", "title": "Search Items",
                             "build": [], "search_metadata": [{

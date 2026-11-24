@@ -157,14 +157,14 @@ fn a_creative_blast_leaves_no_cushion_item() {
         game.dropped.clear();
         assert!(game.place_cushion(&top_hit(), &named_stack()));
         // `Explosion.getIndirectSourceEntity` of a player's TNT is the player.
-        game.server.combat = Default::default();
-        game.server.combat.blast_owner = Some(if owner_player {
+        game.combat = Default::default();
+        game.combat.blast_owner = Some(if owner_player {
             (1, Text::literal("Steve"))
         } else {
             (700, Text::literal("Zombie"))
         });
-        game.server.combat.blast_owner_player = owner_player;
-        game.server.combat.blast_guest = guest;
+        game.combat.blast_owner_player = owner_player;
+        game.combat.blast_guest = guest;
         game.server.lan_acting = guest;
         game.server_explode(
             [4.5, 200.5, 4.5],

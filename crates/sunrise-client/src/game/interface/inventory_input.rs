@@ -18,20 +18,16 @@ impl Game<'_> {
         shortcut: Option<sunrise_client::clipboard::EditShortcut>,
     ) -> Result<bool> {
         let creative = self.client.screen == Screen::Creative;
-        let search = creative && self.client.creative_screen.tab().search;
+        let search = creative && self.creative_screen.tab().search;
         self.client.creative_ignore_text = false;
         let binding = sunrise_client::keybinds::key_name(raw);
         let chat = binding == Some(self.settings.keys.get("key.chat"));
         if creative
             && !search
             && chat
-            && let Some(tab) = self.client.creative_screen.search_tab()
+            && let Some(tab) = self.creative_screen.search_tab()
         {
-            select_creative_tab(
-                &mut self.client.creative_screen,
-                &mut self.client.inv_clicks,
-                tab,
-            );
+            select_creative_tab(&mut self.creative_screen, &mut self.client.inv_clicks, tab);
             self.build_screen();
             self.client.creative_ignore_text = true;
             return Ok(true);
@@ -51,11 +47,11 @@ impl Game<'_> {
                 if let Some(shortcut) = shortcut {
                     self.creative_search_shortcut(shortcut);
                 } else {
-                    let before = self.client.creative_screen.search.value.clone();
+                    let before = self.creative_screen.search.value.clone();
                     let (ctrl, shift) = (self.has_control_down(), self.has_shift_down());
-                    self.client.creative_screen.search.key(raw, ctrl, shift);
-                    if self.client.creative_screen.search.value != before {
-                        self.client.creative_screen.scroll = 0.0;
+                    self.creative_screen.search.key(raw, ctrl, shift);
+                    if self.creative_screen.search.value != before {
+                        self.creative_screen.scroll = 0.0;
                     }
                 }
                 return Ok(true);
@@ -189,8 +185,7 @@ impl Game<'_> {
     /// search tab's box takes the key instead.
     pub(super) fn inventory_pick_key(&mut self) {
         let menu = (self.client.screen == Screen::Inventory
-            || (self.client.screen == Screen::Creative
-                && !self.client.creative_screen.tab().search))
+            || (self.client.screen == Screen::Creative && !self.creative_screen.tab().search))
             && !self.dialog_open();
         let Some(size) = self
             .renderer

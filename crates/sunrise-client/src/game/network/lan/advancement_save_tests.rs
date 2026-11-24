@@ -49,7 +49,7 @@ mod connected_advancement_save_tests {
             Some(Default::default()),
         ));
         use sunrise_client::server::user_lists::{BanList, IpBanList, OpList, WhiteList};
-        game.server.server_lists = Some(Arc::new(Mutex::new(super::super::dedicated::Lists {
+        game.server_lists = Some(Arc::new(Mutex::new(super::super::dedicated::Lists {
             ops: OpList::new(dir.join("ops.json")),
             white: WhiteList::new(dir.join("whitelist.json")),
             bans: BanList::new(dir.join("banned-players.json")),
@@ -216,7 +216,7 @@ mod connected_advancement_preservation_tests {
             Some(Default::default()),
         ));
         use sunrise_client::server::user_lists::{BanList, IpBanList, OpList, WhiteList};
-        game.server.server_lists = Some(Arc::new(Mutex::new(super::super::dedicated::Lists {
+        game.server_lists = Some(Arc::new(Mutex::new(super::super::dedicated::Lists {
             ops: OpList::new(dir.join("ops.json")),
             white: WhiteList::new(dir.join("whitelist.json")),
             bans: BanList::new(dir.join("banned-players.json")),

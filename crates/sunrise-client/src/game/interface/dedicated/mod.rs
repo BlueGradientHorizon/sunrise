@@ -994,7 +994,7 @@ impl Game<'_> {
         lists.op_level = props.op_permission_level;
         lists.player_idle_timeout = props.player_idle_timeout;
         let lists = Arc::new(Mutex::new(lists));
-        self.server.server_lists = Some(lists.clone());
+        self.server_lists = Some(lists.clone());
         log("INFO", &format!("Preparing level \"{level_name}\""));
         let level_load_started = Instant::now();
         let folder = world_dir.to_string_lossy().into_owned();

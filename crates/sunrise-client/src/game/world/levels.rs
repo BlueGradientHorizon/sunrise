@@ -1097,11 +1097,7 @@ impl Game<'_> {
             .chain(matches!(back, Dim::Extra(_)).then_some(back));
         for dim in dims.clone() {
             self.enter_level(dim)?;
-            Self::load_saved_level_tickets(
-                &self.save,
-                &mut self.streaming,
-                &mut self.server.tickets,
-            );
+            Self::load_saved_level_tickets(&self.save, &mut self.streaming, &mut self.tickets);
             self.validate_mod_chunk_tickets(dim);
         }
         self.server.startup_ticket_restore_pending = false;
@@ -1150,7 +1146,7 @@ impl Game<'_> {
         }
         loop {
             self.update_chunk_tickets();
-            let levels = self.server.tickets.levels();
+            let levels = self.tickets.levels();
             let streaming = &self.streaming;
             let ready = streaming
                 .forced
@@ -1191,11 +1187,8 @@ impl Game<'_> {
         swap(&mut self.save, &mut p.save);
         swap(&mut self.block_ticks, &mut p.block_ticks);
         swap(&mut self.server.tick_chunks, &mut p.tick_chunks);
-        swap(&mut self.server.tickets, &mut p.tickets);
-        swap(
-            &mut self.server.random_tick_sections,
-            &mut p.random_tick_sections,
-        );
+        swap(&mut self.tickets, &mut p.tickets);
+        swap(&mut self.random_tick_sections, &mut p.random_tick_sections);
         swap(&mut self.level_events, &mut p.level_events);
         swap(&mut self.portals.entities, &mut p.portal_states);
         swap(&mut self.falling, &mut p.falling);
@@ -1243,7 +1236,7 @@ impl Game<'_> {
         swap(&mut a.gateways, &mut b.gateways);
         swap(&mut a.gateway_servers, &mut b.gateway_servers);
         swap(&mut a.conduit_servers, &mut b.conduit_servers);
-        self.server.raiding.swap_level(&mut p.raiding);
+        self.raiding.swap_level(&mut p.raiding);
         self.sculk.swap_level(&mut p.sculk);
         self.server.creaking.swap_level(&mut p.creaking);
         swap(&mut self.server.spawn_scratch, &mut p.spawn_scratch);
@@ -1850,7 +1843,7 @@ impl Game<'_> {
             return true;
         }
         if dim == self.dim {
-            self.server.tickets.spawn_areas().next().is_some()
+            self.tickets.spawn_areas().next().is_some()
         } else {
             self.levels
                 .parked
@@ -1862,7 +1855,7 @@ impl Game<'_> {
     /// The portal tickets of `dim`'s level (`placePortalTicket`, or saved).
     pub(super) fn portal_tickets_in(&self, dim: Dim) -> &[PortalTicket] {
         if dim == self.dim {
-            self.server.tickets.portal_tickets()
+            self.tickets.portal_tickets()
         } else {
             self.levels
                 .parked
@@ -1878,8 +1871,7 @@ impl Game<'_> {
     /// (`portal_ticket_can_expire`).
     pub(super) fn portal_ticket_areas(&self) -> Vec<((i32, i32), i32)> {
         let block_ticking = i32::from(sunrise_client::ticket_levels::BLOCK_TICKING);
-        self.server
-            .tickets
+        self.tickets
             .portal_tickets()
             .iter()
             .map(|t| (t.chunk, (block_ticking - t.level).max(1)))
@@ -1888,8 +1880,7 @@ impl Game<'_> {
 
     /// Whether saving is currently disabled (`/save-off`, `ServerLevel.noSave`).
     fn saving_disabled(&self) -> bool {
-        self.server
-            .server_lists
+        self.server_lists
             .as_ref()
             .is_some_and(|lists| !lists.lock().unwrap().autosave)
     }
@@ -2990,7 +2981,7 @@ mod tests {
             game.settings.render_distance = 2;
             game.settings.simulation_distance = 2;
             game.streaming.radius = -1;
-            game.server.server_lists = Some(Arc::new(Mutex::new(crate::game::dedicated::Lists {
+            game.server_lists = Some(Arc::new(Mutex::new(crate::game::dedicated::Lists {
                 ops: OpList::new(home.path().join("ops.json")),
                 white: WhiteList::new(home.path().join("whitelist.json")),
                 bans: BanList::new(home.path().join("banned-players.json")),

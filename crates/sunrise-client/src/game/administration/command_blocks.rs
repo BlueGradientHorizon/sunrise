@@ -332,11 +332,11 @@ impl Game<'_> {
     pub(super) fn run_as_game_master(&mut self, command: &str, source: Source) -> i32 {
         // performPrefixedCommand: a leading slash is allowed.
         let line = command.strip_prefix('/').unwrap_or(command).to_owned();
-        let outer = self.server.cmds.results.replace(Vec::new());
+        let outer = self.cmds.results.replace(Vec::new());
         let level = std::mem::replace(&mut self.ui.registries.permission, 2);
         self.with_source(source, |g| g.run_command(&line));
         self.ui.registries.permission = level;
-        let results = std::mem::replace(&mut self.server.cmds.results, outer).unwrap_or_default();
+        let results = std::mem::replace(&mut self.cmds.results, outer).unwrap_or_default();
         results.iter().filter(|(success, _)| *success).count() as i32
     }
     /// `CloseableCommandBlockSource.sendSystemMessage`: the block's last

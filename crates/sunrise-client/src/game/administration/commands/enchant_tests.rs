@@ -58,15 +58,14 @@ fn integrated_enchant_updates_the_clients_selected_slot() {
         client.set_screen(Screen::Creative);
         // Supply the category's displayed stack, not a predicted or server slot.
         let category = client
-            .client
             .creative_screen
             .tabs
             .iter()
             .position(|tab| !tab.search && !tab.inventory && !tab.hotbar)
             .unwrap();
-        client.client.creative_screen.select(category);
-        client.client.creative_screen.tabs[category].items = vec![ItemStack::new(TRIDENT, 1)];
-        client.client.creative_screen.forget_items();
+        client.creative_screen.select(category);
+        client.creative_screen.tabs[category].items = vec![ItemStack::new(TRIDENT, 1)];
+        client.creative_screen.forget_items();
         let display = Creative::DISPLAY;
         sent(&mut wire);
         match target {

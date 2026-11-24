@@ -55,17 +55,17 @@ impl Game<'_> {
             }
         }
         let states = EntryStates {
-            selection: &self.client.debug_entries,
+            selection: &self.debug_entries,
             entries: &self.registered_debug_entries,
             overlay: self.client.debug,
             reduced: self.reduced_debug_info(),
         };
         let renderers = mods::debug_renderers(self.options.execution_role, &states);
-        self.debug_renderers = self.client.debug_entries.active_renderers(renderers);
+        self.debug_renderers = self.debug_entries.active_renderers(renderers);
     }
     /// `DebugRenderer.emitGizmos`'s first half: a selection the list has not seen refreshes it.
     fn follow_debug_selection(&mut self) {
-        let version = self.client.debug_entries.enabled_version();
+        let version = self.debug_entries.enabled_version();
         if self.client.debug_renderers_version != Some(version) {
             self.client.debug_renderers_version = Some(version);
             self.refresh_debug_renderers();

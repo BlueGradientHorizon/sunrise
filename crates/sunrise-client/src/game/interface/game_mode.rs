@@ -55,7 +55,7 @@ impl Game<'_> {
                 self.set_screen(Screen::Creative);
                 if self.client.screen == Screen::Creative {
                     self.refresh_creative_tabs();
-                    self.client.creative_screen.reopen();
+                    self.creative_screen.reopen();
                     self.refresh_saved_hotbars();
                 }
             }

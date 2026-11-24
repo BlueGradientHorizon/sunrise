@@ -67,7 +67,7 @@ impl Game<'_> {
             && !self.screen_over_playing()
             && self.sleeping.is_none()
             && self.player.is_some()
-            && !self.client.debug_entries.any_enabled(
+            && !self.debug_entries.any_enabled(
                 &self.registered_debug_entries,
                 self.client.debug,
                 self.reduced_debug_info(),

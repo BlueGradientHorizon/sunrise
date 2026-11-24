@@ -356,17 +356,16 @@ impl Game<'_> {
             .map_or(self.own_entity_id() as u32, |s| s.0);
         let result = match victim {
             Victim::Guest(conn) => self.guest_hit_by(conn, |g| {
-                g.server.combat.refuse_player_hit = refused;
-                g.server.combat.projectile_attacker = shooter;
+                g.combat.refuse_player_hit = refused;
+                g.combat.projectile_attacker = shooter;
                 let saved_effect_attacker = g
-                    .server
                     .combat
                     .enchantment_projectile_attacker
                     .replace(effect_attacker);
                 let r = g.projectile_hit(p, on_player);
-                g.server.combat.refuse_player_hit = false;
-                g.server.combat.projectile_attacker = None;
-                g.server.combat.enchantment_projectile_attacker = saved_effect_attacker;
+                g.combat.refuse_player_hit = false;
+                g.combat.projectile_attacker = None;
+                g.combat.enchantment_projectile_attacker = saved_effect_attacker;
                 r
             }),
         };
@@ -447,7 +446,7 @@ impl Game<'_> {
         let attack = self.attack_of(attacker_id);
         let land = |g: &mut Self| {
             g.with_attack(attack.clone(), |g| {
-                g.server.combat.player_attacker = Some((s.from, s.disable_blocking));
+                g.combat.player_attacker = Some((s.from, s.disable_blocking));
                 if let Some((id, name)) = attacker_note.clone() {
                     g.note_player_attacker(
                         "minecraft:player_attack",
@@ -458,7 +457,7 @@ impl Game<'_> {
                 }
                 let hurt =
                     g.mob_hits_player_from(s.amount, s.from, "minecraft:player_attack", s.creative);
-                g.server.combat.player_attacker = None;
+                g.combat.player_attacker = None;
                 let (strength, xd, zd) = s.knockback;
                 if hurt && strength > 0.0 {
                     g.knock_back_player_full(
@@ -534,9 +533,9 @@ impl Game<'_> {
             match s.attacker {
                 None => {
                     // The host is checked out here: collect the sweep for the players.
-                    self.server.combat.sweeps = Some(Vec::new());
+                    self.combat.sweeps = Some(Vec::new());
                     self.sweep_attack(at, Some(s.from), target, s.scale);
-                    for sweep in self.server.combat.sweeps.take().unwrap_or_default() {
+                    for sweep in self.combat.sweeps.take().unwrap_or_default() {
                         self.sweep_players(&sweep);
                     }
                 }
@@ -610,7 +609,7 @@ impl Game<'_> {
                     self.score_player_killed_named(Some(name), true);
                 }
                 CombatPlayer::Displaced(depth, _) => {
-                    let frame = &self.server.lan_displaced_players[depth];
+                    let frame = &self.lan_displaced_players[depth];
                     let killer = frame.name.as_deref().unwrap_or(PLAYER_NAME).to_owned();
                     self.award_displaced_stat(depth, "player_kills", 1);
                     self.score_player_kill_for(&killer, Some(&name), true);
@@ -675,7 +674,7 @@ impl Game<'_> {
     /// turn the host holds the other players (`as_guest`), so it waits for
     /// the turn to end.
     pub(super) fn sweep_other_players(&mut self, sweep: Sweep) {
-        if let Some(collect) = self.server.combat.sweeps.as_mut() {
+        if let Some(collect) = self.combat.sweeps.as_mut() {
             collect.push(sweep);
         } else if self.server.lan_acting.is_some() {
             self.creatures.sweeps.push(sweep);
@@ -1104,9 +1103,9 @@ mod tests {
         let swept = health(game, 13) < before;
 
         fresh_body(game, 13);
-        game.server.combat.blast_owner = Some((12, sunrise_client::text::Text::literal("guest12")));
-        game.server.combat.blast_owner_player = true;
-        game.server.combat.blast_guest = Some(12);
+        game.combat.blast_owner = Some((12, sunrise_client::text::Text::literal("guest12")));
+        game.combat.blast_owner_player = true;
+        game.combat.blast_guest = Some(12);
         let before = health(game, 13);
         game.server_explode(
             [3.0, 64.0, 8.0],
@@ -1116,9 +1115,9 @@ mod tests {
         )
         .unwrap();
         let blasted = health(game, 13) < before;
-        game.server.combat.blast_owner = None;
-        game.server.combat.blast_owner_player = false;
-        game.server.combat.blast_guest = None;
+        game.combat.blast_owner = None;
+        game.combat.blast_owner_player = false;
+        game.combat.blast_guest = None;
         [read, arrow, projectile, spear, melee, swept, blasted]
     }
 

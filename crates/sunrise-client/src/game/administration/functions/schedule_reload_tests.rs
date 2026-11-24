@@ -54,7 +54,7 @@ fn schedule_game<'a>(
 }
 
 fn run(game: &mut Game<'_>, line: &str) {
-    game.server.exec = ExecState::default();
+    game.exec = ExecState::default();
     let source = game.player_source();
     game.execute_line(line, source).unwrap();
 }

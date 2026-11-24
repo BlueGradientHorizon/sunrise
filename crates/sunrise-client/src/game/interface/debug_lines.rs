@@ -47,7 +47,7 @@ impl Game<'_> {
             .iter()
             .map(|e| e.path)
             .filter(|path| {
-                self.client.debug_entries.enabled(
+                self.debug_entries.enabled(
                     &self.registered_debug_entries,
                     path,
                     self.client.debug,
@@ -231,7 +231,7 @@ impl Game<'_> {
         for (group, lines) in debug_entries::mod_lines(
             &self.registered_debug_entries,
             self,
-            &self.client.debug_entries,
+            &self.debug_entries,
             self.client.debug,
             reduced,
         ) {

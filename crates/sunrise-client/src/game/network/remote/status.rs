@@ -266,7 +266,7 @@ impl Game<'_> {
             // not while invisible).
             "own_body": self.player_model_shown() && self.own_body_visible(),
             "text_display_vertices": self.client.text_display_vertices,
-            "text_displays": self.client.text_displays.len(),
+            "text_displays": self.text_displays.len(),
             "health": r.health.0,
             "food": r.health.1,
             "decode_errors": r.decode_errors,

@@ -303,7 +303,7 @@ impl Game<'_> {
         }
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         (
-            self.client.command_prompt.is_some(),
+            self.command_prompt.is_some(),
             self.client.link_prompt.is_some(),
             self.client.code_of_conduct.is_some(),
             self.server_packs.prompt.is_some(),
@@ -316,7 +316,7 @@ impl Game<'_> {
     /// B or Start on a prompt: as Escape, the top one first. The code of conduct has no answer
     /// by Escape (`shouldCloseOnEsc`), and a dialog only when it allows it.
     pub(super) fn pad_prompt_back(&mut self) -> Result<()> {
-        if self.client.command_prompt.is_some() {
+        if self.command_prompt.is_some() {
             self.answer_command_prompt(false);
         } else if self.client.link_prompt.is_some() {
             self.answer_link_prompt(false);
@@ -481,15 +481,15 @@ impl Game<'_> {
                         targets.push(slot(ox + 9.0 + c as f32 * 18.0, oy + 112.0));
                     }
                 }
-                for (i, t) in self.client.creative_screen.tabs.iter().enumerate() {
+                for (i, t) in self.creative_screen.tabs.iter().enumerate() {
                     // A tab of another page of mods' tabs isn't drawn: its place is another's.
-                    if !self.client.creative_screen.on_page(t) {
+                    if !self.creative_screen.on_page(t) {
                         continue;
                     }
                     let (x, y) = Creative::tab_position(t);
                     targets.push(Target {
                         rect: [ox + x, oy + y, 26.0, 32.0],
-                        kind: Kind::Tab(i == self.client.creative_screen.selected_index()),
+                        kind: Kind::Tab(i == self.creative_screen.selected_index()),
                     });
                 }
             }
@@ -986,9 +986,7 @@ impl Game<'_> {
                     && self.title.is_none() =>
             {
                 self.pad_take_pointer(event_loop);
-                if self.client.screen != Screen::Creative
-                    || !self.client.creative_screen.tab().search
-                {
+                if self.client.screen != Screen::Creative || !self.creative_screen.tab().search {
                     if button == Button::LeftStick {
                         self.pad_with_modifier(KeyCode::ControlLeft, |game| {
                             game.inventory_hotkey(KeyCode::KeyQ);
@@ -1348,7 +1346,7 @@ impl Game<'_> {
         self.client.pause_focus = None;
         self.client.death_focus = None;
         self.ui.options.clear_click_focus();
-        if let Some(options) = self.client.world_options.as_mut() {
+        if let Some(options) = self.world_options.as_mut() {
             options.clear_click_focus();
         }
     }
@@ -1439,21 +1437,17 @@ impl Game<'_> {
     /// another page of mods' tabs shows its page: clicking where it would be would hit the
     /// tab drawn there on this page.
     fn pad_creative_tab(&mut self, next: bool) {
-        let count = self.client.creative_screen.tabs.len();
+        let count = self.creative_screen.tabs.len();
         if count == 0 {
             return;
         }
-        let selected = self.client.creative_screen.selected_index();
+        let selected = self.creative_screen.selected_index();
         let tab = if next {
             (selected + 1) % count
         } else {
             (selected + count - 1) % count
         };
-        super::select_creative_tab(
-            &mut self.client.creative_screen,
-            &mut self.client.inv_clicks,
-            tab,
-        );
+        super::select_creative_tab(&mut self.creative_screen, &mut self.client.inv_clicks, tab);
         self.build_screen();
         self.refresh_saved_hotbars();
         self.client.inv_drag = None;
@@ -2088,7 +2082,7 @@ impl Game<'_> {
                 self.client.book,
                 Some(super::books::BookScreen::Edit { .. })
             )
-            || (playing_screen(Screen::Creative) && self.client.creative_screen.tab().search)
+            || (playing_screen(Screen::Creative) && self.creative_screen.tab().search)
             || self.recipe_search_focused()
             || self.mod_browser_typing()
             || self.station_typing()
@@ -2637,8 +2631,7 @@ impl Game<'_> {
             self.sign_input(key, text);
         } else if self.client.book.is_some() {
             self.book_input(key, text);
-        } else if self.client.screen == Screen::Creative && self.client.creative_screen.tab().search
-        {
+        } else if self.client.screen == Screen::Creative && self.creative_screen.tab().search {
             if backspace {
                 self.creative_search_backspace(false);
             } else if key != Some(KeyCode::Enter) {

@@ -111,13 +111,12 @@ impl Game<'_> {
                 Some(state)
             }
             Screen::Creative
-                if self.client.creative_screen.tab().search
-                    && !self.client.creative_ignore_text =>
+                if self.creative_screen.tab().search && !self.client.creative_ignore_text =>
             {
                 if edited.is_some() {
-                    self.client.creative_screen.scroll = 0.0;
+                    self.creative_screen.scroll = 0.0;
                 }
-                Some(visit_box(&mut self.client.creative_screen.search, edited))
+                Some(visit_box(&mut self.creative_screen.search, edited))
             }
             _ => None,
         }

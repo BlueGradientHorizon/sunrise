@@ -43,7 +43,6 @@ impl Game<'_> {
             return Some(CombatPlayer::InPlace);
         }
         if let Some((depth, body)) = self
-            .server
             .lan_displaced_players
             .iter()
             .enumerate()
@@ -69,14 +68,7 @@ impl Game<'_> {
             .map(|id| id as u32)
             .or_else(|| {
                 conn.is_none().then_some(())?;
-                Some(
-                    self.server
-                        .lan_displaced_players
-                        .first()?
-                        .body
-                        .as_ref()?
-                        .entity_id as u32,
-                )
+                Some(self.lan_displaced_players.first()?.body.as_ref()?.entity_id as u32)
             })
     }
 
@@ -89,7 +81,7 @@ impl Game<'_> {
         match self.combat_player(shooter) {
             Some(CombatPlayer::InPlace) => self.remember_player_target(target),
             Some(CombatPlayer::Displaced(depth, _)) => {
-                if let Some(body) = self.server.lan_displaced_players[depth].body.as_mut() {
+                if let Some(body) = self.lan_displaced_players[depth].body.as_mut() {
                     body.health.last_hurt_mob = target.map(|id| (id, body.health.tick_count));
                 }
             }
@@ -318,8 +310,7 @@ impl Game<'_> {
             return Err(TurnRefused::Nested);
         }
         let other_boxes =
-            self.server
-                .lan_building_boxes
+            self.lan_building_boxes
                 .for_turn(conn, Some(outer), building_players(host));
         let fresh = host.hub.guests[i].motion.is_none();
         if fresh {
@@ -364,9 +355,9 @@ impl Game<'_> {
         let guest_combat = if fresh {
             Default::default()
         } else {
-            self.server.guest_combat.remove(&conn).unwrap_or_default()
+            self.guest_combat.remove(&conn).unwrap_or_default()
         };
-        let host_combat = std::mem::replace(&mut self.server.combat, guest_combat);
+        let host_combat = std::mem::replace(&mut self.combat, guest_combat);
         host.hub.guests.update(i, |g| {
             self.potions.swap_player(&mut g.effects, &mut play.potions)
         });
@@ -574,7 +565,7 @@ impl Game<'_> {
                 spawn_protection,
             ),
         );
-        self.server.lan_displaced_players.push(DisplacedPlayer {
+        self.lan_displaced_players.push(DisplacedPlayer {
             body: player,
             name: self.server.lan_acting_name.replace(g.name.clone()),
             uuid: self.server.lan_acting_uuid.replace(g.uuid),
@@ -615,7 +606,7 @@ impl Game<'_> {
         self.update_totem_ready();
         self.entity_reach = self.interaction_range("minecraft:entity_interaction_range", 3.0, 5.0);
         self.block_reach = self.interaction_range("minecraft:block_interaction_range", 4.5, 5.0);
-        let building_boxes = std::mem::replace(&mut self.server.lan_building_boxes, other_boxes);
+        let building_boxes = std::mem::replace(&mut self.lan_building_boxes, other_boxes);
 
         run(self);
 
@@ -678,8 +669,8 @@ impl Game<'_> {
         self.ui.registries.permission = permission;
         self.sculk.swap_player(&mut play.sculk);
         // The guest's damage record back into their slot, the host's in place.
-        let guest_combat = std::mem::replace(&mut self.server.combat, host_combat);
-        self.server.guest_combat.insert(conn, guest_combat);
+        let guest_combat = std::mem::replace(&mut self.combat, host_combat);
+        self.guest_combat.insert(conn, guest_combat);
         play.modifiers = std::mem::replace(&mut self.server.applied_modifiers, modifiers);
         // What the guest shot is theirs (Projectile.setOwner).
         for i in projectiles..self.creatures.projectiles.len() {
@@ -783,11 +774,7 @@ impl Game<'_> {
         }
         host.hub.guests[i].residency.extract();
         self.hook.begin_loan();
-        let outer_player = self
-            .server
-            .lan_displaced_players
-            .pop()
-            .expect("open guest turn");
+        let outer_player = self.lan_displaced_players.pop().expect("open guest turn");
         (
             self.server.lan_acting,
             self.server.lan_acting_permission,
@@ -798,7 +785,7 @@ impl Game<'_> {
         self.server.lan_acting_uuid = outer_player.uuid;
         self.server.lan_acting_fake = outer_player.fake;
         self.server.known_movement = known_movement;
-        self.server.lan_building_boxes = building_boxes;
+        self.lan_building_boxes = building_boxes;
         play.death_cause = std::mem::replace(&mut self.ui.death_cause, death_cause);
         // An ender chest the guest opened: the menu shows their inventory
         // itself (lan_open_container), not a stand-in block entity.
@@ -1092,9 +1079,8 @@ impl Game<'_> {
         }
         // An inner turn can move, kill, or change the mode of a hub-owned body.
         if let (Some(actor), Some(host)) = (self.server.lan_acting, self.lan.as_ref()) {
-            self.server.lan_building_boxes =
-                self.server
-                    .lan_building_boxes
+            self.lan_building_boxes =
+                self.lan_building_boxes
                     .for_turn(actor, None, building_players(host));
         }
         if let Some(payload) = panic {

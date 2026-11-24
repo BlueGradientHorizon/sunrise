@@ -427,11 +427,8 @@ impl Game<'_> {
                 {
                     return;
                 }
-                let plan = self.prepare_knockback_credit(
-                    id as i32,
-                    source.attacker,
-                    self.server.combat.attack(),
-                );
+                let plan =
+                    self.prepare_knockback_credit(id as i32, source.attacker, self.combat.attack());
                 // The hit's causing entity, lent to its listeners beside the victim.
                 let causing = self.causer_id(source.attacker);
                 let decision = crate::game::entity::causer_decision!(self, causing);
@@ -441,7 +438,7 @@ impl Game<'_> {
                 let hurt = victim.damage(
                     crate::game::entity::damage_level_of!(
                         self,
-                        self.server.combat.attack(),
+                        self.combat.attack(),
                         &mut credit,
                         lend
                     ),
@@ -835,7 +832,7 @@ impl Game<'_> {
             let swap = self.world.random.next_int_bound(i as i32).unwrap_or(0) as usize;
             targets.swap(i - 1, swap);
         }
-        let breeze = self.server.combat.explosion_source.is_some_and(|id| {
+        let breeze = self.combat.explosion_source.is_some_and(|id| {
             self.creatures
                 .projectiles
                 .iter()
@@ -1068,7 +1065,7 @@ mod tests {
                 .add_empty_chunk(ChunkPos::new(0, 0))
                 .unwrap();
             assert!(game.run_command("forceload add 0 0"));
-            game.server.tickets.update(None);
+            game.tickets.update(None);
 
             game.server.ordered.announced = JoinSeq::upcoming();
             assert!(

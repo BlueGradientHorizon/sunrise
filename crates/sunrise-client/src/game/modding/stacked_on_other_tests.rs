@@ -1951,13 +1951,12 @@ mod item_part_tests {
                 game.client.screen = Screen::Creative;
                 game.refresh_creative_tabs();
                 let inv_tab = game
-                    .client
                     .creative_screen
                     .tabs
                     .iter()
                     .position(|t| t.inventory)
                     .expect("creative inventory tab");
-                game.client.creative_screen.select(inv_tab);
+                game.creative_screen.select(inv_tab);
                 assert!(game.creative_inventory_open());
                 game.inventory[9] = Some(ItemStack::new("minecraft:flint", 1));
                 game.carried = Some(ItemStack::new("minecraft:stick", 1));
@@ -1995,13 +1994,12 @@ mod item_part_tests {
                 // 4. Creative item-tab hotbar pickup runs ItemPart on HostSide::Client and sends
                 //    SetCreativeModeSlot; creative catalogue display slots do NOT dispatch Parts.
                 let item_tab = game
-                    .client
                     .creative_screen
                     .tabs
                     .iter()
                     .position(|t| !t.inventory && !t.search && !t.items.is_empty())
                     .expect("creative item tab");
-                game.client.creative_screen.select(item_tab);
+                game.creative_screen.select(item_tab);
                 assert!(game.creative_tab_open());
                 game.inventory[0] = Some(ItemStack::new("minecraft:flint", 1));
                 game.carried = Some(ItemStack::new("minecraft:stick", 1));

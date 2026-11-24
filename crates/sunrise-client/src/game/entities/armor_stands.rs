@@ -889,7 +889,7 @@ impl Game<'_> {
             direct: attacker,
             position: None,
         };
-        if super::entity::damage_level_of!(self, self.server.combat.attack(), no_push, None)
+        if super::entity::damage_level_of!(self, self.combat.attack(), no_push, None)
             .invulnerability_check(
                 sunrise_client::health::Hurting::ArmorStand(id as i32, source),
                 vanilla,
@@ -1683,7 +1683,7 @@ impl Game<'_> {
             direct: direct as i32,
             position,
         };
-        if super::entity::damage_level_of!(self, self.server.combat.attack(), no_push, None)
+        if super::entity::damage_level_of!(self, self.combat.attack(), no_push, None)
             .invulnerability_check(
                 sunrise_client::health::Hurting::ArmorStand(id as i32, source),
                 invulnerable,
@@ -1913,7 +1913,7 @@ impl Game<'_> {
             let light = self.world.light(probe[0], probe[1], probe[2]);
             let packed = a.render_light(light);
             let skinned = if skinning {
-                let mut models = self.client.skin_models.borrow_mut();
+                let mut models = self.skin_models.borrow_mut();
                 let mut frame = self.client.skin_frame.borrow_mut();
                 let mark = frame.mark();
                 let mut skin = sunrise_client::mobs::skin::Skin::new(&mut models, &mut frame);
@@ -3189,12 +3189,10 @@ mod postbaseline_lodestone_controls {
         let (all, mixed, inactive) = (id(100), id(101), id(102));
         // Direct class ticks do not refresh the headless fixture's tickets.
         // Use the existing ticket model: only chunk zero is forced to tick.
-        game.server
-            .tickets
-            .update(Some(crate::ticket_levels::Sources {
-                forced: vec![(0, 0)],
-                ..Default::default()
-            }));
+        game.tickets.update(Some(crate::ticket_levels::Sources {
+            forced: vec![(0, 0)],
+            ..Default::default()
+        }));
         assert!(game.entity_ticking_area()(4, 4));
         assert!(!game.entity_ticking_area()(65, 65));
         assert!(game.world.loaded(65, 65));

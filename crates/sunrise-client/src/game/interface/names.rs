@@ -586,7 +586,7 @@ impl Game<'_> {
         // decision and per-entity partial tick as the display itself, within 64 blocks.
         let scale = self.view_scale();
         let now = std::time::Instant::now();
-        for (&id, display) in &self.client.text_displays {
+        for (&id, display) in &self.text_displays {
             if !display.has_render_state() {
                 continue;
             }

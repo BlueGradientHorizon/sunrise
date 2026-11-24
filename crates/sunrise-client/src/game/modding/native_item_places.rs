@@ -1480,8 +1480,7 @@ pub(super) mod tests {
 
             // With no tickets every chunk is entity-ticking; the zombie must lie outside that
             // range for the tracker to describe it idle (`ChunkMap.tick`).
-            game.server
-                .tickets
+            game.tickets
                 .update(Some(sunrise_client::ticket_levels::Sources {
                     players: vec![(40, 40)],
                     view_distance: 2,

@@ -186,7 +186,7 @@ impl Game<'_> {
     }
 
     pub(super) fn award_displaced_stat(&mut self, depth: usize, key: &str, n: i32) {
-        let frame = &self.server.lan_displaced_players[depth];
+        let frame = &self.lan_displaced_players[depth];
         if frame.fake {
             return;
         }
@@ -196,7 +196,7 @@ impl Game<'_> {
                 key,
                 n,
                 |game| {
-                    let frame = &game.server.lan_displaced_players[depth];
+                    let frame = &game.lan_displaced_players[depth];
                     frame.uuid.map(|uuid| {
                         (
                             uuid,
@@ -207,7 +207,7 @@ impl Game<'_> {
                         )
                     })
                 },
-                |game| &mut game.server.lan_displaced_players[depth].stats,
+                |game| &mut game.lan_displaced_players[depth].stats,
             );
         });
     }

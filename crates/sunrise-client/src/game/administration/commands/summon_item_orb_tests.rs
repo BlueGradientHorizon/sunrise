@@ -238,7 +238,7 @@ pub(in crate::game) fn run_summon_replies_with_the_custom_name_of_every_kind() {
             assert_eq!(cmd, expected_cmd.as_str(), "case #{index} identity/order");
             let line = cmd.strip_prefix('/').unwrap_or(cmd);
             game.server.chat_capture = Some(Vec::new());
-            game.server.cmds.results = Some(Vec::new());
+            game.cmds.results = Some(Vec::new());
             game.run_command(line);
             let captured = game.server.chat_capture.take().unwrap_or_default();
             let expected_messages = record["messages"].as_array().unwrap();
@@ -281,7 +281,6 @@ pub(in crate::game) fn run_summon_replies_with_the_custom_name_of_every_kind() {
                 );
             }
             let results: Vec<serde_json::Value> = game
-                .server
                 .cmds
                 .results
                 .take()

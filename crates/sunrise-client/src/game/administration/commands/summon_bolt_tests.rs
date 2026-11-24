@@ -111,10 +111,10 @@ pub(in crate::game) fn run_a_bolt_summoned_with_nbt_strikes_and_goes() {
                     let cmd = step["cmd"].as_str().unwrap();
                     let line = cmd.strip_prefix('/').unwrap_or(cmd);
                     game.server.chat_capture = Some(Vec::new());
-                    game.server.cmds.results = Some(Vec::new());
+                    game.cmds.results = Some(Vec::new());
                     game.as_console(|g| g.run_command(line));
                     let messages = game.server.chat_capture.take().unwrap_or_default();
-                    let results = game.server.cmds.results.take().unwrap_or_default();
+                    let results = game.cmds.results.take().unwrap_or_default();
                     if step["record"].as_bool() != Some(false) {
                         let actual_messages = Value::Array(messages.iter().map(spans).collect());
                         let actual_results =

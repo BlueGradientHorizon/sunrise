@@ -70,7 +70,7 @@ impl Game<'_> {
         self.bind_local_player_residency();
         self.refresh_debug_renderers();
         // LocalPlayer.setReducedDebugInfo always rebuilds, also on a second login.
-        self.client.debug_entries.invalidate();
+        self.debug_entries.invalidate();
         self.streaming.radius = crate::game::entity_culling::streaming_radius_for(
             self.settings.render_distance,
             Some(p.chunk_radius),
@@ -95,7 +95,7 @@ impl Game<'_> {
     pub(super) fn apply_respawn_packet(&mut self, p: play::Respawn) {
         self.reset_client_item_use();
         // The new LocalPlayer copies reduced debug info through its setter.
-        self.client.debug_entries.invalidate();
+        self.debug_entries.invalidate();
         let old_player = self.remote.as_ref().map(|r| (r.entity_id, r.profile));
         if let Some((_, uuid)) = old_player {
             self.forget_entity_initialization(Holder::Player(uuid));
@@ -502,8 +502,8 @@ impl Game<'_> {
                 .any(|span| !span.text.is_empty())
                 .then_some(text)
         };
-        self.client.tab_list.header = text(&p.header);
-        self.client.tab_list.footer = text(&p.footer);
+        self.tab_list.header = text(&p.header);
+        self.tab_list.footer = text(&p.footer);
     }
 
     /// `C::Commands`: its arms of `apply_packet`, guard and order kept.

@@ -332,7 +332,6 @@ impl Game<'_> {
         let mut stack = stack.try_into_engine(self.items())?;
         if self.remote.is_some()
             && !self
-                .client
                 .creative_screen
                 .catalog()
                 .item_enabled(&stack, self.enabled_feature_ids())

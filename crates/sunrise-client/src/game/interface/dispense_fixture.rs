@@ -535,7 +535,7 @@ impl Game<'_> {
         self.armor = Default::default();
         self.offhand = Some(stack);
         self.using = Some((super::shield::OFFHAND_SLOT, 100));
-        self.server.combat = Default::default();
+        self.combat = Default::default();
         let before = self.stats.get("used", &item);
         let from = sunrise_core::geometry::Vec3::new(
             0.0,
@@ -770,7 +770,7 @@ impl Game<'_> {
         } else {
             GameMode::Survival
         };
-        self.server.combat = Default::default();
+        self.combat = Default::default();
         self.using = None;
         self.server.shield_cooldown = 0;
         self.yaw = 0.0;
@@ -823,7 +823,7 @@ impl Game<'_> {
             )
         };
         // A new player: no combat of an earlier case's.
-        self.server.combat = Default::default();
+        self.combat = Default::default();
         let mut player = PlayerMotion::new(self.motion, v3(&op["player"]))?;
         player.velocity = v3(&op["motion"]);
         player.fall_distance = op["fall"].as_f64().unwrap_or(0.0);

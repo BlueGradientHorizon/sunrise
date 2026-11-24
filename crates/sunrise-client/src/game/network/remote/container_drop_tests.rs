@@ -56,7 +56,7 @@ fn creative_drop_guards_charge_only_sent_drops() {
                 game.set_local_mode(GameMode::Creative);
                 let stone = || ItemStack::new("minecraft:stone", 1);
                 let vanilla = ["minecraft:vanilla".to_owned()];
-                let catalog = game.client.creative_screen.catalog();
+                let catalog = game.creative_screen.catalog();
                 let items = game
                     .remote
                     .as_ref()

@@ -1567,11 +1567,11 @@ impl Game<'_> {
                 self.destroy_type(sunrise_client::gamerules::vanilla::BLOCK_EXPLOSION_DROP_DECAY);
             // EndCrystal is 2 by 2 blocks: its box decides `isInWater`.
             let (x, y, z) = (c.position.x, c.position.y, c.position.z);
-            self.server.combat.explosion_in_water = self.bounds_in_water(Aabb::new(
+            self.combat.explosion_in_water = self.bounds_in_water(Aabb::new(
                 Vec3::new(x - 1.0, y, z - 1.0),
                 Vec3::new(x + 1.0, y + 2.0, z + 1.0),
             ));
-            self.server.combat.explosion_direct = Some(c.id);
+            self.combat.explosion_direct = Some(c.id);
             let _ = self.server_explode_from(
                 at,
                 6.0,
@@ -1580,8 +1580,8 @@ impl Game<'_> {
                 super::explosion::ExplosionSource::default()
                     .with_damage_direct(c.id, sunrise_client::health::DirectEntity::Other),
             );
-            self.server.combat.explosion_direct = None;
-            self.server.combat.explosion_in_water = false;
+            self.combat.explosion_direct = None;
+            self.combat.explosion_in_water = false;
             self.server.fight.blast_by = None;
         }
         self.crystal_destroyed(index, &c, by, respawn_crystal);
@@ -1840,8 +1840,7 @@ impl Game<'_> {
         // The world's tags, so a datapack type is classed as vanilla's are.
         let explosion = self.damage_in_tag(ty, "minecraft:is_explosion");
         let no_knockback = self.damage_in_tag(ty, "minecraft:no_knockback");
-        let level =
-            super::entity::damage_level_of!(self, self.server.combat.attack(), no_push, None);
+        let level = super::entity::damage_level_of!(self, self.combat.attack(), no_push, None);
         let reaches_base = self.dragon.as_ref().is_some_and(|d| {
             d.reaches_base_check(
                 BODY,
@@ -1862,12 +1861,8 @@ impl Game<'_> {
                 let Some(d) = self.dragon.as_mut().filter(|d| d.id == id) else {
                     return false;
                 };
-                let level = super::entity::damage_level_of!(
-                    self,
-                    self.server.combat.attack(),
-                    no_push,
-                    None
-                );
+                let level =
+                    super::entity::damage_level_of!(self, self.combat.attack(), no_push, None);
                 return matches!(
                     d.hurt_from(
                         level,
@@ -2052,8 +2047,7 @@ impl Game<'_> {
             let creative = self.creative_source_of(attacker);
             let vanilla =
                 self.saved_refuses_damage(id, hit_source.damage_type, creative) || is_fire(kind);
-            let level =
-                super::entity::damage_level_of!(self, self.server.combat.attack(), no_push, None);
+            let level = super::entity::damage_level_of!(self, self.combat.attack(), no_push, None);
             if level.invulnerability_check(
                 sunrise_client::health::Hurting::Dragon(id as i32, hit_source),
                 vanilla,
@@ -2064,7 +2058,7 @@ impl Game<'_> {
         let plan = self.prepare_knockback_credit(
             self.dragon.as_ref().map_or(0, |d| d.id) as i32,
             None,
-            self.server.combat.attack(),
+            self.combat.attack(),
         );
         // `getAttributeValue(KNOCKBACK_RESISTANCE)` as the push reads it, before the hit.
         let push = origin.from.map(|from| Push {
@@ -2077,8 +2071,7 @@ impl Game<'_> {
         };
         let was_down = d.down();
         let (cooldown, last_hurt) = (d.invulnerable, d.last_hurt);
-        let level =
-            super::entity::damage_level_of!(self, self.server.combat.attack(), &mut credit, None);
+        let level = super::entity::damage_level_of!(self, self.combat.attack(), &mut credit, None);
         let hurt = d.hurt_part_from(level, part, damage, source, kind, origin.direct, push, true);
         // LivingEntity.hurtServer: damage that is applied sets lastHurtByPlayer
         // (100 ticks); a hit the damage cooldown absorbs returns before that.
@@ -3099,7 +3092,7 @@ impl Game<'_> {
                     let plan = self.prepare_knockback_credit(
                         id as i32,
                         Some(Who::Mob(frame.dragon_id)),
-                        self.server.combat.attack(),
+                        self.combat.attack(),
                     );
                     let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
                     if sunrise_gameplay::dragon_contacts::contact_part(
@@ -3403,7 +3396,7 @@ impl Game<'_> {
                 && let Ok(outcome) = self
                     .hurt_player_equipment(id, 5.0, blocking, false, causing, false, &attack, None)
             {
-                self.server.combat.forget_noted(outcome.canceled);
+                self.combat.forget_noted(outcome.canceled);
                 self.after_block(
                     outcome,
                     (self.dragon.as_ref().map(|d| d.id), false),
@@ -4165,7 +4158,7 @@ impl Game<'_> {
         let crystals: Vec<Vec3> = self
             .crystals
             .iter()
-            .filter(|c| in_reach(c.position) && self.server.combat.visits(c.id))
+            .filter(|c| in_reach(c.position) && self.combat.visits(c.id))
             .map(|c| c.position)
             .collect();
         // The blast's source carries the player who set it off, if any.
@@ -4181,10 +4174,9 @@ impl Game<'_> {
                     damage_type,
                     causing,
                     direct: self
-                        .server
                         .combat
                         .explosion_direct
-                        .or(self.server.combat.explosion_source)
+                        .or(self.combat.explosion_source)
                         .map_or(0, |id| id as i32),
                     position: Some(center),
                 };
@@ -4196,11 +4188,7 @@ impl Game<'_> {
                 self.destroy_crystal(i, by, CrystalDamage::Explosion);
             }
         }
-        let Some(d) = self
-            .dragon
-            .as_ref()
-            .filter(|d| self.server.combat.visits(d.id))
-        else {
+        let Some(d) = self.dragon.as_ref().filter(|d| self.combat.visits(d.id)) else {
             return;
         };
         let hits = d.explosion_hits(center, radius, |b| {

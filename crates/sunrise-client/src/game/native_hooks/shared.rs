@@ -120,7 +120,7 @@ impl Game<'_> {
     pub(super) fn observed_overlay_now(&self) -> Option<&'static str> {
         let book = self.client.book.as_ref().map(super::books::BookScreen::id);
         observed_overlay_id(&[
-            (self.client.command_prompt.is_some(), "command_prompt"),
+            (self.command_prompt.is_some(), "command_prompt"),
             (self.client.link_prompt.is_some(), "link_prompt"),
             (self.client.code_of_conduct.is_some(), "code_of_conduct"),
             (self.server_packs.prompt.is_some(), "server_pack_prompt"),
@@ -241,7 +241,7 @@ impl Game<'_> {
         self.close_dialogs();
         self.client.book = None;
         self.client.link_prompt = None;
-        self.client.command_prompt = None;
+        self.command_prompt = None;
         self.client.code_of_conduct = None;
         self.server_packs.prompt = None;
         self.client.pause_focus = None;
@@ -717,7 +717,7 @@ impl Game<'_> {
             self.close_dialogs();
         }
         self.client.link_prompt = None;
-        self.client.command_prompt = None;
+        self.command_prompt = None;
         self.client.code_of_conduct = None;
         self.server_packs.prompt = None;
         self.screen_state.replacing = replacing;

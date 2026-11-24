@@ -22,7 +22,7 @@ pub(super) fn with_save_game(root: &std::path::Path, test: impl FnOnce(&mut Game
         ));
         game.options.dedicated = Some(Vec::new());
         game.options.execution_role = execution_role::ExecutionRole::DedicatedServer;
-        game.server.server_lists = Some(Arc::new(Mutex::new(dedicated::Lists {
+        game.server_lists = Some(Arc::new(Mutex::new(dedicated::Lists {
             ops: OpList::new(root.join("ops.json")),
             white: WhiteList::new(root.join("whitelist.json")),
             bans: BanList::new(root.join("bans.json")),

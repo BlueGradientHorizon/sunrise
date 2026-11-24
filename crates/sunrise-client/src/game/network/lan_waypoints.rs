@@ -56,7 +56,6 @@ impl Game<'_> {
                     .unwrap_or_default()
             }),
             transmitting: self
-                .server
                 .cmds
                 .waypoints
                 .as_ref()
@@ -71,7 +70,6 @@ impl Game<'_> {
                 )
             }),
             icon: self
-                .server
                 .cmds
                 .waypoint_icons
                 .get(&Target::Guest(g.conn))

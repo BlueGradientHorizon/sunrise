@@ -173,7 +173,7 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
     };
     game.server.command_source = Some(outer);
     game.server.chat_capture = Some(Vec::new());
-    let before = (game.server.exec.commands, game.server.exec.callback);
+    let before = (game.exec.commands, game.exec.callback);
     let marker = Text::literal("issuer-only-context-control");
     let component = component_nbt(&marker.component());
     game.test_source_output(context, marker.clone(), false);
@@ -193,10 +193,7 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
         format!("{:?}", game.server.command_source.unwrap()),
         format!("{outer:?}")
     );
-    assert_eq!(
-        before,
-        (game.server.exec.commands, game.server.exec.callback)
-    );
+    assert_eq!(before, (game.exec.commands, game.exec.callback));
     // Added missing-recipient control: no host fallback or operator broadcast.
     game.lan
         .as_mut()
@@ -220,10 +217,7 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
         format!("{:?}", game.server.command_source.unwrap()),
         format!("{outer:?}")
     );
-    assert_eq!(
-        before,
-        (game.server.exec.commands, game.server.exec.callback)
-    );
+    assert_eq!(before, (game.exec.commands, game.exec.callback));
     assert_eq!(
         game.score.board.score("result", "context").unwrap().value,
         1

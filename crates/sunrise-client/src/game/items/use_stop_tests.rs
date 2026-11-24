@@ -152,7 +152,7 @@ fn axe_disabled_shield_posts_finish() {
     use sunrise_client::health::{BlockOutcome, NO_ATTACK};
     let lines = with_game("minecraft:shield", |game| {
         assert!(game.start_using_item());
-        game.server.combat.player_attacker = Some(([11.5, 64.0, -3.25], 5.0));
+        game.combat.player_attacker = Some(([11.5, 64.0, -3.25], 5.0));
         game.after_block(
             BlockOutcome {
                 blocking_item_used: true,

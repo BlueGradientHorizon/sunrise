@@ -1388,14 +1388,14 @@ impl Game<'_> {
     /// `DistanceManager.inEntityTickingRange` in an entity-ticking chunk
     /// (block coordinates), from every player's tickets (`update_chunk_tickets`).
     pub(super) fn entity_ticking_area(&self) -> impl Fn(i32, i32) -> bool + use<> {
-        let levels = self.server.tickets.levels();
+        let levels = self.tickets.levels();
         move |x, z| levels.entity_ticking_at(x, z)
     }
     /// Whether the chunk's own status is entity-ticking (block coordinates), whatever the
     /// simulation distance: the chunks whose entities are on `ServerLevel`'s entity tick list
     /// (`Visibility.fromFullChunkStatus`), so they check despawning.
     pub(super) fn entity_tick_listed_area(&self) -> impl Fn(i32, i32) -> bool + use<> {
-        let levels = self.server.tickets.levels();
+        let levels = self.tickets.levels();
         move |x, z| levels.loaded_entity_ticking(x >> 4, z >> 4)
     }
     /// The entity phase of `tick_creatures`: every mob's tick, deaths, and the
@@ -1425,9 +1425,9 @@ impl Game<'_> {
         // waiting any more.
         // Resolve saved attacker UUIDs before the mobs run baseTick.
         self.resolve_last_hurt_by_refs();
-        self.server.combat.charged_exploders.clear();
-        self.server.combat.exploded.clear();
-        self.server.combat.exploded_kinds.clear();
+        self.combat.charged_exploders.clear();
+        self.combat.exploded.clear();
+        self.combat.exploded_kinds.clear();
         // EntityTickEvent.Pre for the mobs about to tick, before the loop holds them: once for
         // the family, then each mob it let through checks its sleep. A mob of a type a mod
         // named hears its Pre alone, inside the loop, right before its own tick
@@ -2389,11 +2389,8 @@ impl Game<'_> {
         if !matches!(source.attacker, Some(Who::Mob(_))) {
             return;
         }
-        let plan = self.prepare_knockback_credit(
-            victim as i32,
-            source.attacker,
-            self.server.combat.attack(),
-        );
+        let plan =
+            self.prepare_knockback_credit(victim as i32, source.attacker, self.combat.attack());
         let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
         if let Some(mob) = self.mobs.iter_mut().find(|mob| mob.id == victim) {
             sunrise_client::health::KnockbackCredit::accepted_mob_hit(&mut credit, mob);
@@ -2805,9 +2802,9 @@ impl Game<'_> {
                 // above use their movement's flyDist/nextFlap threshold.
                 MobEvent::GameEvent { .. } => {}
                 MobEvent::AttackPlayer(amount, from, attacker) => {
-                    self.server.combat.hit_landed =
+                    self.combat.hit_landed =
                         self.mob_hits_player(amount, from, "minecraft:mob_attack");
-                    if self.server.combat.hit_landed
+                    if self.combat.hit_landed
                         && let Some(attacker) = attacker
                     {
                         self.remember_mob_target(
@@ -2833,9 +2830,9 @@ impl Game<'_> {
                     ticks,
                     amplifier,
                 } => {
-                    self.server.combat.hit_landed =
+                    self.combat.hit_landed =
                         self.mob_hits_player(amount, from, "minecraft:mob_attack");
-                    if self.server.combat.hit_landed {
+                    if self.combat.hit_landed {
                         self.remember_mob_target(
                             attacker,
                             self.player.as_ref().map(|p| p.entity_id as u32),
@@ -2846,7 +2843,7 @@ impl Game<'_> {
                 MobEvent::DamagePlayer { amount, from, kind } => {
                     let hurt = self.mob_hits_player(amount, from, kind);
                     if kind == "minecraft:spear" {
-                        self.server.combat.hit_landed = hurt;
+                        self.combat.hit_landed = hurt;
                     }
                 }
                 MobEvent::ElderCurse { at, silent } => self.elder_curse(at, silent),
@@ -2919,11 +2916,8 @@ impl Game<'_> {
                     Who::Player => self.mob_pushes_player(power, x, z, source, apply_blocking),
                     Who::Mob(id) => {
                         let attack = self.attack_of_who(source.attacker);
-                        let plan = self.prepare_knockback_credit(
-                            id as i32,
-                            None,
-                            self.server.combat.attack(),
-                        );
+                        let plan =
+                            self.prepare_knockback_credit(id as i32, None, self.combat.attack());
                         let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
                         if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
                             let level = crate::game::entity::damage_level_of!(
@@ -2961,14 +2955,14 @@ impl Game<'_> {
                     in_water,
                     kind,
                 } => {
-                    self.server.combat.explosion_source = Some(mob);
-                    self.server.combat.explosion_in_water = in_water;
+                    self.combat.explosion_source = Some(mob);
+                    self.combat.explosion_in_water = in_water;
                     // The creeper causes the blast's damage, but it is out of
                     // the mob list already: its name comes with the event.
-                    self.server.combat.exploded.push((mob, name));
-                    self.server.combat.exploded_kinds.push((mob, kind));
+                    self.combat.exploded.push((mob, name));
+                    self.combat.exploded_kinds.push((mob, kind));
                     if charged {
-                        self.server.combat.charged_exploders.push(mob);
+                        self.combat.charged_exploders.push(mob);
                     }
                 }
                 MobEvent::LingeringCloud {
@@ -2982,8 +2976,8 @@ impl Game<'_> {
                 }
                 MobEvent::Explode(at, radius, species, silent) => {
                     // The exploding mob causes the damage (Creeper.explodeCreeper).
-                    let noted = self.server.combat.explosion_source.is_some();
-                    let source_mob = self.server.combat.explosion_source.or_else(|| {
+                    let noted = self.combat.explosion_source.is_some();
+                    let source_mob = self.combat.explosion_source.or_else(|| {
                         self.mobs
                             .iter()
                             .filter(|m| {
@@ -2993,8 +2987,8 @@ impl Game<'_> {
                             .map(|m| m.id)
                             .next()
                     });
-                    self.server.combat.explosion_source = source_mob;
-                    self.server.combat.explosion_source_named = noted;
+                    self.combat.explosion_source = source_mob;
+                    self.combat.explosion_source_named = noted;
                     let portal_proof = species == Species::SulfurCube
                         && source_mob.is_some_and(|id| {
                             self.portals
@@ -3002,7 +2996,7 @@ impl Game<'_> {
                                 .get(&id)
                                 .is_some_and(|p| p.cooldown > 0)
                         });
-                    self.server.combat.explosion_cause = match species {
+                    self.combat.explosion_cause = match species {
                         Species::Creeper => Some("minecraft:creeper"),
                         Species::Wither => Some("minecraft:wither"),
                         Species::SulfurCube => Some("minecraft:sulfur_cube"),
@@ -3047,10 +3041,10 @@ impl Game<'_> {
                         ),
                         _ => self.explode(source_mob, at, radius, source),
                     };
-                    self.server.combat.explosion_source = None;
-                    self.server.combat.explosion_source_named = false;
-                    self.server.combat.explosion_in_water = false;
-                    self.server.combat.explosion_cause = None;
+                    self.combat.explosion_source = None;
+                    self.combat.explosion_source_named = false;
+                    self.combat.explosion_in_water = false;
+                    self.combat.explosion_cause = None;
                     result?
                 }
                 MobEvent::AttackMob {
@@ -3059,9 +3053,9 @@ impl Game<'_> {
                     source,
                     remember_target,
                 } => {
-                    self.server.combat.hit_landed = self.mob_attacks_mob(target, amount, source);
+                    self.combat.hit_landed = self.mob_attacks_mob(target, amount, source);
                     if remember_target
-                        && self.server.combat.hit_landed
+                        && self.combat.hit_landed
                         && let Some(Who::Mob(attacker)) = source.attacker
                     {
                         self.remember_mob_target(attacker, Some(target));
@@ -3085,8 +3079,8 @@ impl Game<'_> {
                     // CaveSpider, Husk and WitherSkeleton.doHurtTarget: the
                     // effect sits inside the branch where the hit landed, and
                     // `LivingEntity.addEffect` takes a mob as well as a player.
-                    self.server.combat.hit_landed = self.mob_attacks_mob(target, amount, source);
-                    if self.server.combat.hit_landed {
+                    self.combat.hit_landed = self.mob_attacks_mob(target, amount, source);
+                    if self.combat.hit_landed {
                         if let Some(Who::Mob(attacker)) = source.attacker {
                             self.remember_mob_target(attacker, Some(target));
                         }
@@ -3210,7 +3204,7 @@ impl Game<'_> {
                     attempted_damage,
                     otherwise_affected,
                 } => {
-                    if (otherwise_affected || (attempted_damage && self.server.combat.hit_landed))
+                    if (otherwise_affected || (attempted_damage && self.combat.hit_landed))
                         && self.latest_stab_contact(attacker, contact)
                     {
                         let target = match target {
@@ -3293,17 +3287,14 @@ impl Game<'_> {
                 MobEvent::Infested { at, velocities } => self.spawn_infested(at, velocities),
                 MobEvent::Gift { target, item } => self.receive_gift(target, item),
                 MobEvent::HurtSelf { mob, kind, amount } => {
-                    let plan = self.prepare_knockback_credit(
-                        mob as i32,
-                        None,
-                        self.server.combat.attack(),
-                    );
+                    let plan =
+                        self.prepare_knockback_credit(mob as i32, None, self.combat.attack());
                     let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
                     if let Some(index) = self.mob_index.find(&self.mobs, mob) {
                         self.mobs[index].damage(
                             crate::game::entity::damage_level_of!(
                                 self,
-                                self.server.combat.attack(),
+                                self.combat.attack(),
                                 &mut credit,
                                 None
                             ),
@@ -3879,7 +3870,7 @@ impl Game<'_> {
                     }
                 }
                 MobEvent::Ignite(target, seconds) => self.ignite_entity(target, seconds)?,
-                MobEvent::ZombieIgnite(target, seconds) if self.server.combat.hit_landed => {
+                MobEvent::ZombieIgnite(target, seconds) if self.combat.hit_landed => {
                     self.ignite_entity(target, seconds)?
                 }
                 MobEvent::ZombieIgnite(..) => {}
@@ -4602,10 +4593,10 @@ impl Game<'_> {
         known: Option<Option<u32>>,
         by_creative_player: bool,
     ) -> bool {
-        let post_attack_if_alive = std::mem::take(&mut self.server.combat.post_attack_if_alive);
-        let rocket = std::mem::take(&mut self.server.combat.rocket_hit);
-        let pierce = std::mem::take(&mut self.server.combat.piercing_hit);
-        let melee = self.server.combat.melee_mob.take();
+        let post_attack_if_alive = std::mem::take(&mut self.combat.post_attack_if_alive);
+        let rocket = std::mem::take(&mut self.combat.rocket_hit);
+        let pierce = std::mem::take(&mut self.combat.piercing_hit);
+        let melee = self.combat.melee_mob.take();
         // A projectile entity dealt it: `#is_projectile`, or a firework
         // rocket (its `fireworks` type is not in the tag).
         let projectile = rocket
@@ -4636,31 +4627,31 @@ impl Game<'_> {
                 }),
         };
         // The causing entity for the death message.
-        let owner = self.server.combat.projectile_owner.take();
+        let owner = self.combat.projectile_owner.take();
         // The mob that caused the hit, else the attack the caller landed it in (a projectile's
         // owner, another player's blow): `combat.attack`, read through `current_attack`.
         let mut attack = match attacker.or(owner) {
             Some(id) => self.attack_of(id as i32),
             None => self.current_attack(),
         };
-        attack.projectile = self.server.combat.attack().projectile;
-        attack.projectile_kind = self.server.combat.attack().projectile_kind;
-        attack.projectile_type = self.server.combat.attack().projectile_type;
-        attack.direct = self.server.combat.attack().direct;
-        attack.direct_kind = self.server.combat.attack().direct_kind;
+        attack.projectile = self.combat.attack().projectile;
+        attack.projectile_kind = self.combat.attack().projectile_kind;
+        attack.projectile_type = self.combat.attack().projectile_type;
+        attack.direct = self.combat.attack().direct;
+        attack.direct_kind = self.combat.attack().direct_kind;
         attack
             .direct_type
-            .clone_from(&self.server.combat.attack().direct_type);
+            .clone_from(&self.combat.attack().direct_type);
         attack.position = from;
-        attack.projectile_weapon = self.server.combat.attack().projectile_weapon.clone();
+        attack.projectile_weapon = self.combat.attack().projectile_weapon.clone();
         if let Some(a) = attacker.or(owner) {
             self.note_attacker(damage_type, a);
         }
-        if let Some((id, name)) = self.server.combat.projectile_attacker.take() {
+        if let Some((id, name)) = self.combat.projectile_attacker.take() {
             self.note_named_attacker(damage_type, id, name);
         }
         // The projectile is the direct entity: named when it has no owner.
-        if let Some(name) = self.server.combat.projectile_direct.take() {
+        if let Some(name) = self.combat.projectile_direct.take() {
             self.note_direct_entity(damage_type, name);
         }
         // DamageSource.scalesWithDifficulty: a mob (or its projectile's
@@ -4742,7 +4733,7 @@ impl Game<'_> {
         // LivingEntity.hurtServer: ENTITY_HURT_PLAYER, unless it returned
         // early (invulnerable, or inside the hurt cooldown).
         // A hit a native mod canceled records no damage (hurtServer never ran).
-        self.server.combat.forget_noted(outcome.canceled);
+        self.combat.forget_noted(outcome.canceled);
         // Player motion queues accepted-hit memory events; the normal drain runs after
         // this function returns. A knockback listener must see those memories already
         // committed, including absorbed/blocked hits that still reach Criterion.
@@ -4854,7 +4845,7 @@ impl Game<'_> {
         {
             canceled = o.canceled;
         }
-        self.server.combat.forget_noted(canceled);
+        self.combat.forget_noted(canceled);
         self.finish_guest_damage();
     }
     /// `Player.aiStep` touching arrows in its box grown by (1, 0.5, 1):
@@ -6097,13 +6088,13 @@ impl Game<'_> {
             .as_ref()
             .map(|s| s.0)
             .or_else(|| (arrow.owner == Some(Who::Player)).then(|| self.own_entity_id() as u32));
-        let prev_attacker = self.server.combat.projectile_attacker.take();
-        let prev_effect = self.server.combat.enchantment_projectile_attacker.take();
-        self.server.combat.projectile_attacker = shooter;
-        self.server.combat.enchantment_projectile_attacker = effect_attacker;
+        let prev_attacker = self.combat.projectile_attacker.take();
+        let prev_effect = self.combat.enchantment_projectile_attacker.take();
+        self.combat.projectile_attacker = shooter;
+        self.combat.enchantment_projectile_attacker = effect_attacker;
         let outcome = self.arrow_hit_one_entity(arrow, Who::Player, amount);
-        self.server.combat.projectile_attacker = prev_attacker;
-        self.server.combat.enchantment_projectile_attacker = prev_effect;
+        self.combat.projectile_attacker = prev_attacker;
+        self.combat.enchantment_projectile_attacker = prev_effect;
         outcome
     }
 
@@ -6134,17 +6125,16 @@ impl Game<'_> {
             .as_ref()
             .map_or(self.own_entity_id() as u32, |s| s.0);
         let result = self.guest_hit_by(victim_conn, |g| {
-            g.server.combat.refuse_player_hit = refused;
-            g.server.combat.projectile_attacker = shooter;
+            g.combat.refuse_player_hit = refused;
+            g.combat.projectile_attacker = shooter;
             let saved_effect_attacker = g
-                .server
                 .combat
                 .enchantment_projectile_attacker
                 .replace(effect_attacker);
             let res = g.arrow_hit_one_entity(arrow, Who::Player, amount);
-            g.server.combat.refuse_player_hit = false;
-            g.server.combat.projectile_attacker = None;
-            g.server.combat.enchantment_projectile_attacker = saved_effect_attacker;
+            g.combat.refuse_player_hit = false;
+            g.combat.projectile_attacker = None;
+            g.combat.enchantment_projectile_attacker = saved_effect_attacker;
             res
         });
         result.unwrap_or(Ok(EntityHit::Refused))
@@ -6212,11 +6202,11 @@ impl Game<'_> {
         who: Who,
         amount: f32,
     ) -> Result<EntityHit> {
-        self.server.combat.projectile_owner = match arrow.owner {
+        self.combat.projectile_owner = match arrow.owner {
             Some(Who::Mob(id)) => Some(id),
             _ => None,
         };
-        self.server.combat.projectile_direct = match who {
+        self.combat.projectile_direct = match who {
             Who::Player => Some(self.target_name(super::commands::Target::Projectile(arrow.id))),
             Who::Mob(_) => None,
         };
@@ -6287,7 +6277,7 @@ impl Game<'_> {
             Who::Player => {
                 let hurt = self.arrow_hits_player(amount, arrow);
                 if hurt && arrow.arrow.as_ref().is_some_and(|a| (a.pierce as i8) <= 0) {
-                    self.server.combat.stuck.add_arrow();
+                    self.combat.stuck.add_arrow();
                 }
                 hurt
             }
@@ -6801,11 +6791,11 @@ impl Game<'_> {
             self.projectile_block_impact(&ProjectileHitter::of(p), pos, at, face)?;
             self.projectile_breaks_block(p, pos);
         }
-        self.server.combat.projectile_owner = match p.owner {
+        self.combat.projectile_owner = match p.owner {
             Some(Who::Mob(id)) => Some(id),
             _ => None,
         };
-        self.server.combat.projectile_direct = match hit {
+        self.combat.projectile_direct = match hit {
             Hit::Entity {
                 who: Who::Player, ..
             } => Some(self.target_name(super::commands::Target::Projectile(p.id))),
@@ -7357,11 +7347,11 @@ impl Game<'_> {
                     }
                 }
                 self.projectile_hit_landed_event(p.id, p.owner, hit);
-                self.server.combat.explosion_owner = owner;
-                self.server.combat.explosion_in_water = p.touching_water;
+                self.combat.explosion_owner = owner;
+                self.combat.explosion_in_water = p.touching_water;
                 self.set_blast_by_player(p.owner == Some(Who::Player));
                 let fire = self.large_fireball_fire(p.owner, p.guest);
-                self.server.combat.explosion_direct = Some(p.id);
+                self.combat.explosion_direct = Some(p.id);
                 let result = self.explode_mob(
                     atp,
                     *power as f32,
@@ -7374,10 +7364,10 @@ impl Game<'_> {
                             sunrise_client::health::DirectEntity::LargeFireball,
                         ),
                 );
-                self.server.combat.explosion_direct = None;
+                self.combat.explosion_direct = None;
                 self.set_blast_by_player(false);
-                self.server.combat.explosion_owner = None;
-                self.server.combat.explosion_in_water = false;
+                self.combat.explosion_owner = None;
+                self.combat.explosion_in_water = false;
                 result?;
             }
             (kind @ (ProjectileKind::Potion(..) | ProjectileKind::ExperienceBottle), hit) => {
@@ -9063,7 +9053,7 @@ impl Game<'_> {
         let renderer = self.renderer.as_ref().filter(|r| r.skins_entities());
         match renderer.and_then(|r| r.skinned_models()) {
             Some(stored) => {
-                let mut models = self.client.skin_models.borrow_mut();
+                let mut models = self.skin_models.borrow_mut();
                 // Reuse helps CPU-bound crowds, but regressed TAA frame tails in
                 // windowed measurements. Keep the original arithmetic with TAA on.
                 models.set_rotation_cache_enabled(!self.settings.sunrise.taa);

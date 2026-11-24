@@ -644,10 +644,7 @@ impl Game<'_> {
         // server synced them, else the local body's own.
         (m.extra.stuck.arrows, m.extra.stuck.stingers) = match &self.remote {
             Some(r) => (r.own_arrows, r.own_stingers),
-            None => (
-                self.server.combat.stuck.arrows,
-                self.server.combat.stuck.stingers,
-            ),
+            None => (self.combat.stuck.arrows, self.combat.stuck.stingers),
         };
         m.extra.shoulder_parrots = match &self.remote {
             Some(r) => r.own_shoulders,

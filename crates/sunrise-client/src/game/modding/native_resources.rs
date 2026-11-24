@@ -23,7 +23,7 @@ impl Game<'_> {
             ("assets", vec![&self.pack.source])
         } else {
             let mut sources = Vec::new();
-            if !self.server.cmds.vanilla_disabled {
+            if !self.cmds.vanilla_disabled {
                 sources.push(&self.pack.data_source);
             }
             sources.push(&self.pack.data_changes);

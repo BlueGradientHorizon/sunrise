@@ -142,7 +142,7 @@ mod connected_statistics_save_tests {
             Some(Default::default()),
         ));
         use sunrise_client::server::user_lists::{BanList, IpBanList, OpList, WhiteList};
-        game.server.server_lists = Some(Arc::new(Mutex::new(
+        game.server_lists = Some(Arc::new(Mutex::new(
             super::super::super::dedicated::Lists {
                 ops: OpList::new(dir.join("ops.json")),
                 white: WhiteList::new(dir.join("whitelist.json")),

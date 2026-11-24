@@ -515,11 +515,11 @@ fn live_damage_and_blast_warden_reactions_follow_source_entities_and_cooldown() 
                 Some(_) => "@s[type=minecraft:ender_dragon]",
                 None => "@s",
             };
-            game.server.cmds.results = Some(Vec::new());
+            game.cmds.results = Some(Vec::new());
             assert!(game.run_command(&format!(
                 "execute as {WARDEN} on target if entity {selector}"
             )));
-            let results = game.server.cmds.results.take().unwrap();
+            let results = game.cmds.results.take().unwrap();
             if expected.is_some() {
                 assert_eq!(results, [(true, 1)], "{selector}");
             } else {

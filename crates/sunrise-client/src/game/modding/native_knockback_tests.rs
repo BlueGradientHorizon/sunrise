@@ -154,7 +154,7 @@ fn the_bridge_names_the_attacker_and_what_it_holds() {
                 Hurting::Mob(mob, _) => mob.id as i32,
                 _ => 12,
             };
-            let plan = game.prepare_knockback_credit(victim, None, game.server.combat.attack());
+            let plan = game.prepare_knockback_credit(victim, None, game.combat.attack());
             let mut credit = plan.lend(&mut game.server.last_hurt_by_player);
             let mut knock = PUSH;
             let canceled = super::native_hooks::knockback(
@@ -214,7 +214,7 @@ fn the_bridge_names_the_attacker_and_what_it_holds() {
 #[ignore = "daily"]
 fn a_canceled_push_is_reported() {
     let heard = heard(|game, log| {
-        let plan = game.prepare_knockback_credit(12, None, game.server.combat.attack());
+        let plan = game.prepare_knockback_credit(12, None, game.combat.attack());
         let mut credit = plan.lend(&mut game.server.last_hurt_by_player);
         let level = damage_level_of!(game, &NO_ATTACK, &mut credit, None);
         log.lock().unwrap().cancel = true;
@@ -673,8 +673,7 @@ pub(in crate::game) fn credit_pig(game: &mut super::Game<'_>) {
     game.world
         .chunks
         .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
-    game.server
-        .tickets
+    game.tickets
         .update(Some(sunrise_client::ticket_levels::Sources {
             players: vec![(0, 0)],
             forced: Vec::new(),
@@ -694,7 +693,7 @@ pub(in crate::game) fn credit_pig(game: &mut super::Game<'_>) {
 }
 
 fn credit_push(game: &mut super::Game<'_>) {
-    let plan = game.prepare_knockback_credit(100, None, game.server.combat.attack());
+    let plan = game.prepare_knockback_credit(100, None, game.combat.attack());
     let mut credit = plan.lend(&mut game.server.last_hurt_by_player);
     let mob = &mut game.mobs[0];
     mob.velocity = Vec3::ZERO;
