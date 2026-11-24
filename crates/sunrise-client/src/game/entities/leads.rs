@@ -620,7 +620,7 @@ impl Game<'_> {
                 return Some(LeashInteraction::WithoutItem);
             }
         }
-        if item == "minecraft:shears" {
+        if self.held_shears(super::item_abilities::ability::SHEARS_HARVEST) {
             let mut dropped = false;
             if self.mobs[index].extra.leash.is_some() {
                 self.break_leash_used(id, true);
@@ -720,7 +720,7 @@ impl Game<'_> {
         let held_item = self.held().map(|s| s.item.to_string());
         let sneaking = self.held_mapping(Action::Sneak);
         // Shears snip every lead on the knot.
-        if knot_hit && held_item.as_deref() == Some("minecraft:shears") {
+        if knot_hit && self.held_shears(super::item_abilities::ability::SHEARS_HARVEST) {
             for i in existing {
                 let id = self.mobs[i].id;
                 self.break_leash_used(id, true);
