@@ -264,6 +264,7 @@ impl Game<'_> {
                             Kind::Trident => "trident",
                             Kind::Spawner => "spawner",
                             Kind::Cloud => "cloud",
+                            Kind::Bolt => "bolt",
                             Kind::Cushion => "cushion",
                             Kind::Knot => "knot",
                             Kind::Player => "player",

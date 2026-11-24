@@ -228,7 +228,7 @@ pub(super) struct Parked {
     pub(super) boats: sunrise_client::join_seq::JoinList<boats::Boat, false>,
     pub(super) carts: sunrise_client::join_seq::JoinList<minecarts::Minecart, false>,
     jukebox_sounds: HashMap<(i32, i32, i32), u64>,
-    bolts: Vec<lightning::Bolt>,
+    bolts: sunrise_client::join_seq::ResidentList<lightning::Bolt>,
     crystals: sunrise_client::join_seq::JoinList<dragon::Crystal>,
     dragon: super::native_entity_refs::dragon_parts_table::DragonSlot,
     breath_clouds: sunrise_client::join_seq::ResidentList<dragon::Breath>,
@@ -488,6 +488,27 @@ impl Game<'_> {
             }
             after = Some(id);
         }
+    }
+
+    /// `PersistentEntitySectionManager.isLoaded(UUID)` for the destination level in place,
+    /// including the in-place player and any guests in this level, independently of command visibility.
+    pub(in crate::game) fn is_loaded_uuid_in_level(&self, uuid: [i32; 4]) -> bool {
+        if self.level_target_by_uuid(self.dim, uuid).is_some() {
+            return true;
+        }
+        if self.resident_entities.local_player.location().is_none()
+            && self.lan_acting.is_none()
+            && self.player.is_some()
+            && self.level.player_uuid == Some(uuid)
+        {
+            return true;
+        }
+        self.lan.iter().flat_map(|h| h.hub.guests.iter()).any(|g| {
+            g.placed
+                && !g.released
+                && Dim::from_id(&g.dimension) == self.dim
+                && sunrise_client::lan::playerdata::uuid_ints(g.uuid) == uuid
+        })
     }
 
     /// Find the canonical level without swapping or probing physical families.
@@ -1026,7 +1047,7 @@ impl Game<'_> {
             boats: Default::default(),
             carts: Default::default(),
             jukebox_sounds: HashMap::new(),
-            bolts: Vec::new(),
+            bolts: Default::default(),
             crystals: Default::default(),
             dragon: Default::default(),
             breath_clouds: Default::default(),

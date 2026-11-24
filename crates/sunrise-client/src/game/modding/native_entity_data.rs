@@ -212,6 +212,7 @@ impl Game<'_> {
                 | Target::Other(_)
                 | Target::Fangs(_)
                 | Target::Cloud(_)
+                | Target::Bolt(_)
                 | Target::Spawner(_),
             ) => true,
             Some(_) => self
@@ -263,7 +264,8 @@ fn named_id(t: Target) -> Option<u32> {
         | Target::Cart(id)
         | Target::Other(id)
         | Target::Fangs(id)
-        | Target::Cloud(id) => Some(id),
+        | Target::Cloud(id)
+        | Target::Bolt(id) => Some(id),
         _ => None,
     }
 }

@@ -2225,7 +2225,7 @@ fn network_stack_projecting(
                 sunrise_protocol::item::component::WRITABLE_BOOK_CONTENT,
                 sunrise_protocol::item::Component::WritableBook {
                     pages: d.writable_pages.clone(),
-                    filtered: Vec::new(),
+                    filtered: d.writable_filtered.clone(),
                 },
             ));
         }

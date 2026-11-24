@@ -197,6 +197,11 @@ impl Game<'_> {
                 .find(|c| c.id == id)
                 .map_or([0.0; 2], |c| c.rotation),
             Target::Cloud(id) => saved_rotation(id),
+            Target::Bolt(id) => self
+                .bolts
+                .iter()
+                .find(|b| b.id == id)
+                .map_or([0.0; 2], |b| b.rotation),
             Target::Dragon(id) => self
                 .dragon
                 .as_ref()
@@ -815,6 +820,23 @@ impl Game<'_> {
                 let Some(Arg::Resource(kind)) = c.get("entity").cloned() else {
                     return Ok(vec![s]);
                 };
+                // ExecuteCommand.spawnEntityAndRedirect calls SummonCommand.createEntity.
+                if matches!(
+                    kind.as_str(),
+                    "minecraft:player" | "minecraft:fishing_bobber"
+                ) {
+                    return Err(err("entity.not_summonable", &[&kind]));
+                }
+                Self::check_summon_bounds(s.pos)?;
+                if self.difficulty_id() == 0
+                    && self
+                        .res
+                        .mob_types()
+                        .get(&kind)
+                        .is_some_and(|t| !t.allowed_in_peaceful())
+                {
+                    return Err(err("commands.summon.failed.peaceful", &[]));
+                }
                 let target = self.summon_with_nbt(&kind, s.pos, "{}")?;
                 let Some(t) = target else {
                     return Err(err("commands.summon.failed", &[]));
@@ -959,6 +981,14 @@ impl Game<'_> {
                             .iter()
                             .filter(|m| m.extra.mount == Some(id) && m.alive() && !m.removed)
                             .map(|m| Target::Mob(m.id)),
+                    );
+                }
+                if let Some(id) = self.resident_target_id(entity) {
+                    passengers.extend(
+                        self.bolts
+                            .iter()
+                            .filter(|b| b.mount == Some(id))
+                            .map(|b| Target::Bolt(b.id)),
                     );
                 }
                 passengers

@@ -96,6 +96,7 @@ pub(super) fn target_id(t: Target) -> Option<u32> {
         | Target::Trident(id)
         | Target::Spawner(id)
         | Target::Cloud(id)
+        | Target::Bolt(id)
         | Target::Hook(id)
         | Target::Knot(id)
         | Target::General(id) => Some(id),
@@ -764,7 +765,7 @@ mod tests {
                 );
                 // A quarantined missing-mod record shares storage, not level membership.
                 game.next_entity += 1;
-                let record = Tag::compound([(
+                let mut record = Tag::compound([(
                     "Pos",
                     Tag::List(
                         [5.0_f64, 64.0, 5.0]
@@ -773,7 +774,7 @@ mod tests {
                     ),
                 )]);
                 let opaque = game
-                    .other_from_nbt(&record, game.next_entity, "missing:object")
+                    .other_from_nbt(&mut record, game.next_entity, "missing:object")
                     .unwrap();
                 game.others.push(opaque);
                 game.native_joins_flush(true, 0);

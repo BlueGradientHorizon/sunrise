@@ -167,6 +167,9 @@ pub(super) fn potion_cloud_from_nbt(tag: &Tag) -> Option<(Vec3, Breath)> {
             id: 0,
             at: [at.x, at.y, at.z],
             motion: [motion.x, motion.y, motion.z],
+            fall_distance: sunrise_client::entity_nbt::ground_from_nbt(tag).1,
+            fire_ticks: sunrise_client::entity_nbt::fire_ticks_from_nbt(tag),
+            first_tick: true,
             radius: real("Radius", 3.0).clamp(0.0, 32.0),
             age: int("Age", 0),
             duration: int("Duration", -1),
@@ -213,11 +216,13 @@ pub(super) fn potion_cloud_to_nbt(c: &Breath, uuid: [i32; 4], raw: Option<&Tag>)
     };
     let at = Vec3::new(c.at[0], c.at[1], c.at[2]);
     let motion = Vec3::new(c.motion[0], c.motion[1], c.motion[2]);
+    // AreaEffectCloud never turns: the rotation it was loaded with.
+    let rotation = raw.map_or([0.0; 2], sunrise_client::entity_nbt::loaded_rotation);
     let mut tag = sunrise_client::entity_nbt::entity_base_tag(
         "minecraft:area_effect_cloud",
         at,
         motion,
-        [0.0, 0.0],
+        rotation,
         uuid,
         raw,
     );
@@ -244,6 +249,15 @@ pub(super) fn potion_cloud_to_nbt(c: &Breath, uuid: [i32; 4], raw: Option<&Tag>)
     let Tag::Compound(map) = &mut tag else {
         return tag;
     };
+    map.insert(
+        "fall_distance".into(),
+        Tag::Double(if c.fall_distance == 0.0 {
+            0
+        } else {
+            c.fall_distance.to_bits()
+        }),
+    );
+    map.insert("Fire".into(), Tag::Short(c.fire_ticks as i16));
     map.insert("Age".into(), Tag::Int(c.age));
     map.insert("Duration".into(), Tag::Int(c.duration));
     map.insert("Radius".into(), Tag::Float(c.radius.to_bits()));
@@ -2187,7 +2201,7 @@ impl Game<'_> {
     }
     /// The authoritative `AreaEffectCloud.serverTick` for lingering potions' clouds.
     /// The logical client draws particles from tracked cloud data.
-    fn tick_potion_clouds(&mut self) {
+    pub(super) fn tick_potion_clouds(&mut self) {
         if self.breath_clouds.iter().all(|c| c.potion.is_none()) {
             return;
         }
@@ -2202,9 +2216,13 @@ impl Game<'_> {
         let ticking = self.entity_ticking_area();
         let mut expired: Vec<u32> = Vec::new();
         clouds.retain_mut(|c| {
-            let keep = c.potion.is_none()
-                || !ticking(c.at[0].floor() as i32, c.at[2].floor() as i32)
-                || self.tick_potion_cloud(c, &players);
+            let keep =
+                c.potion.is_none() || !ticking(c.at[0].floor() as i32, c.at[2].floor() as i32) || {
+                    self.cloud_fluid_step(c);
+                    // Entity.baseTick: `fireImmune()` clears the fire.
+                    c.fire_ticks = c.fire_ticks.min(0);
+                    self.tick_potion_cloud(c, &players)
+                };
             if !keep {
                 expired.push(c.id);
             }
@@ -2220,6 +2238,37 @@ impl Game<'_> {
     /// `AreaEffectCloud.serverTick`: configured lifetime/radius changes and
     /// five-tick doses, with each victim's configured reapplication delay.
     /// False once the cloud is gone.
+    /// `Entity.baseTick`'s fluid steps for a cloud: `updateFluidInteraction`
+    /// (the box is `radius * 2` wide and 0.5 high) resets the fall distance
+    /// in water and adds the currents to its motion, then lava halves it once
+    /// `first_tick` has cleared (`Entity.isInLava` is false on the first tick).
+    pub(super) fn cloud_fluid_step(&self, c: &mut Breath) {
+        let (r, [x, y, z]) = (f64::from(c.radius), c.at);
+        let bounds = sunrise_core::geometry::Aabb::new(
+            Vec3::new(x - r, y, z - r),
+            Vec3::new(x + r, y + 0.5, z + r),
+        );
+        let mut motion = Vec3::new(c.motion[0], c.motion[1], c.motion[2]);
+        // EntityDimensions.scalable: the eye at 0.85 of the height.
+        let eye = y + f64::from(0.5_f32 * 0.85);
+        let (water, lava, _) = sunrise_client::entities::update_entity_fluids(
+            bounds,
+            Vec3::new(x, y, z),
+            eye,
+            &mut motion,
+            &self.world,
+            &self.res.motion().fluids,
+            &self.loop_context,
+        );
+        c.motion = [motion.x, motion.y, motion.z];
+        if water > 0.0 {
+            c.fall_distance = 0.0;
+        }
+        if !c.first_tick && lava > 0.0 {
+            c.fall_distance *= 0.5;
+        }
+        c.first_tick = false;
+    }
     fn tick_potion_cloud(&mut self, c: &mut Breath, players: &[FightPlayer]) -> bool {
         c.age = c.age.wrapping_add(1);
         let Some(potion) = c.potion.as_mut() else {
@@ -2338,6 +2387,9 @@ impl Game<'_> {
             id,
             at,
             motion: [0.0; 3],
+            fall_distance: 0.0,
+            fire_ticks: 0,
+            first_tick: true,
             radius: 2.5,
             age: 0,
             duration: 300,
@@ -2746,6 +2798,9 @@ impl Game<'_> {
                 id,
                 at: [at.x, at.y, at.z],
                 motion: [0.0; 3],
+                fall_distance: 0.0,
+                fire_ticks: 0,
+                first_tick: true,
                 radius: 3.0,
                 age: 0,
                 duration: 600,
@@ -3353,6 +3408,9 @@ pub(super) mod tests {
                     id: 0,
                     at: [0.0, 80.0, 0.0],
                     motion: [0.0; 3],
+                    fall_distance: 0.0,
+                    fire_ticks: 0,
+                    first_tick: true,
                     radius: 3.0,
                     age,
                     duration,
@@ -4172,6 +4230,9 @@ pub(super) mod tests {
             id: 7,
             at: [1.5, 64.0, -2.5],
             motion: [0.6, 0.0, 0.0],
+            fall_distance: 0.0,
+            fire_ticks: 0,
+            first_tick: true,
             radius: 3.5,
             age: 12,
             duration: 400,
@@ -4380,6 +4441,9 @@ pub(super) mod tests {
             id: 1,
             at: [1.0, 64.0, 0.0],
             motion: [0.0; 3],
+            fall_distance: 0.0,
+            fire_ticks: 0,
+            first_tick: true,
             radius: 5.0,
             age: 0,
             duration: 200,
@@ -4407,6 +4471,9 @@ pub(super) mod tests {
             id: 1,
             at: [0.0, 64.0, 0.0],
             motion: [0.0; 3],
+            fall_distance: 0.0,
+            fire_ticks: 0,
+            first_tick: true,
             radius: 3.0,
             age: 0,
             duration: 600,
@@ -4426,6 +4493,9 @@ pub(super) mod tests {
             id: 2,
             at: [0.0, 64.0, 0.0],
             motion: [0.0; 3],
+            fall_distance: 0.0,
+            fire_ticks: 0,
+            first_tick: true,
             radius: 3.0,
             age: 0,
             duration: 600,
@@ -4458,6 +4528,9 @@ pub(super) mod tests {
             id: 3,
             at: [0.0, 64.0, 0.0],
             motion: [0.0; 3],
+            fall_distance: 0.0,
+            fire_ticks: 0,
+            first_tick: true,
             radius: 5.0,
             age: 219,
             duration: 200,
@@ -4477,6 +4550,9 @@ pub(super) mod tests {
             id: 3,
             at: [0.0, 64.0, 0.0],
             motion: [0.0; 3],
+            fall_distance: 0.0,
+            fire_ticks: 0,
+            first_tick: true,
             radius: 5.0,
             age: 220,
             duration: 200,
@@ -4497,6 +4573,9 @@ pub(super) mod tests {
             id: 4,
             at: [10.0, 64.0, 0.0],
             motion: [0.0; 3],
+            fall_distance: 0.0,
+            fire_ticks: 0,
+            first_tick: true,
             radius: 1.0,
             age: 0,
             duration: 200,
@@ -4518,6 +4597,9 @@ pub(super) mod tests {
             id: 5,
             at: [0.0, 64.0, 0.0],
             motion: [0.0; 3],
+            fall_distance: 0.0,
+            fire_ticks: 0,
+            first_tick: true,
             radius: 1.0,
             age: 0,
             duration: 200,
@@ -4855,6 +4937,10 @@ mod xp_bottle_tests {
 #[cfg(test)]
 #[path = "potions/potion_contents_tests.rs"]
 mod potion_contents_tests;
+
+#[cfg(test)]
+#[path = "potions/cloud_water_tests.rs"]
+pub(in crate::game) mod cloud_water_tests;
 
 #[cfg(test)]
 mod mob_absorption_max_tests {

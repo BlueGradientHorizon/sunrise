@@ -32,8 +32,7 @@ pub(super) struct EntityJournal {
     /// Below the join number of every entity added in the transaction (`JoinSeq::upcoming` as
     /// it opened).
     mark: JoinSeq,
-    /// How many bolts and thrown potions there were as it opened.
-    bolts: usize,
+    /// How many thrown potions there were as it opened.
     potions: usize,
     /// The travellers that arrived from another level, by the ids they arrived under.
     arrivals: HashSet<u32>,
@@ -205,7 +204,6 @@ impl Game<'_> {
     pub(super) fn entity_journal_open(&self) -> EntityJournal {
         EntityJournal {
             mark: JoinSeq::upcoming(),
-            bolts: self.bolts.len(),
             potions: self.potions.thrown.len(),
             ..EntityJournal::default()
         }
@@ -469,7 +467,6 @@ impl Game<'_> {
                 mob.removed = was;
             }
         }
-        self.bolts.truncate(journal.bolts);
         self.potions.thrown.truncate(journal.potions);
         // One load when nothing joined anywhere since the transaction opened.
         if JoinSeq::latest() >= journal.mark {
@@ -512,6 +509,7 @@ impl Game<'_> {
             self.item_frames,
             self.others,
             self.breath_clouds,
+            self.bolts,
             self.fangs.list,
             self.ominous_spawners,
             self.resident_entities.knots,

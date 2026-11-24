@@ -1028,8 +1028,9 @@ impl Game<'_> {
             "trident",
         ) {
             self.spawn_bolt(at, false);
-            if let Some(bolt) = self.bolts.last_mut() {
-                bolt.cause = player.map(|(conn, _)| conn);
+            if let Some(last) = self.bolts.len().checked_sub(1) {
+                self.bolts
+                    .update(last, |bolt| bolt.cause = player.map(|(conn, _)| conn));
             }
         }
     }

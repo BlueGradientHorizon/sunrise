@@ -156,6 +156,11 @@ impl Game<'_> {
             || self
                 .general_passengers(vehicle)
                 .any(|row| matches((row.vehicle_order, row.id, false)))
+            || self
+                .bolts
+                .iter()
+                .filter(|b| b.mount == Some(vehicle))
+                .any(|b| matches((b.vehicle_order, b.id, false)))
     }
 
     /// Player seats in source encounter order, shared with the mob tick's live loan.

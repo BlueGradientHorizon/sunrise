@@ -950,13 +950,18 @@ fn paint_with<'a>(
                     r.v0 = v0;
                 }
                 let at = [*x as f32, *y as f32, *w as f32, *h as f32];
+                // A whole GUI sprite draws as its `gui.scaling` says (`GuiGraphicsExtractor.blitSprite`).
                 let draw = |batch: &mut crate::hud::HudBatch,
                             name: &str,
-                            r,
-                            [x, y, w, h]: [f32; 4],
-                            color| {
+                            r: crate::hud::Rect,
+                            at: [f32; 4],
+                            color: u32| {
                     let start = batch.vertices.len();
-                    batch.rect_uv(x, y, w, h, r, color);
+                    if region.is_none() && !effect {
+                        crate::ui::draw_whole_sprite(batch, atlas, name, r, at, color);
+                    } else {
+                        batch.rect_uv(at[0], at[1], at[2], at[3], r, color);
+                    }
                     if *blend == Blend::Crosshair {
                         if let Some(page) = atlas.gui_atlas_page(name) {
                             batch.blend_since(

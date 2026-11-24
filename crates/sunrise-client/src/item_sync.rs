@@ -642,12 +642,19 @@ fn components_tag(
             Component::Text(t) | Component::Nbt(t) => t.clone(),
             Component::Ident(v) => Tag::String(v.as_str().into()),
             Component::Lore(lines) => Tag::List(lines.clone()),
-            Component::WritableBook { pages, .. } => Tag::compound([(
+            Component::WritableBook { pages, filtered } => Tag::compound([(
                 "pages",
                 Tag::List(
                     pages
                         .iter()
-                        .map(|p| Tag::String(p.as_str().into()))
+                        .enumerate()
+                        .map(|(i, p)| match filtered.get(i).and_then(Option::as_deref) {
+                            Some(f) => Tag::compound([
+                                ("raw", Tag::String(p.as_str().into())),
+                                ("filtered", Tag::String(f.into())),
+                            ]),
+                            None => Tag::String(p.as_str().into()),
+                        })
                         .collect(),
                 ),
             )]),
@@ -2280,6 +2287,96 @@ mod tests {
             (&*contents[0].item, contents[0].count),
             ("minecraft:stone", 32)
         );
+    }
+
+    /// Vanilla 26.3 `ItemStack.OPTIONAL_STREAM_CODEC` witness recorded by `tools/test_item_wire_parity.py` round-trips `minecraft:tooltip_style` byte-for-byte.
+    #[test]
+    #[ignore = "run by tools/test_item_wire_parity.py"]
+    fn a_tooltip_style_crosses_the_wire() {
+        #[derive(serde::Deserialize)]
+        struct Witness {
+            minecraft_version: String,
+            cases: Vec<Case>,
+        }
+        #[derive(serde::Deserialize)]
+        struct Case {
+            label: String,
+            item: String,
+            item_id: i32,
+            component_id: i32,
+            tooltip_style: String,
+            hex: String,
+        }
+
+        let path = std::env::var_os("SUNRISE_TOOLTIP_STYLE_WIRE_WITNESS").unwrap_or_else(|| {
+            panic!(
+                "SUNRISE_TOOLTIP_STYLE_WIRE_WITNESS is unset; run tools/test_item_wire_parity.py"
+            )
+        });
+        let raw = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+            panic!(
+                "failed to read witness {} (record via tools/test_item_wire_parity.py): {e}",
+                Path::new(&path).display()
+            )
+        });
+        let witness: Witness = serde_json::from_str(&raw).unwrap();
+        assert_eq!(witness.minecraft_version, "26.3");
+        assert!(!witness.cases.is_empty());
+
+        for case in &witness.cases {
+            let vanilla_bytes: Vec<u8> = (0..case.hex.len())
+                .step_by(2)
+                .map(|i| u8::from_str_radix(&case.hex[i..i + 2], 16).unwrap())
+                .collect();
+            let mut items = vec![String::new(); case.item_id as usize + 1];
+            items[case.item_id as usize] = case.item.clone();
+            let mut components = vec![String::new(); case.component_id as usize + 1];
+            components[case.component_id as usize] = "minecraft:tooltip_style".into();
+            let builtin = Builtin {
+                registries: [
+                    ("minecraft:item".to_owned(), Ids::from_names(items)),
+                    (
+                        "minecraft:data_component_type".to_owned(),
+                        Ids::from_names(components),
+                    ),
+                ]
+                .into(),
+            };
+
+            let mut reader = sunrise_protocol::buf::Reader::new(&vanilla_bytes);
+            let read = sunrise_protocol::item::Slot::read(&mut reader)
+                .unwrap()
+                .unwrap();
+            assert!(reader.rest().is_empty(), "{}: read short", case.label);
+            let back = from_network(&read, &builtin, &Dynamic::default());
+            assert_eq!(&*back.item, case.item.as_str(), "{}", case.label);
+            assert_eq!(
+                crate::save::text(back.data().unwrap().other("minecraft:tooltip_style")).as_deref(),
+                Some(case.tooltip_style.as_str()),
+                "{}",
+                case.label
+            );
+
+            let given = crate::item_data::command_components(&format!(
+                "[tooltip_style='{}']",
+                case.tooltip_style
+            ))
+            .unwrap();
+            let (damage, extra) = crate::item_data::decode_components(Some(&given));
+            let stack = ItemStack {
+                damage,
+                extra,
+                ..ItemStack::new(&case.item, 1)
+            };
+            let wire = crate::lan::guest::stack_to_network(
+                |name| if name == case.item { case.item_id } else { 0 },
+                |_, _| None,
+                &Some(stack),
+            );
+            let mut writer = sunrise_core::vanilla_bytes::Writer::new();
+            sunrise_protocol::item::Slot::write(&wire, &mut writer);
+            assert_eq!(writer.data, vanilla_bytes, "{}", case.label);
+        }
     }
 
     /// `custom_model_data` and `item_model` reach the client, whose item
