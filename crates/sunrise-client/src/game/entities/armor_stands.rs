@@ -1058,6 +1058,17 @@ impl Game<'_> {
             // Entity.baseTick: the saved invulnerability window counts down
             // (#916).
             self.tick_saved_invulnerable_time(self.armor_stands[i].id);
+            // LivingEntity.baseTick -> tickDeath: a stand at 0 health or less
+            // is dead, and goes at a death time of 20 with no drops.
+            let mut died_of_age = false;
+            let a = &mut self.armor_stands[i];
+            if a.health <= 0.0 {
+                a.death_time = a.death_time.wrapping_add(1);
+                if a.death_time >= 20 {
+                    dead.push((a.id, None));
+                    died_of_age = true;
+                }
+            }
             self.armor_stand_location_effects(i, false);
             // ArmorStand.travel: a marker or a NoGravity stand does not move.
             let travels = !self.armor_stands[i].marker && !self.armor_stands[i].no_gravity;
@@ -1226,8 +1237,9 @@ impl Game<'_> {
                         vanilla,
                     )
                 },
-            ) {
-                dead.push((id, damage_type));
+            ) && !died_of_age
+            {
+                dead.push((id, Some(damage_type)));
             }
             if self.armor_stands[i].fire_ticks > 0
                 && self.armor_stands[i].fire_ticks >= prev_fire
@@ -1239,8 +1251,23 @@ impl Game<'_> {
             self.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
         }
         for (id, damage_type) in dead.into_iter().rev() {
-            if let Some(i) = self.armor_stands.iter().position(|a| a.id == id) {
-                self.break_armor_stand_by_anything(i, damage_type, 0);
+            match damage_type {
+                Some(damage_type) => {
+                    if let Some(i) = self.armor_stands.iter().position(|a| a.id == id) {
+                        self.break_armor_stand_by_anything(i, damage_type, 0);
+                    }
+                }
+                None => {
+                    // Entity event 60 (the poof), then remove(KILLED).
+                    if let Some(a) = self.armor_stands.iter().find(|a| a.id == id) {
+                        let at = a.position.components();
+                        self.remove_armor_stand_after(id, |game| {
+                            game.lan_entity_event(id as i32, 60, at);
+                            let (x, z) = (at[0].floor() as i32, at[2].floor() as i32);
+                            game.world.modified.insert((x >> 4, z >> 4));
+                        });
+                    }
+                }
             }
         }
         Ok(())

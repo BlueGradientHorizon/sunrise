@@ -256,7 +256,7 @@ harnesses = [
   "status_*", "effect*", "potion_effect_icon", "player_*", "food*", "damage_*", "*_damage", "living_*", "combat_rules",
   "registered_player_combat", "special_attack", "mace", "blocking_*", "item_blocking", "invulnerable_time",
   "attribute*", "live_attribute*", "enchant*", "stored_enchantment_patch", "loot_*", "opened_loot", "spawn_loot",
-  "stand_break_loot", "entity_death_loot", "component_*", "*_components", "effective_item_components",
+  "stand_break_loot", "stand_low_health", "entity_death_loot", "component_*", "*_components", "effective_item_components",
   "builtin_component_delivery", "numeric_damage_component", "bundle_weight", "stack_*", "held_*", "helmet_damage",
   "use_flag_reaction", "teleport_consume", "pumpkin_equippable_use", "fishing_*", "inline_fishing_tool",
   "inline_loot_reference", "inline_trim_holders", "craft_map_take", "map_*", "exploration_map_command",

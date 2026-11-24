@@ -1795,6 +1795,8 @@ pub struct ArmorStand {
     /// Unsaved fire immunity granted on this logical side.
     pub mod_fire_immune: bool,
     pub health: f32,
+    /// `LivingEntity.deathTime`: the ticks a stand at 0 health has been dead.
+    pub death_time: i16,
     pub tick_count: i32,
     /// Transient `LivingEntity.lastHurtMob`; an owned arrow or wind charge can set it.
     pub last_hurt_mob: Option<(u32, i32)>,
@@ -2104,6 +2106,7 @@ impl ArmorStand {
             join: Default::default(),
             fire_ticks: 0,
             mod_fire_immune: false,
+            death_time: 0,
             health: 20.0,
             tick_count: 0,
             last_hurt_mob: None,
@@ -2260,9 +2263,9 @@ impl ArmorStand {
                 }
             }
         }
-        // Dead: the damage type that ran its health out, which vanilla's
-        // `brokenByAnything` receives as the `DamageSource`.
-        (self.health <= 0.5).then(|| hit_by.unwrap_or("minecraft:generic"))
+        // `ArmorStand.causeDamage` breaks it only when this tick's damage left
+        // it at 0.5 or less: the damage type `brokenByAnything` receives.
+        hit_by.filter(|_| self.health <= 0.5)
     }
     /// `ArmorStand.getDefaultDimensions`: MARKER_DIMENSIONS, or BABY_DIMENSIONS (the type's at
     /// half scale, its eyes at 0.9875) for a small one, else the type's.

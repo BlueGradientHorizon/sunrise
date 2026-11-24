@@ -3943,7 +3943,7 @@ pub fn armor_stand_tag(
     // LivingEntity.addAdditionalSaveData.
     out.insert("Health".into(), Tag::Float(a.health.to_bits()));
     out.retain_or("HurtTime", || Tag::Short(0));
-    out.retain_or("DeathTime", || Tag::Short(0));
+    out.insert("DeathTime".into(), Tag::Short(a.death_time));
     out.retain_or("AbsorptionAmount", || Tag::Float(0));
     out.retain_or("current_impulse_context_reset_grace_time", || Tag::Int(0));
     out.retain("current_explosion_impact_pos");
@@ -4022,6 +4022,7 @@ pub fn armor_stand_from_nbt(tag: &Tag, id: u32) -> Option<ArmorStand> {
         if list.iter().any(|attr| text(attr.get("id")).as_deref() == Some(SPEED_ATTRIBUTE)));
     a.velocity = loaded_motion(tag);
     a.health = float(tag.get("Health")).unwrap_or(20.0) as f32;
+    a.death_time = number(tag.get("DeathTime")).unwrap_or(0) as i16;
     a.fire_ticks = i32::from(number(tag.get("Fire")).unwrap_or(0) as i16);
     a.custom_name = tag.get("CustomName").map(name_text);
     a.name_visible = flag(tag, "CustomNameVisible");

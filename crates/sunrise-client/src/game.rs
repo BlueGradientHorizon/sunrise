@@ -2200,6 +2200,9 @@ mod stand_command_hurt_tests;
 #[path = "game/interface/stand_equipment_change_tests.rs"]
 mod stand_equipment_change_tests;
 #[cfg(test)]
+#[path = "game/entities/stand_low_health_tests.rs"]
+mod stand_low_health_tests;
+#[cfg(test)]
 #[path = "game/modding/start_riding_refusal_tests.rs"]
 mod start_riding_refusal_tests;
 #[cfg(test)]
