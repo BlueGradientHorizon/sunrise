@@ -147,8 +147,7 @@ impl Game<'_> {
                         material.color,
                         material.overlay,
                     );
-                    layer.equipment_model =
-                        material.model.map(|model| (model.clone(), piece.slot));
+                    layer.equipment_model = material.model.map(|model| (model.clone(), piece.slot));
                     layer.equipment_uv = material.final_texture.then_some(material.binding.uv);
                     out.push(layer);
                 }
