@@ -143,7 +143,7 @@ fn should_run_idle_maintenance(paused: bool) -> bool {
 /// A level that is not in place: every per-level field of `Game`.
 pub(super) struct Parked {
     pub(super) world: World,
-    streaming: Streaming,
+    pub(super) streaming: Streaming,
     locator: Option<Arc<VanillaTerrain>>,
     pub(super) save: Arc<SaveDir>,
     block_ticks: Ticks,

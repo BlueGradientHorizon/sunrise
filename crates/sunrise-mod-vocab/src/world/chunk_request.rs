@@ -19,6 +19,14 @@ impl ChunkRequestRef {
     pub fn level(self) -> LevelRef {
         self.level
     }
+
+    /// Side: server.
+    /// Cancels a pending (or undrained) request owned by the calling mod and releases its
+    /// level-33 (`ChunkLevel.FULL_CHUNK_LEVEL`) ticket immediately. Returns `true` if the
+    /// request was still active.
+    pub fn cancel(self, host: &mut dyn crate::ServerHost) -> bool {
+        crate::backend_mut_of(host).is_some_and(|backend| backend.chunk_request_cancel(self))
+    }
 }
 
 /// One finished or failed non-blocking chunk request returned by `LevelRef::drain_chunk_requests`.
