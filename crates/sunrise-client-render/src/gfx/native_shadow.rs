@@ -235,6 +235,12 @@ pub struct ShadowMap {
 }
 
 impl ShadowMap {
+    /// The map's depth, for tests that read what the shadow pass drew into it.
+    #[cfg(feature = "test-support")]
+    pub fn depth(&self) -> &wgpu::Texture {
+        &self.depth
+    }
+
     pub fn new(device: &wgpu::Device, settings: Option<&Settings>, api: Api) -> Self {
         let size = settings.map_or(1, |s| s.resolution);
         let texture = |label, format, usage| {
@@ -753,6 +759,14 @@ impl NativeShadow {
             group,
             displaced,
         })
+    }
+}
+
+/// The running pack's shadow map depth, for tests that read it once a frame was drawn.
+#[cfg(feature = "test-support")]
+impl super::Renderer {
+    pub fn native_shadow_depth(&self) -> Option<&wgpu::Texture> {
+        (self.native.as_ref()).map(|native| native.frame.shadow_map.depth())
     }
 }
 
