@@ -1664,5 +1664,5 @@ mod tests {
 }
 
 #[cfg(test)]
-#[path = "core_shader_texel_tests.rs"]
+#[path = "texel_tests.rs"]
 mod texel_buffer_tests;
