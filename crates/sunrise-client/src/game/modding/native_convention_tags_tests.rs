@@ -252,7 +252,10 @@ fn two_mods_interoperate_through_c_convention_tags_and_all_ten_registries() {
             let TagMembers::Members(forests) = tags.biomes(c::biomes::IS_FOREST) else {
                 panic!("c:is_forest biome tag must bind");
             };
-            let forest_names: Vec<_> = forests.iter().filter_map(|key| key.id(host).ok()).collect();
+            let forest_names: Vec<_> = forests
+                .iter()
+                .filter_map(|key| key.view(host).ok().map(|view| view.id()))
+                .collect();
             assert!(forest_names.contains(&"minecraft:forest"));
 
             let TagMembers::Members(weapon_enchants) =

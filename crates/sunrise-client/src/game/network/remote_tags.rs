@@ -170,17 +170,22 @@ mod tests {
             );
             let tags = context.tags();
             let key = |tag| tags.key(&Identifier::parse(tag).unwrap()).unwrap();
-            let stick = context.item_key(&Identifier::parse("minecraft:stick").unwrap());
+            let stick = context
+                .item_key(&Identifier::parse("minecraft:stick").unwrap())
+                .unwrap();
+            let lava = mod_api::__private::fluid_key("minecraft:lava").unwrap();
+            let blocks = key("test:blocks").typed();
+            let items = key("test:items").typed();
+            let fluids = key("test:fluids").typed();
             self.0.lock().unwrap().push(Seen {
                 cause: event.cause,
-                items: tags.items(key("test:items").typed()),
+                items: tags.items(items),
                 empty_items: tags.items(key("test:empty_items").typed()),
-                fluids: tags.fluids(key("test:fluids").typed()),
-                stone_in_block_tag: context
-                    .block_in_tag(block_key("minecraft:stone"), "test:blocks"),
-                dirt_in_block_tag: context.block_in_tag(block_key("minecraft:dirt"), "test:blocks"),
-                stick_in_item_tag: tags.is_in_tag(stick.unwrap(), key("test:items").typed()),
-                lava_in_fluid_tag: context.fluid_in_tag("minecraft:lava", "test:fluids"),
+                fluids: tags.fluids(fluids),
+                stone_in_block_tag: block_key("minecraft:stone").is_in_tag(tags, blocks),
+                dirt_in_block_tag: block_key("minecraft:dirt").is_in_tag(tags, blocks),
+                stick_in_item_tag: stick.is_in_tag(tags, items),
+                lava_in_fluid_tag: lava.is_in_tag(tags, fluids),
             });
         }
     }
@@ -893,7 +898,7 @@ mod tests {
         static ENABLED: AtomicBool = AtomicBool::new(false);
         static CALLS: AtomicUsize = AtomicUsize::new(0);
         static NOTICES: AtomicUsize = AtomicUsize::new(0);
-        struct Provider;
+        struct Provider(mod_api::TagKey<mod_api::BlockKey>);
         #[mod_api::sunrise_part]
         impl mod_api::BlockPart for Provider {
             fn enchant_power_bonus(
@@ -902,8 +907,7 @@ mod tests {
                 event: &mut mod_api::EnchantPowerBonusEvent,
             ) {
                 CALLS.fetch_add(1, Ordering::Relaxed);
-                let received =
-                    host.block_in_tag(event.state.block(), "power_test:providers") == Some(true);
+                let received = event.state.is_in_tag(host.tags(), self.0) == Some(true);
                 event.power = if received && ENABLED.load(Ordering::Relaxed) {
                     2.0
                 } else {
@@ -911,12 +915,17 @@ mod tests {
                 };
             }
         }
-        struct PowerMod;
+        struct PowerMod {
+            glass: std::sync::OnceLock<mod_api::BlockKey>,
+            enabled: std::sync::OnceLock<mod_api::TagKey<mod_api::BlockKey>>,
+        }
         #[mod_api::__subscriptions]
         impl Hooks for PowerMod {
             fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-                r.block_key("minecraft:glass");
-                r.block_part_tag("power_test:providers", Provider);
+                let _ = self.glass.set(r.block_key("minecraft:glass"));
+                let providers = r.tag_key("power_test:providers").typed();
+                let _ = self.enabled.set(r.tag_key("power_test:enabled").typed());
+                r.block_part_tag("power_test:providers", Provider(providers));
             }
             fn tags_updated(
                 &self,
@@ -927,14 +936,24 @@ mod tests {
                     return;
                 }
                 ENABLED.store(
-                    context.block_in_tag(block_key("minecraft:glass"), "power_test:enabled")
+                    self.glass
+                        .get()
+                        .unwrap()
+                        .is_in_tag(context.tags(), *self.enabled.get().unwrap())
                         == Some(true),
                     Ordering::Relaxed,
                 );
                 NOTICES.fetch_add(1, Ordering::Relaxed);
             }
         }
-        let mods: mod_api::Mods = vec![ModEntry::new("power_test", Box::new(PowerMod))].into();
+        let mods: mod_api::Mods = vec![ModEntry::new(
+            "power_test",
+            Box::new(PowerMod {
+                glass: std::sync::OnceLock::new(),
+                enabled: std::sync::OnceLock::new(),
+            }),
+        )]
+        .into();
         crate::game::api_values::install_parts(&mods).unwrap();
         crate::entry::install_client_hooks();
         mod_platform::testing::with_mods(mods, || {

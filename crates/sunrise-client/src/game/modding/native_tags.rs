@@ -1,5 +1,5 @@
 //! One membership implementation for full-game and in-write tag services.
-use mod_api::{DamageTypeKey, Identifier, ItemKey, TagKey, TagMembers};
+use mod_api::{BlockKey, DamageTypeKey, FluidKey, Identifier, ItemKey, TagKey, TagMembers};
 use sunrise_items::items::{Items, TagRegistry};
 use sunrise_world::loot::LootTags;
 
@@ -41,6 +41,24 @@ pub(super) fn item_tag_names(tags: &dyn LootTags) -> Option<Vec<Identifier>> {
     tags.item_tag_names()?.matching(|_| true)
 }
 
+pub(super) fn block_in_tag(
+    items: Option<&Items>,
+    block: BlockKey,
+    tag: TagKey<BlockKey>,
+) -> Option<bool> {
+    let items = items.filter(|items| items.tags_loaded(TagRegistry::Block))?;
+    let block = mod_api::__private::block_key_id(block)?;
+    mod_api::__private::with_tag_name(tag.untyped(), |name| Some(items.block_in_tag(name?, block)))
+}
+pub(super) fn fluid_in_tag(
+    items: Option<&Items>,
+    fluid: FluidKey,
+    tag: TagKey<FluidKey>,
+) -> Option<bool> {
+    let items = items.filter(|items| items.tags_loaded(TagRegistry::Fluid))?;
+    let fluid = mod_api::__private::fluid_id(fluid)?;
+    mod_api::__private::with_tag_name(tag.untyped(), |name| Some(items.fluid_in_tag(name?, fluid)))
+}
 pub(super) fn snapshot_members<K, T>(
     items: Option<&Items>,
     registry: TagRegistry,
@@ -119,6 +137,22 @@ macro_rules! impl_tags {
                 let items: Option<&sunrise_items::items::Items> = $items;
                 $crate::game::native_tags::item_tag_names(items?)
             }
+            fn block_in_tag(
+                &self,
+                block: mod_api::BlockKey,
+                tag: mod_api::TagKey<mod_api::BlockKey>,
+            ) -> Option<bool> {
+                let $this = self;
+                $crate::game::native_tags::block_in_tag($items, block, tag)
+            }
+            fn fluid_in_tag(
+                &self,
+                fluid: mod_api::FluidKey,
+                tag: mod_api::TagKey<mod_api::FluidKey>,
+            ) -> Option<bool> {
+                let $this = self;
+                $crate::game::native_tags::fluid_in_tag($items, fluid, tag)
+            }
             fn items(
                 &self,
                 tag: mod_api::TagKey<mod_api::ItemKey>,
@@ -179,7 +213,7 @@ macro_rules! impl_tags {
                     $items,
                     sunrise_items::items::TagRegistry::Biome,
                     tag,
-                    |id| biome_keys.key(id),
+                    |id| biome_keys.view(id).ok().map(|view| view.key().clone()),
                 )
             }
             fn enchantments(
@@ -335,6 +369,7 @@ mod tests {
         .unwrap();
         let stone = mod_api::__private::block_key("minecraft:stone").unwrap();
         let birch = mod_api::__private::block_key("minecraft:birch_log").unwrap();
+        let stone_state = mod_api::__private::block_state_from_ordinal(stone, 0);
         let tag = mod_api::__private::tag_key(&mod_api::Identifier::parse("test:blocks").unwrap())
             .unwrap()
             .typed();
@@ -344,6 +379,7 @@ mod tests {
                 .typed();
         let mut table = Items::for_tests(Default::default());
         assert_eq!(TagView(Some(&table)).blocks(tag), TagMembers::Unavailable);
+        assert_eq!(stone.is_in_tag(&TagView(Some(&table)), tag), None);
         table.set_tags(
             TagRegistry::Block,
             [
@@ -358,7 +394,11 @@ mod tests {
         let view = TagView(Some(&table));
         assert_eq!(view.blocks(tag), TagMembers::Members(vec![stone, birch]));
         assert_eq!(view.blocks(missing), TagMembers::Members(vec![]));
+        assert_eq!(stone.is_in_tag(&view, tag), Some(true));
+        assert_eq!(stone_state.is_in_tag(&view, tag), Some(true));
+        assert_eq!(stone.is_in_tag(&view, missing), Some(false));
         assert_eq!(TagView(None).blocks(tag), TagMembers::Unavailable);
+        assert_eq!(stone.is_in_tag(&TagView(None), tag), None);
         table.set_tags(
             TagRegistry::Block,
             [("test:blocks".into(), vec!["minecraft:birch_log".into()])].into(),
@@ -366,6 +406,9 @@ mod tests {
         let view = TagView(Some(&table));
         assert_eq!(view.blocks(tag), TagMembers::Members(vec![birch]));
         assert_eq!(view.blocks(missing), TagMembers::Missing);
+        assert_eq!(stone.is_in_tag(&view, tag), Some(false));
+        assert_eq!(stone_state.is_in_tag(&view, tag), Some(false));
+        assert_eq!(birch.is_in_tag(&view, tag), Some(true));
         table.block_tag_order.insert(
             "test:blocks".into(),
             vec!["minecraft:stone".into(), "test:unloaded".into()],
@@ -379,6 +422,14 @@ mod tests {
 
     #[test]
     fn fluid_members_distinguish_missing_empty_and_unavailable() {
+        crate::game::api_values::install_parts(&[]).unwrap();
+        mod_api::__private::resolve_fluids(
+            &["minecraft:water", "minecraft:lava"],
+            &sunrise_world::fluid::FluidKind::ALL.map(|kind| kind.name()),
+        )
+        .unwrap();
+        let water = mod_api::__private::fluid_key("minecraft:water").unwrap();
+        let water_state = mod_api::__private::fluid_state(water, 8, false, true);
         let tag =
             |name| mod_api::__private::tag_key(&mod_api::Identifier::parse(name).unwrap()).unwrap();
         let empty = tag("test:empty_fluid");
@@ -389,6 +440,7 @@ mod tests {
             TagView(Some(&table)).fluids(empty.typed()),
             TagMembers::Unavailable
         );
+        assert_eq!(water.is_in_tag(&TagView(Some(&table)), empty.typed()), None);
         table.set_tags(
             TagRegistry::Fluid,
             [("test:empty_fluid".into(), vec![])].into(),
@@ -397,6 +449,23 @@ mod tests {
         assert_eq!(view.fluids(empty.typed()), TagMembers::Members(vec![]));
         assert_eq!(view.fluids(absent.typed()), TagMembers::Missing);
         assert_eq!(view.items(absent.typed()), TagMembers::Unavailable);
+        assert_eq!(water.is_in_tag(&view, empty.typed()), Some(false));
+        assert_eq!(water.is_in_tag(&view, absent.typed()), Some(false));
+        assert_eq!(water.is_in_tag(&TagView(None), empty.typed()), None);
+        table.set_tags(
+            TagRegistry::Fluid,
+            [("test:empty_fluid".into(), vec!["minecraft:water".into()])].into(),
+        );
+        let view = TagView(Some(&table));
+        assert_eq!(water.is_in_tag(&view, empty.typed()), Some(true));
+        assert_eq!(water_state.is_in_tag(&view, empty.typed()), Some(true));
+        table.set_tags(
+            TagRegistry::Fluid,
+            [("test:empty_fluid".into(), vec!["minecraft:lava".into()])].into(),
+        );
+        let view = TagView(Some(&table));
+        assert_eq!(water.is_in_tag(&view, empty.typed()), Some(false));
+        assert_eq!(water_state.is_in_tag(&view, empty.typed()), Some(false));
     }
 
     #[test]
