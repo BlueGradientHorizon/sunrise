@@ -536,6 +536,15 @@ pub(super) fn encode_full(
         })
         .collect::<std::result::Result<Vec<_>, _>>()?;
     if let Some(extras) = extras {
+        // A block caught mid-move whose piston record could not be written carries its
+        // block entity's attachments here (`Game::attach_save_data`) with no live block
+        // entity to write them: one that cannot encode refuses the whole record, so the
+        // old record stays on disk instead of the piston going missing.
+        for (pos, attachments) in &extras.block_entity_attachments {
+            if !chunk.block_entities.iter().any(|(p, _)| p == pos) {
+                attachments.try_to_nbt()?;
+            }
+        }
         for raw in &extras.block_entities {
             let pos = (
                 number(raw.get("x")).unwrap_or(0) as i32,
