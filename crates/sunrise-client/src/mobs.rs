@@ -2922,17 +2922,20 @@ impl Mob {
     /// of every mob writes each one in its slot, not through a copy.
     #[inline]
     pub fn seen(&self, _player: Option<[i32; 4]>, items: &crate::items::Items) -> Seen {
-        let (m, villager) = (self, self.species() == Species::Villager);
+        let m = self;
+        let species = m.species();
+        let villager = species == Species::Villager;
+        let bounds = m.bounds();
         Seen {
             kind: Arc::clone(&m.kind),
             in_water: self.fluids.in_water,
             playing_dead: axolotl::is_playing_dead(self),
             last_damage: self.last_damage.map(|(d, _)| d),
             id: m.id,
-            species: m.species(),
+            species,
             position: m.position,
-            bounds: m.bounds(),
-            hitbox: m.hitbox(),
+            bounds,
+            hitbox: m.hitbox_from_bounds(bounds),
             eye_y: m.eye_y(),
             alive: m.alive(),
             removed: m.removed,
@@ -2974,7 +2977,7 @@ impl Mob {
             vehicle: m.extra.mount,
             pushable: m.pushable(),
             sleeping: villager::sleeping(m)
-                || (m.species() == Species::Fox && fox::flag(m, fox::SLEEPING)),
+                || (species == Species::Fox && fox::flag(m, fox::SLEEPING)),
             cold_strider: strider::suffocating(m),
             category: m.category(),
             potential_job: villager_brain::potential_job_site(m),
@@ -2992,10 +2995,10 @@ impl Mob {
             ],
             sitting: m.extra.sitting,
             silent: m.silent,
-            lying: m.species() == Species::Cat && (m.extra.flag || m.extra.relax_one),
+            lying: species == Species::Cat && (m.extra.flag || m.extra.relax_one),
             ridden: m.rider.is_some() || m.extra.rider.is_some() || m.extra.mount.is_some(),
             is_vehicle: equine::is_vehicle(m),
-            still: m.species() == Species::HappyGhast && happy_ghast::on_still_timeout(m),
+            still: species == Species::HappyGhast && happy_ghast::on_still_timeout(m),
             carrying: m.rider.is_some() || m.extra.rider.is_some(),
             knockback_resistance: m.attrs.knockback_resistance,
             effects: m
@@ -3333,13 +3336,29 @@ pub fn apply_brain_events_until_hurt(
                     look: fish.look_angle(),
                     feet: pos,
                 };
-                let mut hit_level = level.reborrow().attacked_by(&attack);
-                if let Some(t) = mobs.iter_mut().find(|m| {
+                let target_index = mobs.iter().position(|m| {
                     m.id == target
                         && m.alive()
                         && !m.removed
                         && target_join.is_none_or(|join| m.join == join)
-                }) {
+                });
+                if let Some(ti) = target_index {
+                    // The fish is the sting's causing entity: lent beside its target from the
+                    // tick's own list, only while a `HitHost` hook listens.
+                    let fish_index = crate::health::hit_host_listened()
+                        .then(|| mobs.iter().position(|m| m.id == mob && !m.removed))
+                        .flatten()
+                        .filter(|&fi| fi != ti);
+                    let (t, lend) = match fish_index {
+                        Some(fi) => {
+                            let [t, fish] = mobs
+                                .get_disjoint_mut([ti, fi])
+                                .expect("the sting's target and fish are two mobs");
+                            (t, crate::health::HitLend::mob(fish))
+                        }
+                        None => (&mut mobs[ti], None),
+                    };
+                    let mut hit_level = level.reborrow().attacked_by(&attack).lending(lend);
                     let landed =
                         t.damage_aimed(&mut hit_level, 1.0 + size as f32, source, Some(aim));
                     let tail = PufferfishReaction {
@@ -4022,14 +4041,17 @@ impl Mob {
     /// `LivingEntity.getHitbox`: a rider's box starts no lower than its seat
     /// (`vehicle.getPassengerRidingPosition(this).y`).
     pub fn hitbox(&self) -> Aabb {
-        let b = self.bounds();
+        self.hitbox_from_bounds(self.bounds())
+    }
+
+    fn hitbox_from_bounds(&self, bounds: Aabb) -> Aabb {
         match self.extra.seat.filter(|s| self.extra.mount == Some(s.0)) {
             Some((_, offset, _)) => {
-                let (lo, hi) = (b.min_position(), b.max_position());
+                let (lo, hi) = (bounds.min_position(), bounds.max_position());
                 let y = (self.position.y + offset).max(lo.y);
                 Aabb::new(Vec3::new(lo.x, y, lo.z), hi)
             }
-            None => b,
+            None => bounds,
         }
     }
     /// `Mob.getAttackBoundingBox(range)`: its box, widened to its vehicle's

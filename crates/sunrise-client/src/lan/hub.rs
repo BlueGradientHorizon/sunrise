@@ -123,10 +123,11 @@ pub struct BodyFlags {
     pub gliding: bool,
     /// `Entity.isSwimming` (the swimming flag).
     pub swimming: bool,
-    /// The swimming pose of a player crawling under a block.
-    pub crawling: bool,
-    /// The crouching pose, held without sneaking under a low ceiling.
-    pub crouching: bool,
+    /// `Entity.getPose`: the pose the body's last `updatePlayerPose` took; none before the
+    /// body exists.
+    pub pose: Option<crate::pose::Pose>,
+    /// `Abilities.flying`.
+    pub flying: bool,
     /// `LivingEntity.isAutoSpinAttack`: Riptide's spin.
     pub spin_attack: bool,
     /// `Entity.isOnFire`.
@@ -2794,11 +2795,22 @@ impl Hub {
         let mut g = self.guests.remove(i);
         g.listed_behind = behind;
         super::chunk_watch::unwatch_all(&mut self.chunk_watches, &mut g);
-        let closed = g
-            .menu
-            .as_ref()
-            .and_then(|menu| menu.native_closed(g.uuid, g.menu_generation, &mut g.native_menu));
-        self.native_menu_events.extend(closed);
+        if let Some(menu) = g.menu.as_ref() {
+            let inputs = menu.take_processing_inputs(&mut g.native_menu);
+            if !inputs.is_empty() {
+                self.native_menu_events.push(
+                    super::menu::NativeMenuEvent::ReturnProcessingInputs {
+                        conn: g.conn,
+                        items: inputs,
+                        drop_instead: true,
+                    },
+                );
+            }
+            if let Some(closed) = menu.native_closed(g.uuid, g.menu_generation, &mut g.native_menu)
+            {
+                self.native_menu_events.push(closed);
+            }
+        }
         // A held player a proxy dropped keeps, in the log, how its connection really ended
         // (an unreadable packet, a reset): the drop says only that it was dropped.
         if g.held
@@ -3395,21 +3407,24 @@ impl Hub {
     ) -> EntityState {
         let (sneaking, sprinting, sleeping) = flags;
         let shared = shared_flags(sneaking, sprinting, &body);
-        // Player.getDesiredPose (and updatePlayerPose's crawl): sleeping,
-        // swimming, gliding, Riptide's spin, crouching.
-        let pose = if sleeping {
-            2
-        } else if body.swimming || body.crawling {
-            3
-        } else if body.gliding {
-            1
-        } else if body.spin_attack {
-            4
-        } else if sneaking || body.crouching {
-            5
-        } else {
-            0
-        };
+        // Entity.DATA_POSE: the pose the body's updatePlayerPose took. Before
+        // the body exists, the pose it would ask for (Player.getDesiredPose).
+        let pose = body
+            .pose
+            .unwrap_or_else(|| {
+                crate::pose::desired_pose(
+                    id,
+                    crate::pose::PoseFlags {
+                        sleeping,
+                        swimming: body.swimming,
+                        fall_flying: body.gliding,
+                        auto_spin_attack: body.spin_attack,
+                        shift_key_down: sneaking,
+                        flying: body.flying,
+                    },
+                )
+            })
+            .id();
         let mut meta = Vec::new();
         if shared != 0 {
             meta.push((0, serializer::BYTE, Value::Byte(shared)));
@@ -5441,8 +5456,8 @@ pub fn guest_body(g: &Guest) -> BodyFlags {
     BodyFlags {
         gliding: g.fall_flying,
         swimming: m.is_some_and(|m| m.swimming),
-        crawling: m.is_some_and(|m| m.pose == crate::pose::Pose::Swimming && !m.swimming),
-        crouching: m.is_some_and(|m| m.pose == crate::pose::Pose::Crouching),
+        pose: m.map(|m| m.pose),
+        flying: g.abilities.flying,
         spin_attack: m.is_some_and(|m| m.auto_spin_attack_ticks > 0),
         on_fire: m.is_some_and(crate::motion::PlayerMotion::is_on_fire),
         // ServerPlayer.updateInvisibilityStatus: a spectator is always invisible.
@@ -5513,6 +5528,7 @@ mod tests {
     mod collision_part_tests;
     mod connection_group_sync_tests;
     mod debug_subscription_tests;
+    mod desired_pose_tests;
     mod displace_tests;
     mod effect_meta_tests;
     mod entity_move_check_tests;
@@ -6505,6 +6521,7 @@ mod tests {
                     links: Vec::new(),
                     asks_still_valid: true,
                     opening_item: None,
+                    slot_changed_seen: None,
                 });
             });
         };
@@ -8307,6 +8324,7 @@ mod tests {
                 links: Vec::new(),
                 opening_item: None,
                 asks_still_valid: false,
+                slot_changed_seen: None,
             });
         });
         let drain_data =

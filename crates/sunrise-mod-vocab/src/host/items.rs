@@ -147,7 +147,8 @@ pub trait ItemsClientHost {
     /// the server at once as `MultiPlayerGameMode.handleCreativeModeItemAdd` does
     /// (`ServerboundSetCreativeModeSlotPacket`; the off hand is slot 45), even while a
     /// container menu is open. `Ok(Some(remainder))` is what did not fit; nothing is dropped.
-    /// A [`CreativeGiveError`] gives nothing.
+    /// A [`CreativeGiveError`] gives nothing (including `FeatureDisabled` when the connected
+    /// server does not enable the item's required feature flags).
     #[forward_api_inputs]
     #[forward_api_output]
     fn give_stack(&mut self, stack: &ItemStack) -> Result<Option<ItemStack>, CreativeGiveError>;
@@ -344,34 +345,72 @@ pub trait ItemsBackend {
     /// box, nor into a slot past the item's slots.
     fn item_container_capacity(&self, stack: &ItemStack, slot: usize, item: &ItemStack) -> u32;
     /// Side: both.
-    /// The stacks in one item of `stack`'s `minecraft:bundle_contents`, front first (the
-    /// stack the bundle gives back next is slot 0). None for an item without the component.
-    fn item_bundle_slots(&self, stack: &ItemStack) -> Option<Vec<Option<ItemStack>>>;
+    /// The stacks in one item of `stack`'s configured bundle component, front first (the
+    /// stack the container gives back next is slot 0). `Ok(None)` for an item without the
+    /// component; `Err(BundleReadError::UnsupportedFormat)` if the custom component (or a nested
+    /// container carrying the same component) is not a `Tag::List` of `ItemStack.CODEC` entries;
+    /// `Err(BundleReadError::ExcessiveWeight)` if its weight overflows vanilla's `Fraction`.
+    fn bundle_slots(
+        &self,
+        stack: &ItemStack,
+        config: &BundleConfig,
+    ) -> Result<Option<Vec<Option<ItemStack>>>, BundleReadError>;
     /// Side: both.
-    /// `ResourceHandler.isValid` and `getCapacityAsLong` for a bundle: how many of `item` one
-    /// item of `stack` still takes, by `BundleContents.getMaxAmountToAdd` (weight left, nested
-    /// bundles' weight); 0 for an item the bundle refuses, or without the component.
-    fn item_bundle_capacity(&self, stack: &ItemStack, slot: usize, item: &ItemStack) -> u32;
-    /// Side: both.
-    /// `ResourceHandler.insert` for a bundle: as much of `item` as the bundle takes goes in at
-    /// the front, as the bundle screen inserts. Gives how many went in and the changed bundle;
-    /// None without the component.
-    fn item_bundle_insert_slot(
+    /// `ResourceHandler.isValid` and `getCapacityAsLong` for a bundle-like container: how many of
+    /// `item` one item of `stack` still takes, by exact fraction weight under `config`'s
+    /// multiplier, nested occupancy, container-fit rules, and optional `filter_tag`; `Ok(0)` for
+    /// an item refused or without the component; `Err(BundleReadError::UnsupportedFormat)` if
+    /// `stack`, a nested container inside it, or `item` carries a malformed custom component
+    /// payload; `Err(BundleReadError::ExcessiveWeight)` if a weight or the room left overflows
+    /// vanilla's `Fraction`.
+    fn bundle_capacity(
         &self,
         stack: &ItemStack,
         slot: usize,
         item: &ItemStack,
-    ) -> Option<(u32, ItemStack)>;
+        config: &BundleConfig,
+    ) -> Result<u32, BundleReadError>;
     /// Side: both.
-    /// `ResourceHandler.extract` for a bundle: up to `max` of the front stack (slot 0 only), as
-    /// the bundle screen takes out. Gives the taken stack, if any, and the changed bundle; None
-    /// without the component.
-    fn item_bundle_extract(
+    /// `ResourceHandler.insert` for a bundle-like container: as much of `item` as fits goes in at
+    /// the front under `config`. Gives how many went in and the changed single container stack;
+    /// `Ok(None)` without the component; `Err(BundleReadError::UnsupportedFormat)` without
+    /// modifying the stack if `stack`, a nested container inside it, or `item` carries a malformed
+    /// custom component payload; `Err(BundleReadError::ExcessiveWeight)`, likewise, if a weight
+    /// overflows vanilla's `Fraction`.
+    fn bundle_insert_slot(
+        &self,
+        stack: &ItemStack,
+        slot: usize,
+        item: &ItemStack,
+        config: &BundleConfig,
+    ) -> Result<Option<(u32, ItemStack)>, BundleReadError>;
+    /// Side: both.
+    /// `ResourceHandler.extract` for a bundle-like container: up to `max` of the front stack
+    /// (slot 0 only) under `config`. Gives the taken stack, if any, and the changed single
+    /// container stack; `Ok(None)` without the component; `Err(BundleReadError::UnsupportedFormat)`
+    /// without modifying the stack if the custom component (or a nested container carrying the same
+    /// component) carries a malformed payload; `Err(BundleReadError::ExcessiveWeight)`, likewise,
+    /// if a weight overflows vanilla's `Fraction`.
+    fn bundle_extract(
         &self,
         stack: &ItemStack,
         slot: usize,
         max: u32,
-    ) -> Option<(Option<ItemStack>, ItemStack)>;
+        config: &BundleConfig,
+    ) -> Result<Option<(Option<ItemStack>, ItemStack)>, BundleReadError>;
+    /// Side: both.
+    /// Exact fullness, full flag, vanilla-style fullness bar `(width, rgb)`, and stored stack
+    /// count for one item of `stack` under `config`; `Ok(None)` without the component;
+    /// `Err(BundleReadError::UnsupportedFormat)` if the custom component (or a nested container
+    /// carrying the same component) carries a malformed payload;
+    /// `Err(BundleReadError::ExcessiveWeight)` if its weight overflows vanilla's `Fraction`. All
+    /// four come from the one weight computed as the contents are read; nothing is cached
+    /// between calls.
+    fn bundle_metrics(
+        &self,
+        stack: &ItemStack,
+        config: &BundleConfig,
+    ) -> Result<Option<BundleMetrics>, BundleReadError>;
     /// Side: server.
     /// How many slots the inventory of entity `entity` in the level in place has, as
     /// `entity_slots` reaches them: none for an entity without one, and on a client.

@@ -464,7 +464,8 @@ pub type TerrainDraw<'a> = dyn FnMut(
         Option<(u32, &wgpu::BindGroupLayout)>,
     ) + 'a;
 
-/// An arena page's key, native vertices and optional per-quad source records.
+/// An arena page's key, native vertices and optional source records (one per slot: a quad's at
+/// the slot that names it, `pack_atlas::PULL_CORNERS`'s `hz_slot`).
 pub type TerrainPage = (u32, wgpu::Buffer, Option<wgpu::Buffer>);
 
 /// Header (sprite-rect words, state count), sprite rectangles, then model/fluid ids.
@@ -558,10 +559,15 @@ pub struct Geometry<'a> {
     pub atlas: Option<wgpu::TextureView>,
     /// This draw uses the block atlas's surface identities.
     pub material_maps: bool,
-    /// `mc_Entity`'s table at set 3 (flat terrain).
+    /// Set 3's layout, for terrain that reads its arena page (`pages`): the quad sources and
+    /// `mc_Entity`'s table flat terrain reads, and the page itself. Filled in by `PackPost::new`.
     pub ids: Option<&'a wgpu::BindGroupLayout>,
     /// Back faces are culled, as for the game's own terrain.
     pub cull: bool,
+    /// Terrain whose program reads its arena page at set 3
+    /// (`pack_atlas::TerrainDraws::reads_pages`): its passes get set 3's layout (`ids`), and each
+    /// page's group before its draws.
+    pub pages: bool,
 }
 
 /// What a pack brings besides its programs: custom textures, images and storage buffers.
@@ -1141,10 +1147,21 @@ pub fn custom_index(custom: &[(String, String)], name: &str, ty: &str) -> Option
     (!disabled).then_some(pack_uniforms::NAMES.len() + k)
 }
 
+/// The depth bias of vanilla 26.3's polygon-offset pipelines: `RenderPipelines.TEXT_POLYGON_OFFSET`
+/// (`DepthStencilState(GREATER_THAN_OR_EQUAL, true, 1.0, 10.0)` over reversed depth), the same
+/// bias as `RenderPipelines.CRUMBLING_SNIPPET`'s (which writes no depth): toward the camera in a
+/// pack's forward depth.
+const POLYGON_OFFSET: wgpu::DepthBiasState = wgpu::DepthBiasState {
+    constant: -10,
+    slope_scale: -1.0,
+    clamp: 0.0,
+};
+
 /// The pass of program `p`: a quad, or `geometry` drawn by the game. `None` (with a note) when
 /// wgpu refuses it or it writes nothing. `formats` are its buffers' (for a program of the shadow
 /// buffers, buffer n is shadowcolor n); `shadow` the shadowcolor formats when the shadow pass
-/// runs.
+/// runs. `water_mask` and `polygon_offset` also make the pass's depth-only pipeline
+/// (`Pass::water_mask`) and its polygon-offset one (`Pass::polygon_offset`).
 pub fn build_pass(
     device: &wgpu::Device,
     p: sunrise_shaders::PostProgram,
@@ -1157,6 +1174,7 @@ pub fn build_pass(
     draws: &wgpu::BindGroupLayout,
     pack: &Resources<'_>,
     water_mask: bool,
+    polygon_offset: bool,
 ) -> Option<Pass> {
     let features = device.features();
     // The frame's uniforms, then the pack's custom ones.
@@ -1204,14 +1222,22 @@ pub fn build_pass(
     let mut own_blends: Vec<(Option<wgpu::BlendState>, bool)> = Vec::new();
     for &location in &interface.outputs {
         let l = location as usize;
+        // Only an output with somewhere to go takes a target slot: the location is the pack's
+        // (up to `u32::MAX`), the slots only as many as the buffers it can write.
+        let buffer = if final_pass {
+            (location == 0).then_some(None)
+        } else {
+            p.buffers.get(l).map(Some)
+        };
+        let Some(buffer) = buffer else {
+            continue;
+        };
         if targets.len() <= l {
             targets.resize(l + 1, None);
         }
         if final_pass {
-            if location == 0 {
-                targets[0] = target(screen);
-            }
-        } else if let Some(&buffer) = p.buffers.get(l) {
+            targets[0] = target(screen);
+        } else if let Some(&buffer) = buffer {
             let format = formats[buffer as usize];
             match format.sample_type(None, Some(features)) {
                 Some(wgpu::TextureSampleType::Uint) => {
@@ -1336,11 +1362,7 @@ pub fn build_pass(
                 depth_compare: Some(wgpu::CompareFunction::LessEqual),
                 stencil: Default::default(),
                 bias: if p.name == "gbuffers_damagedblock" {
-                    wgpu::DepthBiasState {
-                        constant: -10,
-                        slope_scale: -1.0,
-                        clamp: 0.0,
-                    }
+                    POLYGON_OFFSET
                 } else {
                     Default::default()
                 },
@@ -1389,14 +1411,29 @@ pub fn build_pass(
                 },
             )
         });
+        // Polygon-offset sign text's pipeline (`Draw::polygon_offset`): the same program, its
+        // depth biased toward the camera.
+        let polygon_offset = polygon_offset.then(|| {
+            pack.render_pipeline(
+                device,
+                RenderJob {
+                    depth_stencil: job.depth_stencil.clone().map(|d| wgpu::DepthStencilState {
+                        bias: POLYGON_OFFSET,
+                        ..d
+                    }),
+                    ..job.clone()
+                },
+            )
+        });
         (
             layout,
             pack.render_pipeline(device, job),
             sky_parts,
             water_mask,
+            polygon_offset,
         )
     });
-    let (layout, pipeline, sky_parts, water_mask) = match created {
+    let (layout, pipeline, sky_parts, water_mask, polygon_offset) = match created {
         Ok(created) => created,
         Err(e) => {
             notes.push(format!("{}: skipped: {e}", p.name));
@@ -1438,6 +1475,7 @@ pub fn build_pass(
         pipeline: Pipeline::Render(pipeline),
         sky_parts,
         water_mask,
+        polygon_offset,
         layout,
         samplers,
         writes,
@@ -1579,6 +1617,7 @@ pub fn build_compute(
         },
         sky_parts: None,
         water_mask: None,
+        polygon_offset: None,
         layout,
         samplers,
         writes: Vec::new(),
@@ -2033,11 +2072,12 @@ impl PackPost {
                 .fold(0, |m, n| m | 1 << n),
             jobs: defer.then(Default::default),
         };
-        // Flat terrain resolves each quad's source state against the current pack.
+        // Flat terrain resolves each quad's source state against the current pack; terrain that
+        // reads its pages per section binds them by the same layout.
         let block_ids = world
             .terrain
             .as_ref()
-            .filter(|g| g.table.is_some())
+            .filter(|g| g.pages)
             .map(|_| {
                 block_ids(device, queue, world.block_ids, world.sprite_rects).ok_or_else(|| {
                     Refused {
@@ -2047,8 +2087,10 @@ impl PackPost {
                 })
             })
             .transpose()?;
-        // The next pass built also gets a depth-only pipeline for the boats' water patches.
+        // The next pass built also gets a depth-only pipeline for the boats' water patches, and
+        // a polygon-offset one for sign text.
         let water_mask_next = std::cell::Cell::new(false);
+        let polygon_offset_next = std::cell::Cell::new(false);
         let mut build = |mut p: sunrise_shaders::PostProgram, geometry: Option<&Geometry<'_>>| {
             // Not wanted any more: the rest is skipped and the build refused below.
             if cancel.load(std::sync::atomic::Ordering::Relaxed) {
@@ -2100,6 +2142,7 @@ impl PackPost {
                     &draws.layout,
                     &pack,
                     water_mask_next.get(),
+                    polygon_offset_next.get(),
                 )?
             };
             pass.compute.append(&mut computes);
@@ -2190,6 +2233,7 @@ impl PackPost {
             material_maps: g.material_maps,
             ids: block_ids.as_ref().map(|i| &i.0),
             cull: g.cull,
+            pages: g.pages,
         });
         let split = post.terrain.is_some() && post.terrain_cutout.is_some();
         let (terrain_undrawn, water_undrawn) = (post.terrain_undrawn, post.water_undrawn);
@@ -2215,6 +2259,7 @@ impl PackPost {
             material_maps: g.material_maps,
             ids: g.ids,
             cull: false,
+            pages: g.pages,
         });
         let shadow_terrain = post
             .shadow
@@ -2247,6 +2292,7 @@ impl PackPost {
                 material_maps: false,
                 ids: None,
                 cull: false,
+                pages: false,
             };
             let basic = post.sky.and_then(|p| build(p, Some(&basic)));
             let textured = Geometry {
@@ -2257,6 +2303,7 @@ impl PackPost {
                 material_maps: false,
                 ids: None,
                 cull: false,
+                pages: false,
             };
             let textured = post.sky_textured.and_then(|p| build(p, Some(&textured)));
             Sky {
@@ -2300,6 +2347,7 @@ impl PackPost {
             material_maps: false,
             ids: None,
             cull: false,
+            pages: false,
         });
         // Programs drawing the shared atlas's geometry read its paged maps (`pack_entities::inputs`).
         let paged = |pass: Option<Pass>| {
@@ -2312,6 +2360,12 @@ impl PackPost {
         let entity_passes = programs.map(|p| {
             // The entity program draws the boats, and their water patches (`Draw::water_mask`).
             water_mask_next.set(kind == crate::pack_entities::ENTITY);
+            // The block programs draw sign text, its POLYGON_OFFSET quads biased
+            // (`Draw::polygon_offset`).
+            polygon_offset_next.set(matches!(
+                kind,
+                crate::pack_entities::BLOCK | crate::pack_entities::BLOCK_TRANSLUCENT
+            ));
             kind += 1;
             p.zip(entity_geometry.as_ref()).and_then(|(p, g)| {
                 if p.name == "gbuffers_damagedblock" {
@@ -2323,6 +2377,7 @@ impl PackPost {
                         material_maps: g.material_maps,
                         ids: g.ids,
                         cull: false,
+                        pages: g.pages,
                     };
                     paged(build(p, Some(&decal)))
                 } else {
@@ -2336,6 +2391,7 @@ impl PackPost {
             late[crate::pack_entities::PARTICLE] = false;
         }
         water_mask_next.set(false);
+        polygon_offset_next.set(false);
         let shadow_entities = shadow_programs.map(|p| {
             p.zip(entity_geometry.as_ref())
                 .and_then(|(p, g)| paged(build(p, Some(g))))
@@ -2357,6 +2413,7 @@ impl PackPost {
             material_maps: false,
             ids: None,
             cull: false,
+            pages: false,
         });
         let hides_clouds = post.clouds_off || post.clouds.is_some() && cloud_geometry.is_some();
         // Rain and snow test depth but never write it: Iris 1.11.7 left none of either in
@@ -2369,6 +2426,7 @@ impl PackPost {
             material_maps: false,
             ids: None,
             cull: false,
+            pages: false,
         });
         let hand_geometry = world
             .hand
@@ -2382,6 +2440,7 @@ impl PackPost {
                 material_maps: false,
                 ids: None,
                 cull: false,
+                pages: false,
             };
             paged(build(p, Some(&g))).map(|pass| (pass, geometry))
         });
@@ -2396,6 +2455,7 @@ impl PackPost {
                 material_maps: false,
                 ids: None,
                 cull: false,
+                pages: false,
             };
             paged(build(p, Some(&g)))
         });
@@ -2424,6 +2484,7 @@ impl PackPost {
             material_maps: false,
             ids: None,
             cull: false,
+            pages: false,
         };
         let lines = post.lines.and_then(|p| build(p, Some(&line_geometry)));
         // Developers' aid: `SUNRISE_SHADER_PACK_SKIP=composite,final` leaves programs out.
