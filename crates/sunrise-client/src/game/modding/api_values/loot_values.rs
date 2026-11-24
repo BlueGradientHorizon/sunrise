@@ -195,7 +195,12 @@ impl TryIntoApi for engine::LootContext<'_> {
 
 struct LootAbilityHost;
 impl mod_api::Host for LootAbilityHost {}
-mod_api::impl_host_areas!(LootAbilityHost, except(datafix));
+mod_api::impl_host_areas!(LootAbilityHost, except(datafix, items));
+impl mod_api::prelude::ItemsHost for LootAbilityHost {
+    fn item_abilities(&self) -> Vec<String> {
+        crate::game::item_abilities::ability::names()
+    }
+}
 impl mod_api::prelude::DatafixHost for LootAbilityHost {
     fn upgrade_nbt(
         &self,

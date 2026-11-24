@@ -107,9 +107,11 @@ impl Game<'_> {
     }
     /// `TridentItem.use`: start the throw unless one more use would break it.
     /// Returns false for `InteractionResult.FAIL` (about to break, or Riptide
-    /// while dry) so callers neither dip the hand nor consume the click.
+    /// while dry, or a part denied `trident_throw`) so callers neither dip the
+    /// hand nor consume the click.
     pub(super) fn use_trident(&mut self, stack: &ItemStack) -> bool {
-        if &*stack.item != "minecraft:trident" {
+        let throw = super::item_abilities::ability::TRIDENT_THROW;
+        if &*stack.item != "minecraft:trident" || !self.stack_can_perform(stack, throw, true) {
             return false;
         }
         let max = self.trident_max_damage(stack);
