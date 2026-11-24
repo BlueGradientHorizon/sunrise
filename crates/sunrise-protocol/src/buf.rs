@@ -73,6 +73,17 @@ impl<'a> Reader<'a> {
     ) -> Option<&'a crate::item::consume_effects::AdmissionLookup<'a>> {
         self.names?.consume_effect_admissions()
     }
+    pub(crate) fn registry_entry(
+        &self,
+        registry: &str,
+        id: i32,
+    ) -> Option<(&'a str, Option<&'a Tag>)> {
+        self.names?.registry_entry(registry, id)
+    }
+    pub(crate) fn contains_registry_entry(&self, registry: &str, name: &str) -> bool {
+        self.names
+            .is_some_and(|names| names.contains_entry(registry, name))
+    }
 
     pub fn subreader(&mut self, size: usize) -> Result<Self> {
         Ok(Self {
@@ -370,9 +381,11 @@ impl Ident {
         let value =
             std::str::from_utf8(value).map_err(|_| Error::new("invalid resource identifier"))?;
         let (namespace, path) = value.split_once(':').unwrap_or(("", value));
-        if !namespace
-            .bytes()
-            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || b"_.-".contains(&c))
+        // Identifier.isValidNamespace refuses `..` before its characters.
+        if namespace == ".."
+            || !namespace
+                .bytes()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || b"_.-".contains(&c))
             || !path
                 .bytes()
                 .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || b"/_.-".contains(&c))
@@ -452,6 +465,76 @@ impl Codec<Tag> for Nbt {
     }
     fn write(v: &Tag, w: &mut Writer) {
         w.nbt(v)
+    }
+}
+/// Network NBT with `NbtAccounter.unlimitedHeap()` limits.
+pub struct TrustedNbt;
+impl Codec<Tag> for TrustedNbt {
+    fn read(r: &mut Reader) -> Result<Tag> {
+        r.nbt_within(nbt::Limits::unlimited_heap())
+    }
+    fn write(v: &Tag, w: &mut Writer) {
+        w.nbt_within(v, nbt::Limits::unlimited_heap())
+    }
+}
+/// `ByteBufCodecs.TRUSTED_COMPOUND_TAG`: unlimited-heap NBT with a required compound root.
+pub struct TrustedCompound;
+impl Codec<Tag> for TrustedCompound {
+    fn read(r: &mut Reader) -> Result<Tag> {
+        let tag = TrustedNbt::read(r)?;
+        if !matches!(tag, Tag::Compound(_)) {
+            nbt::discard_tag(tag);
+            return Err(Error::new("Expected non-null compound tag"));
+        }
+        Ok(tag)
+    }
+    fn write(v: &Tag, w: &mut Writer) {
+        TrustedNbt::write(v, w)
+    }
+}
+/// `ComponentSerialization.TRUSTED_STREAM_CODEC` and `TRUSTED_CONTEXT_FREE_STREAM_CODEC`:
+/// read unlimited-heap NBT, then decode it as a component.
+pub struct TrustedComponent;
+impl TrustedComponent {
+    /// Check a component already read as part of a synchronized registry entry.
+    pub(crate) fn validate_tag(tag: &Tag, r: &Reader) -> Result<()> {
+        if *tag == Tag::End {
+            return Err(Error::new("Expected non-null compound tag"));
+        }
+        sunrise_world::component_value::source::text_from_tag(tag, &|item| {
+            r.contains_registry_entry("minecraft:item", item)
+        })
+        .map_err(|e| Error::new(format!("Failed to decode: {e}")))?;
+        Ok(())
+    }
+}
+impl Codec<Tag> for TrustedComponent {
+    fn read(r: &mut Reader) -> Result<Tag> {
+        let tag = TrustedNbt::read(r)?;
+        Self::validate_tag(&tag, r)?;
+        Ok(tag)
+    }
+    fn write(v: &Tag, w: &mut Writer) {
+        TrustedNbt::write(v, w)
+    }
+}
+/// `Style.Serializer.TRUSTED_STREAM_CODEC`: unlimited-heap NBT decoded as a style map.
+pub struct TrustedStyle;
+impl Codec<Tag> for TrustedStyle {
+    fn read(r: &mut Reader) -> Result<Tag> {
+        let tag = TrustedNbt::read(r)?;
+        if let Err(error) =
+            sunrise_world::component_value::source::validate_text_style(&tag, &|item| {
+                r.contains_registry_entry("minecraft:item", item)
+            })
+        {
+            nbt::discard_tag(tag);
+            return Err(Error::new(format!("Failed to decode: {error}")));
+        }
+        Ok(tag)
+    }
+    fn write(v: &Tag, w: &mut Writer) {
+        TrustedNbt::write(v, w)
     }
 }
 /// ByteBufCodecs.LONG_ARRAY.
@@ -739,6 +822,21 @@ mod tests {
         assert_eq!(C::read(&mut r).unwrap(), v);
         assert_eq!(r.remaining(), 0);
         w.data
+    }
+
+    /// `Identifier.STREAM_CODEC` parses with `Identifier.parse`, whose `isValidNamespace`
+    /// refuses the namespace `..`; a `..` path and a `.` namespace are valid identifiers.
+    #[test]
+    fn an_identifier_with_the_namespace_dot_dot_is_refused() {
+        let read = |text: &str| {
+            let mut w = Writer::new();
+            w.string(text);
+            Ident::read(&mut Reader::new(&w.data))
+        };
+        assert!(read("..:stone").is_err());
+        assert_eq!(read(".:stone").unwrap(), ".:stone");
+        assert_eq!(read("minecraft:..").unwrap(), "minecraft:..");
+        assert_eq!(read("stone").unwrap(), "minecraft:stone");
     }
 
     #[test]

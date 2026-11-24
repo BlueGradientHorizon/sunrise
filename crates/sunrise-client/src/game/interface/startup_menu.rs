@@ -66,6 +66,7 @@ impl StartupMenu {
             Some(PendingWorldEntry::Server {
                 address: address.clone(),
                 name: options.player_name(),
+                list_name: None,
                 cookies: None,
                 lan: false,
                 realm: false,
@@ -159,10 +160,9 @@ impl StartupMenu {
         game.physical_keys = std::mem::take(&mut self.physical_keys);
         game.clipboard = std::mem::take(&mut self.clipboard);
         game.text_selection = std::mem::take(&mut self.selection);
-        game.narrator_toast = self
-            .pending_narrator_toast
-            .take()
-            .and_then(|toast| game.add_system_toast(toast));
+        if let Some(toast) = self.pending_narrator_toast.take() {
+            game.add_system_toast(Some(super::toast_manager::SystemToastId::Narrator), toast);
+        }
         game.narration = std::mem::take(&mut self.narration);
         // Preserve an existing resource-error screen opened by start_game.
         if self.options_open {
@@ -172,7 +172,10 @@ impl StartupMenu {
                 game.ui.options.resource_error.take().or(resource_error);
             game.set_screen(Screen::Options);
             game.options_from_title = true;
-            game.dragging = self.dragging;
+            if self.dragging {
+                game.physical_buttons.insert(MouseButton::Left);
+                game.track_drag_button(MouseButton::Left, true);
+            }
         }
         if let Some(focus) = self.key_focus.take() {
             game.key_focus_adopt(focus, self.key_slider_edit);
@@ -256,11 +259,13 @@ impl StartupMenu {
             },
             Action::Connect {
                 address,
+                name,
                 lan,
                 realm,
             } => PendingWorldEntry::Server {
                 address,
                 name: player_name,
+                list_name: name,
                 cookies: None,
                 lan,
                 realm,
@@ -644,6 +649,10 @@ impl Loading {
                     self.save_menu_settings();
                     self.menu.reload_packs = true;
                 }
+                Event::ReloadTextures => {
+                    self.save_menu_settings();
+                    self.menu.reload_packs = true;
+                }
                 Event::PackOptions { entries, chosen } => {
                     packs::save_pack_options(&entries, chosen);
                     self.menu.options.pack_configs = packs::pack_configs(&self.vanilla_root);
@@ -760,11 +769,7 @@ impl Loading {
                         self.menu.win = Some((screen, Instant::now()));
                     }
                 }
-                Event::Narrator => super::narrator::update_status(
-                    self.settings.narrator(),
-                    &mut self.menu.pending_narrator_toast,
-                    Some,
-                ),
+                Event::Narrator => self.menu_narrator_status_changed(),
                 // The startup menu has no screen stack for ConfirmLinkScreen;
                 // the link opens directly, as the menu's other links do.
                 Event::AccessibilityHelp => {
@@ -794,6 +799,15 @@ impl Loading {
                     self.menu.pending = Some(PendingWorldEntry::StudioReplay(path));
                 }
             }
+        }
+    }
+
+    fn menu_narrator_status_changed(&mut self) {
+        if let Some(toast) = super::narrator::update_status(
+            self.settings.narrator(),
+            self.menu.pending_narrator_toast.as_mut(),
+        ) {
+            self.menu.pending_narrator_toast = Some(toast);
         }
     }
 
@@ -831,11 +845,7 @@ impl Loading {
         }
         let was_disabled = super::narrator::cycle_status(&mut self.settings);
         self.menu.options.layout_changed();
-        super::narrator::update_status(
-            self.settings.narrator(),
-            &mut self.menu.pending_narrator_toast,
-            Some,
-        );
+        self.menu_narrator_status_changed();
         self.save_menu_settings();
         self.menu
             .narration
@@ -1564,11 +1574,16 @@ mod tests {
     use super::*;
 
     fn gui(root: &std::path::Path) -> UiResources {
-        UiResources {
-            atlas: HudAtlas::fonts(&sunrise_assets::resource_source::ResourceSource::directory(
+        let atlas = if root.exists() {
+            HudAtlas::fonts(&sunrise_assets::resource_source::ResourceSource::directory(
                 root.to_path_buf(),
             ))
-            .unwrap(),
+            .unwrap()
+        } else {
+            HudAtlas::boot()
+        };
+        UiResources {
+            atlas,
             panorama: Arc::new(sunrise_client::gfx::panorama::Faces::colour([
                 96, 110, 111, 255,
             ])),
@@ -2033,8 +2048,18 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "daily"]
     fn menu_is_usable_while_the_core_worker_is_blocked() {
-        let root = std::env::temp_dir().join("sunrise-startup-menu-no-world-resources");
+        // Publishing the empty root's language must not replace another game's language.
+        if super::super::native_entity_refs::tests::run_fresh_cases(
+            "game::startup_menu::tests::menu_is_usable_while_the_core_worker_is_blocked",
+            "SUNRISE_STARTUP_BLOCKED_WORKER_CASE",
+            &["blocked"],
+        ) {
+            return;
+        }
+        let scratch = tempfile::tempdir().unwrap();
+        let root = scratch.path().to_path_buf();
         let (sender, receiver) = std::sync::mpsc::channel();
         let (release, wait) = std::sync::mpsc::channel();
         let (published, published_rx) = std::sync::mpsc::channel();
@@ -2094,6 +2119,7 @@ mod tests {
         menu.queue_entry(
             Action::Connect {
                 address: "localhost:25565".into(),
+                name: None,
                 lan: true,
                 realm: false,
             },

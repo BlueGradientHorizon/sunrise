@@ -22,7 +22,11 @@ impl ItemStack {
     }
 }
 #[derive(Debug)]
-enum StackWriteError {}
+enum StackWriteError {
+    /// The engine's `CountExceeded { maximum }`, for a fixture validator to refuse an
+    /// overstacked edit with (the fixture never reads the maximum).
+    CountExceeded,
+}
 mod content {
     pub(super) mod crash {
         pub fn current_native_mod() -> Option<&'static str> {
@@ -63,21 +67,110 @@ enum Flow {
 }
 trait Host {}
 trait ServerHost: Host {
-    fn transaction_current(&self) -> Option<()> {
+    fn transaction_refusal(
+        &mut self,
+    ) -> Option<item::transaction::TransactionError<core::convert::Infallible>> {
         None
+    }
+    fn transaction_matches(&self, tx: Option<&()>) -> bool {
+        tx.is_none()
     }
 }
 trait ClientHost: Host {}
 
+mod client {
+    pub(super) mod tooltip_components {
+        pub(in crate::tests) fn retain_gather_tooltip_payloads(
+            _: &'static str,
+            _: &[super::super::TooltipElement],
+        ) {
+        }
+        pub(in crate::tests) fn invoke_tooltip_image<P: ?Sized, R>(
+            part: &&P,
+            call: impl FnOnce(&P) -> Option<R>,
+        ) -> Option<R> {
+            let disabled = super::super::DISABLED_BLOCK_PART.get();
+            if disabled == Some(std::ptr::from_ref(*part).cast())
+                || super::super::runtime::poisoned(super::super::HookId::TooltipImage, "part")
+            {
+                return None;
+            }
+            super::super::runtime::invoke(
+                super::super::HookId::TooltipImage,
+                "tooltip_image",
+                "part",
+                || call(*part),
+            )
+            .flatten()
+        }
+    }
+}
+
 mod item {
     pub(super) mod transaction {
-        // The game exercises the actual journal; these fixtures have no world state.
-        pub(in crate::tests) fn run_transaction<H: super::super::ServerHost + ?Sized, T, E>(
-            host: &mut H,
-            call: impl FnOnce(&mut H, &()) -> Result<T, E>,
-        ) -> Result<T, E> {
-            call(host, &())
+        use super::super::ServerHost;
+
+        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+        pub(in crate::tests) enum TransactionError<E> {
+            Aborted(E),
+            Unavailable,
+            InvalidContext,
+            CommitRefused,
         }
+
+        // The game exercises the actual journal; these fixtures have no world state.
+        pub(in crate::tests) trait HostTransaction {
+            fn transaction<T, E>(
+                &mut self,
+                call: impl FnOnce(&mut dyn ServerHost, &()) -> Result<T, E>,
+            ) -> Result<T, TransactionError<E>>;
+        }
+        impl HostTransaction for dyn ServerHost + '_ {
+            fn transaction<T, E>(
+                &mut self,
+                call: impl FnOnce(&mut dyn ServerHost, &()) -> Result<T, E>,
+            ) -> Result<T, TransactionError<E>> {
+                match self.transaction_refusal() {
+                    None => call(self, &()).map_err(TransactionError::Aborted),
+                    Some(TransactionError::Unavailable) => Err(TransactionError::Unavailable),
+                    Some(TransactionError::InvalidContext) => Err(TransactionError::InvalidContext),
+                    Some(TransactionError::CommitRefused) => {
+                        call(self, &()).map_err(TransactionError::Aborted)?;
+                        Err(TransactionError::CommitRefused)
+                    }
+                    Some(TransactionError::Aborted(never)) => match never {},
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn transaction_fixture_distinguishes_admission_and_settlement_refusal() {
+    use core::convert::Infallible;
+    use item::transaction::{HostTransaction, TransactionError};
+
+    struct RefusingHost(Option<TransactionError<Infallible>>);
+    impl Host for RefusingHost {}
+    impl ServerHost for RefusingHost {
+        fn transaction_refusal(&mut self) -> Option<TransactionError<Infallible>> {
+            self.0.take()
+        }
+    }
+
+    for (refusal, ran) in [
+        (TransactionError::Unavailable, false),
+        (TransactionError::InvalidContext, false),
+        (TransactionError::CommitRefused, true),
+    ] {
+        let mut host = RefusingHost(Some(refusal));
+        let mut called = false;
+        let result = (&mut host as &mut dyn ServerHost).transaction(|_, _| {
+            called = true;
+            Ok::<_, Infallible>(())
+        });
+        assert_eq!(result, Err(refusal));
+        assert_eq!(called, ran);
     }
 }
 
@@ -198,8 +291,8 @@ mod generated {
     }
     include!(concat!(env!("OUT_DIR"), "/mod_api_generated.rs"));
     pub(super) use self::mod_api::InlineImageReplacement;
-    use self::mod_api::StandaloneModelRegistration;
     pub(super) use self::mod_api::{BlockFace, BlockKey, BlockState, CrosshairTarget};
+    use self::mod_api::{GuiCanvas, StandaloneModelRegistration};
     pub use sunrise_mod_api_macros::__subscriptions;
 }
 use generated::*;
@@ -442,7 +535,7 @@ fn a_disabled_owner_answers_only_at_its_dispatch_position() {
         }
         fn use_without_item(
             &self,
-            _: &mut dyn ServerHost,
+            _: HostSide<'_>,
             _: &mut UseWithoutItemEvent<'_>,
         ) -> Option<InteractionResult> {
             self.1.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -468,7 +561,7 @@ fn a_disabled_owner_answers_only_at_its_dispatch_position() {
         });
         let mut answer = None;
         dispatch_use_without_item(
-            &mut TestHost,
+            HostSide::Server(&mut TestHost),
             BlockState::new(BlockKey::Test, 0),
             &BlockClick(&()),
             &mut answer,
@@ -766,4 +859,21 @@ fn part(id: u32, calls: &Arc<Mutex<Vec<u32>>>) -> &'static Mod {
 mod stubs {
     pub(super) use super::generated::mod_api::LivingRef;
     pub(super) use crate::tests::mod_api::mod_api::DamageContainer;
+}
+mod crate_root {
+    // Dispatch fixtures isolate ordering; the vocabulary's own tests cover what the client
+    // validators refuse. One module for every client hook's validator.
+    mod client {
+        pub(crate) mod render_pipeline {
+            pub(crate) fn validate_render_pipelines<T>(_: &str, _: &[T], _: &mut Vec<T>) {}
+        }
+        pub(crate) mod hud_layout {
+            pub(crate) fn validate_hotbar_attack_indicator_progress(
+                _: &f32,
+                _: &f32,
+            ) -> Result<(), &'static str> {
+                Ok(())
+            }
+        }
+    }
 }

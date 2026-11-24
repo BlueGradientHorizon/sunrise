@@ -271,131 +271,141 @@ fn reload_command_prepares_world_before_applying_listeners_and_preserves_tables_
 #[test]
 #[ignore = "daily"]
 fn reload_command_runs_listeners_on_both_sides_of_function_library() {
-    use mod_api::{
-        Command, CommandArgumentError, CommandArgumentKind, CommandArgumentType, CommandSender,
-        CommandSuggestion, RegisterCommandsEvent, Registrar, RegistrationContext, ServerHost,
-        VanillaServerListeners,
-    };
+    crate::game::in_own_process(
+        "game::server_reload::tests::reload_command_runs_listeners_on_both_sides_of_function_library",
+        || {
+            use mod_api::{
+                Command, CommandArgumentError, CommandArgumentKind, CommandArgumentType,
+                CommandSender, CommandSuggestion, RegisterCommandsEvent, Registrar,
+                RegistrationContext, ServerHost, VanillaServerListeners,
+            };
 
-    struct Listener {
-        trace: Arc<Mutex<Vec<String>>>,
-        path: std::path::PathBuf,
-        argument: &'static str,
-        apply: &'static str,
-    }
-    impl ServerReloadListener for Listener {
-        fn prepare(
-            &self,
-            _: &ServerReloadContext,
-        ) -> Result<Box<dyn FnOnce() + Send + 'static>, ReloadResourceError> {
-            write(&self.path, format!("reload_probe {}", self.argument));
-            let trace = self.trace.clone();
-            let apply = self.apply;
-            Ok(Box::new(move || trace.lock().unwrap().push(apply.into())))
-        }
-    }
-    struct Argument(Arc<Mutex<Vec<String>>>);
-    impl CommandArgumentType for Argument {
-        fn kind(&self) -> CommandArgumentKind {
-            CommandArgumentKind::Word
-        }
-        fn parse(&self, input: &str) -> Result<String, CommandArgumentError> {
-            self.0.lock().unwrap().push(format!("parse {input}"));
-            Ok(input.into())
-        }
-        fn suggest(&self, _: Option<&CommandSender>, _: &str) -> Vec<CommandSuggestion> {
-            Vec::new()
-        }
-    }
-    struct Probe {
-        trace: Arc<Mutex<Vec<String>>>,
-        path: std::path::PathBuf,
-    }
-    #[mod_api::__subscriptions]
-    impl Hooks for Probe {
-        fn register(&self, registrar: &mut dyn Registrar, _: &RegistrationContext) {
-            registrar.register_command_argument("argument", Argument(self.trace.clone()));
-        }
-        fn register_commands(&self, _: &mut dyn ServerHost, event: &mut RegisterCommandsEvent<'_>) {
-            event.commands.push(
-                Command::new("reload_probe <value:reload_probe:argument>")
-                    .executes(|_, _, _| Some(1)),
-            );
-        }
-        fn add_server_reload_listeners(
-            &self,
-            _: &dyn mod_api::ReloadContext,
-            event: &mut AddServerReloadListenersEvent<'_>,
-        ) {
-            let id = |name| Identifier::parse(name).unwrap();
-            for (name, argument, apply) in [
-                ("reload_probe:before", "chosen", "apply before"),
-                ("reload_probe:after", "too_late", "apply after"),
-            ] {
-                event
-                    .listeners
-                    .add_listener(
-                        id(name),
-                        FileToIdConverter::json("probe").unwrap(),
-                        Arc::new(Listener {
-                            trace: self.trace.clone(),
-                            path: self.path.clone(),
-                            argument,
-                            apply,
-                        }),
-                    )
-                    .unwrap();
+            struct Listener {
+                trace: Arc<Mutex<Vec<String>>>,
+                path: std::path::PathBuf,
+                argument: &'static str,
+                apply: &'static str,
             }
-            event
-                .listeners
-                .add_dependency(
-                    id("reload_probe:before"),
-                    VanillaServerListeners::functions(),
-                )
-                .unwrap();
-            event
-                .listeners
-                .add_dependency(
-                    VanillaServerListeners::functions(),
-                    id("reload_probe:after"),
-                )
-                .unwrap();
-        }
-    }
-    let scratch = tempfile::tempdir().unwrap();
-    let path = scratch
-        .path()
-        .join("datapacks/anchor/data/reload_probe/function/probe.mcfunction");
-    write(
-        &scratch.path().join("datapacks/anchor/pack.mcmeta"),
-        r#"{"pack":{"description":"anchor"}}"#,
-    );
-    write(
-        &scratch.path().join("datapacks.json"),
-        r#"{"enabled":["file/anchor"],"disabled":[]}"#,
-    );
-    write(&path, "reload_probe too_early");
-    let trace = Arc::new(Mutex::new(Vec::new()));
-    let mods = vec![ModEntry::new(
-        "reload_probe",
-        Box::new(Probe {
-            trace: trace.clone(),
-            path,
-        }),
-    )]
-    .into();
-    mod_platform::testing::with_mods(mods, || {
-        with_game(|game| {
-            game.load_world(request(scratch.path())).unwrap();
-            trace.lock().unwrap().clear();
-            assert!(game.run_command("reload"));
-            assert_eq!(
-                *trace.lock().unwrap(),
-                ["apply before", "parse chosen", "apply after"]
+            impl ServerReloadListener for Listener {
+                fn prepare(
+                    &self,
+                    _: &ServerReloadContext,
+                ) -> Result<Box<dyn FnOnce() + Send + 'static>, ReloadResourceError>
+                {
+                    write(&self.path, format!("reload_probe {}", self.argument));
+                    let trace = self.trace.clone();
+                    let apply = self.apply;
+                    Ok(Box::new(move || trace.lock().unwrap().push(apply.into())))
+                }
+            }
+            struct Argument(Arc<Mutex<Vec<String>>>);
+            impl CommandArgumentType for Argument {
+                fn kind(&self) -> CommandArgumentKind {
+                    CommandArgumentKind::Word
+                }
+                fn parse(&self, input: &str) -> Result<String, CommandArgumentError> {
+                    self.0.lock().unwrap().push(format!("parse {input}"));
+                    Ok(input.into())
+                }
+                fn suggest(&self, _: Option<&CommandSender>, _: &str) -> Vec<CommandSuggestion> {
+                    Vec::new()
+                }
+            }
+            struct Probe {
+                trace: Arc<Mutex<Vec<String>>>,
+                path: std::path::PathBuf,
+            }
+            #[mod_api::__subscriptions]
+            impl Hooks for Probe {
+                fn register(&self, registrar: &mut dyn Registrar, _: &RegistrationContext) {
+                    registrar.register_command_argument("argument", Argument(self.trace.clone()));
+                }
+                fn register_commands(
+                    &self,
+                    _: &mut dyn ServerHost,
+                    event: &mut RegisterCommandsEvent<'_>,
+                ) {
+                    event.commands.push(
+                        Command::new("reload_probe <value:reload_probe:argument>")
+                            .executes(|_, _, _| Ok(1)),
+                    );
+                }
+                fn add_server_reload_listeners(
+                    &self,
+                    _: &dyn mod_api::ReloadContext,
+                    event: &mut AddServerReloadListenersEvent<'_>,
+                ) {
+                    let id = |name| Identifier::parse(name).unwrap();
+                    for (name, argument, apply) in [
+                        ("reload_probe:before", "chosen", "apply before"),
+                        ("reload_probe:after", "too_late", "apply after"),
+                    ] {
+                        event
+                            .listeners
+                            .add_listener(
+                                id(name),
+                                FileToIdConverter::json("probe").unwrap(),
+                                Arc::new(Listener {
+                                    trace: self.trace.clone(),
+                                    path: self.path.clone(),
+                                    argument,
+                                    apply,
+                                }),
+                            )
+                            .unwrap();
+                    }
+                    event
+                        .listeners
+                        .add_dependency(
+                            id("reload_probe:before"),
+                            VanillaServerListeners::functions(),
+                        )
+                        .unwrap();
+                    event
+                        .listeners
+                        .add_dependency(
+                            VanillaServerListeners::functions(),
+                            id("reload_probe:after"),
+                        )
+                        .unwrap();
+                }
+            }
+            let scratch = tempfile::tempdir().unwrap();
+            let path = scratch
+                .path()
+                .join("datapacks/anchor/data/reload_probe/function/probe.mcfunction");
+            write(
+                &scratch.path().join("datapacks/anchor/pack.mcmeta"),
+                r#"{"pack":{"description":"anchor"}}"#,
             );
-            assert!(game.fns.store.functions.contains_key("reload_probe:probe"));
-        });
-    });
+            write(
+                &scratch.path().join("datapacks.json"),
+                r#"{"enabled":["file/anchor"],"disabled":[]}"#,
+            );
+            write(&path, "reload_probe too_early");
+            let trace = Arc::new(Mutex::new(Vec::new()));
+            let mods = vec![ModEntry::new(
+                "reload_probe",
+                Box::new(Probe {
+                    trace: trace.clone(),
+                    path,
+                }),
+            )]
+            .into();
+            mod_platform::testing::with_mods(mods, || {
+                with_game(|game| {
+                    game.load_world(request(scratch.path())).unwrap();
+                    trace.lock().unwrap().clear();
+                    assert!(game.run_command("reload"));
+                    assert_eq!(
+                        *trace.lock().unwrap(),
+                        ["apply before", "parse chosen", "apply after"]
+                    );
+                    assert!(game.fns.store.functions.contains_key("reload_probe:probe"));
+                });
+            });
+        },
+    );
 }
 
 fn request(root: &Path) -> WorldRequest {

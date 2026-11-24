@@ -104,6 +104,24 @@ mod menu_button_context_tests {
             assert_eq!(decoded.id, context.id);
         }
     }
+
+    #[test]
+    fn stacked_on_other_direction_round_trips_on_wire() {
+        use super::{StackedOnOther, StackedOnOtherDirection};
+        for direction in [
+            StackedOnOtherDirection::Event,
+            StackedOnOtherDirection::CarriedOnOther,
+            StackedOnOtherDirection::OtherStackedOnMe,
+        ] {
+            let click = StackedOnOther::new(Some(7), Some(9), 1, 2, 3, true, None, None)
+                .with_direction(direction);
+            let mut writer = Writer::new();
+            writer.put(&click);
+            let decoded = Reader::decode::<StackedOnOther>(writer.bytes()).unwrap();
+            assert_eq!(decoded, click);
+            assert_eq!(decoded.direction, direction);
+        }
+    }
 }
 
 /// The logical side on which a menu click runs.
@@ -113,6 +131,20 @@ mod menu_button_context_tests {
 pub enum LogicalSide {
     Client,
     Server,
+}
+/// Which phase of a pickup click (`AbstractContainerMenu.tryItemClickBehaviourOverride`) is
+/// asking `item_stacked_on_other`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+// exhaustive: NeoForge's event, then vanilla's carried-on-other and other-on-me overrides
+#[derive(sunrise_mod_api_macros::Wire)]
+pub enum StackedOnOtherDirection {
+    /// The global `Hooks::item_stacked_on_other` event, before either item override.
+    #[default]
+    Event,
+    /// `Item.overrideStackedOnOther`: the carried (cursor) stack's `ItemPart`, asked first.
+    CarriedOnOther,
+    /// `Item.overrideOtherStackedOnMe`: the clicked slot stack's `ItemPart`, asked second.
+    OtherStackedOnMe,
 }
 /// A pickup click on a menu slot, as `item_stacked_on_other` is asked about it: the stacks are the
 /// ones the click found, frozen before any listener ran. A listener answers through
@@ -137,6 +169,10 @@ pub struct StackedOnOther {
     pub carried: Option<ItemStack>,
     /// The stack in the clicked slot, `None` when it is empty.
     pub clicked: Option<ItemStack>,
+    /// Which phase of `tryItemClickBehaviourOverride` is firing: the global event, the carried
+    /// stack's `ItemPart` (`CarriedOnOther`), or the clicked stack's `ItemPart`
+    /// (`OtherStackedOnMe`).
+    pub direction: StackedOnOtherDirection,
 }
 impl StackedOnOther {
     /// The click `slot` (menu index) of `container`'s slot `container_slot`, with the stacks it found.
@@ -160,7 +196,14 @@ impl StackedOnOther {
             primary,
             carried,
             clicked,
+            direction: StackedOnOtherDirection::Event,
         }
+    }
+
+    /// This click in the given `direction` phase.
+    pub fn with_direction(mut self, direction: StackedOnOtherDirection) -> Self {
+        self.direction = direction;
+        self
     }
 }
 /// Whether a listener keeps the original stack or replaces it.
@@ -174,10 +217,36 @@ pub enum StackResult {
     /// Replace the stack: `None` empties it.
     Set(Option<ItemStack>),
 }
-/// A listener's answer to [`StackedOnOther`], validated once and applied once. Setting a stack is
-/// allowed only on a cancelled click that is also `handled` (the listener did the click's work
-/// itself); on any other the click is refused and nothing changes. A replaced stack must be a
-/// valid stack (a known item, a count of at least one within the item's maximum).
+/// What a listener does to the clicked slot's stack in [`StackedOnOtherResult`].
+#[derive(Clone, Debug, Default, PartialEq)]
+// exhaustive: a clicked slot is left alone, directly written, or taken from
+#[derive(sunrise_mod_api_macros::Wire)]
+pub enum ClickedStackResult {
+    /// Leave the clicked slot unchanged.
+    #[default]
+    Keep,
+    /// Directly write the clicked slot (`Slot.set`): `None` clears the slot without running
+    /// `Slot.onTake` side effects.
+    Set(Option<ItemStack>),
+    /// Take `count` items from the clicked slot via `Slot.safeTake` / `Slot.onTake`, running the
+    /// slot's take side effects (such as furnace smelting experience, `recipes_used`, crafting
+    /// remainders, or potion take hooks). Valid only in `ItemPart` overrides (refused for global
+    /// listeners); `count` must be at least `1` and at most the slot's current stack size.
+    /// Two accepted takes run their effects separately, in carried-then-clicked order.
+    Take(u32),
+}
+/// A listener's answer to [`StackedOnOther`], validated once and applied once.
+///
+/// For global `Hooks::item_stacked_on_other` listeners (`StackedOnOtherDirection::Event`), setting
+/// a stack is allowed only on a cancelled click that is also `handled` (and
+/// [`ClickedStackResult::Take`] is refused); on any other answer the click is refused and nothing
+/// changes.
+///
+/// For `ItemPart::item_stacked_on_other` overrides (`CarriedOnOther` / `OtherStackedOnMe`),
+/// [`ClickedStackResult::Set`] performs a direct write (without `Slot.onTake` side effects, even
+/// when clearing a result/output slot to `None`), while [`ClickedStackResult::Take`] takes from
+/// the clicked slot through `Slot.safeTake` / `Slot.onTake`. A replaced stack must be a valid
+/// stack (a known item, a count of at least one within the item's maximum).
 #[derive(Clone, Debug, Default, PartialEq)]
 #[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]
@@ -187,8 +256,8 @@ pub struct StackedOnOtherResult {
     pub handled: bool,
     /// The cursor after the click.
     pub carried: StackResult,
-    /// The clicked slot after the click.
-    pub clicked: StackResult,
+    /// The clicked slot edit after the click.
+    pub clicked: ClickedStackResult,
 }
 /// The inputs and vanilla result of `AnvilMenu.createResult`, borrowed for
 /// the `anvil_update` callback. Edits by earlier listeners do not change these values.
@@ -347,5 +416,94 @@ impl<'a> MenuSlotContext<'a> {
     /// vanilla `Inventory`: `0..36` inventory, `36..40` armor (feet-to-head) and `40` offhand.
     pub fn slot(&self, container: MenuContainer, index: usize) -> Option<ItemStack> {
         (self.read)(container, index)
+    }
+}
+
+/// One non-result container slot that changed during a menu action, reported to
+/// `menu_slot_changed`.
+#[derive(Clone, Debug, PartialEq, sunrise_mod_api_macros::Wire)]
+#[non_exhaustive]
+pub struct MenuSlotChange {
+    /// Which container the slot belongs to ([`MenuContainer`]).
+    pub container: MenuContainer,
+    /// The slot's index inside `container`.
+    pub slot: usize,
+    /// The stack held before the change (`None` when empty).
+    pub before: Option<ItemStack>,
+    /// The stack held after the change (`None` when empty).
+    pub after: Option<ItemStack>,
+}
+
+impl MenuSlotChange {
+    /// Creates a slot-change record for `container`'s slot `slot`.
+    pub fn new(
+        container: MenuContainer,
+        slot: usize,
+        before: Option<ItemStack>,
+        after: Option<ItemStack>,
+    ) -> Self {
+        Self {
+            container,
+            slot,
+            before,
+            after,
+        }
+    }
+}
+
+/// An authoritative container slot write requested by a `menu_slot_changed` listener.
+#[derive(Clone, Debug, PartialEq, sunrise_mod_api_macros::Wire)]
+#[non_exhaustive]
+pub struct MenuSlotWrite {
+    /// Which container the slot belongs to ([`MenuContainer`]).
+    pub container: MenuContainer,
+    /// The slot's index inside `container`.
+    pub slot: usize,
+    /// The stack to place in the slot (`None` clears it).
+    pub stack: Option<ItemStack>,
+}
+
+impl MenuSlotWrite {
+    /// Creates an authoritative slot write for `container`'s slot `slot`.
+    pub fn new(container: MenuContainer, slot: usize, stack: Option<ItemStack>) -> Self {
+        Self {
+            container,
+            slot,
+            stack,
+        }
+    }
+}
+
+#[cfg(test)]
+mod menu_slot_change_wire_tests {
+    use super::{MenuContainer, MenuSlotChange, MenuSlotWrite};
+    use crate::wire::{Reader, Writer};
+    use crate::{ItemKey, ItemStack};
+
+    #[test]
+    fn menu_slot_change_and_write_round_trip_on_wire() {
+        let mut requests = sunrise_mod_runtime::registry_keys::Requests::default();
+        requests.items.request("example", "example:gear").unwrap();
+        let previous = crate::parts::REGISTERING_KEYS
+            .with(|keys| keys.replace(Some(std::rc::Rc::new(std::cell::RefCell::new(requests)))));
+        let key = ItemKey::from_slot(0).unwrap();
+        let before = Some(ItemStack::new(key, 3).unwrap());
+        let after = Some(ItemStack::new(key, 1).unwrap());
+        let change = MenuSlotChange::new(MenuContainer::Main, 1, before.clone(), after.clone());
+        let mut writer = Writer::new();
+        writer.put(&change);
+        let decoded = Reader::decode::<MenuSlotChange>(writer.bytes()).unwrap();
+        assert_eq!(decoded, change);
+
+        for write in [
+            MenuSlotWrite::new(MenuContainer::Main, 2, after),
+            MenuSlotWrite::new(MenuContainer::Main, 2, None),
+        ] {
+            let mut writer = Writer::new();
+            writer.put(&write);
+            let decoded = Reader::decode::<MenuSlotWrite>(writer.bytes()).unwrap();
+            assert_eq!(decoded, write);
+        }
+        crate::parts::REGISTERING_KEYS.with(|keys| keys.replace(previous));
     }
 }

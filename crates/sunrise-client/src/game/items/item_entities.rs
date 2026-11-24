@@ -51,6 +51,7 @@ impl Game<'_> {
             sunrise_client::entities::ObstacleGrid::new(self.entity_collisions(Mover::Passive));
         let mut nearby = Vec::new();
         let mut bubble_tops = Vec::new();
+        let mut destroyed = Vec::new();
         let mut moves = ahead::Moves::work_out(self, &items, &obstacles, round, |item| {
             !self.joined_during_entity_pass(item.id)
                 && ticking(
@@ -58,9 +59,6 @@ impl Game<'_> {
                     item.position.z.floor() as i32,
                 )
         });
-        // `ItemUtils.onContainerDestroyed`: what a destroyed item held, and
-        // where it lay, for adding to the level once its own tick is done.
-        let mut destroyed: Vec<(ItemStack, Vec3)> = Vec::new();
         let item_type = sunrise_threads::work::entity_id(native_ticks::ITEM);
         // Items a mod named (`entity_tick_each`) hear their Pre right before their own tick and
         // their Post right after it, each alone, with the list given back for the call; their
@@ -113,51 +111,89 @@ impl Game<'_> {
             if round.canceled(items[i].id) {
                 continue;
             }
+            let mut env_destroyed = None;
             'tick: {
                 if round.halted(items[i].id) {
                     break 'tick;
                 }
                 self.tick_saved_invulnerable_time(items[i].id);
+                let (no_physics, alive, discarded, entered) = items
+                    .with_one_and_rest(i, |item, before, after| {
+                        let sources = |id| {
+                            before
+                                .iter()
+                                .chain(after)
+                                .zip(removed[..i].iter().chain(&removed[i + 1..]))
+                                .find(|(p, removed)| p.id == id && !**removed && p.health > 0)
+                                .map(|(p, _)| {
+                                    (
+                                        crate::game::commands::Target::Item(id),
+                                        p.position.components(),
+                                    )
+                                })
+                        };
+                        let revision = self.world.revision;
+                        let mut at_turn = |item: &mut ItemEntity| {
+                            // `getEntityCollisions(entity, bounds.expandTowards(movement))`: the boxes around
+                            // where the item can reach this tick.
+                            obstacles.near(ahead::reach(item), &mut nearby);
+                            // ItemEntity.tick's noPhysics (servers only): out of a block, a solid entity
+                            // or the border, placed or closed on it, towards the closest open side (#1252).
+                            let no_physics = merging
+                                && item.inside_block(
+                                    &self.world,
+                                    self.collision,
+                                    &nearby,
+                                    Some(self.border.geometry()),
+                                );
+                            // `moveTowardsClosestSpace` draws the speed from the item's own random.
+                            let escape_speed =
+                                no_physics.then(|| item.random.next_float() * 0.2 + 0.1);
+                            let mut entered = Vec::new();
+                            let (alive, discarded) = self.tick_item_with_block_contacts(
+                                item,
+                                escape_speed,
+                                &nearby,
+                                false,
+                                Some(&sources),
+                                &mut |splash| entered.push(splash),
+                            );
+                            (no_physics, alive, discarded, entered)
+                        };
+                        match moves.take(i, item, revision, &mut at_turn) {
+                            Some(moved) => moved,
+                            None => at_turn(item),
+                        }
+                    })
+                    .expect("the item tick has a current row");
                 let item = &mut items[i];
-                let mut at_turn = |item: &mut ItemEntity| {
-                    // `getEntityCollisions(entity, bounds.expandTowards(movement))`: the boxes around
-                    // where the item can reach this tick.
-                    obstacles.near(ahead::reach(item), &mut nearby);
-                    // ItemEntity.tick's noPhysics (servers only): out of a block, a solid entity
-                    // or the border, placed or closed on it, towards the closest open side (#1252).
-                    let no_physics = merging
-                        && item.inside_block(
-                            &self.world,
-                            self.collision,
-                            &nearby,
-                            Some(self.border.geometry()),
-                        );
-                    // `moveTowardsClosestSpace` draws the speed from the item's own random.
-                    let escape_speed = no_physics.then(|| item.random.next_float() * 0.2 + 0.1);
-                    let mut entered = Vec::new();
-                    let (alive, discarded) = self.tick_item_with_block_contacts(
-                        item,
-                        escape_speed,
-                        &nearby,
-                        false,
-                        &mut |splash| entered.push(splash),
-                    );
-                    (no_physics, alive, discarded, entered)
-                };
-                let (no_physics, alive, discarded, entered) =
-                    match moves.take(i, item, &mut at_turn) {
-                        Some(moved) => moved,
-                        None => at_turn(item),
-                    };
                 // Entity.doWaterSplashEffect: the server plays the sound (broadcast
                 // to clients). Its addParticle is empty.
                 for splash in entered {
                     self.apply_item_splash(splash);
                 }
                 if discarded {
-                    removed[i] = true;
-                    gone = true;
-                    cells.remove(i, item.previous);
+                    if merging
+                        && item.health <= 0
+                        && mod_api::__private::item_listens(
+                            mod_api::HookId::ItemDestroyed,
+                            &item.stack.item,
+                        )
+                    {
+                        let damage_type = self
+                            .item_destroyed_damage
+                            .take_if(|(destroyed_id, _)| *destroyed_id == item.id)
+                            .map(|(_, ty)| ty)
+                            .unwrap_or_else(|| "minecraft:generic".to_owned());
+                        cells.moved(i, item.previous, item.position);
+                        env_destroyed = Some((item.id, item.position, damage_type));
+                    } else {
+                        self.item_destroyed_damage
+                            .take_if(|(destroyed_id, _)| *destroyed_id == item.id);
+                        removed[i] = true;
+                        gone = true;
+                        cells.remove(i, item.previous);
+                    }
                     break 'tick;
                 }
                 if merging && !no_physics {
@@ -254,70 +290,33 @@ impl Game<'_> {
                         [to.x, to.y, to.z],
                     );
                 }
-                let item_id = item.id;
-                let saved = native_components::ITEM_ENVIRONMENT_DAMAGE
-                    .map(|damage| self.saved_refuses_damage(item_id, damage, false));
-                let tags = world_items!(self);
-                let registry = self.pack.assets.registry;
-                let block_registries = &self.pack.block_registries;
-                let hooks = &self.damage_hooks;
-                let environment = item.environment_tick_with_hook(
-                    &mut self.world,
-                    self.res.facts(),
-                    registry,
-                    &native_components::item_damage_resolver(
-                        &self.pack.item_renderer.models,
-                        &self.health_resources.damage,
-                    ),
-                    |world, damage| {
-                        let vanilla = match damage {
-                            "minecraft:on_fire" => saved[0],
-                            "minecraft:lava" => saved[1],
-                            "minecraft:in_fire" => saved[2],
-                            "minecraft:cactus" => saved[3],
-                            _ => false,
+            }
+            if let Some((id, at, damage_type)) = env_destroyed {
+                let mut drops = Vec::new();
+                let given =
+                    self.give_items_back(items, &mut removed, &mut cells, &mut gone, i, |game| {
+                        drops = if let Some(k) =
+                            native_ticks::place(&game.dropped, i, |item| item.id == id)
+                        {
+                            game.destroy_item_entity_drops(k, &damage_type)
+                        } else {
+                            Vec::new()
                         };
-                        let source = sunrise_client::health::HurtSource {
-                            damage_type: damage,
-                            causing: 0,
-                            direct: 0,
-                            position: None,
-                        };
-                        sunrise_client::health::DamageLevel::of(
-                            world,
-                            registry,
-                            Some(tags),
-                            Some(block_registries),
-                            hooks,
-                        )
-                        .no_push()
-                        .invulnerability_check(
-                            sunrise_client::health::Hurting::Entity(
-                                item_id as i32,
-                                "minecraft:item",
-                                source,
-                            ),
-                            vanilla,
-                        )
-                    },
-                );
-                if environment.should_play_lava_hurt_sound(item.ticks) {
-                    // `Entity.lavaHurt` pitches the burn from `this.random`, the item's own.
-                    let pitch = 2.0 + item.random.next_float() * 0.4;
-                    self.audio.play(
-                        "minecraft:entity.generic.burn",
-                        Some([item.position.x, item.position.y, item.position.z]),
-                        0.4,
-                        pitch,
-                    );
+                        if alone && !game.dropped.iter().any(|item| item.id == id) {
+                            game.native_tick_post_one(round, id, native_ticks::ITEM);
+                        }
+                    });
+                (items, next) = (given.items, given.next);
+                for stack in drops {
+                    destroyed.push((stack, at));
                 }
-                if !environment.alive {
+                if let Some(at_idx) = given.at {
+                    i = at_idx;
                     removed[i] = true;
                     gone = true;
-                    cells.remove(i, item.position);
-                    for stack in environment.spilled {
-                        destroyed.push((stack, item.position));
-                    }
+                    cells.remove(i, items[i].position);
+                } else {
+                    continue;
                 }
             }
             if alone {
@@ -634,6 +633,7 @@ impl Game<'_> {
         }
         self.next_entity += 1;
         self.orbs.push(ExperienceOrb {
+            size_answer: None,
             attachment_lifetime: Default::default(),
             fall_distance: 0.0,
             rotation: [0.0, 0.0],
@@ -942,23 +942,7 @@ impl Game<'_> {
         randomly: bool,
         thrown_from_hand: bool,
     ) -> Option<u32> {
-        // `Player.drop` draws the spread from the player's own random. A throw with no player
-        // in place (a `/give` remainder whose target this game doesn't hold) keeps a fresh one
-        // rather than losing the item.
-        let v = match self.player.as_mut() {
-            Some(player) => sunrise_client::entities::drop_motion(
-                &mut player.random,
-                self.yaw,
-                self.pitch,
-                randomly,
-            ),
-            None => sunrise_client::entities::drop_motion(
-                &mut random_source::entity(),
-                self.yaw,
-                self.pitch,
-                randomly,
-            ),
-        };
+        let v = self.player_drop_motion(randomly);
         let at = [eye[0], eye[1] - f64::from(0.3f32), eye[2]];
         let uuid = thrown_from_hand.then(|| self.acting_player_uuid());
         // Only `drop(.., false)` tosses ask `item_toss`: a death's scatter (`randomly`) does not.
@@ -971,6 +955,24 @@ impl Game<'_> {
         let item = self.dropped.iter_mut().rev().find(|d| d.id == id)?;
         item.thrower = uuid;
         Some(item.id)
+    }
+
+    /// `LivingEntity.createItemStackToDrop` draws the spread from the player's own random.
+    pub(super) fn player_drop_motion(&mut self, randomly: bool) -> [f64; 3] {
+        match self.player.as_mut() {
+            Some(player) => sunrise_client::entities::drop_motion(
+                &mut player.random,
+                self.yaw,
+                self.pitch,
+                randomly,
+            ),
+            None => sunrise_client::entities::drop_motion(
+                &mut random_source::entity(),
+                self.yaw,
+                self.pitch,
+                randomly,
+            ),
+        }
     }
 
     /// `FurnaceResultSlot.checkTakeAchievements`: the player took from the output of the

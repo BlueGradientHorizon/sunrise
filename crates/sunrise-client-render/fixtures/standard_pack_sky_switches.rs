@@ -134,7 +134,7 @@ fn shoot(renderer: &mut Renderer, hud: &HudBatch, parts: Parts, path: &Path) -> 
         scaled: false,
         background: false,
     });
-    renderer.render(&frame).unwrap();
+    renderer.render(&frame, None).unwrap();
     renderer
         .screenshot_result
         .take()
@@ -440,6 +440,7 @@ fn fixture_frame(hud: &HudBatch) -> Frame<'_> {
         yaw: 0.0,
         pitch: 10.0,
         fov_degrees: 85.0,
+        cull_fov_degrees: 85.0,
         eye: glam::DVec3::new(0.5, 100.0, 0.5),
         eye_rotation: [0.0, 10.0],
         first_person: true,
@@ -450,11 +451,13 @@ fn fixture_frame(hud: &HudBatch) -> Frame<'_> {
         shadow_cache: false,
         distance: 12.0,
         detail_distance: 12.0,
+        shadow_distance: None,
         depth_far: 1000.0,
         underwater: false,
         water_plane: None,
         cave_culling: false,
         title: true,
+        sky_pass: false,
         sky_blocked: false,
         skybox: false,
         end_sky: false,

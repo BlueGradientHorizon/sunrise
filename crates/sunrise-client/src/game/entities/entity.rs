@@ -72,6 +72,9 @@ pub(super) struct Blast {
     pub(super) spared: Option<u32>,
 }
 
+/// `EntityType.TRIDENT.getDimensions()`: width, height and eye height.
+const THROWN_TRIDENT_DIMENSIONS: [f32; 3] = [0.5, 0.5, 0.13];
+
 pub(super) trait Entity: EntityRules {
     /// The kind's serializer overlays its object-owned attachments itself (for
     /// recursive object trees); the common save walk must not encode them twice.
@@ -87,6 +90,10 @@ pub(super) trait Entity: EntityRules {
     /// `Entity.getDeltaMovement`.
     fn velocity(&self) -> Vec3;
     fn velocity_mut(&mut self) -> &mut Vec3;
+    /// The server's accumulated `Entity.fallDistance`. A kind that does not track it has zero.
+    fn fall_distance(&self) -> f64 {
+        self.body_fall_distance()
+    }
     /// `Entity.resetFallDistance`: how far it has fallen is forgotten, so its next landing
     /// hurts it as a step does. Required, so a new kind states whether it keeps a fall distance.
     fn reset_fall_distance(&mut self);
@@ -96,6 +103,18 @@ pub(super) trait Entity: EntityRules {
     /// (clamped to -90..90), then `setOldRot`.
     fn set_rotation(&mut self, rotation: [f32; 2]);
     fn bounds(&self) -> Aabb;
+    /// `Entity.getDimensions(getPose())` before `entity_size`, for a kind the server asks for
+    /// at its size passes (`modding/entity_sizes.rs`), its pose standing; None for one asked
+    /// another way (a mob, by `native_mob_sizes`) or not at all.
+    fn vanilla_dimensions(&self) -> Option<[f32; 3]> {
+        None
+    }
+    /// What `entity_size` last answered for it ([`Self::vanilla_dimensions`]).
+    fn size_answer(&self) -> Option<sunrise_client::pose::SizeAnswer> {
+        None
+    }
+    /// Keep `answer`: its box takes it while it holds.
+    fn set_size_answer(&mut self, _answer: sunrise_client::pose::SizeAnswer) {}
     /// What a selector finds this entity as (`@e`), or `None` for one it cannot
     /// name yet. Required, so a new kind states which.
     fn selector_target(&self) -> Option<Target>;
@@ -134,7 +153,10 @@ pub(super) trait Entity: EntityRules {
     fn ground_state_mut(&mut self) -> Option<&mut GroundState> {
         None
     }
-    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+    fn support_collision(
+        &self,
+        _tags: &sunrise_items::items::EntityTypeTags,
+    ) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
         (
             sunrise_client::motion::BodyMotion::entity_context(self.id(), self.position()),
             Some(PowderSnowSubject {
@@ -148,6 +170,7 @@ pub(super) trait Entity: EntityRules {
         &mut self,
         world: &sunrise_client::world::World,
         binding: &sunrise_world::block_collision::BlockCollisionRegistry<'_>,
+        tags: &sunrise_items::items::EntityTypeTags,
         on_ground: bool,
         movement: Option<Vec3>,
     ) -> Result<bool, CollisionScanError<std::io::Error>> {
@@ -155,7 +178,7 @@ pub(super) trait Entity: EntityRules {
             return Ok(false);
         };
         ground.on_ground = on_ground;
-        let (context, subject) = self.support_collision();
+        let (context, subject) = self.support_collision(tags);
         let mut scene = SceneCollisions {
             world,
             binding,
@@ -185,6 +208,14 @@ pub(super) trait Entity: EntityRules {
     /// `Entity.isRemoved`.
     fn is_removed(&self) -> bool {
         false
+    }
+    /// `Entity.isPickable`: true for kinds a projectile or ray pick can strike.
+    fn is_pickable(&self) -> bool {
+        false
+    }
+    /// `Entity.canBeHitByProjectile`: alive and pickable.
+    fn can_be_hit_by_projectile(&self) -> bool {
+        self.is_alive() && self.is_pickable()
     }
     /// `instanceof LivingEntity`.
     fn is_living(&self) -> bool {
@@ -589,17 +620,15 @@ impl RenderEntityBounds for Cushion {
 }
 
 /// Whether this projectile still lives its list's tick: an arrow's state was
-/// not removed. A thrown projectile leaves its list through the batch's own
-/// keep flags, not a field of its own.
-fn shot_alive(shot: &Projectile) -> bool {
-    shot.arrow.as_ref().is_none_or(|a| !a.removed)
+/// not removed, and no block effect destroyed it (a shulker bullet's
+/// `hurtServer`). A thrown projectile otherwise leaves its list through the
+/// batch's own keep flags, not a field of its own.
+pub(in crate::game) fn shot_alive(shot: &Projectile) -> bool {
+    !shot.destroyed && shot.arrow.as_ref().is_none_or(|a| !a.removed)
 }
 
-/// The item's view of the shared inside walk: its box, its life, the batch's
-/// blocks, and the part's contact, fired mid-walk over a lent level. An item
-/// has no per-block vanilla arms of its own in the walk: its fire, lava and
-/// cactus contacts are its own tick's (`ItemEntity::environment_tick`), kept
-/// where they were.
+/// The item's contacts run in its own sweep: immediate cactus hurt and the
+/// queued fire, fluid, powder snow and cauldron effects.
 pub(in crate::game) struct ItemInside<'a, 'g> {
     pub(in crate::game) game: &'a mut Game<'g>,
     pub(in crate::game) item: &'a mut ItemEntity,
@@ -632,12 +661,41 @@ impl sunrise_client::block_contact::InsideWalk for ItemInside<'_, '_> {
     }
     fn inside_shape(
         &mut self,
-        _state: sunrise_world::registry::BlockStateId,
-        _at: sunrise_core::position::BlockPos,
+        state: sunrise_world::registry::BlockStateId,
+        at: BlockPos,
     ) -> sunrise_client::block_contact::InsideShape {
-        // `getEntityInsideCollisionShape` is the whole block for every block
-        // an item meets, as the item's own sweep always treated it.
-        sunrise_client::block_contact::InsideShape::Full
+        self.game.pack.assets.registry.state(state).map_or(
+            sunrise_client::block_contact::InsideShape::Full,
+            |def| {
+                sunrise_client::block_contact::cauldron_inside_shape(
+                    self.game.collision,
+                    state,
+                    def,
+                    at,
+                )
+            },
+        )
+    }
+    fn collided_with_fluid(&self, at: BlockPos, from: Vec3, to: Vec3) -> bool {
+        sunrise_client::entities::swept_fluid_contact(
+            &self.game.world,
+            &self.game.res.motion().fluids,
+            at,
+            self.bounds_at(from),
+            to.subtract(from),
+        )
+    }
+    fn fluid_inside(
+        &mut self,
+        at: BlockPos,
+        _: i32,
+        effects: &mut mod_api::InsideEffects,
+    ) -> Result<(), ()> {
+        sunrise_client::block_contact::queue_fluid_effects(
+            effects,
+            self.game.res.motion().fluids.fluid(self.block(at)).kind(),
+        );
+        Ok(())
     }
     fn entity_inside(
         &mut self,
@@ -650,14 +708,25 @@ impl sunrise_client::block_contact::InsideWalk for ItemInside<'_, '_> {
         let id = self.item.id;
         self.game
             .fire_batch_inside(id as i32, "minecraft:item", state, at, precise, effects);
+        let block = &*self.game.res.facts().get(state).name;
+        sunrise_client::block_contact::queue_block_effects(effects, block, state, at);
+        if block == "minecraft:cactus" {
+            self.game
+                .hurt_lent_item_entity(self.item, 1.0, "minecraft:cactus", None, None, None);
+        }
         Ok(())
     }
 }
 
 /// The projectile's view of the shared inside walk, the item's shape of it.
+/// `builtins` is set for the kinds whose own tick applies block effects
+/// ([`Projectile::applies_block_effects`]): their fire, lava, water, cauldrons
+/// and powder snow queue here. An arrow's run in its own collector, and llama
+/// spit takes none, so the walk gives those only the parts' contacts.
 pub(in crate::game) struct ProjectileInside<'a, 'g> {
     pub(in crate::game) game: &'a mut Game<'g>,
     pub(in crate::game) shot: &'a mut Projectile,
+    pub(in crate::game) builtins: bool,
 }
 
 impl sunrise_client::block_contact::InsideWalk for ProjectileInside<'_, '_> {
@@ -687,10 +756,42 @@ impl sunrise_client::block_contact::InsideWalk for ProjectileInside<'_, '_> {
     }
     fn inside_shape(
         &mut self,
-        _state: sunrise_world::registry::BlockStateId,
-        _at: sunrise_core::position::BlockPos,
+        state: sunrise_world::registry::BlockStateId,
+        at: BlockPos,
     ) -> sunrise_client::block_contact::InsideShape {
-        sunrise_client::block_contact::InsideShape::Full
+        self.game.pack.assets.registry.state(state).map_or(
+            sunrise_client::block_contact::InsideShape::Full,
+            |def| {
+                sunrise_client::block_contact::cauldron_inside_shape(
+                    self.game.collision,
+                    state,
+                    def,
+                    at,
+                )
+            },
+        )
+    }
+    fn collided_with_fluid(&self, at: BlockPos, from: Vec3, to: Vec3) -> bool {
+        self.builtins
+            && sunrise_client::entities::swept_fluid_contact(
+                &self.game.world,
+                &self.game.res.motion().fluids,
+                at,
+                self.bounds_at(from),
+                to.subtract(from),
+            )
+    }
+    fn fluid_inside(
+        &mut self,
+        at: BlockPos,
+        _: i32,
+        effects: &mut mod_api::InsideEffects,
+    ) -> Result<(), ()> {
+        sunrise_client::block_contact::queue_fluid_effects(
+            effects,
+            self.game.res.motion().fluids.fluid(self.block(at)).kind(),
+        );
+        Ok(())
     }
     fn entity_inside(
         &mut self,
@@ -703,9 +804,515 @@ impl sunrise_client::block_contact::InsideWalk for ProjectileInside<'_, '_> {
         let (id, kind) = (self.shot.id, self.shot.entity_type());
         self.game
             .fire_batch_inside(id as i32, kind, state, at, precise, effects);
+        if self.builtins {
+            let block = &*self.game.res.facts().get(state).name;
+            sunrise_client::block_contact::queue_block_effects(effects, block, state, at);
+        }
         Ok(())
     }
 }
+/// Live read of an entity temporarily lent out by the current batch.
+pub(in crate::game) type InsideSources<'a> =
+    Option<&'a dyn Fn(u32) -> Option<(crate::game::commands::Target, [f64; 3])>>;
+
+fn item_can_burn(game: &Game<'_>, item: &ItemEntity) -> bool {
+    game.stack_can_be_hurt_by(&item.stack, "minecraft:in_fire") != Some(false)
+}
+
+/// Engine backing for [`mod_api::InsideEntityView`] while flushing an item's
+/// `InsideEffects` collector.
+struct ItemInsideAccess<'a, 'g> {
+    game: &'a mut Game<'g>,
+    item: &'a mut ItemEntity,
+    sources: InsideSources<'a>,
+}
+
+impl mod_api::InsideEntityAccess for ItemInsideAccess<'_, '_> {
+    fn id(&self) -> u32 {
+        self.item.id
+    }
+
+    fn kind(&self) -> &str {
+        "minecraft:item"
+    }
+
+    fn is_alive(&self) -> bool {
+        self.item.health > 0
+    }
+
+    fn position(&self) -> [f64; 3] {
+        [
+            self.item.position.x,
+            self.item.position.y,
+            self.item.position.z,
+        ]
+    }
+
+    fn velocity(&self) -> [f64; 3] {
+        [
+            self.item.velocity.x,
+            self.item.velocity.y,
+            self.item.velocity.z,
+        ]
+    }
+
+    fn fire_ticks(&self) -> i32 {
+        self.item.fire_ticks
+    }
+
+    fn is_on_fire(&self) -> bool {
+        self.item.fire_ticks > 0 && item_can_burn(self.game, self.item)
+    }
+
+    fn fall_distance(&self) -> f64 {
+        self.item.fall_distance
+    }
+
+    fn block_state(&self, pos: [i32; 3]) -> Option<mod_api::BlockState> {
+        use crate::game::api_values::TryIntoApi as _;
+        let level = self.game.level(self.game.dim.id())?;
+        self.game
+            .level_block_state(level, pos)
+            .and_then(|id| id.try_into_api().ok())
+    }
+
+    fn push(&mut self, delta: [f64; 3]) -> bool {
+        if !delta.iter().all(|v| v.is_finite()) {
+            return false;
+        }
+        self.item.velocity = self
+            .item
+            .velocity
+            .add_vector(Vec3::new(delta[0], delta[1], delta[2]));
+        true
+    }
+
+    fn set_velocity(&mut self, velocity: [f64; 3]) -> bool {
+        if !velocity.iter().all(|v| v.is_finite()) {
+            return false;
+        }
+        self.item.velocity = Vec3::new(velocity[0], velocity[1], velocity[2]);
+        true
+    }
+
+    fn make_stuck_in_block(&mut self, speed_multiplier: [f64; 3]) -> bool {
+        if !speed_multiplier.iter().all(|v| v.is_finite()) {
+            return false;
+        }
+        self.item.fall_distance = 0.0;
+        self.item.velocity = Vec3::new(
+            self.item.velocity.x * speed_multiplier[0],
+            self.item.velocity.y * speed_multiplier[1],
+            self.item.velocity.z * speed_multiplier[2],
+        );
+        true
+    }
+
+    fn reset_fall_distance(&mut self) {
+        self.item.fall_distance = 0.0;
+    }
+
+    fn set_remaining_fire_ticks(&mut self, ticks: i32) {
+        self.item.fire_ticks = ticks;
+    }
+
+    fn add_effect(&mut self, _effect: mod_api::EffectKey, _duration: i32, _amplifier: u8) -> bool {
+        false
+    }
+
+    fn hurt_with_source(
+        &mut self,
+        damage_type: &str,
+        amount: f32,
+        direct: Option<mod_api::EntityRef>,
+        causing: Option<mod_api::EntityRef>,
+    ) -> bool {
+        let subject_pos = self.position();
+        let Some((direct, causing, from)) = self.game.resolve_inside_damage_sources(
+            self.item.id,
+            crate::game::commands::Target::Item(self.item.id),
+            subject_pos,
+            direct,
+            causing,
+            self.sources,
+        ) else {
+            return false;
+        };
+        self.game
+            .hurt_lent_item_entity(self.item, amount, damage_type, direct, causing, from)
+    }
+
+    fn set_block(&mut self, pos: [i32; 3], state: mod_api::BlockState) -> bool {
+        use crate::game::api_values::TryIntoEngine as _;
+        let Some(level) = self.game.level(self.game.dim.id()) else {
+            return false;
+        };
+        let Ok(id) = state.try_into_engine(&*self.game) else {
+            return false;
+        };
+        let flags = mod_api::BlockUpdateFlags::NEIGHBORS | mod_api::BlockUpdateFlags::CLIENTS;
+        self.game
+            .level_set_block(level, pos, id, flags)
+            .unwrap_or(false)
+    }
+
+    fn destroy_block(&mut self, pos: [i32; 3], drop: bool) -> bool {
+        let Some(level) = self.game.level(self.game.dim.id()) else {
+            return false;
+        };
+        self.game
+            .level_destroy_block(level, pos, drop, None, false)
+            .is_some()
+    }
+
+    fn apply_effect(&mut self, effect: mod_api::InsideEffect) {
+        match effect {
+            mod_api::InsideEffect::Extinguish => {
+                self.item.fire_ticks = self.item.fire_ticks.min(0);
+            }
+            mod_api::InsideEffect::FireIgnite => {
+                if item_can_burn(self.game, self.item) {
+                    if self.item.fire_ticks < 0 {
+                        self.item.fire_ticks += 1;
+                    }
+                    if self.item.fire_ticks >= 0 {
+                        self.item.fire_ticks = self.item.fire_ticks.max(160);
+                    }
+                }
+            }
+            mod_api::InsideEffect::LavaIgnite => {
+                if item_can_burn(self.game, self.item) {
+                    self.item.fire_ticks = self.item.fire_ticks.max(300);
+                }
+            }
+            mod_api::InsideEffect::Freeze | mod_api::InsideEffect::ClearFreeze => {}
+        }
+    }
+
+    fn apply_builtin(&mut self, action: mod_api::__private::BuiltinInsideAction) {
+        use mod_api::__private::BuiltinInsideAction as Action;
+        match action {
+            Action::PowderSnowMelt(pos) => {
+                if self.is_on_fire()
+                    && self.game.can_entity_grief(Some(self.item.id))
+                    && let Some(level) = self.game.level(self.game.dim.id())
+                {
+                    self.game
+                        .level_destroy_block(level, pos, false, None, false);
+                }
+            }
+            Action::LayeredCauldronExtinguish {
+                pos: [x, y, z],
+                state,
+            } => {
+                if self.is_on_fire() {
+                    self.game.cauldron_extinguish_at(
+                        BlockPos::new(x, y, z),
+                        sunrise_world::registry::BlockStateId(state),
+                    );
+                }
+            }
+            Action::FireHurt(damage) => {
+                self.game.hurt_lent_item_entity(
+                    self.item,
+                    damage,
+                    "minecraft:in_fire",
+                    None,
+                    None,
+                    None,
+                );
+            }
+            Action::LavaHurt => {
+                if item_can_burn(self.game, self.item)
+                    && self.game.hurt_lent_item_entity(
+                        self.item,
+                        4.0,
+                        "minecraft:lava",
+                        None,
+                        None,
+                        None,
+                    )
+                    && (self.item.health <= 0 || self.item.ticks.is_multiple_of(10))
+                {
+                    let pitch = 2.0 + self.item.random.next_float() * 0.4;
+                    self.game.audio.play(
+                        "minecraft:entity.generic.burn",
+                        Some(self.item.position.components()),
+                        0.4,
+                        pitch,
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// Engine backing for [`mod_api::InsideEntityView`] while flushing a projectile's
+/// `InsideEffects` collector.
+struct ProjectileInsideAccess<'a, 'g> {
+    game: &'a mut Game<'g>,
+    shot: &'a mut Projectile,
+    sources: InsideSources<'a>,
+}
+
+impl mod_api::InsideEntityAccess for ProjectileInsideAccess<'_, '_> {
+    fn id(&self) -> u32 {
+        self.shot.id
+    }
+
+    fn kind(&self) -> &str {
+        self.shot.entity_type()
+    }
+
+    fn is_alive(&self) -> bool {
+        shot_alive(self.shot)
+    }
+
+    fn position(&self) -> [f64; 3] {
+        [
+            self.shot.position.x,
+            self.shot.position.y,
+            self.shot.position.z,
+        ]
+    }
+
+    fn velocity(&self) -> [f64; 3] {
+        [
+            self.shot.velocity.x,
+            self.shot.velocity.y,
+            self.shot.velocity.z,
+        ]
+    }
+
+    fn fire_ticks(&self) -> i32 {
+        self.shot.fire_ticks
+    }
+
+    fn is_on_fire(&self) -> bool {
+        self.shot.burning()
+    }
+
+    fn fall_distance(&self) -> f64 {
+        self.shot.fall_distance
+    }
+
+    fn block_state(&self, pos: [i32; 3]) -> Option<mod_api::BlockState> {
+        use crate::game::api_values::TryIntoApi as _;
+        let level = self.game.level(self.game.dim.id())?;
+        self.game
+            .level_block_state(level, pos)
+            .and_then(|id| id.try_into_api().ok())
+    }
+
+    fn push(&mut self, delta: [f64; 3]) -> bool {
+        if !delta.iter().all(|v| v.is_finite()) {
+            return false;
+        }
+        self.shot.velocity = self
+            .shot
+            .velocity
+            .add_vector(Vec3::new(delta[0], delta[1], delta[2]));
+        true
+    }
+
+    fn set_velocity(&mut self, velocity: [f64; 3]) -> bool {
+        if !velocity.iter().all(|v| v.is_finite()) {
+            return false;
+        }
+        self.shot.velocity = Vec3::new(velocity[0], velocity[1], velocity[2]);
+        true
+    }
+
+    fn make_stuck_in_block(&mut self, speed_multiplier: [f64; 3]) -> bool {
+        if !speed_multiplier.iter().all(|v| v.is_finite()) {
+            return false;
+        }
+        self.shot.fall_distance = 0.0;
+        self.shot.velocity = Vec3::new(
+            self.shot.velocity.x * speed_multiplier[0],
+            self.shot.velocity.y * speed_multiplier[1],
+            self.shot.velocity.z * speed_multiplier[2],
+        );
+        true
+    }
+
+    fn reset_fall_distance(&mut self) {
+        self.shot.fall_distance = 0.0;
+    }
+
+    fn set_remaining_fire_ticks(&mut self, ticks: i32) {
+        self.shot.fire_ticks = ticks;
+    }
+
+    fn add_effect(&mut self, _effect: mod_api::EffectKey, _duration: i32, _amplifier: u8) -> bool {
+        false
+    }
+
+    fn hurt_with_source(
+        &mut self,
+        damage_type: &str,
+        amount: f32,
+        direct: Option<mod_api::EntityRef>,
+        causing: Option<mod_api::EntityRef>,
+    ) -> bool {
+        if !amount.is_finite()
+            || amount < 0.0
+            || self.game.health_resources.damage.id(damage_type).is_none()
+        {
+            return false;
+        }
+        let subject_pos = self.position();
+        let Some((direct, causing, from)) = self.game.resolve_inside_damage_sources(
+            self.shot.id,
+            crate::game::commands::Target::Projectile(self.shot.id),
+            subject_pos,
+            direct,
+            causing,
+            self.sources,
+        ) else {
+            return false;
+        };
+        self.game
+            .hurt_lent_projectile(self.shot, damage_type, direct, causing, from)
+    }
+
+    fn set_block(&mut self, pos: [i32; 3], state: mod_api::BlockState) -> bool {
+        use crate::game::api_values::TryIntoEngine as _;
+        let Some(level) = self.game.level(self.game.dim.id()) else {
+            return false;
+        };
+        let Ok(id) = state.try_into_engine(&*self.game) else {
+            return false;
+        };
+        let flags = mod_api::BlockUpdateFlags::NEIGHBORS | mod_api::BlockUpdateFlags::CLIENTS;
+        self.game
+            .level_set_block(level, pos, id, flags)
+            .unwrap_or(false)
+    }
+
+    fn destroy_block(&mut self, pos: [i32; 3], drop: bool) -> bool {
+        let Some(level) = self.game.level(self.game.dim.id()) else {
+            return false;
+        };
+        self.game
+            .level_destroy_block(level, pos, drop, None, false)
+            .is_some()
+    }
+
+    fn apply_effect(&mut self, effect: mod_api::InsideEffect) {
+        match effect {
+            mod_api::InsideEffect::Extinguish => {
+                self.shot.fire_ticks = self.shot.fire_ticks.min(0);
+            }
+            mod_api::InsideEffect::FireIgnite => {
+                if self.shot.fire_ticks < 0 {
+                    self.shot.fire_ticks += 1;
+                }
+                if self.shot.fire_ticks >= 0 {
+                    self.shot.fire_ticks = self.shot.fire_ticks.max(160);
+                }
+            }
+            mod_api::InsideEffect::LavaIgnite => {
+                self.shot.fire_ticks = self.shot.fire_ticks.max(300);
+            }
+            mod_api::InsideEffect::Freeze | mod_api::InsideEffect::ClearFreeze => {}
+        }
+    }
+
+    fn apply_builtin(&mut self, action: mod_api::__private::BuiltinInsideAction) {
+        use mod_api::__private::BuiltinInsideAction as Action;
+        match action {
+            // PowderSnowBlock.entityInside: the `mob_griefing` rule (a projectile
+            // is no player) and the projectile's `mayInteract`.
+            Action::PowderSnowMelt([x, y, z]) => {
+                if self.shot.burning()
+                    && self.game.can_entity_grief(None)
+                    && self
+                        .game
+                        .projectile_may_interact(self.shot, BlockPos::new(x, y, z))
+                    && let Some(level) = self.game.level(self.game.dim.id())
+                {
+                    self.game
+                        .level_destroy_block(level, [x, y, z], false, None, false);
+                }
+            }
+            Action::LayeredCauldronExtinguish {
+                pos: [x, y, z],
+                state,
+            } => {
+                let pos = BlockPos::new(x, y, z);
+                if self.shot.burning() && self.game.projectile_may_interact(self.shot, pos) {
+                    self.game
+                        .cauldron_extinguish_at(pos, sunrise_world::registry::BlockStateId(state));
+                }
+            }
+            Action::FireHurt(_) => {
+                self.builtin_hurt("minecraft:in_fire");
+            }
+            Action::LavaHurt => {
+                // Entity.lavaHurt: the burn plays when `hurtServer` returned true,
+                // which only a shulker bullet's does (unless silent).
+                if self.builtin_hurt("minecraft:lava") && !self.game.entity_silent(self.shot.id) {
+                    let pitch = 2.0 + self.shot.random.0.next_float() * 0.4;
+                    self.game.audio.play(
+                        "minecraft:entity.generic.burn",
+                        Some([
+                            self.shot.position.x,
+                            self.shot.position.y,
+                            self.shot.position.z,
+                        ]),
+                        0.4,
+                        pitch,
+                    );
+                }
+            }
+        }
+    }
+}
+
+impl ProjectileInsideAccess<'_, '_> {
+    /// `hurtServer` from a block: `ShulkerBullet`'s plays its hurt, sends its
+    /// crits and destroys it (true); `AbstractHurtingProjectile`'s does nothing;
+    /// `Projectile`'s marks the thrown kinds hurt, whatever the damage. Only
+    /// the bullet's is true.
+    fn builtin_hurt(&mut self, damage_type: &str) -> bool {
+        match self.shot.kind {
+            ProjectileKind::ShulkerBullet { .. } => {
+                if self.shot.destroyed {
+                    return false;
+                }
+                let at = [
+                    self.shot.position.x,
+                    self.shot.position.y,
+                    self.shot.position.z,
+                ];
+                let silent = self.game.entity_silent(self.shot.id);
+                let ctx = sunrise_client::sculk::Context {
+                    owner: self.shot.owner,
+                    owner_uuid: self.shot.owner_uuid,
+                    ..self.game.entity_event_context(self.shot.id, None)
+                };
+                self.shot.destroyed = true;
+                self.game.shulker_bullet_hurt(at, silent);
+                self.game
+                    .post_game_event("minecraft:entity_damage", at, ctx);
+                true
+            }
+            _ if self.shot.is_fireball()
+                || matches!(
+                    self.shot.kind,
+                    ProjectileKind::WindCharge | ProjectileKind::BreezeWindCharge
+                ) =>
+            {
+                false
+            }
+            _ => self
+                .game
+                .hurt_lent_projectile(self.shot, damage_type, None, None, None),
+        }
+    }
+}
+
 #[cfg(test)]
 mod render_bounds_tests {
     use super::*;
@@ -788,6 +1395,21 @@ mod render_bounds_tests {
         assert!(bounds.min_position().y <= 9.5);
         assert!(bounds.max_position().y >= 12.8);
     }
+}
+
+/// The `entity_size` answer a kind keeps in its `size_answer` field, for its vanilla size `$vanilla`.
+macro_rules! stored_size {
+    ($vanilla:expr) => {
+        fn vanilla_dimensions(&self) -> Option<[f32; 3]> {
+            Some($vanilla(self))
+        }
+        fn size_answer(&self) -> Option<sunrise_client::pose::SizeAnswer> {
+            self.size_answer
+        }
+        fn set_size_answer(&mut self, answer: sunrise_client::pose::SizeAnswer) {
+            self.size_answer = Some(answer);
+        }
+    };
 }
 
 /// The common retained support owned by moving bodies.
@@ -954,22 +1576,16 @@ impl Game<'_> {
 /// fluids again. Returns false when the item should be removed. A server's tick
 /// runs the halves itself, with the landing's `Block.fallOn` between them.
 impl Game<'_> {
-    /// Tick an item owned by the caller. The two results are ordinary survival
-    /// and explicit consumption by a block-contact handler. `escape_speed`:
-    /// the item is inside a block and moves without physics this tick, pushed
-    /// out at this speed.
-    /// The item's `Entity.checkInsideBlocks`, run at its batch with the part's
-    /// contact fired mid-walk: the shared sweep over the item's move, the staged
-    /// fire over a lent level (as `item_fall_on` lends one), and the flush of
-    /// the queued writes into this item, its own tick. Nothing runs without a
-    /// listening part: one `any_inside` test is the whole cost.
-    pub(in crate::game) fn sweep_item_inside(&mut self, item: &mut ItemEntity) {
-        if !sunrise_client::block_contact::HOOKS
-            .get()
-            .is_some_and(|hooks| (hooks.any_inside)())
-        {
-            return;
-        }
+    /// The one `Entity.checkInsideBlocks` pass after an item's `stepOn`, followed by
+    /// the ordered callback/vanilla effect flush and the extinguish transition.
+    pub(in crate::game) fn sweep_item_inside(
+        &mut self,
+        item: &mut ItemEntity,
+        sources: InsideSources<'_>,
+    ) {
+        use mod_api::InsideEntityAccess as _;
+        let fire_before = item.fire_ticks;
+        let burning_before = fire_before > 0 && item_can_burn(self, item);
         let mut effects = mod_api::InsideEffects::default();
         let mut inside = ItemInside { game: self, item };
         let movement = sunrise_world::entity_move::MovementRecord {
@@ -977,7 +1593,8 @@ impl Game<'_> {
             to: inside.item.position,
             original: None,
         };
-        let mut visited = crate::fast_hash::FxHashSet::default();
+        let mut visited = std::mem::take(&mut inside.game.creatures.inside_visited_scratch);
+        visited.clear();
         let _ = sunrise_client::block_contact::sweep_movements(
             &mut inside,
             &[movement],
@@ -985,20 +1602,40 @@ impl Game<'_> {
             &mut effects,
         );
         let ItemInside { game, item } = inside;
-        // `applyAndClear`: the writes apply in the collector's order, in this
-        // item's tick, until it is destroyed.
-        for planned in effects.take_planned() {
-            if item.health <= 0 {
-                break;
+        visited.clear();
+        game.creatures.inside_visited_scratch = visited;
+        // `applyAndClear`: the queued effects and callbacks apply in the
+        // collector's order, in this item's tick, until it is destroyed.
+        let mut access = ItemInsideAccess {
+            game,
+            item,
+            sources,
+        };
+        effects.apply_and_clear(&mut access);
+        let at = access.item.position;
+        if access
+            .game
+            .rain_falls_on(at, access.item.bounds().max_position().y)
+        {
+            access.item.fire_ticks = access.item.fire_ticks.min(0);
+        }
+        if !access.is_on_fire() {
+            if burning_before {
+                let pitch =
+                    1.6 + (access.item.random.next_float() - access.item.random.next_float()) * 0.4;
+                access.game.audio.play(
+                    "minecraft:entity.generic.extinguish_fire",
+                    Some(at.components()),
+                    0.7,
+                    pitch,
+                );
             }
-            if let mod_api::PlannedInside::Write(write) = planned {
-                game.apply_item_write(item, write);
+            if access.item.fire_ticks <= fire_before {
+                access.item.fire_ticks = 0;
             }
         }
     }
 
-    /// Apply a contact Part's write to the moving item. Items hold a multiplier
-    /// for the next move (`makeStuckInBlock`), but keep no active effects.
     fn apply_item_write(&mut self, item: &mut ItemEntity, write: mod_api::EntityWrite) {
         let triple = |v: [f64; 3]| Vec3::new(v[0], v[1], v[2]);
         match write {
@@ -1010,8 +1647,15 @@ impl Game<'_> {
                 item.stuck = triple(v);
                 item.fall_distance = 0.0;
             }
-            mod_api::EntityWrite::Hurt { amount } => {
-                self.hurt_moving_item(item, amount);
+            mod_api::EntityWrite::Hurt {
+                damage_type,
+                amount,
+            } => {
+                if let Some(name) =
+                    mod_api::__private::parts_installation::damage_type_name(damage_type)
+                {
+                    self.hurt_lent_item_entity(item, amount, name, None, None, None);
+                }
             }
             mod_api::EntityWrite::ResetFallDistance => item.fall_distance = 0.0,
             mod_api::EntityWrite::SetFireTicks(ticks) => item.fire_ticks = ticks,
@@ -1019,83 +1663,178 @@ impl Game<'_> {
         }
     }
 
-    /// The projectile's `Entity.checkInsideBlocks`, the same batch sweep the
-    /// item's is: the shared walk over its move, the staged fire over a lent
-    /// level, and the flush into this projectile's own tick.
-    pub(in crate::game) fn sweep_projectile_inside(&mut self, shot: &mut Projectile) {
-        if !sunrise_client::block_contact::HOOKS
-            .get()
-            .is_some_and(|hooks| (hooks.any_inside)())
+    /// The projectile's `Entity.applyEffectsFromBlocks`, the same batch sweep the
+    /// item's is: the shared walk over its move, the isolated parts over a lent
+    /// level, and the flush into this projectile's own tick. For the kinds whose
+    /// tick applies block effects the server's tail follows: rain, the
+    /// extinguish hiss, the fire reset and their base tick
+    /// ([`Projectile::finish_block_effects`]).
+    pub(in crate::game) fn sweep_projectile_inside(
+        &mut self,
+        shot: &mut Projectile,
+        sources: InsideSources<'_>,
+    ) {
+        // A client's copy takes no block effects of its own: its fire is the
+        // server's flag, and the blocks are the server's.
+        let builtins = shot.applies_block_effects() && self.is_logical_server();
+        if !builtins
+            && !sunrise_client::block_contact::HOOKS
+                .get()
+                .is_some_and(|hooks| (hooks.any_inside)())
         {
             return;
         }
+        let (fire_before, was_on_fire) = (shot.fire_ticks, shot.burning());
         let mut effects = mod_api::InsideEffects::default();
-        let mut inside = ProjectileInside { game: self, shot };
+        let mut inside = ProjectileInside {
+            game: self,
+            shot,
+            builtins,
+        };
         let movement = sunrise_world::entity_move::MovementRecord {
             from: inside.shot.previous,
             to: inside.shot.position,
             original: None,
         };
-        let mut visited = crate::fast_hash::FxHashSet::default();
+        let mut visited = std::mem::take(&mut inside.game.creatures.inside_visited_scratch);
+        visited.clear();
         let _ = sunrise_client::block_contact::sweep_movements(
             &mut inside,
             &[movement],
             &mut visited,
             &mut effects,
         );
-        let ProjectileInside { game, shot } = inside;
-        for planned in effects.take_planned() {
-            if !shot_alive(shot) {
-                break;
-            }
-            if let mod_api::PlannedInside::Write(write) = planned {
-                game.apply_projectile_write(shot, write);
-            }
-        }
-    }
-
-    /// `Projectile.hurtServer` from lava's `lavaHurt` this tick: `markHurt`,
-    /// unless the projectile is invulnerable to lava (`isInvulnerableToBase`).
-    pub(in crate::game) fn lava_mark_hurt(&mut self, shot: &mut Projectile) {
-        if !shot.take_lava_marked() {
+        let ProjectileInside { game, shot, .. } = inside;
+        visited.clear();
+        game.creatures.inside_visited_scratch = visited;
+        let mut access = ProjectileInsideAccess {
+            game,
+            shot,
+            sources,
+        };
+        effects.apply_and_clear(&mut access);
+        let ProjectileInsideAccess { game, shot, .. } = access;
+        if !builtins || !shot_alive(shot) {
             return;
         }
-        let vanilla = self.saved_refuses_damage(shot.id, "minecraft:lava", false);
-        if !self.refuses_lava_hurt(shot.id, shot.entity_type(), vanilla) {
-            shot.sync_velocity = true;
+        let in_rain = game.rain_falls_on(shot.position, shot.bounds().max_position().y);
+        if let Some(pitch) = shot.finish_block_effects(fire_before, was_on_fire, in_rain) {
+            game.audio.play(
+                "minecraft:entity.generic.extinguish_fire",
+                Some([shot.position.x, shot.position.y, shot.position.z]),
+                0.7,
+                pitch,
+            );
         }
     }
 
-    /// A typed entity write for a projectile, applied in its own tick. A
-    /// projectile takes no effects, no damage table and keeps no stuck
-    /// multiplier: `Hurt` and `AddEffect` are skipped, `StuckIn` scales the
-    /// movement once, as vanilla's projectiles keep none of the three.
-    fn apply_projectile_write(&mut self, shot: &mut Projectile, write: mod_api::EntityWrite) {
-        let triple = |v: [f64; 3]| Vec3::new(v[0], v[1], v[2]);
-        match write {
-            mod_api::EntityWrite::Push(v) => {
-                shot.velocity = shot.velocity.add_vector(triple(v));
-            }
-            mod_api::EntityWrite::SetMovement(v) => shot.velocity = triple(v),
-            mod_api::EntityWrite::StuckIn(v) => {
-                shot.velocity = Vec3::new(
-                    shot.velocity.x * v[0],
-                    shot.velocity.y * v[1],
-                    shot.velocity.z * v[2],
+    /// `Projectile.mayInteract` as NeoForge has it: a player owner's
+    /// `ServerPlayer.mayInteract` (inside the world border, not under spawn
+    /// protection), yes with no owner (or one that is gone), else
+    /// `canEntityGrief` for the owner.
+    pub(in crate::game) fn projectile_may_interact(
+        &self,
+        shot: &Projectile,
+        pos: BlockPos,
+    ) -> bool {
+        let guest = match self.resolved_projectile_owner(shot.owner, shot.guest) {
+            None => return true,
+            Some(sunrise_client::mobs::Who::Player) => shot.guest,
+            Some(sunrise_client::mobs::Who::Mob(id)) => match self.lan_guest_conn_by_id(id) {
+                Some(conn) => Some(conn),
+                None => return self.can_entity_grief(Some(id)),
+            },
+        };
+        let protection = guest
+            .zip(self.lan.as_ref())
+            .and_then(|(conn, host)| self.spawn_protection_for(host, host.hub.guest(conn)?.uuid));
+        self.border
+            .geometry()
+            .is_within_bounds(f64::from(pos.x), f64::from(pos.z), 0.0)
+            && !protection.is_some_and(|radius| {
+                self.spawn_protects(radius, self.dim.id(), [pos.x, pos.y, pos.z])
+            })
+    }
+
+    /// Resolve optional direct/causing source handles against the live level during
+    /// an inside-block callback flush, including the currently swept subject (whose row
+    /// may be temporarily lent out of its table). Returns `None` if an explicitly
+    /// supplied handle is stale or unresolvable so the caller reports `false` without
+    /// dropping attribution or rolling back sibling operations.
+    pub(in crate::game) fn resolve_inside_damage_sources(
+        &self,
+        subject_id: u32,
+        subject_target: crate::game::commands::Target,
+        subject_pos: [f64; 3],
+        direct: Option<mod_api::EntityRef>,
+        causing: Option<mod_api::EntityRef>,
+        sources: InsideSources<'_>,
+    ) -> Option<(
+        Option<crate::game::commands::Target>,
+        Option<crate::game::commands::Target>,
+        Option<[f64; 3]>,
+    )> {
+        let resolve = |handle: mod_api::EntityRef| {
+            let id = handle.id();
+            let resolved = if !self.is_logical_server()
+                || self.native_lifecycle.epoch() != Some(handle.epoch())
+            {
+                None
+            } else if id == subject_id {
+                Some((subject_target, Some(subject_pos)))
+            } else if let Some((target, pos)) = sources.and_then(|source| source(id)) {
+                (!matches!(target, crate::game::commands::Target::Projectile(_))
+                    || !self.projectile_removal_pending(id))
+                .then_some((target, Some(pos)))
+            } else {
+                self.native_entity_target(handle)
+                    .filter(|&target| self.target_level(target) == self.dim)
+                    .map(|target| (target, self.target_position(target)))
+            };
+            resolved.ok_or_else(|| {
+                log::warn!(
+                    "entity_inside: cannot resolve damage source {id} in the swept entity's level"
                 );
-            }
-            mod_api::EntityWrite::ResetFallDistance => shot.fall_distance = 0.0,
-            mod_api::EntityWrite::SetFireTicks(ticks) => shot.fire_ticks = ticks,
-            mod_api::EntityWrite::Hurt { .. } | mod_api::EntityWrite::AddEffect { .. } => {}
+            })
+        };
+        let direct = direct.map(resolve).transpose().ok()?;
+        let causing = causing.map(resolve).transpose().ok()?;
+        Some((
+            direct.map(|(target, _)| target),
+            causing.map(|(target, _)| target),
+            direct.and_then(|(_, pos)| pos),
+        ))
+    }
+
+    /// `Projectile.hurtServer`: always returns `false`, marking non-immune
+    /// projectiles hurt (`sync_velocity = true`, `Entity.markHurt`).
+    pub(in crate::game) fn hurt_lent_projectile(
+        &mut self,
+        shot: &mut Projectile,
+        damage_type: &str,
+        direct: Option<crate::game::commands::Target>,
+        causing: Option<crate::game::commands::Target>,
+        position: Option<[f64; 3]>,
+    ) -> bool {
+        let creative = self.creative_source_of(causing);
+        let vanilla = self.saved_refuses_damage(shot.id, damage_type, creative);
+        let source = sunrise_client::health::HurtSource {
+            damage_type,
+            causing: causing.and_then(|t| self.network_entity_id(t)).unwrap_or(0),
+            direct: direct.and_then(|t| self.network_entity_id(t)).unwrap_or(0),
+            position,
+        };
+        if !self.native_nonliving_invulnerable(shot.id, shot.entity_type(), source, vanilla) {
+            shot.sync_velocity = true;
         }
+        false
     }
 
     /// An `entity_inside` part's contact for a kind the batch ticks, fired
-    /// mid-walk over a lent level, the whole callback staged: only an answering
-    /// callback's writes join the walk, and a panic there is contained, leaving
-    /// the batch's rows and the level as they were. The level is lent and given
-    /// back per contact, as `item_fall_on` lends its own (#2194's carrier
-    /// discipline).
+    /// mid-walk over a lent level. Generated dispatch isolates each part into
+    /// its own staged collector and absorbs it only on normal return. The level
+    /// is lent and given back per contact, as `item_fall_on` lends its own
+    /// (#2194's carrier discipline).
     pub(in crate::game) fn fire_batch_inside(
         &mut self,
         entity: i32,
@@ -1114,8 +1853,6 @@ impl Game<'_> {
         {
             return;
         }
-        let mut staged = mod_api::InsideEffects::default();
-        let mut writes = Vec::new();
         let mut lent = sunrise_client::health::LentLevel::take(&mut self.world);
         let mut level = sunrise_client::health::DamageLevel::lent(
             &self.world,
@@ -1125,23 +1862,14 @@ impl Game<'_> {
             Some(&self.pack.block_registries),
             &self.damage_hooks,
         )
-        .with_effects(crate::game::entity::hit_effects_of!(self, None));
+        .with_effects(crate::game::entity::hit_effects_of!(self, None))
+        .with_reads(crate::game::entity::hit_reads_of!(self));
         if let Some(hooks) = sunrise_client::block_contact::HOOKS.get() {
             (hooks.inside_fire)(
-                &mut level,
-                dimension,
-                entity,
-                kind,
-                state,
-                at,
-                precise,
-                &mut staged,
-                &mut writes,
+                &mut level, dimension, entity, kind, state, at, precise, effects,
             );
         }
         lent.give_back(&mut self.world);
-        effects.absorb_step(staged);
-        sunrise_client::block_contact::inside_written(state, at, writes);
     }
 
     pub(super) fn body_motion<'a>(
@@ -1190,12 +1918,16 @@ impl Game<'_> {
         step_on(StepLevel::Server(&mut level), step, velocity)
     }
 
+    /// Tick a caller-owned item, returning survival and explicit consumption
+    /// by damage or a block-contact handler. `escape_speed` places the item in
+    /// no-physics movement while it is pushed out of a solid.
     pub(super) fn tick_item_with_block_contacts(
         &mut self,
         item: &mut ItemEntity,
         escape_speed: Option<f32>,
         entity_boxes: &[Aabb],
         client: bool,
+        sources: InsideSources<'_>,
         splash: &mut impl FnMut(sunrise_client::entities::ItemSplash),
     ) -> (bool, bool) {
         let no_physics = escape_speed.is_some();
@@ -1205,7 +1937,20 @@ impl Game<'_> {
         let heights =
             item.push_by_fluid(&self.world, &self.res.motion().fluids, &self.loop_context);
         item.water_entry(heights.0 > 0.0, item.ticks == 0, before, splash);
-        item.lava_fall(heights.1 > 0.0);
+        let in_lava = item.ticks > 0 && heights.1 > 0.0;
+        item.lava_fall(in_lava);
+        if client || item.fire_ticks > 0 && !item_can_burn(self, item) {
+            item.fire_ticks = item.fire_ticks.min(0);
+        } else if item.fire_ticks > 0 {
+            if item.fire_ticks % 20 == 0 && !in_lava {
+                self.hurt_lent_item_entity(item, 1.0, "minecraft:on_fire", None, None, None);
+            }
+            item.fire_ticks -= 1;
+            if item.health <= 0 {
+                item.previous = item.position;
+                return (false, true);
+            }
+        }
         let mut step = item.tick_move_before_block_effects(
             &self.world,
             self.res.facts(),
@@ -1272,7 +2017,7 @@ impl Game<'_> {
                 }
             }
             if !client {
-                self.sweep_item_inside(item);
+                self.sweep_item_inside(item, sources);
                 if item.health <= 0 {
                     return (false, true);
                 }
@@ -1760,6 +2505,117 @@ macro_rules! hit_effects_of {
         )
     };
 }
+/// What a hit's listeners need from `$game` to name and read the living entities the hit lends
+/// ([`HitReads`](sunrise_client::health::HitReads)), as field-level borrows; none before the
+/// world has an epoch. It asks nothing: the views it backs exist only inside a callback the
+/// hit dispatches, behind that callback's own subscription check.
+macro_rules! hit_reads_of {
+    ($game:expr) => {
+        $game
+            .native_lifecycle
+            .epoch()
+            .map(|epoch| sunrise_client::health::HitReads {
+                epoch,
+                living_types: $game.res.living_type_keys(),
+                attributes: &$game.motion.attributes,
+                player_effects: Some(&$game.potions.effects),
+                player_equipment: acting_equipment!($game),
+                player_uuid: $game.lan_acting_uuid,
+                player_attachments: Some(&$game.player_state.attachments),
+                entity_attachments: Some(&*$game.entity_attachments),
+            })
+    };
+}
+pub(super) use hit_reads_of;
+/// A hit's one decision about its causing entity `$causing` (an entity id, 0 for none), taken
+/// before the site borrows the game's fields for the hit: whether a `HitHost` hook listens,
+/// the causer's place in `$game.mobs` when it is a mob, and otherwise, when it is not the player
+/// in place either, the parked guest it may be (see [`Game::native_parked_causer`]). Expands to
+/// `(i32, bool, Option<usize>, Option<u32>)`: the causing id with the three; without a
+/// listener it looks nothing up.
+macro_rules! causer_decision {
+    ($game:ident, $causing:expr) => {{
+        let causing: i32 = $causing;
+        let listened = causing != 0 && sunrise_client::health::hit_host_listened();
+        let mob = listened
+            .then(|| $game.mobs.iter().position(|m| m.id as i32 == causing))
+            .flatten();
+        let in_place = $game
+            .player
+            .as_ref()
+            .is_some_and(|p| p.entity_id == causing);
+        let parked = (listened && mob.is_none() && !in_place)
+            .then(|| $game.native_parked_causer(causing))
+            .flatten();
+        (causing, listened, mob, parked)
+    }};
+}
+pub(super) use causer_decision;
+/// The causing entity `$causing` a hit on the mob at `$index` of `$game.mobs` lends its
+/// listeners, beside that victim, as `$decision` ([`causer_decision`]) decided: another mob of
+/// the list (split with `get_disjoint_mut`), the player in place, or a parked guest's record
+/// (read-only, as its `LivingRef` reads answer from it). A mob that caused its own hit is not
+/// lent again: the listener reads it as the victim. Expands to `(&mut Mob, Option<HitLend>)`.
+macro_rules! victim_and_causer {
+    ($game:ident, $index:expr, $causing:expr, $decision:expr) => {{
+        let (index, causing): (usize, i32) = ($index, $causing);
+        let (_, listened, mob, parked): (i32, bool, Option<usize>, Option<u32>) = $decision;
+        match mob {
+            Some(other) if other != index => {
+                let [victim, causer] = $game
+                    .mobs
+                    .get_disjoint_mut([index, other])
+                    .expect("the victim and its causer are two mobs");
+                (victim, sunrise_client::health::HitLend::mob(causer))
+            }
+            Some(_) => (&mut $game.mobs[index], None),
+            None => (
+                &mut $game.mobs[index],
+                if listened {
+                    sunrise_client::health::HitLend::attacking_player(
+                        $game.player.as_mut(),
+                        causing,
+                        &$game.potions.effects,
+                        acting_equipment!($game),
+                    )
+                    .or_else(|| {
+                        sunrise_client::health::HitLend::parked_guest(
+                            $game.lan.as_ref().map(|lan| &lan.hub),
+                            parked?,
+                        )
+                    })
+                } else {
+                    None
+                },
+            ),
+        }
+    }};
+}
+pub(super) use victim_and_causer;
+/// The causing entity a hit on the player in place lends its listeners, as `$decision`
+/// ([`causer_decision`]) decided: a mob of `$game.mobs`, or a parked guest's record. The player
+/// causing its own hit is not lent again: the listener reads it as the victim.
+macro_rules! player_victim_causer {
+    ($game:ident, $decision:expr) => {{
+        let (causing, _, mob, parked): (i32, bool, Option<usize>, Option<u32>) = $decision;
+        match mob {
+            // The decision may be older than this level (the player's hurt builds three): the
+            // row must still be the causer.
+            Some(index) => $game
+                .mobs
+                .get_mut(index)
+                .filter(|m| m.id as i32 == causing)
+                .and_then(sunrise_client::health::HitLend::mob),
+            None => parked.and_then(|conn| {
+                sunrise_client::health::HitLend::parked_guest(
+                    $game.lan.as_ref().map(|lan| &lan.hub),
+                    conn,
+                )
+            }),
+        }
+    }};
+}
+pub(super) use player_victim_causer;
 /// The level `$game` ticks, lent to a hit's damage hooks with its block registry and merged
 /// tag tables, so a mob or the player beside them can take the hit. `$attack` is the
 /// [`Attack`](sunrise_client::health::Attack) the site took first. Every site names what it
@@ -1769,7 +2625,7 @@ macro_rules! hit_effects_of {
 /// (`$lend`: the attacker the site holds a live borrow of, built with `HitLend`, or `None` where
 /// it cannot lend one).
 macro_rules! damage_level_of {
-    ($game:ident, $attack:expr, no_push, $lend:expr) => {
+    ($game:ident, $attack:expr, no_push, $lend:expr $(, $equipment:expr)?) => {
         &mut sunrise_client::health::DamageLevel::of(
             &mut $game.world,
             $game.pack.assets.registry,
@@ -1779,7 +2635,10 @@ macro_rules! damage_level_of {
         )
         .attacked_by($attack)
         .no_push()
+        .with_mob_hurt_handoff(&mut $game.paused_mob_hurt)
         .with_effects(crate::game::entity::hit_effects_of!($game, $lend))
+        .with_reads(crate::game::entity::hit_reads_of!($game))
+        $(.with_player_equipment($equipment))?
     };
     ($game:ident, $attack:expr, $credit:expr, $lend:expr) => {
         &mut sunrise_client::health::DamageLevel::of(
@@ -1791,7 +2650,9 @@ macro_rules! damage_level_of {
         )
         .attacked_by($attack)
         .with_knockback_credit($credit)
+        .with_mob_hurt_handoff(&mut $game.paused_mob_hurt)
         .with_effects(crate::game::entity::hit_effects_of!($game, $lend))
+        .with_reads(crate::game::entity::hit_reads_of!($game))
     };
 }
 pub(super) use damage_level_of;
@@ -1858,17 +2719,24 @@ macro_rules! with_entity_mut {
 pub(super) use with_entity_mut;
 
 macro_rules! save_lists {
-    (($game:expr, $keys:expr, $out:expr, $include_transient:expr)
+    (($game:expr, $keys:expr, $out:expr, $failed:expr, $include_transient:expr)
      $($kind:ident($ty:ty) $field:ident: $($list:ident).+,)*) => {
         $(for i in 0..$game$(.$list)+.len() {
             let id = $game$(.$list)+[i].id();
-            if ($include_transient || !$game.persist.transient.contains(&id))
-                && let Some((key, mut tag)) = <$ty as $crate::game::entity::Entity>::save_nbt($game, i, $keys)
-            {
-                if !<$ty as $crate::game::entity::Entity>::SERIALIZES_ATTACHMENTS {
-                    $crate::game::persist::write_attachments(&mut tag, id, &$game.entity_attachments);
+            if ($include_transient || !$game.persist.transient.contains(&id)) {
+                $game.persist.attachment_encode_error = None;
+                if let Some((key, mut tag)) = <$ty as $crate::game::entity::Entity>::save_nbt($game, i, $keys) {
+                    if !<$ty as $crate::game::entity::Entity>::SERIALIZES_ATTACHMENTS {
+                        $game.write_entity_attachments(&mut tag, id);
+                    }
+                    if let Some(error) = $game.persist.attachment_encode_error.take() {
+                        $failed.entry(key).or_insert(error);
+                    } else {
+                        $out.entry(key).or_default().push((id, $game$(.$list)+[i].join_seq(), tag));
+                    }
+                } else {
+                    $game.persist.attachment_encode_error = None;
                 }
-                $out.entry(key).or_default().push((id, $game$(.$list)+[i].join_seq(), tag));
             }
         })*
     };
@@ -1881,8 +2749,15 @@ pub(crate) use save_lists;
 /// nothing allocated beyond the tags. A kind added to the lists cannot be left
 /// out, since `save_nbt` has no default.
 macro_rules! save_entities_of_every_kind {
-    ($game:expr, $keys:expr, $out:expr, $include_transient:expr) => {
-        $crate::game::entity::entity_lists!(save_lists, $game, $keys, $out, $include_transient)
+    ($game:expr, $keys:expr, $out:expr, $failed:expr, $include_transient:expr) => {
+        $crate::game::entity::entity_lists!(
+            save_lists,
+            $game,
+            $keys,
+            $out,
+            $failed,
+            $include_transient
+        )
     };
 }
 
@@ -1946,8 +2821,7 @@ impl Game<'_> {
     }
     /// The type ids the boat kind loads.
     fn loads_as_boat(&self, kind: &str) -> bool {
-        super::boats::any_boat_wood(kind)
-            .is_some_and(|(wood, chest)| self.boat_models.has(wood, chest))
+        super::boats::registered_boat(kind, &self.res.items().component_registry).is_some()
     }
     /// Whether `load_listed` loads `kind` as a vehicle that takes its mob
     /// riders (`take_mob_passengers`): a mob, boat, minecart or primed TNT.
@@ -2007,6 +2881,7 @@ impl Game<'_> {
             .chain(self.paintings.iter().map(|e| e.id))
             .chain(self.others.iter().map(|e| e.id))
             .chain(self.breath_clouds.iter().map(|e| e.id))
+            .chain(self.bolts.iter().map(|e| e.id))
             .chain(self.fangs.list.iter().map(|e| e.id))
             .chain(self.crystals.iter().map(|e| e.id))
             .chain(self.dragon.iter().map(|e| e.id))
@@ -2016,7 +2891,7 @@ impl Game<'_> {
                     .filter(|dragon| dragon.id != 0)
                     .flat_map(|dragon| {
                         (0..dragon.parts.len())
-                            .filter_map(move |offset| dragon.id.checked_add(offset as u32 + 1))
+                            .map(move |offset| super::dragon::dragon_part_id(dragon.id, offset))
                     }),
             )
             .chain(self.ominous_spawners.iter().map(|e| e.id))
@@ -2041,9 +2916,10 @@ impl Game<'_> {
         &mut self,
         keys: &HashSet<ChunkKey>,
         out: &mut HashMap<ChunkKey, Vec<(u32, JoinSeq, Tag)>>,
+        failed: &mut HashMap<ChunkKey, sunrise_mod_runtime::attachments::AttachmentEncodeError>,
         include_transient: bool,
     ) {
-        save_entities_of_every_kind!(self, keys, out, include_transient);
+        save_entities_of_every_kind!(self, keys, out, failed, include_transient);
     }
 }
 
@@ -2051,11 +2927,17 @@ impl Entity for Mob {
     const SERIALIZES_ATTACHMENTS: bool = true;
     stored_ground!();
 
+    fn fall_distance(&self) -> f64 {
+        self.fall_distance
+    }
     fn reset_fall_distance(&mut self) {
         self.fall_distance = 0.0;
     }
-    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
-        let (context, subject) = Mob::support_collision(self);
+    fn support_collision(
+        &self,
+        tags: &sunrise_items::items::EntityTypeTags,
+    ) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+        let (context, subject) = Mob::support_collision(self, Some(tags));
         (context, Some(subject))
     }
     /// `Entity.noPhysics`: written through the mod API; no mob tick rewrites it
@@ -2142,6 +3024,9 @@ impl Entity for Mob {
     fn is_removed(&self) -> bool {
         self.removed
     }
+    fn is_pickable(&self) -> bool {
+        !self.removed && !(&*self.kind.id == "minecraft:player" && self.extra.spectator)
+    }
     fn is_living(&self) -> bool {
         true
     }
@@ -2189,8 +3074,15 @@ impl Entity for Mob {
 }
 
 impl Entity for ItemEntity {
+    stored_size!(|_: &Self| ItemEntity::DIMENSIONS);
     stored_ground!();
-    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+    fn fall_distance(&self) -> f64 {
+        self.fall_distance
+    }
+    fn support_collision(
+        &self,
+        _tags: &sunrise_items::items::EntityTypeTags,
+    ) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
         (
             self.collision_context(),
             Some(PowderSnowSubject {
@@ -2278,6 +3170,7 @@ impl Entity for ItemEntity {
 }
 
 impl Entity for ExperienceOrb {
+    stored_size!(|_: &Self| ExperienceOrb::DIMENSIONS);
     stored_ground!();
     fn reset_fall_distance(&mut self) {
         // An orb keeps no fall distance here.
@@ -2350,6 +3243,7 @@ impl Entity for ExperienceOrb {
 }
 
 impl Entity for Boat {
+    stored_size!(|_: &Self| Boat::DIMENSIONS);
     stored_ground!();
     fn reset_fall_distance(&mut self) {
         // A boat keeps no fall distance here.
@@ -2434,10 +3328,17 @@ impl Entity for Boat {
     fn bounds(&self) -> Aabb {
         Boat::bounds(self)
     }
+    fn is_pickable(&self) -> bool {
+        true
+    }
 }
 
 impl Entity for Minecart {
+    stored_size!(|_: &Self| Minecart::DIMENSIONS);
     stored_ground!();
+    fn fall_distance(&self) -> f64 {
+        self.fall_distance
+    }
     fn reset_fall_distance(&mut self) {
         self.fall_distance = 0.0;
     }
@@ -2516,6 +3417,9 @@ impl Entity for Minecart {
     fn bounds(&self) -> Aabb {
         Minecart::bounds(self)
     }
+    fn is_pickable(&self) -> bool {
+        true
+    }
     /// `tick_blocks` sweeps minecarts along with the players.
     fn sweeps_blocks_inside(&self) -> bool {
         false
@@ -2523,7 +3427,7 @@ impl Entity for Minecart {
 }
 
 /// Width and height `EntityType.ARMOR_STAND` gives a stand.
-fn armor_stand_size(stand: &ArmorStand) -> (f64, f64) {
+pub(super) fn armor_stand_size(stand: &ArmorStand) -> (f64, f64) {
     if stand.marker {
         (0.0, 0.0)
     } else if stand.small {
@@ -2534,8 +3438,12 @@ fn armor_stand_size(stand: &ArmorStand) -> (f64, f64) {
 }
 
 impl Entity for ArmorStand {
+    stored_size!(ArmorStand::default_dimensions);
     stored_ground!(enchantment_fall_distance);
-    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+    fn support_collision(
+        &self,
+        _tags: &sunrise_items::items::EntityTypeTags,
+    ) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
         let (context, subject) = ArmorStand::support_collision(self);
         (context, Some(subject))
     }
@@ -2545,6 +3453,9 @@ impl Entity for ArmorStand {
     /// `LivingEntity.isAlive`: health above 0 (removal is the level's).
     fn is_alive(&self) -> bool {
         self.health > 0.0
+    }
+    fn is_pickable(&self) -> bool {
+        !self.marker
     }
     fn move_entity(&mut self, gate: &mut MoveGate, movement: Vec3) {
         if gate.skipped() {
@@ -2679,8 +3590,12 @@ impl Entity for ArmorStand {
 }
 
 impl Entity for PrimedTnt {
+    stored_size!(|_: &Self| PrimedTnt::DIMENSIONS);
     stored_ground!();
-    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+    fn support_collision(
+        &self,
+        _tags: &sunrise_items::items::EntityTypeTags,
+    ) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
         (self.collision_context(), Some(self.powder_snow_subject()))
     }
     fn reset_fall_distance(&mut self) {
@@ -2756,6 +3671,9 @@ impl Entity for PrimedTnt {
     fn bounds(&self) -> Aabb {
         PrimedTnt::bounds(self)
     }
+    fn is_pickable(&self) -> bool {
+        true
+    }
     fn piston_slime_bounce(&mut self, movement: Direction) {
         self.velocity = piston_push::bounce_velocity(movement, self.velocity);
         // Leave the ground so the next tick does not apply the on-ground
@@ -2766,8 +3684,15 @@ impl Entity for PrimedTnt {
 }
 
 impl Entity for FallingBlock {
+    stored_size!(|_: &Self| FallingBlock::DIMENSIONS);
     stored_ground!();
-    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+    fn fall_distance(&self) -> f64 {
+        self.fall_distance
+    }
+    fn support_collision(
+        &self,
+        _tags: &sunrise_items::items::EntityTypeTags,
+    ) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
         (
             sunrise_client::motion::BodyMotion::entity_context(self.id, self.position),
             Some(PowderSnowSubject {
@@ -2838,20 +3763,29 @@ impl Entity for FallingBlock {
         Some(Target::Falling(self.id))
     }
     fn bounds(&self) -> Aabb {
-        sunrise_client::falling_block::bounds(self.position)
+        FallingBlock::bounds(self)
+    }
+    fn is_pickable(&self) -> bool {
+        true
     }
 }
 
 impl Entity for Projectile {
+    stored_size!(|p: &Self| p.kind.dimensions());
     stored_ground!();
-    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+    fn fall_distance(&self) -> f64 {
+        self.arrow
+            .as_ref()
+            .map_or(self.fall_distance, |arrow| arrow.fall_distance)
+    }
+    fn support_collision(
+        &self,
+        _tags: &sunrise_items::items::EntityTypeTags,
+    ) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
         (
             sunrise_client::motion::BodyMotion::entity_context(self.id, self.position),
             Some(PowderSnowSubject {
-                fall_distance: self
-                    .arrow
-                    .as_ref()
-                    .map_or(self.fall_distance, |arrow| arrow.fall_distance),
+                fall_distance: self.fall_distance(),
                 ..Default::default()
             }),
         )
@@ -3027,9 +3961,13 @@ impl Entity for Projectile {
     fn piston_slime_bounce(&mut self, movement: Direction) {
         Projectile::piston_slime_bounce(self, movement);
     }
+    fn is_pickable(&self) -> bool {
+        super::deflect::attackable(self)
+    }
 }
 
 impl Entity for Rocket {
+    stored_size!(|_: &Self| Rocket::DIMENSIONS);
     stored_ground!();
     fn reset_fall_distance(&mut self) {
         // A firework rocket keeps no fall distance here.
@@ -3107,6 +4045,7 @@ impl Entity for Rocket {
 }
 
 impl Entity for ThrownTrident {
+    stored_size!(|_: &Self| THROWN_TRIDENT_DIMENSIONS);
     stored_ground!();
     fn reset_fall_distance(&mut self) {
         // A thrown trident keeps no fall distance here.
@@ -3181,9 +4120,15 @@ impl Entity for ThrownTrident {
     }
     fn bounds(&self) -> Aabb {
         let p = self.position;
-        Aabb::new(
+        let vanilla = Aabb::new(
             Vec3::new(p.x - 0.25, p.y, p.z - 0.25),
             Vec3::new(p.x + 0.25, p.y + 0.5, p.z + 0.25),
+        );
+        sunrise_client::pose::SizeAnswer::sized_box(
+            self.size_answer,
+            THROWN_TRIDENT_DIMENSIONS,
+            p,
+            vanilla,
         )
     }
     /// `AbstractArrow.noPhysics`, set once a loyal trident turns back. Its own
@@ -3578,6 +4523,7 @@ mod set_rotation_tests {
     #[test]
     fn set_rotation_keeps_yaw_and_clamps_pitch_on_kinds_that_had_none() {
         let mut orb = ExperienceOrb {
+            size_answer: None,
             attachment_lifetime: Default::default(),
             fall_distance: 0.0,
             join: Default::default(),

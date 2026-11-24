@@ -17,6 +17,13 @@ add labels of its own.
 A value that is not finite, or lies outside `0.01..=10`, falls back to `base`. The hook does not affect a spectator
 camera attached to a mob.
 
+## The Damage Tilt option
+
+`host.gui_options().damage_tilt_strength` is the player's Damage Tilt accessibility option, 0 (off) to 1
+(vanilla's `Options.damageTiltStrength`): the factor vanilla's own hurt tilt takes. Scale a hurt shake
+(`camera_shake`) or a field-of-view punch by it, so a player who turned the tilt off for comfort doesn't get yours
+either.
+
 ## Name tags
 
 `render_name_tag` runs when the game decides whether to show the name tag of a player, mob, armor stand or item
@@ -34,10 +41,10 @@ and settings would show it.
 
 ## Labels in the world
 
-A world draw hook (`render_level_stage` or `submit_custom_geometry`) or a [registered debug renderer
+`Hooks::submit_custom_geometry` or a [registered debug renderer
 callback](hud-drawing.md#registering-world-space-debug-renderers) can draw a label with `draw.name_tag`,
 as vanilla draws a name tag: half a block above the position, facing the camera. Use the
-callback's `draw` argument, or `event.draw` from a world draw hook.
+callback's `draw` argument, or `event.draw` from `submit_custom_geometry`.
 
 ```rust,ignore
 let options = NameTagOptions::new(false, true, 0xF0);
@@ -58,8 +65,10 @@ background opacity (0.25 when the background is for chat only), and the faded te
 (opacity + 0.75) / 2 and 0.5: 0x3F and 0x7F at the defaults. Labels are drawn with the world's name tags, far to near.
 
 A label is 0.025 blocks a font pixel, so it shrinks with distance; scale by distance yourself for a constant size.
-Its quads share the view's 4,096 with `quads`. A non-finite position, unrepresentable component
-metadata, or a label past the quads left is refused by name (`DrawError`) and draws nothing. The
+Backing storage grows dynamically with no per-view quad cap, and in-memory `Text` components impose no
+component-tree depth limit. Labels ignore click events, hover events, and opaque metadata; NBT limits
+apply when serializing text, not when drawing labels. A non-finite position (`DrawError::NonFinite`)
+draws nothing. The
 [hook notes](../../reference/hook-notes.md#custom-world-geometry) give the details.
 
 ## The client session

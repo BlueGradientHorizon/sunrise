@@ -75,9 +75,13 @@ pub trait MenusBackend {
     /// Side: server.
     /// Container id (0 for the player's inventory menu).
     fn menu_container_id(&self, menu: MenuRef) -> Option<i32>;
-    /// Side: server.
-    /// Registry menu type; the inventory menu has no MenuType in vanilla.
-    /// The outer None means an unavailable menu.
+    /// Side: both.
+    /// Registry menu type (`AbstractContainerMenu.getType`): `Some(Some(id))` for a
+    /// supported registry-backed menu (such as `minecraft:furnace`, `minecraft:generic_9x3`, or
+    /// a mod's menu type); `Some(None)` for the player's inventory menu and, on a client, a mount's inventory,
+    /// which have no MenuType in vanilla. The outer None means a stale, foreign or unavailable
+    /// menu: a server's mount menu handles are unavailable, and on a client only the local
+    /// player's supported live menu is available.
     fn menu_kind(&self, menu: MenuRef) -> Option<Option<String>>;
     /// Side: both.
     /// Number of slots in AbstractContainerMenu.slots.
@@ -91,6 +95,13 @@ pub trait MenusBackend {
     /// Side: both.
     /// Carried (cursor) stack; outer None means unavailable.
     fn menu_carried(&self, menu: MenuRef) -> Option<Option<ItemStack>>;
+    /// Side: both.
+    /// The menu's synchronized state id (`AbstractContainerMenu.getStateId`): the server counts
+    /// it up with every slot or content sync it sends for the menu, and a client holds the value
+    /// of the last `ContainerSetContent` or `ContainerSetSlot` it received for it, so a fresh
+    /// snapshot shows even when the stacks look the same. None for a stale, foreign or closed
+    /// menu, as for `menu_carried`.
+    fn menu_state_id(&self, menu: MenuRef) -> Option<i32>;
     /// Side: server.
     /// The storage menu slot `slot` shows (`Slot.container` and `getContainerSlot`): the
     /// player's inventory by `ENTITY_ITEMS` index (`InventoryMenu`'s armour slots 5..9 go head
@@ -126,9 +137,14 @@ pub trait MenusBackend {
 #[sunrise_mod_api_macros::host_area]
 pub trait MenusClientBackend {
     /// Side: client.
-    /// The open inventory screen's slot boxes in menu slot order
+    /// The open inventory or creative screen's slot boxes in menu slot order
     /// (`AbstractContainerScreen.leftPos`/`topPos` plus each `Slot.x`/`Slot.y`, 16x16). A box
     /// is `[x, y, width, height]` in GUI pixels, with `None` for a hidden slot.
+    /// The creative screen gives the player's `InventoryMenu` (46 slots) where
+    /// `CreativeModeInventoryScreen.selectTab` places them: on the inventory tab,
+    /// armor `5..=8`, main `9..=35`, hotbar `36..=44` and offhand `45` have boxes and
+    /// the crafting slots `0..=4` are `None`; on an item or search tab only the
+    /// hotbar `36..=44` has boxes.
     /// Returns `None` for a stale menu, another screen, or an inventory covered
     /// by the recipe book. The boxes follow the actual layout, including GUI
     /// scale and the recipe book's horizontal offset.
@@ -199,8 +215,11 @@ pub trait MenusBackendMut {
     /// Side: server.
     /// Close a player's open menu as `ServerPlayer.closeContainer` does. The server queues
     /// `ContainerClose`, then removes the menu, returns the carried stack to the inventory,
-    /// and fires `player_container_close`. Refuses stale menus, clients, a player whose state
-    /// is swapped in for a turn, a pending disconnect, and the player's own inventory menu.
+    /// and fires `player_container_close`. Refuses stale menus, clients, a player held out by
+    /// another player's active turn, a pending disconnect, and the player's own inventory menu.
+    /// Inside a hook of the player's own action (their item use, block use or command) the menu
+    /// closes at the call, its cursor going back to the inventory the action uses, as vanilla's
+    /// `ServerPlayer.openMenu` closes the open menu there before it opens the next one.
     /// During a click action, true accepts a request to close that same window at commit; an
     /// aborted action leaves it open. A client closes its own screen with `close`.
 

@@ -317,6 +317,9 @@ pub fn after_hurt(m: &mut Mob, source: &Damage) {
 }
 /// `DamageTypeTags.PANIC_ENVIRONMENTAL_CAUSES`.
 pub fn environmental(kind: DamageKind) -> bool {
+    if let DamageKind::Named(named) = kind {
+        return named.has(super::NamedDamage::PANIC_ENVIRONMENTAL_CAUSES);
+    }
     matches!(
         kind,
         DamageKind::Cactus

@@ -4,7 +4,7 @@ use super::{
     native_server::PlayerRead, transactions::After,
 };
 use mod_api::{
-    BlockFace, BlockKey, BlockUpdateFlags, HookId, LevelReadError, LevelRef, LevelWriteError,
+    BlockFace, BlockKey, BlockUpdateFlags, HookId, LevelRef, LevelWriteError, PlacementStateError,
     PlayerRef, PlayerWorldRefusal as Refusal,
 };
 use sunrise_client::{containers::BlockEntity, items::ItemStack};
@@ -89,7 +89,7 @@ impl Game<'_> {
                 .ok_or(Refusal::Stale);
         }
 
-        mod_api::run_transaction(self, |game, _| {
+        self.storage_transaction(|game, _| {
             use super::journal_level_write::JournalLevelWrite;
             game.begin_placement_capture();
             if !JournalLevelWrite::new(game, level)
@@ -201,15 +201,16 @@ impl Game<'_> {
         level: LevelRef,
         block: BlockKey,
         context: &mod_api::PlacementContext,
-    ) -> Result<Option<BlockStateId>, LevelReadError> {
+    ) -> Result<Option<BlockStateId>, PlacementStateError> {
         let world = self.native_level_world_result(level)?;
         if level.dimension() != self.dim.key() {
-            return Err(LevelReadError::Unavailable);
+            return Err(PlacementStateError::Unavailable);
         }
         let BlockPos { x, y, z } = context.pos;
+        let Some(source) = super::api_values::placement_source_into_engine(context.source) else {
+            return Ok(None);
+        };
         if !context.hit.iter().all(|n| n.is_finite())
-            || !context.yaw.is_finite()
-            || !context.pitch.is_finite()
             || !(-30_000_000..30_000_000).contains(&x)
             || !(-30_000_000..30_000_000).contains(&z)
             || !world.is_loaded_at(x, y, z)
@@ -228,7 +229,7 @@ impl Game<'_> {
             }
             None => "",
         };
-        Ok(self.preview_state_for_placement(
+        self.preview_state_for_placement(
             block,
             &PlacementContext {
                 pos: context.pos,
@@ -236,13 +237,12 @@ impl Game<'_> {
                 face: context.face,
                 hit: Vec3::new(context.hit[0], context.hit[1], context.hit[2]),
                 inside: context.inside,
-                yaw: context.yaw,
-                pitch: context.pitch,
-                sneaking: context.sneaking,
+                source,
                 item: item.to_owned(),
                 replace_clicked: context.replace_clicked,
             },
-        ))
+        )
+        .map_err(super::api_values::placement_refusal_into_api)
     }
 
     /// A chosen state written as a placement writes it, then `Block.setPlacedBy`, with no

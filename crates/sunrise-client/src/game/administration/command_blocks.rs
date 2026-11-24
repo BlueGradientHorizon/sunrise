@@ -15,10 +15,7 @@ use sunrise_client::{
 };
 use sunrise_core::position::BlockPos;
 use sunrise_protocol::packets::play::{self, Clientbound as C, Serverbound as S};
-use winit::{
-    event::{ElementState, KeyEvent},
-    keyboard::{KeyCode, PhysicalKey},
-};
+use winit::keyboard::KeyCode;
 use {
     sunrise_core::nbt::Tag,
     sunrise_world::{chunk::BlockState, level::flags},
@@ -51,7 +48,7 @@ impl Game<'_> {
             self.open_command_block(pos);
         }
     }
-    fn command_block(&self, pos: Pos) -> Option<&CommandBlock> {
+    pub(super) fn command_block(&self, pos: Pos) -> Option<&CommandBlock> {
         match self.world.block_entities.get(&pos)? {
             BlockEntity::CommandBlock(c) => Some(c),
             _ => None,
@@ -75,7 +72,7 @@ impl Game<'_> {
             let state = self.world.block(pos.0, pos.1, pos.2);
             let block = self.res.behaviours().block(state);
             self.after_commit(super::transactions::After::LevelWrite(Box::new(
-                super::journal_level_write::PendingWrite::BlockTick(at, block, 1),
+                super::journal_level_write::PendingWrite::BlockTick(self.dim, at, block, 1),
             )));
         } else {
             self.with_level(|b, level, ticks| b.schedule_tick(level, ticks, at, 1));
@@ -190,7 +187,7 @@ impl Game<'_> {
         if self.command_block(pos).map(saved) != before {
             let chunk = (pos.0 >> 4, pos.2 >> 4);
             if staged {
-                self.journal_chunk_save(chunk);
+                self.journal_chunk_save(chunk, super::transactions::SaveChunkScope::Level);
             } else {
                 self.world.modified.insert(chunk);
             }
@@ -362,40 +359,25 @@ impl Game<'_> {
     /// `CloseableCommandBlockSource.sendSystemMessage`: the block's last
     /// output, stamped with the time. Nothing when it doesn't track output
     /// (`CommandSource.NULL`).
-    pub(super) fn command_block_output(&mut self, pos: Pos, message: Text) {
+    pub(super) fn command_block_output(&mut self, pos: Pos, format: impl FnOnce(Text) -> Text) {
         if let Some(c) = command_block_mut(&mut self.world, pos)
             && c.track_output
         {
             let time = chrono::Local::now().format("[%H:%M:%S] ").to_string();
-            c.last_output = Some(Text::literal(time).append(message));
+            c.last_output = Some(format(Text::literal(time)));
         }
     }
-    /// `CommandSourceStack.sendSuccess` from a command block: its output when
-    /// `send_command_feedback`, and `broadcastToAdmins` when `broadcast` and
-    /// `command_block_output`.
-    pub(super) fn command_block_success(&mut self, pos: Pos, message: Text, broadcast: bool) {
-        let Some(name) = self
-            .command_block(pos)
-            .filter(|c| c.track_output)
-            .map(CommandBlock::name)
-        else {
-            return;
-        };
-        let feedback = self
+    /// `CommandSourceStack.sendSuccess`'s line to a command block
+    /// (`BaseCommandBlock.acceptsSuccess`): its output while it tracks output
+    /// and `send_command_feedback` is on. The operators' share is
+    /// `broadcast_to_admins`.
+    pub(super) fn command_block_success(&mut self, pos: Pos, message: Text) {
+        if self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::SEND_COMMAND_FEEDBACK);
-        if feedback {
-            self.command_block_output(pos, message.clone());
-        }
-        if broadcast
-            && feedback
-            && self
-                .ui
-                .rules
-                .bool_at(sunrise_client::gamerules::vanilla::COMMAND_BLOCK_OUTPUT)
+            .bool_at(sunrise_client::gamerules::vanilla::SEND_COMMAND_FEEDBACK)
         {
-            self.broadcast_source_to_admins(name, message);
+            self.command_block_output(pos, |timestamp| timestamp.append(message));
         }
     }
 
@@ -547,11 +529,11 @@ impl Game<'_> {
         sunrise_client::screen_draw::paint_tooltip(batch, atlas, &draws, tooltip);
     }
     /// The wheel over the suggestion list (`CommandSuggestions.mouseScrolled`).
-    pub(super) fn command_block_scroll(&mut self, amount: f32) {
+    pub(super) fn command_block_scroll(&mut self, amount: f32) -> bool {
         let mouse = (self.cursor.0.floor() as i32, self.cursor.1.floor() as i32);
-        if let Some(s) = self.command_block_screen.as_mut() {
-            s.command.scroll(mouse, f64::from(amount));
-        }
+        self.command_block_screen
+            .as_mut()
+            .is_some_and(|s| s.command.scroll(mouse, f64::from(amount)))
     }
     /// The command box's completion request for an `ask_server` node.
     pub(super) fn command_block_suggestion_request(&mut self) -> Option<(i32, String)> {
@@ -639,16 +621,6 @@ impl Game<'_> {
     }
     /// `AbstractCommandBlockEditScreen.keyPressed`: the suggestions first,
     /// then Enter is Done, Escape cancels, the rest edits the command.
-    pub(super) fn command_block_key(&mut self, event: &KeyEvent) {
-        if event.state != ElementState::Pressed {
-            return;
-        }
-        let PhysicalKey::Code(key) = event.physical_key else {
-            return;
-        };
-        let shortcut = self.edit_shortcut(event);
-        self.command_block_key_code(key, shortcut, event.text.as_deref());
-    }
     /// A key pressed on the command block screen, with the edit shortcut it
     /// makes and the text it types.
     pub(super) fn command_block_key_code(
@@ -656,13 +628,13 @@ impl Game<'_> {
         key: KeyCode,
         shortcut: Option<sunrise_client::clipboard::EditShortcut>,
         text: Option<&str>,
-    ) {
+    ) -> bool {
         let ctrl = self.has_control_down_with_quirk();
         let shift = self.has_shift_down();
         // Windows' AltGr is Ctrl+Alt, and its characters still type.
         let types_text = self.types_text();
         let Some(mut s) = self.command_block_screen.take() else {
-            return;
+            return false;
         };
         let m = Measure(&self.gui.atlas.font);
         let c = Commands {
@@ -671,22 +643,25 @@ impl Game<'_> {
         };
         if s.command.suggestions_key(&m, &c, key, shift) {
             self.command_block_screen = Some(s);
-            return;
+            return true;
         }
-        let typed = match key {
-            KeyCode::Escape | KeyCode::Enter | KeyCode::NumpadEnter => false,
+        let handled = match key {
+            KeyCode::Escape | KeyCode::Enter | KeyCode::NumpadEnter => true,
             _ => {
                 if let Some(shortcut) = shortcut {
                     s.command.shortcut(&m, &c, shortcut, &mut self.clipboard);
-                    false
+                    true
                 } else {
-                    !s.command.field_key(&m, &c, key, shift, ctrl) && types_text
+                    s.command.field_key(&m, &c, key, shift, ctrl)
                 }
             }
         };
         self.command_block_screen = Some(s);
-        if typed {
-            self.command_block_type(text.unwrap_or(""));
+        if !handled
+            && types_text
+            && let Some(text) = text
+        {
+            self.command_block_type(text);
         }
         match key {
             KeyCode::Escape => self.close_command_block(),
@@ -698,6 +673,7 @@ impl Game<'_> {
             }
             _ => {}
         }
+        handled
     }
     /// Characters typed into the command box (`StringUtil.isAllowedChatCharacter`).
     pub(super) fn command_block_type(&mut self, typed: &str) {

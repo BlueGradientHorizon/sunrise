@@ -29,6 +29,10 @@ fn checked_records_have_declared_field_bytes() {
         ("example:moon".to_owned(),),
     );
     fields(JavaString(vec![65, 0xd800, 90]), (vec![65u16, 0xd800, 90],));
+    fields(
+        EnchantmentInfo::new("example:keen".to_owned(), 5, 10, 1, false),
+        ("example:keen".to_owned(), 5u32, 10u32, 1u32, false),
+    );
     let mut nbt = Compound::new();
     nbt.insert("answer".into(), Tag::Int(42));
     fields(Components::from(nbt.clone()), (nbt.clone(),));
@@ -36,7 +40,20 @@ fn checked_records_have_declared_field_bytes() {
     let key = ItemKey::from_slot(0).unwrap();
     let mut stack = ItemStack::new(key, 7).unwrap();
     stack.set_damage(11);
-    fields(stack, (key, 7u32, Some(11u32), None::<Components>));
+    fields(stack.clone(), (key, 7u32, Some(11u32), None::<Components>));
+    fields(
+        MenuSlotChange::new(MenuContainer::Main, 1, Some(stack.clone()), None),
+        (
+            MenuContainer::Main,
+            1usize,
+            Some(stack.clone()),
+            None::<ItemStack>,
+        ),
+    );
+    fields(
+        MenuSlotWrite::new(MenuContainer::Main, 2, Some(stack.clone())),
+        (MenuContainer::Main, 2usize, Some(stack)),
+    );
     let block = BlockKey::from_slot(0).unwrap();
     let state: BlockState = crate::__private::block_state_from_ordinal(block, 9);
     fields(state, (block, 9u16));
@@ -153,28 +170,12 @@ fn handle_records_have_declared_field_bytes() {
         },
         (level, [7i32, -8, 9], 83u64),
     );
-    // epoch, lend, action, slot: a standalone lend has no action and slot 0.
-    fields(UnspawnedMobRef::new(epoch, 61), (epoch, 61u64, 0u64, 0u32));
-    fields(
-        UnspawnedMobRef::pending(epoch, 62, 63, 7),
-        (epoch, 63u64, 62u64, 7u32),
-    );
-    // epoch, action, lease.
-    fields(
-        PendingChildrenRef::new(epoch, 62, 63),
-        (epoch, 62u64, 63u64),
-    );
-    fields(
-        UnattachedMob::new(UnspawnedMobRef::pending(epoch, 62, 63, 7)),
-        (UnspawnedMobRef::pending(epoch, 62, 63, 7),),
-    );
     fields(ModelRef::from_parts(31, 7).unwrap(), (31u64, 7u32));
     fields(
         crate::BakedModelKey::from_parts(43, 11).unwrap(),
         (43u64, 11u32),
     );
     fields(InstanceGroupRef::from_parts(37, 9).unwrap(), (37u64, 9u32));
-    fields(RenderPipelineRef::from_parts(41, 5).unwrap(), (41u64, 5u32));
 }
 
 #[test]
@@ -261,6 +262,32 @@ fn snapshot_records_have_declared_field_bytes() {
     );
     let revision = crate::item::containers::ModRevision::from_snapshot(31, 47);
     fields(revision, (31u64, 47u64));
+    let player_source = PlacementSource::Player {
+        yaw: -45.0,
+        pitch: 30.0,
+        sneaking: true,
+    };
+    fields(player_source, (0u32, -45.0f32, 30.0f32, true));
+    let directional_source = PlacementSource::Directional {
+        direction: Direction::East,
+    };
+    fields(directional_source, (1u32, Direction::East));
+    let pos = BlockPos { x: 1, y: 2, z: 3 };
+    let hit_pos = BlockPos { x: 4, y: 5, z: 6 };
+    let item = ItemKey::from_slot(0).unwrap();
+    let mut ctx = PlacementContext::new(pos, Direction::Up, Some(item));
+    ctx.hit_pos = hit_pos;
+    ctx.hit = [4.25, 5.5, 6.75];
+    ctx.inside = true;
+    ctx.source = player_source;
+    ctx.replace_clicked = true;
+    fields(
+        ctx,
+        (
+            (pos, hit_pos, Direction::Up, [4.25f64, 5.5, 6.75], true),
+            (player_source, Some(item), true),
+        ),
+    );
 }
 
 fn decode<T: Wire, F: Wire>(value: T) -> F {
@@ -341,7 +368,6 @@ fn newtype_widths_and_unit_enum_tags_match_their_encodings() {
     fields(crate::UnresolvedFluid(0x100000003), (0x100000003u64,));
     fields(WorldEpoch::new(47), (47u64,));
     fields(TickId::new(19), (19u64,));
-    fields(SoundRef { id: 71 }, (71u64,));
     fields(crate::__private::biome_id(11), (11u32,));
     fields(crate::__private::mod_color_resolver(13), (13u32,));
     fields(BlockUpdateFlags(17), (17u32,));

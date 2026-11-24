@@ -63,9 +63,10 @@ row's identity, age, pose and a frozen snapshot of its synced attachments
 the server simulation, but its rows are not sent to clients for rendering.
 
 ```rust,ignore
-static FUEL: AttachmentType<i32> = /* declared with sync: true */;
-
-struct Missile;
+// Registered in Hooks::register with AttachmentDescriptor::new("example:fuel", || 0i32).sync(FUEL_CODEC)
+struct Missile {
+    fuel: AttachmentKey<i32>,
+}
 impl EntityRenderer for Missile {
     fn submit(
         &self,
@@ -73,7 +74,7 @@ impl EntityRenderer for Missile {
         draw: &mut dyn BlockEntityDrawContext,
     ) -> Result<(), String> {
         let fuel = match &entity.attachments {
-            Some(snapshot) => snapshot.get(&FUEL).map_err(|error| format!("{error:?}"))?,
+            Some(snapshot) => snapshot.get(&self.fuel).map_err(|error| format!("{error:?}"))?,
             None => None,
         };
         draw.translate([0.0, fuel.copied().unwrap_or_default() as f32, 0.0]);
@@ -163,8 +164,8 @@ items, a worn head), as a NeoForge `LivingEntityRenderer` does. Vanilla's turn, 
 tip-over aren't applied for it: the pose stack starts at the feet, not turned, so the renderer turns by
 `body_rot` and scales by `scale` itself. Around it the entity keeps everything else:
 `render_living_pre` (a cancel skips the renderer), the layers mods added to the type
-([entity layers](entity-layers.md)), `render_living_post`, and the frame's later passes (name tag,
-leash, flames, shadow), in the order the type's own model has ([model drawing](model-drawing.md)).
+([entity layers](entity-layers.md)), `render_living_post`, and the frame's later passes (its name tag,
+its leash, and its flames and shadow), in the order the type's own model has ([model drawing](model-drawing.md)).
 Living Pre borrows the selected vanilla or pack body in bind pose, independently of whether the
 registered renderer runs. Its visibility edits apply only if that body draws. When the
 replacement succeeds, no such pose was produced: registered layers still run in order and they

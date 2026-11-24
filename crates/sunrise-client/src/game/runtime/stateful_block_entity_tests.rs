@@ -169,22 +169,23 @@ fn stateful_creation_fixture(strict: bool) {
                 }],
             };
             game.world.block_log = Some(Vec::new());
-            let strict_row = run_transaction(game, |game, _| {
-                player
-                    .place_block(game, level, MIXED, populated_api, BlockFace::Up, false)
-                    .unwrap();
-                assert_eq!(
-                    game.block_entity(level, MIXED).as_ref(),
-                    observed.staged.get()
-                );
-                let host: &mut dyn ServerHost = game;
-                assert_eq!(host.edit_blocks("minecraft:overworld", &edit), Ok(1));
-                let strict_row = host.block_entity(level, MIXED).unwrap();
-                assert_ne!(Some(&strict_row), observed.staged.get());
-                assert!(observed.published.get().is_none());
-                Ok::<_, ()>(strict_row)
-            })
-            .unwrap();
+            let strict_row = game
+                .storage_transaction(|game, _| {
+                    player
+                        .place_block(game, level, MIXED, populated_api, BlockFace::Up, false)
+                        .unwrap();
+                    assert_eq!(
+                        game.block_entity(level, MIXED).as_ref(),
+                        observed.staged.get()
+                    );
+                    let host: &mut dyn ServerHost = game;
+                    assert_eq!(host.edit_blocks("minecraft:overworld", &edit), Ok(1));
+                    let strict_row = host.block_entity(level, MIXED).unwrap();
+                    assert_ne!(Some(&strict_row), observed.staged.get());
+                    assert!(observed.published.get().is_none());
+                    Ok::<_, ()>(strict_row)
+                })
+                .unwrap();
             assert!(observed.staged.get().is_some());
             assert_eq!(
                 observed.published.get(),

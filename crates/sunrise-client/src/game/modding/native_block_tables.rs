@@ -8,6 +8,7 @@ use mod_api::{
     WeatheringAge,
 };
 use sunrise_client::items::ItemStack;
+use sunrise_mod_package::content::FluidMeasures;
 use sunrise_world::fluid::FluidKind;
 use sunrise_world::level::{fluid_drip_particle, fluid_explosion_resistance, fluid_randomly_ticks};
 use sunrise_world::registry::BlockStateId;
@@ -49,8 +50,8 @@ impl<'a> BlockTables<'a> {
         })
     }
 
-    /// A registered fluid's type properties: its block's light and name for a world fluid,
-    /// vanilla's `FluidTags.WATER` and `FluidTags.LAVA` behaviours by its family. None for a
+    /// A registered fluid's type properties: its block's name for a world fluid, its
+    /// `FluidType` numbers (a mod's from its fluid file, block or none), vanilla's `FluidTags.WATER` and `FluidTags.LAVA` behaviours by its family. None for a
     /// key the registry doesn't hold.
     pub(in crate::game) fn fluid_type_properties(
         &self,
@@ -70,9 +71,10 @@ impl<'a> BlockTables<'a> {
         let kind = FluidKind::from_name(id);
         let water = kind.is_some_and(|kind| kind.same_family(FluidKind::Water));
         let lava = kind.is_some_and(|kind| kind.same_family(FluidKind::Lava));
+        let measures = fluid_measures(id, kind);
         Some(FluidTypeProperties {
             description_id,
-            light_level: block.map_or(0, |block| block.emission),
+            light_level: measures.light_level,
             fall_distance_modifier: match (water, lava) {
                 (true, _) => 0.0,
                 (_, true) => 0.5,
@@ -87,6 +89,9 @@ impl<'a> BlockTables<'a> {
             explosion_resistance: kind.map_or(0.0, fluid_explosion_resistance),
             randomly_ticks: kind.is_some_and(fluid_randomly_ticks),
             drip_particle: kind.and_then(fluid_drip_particle).map(str::to_owned),
+            temperature: measures.temperature,
+            density: measures.density,
+            viscosity: measures.viscosity,
         })
     }
 
@@ -264,6 +269,18 @@ impl<'a> BlockTables<'a> {
         self.pack.assets.registry.state(state)?;
         Some(self.res.facts().get(state).friction)
     }
+    /// `Block.getSpeedFactor()` of the state's block. None for an unknown state.
+    pub(in crate::game) fn block_state_speed_factor(&self, state: BlockStateId) -> Option<f32> {
+        self.pack.assets.registry.state(state)?;
+        let block = self.res.motion().blocks.get(state).ok()?;
+        Some(block.coefficients.speed_factor)
+    }
+    /// `Block.getJumpFactor()` of the state's block. None for an unknown state.
+    pub(in crate::game) fn block_state_jump_factor(&self, state: BlockStateId) -> Option<f32> {
+        self.pack.assets.registry.state(state)?;
+        let block = self.res.motion().blocks.get(state).ok()?;
+        Some(block.coefficients.jump_factor)
+    }
     /// `BlockState.isSolidRender()`. None for an unknown state.
     pub(in crate::game) fn block_state_is_solid_render(&self, state: BlockStateId) -> Option<bool> {
         self.pack.assets.registry.state(state)?;
@@ -406,5 +423,33 @@ impl<'a> BlockTables<'a> {
             .transformers()
             .waxed(registry, registry.state(state)?)?;
         registry.resolve(&waxed).ok()
+    }
+}
+
+/// `FluidType.getTemperature`, `getDensity`, `getViscosity` and `getLightLevel` of the registered fluid `id`,
+/// whose world kind is `kind`. NeoForgeMod's EMPTY_TYPE and LAVA_TYPE state their own; water
+/// keeps `FluidType.Properties`' defaults, and a mod's fluid, flowing or not, what its source's
+/// file states.
+fn fluid_measures(id: &str, kind: Option<FluidKind>) -> FluidMeasures {
+    match kind {
+        Some(FluidKind::Empty) => FluidMeasures {
+            temperature: 0,
+            density: 0,
+            viscosity: 0,
+            light_level: 0,
+        },
+        Some(kind) if kind.same_family(FluidKind::Lava) => FluidMeasures {
+            temperature: 1300,
+            density: 3000,
+            viscosity: 6000,
+            light_level: 15,
+        },
+        Some(kind) if kind.same_family(FluidKind::Water) => FluidMeasures::default(),
+        _ => {
+            let source = kind
+                .and_then(FluidKind::mod_fluid)
+                .map_or(id, |fluid| fluid.get().id.as_str());
+            sunrise_client::mod_content::fluid_measures(source).unwrap_or_default()
+        }
     }
 }

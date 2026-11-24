@@ -61,7 +61,7 @@ fn a_block_placed_as_a_player_runs_set_placed_by() {
 fn a_plain_write_before_placement_preserves_the_staged_chest_transfer() {
     use super::api_values::TryIntoApi;
     use super::native_entity_refs::tests::run_fresh_cases;
-    use mod_api::{BlockUpdateFlags, ITEMS, ItemResource, run_transaction};
+    use mod_api::{BlockUpdateFlags, ITEMS, ItemResource};
     use sunrise_client::items::ItemStack;
 
     if run_fresh_cases(
@@ -101,23 +101,24 @@ fn a_plain_write_before_placement_preserves_the_staged_chest_transfer() {
             .try_into_api()
             .unwrap();
 
-        let staged = run_transaction(game, |game, tx| {
-            assert_eq!(
-                level.set_block(game, DEST, north, BlockUpdateFlags::NONE),
-                Ok(true)
-            );
-            assert!(
-                game.block_entity(level, DEST).is_none(),
-                "the plain write does not stage a row"
-            );
-            player.place_block(game, level, DEST, south, BlockFace::Up, false)?;
-            let staged = game.block_entity(level, DEST).unwrap();
-            let to = level.capability(game, &ITEMS, DEST, None).unwrap();
-            assert_eq!(from.extract_at(game, tx, 0, &resource, 12), 12);
-            assert_eq!(to.insert_at(game, tx, 0, &resource, 12), 12);
-            Ok::<_, Refusal>(staged)
-        })
-        .unwrap();
+        let staged = game
+            .storage_transaction(|game, tx| {
+                assert_eq!(
+                    level.set_block(game, DEST, north, BlockUpdateFlags::NONE),
+                    Ok(true)
+                );
+                assert!(
+                    game.block_entity(level, DEST).is_none(),
+                    "the plain write does not stage a row"
+                );
+                player.place_block(game, level, DEST, south, BlockFace::Up, false)?;
+                let staged = game.block_entity(level, DEST).unwrap();
+                let to = level.capability(game, &ITEMS, DEST, None).unwrap();
+                assert_eq!(from.extract_at(game, tx, 0, &resource, 12), Ok(12));
+                assert_eq!(to.insert_at(game, tx, 0, &resource, 12), Ok(12));
+                Ok::<_, Refusal>(staged)
+            })
+            .unwrap();
 
         assert_eq!(level.block_state(game, DEST), Some(south));
         assert_eq!(
@@ -145,7 +146,7 @@ fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
     use mod_api::{
         BlockEntityRef, BlockPart, BlockState, BlockUpdateFlags, BlocksEvent, EntityPlaceEvent,
         Flow, Hooks, ITEMS, ItemResource, LevelTicksHost, LivingRef, ModEntry, Mods, Placement,
-        Registrar, RegistrationContext, ServerHost, UpdateShapeEvent, run_transaction,
+        Registrar, RegistrationContext, ServerHost, UpdateShapeEvent,
     };
     use mod_platform::testing::with_mods;
     use std::sync::{Arc, Mutex};
@@ -446,12 +447,12 @@ fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
                     } else {
                         BlockUpdateFlags::NONE
                     };
-                    run_transaction(game, |game, tx| {
-                        assert_eq!(from.extract_at(game, tx, 0, &dirt, 2), 2);
+                    game.storage_transaction(|game, tx| {
+                        assert_eq!(from.extract_at(game, tx, 0, &dirt, 2), Ok(2));
                         assert_eq!(level.set_block(game, AT, stone, removal_flags), Ok(true));
                         place(game)?;
                         let to = level.capability(game, &ITEMS, AT, None).unwrap();
-                        assert_eq!(to.insert_at(game, tx, 0, &replacement, 7), 7);
+                        assert_eq!(to.insert_at(game, tx, 0, &replacement, 7), Ok(7));
                         assert!(game.dropped.is_empty());
                         Ok(())
                     })
@@ -468,11 +469,11 @@ fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
                         .slots_mut()[0] = Some(ItemStack::new("minecraft:dirt", 17));
                     let from = level.capability(game, &ITEMS, OUTER, None).unwrap();
                     let dirt = ItemResource::of(&stack.clone().try_into_api().unwrap());
-                    run_transaction(game, |game, tx| {
+                    game.storage_transaction(|game, tx| {
                         place(game)?;
                         let to = level.capability(game, &ITEMS, AT, None).unwrap();
-                        assert_eq!(from.extract_at(game, tx, 0, &dirt, 12), 12);
-                        assert_eq!(to.insert_at(game, tx, 0, &dirt, 12), 12);
+                        assert_eq!(from.extract_at(game, tx, 0, &dirt, 12), Ok(12));
+                        assert_eq!(to.insert_at(game, tx, 0, &dirt, 12), Ok(12));
                         assert_eq!(
                             level.set_block(game, AT, stone, BlockUpdateFlags::NONE),
                             Ok(true)
@@ -484,20 +485,20 @@ fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
                         Ok(())
                     })
                 }
-                "bed-listener-panic" => run_transaction(game, |game, outer| {
+                "bed-listener-panic" => game.storage_transaction(|game, outer| {
                     assert_eq!(
                         level.set_block(game, OUTER, stone, BlockUpdateFlags::NONE),
                         Ok(true)
                     );
                     place(game)?;
-                    assert_eq!(game.transaction_current().as_ref(), Some(outer));
+                    assert!(game.transaction_matches(Some(outer)));
                     assert_eq!(level.block_state(game, OUTER), Some(stone));
                     assert_eq!(*later_read.lock().unwrap(), Some(air));
                     assert_eq!(level.block_state(game, AT), Some(foot));
                     assert_eq!(level.block_state(game, WRITE), Some(air));
                     Ok(())
                 }),
-                "bed-death" => run_transaction(game, |game, _| {
+                "bed-death" => game.storage_transaction(|game, _| {
                     place(game)?;
                     assert_eq!(level.block_state(game, HEAD), Some(head));
                     let living = LivingRef::new(place_as.entity());
@@ -553,7 +554,7 @@ fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
                     if case == "bed-listener-panic" {
                         assert_eq!(level.block_state(game, OUTER), Some(stone));
                         assert_eq!(level.block_state(game, WRITE), Some(air));
-                        assert!(game.transaction_current().is_none());
+                        assert!(game.transaction_matches(None));
                     }
                 }
                 "chest-transfer" => {
@@ -790,7 +791,7 @@ fn set_placed_by_writes_are_part_of_player_placement() {
                     level.set_block(game, ABOVE, wool, BlockUpdateFlags::NONE),
                     Ok(true)
                 );
-                mod_api::run_transaction(game, |game, _| {
+                game.storage_transaction(|game, _| {
                     assert_eq!(
                         level.destroy_block(game, ABOVE, true, None, false),
                         Ok(None)
