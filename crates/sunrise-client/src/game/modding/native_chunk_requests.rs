@@ -521,6 +521,7 @@ mod tests {
             assert!(game.streaming.has_async_requests());
             game.rebuild_chunk_tickets(false);
             let levels = game.tickets.levels();
+            assert!(levels.loaded_full(12, -8), "level-33 FULL ticket active");
             assert!(!levels.entity_ticking(12, -8));
             assert!(!levels.block_ticking(12, -8));
             assert!(!levels.random_ticking(12, -8));
@@ -658,6 +659,272 @@ mod tests {
             game.clear_async_chunk_requests_for_dim(dim);
             assert!(!game.streaming.has_async_requests());
             assert!(!game.has_async_chunk_requests(crate::game::Dim::Overworld));
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn request_chunk_streams_ungenerated_chunk_to_full_on_active_and_parked_levels_then_unloads() {
+        use crate::game::Dim;
+        use crate::game::native_entity_refs::tests::run_fresh_cases;
+
+        if run_fresh_cases(
+            concat!(
+                "game::native_chunk_requests::tests::",
+                "request_chunk_streams_ungenerated_chunk_to_full_on_active_and_parked_levels_then_unloads"
+            ),
+            "SUNRISE_ASYNC_CHUNK_STREAM_CHILD",
+            &["stream_e2e"],
+        ) {
+            return;
+        }
+        with_game(|game| {
+            game.options.headless = true;
+            game.streaming.paused = false;
+            game.streaming.mesh = false;
+            game.streaming.radius = 0;
+
+            let overworld = game.level("minecraft:overworld").unwrap();
+            let target = [28, -19];
+            assert!(!game.world.chunks.contains_key(&(target[0], target[1])));
+
+            // 1. Queue an ungenerated chunk on the active level and drive real `Streaming` workers.
+            let req = {
+                let _g = mod_api::__private::enter("mod_a", "test");
+                overworld
+                    .request_chunk(game, target)
+                    .expect("request admitted")
+            };
+            let mut completed = Vec::new();
+            for _ in 0..400 {
+                game.tick_server(false).unwrap();
+                {
+                    let _g = mod_api::__private::enter("mod_a", "test");
+                    completed.extend(overworld.drain_chunk_requests(game).unwrap());
+                }
+                if !completed.is_empty() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            assert_eq!(completed.len(), 1, "active-level async request completed");
+            assert_eq!(completed[0].request, req);
+            assert_eq!(completed[0].pos, target);
+            let snap = completed[0].result.as_ref().expect("snapshot ok");
+            assert!(snap.has_light(), "streamed chunk is lit");
+            assert_eq!(snap.sky_light(8, 318, 8), Some(15), "open sky light");
+            assert!(!game.streaming.has_async_requests());
+
+            // Once the transient level-33 ticket is released, an area change triggers the unload
+            // sweep and the chunk unloads cleanly.
+            game.streaming.radius = 1;
+            game.tick_server(false).unwrap();
+            game.streaming.radius = 0;
+            game.tick_server(false).unwrap();
+            assert!(
+                !game.world.chunks.contains_key(&(target[0], target[1])),
+                "streamed chunk unloads once its level-33 ticket is released"
+            );
+
+            // 2. Open and park the Nether, then request a chunk on the parked dimension without
+            // switching active levels.
+            let back = game.dim;
+            game.enter_level(Dim::Nether).unwrap();
+            game.streaming.paused = false;
+            game.streaming.mesh = false;
+            game.streaming.radius = 0;
+            game.enter_level(back).unwrap();
+
+            let nether = game.level("minecraft:the_nether").unwrap();
+            let nether_target = [4, 4];
+            let nether_req = {
+                let _g = mod_api::__private::enter("mod_a", "test");
+                nether
+                    .request_chunk(game, nether_target)
+                    .expect("parked request admitted")
+            };
+            let mut nether_done = Vec::new();
+            for _ in 0..400 {
+                game.tick_server(false).unwrap();
+                {
+                    let _g = mod_api::__private::enter("mod_a", "test");
+                    nether_done.extend(nether.drain_chunk_requests(game).unwrap());
+                }
+                if !nether_done.is_empty() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            assert_eq!(nether_done.len(), 1, "parked-level async request completed");
+            assert_eq!(nether_done[0].request, nether_req);
+            assert_eq!(nether_done[0].pos, nether_target);
+            let nether_snap = nether_done[0].result.as_ref().expect("nether snapshot ok");
+            assert_eq!(nether_snap.min_y(), 0);
+            assert_eq!(nether_snap.section_count(), 16);
+            assert!(nether_snap.has_light());
+            // Parked level must have released its level-33 ticket immediately so it is no longer
+            // stuck in `tickets` when parked.
+            assert!(!game.has_async_chunk_requests(Dim::Nether));
+            if let Some(parked) = game.levels.parked.get(&Dim::Nether) {
+                assert!(!parked.streaming.has_async_requests());
+                assert!(
+                    !parked
+                        .tickets
+                        .levels()
+                        .loaded_full(nether_target[0], nether_target[1]),
+                    "parked dimension cleared released level-33 ticket"
+                );
+            }
+
+            // 3. Paused level refuses even an already-resident lit chunk; aborted workers fail any
+            // in-flight pending request with `ChunkLoadError::Unloaded` and release its ticket.
+            insert_lit_stone_chunk(game, (9, 9));
+            game.streaming.paused = true;
+            {
+                let _g = mod_api::__private::enter("mod_a", "test");
+                assert_eq!(
+                    overworld.request_chunk(game, [9, 9]),
+                    Err(ChunkLoadError::Unloaded),
+                    "paused level refuses admission even if resident"
+                );
+            }
+            game.streaming.paused = false;
+
+            // Client-side (`streaming.remote = true`) refuses admission.
+            game.streaming.remote = true;
+            {
+                let _g = mod_api::__private::enter("mod_a", "test");
+                assert_eq!(
+                    overworld.request_chunk(game, [9, 9]),
+                    Err(ChunkLoadError::Unloaded),
+                    "remote/client streamer refuses admission"
+                );
+            }
+            game.streaming.remote = false;
+
+            // Aborting generation while a request is pending completes it with `Unloaded` and
+            // releases its ticket so nothing stays stuck.
+            let aborted_req = {
+                let _g = mod_api::__private::enter("mod_a", "test");
+                overworld
+                    .request_chunk(game, [60, 60])
+                    .expect("pending request admitted")
+            };
+            game.streaming.abort_generation();
+            game.process_async_chunk_requests();
+            assert!(!game.streaming.has_async_requests());
+            {
+                let _g = mod_api::__private::enter("mod_a", "test");
+                let done = overworld.drain_chunk_requests(game).unwrap();
+                assert_eq!(done.len(), 1);
+                assert_eq!(done[0].request, aborted_req);
+                assert_eq!(
+                    done[0].result.as_ref().err(),
+                    Some(&ChunkLoadError::Unloaded)
+                );
+                assert_eq!(
+                    overworld.request_chunk(game, [9, 9]),
+                    Err(ChunkLoadError::Unloaded),
+                    "aborted level refuses new admissions"
+                );
+            }
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn request_chunk_reports_failed_on_generator_panic_mid_flight_and_at_admission() {
+        use crate::game::native_entity_refs::tests::run_fresh_cases;
+        use mod_api::{
+            Flow, Hooks, LevelTickEvent, ModEntry, RuntimeGenerator, RuntimeLevel, ServerHost,
+        };
+        use sunrise_world::worldgen::mod_generators::{
+            ChunkAccess, ModChunkGenerator, ModChunkGenerators, install_mod_chunk_generators,
+        };
+
+        if run_fresh_cases(
+            concat!(
+                "game::native_chunk_requests::tests::",
+                "request_chunk_reports_failed_on_generator_panic_mid_flight_and_at_admission"
+            ),
+            "SUNRISE_ASYNC_CHUNK_FAILED_CHILD",
+            &["failed_chunk"],
+        ) {
+            return;
+        }
+        struct PanicsAtOrigin;
+        impl ModChunkGenerator for PanicsAtOrigin {
+            fn build_terrain(&self, chunk: &mut dyn ChunkAccess) {
+                let pos = chunk.pos();
+                assert!((pos.x, pos.z) != (0, 0), "generator panics at [0, 0]");
+            }
+        }
+        install_mod_chunk_generators(ModChunkGenerators::from([(
+            "asyncfail:terrain".to_owned(),
+            Arc::new(PanicsAtOrigin) as Arc<dyn ModChunkGenerator>,
+        )]))
+        .map_err(|_| "installed twice")
+        .unwrap();
+
+        struct Opener;
+        #[mod_api::__subscriptions]
+        impl Hooks for Opener {
+            fn level_tick_post(&self, host: &mut dyn ServerHost, _event: &LevelTickEvent) -> Flow {
+                let _ = host.open_level(
+                    "asyncfail:dim",
+                    RuntimeLevel::new(
+                        "minecraft:overworld",
+                        RuntimeGenerator::Mod("asyncfail:terrain".into()),
+                        1,
+                    ),
+                );
+                Flow::Continue
+            }
+        }
+
+        let mods: mod_api::Mods = vec![ModEntry::new("asyncfail", Box::new(Opener))].into();
+        mod_platform::testing::with_mods(mods, || {
+            with_game(|game| {
+                game.options.headless = true;
+                game.streaming.paused = false;
+                game.streaming.mesh = false;
+                game.streaming.radius = 0;
+                let home = game.level("minecraft:overworld").unwrap();
+                game.native_level_tick_post(home);
+                game.apply_runtime_levels();
+
+                let dim_level = game.level("asyncfail:dim").unwrap();
+                let req = {
+                    let _g = mod_api::__private::enter("asyncfail", "test");
+                    dim_level
+                        .request_chunk(game, [0, 0])
+                        .expect("queued before failure is known")
+                };
+                let mut done = Vec::new();
+                for _ in 0..400 {
+                    game.tick_server(false).unwrap();
+                    {
+                        let _g = mod_api::__private::enter("asyncfail", "test");
+                        done.extend(dim_level.drain_chunk_requests(game).unwrap());
+                    }
+                    if !done.is_empty() {
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+                assert_eq!(done.len(), 1, "mid-flight generator panic reported");
+                assert_eq!(done[0].request, req);
+                assert_eq!(done[0].result.as_ref().err(), Some(&ChunkLoadError::Failed));
+
+                // Subsequent admission on the failed chunk fails immediately at admission.
+                {
+                    let _g = mod_api::__private::enter("asyncfail", "test");
+                    assert_eq!(
+                        dim_level.request_chunk(game, [0, 0]),
+                        Err(ChunkLoadError::Failed)
+                    );
+                }
+            });
         });
     }
 }
