@@ -4288,7 +4288,7 @@ struct Game<'a> {
     /// The passages mods registered in each level, and a client's copy (`native_passages.rs`).
     passages: native_passages::Passages,
     /// Open-state flags for `SavedChunkReader` handles per dimension (`native_saved_chunks.rs`).
-    saved_chunk_readers: std::cell::RefCell<FxHashMap<Dim, Arc<std::sync::atomic::AtomicBool>>>,
+    saved_chunk_readers: std::cell::RefCell<HashMap<Dim, Arc<std::sync::atomic::AtomicBool>>>,
     /// PauseScreen.showPauseMenu (false after F3+Escape).
     pause_menu: bool,
     pause_focus: Option<u8>,

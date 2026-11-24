@@ -12,7 +12,7 @@ use mod_api::{ChunkSnapshot, DimensionKey, LevelRef, SavedChunkError, SavedChunk
 use std::ffi::OsStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Weak};
-use sunrise_assets::block_facts::BlockFacts;
+use sunrise_client::assets::Properties;
 use sunrise_client::biome::Biomes;
 use sunrise_client::save::SaveDir;
 use sunrise_client::streaming::chunk_pos_is_valid;
@@ -50,7 +50,7 @@ struct EngineSavedChunkReader {
     registry: &'static BlockRegistry,
     states: Arc<super::api_values::block_state::Index>,
     biomes: Arc<Biomes>,
-    properties: Arc<BlockFacts>,
+    properties: Properties,
 }
 
 impl EngineSavedChunkReader {
@@ -162,7 +162,9 @@ mod tests {
     use sunrise_client::chunk::{Chunk, Light};
     use sunrise_client::save::{LevelShape, SaveDir, dimension_dir};
     use sunrise_core::nbt::{Limits, NamedTag};
-    use sunrise_world::region::{ChunkPos, ChunkRecord, Compression, RegionFile};
+    use sunrise_core::position::ChunkPos;
+    use sunrise_world::compression::Compression;
+    use sunrise_world::region::{ChunkRecord, RegionFile};
 
     fn temp_world_dir(tag: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!(
@@ -254,8 +256,8 @@ mod tests {
 
                 // Out-of-bounds returns InvalidPos.
                 assert_eq!(
-                    bg_reader.read([i32::MAX, 0]),
-                    Err(SavedChunkError::InvalidPos)
+                    bg_reader.read([i32::MAX, 0]).err(),
+                    Some(SavedChunkError::InvalidPos)
                 );
                 assert_eq!(
                     bg_reader.region_chunks(i32::MAX, 0),
@@ -282,7 +284,10 @@ mod tests {
 
             // Closing the level immediately invalidates the reader without retaining SaveDir.
             game.native_levels_closing();
-            assert_eq!(reader.read([4, -2]), Err(SavedChunkError::Unavailable));
+            assert_eq!(
+                reader.read([4, -2]).err(),
+                Some(SavedChunkError::Unavailable)
+            );
             assert_eq!(
                 reader.region_chunks(0, -1),
                 Err(SavedChunkError::Unavailable)
@@ -319,11 +324,10 @@ mod tests {
             // 1. Write an older-DataVersion (3685, pre-1.20.3) chunk containing "minecraft:grass"
             // directly into r.0.0.mca at chunk (2, 2), then read & upgrade it concurrently across
             // 4 worker threads to prove upgrade_record has no shared mutable state races.
-            let old_tag = sunrise_core::nbt::parse_snbt(
+            let old_tag = sunrise_client::command::snbt::parse_fully(
                 r#"{DataVersion:3685,xPos:2,yPos:-4,zPos:2,Status:"minecraft:full",sections:[{Y:0b,block_states:{palette:[{Name:"minecraft:grass"}]},biomes:{palette:["minecraft:plains"]}}]}"#,
             )
-            .expect("valid snbt")
-            .0;
+            .expect("valid snbt");
             {
                 let mut region = RegionFile::open_writable(dim_root.join("region/r.0.0.mca"), true)
                     .expect("open writable region");
