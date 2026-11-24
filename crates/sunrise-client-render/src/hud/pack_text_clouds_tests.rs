@@ -128,9 +128,9 @@ fn each_improved_transparency_stage_is_given_its_passs_samplers() {
     let oit = &given.oit;
     let at = |name: &str| {
         let index = oit[0].other.iter().position(|n| n == name).unwrap();
-        crate::core_shader::other_binding(index)
+        sunrise_glsl::other_binding(index)
     };
-    let fragment_reads = |program: &CoreProgram, name: &str| {
+    let fragment_reads = |program: &Translated, name: &str| {
         program.stages_reading(at(name)) == wgpu::ShaderStages::FRAGMENT
     };
     assert!(!fragment_reads(&oit[0], "DepthBoundsSampler"));
