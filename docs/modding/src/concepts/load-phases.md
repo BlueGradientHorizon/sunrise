@@ -86,7 +86,7 @@ instance directory. Preserve native path bytes or code units when constructing a
 `mods()` gives the admitted packages in dispatch order; `registry(name)` and `setting(mod_id, key)`
 borrow captured values without reading files. `None` means unavailable or unset, not a present
 empty value. Reloads and live code switching do not change the startup package inventory. Keep
-an owned copy only when it must outlive the callback. [Chunk-disk callbacks](../how-to/chunk-data-load.md)
+an owned copy only when it must outlive the callback. [Chunk-disk callbacks](../how-to/world/chunk-data.md)
 borrow registry names from the generation retained by the worker.
 
 `DataLoadContext::fluid_tags()` borrows the recipe pass's fluid-tag table. `None` means no
