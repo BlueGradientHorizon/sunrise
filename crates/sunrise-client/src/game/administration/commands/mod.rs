@@ -95,6 +95,8 @@ pub(super) enum Target {
     Spawner(u32),
     /// A simulated lingering, creeper or dragon area-effect cloud.
     Cloud(u32),
+    /// A live lightning bolt (`minecraft:lightning_bolt`).
+    Bolt(u32),
     /// A general entity row, by its entity id (#792).
     General(u32),
     /// A cast fishing hook (`minecraft:fishing_bobber`), which lives with the
@@ -614,57 +616,8 @@ impl Game<'_> {
                 Some(g) => self.player_text(&g.name, g.uuid),
                 None => Text::empty(),
             },
-            // ItemEntity.getName: its CustomName, else the stack's item name
-            // (`getItemName`: a mod item's Part, else the item's own `getName`).
-            Target::Item(id) => {
-                if let Some(c) = self.persist_raw(id).and_then(|r| r.get("CustomName")) {
-                    return sunrise_client::scoreboard::comp_text(
-                        &sunrise_client::scoreboard::tag_to_json(c),
-                    );
-                }
-                match self.dropped.iter().find(|i| i.id == id) {
-                    Some(item) => self.stack_item_name_text(&item.stack),
-                    None => Text::literal(self.pack.names.display_item("")),
-                }
-            }
-            // FallingBlockEntity.getTypeName: `entity.minecraft.falling_block_type`
-            // with the block's name.
-            Target::Falling(id) => {
-                let custom = self
-                    .falling
-                    .iter()
-                    .find(|f| f.id == id)
-                    .and_then(|f| f.saved.as_ref())
-                    .and_then(|saved| saved.1.get("CustomName"))
-                    .or_else(|| self.persist_raw(id).and_then(|r| r.get("CustomName")));
-                if let Some(c) = custom {
-                    return sunrise_client::scoreboard::comp_text(
-                        &sunrise_client::scoreboard::tag_to_json(c),
-                    );
-                }
-                let block = self
-                    .falling
-                    .iter()
-                    .find(|f| f.id == id)
-                    .map(|f| self.res.facts().get(f.state).name.replace(':', "."))
-                    .unwrap_or_default();
-                let block = Text::translate(&format!("block.{block}"), &[]);
-                Text::translate("entity.minecraft.falling_block_type", &[block])
-            }
             Target::Mob(id) => self.mob_command_name(id),
-            other => {
-                // Entity.getDisplayName: the CustomName component, else the type.
-                let custom = super::native_entities::target_id(other)
-                    .and_then(|id| self.persist_raw(id))
-                    .and_then(|r| r.get("CustomName"));
-                if let Some(c) = custom {
-                    return sunrise_client::scoreboard::comp_text(
-                        &sunrise_client::scoreboard::tag_to_json(c),
-                    );
-                }
-                let ty = self.target_type(other);
-                Text::translate(&format!("entity.{}", ty.replace(':', ".")), &[])
-            }
+            other => self.entity_display_name(other),
         }
     }
     /// `type=`: every positive must match, no negative may match.
@@ -860,6 +813,12 @@ impl Game<'_> {
                 .iter()
                 .filter(|c| c.id != 0)
                 .map(|c| Target::Cloud(c.id)),
+        );
+        candidates.extend(
+            self.bolts
+                .iter()
+                .filter(|b| b.id != 0)
+                .map(|b| Target::Bolt(b.id)),
         );
         candidates.extend(self.natural_knot_ids().into_iter().map(Target::Knot));
         // `isRemoved` from a mod's call on, though the sweep has not taken it out.
@@ -1735,6 +1694,21 @@ impl Game<'_> {
                     });
                 }
             }
+            Target::Bolt(id) => {
+                if let Some(i) = self.bolts.iter().position(|e| e.id == id) {
+                    self.bolts.update(i, |b| {
+                        b.at = pos;
+                        if let Some([yaw, pitch]) = rotation {
+                            if yaw.is_finite() {
+                                b.rotation[0] = yaw;
+                            }
+                            if !pitch.is_nan() {
+                                b.rotation[1] = entity_pitch(pitch);
+                            }
+                        }
+                    });
+                }
+            }
             // Wall-mounted entities do not move; a hook follows its own tick and a
             // dragon part its dragon's.
             Target::Frame(_) | Target::Painting(_) => self.teleport_hanging(t, v),
@@ -2275,6 +2249,25 @@ impl Game<'_> {
                     .item_in_tag("minecraft:dampens_vibrations", &i.stack.item)
             });
         }
+        // `Entity.kill` (and `EnderDragon.kill`, `ArmorStand.kill`,
+        // `BlockAttachedEntity.kill`) removes the entity immediately with
+        // `RemovalReason.KILLED`, so `ServerLevel.EntityCallbacks.onDestroyed`
+        // runs `Scoreboard.entityRemoved` before `/kill` formats its reply.
+        // Players are never removed from teams, and living mobs stay in the
+        // level through `tickDeath`.
+        let destroyed_score = (!matches!(
+            t,
+            Target::Player
+                | Target::Guest(_)
+                | Target::Mob(_)
+                | Target::Knot(_)
+                | Target::DragonPart(_)
+        ))
+        .then(|| {
+            super::native_entities::target_id(t)
+                .and_then(|id| self.persist.uuid_of(id).map(|uuid| (id, uuid)))
+        })
+        .flatten();
         match t {
             Target::General(id) => {
                 let Some(entity) = self.entity(id) else {
@@ -2372,10 +2365,14 @@ impl Game<'_> {
             Target::Trident(id) => self.tridents.retain(|t| t.id != id),
             Target::Spawner(id) => self.remove_ominous_spawner(id),
             Target::Cloud(id) => self.remove_breath_cloud(id),
+            Target::Bolt(id) => self.remove_bolt(id),
             Target::Hook(id) => self.remove_fishing_hook(id),
             Target::Knot(_) => {}
             // No command names a part, and `kill` on one would not stop its dragon.
             Target::DragonPart(_) => {}
+        }
+        if let Some((id, uuid)) = destroyed_score {
+            self.score_destroyed_entity_once(id, uuid);
         }
         if let Some(at) = died {
             self.post_game_event("minecraft:entity_die", at, context);
@@ -2388,25 +2385,37 @@ impl Game<'_> {
         } else {
             vec![self.implied_player()]
         };
-        let mut names: Vec<Text> = Vec::new();
-        for &t in &targets {
-            // The name of an entity in another level is read there.
-            let name = match self.in_target_level(t, |g| g.target_name(t)) {
-                Some(name) => name,
-                None => self.target_name(t),
-            };
-            names.push(name);
-        }
+        let single_display = (targets.len() == 1).then(|| {
+            let t = targets[0];
+            // The identity of an entity in another level is read there before
+            // `kill_target` removes it from that level.
+            match self.in_target_level(t, |g| g.capture_kill_display(t)) {
+                Some(captured) => captured,
+                None => self.capture_kill_display(t),
+            }
+        });
         for &t in &targets {
             self.kill_target(t);
         }
-        let message = if targets.len() == 1 {
-            Text::translate("commands.kill.success.single", &[names[0].clone()])
+        let message = if let Some(captured) = single_display {
+            let name = self.finish_kill_display(captured);
+            Text::translate("commands.kill.success.single", &[name])
         } else {
             Text::tr("commands.kill.success.multiple", &[&targets.len()])
         };
         self.feedback(message);
         Ok(targets.len() as i32)
+    }
+    /// `Level.isInSpawnableBounds(BlockPos.containing(pos))`: shared by
+    /// `/summon` and `/execute summon` (`SummonCommand.createEntity`).
+    pub(super) fn check_summon_bounds(pos: [f64; 3]) -> R<()> {
+        if !(-30_000_000.0..30_000_000.0).contains(&pos[0])
+            || !(-20_000_000.0..20_000_000.0).contains(&pos[1])
+            || !(-30_000_000.0..30_000_000.0).contains(&pos[2])
+        {
+            return Err(err("commands.summon.invalidPosition", &[]));
+        }
+        Ok(())
     }
     /// `SummonCommand.createEntity`: Peaceful admission uses the entity-type
     /// policy for both forms, independently of the mob category.
@@ -2424,13 +2433,7 @@ impl Game<'_> {
         let pos = self
             .position_arg(ctx, "pos")
             .unwrap_or(self.source_position());
-        let block_y = pos[1].floor() as i32;
-        if !(-30_000_000.0..30_000_000.0).contains(&pos[0])
-            || !(-20_000_000..20_000_000).contains(&block_y)
-            || !(-30_000_000.0..30_000_000.0).contains(&pos[2])
-        {
-            return Err(err("commands.summon.invalidPosition", &[]));
-        }
+        Self::check_summon_bounds(pos)?;
         let mob_type = self.res.mob_types().get(&kind);
         if self.difficulty_id() == 0 && mob_type.is_some_and(|t| !t.allowed_in_peaceful()) {
             return Err(err("commands.summon.failed.peaceful", &[]));
@@ -2467,49 +2470,44 @@ impl Game<'_> {
                     // `EntityType`'s factory, `new ExperienceOrb(EntityType, Level)`,
                     // which only `snapTo`s: the position is kept, even in a block.
                     self.next_entity += 1;
-                    let at = Vec3::new(pos[0], pos[1], pos[2]);
-                    let orb = sunrise_client::entities::ExperienceOrb::new(
-                        self.next_entity,
-                        at,
-                        Vec3::ZERO,
-                        0,
+                    let id = self.next_entity;
+                    let uuid = sunrise_client::save::insecure_uuid(
+                        &mut sunrise_client::random_source::entity(),
                     );
+                    self.persist.uuids.insert(id, uuid);
+                    let at = Vec3::new(pos[0], pos[1], pos[2]);
+                    let orb = sunrise_client::entities::ExperienceOrb::new(id, at, Vec3::ZERO, 0);
                     self.orbs.push(orb);
                     // tryAddFreshEntityWithPassengers refused: ERROR_DUPLICATE_UUID.
-                    if !self.native_joins_flush(false, self.next_entity) {
+                    if !self.native_joins_flush(false, id) {
                         return Err(err("commands.summon.failed.uuid", &[]));
                     }
-                    name = Text::translate("entity.minecraft.experience_orb", &[]);
+                    name = self.target_name(Target::Orb(id));
                 }
                 "lightning_bolt" => {
-                    let block = [
-                        pos[0].floor() as i32,
-                        pos[1].floor() as i32,
-                        pos[2].floor() as i32,
-                    ];
-                    if !self.lightning_strike_allowed(self.lan_acting_uuid, block, "command") {
-                        return Err(err("commands.summon.failed", &[]));
-                    }
-                    self.spawn_bolt(pos, false);
-                    name = Text::translate("entity.minecraft.lightning_bolt", &[]);
+                    let target = self
+                        .summon_with_nbt(&kind, pos, "{}")?
+                        .ok_or_else(|| err("commands.summon.failed", &[]))?;
+                    name = self.target_name(target);
                 }
                 "end_crystal" => {
                     // EndCrystal's constructor takes an id from the entity
                     // counter, and the crystal is shown with its base.
                     self.next_entity += 1;
+                    let id = self.next_entity;
                     let at = Vec3::new(pos[0], pos[1], pos[2]);
                     let (drawn, uuid) = super::dragon::Crystal::own_draws();
-                    self.persist.uuids.insert(self.next_entity, uuid);
+                    self.persist.uuids.insert(id, uuid);
                     let time = super::dragon::Crystal::start_time(at, drawn, self.clock.still());
-                    let crystal = super::dragon::Crystal::new(self.next_entity, at, true, time);
+                    let crystal = super::dragon::Crystal::new(id, at, true, time);
                     self.crystals.push(crystal);
                     // tryAddFreshEntityWithPassengers refused: ERROR_DUPLICATE_UUID.
-                    if !self.native_joins_flush(false, self.next_entity) {
+                    if !self.native_joins_flush(false, id) {
                         return Err(err("commands.summon.failed.uuid", &[]));
                     }
-                    name = Text::translate("entity.minecraft.end_crystal", &[]);
+                    name = self.target_name(Target::Crystal(id));
                 }
-                k if super::minecarts::CartKind::from_id(&kind).is_some() => {
+                _ if super::minecarts::CartKind::from_id(&kind).is_some() => {
                     let cart_kind = super::minecarts::CartKind::from_id(&kind)
                         .unwrap_or(super::minecarts::CartKind::Rideable);
                     self.next_entity += 1;
@@ -2527,11 +2525,15 @@ impl Game<'_> {
                         cart.spawner = Some(Box::new(Spawner::load(&empty)));
                     }
                     let id = cart.id;
+                    let uuid = sunrise_client::save::insecure_uuid(
+                        &mut sunrise_client::random_source::entity(),
+                    );
+                    self.persist.uuids.insert(id, uuid);
                     self.carts.push(cart);
                     if !self.native_joins_flush(false, id) {
                         return Err(err("commands.summon.failed.uuid", &[]));
                     }
-                    name = Text::translate(&format!("entity.minecraft.{k}"), &[]);
+                    name = self.target_name(Target::Cart(id));
                 }
                 // SummonCommand.createEntity: any other type from an empty compound.
                 _ => {
@@ -4318,7 +4320,11 @@ mod difficulty_tests {
 
 #[cfg(test)]
 #[path = "summon_item_orb_tests.rs"]
-mod summon_item_orb_tests;
+pub(in crate::game) mod summon_item_orb_tests;
+
+#[cfg(test)]
+#[path = "summon_bolt_tests.rs"]
+pub(in crate::game) mod summon_bolt_tests;
 
 #[cfg(test)]
 pub(in crate::game) mod peaceful_tests {
@@ -4540,6 +4546,7 @@ mod look_at_tests {
             Target::Trident(7),
             Target::Spawner(7),
             Target::Cloud(7),
+            Target::Bolt(7),
         ] {
             assert_eq!(non_player_entity_id(t), Some(7), "{t:?}");
         }

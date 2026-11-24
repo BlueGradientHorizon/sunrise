@@ -148,6 +148,11 @@ impl Game<'_> {
             || self
                 .general_passengers(vehicle)
                 .any(|row| matches((row.vehicle_order, row.id, false)))
+            || self
+                .bolts
+                .iter()
+                .filter(|b| b.mount == Some(vehicle))
+                .any(|b| matches((b.vehicle_order, b.id, false)))
     }
     /// `Entity.addPassenger`: the place of `rider` getting on `vehicle`. On a server a player
     /// goes ahead of a first passenger that is no player; everything else goes last.
