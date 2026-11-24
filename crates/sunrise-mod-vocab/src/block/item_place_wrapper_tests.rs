@@ -1,5 +1,5 @@
 use super::*;
-use crate::prelude::{ItemsHost, PlayersHost};
+use crate::prelude::ItemsHost;
 use crate::testing::FakeHost;
 use crate::{HostTransaction, Identifier, Tag};
 
@@ -369,22 +369,6 @@ fn a_block_entity_place_reports_the_slot_wrapped_or_not() {
         slot: 0,
     };
     assert_eq!(none.backing(host), None);
-}
-
-#[test]
-fn a_menu_slot_with_no_block_entity_backing_has_none() {
-    let (mut fake, _) = host_with(&[]);
-    let player = fake.player(STEVE).unwrap();
-    let host: &mut dyn ServerHost = &mut fake;
-    let place = ItemPlace::MenuSlot {
-        menu: MenuRef {
-            player,
-            window: 1,
-            generation: 1,
-        },
-        slot: 0,
-    };
-    assert_eq!(place.backing(host), None);
 }
 
 #[test]
