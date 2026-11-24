@@ -263,4 +263,3 @@ position predicates (`POS_RULE_TEST`) in `Hooks::register` with
   tag) leaves that processor list and every template pool naming it out of the load.
 - `RuleTest::test` and `PosRuleTest::test` run concurrently on worldgen worker threads and
   must not panic; a panic aborts that structure's placement with nothing substituted.
-
