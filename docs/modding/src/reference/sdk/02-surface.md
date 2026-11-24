@@ -142,6 +142,10 @@ API and engine ids, publishing still checks its API ids and carries the note for
 holds these notes since the previous SDK (`surface.notes`); `cargo sunrise-mod pin` prints a changed item's
 `migrate` line beside it.
 
+Advisory internal reorganizations that leave the stable API and published loops unchanged are documented as
+migration guides rather than gated TOML notes; for gameplay side-module path moves, see
+[Game side modules](../../concepts/native-route/8-game-side-modules.md).
+
 ## Behaviours
 
 A few promises are neither a type nor a signature, so no other record can pin them: how `sunrise:add_to` files merge,

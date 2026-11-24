@@ -559,8 +559,9 @@ jobs:
           # The approved head, its daily run and the version again, then the tag at that commit in one write.
           python3 tools/ci/nightly.py reserve-stable-tag "$SHA" "$TAG"
           files=(); while read -r _ name; do files+=("dist/${name#\*}"); done < dist/SHA256SUMS
-          # Advisory notes overflow only; this is not an install asset.
+          # Advisory notes overflow and rename map only; these are not install assets.
           if [[ -f dist/changed-mixin-targets.md ]]; then files+=(dist/changed-mixin-targets.md); fi
+          if [[ -f dist/moved-mixin-targets.tsv ]]; then files+=(dist/moved-mixin-targets.tsv); fi
           # A full release, never GitHub's latest: the site's launcher download and older servers read the latest.
           gh release create "$TAG" --verify-tag --latest=false --title "Sunrise $TAG" --notes-file dist/nightly-notes.md \
             "${files[@]}" dist/SHA256SUMS dist/SHA256SUMS.sig dist/SHA256SUMS.v2.sig dist/smoke-test.json

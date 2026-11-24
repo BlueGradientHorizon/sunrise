@@ -565,7 +565,11 @@ stable release of the same Minecraft version (including across a major bump). Th
 and source hashes from `functions.json`, not offsets or other lookup metadata; when both SDKs carry the
 declaration and body digests, a target whose digests differ is listed too, so a change to an enclosing impl
 shows even when its own signature and source span did not change. If the list doesn't fit in the notes,
-they link to the full list on the release.
+they link to the full list on the release. When a comparison crosses the gameplay side-module move
+(`tools/game_module_sides.tsv`), `nightly.py stable-mod-api` also writes `moved-mixin-targets.tsv` from the two
+verified SDK `functions.json` catalogs, attaches it beside `changed-mixin-targets.md`, and links both the map and
+the modding book's [Game side modules](modding/src/concepts/native-route/8-game-side-modules.md) guide from the
+`Changed mixin targets` section.
 
 Launchers without Stable profiles can only use a `26.3-<semver>` release as a manual download.
 

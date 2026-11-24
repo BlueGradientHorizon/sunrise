@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import csv
 import datetime as dt
 import hashlib
 import io
@@ -839,6 +840,48 @@ def stable_sdk_inputs(sha: str, surface: Path | None) -> tuple[str, MixinFingerp
     return content_api, functions
 
 
+SIDE_MODULES_GUIDE_URL = "https://playsunrise.net/docs/modding/concepts/native-route/8-game-side-modules"
+
+
+def moved_side_targets(
+    old: MixinFingerprints,
+    new: MixinFingerprints,
+    table_path: Path | None = None,
+) -> list[tuple[str, str, str]]:
+    """Pair removed pre-move `sunrise_client::game::` targets with selectable `client_side`/`server_side` targets."""
+    path = table_path if table_path is not None else REPOSITORY / "tools" / "game_module_sides.tsv"
+    if not path.is_file():
+        return []
+    mod_to_side: dict[str, str] = {}
+    with path.open(newline="", encoding="utf-8") as fp:
+        reader = csv.DictReader(fp, delimiter="\t")
+        if not reader.fieldnames or not {"module", "side"}.issubset(reader.fieldnames):
+            return []
+        for row in reader:
+            mod = row["module"].strip()
+            side = row["side"].strip()
+            if mod and side in ("client", "server"):
+                mod_to_side[mod] = side
+    prefix = "sunrise_client::game::"
+    moved: list[tuple[str, str, str]] = []
+    for old_name in sorted(old.keys() - new.keys()):
+        if not old_name.startswith(prefix):
+            continue
+        tail = old_name[len(prefix):]
+        head = tail.split("::", 1)[0]
+        if head in ("client_state", "server_state"):
+            side = "client" if head == "client_state" else "server"
+            new_name = f"{prefix}{side}_side::{tail[len(head) + 2:]}"
+        elif head in mod_to_side:
+            side = mod_to_side[head]
+            new_name = f"{prefix}{side}_side::{tail}"
+        else:
+            continue
+        if new_name in new and new_name not in old:
+            moved.append((old_name, new_name, side))
+    return moved
+
+
 def append_mixin_notes(notes: Path, tag: str, previous: str, old: MixinFingerprints, new: MixinFingerprints) -> None:
     """Compare the hashes the native fit reader uses, not lookup metadata: the signature and source
     hashes, and the declaration and body digests where both builds carry them."""
@@ -855,15 +898,26 @@ def append_mixin_notes(notes: Path, tag: str, previous: str, old: MixinFingerpri
         elif changed(old[name], new[name]):
             changes.append(f"- Changed: `{name}`\n")
     intro = f"\n### Changed mixin targets\n\nCompared with `{previous}`:\n\n"
+    moved = moved_side_targets(old, new)
+    rename_note = ""
+    if moved:
+        rename_map = notes.with_name("moved-mixin-targets.tsv")
+        rows = ["old_target\tnew_target\tside\n", *(f"{o}\t{n}\t{s}\n" for o, n, s in moved)]
+        rename_map.write_text("".join(rows), encoding="utf-8")
+        rename_url = f"https://github.com/sunrise-org/sunrise/releases/download/{tag}/{rename_map.name}"
+        rename_note = (
+            f"Side-module target rename map: [{rename_map.name}]({rename_url}) · "
+            f"[Game side modules migration guide]({SIDE_MODULES_GUIDE_URL}).\n\n"
+        )
     section = "".join(changes) or "No mixin targets changed.\n"
     # Keep the full list as an advisory release asset if it would exceed GitHub's release body limit.
-    if notes.stat().st_size + len((intro + section).encode()) > 125_000:
+    if notes.stat().st_size + len((intro + rename_note + section).encode()) > 125_000:
         listing = notes.with_name("changed-mixin-targets.md")
-        listing.write_text(intro + section, encoding="utf-8")
+        listing.write_text(intro + rename_note + section, encoding="utf-8")
         section = ("[Full list of changed mixin targets]"
                    f"(https://github.com/sunrise-org/sunrise/releases/download/{tag}/{listing.name}).\n")
     with notes.open("a", encoding="utf-8") as out:
-        out.write(intro + section)
+        out.write(intro + rename_note + section)
 
 
 def require_stable_lineage(sha: str, tag: str, old_sha: str, old_tag: str) -> None:

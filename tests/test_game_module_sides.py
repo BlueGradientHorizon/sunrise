@@ -497,9 +497,10 @@ class GameModuleSidesTests(unittest.TestCase):
                 "--renames", str(before), str(after), "--root", str(root), "--out", str(renames)
             )
             self.assertEqual(rc, 0, err)
-            self.assertIn("4 moved (3 in after functions.json, 1 in after refused, 0 missing)", err)
+            self.assertIn("3 selectable moved (1 refused, 0 missing)", err)
             lines = renames.read_text().splitlines()
             self.assertEqual(lines[0], "old_target\tnew_target\tside")
+            self.assertEqual(len(lines), 4)
             self.assertIn(
                 "sunrise_client::game::hud::Game::draw_hud\tsunrise_client::game::client_side::hud::Game::draw_hud\tclient",
                 lines,
@@ -508,6 +509,14 @@ class GameModuleSidesTests(unittest.TestCase):
                 "sunrise_client::game::server_state::ServerState::new\tsunrise_client::game::server_side::ServerState::new\tserver",
                 lines,
             )
+            self.assertNotIn("refused_slot", renames.read_text())
+
+            # --strict fails when any moved target is refused.
+            rc, _, err = run_cli(
+                "--renames", str(before), str(after), "--strict", "--root", str(root), "--out", str(renames)
+            )
+            self.assertEqual(rc, 1)
+            self.assertIn("refused:", err)
 
     def test_r1_01_visibility_forms_handled_and_refused(self):
         # Handled: plain pub(super) across item kinds while preserving comments, strings, pub(self), nested mods.
@@ -1386,6 +1395,61 @@ class GameModuleSidesTests(unittest.TestCase):
                 ]
             consec = [(lines[i], lines[i + 1]) for i in range(len(lines) - 1) if lines[i + 1] == lines[i] + 1]
             self.assertEqual(consec, [], f"{rel} has consecutive comment lines: {consec}")
+
+    def test_r5_03_renames_emits_selectable_only_and_strict_validates(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_synthetic_tree(root)
+            before = root / "before.json"
+            after = root / "after.json"
+            out_tsv = root / "moved.tsv"
+            before.write_text(
+                json.dumps(
+                    {
+                        "functions": {
+                            "sunrise_client::game::hud::Game::draw_hud": {},
+                            "sunrise_client::game::srv_mod::Game::refused_fn": {},
+                            "sunrise_client::game::srv_mod::Game::missing_fn": {},
+                            "sunrise_client::game::client_state::ClientState::new": {},
+                        }
+                    }
+                )
+            )
+            after.write_text(
+                json.dumps(
+                    {
+                        "functions": {
+                            "sunrise_client::game::client_side::hud::Game::draw_hud": {},
+                            "sunrise_client::game::client_side::ClientState::new": {},
+                            "sunrise_client::game::shared::Game::newly_added": {},
+                        },
+                        "refused": {
+                            "sunrise_client::game::server_side::srv_mod::Game::refused_fn": {"code": "x"}
+                        },
+                    }
+                )
+            )
+            # Default author-facing mode emits only selectable rows and exits 0.
+            rc, _, err = run_cli("--renames", str(before), str(after), "--root", str(root), "--out", str(out_tsv))
+            self.assertEqual(rc, 0, err)
+            self.assertIn("2 selectable moved (1 refused, 1 missing); 0 unchanged, 1 additional in after.", err)
+            rows = out_tsv.read_text().splitlines()
+            self.assertEqual(
+                rows,
+                [
+                    "old_target\tnew_target\tside",
+                    "sunrise_client::game::client_state::ClientState::new\tsunrise_client::game::client_side::ClientState::new\tclient",
+                    "sunrise_client::game::hud::Game::draw_hud\tsunrise_client::game::client_side::hud::Game::draw_hud\tclient",
+                ],
+            )
+            # --strict fails on refused, missing, or additional unmapped targets.
+            rc, _, err = run_cli(
+                "--renames", str(before), str(after), "--strict", "--root", str(root), "--out", str(out_tsv)
+            )
+            self.assertEqual(rc, 1)
+            self.assertIn("refused:", err)
+            self.assertIn("missing:", err)
+            self.assertIn("additional in after:", err)
 
 
 if __name__ == "__main__":

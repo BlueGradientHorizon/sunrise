@@ -1,24 +1,38 @@
-# One-sided `game` modules re-parented under `client_side` and `server_side`
+# Advisory: gameplay side modules (`client_side` and `server_side`)
 
-Gameplay modules under `sunrise_client::game` that touch only `ClientState` fields or only `ServerState` fields are now declared as children of `sunrise_client::game::client_side` or `sunrise_client::game::server_side` (files remain in place). `ClientState` and `ServerState` move from `game::client_state` and `game::server_state` to `game::client_side` and `game::server_side`, with fields whose users are all inside their own side restricted to that side module. The authoritative tables are `tools/game_module_sides.tsv` (module to side) and `tools/game_field_owners.tsv` (field owner and visibility); compute current module counts per side with:
+The stable `mod_api` surface and published loops (including `loop:block_entities.tick`, whose defining module `block_entity_ticks` remains at `sunrise_client::game::block_entity_ticks`) are unchanged. Native engine catalog changes are outside the stable API gate, but unresolved manifest declarations still fail `cargo sunrise-mod check` and `cargo sunrise-mod build`.
+
+For the full modding-book guide, see [`docs/modding/src/concepts/native-route/8-game-side-modules.md`](../../../docs/modding/src/concepts/native-route/8-game-side-modules.md) (`https://playsunrise.net/docs/modding/concepts/native-route/8-game-side-modules`).
+
+## Path rule and state-module exceptions
+
+- **One-sided modules (`tools/game_module_sides.tsv`):** any module whose `side` column is `client` or `server` gains that side segment in its canonical path while its source file stays in place:
+  - `sunrise_client::game::<module>::...` → `sunrise_client::game::client_side::<module>::...` (`client`)
+  - `sunrise_client::game::<module>::...` → `sunrise_client::game::server_side::<module>::...` (`server`)
+  - Modules with `side = game` keep `sunrise_client::game::<module>::...`.
+- **State-module exceptions:** the two state modules replace their segment and rename their source files:
+  - `sunrise_client::game::client_state::...` → `sunrise_client::game::client_side::...` (`crates/sunrise-client/src/game/client_state.rs` → `crates/sunrise-client/src/game/client_side.rs`)
+  - `sunrise_client::game::server_state::...` → `sunrise_client::game::server_side::...` (`crates/sunrise-client/src/game/server_state.rs` → `crates/sunrise-client/src/game/server_side.rs`)
+
+`game.rs` re-exports moved modules and aliases `client_state` / `server_state`, so `crate::game::<module>` paths in Rust helper code continue resolving. Manifest target strings and SDK catalogs read the declaring module and require the canonical path.
+
+## Affected manifest declarations
+
+- **`[[native.mixin]]` targets:** methods, free functions, and trait methods in moved modules or renamed state modules. The rename map emits normalized SDK keys; in manifests that spell lifetimes (`Game<'_>`) or trait-qualified targets (`<Type as Trait>::method`), apply the same `client_side` / `server_side` segment insertion or replacement before `<module>`.
+- **`[[native.bridge]]` targets:** field bridges targeting `ClientState` or `ServerState`, field bridges targeting types declared in any moved module (for example `sunrise_client::game::client_side::native_panel::Panel`), and `INVOKE` bridges naming methods in moved modules.
+- **`[[native.module]]` file paths:** ordinary moved modules keep their source file path; support modules targeting `crates/sunrise-client/src/game/client_state.rs` or `crates/sunrise-client/src/game/server_state.rs` must update `file` to `client_side.rs` or `server_side.rs`.
+- **Explicit `[[internals]]` entries:** declared engine items under moved modules or under `ClientState` / `ServerState` carry the canonical `client_side` / `server_side` path.
+
+## How to repin a native mod
+
+1. Pin the new game build with `cargo sunrise-mod pin <build>` (`pin` refreshes hashes for declarations that still resolve and leaves missing declarations in place).
+2. Update affected `[[native.mixin]]`, `[[native.bridge]]`, `[[native.module]]` (state files), and explicit `[[internals]]` declarations using the stable release's `moved-mixin-targets.tsv` asset or by generating the selectable rename map between two builds' `functions.json` indexes:
 
 ```sh
-awk -F'\t' 'NR > 1 { counts[$2]++ } END { for (side in counts) print side, counts[side] }' tools/game_module_sides.tsv
+python3 tools/game_module_sides.py --renames <before-functions.json> <after-functions.json> --out moved-mixin-targets.tsv
 ```
 
-The stable `mod_api` surface and published loops (including `loop:block_entities.tick`, whose defining module `block_entity_ticks` remains at `sunrise_client::game::block_entity_ticks`) are unchanged. All path changes are advisory in `internals.json` and `functions.json`.
+The default `--renames` command emits only rows whose destination is selectable in `<after-functions.json>` and exits `0` (printing refused, missing, and additional-target counts to stderr). Pass `--strict` to validate an exact transition and exit non-zero if any moved target is refused or missing or if `<after-functions.json>` adds unmapped targets.
 
-## What changes for native mods
-
-- **`[[native.mixin]]` replacement targets:** every replaceable function in a module whose `tools/game_module_sides.tsv` side is `client` or `server` now includes the side module in its target path:
-  - `sunrise_client::game::<module>::...` → `sunrise_client::game::client_side::<module>::...` (for `client` rows)
-  - `sunrise_client::game::<module>::...` → `sunrise_client::game::server_side::<module>::...` (for `server` rows)
-- **`[[native.bridge]]` targets on state structs:** bridges targeting `ClientState` or `ServerState` now target `sunrise_client::game::client_side::ClientState` or `sunrise_client::game::server_side::ServerState` instead of `client_state` / `server_state`.
-- **`[[internals]]` entries:** listed internals under moved modules and under `ClientState` / `ServerState` carry the updated `client_side` / `server_side` paths.
-- **Rust imports in helpers:** `game.rs` re-exports moved modules and aliases `client_state` / `server_state`, so `crate::game::<module>` paths in helper code keep resolving.
-
-## How to repin
-
-1. Update every `[[native.mixin]]` `target` in `sunrise-mod.toml` whose module moved according to `tools/game_module_sides.tsv` (to generate the exact old-to-new target map between two builds' `functions.json`, run `python3 tools/game_module_sides.py --renames <before-functions.json> <after-functions.json>`).
-2. Update any `[[native.bridge]]` `target` naming `sunrise_client::game::client_state::ClientState` or `sunrise_client::game::server_state::ServerState` to `client_side` or `server_side`.
-3. Update the mod's pinned Sunrise revision and refresh declared internals with `cargo sunrise-mod internals sync` followed by `cargo sunrise-mod check` (or `cargo sunrise-mod pin`).
+3. For mods using discovered internals, run `cargo sunrise-mod internals sync`.
+4. Run `cargo sunrise-mod check` and `cargo sunrise-mod build`. If a pinned mixin `fingerprint` fails with `E_FINGERPRINT`, inspect the target function on the new build and update the fingerprint to the reported `got` value once verified.

@@ -2912,6 +2912,9 @@ def selector_targets(
     docs_dir = root / "docs"
     if docs_dir.is_dir():
         for p in sorted(docs_dir.rglob("*.md")):
+            # Skip migration advisory docs that intentionally show pre-move paths alongside post-move paths.
+            if p.relative_to(root).as_posix() == "docs/modding/src/concepts/native-route/8-game-side-modules.md":
+                continue
             old = p.read_text(encoding="utf-8", errors="replace")
             if "game::" not in old:
                 continue
@@ -3283,8 +3286,10 @@ def run_renames(
     after_json: Path,
     table: dict[str, tuple[str, str, tuple[str, ...] | None]],
     out_path: Path | None,
+    *,
+    strict: bool = False,
 ) -> int:
-    """Compute old_target -> new_target TSV for every moved function in `functions.json`."""
+    """Emit selectable `old_target -> new_target` TSV rows from before/after `functions.json`."""
     before = json.loads(before_json.read_text(encoding="utf-8"))
     after = json.loads(after_json.read_text(encoding="utf-8"))
     mod_to_side = {m: s for m, (s, _, _) in table.items()}
@@ -3294,8 +3299,7 @@ def run_renames(
     after_refused = after.get("refused", {})
 
     rows: list[tuple[str, str, str]] = []
-    in_after_fns = 0
-    in_after_refused = 0
+    refused_moves: list[tuple[str, str]] = []
     missing_from_after: list[tuple[str, str]] = []
     matched_after: set[str] = set()
 
@@ -3314,12 +3318,11 @@ def run_renames(
             new = f"sunrise_client::game::{SIDE_MOD_NAME[side]}::{tail}"
         if new is None or side is None:
             continue
-        rows.append((old, new, side))
         if new in after_fns:
-            in_after_fns += 1
+            rows.append((old, new, side))
             matched_after.add(new)
         elif new in after_refused:
-            in_after_refused += 1
+            refused_moves.append((old, new))
         else:
             missing_from_after.append((old, new))
 
@@ -3336,16 +3339,17 @@ def run_renames(
     unchanged = len(set(before_fns) & set(after_fns))
     extra_added = sorted(set(after_fns) - set(before_fns) - matched_after)
     print(
-        f"Renames: {len(rows)} moved ({in_after_fns} in after functions.json, "
-        f"{in_after_refused} in after refused, {len(missing_from_after)} missing); "
-        f"{unchanged} unchanged, {len(extra_added)} unexpected added.",
+        f"Renames: {len(rows)} selectable moved ({len(refused_moves)} refused, {len(missing_from_after)} missing); "
+        f"{unchanged} unchanged, {len(extra_added)} additional in after.",
         file=sys.stderr,
     )
-    if missing_from_after or extra_added:
+    if strict and (refused_moves or missing_from_after or extra_added):
+        for old, new in refused_moves[:10]:
+            print(f"  refused: {old} -> {new}", file=sys.stderr)
         for old, new in missing_from_after[:10]:
             print(f"  missing: {old} -> {new}", file=sys.stderr)
         for added in extra_added[:10]:
-            print(f"  unexpected added: {added}", file=sys.stderr)
+            print(f"  additional in after: {added}", file=sys.stderr)
         return 1
     return 0
 
@@ -3374,6 +3378,11 @@ def main(argv: list[str] | None = None) -> int:
         help="HEAD is a PR merge commit; compare against its first parent when --against is given",
     )
     parser.add_argument("--out", type=Path, default=None, help="output path for --renames")
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="with --renames, exit non-zero if any moved target is refused/missing or after adds unmapped targets",
+    )
     parser.add_argument("--no-fmt", action="store_true", help="skip rustfmt on modified Rust files")
     args = parser.parse_args(argv)
 
@@ -3387,7 +3396,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     table = load_module_sides(table_path)
     if args.renames:
-        return run_renames(args.renames[0], args.renames[1], table, args.out)
+        return run_renames(args.renames[0], args.renames[1], table, args.out, strict=args.strict)
     field_specs = load_field_specs(fields_path)
     if args.fix:
         return run_fix(root, table, field_specs, fmt=not args.no_fmt)

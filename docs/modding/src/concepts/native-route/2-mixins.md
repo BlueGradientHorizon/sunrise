@@ -127,6 +127,8 @@ with a `#[path]`, and an area is not a module.
 So `src/game/world/autosave.rs` is `sunrise_client::game::autosave` (`world/` is an area). But
 `src/game/native_hooks/` is a module that `game.rs` declares with `mod native_hooks;`, so
 `src/game/native_hooks/base.rs` is `sunrise_client::game::native_hooks::base`.
+One-sided gameplay modules are declared under `client_side` or `server_side` instead of directly under `game`:
+see [Game side modules](8-game-side-modules.md) for the path rule and repin steps.
 
 Any function of the game crate can take a mixin. A function in a crate below it, such as `sunrise_world`, needs
 the marker `#[sunrise_mod_api_macros::replaceable]` in its source. Otherwise, target a replaceable caller or callee.
