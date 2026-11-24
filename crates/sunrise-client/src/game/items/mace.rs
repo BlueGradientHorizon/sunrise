@@ -338,6 +338,7 @@ impl Game<'_> {
         self.mobs[index].creative_attacker = self.creative;
         self.mobs[index].attacker_aim = aim;
         self.mobs[index].dealt_absorbed = 0;
+        let decision = crate::game::entity::causer_decision!(self, attack.attacker);
         let mut credit = plan.lend(&mut self.last_hurt_by_player);
         let hurt = {
             let mut breach = breach_modifier(
@@ -347,8 +348,10 @@ impl Game<'_> {
                 world_items!(self),
                 &world_stations!(self).enchantments,
             );
-            self.mobs[index].damage_with(
-                crate::game::entity::damage_level_of!(self, &attack, &mut credit, None),
+            let (victim, lend) =
+                crate::game::entity::victim_and_causer!(self, index, attack.attacker, decision);
+            victim.damage_with(
+                crate::game::entity::damage_level_of!(self, &attack, &mut credit, lend),
                 amount,
                 source,
                 Some(&mut breach),

@@ -1804,10 +1804,19 @@ pub trait LevelRandomHost: LevelHost {
 /// A sound is queued at the call, and its seed is drawn then from the level's sound-seed
 /// stream, never from the level's [draw stream](LevelRandomHost::lend_random). An entity's
 /// own stream (`Entity.getRandom`) advances in listener order, so the hit's continuation sees
-/// the draws. A hit lends its attacker where the game applies a melee hit (the attacking player or mob,
-/// for player → mob, mob → mob and mob → player) and no entity at any other damage site
-/// (environment, projectiles, explosions, potions and the like); any other entity, a stale
-/// handle and a call on a client answer `None` or `false`.
+/// the draws. A hit lends the entity its source names as its causing entity, where the game
+/// has it at hand: the attacking player or mob of a melee hit (player → mob, mob → mob and
+/// mob → player) or of Thorns, the shooter or owner of a projectile, a firework rocket, evoker
+/// fangs, a wither skull, a thrown trident or a wind charge, the igniter or owner of an
+/// explosion, and a pufferfish stinging a mob inside its own tick. A guest that is not in place
+/// is lent from its hub record, for its reads only (no random, no sound); the integrated owner
+/// displaced by another player's turn is not lent. Other damage lends none: damage with no
+/// causing entity (environment, fall, fire, drowning) and the sites that do not lend theirs (a
+/// thrown potion's or an effect cloud's owner, among others). When the victim caused its own
+/// hit (a player's own TNT hurting that player), the source names the victim and nothing else is
+/// lent: [`causing`](Self::causing) answers `None` and the listener reads the entity through
+/// [`victim`](Self::victim). Any other entity, a stale handle and a call on a client answer
+/// `None` or `false`.
 pub trait HitHost: LevelRandomHost {
     /// `Level.playSound(null, x, y, z, sound, source, volume, pitch)`: plays sound event
     /// `sound` at `at` for every player in this level within range (16 blocks, times the
@@ -1865,10 +1874,12 @@ pub trait HitHost: LevelRandomHost {
         unimplemented!("HitHost::victim")
     }
     /// The hit's causing entity (`DamageSource.getEntity`), at the same three hooks, when the
-    /// hit already lends that entity (the attacking player or mob it lends for the entity's own
-    /// random) and the source names it: None where the source names another entity or none
-    /// (a wither skull whose shooter was removed), for a removed entity, at a damage site that
-    /// lends no entity, for a non-living causer and for a causer in another level.
+    /// hit lends that entity (see [`HitHost`]: a melee attacker, a projectile's shooter, an
+    /// explosion's igniter, a parked guest's record...) and the source names it: None where the
+    /// source names another entity or none (a wither skull whose shooter was removed), where it
+    /// names the victim itself (read that through [`Self::victim`]), for a removed entity, at a
+    /// damage site that lends no entity, for a non-living causer and for a causer in another
+    /// level.
     fn causing(&self) -> Option<LivingView<'_>> {
         unimplemented!("HitHost::causing")
     }
