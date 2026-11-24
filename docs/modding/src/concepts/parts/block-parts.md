@@ -348,6 +348,14 @@ field to decide, and a block with no part keeps vanilla's answer.
 `is_scaffolding` is asked for players only; mobs never ask it. The player's id, the block its position is in and that
 block's state are passed.
 
+## Map colour
+
+`BlockPart::map_color` sets the map colour a block shows at a position, as NeoForge's `IBlockExtension.getMapColor`
+does. It is `collect`, server only, and read-only: set `color` to a `MapColor` id from 0 to 61, starting from the state's
+own colour. Map updates ask it for the dirt and stone noise under a ceiling, for every step of the scan down from the
+surface (0 keeps the scan going) and for the colour a scanned block, or its fluid's block, finally draws as. An answer
+above 61 is refused: the block keeps its own colour, and the refusal is logged once per block.
+
 ## Fluid faces beside a block
 
 Client `BlockPart` methods change how a fluid draws its faces against your block. They are `collect`: set the field to

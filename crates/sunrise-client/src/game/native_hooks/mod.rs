@@ -380,6 +380,7 @@ mod living_shield_block;
 mod living_use_totem;
 mod living_visibility;
 mod makes_piglins_neutral;
+mod map_color;
 mod map_decoration_types;
 mod math;
 mod menu_extra_data;
