@@ -142,7 +142,7 @@ fn a_lock_the_pinned_sdk_moved_is_refused_until_refreshed() {
     let stale = fs::read_to_string(root.join("Cargo.lock")).unwrap();
     let error = check_lock(&rust, root, "new").unwrap_err();
     assert!(error.contains("pinned SDK (Sunrise new)"), "{error}");
-    assert!(error.contains("cargo update --workspace"), "{error}");
+    assert!(error.contains("cargo sunrise-mod pin new"), "{error}");
     assert_eq!(fs::read_to_string(root.join("Cargo.lock")).unwrap(), stale);
 
     refresh_lock(&rust, root).unwrap();

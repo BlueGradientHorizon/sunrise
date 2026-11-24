@@ -52,8 +52,8 @@ first release is reviewed and merged.
 lacks it answers `"release" is not a cargo sunrise-mod command`.
 
 Commit your mod's source, its page, and `Cargo.lock` for a native mod. The lock must match the pinned SDK:
-`cargo sunrise-mod pin` keeps it so, and after moving `[native] sunrise` by hand, `cargo sunrise-mod check` then
-`cargo update --workspace` regenerate it. From the mod's folder on a clean branch
+`cargo sunrise-mod pin` keeps it so, and after moving `[native] sunrise` by hand, `cargo sunrise-mod pin <build>`
+with the build already pinned regenerates it. From the mod's folder on a clean branch
 that is up to date with its upstream:
 
 ```sh

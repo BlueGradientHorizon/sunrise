@@ -137,15 +137,22 @@ fn main() -> ExitCode {
             let requested = build.unwrap_or(sunrise_release_sign::NIGHTLY);
             let sunrise = resolve_build(requested)?;
             let project = Path::new(".");
+            // The lock names the SDK's local packages, so it moves with the pin: a release
+            // refuses a lock Cargo would change. A linked lock would be rewritten outside the
+            // project, so it is refused before the pin moves.
+            let lock = std::fs::symlink_metadata(project.join("Cargo.lock")).ok();
+            if lock.as_ref().is_some_and(|lock| lock.is_symlink()) {
+                return Err("Cargo.lock is a link; pin follows it with the project's own file".into());
+            }
             sdk_cmds::pin_report(entry, project, &sunrise)
                 .and_then(|()| repin(project, &sdk_fetch::fetch_build, requested, &sunrise))?;
-            // The lock names the SDK's local packages, so it moves with the pin: a release
-            // refuses a lock Cargo would change.
-            if project.join("Cargo.lock").is_file() {
-                sdk_fetch::fetch_pinned(project, &sunrise)?;
-                let rust = dev::native_sdk(&dev::cache_dir()?, &sunrise)?.rust;
-                dev::refresh_lock(&rust, project)
-                    .map_err(|e| format!("Cargo.lock could not follow the new pin: {e}"))?;
+            if lock.is_some() {
+                sdk_fetch::fetch_pinned(project, &sunrise)
+                    .and_then(|_| dev::native_sdk(&dev::cache_dir()?, &sunrise))
+                    .and_then(|sdk| dev::refresh_lock(&sdk.rust, project))
+                    .map_err(|e| {
+                        format!("Cargo.lock did not follow the new pin: {e}\nRun `cargo sunrise-mod pin {sunrise}` again once that is fixed.")
+                    })?;
                 println!("Updated Cargo.lock to the new SDK");
             }
             println!("Run `cargo sunrise-mod check`.");

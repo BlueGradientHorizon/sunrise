@@ -227,29 +227,26 @@ pub(crate) fn native_sdk(cache: &Path, build: &str) -> Result<NativeSdk, String>
 }
 
 /// Refuses a `Cargo.lock` that Cargo would change for the mod's manifests and the SDK of `build` in
-/// `.sunrise/sdk/`, as the registry's release scan does (`cargo fetch --locked`). The lock names
-/// the SDK's local packages and their dependencies, so a pin moved without it is stale; the
-/// native build reads only the lock's registry pins and would pass it.
+/// `.sunrise/sdk/`, with the registry's release scan's own command (`cargo fetch --locked`). The
+/// lock names the SDK's local packages and their dependencies, so a pin moved without it is stale;
+/// the native build reads only the lock's registry pins and would pass it.
 pub(crate) fn check_lock(rust: &Unpacked, project: &Path, build: &str) -> Result<(), String> {
     // The toolchain's commands run from outside the project: name it absolutely.
     let project =
         dunce::canonicalize(project).map_err(|e| format!("{}: {e}", project.display()))?;
-    let mut metadata = sunrise_native_build::cargo(rust, &project, "metadata");
-    metadata.args(["--locked", "--format-version", "1", "--color", "never"]);
-    let out = metadata
-        .output()
-        .map_err(|e| format!("cargo metadata: {e}"))?;
+    let mut fetch = sunrise_native_build::cargo(rust, &project, "fetch");
+    fetch.args(["--locked", "--color", "never"]);
+    let out = fetch.output().map_err(|e| format!("cargo fetch: {e}"))?;
     if out.status.success() {
         return Ok(());
     }
     let error = String::from_utf8_lossy(&out.stderr);
     if !error.contains("--locked was passed") {
-        return Err(format!("cargo metadata --locked failed: {}", error.trim()));
+        return Err(format!("cargo fetch --locked failed: {}", error.trim()));
     }
     Err(format!(
         "Cargo.lock does not match Cargo.toml and the pinned SDK (Sunrise {build}), and the registry refuses such a release. \
-         Regenerate it: `cargo sunrise-mod check` fetches the pinned SDK into .sunrise/sdk/, then `cargo update --workspace` \
-         brings the lock to it. Commit Cargo.lock and release again."
+         Regenerate it with `cargo sunrise-mod pin {build}`, which brings the lock to the pinned SDK, then commit Cargo.lock and release again."
     ))
 }
 
