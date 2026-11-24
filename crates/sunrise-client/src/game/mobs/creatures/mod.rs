@@ -5286,11 +5286,45 @@ impl Game<'_> {
                     section_from,
                     keep_flags[i],
                 );
-            // Its own Post, right after its tick, also when it ended in it. Its block effects and
-            // hits land after the family's ticks, as they do for every projectile.
+            // Its own Post, right after its tick and block effects, also when it ended in it.
             if let Some(back) = hand_back.as_deref_mut()
                 && let Some((id, kind)) = back.told.take()
             {
+                if ticked.contains(&id)
+                    && !swept.contains(&id)
+                    && let Some(pos) = projectiles.iter().position(|p| p.id == id)
+                {
+                    swept.insert(id);
+                    let mut destroyed = false;
+                    let mut swept_row = None;
+                    projectiles.update_with_rest(pos, |shot, before, after| {
+                        let sources = |src_id| {
+                            before
+                                .iter()
+                                .chain(after)
+                                .find(|p| p.id == src_id && crate::game::entity::shot_alive(p))
+                                .map(|p| {
+                                    (
+                                        crate::game::commands::Target::Projectile(src_id),
+                                        p.position.components(),
+                                    )
+                                })
+                        };
+                        self.sweep_projectile_inside(shot, Some(&sources));
+                        destroyed = shot.destroyed;
+                        swept_row = Some(shot.clone());
+                    });
+                    if let Some(row) = swept_row {
+                        for h in &mut hits {
+                            if h.projectile.join == row.join {
+                                h.projectile.clone_from(&row);
+                            }
+                        }
+                    }
+                    if destroyed {
+                        keep_flags[pos] = false;
+                    }
+                }
                 let same;
                 (projectiles, same) = self.projectiles_told(projectiles, |game| {
                     game.native_tick_post_one(&round, id, kind);
@@ -5302,6 +5336,111 @@ impl Game<'_> {
         }
         self.creatures.pickable_projectile_targets = winds;
         self.creatures.arrow_hit_scratch = scratch;
+        // Do not retire an impact owner just because vanilla would consume it. Its live
+        // row is what the event resolves and what transaction commit will remove.
+        for impact in &mut impacts {
+            if let Some(i) = impact.index {
+                impact.keep = keep_flags[i];
+                if !projectiles[i].destroyed {
+                    keep_flags[i] = true;
+                }
+            }
+        }
+        let mut flags = keep_flags.into_iter();
+        projectiles.retain(|_| flags.next().unwrap());
+        // `Projectile.tick` applies `Entity.applyEffectsFromBlocks` before `hitTargetOrDeflectSelf`:
+        // sweep all remaining ticked projectiles and non-arrow hits before dispatching
+        // `projectile_impact` or emitting impact-dependent side effects.
+        for i in 0..projectiles.len() {
+            let id = projectiles[i].id;
+            if !ticked.contains(&id)
+                || swept.contains(&id)
+                || hear && self.projectile_removal_pending(id)
+            {
+                continue;
+            }
+            swept.insert(id);
+            projectiles.update_with_rest(i, |shot, before, after| {
+                let sources = |src_id| {
+                    before
+                        .iter()
+                        .chain(after)
+                        .find(|p| p.id == src_id && crate::game::entity::shot_alive(p))
+                        .map(|p| {
+                            (
+                                crate::game::commands::Target::Projectile(src_id),
+                                p.position.components(),
+                            )
+                        })
+                };
+                self.sweep_projectile_inside(shot, Some(&sources));
+            });
+        }
+        for h in &mut hits {
+            let shot = &mut h.projectile;
+            if hear && self.projectile_removal_pending(shot.id) {
+                continue;
+            }
+            if swept.contains(&shot.id) {
+                if let Some(row) = projectiles.iter().find(|p| p.join == shot.join) {
+                    shot.clone_from(row);
+                }
+                continue;
+            }
+            if shot.arrow.is_some() {
+                continue;
+            }
+            let sources = |src_id| {
+                projectiles
+                    .iter()
+                    .find(|p| p.id == src_id && crate::game::entity::shot_alive(p))
+                    .map(|p| {
+                        (
+                            crate::game::commands::Target::Projectile(src_id),
+                            p.position.components(),
+                        )
+                    })
+            };
+            self.sweep_projectile_inside(shot, Some(&sources));
+        }
+        // A block effect destroyed it (a shulker bullet in lava or fire): settle its
+        // destruction before dispatching `projectile_impact` or impact side effects.
+        let mut destroyed_ids = sunrise_client::fast_hash::FxHashSet::default();
+        for p in projectiles.iter() {
+            if p.destroyed {
+                destroyed_ids.insert(p.id);
+            }
+        }
+        for h in &hits {
+            if h.projectile.destroyed {
+                destroyed_ids.insert(h.projectile.id);
+            }
+        }
+        if !destroyed_ids.is_empty() {
+            let mut hit_remap: Vec<Option<usize>> = Vec::with_capacity(hits.len());
+            let mut next_slot = 0usize;
+            hits.retain(|h| {
+                if h.projectile.destroyed || destroyed_ids.contains(&h.projectile.id) {
+                    hit_remap.push(None);
+                    false
+                } else {
+                    hit_remap.push(Some(next_slot));
+                    next_slot += 1;
+                    true
+                }
+            });
+            impacts.retain_mut(|impact| {
+                if destroyed_ids.contains(&impact.before.id) {
+                    return false;
+                }
+                let Some(slot) = hit_remap.get(impact.hit_slot).copied().flatten() else {
+                    return false;
+                };
+                impact.hit_slot = slot;
+                true
+            });
+            projectiles.retain(|p| !p.destroyed && !destroyed_ids.contains(&p.id));
+        }
         // Track followers so bounced/deflected projectiles reinsert in tick order.
         self.creatures.bounced_followers.clear();
         for ProjectileHit {
@@ -5312,22 +5451,16 @@ impl Game<'_> {
                 && let Some(i) = projectiles.iter().position(|q| q.id == p.id)
             {
                 let followers = (i + 1..projectiles.len())
-                    .filter(|&j| keep_flags[j])
+                    .filter(|&j| {
+                        impacts
+                            .iter()
+                            .all(|imp| imp.before.join != projectiles[j].join || imp.keep)
+                    })
                     .map(|j| projectiles[j].id)
                     .collect();
                 self.creatures.bounced_followers.push((p.id, followers));
             }
         }
-        // Do not retire an impact owner just because vanilla would consume it. Its live
-        // row is what the event resolves and what transaction commit will remove.
-        for impact in &mut impacts {
-            if let Some(i) = impact.index {
-                impact.keep = keep_flags[i];
-                keep_flags[i] = true;
-            }
-        }
-        let mut flags = keep_flags.into_iter();
-        projectiles.retain(|_| flags.next().unwrap());
         let hears_impact = !impacts.is_empty();
         let scope = self.storage_scope_guard(hears_impact);
         let game = &mut *scope.game;
@@ -5343,7 +5476,9 @@ impl Game<'_> {
             FxHashMap::default()
         };
         for (id, block, position, movement) in snow_contacts {
-            if !hears_impact || !game.projectile_removal_pending(id) {
+            if !destroyed_ids.contains(&id)
+                && (!hears_impact || !game.projectile_removal_pending(id))
+            {
                 game.powder_snow_particle(block, position, movement);
             }
         }
@@ -5358,72 +5493,14 @@ impl Game<'_> {
             game.bubble_column_particles(pos);
         }
         for (id, at, event) in arrow_events {
-            if !hears_impact
-                || !projectile_impact_event(&event)
-                || !game.projectile_removal_pending(id)
+            if !destroyed_ids.contains(&id)
+                && (!hears_impact
+                    || !projectile_impact_event(&event)
+                    || !game.projectile_removal_pending(id))
             {
                 game.arrow_event(at, event);
             }
         }
-        // `Entity.applyEffectsFromBlocks` sweeps the projectiles this tick ticked:
-        // settlement can remove rows or append hook spawns. Contacts need the lent
-        // level here, after the read-only borrow, each still in this batch's tick.
-        for i in 0..projectiles.len() {
-            let id = projectiles[i].id;
-            if !ticked.contains(&id)
-                || swept.contains(&id)
-                || hears_impact && game.projectile_removal_pending(id)
-            {
-                continue;
-            }
-            swept.insert(id);
-            projectiles.update_with_rest(i, |shot, before, after| {
-                let sources = |id| {
-                    before
-                        .iter()
-                        .chain(after)
-                        .find(|p| p.id == id && crate::game::entity::shot_alive(p))
-                        .map(|p| {
-                            (
-                                crate::game::commands::Target::Projectile(id),
-                                p.position.components(),
-                            )
-                        })
-                };
-                game.sweep_projectile_inside(shot, Some(&sources));
-            });
-        }
-        // `Projectile.tick` applies the blocks' effects before its hit: a hit
-        // carries its swept row, or, once that row retired, its own sweep. An
-        // arrow's effects are its own collector's.
-        for h in &mut hits {
-            let shot = &mut h.projectile;
-            if shot.arrow.is_some() || hears_impact && game.projectile_removal_pending(shot.id) {
-                continue;
-            }
-            if swept.contains(&shot.id) {
-                if let Some(row) = projectiles.iter().find(|p| p.join == shot.join) {
-                    shot.clone_from(row);
-                }
-                continue;
-            }
-            let sources = |id| {
-                projectiles
-                    .iter()
-                    .find(|p| p.id == id && crate::game::entity::shot_alive(p))
-                    .map(|p| {
-                        (
-                            crate::game::commands::Target::Projectile(id),
-                            p.position.components(),
-                        )
-                    })
-            };
-            game.sweep_projectile_inside(shot, Some(&sources));
-        }
-        // A block effect destroyed it (a shulker bullet in lava or fire): it
-        // leaves with no hit.
-        hits.retain(|h| !h.projectile.destroyed);
-        projectiles.retain(|p| !p.destroyed);
         game.creatures.projectiles.restore(
             projectiles,
             sunrise_client::join_seq::RestoreOrder::SpawnsFirst,
