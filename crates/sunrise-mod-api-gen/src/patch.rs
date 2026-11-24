@@ -177,8 +177,8 @@ pub(crate) struct Source {
 /// function of the game.
 #[derive(Default)]
 struct Cache {
-    /// The traits the game's crates declare.
-    traits: Option<BTreeSet<String>>,
+    /// Workspace-wide trait resolver for cross-crate trait declarations.
+    traits: Option<crate::replace::WorkspaceTraits>,
     /// The macro names the modules on each path define.
     on_path: BTreeMap<String, BTreeSet<String>>,
     scopes: reexports::Scopes,
@@ -318,22 +318,52 @@ impl Source {
     /// trait method has in the prebuilt game was decided on the same set.
     fn owner_types(&mut self, krate: &str) -> Result<&crate::replace::OwnerTypes, String> {
         if !self.owners.contains_key(krate) {
-            let files = if krate == "sunrise_client" {
-                crate::source::game_files(&self.root.join("crates/sunrise-client/src"), true)?
-            } else {
-                crate::source::crate_files(&self.root, krate)?
-            };
             let mut types = crate::replace::OwnerTypes::default();
-            for file in files {
-                let text = std::fs::read_to_string(&file.path)
-                    .map_err(|e| format!("{}: {e}", file.path.display()))?;
-                let parsed =
-                    syn::parse_file(&text).map_err(|e| format!("{}: {e}", file.path.display()))?;
-                types.declare(&file.module, &parsed.items);
+            if krate == "sunrise_client" {
+                let src = self.root.join("crates/sunrise-client/src");
+                let lib_path = src.join("lib.rs");
+                if lib_path.is_file() {
+                    let text = std::fs::read_to_string(&lib_path)
+                        .map_err(|e| format!("{}: {e}", lib_path.display()))?;
+                    let parsed = syn::parse_file(&text)
+                        .map_err(|e| format!("{}: {e}", lib_path.display()))?;
+                    types.declare("sunrise_client", &parsed.items);
+                }
+                for file in crate::source::game_files(&src, true)? {
+                    let text = std::fs::read_to_string(&file.path)
+                        .map_err(|e| format!("{}: {e}", file.path.display()))?;
+                    let parsed = syn::parse_file(&text)
+                        .map_err(|e| format!("{}: {e}", file.path.display()))?;
+                    types.declare(&file.module, &parsed.items);
+                }
+            } else {
+                for file in crate::source::crate_files(&self.root, krate)? {
+                    let text = std::fs::read_to_string(&file.path)
+                        .map_err(|e| format!("{}: {e}", file.path.display()))?;
+                    let parsed = syn::parse_file(&text)
+                        .map_err(|e| format!("{}: {e}", file.path.display()))?;
+                    types.declare(&file.module, &parsed.items);
+                }
             }
             self.owners.insert(krate.to_owned(), types);
         }
         Ok(&self.owners[krate])
+    }
+
+    pub(crate) fn into_resolve_context(
+        mut self,
+    ) -> Result<
+        (
+            BTreeMap<String, crate::replace::OwnerTypes>,
+            crate::replace::WorkspaceTraits,
+        ),
+        String,
+    > {
+        let workspace = match self.cache.traits.take() {
+            Some(workspace) => workspace,
+            None => crate::replace::WorkspaceTraits::load(&self.root)?,
+        };
+        Ok((self.owners, workspace))
     }
 
     /// Module `path`'s items with the gates on each included fragment. When reading an SDK, only
@@ -715,13 +745,22 @@ pub(crate) fn find(source: &mut Source, target: &str) -> Result<Found, (&'static
     }
 }
 
-/// Whether `function` can be copied and installed through its function's replacement slot: the
-/// verdict the function index records for it.
+#[cfg(test)]
 pub(crate) fn replaceable(
     found: &Found,
     source: &mut Source,
     loop_generic: bool,
 ) -> Result<(), String> {
+    replaceable_with_binding(found, source, loop_generic).map(|_| ())
+}
+
+/// Whether `function` can be copied and installed through its function's replacement slot,
+/// returning resolved owner/trait evidence for trait-impl methods.
+pub(crate) fn replaceable_with_binding(
+    found: &Found,
+    source: &mut Source,
+    loop_generic: bool,
+) -> Result<Option<crate::replace::TraitSlotEvidence>, String> {
     // A crate-local macro defined in a module on the function's path moves with the copy (the
     // mirror repeats it); one defined elsewhere would not resolve.
     if !source.cache.on_path.contains_key(&found.module) {
@@ -760,6 +799,7 @@ pub(crate) fn replaceable(
     {
         return Err("it is generic over types or takes `impl Trait`: one copy can't stand for every instance".into());
     }
+    let mut trait_binding = None;
     if let Some(block) = &found.owner
         && block.trait_.is_some()
     {
@@ -776,7 +816,6 @@ pub(crate) fn replaceable(
         if associated.0 {
             return Err("its signature names a trait-associated constant through Self".into());
         }
-        let foreign = crate::replace::foreign_imports(&source.module(&found.module)?.items);
         let krate = found
             .module
             .split("::")
@@ -784,19 +823,17 @@ pub(crate) fn replaceable(
             .unwrap_or_default()
             .to_owned();
         if source.cache.traits.is_none() {
-            source.cache.traits = Some(crate::replace::declared_traits(&source.root)?);
+            source.cache.traits = Some(crate::replace::WorkspaceTraits::load(&source.root)?);
         }
         source.owner_types(&krate)?;
-        let traits = source.cache.traits.as_ref().expect("read above");
-        if let Some(why) = crate::replace::trait_refusal(
+        let workspace = source.cache.traits.as_ref().expect("read above");
+        trait_binding = Some(crate::replace::resolve_trait_binding(
             &found.module,
             block,
-            traits,
+            &sig.ident,
             &source.owners[&krate],
-            &foreign,
-        ) {
-            return Err(why);
-        }
+            workspace,
+        )?);
     }
     if let Some(block) = &found.owner
         && block.attrs.iter().any(|attr| attr.path().is_ident("cfg"))
@@ -811,7 +848,8 @@ pub(crate) fn replaceable(
     if let Some(why) = check.refusal {
         return Err(why);
     }
-    reexports::check_paths(source, found)
+    reexports::check_paths(source, found)?;
+    Ok(trait_binding)
 }
 
 /// An item's own definition, before filtering for re-export.

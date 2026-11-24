@@ -5,7 +5,7 @@
 //! source and a parse of every crate below it), so a mixin build reads only the files of the
 //! modules its targets are in. Before a function is copied, its text is checked against the
 //! index's hash: a source that is not the build's is refused by name, never walked.
-use crate::patch::{Found, Source, TargetPath, plain, replaceable, target_path};
+use crate::patch::{Found, Source, TargetPath, plain, replaceable_with_binding, target_path};
 use mod_surface::build_data::FunctionDigests;
 use quote::{ToTokens, quote};
 use serde::{Deserialize, Serialize};
@@ -27,6 +27,9 @@ pub struct FunctionIndex {
     pub functions: BTreeMap<String, Function>,
     /// The functions it can't, by [`key`], with the refusal a row naming one gets.
     pub refused: BTreeMap<String, Refused>,
+    /// Per-slot owner, trait, and installer evidence for every staged trait-method slot.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub trait_slots: BTreeMap<String, crate::replace::TraitSlotEvidence>,
 }
 
 /// One crate's modules, as a copy's mirror reads them. Every crate of the source is listed, so a
@@ -70,6 +73,9 @@ pub struct Function {
     /// The declaration and body fingerprints. Earlier build indexes have only the span hash.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub digests: Option<FunctionDigests>,
+    /// Resolved owner, trait, and installer module when this function is a trait-impl method.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trait_binding: Option<crate::replace::TraitSlotEvidence>,
 }
 
 /// Why a function can't take a replacement.
@@ -316,12 +322,41 @@ pub fn index(root: &Path, generic: &BTreeSet<String>) -> Result<FunctionIndex, S
     index_of(root, generic, None)
 }
 
+pub(crate) fn index_with_context(
+    root: &Path,
+    generic: &BTreeSet<String>,
+) -> Result<
+    (
+        FunctionIndex,
+        BTreeMap<String, crate::replace::OwnerTypes>,
+        crate::replace::WorkspaceTraits,
+    ),
+    String,
+> {
+    index_of_with_context(root, generic, None)
+}
+
 /// [`index`], listing only the functions whose keys are in `only`, when given.
 pub(crate) fn index_of(
     root: &Path,
     generic: &BTreeSet<String>,
     only: Option<&BTreeSet<String>>,
 ) -> Result<FunctionIndex, String> {
+    index_of_with_context(root, generic, only).map(|(index, _, _)| index)
+}
+
+fn index_of_with_context(
+    root: &Path,
+    generic: &BTreeSet<String>,
+    only: Option<&BTreeSet<String>>,
+) -> Result<
+    (
+        FunctionIndex,
+        BTreeMap<String, crate::replace::OwnerTypes>,
+        crate::replace::WorkspaceTraits,
+    ),
+    String,
+> {
     let mut source = Source::new(root)?;
     // Below the game crate, only the functions marked `#[replaceable]` take a replacement.
     let marked: BTreeSet<String> = crate::replace::marked(root)?
@@ -455,9 +490,10 @@ pub(crate) fn index_of(
             );
             continue;
         }
-        let candidate = found.pop().expect("one");
-        match replaceable(&candidate.found, &mut source, generic.contains(&key)) {
-            Ok(()) => {
+        let mut candidate = found.pop().expect("one");
+        match replaceable_with_binding(&candidate.found, &mut source, generic.contains(&key)) {
+            Ok(trait_binding) => {
+                candidate.function.trait_binding = trait_binding;
                 index.functions.insert(key, candidate.function);
             }
             Err(why) => {
@@ -471,7 +507,8 @@ pub(crate) fn index_of(
             }
         }
     }
-    Ok(index)
+    let (owners, workspace) = source.into_resolve_context()?;
+    Ok((index, owners, workspace))
 }
 
 /// A function found in a file, before its verdict.
@@ -519,6 +556,7 @@ impl File<'_> {
                 declaration: sha256(declaration.to_string().as_bytes()),
                 body: sha256(block.to_token_stream().to_string().as_bytes()),
             }),
+            trait_binding: None,
         };
         Candidate { found, function }
     }

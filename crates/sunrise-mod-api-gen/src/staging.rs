@@ -64,7 +64,8 @@ pub fn stage(
         .iter()
         .map(|l| crate::functions::key(&l.generic_target()))
         .collect();
-    let mut functions = crate::functions::index(root, &generic)?;
+    let (mut functions, pristine_owners, workspace_traits) =
+        crate::functions::index_with_context(root, &generic)?;
     eprintln!(
         "stage_phase=functions seconds={:.3}",
         started.elapsed().as_secs_f64()
@@ -99,12 +100,24 @@ pub fn stage(
         started.elapsed().as_secs_f64()
     );
     let started = Instant::now();
-    let replace = replace::stage(root)?;
+    let replace =
+        replace::stage_with_context(root, Some(pristine_owners), Some(&workspace_traits))?;
     eprintln!(
         "stage_phase=replace seconds={:.3}",
         started.elapsed().as_secs_f64()
     );
     functions.retain_slotted(&replace.slots, &generic);
+    for (key, function) in &functions.functions {
+        if let Some(expected) = &function.trait_binding
+            && let Some(actual) = replace.trait_slots.get(key)
+            && expected != actual
+        {
+            return Err(format!(
+                "trait slot evidence mismatch for {key}: index={expected:?}, staged={actual:?}"
+            ));
+        }
+    }
+    functions.trait_slots = replace.trait_slots.clone();
     let refused_by_reason = functions.refusal_counts();
     eprintln!(
         "function index: installers={}, selectable={}, refused={}",
@@ -474,11 +487,28 @@ fn main() {{
         let text = std::fs::read_to_string(root.join(crate::functions::FILE)).unwrap();
         let (_, index): (Build, crate::functions::FunctionIndex) =
             mod_surface::build_data::read(crate::functions::FILE, &text).unwrap();
-        assert!(
-            index.functions.contains_key(key),
+        let expected_binding = replace::TraitSlotEvidence {
+            owner: replace::ResolvedItem {
+                module: "sunrise_client::game::boats".into(),
+                item: "Boat".into(),
+            },
+            trait_decl: replace::ResolvedItem {
+                module: "sunrise_client::game::server_side::entity".into(),
+                item: "Entity".into(),
+            },
+            installer_module: "sunrise_client::game::server_side::entity".into(),
+            installer: "__fnr_as_Entity_bounds".into(),
+        };
+        assert_eq!(
+            index
+                .functions
+                .get(key)
+                .and_then(|f| f.trait_binding.as_ref()),
+            Some(&expected_binding),
             "{:?}",
-            index.functions.keys()
+            index.functions.get(key)
         );
+        assert_eq!(index.trait_slots.get(key), Some(&expected_binding));
         assert_eq!(
             index
                 .refusal_counts()

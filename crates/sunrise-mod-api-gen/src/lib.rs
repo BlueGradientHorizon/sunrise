@@ -575,6 +575,9 @@ pub mod loops;
 pub mod notes;
 pub mod patch;
 pub mod replace;
+mod replace_resolve;
+#[cfg(test)]
+mod replace_resolve_tests;
 pub(crate) mod source;
 pub mod staging;
 pub mod surface;
