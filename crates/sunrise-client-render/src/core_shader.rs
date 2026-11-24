@@ -189,7 +189,13 @@ pub(crate) fn validated(
             .expect("the module validates");
         (module, info)
     };
-    Translated::new(validate(vertex), validate(fragment), other)
+    let other_base = BLOCKS
+        .iter()
+        .map(|&(_, b)| b + 1)
+        .chain(SAMPLERS.iter().map(|&(_, b)| b + 2))
+        .max()
+        .unwrap_or(0);
+    Translated::new(validate(vertex), validate(fragment), other, other_base)
 }
 
 #[cfg(test)]
