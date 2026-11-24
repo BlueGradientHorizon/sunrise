@@ -1,11 +1,11 @@
 //! Regression tests for #5370: mod `RenderLevelStage` world draws (`WorldPrimitives`)
 //! inside an active shader pack (`AfterOpaqueBlocks` against `colortex0` + `depthtex0`
-//! before `final`) and after it (`AfterLevel` against the exported reversed-Z `world_depth`
-//! after `final`).
+//! before `final`) and post-pack consumers depth-testing against the exported reversed-Z
+//! `world_depth` after `final`.
 use super::depth_test::{Gpu, SIZE, VERTEX, fixture_frame};
 use super::*;
 use crate::gfx::Vertex;
-use crate::gfx::world_primitives::{self, Batch, WorldPrimitives};
+use crate::gfx::world_primitives::{self, Batch, DrawRanges, WorldPrimitives};
 use crate::hud::HudBatch;
 use glam::Mat4;
 use wgpu::{TextureFormat as T, util::DeviceExt};
@@ -34,10 +34,12 @@ fn ndc_quad([x0, y0, x1, y1]: [f32; 4], reverse_z: f32, rgb: [u8; 3]) -> [Vertex
 }
 
 /// Runs a shader pack whose `gbuffers_terrain` paints the left half (`x in [-1, 0]`) green at
-/// GL depth `0.5` and whose `final` swaps R and B of `colortex0`, with `quads` placed at
-/// `stage` (`0..=4`), and returns the screen pixels `[r, g, b]` at top-left `(2, 2)`,
-/// bottom-left `(2, 12)`, and bottom-right `(12, 12)`.
-fn render_stage_quads(stage: usize, quads: &[Vertex]) -> Option<[[u8; 3]; 3]> {
+/// GL depth `0.5` and whose `final` swaps R and B of `colortex0`. When `inside_pack` is true,
+/// `quads` draw at `WorldBoundary::AfterOpaqueBlocks` against `colortex0` + `depthtex0`; when
+/// false, `quads` draw onto `screen` against the exported reversed-Z `world_depth` after `final`.
+/// Returns the screen pixels `[r, g, b]` at top-left `(2, 2)`, bottom-left `(2, 12)`, and
+/// bottom-right `(12, 12)`.
+fn render_stage_quads(inside_pack: bool, quads: &[Vertex]) -> Option<[[u8; 3]; 3]> {
     let Some(gpu) = Gpu::new() else {
         eprintln!("MOD_STAGE_NO_ADAPTER");
         return None;
@@ -153,11 +155,14 @@ fn render_stage_quads(stage: usize, quads: &[Vertex]) -> Option<[[u8; 3]; 3]> {
     );
     let atlas_view = atlas.create_view(&Default::default());
     let mut primitives = WorldPrimitives::new(&gpu.device, (T::Rgba8Unorm, false));
-    if let Some(format) = post.stage_color_format() {
-        primitives.ensure_pack_pipelines(&gpu.device, format);
-    }
+    primitives.prepare_pack_pass(&gpu.device, post.formats[0], post.rgb & 1 != 0, false);
 
     let quad_count = (quads.len() / 4) as u32;
+    let stage = if inside_pack {
+        world_primitives::STAGE_AFTER_OPAQUE_BLOCKS
+    } else {
+        world_primitives::STAGE_CUSTOM_GEOMETRY
+    };
     let mut stage_ends = [[0u32; 4]; world_primitives::STAGES - 1];
     for end in stage_ends.iter_mut().skip(stage) {
         end[0] = quad_count;
@@ -176,6 +181,9 @@ fn render_stage_quads(stage: usize, quads: &[Vertex]) -> Option<[[u8; 3]; 3]> {
         &atlas_view,
     ));
 
+    let draws = [DrawRanges {
+        primitives: [0..quad_count, 0..0, 0..0, 0..0],
+    }];
     let screen = gpu.texture(T::Rgba8Unorm);
     let stride = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
     let read = gpu.device.create_buffer(&wgpu::BufferDescriptor {
@@ -187,15 +195,8 @@ fn render_stage_quads(stage: usize, quads: &[Vertex]) -> Option<[[u8; 3]; 3]> {
     let hud = HudBatch::scratch(SIZE);
     let frame = fixture_frame(&hud);
     let mut encoder = gpu.device.create_command_encoder(&Default::default());
-    let mut next_stage = 0usize;
-    let mut draw_stages = |rp: &mut wgpu::RenderPass<'_>, s: usize| {
-        if s >= world_primitives::STAGES - 1 {
-            primitives.draw_through(rp, &mut next_stage, s);
-        } else {
-            primitives.draw_through_pack(rp, &mut next_stage, s);
-        }
-    };
-    post.run_with_stages(
+    let mut boundary_called = false;
+    post.run(
         &gpu.device,
         &gpu.queue,
         &mut encoder,
@@ -213,11 +214,46 @@ fn render_stage_quads(stage: usize, quads: &[Vertex]) -> Option<[[u8; 3]; 3]> {
                 rp.draw(0..6, 0..1);
             }
         },
-        Some(&mut draw_stages),
+        WorldBoundaries {
+            opaque_blocks: inside_pack,
+            ..Default::default()
+        },
+        |enc, boundary| {
+            if let WorldBoundary::AfterOpaqueBlocks { color, depth } = boundary {
+                boundary_called = true;
+                return primitives.draw_pack_prepared(enc, color, depth, &draws);
+            }
+            false
+        },
         &std::sync::atomic::AtomicBool::new(false),
         super::super::in_flight::poll_live,
     )
     .unwrap();
+    assert_eq!(boundary_called, inside_pack);
+    if !inside_pack {
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("Post-pack exported depth draw"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &screen,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: &depth,
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: wgpu::StoreOp::Store,
+                }),
+                stencil_ops: None,
+            }),
+            ..Default::default()
+        });
+        assert!(primitives.draw_prepared(&mut pass, None, &draws));
+    }
     encoder.copy_texture_to_buffer(
         screen.texture().as_image_copy(),
         wgpu::TexelCopyBufferInfo {
@@ -259,7 +295,7 @@ fn after_opaque_blocks_depth_tests_against_pack_terrain_and_runs_before_final() 
     let mut quads = Vec::new();
     quads.extend_from_slice(&ndc_quad([-1.0, -1.0, 1.0, 1.0], 0.25, RED));
     quads.extend_from_slice(&ndc_quad([-1.0, 0.0, 1.0, 1.0], 0.75, RED));
-    let Some([top_left, bottom_left, bottom_right]) = render_stage_quads(1, &quads) else {
+    let Some([top_left, bottom_left, bottom_right]) = render_stage_quads(true, &quads) else {
         return;
     };
     assert_eq!(
@@ -280,24 +316,24 @@ fn after_opaque_blocks_depth_tests_against_pack_terrain_and_runs_before_final() 
 #[ignore = "daily"]
 fn after_level_depth_tests_against_exported_pack_depth_and_runs_after_final() {
     let _gpu = crate::gfx::test_gpu::lock();
-    // Same geometry at AfterLevel (stage 4): runs after `final` (red stays unswapped) against
-    // reversed-Z `world_depth` exported from `depthtex0` by `fs_export_depth`.
+    // Same geometry drawn after `final` (red stays unswapped) against reversed-Z `world_depth`
+    // exported from `depthtex0` by `fs_export_depth`.
     let mut quads = Vec::new();
     quads.extend_from_slice(&ndc_quad([-1.0, -1.0, 1.0, 1.0], 0.25, RED));
     quads.extend_from_slice(&ndc_quad([-1.0, 0.0, 1.0, 1.0], 0.75, RED));
-    let Some([top_left, bottom_left, bottom_right]) = render_stage_quads(4, &quads) else {
+    let Some([top_left, bottom_left, bottom_right]) = render_stage_quads(false, &quads) else {
         return;
     };
     assert_eq!(
         top_left, RED,
-        "nearer AfterLevel quad must draw in front of exported pack depth without final's swap"
+        "nearer post-pack quad must draw in front of exported pack depth without final's swap"
     );
     assert_eq!(
         bottom_left, GREEN,
-        "farther AfterLevel quad must be occluded by exported pack depth"
+        "farther post-pack quad must be occluded by exported pack depth"
     );
     assert_eq!(
         bottom_right, RED,
-        "farther AfterLevel quad must appear where pack terrain is absent without final's swap"
+        "farther post-pack quad must appear where pack terrain is absent without final's swap"
     );
 }

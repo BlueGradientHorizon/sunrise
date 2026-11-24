@@ -6,7 +6,7 @@
 //! never while quads are being submitted, so a required pipeline the GPU refuses fails that
 //! load's renderer and the reload with it.
 
-use super::world_primitives::Upload;
+use super::world_primitives::{Upload, VertexPages};
 use crate::mod_pipelines::{Built, BuiltTexture, Pipelines};
 use glam::Mat4;
 use mod_api::{PipelineBlend, WorldDepth};
@@ -27,7 +27,7 @@ pub struct PipelineVertex {
 pub struct PipelineRun {
     /// The pipeline's slot in the frame's [`Pipelines`].
     pub slot: u32,
-    /// The stage it draws at (`RenderLevelStage::ALL`'s index).
+    /// The stage it draws at (`STAGE_AFTER_OPAQUE_BLOCKS..=STAGE_CUSTOM_GEOMETRY`).
     pub stage: u32,
     pub quads: u32,
 }
@@ -68,9 +68,21 @@ pub struct TextureSources<'a> {
     pub sprite: &'a dyn Fn(&str) -> Option<[f32; 4]>,
 }
 
+/// Clip-space transform from Sunrise's world target (screen rows, reversed-Z `[1..0]`) to a
+/// shader pack's `colortex0` + `depthtex0` (GL rows, GL `[0..1]` depth): maps `(x, y, z, w)`
+/// to `(x, -y, w - z, w)` so `ndc_y' = -ndc_y` and `ndc_z' = 1 - ndc_z`.
+fn pack_clip_matrix(view_proj: Mat4) -> Mat4 {
+    let adapt = Mat4::from_cols_array(&[
+        1.0, 0.0, 0.0, 0.0, //
+        0.0, -1.0, 0.0, 0.0, //
+        0.0, 0.0, -1.0, 0.0, //
+        0.0, 0.0, 1.0, 1.0,
+    ]);
+    adapt * view_proj
+}
+
 /// A built pipeline, with its texture's bind group (group 1) when it is textured, plus the
-/// shader module and fixed state kept so a shader-pack `colortex0` variant can be compiled
-/// lazily when a pack is active.
+/// shader module and fixed state needed to lazily compile a shader-pack target variant.
 struct Compiled {
     pipeline: wgpu::RenderPipeline,
     texture: Option<wgpu::BindGroup>,
@@ -93,13 +105,16 @@ pub struct ModPipelines {
     view: wgpu::Buffer,
     pack_view: wgpu::Buffer,
     frame: wgpu::Buffer,
-    vertices: wgpu::Buffer,
+    vertices: VertexPages,
     /// The load `pipelines` was built from; 0 before any.
     generation: u64,
     /// By slot; `None` for a pipeline the load refused.
     pipelines: Vec<Option<Compiled>>,
-    /// Lazily compiled pack-target variants (`colortex0` format + GL `[0..1]` `LessEqual` depth).
-    pack_pipelines: Option<(wgpu::TextureFormat, Vec<Option<wgpu::RenderPipeline>>)>,
+    /// Lazily built for a shader pack's `(colortex0 format, rgb_only)` + GL `[0..1]` depth.
+    pack_pipelines: Option<(
+        (wgpu::TextureFormat, bool),
+        Vec<Option<wgpu::RenderPipeline>>,
+    )>,
     runs: Vec<Run>,
 }
 
@@ -203,7 +218,7 @@ impl ModPipelines {
             view,
             pack_view,
             frame,
-            vertices: buffer("Mod pipeline quads", 0, wgpu::BufferUsages::VERTEX),
+            vertices: VertexPages::default(),
             generation: 0,
             pipelines: Vec::new(),
             pack_pipelines: None,
@@ -211,6 +226,7 @@ impl ModPipelines {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn build_render_pipeline(
         &self,
         device: &wgpu::Device,
@@ -220,6 +236,7 @@ impl ModPipelines {
         depth: WorldDepth,
         color_format: wgpu::TextureFormat,
         depth_compare: wgpu::CompareFunction,
+        write_mask: wgpu::ColorWrites,
     ) -> wgpu::RenderPipeline {
         let attributes = wgpu::vertex_attr_array![0=>Float32x3,1=>Float32x2,2=>Unorm8x4];
         // Blending happens in the frame's storage, as every vanilla draw's does. Neither mode
@@ -280,7 +297,7 @@ impl ModPipelines {
                 targets: &[Some(wgpu::ColorTargetState {
                     format: color_format,
                     blend: Some(blend_state),
-                    write_mask: wgpu::ColorWrites::ALL,
+                    write_mask,
                 })],
             }),
             multiview_mask: None,
@@ -319,6 +336,7 @@ impl ModPipelines {
             built.depth,
             self.color_format,
             wgpu::CompareFunction::GreaterEqual,
+            wgpu::ColorWrites::ALL,
         );
         let internal = pollster::block_on(internal.pop());
         let validation = pollster::block_on(validation.pop());
@@ -336,14 +354,25 @@ impl ModPipelines {
 
     /// Ensure pack-target variants (`colortex0` format + GL `[0..1]` `LessEqual` depth) exist
     /// for all loaded mod pipelines.
-    pub fn ensure_pack_pipelines(&mut self, device: &wgpu::Device, format: wgpu::TextureFormat) {
+    pub fn ensure_pack_pipelines(
+        &mut self,
+        device: &wgpu::Device,
+        format: wgpu::TextureFormat,
+        rgb: bool,
+    ) {
+        let key = (format, rgb);
         if self
             .pack_pipelines
             .as_ref()
-            .is_some_and(|(fmt, list)| *fmt == format && list.len() == self.pipelines.len())
+            .is_some_and(|(prev, list)| *prev == key && list.len() == self.pipelines.len())
         {
             return;
         }
+        let write_mask = if rgb {
+            wgpu::ColorWrites::COLOR
+        } else {
+            wgpu::ColorWrites::ALL
+        };
         let compiled = self
             .pipelines
             .iter()
@@ -357,10 +386,11 @@ impl ModPipelines {
                     c.depth,
                     format,
                     wgpu::CompareFunction::LessEqual,
+                    write_mask,
                 ))
             })
             .collect();
-        self.pack_pipelines = Some((format, compiled));
+        self.pack_pipelines = Some((key, compiled));
     }
 
     /// The bind group of a pipeline's texture: the atlas and its sprite's rect. Made when the
@@ -468,9 +498,7 @@ impl ModPipelines {
         Ok(())
     }
 
-    /// Uploads the frame's quads, drawn with `view_proj` into a frame `viewport` pixels big. The
-    /// number of quads to draw: the caller's quad indices must reach that far. A set this
-    /// renderer was not built with draws nothing.
+    /// Upload the frame's quads and return the number of indices needed for its largest page.
     pub fn prepare(
         &mut self,
         device: &wgpu::Device,
@@ -507,22 +535,18 @@ impl ModPipelines {
             return 0;
         };
         let quads = last.quads.end;
-        let bytes: &[u8] = bytemuck::cast_slice(&batch.vertices[..quads as usize * 4]);
-        if self.vertices.size() < bytes.len() as u64 {
-            self.vertices = device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("Mod pipeline quads"),
-                size: (bytes.len() as u64).next_power_of_two(),
-                usage: self.vertices.usage(),
-                mapped_at_creation: false,
-            });
-        }
-        upload(&self.vertices, bytes);
+        self.vertices.upload(
+            device,
+            upload,
+            "Mod pipeline quads",
+            bytemuck::cast_slice(&batch.vertices[..quads as usize * 4]),
+            4 * std::mem::size_of::<PipelineVertex>() as u64,
+            0,
+        );
         upload(&self.view, bytemuck::cast_slice(&view_proj.to_cols_array()));
         upload(
             &self.pack_view,
-            bytemuck::cast_slice(
-                &super::world_primitives::pack_clip_matrix(view_proj).to_cols_array(),
-            ),
+            bytemuck::cast_slice(&pack_clip_matrix(view_proj).to_cols_array()),
         );
         upload(
             &self.frame,
@@ -532,7 +556,14 @@ impl ModPipelines {
                 _pad: 0.0,
             }),
         );
-        quads
+        self.vertices.index_quads(quads)
+    }
+
+    /// Whether any prepared runs fall in stages `first..=last`.
+    pub fn has_runs(&self, first: usize, last: usize) -> bool {
+        self.runs
+            .iter()
+            .any(|run| first <= run.stage && run.stage <= last)
     }
 
     /// Draws the prepared runs of stages `first..=last` in the order queued, with `indices`
@@ -545,7 +576,15 @@ impl ModPipelines {
         first: usize,
         last: usize,
     ) {
-        self.draw_inner(pass, indices, first, last, false);
+        self.draw_runs(
+            pass,
+            indices,
+            false,
+            self.runs
+                .iter()
+                .filter(|run| first <= run.stage && run.stage <= last)
+                .map(|run| (run, run.quads.clone())),
+        );
     }
 
     /// Same as [`Self::draw`], targeting a shader pack's `colortex0` + `depthtex0` prepared
@@ -557,16 +596,23 @@ impl ModPipelines {
         first: usize,
         last: usize,
     ) {
-        self.draw_inner(pass, indices, first, last, true);
+        self.draw_runs(
+            pass,
+            indices,
+            true,
+            self.runs
+                .iter()
+                .filter(|run| first <= run.stage && run.stage <= last)
+                .map(|run| (run, run.quads.clone())),
+        );
     }
 
-    fn draw_inner(
-        &self,
+    fn draw_runs<'a>(
+        &'a self,
         pass: &mut wgpu::RenderPass<'_>,
         indices: &wgpu::Buffer,
-        first: usize,
-        last: usize,
         pack: bool,
+        runs: impl Iterator<Item = (&'a Run, std::ops::Range<u32>)>,
     ) {
         let pack_list = if pack {
             let Some((_, list)) = &self.pack_pipelines else {
@@ -577,10 +623,7 @@ impl ModPipelines {
             None
         };
         let mut bound = false;
-        for run in &self.runs {
-            if run.stage < first || run.stage > last {
-                continue;
-            }
+        for (run, range) in runs {
             let Some(Some(compiled)) = self.pipelines.get(run.slot) else {
                 continue;
             };
@@ -594,7 +637,6 @@ impl ModPipelines {
             if !bound {
                 bound = true;
                 pass.set_bind_group(0, if pack { &self.pack_group } else { &self.group }, &[]);
-                pass.set_vertex_buffer(0, self.vertices.slice(..));
                 pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
             }
             pass.set_pipeline(pipeline);
@@ -602,7 +644,10 @@ impl ModPipelines {
             if let Some(texture) = &compiled.texture {
                 pass.set_bind_group(1, texture, &[]);
             }
-            pass.draw_indexed(run.quads.start * 6..run.quads.end * 6, 0, 0..1);
+            for (buffer, range) in self.vertices.ranges(0, range) {
+                pass.set_vertex_buffer(0, buffer.slice(..));
+                pass.draw_indexed(range.start * 6..range.end * 6, 0, 0..1);
+            }
         }
     }
 }
@@ -629,6 +674,8 @@ impl super::Renderer {
             sprite,
         };
         self.world_primitives
+            .as_mut()
+            .expect("world primitives")
             .pipelines
             .build(&self.device, set, Some(textures))
     }
@@ -958,7 +1005,10 @@ mod tests {
         assert_eq!(renderer.generation, 41);
         assert_eq!(renderer.pipelines.len(), 1);
         assert_eq!(next.slot(handle), Ok(0));
-        assert!(next.resolve(&Identifier::parse("test:p1").unwrap()).is_ok());
+        assert!(
+            next.resolve(&Identifier::parse("test:p1").unwrap(),)
+                .is_ok()
+        );
         renderer.build(&device, &next, None).unwrap();
         assert_eq!(renderer.generation, 42);
         assert_eq!(renderer.pipelines.len(), 2);
@@ -1239,5 +1289,81 @@ mod tests {
         assert_near(pixel(8, 24), green, 1.0, "the sprite, not the atlas's red");
         assert_near(pixel(40, 24), green, 1.0, "the sprite repeated");
         assert_near(pixel(8, 40), [255.0; 4], 1.0, "the untextured pipeline");
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn pipeline_quads_chunk_across_small_max_buffer_size_and_preserve_order() {
+        let _gpu = crate::gfx::test_gpu::lock();
+        let Some(adapter) = crate::gfx::test_gpu::adapter() else {
+            return;
+        };
+        // A non-power-of-two limit that still fits the 64 × 64 RGBA readback.
+        let limit = 20 * 1024;
+        let gpu = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            required_limits: wgpu::Limits {
+                max_buffer_size: limit,
+                max_uniform_buffer_binding_size: limit,
+                max_storage_buffer_binding_size: limit,
+                ..wgpu::Limits::default()
+            },
+            ..Default::default()
+        }))
+        .expect("GPU device with small max_buffer_size");
+        let set = load(
+            77,
+            &[(PASS, PipelineBlend::Translucent, WorldDepth::Tested)],
+        );
+        let format = wgpu::TextureFormat::Rgba8Unorm;
+        let mut primitives = WorldPrimitives::new(&gpu.0, (format, false));
+        let quad_bytes = 4 * std::mem::size_of::<PipelineVertex>() as u64;
+        let max_quads = world_primitives::VertexPages::limit(limit, quad_bytes);
+        assert!(max_quads > 0);
+        // More than one full page in a single run, followed by a second run at a later stage.
+        let first_count = max_quads + 20;
+        let mut vertices = Vec::with_capacity((first_count as usize + 1) * 4);
+        for _ in 0..first_count {
+            vertices.extend_from_slice(&quad([0.0, 0.0, 64.0, 64.0], 2.0, [255, 0, 0, 255]));
+        }
+        vertices.extend_from_slice(&quad([32.0, 0.0, 64.0, 64.0], 2.0, [0, 255, 0, 255]));
+        let runs = [
+            PipelineRun {
+                slot: 0,
+                stage: 0,
+                quads: first_count,
+            },
+            PipelineRun {
+                slot: 0,
+                stage: (STAGES - 1) as u32,
+                quads: 1,
+            },
+        ];
+        let at = render(
+            &gpu,
+            &mut primitives,
+            format,
+            Batch {
+                set: Some(&set),
+                vertices: &vertices,
+                runs: &runs,
+                time: 0.0,
+            },
+            STAGES - 1,
+        );
+        assert!(primitives.pipelines.vertices.buffers.len() >= 2);
+        assert!(
+            primitives
+                .pipelines
+                .vertices
+                .buffers
+                .iter()
+                .all(|buffer| buffer.size() <= limit)
+        );
+        assert_eq!(at(16, 32), [255.0, 0.0, 0.0, 255.0], "earlier stage");
+        assert_eq!(
+            at(48, 32),
+            [0.0, 255.0, 0.0, 255.0],
+            "later stage over earlier stage"
+        );
     }
 }

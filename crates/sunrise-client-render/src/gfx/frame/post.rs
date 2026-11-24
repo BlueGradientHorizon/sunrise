@@ -9,8 +9,12 @@ pub(in crate::gfx) struct PostPassArgs<'a> {
     pub(in crate::gfx) fg_frames: Option<&'a (wgpu::Texture, wgpu::Texture)>,
     pub(in crate::gfx) pack_post: bool,
     pub(in crate::gfx) native_post: bool,
+    pub(in crate::gfx) after_pack_sky: bool,
+    pub(in crate::gfx) after_pack_features: bool,
+    pub(in crate::gfx) after_pack_custom_geometry: bool,
     pub(in crate::gfx) pack_draws_weather: bool,
     pub(in crate::gfx) pack_draws_terrain: bool,
+    pub(in crate::gfx) pack_draws_water: bool,
     pub(in crate::gfx) pack_draws_shadow: bool,
     pub(in crate::gfx) pack_draws_outline: bool,
     pub(in crate::gfx) pack_draws_clouds: bool,
@@ -44,9 +48,6 @@ pub(in crate::gfx) struct PostPassArgs<'a> {
     pub(in crate::gfx) sourced_frame: bool,
     pub(in crate::gfx) sourced_cpu: [usize; 3],
     pub(in crate::gfx) lifts_world: bool,
-    /// When a shader pack runs mod world stages inside `PackPost::run_frame`, the first stage
-    /// index not yet drawn in the vanilla world pass (`0..=4`).
-    pub(in crate::gfx) pack_mod_stage: Option<usize>,
 }
 
 pub(in crate::gfx) struct PostPassResult {
@@ -60,6 +61,7 @@ impl Renderer {
         &mut self,
         mut encoder: wgpu::CommandEncoder,
         args: PostPassArgs<'_>,
+        mut hooks: Option<&mut dyn world_primitives::FrameHooks>,
     ) -> std::result::Result<(wgpu::CommandEncoder, PostPassResult), String> {
         let PostPassArgs {
             frame,
@@ -70,8 +72,12 @@ impl Renderer {
             fg_frames,
             pack_post,
             native_post,
+            after_pack_sky,
+            after_pack_features,
+            after_pack_custom_geometry,
             pack_draws_weather,
             pack_draws_terrain,
+            pack_draws_water,
             pack_draws_shadow,
             pack_draws_outline,
             pack_draws_clouds,
@@ -105,7 +111,6 @@ impl Renderer {
             sourced_frame,
             sourced_cpu,
             lifts_world,
-            pack_mod_stage,
         } = args;
 
         let mut fg_made = false;
@@ -114,6 +119,38 @@ impl Renderer {
             && pack_post
             && let Some((dimension, Some(mut post))) = self.pack_post.take()
         {
+            let format = post.formats[0];
+            // The standard primitive blend cannot target an integer or unblendable colortex0.
+            // On that route the pack world stages have no compatible pass, rather than firing
+            // early.
+            let pack_blendable = pack_post::holds_floats(format)
+                && format
+                    .guaranteed_format_features(self.device.features())
+                    .flags
+                    .contains(wgpu::TextureFormatFeatureFlags::BLENDABLE);
+            let pack_features = after_pack_features && pack_blendable;
+            let pack_opaque_blocks = hooks.is_some() && pack_draws_terrain && pack_blendable;
+            let pack_translucent_blocks =
+                hooks.is_some() && (pack_draws_terrain || pack_draws_water) && pack_blendable;
+            let pack_weather = hooks.is_some() && pack_draws_weather && pack_blendable;
+            let pack_custom_geometry = after_pack_custom_geometry && pack_blendable;
+            if pack_features
+                || pack_opaque_blocks
+                || pack_translucent_blocks
+                || pack_weather
+                || pack_custom_geometry
+            {
+                self.world_primitives
+                    .as_mut()
+                    .expect("world primitives")
+                    .prepare_pack_pass(
+                        &self.device,
+                        format,
+                        post.rgb & 1 != 0,
+                        self.output.frame.linear_light,
+                    );
+            }
+
             let size = self.world_post.size().unwrap_or([1, 1]);
             let weather = match &self.hud.atlas_texture {
                 Some(atlas) if pack_draws_weather => self
@@ -131,12 +168,6 @@ impl Renderer {
                 _ => None,
             };
             post.set_weather(weather);
-            if let Some(format) = post.stage_color_format()
-                && pack_mod_stage.is_some()
-            {
-                self.world_primitives
-                    .ensure_pack_pipelines(&self.device, format);
-            }
             let flat = self.flat.as_ref().filter(|_| flat_frame);
             self.pack_pages.clear();
             // The pack's terrain programs read their pages: flat, or per section where vertex
@@ -226,21 +257,9 @@ impl Renderer {
                 indices: self.indices.clone(),
                 quads: cloud_quads,
             }));
-            let world_primitives = &self.world_primitives;
-            let mut stage_cursor = pack_mod_stage.unwrap_or(world_primitives::STAGES);
-            let mut stage_draw = |rp: &mut wgpu::RenderPass<'_>, stage: usize| {
-                if stage >= world_primitives::STAGES - 1 {
-                    world_primitives.draw_through(rp, &mut stage_cursor, stage);
-                } else {
-                    world_primitives.draw_through_pack(rp, &mut stage_cursor, stage);
-                }
-            };
-            let stages = pack_mod_stage
-                .is_some()
-                .then_some(&mut stage_draw as &mut pack_post::StageDraw<'_>);
             // Fails only on a wait that found the device lost: the frame stops here, with
             // the pack kept for the next one and nothing more encoded.
-            let ran = post.run_with_stages(
+            let ran = post.run(
                 &self.device,
                 &self.queue,
                 &mut encoder,
@@ -253,7 +272,69 @@ impl Renderer {
                 [self.config.width, self.config.height],
                 pages,
                 &mut terrain,
-                stages,
+                pack_post::WorldBoundaries {
+                    sky: after_pack_sky,
+                    opaque_blocks: pack_opaque_blocks,
+                    features: pack_features,
+                    translucent_blocks: pack_translucent_blocks,
+                    weather: pack_weather,
+                    custom_geometry: pack_custom_geometry,
+                },
+                |encoder, boundary| {
+                    use pack_post::WorldBoundary;
+                    if let WorldBoundary::CustomGeometry { color, depth } = boundary {
+                        return self
+                            .world_primitives
+                            .as_ref()
+                            .expect("world primitives")
+                            .draw_pack_custom(encoder, color, depth);
+                    }
+                    if let Some(hooks) = hooks.as_deref_mut() {
+                        let sections = &self.visible_renderable_sections;
+                        let (stage, color, depth) = match boundary {
+                            WorldBoundary::AfterSky => {
+                                hooks.on_after_sky(sections, false);
+                                return false;
+                            }
+                            WorldBoundary::AfterLevel => {
+                                hooks.on_after_level(sections, false);
+                                return false;
+                            }
+                            WorldBoundary::AfterOpaqueBlocks { color, depth } => {
+                                (mod_api::RenderLevelStage::AfterOpaqueBlocks, color, depth)
+                            }
+                            WorldBoundary::Features {
+                                translucent,
+                                color,
+                                depth,
+                            } => (
+                                if translucent {
+                                    mod_api::RenderLevelStage::AfterTranslucentFeatures
+                                } else {
+                                    mod_api::RenderLevelStage::AfterOpaqueFeatures
+                                },
+                                color,
+                                depth,
+                            ),
+                            WorldBoundary::AfterTranslucentBlocks { color, depth } => (
+                                mod_api::RenderLevelStage::AfterTranslucentBlocks,
+                                color,
+                                depth,
+                            ),
+                            WorldBoundary::AfterWeather { color, depth } => {
+                                (mod_api::RenderLevelStage::AfterWeather, color, depth)
+                            }
+                            WorldBoundary::CustomGeometry { .. } => unreachable!(),
+                        };
+                        let draws = hooks.on_render_stage(stage, sections, false);
+                        return self
+                            .world_primitives
+                            .as_ref()
+                            .expect("world primitives")
+                            .draw_pack_prepared(encoder, color, depth, draws);
+                    }
+                    false
+                },
                 &self.device_lost,
                 super::super::in_flight::poll_live,
             );

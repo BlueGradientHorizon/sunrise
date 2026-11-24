@@ -46,8 +46,8 @@ pub trait PackPostExt: Sized {
         motion: (&[(u32, u64)], &[u32]),
     );
     /// Runs the pack over the world drawn into `world` (colour) and `world_depth`, then draws
-    /// the result onto `screen`. Fails once the device is lost (`lost`).
-    #[cfg(any(test, feature = "test-support"))]
+    /// the result onto `screen`. Notifies after the sky if the frame assigned the stage to this
+    /// pack, and after the last pack world pass, before composition. Fails once the device is lost (`lost`).
     #[allow(clippy::too_many_arguments)]
     fn run(
         &mut self,
@@ -63,46 +63,8 @@ pub trait PackPostExt: Sized {
         window: [u32; 2],
         pages: &[TerrainPage],
         terrain: &mut TerrainDraw<'_>,
-        lost: &std::sync::atomic::AtomicBool,
-        poll: sunrise_render_shaderpack::PollLive,
-    ) -> Result<(), String> {
-        self.run_with_stages(
-            device,
-            queue,
-            encoder,
-            world,
-            world_depth,
-            screen,
-            frame,
-            inputs,
-            size,
-            window,
-            pages,
-            terrain,
-            None,
-            lost,
-            poll,
-        )
-    }
-    /// Same as [`Self::run`], additionally invoking `stages` at the pack's `RenderLevelStage`
-    /// points (`0 = AfterSky`, `1 = AfterOpaqueBlocks`, `2 = AfterTranslucentBlocks`,
-    /// `3 = AfterWeather`) against `colortex0` + `depthtex0`.
-    #[allow(clippy::too_many_arguments)]
-    fn run_with_stages(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        encoder: &mut wgpu::CommandEncoder,
-        world: &wgpu::TextureView,
-        world_depth: &wgpu::TextureView,
-        screen: &wgpu::TextureView,
-        frame: &Frame,
-        inputs: &PackInputs,
-        size: [u32; 2],
-        window: [u32; 2],
-        pages: &[TerrainPage],
-        terrain: &mut TerrainDraw<'_>,
-        stages: Option<&mut StageDraw<'_>>,
+        boundaries: WorldBoundaries,
+        boundary: impl FnMut(&mut wgpu::CommandEncoder, WorldBoundary<'_>) -> bool,
         lost: &std::sync::atomic::AtomicBool,
         poll: sunrise_render_shaderpack::PollLive,
     ) -> Result<(), String>;
@@ -214,7 +176,8 @@ impl PackPostExt for PackPost {
 
     /// Runs the pack over the world drawn into `world` (colour) and `world_depth`, then draws
     /// the result onto `screen`.
-    fn run_with_stages(
+    #[allow(clippy::too_many_arguments)]
+    fn run(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -228,7 +191,8 @@ impl PackPostExt for PackPost {
         window: [u32; 2],
         pages: &[TerrainPage],
         terrain: &mut TerrainDraw<'_>,
-        stages: Option<&mut StageDraw<'_>>,
+        boundaries: WorldBoundaries,
+        boundary: impl FnMut(&mut wgpu::CommandEncoder, WorldBoundary<'_>) -> bool,
         lost: &std::sync::atomic::AtomicBool,
         poll: sunrise_render_shaderpack::PollLive,
     ) -> Result<(), String> {
@@ -275,11 +239,12 @@ impl PackPostExt for PackPost {
             window,
             pages,
             terrain,
-            stages,
             frame.shadow_cache,
             frame.shadow_scene_revision,
             frame.ticks,
             frame.pack.day_time,
+            boundaries,
+            boundary,
             lost,
             poll,
         )
