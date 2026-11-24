@@ -51,6 +51,18 @@ pub trait LevelChunksBackend {
     /// Every loaded chunk of an open server level as handles, ordered by chunk x then z. None for
     /// a stale handle or on a client. Loads nothing.
     fn level_loaded_chunks(&self, level: LevelRef) -> Option<Vec<ChunkRef>>;
+    /// Side: both.
+    /// Captures an immutable, thread-safe snapshot of this loaded chunk's sections (blocks, 3D
+    /// quart biomes, sky/block light) and heightmaps, usable off-thread without holding a `Host`.
+    ///
+    /// Block entities and entities are not included in the snapshot. Capture shares the chunk's
+    /// copy-on-write section allocations with no array copies and no count cap; holding a snapshot
+    /// pins those sections in memory after unload and causes the live chunk's next block, biome,
+    /// or light edit to any still-shared section to copy that section before mutating it.
+    ///
+    /// Returns `None` if the handle is stale or the chunk is not currently resident in its level
+    /// (works on open server levels, active or parked, and on a logged-in client's loaded level).
+    fn chunk_snapshot(&self, chunk: ChunkRef) -> Option<ChunkSnapshot>;
 }
 /// The handles' writes of the `level_chunks` area, implemented by the game and reached through [`BackendMut`].
 // hidden: a handle's backend, reached through `Backend`; mods call the handle, never this trait

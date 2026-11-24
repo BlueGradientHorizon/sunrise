@@ -1121,6 +1121,8 @@ mod native_chunk_queries;
 mod native_chunk_relight_tests;
 #[path = "game/modding/native_chunk_save.rs"]
 mod native_chunk_save;
+#[path = "game/modding/native_chunk_snapshot.rs"]
+mod native_chunk_snapshot;
 #[path = "game/modding/native_claimed_items.rs"]
 mod native_claimed_items;
 #[path = "game/modding/native_client_particles.rs"]
