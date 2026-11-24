@@ -574,7 +574,7 @@ fn pack_boundaries_fire_in_order_and_draw_pack_custom_depth_tests_mod_pipelines(
             }
             WorldBoundary::CustomGeometry { color, depth } => {
                 seen.push("CustomGeometry");
-                custom_drew = primitives.draw_pack_custom(enc, color, depth, &[]);
+                custom_drew = primitives.draw_pack_custom(enc, color, depth);
                 custom_drew
             }
             WorldBoundary::AfterLevel => {
