@@ -105,6 +105,17 @@ pub fn stage(
         started.elapsed().as_secs_f64()
     );
     functions.retain_slotted(&replace.slots, &generic);
+    let refused_by_reason = functions.refusal_counts();
+    eprintln!(
+        "function index: installers={}, selectable={}, refused={}",
+        replace.functions,
+        functions.functions.len(),
+        functions.refused.len(),
+    );
+    eprintln!(
+        "function index refusals: {}",
+        serde_json::to_string(&refused_by_reason).expect("refusal counts serialize")
+    );
     // One line: the index is the largest build-data file, and only programs read it.
     let path = internals_json.with_file_name(crate::functions::FILE);
     let text = serde_json::to_string(&Document::new(build, &functions))
@@ -407,5 +418,72 @@ fn main() {{
             }
             std::fs::remove_dir_all(root).unwrap();
         }
+    }
+
+    #[test]
+    fn staging_keeps_reparented_restricted_trait_and_glob_owner_slots() {
+        let temporary = tempfile::tempdir().unwrap();
+        let root = temporary.path();
+        let write = |relative: &str, text: &str| {
+            let path = root.join(relative);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        };
+        write(
+            "crates/sunrise-client/Cargo.toml",
+            "[package]\nname = 'sunrise-client'\n[dependencies]\n",
+        );
+        write("crates/sunrise-client/src/lib.rs", "mod game; mod entry;\n");
+        write("crates/sunrise-client/src/entry.rs", "");
+        write(
+            "crates/sunrise-client/src/game.rs",
+            "mod boats;\n#[path = \"game/server_side.rs\"]\npub(in crate::game) mod server_side;\npub(in crate::game) use server_side::entity;\n",
+        );
+        write(
+            "crates/sunrise-client/src/game/boats.rs",
+            "pub(in crate::game) struct Boat;\n",
+        );
+        write(
+            "crates/sunrise-client/src/game/server_side.rs",
+            "pub(in crate::game::server_side) use super::*;\n#[path = \"entity.rs\"]\npub(in crate::game) mod entity;\n",
+        );
+        write(
+            "crates/sunrise-client/src/game/entity.rs",
+            "use super::boats::Boat;\n\
+             pub(in crate::game) trait Entity { fn bounds(&self) -> u32; }\n\
+             impl Entity for Boat { fn bounds(&self) -> u32 { 7 } }\n\
+             impl std::fmt::Debug for Boat { fn fmt(&self, _: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { Ok(()) } }\n",
+        );
+        write(
+            "Cargo.lock",
+            "version = 4\n\n[[package]]\nname = \"sunrise-client\"\nversion = \"0.1.0\"\n",
+        );
+        write("crates/sunrise-mod-api-gen/internals.txt", "");
+        write(crate::crossing::CROSSING_FOREIGN_FILE, "[]");
+
+        let staged = stage(root, &root.join("internals.json"), Mode::Build).unwrap();
+        let key = "sunrise_client::game::server_side::entity::<Boat as Entity>::bounds";
+        assert!(
+            staged.replace.slots.contains(key),
+            "{:?}",
+            staged.replace.slots
+        );
+        let entity =
+            std::fs::read_to_string(root.join("crates/sunrise-client/src/game/entity.rs")).unwrap();
+        assert!(entity.contains("pub fn __fnr_as_Entity_bounds"), "{entity}");
+        let text = std::fs::read_to_string(root.join(crate::functions::FILE)).unwrap();
+        let (_, index): (Build, crate::functions::FunctionIndex) =
+            mod_surface::build_data::read(crate::functions::FILE, &text).unwrap();
+        assert!(
+            index.functions.contains_key(key),
+            "{:?}",
+            index.functions.keys()
+        );
+        assert_eq!(
+            index
+                .refusal_counts()
+                .get("its trait implementation has no replacement installer (foreign trait)"),
+            Some(&1)
+        );
     }
 }

@@ -905,3 +905,70 @@ fn a_target_key_drops_generics_spaces_and_the_traits_path() {
         "sunrise_client::game::autosave::Game::next_autosave_interval"
     );
 }
+
+#[test]
+fn refusal_counts_group_templated_and_exact_reasons() {
+    let mut index = FunctionIndex::default();
+    let add = |index: &mut FunctionIndex, key: &str, why: &str| {
+        index.refused.insert(
+            key.to_owned(),
+            Refused {
+                code: Code::NotReplaceable,
+                why: why.to_owned(),
+            },
+        );
+    };
+    add(
+        &mut index,
+        "a",
+        "its trait implementation has no replacement installer (foreign trait)",
+    );
+    add(
+        &mut index,
+        "b",
+        "its trait implementation has no replacement installer (foreign trait)",
+    );
+    add(
+        &mut index,
+        "c",
+        "its trait implementation has no replacement installer: owner type name `Boat` is ambiguous in the crate: more than one module declares it, and the `impl`'s module neither declares it nor imports it from one of them",
+    );
+    add(
+        &mut index,
+        "d",
+        "its body uses `with_entity!`, a macro defined outside its module's path",
+    );
+    add(
+        &mut index,
+        "e",
+        "it names `super::persist::SpawnTree`, which crosses a non-public `use` in `sunrise_client::game::server_side::persist`",
+    );
+    add(
+        &mut index,
+        "f",
+        "it names `crate::hidden`, which reaches the non-public crate-root function `hidden`",
+    );
+    assert_eq!(
+        index.refusal_counts(),
+        BTreeMap::from([
+            ("it names a non-public crate-root function".to_owned(), 1),
+            (
+                "it names a path that crosses a non-public use".to_owned(),
+                1
+            ),
+            (
+                "its body uses a macro defined outside its module's path".to_owned(),
+                1
+            ),
+            (
+                "its trait implementation has no replacement installer (ambiguous trait owner)"
+                    .to_owned(),
+                1
+            ),
+            (
+                "its trait implementation has no replacement installer (foreign trait)".to_owned(),
+                2
+            ),
+        ])
+    );
+}

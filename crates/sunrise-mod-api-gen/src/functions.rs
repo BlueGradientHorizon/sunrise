@@ -281,10 +281,36 @@ impl FunctionIndex {
             );
         }
     }
+    /// Count refused targets grouped by refusal reason, normalizing per-target names.
+    pub fn refusal_counts(&self) -> BTreeMap<String, usize> {
+        let mut counts = BTreeMap::new();
+        for refused in self.refused.values() {
+            let key = refusal_reason(&refused.why);
+            *counts.entry(key.to_owned()).or_default() += 1;
+        }
+        counts
+    }
+}
+
+fn refusal_reason(why: &str) -> &str {
+    if why.starts_with("its trait implementation has no replacement installer: owner type name `") {
+        "its trait implementation has no replacement installer (ambiguous trait owner)"
+    } else if why.starts_with("its body uses `")
+        && why.ends_with("`, a macro defined outside its module's path")
+    {
+        "its body uses a macro defined outside its module's path"
+    } else if why.starts_with("it names `") && why.contains("`, which crosses a non-public `use`") {
+        "it names a path that crosses a non-public use"
+    } else if why.starts_with("it names `")
+        && why.contains("`, which reaches the non-public crate-root function `")
+    {
+        "it names a non-public crate-root function"
+    } else {
+        why
+    }
 }
 
 /// The index of the pristine source at `root`, whose published loops' generic functions are
-/// `generic` (keys). Each function's verdict is [`replaceable`]'s, the check a mixin build ran
 /// before the index; [`FunctionIndex::retain_slotted`] then drops what staging gave no slot.
 pub fn index(root: &Path, generic: &BTreeSet<String>) -> Result<FunctionIndex, String> {
     index_of(root, generic, None)
