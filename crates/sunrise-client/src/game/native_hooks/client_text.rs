@@ -9,6 +9,10 @@ impl Game<'_> {
         self.gui.atlas.font.width_text(&engine) as i32
     }
 
+    pub(in crate::game) fn language_right_to_left(&self) -> bool {
+        sunrise_client::lang::bidirectional()
+    }
+
     pub(in crate::game) fn text_split(
         &self,
         text: &mod_api::Text,

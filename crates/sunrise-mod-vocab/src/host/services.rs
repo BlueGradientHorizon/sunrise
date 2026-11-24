@@ -68,14 +68,6 @@ pub trait ClientSession {
         unimplemented!("ClientSession::client_language")
     }
     /// Side: client.
-    /// Whether the applied language reads right to left (`Language.isDefaultRightToLeft`, the
-    /// flag `Font.isBidirectional` reads): its `bidirectional` in the pack's `language` section.
-    /// Lay out a row of GUI pieces in reading order with it. None outside a logged-in client
-    /// world, as `client_language`.
-    fn client_language_right_to_left(&self) -> Option<bool> {
-        unimplemented!("ClientSession::client_language_right_to_left")
-    }
-    /// Side: client.
     /// The local player's latency in milliseconds as the tab list draws it
     /// (`PlayerInfo.getLatency`): the server's smoothed keep-alive average, refreshed by its own
     /// broadcast. 0 before the server's first measurement, as vanilla; None outside a logged-in
