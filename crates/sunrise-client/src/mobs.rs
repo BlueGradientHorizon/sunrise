@@ -7757,7 +7757,17 @@ mod model_document_sharing_tests {
         }
     }
 }
-crate::impl_joined!(Mob);
+impl crate::join_seq::Joined for Mob {
+    fn join_seq(&self) -> crate::join_seq::JoinSeq {
+        self.join
+    }
+    fn set_join_seq(&mut self, seq: crate::join_seq::JoinSeq) {
+        self.join = seq;
+    }
+    fn pending_mod_part_id(&self) -> Option<u32> {
+        (!self.removed && self.has_pending_mod_parts()).then_some(self.id)
+    }
+}
 sunrise_mod_runtime::impl_attachment_lifetime!(Mob);
 
 #[cfg(test)]

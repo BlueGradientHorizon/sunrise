@@ -309,11 +309,9 @@ pub trait BehaviorRegistrarBackend {
     /// The entity type id of the mob being built.
     fn mob_id(&self) -> &str;
     /// Checkpoint staged behavior count before a listener runs.
-    fn checkpoint(&self) -> usize {
-        0
-    }
+    fn checkpoint(&self) -> usize;
     /// Discard staged behaviors added since `checkpoint` when a listener aborts.
-    fn rollback(&mut self, _checkpoint: usize) {}
+    fn rollback(&mut self, checkpoint: usize);
 }
 
 /// A brain's `WALK_TARGET` memory as a behavior reads it.
@@ -427,6 +425,12 @@ mod tests {
         }
         fn mob_id(&self) -> &str {
             "minecraft:villager"
+        }
+        fn checkpoint(&self) -> usize {
+            self.added.len()
+        }
+        fn rollback(&mut self, checkpoint: usize) {
+            self.added.truncate(checkpoint);
         }
     }
 

@@ -1532,7 +1532,7 @@ impl Game<'_> {
                 super::living_attributes::collect_equipment(catalog, items, m);
             }
         }
-        self.flush_pending_mobs_from(0);
+        self.flush_pending_mob_parts();
         let mut snapshot = std::mem::take(&mut self.creatures.seen_buf);
         snapshot.extend(self.mobs.iter().map(|m| seen(m, uuid, self.items())));
         let mut events = std::mem::take(&mut self.creatures.event_buf);

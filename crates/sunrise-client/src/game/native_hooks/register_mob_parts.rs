@@ -4,7 +4,8 @@ use sunrise_client::{
     mobs::{Mob, mod_behaviors::StagedBehaviors, part_goals::StagedGoals},
 };
 
-/// The hook points. Each does nothing in Sunrise.
+/// Server-side native hook points that dispatch staged `EntityPart` goal and
+/// behavior registration.
 impl Game<'_> {
     /// `Mob.registerGoals` for entity parts attached to `goals.mob()`, with a scoped
     /// server host. Server-side.
@@ -25,21 +26,39 @@ impl Game<'_> {
     }
 }
 
+enum MobTarget<'a> {
+    Resident { id: u32, join: JoinSeq },
+    Unjoined(&'a mut Mob),
+}
+
+impl MobTarget<'_> {
+    fn get_mut<'b>(&'b mut self, game: &'b mut Game<'_>) -> Option<&'b mut Mob> {
+        match self {
+            Self::Resident { id, join } => {
+                let idx = game
+                    .mobs
+                    .locate(*join)
+                    .filter(|&k| game.mobs[k].id == *id && !game.mobs[k].removed)?;
+                Some(&mut game.mobs[idx])
+            }
+            Self::Unjoined(mob) => (!mob.removed).then_some(&mut **mob),
+        }
+    }
+}
+
 impl Game<'_> {
-    /// Flush any staged `register_goals` and `register_behaviors` on mobs from `from`
-    /// onward in `self.mobs`. Fast-paths to nothing when no entity part subscribes.
-    pub(in crate::game) fn flush_pending_mobs_from(&mut self, from: usize) {
+    /// Drain staged `register_goals` and `register_behaviors` queued when mobs with
+    /// pending parts entered `self.mobs`. O(1) when no new mobs were staged.
+    pub(in crate::game) fn flush_pending_mob_parts(&mut self) {
+        if !self.mobs.has_pending_mod_parts() {
+            return;
+        }
+        let pending = self.mobs.take_pending_mod_parts();
         if !self.is_logical_server()
             || (!mod_api::__private::has_scoped_hook(mod_api::HookId::RegisterGoals)
                 && !mod_api::__private::has_scoped_hook(mod_api::HookId::RegisterBehaviors))
         {
             return;
-        }
-        let mut pending = Vec::new();
-        for mob in self.mobs.iter().skip(from) {
-            if !mob.removed && mob.has_pending_mod_parts() {
-                pending.push((mob.id, mob.join));
-            }
         }
         for (id, join) in pending {
             self.flush_resident_mob_parts(id, join);
@@ -51,180 +70,107 @@ impl Game<'_> {
     /// in one transaction; apply refuses (never recomputes) if the mob or its target
     /// selectors/brain changed while listeners ran.
     pub(in crate::game) fn flush_resident_mob_parts(&mut self, id: u32, join: JoinSeq) {
-        if !self.is_logical_server() {
-            return;
-        }
-        let goal_stage = self
-            .mobs
-            .locate(join)
-            .filter(|&k| self.mobs[k].id == id && !self.mobs[k].removed)
-            .and_then(|k| {
-                let mob = &mut self.mobs[k];
-                let expected_gen = mob.staged_parts.pending_goals.take()?;
-                Some((
-                    expected_gen,
-                    mob.kind.id.clone(),
-                    mob.ai.goals.generation(),
-                    mob.ai.targets.generation(),
-                ))
-            });
-        if let Some((expected_gen, mob_id, goal_sel_gen, target_sel_gen)) = goal_stage
-            && mod_api::__private::entity_part_hooked(
-                mod_api::HookId::RegisterGoals,
-                "register_goals",
-                &mob_id,
-            )
-        {
-            let mut staged = Some(StagedGoals::new(id, mob_id));
-            let _ = self.storage_transaction(|game, _| {
-                if let Some(buffer) = staged.as_mut() {
-                    let mut registrar = mod_api::GoalRegistrar::new(buffer);
-                    game.native_register_goals(&mut registrar);
-                }
-                if !game.is_logical_server() {
-                    return Err(());
-                }
-                let Some(idx) = game
-                    .mobs
-                    .locate(join)
-                    .filter(|&k| game.mobs[k].id == id && !game.mobs[k].removed)
-                else {
-                    return Ok(());
-                };
-                let mob = &mut game.mobs[idx];
-                if mob.staged_parts.goal_generation != expected_gen
-                    || mob.ai.goals.generation() != goal_sel_gen
-                    || mob.ai.targets.generation() != target_sel_gen
-                {
-                    return Ok(());
-                }
-                if let Some(buffer) = staged.take() {
-                    buffer.apply_to(&mut mob.ai.goals, &mut mob.ai.targets);
-                }
-                Ok::<(), ()>(())
-            });
-            if let Some(leftover) = staged {
-                leftover.discard();
-            }
-        }
-
-        let behavior_stage = self
-            .mobs
-            .locate(join)
-            .filter(|&k| self.mobs[k].id == id && !self.mobs[k].removed)
-            .and_then(|k| {
-                let mob = &mut self.mobs[k];
-                let target = mob.staged_parts.pending_behaviors.take()?;
-                Some((target, mob.kind.id.clone()))
-            });
-        if let Some((target, mob_id)) = behavior_stage
-            && mod_api::__private::entity_part_hooked(
-                mod_api::HookId::RegisterBehaviors,
-                "register_behaviors",
-                &mob_id,
-            )
-        {
-            let mut staged = Some(StagedBehaviors::new(mob_id.clone(), target));
-            let _ = self.storage_transaction(|game, _| {
-                if let Some(buffer) = staged.as_mut() {
-                    let mut registrar = mod_api::BehaviorRegistrar::new(buffer, &mob_id, "", "");
-                    game.native_register_behaviors(&mut registrar);
-                }
-                if !game.is_logical_server() {
-                    return Err(());
-                }
-                let Some(idx) = game
-                    .mobs
-                    .locate(join)
-                    .filter(|&k| game.mobs[k].id == id && !game.mobs[k].removed)
-                else {
-                    return Ok(());
-                };
-                let mob = &mut game.mobs[idx];
-                if let Some(buffer) = staged.take() {
-                    let _ = buffer.apply_to(mob);
-                }
-                Ok::<(), ()>(())
-            });
-            if let Some(leftover) = staged {
-                leftover.discard();
-            }
-        }
+        self.mobs.pop_pending_mod_part(id, join);
+        self.flush_mob_parts(MobTarget::Resident { id, join });
     }
 
     /// Flush staged `register_goals` and `register_behaviors` for an unjoined `Mob`
     /// owned by the caller (e.g. `create_mob_reason`, `finalize_with`, off-level loads).
     pub(in crate::game) fn flush_unjoined_mob_parts(&mut self, mob: &mut Mob) {
-        if !self.is_logical_server() || mob.removed {
+        self.flush_mob_parts(MobTarget::Unjoined(mob));
+    }
+
+    fn flush_mob_parts(&mut self, mut target: MobTarget<'_>) {
+        if !self.is_logical_server() {
             return;
         }
-        if let Some(expected_gen) = mob.staged_parts.pending_goals.take() {
-            let mob_id = mob.kind.id.clone();
-            if mod_api::__private::entity_part_hooked(
-                mod_api::HookId::RegisterGoals,
-                "register_goals",
-                &mob_id,
-            ) {
-                let goal_sel_gen = mob.ai.goals.generation();
-                let target_sel_gen = mob.ai.targets.generation();
-                let mut staged = Some(StagedGoals::new(mob.id, mob_id));
-                let _ = self.storage_transaction(|game, _| {
-                    if let Some(buffer) = staged.as_mut() {
-                        let mut registrar = mod_api::GoalRegistrar::new(buffer);
-                        game.native_register_goals(&mut registrar);
-                    }
-                    if !game.is_logical_server() {
-                        return Err(());
-                    }
-                    if mob.removed
-                        || mob.staged_parts.goal_generation != expected_gen
-                        || mob.ai.goals.generation() != goal_sel_gen
-                        || mob.ai.targets.generation() != target_sel_gen
-                    {
-                        return Ok(());
-                    }
-                    if let Some(buffer) = staged.take() {
-                        buffer.apply_to(&mut mob.ai.goals, &mut mob.ai.targets);
-                    }
-                    Ok::<(), ()>(())
-                });
-                if let Some(leftover) = staged {
-                    leftover.discard();
-                }
-            }
-        }
+        self.flush_staged_goals(&mut target);
+        self.flush_staged_behaviors(&mut target);
+    }
 
-        if !mob.removed
-            && let Some(target) = mob.staged_parts.pending_behaviors.take()
-        {
-            let mob_id = mob.kind.id.clone();
-            if mod_api::__private::entity_part_hooked(
-                mod_api::HookId::RegisterBehaviors,
-                "register_behaviors",
-                &mob_id,
-            ) {
-                let mut staged = Some(StagedBehaviors::new(mob_id.clone(), target));
-                let _ = self.storage_transaction(|game, _| {
-                    if let Some(buffer) = staged.as_mut() {
-                        let mut registrar =
-                            mod_api::BehaviorRegistrar::new(buffer, &mob_id, "", "");
-                        game.native_register_behaviors(&mut registrar);
-                    }
-                    if !game.is_logical_server() {
-                        return Err(());
-                    }
-                    if mob.removed {
-                        return Ok(());
-                    }
-                    if let Some(buffer) = staged.take() {
-                        let _ = buffer.apply_to(mob);
-                    }
-                    Ok::<(), ()>(())
-                });
-                if let Some(leftover) = staged {
-                    leftover.discard();
-                }
+    fn flush_staged_goals(&mut self, target: &mut MobTarget<'_>) {
+        let Some((id, expected_gen, mob_id, goal_sel_gen, target_sel_gen)) =
+            target.get_mut(self).and_then(|mob| {
+                let expected_gen = mob.staged_parts.pending_goals.take()?;
+                Some((
+                    mob.id,
+                    expected_gen,
+                    mob.kind.id.clone(),
+                    mob.ai.goals.generation(),
+                    mob.ai.targets.generation(),
+                ))
+            })
+        else {
+            return;
+        };
+        if !mod_api::__private::entity_part_hooked(
+            mod_api::HookId::RegisterGoals,
+            "register_goals",
+            &mob_id,
+        ) {
+            return;
+        }
+        let mut staged = Some(StagedGoals::new(id, mob_id));
+        let _ = self.storage_transaction(|game, _| {
+            if let Some(buffer) = staged.as_mut() {
+                let mut registrar = mod_api::GoalRegistrar::new(buffer);
+                game.native_register_goals(&mut registrar);
             }
+            if !game.is_logical_server() {
+                return Err(());
+            }
+            let Some(mob) = target.get_mut(game) else {
+                return Ok(());
+            };
+            if mob.staged_parts.goal_generation != expected_gen
+                || mob.ai.goals.generation() != goal_sel_gen
+                || mob.ai.targets.generation() != target_sel_gen
+            {
+                return Ok(());
+            }
+            if let Some(buffer) = staged.take() {
+                buffer.apply_to(&mut mob.ai.goals, &mut mob.ai.targets);
+            }
+            Ok::<(), ()>(())
+        });
+        if let Some(leftover) = staged {
+            leftover.discard();
+        }
+    }
+
+    fn flush_staged_behaviors(&mut self, target: &mut MobTarget<'_>) {
+        let Some((behavior_target, mob_id)) = target.get_mut(self).and_then(|mob| {
+            let behavior_target = mob.staged_parts.pending_behaviors.take()?;
+            Some((behavior_target, mob.kind.id.clone()))
+        }) else {
+            return;
+        };
+        if !mod_api::__private::entity_part_hooked(
+            mod_api::HookId::RegisterBehaviors,
+            "register_behaviors",
+            &mob_id,
+        ) {
+            return;
+        }
+        let mut staged = Some(StagedBehaviors::new(mob_id.clone(), behavior_target));
+        let _ = self.storage_transaction(|game, _| {
+            if let Some(buffer) = staged.as_mut() {
+                let mut registrar = mod_api::BehaviorRegistrar::new(buffer, &mob_id, "", "");
+                game.native_register_behaviors(&mut registrar);
+            }
+            if !game.is_logical_server() {
+                return Err(());
+            }
+            let Some(mob) = target.get_mut(game) else {
+                return Ok(());
+            };
+            if let Some(buffer) = staged.take() {
+                let _ = buffer.apply_to(mob);
+            }
+            Ok::<(), ()>(())
+        });
+        if let Some(leftover) = staged {
+            leftover.discard();
         }
     }
 }

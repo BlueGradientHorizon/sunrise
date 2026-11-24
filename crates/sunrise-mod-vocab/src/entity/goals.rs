@@ -236,11 +236,9 @@ pub trait GoalRegistrarBackend {
     /// The entity type id of the mob being built.
     fn mob_id(&self) -> &str;
     /// Checkpoint staged goal counts before a listener runs.
-    fn checkpoint(&self) -> (usize, usize) {
-        (0, 0)
-    }
+    fn checkpoint(&self) -> (usize, usize);
     /// Discard staged goals added since `checkpoint` when a listener aborts.
-    fn rollback(&mut self, _checkpoint: (usize, usize)) {}
+    fn rollback(&mut self, checkpoint: (usize, usize));
 }
 
 // no wire: borrowed host or registrar backend; access stays scoped to the owning call.
@@ -398,6 +396,13 @@ mod tests {
         }
         fn mob_id(&self) -> &str {
             "minecraft:zombie"
+        }
+        fn checkpoint(&self) -> (usize, usize) {
+            (self.goals.len(), self.targets.len())
+        }
+        fn rollback(&mut self, (goals, targets): (usize, usize)) {
+            self.goals.truncate(goals);
+            self.targets.truncate(targets);
         }
     }
 
