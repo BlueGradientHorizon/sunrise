@@ -1093,7 +1093,7 @@ pub struct Extra {
     /// Saved fish/axolotl bucket flag; tadpoles save a constant true value.
     pub from_bucket: bool,
     /// Tags a mod gave the mob before it joined a level (`finalize_spawn`'s
-    /// `UnspawnedMobEdits`): the level keeps a joined entity's tags with its
+    /// `UnspawnedMobEditor`): the level keeps a joined entity's tags with its
     /// saved data, so they move there when the mob joins.
     pub spawn_tags: Vec<String>,
     /// Command-created armor instances, shared by commands and runtime damage.
@@ -1437,6 +1437,11 @@ pub struct Extra {
     /// attribute modifiers is worn or it is read. Mob logic still reads
     /// `MobType::attributes` and `attributes` above.
     pub live: crate::living_attributes::LivingAttributes,
+    /// A sulfur cube's fuse countdown and synced `MAX_FUSE`.
+    pub sulfur_fuse: sulfur_cube::Fuse,
+    /// Whether `live` already holds the `oxygen_bonus` instance that
+    /// `LivingEntity.decreaseAirSupply` makes (`ai::make_oxygen_bonus`).
+    pub oxygen_bonus_made: bool,
     /// The knockback resistance modifiers of the items it wears or holds.
     pub gear_knockback: Option<Box<GearKnockback>>,
     /// What the game last read from the hands' `minecraft:death_protection`
@@ -2075,6 +2080,9 @@ pub enum MobEvent {
         amount: f32,
         from: [f64; 3],
         kind: &'static str,
+        /// The mob whose main-hand weapon's `post_attack` effects follow the
+        /// hit when it lands (a spear's stab).
+        wielder: Option<u32>,
     },
     /// `ElderGuardian`'s curse on players within 50 blocks; a silent elder's
     /// shows the apparition without the curse sound.
@@ -2922,17 +2930,20 @@ impl Mob {
     /// of every mob writes each one in its slot, not through a copy.
     #[inline]
     pub fn seen(&self, _player: Option<[i32; 4]>, items: &crate::items::Items) -> Seen {
-        let (m, villager) = (self, self.species() == Species::Villager);
+        let m = self;
+        let species = m.species();
+        let villager = species == Species::Villager;
+        let bounds = m.bounds();
         Seen {
             kind: Arc::clone(&m.kind),
             in_water: self.fluids.in_water,
             playing_dead: axolotl::is_playing_dead(self),
             last_damage: self.last_damage.map(|(d, _)| d),
             id: m.id,
-            species: m.species(),
+            species,
             position: m.position,
-            bounds: m.bounds(),
-            hitbox: m.hitbox(),
+            bounds,
+            hitbox: m.hitbox_from_bounds(bounds),
             eye_y: m.eye_y(),
             alive: m.alive(),
             removed: m.removed,
@@ -2974,7 +2985,7 @@ impl Mob {
             vehicle: m.extra.mount,
             pushable: m.pushable(),
             sleeping: villager::sleeping(m)
-                || (m.species() == Species::Fox && fox::flag(m, fox::SLEEPING)),
+                || (species == Species::Fox && fox::flag(m, fox::SLEEPING)),
             cold_strider: strider::suffocating(m),
             category: m.category(),
             potential_job: villager_brain::potential_job_site(m),
@@ -2992,10 +3003,10 @@ impl Mob {
             ],
             sitting: m.extra.sitting,
             silent: m.silent,
-            lying: m.species() == Species::Cat && (m.extra.flag || m.extra.relax_one),
+            lying: species == Species::Cat && (m.extra.flag || m.extra.relax_one),
             ridden: m.rider.is_some() || m.extra.rider.is_some() || m.extra.mount.is_some(),
             is_vehicle: equine::is_vehicle(m),
-            still: m.species() == Species::HappyGhast && happy_ghast::on_still_timeout(m),
+            still: species == Species::HappyGhast && happy_ghast::on_still_timeout(m),
             carrying: m.rider.is_some() || m.extra.rider.is_some(),
             knockback_resistance: m.attrs.knockback_resistance,
             effects: m
@@ -3333,13 +3344,29 @@ pub fn apply_brain_events_until_hurt(
                     look: fish.look_angle(),
                     feet: pos,
                 };
-                let mut hit_level = level.reborrow().attacked_by(&attack);
-                if let Some(t) = mobs.iter_mut().find(|m| {
+                let target_index = mobs.iter().position(|m| {
                     m.id == target
                         && m.alive()
                         && !m.removed
                         && target_join.is_none_or(|join| m.join == join)
-                }) {
+                });
+                if let Some(ti) = target_index {
+                    // The fish is the sting's causing entity: lent beside its target from the
+                    // tick's own list, only while a `HitHost` hook listens.
+                    let fish_index = crate::health::hit_host_listened()
+                        .then(|| mobs.iter().position(|m| m.id == mob && !m.removed))
+                        .flatten()
+                        .filter(|&fi| fi != ti);
+                    let (t, lend) = match fish_index {
+                        Some(fi) => {
+                            let [t, fish] = mobs
+                                .get_disjoint_mut([ti, fi])
+                                .expect("the sting's target and fish are two mobs");
+                            (t, crate::health::HitLend::mob(fish))
+                        }
+                        None => (&mut mobs[ti], None),
+                    };
+                    let mut hit_level = level.reborrow().attacked_by(&attack).lending(lend);
                     let landed =
                         t.damage_aimed(&mut hit_level, 1.0 + size as f32, source, Some(aim));
                     let tail = PufferfishReaction {
@@ -3662,6 +3689,13 @@ pub enum TargetChange {
     Keep,
 }
 impl MobWorld<'_> {
+    /// Whether this breeding action must meet the listener before either parent cools down.
+    pub fn asks_live_birth(&self, species: Species) -> bool {
+        self.asks_baby_spawn
+            && finalize::ageable(species)
+            && !matches!(species, Species::Turtle | Species::Frog | Species::Sniffer)
+    }
+
     /// The currently selected player view. The ordinary tick uses `player`;
     /// target-change callbacks can switch a scoped selection during a tick.
     pub fn selected_player(&self) -> Option<&PlayerView> {
@@ -4022,14 +4056,17 @@ impl Mob {
     /// `LivingEntity.getHitbox`: a rider's box starts no lower than its seat
     /// (`vehicle.getPassengerRidingPosition(this).y`).
     pub fn hitbox(&self) -> Aabb {
-        let b = self.bounds();
+        self.hitbox_from_bounds(self.bounds())
+    }
+
+    fn hitbox_from_bounds(&self, bounds: Aabb) -> Aabb {
         match self.extra.seat.filter(|s| self.extra.mount == Some(s.0)) {
             Some((_, offset, _)) => {
-                let (lo, hi) = (b.min_position(), b.max_position());
+                let (lo, hi) = (bounds.min_position(), bounds.max_position());
                 let y = (self.position.y + offset).max(lo.y);
                 Aabb::new(Vec3::new(lo.x, y, lo.z), hi)
             }
-            None => b,
+            None => bounds,
         }
     }
     /// `Mob.getAttackBoundingBox(range)`: its box, widened to its vehicle's
@@ -5263,12 +5300,18 @@ impl Mob {
         !(self.kind.flags.undead && matches!(effect, "minecraft:poison" | "minecraft:regeneration"))
     }
     pub fn add_effect(&mut self, effect: &'static str, ticks: i32, amplifier: i32) {
+        let _ = self.try_add_effect(effect, ticks, amplifier);
+    }
+    /// `LivingEntity.addEffect`: returns whether the effect was accepted and
+    /// changed the mob's active effect set. Durations other than `-1` that
+    /// are already exhausted expire in the effect tick, not at admission.
+    pub fn try_add_effect(&mut self, effect: &'static str, ticks: i32, amplifier: i32) -> bool {
         let effect = sunrise_client_core::potions::namespaced(effect);
         // LivingEntity.addEffect: an effect the mob refuses is never added, so it
         // never joins the list the client draws or an effect tick reads.
         // WitherBoss.addEffect returns false for every effect.
         if self.species() == Species::Wither || !self.can_be_affected(effect) {
-            return;
+            return false;
         }
         let had = self
             .extra
@@ -5278,7 +5321,7 @@ impl Mob {
             .map(|e| e.show_icon);
         let ambient = self.extra.ambient_effects.contains(&effect);
         let hidden = self.extra.hidden_effects.contains(&effect);
-        self.add_effect_with(effect, ticks, amplifier, false, true);
+        let changed = self.add_effect_with(effect, ticks, amplifier, false, true);
         // The basic overload changes the chain, not the existing active flags.
         if let Some(show_icon) = had {
             if let Some(e) = self.extra.effects.iter_mut().find(|e| e.id == effect) {
@@ -5292,6 +5335,24 @@ impl Mob {
             if hidden {
                 self.extra.hidden_effects.push(effect);
             }
+        }
+        changed
+    }
+    /// `BaseFireBlock.fireIgnite` for a mob: advances the fire delay, ignites
+    /// for 8s scaled by `burning_time`, and clears freeze when lit.
+    pub fn fire_ignite_contact(&mut self) {
+        if self.fire_immune() {
+            return;
+        }
+        let multiplier = self.burning_time();
+        self.fire_ticks = crate::motion::environment::ignite_contact(
+            self.fire_ticks,
+            false,
+            &mut self.random,
+            multiplier,
+        );
+        if self.fire_ticks >= 0 {
+            self.ticks_frozen = 0;
         }
     }
     pub fn center(&self) -> [f64; 3] {
@@ -6576,6 +6637,20 @@ mod magic_absorb_tests {
             );
         }
         assert!(m.extra.effects.is_empty(), "{:?}", m.extra.effects);
+    }
+
+    #[test]
+    fn an_expired_effect_is_admitted_then_removed_on_the_effect_tick() {
+        let mut m = witch();
+        m.add_effect("speed", -2, 0);
+        assert_eq!(m.extra.effects[0].duration, -2);
+        ai::tick_effects(
+            &mut m,
+            crate::test_resources::server_loop_context(),
+            &mut crate::health::TestLevel::new(0).level(),
+            None,
+        );
+        assert!(m.extra.effects.is_empty());
     }
 
     #[test]

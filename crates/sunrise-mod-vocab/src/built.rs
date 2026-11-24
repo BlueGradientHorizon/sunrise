@@ -417,7 +417,7 @@ impl From<ChannelRef> for super::ChannelRef {
     }
 }
 // exhaustive: the game builds it with a literal; mods read it and edit its fields
-#[derive(sunrise_mod_api_macros::Wire)]
+// no wire: native game-to-hook staging record for local SoundPlay.
 pub struct SoundPlay {
     pub identifier: String,
     pub source: super::SoundSource,
@@ -660,6 +660,33 @@ impl<'a> From<ContainerLootFilled<'a>> for super::ContainerLootFilled<'a> {
             block,
             entity,
             opener,
+        }
+    }
+}
+// exhaustive: the game builds it with a literal; mods only read it
+#[derive(sunrise_mod_api_macros::Wire)]
+pub struct RespawnTarget {
+    pub level: super::LevelRef,
+    pub position: [f64; 3],
+    pub yaw: f32,
+    pub pitch: f32,
+    pub missing_respawn_block: bool,
+}
+impl From<RespawnTarget> for super::RespawnTarget {
+    fn from(v: RespawnTarget) -> Self {
+        let RespawnTarget {
+            level,
+            position,
+            yaw,
+            pitch,
+            missing_respawn_block,
+        } = v;
+        Self {
+            level,
+            position,
+            yaw,
+            pitch,
+            missing_respawn_block,
         }
     }
 }

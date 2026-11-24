@@ -177,7 +177,17 @@ impl Game<'_> {
         use sunrise_world::worldgen::value_provider::IntProvider;
         self.native_level_read_world(level)?;
         let key = sunrise_core::LevelKey::parse(level.dimension_id()).ok()?;
-        let facts = self.dimension_facts_for(key);
+        let facts = if let Some(constructing) = self
+            .remote
+            .as_ref()
+            .and_then(|remote| remote.constructing(level))
+        {
+            constructing.facts.as_deref().unwrap_or_else(|| {
+                sunrise_world::dimension_type::DimensionFacts::of_builtin_level(key)
+            })
+        } else {
+            self.dimension_facts_for(key)
+        };
         Some(LevelDimensionType {
             id: facts.id.clone(),
             min_y: facts.height.min_y,
@@ -335,6 +345,61 @@ impl Game<'_> {
         self.command_clock_state(&clock).partial = 0.0;
         true
     }
+    /// `DimensionType.defaultClock` of a level the server has open, as a handle.
+    pub(super) fn level_clock(&self, level: LevelRef) -> Option<mod_api::WorldClockRef> {
+        self.world_clock_name(mod_api::WorldClockRef::new(level))
+            .map(|_| mod_api::WorldClockRef::new(level))
+    }
+    /// The `minecraft:world_clock` id a clock handle names now: its level's default clock.
+    fn world_clock_name(&self, clock: mod_api::WorldClockRef) -> Option<String> {
+        let level = clock.level();
+        self.native_level_world(level)?;
+        let dim = Dim::from_id(level.dimension_id());
+        self.dimension_type_of(dim).default_clock.clone()
+    }
+    /// `ServerClockManager.setTotalTicks`: the total, its fraction of a tick restarted.
+    pub(super) fn world_clock_set_total_ticks(
+        &mut self,
+        clock: mod_api::WorldClockRef,
+        ticks: i64,
+    ) -> bool {
+        let Some(name) = self.world_clock_name(clock).filter(|_| ticks >= 0) else {
+            return false;
+        };
+        self.set_command_clock_time(&name, ticks);
+        self.command_clock_state(&name).partial = 0.0;
+        self.sync_hub_clocks();
+        true
+    }
+    /// `ServerClockManager.setRate`.
+    pub(super) fn world_clock_set_rate(
+        &mut self,
+        clock: mod_api::WorldClockRef,
+        rate: f32,
+    ) -> bool {
+        let Some(name) = self
+            .world_clock_name(clock)
+            .filter(|_| rate.is_finite() && rate >= 0.0)
+        else {
+            return false;
+        };
+        self.command_clock_state(&name).rate = rate;
+        self.sync_hub_clocks();
+        true
+    }
+    /// `ServerClockManager.setPaused`.
+    pub(super) fn world_clock_set_paused(
+        &mut self,
+        clock: mod_api::WorldClockRef,
+        paused: bool,
+    ) -> bool {
+        let Some(name) = self.world_clock_name(clock) else {
+            return false;
+        };
+        self.command_clock_state(&name).paused = paused;
+        self.sync_hub_clocks();
+        true
+    }
     /// Every game rule the world has (`GameRules`) with its current value, by `minecraft:` id
     /// (`max_minecart_speed` only with minecart improvements): None for a stale handle and on
     /// a client.
@@ -359,6 +424,11 @@ impl Game<'_> {
             world,
             level.dimension() == Dim::End.key(),
         ))
+    }
+    /// `Level.isRaining` on either side: a client reads the weather its server synced, as
+    /// [`Self::level_get_sky_darken`] reads the darkening.
+    pub(super) fn level_read_is_raining(&self, level: LevelRef) -> Option<bool> {
+        Some(weather_flags(self.level_weather(level)?).0)
     }
     /// Whether it rains (`Level.isRaining`: a rain level above 0.2).
     pub(super) fn level_is_raining(&self, level: LevelRef) -> Option<bool> {
@@ -500,6 +570,8 @@ mod tests {
             assert_eq!(game.level_is_raining_at(level, unloaded), None);
             assert_eq!(game.level_is_raining_at(level, [1, 4000, 1]), None);
             game.with_level(|_, host, _| {
+                // The level's own weather, wherever a position is (`Level.isRaining`).
+                assert_eq!(mod_api::LevelHost::is_raining(&*host), Some(true));
                 assert!(host.is_raining_at(plains));
                 assert!(!host.is_raining_at(roofed));
                 assert!(!host.is_raining_at(desert));
@@ -523,10 +595,40 @@ mod tests {
                 );
             }
 
+            let server_view = |game: &super::Game<'_>| {
+                let view = super::super::native_level_signals::ReadLevel { game, level };
+                mod_api::LevelHost::is_raining(&view)
+            };
+            // The level view a block part's callback gets (`ReadLevel`) answers too.
+            assert_eq!(server_view(game), Some(true));
+
             game.world.weather.rain_level = (0.0, 0.0);
             assert_eq!(game.level_is_raining_at(level, plains), Some(false));
-            game.with_level(|_, host, _| assert!(!host.is_raining_at(plains)));
+            game.with_level(|_, host, _| {
+                assert_eq!(mod_api::LevelHost::is_raining(&*host), Some(false));
+                assert!(!host.is_raining_at(plains));
+            });
+            assert_eq!(server_view(game), Some(false));
             assert_eq!(game.world.chunks.len(), chunks, "nothing was loaded");
+
+            // A logged-in client reads the weather its server synced through the same view.
+            game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
+            game.options.dedicated = None;
+            let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
+            game.connect_local(pipe, "WeatherReadTest").unwrap();
+            game.remote.as_mut().unwrap().logged_in = true;
+            let client = game.level("minecraft:overworld").unwrap();
+            let client_view = |game: &super::Game<'_>| {
+                let view = super::super::native_level_signals::ReadLevel {
+                    game,
+                    level: client,
+                };
+                mod_api::LevelHost::is_raining(&view)
+            };
+            game.world.weather.rain_level = (1.0, 1.0);
+            assert_eq!(client_view(game), Some(true));
+            game.world.weather.rain_level = (0.0, 0.0);
+            assert_eq!(client_view(game), Some(false));
         });
     }
 
@@ -749,6 +851,64 @@ mod tests {
                 "keep_inventory",
                 gamerules::Value::Bool(false)
             ));
+        });
+    }
+
+    /// Two levels that follow clocks of their own keep their own times through the clock
+    /// handles' writes (`ServerClockManager`'s `setTotalTicks`, `setRate` and `setPaused`): the
+    /// Overworld's clock paused at 6000 is a fixed time, and the End's set to 100 at a rate of 2.5
+    /// counts 10 in 4 ticks. A clock a mod registered and nothing touched counts too, from 0, as
+    /// `ServerClockManager.tick` advances every clock of the registry.
+    #[test]
+    #[ignore = "daily"]
+    fn two_levels_with_clocks_of_their_own_keep_their_own_times() {
+        use mod_api::Registrar;
+        struct Clocks;
+        #[mod_api::__subscriptions]
+        impl Hooks for Clocks {
+            fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
+                r.register_world_clock("dungeon");
+            }
+        }
+        let mods: mod_api::Mods = vec![ModEntry::new("clocks", Box::new(Clocks))].into();
+        with_mods(mods.clone(), || {
+            crate::game::api_values::install_parts(&mods).unwrap();
+            with_game(|game| {
+                let back = game.dim;
+                game.enter_level(super::Dim::End).unwrap();
+                game.enter_level(back).unwrap();
+                let overworld = game.level(super::Dim::Overworld.id()).unwrap();
+                let end = game.level(super::Dim::End.id()).unwrap();
+                let host: &mut dyn ServerHost = game;
+                let fixed = overworld.clock(&*host).unwrap();
+                let running = end.clock(&*host).unwrap();
+                assert_ne!(fixed, running);
+                assert!(fixed.set_total_ticks(host, 6_000));
+                assert!(fixed.set_paused(host, true));
+                assert!(running.set_total_ticks(host, 100));
+                assert!(running.set_rate(host, 2.5));
+                assert!(!running.set_rate(host, f32::NAN));
+                assert!(!running.set_rate(host, -1.0));
+                assert!(!fixed.set_total_ticks(host, -1));
+                for _ in 0..4 {
+                    game.advance_clock();
+                }
+                assert_eq!(
+                    game.level_clock_time(overworld),
+                    Some(6_000),
+                    "a fixed time"
+                );
+                assert_eq!(
+                    game.level_clock_time(end),
+                    Some(110),
+                    "100 and 4 ticks at 2.5"
+                );
+                assert_eq!(
+                    game.command_clock_time("clocks:dungeon"),
+                    4,
+                    "an untouched registered clock counts"
+                );
+            });
         });
     }
 

@@ -44,6 +44,7 @@ pub(super) const GOAL_VIEW_READS: &[&str] = &[
     "living_can_use_portal",
     "entity_tags",
     "entity_name",
+    "entity_custom_name",
     "entity_added_to_level",
     "entity_portal_cooldown",
     "entity_invulnerable_to_damage",
@@ -102,6 +103,7 @@ pub(super) const GOAL_VIEW_READS: &[&str] = &[
     "living_is_sleeping",
     "living_sleeping_pos",
     "living_is_jumping",
+    "living_no_jump_delay",
     "living_baby",
     "living_equipment",
     "living_hand_item",
@@ -119,6 +121,7 @@ pub(super) const GOAL_VIEW_READS: &[&str] = &[
     "mob_navigation_speed",
     "mob_pathfinding_malus",
     "mob_is_aggressive",
+    "mob_is_in_sitting_pose",
     "mob_persistence_required",
     "mob_requires_custom_persistence",
     "mob_no_ai",
@@ -291,6 +294,10 @@ fn area_tiers(camel: &str, file: syn::File) -> Result<BTreeMap<Tier, Vec<Entry>>
                         | "BlockEntityDrawContext"
                         | "WorldDrawContext"
                         | "CameraDrawContext"
+                        | "WorldPassDrawContext"
+                        | "WorldOitPassDrawContext"
+                        | "RenderLevelStageContext"
+                        | "PrepareRenderBuffersContext"
                 ) | (
                     "Services",
                     "ClientSession"
@@ -675,7 +682,7 @@ pub(super) fn game_forwarders(root: &Path) -> Result<String, String> {
 /// API records whose game representation is owned by another crate. Conversions are
 /// implemented once by the game; this rule only selects the boundary, never its behaviour.
 fn text_value(ty: &Type) -> bool {
-    contains_value(ty, &["Text", "GuiDraw"])
+    contains_value(ty, &["Text"])
 }
 
 fn boundary_value(ty: &Type) -> bool {
@@ -1403,14 +1410,14 @@ mod tests {
         assert!(code.contains("client_backend_mut_of(host)"));
         // A command result refuses with an unsuccessful run and no feedback.
         let command = entry(
-            "fn entity_run_command_with_output(&mut self, entity: EntityRef, line: &str, level: PermissionLevel) -> CommandResult;",
+            "fn entity_run_command_with_output(&mut self, entity: EntityRef, line: &str, level: PermissionLevel, suppress_output: bool) -> CommandResult;",
         );
         let (handle, code) = handle_method(&command, Tier::BackendMut, &handles)
             .unwrap()
             .unwrap();
         assert_eq!(handle, "EntityRef");
         assert!(code.contains(
-            "backend_mut_of(host).map(|backend| backend.entity_run_command_with_output(self, line, level)).unwrap_or_default()"
+            "backend_mut_of(host).map(|backend| backend.entity_run_command_with_output(self, line, level, suppress_output)).unwrap_or_default()"
         ));
         // A `Result` method refuses with its error's `NoBackend` value on a host without a game.
         let tried = entry("fn level_attempt(&mut self, level: LevelRef) -> Result<u8, Refused>;");

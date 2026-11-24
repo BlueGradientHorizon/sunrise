@@ -265,6 +265,17 @@ impl Game<'_> {
                 mixed.insert(vehicle);
             }
         }
+        for b in &self.bolts {
+            if let Some(vehicle) = b.mount
+                && !self
+                    .persist
+                    .removals
+                    .contains(&super::commands::Target::Bolt(b.id))
+            {
+                riding.add(vehicle as i32, b.id as i32);
+                mixed.insert(vehicle);
+            }
+        }
         for vehicle in mixed {
             let seats = self.seated_passengers(vehicle);
             if let Some(passengers) = riding.passengers.get_mut(&(vehicle as i32)) {
@@ -399,7 +410,6 @@ impl Game<'_> {
         });
         for a in self.armor_stands.iter().filter(|a| a.id > after) {
             let p = a.position;
-            let attributes = self.stand_attributes(&a.live);
             let e = add_state(
                 out,
                 a.id,
@@ -408,7 +418,7 @@ impl Game<'_> {
                 a.yaw,
                 a.ground.on_ground,
             );
-            e.head_yaw = a.yaw;
+            e.head_yaw = a.head_yaw;
             e.velocity = [a.velocity.x, a.velocity.y, a.velocity.z];
             let mut flags = 0i8;
             if a.is_on_fire() {
@@ -470,7 +480,7 @@ impl Game<'_> {
                     e.equipment.push((slot as u8, host.hub.stack(item)));
                 }
             }
-            e.attributes = attributes;
+            self.stand_attributes(&a.live, &mut e.attributes);
         }
         for f in self.item_frames.iter().filter(|f| f.id > after) {
             // ItemFrame.getAddEntityPacket: the block it hangs in and its direction.
@@ -605,6 +615,9 @@ impl Game<'_> {
                 0.0,
                 false,
             );
+            if o.synced_fire {
+                e.meta.push((0, serializer::BYTE, Value::Byte(1)));
+            }
             e.meta.push((
                 8,
                 serializer::ITEM_STACK,
@@ -621,6 +634,9 @@ impl Game<'_> {
             let e = add_state(out, o.id, &o.kind, [p.x, p.y, p.z], o.yaw, false);
             e.pitch = o.pitch;
             e.head_yaw = o.yaw;
+            if o.eye.as_ref().is_some_and(|eye| eye.synced_fire) {
+                e.meta.push((0, serializer::BYTE, Value::Byte(1)));
+            }
             if let Some(tag) = self.persist.raw.get(&o.id)
                 && let Some(item) = self.lan_display_data_kept(o.id, tag, e)
                 && let Some((_, _, Value::Item(stack))) =
@@ -835,9 +851,7 @@ impl Game<'_> {
         assign_resident_ids!(self.tridents, t, next, None);
         assign_resident_ids!(self.rockets, r, next, None);
         assign_resident_ids!(self.crystals, c, next, None);
-        self.bolts.iter_mut().for_each(|b| {
-            assign_entity_id(next, &mut b.id);
-        });
+        assign_resident_ids!(self.bolts, b, next, Some(&b.attachment_lifetime));
         assign_resident_ids!(self.ominous_spawners, o, next, None);
         self.potions.thrown_ids().for_each(|id| {
             assign_entity_id(next, id);
@@ -885,11 +899,62 @@ impl Game<'_> {
         };
         let at = |p: sunrise_core::geometry::Vec3| [p.x, p.y, p.z];
         for f in self.fangs.list.iter().filter(|f| f.id > after) {
-            add_state(out, f.id, "minecraft:evoker_fangs", f.pos, f.yaw, false);
+            let e = add_state(out, f.id, "minecraft:evoker_fangs", f.pos, f.yaw, false);
+            if f.synced_fire {
+                e.meta.push((0, serializer::BYTE, Value::Byte(1)));
+            }
         }
-        // LightningBolt: each client draws and flashes its own.
+        // LightningBolt: each client draws and flashes its own; sync inherited Entity data.
         for b in self.bolts.iter().filter(|b| b.id > after) {
-            add_state(out, b.id, "minecraft:lightning_bolt", b.at, 0.0, false);
+            let e = add_state(
+                out,
+                b.id,
+                "minecraft:lightning_bolt",
+                b.at,
+                b.rotation[0],
+                b.on_ground,
+            );
+            e.pitch = b.rotation[1];
+            e.velocity = at(b.velocity);
+            let flags =
+                i8::from(b.fire_ticks > 0 || b.has_visual_fire) | (i8::from(b.glowing) << 6);
+            if flags != 0 {
+                e.meta.push((0, serializer::BYTE, Value::Byte(flags)));
+            }
+            if b.air != 300 {
+                e.meta.push((1, serializer::INT, Value::Int(b.air)));
+            }
+            if let Some(name) = &b.custom_name {
+                e.meta.push((
+                    2,
+                    serializer::OPTIONAL_COMPONENT,
+                    Value::OptText(Some(name.clone())),
+                ));
+            }
+            if b.custom_name_visible {
+                e.meta.push((3, serializer::BOOLEAN, Value::Bool(true)));
+            }
+            if b.silent {
+                e.meta.push((4, serializer::BOOLEAN, Value::Bool(true)));
+            }
+            if b.no_gravity {
+                e.meta.push((5, serializer::BOOLEAN, Value::Bool(true)));
+            }
+            if b.ticks_frozen != 0 {
+                e.meta
+                    .push((7, serializer::INT, Value::Int(b.ticks_frozen)));
+            }
+            e.defaults.push((0, serializer::BYTE, Value::Byte(0)));
+            e.defaults.push((1, serializer::INT, Value::Int(300)));
+            e.defaults
+                .push((2, serializer::OPTIONAL_COMPONENT, Value::OptText(None)));
+            e.defaults
+                .push((3, serializer::BOOLEAN, Value::Bool(false)));
+            e.defaults
+                .push((4, serializer::BOOLEAN, Value::Bool(false)));
+            e.defaults
+                .push((5, serializer::BOOLEAN, Value::Bool(false)));
+            e.defaults.push((7, serializer::INT, Value::Int(0)));
         }
         for t in self.tnts.iter().filter(|t| t.id > after) {
             let e = add_state(
@@ -1223,6 +1288,8 @@ fn push_arrow_meta(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sunrise_client::lan::entity::{Entities, Tracker, Viewer};
+    use sunrise_protocol::{buf::Reader, packets::play::Clientbound};
 
     // NBT constructors assign ids. Reinstall unbound owners to exercise delayed tracking.
     macro_rules! pending {
@@ -1525,6 +1592,148 @@ mod tests {
         );
         let plain = sunrise_client::entities::ArmorStand::new(1, Default::default(), 0.0);
         assert!(stand_poses(&plain).is_empty());
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_stands_add_entity_packet_keeps_head_yaw_separate_from_view_yaw() {
+        use crate::game::native_entity_refs::tests::run_fresh_cases;
+        use sunrise_client::entities::ArmorStand;
+        use sunrise_core::geometry::Vec3;
+
+        if run_fresh_cases(
+            "game::lan_entities::tests::a_stands_add_entity_packet_keeps_head_yaw_separate_from_view_yaw",
+            "SUNRISE_STAND_PAIR_TEST",
+            &["pair"],
+        ) {
+            return;
+        }
+        crate::game::native_guest_turn_tests::with_guests(|game| {
+            let at = [3.0, 64.0, 5.0];
+            let mut stand = ArmorStand::new(40, Vec3::new(at[0], at[1], at[2]), 45.0);
+            stand.head_yaw = 90.0;
+            game.armor_stands.push(stand);
+            let packet = track_stands(game, &mut Entities::default(), &mut Tracker::default())
+                .into_iter()
+                .find_map(|packet| match packet {
+                    Clientbound::AddEntity(p) if p.id == 40 => Some(p),
+                    _ => None,
+                })
+                .expect("the tracker sent the stand's AddEntity");
+            assert_eq!([packet.yaw, packet.head_yaw], [32, 64]);
+        });
+    }
+
+    /// Track from a guest's chunk for one stand update interval. This lets the
+    /// test observe both initial pairing and updates to that same viewer.
+    fn track_stands(
+        game: &mut Game<'_>,
+        level: &mut Entities,
+        tracker: &mut Tracker,
+    ) -> Vec<Clientbound> {
+        let mut rows = States::default();
+        game.lan_object_states(&mut rows, false, 0);
+        let rows: Vec<_> = rows.as_slice().iter().collect();
+        let mut out = Vec::new();
+        let chunks = [(0, 0)].into_iter().collect();
+        let sync = game.lan.as_ref().unwrap().hub.sync_data();
+        let mut viewers = [Viewer {
+            entity_id: 12,
+            spectator: false,
+            permission: 0,
+            sunrise: false,
+            general_entity: false,
+            moved: false,
+            position: [3.0, 64.0, 5.0],
+            view_distance: 2,
+            chunks: &chunks,
+            sources: None,
+            attachment_sender: None,
+            tracker,
+            out: &mut out,
+        }];
+        let riding = Riding::default();
+        for _ in 0..sunrise_client::lan::tracking::settings("minecraft:armor_stand").1 {
+            level.tick(&rows, &riding, &mut viewers, None, |kind| {
+                sync.id("minecraft:entity_type", kind)
+            });
+        }
+        out.iter()
+            .map(|body| {
+                let mut reader = Reader::new(body);
+                Clientbound::decode(reader.varint().unwrap(), reader.rest()).unwrap()
+            })
+            .collect()
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn stand_rotation_commands_update_the_head_for_an_already_paired_viewer() {
+        use crate::game::native_entity_refs::tests::run_fresh_cases;
+
+        if run_fresh_cases(
+            "game::lan_entities::tests::stand_rotation_commands_update_the_head_for_an_already_paired_viewer",
+            "SUNRISE_STAND_COMMAND_YAW_TEST",
+            &["rotate", "teleport", "teleport_without_rotation"],
+        ) {
+            return;
+        }
+        let case = std::env::var("SUNRISE_STAND_COMMAND_YAW_TEST").unwrap();
+        crate::game::native_guest_turn_tests::with_guests(|game| {
+            game.options.dedicated = Some(Vec::new());
+            game.world.chunks.insert(
+                (0, 0),
+                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            );
+            let run = |game: &mut Game<'_>, command| {
+                game.chat_capture = Some(Vec::new());
+                let ok = game.as_console_in_spawn_level(|g| g.run_command(command));
+                let feedback = game.chat_capture.take().unwrap();
+                assert!(
+                    ok,
+                    "{command}: {:?}",
+                    feedback.iter().map(|m| m.plain()).collect::<Vec<_>>()
+                );
+            };
+            let stand = game
+                .summon_with_nbt(
+                    "minecraft:armor_stand",
+                    [3.0, 64.0, 5.0],
+                    r#"{Tags:["turn_me"],Rotation:[45f,0f]}"#,
+                )
+                .unwrap();
+            let Some(crate::game::commands::Target::Stand(id)) = stand else {
+                panic!("the loaded entity was not an armor stand");
+            };
+            let id = id as i32;
+            let (command, expected) = match case.as_str() {
+                "rotate" => ("rotate @e[tag=turn_me,limit=1] 90 0", [64, 64]),
+                "teleport" => ("teleport @e[tag=turn_me,limit=1] 4 64 5 135 0", [96, 96]),
+                "teleport_without_rotation" => {
+                    // The head can be turned independently of view before /tp.
+                    game.armor_stands.iter_mut().next().unwrap().head_yaw = 90.0;
+                    ("teleport @e[tag=turn_me,limit=1] 4 64 5", [32, 32])
+                }
+                _ => unreachable!(),
+            };
+            let mut level = Entities::default();
+            let mut tracker = Tracker::default();
+            let paired = track_stands(game, &mut level, &mut tracker);
+            assert!(
+                paired
+                    .iter()
+                    .any(|p| matches!(p, Clientbound::AddEntity(a) if a.id == id))
+            );
+            run(game, command);
+            let packets = track_stands(game, &mut level, &mut tracker);
+            assert!(packets.iter().any(|p| {
+                matches!(p, Clientbound::RotateHead(r) if r.id == id && r.head_yaw == expected[1])
+            }), "no RotateHead with yaw {} after {command}", expected[1]);
+            let late = track_stands(game, &mut Entities::default(), &mut Tracker::default());
+            assert!(late.iter().any(|p| {
+                matches!(p, Clientbound::AddEntity(a) if a.id == id && [a.yaw, a.head_yaw] == expected)
+            }), "no AddEntity with yaw {expected:?} after {command}");
+        });
     }
 
     /// Issue #8050: a cart's custom display block and offset reach clients

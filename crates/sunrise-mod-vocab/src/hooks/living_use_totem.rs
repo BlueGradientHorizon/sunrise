@@ -17,7 +17,7 @@ pub trait Hooks {
         host = "hit",
         neoforge = "LivingUseTotemEvent",
         cancellable = true,
-        version = 3,
+        version = 4,
         target = "sunrise_client::game::native_hooks::living_use_totem::HitLevel<'_>::native_living_use_totem"
     )]
     fn living_use_totem(

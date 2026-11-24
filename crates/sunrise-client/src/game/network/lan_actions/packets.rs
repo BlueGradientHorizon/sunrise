@@ -862,10 +862,12 @@ impl Game<'_> {
                 if let Some(key) = vehicle {
                     self.close_guest_vehicle_menu(conn, key);
                 }
-                if let Some(carried) =
+                if let Some(closed) =
                     self.with_own_record(gi, |host, _| host.hub.container_closed(conn, p.container))
                 {
-                    self.lan_place_back(gi, vec![carried]);
+                    // A live close: a dead player's packets are not handled, and its menus
+                    // close on its tick as killed (`lan_containers_tick`).
+                    self.settle_closed_hub_menu(conn, closed, MenuRemoval::Live);
                 }
                 if closing {
                     self.player_menu_closing(conn);
@@ -1046,7 +1048,7 @@ impl Game<'_> {
                             }),
                         );
                     }
-                    self.send_admin_feedback(Some(conn));
+                    self.send_admin_feedback();
                 }
             }
             S::ChangeGameMode(p) => {
@@ -1148,20 +1150,7 @@ impl Game<'_> {
                     // The block's item, a part's in its place, then the block
                     // entity's data on whichever won (addBlockDataToItem).
                     let include_data = g.creative && p.include_data;
-                    let stack = g.clone_stack(p.pos, include_data);
-                    let state = g.world.block(p.pos[0], p.pos[1], p.pos[2]);
-                    let mut replacement = None;
-                    if let Some(player) = g.native_acting_player() {
-                        g.native_clone_item_stack(
-                            g.dim.level(),
-                            sunrise_core::position::BlockPos::new(p.pos[0], p.pos[1], p.pos[2]),
-                            state,
-                            include_data,
-                            player,
-                            &mut replacement,
-                        );
-                    }
-                    let mut stack = replacement.or(stack)?;
+                    let mut stack = g.acting_clone_stack(p.pos, include_data)?;
                     if include_data {
                         g.add_block_data(p.pos, &mut stack);
                     }

@@ -75,7 +75,7 @@ mod prepared_model;
 pub use prepared_model::fail_next_prepared_upload;
 pub use prepared_model::{
     PreparedInstanceBuilder, PreparedModelDraw, PreparedModelInstance, PreparedModelVertex,
-    PreparedModels, camera_matrix,
+    PreparedModels, camera_matrix, prepared_instance_room_for,
 };
 #[cfg(feature = "test-support")]
 pub use prepared_model::{
@@ -163,13 +163,29 @@ pub(crate) fn texture_bytes(texture: &wgpu::Texture) -> u64 {
         * u64::from(size.depth_or_array_layers)
 }
 
+/// Whether the section arena's pages are storage too: where flat draws read them (`flat`), or
+/// while a `shaders/` pack's terrain programs read them per section (`pages`,
+/// `pack_atlas::TerrainDraws::Pages`). Otherwise they are vertex buffers alone, which the device's
+/// storage binding size does not cap (`Arena::page_limit`).
+fn arena_storage(flat: bool, pages: bool) -> bool {
+    flat || pages
+}
+
 /// Whether translucent quads have an arena of their own: with Translucent Batching
 /// (`batching`), unless a shader pack's frames can draw terrain flat (as for `flat_frame`),
 /// which reads them in the section arena through its tables: where flat draws exist and
 /// are on (`flat_draws`), for a `shaders/` pack's terrain programs (`terrain`) or a shadow
-/// pass (`shadow`: a `shaders/` pack's, or the `[shadow]` of one of Sunrise's own).
-fn translucent_split(batching: bool, flat_draws: bool, terrain: bool, shadow: bool) -> bool {
-    batching && !(flat_draws && (terrain || shadow))
+/// pass (`shadow`: a `shaders/` pack's, or the `[shadow]` of one of Sunrise's own). Nor while
+/// a `shaders/` pack's terrain or shadow programs read the section arena's pages in per-section
+/// draws (`pages`, `pack_atlas::TerrainDraws::Pages`): the translucent arena is no storage.
+fn translucent_split(
+    batching: bool,
+    flat_draws: bool,
+    pages: bool,
+    terrain: bool,
+    shadow: bool,
+) -> bool {
+    batching && !(flat_draws && (terrain || shadow)) && !pages
 }
 
 /// The compact layout of solid quads, unless `SUNRISE_PACKED_QUADS=0` (A/B checks).
@@ -212,6 +228,7 @@ mod hdr_stats;
 pub(crate) mod hud_coverage;
 mod in_flight;
 mod sourced_geometry;
+mod terrain_normals;
 use display_watch::DisplayWatch;
 #[cfg(test)]
 use display_watch::{macos_hdr, os_reported};
@@ -854,8 +871,18 @@ impl Renderer {
             );
         }
     }
+    /// Device `max_buffer_size`, for instance-room checks while `Renderer` is borrowed by `render`.
+    pub fn max_buffer_size(&self) -> u64 {
+        self.device.limits().max_buffer_size
+    }
+    /// Render `frame`, optionally driving mod world-render hooks (`FrameHooks`) at the renderer's
+    /// real visibility, sky, prepare, pass-stage, and post-world boundaries.
     #[sunrise_mod_api_macros::replaceable]
-    pub fn render(&mut self, frame: &Frame) -> Result<bool> {
+    pub fn render(
+        &mut self,
+        frame: &Frame,
+        hooks: Option<&mut dyn world_primitives::FrameHooks>,
+    ) -> Result<bool> {
         // A lost device cannot accept uploads either. Leave recovery to the
         // owner instead of submitting atlas patches to the invalid device.
         if self.device_lost() {
@@ -867,8 +894,8 @@ impl Renderer {
         }
         let scaled = self.screenshot_size();
         let rendered = match scaled {
-            Some(size) => self.draw_scaled_frame(frame, size),
-            None => self.draw_frame(frame, None, self.output),
+            Some(size) => self.draw_scaled_frame(frame, size, hooks),
+            None => self.draw_frame(frame, None, self.output, hooks),
         };
         self.finish_prepared_frame();
         // A frame that was not drawn still submits the section copies and
@@ -1047,6 +1074,41 @@ pub(crate) struct PackLoading {
     >,
     label: String,
     started: std::time::Instant,
+    /// What its terrain and shadow programs will draw from the game's sections, as the built
+    /// pack's `has_terrain` and `has_shadow` will say (`PackLoading::draws_of`), for the layouts
+    /// the frames drawn meanwhile keep (`Renderer::pack_pending`).
+    draws: PackDraws,
+}
+
+/// What a pack's programs will draw, as the built pack's `has_terrain`, `has_shadow` and
+/// `draws_sections` will say.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct PackDraws {
+    pub(crate) terrain: bool,
+    pub(crate) shadow: bool,
+    pub(crate) sections: bool,
+}
+
+impl PackLoading {
+    /// What `post`'s programs draw once built, with terrain geometry (`atlas`, the pack's block
+    /// atlas) or without: `PackPost::has_terrain` (a solid or cutout terrain program, built with
+    /// that geometry, or terrain the pack leaves undrawn), `has_shadow` (the shadow pass, with a
+    /// terrain or translucent shadow program built with it) and `draws_sections` (a solid,
+    /// cutout or translucent terrain program, or that shadow pass). A program the device then
+    /// refuses to build is not foreseen: the layouts follow the built pack once it runs.
+    pub(crate) fn draws_of(post: &sunrise_shaders::Post, atlas: bool) -> PackDraws {
+        let shadow = atlas
+            && post.shadow_pass
+            && (post.shadow.is_some()
+                || post.shadow_water.is_some()
+                || post.shadow_water_plain.is_some());
+        let programs = post.terrain.is_some() || post.terrain_cutout.is_some();
+        PackDraws {
+            terrain: atlas && programs || post.terrain_undrawn,
+            shadow,
+            sections: atlas && (programs || post.water.is_some()) || shadow,
+        }
+    }
 }
 
 /// Sets its flag when dropped: `PackLoading`'s cancel, which `PackPost::new` checks per program.

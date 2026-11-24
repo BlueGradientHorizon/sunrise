@@ -23,6 +23,9 @@ mod registered_commands;
 #[cfg(test)]
 #[path = "native_server/selector_tests.rs"]
 mod selector_tests;
+#[cfg(test)]
+#[path = "native_server/sidebar_tests.rs"]
+mod sidebar_tests;
 
 use super::api_values::{TryIntoApi, TryIntoEngine};
 use super::{Dim, Game, commands::execute, respawn_anchor::RespawnConfig};
@@ -38,7 +41,8 @@ pub(super) use registered_commands::NativeCommandState;
 use mod_api::LevelRef;
 use mod_api::{
     ActionOutcome, ActionRefused, FakeEffect, GameMode, GlobalPos, Identifier, PlayerAction,
-    PlayerActionSetup, PlayerFood, PlayerRef, PlayerRespawnConfig, ScopedActionResult,
+    PlayerActionSetup, PlayerFood, PlayerRef, PlayerRespawnConfig, ScopedActionResult, Sidebar,
+    TextFormError, VirtualHost,
 };
 use serde_json::{Map, Value, json};
 use std::sync::{
@@ -49,26 +53,14 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use sunrise_client::{
     command::{Arg, ArgType, Context, Dispatcher},
     items::ItemStack,
-    lan::{abilities::PlayerAbilities, data::component_nbt, guest::Guest},
+    lan::{
+        abilities::PlayerAbilities, data::component_nbt, guest::Guest, scoreboard::SidebarContents,
+    },
     motion::PlayerMotion,
     text::Text,
 };
 use sunrise_core::position::BlockPos;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
-
-/// A sidebar a server mod shows one player (`native_sidebar`): its title and
-/// up to 15 lines, top first, each a text on the left and, where the score's
-/// number would be, an optional text on the right.
-#[allow(dead_code)]
-#[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct NativeSidebar {
-    pub(crate) title: Text,
-    pub(crate) lines: Vec<(Text, Option<Text>)>,
-}
-
-/// The objective a mod's sidebar is sent as: the player's client only; the
-/// server's scoreboard never holds it.
-const SIDEBAR_OBJECTIVE: &str = "sunrise:native_sidebar";
 
 /// The report's name of an operator level (`commands.json`'s
 /// `permissions`).
@@ -1501,6 +1493,13 @@ impl Game<'_> {
         (self.native_acting_player() == Some(player)).then_some("")
     }
 
+    pub(super) fn player_virtual_host(&self, player: PlayerRef) -> Option<&VirtualHost> {
+        if !self.is_logical_server() {
+            return None;
+        }
+        self.online_player_record(player)?.sender.virtual_host()
+    }
+
     /// The brand the player's client announced when it connected (`ServerPlayer.clientBrand`),
     /// empty when it sent none. Displaced connected players keep theirs; an acting player with
     /// no known connection has an empty one. None for a stale or unavailable player.
@@ -1568,51 +1567,23 @@ impl Game<'_> {
         }
         true
     }
-    /// Shows `sidebar` on that player's screen, in place of the one shown
-    /// before, or takes it away (None). Only their client holds it: the
-    /// server's scoreboard, its `/scoreboard` and the other players don't
-    /// see it, and it is gone when they leave (a mod sends it again when
-    /// they come back). It takes the sidebar's place from an objective the
-    /// world shows there, for this player, until they rejoin. False when
-    /// they aren't on.
-    pub(super) fn native_sidebar(&mut self, uuid: u128, sidebar: Option<&NativeSidebar>) -> bool {
-        let objective = SIDEBAR_OBJECTIVE.to_owned();
-        // Removed first, so the new one's lines replace all the old ones.
-        let mut packets = vec![C::SetObjective(play::SetObjective {
-            name: objective.clone(),
-            method: 1,
-            display: None,
-        })];
-        if let Some(sidebar) = sidebar {
-            let title = component_nbt(&sidebar.title.component());
-            packets.push(C::SetObjective(play::SetObjective {
-                name: objective.clone(),
-                method: 0,
-                display: Some((title, 0, Some(play::NumberFormat::Blank))),
-            }));
-            // DisplaySlot.SIDEBAR.
-            packets.push(C::SetDisplayObjective(play::SetDisplayObjective {
-                slot: 1,
-                objective: objective.clone(),
-            }));
-            let lines = &sidebar.lines[..sidebar.lines.len().min(15)];
-            for (i, (left, right)) in lines.iter().enumerate() {
-                packets.push(C::SetScore(play::SetScore {
-                    // Highest first. The display name shows, not the owner;
-                    // an owner starting with '#' is hidden from the sidebar
-                    // (ScoreHolder's isHidden), and ':' is in no player's name.
-                    owner: format!("sunrise:line{i:02}"),
-                    objective: objective.clone(),
-                    score: (lines.len() - i) as i32,
-                    display: Some(component_nbt(&left.component())),
-                    number_format: Some(match right {
-                        Some(t) => play::NumberFormat::Fixed(component_nbt(&t.component())),
-                        None => play::NumberFormat::Blank,
-                    }),
-                }));
-            }
-        }
-        self.native_send_all(uuid, packets)
+    /// Resolve the physical recipient before converting any of the supplied text.
+    pub(super) fn player_set_sidebar(
+        &mut self,
+        player: PlayerRef,
+        sidebar: Option<Sidebar>,
+    ) -> Result<bool, TextFormError> {
+        let Some(conn) = self.online_player_record(player).map(|guest| guest.conn) else {
+            return Ok(false);
+        };
+        let contents = sidebar
+            .map(|sidebar| {
+                let items = self.res.item_defaults().entries();
+                SidebarContents::prepare(sidebar, &|item| items.contains_key(item)).map(Box::new)
+            })
+            .transpose()?;
+        self.after_commit(super::transactions::After::PersonalSidebar(conn, contents));
+        Ok(true)
     }
     /// The lines over and under that player's list of players (Tab):
     /// `ClientboundTabListPacket`, an empty text for none. False when they
@@ -1979,17 +1950,14 @@ impl Game<'_> {
         super::dedicated::events::record("announce", name, uuid, json!({ "message": message }));
         true
     }
-    /// A command's success feedback, routed to its originating source using
-    /// vanilla's silence, send-command-feedback and block/cart track-output rules.
-    pub(super) fn native_feedback(&mut self, line: Text) {
+    /// A command's success feedback: `CommandSourceStack.sendSuccess(line,
+    /// broadcast_to_admins)` from the executor's source, the line to its
+    /// originating source and, with `broadcast_to_admins`, the other operators
+    /// and the log (`send_success`). The executing level is in place: the
+    /// entity's name is read there, the origin block or minecart in its own.
+    pub(super) fn native_feedback(&mut self, line: Text, broadcast_to_admins: bool) {
         let source = self.command_source.unwrap_or_else(|| self.player_source());
-        self.with_source(
-            super::commands::execute::Source {
-                dimension: source.origin_dimension,
-                ..source
-            },
-            |game| game.feedback_unbroadcast(line),
-        );
+        self.with_source(source, |game| game.send_success(line, broadcast_to_admins));
     }
     /// `CommandSourceStack.sendFailure` for a mod's executor: the red line to the originating
     /// source, using vanilla's silence and block/cart track-output rules. The command's result
@@ -2427,13 +2395,29 @@ impl Game<'_> {
         }
     }
 
-    fn native_command_player_target(&self, target: super::commands::Target) -> Option<PlayerRef> {
+    pub(super) fn native_command_player_target(
+        &self,
+        target: super::commands::Target,
+    ) -> Option<PlayerRef> {
         use super::commands::Target;
         match target {
             Target::Player => self.native_acting_player(),
-            Target::Guest(conn) => self
-                .command_guest(conn)
-                .and_then(|guest| self.player(guest.uuid)),
+            Target::Guest(conn) if self.lan_acting == Some(conn) => self.native_acting_player(),
+            // The selected guest's own identity, a fake player's too (`execute on origin` of
+            // its projectile). `player_handle_read` keeps the checks: a real guest must be
+            // online, not displaced (or the one being cloned) and still that entity; a fake
+            // must be placed and not displaced.
+            Target::Guest(conn) => {
+                let guest = self.command_guest(conn)?;
+                let player = mod_api::__private::game::player_ref(
+                    mod_api::EntityRef::new(
+                        self.native_lifecycle.epoch()?,
+                        u32::try_from(guest.entity_id).ok()?,
+                    ),
+                    guest.uuid,
+                );
+                self.player_handle_read(player).map(|_| player)
+            }
             _ => None,
         }
     }
@@ -2887,7 +2871,9 @@ mod tests {
                     block.track_output = track;
                     block.last_output = None;
                 }
-                game.with_source(source, |game| game.native_feedback(Text::literal("answer")));
+                game.with_source(source, |game| {
+                    game.native_feedback(Text::literal("answer"), false)
+                });
                 let Some(BlockEntity::CommandBlock(block)) =
                     game.world.block_entities.get(&(1, 64, 1))
                 else {
@@ -2902,7 +2888,7 @@ mod tests {
                     block: None,
                     ..source
                 },
-                |game| game.native_feedback(Text::literal("silent")),
+                |game| game.native_feedback(Text::literal("silent"), false),
             );
             assert!(game.chat_capture.take().unwrap().is_empty());
             assert!(game.command_source.is_none());
@@ -3151,6 +3137,106 @@ mod tests {
         assert!(inventory_add(&mut inv, &mut off, 0, 64, &mut apple));
         assert!(off.is_none(), "never into an empty off hand (getFreeSlot)");
         assert_eq!(apple.count, 3);
+    }
+
+    /// The game's `Inventory.add` (pickups, `/give`, a bucket's or a bottle's result) takes
+    /// its slots from `getSlotWithRemainingSpace` and `getFreeSlot`
+    /// (`sunrise_client::menu::{slot_with_remaining_space, free_slot}`): one dirt at a time
+    /// lands where they answer and nowhere else, in vanilla's order (the selected slot, the
+    /// off hand, the main slots, then the first empty one).
+    #[test]
+    fn every_added_item_lands_where_the_slot_pickers_answer() {
+        use super::super::inventory_add;
+        use sunrise_client::menu::{OFFHAND, free_slot, slot_with_remaining_space};
+        let mut inv = vec![stack("minecraft:stone", 64); 36];
+        for (slot, have) in [
+            (0, stack("minecraft:stone", 5)),
+            (1, None),
+            (2, None),
+            (3, stack("minecraft:dirt", 63)),
+            (7, stack("minecraft:dirt", 63)),
+            (20, None),
+        ] {
+            inv[slot] = have;
+        }
+        let mut off = stack("minecraft:dirt", 62);
+        let selected = 3;
+        let dirt = stack("minecraft:dirt", 1).unwrap();
+        let mut landed = Vec::new();
+        for _ in 0..6 {
+            let answer = slot_with_remaining_space(&inv, off.as_ref(), selected, &dirt, 64)
+                .or_else(|| free_slot(&inv))
+                .unwrap();
+            let (mut inv_after, mut off_after) = (inv.clone(), off.clone());
+            let cell = if answer == OFFHAND {
+                &mut off_after
+            } else {
+                &mut inv_after[answer]
+            };
+            match cell {
+                Some(have) => have.count += 1,
+                empty => *empty = Some(dirt.clone()),
+            }
+            let mut one = dirt.clone();
+            assert!(!inventory_add(&mut inv, &mut off, selected, 64, &mut one));
+            assert_eq!((&inv, &off), (&inv_after, &off_after), "into {answer}");
+            landed.push(answer);
+        }
+        assert_eq!(landed, [3, OFFHAND, OFFHAND, 7, 1, 1]);
+    }
+
+    /// A mod's rows that keep hotbar slots 6 to 8 free change the slot the game's
+    /// `Inventory.add` takes (replaced on this thread through `rule_replacements::ADD_SLOT`):
+    /// a dirt passes the stack in slot 6 with room and the selected slot 7 for slot 0.
+    #[test]
+    fn a_replaced_slot_choice_reaches_the_games_inventory_add() {
+        use super::super::inventory_add;
+        use super::super::rule_replacements::{ADD_SLOT, replaced};
+        use sunrise_client::menu::OFFHAND;
+        fn open(i: usize) -> bool {
+            !(6..=8).contains(&i)
+        }
+        fn locked(
+            items: &[Option<ItemStack>],
+            offhand: Option<&ItemStack>,
+            selected: usize,
+            stack: &ItemStack,
+            max: u32,
+        ) -> Option<usize> {
+            let has = |have: Option<&ItemStack>| {
+                have.is_some_and(|have| have.same_item_same_components(stack) && have.count < max)
+            };
+            if open(selected) && has(items[selected].as_ref()) {
+                Some(selected)
+            } else if has(offhand) {
+                Some(OFFHAND)
+            } else {
+                (0..items.len())
+                    .find(|&i| open(i) && has(items[i].as_ref()))
+                    .or_else(|| (0..items.len()).find(|&i| open(i) && items[i].is_none()))
+            }
+        }
+        let mut inv = vec![None; 36];
+        inv[6] = stack("minecraft:dirt", 10);
+        let mut vanilla = inv.clone();
+        let mut off = None;
+        let mut one = stack("minecraft:dirt", 1).unwrap();
+        let left = replaced(&ADD_SLOT, locked, || {
+            inventory_add(&mut inv, &mut off, 7, 64, &mut one)
+        });
+        assert!(!left);
+        assert_eq!(
+            (&inv[0], &inv[6], &inv[7]),
+            (
+                &stack("minecraft:dirt", 1),
+                &stack("minecraft:dirt", 10),
+                &None
+            )
+        );
+        // Without the rows, vanilla's slot: the stack in slot 6 with room.
+        let mut one = stack("minecraft:dirt", 1).unwrap();
+        assert!(!inventory_add(&mut vanilla, &mut off, 7, 64, &mut one));
+        assert_eq!(vanilla[6], stack("minecraft:dirt", 11));
     }
 
     #[test]
@@ -4471,7 +4557,7 @@ mod tests {
                                   _: &mod_api::CommandInvocation| {
                                 heard.lock().unwrap().push(source.clone());
                                 host.commands()
-                                    .feedback(mod_api::Text::literal("source answer"))
+                                    .feedback(mod_api::Text::literal("source answer"), false)
                                     .unwrap();
                                 Ok(1)
                             };
@@ -5006,6 +5092,112 @@ mod tests {
             .executable()
             .unwrap_err();
         assert_eq!(error.message, Text::tr("argument.integer.big", &[&64, &65]));
+    }
+
+    /// `<name:string>` and a type declaring `CommandArgumentKind::Quotable` read Brigadier's
+    /// `StringArgumentType.string()`: a word or a quoted phrase, decoded, with an argument after
+    /// it. Both go to clients as `brigadier:string` in its quotable mode; only the mod's type asks
+    /// the server for completions, as `word` and a `Word` type do.
+    #[test]
+    fn a_string_usage_and_a_quotable_type_read_a_quoted_phrase_before_the_next_argument() {
+        struct QuestObject;
+        impl mod_api::CommandArgumentType for QuestObject {
+            fn kind(&self) -> mod_api::CommandArgumentKind {
+                mod_api::CommandArgumentKind::Quotable
+            }
+            fn parse(&self, input: &str) -> Result<String, mod_api::CommandArgumentError> {
+                Ok(input.to_lowercase())
+            }
+            fn suggest(
+                &self,
+                _: Option<&mod_api::CommandSender>,
+                _: &str,
+            ) -> Vec<mod_api::CommandSuggestion> {
+                Vec::new()
+            }
+        }
+        let arguments: CommandArguments = HashMap::from([(
+            "test:quest_object".to_owned(),
+            Arc::new(QuestObject) as Arc<dyn mod_api::CommandArgumentType>,
+        )]);
+        let (t, _, problems) = command_tree(
+            &[
+                mod_api::Command::new("quests open <object:test:quest_object> <count:integer>"),
+                mod_api::Command::new("quests rename <title:string> <count:integer>"),
+            ],
+            &Dispatcher::new(),
+            &arguments,
+        );
+        assert!(problems.is_empty(), "{problems:?}");
+        let quests = &t["children"]["quests"]["children"];
+        let object = &quests["open"]["children"]["object"];
+        assert_eq!(object["parser"], "brigadier:string");
+        assert_eq!(object["properties"], json!({"type": "phrase"}));
+        assert_eq!(object["custom_argument"], "test:quest_object");
+        assert_eq!(object["suggestions"], "minecraft:ask_server");
+        let title = &quests["rename"]["children"]["title"];
+        assert_eq!(title["parser"], "brigadier:string");
+        assert_eq!(title["properties"], json!({"type": "phrase"}));
+        assert_eq!(
+            title["suggestions"],
+            Value::Null,
+            "vanilla's string suggests nothing"
+        );
+
+        let mut dispatcher = Dispatcher::new();
+        register_dispatcher(&mut dispatcher, &t, "native_mod_command", &arguments);
+        let registries = sunrise_client::command::Registries::default();
+        for (line, value) in [
+            (r##"quests open "#Chapter_One" 3"##, "#chapter_one"),
+            ("quests open 1A2B3C4D5E6F7A8B 3", "1a2b3c4d5e6f7a8b"),
+            (r#"quests open "" 3"#, ""),
+        ] {
+            let parsed = dispatcher.parse(line, &registries);
+            let (context, _) = parsed
+                .executable()
+                .unwrap_or_else(|e| panic!("{line}: {e:?}"));
+            assert_eq!(
+                context.get("object"),
+                Some(&Arg::Custom {
+                    kind: "test:quest_object".into(),
+                    value: value.into(),
+                }),
+                "{line}"
+            );
+            assert_eq!(context.get("count"), Some(&Arg::Int(3)), "{line}");
+        }
+        for (line, value) in [
+            (
+                r#"quests rename "Getting \"Started\"" 2"#,
+                r#"Getting "Started""#,
+            ),
+            (r"quests rename 'back\\slash' 2", r"back\slash"),
+            ("quests rename '' 2", ""),
+            ("quests rename Plain 2", "Plain"),
+        ] {
+            let parsed = dispatcher.parse(line, &registries);
+            let (context, _) = parsed
+                .executable()
+                .unwrap_or_else(|e| panic!("{line}: {e:?}"));
+            assert_eq!(
+                context.get("title"),
+                Some(&Arg::Str(value.into())),
+                "{line}"
+            );
+            assert_eq!(context.get("count"), Some(&Arg::Int(2)), "{line}");
+        }
+        for line in [r#"quests rename "Getting 2"#, r#"quests open "Getting 2"#] {
+            let error = dispatcher
+                .parse(line, &registries)
+                .executable()
+                .unwrap_err();
+            assert_eq!(
+                error.message,
+                Text::tr("parsing.quote.expected.end", &[]),
+                "{line}"
+            );
+            assert_eq!(error.cursor, line.len(), "{line}");
+        }
     }
 
     /// NeoForge's `RegisterCommandsEvent` registers into vanilla's dispatcher, whose literal

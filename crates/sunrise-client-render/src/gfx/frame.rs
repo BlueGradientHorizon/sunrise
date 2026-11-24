@@ -138,8 +138,8 @@ pub struct Frame<'a> {
     pub distance: f32,
     /// Full-detail terrain distance in blocks; distant LODs bypass the cave graph.
     pub detail_distance: f32,
-    /// Loaded full-detail streaming distance in blocks for shadow caster selection, separate from
-    /// the effective eye distance (`detail_distance`); defaults to `detail_distance` when `None`.
+    /// Shadow caster selection distance in blocks; defaults to the effective eye distance
+    /// (`detail_distance`) when `None`.
     pub shadow_distance: Option<f32>,
     /// `Camera.depthFar`: the far plane (`crate::camera::depth_far`).
     pub depth_far: f32,
@@ -153,7 +153,10 @@ pub struct Frame<'a> {
     pub cave_culling: bool,
     /// Title screen: only the dedicated panorama cube map and the HUD.
     pub title: bool,
-    /// Lava, powder snow, blindness, darkness or a boss bar's world fog leaves out the sky pass
+    /// Whether `LevelRenderer.addSkyPass` would add the pass that owns NeoForge's
+    /// `RenderLevelStageEvent.AfterSky`, independent of Sunrise's sky drawing flags.
+    pub sky_pass: bool,
+    /// Lava, powder snow, blindness, darkness or a boss bar's world fog suppresses sky drawing
     /// (`fog::sky_pass_skipped`).
     pub sky_blocked: bool,
     /// Dimensions without a skybox (the Nether) clear to the fog colour.

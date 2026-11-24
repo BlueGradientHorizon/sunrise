@@ -310,6 +310,9 @@ struct ExplosionHookContext<'a> {
     hurts: bool,
     knockback: f32,
     flying_knockback: f32,
+    /// The player whose blast it is (`DamageSource.getEntity() instanceof Player`: a primed
+    /// TNT's owner, the player who broke an end crystal), by entity id, with their team.
+    player_cause: Option<(i32, Option<sunrise_client::scoreboard::Team>)>,
 }
 
 /// An entity in the blast's reach: how far (as a share of the blast's
@@ -446,6 +449,34 @@ impl Game<'_> {
         self.combat.explosion_cause = direct;
         self.combat.explicit_explosion_direct = outer_direct;
         result
+    }
+
+    /// The player whose blast is going off (`DamageSource.getEntity() instanceof Player`), by
+    /// entity id, with their team: an explicit cause that is a player (an end crystal they
+    /// broke), else a primed TNT's owning player. Asked before any player is swapped in, so
+    /// a cause that names no guest is the player in place.
+    fn blast_player_cause(&self) -> Option<(i32, Option<sunrise_client::scoreboard::Team>)> {
+        let (id, guest) = match &self.combat.explicit_explosion_cause {
+            Some(cause) => cause
+                .as_ref()
+                .filter(|c| c.player)
+                .map(|c| (c.entity.0, c.guest))?,
+            None => self
+                .combat
+                .blast_owner
+                .as_ref()
+                .filter(|_| self.combat.blast_owner_player)
+                .map(|(id, _)| (*id, self.combat.blast_guest))?,
+        };
+        let team = match guest {
+            Some(conn) => self
+                .lan
+                .as_ref()
+                .and_then(|host| host.hub.guest(conn))
+                .and_then(|g| self.score.board.players_team(&g.name)),
+            None => self.player_team(),
+        };
+        Some((id as i32, team.cloned()))
     }
 
     /// The blast damage's cause. An explicit crystal/cart DamageSource may
@@ -815,13 +846,17 @@ impl Game<'_> {
             [d[0] / l, d[1] / l, d[2] / l]
         };
         let power = pow * f64::from(knockback) * (1.0 - resistance);
-        // `shouldDamageEntity`, then `source.doTeamsAllowDamage(entity)`.
+        // `shouldDamageEntity`, then `source.doTeamsAllowDamage(entity)`, then
+        // `ServerPlayer.hurtServer`'s `canHarmPlayer` of the player whose blast it is.
         let hurtable = context.hurts
             && exploding.is_none_or(|id| {
                 sunrise_client::scoreboard::teams_allow_damage(
                     self.mob_team(id),
                     self.player_team(),
                 )
+            })
+            && context.player_cause.as_ref().is_none_or(|(owner, team)| {
+                self.player_may_harm(*owner, p.entity_id, team.as_ref(), self.player_team())
             });
         let blocking = self
             .player_blocking(Some(center), damage_type, false)
@@ -865,6 +900,10 @@ impl Game<'_> {
             self.note_direct_entity(damage_type, direct);
         }
         let rules = self.world.health_rules;
+        // The blast's causing entity, lent to the hit's listeners: decided once, before the
+        // player is borrowed for the hit.
+        let causing = attacker.map_or(0, |(id, _)| *id as i32);
+        let decision = crate::game::entity::causer_decision!(self, causing);
         if let Some(p) = self.player.as_mut()
             && let Some(id) = self.health_resources.damage.id(damage_type)
         {
@@ -876,7 +915,7 @@ impl Game<'_> {
                         self,
                         self.combat.attack(),
                         no_push,
-                        None,
+                        crate::game::entity::player_victim_causer!(self, decision),
                         acting_equipment!(self)
                     ),
                     &self.health_resources,
@@ -1039,6 +1078,7 @@ impl Game<'_> {
             hurts,
             knockback,
             flying_knockback,
+            player_cause: self.blast_player_cause(),
         };
         let own = if self
             .lan_acting_entity
@@ -1257,15 +1297,20 @@ impl Game<'_> {
                             source.attacker,
                             &blast_attack,
                         );
+                        // The blast's causing entity, lent beside its victim.
+                        let causing = attacker.as_ref().map_or(0, |&(id, _)| id as i32);
+                        let decision = crate::game::entity::causer_decision!(self, causing);
                         let mut credit = plan.lend(&mut self.last_hurt_by_player);
+                        let (victim_mob, lend) =
+                            crate::game::entity::victim_and_causer!(self, i, causing, decision);
                         let hurt = hurt_mob(
                             crate::game::entity::damage_level_of!(
                                 self,
                                 &blast_attack,
                                 &mut credit,
-                                None
+                                lend
                             ),
-                            &mut self.mobs[i],
+                            victim_mob,
                             hurtable,
                             cause,
                             (amount, source),
@@ -1319,14 +1364,11 @@ impl Game<'_> {
                             destroyed = item.health <= 0;
                             if destroyed {
                                 let at = item.position;
-                                // Health was already reduced above. Run the shared
-                                // onDestroyed path without applying damage twice.
-                                destroyed_contents.extend(
-                                    item.hurt(0)
-                                        .unwrap_or_default()
-                                        .into_iter()
-                                        .map(|stack| (stack, at)),
-                                );
+                                // Health was already reduced above. Fire `ItemStack.onDestroyed`
+                                // with the original intact stack before spilling and discarding.
+                                let spilled = self.destroy_item_entity_drops(i, damage_type);
+                                destroyed_contents
+                                    .extend(spilled.into_iter().map(|stack| (stack, at)));
                             }
                         }
                     }

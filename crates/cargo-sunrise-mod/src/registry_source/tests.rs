@@ -5,17 +5,15 @@ use std::{cell::RefCell, rc::Rc};
 const FIRST: &[u8] = include_bytes!("first-index.json");
 const FIRST_SIGNATURE: &[u8] = include_bytes!("first-index.json.minisig");
 const FIRST_SERIAL: u64 = 1795408124;
-const URL: &str = "https://example.org/v2/index.json";
+const URL: &str = "https://example.org/v2/index.signed";
 
+/// `index.signed` as the registry publishes it: the signature file, then the index's bytes.
 fn serve(index: &'static [u8]) -> impl Fn(&str, u64) -> Result<Vec<u8>, String> {
     move |url, limit| {
-        let bytes = match url.strip_prefix(URL) {
-            Some("") => index,
-            Some(".minisig") => FIRST_SIGNATURE,
-            _ => panic!("unexpected URL: {url}"),
-        };
-        assert!(bytes.len() as u64 <= limit);
-        Ok(bytes.to_vec())
+        assert_eq!(url, URL);
+        let signed = [FIRST_SIGNATURE, index].concat();
+        assert!(signed.len() as u64 <= limit);
+        Ok(signed)
     }
 }
 
@@ -148,8 +146,9 @@ fn a_package_is_downloaded_once_and_its_size_digest_and_attestation_are_checked_
     assert!(error.contains("names another repository"), "{error}");
 }
 
-/// The production path end to end: the live index under the built-in key, then one live native
-/// release's package and its GitHub attestation.
+/// The production path end to end: the live index under the built-in key, then one live
+/// release's package and its GitHub attestation. The path is the same for every kind of project,
+/// so the release is whichever the registry lists first.
 #[test]
 #[ignore = "daily"]
 fn a_live_release_verifies_against_the_live_index_and_its_attestation() {
@@ -159,12 +158,11 @@ fn a_live_release_verifies_against_the_live_index_and_its_attestation() {
         .index
         .projects
         .iter()
-        .filter(|p| p.kind == sunrise_mod_package::index::Kind::NativeMod)
         .find_map(|p| Some((p, p.releases.first()?)))
-        .expect("a native release in the registry");
+        .expect("a release in the registry");
     let archive = registry.package(cache.path(), project, release).unwrap();
     assert_eq!(
-        sunrise_mod_package::index::native::Bundle::read(&archive)
+        sunrise_mod_package::Package::read(&archive)
             .unwrap()
             .manifest
             .id,

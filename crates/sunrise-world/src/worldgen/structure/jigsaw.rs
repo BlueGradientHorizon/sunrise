@@ -1,4 +1,5 @@
 //! Template pools, pool elements and JigsawPlacement.
+use mod_api::JigsawSpace;
 use serde_json::Value;
 use std::{
     cell::RefCell,
@@ -8,21 +9,27 @@ use std::{
 };
 use sunrise_core::{
     geometry::Direction,
-    position::BlockPos,
+    position::{BlockPos, ChunkPos},
     random::{LegacyRandom, RandomSource, position_seed},
 };
 use {
     super::{
         LazyTemplate, Mirror, Rotation, StructureResources, StructureTemplate,
-        processor::{PlaceSettings, Processor, ProcessorList, place_in_world},
+        legacy::{
+            PieceContext, PieceDraws, PieceRandom, PieceWorld, Result as LegacyResult, SolidRender,
+        },
+        processor::{PlaceSettings, Processor, ProcessorList, ProcessorRandom, place_in_world},
     },
     sunrise_core::bounding_box::BoundingBox,
 };
 use {
     crate::{
+        fluid::{FluidKind, FluidState},
         heightmap::HeightmapType,
+        registry::BlockStateId,
         worldgen::{
             DecodeError,
+            biome::BiomeId,
             block_feature::FeatureBlockBindings,
             feature::FeatureWorld,
             placement::{PlacementContext, PlacementQueryError},
@@ -60,9 +67,6 @@ pub enum PoolElement {
         /// The piece's own terrain kernel in a structure that has one
         /// (`"sunrise:enhanced_terrain_adaptation"`).
         enhanced_terrain: Option<Arc<super::enhanced_terrain::Adaptation>>,
-        /// getGroundLevelDelta: 1, or Formations' `ground_level`
-        /// (`"sunrise:ground_level"`).
-        ground_level: i32,
     },
     Feature {
         feature: String,
@@ -72,6 +76,36 @@ pub enum PoolElement {
         elements: Vec<PoolElement>,
         projection: Projection,
     },
+    /// An element of a type a mod registered (`StructurePoolElementType`),
+    /// with its registered id (`element_type`).
+    Mod {
+        id: Arc<str>,
+        element: Arc<dyn super::mod_elements::ModPoolElement>,
+        /// The element's own projection, or the list's that holds it
+        /// (`ListPoolElement.setProjectionOnEachElement`).
+        projection: Projection,
+    },
+}
+/// A feature a piece places: a configured feature
+/// (`minecraft:worldgen/feature`) or a placed one
+/// (`minecraft:worldgen/placed_feature`), by id.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FeatureKey<'a> {
+    Configured(&'a str),
+    Placed(&'a str),
+}
+/// Where and how an element is placed: `StructurePoolElement.place`'s
+/// arguments besides the level, the random and the chunk's box.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ElementAt {
+    pub position: [i32; 3],
+    pub reference: [i32; 3],
+    pub rotation: Rotation,
+    /// `LiquidSettings.APPLY_WATERLOGGING` (true) or `IGNORE_WATERLOGGING`.
+    pub waterlogging: bool,
+    /// Leave the jigsaw blocks as they are (`/place template`'s and
+    /// `/place jigsaw`'s `keepJigsaws`).
+    pub keep_jigsaws: bool,
 }
 #[derive(Clone, Debug)]
 pub struct Jigsaw<'a> {
@@ -110,9 +144,9 @@ pub(super) fn step(d: Direction) -> [i32; 3] {
     [n[0], n[1], n[2]]
 }
 /// Util.shuffle.
-pub(super) fn shuffle<T>(list: &mut [T], random: &mut impl RandomSource) {
+pub fn shuffle<T>(list: &mut [T], random: &mut (impl ProcessorRandom + ?Sized)) {
     for i in (2..=list.len()).rev() {
-        let swap = random.next_int_bound(i as i32).unwrap_or(0) as usize;
+        let swap = random.int(i as i32) as usize;
         list.swap(i - 1, swap);
     }
 }
@@ -168,13 +202,6 @@ impl PoolElement {
                         .get("sunrise:enhanced_terrain_adaptation")
                         .map(|a| super::enhanced_terrain::Adaptation::decode(a).map(Arc::new))
                         .transpose()?,
-                    ground_level: match value.get("sunrise:ground_level") {
-                        None => 1,
-                        Some(v) => v
-                            .as_u64()
-                            .and_then(|g| i32::try_from(g).ok())
-                            .ok_or(DecodeError::Field("sunrise:ground_level"))?,
-                    },
                 }
             }
             "minecraft:feature_pool_element" => Self::Feature {
@@ -193,8 +220,29 @@ impl PoolElement {
                     projection: p,
                 }
             }
-            _ => return Err(DecodeError::Field("pool element type")),
+            _ => {
+                let Some(kind_type) = super::mod_elements::mod_pool_element_type(kind) else {
+                    return Err(DecodeError::Field("pool element type"));
+                };
+                let element = kind_type
+                    .decode(value, resources, bindings)
+                    .map_err(|e| DecodeError::Registry(format!("{kind}: {e}")))?;
+                Self::Mod {
+                    id: kind.into(),
+                    projection: inherited.unwrap_or_else(|| element.projection()),
+                    element,
+                }
+            }
         })
+    }
+    /// `StructurePoolElement.CODEC`'s decoding of one element (a template
+    /// pool entry's `element`), mods' element types included.
+    pub fn decode_element(
+        value: &Value,
+        resources: &StructureResources,
+        bindings: &FeatureBlockBindings<'_>,
+    ) -> Result<Self, DecodeError> {
+        Self::decode(value, resources, bindings, None)
     }
     /// `StructurePoolElement.CODEC`'s encoding, as a jigsaw piece saves it.
     pub fn save(&self) -> Tag {
@@ -252,6 +300,11 @@ impl PoolElement {
                 ),
                 ("projection", text(projection.saved_name())),
             ]),
+            Self::Mod { id, element, .. } => {
+                let mut fields = element.save();
+                fields.insert("element_type".into(), text(id));
+                Tag::Compound(fields)
+            }
         }
     }
     pub fn projection(&self) -> Projection {
@@ -259,31 +312,29 @@ impl PoolElement {
             Self::Empty => Projection::TerrainMatching,
             Self::Single { projection, .. }
             | Self::Feature { projection, .. }
-            | Self::List { projection, .. } => *projection,
+            | Self::List { projection, .. }
+            | Self::Mod { projection, .. } => *projection,
         }
     }
-    pub fn size(&self, rotation: Rotation) -> [i32; 3] {
-        match self {
-            Self::Empty | Self::Feature { .. } => [0; 3],
-            Self::Single { template, .. } => template.size(rotation),
-            Self::List { elements, .. } => elements.iter().fold([0; 3], |acc, e| {
-                let s = e.size(rotation);
-                std::array::from_fn(|i| acc[i].max(s[i]))
-            }),
-        }
-    }
-    pub fn bounding_box(&self, position: [i32; 3], rotation: Rotation) -> BoundingBox {
+    /// `StructurePoolElement.getBoundingBox`.
+    pub fn bounding_box(
+        &self,
+        resources: &StructureResources,
+        position: [i32; 3],
+        rotation: Rotation,
+    ) -> BoundingBox {
         match self {
             Self::Empty => BoundingBox::new(position, position),
             Self::Feature { .. } => BoundingBox::new(position, position),
             Self::Single { template, .. } => {
                 template.bounding_box(position, rotation, [0; 3], Mirror::None)
             }
+            Self::Mod { element, .. } => element.bounding_box(resources, position, rotation),
             Self::List { elements, .. } => {
                 let mut boxes = elements
                     .iter()
                     .filter(|e| !matches!(e, Self::Empty))
-                    .map(|e| e.bounding_box(position, rotation));
+                    .map(|e| e.bounding_box(resources, position, rotation));
                 let mut first = boxes.next().unwrap_or(BoundingBox::new(position, position));
                 for b in boxes {
                     first.encapsulate(&b);
@@ -298,10 +349,13 @@ impl PoolElement {
         resources: &StructureResources,
         position: [i32; 3],
         rotation: Rotation,
-        random: &mut impl RandomSource,
+        random: &mut dyn PieceDraws,
     ) -> Vec<Jigsaw<'a>> {
         match self {
             Self::Empty => Vec::new(),
+            Self::Mod { element, .. } => {
+                element.shuffled_jigsaws(resources, position, rotation, &mut *random)
+            }
             Self::Feature { .. } => vec![Jigsaw {
                 pos: position,
                 front: Direction::Down,
@@ -315,7 +369,7 @@ impl PoolElement {
             }],
             Self::List { elements, .. } => elements
                 .first()
-                .map(|e| e.shuffled_jigsaws(resources, position, rotation, random))
+                .map(|e| e.shuffled_jigsaws(resources, position, rotation, &mut *random))
                 .unwrap_or_default(),
             Self::Single { template, .. } => {
                 let mut jigsaws = template_jigsaws(resources, template, position, rotation);
@@ -327,7 +381,7 @@ impl PoolElement {
     }
     pub fn ground_level_delta(&self) -> i32 {
         match self {
-            Self::Single { ground_level, .. } => *ground_level,
+            Self::Mod { element, .. } => element.ground_level_delta(),
             _ => 1,
         }
     }
@@ -412,6 +466,14 @@ pub struct Pool {
     max_size: OnceLock<i32>,
 }
 impl Pool {
+    /// `StructureTemplatePool.templates`: each element repeated by its weight.
+    pub fn templates(&self) -> &[Arc<PoolElement>] {
+        &self.templates
+    }
+    /// The fallback pool's id.
+    pub fn fallback(&self) -> &str {
+        &self.fallback
+    }
     pub(super) fn random_template(&self, random: &mut impl RandomSource) -> Arc<PoolElement> {
         if self.templates.is_empty() {
             return Arc::new(PoolElement::Empty);
@@ -427,12 +489,13 @@ impl Pool {
         shuffle(&mut order, random);
         order.into_iter().map(|i| self.entries[i]).collect()
     }
-    pub(super) fn max_size(&self) -> i32 {
+    /// `StructureTemplatePool.getMaxSize`: the tallest element's height.
+    pub fn max_size(&self, resources: &StructureResources) -> i32 {
         *self.max_size.get_or_init(|| {
             self.templates
                 .iter()
                 .filter(|t| !matches!(t.as_ref(), PoolElement::Empty))
-                .map(|t| t.bounding_box([0; 3], Rotation::None).span()[1])
+                .map(|t| t.bounding_box(resources, [0; 3], Rotation::None).span()[1])
                 .max()
                 .unwrap_or(0)
         })
@@ -515,7 +578,17 @@ impl Pools {
                             // Once per pool: each worker decodes its own copy.
                             static WARNED: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
                             if WARNED.lock().unwrap().insert(name.to_owned()) {
-                                log::warn!("Sunrise: template pool {name} is left out: {error}");
+                                let file = match name.split_once(':') {
+                                    Some((ns, path)) => {
+                                        format!("data/{ns}/worldgen/template_pool/{path}.json")
+                                    }
+                                    None => {
+                                        format!("data/minecraft/worldgen/template_pool/{name}.json")
+                                    }
+                                };
+                                log::warn!(
+                                    "Sunrise: template pool {name} ({file}) is left out: {error}"
+                                );
                             }
                             return None;
                         }
@@ -680,139 +753,251 @@ impl PoolPiece {
         self.bounding_box = self.bounding_box.moved([0, dy, 0]);
     }
     /// PoolElementStructurePiece.postProcess.
-    #[allow(clippy::too_many_arguments)]
-    pub fn place<W: FeatureWorld + PlacementContext, R: RandomSource>(
+    pub fn place<W: FeatureWorld + PlacementContext, R: RandomSource + 'static>(
         &self,
-        world: &mut W,
-        resources: &StructureResources,
+        site: &mut Site<'_, '_, W, R>,
         random: &mut R,
-        chunk_box: BoundingBox,
         reference: [i32; 3],
         keep_jigsaws: bool,
-        place_feature: &mut PlaceFeature<'_, W, R>,
     ) -> Result<bool, PlacementQueryError> {
-        place_element(
-            &self.element,
-            world,
-            resources,
+        site.place(
             random,
-            chunk_box,
-            self.position,
-            reference,
-            self.rotation,
-            self.waterlogging,
-            keep_jigsaws,
-            place_feature,
+            &self.element,
+            ElementAt {
+                position: self.position,
+                reference,
+                rotation: self.rotation,
+                waterlogging: self.waterlogging,
+                keep_jigsaws,
+            },
         )
     }
 }
 static GRAVITY: OnceLock<Processor> = OnceLock::new();
 static IGNORE_STRUCTURE_BLOCK: OnceLock<Processor> = OnceLock::new();
 static IGNORE_STRUCTURE_AND_AIR: OnceLock<Processor> = OnceLock::new();
-#[allow(clippy::too_many_arguments)]
-fn place_element<W: FeatureWorld + PlacementContext, R: RandomSource>(
-    element: &PoolElement,
-    world: &mut W,
-    resources: &StructureResources,
-    random: &mut R,
-    chunk_box: BoundingBox,
-    position: [i32; 3],
-    reference: [i32; 3],
-    rotation: Rotation,
-    waterlogging: bool,
-    keep_jigsaws: bool,
-    place_feature: &mut PlaceFeature<'_, W, R>,
-) -> Result<bool, PlacementQueryError> {
-    match element {
-        PoolElement::Empty => Ok(true),
-        PoolElement::Feature { feature, .. } => place_feature(world, random, feature, position),
-        PoolElement::List { elements, .. } => {
-            for e in elements {
-                if !place_element(
-                    e,
-                    world,
+
+/// Places a feature (feature pool elements, and pieces placing one) with the
+/// piece random. An id the registry lacks places nothing: `Ok(false)`.
+pub type PlaceFeature<'a, W, R> =
+    dyn FnMut(&mut W, &mut R, FeatureKey<'_>, [i32; 3]) -> Result<bool, PlacementQueryError> + 'a;
+
+/// A generating structure's pieces' view of one chunk: the level, and how
+/// features are placed into it. Pieces reach it as their [`PieceWorld`], so a
+/// mod's piece or element places features and pool elements through it with
+/// the piece random.
+pub struct Site<'s, 'f, W, R> {
+    pub world: &'s mut W,
+    pub resources: &'s StructureResources,
+    /// `BlockState.isSolidRender` of the blocks around the pieces.
+    pub blocks: &'s dyn SolidRender,
+    /// The chunk's writable box the pieces are clipped to.
+    pub chunk_box: BoundingBox,
+    pub place_feature: &'s mut PlaceFeature<'f, W, R>,
+}
+impl<W: FeatureWorld + PlacementContext, R: RandomSource + 'static> Site<'_, '_, W, R> {
+    /// `StructurePoolElement.place`, clipped to the chunk's box.
+    pub fn place(
+        &mut self,
+        random: &mut R,
+        element: &PoolElement,
+        at: ElementAt,
+    ) -> Result<bool, PlacementQueryError> {
+        match element {
+            PoolElement::Empty => Ok(true),
+            PoolElement::Feature { feature, .. } => {
+                (self.place_feature)(self.world, random, FeatureKey::Placed(feature), at.position)
+            }
+            PoolElement::List { elements, .. } => {
+                for e in elements {
+                    if !self.place(random, e, at)? {
+                        return Ok(false);
+                    }
+                }
+                Ok(true)
+            }
+            PoolElement::Mod {
+                element,
+                projection,
+                ..
+            } => {
+                let (resources, blocks, chunk_box) = (self.resources, self.blocks, self.chunk_box);
+                let mut context = PieceContext {
+                    world: self,
                     resources,
+                    blocks,
                     random,
                     chunk_box,
-                    position,
-                    reference,
-                    rotation,
-                    waterlogging,
-                    keep_jigsaws,
-                    place_feature,
-                )? {
-                    return Ok(false);
-                }
+                    chunk: ChunkPos::new(chunk_box.min[0] >> 4, chunk_box.min[2] >> 4),
+                    reference: at.reference,
+                };
+                element.place(&mut context, at, *projection)
             }
-            Ok(true)
-        }
-        PoolElement::Single {
-            template,
-            processors,
-            legacy,
-            projection,
-            waterlogging: override_liquid,
-            ..
-        } => {
-            let ignore = if *legacy {
-                IGNORE_STRUCTURE_AND_AIR.get_or_init(|| {
-                    Processor::BlockIgnore(
-                        [
-                            "minecraft:structure_block".to_owned(),
-                            "minecraft:air".to_owned(),
-                        ]
-                        .into(),
-                    )
-                })
-            } else {
-                IGNORE_STRUCTURE_BLOCK.get_or_init(|| {
-                    Processor::BlockIgnore(["minecraft:structure_block".to_owned()].into())
-                })
-            };
-            let mut settings = PlaceSettings::new(rotation);
-            settings.known_shape = true;
-            // SinglePoolElement.getSettings.
-            settings.finalize_entities = true;
-            settings.bounding_box = Some(chunk_box);
-            settings.waterlogging = override_liquid.unwrap_or(waterlogging);
-            if !*legacy {
-                settings.processors.push(ignore);
-            }
-            // SinglePoolElement.getSettings: keepJigsaws skips the replacement.
-            if !keep_jigsaws {
-                settings.processors.push(&Processor::JigsawReplacement);
-            }
-            settings.processors.extend(processors.0.iter());
-            if *projection == Projection::TerrainMatching {
-                settings
-                    .processors
-                    .push(GRAVITY.get_or_init(|| Processor::Gravity {
-                        heightmap: HeightmapType::WorldSurfaceWg,
-                        offset: -1,
-                    }));
-            }
-            // LegacySinglePoolElement pops the structure-block ignore and
-            // appends STRUCTURE_AND_AIR last, after jigsaw replacement.
-            if *legacy {
-                settings.processors.push(ignore);
-            }
-            place_in_world(
-                world,
-                resources,
+            PoolElement::Single {
                 template,
-                position,
-                reference,
-                &mut settings,
-                Some(random),
-                18,
-            )
+                processors,
+                legacy,
+                projection,
+                waterlogging: override_liquid,
+                ..
+            } => {
+                let ignore = if *legacy {
+                    IGNORE_STRUCTURE_AND_AIR.get_or_init(|| {
+                        Processor::BlockIgnore(
+                            [
+                                "minecraft:structure_block".to_owned(),
+                                "minecraft:air".to_owned(),
+                            ]
+                            .into(),
+                        )
+                    })
+                } else {
+                    IGNORE_STRUCTURE_BLOCK.get_or_init(|| {
+                        Processor::BlockIgnore(["minecraft:structure_block".to_owned()].into())
+                    })
+                };
+                let mut settings = PlaceSettings::new(at.rotation);
+                settings.known_shape = true;
+                // SinglePoolElement.getSettings.
+                settings.finalize_entities = true;
+                settings.bounding_box = Some(self.chunk_box);
+                settings.waterlogging = override_liquid.unwrap_or(at.waterlogging);
+                if !*legacy {
+                    settings.processors.push(ignore);
+                }
+                // SinglePoolElement.getSettings: keepJigsaws skips the replacement.
+                if !at.keep_jigsaws {
+                    settings.processors.push(&Processor::JigsawReplacement);
+                }
+                settings.processors.extend(processors.0.iter());
+                if *projection == Projection::TerrainMatching {
+                    settings
+                        .processors
+                        .push(GRAVITY.get_or_init(|| Processor::Gravity {
+                            heightmap: HeightmapType::WorldSurfaceWg,
+                            offset: -1,
+                        }));
+                }
+                // LegacySinglePoolElement pops the structure-block ignore and
+                // appends STRUCTURE_AND_AIR last, after jigsaw replacement.
+                if *legacy {
+                    settings.processors.push(ignore);
+                }
+                place_in_world(
+                    self.world,
+                    self.resources,
+                    template,
+                    at.position,
+                    at.reference,
+                    &mut settings,
+                    Some(random),
+                    18,
+                )
+            }
         }
     }
+    /// The piece's random as the site's own; a piece hands back the random it
+    /// was given, so another is refused.
+    fn own_random(random: &mut dyn PieceRandom) -> Result<&mut R, PlacementQueryError> {
+        random
+            .as_any()
+            .downcast_mut::<R>()
+            .ok_or_else(|| PlacementQueryError::Failed("not the piece's random".into()))
+    }
 }
-
-/// Places a named placed feature (feature pool elements) with the piece random.
-pub type PlaceFeature<'a, W, R> =
-    dyn FnMut(&mut W, &mut R, &str, [i32; 3]) -> Result<bool, PlacementQueryError> + 'a;
+impl<W: FeatureWorld + PlacementContext, R: RandomSource + 'static> PieceWorld
+    for Site<'_, '_, W, R>
+{
+    fn block(&mut self, pos: [i32; 3]) -> LegacyResult<BlockStateId> {
+        PieceWorld::block(self.world, pos)
+    }
+    fn set(&mut self, pos: [i32; 3], state: BlockStateId, flags: i32) -> LegacyResult<bool> {
+        PieceWorld::set(self.world, pos, state, flags)
+    }
+    fn fluid(&mut self, pos: [i32; 3]) -> LegacyResult<FluidState> {
+        PieceWorld::fluid(self.world, pos)
+    }
+    fn height(&mut self, kind: HeightmapType, x: i32, z: i32) -> LegacyResult<i32> {
+        PieceWorld::height(self.world, kind, x, z)
+    }
+    fn min_y(&mut self) -> LegacyResult<i32> {
+        PieceWorld::min_y(self.world)
+    }
+    fn max_y(&mut self) -> LegacyResult<i32> {
+        PieceWorld::max_y(self.world)
+    }
+    fn entity(&mut self, nbt: Compound) -> LegacyResult<()> {
+        PieceWorld::entity(self.world, nbt)
+    }
+    fn block_entity(&mut self, pos: [i32; 3], nbt: Compound) -> LegacyResult<()> {
+        PieceWorld::block_entity(self.world, pos, nbt)
+    }
+    fn post_process(&mut self, pos: [i32; 3]) -> LegacyResult<()> {
+        PieceWorld::post_process(self.world, pos)
+    }
+    fn fluid_tick(&mut self, pos: [i32; 3], fluid: FluidKind, delay: i32) -> LegacyResult<()> {
+        PieceWorld::fluid_tick(self.world, pos, fluid, delay)
+    }
+    fn seed(&mut self) -> LegacyResult<i64> {
+        PieceWorld::seed(self.world)
+    }
+    fn level_boolean(&mut self) -> LegacyResult<bool> {
+        PieceWorld::level_boolean(self.world)
+    }
+    fn level_float(&mut self) -> LegacyResult<f32> {
+        PieceWorld::level_float(self.world)
+    }
+    fn level_int(&mut self, bound: i32) -> LegacyResult<i32> {
+        PieceWorld::level_int(self.world, bound)
+    }
+    fn sea_level(&mut self) -> LegacyResult<i32> {
+        PieceWorld::sea_level(self.world)
+    }
+    fn face_full(&mut self, pos: [i32; 3], direction: Direction) -> LegacyResult<bool> {
+        PieceWorld::face_full(self.world, pos, direction)
+    }
+    fn face_sturdy(&mut self, pos: [i32; 3], face: Direction) -> LegacyResult<bool> {
+        PieceWorld::face_sturdy(self.world, pos, face)
+    }
+    fn center_sturdy(&mut self, pos: [i32; 3], face: Direction) -> LegacyResult<bool> {
+        PieceWorld::center_sturdy(self.world, pos, face)
+    }
+    fn biome(&mut self, pos: [i32; 3]) -> LegacyResult<BiomeId> {
+        PieceWorld::biome(self.world, pos)
+    }
+    fn place_template(
+        &mut self,
+        resources: &StructureResources,
+        template: &StructureTemplate,
+        position: [i32; 3],
+        reference: [i32; 3],
+        settings: &mut PlaceSettings<'_>,
+        random: &mut dyn ProcessorRandom,
+        flags: i32,
+    ) -> LegacyResult<bool> {
+        PieceWorld::place_template(
+            self.world, resources, template, position, reference, settings, random, flags,
+        )
+    }
+    fn place_feature(
+        &mut self,
+        random: &mut dyn PieceRandom,
+        feature: FeatureKey<'_>,
+        pos: [i32; 3],
+    ) -> LegacyResult<bool> {
+        let random = Self::own_random(random)?;
+        (self.place_feature)(self.world, random, feature, pos)
+    }
+    fn place_element(
+        &mut self,
+        random: &mut dyn PieceRandom,
+        element: &PoolElement,
+        at: ElementAt,
+    ) -> LegacyResult<bool> {
+        let random = Self::own_random(random)?;
+        self.place(random, element, at)
+    }
+}
 
 /// The world queries jigsaw assembly needs from the chunk generator.
 pub trait JigsawContext {
@@ -895,22 +1080,9 @@ pub struct JigsawConfig<'a> {
     pub waterlogging: bool,
 }
 
-/// Free space for children: an inclusive container box minus placed boxes.
-#[derive(Debug)]
-pub(super) struct Free {
-    pub(super) container: BoundingBox,
-    pub(super) removed: Vec<BoundingBox>,
-}
-impl Free {
-    /// Whether every point of the (0.25-deflated) box lies in free space.
-    pub(super) fn fits(&self, b: &BoundingBox) -> bool {
-        (0..3).all(|i| b.min[i] >= self.container.min[i] && b.max[i] <= self.container.max[i])
-            && !self.removed.iter().any(|r| r.intersects(b))
-    }
-}
 struct PieceState {
     piece: usize,
-    free: Rc<RefCell<Free>>,
+    free: Rc<RefCell<JigsawSpace>>,
     depth: i32,
 }
 
@@ -987,7 +1159,7 @@ pub fn place_start(
     let anchored = match config.start_jigsaw {
         Some(name) => {
             element
-                .shuffled_jigsaws(resources, position, rotation, random)
+                .shuffled_jigsaws(resources, position, rotation, &mut *random)
                 .into_iter()
                 .find(|j| j.name.as_deref() == Some(name))?
                 .pos
@@ -998,7 +1170,7 @@ pub fn place_start(
     let local: [i32; 3] = std::array::from_fn(|i| anchored[i].wrapping_sub(position[i]));
     let adjusted: [i32; 3] = std::array::from_fn(|i| position[i].wrapping_sub(local[i]));
     let mut center = PoolPiece {
-        bounding_box: element.bounding_box(adjusted, rotation),
+        bounding_box: element.bounding_box(resources, adjusted, rotation),
         ground_level_delta: element.ground_level_delta(),
         element: element.clone(),
         position: adjusted,
@@ -1055,72 +1227,184 @@ pub fn lay_out_children(
         return ([cx, cy, cz], Vec::new());
     }
     let mut pieces = vec![center];
-    {
-        // Java's int arithmetic wraps; a mod type's reach and padding are its own.
-        let [h, v] = config.max_distance;
-        let low_y = cy
-            .wrapping_sub(v)
-            .max(context.min_y().wrapping_add(config.padding[0]));
-        let high_y = cy.wrapping_add(v).wrapping_add(1).min(
-            context
-                .max_y()
-                .wrapping_add(1)
-                .wrapping_sub(config.padding[1]),
-        );
-        let container = BoundingBox::new(
-            [cx.wrapping_sub(h), low_y, cz.wrapping_sub(h)],
-            [
-                cx.wrapping_add(h),
-                high_y.wrapping_sub(1),
-                cz.wrapping_add(h),
-            ],
-        );
-        add_children(
-            config,
-            context,
-            pools,
-            resources,
-            bindings,
-            random,
-            &mut pieces,
-            container,
-        );
-    }
-    ([cx, cy, cz], pieces)
-}
-
-/// The inner JigsawPlacement.addPieces: lays out the children of
-/// `pieces[0]`, a start piece already placed, to `config.max_depth`,
-/// within `container` (inclusive) less the start's box. A structure with
-/// its own start (Formations' pieced one) reaches the jigsaw layout here.
-#[allow(clippy::too_many_arguments)]
-pub(super) fn add_children(
-    config: &JigsawConfig<'_>,
-    context: &mut impl JigsawContext,
-    pools: &Pools,
-    resources: &StructureResources,
-    bindings: &FeatureBlockBindings<'_>,
-    random: &mut impl RandomSource,
-    pieces: &mut Vec<PoolPiece>,
-    container: BoundingBox,
-) {
-    let free = Rc::new(RefCell::new(Free {
-        container,
-        removed: vec![pieces[0].bounding_box],
-    }));
+    // Java's int arithmetic wraps; a mod type's reach and padding are its own.
+    let [h, v] = config.max_distance;
+    let low_y = cy
+        .wrapping_sub(v)
+        .max(context.min_y().wrapping_add(config.padding[0]));
+    let high_y = cy.wrapping_add(v).wrapping_add(1).min(
+        context
+            .max_y()
+            .wrapping_add(1)
+            .wrapping_sub(config.padding[1]),
+    );
+    let container = BoundingBox::new(
+        [cx.wrapping_sub(h), low_y, cz.wrapping_sub(h)],
+        [
+            cx.wrapping_add(h),
+            high_y.wrapping_sub(1),
+            cz.wrapping_add(h),
+        ],
+    );
+    let mut space = JigsawSpace::new(container);
+    space.remove(pieces[0].bounding_box);
     let mut placer = Placer {
         config,
         pools,
         resources,
         bindings,
-        pieces,
+        pieces: &mut pieces,
         queue: BTreeMap::new(),
         counts: HashMap::new(),
     };
-    placer.children(0, free, 0, context, random);
+    placer.children(0, Rc::new(RefCell::new(space)), 0, context, random);
     while let Some(state) = placer.next() {
         placer.children(state.piece, state.free, state.depth, context, random);
     }
+    ([cx, cy, cz], pieces)
+}
+
+/// One target element tried on one jigsaw of `source`: the inner loops of
+/// `JigsawPlacement.Placer.tryPlacingChildren` for that element. Its rotations
+/// in `Rotation.getShuffled` order, in each its shuffled jigsaws, the
+/// expansion hack, `JigsawBlock.canAttach`, the child's height, and the
+/// check against `space`. `None`, with no draws, for the empty element, where
+/// vanilla's candidate loop stops. On the first fit the box leaves `space`, `source`
+/// gets its junction and the child is returned with its own. `pool` looks a
+/// pool up by a jigsaw's name, aliases applied; `base_height` keeps the
+/// `WORLD_SURFACE_WG` height under `jigsaw` once read, as vanilla does across
+/// one jigsaw's candidates.
+#[allow(clippy::too_many_arguments)]
+pub fn attach<C: JigsawContext>(
+    source: &mut PoolPiece,
+    jigsaw: &Jigsaw<'_>,
+    target: &Arc<PoolElement>,
+    space: &mut JigsawSpace,
+    use_expansion_hack: bool,
+    pool: &dyn Fn(&str) -> Option<Arc<Pool>>,
+    resources: &StructureResources,
+    base_height: &mut Option<i32>,
+    context: &mut C,
+    random: &mut impl RandomSource,
+) -> Option<PoolPiece> {
+    if matches!(target.as_ref(), PoolElement::Empty) {
+        return None;
+    }
+    let source_rigid = source.element.projection() == Projection::Rigid;
+    let source_y = source.bounding_box.min[1];
+    let source_ground = source.ground_level_delta;
+    let s = step(jigsaw.front);
+    let target_pos: [i32; 3] = std::array::from_fn(|i| jigsaw.pos[i].wrapping_add(s[i]));
+    let local_y = jigsaw.pos[1].wrapping_sub(source_y);
+    let surface = |base_height: &mut Option<i32>, context: &mut C| {
+        *base_height.get_or_insert_with(|| {
+            context.base_height(jigsaw.pos[0], jigsaw.pos[2], HeightmapType::WorldSurfaceWg)
+        })
+    };
+    let mut rotations = Rotation::ALL;
+    shuffle(&mut rotations, random);
+    for rotation in rotations {
+        let target_jigsaws = target.shuffled_jigsaws(resources, [0; 3], rotation, &mut *random);
+        let hack_box = target.bounding_box(resources, [0; 3], rotation);
+        let expand_to = if use_expansion_hack && hack_box.span()[1] <= 16 {
+            target_jigsaws
+                .iter()
+                .map(|tj| {
+                    let st = step(tj.front);
+                    if !hack_box.is_inside(std::array::from_fn(|i| tj.pos[i].wrapping_add(st[i]))) {
+                        return 0;
+                    }
+                    let child = pool(&tj.pool);
+                    let child_size = child.as_ref().map_or(0, |p| p.max_size(resources));
+                    let fallback_size = child
+                        .and_then(|p| pool(&p.fallback))
+                        .map_or(0, |p| p.max_size(resources));
+                    child_size.max(fallback_size)
+                })
+                .max()
+                .unwrap_or(0)
+        } else {
+            0
+        };
+        for target_jigsaw in &target_jigsaws {
+            if !can_attach(jigsaw, target_jigsaw) {
+                continue;
+            }
+            let target_local = target_jigsaw.pos;
+            let raw_position: [i32; 3] =
+                std::array::from_fn(|i| target_pos[i].wrapping_sub(target_local[i]));
+            let raw_box = target.bounding_box(resources, raw_position, rotation);
+            let raw_y = raw_box.min[1];
+            let target_rigid = target.projection() == Projection::Rigid;
+            let target_local_y = target_local[1];
+            let delta_y = local_y
+                .wrapping_sub(target_local_y)
+                .wrapping_add(step(jigsaw.front)[1]);
+            let target_y = if source_rigid && target_rigid {
+                source_y.wrapping_add(delta_y)
+            } else {
+                surface(base_height, context).wrapping_sub(target_local_y)
+            };
+            let offset = target_y.wrapping_sub(raw_y);
+            let mut target_box = raw_box.moved([0, offset, 0]);
+            let target_position = [
+                raw_position[0],
+                raw_position[1].wrapping_add(offset),
+                raw_position[2],
+            ];
+            if expand_to > 0 {
+                let size = expand_to
+                    .wrapping_add(1)
+                    .max(target_box.max[1].wrapping_sub(target_box.min[1]));
+                target_box.max[1] = target_box.max[1].max(target_box.min[1].wrapping_add(size));
+            }
+            if !space.fits(&target_box) {
+                continue;
+            }
+            space.remove(target_box);
+            let target_ground = if target_rigid {
+                source_ground.wrapping_sub(delta_y)
+            } else {
+                target.ground_level_delta()
+            };
+            let junction_y = if source_rigid {
+                source_y.wrapping_add(local_y)
+            } else if target_rigid {
+                target_y.wrapping_add(target_local_y)
+            } else {
+                surface(base_height, context).wrapping_add(delta_y / 2)
+            };
+            source.junctions.push(Junction {
+                source_x: target_pos[0],
+                source_ground_y: junction_y.wrapping_sub(local_y).wrapping_add(source_ground),
+                source_z: target_pos[2],
+                delta_y,
+                dest_projection: target.projection(),
+            });
+            return Some(PoolPiece {
+                element: target.clone(),
+                position: target_position,
+                ground_level_delta: target_ground,
+                rotation,
+                bounding_box: target_box,
+                junctions: vec![Junction {
+                    source_x: jigsaw.pos[0],
+                    source_ground_y: junction_y
+                        .wrapping_sub(target_local_y)
+                        .wrapping_add(target_ground),
+                    source_z: jigsaw.pos[2],
+                    delta_y: delta_y.wrapping_neg(),
+                    dest_projection: if source_rigid {
+                        Projection::Rigid
+                    } else {
+                        Projection::TerrainMatching
+                    },
+                }],
+                waterlogging: source.waterlogging,
+            });
+        }
+    }
+    None
 }
 struct Placer<'a, 'p> {
     config: &'a JigsawConfig<'a>,
@@ -1142,50 +1426,41 @@ impl Placer<'_, '_> {
         }
         state
     }
-    fn pool(&self, name: &str) -> Option<Arc<Pool>> {
-        let name = self.config.aliases.get(name).map_or(name, String::as_str);
-        self.pools.get(name, self.resources, self.bindings)
-    }
     fn children(
         &mut self,
         source_index: usize,
-        context_free: Rc<RefCell<Free>>,
+        context_free: Rc<RefCell<JigsawSpace>>,
         depth: i32,
         context: &mut impl JigsawContext,
         random: &mut impl RandomSource,
     ) {
-        let (source_element, source_position, source_rotation, source_box, source_ground) = {
-            let s = &self.pieces[source_index];
-            (
-                s.element.clone(),
-                s.position,
-                s.rotation,
-                s.bounding_box,
-                s.ground_level_delta,
-            )
+        let (config, pools, resources, bindings) =
+            (self.config, self.pools, self.resources, self.bindings);
+        let pool = |name: &str| {
+            let name = config.aliases.get(name).map_or(name, String::as_str);
+            pools.get(name, resources, bindings)
         };
-        let source_rigid = source_element.projection() == Projection::Rigid;
-        let mut source_free: Option<Rc<RefCell<Free>>> = None;
-        let source_y = source_box.min[1];
-        let jigsaws = source_element.shuffled_jigsaws(
-            self.resources,
-            source_position,
-            source_rotation,
-            random,
+        let source = &self.pieces[source_index];
+        let (source_element, source_position, source_rotation, source_box) = (
+            source.element.clone(),
+            source.position,
+            source.rotation,
+            source.bounding_box,
         );
+        let mut source_free: Option<Rc<RefCell<JigsawSpace>>> = None;
+        let jigsaws =
+            source_element.shuffled_jigsaws(resources, source_position, source_rotation, random);
         'jigsaws: for jigsaw in jigsaws {
-            let direction = jigsaw.front;
-            let s = step(direction);
+            let s = step(jigsaw.front);
             let target_pos: [i32; 3] = std::array::from_fn(|i| jigsaw.pos[i].wrapping_add(s[i]));
-            let local_y = jigsaw.pos[1].wrapping_sub(source_y);
-            let mut base_height = i32::MIN;
-            let Some(target_pool) = self.pool(&jigsaw.pool) else {
+            let mut base_height = None;
+            let Some(target_pool) = pool(&jigsaw.pool) else {
                 continue;
             };
             if target_pool.templates.is_empty() && jigsaw.pool != "minecraft:empty" {
                 continue;
             }
-            let Some(fallback) = self.pool(&target_pool.fallback) else {
+            let Some(fallback) = pool(&target_pool.fallback) else {
                 continue;
             };
             if fallback.templates.is_empty() && target_pool.fallback != "minecraft:empty" {
@@ -1193,22 +1468,13 @@ impl Placer<'_, '_> {
             }
             let children_free = if source_box.is_inside(target_pos) {
                 source_free
-                    .get_or_insert_with(|| {
-                        Rc::new(RefCell::new(Free {
-                            container: source_box,
-                            removed: Vec::new(),
-                        }))
-                    })
+                    .get_or_insert_with(|| Rc::new(RefCell::new(JigsawSpace::new(source_box))))
                     .clone()
             } else {
                 context_free.clone()
             };
-            let mut candidates = Candidates::new(
-                &target_pool,
-                &fallback,
-                depth != self.config.max_depth,
-                random,
-            );
+            let mut candidates =
+                Candidates::new(&target_pool, &fallback, depth != config.max_depth, random);
             while let Some(Pick {
                 element: target,
                 name,
@@ -1217,141 +1483,35 @@ impl Placer<'_, '_> {
                 if matches!(target.as_ref(), PoolElement::Empty) {
                     break;
                 }
-                let mut rotations = Rotation::ALL;
-                shuffle(&mut rotations, random);
-                for rotation in rotations {
-                    let target_jigsaws =
-                        target.shuffled_jigsaws(self.resources, [0; 3], rotation, random);
-                    let hack_box = target.bounding_box([0; 3], rotation);
-                    let expand_to = if self.config.use_expansion_hack && hack_box.span()[1] <= 16 {
-                        target_jigsaws
-                            .iter()
-                            .map(|tj| {
-                                let st = step(tj.front);
-                                if !hack_box.is_inside(std::array::from_fn(|i| tj.pos[i] + st[i])) {
-                                    return 0;
-                                }
-                                let child = self.pool(&tj.pool);
-                                let child_size = child.as_ref().map_or(0, |p| p.max_size());
-                                let fallback_size = child
-                                    .and_then(|p| self.pool(&p.fallback))
-                                    .map_or(0, |p| p.max_size());
-                                child_size.max(fallback_size)
-                            })
-                            .max()
-                            .unwrap_or(0)
-                    } else {
-                        0
-                    };
-                    for target_jigsaw in &target_jigsaws {
-                        if !can_attach(&jigsaw, target_jigsaw) {
-                            continue;
-                        }
-                        let target_local = target_jigsaw.pos;
-                        let raw_position: [i32; 3] =
-                            std::array::from_fn(|i| target_pos[i].wrapping_sub(target_local[i]));
-                        let raw_box = target.bounding_box(raw_position, rotation);
-                        let raw_y = raw_box.min[1];
-                        let target_rigid = target.projection() == Projection::Rigid;
-                        let target_local_y = target_local[1];
-                        let delta_y = local_y
-                            .wrapping_sub(target_local_y)
-                            .wrapping_add(step(jigsaw.front)[1]);
-                        let target_y = if source_rigid && target_rigid {
-                            source_y.wrapping_add(delta_y)
-                        } else {
-                            if base_height == i32::MIN {
-                                base_height = context.base_height(
-                                    jigsaw.pos[0],
-                                    jigsaw.pos[2],
-                                    HeightmapType::WorldSurfaceWg,
-                                );
-                            }
-                            base_height.wrapping_sub(target_local_y)
-                        };
-                        let offset = target_y.wrapping_sub(raw_y);
-                        let mut target_box = raw_box.moved([0, offset, 0]);
-                        let target_position = [
-                            raw_position[0],
-                            raw_position[1].wrapping_add(offset),
-                            raw_position[2],
-                        ];
-                        if expand_to > 0 {
-                            let size = expand_to
-                                .wrapping_add(1)
-                                .max(target_box.max[1].wrapping_sub(target_box.min[1]));
-                            target_box.max[1] =
-                                target_box.max[1].max(target_box.min[1].wrapping_add(size));
-                        }
-                        if !children_free.borrow().fits(&target_box) {
-                            continue;
-                        }
-                        children_free.borrow_mut().removed.push(target_box);
-                        let target_ground = if target_rigid {
-                            source_ground.wrapping_sub(delta_y)
-                        } else {
-                            target.ground_level_delta()
-                        };
-                        let junction_y = if source_rigid {
-                            source_y.wrapping_add(local_y)
-                        } else if target_rigid {
-                            target_y.wrapping_add(target_local_y)
-                        } else {
-                            if base_height == i32::MIN {
-                                base_height = context.base_height(
-                                    jigsaw.pos[0],
-                                    jigsaw.pos[2],
-                                    HeightmapType::WorldSurfaceWg,
-                                );
-                            }
-                            base_height.wrapping_add(delta_y / 2)
-                        };
-                        self.pieces[source_index].junctions.push(Junction {
-                            source_x: target_pos[0],
-                            source_ground_y: junction_y
-                                .wrapping_sub(local_y)
-                                .wrapping_add(source_ground),
-                            source_z: target_pos[2],
-                            delta_y,
-                            dest_projection: target.projection(),
-                        });
-                        self.pieces.push(PoolPiece {
-                            element: target.clone(),
-                            position: target_position,
-                            ground_level_delta: target_ground,
-                            rotation,
-                            bounding_box: target_box,
-                            junctions: vec![Junction {
-                                source_x: jigsaw.pos[0],
-                                source_ground_y: junction_y
-                                    .wrapping_sub(target_local_y)
-                                    .wrapping_add(target_ground),
-                                source_z: jigsaw.pos[2],
-                                delta_y: delta_y.wrapping_neg(),
-                                dest_projection: if source_rigid {
-                                    Projection::Rigid
-                                } else {
-                                    Projection::TerrainMatching
-                                },
-                            }],
-                            waterlogging: self.config.waterlogging,
-                        });
-                        if let Some(name) = name {
-                            *self.counts.entry(name).or_default() += 1;
-                        }
-                        if depth < self.config.max_depth {
-                            self.queue
-                                .entry(jigsaw.placement_priority)
-                                .or_default()
-                                .push_back(PieceState {
-                                    piece: self.pieces.len() - 1,
-                                    free: children_free.clone(),
-                                    depth: depth + 1,
-                                });
-                        }
-                        continue 'jigsaws;
-                    }
+                let Some(child) = attach(
+                    &mut self.pieces[source_index],
+                    &jigsaw,
+                    &target,
+                    &mut children_free.borrow_mut(),
+                    config.use_expansion_hack,
+                    &pool,
+                    resources,
+                    &mut base_height,
+                    context,
+                    random,
+                ) else {
+                    continue;
+                };
+                self.pieces.push(child);
+                if let Some(name) = name {
+                    *self.counts.entry(name).or_default() += 1;
                 }
+                if depth < config.max_depth {
+                    self.queue
+                        .entry(jigsaw.placement_priority)
+                        .or_default()
+                        .push_back(PieceState {
+                            piece: self.pieces.len() - 1,
+                            free: children_free.clone(),
+                            depth: depth + 1,
+                        });
+                }
+                continue 'jigsaws;
             }
         }
     }
@@ -1479,5 +1639,143 @@ mod tests {
         assert_eq!(below[..2], [0, 0]);
         assert_eq!(below[2..], [101, 100]);
         assert_eq!(tried(&target, &fallback, &counts, 0, false), [101, 100]);
+    }
+
+    /// A pool entry of a registered mod type decodes through that type, after
+    /// the vanilla types, and saves its fields back beside `element_type`; a
+    /// pool with an entry of a type nobody registered is left out. Inside a
+    /// list, the list's projection is the one in effect.
+    #[test]
+    fn mod_element_types_decode_and_unknown_ones_leave_the_pool_out() {
+        use super::super::mod_elements::{
+            ModPoolElement, ModPoolElementType, ModPoolElementTypes, with_test_pool_element_types,
+        };
+        #[derive(Debug)]
+        struct Post(i32);
+        impl ModPoolElement for Post {
+            fn shuffled_jigsaws(
+                &self,
+                _: &StructureResources,
+                _: [i32; 3],
+                _: Rotation,
+                _: &mut dyn PieceDraws,
+            ) -> Vec<Jigsaw<'static>> {
+                Vec::new()
+            }
+            fn bounding_box(
+                &self,
+                _: &StructureResources,
+                p: [i32; 3],
+                _: Rotation,
+            ) -> BoundingBox {
+                BoundingBox::new(p, [p[0], p[1] + self.0 - 1, p[2]])
+            }
+            fn place(
+                &self,
+                _: &mut super::super::legacy::PieceContext<'_>,
+                _: ElementAt,
+                _: Projection,
+            ) -> super::super::legacy::Result<bool> {
+                Ok(false)
+            }
+            fn projection(&self) -> Projection {
+                Projection::Rigid
+            }
+            fn ground_level_delta(&self) -> i32 {
+                1
+            }
+            fn save(&self) -> Compound {
+                Compound::from_iter([("height".into(), Tag::Int(self.0))])
+            }
+        }
+        struct PostType;
+        impl ModPoolElementType for PostType {
+            fn decode(
+                &self,
+                config: &Value,
+                _: &StructureResources,
+                _: &FeatureBlockBindings<'_>,
+            ) -> Result<Arc<dyn ModPoolElement>, String> {
+                let height = config["height"].as_i64().ok_or("no height")?;
+                Ok(Arc::new(Post(height as i32)))
+            }
+        }
+        let names = ["minecraft:air", "minecraft:cave_air", "minecraft:void_air"];
+        let facts = json!({
+            "states": names.map(|name| json!([name, true, false, "", {"id": name, "properties": {}}])),
+            "defaults": names.iter().enumerate().map(|(i, name)| (name.to_string(), json!(i))).collect::<serde_json::Map<_, _>>(),
+        });
+        let registry: &'static _ = Box::leak(Box::new(
+            crate::registry::BlockRegistry::from_facts_json(facts.to_string().as_bytes()).unwrap(),
+        ));
+        let resources = StructureResources::new(
+            registry,
+            super::super::StateTransforms::default(),
+            std::path::Path::new("/nonexistent"),
+            BTreeMap::new(),
+            &BTreeMap::new(),
+        );
+        let bindings = FeatureBlockBindings::new(registry, Default::default()).unwrap();
+        let entry = |element: Value| json!({"weight": 2, "element": element}).to_string();
+        let pools = Pools::new(BTreeMap::from([
+            (
+                "test:posts".to_owned(),
+                format!(
+                    r#"{{"fallback":"minecraft:empty","elements":[{}]}}"#,
+                    entry(json!({"element_type": "test:post", "height": 4}))
+                ),
+            ),
+            (
+                "test:listed".to_owned(),
+                format!(
+                    r#"{{"fallback":"minecraft:empty","elements":[{}]}}"#,
+                    entry(json!({"element_type": "minecraft:list_pool_element",
+                        "projection": "terrain_matching",
+                        "elements": [{"element_type": "test:post", "height": 2}]}))
+                ),
+            ),
+            (
+                "test:unknown".to_owned(),
+                format!(
+                    r#"{{"fallback":"minecraft:empty","elements":[{}]}}"#,
+                    entry(json!({"element_type": "test:missing"}))
+                ),
+            ),
+            (
+                "test:refused".to_owned(),
+                format!(
+                    r#"{{"fallback":"minecraft:empty","elements":[{}]}}"#,
+                    entry(json!({"element_type": "test:post"}))
+                ),
+            ),
+        ]));
+        let types: ModPoolElementTypes =
+            BTreeMap::from([("test:post".to_owned(), Arc::new(PostType) as _)]);
+        with_test_pool_element_types(&types, || {
+            let posts = pools.get("test:posts", &resources, &bindings).unwrap();
+            assert_eq!(posts.templates().len(), 2);
+            let element = &posts.templates()[0];
+            assert!(matches!(&**element, PoolElement::Mod { id, .. } if &**id == "test:post"));
+            assert_eq!(
+                element.bounding_box(&resources, [1, 2, 3], Rotation::None),
+                BoundingBox::new([1, 2, 3], [1, 5, 3])
+            );
+            assert_eq!(
+                element.save(),
+                Tag::compound([
+                    ("height", Tag::Int(4)),
+                    ("element_type", Tag::String("test:post".into())),
+                ])
+            );
+            assert_eq!(posts.max_size(&resources), 4);
+            assert_eq!(element.projection(), Projection::Rigid);
+            let listed = pools.get("test:listed", &resources, &bindings).unwrap();
+            let PoolElement::List { elements, .. } = &*listed.templates()[0] else {
+                panic!("a list element");
+            };
+            assert_eq!(elements[0].projection(), Projection::TerrainMatching);
+            assert!(pools.get("test:unknown", &resources, &bindings).is_none());
+            assert!(pools.get("test:refused", &resources, &bindings).is_none());
+        });
     }
 }

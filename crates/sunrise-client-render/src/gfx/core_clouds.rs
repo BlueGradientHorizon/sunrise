@@ -6,7 +6,7 @@
 //! each `OitStage` (`CloudRenderer.renderOit`, in `Oit`'s cloud passes). Without one the clouds
 //! draw natively (`clouds.rs`, `vs_cloud`).
 
-use crate::core_shader::{CoreProgram, Glue};
+use sunrise_glsl::{Glue, Translated};
 
 /// `core/clouds`: no vertex input, the face and its corner from `gl_VertexIndex`.
 pub(crate) const GLUE: Glue = Glue {
@@ -16,6 +16,7 @@ pub(crate) const GLUE: Glue = Glue {
     // 26.3's ProjMat already has wgpu's reversed 0 to 1 depth.
     finish: "",
     vertex_id: "int(gl_VertexIndex)",
+    interface: sunrise_shaders::DEVICELESS_INTERFACE_LIMITS,
 };
 
 /// The pipeline's own block and texel buffer, beside the vanilla blocks.
@@ -112,7 +113,7 @@ pub(crate) fn oit_targets(i: usize) -> usize {
 /// clouds pass binds; or its fragment stage writes one of the pipeline's `targets` colour
 /// targets with anything but floats. Checked when the packs load, so the load fails as
 /// vanilla's compile failure fails its reload.
-pub(crate) fn check(program: &CoreProgram, targets: usize) -> Result<(), String> {
+pub(crate) fn check(program: &Translated, targets: usize) -> Result<(), String> {
     for (name, binding) in crate::core_shader::SAMPLERS {
         if !(program.stages_reading(binding) | program.stages_reading(binding + 1)).is_empty() {
             return Err(format!("{name} is not a sampler of this pipeline"));
@@ -213,7 +214,7 @@ impl Draw {
     /// as `writes` says; `samplers` are the stage's.
     fn new(
         device: &wgpu::Device,
-        program: &CoreProgram,
+        program: &Translated,
         targets: &[Option<wgpu::ColorTargetState>],
         writes: [bool; 2],
         samplers: &[&str],
@@ -223,7 +224,7 @@ impl Draw {
                 .other
                 .iter()
                 .position(|n| n == name)
-                .map(crate::core_shader::other_binding)
+                .map(|i| program.other_binding(i))
         };
         let faces_binding = binding(FACES);
         let info_binding = binding(INFO_BLOCK);
@@ -390,7 +391,7 @@ impl CoreClouds {
     pub(super) fn new(
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
-        (classic, stages): (Option<&CoreProgram>, Option<&[CoreProgram; 3]>),
+        (classic, stages): (Option<&Translated>, Option<&[Translated; 3]>),
     ) -> Result<Self, String> {
         let uniform = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Resource pack clouds"),
