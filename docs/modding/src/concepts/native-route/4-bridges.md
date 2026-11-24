@@ -65,7 +65,7 @@ function without `self`.
 
 Name a field bridge's struct by the module that declares it, without lifetimes (`sunrise_client::game::Game`).
 Types and methods in one-sided gameplay modules include `client_side` or `server_side` in their canonical path
-(see [Game side modules](8-game-side-modules.md)).
+(see [Repinning native targets for game side modules](../../how-to/native-mods/16-repinning-side-module-targets.md)).
 Mixin helpers on game-crate functions can call the method. Your mod's own crate cannot, so
 read the value in a helper and pass it to your crate.
 

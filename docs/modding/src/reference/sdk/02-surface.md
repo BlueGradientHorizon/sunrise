@@ -142,9 +142,8 @@ API and engine ids, publishing still checks its API ids and carries the note for
 holds these notes since the previous SDK (`surface.notes`); `cargo sunrise-mod pin` prints a changed item's
 `migrate` line beside it.
 
-Advisory internal reorganizations that leave the stable API and published loops unchanged are documented as
-migration guides rather than gated TOML notes; for gameplay side-module path moves, see
-[Game side modules](../../concepts/native-route/8-game-side-modules.md).
+For updating native declarations whose game modules live under `client_side` or `server_side`, see
+[Repinning native targets for game side modules](../../how-to/native-mods/16-repinning-side-module-targets.md).
 
 ## Behaviours
 

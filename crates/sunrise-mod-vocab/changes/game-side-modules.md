@@ -1,40 +1,38 @@
 # Advisory: gameplay side modules (`client_side` and `server_side`)
 
-The stable `mod_api` surface and published loops (including `loop:block_entities.tick`, whose defining module `block_entity_ticks` remains at `sunrise_client::game::block_entity_ticks`) are unchanged. Native engine catalog changes are outside the stable API gate, but unresolved manifest declarations still fail `cargo sunrise-mod check` and `cargo sunrise-mod build`.
+Native engine catalog entries under one-sided gameplay modules use canonical paths under `client_side` or `server_side`. Unresolved manifest declarations fail `cargo sunrise-mod check` and `cargo sunrise-mod build`.
 
-For the modding-book guide, see [Game side modules](https://playsunrise.net/docs/modding/concepts/native-route/game-side-modules) ([`docs/modding/src/concepts/native-route/8-game-side-modules.md`](../../../docs/modding/src/concepts/native-route/8-game-side-modules.md)).
+For the modding-book guide, see [Repinning native targets for game side modules](https://playsunrise.net/docs/modding/how-to/native-mods/repinning-side-module-targets) ([`docs/modding/src/how-to/native-mods/16-repinning-side-module-targets.md`](../../../docs/modding/src/how-to/native-mods/16-repinning-side-module-targets.md)).
 
 ## Path rule and state-module exceptions
 
-- **One-sided modules (`tools/game_module_sides.tsv`):** any module whose `side` column is `client` or `server` gains that side segment in its canonical path while its source file stays in place:
+- **One-sided modules (`tools/game_module_sides.tsv`):** any module whose `side` column is `client` or `server` carries that side segment in its canonical path while its source file stays in place:
   - `sunrise_client::game::<module>::...` → `sunrise_client::game::client_side::<module>::...` (`client`)
   - `sunrise_client::game::<module>::...` → `sunrise_client::game::server_side::<module>::...` (`server`)
   - Modules with `side = game` keep `sunrise_client::game::<module>::...`.
-- **State-module exceptions:** the two state modules replace their segment and rename their source files:
+- **State-module exceptions:** the state modules `client_side` and `server_side` replace `client_state` / `server_state` and rename their source files:
   - `sunrise_client::game::client_state::...` → `sunrise_client::game::client_side::...` (`crates/sunrise-client/src/game/client_state.rs` → `crates/sunrise-client/src/game/client_side.rs`)
   - `sunrise_client::game::server_state::...` → `sunrise_client::game::server_side::...` (`crates/sunrise-client/src/game/server_state.rs` → `crates/sunrise-client/src/game/server_side.rs`)
 
-`game.rs` re-exports moved modules and aliases `client_state` / `server_state`, so `crate::game::<module>` paths in Rust helper code continue resolving. Manifest target strings and SDK catalogs read the declaring module and require the canonical path.
+`game.rs` re-exports moved modules and aliases `client_state` / `server_state` for Rust helper code. Manifest target strings and SDK catalogs read the declaring module and require the canonical path.
 
 ## Affected manifest declarations
 
-- **`[[native.mixin]]` targets:** methods, free functions, and trait methods in moved modules or renamed state modules. The rename map emits normalized SDK keys; in manifests that spell lifetimes (`Game<'_>`) or trait-qualified targets (`<Type as Trait>::method`), apply the same `client_side` / `server_side` segment insertion or replacement before `<module>`.
-- **`[[native.bridge]]` targets:** field bridges targeting `ClientState` or `ServerState`, field bridges targeting types declared in any moved module (for example `sunrise_client::game::client_side::native_panel::Panel`), and `INVOKE` bridges naming methods in moved modules.
-- **`[[native.module]]` file paths:** ordinary moved modules keep their source file path; support modules targeting `crates/sunrise-client/src/game/client_state.rs` or `crates/sunrise-client/src/game/server_state.rs` must update `file` to `client_side.rs` or `server_side.rs`.
+- **`[[native.mixin]]` targets:** methods, free functions, and trait methods declared in moved modules or renamed state modules. The rename map emits normalized SDK keys; in manifests that spell lifetimes (`Game<'_>`) or trait-qualified targets (`<Type as Trait>::method`), apply the same `client_side` / `server_side` segment insertion or replacement before `<module>`.
+- **`[[native.bridge]]` targets:** field bridges targeting `ClientState` or `ServerState`, field bridges targeting types declared in a moved module (for example `sunrise_client::game::client_side::native_panel::Panel`), and `INVOKE` bridges naming methods in moved modules.
+- **`[[native.module]]` file paths:** ordinary moved modules keep their source file path; support modules targeting `crates/sunrise-client/src/game/client_state.rs` or `crates/sunrise-client/src/game/server_state.rs` update `file` to `client_side.rs` or `server_side.rs`.
 - **Explicit `[[internals]]` entries:** declared engine items under moved modules or under `ClientState` / `ServerState` carry the canonical `client_side` / `server_side` path. Confirm keys against the pinned build's `internals.json` (`.sunrise/cache/<build>/build-data/internals.json`), since an item's canonical path follows the module holding its declaration or `impl` (an `impl` in `game.rs` keeps its `sunrise_client::game::...` path).
 
 ## How to repin a native mod
 
-1. Pin the new game build with `cargo sunrise-mod pin <build>` (`pin` refreshes hashes for declarations that resolve on the new build and reports moved declarations as `missing` with their old hashes untouched).
-2. Generate the selectable rename map from the prior and target builds' `functions.json` indexes with the script below, then update affected `[[native.mixin]]`, `[[native.bridge]]`, `[[native.module]]` (state files), and explicit `[[internals]]` paths:
+1. Pin the target build with `cargo sunrise-mod pin <build>` (`pin` refreshes hashes for declarations that resolve on the target build and reports moved declarations as `missing` with their old hashes untouched).
+2. Obtain the selectable rename map by running `tools/game_module_sides.py --renames` on the prior and target builds' `functions.json` indexes (see `python3 tools/game_module_sides.py --help` for options), then update affected `[[native.mixin]]`, `[[native.bridge]]`, `[[native.module]]` (state files), and explicit `[[internals]]` paths:
 
 ```sh
 python3 tools/game_module_sides.py --renames <before-functions.json> <after-functions.json> --out moved-mixin-targets.tsv
 ```
 
-The default `--renames` command emits only rows whose destination is selectable in `<after-functions.json>` and exits `0` (printing refused, missing, and additional-target counts to stderr). Pass `--strict` to validate an exact transition and exit non-zero if any moved target is refused or missing or if `<after-functions.json>` adds unmapped targets.
-
 3. Regenerate internal hashes for every rewritten path:
    - For mods using discovered internals, run `cargo sunrise-mod internals sync` to replace `internals` with compiler-discovered paths, kinds, and hashes for the pinned build.
    - For explicit hashed `[[internals]]` entries (when skipping `internals sync`), editing `path` leaves the old `hash` in place even when the item's catalog hash changed; refresh each moved entry's hash with `cargo sunrise-mod internals add <new-path>…` (pass `--kind <kind>` if a path is ambiguous), or re-run `cargo sunrise-mod pin <build>` after updating the paths (for mods without `[[native.module]]`).
-4. Run `cargo sunrise-mod check` to verify the manifest and refreshed internal hashes, then run `cargo sunrise-mod build` to compile the package and regenerate `uses.json` with the new build's `made_for` id, internal hashes, and split function digests (mods with `[[native.module]]` or `[[native.bridge]]` target one build only and pack no `uses.json`). If a pinned mixin `fingerprint` fails with `E_FINGERPRINT`, inspect the target function on the new build and update the fingerprint to the reported `got` value once verified.
+4. Run `cargo sunrise-mod check` to verify the manifest and refreshed internal hashes, then run `cargo sunrise-mod build` to compile the package and regenerate `uses.json` with the target build's `made_for` id, internal hashes, and split function digests (mods with `[[native.module]]` or `[[native.bridge]]` target one build only and pack no `uses.json`). If a pinned mixin `fingerprint` fails with `E_FINGERPRINT`, inspect the target function on the target build and update the fingerprint to the reported `got` value once verified.

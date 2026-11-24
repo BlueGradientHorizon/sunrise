@@ -39,7 +39,7 @@ helpers call `pub`. The module may call your mod's crate; your mod's crate canno
 | Field | Required | Meaning |
 | --- | --- | --- |
 | `id` | yes | The row's name, unique in the mod. |
-| `file` | yes | The game source file whose module is mirrored, relative to the repository root: `crates/sunrise-client/src/…`. Ordinary moved side modules keep their file paths, while the two state files are `client_side.rs` and `server_side.rs` (see [Game side modules](8-game-side-modules.md)). |
+| `file` | yes | The game source file whose module is mirrored, relative to the repository root: `crates/sunrise-client/src/…`. Side modules keep their file paths under `src/game/`, and the state files are `client_side.rs` and `server_side.rs` (see [Repinning native targets for game side modules](../../how-to/native-mods/16-repinning-side-module-targets.md)). |
 | `name` | yes | The module's Rust name. Pick one the destination module does not use, with a prefix of your own, such as `fnr_`. |
 | `source` | yes | Your file under `src/` with the module's items. |
 | `visibility` | no | The module's visibility: `"pub(crate)"` (the default, enough for your helpers) or `"pub"`. |

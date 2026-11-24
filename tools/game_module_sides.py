@@ -42,7 +42,12 @@ Usage:
     python3 tools/game_module_sides.py --fix [--no-fmt]
     python3 tools/game_module_sides.py --check [--against REF [--pull-request-merge]]
     python3 tools/game_module_sides.py --list
-    python3 tools/game_module_sides.py --renames BEFORE_FUNCTIONS_JSON AFTER_FUNCTIONS_JSON [--out PATH]
+    python3 tools/game_module_sides.py --renames BEFORE_FUNCTIONS_JSON AFTER_FUNCTIONS_JSON [--out PATH] [--strict]
+
+`--renames` emits TSV rows (`old_target`, `new_target`, `side`) only for moved targets whose
+destination is selectable in `AFTER_FUNCTIONS_JSON`, prints summary counts (selectable,
+refused, missing, unchanged, additional) to stderr, and exits `0`. Pass `--strict` to also
+print up to 10 refused, missing, or additional unmapped targets and exit `1` if any exist.
 """
 
 from __future__ import annotations
@@ -2946,8 +2951,8 @@ def selector_targets(
     docs_dir = root / "docs"
     if docs_dir.is_dir():
         for p in sorted(docs_dir.rglob("*.md")):
-            # Skip migration advisory docs that intentionally show pre-move paths alongside post-move paths.
-            if p.relative_to(root).as_posix() == "docs/modding/src/concepts/native-route/8-game-side-modules.md":
+            # Skip migration docs that intentionally show pre-move paths alongside post-move paths.
+            if p.relative_to(root).as_posix() == "docs/modding/src/how-to/native-mods/16-repinning-side-module-targets.md":
                 continue
             old = p.read_text(encoding="utf-8", errors="replace")
             if "game::" not in old:
@@ -3400,7 +3405,10 @@ def main(argv: list[str] | None = None) -> int:
         nargs=2,
         metavar=("BEFORE_JSON", "AFTER_JSON"),
         type=Path,
-        help="emit old_target -> new_target TSV from before/after functions.json",
+        help=(
+            "emit old_target -> new_target -> side TSV for moved targets selectable in AFTER_JSON; "
+            "prints selectable/refused/missing/unchanged/additional counts to stderr and exits 0"
+        ),
     )
     parser.add_argument("--root", type=Path, default=ROOT, help="repository root directory")
     parser.add_argument("--table", type=Path, default=None, help="path to game_module_sides.tsv")
@@ -3416,7 +3424,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--strict",
         action="store_true",
-        help="with --renames, exit non-zero if any moved target is refused/missing or after adds unmapped targets",
+        help=(
+            "with --renames, exit 1 if any moved target is refused or missing in AFTER_JSON "
+            "or if AFTER_JSON adds unmapped targets"
+        ),
     )
     parser.add_argument("--no-fmt", action="store_true", help="skip rustfmt on modified Rust files")
     args = parser.parse_args(argv)
