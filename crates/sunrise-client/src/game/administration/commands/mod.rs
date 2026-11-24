@@ -550,9 +550,7 @@ impl Game<'_> {
             // The player whose command it is never hears it back; a block's,
             // minecart's or console's line has no such player.
             let origin_is_player = self.console_broadcast.is_none()
-                && self
-                    .command_source
-                    .is_none_or(|s| s.block.is_none() && s.cart.is_none());
+                && self.command_source.is_none_or(|s| s.origin_player);
             let source = if origin_is_player {
                 self.lan_acting
             } else {
