@@ -1356,13 +1356,8 @@ impl Game<'_> {
             states_next_entity: None,
             idle_states: Default::default(),
         });
-        self.start_lan_hub_client();
+        self.start_audio_capture();
         Ok(())
-    }
-
-    #[inline(always)]
-    pub(in crate::game) fn start_lan_hub_client(&mut self) {
-        self.audio.0.capture = Some(Vec::new());
     }
 
     /// IntegratedServer.unpublishServer: the guests are sent away.

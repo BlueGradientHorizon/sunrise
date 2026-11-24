@@ -255,14 +255,10 @@ impl Game<'_> {
                     overlay: true,
                 }));
         } else {
-            self.sign_click_actions_disabled_client(KEY);
+            let message =
+                self.translate_with_fallback(KEY, "Click actions are disabled for this sign");
+            self.set_client_message(message);
         }
-    }
-    pub(in crate::game) fn sign_click_actions_disabled_client(&mut self, key: &str) {
-        self.client.message = Some((
-            self.translate_with_fallback(key, "Click actions are disabled for this sign"),
-            std::time::Instant::now(),
-        ));
     }
     /// `SignBlock.useWithoutItem` (the block's `OpenMenu` effect): the side
     /// the player faces runs its click commands first; then a waxed sign

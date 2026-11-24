@@ -308,7 +308,7 @@ impl Game<'_> {
         // Creating the targets must not move the stream the dispenser draws from.
         self.world.random.set_seed(seed);
         self.world.block_log = Some(Vec::new());
-        self.dispense_case_client_start();
+        self.start_audio_capture();
         LOG.with(|log| *log.borrow_mut() = Some(Vec::new()));
         let old_mobs: Vec<u32> = self.mobs.iter().map(|m| m.id).collect();
         let old_stands: Vec<u32> = self.armor_stands.iter().map(|s| s.id).collect();
@@ -508,11 +508,6 @@ impl Game<'_> {
         out.extend(used);
         out.push(format!("rng {}", self.world.random.next_long()));
         Ok(out)
-    }
-
-    #[inline(always)]
-    pub(in crate::game) fn dispense_case_client_start(&mut self) {
-        self.audio.0.capture = Some(Vec::new());
     }
 
     #[inline(always)]

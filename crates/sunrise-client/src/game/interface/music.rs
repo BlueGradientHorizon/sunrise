@@ -20,6 +20,11 @@ impl Game<'_> {
         self.audio.0.capture.as_ref().map_or(0, Vec::len)
     }
 
+    #[inline(always)]
+    pub(in crate::game) fn start_audio_capture(&mut self) {
+        self.audio.0.capture = Some(Vec::new());
+    }
+
     /// `Minecraft.tick` -> `MusicManager.tick`, once per client tick.
     pub(in crate::game) fn tick_music(&mut self) {
         let (mut music, mut volume) = self.situational_music();

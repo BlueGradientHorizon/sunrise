@@ -6320,17 +6320,11 @@ impl Game<'_> {
             self.server.guest_cooldowns.push((group, ticks));
         }
     }
-    #[inline]
-    pub(in crate::game) fn mining_screen_is_playing(&self) -> bool {
-        self.client.screen == Screen::Playing
-    }
     fn tick_mining(&mut self) -> Result<()> {
         if self.server.destroy_delay > 0 {
             self.server.destroy_delay -= 1;
         }
-        if !self.mapped_key_down("key.attack")
-            || !self.mining_screen_is_playing()
-            || self.dialog_open()
+        if !self.mapped_key_down("key.attack") || !self.playing_screen_open() || self.dialog_open()
         {
             self.mining = None;
             return Ok(());
@@ -9682,13 +9676,11 @@ impl Game<'_> {
                 ),
             );
         } else if overlay {
-            self.tell_sleeper_client(key, fallback);
+            let message = self.translate_with_fallback(key, fallback);
+            self.set_client_message(message);
         } else {
             self.system_message(sunrise_client::text::Text::translate(key, &[]));
         }
-    }
-    pub(in crate::game) fn tell_sleeper_client(&mut self, key: &str, fallback: &str) {
-        self.client.message = Some((self.translate_with_fallback(key, fallback), Instant::now()));
     }
     /// ServerPlayer.startSleepInBed: in reach, not obstructed, night or thunder,
     /// and (outside creative) no monsters within 8 blocks; the bed becomes the
