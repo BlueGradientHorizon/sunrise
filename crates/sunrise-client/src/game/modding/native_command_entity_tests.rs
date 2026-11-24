@@ -278,12 +278,8 @@ fn blocks_carts_and_functions_keep_their_entity() {
                 assert_eq!(command.rotation, [180.0, 0.0]);
                 let (_, command) = block(game, 2, "execute positioned ^ ^ ^1 run where");
                 assert_eq!(command.rotation, [180.0, 0.0]);
-                let [x, y, z] = command.position;
-                assert!(
-                    (x - 2.5).abs() < 1e-6 && y == 64.5 && (z - 0.5).abs() < 1e-6,
-                    "one block north of the block's centre: {:?}",
-                    command.position
-                );
+                // One block north of the block's centre.
+                assert_eq!(command.position, [2.5, 64.5, 0.5]);
                 let (_, command) = block(game, 3, "execute rotated ~10 ~ run where");
                 assert_eq!(command.rotation, [190.0, 0.0]);
 
