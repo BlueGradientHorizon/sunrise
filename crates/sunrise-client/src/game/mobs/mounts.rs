@@ -193,7 +193,7 @@ impl Game<'_> {
         self.trigger_item_entity("minecraft:player_sheared_equipment", &saddle, &target);
         // attemptToShearEquipment: playSound(equippable.shearingSound()).
         if !silent {
-            self.audio.play(
+            self.play_audio(
                 "minecraft:item.saddle.unequip",
                 Some([at.x, at.y, at.z]),
                 1.0,
@@ -218,7 +218,7 @@ impl Game<'_> {
                 "minecraft:entity.pig.saddle"
             };
             self.mobs[index].set_saddle(held.map(|s| ItemStack { count: 1, ..s }));
-            self.audio.play(sound, Some(at), 1.0, 1.0);
+            self.play_audio(sound, Some(at), 1.0, 1.0);
             self.consume_held();
             let id = self.mobs[index].id;
             let pos = self.mobs[index].position;
@@ -422,8 +422,8 @@ impl Game<'_> {
             let feet = [m.position.x, m.position.y, m.position.z];
             if !silent {
                 match seed {
-                    Some(seed) => self.audio.play_seeded(sound, Some(feet), 1.0, pitch, seed),
-                    None => self.audio.play(sound, Some(feet), 1.0, pitch),
+                    Some(seed) => self.play_audio_seeded(sound, Some(feet), 1.0, pitch, seed),
+                    None => self.play_audio(sound, Some(feet), 1.0, pitch),
                 }
             }
             self.consume_held();
@@ -517,7 +517,7 @@ impl Game<'_> {
                 _ => "minecraft:entity.horse.eat",
             };
             let pitch = (m.random.next_float() - m.random.next_float()) * 0.2 + 1.0;
-            self.audio.play(sound, Some(at), 1.0, pitch);
+            self.play_audio(sound, Some(at), 1.0, pitch);
         }
         // gameEvent(GameEvent.EAT): at the mount, from the mount.
         let ctx = self.who_context(Some(Who::Mob(id)), None);
@@ -622,7 +622,7 @@ impl Game<'_> {
                 // playJumpSound, which the server broadcasts for a guest.
                 let sound = format!("minecraft:{}", equine::jump_sound(m));
                 let at = m.center();
-                self.audio.play(&sound, Some(at), 0.4, 1.0);
+                self.play_audio(&sound, Some(at), 0.4, 1.0);
             }
         }
         let sprint = keys.sprint || self.held_mapping(Action::Sprint);
@@ -1792,7 +1792,7 @@ mod tests {
         .ok()?;
         game.reset_entity_residency();
         game.native_lifecycle
-            .begin_open(mod_api::Authority::IntegratedServer);
+            .begin_open(Some(mod_api::Authority::IntegratedServer));
         game.creative = false;
         game.options.dedicated = Some(Vec::new());
         game.world.chunks.insert(
