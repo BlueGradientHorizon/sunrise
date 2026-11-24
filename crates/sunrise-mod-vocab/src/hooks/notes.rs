@@ -51,7 +51,8 @@ For mods that run where the world is simulated: a dedicated server, a LAN host, 
 - **Command executor**: the closure receives `(&mut dyn ServerHost, &CommandSource, &CommandInvocation)`.
   The invocation has its literal path, its `dimension` and
   `position` after `execute in/at`, and named `CommandArgumentValue` values, not raw command text. Integer, number and boolean
-  values retain the dispatcher's types; word and greedy text are strings. Player selectors resolve to a single live
+  values retain the dispatcher's types; word, quotable `string` (decoded, without its quotes) and greedy text are
+  strings. Player selectors resolve to a single live
   `PlayerRef`, items become component-bearing stacks of one, and block positions resolve source-relative/local
   coordinates without requiring loaded chunks. `mod_id` is a loaded package id as a string; `resource:<registry>`
   is `CommandArgumentValue::Id`, an id that registry holds. A custom argument is `CommandArgumentValue::Custom

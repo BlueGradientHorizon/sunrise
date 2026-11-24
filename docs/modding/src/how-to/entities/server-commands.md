@@ -375,11 +375,17 @@ have typed: a candidate that is not one word is quoted, and its quotes and `\` e
 NeoForge's `EntityCommand` quotes an entity id that needs it:
 
 ```rust,ignore
+/// Whether `text` can be typed without quotes: one word of `StringReader.isAllowedInUnquotedString`'s
+/// characters. An empty value is not one: it is typed as `""`.
+fn is_word(text: &str) -> bool {
+    !text.is_empty() && text.chars().all(|c| c.is_ascii_alphanumeric() || "_-.+".contains(c))
+}
+
 fn suggest(&self, _: Option<&CommandSender>, prefix: &str) -> Vec<CommandSuggestion> {
     let typed = prefix.trim_start_matches(['"', '\'']);
     titles()
         .filter(|title| title.starts_with(typed))
-        .map(|title| match title.chars().all(|c| c.is_ascii_alphanumeric() || "_-.+".contains(c)) {
+        .map(|title| match is_word(title) {
             true => CommandSuggestion::new(title),
             false => CommandSuggestion::new(format!("\"{}\"", title.replace('\\', "\\\\").replace('"', "\\\""))),
         })
