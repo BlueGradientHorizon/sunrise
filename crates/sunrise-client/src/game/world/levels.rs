@@ -733,6 +733,11 @@ impl Levels {
             .map(|(_, level)| &mut level.world)
     }
 
+    /// The block ticks of the level not in place whose dimension is `dimension`.
+    pub(super) fn parked_block_ticks_of(&self, dimension: &str) -> Option<&Ticks> {
+        self.parked_of(dimension).map(|level| &level.block_ticks)
+    }
+
     /// The streaming of the level not in place whose dimension is `dimension`.
     pub(super) fn parked_streaming_of(&self, dimension: &str) -> Option<&Streaming> {
         self.parked

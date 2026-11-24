@@ -138,6 +138,12 @@ impl Game<'_> {
         max: [i32; 3],
     ) -> Option<Vec<BlockEntityAt>> {
         let world = self.native_level_world(level)?;
+        // The level's moving pistons as its ticks hold them now, not the copy collision reads.
+        let ticks = if level.dimension() == self.dim.key() {
+            &self.block_ticks
+        } else {
+            self.levels.parked_block_ticks_of(level.dimension_id())?
+        };
         let registry = self.pack.assets.registry;
         Some(
             world
@@ -158,10 +164,18 @@ impl Game<'_> {
                     let kind = mod_api::__private::block_entity_type_key(id)?;
                     Some(BlockEntityAt::new([x, y, z], kind))
                 })
-                .chain(world.moving_pistons_in_box(min, max).filter_map(|pos| {
-                    let kind = mod_api::__private::block_entity_type_key("minecraft:piston")?;
-                    Some(BlockEntityAt::new(pos, kind))
-                }))
+                .chain(
+                    ticks
+                        .moving_pistons
+                        .iter()
+                        .map(|(pos, _)| [pos.x, pos.y, pos.z])
+                        .filter(|&pos| world.in_box(min, max, pos) && world.loaded(pos[0], pos[2]))
+                        .filter_map(|pos| {
+                            let kind =
+                                mod_api::__private::block_entity_type_key("minecraft:piston")?;
+                            Some(BlockEntityAt::new(pos, kind))
+                        }),
+                )
                 .collect(),
         )
     }

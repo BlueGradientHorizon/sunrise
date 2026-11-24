@@ -2069,24 +2069,29 @@ mod own_block_entity_tests {
                 .block_entities
                 .push(((20, 64, 1), BlockEntity::Chest(vec![None; 27])));
             game.world.chunks.insert((1, 0), Arc::new(pending));
-            // A piston mid-extension, and one in chunk (2, 0), which is not loaded.
-            for pos in [[15, 64, 1], [40, 64, 1]] {
-                game.world.moving_pistons.push((
-                    pos,
-                    sunrise_world::piston_shape::MovingPistonState {
-                        moved_state: game
-                            .pack
-                            .assets
-                            .registry
-                            .default_state("minecraft:stone")
-                            .unwrap(),
-                        direction: sunrise_core::geometry::Direction::East,
-                        extending: true,
-                        source: false,
-                        progress: 0.5,
-                        previous_progress: 0.5,
-                    },
-                ));
+            // Pistons mid-extension restored with their chunks, before the copy collision reads
+            // is refreshed: one here, one in chunk (2, 0), which is not loaded.
+            let stone = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:stone")
+                .unwrap();
+            for pos in [(15, 64, 1), (40, 64, 1)]
+                .map(|(x, y, z)| sunrise_core::position::BlockPos::new(x, y, z))
+            {
+                let piston = sunrise_world::level::pistons::MovingPiston {
+                    moved_state: stone,
+                    direction: sunrise_core::geometry::Direction::East,
+                    extending: true,
+                    source: false,
+                    progress: 0.5,
+                    progress_o: 0.5,
+                    last_ticked: 0,
+                    death_ticks: 0,
+                    id: 0,
+                };
+                game.block_ticks.load_moving_piston(pos, piston);
             }
             let level = game.level(game.dim.id()).unwrap();
             let (min, max) = ([0, 64, 0], [48, 65, 16]);
@@ -2135,6 +2140,13 @@ mod own_block_entity_tests {
             game.enter_level(crate::game::Dim::Overworld).unwrap();
             let stale = LevelRef::new(WorldEpoch::new(level.epoch().get() + 1), level.dimension());
             assert_eq!(stale.block_entities(game, min, max), None);
+            // A moving piston gone from the ticks is gone from the list at once.
+            game.block_ticks
+                .moving_pistons
+                .retain(|(pos, _)| pos.x != 15);
+            let mut without = expected.clone();
+            without.retain(|(pos, _)| *pos != [15, 64, 1]);
+            assert_eq!(listed(game), without);
             game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
             game.options.dedicated = None;
             assert_eq!(level.block_entities(game, min, max), None);
