@@ -52,6 +52,7 @@ impl Renderer {
         // through a pack dropped (Shader Options) or not loaded yet (`Renderer::new`),
         // so the next world's sections, which the level loading screen uploads, stay.
         if !frame.title {
+            self.follow_arena_storage();
             self.follow_translucent_layout();
             self.follow_packed_layout();
         }
@@ -1250,9 +1251,14 @@ impl Renderer {
                 core_lines::uniforms(pack.globals, view, pose, jitter, 1.0, fog_color, pack.fog)
             })
         };
-        // The pack's world text: vanilla's blocks, then its expression uniforms.
+        // The pack's world text: vanilla's blocks, HDR tier windows, then its expression uniforms.
         if let Some(core) = &self.core_text {
-            core.prepare(&mut self.uploads, &mut encoder, &vanilla_blocks());
+            core.prepare(
+                &mut self.uploads,
+                &mut encoder,
+                &vanilla_blocks(),
+                globals.hdr_windows,
+            );
         }
         let outline_edges = frame.outline.len().min(MAX_OUTLINE_EDGES as usize);
         if outline_edges > 0 {
@@ -2906,31 +2912,38 @@ impl Renderer {
                 // Draw glowing outline copies with NORMAL depth before coplanar
                 // POLYGON_OFFSET sign glyph faces and inline sprites.
                 let marked = light_marks(self.output.frame.format, self.hdr.is_some());
-                for (index, (pipeline, count, first)) in [
+                for (mode, pipeline, mark_pipeline, count, first) in [
                     (
+                        core_text::WorldTextMode::Normal,
                         &self.world_text_pipeline,
+                        &self.text_mark_pipelines[0],
                         text_normal_solid_quads,
                         world_quads - text_normal_solid_quads,
                     ),
                     (
+                        core_text::WorldTextMode::PolygonOffset,
                         &self.text_polygon_offset_pipeline,
+                        &self.text_mark_pipelines[1],
                         text_offset_solid_quads,
                         world_quads - text_solid_quads,
                     ),
-                ]
-                .into_iter()
-                .enumerate()
-                {
+                ] {
                     if count == 0 {
                         continue;
                     }
                     pass.set_pipeline(pipeline);
-                    self.bind_world_text(&mut pass, index == 1, false);
+                    let pack_drawn = self.bind_world_text(&mut pass, mode);
                     pass.draw_indexed(0..count * 6, (first * 4) as i32, 0..1);
                     if marked {
-                        pass.set_pipeline(&self.text_mark_pipelines[index]);
-                        pass.set_bind_group(0, &self.entity_group, &[]);
-                        pass.draw_indexed(0..count * 6, (first * 4) as i32, 0..1);
+                        if pack_drawn {
+                            if self.bind_world_text_hdr_mark(&mut pass, mode) {
+                                pass.draw_indexed(0..count * 6, (first * 4) as i32, 0..1);
+                            }
+                        } else {
+                            pass.set_pipeline(mark_pipeline);
+                            pass.set_bind_group(0, &self.entity_group, &[]);
+                            pass.draw_indexed(0..count * 6, (first * 4) as i32, 0..1);
+                        }
                     }
                 }
                 pass.set_bind_group(0, &self.group, &[]);
@@ -2949,7 +2962,7 @@ impl Renderer {
             if text_quads > 0 && !oit_on {
                 pass.stage(self.own_timing.as_mut(), "entity text");
                 pass.set_pipeline(&self.text_polygon_offset_pipeline);
-                self.bind_world_text(&mut pass, true, false);
+                self.bind_world_text(&mut pass, core_text::WorldTextMode::PolygonOffset);
                 pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
                 pass.draw_indexed(0..text_quads * 6, (entity_quads * 4) as i32, 0..1);
                 pass.set_bind_group(0, &self.group, &[]);
@@ -3607,7 +3620,7 @@ impl Renderer {
             if see_through_quads > 0 {
                 pass.stage(self.own_timing.as_mut(), "see-through");
                 pass.set_pipeline(&self.see_through_pipeline);
-                self.bind_world_text(&mut pass, true, true);
+                self.bind_world_text(&mut pass, core_text::WorldTextMode::SeeThrough);
                 pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
                 pass.draw_indexed(
                     0..see_through_quads * 6,
@@ -3736,8 +3749,7 @@ impl Renderer {
     }
 }
 
-/// Shadow caster walk radius in chunks: uses `shadow_distance` (the loaded streaming radius)
-/// when supplied, staying separate from the effective eye distance (`detail_distance`).
+/// Shadow caster walk radius in chunks, with an optional override of the effective eye distance.
 pub(super) fn shadow_walk_radius(shadow_distance: Option<f32>, detail_distance: f32) -> i32 {
     (shadow_distance.unwrap_or(detail_distance) / 16.0) as i32
 }
