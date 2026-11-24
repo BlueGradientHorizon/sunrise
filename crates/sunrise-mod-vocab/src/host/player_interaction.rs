@@ -64,9 +64,11 @@ pub trait PlayerInteractionBackendMut {
     /// one tick of mining removes at `pos`, using the tool in `player`'s selected hotbar
     /// slot (never the offhand), the block's hardness, efficiency, effects, block-break
     /// speed, submerged mining and the on-ground penalty, then the `can_harvest_block`,
-    /// `player_harvest_check` and `player_break_speed` hooks. `0.0` for an unbreakable
-    /// state. Nothing requires `pos` to hold `state`. A server asks a connected or fake
-    /// player (their state swapped in); a client only its local player.
+    /// `player_harvest_check` and `player_break_speed` hooks; or, in place of all that, a block
+    /// Part's `destroy_progress` answer for `state`, except from inside such an answer, where it
+    /// is that math. `0.0` for an unbreakable state. Nothing requires `pos` to hold `state`. A
+    /// server asks a connected or fake player (their state swapped in); a client only its local
+    /// player.
     /// None for a stale handle or player, an unknown block state, a dead server player, a
     /// level other than the one in place, and a call from inside one of those hooks, which
     /// would run it again without bound.
