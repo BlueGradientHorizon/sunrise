@@ -302,7 +302,8 @@ fn a_part_breaks_a_mobs_glider_now() {
 
 /// `ItemStack::hurt_and_break` (#5369) wears a stack nobody holds as `ItemStack.hurtAndBreak`
 /// does: a point of wear, the last point breaking the stack away, nothing for an item that is
-/// not damageable, Unbreaking III saving most points, and nothing for a creative player.
+/// not damageable, Unbreaking III saving most points, and nothing for a creative player. A stale
+/// level, a player handle that is not the player's and a client are refused.
 #[test]
 #[ignore = "daily"]
 fn a_mod_wears_a_stack_nobody_holds_as_vanilla_does() {
@@ -354,10 +355,29 @@ fn a_mod_wears_a_stack_nobody_holds_as_vanilla_does() {
             Ok(Some(pickaxe.clone()))
         );
         game.creative = false;
+        // Refusals: a stale level, a player handle whose uuid is not the player's, a client.
+        let stale = mod_api::LevelRef::new(mod_api::WorldEpoch::new(u64::MAX), game.dim.key());
+        assert_eq!(
+            pickaxe.hurt_and_break(game, stale, 1, None),
+            Err(mod_api::StackWriteError::Unavailable)
+        );
+        let impostor = mod_api::__private::game::player_ref(game.entity(20).unwrap(), 999);
+        assert_eq!(
+            pickaxe.hurt_and_break(game, level, 1, Some(impostor)),
+            Err(mod_api::StackWriteError::Unavailable)
+        );
         let worn = pickaxe
             .hurt_and_break(game, level, 1, Some(player))
             .unwrap()
             .unwrap();
         assert_eq!(worn.damage(), 1);
+
+        // A client wears nothing.
+        game.options.dedicated = None;
+        game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
+        assert_eq!(
+            pickaxe.hurt_and_break(game, level, 1, None),
+            Err(mod_api::StackWriteError::Unavailable)
+        );
     });
 }
