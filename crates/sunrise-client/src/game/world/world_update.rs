@@ -234,7 +234,7 @@ impl Game<'_> {
                     .filter_map(|key| self.world.chunks.get(key)),
             );
             self.native_full_chunk_snapshots(&chunks);
-            let entities = self.unloading_entity_snapshots(keys);
+            let (entities, refused_entities) = self.unloading_entity_snapshots(keys);
             let mut counts = Vec::new();
             if mod_api::__private::listened(mod_api::HookId::EntitiesUnload) {
                 counts.extend(entities.iter().map(|(key, rows)| (*key, rows.len())));
@@ -246,7 +246,9 @@ impl Game<'_> {
                     world_biomes!(self),
                     entities,
                 )?;
-                plan.retain_unloading_columns(|key| !refused.contains(key));
+                plan.retain_unloading_columns(|key| {
+                    !refused.contains(key) && !refused_entities.contains(key)
+                });
             } else {
                 if !chunks.is_empty() {
                     self.save.save_later(
@@ -256,6 +258,7 @@ impl Game<'_> {
                     )?;
                 }
                 self.save.save_entities_later(entities)?;
+                plan.retain_unloading_columns(|key| !refused_entities.contains(key));
             }
             Ok(counts)
         })();

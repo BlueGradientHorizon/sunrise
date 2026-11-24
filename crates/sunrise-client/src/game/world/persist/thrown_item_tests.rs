@@ -262,7 +262,7 @@ pub(in crate::game) fn run_a_moved_thrown_item_projectile_saves_its_loaded_item(
 
         // Unload the chunk through the real chunk entity unload/save path and confirm removal.
         let chunk = game.world.chunks.remove(&key).unwrap();
-        let records = game.unloading_entity_snapshots(&keys);
+        let (records, _) = game.unloading_entity_snapshots(&keys);
         game.save.save_entities_later(records).unwrap();
         game.remove_unloading_entities(&keys);
         game.save.flush().unwrap();

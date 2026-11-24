@@ -40,7 +40,7 @@ mod transient_entities {
             let uuid =
                 sunrise_client::lan::playerdata::uuid_ints(game.entity_uuid(display).unwrap());
             assert_eq!(game.entity_chunks(&chunks, false), vec![((0, 0), vec![])]);
-            let capture = game.snapshot_entity_chunks(&chunks, EntitySnapshot::Structure);
+            let (capture, _) = game.snapshot_entity_chunks(&chunks, EntitySnapshot::Structure);
             assert_eq!(capture[0].1.len(), 1);
             assert_eq!(entity_nbt::uuid(&capture[0].1[0]), Some(uuid));
 
@@ -67,7 +67,7 @@ mod transient_entities {
 
             let chunk = game.world.chunks.remove(&(0, 0)).unwrap();
             let keys = HashSet::from([(0, 0)]);
-            let records = game.unloading_entity_snapshots(&keys);
+            let (records, _) = game.unloading_entity_snapshots(&keys);
             game.save.save_entities_later(records).unwrap();
             game.remove_unloading_entities(&keys);
             game.save.flush().unwrap();
@@ -1279,4 +1279,156 @@ fn an_orb_saves_its_live_portal_cooldown() {
         assert_eq!(read.get("Fire"), Some(&Tag::Short(40)));
         assert_eq!(read.get("Air"), Some(&Tag::Short(275)));
     });
+}
+
+/// An entity attachment that cannot encode refuses its chunk's entity record, as NeoForge's
+/// `AttachmentHolder.serializeAttachments` propagates the codec's error: the unload keeps the
+/// column and its entities loaded, and the next unload after the codec recovers saves them.
+mod refused_entity_unload {
+    use super::*;
+    use crate::game::native_entity_refs::tests::{fixture_root, with_game_at};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::time::{Duration, Instant};
+    use sunrise_mod_runtime::attachments::{
+        AttachmentCodec, AttachmentError, AttachmentType, Attachments, Holder,
+    };
+
+    /// Chunk (100, 100): far from the spawn, so only its ticket keeps it.
+    const CHUNK: (i32, i32) = (100, 100);
+
+    #[derive(Clone)]
+    struct Fallible {
+        value: i32,
+        fail: Arc<AtomicBool>,
+    }
+    static FALLIBLE: AttachmentType<Fallible> = AttachmentType {
+        namespace: "refusal",
+        name: "fallible",
+        default: || Fallible {
+            value: 0,
+            fail: Arc::new(AtomicBool::new(false)),
+        },
+        codec: Some(AttachmentCodec {
+            encode: |v: &Fallible| {
+                if v.fail.load(Ordering::Relaxed) {
+                    return Err(AttachmentError::Encode);
+                }
+                Ok([("value".into(), Tag::Int(v.value))].into())
+            },
+            decode: |c| match c.get(&"value".into()) {
+                Some(Tag::Int(value)) => Ok(Fallible {
+                    value: *value,
+                    fail: Arc::new(AtomicBool::new(false)),
+                }),
+                _ => Err(AttachmentError::Decode),
+            },
+        }),
+        copy_on_death: false,
+        sync_codec: None,
+    };
+
+    fn request(root: &std::path::Path) -> crate::game::world_loading::WorldRequest {
+        let rules = Arc::new(sunrise_client::gamerules::RuleRegistry::vanilla());
+        let options = sunrise_client::title::WorldOptions {
+            world_type: sunrise_client::save::WorldPreset::Flat,
+            rules: sunrise_client::gamerules::GameRules::with_registry(rules.clone(), &[]),
+            ..Default::default()
+        };
+        let mut request = crate::game::world_loading::WorldRequest::new(
+            "refusal",
+            Some("refusal"),
+            Some(1),
+            true,
+            Some(&options),
+            rules,
+        )
+        .unwrap();
+        request.save_root = root.to_owned();
+        request
+    }
+
+    /// Streams until `done` holds and nothing is on its way.
+    fn pump_until(game: &mut Game<'_>, done: impl Fn(&Game<'_>) -> bool) {
+        let deadline = Instant::now() + Duration::from_secs(120);
+        while !done(game) || game.streaming.busy() {
+            assert!(Instant::now() < deadline, "streaming did not settle");
+            game.streaming.wait(Duration::from_millis(5));
+            game.update_world();
+        }
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn an_unload_keeps_a_column_whose_entity_record_was_refused() {
+        let scratch = tempfile::tempdir().unwrap();
+        mod_platform::testing::with_mods(Default::default(), || {
+            with_game_at(fixture_root(), |game| {
+                game.load_world(request(&scratch.path().join("save")))
+                    .unwrap();
+                game.set_allow_commands(true);
+                assert!(game.run_command("forceload add 1600 1600"));
+                pump_until(game, |game| game.world.chunks.contains_key(&CHUNK));
+                game.tick_world(true).unwrap();
+                let target = game
+                    .summon_with_nbt(
+                        "minecraft:armor_stand",
+                        [1604.5, 100.0, 1604.5],
+                        "{NoGravity:1b}",
+                    )
+                    .unwrap()
+                    .unwrap();
+                let id = game.resident_target_id(target).unwrap();
+                let fail = Arc::new(AtomicBool::new(true));
+                FALLIBLE
+                    .set(
+                        game.entity_attachments.entry(id).or_default(),
+                        Holder::Entity(id),
+                        Fallible {
+                            value: 7,
+                            fail: fail.clone(),
+                        },
+                    )
+                    .unwrap();
+
+                // The ticket goes, but the entity record cannot be written: nothing unloads.
+                assert!(game.run_command("forceload remove 1600 1600"));
+                for _ in 0..40 {
+                    game.streaming.wait(Duration::from_millis(5));
+                    game.update_world();
+                }
+                assert!(
+                    game.world.chunks.contains_key(&CHUNK),
+                    "a refused entity record keeps its column"
+                );
+                assert!(game.entity(id).is_some(), "and the entity in it");
+                game.save.flush().unwrap();
+                assert!(
+                    game.save
+                        .load_entities(CHUNK.0, CHUNK.1)
+                        .unwrap()
+                        .is_empty(),
+                    "no partial record was written"
+                );
+
+                // Once the attachment encodes, the next unload saves the entity with it.
+                fail.store(false, Ordering::Relaxed);
+                pump_until(game, |game| !game.world.chunks.contains_key(&CHUNK));
+                assert!(game.entity(id).is_none());
+                game.save.flush().unwrap();
+                let records = game.save.load_entities(CHUNK.0, CHUNK.1).unwrap();
+                assert_eq!(records.len(), 1);
+                let Some(Tag::Compound(saved)) = records[0].get(ATTACHMENTS_KEY) else {
+                    panic!("the entity saved without its attachments");
+                };
+                let mut reloaded = Attachments::from_nbt(saved.clone());
+                assert_eq!(
+                    FALLIBLE
+                        .get_existing(&mut reloaded, Holder::Entity(id))
+                        .unwrap()
+                        .map(|v| v.value),
+                    Some(7)
+                );
+            });
+        });
+    }
 }

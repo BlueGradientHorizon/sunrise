@@ -2065,16 +2065,19 @@ impl Game<'_> {
         } else {
             EntitySnapshot::Save
         };
-        self.snapshot_entity_chunks(keys, purpose)
+        self.snapshot_entity_chunks(keys, purpose).0
     }
 
-    /// The entity NBT in `keys`, plus any unknown entities kept for them.
-    /// No snapshot holds a player vehicle: a mob seated on a player gets off first.
+    /// The entity NBT in `keys`, plus any unknown entities kept for them,
+    /// and the chunks whose record was refused because an attachment failed
+    /// to encode. A refused chunk has no record, and an unload keeps its
+    /// entities. No snapshot holds a player vehicle: a mob seated on a player
+    /// gets off first.
     pub(super) fn snapshot_entity_chunks(
         &mut self,
         keys: &HashSet<ChunkKey>,
         purpose: EntitySnapshot,
-    ) -> Vec<(ChunkKey, Vec<Tag>)> {
+    ) -> (Vec<(ChunkKey, Vec<Tag>)>, HashSet<ChunkKey>) {
         use sunrise_client::join_seq::{JoinSeq, Joined};
         self.eject_player_riders(None);
         let include_transient = matches!(purpose, EntitySnapshot::Structure);
@@ -2310,6 +2313,7 @@ impl Game<'_> {
         // yet given an id is not a lookup member: its join stands in.
         let mut out: HashMap<(i32, i32), Vec<Tag>> =
             keys.iter().map(|k| (*k, Vec::new())).collect();
+        let refused: HashSet<ChunkKey> = failed_chunks.keys().copied().collect();
         for (key, error) in failed_chunks {
             out.remove(&key);
             if !matches!(purpose, EntitySnapshot::Structure) {
@@ -2337,9 +2341,10 @@ impl Game<'_> {
             }
         }
         if matches!(purpose, EntitySnapshot::Unload) {
-            self.remove_unloading_entities(keys);
+            let unloading = keys.difference(&refused).copied().collect();
+            self.remove_unloading_entities(&unloading);
         }
-        out.into_iter().collect()
+        (out.into_iter().collect(), refused)
     }
     /// Write the entities of every resident chunk (an autosave or quit).
     /// Without `wait` (the autosave) they are written on the region writer
@@ -2493,13 +2498,14 @@ impl Game<'_> {
             };
     }
     /// Capture the entity records before committing a chunk unload
-    /// (`PersistentEntitySectionManager.processChunkUnload`).
+    /// (`PersistentEntitySectionManager.processChunkUnload`), with the chunks
+    /// whose record was refused: those stay loaded with their entities.
     pub(super) fn unloading_entity_snapshots(
         &mut self,
         keys: &HashSet<ChunkKey>,
-    ) -> Vec<(ChunkKey, Vec<Tag>)> {
+    ) -> (Vec<(ChunkKey, Vec<Tag>)>, HashSet<ChunkKey>) {
         self.spawn_loaded_entities();
-        self.entity_chunks(keys, false)
+        self.snapshot_entity_chunks(keys, EntitySnapshot::Save)
     }
 
     pub(super) fn remove_unloading_entities(&mut self, keys: &HashSet<ChunkKey>) {
