@@ -1,5 +1,5 @@
+pub use world::scoreboard::ObjectiveReadError;
 pub use world::scoreboard::{
     ClientObjective, ClientScore, ClientScoreboard, DisplaySlot, NumberFormat, ObjectiveError,
-    ObjectiveReadError, ObjectiveRenderType, ScoreEntry, ScoreHolder, Sidebar, SidebarLine,
-    TeamColor,
+    ObjectiveRenderType, ScoreEntry, ScoreHolder, Sidebar, SidebarLine, TeamColor,
 };
