@@ -1593,7 +1593,8 @@ fn ai_and_finish_tick(
         // NoAI mob pushes what it overlaps (and is pushed back by its own
         // push).
         drop_tiny_motion(m);
-        return start_ai_tail(m, w, level, events, was_on_fire, movement.is_some());
+        let progress = ridden_without_ai(m, w, level, events, movement.is_some());
+        return finish_ai_progress(m, w, level, events, was_on_fire, movement, progress);
     }
     let progress = ai_step(m, w, level, events, movement.is_some());
     finish_ai_progress(m, w, level, events, was_on_fire, movement, progress)
@@ -1667,7 +1668,7 @@ fn continue_ai_tail(
             // `stepOn` and no block insides.
             AiStage::BlockWalk if m.removed => AiStage::Freeze,
             AiStage::BlockWalk => {
-                if !no_ai {
+                if !no_ai || super::equine::controlled(m) {
                     m.apply_effects_from_blocks(w, events);
                 }
                 let mut walk = start_block_walk(m, w, level, events);
@@ -3969,6 +3970,34 @@ mod selector_restore_tests {
             assert_eq!(drops.load(Ordering::SeqCst), 2);
         }
     }
+}
+
+// LivingEntity.aiStep travelRidden: a player rider still drives a NoAI mount.
+fn ridden_without_ai(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+    pause_movement: bool,
+) -> ControlFlow<AiPause> {
+    if !m.alive() || !super::equine::controlled(m) {
+        return ControlFlow::Continue(());
+    }
+    super::equine::ridden_step(m, w.loop_context);
+    m.handle_jumping(w);
+    let input = Vec3::new(
+        f64::from(m.ai.xxa),
+        f64::from(m.ai.yya),
+        f64::from(m.ai.zza),
+    );
+    if super::equine::moved_by_client(m) {
+        m.velocity = Vec3::ZERO;
+    } else {
+        m.travel_until_pause(w, level, input, events, pause_movement)
+            .map_break(|travel| AiPause::Movement(MovementPhase::Travel(travel)))?;
+        hurt_teleports(m, w, events);
+    }
+    ControlFlow::Continue(())
 }
 
 /// The replacement slot the staging pass writes at the head of `server_ai_step`, for tests: a
@@ -8631,6 +8660,215 @@ mod allay_healing_tests {
         if !ran {
             eprintln!("Prepared mob data unavailable; Allay tick coverage did not run");
         }
+    }
+}
+
+#[cfg(test)]
+mod noai_ridden_tests {
+    use super::*;
+    use std::sync::Arc;
+
+    const WITNESS_ENV: &str = "SUNRISE_NOAI_RIDDEN_TRAVEL_WITNESS";
+
+    struct WitnessRow<'a> {
+        case: &'a str,
+        saddled: bool,
+        no_ai: bool,
+        client_auth: bool,
+        init_vx: f64,
+        init_vy: f64,
+        init_vz: f64,
+        forward: f32,
+        strafe: f32,
+        rider_yaw: f32,
+        rider_pitch: f32,
+        tick: u32,
+        px: u64,
+        py: u64,
+        pz: u64,
+        vx: u64,
+        vy: u64,
+        vz: u64,
+        yaw: u32,
+        pitch: u32,
+        body_yaw: u32,
+        head_yaw: u32,
+        on_ground: bool,
+    }
+
+    struct ActiveCase<'a> {
+        case: &'a str,
+        mob: Mob,
+        level: crate::health::TestLevel,
+        events: Vec<MobEvent>,
+        last_tick: u32,
+    }
+
+    fn parse_bool(s: &str) -> bool {
+        match s {
+            "0" => false,
+            "1" => true,
+            other => panic!("unexpected bool token {other:?}"),
+        }
+    }
+
+    fn parse_f64_bits(s: &str) -> u64 {
+        u64::from_str_radix(s, 16).unwrap_or_else(|e| panic!("bad f64 hex {s:?}: {e}"))
+    }
+
+    fn parse_f32_bits(s: &str) -> u32 {
+        u32::from_str_radix(s, 16).unwrap_or_else(|e| panic!("bad f32 hex {s:?}: {e}"))
+    }
+
+    fn parse_witness(text: &str) -> Vec<WitnessRow<'_>> {
+        text.lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+            .map(|line| {
+                let c: Vec<&str> = line.split('\t').collect();
+                assert_eq!(c.len(), 23, "unexpected column count: {line}");
+                WitnessRow {
+                    case: c[0],
+                    saddled: parse_bool(c[1]),
+                    no_ai: parse_bool(c[2]),
+                    client_auth: parse_bool(c[3]),
+                    init_vx: f64::from_bits(parse_f64_bits(c[4])),
+                    init_vy: f64::from_bits(parse_f64_bits(c[5])),
+                    init_vz: f64::from_bits(parse_f64_bits(c[6])),
+                    forward: f32::from_bits(parse_f32_bits(c[7])),
+                    strafe: f32::from_bits(parse_f32_bits(c[8])),
+                    rider_yaw: f32::from_bits(parse_f32_bits(c[9])),
+                    rider_pitch: f32::from_bits(parse_f32_bits(c[10])),
+                    tick: c[11].parse().unwrap(),
+                    px: parse_f64_bits(c[12]),
+                    py: parse_f64_bits(c[13]),
+                    pz: parse_f64_bits(c[14]),
+                    vx: parse_f64_bits(c[15]),
+                    vy: parse_f64_bits(c[16]),
+                    vz: parse_f64_bits(c[17]),
+                    yaw: parse_f32_bits(c[18]),
+                    pitch: parse_f32_bits(c[19]),
+                    body_yaw: parse_f32_bits(c[20]),
+                    head_yaw: parse_f32_bits(c[21]),
+                    on_ground: parse_bool(c[22]),
+                }
+            })
+            .collect()
+    }
+
+    /// Vanilla 26.3 parity (#3040): a ridden NoAI donkey matches the vanilla 26.3 witness
+    /// `tools/test_noai_ridden_travel_parity.py` records bit-for-bit.
+    #[test]
+    #[ignore = "run by tools/test_noai_ridden_travel_parity.py"]
+    fn a_ridden_noai_donkey_travels_and_turns_with_its_rider() {
+        let witness_path = std::env::var(WITNESS_ENV).unwrap_or_else(|_| {
+            panic!(
+                "{WITNESS_ENV} is not set; run through tools/test_noai_ridden_travel_parity.py, which records the witness"
+            )
+        });
+        let witness_file = {
+            let path = std::path::PathBuf::from(&witness_path);
+            if path.is_dir() {
+                path.join("noai_ridden_travel.tsv")
+            } else {
+                path
+            }
+        };
+        let witness = std::fs::read_to_string(&witness_file).unwrap_or_else(|err| {
+            panic!(
+                "could not read {} (from {WITNESS_ENV}): {err}; run through tools/test_noai_ridden_travel_parity.py",
+                witness_file.display()
+            )
+        });
+        let rows = parse_witness(&witness);
+        assert!(!rows.is_empty(), "26.3 witness must not be empty");
+        let ran = crate::mobs::world::with_built_test_world(
+            &[],
+            |world, registry| {
+                world
+                    .chunks
+                    .insert((0, 0), Arc::new(crate::chunk::Chunk::empty(0, 0)));
+                let stone = registry.default_state("minecraft:stone").unwrap();
+                for x in 0..16 {
+                    for z in 0..16 {
+                        world.set(x, 63, z, stone).unwrap();
+                    }
+                }
+            },
+            |w, types| {
+                let kind = Arc::new(types.types["minecraft:donkey"].clone());
+                let mut active: Option<ActiveCase<'_>> = None;
+                for row in &rows {
+                    if active.as_ref().is_none_or(|a| a.case != row.case) {
+                        assert_eq!(row.tick, 1, "{}: first tick must be 1", row.case);
+                        let mut mob = Mob::new(1, kind.clone(), Vec3::new(8.5, 64.0, 8.5), 0.0);
+                        mob.no_ai = row.no_ai;
+                        mob.persistent = true;
+                        mob.extra.tame = true;
+                        if row.saddled {
+                            mob.set_saddle(Some(crate::items::ItemStack::new(
+                                "minecraft:saddle",
+                                1,
+                            )));
+                        }
+                        mob.velocity = Vec3::new(row.init_vx, row.init_vy, row.init_vz);
+                        active = Some(ActiveCase {
+                            case: row.case,
+                            mob,
+                            level: crate::health::TestLevel::new(0),
+                            events: Vec::new(),
+                            last_tick: 0,
+                        });
+                    }
+                    let state = active.as_mut().unwrap();
+                    assert_eq!(
+                        row.tick,
+                        state.last_tick + 1,
+                        "{}: contiguous ticks",
+                        row.case
+                    );
+                    state.last_tick = row.tick;
+                    state.mob.rider = Some(super::super::equine::Rider {
+                        forward: row.forward,
+                        strafe: row.strafe,
+                        yaw: row.rider_yaw,
+                        pitch: row.rider_pitch,
+                        client: row.client_auth,
+                        ..Default::default()
+                    });
+                    assert!(tick(
+                        &mut state.mob,
+                        w,
+                        &mut state.level.level(),
+                        &mut state.events
+                    ));
+                    let ctx = format!("{} tick {}", row.case, row.tick);
+                    assert_eq!(state.mob.position.x.to_bits(), row.px, "{ctx}: px");
+                    assert_eq!(state.mob.position.y.to_bits(), row.py, "{ctx}: py");
+                    assert_eq!(state.mob.position.z.to_bits(), row.pz, "{ctx}: pz");
+                    assert_eq!(state.mob.velocity.x.to_bits(), row.vx, "{ctx}: vx");
+                    assert_eq!(state.mob.velocity.y.to_bits(), row.vy, "{ctx}: vy");
+                    assert_eq!(state.mob.velocity.z.to_bits(), row.vz, "{ctx}: vz");
+                    assert_eq!(state.mob.yaw.to_bits(), row.yaw, "{ctx}: yaw");
+                    assert_eq!(state.mob.head_pitch.to_bits(), row.pitch, "{ctx}: pitch");
+                    assert_eq!(
+                        state.mob.body_yaw.to_bits(),
+                        row.body_yaw,
+                        "{ctx}: body_yaw"
+                    );
+                    assert_eq!(
+                        state.mob.head_yaw.to_bits(),
+                        row.head_yaw,
+                        "{ctx}: head_yaw"
+                    );
+                    assert_eq!(
+                        state.mob.ground.on_ground, row.on_ground,
+                        "{ctx}: on_ground"
+                    );
+                }
+            },
+        );
+        assert!(ran, "vanilla data is missing");
     }
 }
 
