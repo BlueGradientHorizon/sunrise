@@ -27,7 +27,7 @@ Register each managed config file from `Hooks::register` with
   `&ConfigSnapshot` (`mod_id`, `kind`, registered `file`, resolved on-disk `path`, and `text`). Pass `None`
   if the file needs no callback.
 
-```rust
+```rust,ignore
 use mod_api::{
     ConfigEvent, ConfigKind, ConfigSnapshot, ConfigSpec, Hooks, Registrar,
     RegistrationContext,
@@ -112,7 +112,7 @@ use `cx.instance_dir()?.to_path_buf()?.join("config")` in an `Option`-returning 
 
 Use `std::fs` directly on paths joined from `host.config_dir()`:
 
-```rust
+```rust,ignore
 use std::fs;
 
 let root = host.config_dir().join("mymod");
