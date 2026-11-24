@@ -842,6 +842,7 @@ impl Game<'_> {
             Some((generate, seed)) => (Some(generate), seed),
             None => (None, self.level.seed),
         };
+        let base_conditions = self.worldgen_base_conditions()?;
         let (streaming, save, locator) = super::world_loading::make_streaming(
             &self.res,
             &self.pack,
@@ -859,6 +860,7 @@ impl Game<'_> {
             generate.as_ref(),
             self.save.chunk_reports().clone(),
             self.save.save_failure_reporter().clone(),
+            &base_conditions,
         )?;
         self.bind_chunk_disk_worker(&save, dim);
         save.install_profession_snapshot(self.stations().professions.clone());

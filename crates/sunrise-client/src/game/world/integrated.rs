@@ -434,6 +434,8 @@ struct Launch {
     player: String,
     /// The signed-in account's profile, fetched while the world loads.
     owner_profile: Option<Arc<OwnerProfile>>,
+    /// Base load conditions (enabled mods and registered handlers) captured before worldgen loads.
+    conditions: sunrise_world::conditions::LoadConditions,
 }
 
 impl Game<'_> {
@@ -498,6 +500,7 @@ impl Game<'_> {
         let owner = auth
             .as_ref()
             .map_or_else(|| offline_uuid(&player), |a| a.uuid);
+        let worldgen_conditions = self.worldgen_base_conditions()?;
         let launch = Launch {
             rule_registry: rule_registry.clone(),
             folder: folder.to_owned(),
@@ -522,6 +525,7 @@ impl Game<'_> {
                         .collect()
                 }))
             }),
+            conditions: worldgen_conditions.clone(),
         };
         let mut options = self.options.clone();
         // A server without a console: no local player, no window, no control socket.
@@ -549,6 +553,7 @@ impl Game<'_> {
             self.res.biomes(),
             &enabled_features,
             &self.pack.additional_data,
+            &worldgen_conditions,
         ));
         self.world_biomes_base = self.world_biomes.clone();
         let (res, pack, settings) = (self.res.clone(), self.pack.clone(), self.settings.clone());
@@ -1403,6 +1408,7 @@ fn serve(
     // (an older world's offline owner moves to it at open).
     .and_then(|mut request| {
         request.chunk_reports = flags.reports.clone();
+        request.conditions = Some(launch.conditions.clone());
         WorldLoader::start(
             request.owned_by(&launch.player, launch.owner),
             res.clone(),
@@ -2386,6 +2392,7 @@ pub(super) mod tests {
                 owner,
                 player: "Tester".into(),
                 owner_profile: None,
+                conditions: sunrise_world::conditions::LoadConditions::vanilla(),
             };
             with_mods(
                 vec![ModEntry::new(
@@ -2473,6 +2480,7 @@ pub(super) mod tests {
                 owner,
                 player: "Tester".into(),
                 owner_profile: None,
+                conditions: sunrise_world::conditions::LoadConditions::vanilla(),
             };
             let flags = Arc::new(Flags::default());
             // Stop as soon as startup finishes, without connecting the owner.

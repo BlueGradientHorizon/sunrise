@@ -11,6 +11,7 @@ fn data(tables: Vec<(&str, Value)>) -> LootData {
         global_modifiers: Arc::default(),
         modifiers: HashMap::new(),
         predicates: Arc::default(),
+        slot_sources: HashMap::new(),
         items: HashMap::new(),
         enchantments: vec![],
         primary_answers: Default::default(),

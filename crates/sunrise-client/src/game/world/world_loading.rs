@@ -15,6 +15,8 @@ pub(super) struct WorldRequest {
     /// The account the world opens under, for an integrated server
     /// (`IntegratedServer.getSingleplayerProfile`): its name and UUID.
     owner: Option<(String, u128)>,
+    /// Base load conditions (enabled mods and registered handlers) for worldgen loading.
+    pub(super) conditions: Option<sunrise_world::conditions::LoadConditions>,
     /// A fixture's effective registry traversal, before shape projection.
     #[cfg(test)]
     pub(super) stem_order: Option<&'static [&'static str]>,
@@ -129,6 +131,7 @@ impl WorldRequest {
             rule_registry,
             chunk_reports: sunrise_client::chunk_io::PROCESS_REPORTS.clone(),
             owner: None,
+            conditions: None,
             #[cfg(test)]
             stem_order: None,
         })
@@ -161,9 +164,17 @@ impl WorldRequest {
             rule_registry,
             chunk_reports,
             owner,
+            conditions,
             #[cfg(test)]
             stem_order,
         } = self;
+        let base_conditions = conditions.unwrap_or_else(|| {
+            sunrise_mod_package::enabled::EnabledMods::read(&options.resources)
+                .map(|inventory| {
+                    sunrise_world::conditions::LoadConditions::new(inventory.server_ids())
+                })
+                .unwrap_or_else(|_| sunrise_world::conditions::LoadConditions::vanilla())
+        });
         let name = name.as_deref();
         sunrise_client::biome::Biomes::forget_missing_warnings();
         let create = create.map(|mut create| {
@@ -301,6 +312,7 @@ impl WorldRequest {
             res.biomes(),
             &level.enabled_features,
             &pack.additional_data,
+            &base_conditions,
         );
         if created {
             level.generator = sunrise_client::save::WorldGenerator::read_new(&save_root);
@@ -316,6 +328,7 @@ impl WorldRequest {
             res.biomes(),
             &level.enabled_features,
             &pack.additional_data,
+            &base_conditions,
         );
         let (shapes, configured_levels) = level_shapes(
             &mut overrides,
@@ -348,6 +361,7 @@ impl WorldRequest {
             res.biomes(),
             &level.enabled_features,
             &pack.additional_data,
+            &base_conditions,
         );
         let integrated = options.execution_role == execution_role::ExecutionRole::IntegratedServer;
         // Resolving the report path must not prevent the world from opening.
@@ -383,6 +397,7 @@ impl WorldRequest {
             None,
             chunk_reports,
             save_reporter,
+            &base_conditions,
         )?;
         drop(streaming_step);
         streaming.radius = settings.render_distance;
@@ -561,6 +576,7 @@ pub(super) fn preload_launch_world(
     registry: &'static sunrise_world::registry::BlockRegistry,
     biomes: Arc<sunrise_client::biome::Biomes>,
     additional: &[Arc<sunrise_client::datapack::DataPack>],
+    base_conditions: sunrise_world::conditions::LoadConditions,
 ) {
     let mut preload = PRELOAD.lock().unwrap_or_else(|e| e.into_inner());
     if !matches!(*preload, Preload::Idle) {
@@ -592,6 +608,7 @@ pub(super) fn preload_launch_world(
                 &biomes,
                 enabled_features,
                 &additional,
+                &base_conditions,
             );
             if let Ok(data) = sunrise_client::vanillagen::shared_data_from(
                 &resources.join("worldgen"),
@@ -631,6 +648,7 @@ pub(super) fn packed_biomes(
     base: &Arc<sunrise_client::biome::Biomes>,
     enabled_features: &[String],
     additional: &[Arc<sunrise_client::datapack::DataPack>],
+    base_conditions: &sunrise_world::conditions::LoadConditions,
 ) -> Arc<sunrise_client::biome::Biomes> {
     let packs = super::pack_finders::data_repository(world_root, resources, additional);
     let enabled = sunrise_client::datapack::enabled_ids(world_root, &packs, enabled_features);
@@ -638,7 +656,10 @@ pub(super) fn packed_biomes(
         .iter()
         .filter_map(|id| packs.iter().find(|p| &p.id == id))
         .collect();
-    let (overrides, _) = sunrise_client::datapack::worldgen_overrides(&enabled, |_| true);
+    let conditions =
+        super::load_conditions::worldgen_load_conditions(base_conditions, resources, &enabled);
+    let (overrides, _) =
+        sunrise_client::datapack::worldgen_overrides(&enabled, |_| true, &conditions);
     // The mods' spawns too: their biome modifiers go over the packs' biomes.
     let overrides = sunrise_client::vanillagen::biome_modifiers_over_packs(
         &resources.join("worldgen"),
@@ -663,9 +684,25 @@ fn live_feature_overrides(
     base: &Arc<sunrise_client::biome::Biomes>,
     enabled_features: &[String],
     additional: &[Arc<sunrise_client::datapack::DataPack>],
+    base_conditions: &sunrise_world::conditions::LoadConditions,
 ) -> sunrise_world::worldgen::overrides::WorldgenOverrides {
-    let biomes = packed_biomes(world_root, resources, base, enabled_features, additional);
-    worldgen_overrides_of(world_root, resources, &biomes, enabled_features, additional).0
+    let biomes = packed_biomes(
+        world_root,
+        resources,
+        base,
+        enabled_features,
+        additional,
+        base_conditions,
+    );
+    worldgen_overrides_of(
+        world_root,
+        resources,
+        &biomes,
+        enabled_features,
+        additional,
+        base_conditions,
+    )
+    .0
 }
 /// The Create screen's chosen packs' worldgen entries over the game's own
 /// (`applyNewPackConfig` reloads the world with the new pack config): the
@@ -677,6 +714,7 @@ pub(super) fn creation_worldgen_overrides(
     data_packs: &[String],
     biomes: &sunrise_client::biome::Biomes,
     additional: &[Arc<sunrise_client::datapack::DataPack>],
+    base_conditions: &sunrise_world::conditions::LoadConditions,
 ) -> sunrise_world::worldgen::overrides::WorldgenOverrides {
     let empty = std::path::PathBuf::new();
     let packs =
@@ -685,8 +723,10 @@ pub(super) fn creation_worldgen_overrides(
         .iter()
         .filter_map(|id| packs.iter().find(|p| &p.id == id))
         .collect();
+    let conditions =
+        super::load_conditions::worldgen_load_conditions(base_conditions, resources, &enabled);
     let (overrides, _) =
-        sunrise_client::datapack::worldgen_overrides(&enabled, |b| biomes.contains(b));
+        sunrise_client::datapack::worldgen_overrides(&enabled, |b| biomes.contains(b), &conditions);
     overrides
 }
 /// The worldgen entries of the world's enabled data packs, logging what
@@ -697,9 +737,16 @@ fn world_worldgen_overrides(
     biomes: &sunrise_client::biome::Biomes,
     enabled_features: &[String],
     additional: &[Arc<sunrise_client::datapack::DataPack>],
+    base_conditions: &sunrise_world::conditions::LoadConditions,
 ) -> sunrise_world::worldgen::overrides::WorldgenOverrides {
-    let (overrides, warnings) =
-        worldgen_overrides_of(world_root, resources, biomes, enabled_features, additional);
+    let (overrides, warnings) = worldgen_overrides_of(
+        world_root,
+        resources,
+        biomes,
+        enabled_features,
+        additional,
+        base_conditions,
+    );
     for warning in warnings {
         log::warn!("Sunrise: data pack worldgen: {warning}");
     }
@@ -714,6 +761,7 @@ fn worldgen_overrides_of(
     biomes: &sunrise_client::biome::Biomes,
     enabled_features: &[String],
     additional: &[Arc<sunrise_client::datapack::DataPack>],
+    base_conditions: &sunrise_world::conditions::LoadConditions,
 ) -> (
     sunrise_world::worldgen::overrides::WorldgenOverrides,
     Vec<String>,
@@ -724,7 +772,9 @@ fn worldgen_overrides_of(
         .iter()
         .filter_map(|id| packs.iter().find(|p| &p.id == id))
         .collect();
-    sunrise_client::datapack::worldgen_overrides(&enabled, |b| biomes.contains(b))
+    let conditions =
+        super::load_conditions::worldgen_load_conditions(base_conditions, resources, &enabled);
+    sunrise_client::datapack::worldgen_overrides(&enabled, |b| biomes.contains(b), &conditions)
 }
 
 /// The shapes of the world's levels: their dimension types, the world's
@@ -959,6 +1009,7 @@ fn mod_terrain(
     structures: bool,
     runtime_stem: Option<&serde_json::Value>,
     saved_stem: Option<&sunrise_core::nbt::Tag>,
+    base_conditions: &sunrise_world::conditions::LoadConditions,
 ) -> Option<std::result::Result<ModLevel, String>> {
     use sunrise_world::worldgen::{
         mod_biome_sources::mod_biome_sources, mod_generators::mod_chunk_generators,
@@ -968,8 +1019,14 @@ fn mod_terrain(
     if generators.is_empty() {
         return None;
     }
-    let (overrides, _) =
-        worldgen_overrides_of(world_root, resources, biomes, enabled_features, additional);
+    let (overrides, _) = worldgen_overrides_of(
+        world_root,
+        resources,
+        biomes,
+        enabled_features,
+        additional,
+        base_conditions,
+    );
     let stem = runtime_stem.cloned().or_else(|| {
         overrides
             .entries(DIMENSIONS)
@@ -1051,6 +1108,7 @@ pub(super) fn make_streaming(
     runtime: Option<&super::runtime_levels::Generate>,
     chunk_reports: Arc<sunrise_client::chunk_io::Reports>,
     save_reporter: Arc<sunrise_client::chunk_io::SaveFailureReporter>,
+    base_conditions: &sunrise_world::conditions::LoadConditions,
 ) -> Result<(Streaming, Arc<SaveDir>, Option<Arc<VanillaTerrain>>)> {
     use sunrise_client::save::WorldGen;
     let enabled_features = &level.enabled_features;
@@ -1096,6 +1154,7 @@ pub(super) fn make_streaming(
                 &biomes,
                 enabled_features,
                 &pack.additional_data,
+                base_conditions,
             )
         })
     };
@@ -1255,6 +1314,7 @@ pub(super) fn make_streaming(
             _ => None,
         },
         saved_stem,
+        base_conditions,
     )
     .transpose()?
     {
@@ -1596,12 +1656,14 @@ mod tests {
 
         with_game(|game| {
             let shape = LevelShape::NETHER;
+            let base_conditions = sunrise_world::conditions::LoadConditions::vanilla();
             let biomes = packed_biomes(
                 root,
                 &game.options.resources,
                 game.res.biomes(),
                 &game.level.enabled_features,
                 &game.pack.additional_data,
+                &base_conditions,
             );
             let built = make_streaming(
                 &game.res,
@@ -1617,6 +1679,7 @@ mod tests {
                 None,
                 game.save.chunk_reports().clone(),
                 game.save.save_failure_reporter().clone(),
+                &base_conditions,
             );
             if invalid {
                 let Err(error) = built else {
@@ -1723,7 +1786,12 @@ mod tests {
                 None,
             ),
         ];
-        let (overrides, _) = worldgen_overrides_over(&mods, &[], |_| true);
+        let (overrides, _) = worldgen_overrides_over(
+            &mods,
+            &[],
+            |_| true,
+            &sunrise_world::conditions::LoadConditions::vanilla(),
+        );
         set_level_sea_levels(&overrides, &mods, std::path::Path::new("."));
         let sea = |id: &str| {
             sunrise_world::level::sea_level_of(sunrise_core::LevelKey::parse(id).unwrap())
@@ -1762,6 +1830,7 @@ mod tests {
         with_game(|game| {
             let request = WorldRequest {
                 owner: None,
+                conditions: None,
                 chunk_reports: sunrise_client::chunk_io::PROCESS_REPORTS.clone(),
                 stem_order: None,
                 save_root: dir.clone(),
@@ -2049,7 +2118,12 @@ mod tests {
     fn a_mods_level_opens_with_no_data_packs() {
         use sunrise_client::chunk::{LevelShape, LevelShapes};
         use sunrise_client::datapack::worldgen_overrides_over;
-        let (mut none, _) = worldgen_overrides_over(&[], &[], |_| true);
+        let (mut none, _) = worldgen_overrides_over(
+            &[],
+            &[],
+            |_| true,
+            &sunrise_world::conditions::LoadConditions::vanilla(),
+        );
         none.include_implicit_level_stems();
         assert_eq!(shapes_of(&none, none.level_stems()).0, LevelShapes::VANILLA);
 
@@ -2061,7 +2135,12 @@ mod tests {
                     .into(),
             sea_level: None,
         };
-        let (mut overrides, _) = worldgen_overrides_over(&[pocket], &[], |_| true);
+        let (mut overrides, _) = worldgen_overrides_over(
+            &[pocket],
+            &[],
+            |_| true,
+            &sunrise_world::conditions::LoadConditions::vanilla(),
+        );
         overrides.include_implicit_level_stems();
         let registry: std::collections::HashMap<_, _> = overrides.level_stems().collect();
         let traversal = [
@@ -2128,7 +2207,9 @@ mod tests {
         let world =
             std::env::temp_dir().join(format!("sunrise-mod-terrain-{}", std::process::id()));
         std::fs::create_dir_all(&world).unwrap();
-        let (mut overrides, _) = worldgen_overrides_of(&world, &root, &biomes, &[], &[]);
+        let base_conditions = sunrise_world::conditions::LoadConditions::vanilla();
+        let (mut overrides, _) =
+            worldgen_overrides_of(&world, &root, &biomes, &[], &[], &base_conditions);
         overrides.include_implicit_level_stems();
         let (shapes, _) = shapes_of(&overrides, overrides.level_stems());
         use sunrise_world::native_load_context::{DataLoadOrigin, LoadContext, LoadInputs};
@@ -2163,6 +2244,7 @@ mod tests {
                 true,
                 None,
                 None,
+                &base_conditions,
             )
         };
         let pocket = Dim::Extra(mod_api::__private::dimension_key("test:pocket"));
@@ -2223,6 +2305,7 @@ mod tests {
                     with_game_role(root.clone(), role, |game| {
                         let request = WorldRequest {
                             owner: None,
+                            conditions: None,
                             chunk_reports: sunrise_client::chunk_io::PROCESS_REPORTS.clone(),
                             stem_order: None,
                             save_root: world.clone(),
@@ -2328,6 +2411,7 @@ mod unused_feature_startup_tests {
                 loaded.resources.biomes(),
                 &level.enabled_features,
                 &loaded.pack.additional_data,
+                &sunrise_world::conditions::LoadConditions::vanilla(),
             );
             assert_eq!(
                 overrides
@@ -2350,6 +2434,7 @@ mod unused_feature_startup_tests {
                 creative: false,
                 create: None,
                 owner: None,
+                conditions: None,
                 chunk_reports: sunrise_client::chunk_io::PROCESS_REPORTS.clone(),
                 stem_order: None,
                 rule_registry: Level::default().rule_registry,
@@ -2433,6 +2518,7 @@ mod unused_feature_preservation_tests {
             loaded.resources.biomes(),
             &level.enabled_features,
             &loaded.pack.additional_data,
+            &sunrise_world::conditions::LoadConditions::vanilla(),
         );
         assert_eq!(
             overrides.entries("features").collect::<Vec<_>>(),
@@ -2467,6 +2553,7 @@ mod unused_feature_preservation_tests {
             creative: false,
             create: None,
             owner: None,
+            conditions: None,
             chunk_reports: sunrise_client::chunk_io::PROCESS_REPORTS.clone(),
             stem_order: None,
             rule_registry: Level::default().rule_registry,

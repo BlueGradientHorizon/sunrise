@@ -113,6 +113,9 @@ impl Game<'_> {
             let registry = self.pack.assets.registry;
             // The chosen packs' worldgen over the game's own:
             // `applyNewPackConfig` reloads with the new pack config.
+            let base_conditions = self
+                .worldgen_base_conditions()
+                .unwrap_or_else(|_| sunrise_world::conditions::LoadConditions::vanilla());
             let overrides = title
                 .creation_packs()
                 .map(|(dir, packs)| {
@@ -122,6 +125,7 @@ impl Game<'_> {
                         &packs,
                         self.res.biomes(),
                         &self.pack.additional_data,
+                        &base_conditions,
                     )
                 })
                 .unwrap_or_default();
@@ -323,8 +327,66 @@ impl Game<'_> {
             files: &files,
             ..sunrise_world::loot::PackOverlay::default()
         };
+        // A registry whose pack tags don't load keeps the game's own tags
+        // (`in_tag` falls back to them), rather than matching no tag at all.
+        let pack_tags: HashMap<_, _> = WorldTables::PACK_TAG_REGISTRIES
+            .into_iter()
+            .chain(sunrise_client::neoforge_mob_maps::MAPS.map(|definition| definition.directory))
+            .filter(|directory| !matches!(*directory, "item" | "entity_type" | "damage_type"))
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .filter_map(|registry| {
+                match sunrise_client::items::load_tags(root, registry, &tag_files) {
+                    Ok(tags) => Some((registry, tags)),
+                    Err(e) => {
+                        log::warn!("Sunrise: the world's {registry} tags are not applied: {e}");
+                        None
+                    }
+                }
+            })
+            .collect();
+        // Bind every loaded built-in registry's non-empty tags so `neoforge:tag_empty` sees
+        // all of them (blocks, items, fluids, entity types, damage types, pack_tags registries,
+        // and enchantment/villager_trade/potion tags).
+        let mut bound_tag_registries: Vec<(String, Vec<String>)> = items
+            .bound_tags()
+            .map(|(registry, tags)| {
+                (
+                    registry.to_owned(),
+                    tags.map(str::to_owned).collect::<Vec<_>>(),
+                )
+            })
+            .collect();
+        bound_tag_registries.push((
+            "minecraft:damage_type".to_owned(),
+            health.damage.non_empty_tags().map(str::to_owned).collect(),
+        ));
+        for (directory, tags) in &pack_tags {
+            bound_tag_registries.push((
+                format!("minecraft:{directory}"),
+                tags.iter()
+                    .filter(|(_, members)| !members.is_empty())
+                    .map(|(tag, _)| tag.clone())
+                    .collect(),
+            ));
+        }
+        for directory in ["enchantment", "villager_trade", "potion"] {
+            if let Ok(tags) = sunrise_client::items::load_tags(root, directory, &tag_files) {
+                bound_tag_registries.push((
+                    format!("minecraft:{directory}"),
+                    tags.into_iter()
+                        .filter(|(_, members)| !members.is_empty())
+                        .map(|(tag, _)| tag)
+                        .collect(),
+                ));
+            }
+        }
         // The other tables read from here on see this load's bound tags (`neoforge:tag_empty`).
-        let conditions = conditions.with_tags(items.bound_tags());
+        let conditions = conditions.with_tags(
+            bound_tag_registries
+                .iter()
+                .map(|(registry, tags)| (registry.as_str(), tags.iter().map(String::as_str))),
+        );
         let overlay = sunrise_world::loot::PackOverlay {
             conditions: &conditions,
             files: &files,
@@ -468,24 +530,6 @@ impl Game<'_> {
             self.res.core.collision.clone(),
             &causes_suffocation,
         )?;
-        // A registry whose pack tags don't load keeps the game's own tags
-        // (`in_tag` falls back to them), rather than matching no tag at all.
-        let pack_tags: HashMap<_, _> = WorldTables::PACK_TAG_REGISTRIES
-            .into_iter()
-            .chain(sunrise_client::neoforge_mob_maps::MAPS.map(|definition| definition.directory))
-            .filter(|directory| !matches!(*directory, "item" | "entity_type" | "damage_type"))
-            .collect::<std::collections::BTreeSet<_>>()
-            .into_iter()
-            .filter_map(|registry| {
-                match sunrise_client::items::load_tags(root, registry, &tag_files) {
-                    Ok(tags) => Some((registry, tags)),
-                    Err(e) => {
-                        log::warn!("Sunrise: the world's {registry} tags are not applied: {e}");
-                        None
-                    }
-                }
-            })
-            .collect();
         // Items already decoded the root's command export. Block-state-only
         // command metadata is not the registry universe, and professions and
         // biomes belong to the live world candidate rather than that export.

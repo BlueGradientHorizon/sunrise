@@ -5,10 +5,13 @@ use sunrise_client::gamerules::{GameRules, Value};
 impl Game<'_> {
     pub(super) fn prepare_world_and_rules(
         &mut self,
-        request: super::world_loading::WorldRequest,
+        mut request: super::world_loading::WorldRequest,
     ) -> crate::Result<PreparedWorld> {
         self.join_world_rest()?;
         self.perf.world_opening();
+        if request.conditions.is_none() {
+            request.conditions = Some(self.worldgen_base_conditions()?);
+        }
         let prepared = request.prepare(
             &self.res,
             &self.pack,
