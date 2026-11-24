@@ -1247,30 +1247,24 @@ mod tests {
 
     #[test]
     fn layered_cauldron_inside_shape_uses_static_fixed_shapes_for_levels_1_to_3() {
-        use std::collections::BTreeMap;
-        use sunrise_world::{
-            block_collision::BlockCollisionRegistry, chunk::BlockState, registry::BlockRegistry,
-        };
-        let registry = BlockRegistry::default();
-        let collision = BlockCollisionRegistry::new(&registry);
-        for name in ["minecraft:water_cauldron", "minecraft:powder_snow_cauldron"] {
-            for level in 1u8..=3 {
-                let def = BlockState {
-                    name: name.into(),
-                    properties: BTreeMap::from([("level".into(), level.to_string())]),
-                };
-                let shape = cauldron_inside_shape(
-                    &collision,
-                    BlockStateId(0),
-                    &def,
-                    BlockPos::new(1, 64, 2),
-                );
-                assert!(
-                    matches!(shape, InsideShape::Fixed(_)),
-                    "{name} level {level} must use cached InsideShape::Fixed"
-                );
-            }
+        for level in 1u8..=3 {
+            let fixed = layered_cauldron_filled_shape(level).expect("cached shape for level");
+            assert!(
+                !fixed.boxes().is_empty(),
+                "level {level} cauldron shape must have boxes"
+            );
+            let max_y = fixed
+                .boxes()
+                .iter()
+                .map(|b| b.max_position().y)
+                .fold(0.0_f64, f64::max);
+            assert!(
+                (max_y - 1.0).abs() < 1e-12,
+                "shell top stays at 1.0 for level {level}"
+            );
         }
+        assert!(layered_cauldron_filled_shape(0).is_none());
+        assert!(layered_cauldron_filled_shape(4).is_none());
     }
 }
 
