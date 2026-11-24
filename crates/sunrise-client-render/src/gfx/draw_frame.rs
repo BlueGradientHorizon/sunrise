@@ -60,7 +60,7 @@ impl Renderer {
         // through a pack dropped (Shader Options) or not loaded yet (`Renderer::new`),
         // so the next world's sections, which the level loading screen uploads, stay.
         if !frame.title {
-            self.follow_arena_storage();
+            self.follow_arena_layout();
             self.follow_translucent_layout();
             self.follow_packed_layout();
         }
@@ -1588,7 +1588,8 @@ impl Renderer {
             let batch = hooks
                 .as_deref()
                 .map_or(frame.world_primitives, |hooks| hooks.prepared_primitives());
-            self.world_primitives
+            let prepared = self
+                .world_primitives
                 .as_mut()
                 .expect("world primitives")
                 .prepare(
@@ -1598,8 +1599,17 @@ impl Renderer {
                     jittered,
                     [self.config.width, self.config.height],
                     &self.entity_atlas,
-                )
-                || live_hooks
+                );
+            let bound = self
+                .pack_post
+                .as_ref()
+                .and_then(|(_, post)| post.as_ref())
+                .map_or(&[][..], |post| post.bound_mod_slots());
+            self.world_primitives
+                .as_mut()
+                .expect("world primitives")
+                .set_bound_mod_slots(bound);
+            prepared || live_hooks
         };
         // Polytone GPU particles with their own shader: the vanilla blocks as the block outline's
         // (a particle's ModelViewMat is the camera's rotation, its positions camera relative).
@@ -2399,6 +2409,14 @@ impl Renderer {
                 .as_ref()
                 .and_then(|p| p.1.as_ref())
                 .is_some_and(|p| p.has_weather());
+        let pack_colortex0_blendable = pack_world_runs
+            && self
+                .pack_post
+                .as_ref()
+                .and_then(|(_, post)| post.as_ref())
+                .is_some_and(|post| post.colortex0_blendable(&self.device));
+        let after_pack_custom_geometry =
+            live_hooks && world_primitives && pack_draws_terrain && pack_colortex0_blendable;
         if oit_on {
             let size = self
                 .world_post
@@ -3991,9 +4009,10 @@ impl Renderer {
                 pack_frame(&mut pass);
             }
             // Native mods' deferred custom geometry (`submit_custom_geometry` and debug renderers):
-            // drawn at the end of the world pass before the hand. Live stage hooks never relocate
-            // skipped stages here.
-            if world_primitives {
+            // drawn at the end of the world pass before the hand, or inside `PackPost` when an
+            // active shader pack owns terrain rendering. Live stage hooks never relocate skipped
+            // stages here.
+            if world_primitives && !after_pack_custom_geometry {
                 if live_hooks {
                     primitive_stage = world_primitives::STAGE_CUSTOM_GEOMETRY;
                 }
@@ -4054,6 +4073,7 @@ impl Renderer {
                 native_post,
                 after_pack_sky: sky_stage == Some(SkyStageOwner::ClassicPack),
                 after_pack_features,
+                after_pack_custom_geometry,
                 pack_draws_weather,
                 pack_draws_terrain,
                 pack_draws_shadow,
