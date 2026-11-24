@@ -145,24 +145,17 @@ impl Game<'_> {
                 .into_iter()
                 .filter_map(|(x, y, z)| {
                     let pos = (x, y, z);
-                    let kind = match world.block_entities.taken_type(&pos) {
+                    let block = || registry.state(world.block(x, y, z)).map(|s| &*s.name);
+                    let id = match world.block_entities.taken_type(&pos) {
                         // Taken out: it keeps its own type, whatever stands there now.
-                        Some(TakenType::Mod(kind)) => kind?,
-                        Some(TakenType::Vanilla(id)) => {
-                            mod_api::__private::block_entity_type_key(id)?
+                        Some(TakenType::Mod(kind)) => {
+                            return Some(BlockEntityAt::new([x, y, z], kind?));
                         }
-                        Some(TakenType::Block) | None => {
-                            let block = &registry.state(world.block(x, y, z))?.name;
-                            let id = match world.block_entities.get(&pos) {
-                                Some(entity) => save::block_entity_id(entity, block),
-                                None => sunrise_client::block_entity_types::type_for(block)
-                                    .or_else(|| {
-                                        sunrise_client::lan::chunks::block_entity_type(block)
-                                    })?,
-                            };
-                            mod_api::__private::block_entity_type_key(id)?
-                        }
+                        Some(TakenType::Vanilla(id)) => id,
+                        Some(TakenType::Container(id)) => save::chest_backed_id(id, block()?),
+                        None => save::block_entity_id(world.block_entities.get(&pos)?, block()?),
                     };
+                    let kind = mod_api::__private::block_entity_type_key(id)?;
                     Some(BlockEntityAt::new([x, y, z], kind))
                 })
                 .collect(),

@@ -2032,7 +2032,7 @@ mod own_block_entity_tests {
     }
 
     /// `LevelRef::block_entities` names each block entity's own type: vanilla ones (chest-backed
-    /// ones by their block), mod B's on its own block and on a daylight detector (an additional
+    /// ones by their block, a copper chest's being a chest's), mod B's on its own block and on a daylight detector (an additional
     /// valid type the detector's factory doesn't make), before and while each is taken out, even
     /// when the block there is replaced meanwhile. Entries a chunk saved but hasn't made live are
     /// not listed. It reads the level parked too, and answers None for a stale handle or on a
@@ -2059,6 +2059,7 @@ mod own_block_entity_tests {
             ((7, 64, 1), DETECTOR),
             ((9, 64, 1), "minecraft:chest"),
             ((11, 64, 1), "minecraft:barrel"),
+            ((13, 64, 1), "minecraft:copper_chest"),
         ];
         with_machines(mods, &placed, |game| {
             place_mod_entity(game, on_detector, DETECTOR, B);
@@ -2086,6 +2087,7 @@ mod own_block_entity_tests {
                 ([7, 64, 1], DETECTOR),
                 ([9, 64, 1], "minecraft:chest"),
                 ([11, 64, 1], "minecraft:barrel"),
+                ([13, 64, 1], "minecraft:chest"),
             ]
             .map(|(pos, kind)| (pos, kind.to_string()))
             .into();

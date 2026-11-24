@@ -68,8 +68,9 @@ pub type Pos = (i32, i32, i32);
 /// The type of a block entity taken out (`take`), kept until its lease ends.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TakenType {
-    /// A chest-backed container, whose block names its type (a chest, barrel or trapped chest).
-    Block,
+    /// A chest-backed container by its own ID, which its block can name over (a barrel or a
+    /// trapped chest).
+    Container(&'static str),
     /// Any other vanilla block entity, by its type ID.
     Vanilla(&'static str),
     /// A mod's, which its block's factory may not name (an additional valid type): its own key,
@@ -968,7 +969,7 @@ impl BlockEntities {
         let token = next_token();
         let kind = match &entity {
             BlockEntity::Mod(entity) => TakenType::Mod(entity.kind()),
-            BlockEntity::Chest(_) => TakenType::Block,
+            BlockEntity::Chest(_) => TakenType::Container(entity.vanilla_id().unwrap_or_default()),
             other => TakenType::Vanilla(other.vanilla_id().unwrap_or_default()),
         };
         self.out.insert(*pos, Taken { token, kind });
