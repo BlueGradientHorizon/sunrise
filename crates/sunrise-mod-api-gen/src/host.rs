@@ -44,6 +44,7 @@ pub(super) const GOAL_VIEW_READS: &[&str] = &[
     "living_can_use_portal",
     "entity_tags",
     "entity_name",
+    "entity_custom_name",
     "entity_added_to_level",
     "entity_portal_cooldown",
     "entity_invulnerable_to_damage",
