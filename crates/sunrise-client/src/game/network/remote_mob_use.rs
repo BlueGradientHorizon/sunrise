@@ -6,6 +6,8 @@
 use super::Game;
 use super::item_abilities::ability;
 use sunrise_client::actions::Action;
+use sunrise_client::items::ItemStack;
+use sunrise_client::mobs::Mob;
 use sunrise_client::{
     first_person::Hand,
     mobs::{Species, armadillo, equine, llama, nautilus, panda, villager},
@@ -13,6 +15,15 @@ use sunrise_client::{
 use sunrise_client_gameplay::remote::mob_use::{
     ages_on_food, copper_golem_takes, iron_golem_takes, mob_swings, nautilus_takes,
 };
+
+/// `Mob.checkAndHandleImportantInteractions`: a lead, a named name tag, a spawn egg of the
+/// mob's own kind.
+fn important_interaction(m: &Mob, stack: Option<&ItemStack>) -> bool {
+    let item = stack.map_or("", |s| &*s.item);
+    item == "minecraft:lead"
+        || item == "minecraft:name_tag" && stack.is_some_and(|s| s.custom_name().is_some())
+        || item.strip_suffix("_spawn_egg") == Some(m.kind.id.as_str())
+}
 
 impl Game<'_> {
     /// Whether mob `i` takes a right click with `hand`'s item on this
@@ -38,12 +49,7 @@ impl Game<'_> {
         let item = stack.map_or("", |s| &*s.item);
         let shears = stack.is_some_and(|s| self.stack_shears(s, ability::SHEARS_HARVEST));
         let baby = m.is_baby();
-        // Mob.checkAndHandleImportantInteractions: a lead, a named name tag,
-        // a spawn egg of the mob's own kind.
-        if item == "minecraft:lead"
-            || item == "minecraft:name_tag" && stack.is_some_and(|s| s.custom_name().is_some())
-            || item.strip_suffix("_spawn_egg") == Some(m.kind.id.as_str())
-        {
+        if important_interaction(m, stack) {
             return true;
         }
         // Armadillo.mobInteract: a rolled-up armadillo fails before
@@ -226,8 +232,10 @@ impl Game<'_> {
         {
             return true;
         }
-        // Sheep.mobInteract: shears, sheared or not, answer CONSUME on a client.
+        // Sheep.mobInteract (after the important interactions): shears, sheared or not,
+        // answer CONSUME on a client.
         if m.species() == Species::Sheep
+            && !important_interaction(m, stack)
             && stack.is_some_and(|s| self.stack_shears(s, ability::SHEARS_HARVEST))
         {
             return false;

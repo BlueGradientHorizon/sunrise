@@ -36,6 +36,11 @@ pub(in crate::game) mod ability {
     pub const TRIDENT_THROW: &str = "trident_throw";
 
     /// Every ability the game asks, as `ItemAbility.getActions` lists them.
+    /// [`ALL`] as owned names, as every host answers `item_abilities`.
+    pub(in crate::game) fn names() -> Vec<String> {
+        ALL.map(String::from).to_vec()
+    }
+
     pub const ALL: [&str; 14] = [
         BRUSH_BRUSH,
         FIRESTARTER_LIGHT,
@@ -57,7 +62,7 @@ pub(in crate::game) mod ability {
 impl Game<'_> {
     /// `host.item_abilities()`: [`ability::ALL`] as owned names.
     pub(in crate::game) fn item_abilities(&self) -> Vec<String> {
-        ability::ALL.map(String::from).to_vec()
+        ability::names()
     }
 
     /// `ItemStack.canPerformAction(ability)`, once vanilla answered `vanilla`. A stack whose
