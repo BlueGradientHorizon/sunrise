@@ -230,7 +230,7 @@ pub struct ItemEntity {
 /// Particles are drawn on the client (`Level.addParticle` is empty on the
 /// server). The sound is `Entity.playSound`, which the server broadcasts;
 /// `ClientLevel.playSeededSound` ignores it when the except entity is null.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ItemSplash {
     Sound {
         at: [f64; 3],

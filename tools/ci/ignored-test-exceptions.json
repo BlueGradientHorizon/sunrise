@@ -1414,5 +1414,13 @@
     "path": "crates/sunrise-client/src/game/administration/commands/summon_item_orb_tests.rs",
     "reason": "run by tools/test_summon_custom_name_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_summon_custom_name_parity.py records the vanilla 26.3 summon custom-name witness into .local and runs this test against it through SUNRISE_SUMMON_CUSTOM_NAME_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client-lib",
+    "target": "lib",
+    "test": "projectiles::tests::a_fireball_turns_on_the_tick_it_hits",
+    "path": "crates/sunrise-client/src/projectiles.rs",
+    "reason": "run by tools/test_fireball_hit_turn_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_fireball_hit_turn_parity.py records the vanilla 26.3 fireball hit-turn witness into .local and runs this test against it through SUNRISE_FIREBALL_HIT_TURN_WITNESS, so no recorded vanilla data is committed."
   }
 ]

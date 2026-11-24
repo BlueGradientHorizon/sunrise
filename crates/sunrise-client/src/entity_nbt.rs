@@ -3237,7 +3237,8 @@ pub fn arrow_from_nbt(
     };
     let mut p = Projectile::new(kind, position, from_player.then_some(Who::Player));
     p.velocity = motion(tag);
-    [p.yaw, p.pitch] = rotation(tag);
+    [p.yaw, p.pitch] = loaded_rotation(tag);
+    p.set_old_pos_and_rot();
     p.left_owner = flag(tag, "LeftOwner");
     p.owner_uuid = owner;
     p.no_gravity = flag(tag, "NoGravity");
@@ -3541,7 +3542,8 @@ pub fn throwable_from_nbt_with_items(
     let mut p = Projectile::new(kind, position(tag)?, from_player.then_some(Who::Player));
     p.set_thrown_item(decode_throwable_item_field(tag, items));
     p.velocity = motion(tag);
-    [p.yaw, p.pitch] = rotation(tag);
+    [p.yaw, p.pitch] = loaded_rotation(tag);
+    p.set_old_pos_and_rot();
     p.left_owner = flag(tag, "LeftOwner");
     p.has_been_shot = flag(tag, "HasBeenShot");
     p.owner_uuid = owner;
@@ -3686,7 +3688,8 @@ pub fn fireball_from_nbt(tag: &Tag, player: Option<[i32; 4]>) -> Option<Projecti
     let from_player = player.is_some() && owner == player;
     let mut p = Projectile::new(kind, position(tag)?, from_player.then_some(Who::Player));
     p.velocity = motion(tag);
-    [p.yaw, p.pitch] = rotation(tag);
+    [p.yaw, p.pitch] = loaded_rotation(tag);
+    p.set_old_pos_and_rot();
     p.left_owner = flag(tag, "LeftOwner");
     p.has_been_shot = flag(tag, "HasBeenShot");
     p.owner_uuid = owner;

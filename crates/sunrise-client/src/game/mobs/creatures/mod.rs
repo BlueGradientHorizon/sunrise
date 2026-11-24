@@ -4977,6 +4977,7 @@ impl Game<'_> {
         let mut lava_hurt_bullets = Vec::new();
         let mut trails = Vec::new();
         let mut bubble_tops = Vec::new();
+        let mut water_splashes = Vec::new();
         let mut snow_contacts = Vec::new();
         let mut section_steps = section_steps::begin(self);
         let mut keep_flags = vec![true; projectiles.len()];
@@ -5135,6 +5136,7 @@ impl Game<'_> {
                     if let Some(at) = p.take_shoot_event() {
                         shoot_events.push((p.owner, p.guest, [at.x, at.y, at.z]));
                     }
+                    water_splashes.append(&mut p.water_splashes);
                     if p.take_lava_hurt() {
                         lava_hurt_bullets.push(p.position.components());
                     }
@@ -5306,6 +5308,9 @@ impl Game<'_> {
         for pos in bubble_tops {
             game.bubble_column_particles(pos);
         }
+        for splash in water_splashes {
+            game.apply_item_splash(splash);
+        }
         for (id, at, event) in arrow_events {
             if !hears_impact
                 || !projectile_impact_event(&event)
@@ -5463,6 +5468,9 @@ impl Game<'_> {
             }
             if let Some(at) = p.take_shoot_event() {
                 self.projectile_shoot_event(p.owner, p.guest, [at.x, at.y, at.z]);
+            }
+            for splash in p.water_splashes.drain(..) {
+                self.apply_item_splash(splash);
             }
             if p.take_lava_hurt() {
                 let at = p.position.components();
@@ -6794,9 +6802,7 @@ impl Game<'_> {
                 .any(|m| m.id == id && m.alive() && m.species() == Species::Breeze)
         {
             let mut deflected = p.clone();
-            if deflected.last_deflected_by != Some(id) {
-                super::wind::reverse(&mut deflected);
-                deflected.last_deflected_by = Some(id);
+            if deflected.deflect_by(id, sunrise_client::projectiles::Turn::Reverse, [1.0; 3]) {
                 let sound = LevelSound::new(
                     "minecraft:entity.breeze.deflect",
                     [at.x, at.y, at.z],
