@@ -250,6 +250,23 @@ impl Renderer {
                 indices: self.indices.clone(),
                 quads: cloud_quads,
             }));
+            for (name, value) in frame.primitives.pack_uniforms {
+                post.set_mod_uniform(name, crate::mod_pipelines::mod_uniform_value(*value));
+            }
+            let bound_mod_slots: Vec<usize> = if post.has_mod_passes() {
+                post.bound_mod_slots().collect()
+            } else {
+                Vec::new()
+            };
+            let mod_draws = if !bound_mod_slots.is_empty() {
+                self.world_primitives
+                    .as_ref()
+                    .map(|wp| wp.pack_bound_chunks(&bound_mod_slots))
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            };
+            post.set_mod_draws(mod_draws);
             // Fails only on a wait that found the device lost: the frame stops here, with
             // the pack kept for the next one and nothing more encoded.
             let ran = post.run(
@@ -280,7 +297,7 @@ impl Renderer {
                             .world_primitives
                             .as_ref()
                             .expect("world primitives")
-                            .draw_pack_custom(encoder, color, depth);
+                            .draw_pack_custom(encoder, color, depth, &bound_mod_slots);
                     }
                     if let Some(hooks) = hooks.as_deref_mut() {
                         let sections = &self.visible_renderable_sections;

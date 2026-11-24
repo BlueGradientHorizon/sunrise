@@ -614,6 +614,8 @@ pub struct Resources<'a> {
     pub mod_uniform_mismatches: &'a std::cell::RefCell<HashSet<(String, String)>>,
     /// Auxiliary depth target index written by the mod geometry pass currently being built, if any.
     pub mod_depth_target: std::cell::Cell<Option<usize>>,
+    /// Depth comparison function for the pass currently being built.
+    pub depth_compare: std::cell::Cell<wgpu::CompareFunction>,
 }
 
 impl Resources<'_> {
@@ -901,9 +903,10 @@ pub fn bindings(
                 (src, t.sample_type, t.dimension)
             }
             None => {
-                let mut src = mod_depth_source(pack.mod_depth_targets, &s.name).unwrap_or_else(
-                    || source(&s.name, group.shadow(), shadow.is_some(), watershadow),
-                );
+                let mut src =
+                    mod_depth_source(pack.mod_depth_targets, &s.name).unwrap_or_else(|| {
+                        source(&s.name, group.shadow(), shadow.is_some(), watershadow)
+                    });
                 // A sampler the game gives no texture reads texture unit 0, as do the atlas's
                 // names: the atlas in gbuffers programs, `colortex0` in deferred, composite and
                 // final (OptiFine's shaders.txt). Iris 1.11.7 read the atlas through a name of
@@ -1241,39 +1244,6 @@ pub fn build_pass(
     water_mask: bool,
     polygon_offset: bool,
 ) -> Option<Pass> {
-    build_pass_with_depth_compare(
-        device,
-        p,
-        formats,
-        shadow,
-        screen,
-        notes,
-        geometry,
-        custom,
-        draws,
-        pack,
-        water_mask,
-        polygon_offset,
-        wgpu::CompareFunction::LessEqual,
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
-fn build_pass_with_depth_compare(
-    device: &wgpu::Device,
-    p: sunrise_shaders::PostProgram,
-    formats: &[wgpu::TextureFormat; BUFFERS],
-    shadow: Option<&[wgpu::TextureFormat; SHADOW_COLORS]>,
-    screen: wgpu::TextureFormat,
-    notes: &mut Vec<String>,
-    geometry: Option<&Geometry<'_>>,
-    custom: &[(String, String)],
-    draws: &wgpu::BindGroupLayout,
-    pack: &Resources<'_>,
-    water_mask: bool,
-    polygon_offset: bool,
-    depth_compare: wgpu::CompareFunction,
-) -> Option<Pass> {
     let features = device.features();
     // The frame's uniforms, then the pack's custom ones.
     let index = |name: &str, ty: &str| {
@@ -1457,7 +1427,7 @@ fn build_pass_with_depth_compare(
             depth_stencil: geometry.map(|g| wgpu::DepthStencilState {
                 format: wgpu::TextureFormat::Depth32Float,
                 depth_write_enabled: Some(g.depth_write),
-                depth_compare: Some(depth_compare),
+                depth_compare: Some(pack.depth_compare.get()),
                 stencil: Default::default(),
                 bias: if p.name == "gbuffers_damagedblock" {
                     POLYGON_OFFSET
@@ -1999,9 +1969,7 @@ impl PackPost {
         cancel: &std::sync::atomic::AtomicBool,
     ) -> Result<PackPost, Refused> {
         Self::new_with_mods(
-            device,
-            queue,
-            adapter,
+            (device, queue, adapter),
             post,
             screen,
             world,
@@ -2012,11 +1980,8 @@ impl PackPost {
 
     /// As [`Self::new`], with mod-declared auxiliary depth targets, frame uniforms, and
     /// pipeline pack bindings.
-    #[allow(clippy::too_many_arguments)]
     pub fn new_with_mods(
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        adapter: &wgpu::Adapter,
+        gpu: (&wgpu::Device, &wgpu::Queue, &wgpu::Adapter),
         post: Post,
         screen: wgpu::TextureFormat,
         world: World<'_>,
@@ -2025,10 +1990,8 @@ impl PackPost {
     ) -> Result<PackPost, Refused> {
         use std::sync::atomic::Ordering;
         let spare = (post.clone(), world.clone(), mods.clone());
-        let (built, jobs) = PackPost::build(
-            device, queue, adapter, post, screen, world, mods, true, cancel,
-        )?;
-        let refused = compile(device, &jobs, cancel);
+        let (built, jobs) = PackPost::build(gpu, post, screen, world, mods, true, cancel)?;
+        let refused = compile(gpu.0, &jobs, cancel);
         // Some pipelines may be left unmade: the pack can't draw.
         if cancel.load(Ordering::Relaxed) {
             return Err(Refused::cancelled(built.notes));
@@ -2041,18 +2004,12 @@ impl PackPost {
         );
         drop((built, jobs));
         let (post, world, mods) = spare;
-        PackPost::build(
-            device, queue, adapter, post, screen, world, mods, false, cancel,
-        )
-        .map(|(built, _)| built)
+        PackPost::build(gpu, post, screen, world, mods, false, cancel).map(|(built, _)| built)
     }
 
     /// `new`'s work: with `defer`, the pipelines are left to make (the jobs returned).
-    #[allow(clippy::too_many_arguments)]
     fn build(
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        adapter: &wgpu::Adapter,
+        (device, queue, adapter): (&wgpu::Device, &wgpu::Queue, &wgpu::Adapter),
         mut post: Post,
         screen: wgpu::TextureFormat,
         world: World<'_>,
@@ -2260,6 +2217,7 @@ impl PackPost {
             mod_uniforms: mods.uniforms,
             mod_uniform_mismatches: &mod_uniform_mismatches,
             mod_depth_target: std::cell::Cell::new(None),
+            depth_compare: std::cell::Cell::new(wgpu::CompareFunction::LessEqual),
         };
         // Flat terrain resolves each quad's source state against the current pack; terrain that
         // reads its pages per section binds them by the same layout.
@@ -2280,7 +2238,6 @@ impl PackPost {
         // a polygon-offset one for sign text.
         let water_mask_next = std::cell::Cell::new(false);
         let polygon_offset_next = std::cell::Cell::new(false);
-        let depth_compare_next = std::cell::Cell::new(wgpu::CompareFunction::LessEqual);
         let mut build = |mut p: sunrise_shaders::PostProgram, geometry: Option<&Geometry<'_>>| {
             // Not wanted any more: the rest is skipped and the build refused below.
             if cancel.load(std::sync::atomic::Ordering::Relaxed) {
@@ -2320,7 +2277,7 @@ impl PackPost {
                 computes = Vec::new();
                 last
             } else {
-                build_pass_with_depth_compare(
+                build_pass(
                     device,
                     p,
                     if in_shadow { &shadow_space } else { &formats },
@@ -2333,7 +2290,6 @@ impl PackPost {
                     &pack,
                     water_mask_next.get(),
                     polygon_offset_next.get(),
-                    depth_compare_next.get(),
                 )?
             };
             pass.compute.append(&mut computes);
@@ -2706,14 +2662,14 @@ impl PackPost {
                     pages: false,
                 };
                 pack.mod_depth_target.set(active_depth);
-                depth_compare_next.set(if spec.depth_test {
+                pack.depth_compare.set(if spec.depth_test {
                     wgpu::CompareFunction::LessEqual
                 } else {
                     wgpu::CompareFunction::Always
                 });
                 let built_pass = build(program, Some(&mod_geometry));
                 pack.mod_depth_target.set(None);
-                depth_compare_next.set(wgpu::CompareFunction::LessEqual);
+                pack.depth_compare.set(wgpu::CompareFunction::LessEqual);
                 if let Some(pass) = built_pass {
                     mod_passes.push(ModPackPass {
                         slot: spec.slot,

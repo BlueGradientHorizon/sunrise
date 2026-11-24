@@ -215,6 +215,7 @@ impl FrameHooks for WorldStageProbe {
         Batch {
             lines_through: &lines[..1],
             lines: &lines[1..],
+            stage_ends: [[0, 0, 1, 1]; client::gfx::world_primitives::STAGES - 1],
             ..Default::default()
         }
     }

@@ -153,6 +153,8 @@ pub struct Batch<'a> {
     pub oit: OitBatch<'a>,
     /// The quads mods draw with their own pipelines (`gfx::mod_pipelines`), with their stages.
     pub pipelines: super::mod_pipelines::Batch<'a>,
+    /// Per-frame shader-pack uniform values supplied by mods via `WorldDrawContext::set_pack_uniform`.
+    pub pack_uniforms: &'a [(String, mod_api::PackUniformValue)],
 }
 
 impl Batch<'_> {
@@ -909,13 +911,22 @@ impl WorldPrimitives {
         self.draw_prepared_ranges(&mut pass, pipelines, false, draws)
     }
 
-    /// Draws deferred custom geometry (`STAGE_CUSTOM_GEOMETRY`, including `ModPipelines` runs)
-    /// into a classic shader pack's active `colortex0` + `depthtex0` attachments.
+    /// Collect uploaded vertex chunks for mod pipelines bound to translated shader-pack passes.
+    pub(super) fn pack_bound_chunks(
+        &self,
+        bound_slots: &[usize],
+    ) -> Vec<super::pack_post::ModDrawChunk> {
+        self.pipelines.pack_bound_chunks(&self.indices, bound_slots)
+    }
+
+    /// Draws deferred custom geometry (`STAGE_CUSTOM_GEOMETRY`, including unbound `ModPipelines`
+    /// runs) into a classic shader pack's active `colortex0` + `depthtex0` attachments.
     pub(super) fn draw_pack_custom(
         &self,
         encoder: &mut wgpu::CommandEncoder,
         color: &wgpu::TextureView,
         depth: &wgpu::TextureView,
+        bound_mod_slots: &[usize],
     ) -> bool {
         let Some((_, pipelines)) = &self.pack_pipelines else {
             return false;
@@ -933,9 +944,11 @@ impl WorldPrimitives {
             && quads_through.is_empty()
             && lines.is_empty()
             && lines_through.is_empty());
-        let has_pipelines = self
-            .pipelines
-            .has_runs(STAGE_CUSTOM_GEOMETRY, STAGE_CUSTOM_GEOMETRY);
+        let has_pipelines = self.pipelines.has_unbound_runs(
+            STAGE_CUSTOM_GEOMETRY,
+            STAGE_CUSTOM_GEOMETRY,
+            bound_mod_slots,
+        );
         if !has_primitives && !has_pipelines {
             return false;
         }
@@ -985,6 +998,7 @@ impl WorldPrimitives {
                 &self.indices,
                 STAGE_CUSTOM_GEOMETRY,
                 STAGE_CUSTOM_GEOMETRY,
+                bound_mod_slots,
             );
         }
         true

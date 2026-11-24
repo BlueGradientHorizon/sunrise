@@ -168,6 +168,29 @@ pub struct ModPackRuntime<'a> {
     pub vertex_buffers: &'a [Option<wgpu::VertexBufferLayout<'a>>],
 }
 
+/// Owned, `Send` form of [`ModPackRuntime`] for moving into background shader-pack build threads.
+#[derive(Clone, Debug, Default)]
+pub struct OwnedModPackRuntime {
+    pub depth_targets: Vec<ModDepthTargetDecl>,
+    pub uniforms: Vec<ModUniformDecl>,
+    pub pipelines: Vec<ModPipelinePackSpec>,
+}
+
+impl OwnedModPackRuntime {
+    /// Borrow as a [`ModPackRuntime`] paired with `vertex_buffers`.
+    pub fn as_runtime<'a>(
+        &'a self,
+        vertex_buffers: &'a [Option<wgpu::VertexBufferLayout<'a>>],
+    ) -> ModPackRuntime<'a> {
+        ModPackRuntime {
+            depth_targets: &self.depth_targets,
+            uniforms: &self.uniforms,
+            pipelines: &self.pipelines,
+            vertex_buffers,
+        }
+    }
+}
+
 /// One compiled shader-pack pass bound to a mod pipeline slot.
 pub struct ModPackPass {
     pub slot: usize,
@@ -213,11 +236,7 @@ pub fn mod_depth_source(targets: &[ModDepthTargetDecl], name: &str) -> Option<So
 }
 
 /// Match a pack program's declared uniform `(name, glsl_ty)` against `decls`.
-pub fn match_mod_uniform(
-    decls: &[ModUniformDecl],
-    name: &str,
-    glsl_ty: &str,
-) -> ModUniformMatch {
+pub fn match_mod_uniform(decls: &[ModUniformDecl], name: &str, glsl_ty: &str) -> ModUniformMatch {
     for (index, decl) in decls.iter().enumerate() {
         let matched = if decl.name == name {
             Some(false)
@@ -430,8 +449,14 @@ mod tests {
             depth_samplers: vec!["modDepth0".into(), "modDepth".into()],
             opaque_depth_samplers: vec!["modDepth1".into()],
         }];
-        assert_eq!(mod_depth_source(&targets, "modDepth0"), Some(Source::ModDepth(0)));
-        assert_eq!(mod_depth_source(&targets, "modDepth"), Some(Source::ModDepth(0)));
+        assert_eq!(
+            mod_depth_source(&targets, "modDepth0"),
+            Some(Source::ModDepth(0))
+        );
+        assert_eq!(
+            mod_depth_source(&targets, "modDepth"),
+            Some(Source::ModDepth(0))
+        );
         assert_eq!(
             mod_depth_source(&targets, "modDepth1"),
             Some(Source::ModOpaqueDepth(0))

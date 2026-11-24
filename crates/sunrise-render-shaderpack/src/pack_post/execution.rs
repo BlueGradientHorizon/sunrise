@@ -183,6 +183,16 @@ impl PackPost {
         self.mod_passes.iter().any(|m| m.slot == slot)
     }
 
+    /// Whether this pack compiled at least one mod pipeline pass.
+    pub fn has_mod_passes(&self) -> bool {
+        !self.mod_passes.is_empty()
+    }
+
+    /// Mod pipeline slots currently bound to compiled shader-pack programs in this pack.
+    pub fn bound_mod_slots(&self) -> impl Iterator<Item = usize> + '_ {
+        self.mod_passes.iter().map(|m| m.slot)
+    }
+
     /// Counts of currently allocated mod auxiliary `(depth, opaque_depth)` targets.
     pub fn allocated_mod_depth_targets(&self) -> (usize, usize) {
         let Some(targets) = &self.targets else {
