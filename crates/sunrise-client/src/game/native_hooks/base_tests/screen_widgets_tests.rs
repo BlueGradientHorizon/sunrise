@@ -538,13 +538,6 @@ fn init_post_edits_ordered_children_and_discards_a_failed_stage() {
     });
 }
 
-/// Button `on_press` & synchronous screen transitions (Audit [86]):
-/// - Pressing a button mutates its `ButtonState` (`label`, `active`).
-/// - Enter and Space activate a focused button.
-/// - `host.mod_screen_open("mod_b")` inside a `mod_a` button `on_press` runs synchronously with
-///   no borrow panic, switches to `mod_b`, mounts `mod_b`'s widgets, disposes the extracted
-///   `mod_a` button, and never overwrites `mod_b`'s widget table.
-/// - `host.close_screen()` inside a button `on_press` closes synchronously to `Playing`.
 /// `TitleScreen.init`'s own widgets are the title screen's children at Init.Post, in its
 /// registration order with their labels and bounds; one a mod removes is neither pressed nor
 /// drawn, and the next init lists and shows it again.
@@ -715,6 +708,13 @@ fn title_init_post_lists_and_removes_the_title_screens_own_widgets() {
     });
 }
 
+/// Button `on_press` & synchronous screen transitions (Audit [86]):
+/// - Pressing a button mutates its `ButtonState` (`label`, `active`).
+/// - Enter and Space activate a focused button.
+/// - `host.mod_screen_open("mod_b")` inside a `mod_a` button `on_press` runs synchronously with
+///   no borrow panic, switches to `mod_b`, mounts `mod_b`'s widgets, disposes the extracted
+///   `mod_a` button, and never overwrites `mod_b`'s widget table.
+/// - `host.close_screen()` inside a button `on_press` closes synchronously to `Playing`.
 #[test]
 #[ignore = "daily"]
 fn button_on_press_state_mutation_keyboard_and_synchronous_transitions() {
