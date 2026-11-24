@@ -1390,5 +1390,13 @@
     "path": "crates/sunrise-client/src/game/mobs/fangs/ticking_tests.rs",
     "reason": "run by tools/test_fangs_ticking_gate_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_fangs_ticking_gate_parity.py records the vanilla 26.3 fangs/spawner ticking-gate witness into .local and runs this test against it through SUNRISE_FANGS_TICKING_GATE_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::creatures::projectile_batch_tests::continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_batched_pass",
+    "path": "crates/sunrise-client/src/game/mobs/creatures/projectile_batch_tests.rs",
+    "reason": "run by tools/test_bounced_projectile_tick_order_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_bounced_projectile_tick_order_parity.py records the vanilla 26.3 wind-charge continuation witness into .local and runs this test against it through SUNRISE_WIND_CONTINUATION_WITNESS, so no recorded vanilla data is committed."
   }
 ]
