@@ -4790,6 +4790,7 @@ dependencies = [
  "sunrise-command",
  "sunrise-connected",
  "sunrise-core",
+ "sunrise-glsl",
  "sunrise-hdr",
  "sunrise-hooks",
  "sunrise-items",
@@ -4941,6 +4942,15 @@ dependencies = [
  "sunrise-protocol",
  "sunrise-threads",
  "sunrise-world",
+]
+
+[[package]]
+name = "sunrise-glsl"
+version = "0.1.0"
+dependencies = [
+ "naga",
+ "pp-rs",
+ "wgpu-types",
 ]
 
 [[package]]

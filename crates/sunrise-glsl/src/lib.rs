@@ -1,23 +1,23 @@
-//! Resource packs' core shaders (`shaders/core/*.vsh` and `.fsh`: the GLSL vanilla compiles for its
-//! pipelines) as naga modules, so a pack that reshapes text from `core/text` (a HUD its vertex
-//! shader moves to the screen's corners, effects in its fragment shader) draws as in vanilla.
+//! One GLSL program (a vertex and a fragment shader, as a GL program links them) and a
+//! description of what its pipeline gives it ([`Inputs`]), as two validated naga modules. The
+//! crate knows no game: which blocks and samplers exist, where includes are found and what each
+//! define means are the caller's.
 //!
-//! The pack's GLSL (26.3's `#include` or the older `#moj_import`, with explicit locations or
-//! without) is written again as the Vulkan-flavoured GLSL 450 naga reads:
-//! - GLSL vanilla's GL compiler takes and naga doesn't is rewritten first ([`glsl_fixups`]: a
-//!   helper taking the `sampler2D` it reads, an array sized by its initializer only);
-//! - includes are inlined, each file once (as `GlslPreprocessor` imported them), from `include`;
-//! - vanilla's uniform blocks get the bindings of [`BLOCKS`], and each of [`SAMPLERS`] is split
-//!   into a texture and a sampler object, combined again where the sampler is named;
-//! - the vertex inputs become globals the caller's [`Glue`] fills before the pack's `main`
+//! The GLSL (`#include`, or another directive the caller names that pastes a file once, with
+//! explicit locations or without) is written again as the Vulkan-flavoured GLSL 450 naga reads:
+//! - GLSL a GL compiler takes and naga doesn't is rewritten first ([`glsl_fixups`]: a helper
+//!   taking the `sampler2D` it reads, an array sized by its initializer only);
+//! - includes are inlined ([`Includes`]), under the defines the program is compiled with;
+//! - the uniform blocks get the bindings of [`Inputs::blocks`], and each sampler of
+//!   [`Inputs::samplers`] is split into a texture and a sampler object, combined again where the
+//!   sampler is named;
+//! - the vertex inputs become globals the caller's [`Glue`] fills before the program's `main`
 //!   (renamed `hz_main`) runs, and `gl_VertexID` and `gl_VertexIndex` read the glue's expression;
 //! - varyings get locations by name across the stages, the fragment output location 0;
-//! - an integer texel buffer (26.3's clouds read `uniform isamplerBuffer CloudFaces;`) becomes a
-//!   read-only storage buffer of `int`s (`uint`s for `usamplerBuffer`), and `texelFetch` on it
-//!   reads one into the first channel of an `ivec4`: wgpu has no texel buffers. Like any block a
-//!   pipeline gives, it is bound at [`other_binding`], and refused when not given;
-//! - every program is compiled, and its includes chosen, with the backend's
-//!   [`DEPTH_ZERO_TO_ONE`] before its pipeline's defines, as `GlslCompiler` compiles it.
+//! - an integer texel buffer (`uniform isamplerBuffer Faces;`) becomes a read-only storage buffer
+//!   of `int`s (`uint`s for `usamplerBuffer`), and `texelFetch` on it reads one into the first
+//!   channel of an `ivec4`: wgpu has no texel buffers. Like any block the caller gives beyond
+//!   its own, it is bound at [`other_binding`], and refused when not given.
 
 use std::collections::HashSet;
 use std::fmt::Write;
@@ -28,58 +28,70 @@ use naga::valid::{Capabilities, ValidationFlags, Validator};
 
 mod glsl_fixups;
 
-/// Vanilla's uniform blocks (`shaders/include/*.glsl`) and their bindings in set 0.
-pub const BLOCKS: [(&str, u32); 4] = [
-    ("Globals", 0),
-    ("Projection", 1),
-    ("DynamicTransforms", 2),
-    ("Fog", 3),
-];
-
-/// Vanilla's samplers: the texture's binding in set 0, the sampler object's the next one.
-pub const SAMPLERS: [(&str, u32); 3] = [("Sampler0", 4), ("Sampler1", 6), ("Sampler2", 8)];
-
-/// The first binding of the blocks and samplers vanilla has for other pipelines (OIT's behind
-/// `#ifdef OIT`): fine while the preprocessor drops them, an error when a stage uses one.
+/// The first binding of the blocks and samplers a program names beyond [`Inputs::blocks`] and
+/// [`Inputs::samplers`]: fine while the preprocessor drops them, an error when a stage uses one
+/// the caller doesn't give.
 const OTHER_BINDINGS: u32 = 16;
 
-/// A device's stage interface limits, as naga's GLSL front end takes them: its
-/// `max_inter_stage_shader_variables` and `max_vertex_attributes`.
-pub fn interface_limits(limits: &wgpu::Limits) -> InterfaceLimits {
-    InterfaceLimits {
-        inter_stage_variables: limits.max_inter_stage_shader_variables,
-        vertex_attributes: limits.max_vertex_attributes,
-    }
+/// What a program's pipeline gives it, beyond its [`Glue`].
+pub struct Inputs<'a> {
+    /// Uniform blocks by name, with their binding in set 0.
+    pub blocks: &'a [(&'a str, u32)],
+    /// Samplers by name: the texture's binding in set 0, the sampler object's the next one.
+    pub samplers: &'a [(&'a str, u32)],
+    /// Loose `uniform T name;` declarations dropped where they stand, as a block already declares
+    /// the name (an older version of the block kept in an `#else` branch); any other loose
+    /// uniform is an error.
+    pub loose: &'a [&'a str],
+    /// The defines the program is compiled with, in order: `NAME` or `NAME value`.
+    pub defines: &'a [&'a str],
+    pub includes: &'a Includes<'a>,
 }
 
-/// What the caller's pipeline gives the pack's vertex shader.
+/// Where a program's includes come from.
+pub struct Includes<'a> {
+    /// A file id's text (`ns:path`), none when nobody has it, or why it can't be read, which
+    /// refuses the program.
+    pub read: &'a dyn Fn(&str) -> Result<Option<String>, String>,
+    /// The namespace of an `<path>` include that names none.
+    pub namespace: &'a str,
+    /// The folder `<ns:path>` is under, ending in `/`; `"relative"` is from the including file's.
+    pub folder: &'a str,
+    /// Directives besides `#include` that paste a file, each file once per stage (`#include`
+    /// pastes it every time, the file's own guards keeping one copy).
+    pub once: &'a [&'a str],
+}
+
+/// What the caller's pipeline gives the program's vertex shader.
 pub struct Glue<'a> {
-    /// The inputs of the pipeline's vanilla vertex format: name and GLSL type.
+    /// The inputs the program's vertex shader may declare: name and GLSL type.
     pub inputs: &'a [(&'a str, &'a str)],
-    /// Declarations before the pack's code: the real attributes, helpers.
+    /// Declarations before the program's code: the real attributes, helpers.
     pub prelude: &'a str,
-    /// Statements before the pack's `main`: `inputs` filled from the attributes.
+    /// Statements before the program's `main`: `inputs` filled from the attributes.
     pub setup: &'a str,
     /// Statements after it, on `gl_Position`.
     pub finish: &'a str,
-    /// The expression the pack's `gl_VertexID` and `gl_VertexIndex` read.
+    /// The expression the program's `gl_VertexID` and `gl_VertexIndex` read.
     pub vertex_id: &'a str,
-    /// The stage interface limits the stages are translated with ([`sunrise_shaders::DEVICELESS_INTERFACE_LIMITS`]).
+    /// The stage interface limits the stages are translated with (a device's, or the lowest
+    /// any device has when checking without one).
     pub interface: InterfaceLimits,
 }
 
 /// A pipeline's two stages, validated.
 #[derive(Debug)]
-pub struct CoreProgram {
+pub struct Translated {
     pub vertex: naga::Module,
     pub fragment: naga::Module,
-    /// The blocks and samplers that are none of vanilla's, in binding order: the `i`th is at
-    /// [`other_binding`]`(i)` (a sampler's object one after its texture; a block leaves that
-    /// binding unused).
+    /// The blocks and samplers that are none of [`Inputs::blocks`] and [`Inputs::samplers`], in
+    /// binding order: the `i`th is at
+    /// [`other_binding`]`(i)` (a sampler's object one after its texture; a block leaves that binding
+    /// unused).
     pub other: Vec<String>,
     /// The resources of set 0 the stages' entry points read, each with those stages
     /// ([`bindings_read`], from the validation that made the program).
-    pub read: Vec<(u32, wgpu::ShaderStages)>,
+    pub read: Vec<(u32, wgpu_types::ShaderStages)>,
 }
 
 /// The integer texel buffers a stage declares (`uniform isamplerBuffer` or `usamplerBuffer`).
@@ -132,9 +144,9 @@ fn texel_fetches(text: &str) -> String {
     out
 }
 
-impl CoreProgram {
+impl Translated {
     /// The program of two stages and their validation, with what they read
-    /// ([`CoreProgram::read`]).
+    /// ([`Translated::read`]).
     pub fn new(
         (vertex, vertex_info): (naga::Module, naga::valid::ModuleInfo),
         (fragment, fragment_info): (naga::Module, naga::valid::ModuleInfo),
@@ -149,22 +161,10 @@ impl CoreProgram {
         }
     }
 
-    /// [`CoreProgram::new`] for stages not yet validated (tests that build their own).
-    #[cfg(test)]
-    pub fn validated(vertex: naga::Module, fragment: naga::Module, other: Vec<String>) -> Self {
-        let validate = |module: naga::Module| {
-            let info = Validator::new(ValidationFlags::all(), Capabilities::all())
-                .validate(&module)
-                .expect("the module validates");
-            (module, info)
-        };
-        Self::new(validate(vertex), validate(fragment), other)
-    }
-
     /// The stages whose entry points read the resource at `binding` of set 0, through any
     /// function they call: what a pipeline layout must make that binding visible to. Empty
     /// for one a stage only declares (or the preprocessor kept but nothing reads).
-    pub fn stages_reading(&self, binding: u32) -> wgpu::ShaderStages {
+    pub fn stages_reading(&self, binding: u32) -> wgpu_types::ShaderStages {
         stages_reading(&self.read, binding)
     }
 
@@ -174,8 +174,8 @@ impl CoreProgram {
     pub fn is_float_block(&self, binding: u32) -> bool {
         let stages = self.stages_reading(binding);
         [
-            (&self.vertex, wgpu::ShaderStages::VERTEX),
-            (&self.fragment, wgpu::ShaderStages::FRAGMENT),
+            (&self.vertex, wgpu_types::ShaderStages::VERTEX),
+            (&self.fragment, wgpu_types::ShaderStages::FRAGMENT),
         ]
         .into_iter()
         .filter(|(_, stage)| stages.contains(*stage))
@@ -205,7 +205,6 @@ impl CoreProgram {
     }
 
     /// The locations the fragment stage writes.
-    #[cfg(test)]
     pub fn fragment_writes(&self) -> Vec<u32> {
         locations(&self.fragment, false)
     }
@@ -233,7 +232,7 @@ impl CoreProgram {
     }
 }
 
-/// The binding of the `index`th block or sampler of [`CoreProgram::other`].
+/// The binding of the `index`th block or sampler of [`Translated::other`].
 pub fn other_binding(index: usize) -> u32 {
     OTHER_BINDINGS + 2 * index as u32
 }
@@ -241,14 +240,14 @@ pub fn other_binding(index: usize) -> u32 {
 /// The resources of set 0 that the entry points of each stage read, through any function they
 /// call (naga's per entry point use, from the stage's own validation), each with the stages
 /// reading it.
-pub(crate) fn bindings_read(
+pub fn bindings_read(
     stages: [(&naga::Module, &naga::valid::ModuleInfo); 2],
-) -> Vec<(u32, wgpu::ShaderStages)> {
-    let mut read: Vec<(u32, wgpu::ShaderStages)> = Vec::new();
-    for ((module, info), stage) in stages
-        .into_iter()
-        .zip([wgpu::ShaderStages::VERTEX, wgpu::ShaderStages::FRAGMENT])
-    {
+) -> Vec<(u32, wgpu_types::ShaderStages)> {
+    let mut read: Vec<(u32, wgpu_types::ShaderStages)> = Vec::new();
+    for ((module, info), stage) in stages.into_iter().zip([
+        wgpu_types::ShaderStages::VERTEX,
+        wgpu_types::ShaderStages::FRAGMENT,
+    ]) {
         for (handle, global) in module.global_variables.iter() {
             let Some(binding) = global.binding.as_ref().filter(|b| b.group == 0) else {
                 continue;
@@ -268,83 +267,59 @@ pub(crate) fn bindings_read(
 }
 
 /// The stages in `read` ([`bindings_read`]) that read the resource at `binding`.
-pub(crate) fn stages_reading(
-    read: &[(u32, wgpu::ShaderStages)],
+pub fn stages_reading(
+    read: &[(u32, wgpu_types::ShaderStages)],
     binding: u32,
-) -> wgpu::ShaderStages {
+) -> wgpu_types::ShaderStages {
     (read.iter())
         .find(|(b, _)| *b == binding)
-        .map_or(wgpu::ShaderStages::NONE, |(_, stages)| *stages)
+        .map_or(wgpu_types::ShaderStages::NONE, |(_, stages)| *stages)
 }
 
-/// The shaders of one pipeline (`text.vsh`, `text.fsh`) with vanilla's `defines` for it.
-/// `include` answers a file id (`minecraft:shaders/include/fog.glsl`) with its text.
-pub fn translate_core(
-    vertex: &str,
-    fragment: &str,
-    defines: &[&str],
-    include: &dyn Fn(&str) -> Option<String>,
-    glue: &Glue,
-) -> Result<CoreProgram, String> {
-    translate_core_with(vertex, fragment, defines, include, glue, &|_| false)
-}
-
-/// [`translate_core`] for a pipeline that also gives the blocks and samplers `provided` says
-/// yes to, at their [`CoreProgram::other`] bindings; the others are still an error. `provided`
-/// answers a block's name and a sampler's alike: the caller knows which kind each one is.
-pub fn translate_core_with(
-    vertex: &str,
-    fragment: &str,
-    defines: &[&str],
-    include: &dyn Fn(&str) -> Option<String>,
-    glue: &Glue,
-    provided: &dyn Fn(&str) -> bool,
-) -> Result<CoreProgram, String> {
-    let sources = Stages {
-        dir: "minecraft:shaders/core/",
-        vertex,
-        fragment,
-    };
-    translate_core_at(&sources, defines, &|id| Ok(include(id)), glue, provided)
-}
-
-/// A pipeline's two stages and the folder they are in (`ns:shaders/core/...`), which their
-/// quoted (relative) includes start from.
+/// A program's two stages and the folder they are in (`ns:path/`), which their quoted (relative)
+/// includes start from.
 pub struct Stages<'a> {
     pub dir: &'a str,
     pub vertex: &'a str,
     pub fragment: &'a str,
 }
 
-/// [`translate_core_with`] for stages that aren't in `minecraft:shaders/core/`, with `read`
-/// answering a file id with its text, none when the packs haven't it, or why it can't be read
-/// ([`expand_imports`]).
-pub fn translate_core_at(
+/// The program of `sources` under `inputs`, its vertex stage fed by `glue`. Blocks and samplers
+/// beyond [`Inputs::blocks`] and [`Inputs::samplers`] are bound at [`Translated::other`]'s
+/// bindings when `provided` says yes to their name (a block's and a sampler's alike: the caller
+/// knows which kind each one is), and are an error otherwise.
+pub fn translate(
     sources: &Stages,
-    defines: &[&str],
-    read: &dyn Fn(&str) -> Result<Option<String>, String>,
+    inputs: &Inputs,
     glue: &Glue,
     provided: &dyn Fn(&str) -> bool,
-) -> Result<CoreProgram, String> {
+) -> Result<Translated, String> {
     let Stages {
         dir,
         vertex,
         fragment,
     } = *sources;
     let stage = |text: &str| -> Result<String, String> {
-        let expanded = expand_core_imports(text, dir, defines, read).map_err(|e| e.to_string())?;
+        let expanded = expand_includes(text, dir, inputs.includes, Some(inputs.defines))
+            .map_err(|e| e.to_string())?;
         Ok(texel_fetches(&glsl_fixups::fixups(&expanded)))
     };
     let (vertex_text, fragment_text) = (stage(vertex)?, stage(fragment)?);
     let mut names = Names::default();
-    let vertex_code = rewrite(&vertex_text, ShaderStage::Vertex, glue, &mut names)
+    let vertex_code = rewrite(&vertex_text, ShaderStage::Vertex, inputs, glue, &mut names)
         .map_err(|e| format!("vertex shader: {e}"))?;
-    let fragment_code = rewrite(&fragment_text, ShaderStage::Fragment, glue, &mut names)
-        .map_err(|e| format!("fragment shader: {e}"))?;
+    let fragment_code = rewrite(
+        &fragment_text,
+        ShaderStage::Fragment,
+        inputs,
+        glue,
+        &mut names,
+    )
+    .map_err(|e| format!("fragment shader: {e}"))?;
     let vertex = compile(
         ShaderStage::Vertex,
         &vertex_code,
-        defines,
+        inputs.defines,
         &names,
         provided,
         glue.interface,
@@ -353,7 +328,7 @@ pub fn translate_core_at(
     let fragment = compile(
         ShaderStage::Fragment,
         &fragment_code,
-        defines,
+        inputs.defines,
         &names,
         provided,
         glue.interface,
@@ -368,25 +343,25 @@ pub fn translate_core_at(
             "the fragment shader reads location {missing}, which the vertex shader doesn't write"
         ));
     }
-    Ok(CoreProgram::new(vertex, fragment, names.other))
+    Ok(Translated::new(vertex, fragment, names.other))
 }
 
-/// A bound on a pack's includes, which are pasted every time.
+/// A bound on a program's includes, which are pasted every time.
 const MAX_PASTES: u32 = 1024;
-pub(crate) const MAX_EXPANDED: usize = 1 << 20;
+pub const MAX_EXPANDED: usize = 1 << 20;
 /// A bound on the bytes the expansion scans (each pasted file, every time), however little of
 /// them it keeps: lines of imports already pasted add nothing to the shader.
 const MAX_SCANNED: usize = 8 * MAX_EXPANDED;
 
-/// Why a shader's includes refuse it ([`expand_imports`]).
+/// Why a shader's includes refuse it ([`expand_includes`]).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ImportRefusal {
     /// A target that is neither `<ns:path>` nor a quoted path from the including file's folder.
     Bad(String),
     Directive(String),
-    /// A file the packs haven't (its id).
+    /// A file nobody has (its id).
     NotFound(String),
-    /// A file the packs have and that can't be read: why, naming it.
+    /// A file that can't be read: why, naming it.
     Unreadable(String),
     /// Includes nested more than 16 deep.
     TooDeep,
@@ -418,77 +393,36 @@ impl std::fmt::Display for ImportRefusal {
     }
 }
 
-/// [`expand_imports`] over `include`, which has a file or not.
-#[cfg(test)]
-fn expand(
-    text: &str,
-    dir: &str,
-    include: &dyn Fn(&str) -> Option<String>,
-) -> Result<String, ImportRefusal> {
-    expand_imports(text, dir, &|id| Ok(include(id)))
-}
-
 /// The file with its includes inlined (`#include <ns:path>`, `#include "relative"` to the
-/// including file's folder, and the same with `#moj_import`), `#version` and `#extension` lines
-/// dropped: the one resolver of the packs' core and post shaders. An `#include` is pasted every
-/// time, as vanilla's shaderc does (the files' `#ifndef` guards keep one copy); a `#moj_import`
-/// once per stage. The expansion is bounded (16 levels,
-/// [`MAX_PASTES`] pastes, [`MAX_EXPANDED`] bytes kept, [`MAX_SCANNED`] bytes scanned). `read`
-/// gives a file id's text, none when the packs haven't it, or why it can't be read, which
-/// refuses the shader. Only a missing `polytone_globals.glsl` is the built-in one
-/// (`sunrise_polytone::globals::GLSL`).
-pub(crate) fn expand_imports(
+/// including file's folder, and the same with each of [`Includes::once`]), `#version` and
+/// `#extension` lines dropped. An `#include` is pasted every time, as a GL compiler's includes
+/// are (the files' `#ifndef` guards keep one copy); a once-directive pastes a file once per
+/// stage. With `defines`, only the includes the compiler reaches under them are resolved, and
+/// macros an included file defines govern the rest of its caller; without, every branch's are.
+/// The expansion is bounded (16 levels, [`MAX_PASTES`] pastes, [`MAX_EXPANDED`] bytes kept,
+/// [`MAX_SCANNED`] bytes scanned).
+pub fn expand_includes(
     text: &str,
     dir: &str,
-    read: &dyn Fn(&str) -> Result<Option<String>, String>,
-) -> Result<String, ImportRefusal> {
-    expand_with(text, dir, read, None)
-}
-
-/// Resolve only includes reached by this core pipeline under its `defines` and the backend's
-/// ([`program_defines`]), as the compiler sees them. Macros defined by an included file also
-/// govern the rest of its caller. Post shaders keep their own preprocessing.
-pub(crate) fn expand_core_imports(
-    text: &str,
-    dir: &str,
-    defines: &[&str],
-    read: &dyn Fn(&str) -> Result<Option<String>, String>,
+    includes: &Includes,
+    defines: Option<&[&str]>,
 ) -> Result<String, ImportRefusal> {
     expand_with(
         text,
         dir,
-        read,
-        Some(import_conditions::Conditions::new(&program_defines(
-            defines,
-        ))),
+        includes,
+        defines.map(import_conditions::Conditions::new),
     )
 }
 
-/// What `GlslCompiler.createBaseShaderOptions` defines for every program it compiles, core and
-/// post alike, on a backend whose depth runs from 0 to 1, as wgpu's does.
-pub(crate) const DEPTH_ZERO_TO_ONE: &str = "RENDERPEARL_DEPTH_IS_ZERO_TO_ONE";
-
-/// A program's defines as vanilla's compiler gives them: the backend's ([`DEPTH_ZERO_TO_ONE`]),
-/// then the pipeline's `defines` (`NAME` or `NAME value`).
-fn program_defines<'a>(defines: &[&'a str]) -> Vec<&'a str> {
-    std::iter::once(DEPTH_ZERO_TO_ONE)
-        .chain(defines.iter().copied())
-        .collect()
-}
-
-/// naga's options for one `stage` of a program with the pipeline's `defines`: the backend's
-/// first ([`program_defines`]), and the device's stage interface `limits`. The core shaders' and
-/// the post shaders' one way in.
-pub(crate) fn glsl_options(
-    stage: ShaderStage,
-    defines: &[&str],
-    limits: InterfaceLimits,
-) -> Options {
+/// naga's options for one `stage` of a program with its `defines` (`NAME` or `NAME value`, in
+/// order) and the device's stage interface `limits`.
+pub fn glsl_options(stage: ShaderStage, defines: &[&str], limits: InterfaceLimits) -> Options {
     let mut options = Options {
         interface_limits: limits,
         ..Options::from(stage)
     };
-    for define in program_defines(defines) {
+    for define in defines {
         let (name, value) = define.split_once(' ').unwrap_or((define, ""));
         options.defines.insert(name.to_owned(), value.to_owned());
     }
@@ -500,11 +434,11 @@ mod import_conditions;
 fn expand_with(
     text: &str,
     dir: &str,
-    read: &dyn Fn(&str) -> Result<Option<String>, String>,
+    includes: &Includes,
     conditions: Option<import_conditions::Conditions>,
 ) -> Result<String, ImportRefusal> {
     struct Walk<'a> {
-        read: &'a dyn Fn(&str) -> Result<Option<String>, String>,
+        includes: &'a Includes<'a>,
         conditions: Option<import_conditions::Conditions>,
         seen: HashSet<String>,
         pastes: u32,
@@ -543,7 +477,7 @@ fn expand_with(
             } else {
                 text
             };
-            let mut branches = sunrise_shaders::Conditionals::default();
+            let mut branches = import_conditions::Conditionals::default();
             let mut line_offset = 0i64;
             for (n, line) in text.lines().enumerate() {
                 let directive = line.trim_start().strip_prefix('#').map(str::trim_start);
@@ -589,20 +523,16 @@ fn expand_with(
                     }
                 }
                 match word {
-                    "include" | "moj_import" => {
-                        let id = include_id(rest, dir)
+                    _ if word == "include" || self.includes.once.contains(&word) => {
+                        let id = include_id(rest, dir, self.includes)
                             .ok_or_else(|| ImportRefusal::Bad(rest.to_owned()))?;
                         if self.seen.insert(id.clone()) || word == "include" {
                             self.pastes += 1;
                             if self.pastes > MAX_PASTES {
                                 return Err(ImportRefusal::TooManyPastes);
                             }
-                            let file = (self.read)(&id)
+                            let file = (self.includes.read)(&id)
                                 .map_err(ImportRefusal::Unreadable)?
-                                .or_else(|| {
-                                    sunrise_polytone::globals::is_include(&id)
-                                        .then(|| sunrise_polytone::globals::GLSL.to_owned())
-                                })
                                 .ok_or_else(|| ImportRefusal::NotFound(id.clone()))?;
                             let parent = &id[..id.rfind('/').map_or(id.len(), |i| i + 1)];
                             self.walk(&file, parent, depth + 1)?;
@@ -623,7 +553,7 @@ fn expand_with(
         }
     }
     let mut walk = Walk {
-        read,
+        includes,
         conditions,
         seen: HashSet::new(),
         pastes: 0,
@@ -634,12 +564,12 @@ fn expand_with(
     Ok(walk.out)
 }
 
-/// `<ns:path>` under `shaders/include` (`minecraft` when there's no namespace), or `"path"` from
-/// the including file's folder.
-fn include_id(target: &str, dir: &str) -> Option<String> {
+/// `<ns:path>` under [`Includes::folder`] ([`Includes::namespace`] when there's no namespace), or
+/// `"path"` from the including file's folder.
+fn include_id(target: &str, dir: &str, includes: &Includes) -> Option<String> {
     if let Some(inner) = target.strip_prefix('<').and_then(|t| t.strip_suffix('>')) {
-        let (ns, path) = inner.split_once(':').unwrap_or(("minecraft", inner));
-        return Some(format!("{ns}:shaders/include/{path}"));
+        let (ns, path) = inner.split_once(':').unwrap_or((includes.namespace, inner));
+        return Some(format!("{ns}:{}{path}", includes.folder));
     }
     let relative = target.strip_prefix('"')?.strip_suffix('"')?;
     let (ns, base) = dir.split_once(':')?;
@@ -833,6 +763,7 @@ impl Names {
 fn rewrite(
     text: &str,
     stage: ShaderStage,
+    inputs: &Inputs,
     glue: &Glue,
     names: &mut Names,
 ) -> Result<String, String> {
@@ -845,7 +776,7 @@ fn rewrite(
             writeln!(out, "{ty} {name};").unwrap();
         }
     }
-    // Where the pack's own code starts: the glue above it is left as it is.
+    // Where the program's own code starts: the glue above it is left as it is.
     let pack_start = out.len();
     let mut outputs: Vec<&str> = Vec::new();
     let explicit: Vec<u32> = if vertex {
@@ -861,8 +792,7 @@ fn rewrite(
     for source_line in text.lines() {
         for line in declaration_lines(source_line) {
             if let Some(name) = block_name(line) {
-                let binding = BLOCKS
-                    .iter()
+                let binding = (inputs.blocks.iter())
                     .find(|(block, _)| *block == name)
                     .map_or_else(|| names.other_binding(name), |(_, b)| *b);
                 let tail = line[line.find("uniform").unwrap_or(0)..].trim();
@@ -892,8 +822,7 @@ fn rewrite(
                     .unwrap();
                 }
                 "uniform" if decl.ty == "sampler2D" => {
-                    let binding = SAMPLERS
-                        .iter()
+                    let binding = (inputs.samplers.iter())
                         .find(|(sampler, _)| *sampler == decl.name)
                         .map_or_else(|| names.other_binding(decl.name), |(_, b)| *b);
                     let name = decl.name;
@@ -907,38 +836,14 @@ fn rewrite(
                     .unwrap();
                 }
                 "uniform" => {
-                    // Some packs keep the legacy standalone declarations in an `#else` branch
-                    // alongside 26.x's uniform-block imports. The GLSL compiler selects the
-                    // branch later, but the declaration pass sees both; the block already provides
-                    // these names, so the legacy declarations must not be emitted or rejected.
-                    if matches!(
-                        decl.name,
-                        "CameraBlockPos"
-                            | "GlintAlpha"
-                            | "CameraOffset"
-                            | "GameTime"
-                            | "ScreenSize"
-                            | "MenuBlurRadius"
-                            | "UseRgss"
-                            | "ProjMat"
-                            | "TextureMat"
-                            | "ModelViewMat"
-                            | "ColorModulator"
-                            | "FogColor"
-                            | "FogEnvironmentalStart"
-                            | "FogRenderDistanceStart"
-                            | "FogRenderDistanceEnd"
-                            | "FogEnd"
-                            | "FogStart"
-                            | "FogShape"
-                    ) {
+                    // A loose declaration of a name a block declares (an older version kept in
+                    // an `#else` branch): the preprocessor picks the branch later, but this pass
+                    // sees both.
+                    if inputs.loose.contains(&decl.name) {
                         out.push('\n');
                         continue;
                     }
-                    return Err(format!(
-                        "uniform {} outside a block (26.x's shaders keep them in blocks)",
-                        decl.name
-                    ));
+                    return Err(format!("uniform {} outside a block", decl.name));
                 }
                 "in" if vertex => {
                     if glue.inputs.iter().any(|(name, _)| *name == decl.name) {
@@ -1011,10 +916,10 @@ fn rewrite(
     if !vertex {
         return Ok(out);
     }
-    // The pack's `gl_VertexID` and 26.3's `gl_VertexIndex` both mean vanilla's vertex number
-    // (four per quad, an `int`): both read the glue's expression, which for a pipeline that
-    // draws six vertices per quad turns its own `gl_VertexIndex` back into that number. Only the
-    // pack's code is rewritten, so the glue's expression keeps reading the real index.
+    // The program's `gl_VertexID` and `gl_VertexIndex` both read the glue's expression (a
+    // pipeline drawing six vertices per quad turns its own index back into the program's four
+    // per quad). Only the program's code is rewritten, so the glue's expression keeps reading
+    // the real index.
     let vertex_id = format!("({})", glue.vertex_id);
     let pack = replace_ident(
         &rename_main(&out[pack_start..]),
@@ -1135,6 +1040,99 @@ fn locations(module: &naga::Module, inputs: bool) -> Vec<u32> {
 mod tests {
     use super::*;
 
+    /// Blocks, samplers and loose uniforms in a game's shape: the tests' own.
+    pub(crate) const BLOCKS: [(&str, u32); 4] = [
+        ("Globals", 0),
+        ("Projection", 1),
+        ("DynamicTransforms", 2),
+        ("Fog", 3),
+    ];
+    pub(crate) const SAMPLERS: [(&str, u32); 3] =
+        [("Sampler0", 4), ("Sampler1", 6), ("Sampler2", 8)];
+    const LOOSE: [&str; 3] = ["ProjMat", "ModelViewMat", "GameTime"];
+    /// The lowest stage interface limits a device has.
+    pub(crate) const LIMITS: InterfaceLimits = InterfaceLimits {
+        inter_stage_variables: 32,
+        vertex_attributes: 32,
+    };
+
+    fn includes<'a>(read: &'a dyn Fn(&str) -> Result<Option<String>, String>) -> Includes<'a> {
+        Includes {
+            read,
+            namespace: "minecraft",
+            folder: "shaders/include/",
+            once: &["moj_import"],
+        }
+    }
+
+    pub(crate) fn translate_core_at(
+        sources: &Stages,
+        defines: &[&str],
+        read: &dyn Fn(&str) -> Result<Option<String>, String>,
+        glue: &Glue,
+        provided: &dyn Fn(&str) -> bool,
+    ) -> Result<Translated, String> {
+        let inputs = Inputs {
+            blocks: &BLOCKS,
+            samplers: &SAMPLERS,
+            loose: &LOOSE,
+            defines,
+            includes: &includes(read),
+        };
+        translate(sources, &inputs, glue, provided)
+    }
+
+    pub(crate) fn translate_core_with(
+        vertex: &str,
+        fragment: &str,
+        defines: &[&str],
+        include: &dyn Fn(&str) -> Option<String>,
+        glue: &Glue,
+        provided: &dyn Fn(&str) -> bool,
+    ) -> Result<Translated, String> {
+        let sources = Stages {
+            dir: "minecraft:shaders/core/",
+            vertex,
+            fragment,
+        };
+        translate_core_at(&sources, defines, &|id| Ok(include(id)), glue, provided)
+    }
+
+    pub(crate) fn translate_core(
+        vertex: &str,
+        fragment: &str,
+        defines: &[&str],
+        include: &dyn Fn(&str) -> Option<String>,
+        glue: &Glue,
+    ) -> Result<Translated, String> {
+        translate_core_with(vertex, fragment, defines, include, glue, &|_| false)
+    }
+
+    fn expand_imports(
+        text: &str,
+        dir: &str,
+        read: &dyn Fn(&str) -> Result<Option<String>, String>,
+    ) -> Result<String, ImportRefusal> {
+        expand_includes(text, dir, &includes(read), None)
+    }
+
+    fn expand(
+        text: &str,
+        dir: &str,
+        include: &dyn Fn(&str) -> Option<String>,
+    ) -> Result<String, ImportRefusal> {
+        expand_imports(text, dir, &|id| Ok(include(id)))
+    }
+
+    fn expand_core_imports(
+        text: &str,
+        dir: &str,
+        defines: &[&str],
+        read: &dyn Fn(&str) -> Result<Option<String>, String>,
+    ) -> Result<String, ImportRefusal> {
+        expand_includes(text, dir, &includes(read), Some(defines))
+    }
+
     const INCLUDES: [(&str, &str); 4] = [
         (
             "minecraft:shaders/include/dynamictransforms.glsl",
@@ -1169,7 +1167,7 @@ mod tests {
         setup: "Position = vec3(hz_pos, 0.0); Color = hz_color; UV0 = hz_uv;",
         finish: "gl_Position.z = 0.5 * gl_Position.w;",
         vertex_id: "hz_vertex_id()",
-        interface: sunrise_shaders::DEVICELESS_INTERFACE_LIMITS,
+        interface: LIMITS,
     };
 
     /// 26.3's `text.vsh` and `text.fsh` in shape: `#include`, explicit locations, an extension.
@@ -1298,38 +1296,6 @@ mod tests {
         )
         .unwrap();
         assert_eq!(imported.matches("const float g").count(), 1);
-    }
-
-    /// Only a missing `polytone_globals.glsl` is Polytone's built-in one: the packs' own file is
-    /// read instead, one that can't be read refuses the shader with the reader's reason, and any
-    /// other missing file is named.
-    #[test]
-    fn only_a_missing_poly_globals_is_built_in() {
-        let import = "#moj_import <polytone_globals.glsl>\n";
-        let dir = "minecraft:shaders/core/";
-        let globals = "minecraft:shaders/include/polytone_globals.glsl";
-        let built_in = expand_imports(import, dir, &|_| Ok(None)).unwrap();
-        let pasted: String = (sunrise_polytone::globals::GLSL.lines())
-            .map(|line| format!("{line}\n"))
-            .collect();
-        assert_eq!(built_in, format!("{pasted}\n"));
-        let shipped = |id: &str| Ok((id == globals).then(|| "float shipped;\n".to_owned()));
-        assert_eq!(
-            expand_imports(import, dir, &shipped).unwrap().trim(),
-            "float shipped;"
-        );
-        let unreadable = |id: &str| Err(format!("{id}: not text"));
-        assert_eq!(
-            expand_imports(import, dir, &unreadable),
-            Err(ImportRefusal::Unreadable(format!("{globals}: not text")))
-        );
-        let other = expand_imports("#moj_import <fog.glsl>\n", dir, &|_| Ok(None));
-        assert_eq!(
-            other,
-            Err(ImportRefusal::NotFound(
-                "minecraft:shaders/include/fog.glsl".into()
-            ))
-        );
     }
 
     #[test]
@@ -1649,15 +1615,30 @@ mod tests {
     #[test]
     fn includes_resolve_by_id_or_from_the_including_folder() {
         assert_eq!(
-            include_id("<fog.glsl>", "minecraft:shaders/core/").as_deref(),
+            include_id(
+                "<fog.glsl>",
+                "minecraft:shaders/core/",
+                &includes(&|_| Ok(None))
+            )
+            .as_deref(),
             Some("minecraft:shaders/include/fog.glsl")
         );
         assert_eq!(
-            include_id("<bitmade:hud/lanes.glsl>", "minecraft:shaders/core/").as_deref(),
+            include_id(
+                "<bitmade:hud/lanes.glsl>",
+                "minecraft:shaders/core/",
+                &includes(&|_| Ok(None))
+            )
+            .as_deref(),
             Some("bitmade:shaders/include/hud/lanes.glsl")
         );
         assert_eq!(
-            include_id("\"../include/fog.glsl\"", "minecraft:shaders/core/").as_deref(),
+            include_id(
+                "\"../include/fog.glsl\"",
+                "minecraft:shaders/core/",
+                &includes(&|_| Ok(None))
+            )
+            .as_deref(),
             Some("minecraft:shaders/include/fog.glsl")
         );
     }
