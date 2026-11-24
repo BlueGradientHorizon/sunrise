@@ -1,6 +1,6 @@
 # `Game` fields grouped into `ServerState` and `ClientState`
 
-Stage A of the gameplay client/server split (#2210) groups server-only fields of `sunrise_client::game::Game<'a>` into a trailing `server: ServerState` field (`sunrise_client::game::server_state::ServerState`) and client-only fields into a trailing `client: ClientState` field (`sunrise_client::game::client_state::ClientState`). Shared, mode, and drop-order-sensitive fields remain directly on `Game<'a>`. The authoritative field-to-owner table is `tools/game_field_owners.tsv`; compute current counts per owner with:
+This change (#2210) groups server-only fields of `sunrise_client::game::Game<'a>` into a trailing `server: ServerState` field (`sunrise_client::game::server_state::ServerState`) and client-only fields into a trailing `client: ClientState` field (`sunrise_client::game::client_state::ClientState`). Shared, mode, and drop-order-sensitive fields remain directly on `Game<'a>`. The authoritative field-to-owner table is `tools/game_field_owners.tsv`; compute current counts per owner with:
 
 ```sh
 awk -F'\t' 'NR > 1 { counts[$3]++ } END { for (owner in counts) print owner, counts[owner] }' tools/game_field_owners.tsv
