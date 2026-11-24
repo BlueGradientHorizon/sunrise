@@ -6,6 +6,13 @@ level, position, block state, and `include_data`, true when a creative player pi
 player reads such as `event.player.food(host).map(|food| food.level)`. The request does not include
 a client hit face. Return `None` to keep the game's item.
 
+A server mod reads the same answer with `player.clone_item_stack(host, level, pos, include_data)`,
+vanilla's `BlockState.getCloneItemStack`: the block's own item (a crop's seed, a piston head's piston),
+or a Part's answer in its place, so it runs `clone_item_stack` with that player. It is the stack before
+the pick copies block-entity data onto it; reach and game mode are not checked, and nothing is given.
+It is `None` for air, an unloaded position, a stale or dead player and a level other than the one in
+place.
+
 ## Breaking-crack display
 
 `BlockPart::break_progress_positions(host, event)` supplies extra positions for a

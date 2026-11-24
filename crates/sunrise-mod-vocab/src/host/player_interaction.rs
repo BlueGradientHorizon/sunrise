@@ -77,6 +77,23 @@ pub trait PlayerInteractionBackendMut {
         pos: [i32; 3],
         state: BlockState,
     ) -> Option<f32>;
+    /// Side: server.
+    /// `BlockState.getCloneItemStack(level, pos, include_data)` for `player`: the stack Pick
+    /// Block gives for the block at `pos`, the answer `ServerGamePacketListenerImpl
+    /// .handlePickItemFromBlock` takes, before it copies block-entity data onto it
+    /// (`addBlockDataToItem`). It is the block's own item (a crop's seed, a piston head's
+    /// piston...) unless a block Part's `clone_item_stack` answers in its place, so it **runs
+    /// that hook** with this player. `include_data` is what the block is told, true for a
+    /// creative pick with Ctrl. Neither reach nor game mode is checked, and nothing is given.
+    /// None for an empty stack (air), a stale handle or player, a dead player, a level other
+    /// than the one in place, an unloaded position and a client.
+    fn player_clone_item_stack(
+        &mut self,
+        player: PlayerRef,
+        level: LevelRef,
+        pos: [i32; 3],
+        include_data: bool,
+    ) -> Option<ItemStack>;
     /// Side: both.
     /// `Player.hasCorrectToolForDrops(state, level, pos)` and `IBlockExtension.canHarvestBlock`
     /// in one answer: whether the tool in `player`'s selected hotbar slot (never the offhand)
