@@ -459,5 +459,13 @@ fn all_builtin_convention_tags_bind_cleanly_against_26_3() {
             tags.key(&Identifier::parse("neoforge:ignores/pause_command").unwrap())
                 .unwrap()
         );
+
+        // `GameLevel` exposes biome tags through the same bound BiomeKeys snapshot.
+        let level_forest_biomes =
+            game.with_level(|_, level, _| mod_api::Tags::biomes(level, c::biomes::IS_FOREST));
+        assert!(
+            matches!(level_forest_biomes, TagMembers::Members(ref m) if !m.is_empty()),
+            "expected GameLevel::biomes(c::biomes::IS_FOREST) to return Members, got {level_forest_biomes:?}"
+        );
     });
 }
