@@ -2,20 +2,21 @@
 use mod_api::{FluidPassageEvent, Hooks, LevelHost, Registrar};
 use sunrise_core::position::BlockPos;
 
-/// Closes every horizontal step out of the cells at x 2.
+/// Closes every horizontal step out of the cells at x 5.
 struct Levee;
 #[mod_api::__subscriptions]
 impl Hooks for Levee {
     fn register(&self, _: &mut dyn Registrar, _: &mod_api::RegistrationContext) {}
     fn fluid_passage(&self, _: &dyn LevelHost, event: &mut FluidPassageEvent) {
-        if event.from.x == 2 && event.to.y == event.from.y {
+        if event.from.x == 5 && event.to.y == event.from.y {
             event.passes = false;
         }
     }
 }
 
-/// Two water sources on a stone floor, at x 2 and x 10, ticked once. Returns whether water
-/// reached the cells beside each.
+/// Two water sources on a stone floor, at x 5 and x 10, ticked once. Returns whether water
+/// reached the cells beside each. Each source has floor for `FlowingFluid.getSpread`'s four-cell
+/// search on every side, so with no hole in reach it spreads all four ways.
 fn spread_beside_both_sources(game: &mut super::Game<'_>) -> [bool; 2] {
     game.options.dedicated = Some(Vec::new());
     game.world.chunks.insert(
@@ -31,15 +32,15 @@ fn spread_beside_both_sources(game: &mut super::Game<'_>) -> [bool; 2] {
             game.world.set(x, 63, z, stone).unwrap();
         }
     }
-    for x in [2, 10] {
+    for x in [5, 10] {
         game.world.set(x, 64, 5, source).unwrap();
     }
     game.with_level(|behaviours, level, ticks| {
-        for x in [2, 10] {
+        for x in [5, 10] {
             behaviours.scheduled_fluid_tick(level, ticks, BlockPos::new(x, 64, 5));
         }
     });
-    [2, 10].map(|x| game.world.block(x + 1, 64, 5) != air && game.world.block(x - 1, 64, 5) != air)
+    [5, 10].map(|x| game.world.block(x + 1, 64, 5) != air && game.world.block(x - 1, 64, 5) != air)
 }
 
 #[test]
