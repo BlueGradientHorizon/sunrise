@@ -341,7 +341,7 @@ impl Game<'_> {
             Some(BlockEntity::Mod(_))
         );
         if !mod_entity
-            && (include_data || banner || pot || statue)
+            && (banner || pot || statue)
             && let Some(saved) = self.saved_block_entity(key, false)
         {
             let mut picked = block_entity_item::pick(&saved);
@@ -876,6 +876,26 @@ mod tests {
                     pick(game, player, [1, 64, 0], true),
                     item("minecraft:stone")
                 );
+                // A chest's items and name stay off the read's stack with data:
+                // addBlockDataToItem comes after getCloneItemStack.
+                game.world.set(3, 64, 0, state("minecraft:chest")).unwrap();
+                let mut items = vec![None; 27];
+                items[0] = Some(sunrise_client::items::ItemStack::new("minecraft:stone", 5));
+                game.world.block_entities.insert(
+                    (3, 64, 0),
+                    sunrise_client::containers::BlockEntity::Chest(items),
+                );
+                game.world
+                    .block_names
+                    .insert((3, 64, 0), sunrise_core::nbt::Tag::String("Loot".into()));
+                let chest = player
+                    .clone_item_stack(game, level, [3, 64, 0], true)
+                    .unwrap();
+                assert_eq!(
+                    mod_api::__private::item_key_id(chest.item()),
+                    Some("minecraft:chest")
+                );
+                assert!(chest.components().is_none(), "no block data");
                 assert_eq!(pick(game, player, [2, 64, 0], false), None, "air");
                 assert_eq!(pick(game, player, [4000, 64, 0], false), None, "unloaded");
                 let gone = mod_api::__private::game::player_ref(
