@@ -198,7 +198,14 @@ def main():
                         help='leave out the sync_randoms steps: the control in which their fields differ run to run')
     parser.add_argument('--groups-file', type=Path,
                         help='run these generated [name, ops] groups after the common setup instead of the corpus')
+    parser.add_argument('--record-eye-item-witness', nargs='?',
+                        const=str(lab.LOCAL / 'witness' / lab.VERSION / 'eye_item' / 'eye_item.tsv'),
+                        help='run the 26.3 Java oracle on summoned eye of ender and write the eye Item witness TSV into .local')
     args = parser.parse_args()
+    if args.record_eye_item_witness:
+        args.reference_only = True
+        if not args.only:
+            args.only = 'summoned eye of ender'
     build = args.work_dir.resolve() if args.work_dir else lab.LOCAL / 'command-exec-parity'
     build.mkdir(parents=True, exist_ok=True)
     report_path = build / 'report.json'
@@ -607,6 +614,8 @@ def main():
                 sys.exit(f'Java callback guard failed: {op}: {row.get("results")}')
             if 'expect_map' in op and row.get('messages') != [[[op['expect_map'], [None, False, False, False, False, False]]]]:
                 sys.exit(f'Java map prerequisite failed: {op}: {row}')
+        if args.record_eye_item_witness:
+            write_eye_item_witness(Path(args.record_eye_item_witness), lock['minecraft']['version'], reference)
         print(f'Java reference: {len(reference)} records, fixture guards passed')
         return
 
@@ -918,6 +927,41 @@ def compare(v, r, comparison=None):
 def render(record):
     lines = [''.join(span[0] for span in m) for m in record['messages']]
     return json.dumps({'messages': lines, 'styles': [[span[1] for span in m] for m in record['messages']], 'results': record['results']}, ensure_ascii=False)
+
+
+def write_eye_item_witness(path, version, reference):
+    """Write the recorded eye_of_ender live and reloaded Item witness from a real vanilla oracle run."""
+    prefix = ' has the following entity data: '
+    rows = [
+        f'# Recorded from real vanilla {version} (VanillaCommandExecOracle).',
+        '# Command: python3 tools/test_eye_item_parity.py --record',
+        f'# minecraft_version\t{version}',
+        '# case\tsummon_nbt\tlive_item_snbt\treloaded_item_snbt',
+    ]
+    for index, (name, nbt) in enumerate(corpus_module.EYE_ITEM_CASES, 1):
+        query = f'/data get entity {corpus_module.eye_item_uuid(index)} Item'
+        matches = [row for row in reference if row.get('cmd') == query]
+        if len(matches) != 2:
+            sys.exit(f'expected 2 records (live, reloaded) for {name} ({query}), got {len(matches)}')
+        values = []
+        for phase, row in zip(('live', 'reloaded'), matches):
+            results = row.get('results')
+            if not (isinstance(results, list) and len(results) == 1 and results[0][0] is True):
+                sys.exit(f'vanilla {version} {phase} Item query failed for {name}: {row}')
+            messages = row.get('messages') or []
+            if len(messages) != 1:
+                sys.exit(f'expected 1 message line for {name} {phase}: {row}')
+            text = ''.join(span[0] for span in messages[0])
+            if prefix not in text:
+                sys.exit(f'unexpected /data get output for {name} {phase}: {text!r}')
+            snbt = text.split(prefix, 1)[1]
+            if '\t' in snbt or '\n' in snbt or '\r' in snbt:
+                sys.exit(f'unexpected control character in witness SNBT for {name} {phase}: {snbt!r}')
+            values.append(snbt)
+        rows.append(f'{name}\t{nbt}\t{values[0]}\t{values[1]}')
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('\n'.join(rows) + '\n', encoding='utf-8')
+    print(f'Wrote {len(corpus_module.EYE_ITEM_CASES)} eye_of_ender Item witness rows to {path}')
 
 
 if __name__ == '__main__':

@@ -5326,6 +5326,21 @@ def entity_ticking_gate():
                        f'/forceload remove {x0} {z0}')
 
 
+# 26.3 eye_of_ender Item load/save normalization cases (#2357).
+EYE_ITEM_CASES = [
+    ('default', '{}'),
+    ('stone_count', '{Item:{id:"minecraft:stone",count:5}}'),
+    ('air', '{Item:{id:"minecraft:air",count:1}}'),
+    ('unqualified_stone', '{Item:{id:"stone",count:3}}'),
+    ('stone_components', '{Item:{id:"minecraft:stone",count:5,components:{"minecraft:custom_name":"Orb"}}}'),
+    ('air_components', '{Item:{id:"minecraft:air",count:1,components:{"minecraft:custom_name":"Drop"}}}'),
+]
+
+
+def eye_item_uuid(index):
+    return f'00003207-0000-0001-0000-{index:04x}00000001'
+
+
 def summoned_eye_of_ender():
     """#12807: a summoned or loaded eye of ender flies by its Motion (no target, no
     gravity), saves its Item, and shatters after 80 ticks; its life is not saved."""
@@ -5357,10 +5372,21 @@ def summoned_eye_of_ender():
     ops += setup(f'/summon eye_of_ender {x0 + 8}.5 {y0 + 2} {z0 + 8}.5 '
                  f'{{UUID:[I;12807,0,{len(subjects) + 1},1],Motion:[0d,0d,0.01d]}}')
     ops.append({'op': 'tick', 'n': 50})
+    # Summon and read eye_of_ender Item normalization cases live, then across a chunk reload (#2357).
+    item_uuids = [eye_item_uuid(n) for n in range(1, len(EYE_ITEM_CASES) + 1)]
+    for n, (_, nbt) in enumerate(EYE_ITEM_CASES, 1):
+        inner = nbt[1:-1]
+        sep = ',' if inner else ''
+        ops += setup(f'/summon eye_of_ender {x0 + 2}.5 {y0 + 2} {z0 + n * 2}.5 '
+                     f'{{UUID:[I;12807,1,{n},1]{sep}{inner}}}')
+    for u in item_uuids:
+        ops.append(cmd(f'/data get entity {u} Item'))
     ops += [cmd(f'/forceload remove {x0} {z0}', False), {'op': 'tick', 'n': 60},
             cmd(f'/execute unless loaded {x0} {y0} {z0}', expect_result=1),
             cmd(f'/forceload add {x0} {z0}', False), {'op': 'wait_chunks', 'chunks': chunk}]
     ops.append(cmd(f'/data get entity {last} Pos'))
+    for u in item_uuids:
+        ops.append(cmd(f'/data get entity {u} Item'))
     ops.append({'op': 'tick', 'n': 80})
     ops.append(cmd(f'/execute if entity {last}', expect_result=1))
     ops.append({'op': 'tick', 'n': 1})

@@ -639,7 +639,7 @@ impl Game<'_> {
                     .position(|o| o.id == id)
                     .ok_or_else(stale)?;
                 let slot = &self.others[i];
-                let mut new = Self::other_from_nbt(&tag, id, &slot.kind).ok_or_else(stale)?;
+                let mut new = Self::other_from_nbt(&mut tag, id, &slot.kind).ok_or_else(stale)?;
                 new.join = slot.join;
                 let is_display = matches!(
                     slot.kind.as_str(),
@@ -2156,6 +2156,10 @@ mod tests {
 #[cfg(test)]
 #[path = "data/orb_uuid_tests.rs"]
 mod orb_uuid_tests;
+
+#[cfg(test)]
+#[path = "data/eye_item_tests.rs"]
+pub(in crate::game) mod eye_item_tests;
 
 #[cfg(test)]
 mod wolf_live_anger_tests {
