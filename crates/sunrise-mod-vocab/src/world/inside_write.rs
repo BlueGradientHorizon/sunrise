@@ -531,6 +531,24 @@ impl InsideEffects {
             })
     }
 
+    /// Whether flushing this collector needs the owning `Game` (mod callbacks or
+    /// built-in actions that mutate blocks or dispatch live hurt hooks). Plain
+    /// built-in effects (`Freeze`, `ClearFreeze`, `FireIgnite`, `LavaIgnite`,
+    /// `Extinguish`) only mutate the mob's own fields and run inline without
+    /// pausing the mob tick pass.
+    // hidden: engine-internal check for borrowed mob tick fast path.
+    #[doc(hidden)]
+    pub fn needs_live_owner(&self) -> bool {
+        self.scratch.as_ref().is_some_and(|s| {
+            let needs = |action: &Action| !matches!(action, Action::Effect(_));
+            s.planned.iter().any(needs)
+                || s.before
+                    .iter()
+                    .chain(&s.after)
+                    .any(|list| list.iter().any(needs))
+        })
+    }
+
     /// `applyAndClear`: flush the last step and run every queued effect and callback in
     /// order while the swept entity remains alive, isolating panics per callback owner.
     // hidden: engine sweep flush matching vanilla StepBasedCollector.applyAndClear.
@@ -1036,5 +1054,28 @@ mod tests {
                 ));
             },
         );
+    }
+
+    #[test]
+    fn needs_live_owner_is_false_for_plain_effects_and_true_for_builtins_or_callbacks() {
+        let mut water_only = InsideEffects::default();
+        water_only.advance_step(0);
+        water_only.apply(InsideEffect::Extinguish);
+        water_only.advance_step(1);
+        water_only.apply(InsideEffect::ClearFreeze);
+        assert!(!water_only.is_empty());
+        assert!(!water_only.needs_live_owner());
+
+        let mut with_builtin = InsideEffects::default();
+        with_builtin.advance_step(0);
+        with_builtin.apply(InsideEffect::FireIgnite);
+        with_builtin
+            .run_after_builtin(InsideEffect::FireIgnite, BuiltinInsideAction::FireHurt(1.0));
+        assert!(with_builtin.needs_live_owner());
+
+        let mut with_callback = InsideEffects::default();
+        with_callback.advance_step(0);
+        with_callback.run_after(InsideEffect::Extinguish, |_| {});
+        assert!(with_callback.needs_live_owner());
     }
 }

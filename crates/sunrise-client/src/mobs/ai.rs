@@ -1718,7 +1718,7 @@ fn continue_ai_tail(
                     AiStage::ResumeBlockWalk(Box::new(walk))
                 } else {
                     let effects = std::mem::take(&mut walk.effects);
-                    if pause_damage && !effects.is_empty() {
+                    if pause_damage && effects.needs_live_owner() {
                         return TickProgress::Paused(Pause::InsideEffects(InsidePause {
                             mob: m.id,
                             join: m.join,
@@ -1739,7 +1739,7 @@ fn continue_ai_tail(
             AiStage::ResumeBlockWalk(mut walk) => {
                 if walk.run(m, w, level, events, pause_damage) {
                     let effects = std::mem::take(&mut walk.effects);
-                    if pause_damage && !effects.is_empty() {
+                    if pause_damage && effects.needs_live_owner() {
                         return TickProgress::Paused(Pause::InsideEffects(InsidePause {
                             mob: m.id,
                             join: m.join,
