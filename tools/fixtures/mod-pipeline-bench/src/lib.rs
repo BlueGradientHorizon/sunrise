@@ -42,7 +42,10 @@ impl Bench {
             .filter_map(|index| assets.render_pipeline(&id(index)).ok())
             .collect();
         if resolved.len() != PIPELINES {
-            eprintln!("pipeline_bench: {} of {PIPELINES} pipelines resolved", resolved.len());
+            eprintln!(
+                "pipeline_bench: {} of {PIPELINES} pipelines resolved",
+                resolved.len()
+            );
         }
         *self.pipelines.lock().unwrap() = resolved;
     }
@@ -57,7 +60,11 @@ impl Hooks for Bench {
     ) {
         let stone = Identifier::parse("minecraft:block/stone").expect("stone sprite id");
         for index in 0..PIPELINES {
-            let blend = if index % 2 == 0 { PipelineBlend::Translucent } else { PipelineBlend::Additive };
+            let blend = if index % 2 == 0 {
+                PipelineBlend::Translucent
+            } else {
+                PipelineBlend::Additive
+            };
             let pipeline = RenderPipeline::new(id(index), id(index), blend, WorldDepth::Tested);
             event.register(if index >= PIPELINES / 2 {
                 pipeline.textured(PipelineTexture::Sprite(stone.clone()))
@@ -91,22 +98,27 @@ impl Hooks for Bench {
         let mut quads = self.quads.lock().unwrap();
         // A wall of quads 8 blocks ahead along +z and one more block per stage, 25 across.
         let share = QUADS_PER_STAGE.div_ceil(PER_STAGE);
-        for (n, pipeline) in pipelines[slot * PER_STAGE..][..PER_STAGE].iter().enumerate() {
+        for (n, pipeline) in pipelines[slot * PER_STAGE..][..PER_STAGE]
+            .iter()
+            .enumerate()
+        {
             quads.clear();
-            quads.extend((n * share..QUADS_PER_STAGE.min((n + 1) * share)).map(|quad| {
-                let left = x + (quad % 25) as f64 * 0.5 - 6.25;
-                let bottom = y + (quad / 25) as f64 * 0.5 - 5.0;
-                let depth = z + 8.0 + slot as f64;
-                PipelineQuad::spanning(
-                    [
-                        [left, bottom, depth],
-                        [left, bottom + 0.45, depth],
-                        [left + 0.45, bottom + 0.45, depth],
-                        [left + 0.45, bottom, depth],
-                    ],
-                    0x80FF_FFFF,
-                )
-            }));
+            quads.extend(
+                (n * share..QUADS_PER_STAGE.min((n + 1) * share)).map(|quad| {
+                    let left = x + (quad % 25) as f64 * 0.5 - 6.25;
+                    let bottom = y + (quad / 25) as f64 * 0.5 - 5.0;
+                    let depth = z + 8.0 + slot as f64;
+                    PipelineQuad::spanning(
+                        [
+                            [left, bottom, depth],
+                            [left, bottom + 0.45, depth],
+                            [left + 0.45, bottom + 0.45, depth],
+                            [left + 0.45, bottom, depth],
+                        ],
+                        0x80FF_FFFF,
+                    )
+                }),
+            );
             if let Err(error) = event.draw.pipeline_quads(*pipeline, &quads) {
                 eprintln!("pipeline_bench: quads refused: {error:?}");
             }
