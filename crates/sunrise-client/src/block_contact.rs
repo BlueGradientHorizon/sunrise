@@ -1258,10 +1258,7 @@ mod tests {
                 .iter()
                 .map(|b| b.max_position().y)
                 .fold(0.0_f64, f64::max);
-            assert!(
-                (max_y - 1.0).abs() < 1e-12,
-                "shell top stays at 1.0 for level {level}"
-            );
+            assert_eq!(max_y, 1.0, "shell top stays at 1.0 for level {level}");
         }
         assert!(layered_cauldron_filled_shape(0).is_none());
         assert!(layered_cauldron_filled_shape(4).is_none());
