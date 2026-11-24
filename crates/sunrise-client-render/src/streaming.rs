@@ -2551,7 +2551,13 @@ impl Streaming {
                     cover: ExtraCover::current(&self.cover, &self.extra, self.cover_current),
                     forced_cover: self.forced_cover.as_ref().filter(|_| self.cover_current),
                     band: self.band.as_ref(),
-                    async_requests: self.async_requests_range(),
+                    async_requests: (!self.async_requests.is_empty()).then(|| AsyncRequests {
+                        chunks: &self.async_requests,
+                        cover: self
+                            .async_requests_cover
+                            .as_ref()
+                            .filter(|_| self.async_requests_cover_current),
+                    }),
                 };
                 let (protos, generating) = (&self.protos, &self.generating);
                 self.decoration_order.retain(|x, z| {
@@ -2745,7 +2751,13 @@ impl Streaming {
                 cover: ExtraCover::current(&self.cover, &self.extra, self.cover_current),
                 forced_cover: self.forced_cover.as_ref().filter(|_| self.cover_current),
                 band: self.band.as_ref(),
-                async_requests: self.async_requests_range(),
+                async_requests: (!self.async_requests.is_empty()).then(|| AsyncRequests {
+                    chunks: &self.async_requests,
+                    cover: self
+                        .async_requests_cover
+                        .as_ref()
+                        .filter(|_| self.async_requests_cover_current),
+                }),
             };
             self.waiting.retain(|&(x, sy, z)| {
                 let back = ranges.in_view(x, z);
@@ -2914,7 +2926,13 @@ impl Streaming {
                 cover: ExtraCover::current(&self.cover, &self.extra, self.cover_current),
                 forced_cover: self.forced_cover.as_ref().filter(|_| self.cover_current),
                 band: self.band.as_ref(),
-                async_requests: self.async_requests_range(),
+                async_requests: (!self.async_requests.is_empty()).then(|| AsyncRequests {
+                    chunks: &self.async_requests,
+                    cover: self
+                        .async_requests_cover
+                        .as_ref()
+                        .filter(|_| self.async_requests_cover_current),
+                }),
             },
             world,
             generating: &self.generating,

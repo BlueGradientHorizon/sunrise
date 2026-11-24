@@ -40,7 +40,7 @@ mod tests {
 
     #[test]
     fn chunk_request_ref_equality_and_level_accessor() {
-        let level = LevelRef::new(3, DimensionKey::OVERWORLD);
+        let level = LevelRef::new(crate::world::types::WorldEpoch(3), DimensionKey::OVERWORLD);
         let a = crate::__private::game::chunk_request_ref(level, 1);
         let b = crate::__private::game::chunk_request_ref(level, 1);
         let c = crate::__private::game::chunk_request_ref(level, 2);
