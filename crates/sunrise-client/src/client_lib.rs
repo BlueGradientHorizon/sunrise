@@ -22,6 +22,8 @@ pub mod packet_source;
 pub mod parallel;
 pub mod powder_snow;
 #[cfg(test)]
+mod rule_replacements;
+#[cfg(test)]
 mod test_log;
 #[cfg(test)]
 mod test_resources;

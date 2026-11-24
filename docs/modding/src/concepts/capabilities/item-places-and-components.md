@@ -43,7 +43,11 @@ slots declared with `r.item_container(&item, provider)`, then items carrying
 at slot 0, moving the inserted stack to the front. Only slot 0 can be extracted; reads expose
 all contents in front-first order. An empty bundle exposes one empty insertion slot.
 A mod can return `Some(Box::new(BundleItems::new(place.clone())))` from its own
-`ITEM_ITEMS` provider for an item carrying `minecraft:bundle_contents`. All writes exchange
+`ITEM_ITEMS` provider for an item carrying `minecraft:bundle_contents`, or
+`Some(Box::new(BundleItems::with_config(place.clone(), BundleConfig::custom("mymod:pouch_contents", 4).with_filter_tag("mymod:runes"))))`
+for a registered custom bundle-like component storing a `Tag::List` of `ItemStack.CODEC` entries
+with its own Sunrise-specific capacity multiplier and optional item tag filter (non-list component
+payloads are refused without overwriting). All writes exchange
 one item through the place and roll back with the caller's transaction. `place.capability(host, &ITEM_ITEMS)` queries these providers in order.
 The registered `ItemContainerProvider::slots(&dyn Host)` callback returns `Option<u32>` dynamically;
 it is not called by registration-time coverage queries. `ITEM_ITEMS` covers the declared item type

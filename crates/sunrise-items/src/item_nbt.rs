@@ -341,6 +341,29 @@ mod tests {
         assert_eq!(item_from_nbt(&tag).unwrap().count, 1);
     }
 
+    /// `ItemStackTemplate.CODEC`'s `components` is `DataComponentPatch.CODEC.optionalFieldOf`:
+    /// absent is the empty patch, a present non-map value fails the stack.
+    #[test]
+    fn persistent_components_must_be_a_compound() {
+        let with = |components: Option<Tag>| {
+            let mut tag = Tag::compound([("id", string("minecraft:stone"))]);
+            if let (Tag::Compound(map), Some(components)) = (&mut tag, components) {
+                map.insert("components".into(), components);
+            }
+            item_from_persistent_nbt(&tag)
+        };
+        assert!(with(None).is_some());
+        assert!(
+            with(Some(Tag::compound([(
+                "minecraft:repair_cost",
+                Tag::Int(2)
+            )])))
+            .is_some()
+        );
+        assert!(with(Some(string("not-a-compound"))).is_none());
+        assert!(with(Some(Tag::Int(1))).is_none());
+    }
+
     #[test]
     fn nbt_count_defaults_to_one_outside_codec_range() {
         for item in ["minecraft:stone", "minecraft:diamond_sword"] {

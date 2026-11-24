@@ -110,9 +110,14 @@ impl Game<'_> {
             return false;
         };
         let plan = self.prepare_knockback_credit(id as i32, source.attacker, self.combat.attack());
+        // The projectile's shooter, the hit's causing entity.
+        let shooter = self.combat.attack().attacker;
+        let decision = crate::game::entity::causer_decision!(self, shooter);
         let mut credit = plan.lend(&mut self.last_hurt_by_player);
-        let hurt = self.mobs[index].damage_projectile(
-            crate::game::entity::damage_level_of!(self, self.combat.attack(), &mut credit, None),
+        let (victim, lend) =
+            crate::game::entity::victim_and_causer!(self, index, shooter, decision);
+        let hurt = victim.damage_projectile(
+            crate::game::entity::damage_level_of!(self, self.combat.attack(), &mut credit, lend),
             amount,
             source,
             aim,

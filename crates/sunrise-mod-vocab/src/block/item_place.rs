@@ -425,7 +425,9 @@ pub const ITEM_ITEMS: ItemCapabilityKey<dyn ResourceHandler<ItemResource>> = Ite
         if backend.item_container_slots(stack).is_some() {
             Some(Box::new(GameItemItems(place.clone())))
         } else {
-            backend.item_bundle_slots(stack)?;
+            backend
+                .bundle_slots(stack, &crate::BundleConfig::vanilla())
+                .ok()??;
             Some(Box::new(BundleItems::new(place.clone())))
         }
     })),

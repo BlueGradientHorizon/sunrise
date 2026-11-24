@@ -88,11 +88,7 @@ impl Game<'_> {
             return Vec::new();
         };
         let board = &self.score.board;
-        let Some(attacker) = host.hub.guest(actor).filter(|_| {
-            self.ui
-                .rules
-                .bool_at(sunrise_client::gamerules::vanilla::PVP)
-        }) else {
+        let Some(attacker) = host.hub.guest(actor) else {
             return Vec::new();
         };
         let own_team = board.players_team(&attacker.name);
@@ -108,9 +104,11 @@ impl Game<'_> {
                     && !g.dead
                     && !g.spectator()
                     && (own_vehicle.is_none() || g.vehicle != own_vehicle)
-                    && sunrise_client::scoreboard::teams_allow_damage(
-                        board.players_team(&g.name),
+                    && self.player_may_harm(
+                        attacker.entity_id,
+                        g.entity_id,
                         own_team,
+                        board.players_team(&g.name),
                     )
             })
             .map(|g| {

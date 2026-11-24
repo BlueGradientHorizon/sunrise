@@ -270,9 +270,14 @@ impl Game<'_> {
             // So `living_knockback` sees who the fangs' owner is and what they hold.
             let attack = self.attack_of_who(attacker);
             let plan = self.prepare_knockback_credit(id as i32, attacker, &attack);
+            // The hit's causing entity, lent to its listeners beside the victim.
+            let causing = self.causer_id(attacker);
+            let decision = crate::game::entity::causer_decision!(self, causing);
             let mut credit = plan.lend(&mut self.last_hurt_by_player);
-            let hurt = self.mobs[index].damage(
-                crate::game::entity::damage_level_of!(self, &attack, &mut credit, None),
+            let (victim, lend) =
+                crate::game::entity::victim_and_causer!(self, index, causing, decision);
+            let hurt = victim.damage(
+                crate::game::entity::damage_level_of!(self, &attack, &mut credit, lend),
                 6.0,
                 sunrise_client::mobs::Damage {
                     kind: if owner.is_some() {

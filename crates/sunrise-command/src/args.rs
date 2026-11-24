@@ -18,6 +18,11 @@ pub enum CustomArgumentKind {
     Word,
     /// The rest of the line, spaces included.
     Greedy,
+    /// Brigadier's `StringArgumentType.string()` (`QUOTABLE_PHRASE`), read by
+    /// [`Reader::read_string`]: one unquoted word, or one single- or double-quoted phrase, empty
+    /// included, in which only the active quote and `\` are escaped. The parser receives the
+    /// decoded text.
+    Quotable,
     /// A Brigadier `integer` within its bounds (`IntegerArgumentType.integer(min, max)`):
     /// refused below `min` or above `max` with `argument.integer.low` / `big`.
     Integer { min: i32, max: i32 },
@@ -1900,6 +1905,9 @@ impl ArgType {
             ArgType::Custom(custom) => {
                 let text = match custom.kind {
                     CustomArgumentKind::Word => reader.read_unquoted_string().to_owned(),
+                    // `StringArgumentType.parse` for `QUOTABLE_PHRASE`: the shared reader, with
+                    // its escape and unclosed-quote errors at their cursor.
+                    CustomArgumentKind::Quotable => reader.read_string()?,
                     CustomArgumentKind::Greedy => {
                         let text = reader.remaining().to_owned();
                         reader.cursor = reader.string.len();

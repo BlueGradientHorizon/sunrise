@@ -163,6 +163,7 @@ impl Game<'_> {
         match component {
             Component::Container => slots.len() < 256,
             Component::Charged => slots.len() < 1024,
+            // Contents whose weight overflows vanilla's `Fraction` take nothing more.
             Component::Bundle => sunrise_client::bundle::Contents::from_items(
                 self.res.items(),
                 slots.iter().flatten().cloned().collect(),

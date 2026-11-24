@@ -436,13 +436,18 @@ impl Game<'_> {
                 }
                 let plan =
                     self.prepare_knockback_credit(id as i32, source.attacker, self.combat.attack());
+                // The hit's causing entity, lent to its listeners beside the victim.
+                let causing = self.causer_id(source.attacker);
+                let decision = crate::game::entity::causer_decision!(self, causing);
                 let mut credit = plan.lend(&mut self.last_hurt_by_player);
-                let hurt = self.mobs[index].damage(
+                let (victim, lend) =
+                    crate::game::entity::victim_and_causer!(self, index, causing, decision);
+                let hurt = victim.damage(
                     crate::game::entity::damage_level_of!(
                         self,
                         self.combat.attack(),
                         &mut credit,
-                        None
+                        lend
                     ),
                     1.0,
                     source,

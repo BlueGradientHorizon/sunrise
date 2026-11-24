@@ -64,7 +64,8 @@ impl CommandSource {
 #[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]
 pub enum CommandArgumentValue {
-    /// A `word` or greedy `text` argument, exactly as the dispatcher parsed it.
+    /// A `word`, `string` or greedy `text` argument, exactly as the dispatcher parsed it: a
+    /// `string` arrives decoded, without its quotes and escapes (`"a \"b\""` as `a "b"`).
     String(String),
     /// A signed `integer` argument, within the bounds of `integer(min,max)`.
     Integer(i32),
