@@ -497,16 +497,7 @@ impl Renderer {
     pub fn define_pack_macros(&self, macros: &mut sunrise_shaders::Macros) {
         macros.define_renderer(self.mipmaps);
         if self.device.features().contains(wgpu::Features::SUBGROUP) {
-            for ext in [
-                "basic",
-                "vote",
-                "arithmetic",
-                "ballot",
-                "shuffle",
-                "shuffle_relative",
-            ] {
-                macros.define(format!("MC_GL_KHR_shader_subgroup_{ext}"), "");
-            }
+            macros.define_subgroups();
         }
         for (name, value) in crate::mod_pipelines::pack_defines() {
             macros.define(name, value);
