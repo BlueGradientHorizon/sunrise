@@ -1676,7 +1676,7 @@ impl mod_api::InsideEntityAccess for GameMobInsideAccess<'_, '_> {
             return false;
         };
         self.game
-            .level_destroy_block(level, pos, drop, None, false)
+            .level_destroy_block(level, pos, drop, None, None, false)
             .is_some()
     }
 
@@ -1726,7 +1726,7 @@ impl mod_api::InsideEntityAccess for GameMobInsideAccess<'_, '_> {
                 {
                     let _ = self
                         .game
-                        .level_destroy_block(level, pos, false, None, false);
+                        .level_destroy_block(level, pos, false, None, None, false);
                 }
             }
             mod_api::__private::BuiltinInsideAction::LayeredCauldronExtinguish { pos, state } => {

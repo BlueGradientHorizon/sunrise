@@ -1678,6 +1678,17 @@ impl Behaviours {
         self.sim(level, ticks)
             .destroy_block(pos, drop, flags::UPDATE_LIMIT)
     }
+    /// `Block.spawnDestroyParticles(level, pos, state)`: emit the break sound
+    /// and debris level event (2001, 2014 for straw beds, none for fire).
+    pub fn destroy_particles<L: LevelAccess + ?Sized>(
+        &self,
+        level: &mut L,
+        ticks: &mut Ticks,
+        pos: BlockPos,
+        state: BlockStateId,
+    ) {
+        self.sim(level, ticks).destroy_particles(pos, state);
+    }
     /// `Block.dropResources(state, level, pos)`: the loot of `state` at `pos`, with what the
     /// block entity there copies into it, as `destroy_block` drops it (nothing under
     /// `doTileDrops` false), without touching the block.

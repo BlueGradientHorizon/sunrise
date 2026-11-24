@@ -974,11 +974,14 @@ handle, an entity the client doesn't track and a level it doesn't show:
 
 `level.set_block(host, pos, state, flags)` and `level.remove_block(host, pos, moved)` change the level in place. They return false for a stale handle, client, parked level, unloaded chunk or out-of-height position; parked writes wait for a safe level swap. Removal preserves the fluid's legacy block; `moved` marks a piston move. `BlockUpdateFlags` combines supported vanilla update flags with `|`. `CLIENTS` sends the update, while `INVISIBLE` suppresses notification only on the client, as in `Level.setBlock`. Skipping block-entity side effects suppresses container-content drops when replacing a chest; without it, the contents spill.
 
-`level.destroy_block(host, pos, drop, tool, collect)` uses that same level's destruction and loot path.
-`tool: None` means an empty hand. With `collect`, the returned stacks are not spawned as item entities;
-without it, a successful break returns an empty list after spawning them. The normal block-drop hook
-still runs once before either outcome; tool enchantments and vanilla random ordering are unchanged.
-`drop: false` suppresses resources. `None` means nothing broke, including an invalid write or air.
+`level.destroy_block(host, pos, drop, tool, breaker, collect)` uses that same level's destruction and loot path
+(`Level.destroyBlock(pos, drop, breaker, maxUpdates)`). `tool: None` means an empty hand, and `breaker` is passed
+to loot (`this` entity) and the `minecraft:block_destroy` game event. With `collect`, the returned stacks are not
+spawned as item entities; without it, a successful break returns an empty list after spawning them. The normal
+block-drop hook still runs once before either outcome; tool enchantments and vanilla random ordering are unchanged.
+Inside an open Host transaction in this level, the break is tentative and its particles, drops, experience and game
+event run at root commit in vanilla's order (`collect` returns `Ok(None)` inside a transaction). `drop: false`
+suppresses resources. `None` means nothing broke, including an invalid write, a stale/foreign `breaker`, or air.
 `level.set_break_progress(host, breaker, pos, stage)` shows stages 0..9 or clears the crack otherwise;
 a machine uses a stable negative breaker id.
 

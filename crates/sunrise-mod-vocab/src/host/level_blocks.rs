@@ -217,19 +217,29 @@ pub trait LevelBlocksBackendMut {
     /// with the same block-entity rules as [`LevelRef::set_block`].
     fn level_remove_block(&mut self, level: LevelRef, pos: [i32; 3], moved: bool) -> bool;
     /// Side: server.
-    /// Destroy a block in the level in place (`Level.destroyBlock`), optionally dropping
-    /// resources with `tool` (None is an empty hand). With `collect`, return the dropped
-    /// stacks without spawning their item entities; otherwise return an empty list after
-    /// spawning them. The one level drop path runs loot, block-drop hooks and experience
-    /// once, in vanilla's random order. `drop` false suppresses resources entirely.
-    /// `Ok(None)` means nothing broke: air, a refused write, a stale handle, a client, an
-    /// unloaded/out-of-height position, a parked level, or an open Host transaction.
+    /// Destroy a block in the level in place (`Level.destroyBlock(pos, drop, breaker, maxUpdates)`),
+    /// optionally dropping resources with `tool` (None is an empty hand) and `breaker` as the
+    /// loot's `this` entity and the `minecraft:block_destroy` game event's source. With `collect`,
+    /// return the dropped stacks without spawning their item entities; otherwise return an empty
+    /// list after spawning them. The one level drop path runs loot, block-drop hooks and
+    /// experience once, in vanilla's random order. `drop` false suppresses resources entirely.
+    ///
+    /// Inside an open Host transaction in this level, the break is tentative: the block changes
+    /// to its fluid's legacy block immediately, while particles, drops, experience, neighbor
+    /// updates and the `block_destroy` game event wait for root commit in vanilla's order; an
+    /// aborted transaction destroys and drops nothing. `collect` returns `Ok(None)` inside an
+    /// open Host transaction in this level without rolling loot.
+    ///
+    /// `Ok(None)` means nothing broke: air, a fluid block equal to its legacy block, a refused
+    /// write, a stale or foreign `breaker`, a stale handle, a client, an unloaded/out-of-height
+    /// position, a parked level, or `collect` inside an open Host transaction.
     fn level_destroy_block(
         &mut self,
         level: LevelRef,
         pos: [i32; 3],
         drop: bool,
         tool: Option<&ItemStack>,
+        breaker: Option<EntityRef>,
         collect: bool,
     ) -> Result<Option<Vec<ItemStack>>, StackWriteError>;
     /// Side: server.

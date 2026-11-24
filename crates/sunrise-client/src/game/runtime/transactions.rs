@@ -695,6 +695,16 @@ pub(super) enum After {
     BreakProgress(i32, [i32; 3], i32),
     /// Replay a block write (coalesced by position unless a strict edit shares the cell).
     Block(BlockStep),
+    /// Pre-write step of a transactional `LevelRef::destroy_block`: particles and `Block.dropResources`
+    /// while the broken block and its block entity still stand, before its `After::Block` step.
+    DestroyBlockPre(Box<DestroyBlockStep>),
+    /// Post-write step of a transactional `LevelRef::destroy_block`: `minecraft:block_destroy`
+    /// game event after its `After::Block` step succeeds.
+    DestroyBlockPost {
+        pos: [i32; 3],
+        state: BlockStateId,
+        breaker: Option<mod_api::EntityRef>,
+    },
     /// Publish the storage and watched writes of a strict bulk edit, not ordinary updates.
     BulkBlocks(
         sunrise_client::block_edit::BulkPublication,
@@ -768,6 +778,8 @@ impl After {
         matches!(
             self,
             Self::Block(_)
+                | Self::DestroyBlockPre(_)
+                | Self::DestroyBlockPost { .. }
                 | Self::BulkBlocks(..)
                 | Self::ConnectionGroup(..)
                 | Self::Changed(_)
@@ -786,6 +798,15 @@ impl After {
                 | Self::Emptied(_)
         )
     }
+}
+
+/// Deferred pre-write payload for a transactional `LevelRef::destroy_block`.
+pub(super) struct DestroyBlockStep {
+    pub(super) pos: [i32; 3],
+    pub(super) state: BlockStateId,
+    pub(super) drop: bool,
+    pub(super) tool: Option<ItemStack>,
+    pub(super) breaker: Option<mod_api::EntityRef>,
 }
 
 /// Effects shared by transactional interaction contexts.
@@ -2242,6 +2263,69 @@ impl<'g> Game<'g> {
             replay.replay_removal = true;
         }
     }
+    /// Stages a `LevelRef::destroy_block` inside the open transaction in `self.dim`:
+    /// replaces `pos` tentatively with its fluid's legacy block, hides any replaced block
+    /// entity, and brackets its `After::Block` step with `DestroyBlockPre` (particles +
+    /// `Block.dropResources`) and `DestroyBlockPost` (`minecraft:block_destroy` game event).
+    pub(super) fn journal_destroy_block(
+        &mut self,
+        pos: [i32; 3],
+        drop: bool,
+        tool: Option<ItemStack>,
+        breaker: Option<mod_api::EntityRef>,
+    ) -> bool {
+        let [x, y, z] = pos;
+        if self.world_debug
+            || !(-30_000_000..30_000_000).contains(&x)
+            || !(-30_000_000..30_000_000).contains(&z)
+            || !self.world.is_loaded_at(x, y, z)
+            || self.world.carrier_fences.locks_cell(&pos)
+        {
+            return false;
+        }
+        let old = self.world.block(x, y, z);
+        let b = self.res.behaviours();
+        if b.is_air(old) {
+            return false;
+        }
+        let legacy = b.legacy_block(b.fluid(old));
+        if old == legacy || self.pack.assets.registry.state(legacy).is_none() {
+            return false;
+        }
+        let replaces_entity = !b.keeps_block_entity(old, legacy)
+            && self.world.block_entities.get(&(x, y, z)).is_some();
+        if !self.journal_set_block_flags(
+            pos,
+            legacy,
+            sunrise_world::level::flags::UPDATE_ALL,
+            false,
+        ) {
+            return false;
+        }
+        if replaces_entity {
+            self.journal_block_replacement((x, y, z));
+        }
+        let Some(level) = entities::open_in(&mut self.transactions, self.dim) else {
+            return false;
+        };
+        let block_idx = level.after.len() - 1;
+        level.after.insert(
+            block_idx,
+            After::DestroyBlockPre(Box::new(DestroyBlockStep {
+                pos,
+                state: old,
+                drop,
+                tool,
+                breaker,
+            })),
+        );
+        level.after.push(After::DestroyBlockPost {
+            pos,
+            state: old,
+            breaker,
+        });
+        true
+    }
     pub(super) fn journal_level_random(&mut self) {
         self.journal_active_level_random(LegacyRandom::clone);
     }
@@ -2514,7 +2598,11 @@ impl<'g> Game<'g> {
                 }
             },
             // Only reached through a root commit, which replays blocks and connection groups in order.
-            After::Block(_) | After::BulkBlocks(..) | After::ConnectionGroup(..) => {}
+            After::Block(_)
+            | After::DestroyBlockPre(_)
+            | After::DestroyBlockPost { .. }
+            | After::BulkBlocks(..)
+            | After::ConnectionGroup(..) => {}
             After::Drop(pos, stack) => {
                 self.spawn_item(stack, pos.map(|p| f64::from(p) + 0.5), [0.0; 3], 10);
             }
@@ -2715,6 +2803,7 @@ impl<'g> Game<'g> {
             .iter()
             .filter_map(|after| match after {
                 After::Block(step) if level.blocks[&step.pos].strict => Some(step.pos),
+                After::DestroyBlockPre(step) => Some((step.pos[0], step.pos[1], step.pos[2])),
                 _ => None,
             })
             .chain(
@@ -2788,6 +2877,7 @@ impl<'g> Game<'g> {
         let mut told_holders = FxHashSet::default();
         let mut explicit_group_since_block = std::collections::HashSet::new();
         let mut biome_columns = std::collections::HashSet::new();
+        let mut last_block_changed = false;
         for after in level.after {
             match after {
                 // Each storage tells the world once, after every write.
@@ -2799,13 +2889,26 @@ impl<'g> Game<'g> {
                     self.world.set_connection_group(x, y, z, group, true);
                     explicit_group_since_block.insert(pos);
                 }
+                After::DestroyBlockPre(step) => {
+                    self.commit_destroy_block_pre(*step);
+                }
+                After::DestroyBlockPost {
+                    pos,
+                    state,
+                    breaker,
+                } => {
+                    if last_block_changed {
+                        self.post_destroy_block_game_event(pos, state, breaker);
+                    }
+                    last_block_changed = false;
+                }
                 After::Block(step) if rewound.contains(&step.pos) => {
                     let (x, y, z) = step.pos;
                     explicit_group_since_block.remove(&step.pos);
                     if step.removed.is_some() && !step.replay.replay_removal {
                         self.world.block_entities.remove(&step.pos);
                     }
-                    self.set_block_live(
+                    last_block_changed = self.set_block_live(
                         [x, y, z],
                         step.to,
                         step.replay.flags,

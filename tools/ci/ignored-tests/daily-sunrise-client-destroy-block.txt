@@ -1,0 +1,2 @@
+sunrise-client game::native_entity_refs::tests::destroy_block_in_transaction_commits_effects_and_rolls_back_on_abort lib daily resources
+sunrise-client game::native_entity_refs::tests::destroy_block_passes_breaker_to_loot_and_game_event lib daily child-process
