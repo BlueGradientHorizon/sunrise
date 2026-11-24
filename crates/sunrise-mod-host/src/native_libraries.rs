@@ -151,6 +151,16 @@ fn verify(folder: &Path, libraries: &[Library]) -> Result<Vec<Vec<u8>>, String> 
                 library.id, library.file, library.sha256
             ));
         }
+        // The record's identity must be the one stamped in these bytes (the entry's
+        // NUL-terminated literal), so the dependency check below judges the library that loads,
+        // not only its record.
+        let stamped = [library.identity.as_bytes(), b"\0"].concat();
+        if memchr::memmem::find(&bytes, &stamped).is_none() {
+            return Err(format!(
+                "mod {}: library {} was not built with the identity its record names ({:?}): rebuild your native mods",
+                library.id, library.file, library.identity
+            ));
+        }
         images.push(bytes);
     }
     for library in libraries {
@@ -316,19 +326,35 @@ mod tests {
     fn hash_phase_refuses_missing_corrupt_and_traversal_by_mod_name() {
         let folder = std::env::temp_dir().join(format!("native-hash-{}", std::process::id()));
         std::fs::create_dir_all(&folder).unwrap();
+        let identity = format!("{GAME_BUILD_ID} example 1 {RUSTC_VERSION} source none unwind");
+        let valid = format!("code{identity}\0data");
         let mut row = Library {
             file: "test.so".into(),
-            sha256: format!("{:x}", Sha256::digest(b"valid")),
+            sha256: format!("{:x}", Sha256::digest(&valid)),
             id: "example".into(),
-            identity: format!("{GAME_BUILD_ID} example 1 {RUSTC_VERSION} source none unwind"),
+            identity,
         };
         assert!(
             verify(&folder, std::slice::from_ref(&row))
                 .unwrap_err()
                 .contains("example")
         );
-        std::fs::write(folder.join("test.so"), b"valid").unwrap();
+        std::fs::write(folder.join("test.so"), &valid).unwrap();
         verify(&folder, std::slice::from_ref(&row)).unwrap();
+        // A record naming another build than the library's bytes, with the bytes' own hash.
+        let stamped_other = valid.replace(" source ", " other ");
+        std::fs::write(folder.join("test.so"), &stamped_other).unwrap();
+        let sha256 = std::mem::replace(
+            &mut row.sha256,
+            format!("{:x}", Sha256::digest(&stamped_other)),
+        );
+        let error = verify(&folder, std::slice::from_ref(&row)).unwrap_err();
+        assert!(
+            error.contains("example") && error.contains("not built with the identity"),
+            "{error}"
+        );
+        row.sha256 = sha256;
+        std::fs::write(folder.join("test.so"), &valid).unwrap();
         for identity in [
             format!("wrong example 1 {RUSTC_VERSION} source none unwind"),
             format!("{GAME_BUILD_ID} example 1 wrong source none unwind"),
@@ -349,7 +375,7 @@ mod tests {
         // A link with the right bytes is still refused: it could lead out of the installation.
         #[cfg(unix)]
         {
-            std::fs::write(folder.join("real.so"), b"valid").unwrap();
+            std::fs::write(folder.join("real.so"), &valid).unwrap();
             std::os::unix::fs::symlink(folder.join("real.so"), folder.join("link.so")).unwrap();
             row.file = "link.so".into();
             let error = verify(&folder, std::slice::from_ref(&row)).unwrap_err();
