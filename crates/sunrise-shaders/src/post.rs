@@ -857,6 +857,8 @@ pub fn load_post(
             continue;
         }
         if let Some(name) = e.key.strip_prefix("image.") {
+            // `Properties::parse` expanded the file's own macros at the line; the options again
+            // here, for a file read without them.
             match CustomImage::parse(name, &options.expand(&e.value)) {
                 Some(i) => post.images.push(i),
                 None => post.notes.push(format!("`{}`: not an image", e.key)),
@@ -866,7 +868,11 @@ pub fn load_post(
         let Some(name) = e.key.strip_prefix("size.buffer.") else {
             continue;
         };
-        match (crate::buffer_index(name), BufferSize::parse(&e.value)) {
+        // As for `image.*`: the options again, for a file read without them.
+        match (
+            crate::buffer_index(name),
+            BufferSize::parse(&options.expand(&e.value)),
+        ) {
             (Some(b), Some(size)) => post.sizes[b] = Some(size),
             _ => post
                 .notes
@@ -2161,6 +2167,121 @@ mod tests {
         let post = load_post(&pack, "", &properties, &macros, &GameInputs::default());
         assert!(post.images.is_empty());
         assert!(!post.notes.is_empty());
+    }
+
+    /// `image.*` sizes written as macros `shaders.properties` defines above them, inside and
+    /// outside `#if` blocks (#675), read as the game reads the pack. A `#define` reaches the
+    /// lines after it only, so the macros an image line sees are the ones at that line.
+    #[test]
+    fn image_dimensions_expand_the_macros_the_properties_file_defines_above_them() {
+        let properties = "\
+            #if MC_VERSION >= 10000\n#define WIDTH 192\n#define HEIGHT 128\n#endif\n\
+            image.sky = none RGBA RGBA16F HALF_FLOAT false false WIDTH HEIGHT\n\
+            #ifdef NOT_DEFINED\n#define DEPTH 5\n#else\n#define DEPTH 7\n#endif\n\
+            image.volume = none RGBA RGBA8 BYTE false false WIDTH 3 DEPTH\n\
+            #define WIDE SIZE\n\
+            image.option = none RGBA RGBA8 BYTE false false WIDE 24\n\
+            #define SHORT 40\n\
+            image.at_its_line = none RGBA RGBA8 BYTE false false 9 SHORT\n\
+            #undef SHORT\n#define SHORT 41\n\
+            image.late = none RGBA RGBA8 BYTE false false LATER 2\n\
+            #define LATER 6\n\
+            #define GONE 11\n#undef GONE\n\
+            image.gone = none RGBA RGBA8 BYTE false false GONE 2\n";
+        let bytes = zip(&[
+            ("shaders/options.glsl", "#define SIZE 16 // [8 16]\n"),
+            ("shaders/shaders.properties", properties),
+        ]);
+        for (chosen, option) in [(None, 16), (Some("8"), 8)] {
+            let mut pack = Pack::from_zip_bytes("image.zip", bytes.clone()).unwrap();
+            if let Some(value) = chosen {
+                pack = pack.with_chosen(std::collections::BTreeMap::from([(
+                    "SIZE".into(),
+                    value.into(),
+                )]));
+            }
+            let mut macros = Macros::standard();
+            let (properties, _) = crate::read_properties(&pack, &mut macros);
+            let post = load_post(&pack, "", &properties, &macros, &GameInputs::default());
+            let images: Vec<_> = post
+                .images
+                .iter()
+                .map(|i| (i.name.as_str(), i.size))
+                .collect();
+            assert_eq!(
+                images,
+                [
+                    ("sky", ImageSize::Absolute([192, 128])),
+                    ("volume", ImageSize::Volume([192, 3, 7])),
+                    ("option", ImageSize::Absolute([option, 24])),
+                    ("at_its_line", ImageSize::Absolute([9, 40])),
+                ]
+            );
+            // Only the two lines left unresolved are noted, each naming its key.
+            let named = |n: &String, key: &str| n.contains(&format!("`{key}`"));
+            assert!(
+                post.notes.len() == 2
+                    && named(&post.notes[0], "image.late")
+                    && named(&post.notes[1], "image.gone"),
+                "{:?}",
+                post.notes
+            );
+        }
+    }
+    /// `size.buffer.*` sizes written as macros, as `image.*` ones (#675; spec 1.5 item 2 names
+    /// buffer sizes first): each value sees the macros of its line.
+    #[test]
+    fn buffer_sizes_expand_the_macros_the_properties_file_defines_above_them() {
+        let properties = "\
+            #if MC_VERSION >= 10000\n#define WIDTH 64\n#define HEIGHT 48\n#endif\n\
+            size.buffer.colortex4 = WIDTH HEIGHT\n\
+            #define SIDE SIZE\n\
+            size.buffer.colortex5 = SIDE SIDE\n\
+            #define SHORT 40\n\
+            size.buffer.colortex6 = 9 SHORT\n\
+            #undef SHORT\n#define SHORT 41\n\
+            size.buffer.colortex7 = LATER 2\n\
+            #define LATER 6\n\
+            #define GONE 11\n#undef GONE\n\
+            size.buffer.colortex8 = GONE 2\n\
+            #ifdef NOT_DEFINED\n#define TALL 5\n#else\n#define TALL 7\n#endif\n\
+            size.buffer.colortex9 = 3 TALL\n";
+        let bytes = zip(&[
+            ("shaders/options.glsl", "#define SIZE 16 // [8 16]\n"),
+            ("shaders/shaders.properties", properties),
+        ]);
+        for (chosen, option) in [(None, 16), (Some("8"), 8)] {
+            let mut pack = Pack::from_zip_bytes("sizes.zip", bytes.clone()).unwrap();
+            if let Some(value) = chosen {
+                pack = pack.with_chosen(std::collections::BTreeMap::from([(
+                    "SIZE".into(),
+                    value.into(),
+                )]));
+            }
+            let mut macros = Macros::standard();
+            let (properties, _) = crate::read_properties(&pack, &mut macros);
+            let post = load_post(&pack, "", &properties, &macros, &GameInputs::default());
+            assert_eq!(
+                post.sizes[4..10],
+                [
+                    Some(BufferSize::Absolute([64, 48])),
+                    Some(BufferSize::Absolute([option, option])),
+                    Some(BufferSize::Absolute([9, 40])),
+                    None,
+                    None,
+                    Some(BufferSize::Absolute([3, 7])),
+                ]
+            );
+            // Only the two lines left unresolved are noted, each naming its key.
+            let named = |n: &String, key: &str| n.contains(&format!("`{key}`"));
+            assert!(
+                post.notes.len() == 2
+                    && named(&post.notes[0], "size.buffer.colortex7")
+                    && named(&post.notes[1], "size.buffer.colortex8"),
+                "{:?}",
+                post.notes
+            );
+        }
     }
     use crate::pack::tests::zip;
 
