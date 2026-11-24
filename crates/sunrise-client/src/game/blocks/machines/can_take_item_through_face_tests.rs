@@ -2,8 +2,8 @@
 use super::*;
 use crate::game::native_entity_refs::tests::with_game;
 use mod_api::{
-    BlockEntityPart, BlockPart, CanTakeItemThroughFaceEvent, Hooks, ModEntry, Mods, Registrar,
-    RegistrationContext,
+    BlockEntityPart, BlockPart, CanTakeItemThroughFaceEvent, Hooks, Host, ModEntry, Mods,
+    Registrar, RegistrationContext,
 };
 use sunrise_client::{chunk::Chunk, containers::ModBlockEntity};
 use sunrise_core::position::ChunkPos;
@@ -22,6 +22,7 @@ impl BlockPart for Gate {}
 impl BlockEntityPart for Gate {
     fn can_take_item_through_face(
         &self,
+        _: &dyn Host,
         event: &mut CanTakeItemThroughFaceEvent<'_>,
     ) -> Option<bool> {
         self.0.lock().unwrap().push(event.face);

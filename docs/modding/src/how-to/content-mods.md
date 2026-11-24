@@ -1171,7 +1171,8 @@ keeps it. The face's slots still bound which slots are asked. A hopper pulling f
 `ITEMS` and `STORAGE` extracts through a side use this query; an extract with no side skips the
 face rules, as NeoForge's unsided item handler does, and menus use `menu_slot_rules`.
 
-The query has no Host and may run for a slot that is never written. Seed a filter from the
+`can_place_item` has no Host; `can_take_item_through_face` gets a read-only one. Either query
+may run for a slot that is never written. Seed a filter from the
 accepted write, not from the query. Default `ITEMS` and `STORAGE` writes to these slots emit
 `contents_changed` once per backing block on commit. During a handled `menu_quick_move`, the notice
 waits for the clicked source to settle and only runs if the original backing container is still there.

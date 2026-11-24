@@ -860,6 +860,7 @@ impl Game<'_> {
     /// `WorldlyContainer.canTakeItemThroughFace` for a block entity's subscribed part: whether
     /// `stack` in `slot` may leave through `face`, replacing the declared output slots.
     pub(in crate::game) fn native_can_take_item_through_face(
+        &self,
         entity: &ModBlockEntity,
         pos: BlockPos,
         state: mod_api::BlockState,
@@ -868,7 +869,7 @@ impl Game<'_> {
         face: Direction,
         allowed: &mut Option<bool>,
     ) {
-        Self::fire_can_take_item_through_face(entity, pos, state, slot, stack, face, allowed);
+        self.fire_can_take_item_through_face(entity, pos, state, slot, stack, face, allowed);
     }
     /// Register namespaced NBT component types before content loads.
     pub(in crate::game) fn native_component_types(

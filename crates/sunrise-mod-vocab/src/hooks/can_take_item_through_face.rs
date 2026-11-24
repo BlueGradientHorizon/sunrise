@@ -9,13 +9,15 @@ pub trait Hooks {
     /// `getSlotsForFace`) still bound which slots are asked.
     ///
     /// This is a read-only query on the entity's position, block state, saved data and current
-    /// slots, with no Host. The state is the block at this entity's own position. A hopper
+    /// slots, with a read-only `Host` for anything else the answer turns on (an attachment, the
+    /// registries). The state is the block at this entity's own position. A hopper
     /// below pulling through `Down` (`HopperBlockEntity.canTakeItemFromContainer`) asks it, and
     /// so do `ITEMS` and `STORAGE` extracts through a side. An extract with no side does not:
     /// as NeoForge's unsided item handler, it skips the face rules. Menus use
     /// `menu_slot_rules` instead (`Slot.mayPickup`).
     #[hook(
-        receiver = "associated",
+        receiver = "read",
+        host = "read",
         dispatch = "flat",
         side = "server",
         contract = "replace",
