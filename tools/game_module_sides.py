@@ -634,6 +634,22 @@ def skip_item_body(tokens: list[Token], idx: int) -> int:
     return n
 
 
+def format_rust_tokens(toks: list[Token], max_len: int = 120) -> str:
+    """Render a short token slice into compact readable Rust syntax for diagnostics."""
+    out: list[str] = []
+    no_space_before = {"::", "(", ")", "[", "]", "{", "}", "<", ">", ",", ";", ".", "!", "?"}
+    no_space_after = {"::", "(", "[", "{", "<", ".", "!", "&"}
+    for tok in toks:
+        text = tok[1]
+        if out and text not in no_space_before and out[-1] not in no_space_after:
+            out.append(" ")
+        out.append(text)
+    rendered = "".join(out)
+    if len(rendered) > max_len:
+        return rendered[: max_len - 3] + "..."
+    return rendered
+
+
 def scan_top_level_items(src: str, file_rel: str, parent_dir: Path) -> tuple[list[TopItem], list[str]]:
     """Parse top-level Rust items from `src`, attaching outer attributes across comments/blank lines."""
     tokens = tokenize_rust(src)
@@ -823,7 +839,9 @@ def scan_top_level_items(src: str, file_rel: str, parent_dir: Path) -> tuple[lis
                     TopItem("use_super_glob", "super::*", item_tok_start, end_pos, use_line, indent, tuple(attrs), vis)
                 )
             else:
-                items.append(TopItem("use", "", item_tok_start, end_pos, use_line, indent, tuple(attrs), vis))
+                items.append(
+                    TopItem("use", format_rust_tokens(use_toks), item_tok_start, end_pos, use_line, indent, tuple(attrs), vis)
+                )
             i = end_idx
             continue
 
@@ -863,12 +881,13 @@ def scan_top_level_items(src: str, file_rel: str, parent_dir: Path) -> tuple[lis
         while m + 1 < n and tokens[m][0] == "IDENT" and tokens[m + 1][1] == "::":
             m += 2
         if m + 2 < n and tokens[m][0] == "IDENT" and tokens[m + 1][1] == "!" and tokens[m + 2][1] in ("(", "[", "{"):
-            mname = tokens[m][1]
             end_idx = skip_balanced(tokens, m + 2)
+            call_end = end_idx
             if end_idx < n and tokens[end_idx][1] == ";":
                 end_idx += 1
+            call_text = format_rust_tokens(tokens[j:call_end])
             items.append(
-                TopItem("macro_call", mname, item_tok_start, tokens[end_idx - 1][3], item_line, indent, tuple(attrs), vis)
+                TopItem("macro_call", call_text, item_tok_start, tokens[end_idx - 1][3], item_line, indent, tuple(attrs), vis)
             )
             i = end_idx
             continue
@@ -1701,12 +1720,12 @@ def check_game_side_containers(game_text: str, root: Path) -> list[str]:
     return problems
 
 
-def parse_impl_header(impl_toks: list[Token]) -> tuple[bool, list[Token], int | None]:
-    """Inspect tokens of an `impl` item; return `(is_trait_impl, target_tokens, brace_idx)`."""
+def parse_impl_header(impl_toks: list[Token]) -> tuple[bool, list[Token], list[Token], int | None]:
+    """Inspect tokens of an `impl` item; return `(is_trait_impl, trait_tokens, target_tokens, brace_idx)`."""
     n = len(impl_toks)
     kw_idx = next((idx for idx, t in enumerate(impl_toks) if t[0] == "IDENT" and t[1] == "impl"), None)
     if kw_idx is None:
-        return False, [], None
+        return False, [], [], None
 
     brace_idx: int | None = None
     i = kw_idx + 1
@@ -1720,7 +1739,7 @@ def parse_impl_header(impl_toks: list[Token]) -> tuple[bool, list[Token], int | 
             continue
         i += 1
     if brace_idx is None:
-        return False, [], None
+        return False, [], [], None
 
     header = impl_toks[kw_idx + 1 : brace_idx]
     h_idx = 0
@@ -1758,8 +1777,8 @@ def parse_impl_header(impl_toks: list[Token]) -> tuple[bool, list[Token], int | 
 
     end_target = where_pos if where_pos is not None else len(header)
     if for_pos is not None:
-        return True, header[for_pos + 1 : end_target], brace_idx
-    return False, header[h_idx:end_target], brace_idx
+        return True, header[h_idx:for_pos], header[for_pos + 1 : end_target], brace_idx
+    return False, [], header[h_idx:end_target], brace_idx
 
 
 def target_path_segments(target_toks: list[Token]) -> list[str]:
@@ -1907,11 +1926,14 @@ def check_side_file_structure(
             if not seen_state_struct:
                 problems.append(f"{rel}:{item.line}: unexpected `impl` item before `struct {sname}` in side-file preamble")
             impl_toks = [t for t in tokens if item.start <= t[2] and t[3] <= item.end]
-            is_trait, target_toks, brace_idx = parse_impl_header(impl_toks)
+            is_trait, trait_toks, target_toks, brace_idx = parse_impl_header(impl_toks)
             segs = target_path_segments(target_toks)
             if is_trait:
+                trait_str = format_rust_tokens(trait_toks) or "<unknown>"
+                target_str = format_rust_tokens(target_toks) or "<unknown>"
                 problems.append(
-                    f"{rel}:{item.line}: trait impl is disallowed in side file (state structs must not implement traits here)"
+                    f"{rel}:{item.line}: disallowed trait impl `{trait_str}` for `{target_str}` in side file "
+                    "(state structs must not implement traits here)"
                 )
             elif segs != [sname]:
                 problems.append(
@@ -1925,8 +1947,14 @@ def check_side_file_structure(
 
         # Every other top-level item (`fn`, `use`, `inline_mod`, `macro_call`/`include!`, etc.) is rejected.
         where = f" before `struct {sname}` in side-file preamble" if not seen_state_struct else ""
+        if item.kind == "inline_mod" and item.name:
+            detail = f" `mod {item.name}`"
+        elif item.name:
+            detail = f" `{item.name}`"
+        else:
+            detail = ""
         problems.append(
-            f"{rel}:{item.line}: disallowed `{item.kind}` item{where} in side file"
+            f"{rel}:{item.line}: disallowed `{item.kind}` item{detail}{where} in side file"
         )
 
     if glob_count != 1:
@@ -1994,14 +2022,19 @@ def check_state_impls_across_game(
                         continue
                     end_idx = skip_item_body(tokens, i + 1)
                     impl_toks = tokens[i:end_idx]
-                    is_trait, target_toks, _ = parse_impl_header(impl_toks)
+                    is_trait, trait_toks, target_toks, _ = parse_impl_header(impl_toks)
                     segs = target_path_segments(target_toks)
                     if segs and segs[-1] in state_names:
                         if not (is_dedicated and not is_trait and segs == ["ServerState"]):
-                            kind_label = "trait impl" if is_trait else "inherent impl"
-                            problems.append(
-                                f"{rel}:{line_index.line_of(tokens[i][2])}: disallowed {kind_label} for `{'::'.join(segs)}` outside side file"
-                            )
+                            if is_trait:
+                                trait_str = format_rust_tokens(trait_toks) or "<unknown>"
+                                problems.append(
+                                    f"{rel}:{line_index.line_of(tokens[i][2])}: disallowed trait impl `{trait_str}` for `{'::'.join(segs)}` outside side file"
+                                )
+                            else:
+                                problems.append(
+                                    f"{rel}:{line_index.line_of(tokens[i][2])}: disallowed inherent impl for `{'::'.join(segs)}` outside side file"
+                                )
                     i = end_idx
                     continue
                 if tokens[i][0] == "IDENT" and tokens[i][1] == "type" and (i == start or tokens[i - 1][1] not in ("::", ".")):

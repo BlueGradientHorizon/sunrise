@@ -1118,10 +1118,14 @@ class GameModuleSidesTests(unittest.TestCase):
             orig_cs = cs.read_text()
 
             # 1. Unlisted inline module inside side file is rejected.
+            inline_line = len(orig_cs.splitlines()) + 2
             cs.write_text(orig_cs + "\nmod ratchet_inline {\n    const MARKER: bool = false;\n}\n")
             rc, _, err = run_cli("--check", "--root", str(root))
             self.assertEqual(rc, 1)
-            self.assertIn("disallowed `inline_mod` item", err)
+            self.assertIn(
+                f"crates/sunrise-client/src/game/client_side.rs:{inline_line}: disallowed `inline_mod` item `mod ratchet_inline`",
+                err,
+            )
 
             # 2. Unlisted out-of-line module with trailing comment is rejected.
             write_tree(root, {"crates/sunrise-client/src/game/r2_probe.rs": "const MARKER: bool = false;\n"})
@@ -1186,14 +1190,18 @@ class GameModuleSidesTests(unittest.TestCase):
             orig_cs = cs.read_text()
 
             # 1. Free function returning &mut ClientState or private field is rejected.
-            for fn_src in (
-                "\npub(in crate::game) fn leak_state(g: &mut Game) -> &mut ClientState { &mut g.client }\n",
-                "\npub(in crate::game) fn leak_field(s: &mut ClientState) -> &mut bool { &mut s.private_flag }\n",
+            fn_line = len(orig_cs.splitlines()) + 2
+            for fname, fn_src in (
+                ("leak_state", "\npub(in crate::game) fn leak_state(g: &mut Game) -> &mut ClientState { &mut g.client }\n"),
+                ("leak_field", "\npub(in crate::game) fn leak_field(s: &mut ClientState) -> &mut bool { &mut s.private_flag }\n"),
             ):
                 cs.write_text(orig_cs + fn_src)
                 rc, _, err = run_cli("--check", "--root", str(root))
                 self.assertEqual(rc, 1)
-                self.assertIn("disallowed `fn` item", err)
+                self.assertIn(
+                    f"crates/sunrise-client/src/game/client_side.rs:{fn_line}: disallowed `fn` item `{fname}`",
+                    err,
+                )
 
             # 2. Inherent method on ClientState returning private field is rejected; constructor fn new is allowed.
             cs.write_text(
@@ -1219,6 +1227,8 @@ class GameModuleSidesTests(unittest.TestCase):
             self.assertEqual(run_cli("--fix", "--no-fmt", "--root", str(root))[0], 0)
             cs = root / "crates/sunrise-client/src/game/client_side.rs"
             orig_cs = cs.read_text()
+            mod_line = len(orig_cs.splitlines()) + 2
+            use_line = mod_line + 3
             cs.write_text(
                 orig_cs
                 + "\nmod hidden {\n    pub(in crate::game) fn reveal(s: &mut super::ClientState) -> &mut bool { &mut s.private_flag }\n}\n"
@@ -1226,8 +1236,14 @@ class GameModuleSidesTests(unittest.TestCase):
             )
             rc, _, err = run_cli("--check", "--root", str(root))
             self.assertEqual(rc, 1)
-            self.assertIn("disallowed `inline_mod` item", err)
-            self.assertIn("disallowed `use` item", err)
+            self.assertIn(
+                f"crates/sunrise-client/src/game/client_side.rs:{mod_line}: disallowed `inline_mod` item `mod hidden`",
+                err,
+            )
+            self.assertIn(
+                f"crates/sunrise-client/src/game/client_side.rs:{use_line}: disallowed `use` item `self::hidden::reveal as ratchet_reexport`",
+                err,
+            )
 
     def test_side_scope_rejects_unapproved_item_includes(self):
         with tempfile.TemporaryDirectory() as td:
@@ -1250,10 +1266,14 @@ class GameModuleSidesTests(unittest.TestCase):
             )
 
             # 1. Root include! in side file (accessor or module injection) is rejected.
+            inc_line = len(orig_cs.splitlines()) + 2
             cs.write_text(orig_cs + '\ninclude!("r2_probe.rs");\n')
             rc, _, err = run_cli("--check", "--root", str(root))
             self.assertEqual(rc, 1)
-            self.assertIn("disallowed `macro_call` item", err)
+            self.assertIn(
+                f'crates/sunrise-client/src/game/client_side.rs:{inc_line}: disallowed `macro_call` item `include!("r2_probe.rs")`',
+                err,
+            )
             cs.write_text(orig_cs)
 
             # 2. Unapproved include! inside a registered child module is rejected.
@@ -1283,13 +1303,17 @@ class GameModuleSidesTests(unittest.TestCase):
             self.assertIn("must not carry `#[derive(...)]`", err)
 
             # 2. Qualified Deref target (`for self::ClientState`) is rejected.
+            impl_line = len(orig_cs.splitlines()) + 2
             cs.write_text(
                 orig_cs
                 + "\nimpl core::ops::Deref for self::ClientState {\n    type Target = bool;\n    fn deref(&self) -> &bool { &self.private_flag }\n}\n"
             )
             rc, _, err = run_cli("--check", "--root", str(root))
             self.assertEqual(rc, 1)
-            self.assertIn("trait impl is disallowed", err)
+            self.assertIn(
+                f"crates/sunrise-client/src/game/client_side.rs:{impl_line}: disallowed trait impl `core::ops::Deref` for `self::ClientState` in side file",
+                err,
+            )
 
             # 3. Aliased AsRef trait (`use ... as RatchetRef; impl RatchetRef<bool> for ClientState`) is rejected.
             cs.write_text(
@@ -1298,18 +1322,28 @@ class GameModuleSidesTests(unittest.TestCase):
             )
             rc, _, err = run_cli("--check", "--root", str(root))
             self.assertEqual(rc, 1)
-            self.assertIn("disallowed `use` item", err)
-            self.assertIn("trait impl is disallowed", err)
+            self.assertIn(
+                f"crates/sunrise-client/src/game/client_side.rs:{impl_line}: disallowed `use` item `core::convert::AsRef as RatchetRef`",
+                err,
+            )
+            self.assertIn(
+                f"crates/sunrise-client/src/game/client_side.rs:{impl_line + 1}: disallowed trait impl `RatchetRef<bool>` for `ClientState` in side file",
+                err,
+            )
             cs.write_text(orig_cs)
 
             # 4. Cross-file trait or inherent impl for ClientState inside a moved child module is rejected.
+            hud_impl_line = len(orig_hud.splitlines()) + 2
             hud.write_text(
                 orig_hud
                 + "\nimpl core::convert::AsRef<bool> for super::ClientState {\n    fn as_ref(&self) -> &bool { &self.private_flag }\n}\n"
             )
             rc, _, err = run_cli("--check", "--root", str(root))
             self.assertEqual(rc, 1)
-            self.assertIn("disallowed trait impl for `super::ClientState` outside side file", err)
+            self.assertIn(
+                f"crates/sunrise-client/src/game/ui/hud.rs:{hud_impl_line}: disallowed trait impl `core::convert::AsRef<bool>` for `super::ClientState` outside side file",
+                err,
+            )
 
     def test_r2_06_ci_and_pr_ready_wire_real_tree_checks(self):
         wf = (ROOT / ".github/workflows/dyna-ci.yml").read_text(encoding="utf-8")
