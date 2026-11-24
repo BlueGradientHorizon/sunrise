@@ -9,6 +9,7 @@ live directly on `Game`. Normalises accesses in both directions.
 Usage:
     python3 tools/game_field_owners.py --fix [--allow-ambiguous] [paths...]
     python3 tools/game_field_owners.py --check [--allow-ambiguous] [paths...]
+    python3 tools/game_field_owners.py --list [--allow-ambiguous] [paths...]
 """
 
 from __future__ import annotations
@@ -173,8 +174,73 @@ PASSTHROUGH_METHODS: set[str] = {
 NON_GAME = ""
 AMBIGUOUS = "?"
 
+# Crates whose macro paths match the built-in/expression macro allowlists.
+TRUSTED_MACRO_CRATES: set[str] = {"std", "core", "alloc", "log", "tracing", "anyhow", "serde_json"}
+
+# Repo-defined expression macros valid only inside `crates/sunrise-client/src/game*`.
+REPO_EXPR_MACROS: set[str] = set(GAME_MACROS) | {
+    "assign_resident_id",
+    "assign_resident_ids",
+    "with_entity",
+}
+
+# Tokens that immediately precede a block expression `{ ... }` rather than a control-flow body `{`.
+BLOCK_EXPR_PREV_TOKENS: set[str] = {
+    "unsafe",
+    "async",
+    "const",
+    "move",
+    "try",
+    "loop",
+    "else",
+    "mut",
+    "ref",
+    "!",
+    "=",
+    "==",
+    "!=",
+    "<",
+    "<=",
+    ">=",
+    "+",
+    "-",
+    "*",
+    "/",
+    "%",
+    "&",
+    "&&",
+    "|",
+    "||",
+    "^",
+    ",",
+    ";",
+    "=>",
+    "return",
+    "break",
+    "in",
+}
+
 Token = tuple[str, str, int, int]
 ClosureArgMap = dict[int, dict[int, str]]
+VarBinding = tuple[str, str]
+
+
+def norm_ident(text: str) -> str:
+    return text[2:] if text.startswith("r#") else text
+
+
+def is_in_game_tree(rel_posix: str) -> bool:
+    return rel_posix == "crates/sunrise-client/src/game.rs" or rel_posix.startswith("crates/sunrise-client/src/game/")
+
+
+@dataclass(frozen=True)
+class GamePathContext:
+    rel_posix: str
+    in_game_tree: bool
+    in_client_crate: bool
+    local_game_defined: bool
+    foreign_game_imported: bool
+    sunrise_game_imported: bool
 
 
 @dataclass(frozen=True)
@@ -553,18 +619,21 @@ def find_top_level_token(tokens: list[Token], target: str, track_angles: bool = 
     return None
 
 
-def extract_pattern_bound_names(pat_toks: list[Token]) -> set[str]:
-    """Return every local variable name introduced by a Rust pattern."""
+def extract_pattern_bound_names(pat_toks: list[Token]) -> tuple[set[str], set[str]]:
+    """Return `(definite_bound_names, uncertain_upper_names)` introduced by a Rust pattern."""
     if not pat_toks:
-        return set()
+        return set(), set()
 
     # Or-patterns `p1 | p2` (including leading `|`)
     or_parts = split_top_level_no_angles(pat_toks, "|")
     if len(or_parts) > 1:
-        names: set[str] = set()
+        definite: set[str] = set()
+        uncertain: set[str] = set()
         for part in or_parts:
-            names.update(extract_pattern_bound_names(part))
-        return names
+            d, u = extract_pattern_bound_names(part)
+            definite.update(d)
+            uncertain.update(u)
+        return definite, uncertain
     if pat_toks[0][1] == "|":
         return extract_pattern_bound_names(pat_toks[1:])
 
@@ -585,35 +654,44 @@ def extract_pattern_bound_names(pat_toks: list[Token]) -> set[str]:
         else:
             break
     if not p:
-        return set()
+        return set(), set()
 
     # `@` subpattern: `[ref] [mut] ident @ subpat`
     at_idx = find_top_level_token(p, "@")
     if at_idx is not None:
-        names = set()
+        definite = set()
+        uncertain = set()
         left = p[:at_idx]
         if len(left) == 1 and left[0][0] == "IDENT" and left[0][1] != "_":
-            names.add(left[0][1])
-        names.update(extract_pattern_bound_names(p[at_idx + 1 :]))
-        return names
+            definite.add(norm_ident(left[0][1]))
+        d, u = extract_pattern_bound_names(p[at_idx + 1 :])
+        definite.update(d)
+        uncertain.update(u)
+        return definite, uncertain
 
     # Range pattern `a..=b`, `a..b`, `..=b`, `..`
     if find_top_level_token(p, "..") is not None or find_top_level_token(p, "..=") is not None:
-        return set()
+        return set(), set()
 
     # Tuple `(p1, p2, ...)` or parenthesised pattern
     if p[0][1] == "(" and p[-1][1] == ")" and skip_balanced(p, 0, "(", ")") == len(p):
-        names = set()
+        definite = set()
+        uncertain = set()
         for elem in split_top_level_no_angles(p[1:-1], ","):
-            names.update(extract_pattern_bound_names(elem))
-        return names
+            d, u = extract_pattern_bound_names(elem)
+            definite.update(d)
+            uncertain.update(u)
+        return definite, uncertain
 
     # Slice `[p1, p2, ...]`
     if p[0][1] == "[" and p[-1][1] == "]" and skip_balanced(p, 0, "[", "]") == len(p):
-        names = set()
+        definite = set()
+        uncertain = set()
         for elem in split_top_level_no_angles(p[1:-1], ","):
-            names.update(extract_pattern_bound_names(elem))
-        return names
+            d, u = extract_pattern_bound_names(elem)
+            definite.update(d)
+            uncertain.update(u)
+        return definite, uncertain
 
     # Struct pattern `Path { f1: p1, f2, .. }`
     if p[-1][1] == "}":
@@ -629,21 +707,24 @@ def extract_pattern_bound_names(pat_toks: list[Token]) -> set[str]:
                     open_brace = idx
                     break
         if open_brace is not None:
-            names = set()
+            definite = set()
+            uncertain = set()
             for field_pat in split_top_level_no_angles(p[open_brace + 1 : -1], ","):
                 if not field_pat or (len(field_pat) == 1 and field_pat[0][1] == ".."):
                     continue
                 colon = find_top_level_token(field_pat, ":")
                 if colon is not None:
-                    names.update(extract_pattern_bound_names(field_pat[colon + 1 :]))
+                    d, u = extract_pattern_bound_names(field_pat[colon + 1 :])
+                    definite.update(d)
+                    uncertain.update(u)
                 else:
                     # Shorthand `[ref] [mut] field`
                     q = 0
                     while q < len(field_pat) and field_pat[q][1] in ("ref", "mut"):
                         q += 1
                     if q == len(field_pat) - 1 and field_pat[q][0] == "IDENT" and field_pat[q][1] != "_":
-                        names.add(field_pat[q][1])
-            return names
+                        definite.add(norm_ident(field_pat[q][1]))
+            return definite, uncertain
 
     # Tuple-struct / enum-variant pattern `Path ( p1, p2, ... )`
     if p[-1][1] == ")":
@@ -658,61 +739,198 @@ def extract_pattern_bound_names(pat_toks: list[Token]) -> set[str]:
                     open_paren = idx
                     break
         if open_paren is not None and open_paren > 0:
-            names = set()
+            definite = set()
+            uncertain = set()
             for arg in split_top_level_no_angles(p[open_paren + 1 : -1], ","):
-                names.update(extract_pattern_bound_names(arg))
-            return names
+                d, u = extract_pattern_bound_names(arg)
+                definite.update(d)
+                uncertain.update(u)
+            return definite, uncertain
 
     # Leaf identifier
     if len(p) == 1 and p[0][0] == "IDENT":
         ident = p[0][1]
         if ident in ("_", "true", "false", "self", "Self", "crate", "super"):
-            return set()
-        # Bare UpperCamelCase/ALL_CAPS without `mut`/`ref` is a unit variant or constant.
-        raw_name = ident[2:] if ident.startswith("r#") else ident
+            return set(), set()
+        raw_name = norm_ident(ident)
+        # Bare UpperCamelCase/ALL_CAPS without `mut`/`ref` may be a variant/const OR a binding.
         if not has_binding_mod and raw_name and raw_name[0].isupper():
-            return set()
-        return {ident}
+            return set(), {raw_name}
+        return {raw_name}, set()
 
-    return set()
+    return set(), set()
 
 
-def extract_type_base_name(toks: list[Token]) -> str | None:
+def parse_use_tree(toks: list[Token], prefix: list[str]) -> list[tuple[list[str], str]]:
+    if not toks:
+        return []
+    k = 0
+    n = len(toks)
+    segs = list(prefix)
+    while k < n:
+        v = toks[k][1]
+        if v == "::":
+            k += 1
+            continue
+        if v == "{":
+            end = skip_balanced(toks, k, "{", "}")
+            out: list[tuple[list[str], str]] = []
+            for part in split_top_level_no_angles(toks[k + 1 : end - 1], ","):
+                if part:
+                    out.extend(parse_use_tree(part, segs))
+            return out
+        if v == "*":
+            return [(segs + ["*"], "*")]
+        if v == "as" and k + 1 < n and toks[k + 1][0] == "IDENT":
+            return [(segs, norm_ident(toks[k + 1][1]))]
+        if toks[k][0] == "IDENT":
+            segs.append(norm_ident(v))
+            k += 1
+            continue
+        break
+    if not segs:
+        return []
+    if segs[-1] == "self":
+        return [(segs[:-1], segs[-2])] if len(segs) >= 2 else []
+    return [(segs, segs[-1])]
+
+
+def collect_use_imports(tokens: list[Token]) -> list[tuple[list[str], str]]:
+    imports: list[tuple[list[str], str]] = []
+    n = len(tokens)
+    i = 0
+    while i < n:
+        if tokens[i][0] == "IDENT" and tokens[i][1] == "use":
+            prev = tokens[i - 1][1] if i > 0 else None
+            if prev in (None, ";", "{", "}", "]", ")", "pub"):
+                k = i + 1
+                dc = 0
+                while k < n:
+                    tv = tokens[k][1]
+                    if tv == "{":
+                        dc += 1
+                    elif tv == "}":
+                        dc = max(0, dc - 1)
+                    elif tv == ";" and dc == 0:
+                        imports.extend(parse_use_tree(tokens[i + 1 : k], []))
+                        i = k
+                        break
+                    k += 1
+        i += 1
+    return imports
+
+
+def is_sunrise_game_path_raw(
+    segs: list[str],
+    in_game_tree: bool,
+    in_client_crate: bool,
+    rel_posix: str,
+    local_game_defined: bool,
+) -> bool:
+    if not segs or segs[-1] != "Game":
+        return False
+    if len(segs) == 1:
+        return in_game_tree and not local_game_defined
+    prefix = segs[:-1]
+    if prefix == ["sunrise_client", "game"]:
+        return True
+    if prefix == ["crate", "game"] and in_client_crate:
+        return True
+    if prefix == ["self"] and rel_posix == "crates/sunrise-client/src/game.rs" and not local_game_defined:
+        return True
+    if in_game_tree and all(s == "super" for s in prefix):
+        return True
+    if in_client_crate and len(prefix) >= 2 and prefix[-1] == "game" and all(s == "super" for s in prefix[:-1]):
+        return True
+    return False
+
+
+def is_sunrise_game_path(segs: list[str], ctx: GamePathContext) -> bool:
+    if not segs or segs[-1] != "Game":
+        return False
+    if len(segs) == 1:
+        if ctx.local_game_defined or ctx.foreign_game_imported:
+            return False
+        return ctx.in_game_tree or ctx.sunrise_game_imported
+    return is_sunrise_game_path_raw(
+        segs,
+        ctx.in_game_tree,
+        ctx.in_client_crate,
+        ctx.rel_posix,
+        ctx.local_game_defined,
+    )
+
+
+def build_game_path_context(
+    tokens: list[Token],
+    use_imports: list[tuple[list[str], str]],
+    rel_posix: str,
+) -> GamePathContext:
+    in_game = is_in_game_tree(rel_posix)
+    in_client = rel_posix.startswith("crates/sunrise-client/src/")
+    local_mock = file_defines_local_mock_game(tokens, rel_posix)
+    foreign_imported = False
+    sunrise_imported = False
+    for segs, bound in use_imports:
+        if bound == "*" and len(segs) >= 2:
+            if is_sunrise_game_path_raw(segs[:-1] + ["Game"], in_game, in_client, rel_posix, local_mock):
+                sunrise_imported = True
+            continue
+        if bound != "Game":
+            continue
+        if is_sunrise_game_path_raw(segs, in_game, in_client, rel_posix, local_mock):
+            sunrise_imported = True
+        else:
+            foreign_imported = True
+    return GamePathContext(
+        rel_posix=rel_posix,
+        in_game_tree=in_game,
+        in_client_crate=in_client,
+        local_game_defined=local_mock,
+        foreign_game_imported=foreign_imported,
+        sunrise_game_imported=sunrise_imported,
+    )
+
+
+def collect_shadowed_macros(
+    tokens: list[Token],
+    use_imports: list[tuple[list[str], str]],
+    in_game_tree: bool,
+) -> set[str]:
+    shadowed: set[str] = set()
+    n = len(tokens)
+    for i in range(n - 2):
+        if tokens[i][0] == "IDENT" and tokens[i][1] == "macro_rules" and tokens[i + 1][1] == "!" and tokens[i + 2][0] == "IDENT":
+            mname = norm_ident(tokens[i + 2][1])
+            if not (in_game_tree and mname in GAME_MACROS):
+                shadowed.add(mname)
+    known_macros = EXPR_MACROS | TOKEN_ONLY_MACROS
+    for segs, bound in use_imports:
+        if bound not in known_macros:
+            continue
+        if segs and segs[0] in TRUSTED_MACRO_CRATES and segs[-1] == bound:
+            continue
+        if in_game_tree and bound in REPO_EXPR_MACROS and segs and segs[0] in ("crate", "super", "self") and segs[-1] == bound:
+            continue
+        shadowed.add(bound)
+    return shadowed
+
+
+def extract_type_path_segments(toks: list[Token], allow_dyn: bool = False) -> tuple[list[str], int] | None:
     if not toks:
         return None
     j = 0
     n = len(toks)
-    while j < n and (toks[j][1] in ("&", "mut", "*", "const", "dyn") or toks[j][0] == "LIFETIME"):
-        j += 1
-    last_ident = None
-    while j < n:
-        if toks[j][0] == "IDENT":
-            last_ident = toks[j][1]
-            j += 1
-            if j < n and toks[j][1] == "::":
-                j += 1
-                continue
-            break
-        elif toks[j][1] == "::":
-            j += 1
-        else:
-            return None
-    return last_ident
-
-
-def is_exact_type_name(toks: list[Token], target_name: str) -> bool:
-    """Return True if `toks` is `[& ['a] [mut]] [path::]TargetName[<...>]`."""
-    j = 0
-    n = len(toks)
-    while j < n and (toks[j][1] in ("&", "mut", "*", "const") or toks[j][0] == "LIFETIME"):
+    skip_words = ("&", "mut", "*", "const", "dyn") if allow_dyn else ("&", "mut", "*", "const")
+    while j < n and (toks[j][1] in skip_words or toks[j][0] == "LIFETIME"):
         j += 1
     if j >= n:
-        return False
-    last_ident = None
+        return None
+    segs: list[str] = []
     while j < n:
         k, v, _, _ = toks[j]
         if k == "IDENT":
-            last_ident = v
+            segs.append(norm_ident(v))
             j += 1
             if j < n and toks[j][1] == "::":
                 j += 1
@@ -721,28 +939,55 @@ def is_exact_type_name(toks: list[Token], target_name: str) -> bool:
         elif v == "::":
             j += 1
         else:
-            return False
-    if last_ident != target_name:
+            return None
+    return (segs, j) if segs else None
+
+
+def extract_type_base_name(toks: list[Token]) -> str | None:
+    parsed = extract_type_path_segments(toks, allow_dyn=True)
+    return parsed[0][-1] if parsed is not None else None
+
+
+def is_exact_type_name(toks: list[Token], target_name: str) -> bool:
+    """Return True if `toks` is `[& ['a] [mut]] [path::]TargetName[<...>]`."""
+    parsed = extract_type_path_segments(toks, allow_dyn=False)
+    if parsed is None:
         return False
-    if j < n and toks[j][1] == "<":
+    segs, j = parsed
+    if segs[-1] != target_name:
+        return False
+    if j < len(toks) and toks[j][1] == "<":
         j = skip_angle_generics(toks, j)
-    return j == n
+    return j == len(toks)
 
 
-def is_game_type_tokens(toks: list[Token], self_type: str | None = None) -> bool:
-    if is_exact_type_name(toks, "Game"):
-        return True
-    if self_type == "Game" and is_exact_type_name(toks, "Self"):
-        return True
-    return False
+def is_game_type_tokens(
+    toks: list[Token],
+    self_type: str | None = None,
+    ctx: GamePathContext | None = None,
+) -> bool:
+    parsed = extract_type_path_segments(toks, allow_dyn=False)
+    if parsed is None:
+        return False
+    segs, j = parsed
+    if j < len(toks) and toks[j][1] == "<":
+        j = skip_angle_generics(toks, j)
+    if j != len(toks):
+        return False
+    if segs == ["Self"]:
+        return self_type == "Game"
+    if ctx is not None:
+        return is_sunrise_game_path(segs, ctx)
+    return segs[-1] == "Game"
 
 
 def resolve_type_kind(
     toks: list[Token],
     wrapper_structs: set[str],
     self_type: str | None = None,
+    ctx: GamePathContext | None = None,
 ) -> str | None:
-    if is_exact_type_name(toks, "Game"):
+    if is_game_type_tokens(toks, self_type, ctx):
         return "Game"
     if self_type is not None and is_exact_type_name(toks, "Self"):
         if self_type == "Game":
@@ -750,7 +995,7 @@ def resolve_type_kind(
         if self_type in wrapper_structs:
             return self_type
     base = extract_type_base_name(toks)
-    if base and base in wrapper_structs and is_exact_type_name(toks, base):
+    if base and base != "Game" and base in wrapper_structs and is_exact_type_name(toks, base):
         return base
     return None
 
@@ -784,22 +1029,30 @@ def unwrap_result_or_option(toks: list[Token]) -> list[Token]:
         return cur
 
 
-def extract_game_return_positions(ret_toks: list[Token], self_type: str | None = None) -> set[int | None]:
+def extract_game_return_positions(
+    ret_toks: list[Token],
+    self_type: str | None = None,
+    ctx: GamePathContext | None = None,
+) -> set[int | None]:
     """Return positions where a function's return type carries `Game`."""
     inner = unwrap_result_or_option(ret_toks)
-    if is_game_type_tokens(inner, self_type):
+    if is_game_type_tokens(inner, self_type, ctx):
         return {None}
     if len(inner) >= 2 and inner[0][1] == "(" and inner[-1][1] == ")":
         elems = split_top_level(inner[1:-1], ",")
         out: set[int | None] = set()
         for idx, elem in enumerate(elems):
-            if is_game_type_tokens(unwrap_result_or_option(elem), self_type):
+            if is_game_type_tokens(unwrap_result_or_option(elem), self_type, ctx):
                 out.add(idx)
         return out
     return set()
 
 
-def parse_impl_target(tokens: list[Token], impl_idx: int) -> tuple[str | None, int] | None:
+def parse_impl_target(
+    tokens: list[Token],
+    impl_idx: int,
+    ctx: GamePathContext | None = None,
+) -> tuple[str | None, int] | None:
     n = len(tokens)
     j = impl_idx + 1
     if j < n and tokens[j][1] == "const":
@@ -834,7 +1087,15 @@ def parse_impl_target(tokens: list[Token], impl_idx: int) -> tuple[str | None, i
             elif v == "{":
                 type_start = (for_idx + 1) if for_idx is not None else start
                 type_end = where_idx if where_idx is not None else j
-                target = extract_type_base_name(tokens[type_start:type_end])
+                type_toks = tokens[type_start:type_end]
+                if ctx is not None:
+                    if is_game_type_tokens(type_toks, None, ctx):
+                        target: str | None = "Game"
+                    else:
+                        base = extract_type_base_name(type_toks)
+                        target = None if base == "Game" else base
+                else:
+                    target = extract_type_base_name(type_toks)
                 return target, j
             elif v == ";":
                 return None
@@ -871,16 +1132,22 @@ def is_pub_before_fn(tokens: list[Token], fn_idx: int) -> bool:
 
 
 def file_defines_local_mock_game(tokens: list[Token], rel_posix: str) -> bool:
-    if rel_posix.endswith("crates/sunrise-client/src/game.rs"):
-        return False
+    is_game_rs = rel_posix.endswith("crates/sunrise-client/src/game.rs")
     n = len(tokens)
     for i in range(n - 1):
-        if tokens[i][0] == "IDENT" and tokens[i][1] == "struct" and tokens[i + 1][0] == "IDENT" and tokens[i + 1][1] == "Game":
-            return True
+        if tokens[i][0] == "IDENT" and tokens[i + 1][0] == "IDENT" and norm_ident(tokens[i + 1][1]) == "Game":
+            kw = tokens[i][1]
+            prev = tokens[i - 1][1] if i > 0 else None
+            if prev in (".", "::"):
+                continue
+            if kw == "struct" and is_game_rs:
+                continue
+            if kw in ("struct", "enum", "trait", "union", "type"):
+                return True
     return False
 
 
-def scan_structs(tokens: list[Token]) -> tuple[set[str], dict[str, set[str]]]:
+def scan_structs(tokens: list[Token], ctx: GamePathContext | None = None) -> tuple[set[str], dict[str, set[str]]]:
     """Return `(all_defined_structs, struct_name -> set of fields holding Game)`."""
     defined: set[str] = set()
     game_fields: dict[str, set[str]] = {}
@@ -888,7 +1155,7 @@ def scan_structs(tokens: list[Token]) -> tuple[set[str], dict[str, set[str]]]:
     i = 0
     while i < n:
         if tokens[i][0] == "IDENT" and tokens[i][1] == "struct" and i + 1 < n and tokens[i + 1][0] == "IDENT":
-            sname = tokens[i + 1][1]
+            sname = norm_ident(tokens[i + 1][1])
             defined.add(sname)
             j = i + 2
             if j < n and tokens[j][1] == "<":
@@ -909,8 +1176,8 @@ def scan_structs(tokens: list[Token]) -> tuple[set[str], dict[str, set[str]]]:
                         else:
                             break
                     if k + 1 < len(part) and part[k][0] == "IDENT" and part[k + 1][1] == ":":
-                        fname = part[k][1]
-                        if is_game_type_tokens(part[k + 2 :]):
+                        fname = norm_ident(part[k][1])
+                        if is_game_type_tokens(part[k + 2 :], None, ctx):
                             game_fields.setdefault(sname, set()).add(fname)
                 i = end
                 continue
@@ -927,7 +1194,7 @@ def scan_structs(tokens: list[Token]) -> tuple[set[str], dict[str, set[str]]]:
                                 k = skip_balanced(part, k, "(", ")")
                         else:
                             break
-                    if is_game_type_tokens(part[k:]):
+                    if is_game_type_tokens(part[k:], None, ctx):
                         game_fields.setdefault(sname, set()).add(str(tidx))
                 i = end
                 continue
@@ -939,6 +1206,7 @@ def extract_fn_trait_params(
     ty_toks: list[Token],
     wrapper_structs: set[str],
     self_type: str | None,
+    ctx: GamePathContext | None = None,
 ) -> dict[int, str]:
     """Extract `{closure_param_idx: kind}` from `FnOnce(...)` / `FnMut(...)` / `Fn(...)` / `fn(...)`."""
     found: dict[int, str] = {}
@@ -948,7 +1216,7 @@ def extract_fn_trait_params(
             cend = skip_balanced(ty_toks, idx + 1, "(", ")")
             cargs = split_top_level(ty_toks[idx + 2 : cend - 1], ",")
             for pidx, arg in enumerate(cargs):
-                kind = resolve_type_kind(arg, wrapper_structs, self_type)
+                kind = resolve_type_kind(arg, wrapper_structs, self_type, ctx)
                 if kind:
                     found[pidx] = kind
     return found
@@ -957,6 +1225,7 @@ def extract_fn_trait_params(
 def scan_fn_signatures(
     tokens: list[Token],
     wrapper_structs: set[str],
+    ctx: GamePathContext | None = None,
 ):
     """Yield `(fname, is_pub, impl_target, has_self, non_self_param_count, ret_positions, arg_closure_map)`."""
     n = len(tokens)
@@ -965,7 +1234,7 @@ def scan_fn_signatures(
         if tokens[i][0] == "IDENT" and tokens[i][1] == "impl":
             prev = tokens[i - 1][1] if i > 0 else None
             if prev in (None, ";", "{", "}", "]", "unsafe", "default"):
-                parsed = parse_impl_target(tokens, i)
+                parsed = parse_impl_target(tokens, i, ctx)
                 if parsed is not None:
                     target, brace_idx = parsed
                     impl_opens[brace_idx] = target
@@ -994,7 +1263,7 @@ def scan_fn_signatures(
             if prev in (":", "->", "<", ",", "(", "dyn", "impl", "+"):
                 i += 1
                 continue
-            fname = tokens[i + 1][1]
+            fname = norm_ident(tokens[i + 1][1])
             is_pub = is_pub_before_fn(tokens, i)
             impl_target = impl_stack[-1][1] if impl_stack else None
 
@@ -1045,14 +1314,14 @@ def scan_fn_signatures(
             has_self = bool(params) and any(t[1] == "self" for t in params[0])
             non_self_params = params[1:] if has_self else params
 
-            ret_positions = extract_game_return_positions(ret_toks, impl_target) if ret_toks else set()
+            ret_positions = extract_game_return_positions(ret_toks, impl_target, ctx) if ret_toks else set()
 
             # Build generic type parameter -> closure param types from `<...>` and `where ...`
             generic_bounds: dict[str, dict[int, str]] = {}
             for gpart in split_top_level(gen_toks, ","):
                 colon = next((idx_p for idx_p, tk in enumerate(gpart) if tk[1] == ":"), None)
                 if colon is not None and colon >= 1 and gpart[0][0] == "IDENT":
-                    cparams = extract_fn_trait_params(gpart[colon + 1 :], wrapper_structs, impl_target)
+                    cparams = extract_fn_trait_params(gpart[colon + 1 :], wrapper_structs, impl_target, ctx)
                     if cparams:
                         generic_bounds.setdefault(gpart[0][1], {}).update(cparams)
             for wpart in split_top_level(where_toks, ","):
@@ -1060,7 +1329,7 @@ def scan_fn_signatures(
                 if colon is not None:
                     gname = extract_type_base_name(wpart[:colon])
                     if gname:
-                        cparams = extract_fn_trait_params(wpart[colon + 1 :], wrapper_structs, impl_target)
+                        cparams = extract_fn_trait_params(wpart[colon + 1 :], wrapper_structs, impl_target, ctx)
                         if cparams:
                             generic_bounds.setdefault(gname, {}).update(cparams)
 
@@ -1070,7 +1339,7 @@ def scan_fn_signatures(
                 if colon is None:
                     continue
                 ty = p_slice[colon + 1 :]
-                cparams = extract_fn_trait_params(ty, wrapper_structs, impl_target)
+                cparams = extract_fn_trait_params(ty, wrapper_structs, impl_target, ctx)
                 if not cparams:
                     gbase = extract_type_base_name(ty)
                     if gbase and gbase in generic_bounds:
@@ -1096,42 +1365,47 @@ def build_workspace_index(extra_files: list[Path]) -> WorkspaceIndex:
     index = WorkspaceIndex()
     scan_paths: list[Path] = []
     seen_paths: set[Path] = set()
+    root_resolved = ROOT.resolve()
     for p in list(DEFAULT_PATHS) + extra_files:
         full = p if p.is_absolute() else (ROOT / p)
+        candidates: list[Path] = []
         if full.is_file() and full.suffix == ".rs":
-            rp = full.resolve()
-            if rp not in seen_paths:
-                seen_paths.add(rp)
-                scan_paths.append(rp)
+            candidates.append(full.resolve())
         elif full.is_dir():
-            for child in sorted(full.rglob("*.rs")):
-                rp = child.resolve()
-                if rp not in seen_paths:
-                    seen_paths.add(rp)
-                    scan_paths.append(rp)
+            candidates.extend(child.resolve() for child in sorted(full.rglob("*.rs")))
+        for rp in candidates:
+            if rp in seen_paths:
+                continue
+            try:
+                rel_posix = rp.relative_to(root_resolved).as_posix()
+            except ValueError:
+                continue
+            if not is_in_game_tree(rel_posix):
+                continue
+            seen_paths.add(rp)
+            scan_paths.append(rp)
 
-    tokenized: list[list[Token]] = []
+    tokenized: list[tuple[list[Token], GamePathContext]] = []
     for path in scan_paths:
-        try:
-            rel_posix = path.relative_to(ROOT.resolve()).as_posix()
-        except ValueError:
-            rel_posix = path.as_posix()
+        rel_posix = path.relative_to(root_resolved).as_posix()
         src = path.read_text(encoding="utf-8")
         if "Game" not in src:
             continue
         toks = tokenize_rust(src)
-        if file_defines_local_mock_game(toks, rel_posix):
+        use_imports = collect_use_imports(toks)
+        ctx = build_game_path_context(toks, use_imports, rel_posix)
+        if ctx.local_game_defined or ctx.foreign_game_imported:
             continue
-        _, sfields = scan_structs(toks)
+        _, sfields = scan_structs(toks, ctx)
         for sname, fset in sfields.items():
             index.struct_game_fields.setdefault(sname, set()).update(fset)
-        tokenized.append(toks)
+        tokenized.append((toks, ctx))
 
     wrapper_structs = set(index.struct_game_fields)
 
-    for toks in tokenized:
+    for toks, ctx in tokenized:
         for fname, is_pub, impl_target, has_self, non_self_count, ret_positions, arg_closure_map in scan_fn_signatures(
-            toks, wrapper_structs
+            toks, wrapper_structs, ctx
         ):
             if has_self:
                 if ret_positions and None in ret_positions and non_self_count == 0 and impl_target != "Game":
@@ -1177,13 +1451,17 @@ def build_workspace_index(extra_files: list[Path]) -> WorkspaceIndex:
     return index
 
 
-def build_file_local_index(tokens: list[Token], global_wrapper_structs: set[str]) -> FileLocalIndex:
+def build_file_local_index(
+    tokens: list[Token],
+    global_wrapper_structs: set[str],
+    ctx: GamePathContext,
+) -> FileLocalIndex:
     local = FileLocalIndex()
-    local.defined_structs, local.struct_game_fields = scan_structs(tokens)
+    local.defined_structs, local.struct_game_fields = scan_structs(tokens, ctx)
     wrapper_structs = (global_wrapper_structs - local.defined_structs) | set(local.struct_game_fields)
 
     for fname, _is_pub, impl_target, has_self, _non_self_count, ret_positions, arg_closure_map in scan_fn_signatures(
-        tokens, wrapper_structs
+        tokens, wrapper_structs, ctx
     ):
         if has_self or impl_target is not None:
             continue
@@ -1200,8 +1478,9 @@ def parse_fn_typed_params(
     fn_idx: int,
     wrapper_structs: set[str],
     self_type: str | None,
-) -> tuple[dict[str, str], int] | None:
-    """Given index of `fn`, return `(dict[param_name -> kind | ''], open_brace_idx)`."""
+    ctx: GamePathContext,
+) -> tuple[dict[str, VarBinding], int] | None:
+    """Given index of `fn`, return `(dict[param_name -> (kind, origin)], open_brace_idx)`."""
     n = len(tokens)
     j = fn_idx + 1
     if j >= n or tokens[j][0] != "IDENT":
@@ -1212,7 +1491,7 @@ def parse_fn_typed_params(
     if j >= n or tokens[j][1] != "(":
         return None
     params_end = skip_balanced(tokens, j, "(", ")")
-    typed_params: dict[str, str] = {}
+    typed_params: dict[str, VarBinding] = {}
     for p_slice in split_top_level(tokens[j + 1 : params_end - 1], ","):
         colon = find_top_level_token(p_slice, ":")
         if colon is None:
@@ -1221,12 +1500,18 @@ def parse_fn_typed_params(
         ty = p_slice[colon + 1 :]
         simple_name = parse_simple_pat_ident(pat)
         if simple_name and simple_name != "self":
-            kind = resolve_type_kind(ty, wrapper_structs, self_type)
-            typed_params[simple_name] = kind if kind is not None else NON_GAME
+            kind = resolve_type_kind(ty, wrapper_structs, self_type, ctx)
+            if kind == "Game":
+                typed_params[simple_name] = ("Game", "explicit-param")
+            elif kind is not None:
+                typed_params[simple_name] = (kind, "wrapper-param")
+            else:
+                typed_params[simple_name] = (NON_GAME, "")
         else:
             # Destructured parameters shadow any outer tracked names.
-            for bname in extract_pattern_bound_names(pat):
-                typed_params[bname] = NON_GAME
+            definite, uncertain = extract_pattern_bound_names(pat)
+            for bname in definite | uncertain:
+                typed_params[bname] = (NON_GAME, "")
     m = params_end
     while m < n:
         tv = tokens[m][1]
@@ -1379,11 +1664,11 @@ def rhs_preserves_game_after_call(tokens: list[Token], call_open_paren: int) -> 
 
 def parse_simple_pat_ident(toks: list[Token]) -> str | None:
     if len(toks) == 1 and toks[0][0] in ("IDENT", "MACRO_VAR") and toks[0][1] != "_":
-        return toks[0][1]
+        return norm_ident(toks[0][1])
     if len(toks) == 2 and toks[0][1] == "mut" and toks[1][0] in ("IDENT", "MACRO_VAR") and toks[1][1] != "_":
-        return toks[1][1]
+        return norm_ident(toks[1][1])
     if len(toks) == 2 and toks[0][1] == "ref" and toks[1][0] in ("IDENT", "MACRO_VAR") and toks[1][1] != "_":
-        return toks[1][1]
+        return norm_ident(toks[1][1])
     if (
         len(toks) == 3
         and toks[0][1] == "ref"
@@ -1391,8 +1676,167 @@ def parse_simple_pat_ident(toks: list[Token]) -> str | None:
         and toks[2][0] in ("IDENT", "MACRO_VAR")
         and toks[2][1] != "_"
     ):
-        return toks[2][1]
+        return norm_ident(toks[2][1])
     return None
+
+
+def find_header_body_brace(
+    tokens: list[Token],
+    start_idx: int,
+    record_amp: bool = False,
+) -> tuple[int | None, int | None]:
+    """Find the body `{` after a `match`/`for`/`if let`/`while let` header expression."""
+    n = len(tokens)
+    k = start_idx
+    dp = db = 0
+    first_amp: int | None = None
+    while k < n:
+        tv = tokens[k][1]
+        if tv == "(":
+            dp += 1
+            k += 1
+            continue
+        if tv == ")":
+            if dp == 0:
+                return None, first_amp
+            dp -= 1
+            k += 1
+            continue
+        if tv == "[":
+            db += 1
+            k += 1
+            continue
+        if tv == "]":
+            if db == 0:
+                return None, first_amp
+            db -= 1
+            k += 1
+            continue
+        if dp > 0 or db > 0:
+            k += 1
+            continue
+        if tv == ";":
+            return None, first_amp
+        if record_amp and tv == "&&" and first_amp is None:
+            first_amp = k
+            k += 1
+            continue
+        if tokens[k][0] == "IDENT" and tv == "let" and (k == start_idx or tokens[k - 1][1] == "&&"):
+            # Skip `let <pat> =` in a let-chain so struct patterns `{ ... }` are not treated as the body brace.
+            k += 1
+            pdp = pdb = pdc = 0
+            while k < n:
+                ptv = tokens[k][1]
+                if ptv == "(":
+                    pdp += 1
+                elif ptv == ")":
+                    pdp = max(0, pdp - 1)
+                elif ptv == "[":
+                    pdb += 1
+                elif ptv == "]":
+                    pdb = max(0, pdb - 1)
+                elif ptv == "{":
+                    pdc += 1
+                elif ptv == "}":
+                    pdc = max(0, pdc - 1)
+                elif ptv in ("=", ";") and pdp == 0 and pdb == 0 and pdc == 0:
+                    k += 1
+                    break
+                k += 1
+            continue
+        if tokens[k][0] == "IDENT" and tv in ("if", "while", "match", "for", "loop"):
+            prev = tokens[k - 1][1] if k > 0 else None
+            if prev not in (".", "::"):
+                if tv == "loop":
+                    if k + 1 < n and tokens[k + 1][1] == "{":
+                        k = skip_balanced(tokens, k + 1, "{", "}")
+                        continue
+                elif tv == "for":
+                    q = k + 1
+                    qdp = qdb = qdc = 0
+                    while q < n:
+                        qtv = tokens[q][1]
+                        if qtv == "(":
+                            qdp += 1
+                        elif qtv == ")":
+                            qdp = max(0, qdp - 1)
+                        elif qtv == "[":
+                            qdb += 1
+                        elif qtv == "]":
+                            qdb = max(0, qdb - 1)
+                        elif qtv == "{":
+                            qdc += 1
+                        elif qtv == "}":
+                            qdc = max(0, qdc - 1)
+                        elif qtv == "in" and qdp == 0 and qdb == 0 and qdc == 0:
+                            q += 1
+                            break
+                        q += 1
+                    nested_brace, _ = find_header_body_brace(tokens, q, False)
+                    if nested_brace is None:
+                        return None, first_amp
+                    k = skip_balanced(tokens, nested_brace, "{", "}")
+                    continue
+                elif tv == "if":
+                    nested_brace, _ = find_header_body_brace(tokens, k + 1, False)
+                    if nested_brace is None:
+                        return None, first_amp
+                    k = skip_balanced(tokens, nested_brace, "{", "}")
+                    while k < n and tokens[k][0] == "IDENT" and tokens[k][1] == "else":
+                        if k + 1 < n and tokens[k + 1][1] == "{":
+                            k = skip_balanced(tokens, k + 1, "{", "}")
+                        elif k + 1 < n and tokens[k + 1][0] == "IDENT" and tokens[k + 1][1] == "if":
+                            nested_brace, _ = find_header_body_brace(tokens, k + 2, False)
+                            if nested_brace is None:
+                                return None, first_amp
+                            k = skip_balanced(tokens, nested_brace, "{", "}")
+                        else:
+                            break
+                    continue
+                else:
+                    nested_brace, _ = find_header_body_brace(tokens, k + 1, False)
+                    if nested_brace is None:
+                        return None, first_amp
+                    k = skip_balanced(tokens, nested_brace, "{", "}")
+                    continue
+        if tv == "{":
+            is_block_expr = False
+            if k == start_idx:
+                is_block_expr = True
+            else:
+                prev = tokens[k - 1][1]
+                if prev in BLOCK_EXPR_PREV_TOKENS:
+                    is_block_expr = True
+                elif prev == ":" and k >= 2 and tokens[k - 2][0] == "LIFETIME":
+                    is_block_expr = True
+                elif prev in ("..", "..=", ">"):
+                    after_blk = skip_balanced(tokens, k, "{", "}")
+                    if after_blk < n and tokens[after_blk][1] in (
+                        "{",
+                        ".",
+                        "?",
+                        "&&",
+                        "||",
+                        "+",
+                        "-",
+                        "*",
+                        "/",
+                        "%",
+                        "==",
+                        "!=",
+                        "<",
+                        ">",
+                        "<=",
+                        ">=",
+                        "as",
+                    ):
+                        is_block_expr = True
+            if is_block_expr:
+                k = skip_balanced(tokens, k, "{", "}")
+                continue
+            return k, first_amp
+        k += 1
+    return None, first_amp
 
 
 def find_match_arms(
@@ -1513,32 +1957,38 @@ def scan_file(
 ) -> tuple[list[Edit], list[AmbiguousSite]]:
     """Scan one Rust file and return `(sorted_edits, sorted_ambiguous_sites)`."""
     tokens = tokenize_rust(src)
-    if file_defines_local_mock_game(tokens, rel_posix):
-        return [], []
+    use_imports = collect_use_imports(tokens)
+    ctx = build_game_path_context(tokens, use_imports, rel_posix)
+    shadowed_macros = collect_shadowed_macros(tokens, use_imports, ctx.in_game_tree)
+    effective_index = index if ctx.in_game_tree else WorkspaceIndex()
 
-    local = build_file_local_index(tokens, set(index.struct_game_fields))
-    struct_game_fields: dict[str, set[str]] = dict(index.struct_game_fields)
+    local = build_file_local_index(tokens, set(effective_index.struct_game_fields), ctx)
+    struct_game_fields: dict[str, set[str]] = dict(effective_index.struct_game_fields)
     for sname in local.defined_structs:
         if sname in local.struct_game_fields:
             struct_game_fields[sname] = local.struct_game_fields[sname]
         else:
             struct_game_fields.pop(sname, None)
-    wrapper_structs = set(struct_game_fields)
+    wrapper_structs = set(struct_game_fields) if ctx.in_game_tree else set()
 
     def lookup_free_fn_returns(fname: str) -> tuple[set[int | None] | None, bool]:
+        if not ctx.in_game_tree:
+            return None, False
         if fname in local.defined_free_fns:
             return local.game_returning_fns.get(fname), False
-        if fname in index.ambiguous_return_fns and fname not in index.pub_game_returning_fns:
+        if fname in effective_index.ambiguous_return_fns and fname not in effective_index.pub_game_returning_fns:
             return None, True
-        res = index.pub_game_returning_fns.get(fname) or index.priv_game_returning_fns.get(fname)
+        res = effective_index.pub_game_returning_fns.get(fname) or effective_index.priv_game_returning_fns.get(fname)
         return res, False
 
     def lookup_free_fn_closures(fname: str) -> tuple[ClosureArgMap | None, bool]:
+        if not ctx.in_game_tree:
+            return None, False
         if fname in local.defined_free_fns:
             return local.fn_closure_params.get(fname), False
-        if fname in index.ambiguous_closure_fns and fname not in index.pub_fn_closure_params:
+        if fname in effective_index.ambiguous_closure_fns and fname not in effective_index.pub_fn_closure_params:
             return None, True
-        res = index.pub_fn_closure_params.get(fname) or index.priv_fn_closure_params.get(fname)
+        res = effective_index.pub_fn_closure_params.get(fname) or effective_index.priv_fn_closure_params.get(fname)
         return res, False
 
     line_starts = compute_line_starts(src)
@@ -1548,7 +1998,7 @@ def scan_file(
 
     impl_opens: dict[int, str | None] = {}
     impl_header_ranges: list[tuple[int, int]] = []
-    fn_opens: dict[int, dict[str, str]] = {}
+    fn_opens: dict[int, dict[str, VarBinding]] = {}
     fn_item_braces: set[int] = set()
     macro_opens: dict[int, set[str]] = {}
 
@@ -1560,14 +2010,14 @@ def scan_file(
         if text == "impl":
             prev = tokens[i - 1][1] if i > 0 else None
             if prev in (None, ";", "{", "}", "]", "unsafe", "default"):
-                parsed = parse_impl_target(tokens, i)
+                parsed = parse_impl_target(tokens, i, ctx)
                 if parsed is not None:
                     target, brace_idx = parsed
                     impl_opens[brace_idx] = target
                     impl_header_ranges.append((i, brace_idx))
         elif text == "macro_rules" and i + 3 < n and tokens[i + 1][1] == "!" and tokens[i + 2][0] == "IDENT":
-            mname = tokens[i + 2][1]
-            if mname in GAME_MACROS and tokens[i + 3][1] == "{":
+            mname = norm_ident(tokens[i + 2][1])
+            if ctx.in_game_tree and mname in GAME_MACROS and tokens[i + 3][1] == "{":
                 macro_opens[i + 3] = GAME_MACROS[mname]
 
     # Pre-scan `fn` blocks with active `impl` target so `g: &mut Self` inside `impl Game` works.
@@ -1587,7 +2037,7 @@ def scan_file(
             prev = tokens[i - 1][1] if i > 0 else None
             if prev not in (":", "->", "<", ",", "(", "dyn", "impl", "+"):
                 cur_self = pre_impl[-1][1] if pre_impl else None
-                parsed = parse_fn_typed_params(tokens, i, wrapper_structs, cur_self)
+                parsed = parse_fn_typed_params(tokens, i, wrapper_structs, cur_self, ctx)
                 if parsed is not None:
                     tparams, brace_idx = parsed
                     fn_item_braces.add(brace_idx)
@@ -1599,16 +2049,15 @@ def scan_file(
 
     brace_depth = 0
     impl_stack: list[tuple[int, str | None]] = []
-    # var_name -> "Game" | WrapperStructName | "" (shadowed non-Game) | "?" (ambiguous)
-    # `is_fn_barrier` stops outer local variable capture across nested `fn` items.
-    var_scopes: list[tuple[int, dict[str, str], bool]] = [(0, {}, False)]
-    expr_closure_scopes: list[tuple[int, int, int, dict[str, str]]] = []
+    # Scopes map normalized var name -> `(kind, origin)`; `is_fn_barrier` blocks outer local capture.
+    var_scopes: list[tuple[int, dict[str, VarBinding], bool]] = [(0, {}, False)]
+    expr_closure_scopes: list[tuple[int, int, int, dict[str, VarBinding]]] = []
     # Range-scoped bindings for `match` arm guards/bodies and `if let ... && ...` chains: `(end_idx, vars)`
-    range_scopes: list[tuple[int, dict[str, str]]] = []
+    range_scopes: list[tuple[int, dict[str, VarBinding]]] = []
     # Scheduled range scope activations keyed by token index: `start_idx -> list[(end_idx, vars)]`
-    scheduled_ranges: dict[int, list[tuple[int, dict[str, str]]]] = {}
+    scheduled_ranges: dict[int, list[tuple[int, dict[str, VarBinding]]]] = {}
     # Deferred `let` statement bindings applied at the statement's terminating `;`
-    deferred_let_bindings: dict[int, dict[str, str]] = {}
+    deferred_let_bindings: dict[int, dict[str, VarBinding]] = {}
     # Token index ranges inside `match` arm patterns so `|` is not parsed as a closure
     match_pat_ranges: list[tuple[int, int]] = []
     macro_stack: list[tuple[int, set[str]]] = []
@@ -1621,19 +2070,26 @@ def scan_file(
     def active_impl_target() -> str | None:
         return impl_stack[-1][1] if impl_stack else None
 
-    def var_type(name: str) -> str | None:
+    def var_info(name: str) -> tuple[str | None, str]:
+        key = norm_ident(name)
         for _, rvars in reversed(range_scopes):
-            if name in rvars:
-                return rvars[name] or None
+            if key in rvars:
+                k, orig = rvars[key]
+                return (k or None), orig
         for _, _, _, cvars in reversed(expr_closure_scopes):
-            if name in cvars:
-                return cvars[name] or None
+            if key in cvars:
+                k, orig = cvars[key]
+                return (k or None), orig
         for _, scope, is_barrier in reversed(var_scopes):
-            if name in scope:
-                return scope[name] or None
+            if key in scope:
+                k, orig = scope[key]
+                return (k or None), orig
             if is_barrier:
                 break
-        return None
+        return None, ""
+
+    def var_type(name: str) -> str | None:
+        return var_info(name)[0]
 
     def is_game_macro_var(name: str) -> bool:
         return any(name in mvars for _, mvars in macro_stack)
@@ -1646,7 +2102,7 @@ def scan_file(
         if dot_idx + 1 >= n or tokens[dot_idx + 1][0] != "IDENT":
             return
         first_idx = dot_idx + 1
-        first_name = tokens[first_idx][1]
+        first_name = norm_ident(tokens[first_idx][1])
 
         # Case 1: already tail-qualified `<recv>.server.<field>` or `<recv>.client.<field>`
         if (
@@ -1656,7 +2112,7 @@ def scan_file(
             and tokens[first_idx + 2][0] == "IDENT"
         ):
             field_idx = first_idx + 2
-            fname = tokens[field_idx][1]
+            fname = norm_ident(tokens[field_idx][1])
             expected = owners.get(fname)
             if expected is None:
                 return
@@ -1673,6 +2129,13 @@ def scan_file(
                 off = tokens[first_idx][2]
                 mac_name = unknown_macro_stack[-1][1]
                 ambiguous.setdefault(off, AmbiguousSite(off, fname, f"inside unknown macro `{mac_name}!`"))
+                return
+            if not ctx.in_game_tree:
+                off = tokens[first_idx][2]
+                ambiguous.setdefault(
+                    off,
+                    AmbiguousSite(off, fname, f"outside crates/sunrise-client/src/game* ({reason})"),
+                )
                 return
             if expected == "game":
                 span = (tokens[first_idx][2], tokens[field_idx][2])
@@ -1703,6 +2166,13 @@ def scan_file(
             off = tokens[first_idx][2]
             mac_name = unknown_macro_stack[-1][1]
             ambiguous.setdefault(off, AmbiguousSite(off, first_name, f"inside unknown macro `{mac_name}!`"))
+            return
+        if not ctx.in_game_tree:
+            off = tokens[first_idx][2]
+            ambiguous.setdefault(
+                off,
+                AmbiguousSite(off, first_name, f"outside crates/sunrise-client/src/game* ({reason})"),
+            )
             return
         off = tokens[first_idx][2]
         span = (off, off)
@@ -1743,48 +2213,51 @@ def scan_file(
                     return t, None
                 return None, None
             if inner_tok[0] in ("IDENT", "MACRO_VAR"):
-                vt = var_type(inner_tok[1])
+                vt, orig = var_info(inner_tok[1])
                 if vt == "Game":
-                    return "Game", "typed-game-deref-var"
+                    return "Game", f"deref-{orig or 'typed-game-var'}"
                 if vt == AMBIGUOUS:
-                    return AMBIGUOUS, f"ambiguous dereferenced variable `{inner_tok[1]}`"
+                    return AMBIGUOUS, orig or f"ambiguous dereferenced variable `{inner_tok[1]}`"
                 if vt:
                     return vt, None
                 return None, None
 
         # `self.<game_method>().<...>`
         if (
-            prev_text == ")"
+            ctx.in_game_tree
+            and prev_text == ")"
             and dot_idx >= 5
             and tokens[dot_idx - 2][1] == "("
             and tokens[dot_idx - 3][0] == "IDENT"
             and tokens[dot_idx - 4][1] == "."
             and tokens[dot_idx - 5][1] == "self"
         ):
-            mname = tokens[dot_idx - 3][1]
+            mname = norm_ident(tokens[dot_idx - 3][1])
             impl_t = active_impl_target()
-            if impl_t and mname in index.wrapper_game_returning_methods.get(impl_t, ()):
+            if impl_t and mname in effective_index.wrapper_game_returning_methods.get(impl_t, ()):
                 return "Game", "wrapper-self-method"
-            if impl_t is None and mname in index.game_returning_methods:
+            if impl_t is None and mname in effective_index.game_returning_methods:
                 return AMBIGUOUS, f"unresolved self method `{mname}()`"
             return None, None
 
         # `self.<game_field>.<...>` or `self.0.<...>`
         if (
-            prev_kind in ("IDENT", "LIT")
+            ctx.in_game_tree
+            and prev_kind in ("IDENT", "LIT")
             and prev2 == "."
             and dot_idx >= 3
             and tokens[dot_idx - 3][1] == "self"
             and (dot_idx < 4 or tokens[dot_idx - 4][1] not in (".", "::"))
         ):
             impl_t = active_impl_target()
-            if impl_t and prev_text in struct_game_fields.get(impl_t, ()):
+            if impl_t and norm_ident(prev_text) in struct_game_fields.get(impl_t, ()):
                 return "Game", "wrapper-self-field"
             return None, None
 
         # `<wrapper_var>.<game_field>.<...>`
         if (
-            prev_kind in ("IDENT", "LIT")
+            ctx.in_game_tree
+            and prev_kind in ("IDENT", "LIT")
             and prev2 == "."
             and dot_idx >= 3
             and tokens[dot_idx - 3][0] in ("IDENT", "MACRO_VAR")
@@ -1792,17 +2265,17 @@ def scan_file(
             and (dot_idx < 4 or tokens[dot_idx - 4][1] not in (".", "::"))
         ):
             wt = var_type(tokens[dot_idx - 3][1])
-            if wt and wt not in ("Game", AMBIGUOUS) and prev_text in struct_game_fields.get(wt, ()):
+            if wt and wt not in ("Game", AMBIGUOUS) and norm_ident(prev_text) in struct_game_fields.get(wt, ()):
                 return "Game", "wrapper-var-field"
             return None, None
 
         # `<game_var>.<...>` or `<wrapper_var>.<...>` or ambiguous var
         if prev_kind in ("IDENT", "MACRO_VAR") and prev_text != "self" and prev2 not in (".", "::"):
-            vt = var_type(prev_text)
+            vt, orig = var_info(prev_text)
             if vt == "Game":
-                return "Game", "typed-game-var"
+                return "Game", orig or "typed-game-var"
             if vt == AMBIGUOUS:
-                return AMBIGUOUS, f"ambiguous variable `{prev_text}`"
+                return AMBIGUOUS, orig or f"ambiguous variable `{prev_text}`"
             if vt:
                 return vt, None
             if prev_kind == "MACRO_VAR" and is_game_macro_var(prev_text):
@@ -1810,103 +2283,110 @@ def scan_file(
 
         return None, None
 
-    def classify_let_rhs(rhs_idx: int) -> tuple[str | None, dict[int, str], bool]:
-        """Classify a `let` RHS starting at `rhs_idx`.
-
-        Returns `(whole_type, tuple_element_types, is_ambiguous)`.
-        """
+    def classify_let_rhs(rhs_idx: int) -> tuple[str | None, dict[int, str], bool, str]:
+        """Classify a `let` RHS starting at `rhs_idx` as `(whole, tuple_types, is_ambig, origin)`."""
         r = rhs_idx
         while r < n and tokens[r][1] in ("&", "mut", "*"):
             r += 1
         if r >= n:
-            return None, {}, False
+            return None, {}, False, ""
         tk, tv, _, _ = tokens[r]
         if tk != "IDENT":
-            return None, {}, False
+            return None, {}, False, ""
 
         # Case A: `self` or `self.<game_field>` or `self.<game_method>()`
         if tv == "self":
             if active_impl_target() == "Game" and (r + 1 >= n or tokens[r + 1][1] in (";", ",", ")", "else")):
-                return "Game", {}, False
-            if r + 2 < n and tokens[r + 1][1] == "." and tokens[r + 2][0] in ("IDENT", "LIT"):
+                return "Game", {}, False, "let-from-self"
+            if ctx.in_game_tree and r + 2 < n and tokens[r + 1][1] == "." and tokens[r + 2][0] in ("IDENT", "LIT"):
                 impl_t = active_impl_target()
-                if impl_t and tokens[r + 2][1] in struct_game_fields.get(impl_t, ()):
+                if impl_t and norm_ident(tokens[r + 2][1]) in struct_game_fields.get(impl_t, ()):
                     after = r + 3
                     if after >= n or tokens[after][1] in (";", ",", ")", "else"):
-                        return "Game", {}, False
+                        return "Game", {}, False, "let-from-wrapper-field"
                 if (
                     impl_t
-                    and tokens[r + 2][1] in index.wrapper_game_returning_methods.get(impl_t, ())
+                    and norm_ident(tokens[r + 2][1]) in effective_index.wrapper_game_returning_methods.get(impl_t, ())
                     and r + 3 < n
                     and tokens[r + 3][1] == "("
                 ):
                     if rhs_preserves_game_after_call(tokens, r + 3):
-                        return "Game", {}, False
-            return None, {}, False
+                        return "Game", {}, False, "let-from-wrapper-method"
+            return None, {}, False, ""
 
         # Case B: `<var>` or `<wrapper_var>.<game_field>`
-        vt = var_type(tv)
+        vt, _ = var_info(tv)
         if vt == "Game":
             if r + 1 >= n or tokens[r + 1][1] in (";", ",", ")", "else"):
-                return "Game", {}, False
+                return "Game", {}, False, "let-from-game-var"
         elif vt == AMBIGUOUS:
             if r + 1 >= n or tokens[r + 1][1] in (";", ",", ")", "else"):
-                return None, {}, True
-        elif vt and vt in struct_game_fields:
-            if r + 2 < n and tokens[r + 1][1] == "." and tokens[r + 2][1] in struct_game_fields[vt]:
+                return None, {}, True, ""
+        elif ctx.in_game_tree and vt and vt in struct_game_fields:
+            if r + 2 < n and tokens[r + 1][1] == "." and norm_ident(tokens[r + 2][1]) in struct_game_fields[vt]:
                 after = r + 3
                 if after >= n or tokens[after][1] in (";", ",", ")", "else"):
-                    return "Game", {}, False
+                    return "Game", {}, False, "let-from-wrapper-field"
 
         # Case C: `<wrapper_struct> { ... }`
-        if tv in wrapper_structs and r + 1 < n and tokens[r + 1][1] == "{":
-            return tv, {}, False
+        norm_tv = norm_ident(tv)
+        if ctx.in_game_tree and norm_tv in wrapper_structs and r + 1 < n and tokens[r + 1][1] == "{":
+            return norm_tv, {}, False, "wrapper-ctor"
 
         # Case D: path call `a::b::func(...)` or `Game::new(...)` or `Game { ... }`
         q = r
-        segments = [tv]
+        segments = [norm_tv]
         while q + 2 < n and tokens[q + 1][1] == "::" and tokens[q + 2][0] == "IDENT":
             q += 2
-            segments.append(tokens[q][1])
+            segments.append(norm_ident(tokens[q][1]))
         q_call = q + 1
         if q_call + 1 < n and tokens[q_call][1] == "::" and tokens[q_call + 1][1] == "<":
             q_call = skip_angle_generics(tokens, q_call + 1)
 
         last_seg = segments[-1]
-        if last_seg == "Game" and q_call < n and tokens[q_call][1] == "{":
-            return "Game", {}, False
-        if last_seg in wrapper_structs and q_call < n and tokens[q_call][1] == "{":
-            return last_seg, {}, False
-        if len(segments) >= 2 and segments[-2] == "Game" and q_call < n and tokens[q_call][1] == "(":
+        if is_sunrise_game_path(segments, ctx) and q_call < n and tokens[q_call][1] == "{":
+            return "Game", {}, False, "game-ctor"
+        if ctx.in_game_tree and last_seg in wrapper_structs and q_call < n and tokens[q_call][1] == "{":
+            return last_seg, {}, False, "wrapper-ctor"
+        if len(segments) >= 2 and is_sunrise_game_path(segments[:-1], ctx) and q_call < n and tokens[q_call][1] == "(":
             if (last_seg in ("new", "construct") or last_seg.startswith(("new_", "test", "fixture"))) and rhs_preserves_game_after_call(
                 tokens, q_call
             ):
-                return "Game", {}, False
-        if len(segments) >= 2 and segments[-2] in wrapper_structs and q_call < n and tokens[q_call][1] == "(":
+                return "Game", {}, False, "game-ctor"
+        if ctx.in_game_tree and len(segments) >= 2 and segments[-2] in wrapper_structs and q_call < n and tokens[q_call][1] == "(":
             if last_seg in ("new", "of", "default") and rhs_preserves_game_after_call(tokens, q_call):
-                return segments[-2], {}, False
-        if q_call < n and tokens[q_call][1] == "(" and rhs_preserves_game_after_call(tokens, q_call):
+                return segments[-2], {}, False, "wrapper-ctor"
+        if ctx.in_game_tree and q_call < n and tokens[q_call][1] == "(" and rhs_preserves_game_after_call(tokens, q_call):
             pos_set, is_ambig = lookup_free_fn_returns(last_seg)
             if is_ambig:
-                return None, {}, True
+                return None, {}, True, ""
             if pos_set:
                 whole = "Game" if None in pos_set else None
                 tup = {p: "Game" for p in pos_set if isinstance(p, int)}
-                return whole, tup, False
-        return None, {}, False
+                return whole, tup, False, "game-fn-return"
+        return None, {}, False, ""
 
     def build_pattern_bindings(
         pat_toks: list[Token],
         whole: str | None,
         tup_types: dict[int, str],
         is_ambig: bool = False,
-    ) -> dict[str, str]:
-        """Compute `name -> kind | "" | "?"` for every variable bound by `pat_toks`."""
-        bindings: dict[str, str] = {}
-        default_kind = AMBIGUOUS if is_ambig else NON_GAME
-        # Every bound identifier shadows any outer tracked name by default.
-        for bname in extract_pattern_bound_names(pat_toks):
-            bindings[bname] = default_kind
+        origin: str = "typed-game-var",
+    ) -> dict[str, VarBinding]:
+        """Compute `name -> (kind, origin)` for every variable bound by `pat_toks`."""
+        bindings: dict[str, VarBinding] = {}
+        default_binding: VarBinding = (AMBIGUOUS, "") if is_ambig else (NON_GAME, "")
+        definite, uncertain_upper = extract_pattern_bound_names(pat_toks)
+        # Every definite bound identifier shadows any outer tracked name by default.
+        for bname in definite:
+            bindings[bname] = default_binding
+        # Unresolved UpperCamelCase pattern names colliding with a tracked outer var fail closed.
+        for uname in uncertain_upper:
+            if var_type(uname) is not None:
+                bindings[uname] = (
+                    AMBIGUOUS,
+                    f"unresolved UpperCamelCase pattern `{uname}` may shadow outer binding",
+                )
 
         if not pat_toks or (whole is None and not tup_types):
             return bindings
@@ -1927,11 +2407,11 @@ def scan_file(
             for tidx, elem in enumerate(split_top_level_no_angles(p[1:-1], ",")):
                 vname = parse_simple_pat_ident(elem)
                 if vname and tidx in tup_types:
-                    bindings[vname] = tup_types[tidx]
+                    bindings[vname] = (tup_types[tidx], origin)
             return bindings
         vname = parse_simple_pat_ident(p)
         if vname and whole is not None:
-            bindings[vname] = whole
+            bindings[vname] = (whole, origin)
         return bindings
 
     i = 0
@@ -1947,7 +2427,7 @@ def scan_file(
 
         kind, text, start, end = tokens[i]
 
-        # Skip token-only macros and track unknown macros.
+        # Skip token-only macros and track unknown, qualified, or shadowed macros.
         if (
             kind == "IDENT"
             and text not in NON_MACRO_KEYWORDS
@@ -1958,14 +2438,33 @@ def scan_file(
             and (i == 0 or tokens[i - 1][1] != "#")
         ):
             open_ch = tokens[i + 2][1]
-            close_ch = {")": "(", "]": "[", "}": "{"}
             close_for = {"(": ")", "[": "]", "{": "}"}[open_ch]
             mac_end = skip_balanced(tokens, i + 2, open_ch, close_for)
-            if text in TOKEN_ONLY_MACROS:
+            mname = norm_ident(text)
+            qual_segs: list[str] = [mname]
+            q = i
+            while q >= 2 and tokens[q - 1][1] == "::" and tokens[q - 2][0] == "IDENT":
+                q -= 2
+                qual_segs.append(norm_ident(tokens[q][1]))
+            qual_segs.reverse()
+            has_leading_colons = q >= 1 and tokens[q - 1][1] == "::"
+            if len(qual_segs) >= 2 or has_leading_colons:
+                root_seg = qual_segs[0] if len(qual_segs) >= 2 else ""
+                trusted_qual = root_seg in TRUSTED_MACRO_CRATES or (
+                    ctx.in_game_tree and root_seg in ("crate", "super", "self") and mname in REPO_EXPR_MACROS
+                )
+                if trusted_qual and mname in TOKEN_ONLY_MACROS:
+                    i = mac_end
+                    continue
+                if not (trusted_qual and mname in EXPR_MACROS):
+                    unknown_macro_stack.append((mac_end, "::".join(qual_segs)))
+            elif mname in shadowed_macros:
+                unknown_macro_stack.append((mac_end, f"shadowed {mname}"))
+            elif mname in TOKEN_ONLY_MACROS:
                 i = mac_end
                 continue
-            if text not in EXPR_MACROS:
-                unknown_macro_stack.append((mac_end, text))
+            elif mname not in EXPR_MACROS:
+                unknown_macro_stack.append((mac_end, mname))
 
         if text == "(":
             paren_depth += 1
@@ -2000,7 +2499,7 @@ def scan_file(
 
         if text == "{":
             brace_depth += 1
-            scope_vars: dict[str, str] = {}
+            scope_vars: dict[str, VarBinding] = {}
             is_fn_barrier = i in fn_item_braces
             if i in impl_opens:
                 impl_stack.append((brace_depth, impl_opens[i]))
@@ -2027,37 +2526,21 @@ def scan_file(
 
         # `match scrutinee { pat [if guard] => body, ... }`
         if kind == "IDENT" and text == "match" and (i == 0 or tokens[i - 1][1] not in (".", "::")):
-            whole_scrut, tup_scrut, scrut_ambig = classify_let_rhs(i + 1)
-            k = i + 1
-            dp2 = db2 = dc2 = 0
-            match_brace: int | None = None
-            while k < n:
-                tv = tokens[k][1]
-                if tv == "(":
-                    dp2 += 1
-                elif tv == ")":
-                    dp2 = max(0, dp2 - 1)
-                elif tv == "[":
-                    db2 += 1
-                elif tv == "]":
-                    db2 = max(0, db2 - 1)
-                elif tv == "{" and dp2 == 0 and db2 == 0 and dc2 == 0:
-                    match_brace = k
-                    break
-                elif tv == "{":
-                    dc2 += 1
-                elif tv == "}":
-                    dc2 = max(0, dc2 - 1)
-                elif tv == ";" and dp2 == 0 and db2 == 0 and dc2 == 0:
-                    break
-                k += 1
+            whole_scrut, tup_scrut, scrut_ambig, scrut_origin = classify_let_rhs(i + 1)
+            match_brace, _ = find_header_body_brace(tokens, i + 1, False)
             if match_brace is not None:
                 match_end = skip_balanced(tokens, match_brace, "{", "}")
                 for pat_start, pat_end, guard_start, arrow_idx, arm_end, pat_toks in find_match_arms(
                     tokens, match_brace, match_end
                 ):
                     match_pat_ranges.append((pat_start, pat_end))
-                    arm_vars = build_pattern_bindings(pat_toks, whole_scrut, tup_scrut, scrut_ambig)
+                    arm_vars = build_pattern_bindings(
+                        pat_toks,
+                        whole_scrut,
+                        tup_scrut,
+                        scrut_ambig,
+                        scrut_origin or "match-scrutinee",
+                    )
                     if arm_vars:
                         if guard_start is not None:
                             scheduled_ranges.setdefault(guard_start, []).append((arrow_idx, arm_vars))
@@ -2091,8 +2574,6 @@ def scan_file(
                 elif tv == "]":
                     db2 = max(0, db2 - 1)
                 elif tv == "{":
-                    if dp2 == 0 and db2 == 0 and dc2 == 0:
-                        break
                     dc2 += 1
                 elif tv == "}":
                     dc2 = max(0, dc2 - 1)
@@ -2104,26 +2585,11 @@ def scan_file(
                 k += 1
             if in_idx is not None:
                 for_pat = tokens[p_start:in_idx]
-                bscan = in_idx + 1
-                dp2 = db2 = 0
-                while bscan < n:
-                    tv = tokens[bscan][1]
-                    if tv == "(":
-                        dp2 += 1
-                    elif tv == ")":
-                        dp2 = max(0, dp2 - 1)
-                    elif tv == "[":
-                        db2 += 1
-                    elif tv == "]":
-                        db2 = max(0, db2 - 1)
-                    elif tv == "{" and dp2 == 0 and db2 == 0:
-                        for_vars = build_pattern_bindings(for_pat, None, {})
-                        if for_vars:
-                            fn_opens.setdefault(bscan, {}).update(for_vars)
-                        break
-                    elif tv == ";" and dp2 == 0 and db2 == 0:
-                        break
-                    bscan += 1
+                body_brace, _ = find_header_body_brace(tokens, in_idx + 1, False)
+                if body_brace is not None:
+                    for_vars = build_pattern_bindings(for_pat, None, {})
+                    if for_vars:
+                        fn_opens.setdefault(body_brace, {}).update(for_vars)
 
         # Closure parameters: `|game: &mut Game<'_>|`, `|g: &Self|`, `|(game, _)|`, `self.as_guest(1, |g| ...)`, etc.
         if (
@@ -2194,25 +2660,28 @@ def scan_file(
                 j += 1
             if close_bar is not None:
                 c_slice = tokens[i + 1 : close_bar]
-                cvars: dict[str, str] = {}
+                cvars: dict[str, VarBinding] = {}
                 expected_params: dict[int, str] = {}
                 call_is_ambig = False
 
-                call_info = find_enclosing_call_and_arg(tokens, i)
+                call_info = find_enclosing_call_and_arg(tokens, i) if ctx.in_game_tree else None
                 if call_info is not None:
                     call_name, arg_idx, is_method, dot_idx = call_info
+                    norm_call = norm_ident(call_name)
                     if is_method and dot_idx is not None:
                         recv_kind, _ = receiver_kind_before_dot(dot_idx)
                         if recv_kind == "Game":
-                            expected_params = index.game_method_closure_params.get(call_name, {}).get(arg_idx, {})
+                            expected_params = effective_index.game_method_closure_params.get(norm_call, {}).get(arg_idx, {})
                         elif recv_kind and recv_kind in wrapper_structs:
                             expected_params = (
-                                index.wrapper_method_closure_params.get(recv_kind, {}).get(call_name, {}).get(arg_idx, {})
+                                effective_index.wrapper_method_closure_params.get(recv_kind, {})
+                                .get(norm_call, {})
+                                .get(arg_idx, {})
                             )
                     elif not is_method:
                         # Special-case `Mutate::new(|tick| ...)` where `new` is noisy globally.
                         if (
-                            call_name == "new"
+                            norm_call == "new"
                             and i >= 5
                             and tokens[i - 2][1] == "new"
                             and tokens[i - 3][1] == "::"
@@ -2220,7 +2689,7 @@ def scan_file(
                         ):
                             expected_params = {0: "BlockEntityTick"}
                         else:
-                            fmap, call_is_ambig = lookup_free_fn_closures(call_name)
+                            fmap, call_is_ambig = lookup_free_fn_closures(norm_call)
                             if fmap:
                                 expected_params = fmap.get(arg_idx, {})
 
@@ -2232,23 +2701,32 @@ def scan_file(
                         ty = part[colon + 1 :]
                         simple_name = parse_simple_pat_ident(pat)
                         if simple_name:
-                            ptype = resolve_type_kind(ty, wrapper_structs, cur_self)
-                            cvars[simple_name] = ptype if ptype is not None else NON_GAME
+                            ptype = resolve_type_kind(ty, wrapper_structs, cur_self, ctx)
+                            if ptype == "Game":
+                                cvars[simple_name] = ("Game", "explicit-closure-param")
+                            elif ptype is not None:
+                                cvars[simple_name] = (ptype, "wrapper-closure-param")
+                            else:
+                                cvars[simple_name] = (NON_GAME, "")
                         else:
-                            for bname in extract_pattern_bound_names(pat):
-                                cvars[bname] = NON_GAME
+                            definite, uncertain = extract_pattern_bound_names(pat)
+                            for bname in definite | uncertain:
+                                cvars[bname] = (NON_GAME, "")
                     else:
                         simple_name = parse_simple_pat_ident(part)
                         if simple_name:
                             if pidx in expected_params:
-                                cvars[simple_name] = expected_params[pidx]
+                                kind_val = expected_params[pidx]
+                                orig = "game-closure-arg" if kind_val == "Game" else "wrapper-closure-arg"
+                                cvars[simple_name] = (kind_val, orig)
                             elif call_is_ambig:
-                                cvars[simple_name] = AMBIGUOUS
+                                cvars[simple_name] = (AMBIGUOUS, "")
                             else:
-                                cvars[simple_name] = NON_GAME
+                                cvars[simple_name] = (NON_GAME, "")
                         else:
-                            for bname in extract_pattern_bound_names(part):
-                                cvars[bname] = NON_GAME
+                            definite, uncertain = extract_pattern_bound_names(part)
+                            for bname in definite | uncertain:
+                                cvars[bname] = (NON_GAME, "")
 
                 if cvars:
                     after = close_bar + 1
@@ -2312,6 +2790,7 @@ def scan_file(
             whole_ty: str | None = None
             tup_tys: dict[int, str] = {}
             rhs_ambig = False
+            let_origin = "explicit-let"
             if k < n and tokens[k][1] == ":":
                 ts = k + 1
                 te = ts
@@ -2333,12 +2812,12 @@ def scan_file(
                     elif tv in ("=", ";") and da == 0 and dp == 0 and db == 0:
                         break
                     te += 1
-                whole_ty = resolve_type_kind(tokens[ts:te], wrapper_structs, active_impl_target())
+                whole_ty = resolve_type_kind(tokens[ts:te], wrapper_structs, active_impl_target(), ctx)
                 k = te
             if whole_ty is None and k < n and tokens[k][1] == "=":
-                whole_ty, tup_tys, rhs_ambig = classify_let_rhs(k + 1)
+                whole_ty, tup_tys, rhs_ambig, let_origin = classify_let_rhs(k + 1)
 
-            new_bindings = build_pattern_bindings(pat_toks, whole_ty, tup_tys, rhs_ambig)
+            new_bindings = build_pattern_bindings(pat_toks, whole_ty, tup_tys, rhs_ambig, let_origin)
 
             if not is_cond_let:
                 if new_bindings:
@@ -2365,29 +2844,11 @@ def scan_file(
                         sscan += 1
             elif new_bindings:
                 # Attach `if let` / `while let` / `&& let` bindings to the condition chain and body `{`.
-                bscan = k + 1
-                dp2 = db2 = 0
-                first_amp: int | None = None
-                while bscan < n:
-                    tv = tokens[bscan][1]
-                    if tv == "(":
-                        dp2 += 1
-                    elif tv == ")":
-                        dp2 = max(0, dp2 - 1)
-                    elif tv == "[":
-                        db2 += 1
-                    elif tv == "]":
-                        db2 = max(0, db2 - 1)
-                    elif tv == "&&" and dp2 == 0 and db2 == 0 and first_amp is None:
-                        first_amp = bscan
-                    elif tv == "{" and dp2 == 0 and db2 == 0:
-                        if first_amp is not None:
-                            scheduled_ranges.setdefault(first_amp + 1, []).append((bscan, new_bindings))
-                        fn_opens.setdefault(bscan, {}).update(new_bindings)
-                        break
-                    elif tv == ";" and dp2 == 0 and db2 == 0:
-                        break
-                    bscan += 1
+                body_brace, first_amp = find_header_body_brace(tokens, k + 1, True)
+                if body_brace is not None:
+                    if first_amp is not None:
+                        scheduled_ranges.setdefault(first_amp + 1, []).append((body_brace, new_bindings))
+                    fn_opens.setdefault(body_brace, {}).update(new_bindings)
 
         # Match field access `.field` or `.server.field` / `.client.field`
         if text == "." and i > 0 and i + 1 < n and tokens[i + 1][0] == "IDENT":
@@ -2395,7 +2856,7 @@ def scan_file(
             if recv_kind in ("Game", AMBIGUOUS) and reason is not None:
                 record_access(i, recv_kind, reason)
             elif EXTRA_SITES:
-                fname = tokens[i + 1][1]
+                fname = norm_ident(tokens[i + 1][1])
                 if fname in owners:
                     lineno = offset_to_line(line_starts, tokens[i + 1][2])
                     if (rel_posix, lineno, fname) in EXTRA_SITES:
@@ -2453,6 +2914,7 @@ def main(argv: list[str] | None = None) -> int:
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--fix", action="store_true", help="rewrite accesses in place")
     mode.add_argument("--check", action="store_true", help="exit 1 if any stale access remains")
+    mode.add_argument("--list", action="store_true", help="print every site that would be rewritten with its justification")
     parser.add_argument("--table", type=Path, default=DEFAULT_TABLE, help="path to game_field_owners.tsv")
     parser.add_argument("--stats", action="store_true", help="print breakdown by category")
     parser.add_argument("--no-fmt", action="store_true", help="skip running rustfmt on modified files")
@@ -2467,7 +2929,15 @@ def main(argv: list[str] | None = None) -> int:
     owners = load_field_owners(args.table)
     paths = args.paths if args.paths else list(DEFAULT_PATHS)
     files = collect_files(paths)
-    index = build_workspace_index(paths)
+    root_resolved = ROOT.resolve()
+    file_rels: list[tuple[Path, str]] = []
+    for path in files:
+        try:
+            rel_posix = path.resolve().relative_to(root_resolved).as_posix()
+        except ValueError:
+            rel_posix = path.as_posix()
+        file_rels.append((path, rel_posix))
+    index = build_workspace_index(paths) if any(is_in_game_tree(rel) for _, rel in file_rels) else WorkspaceIndex()
 
     total_edits = 0
     total_ambiguous = 0
@@ -2475,14 +2945,10 @@ def main(argv: list[str] | None = None) -> int:
     changed_paths: list[Path] = []
     by_reason: dict[str, int] = {}
 
-    for path in files:
-        try:
-            rel_posix = path.resolve().relative_to(ROOT.resolve()).as_posix()
-        except ValueError:
-            rel_posix = path.as_posix()
+    for path, rel_posix in file_rels:
         src = path.read_text(encoding="utf-8")
         edits, ambig = scan_file(src, rel_posix, owners, index)
-        line_starts = compute_line_starts(src) if (ambig or (edits and args.check)) else []
+        line_starts = compute_line_starts(src) if (ambig or (edits and (args.check or args.list))) else []
         for site in ambig:
             total_ambiguous += 1
             lineno = offset_to_line(line_starts, site.offset)
@@ -2499,6 +2965,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.fix:
             path.write_text(apply_edits(src, edits), encoding="utf-8")
             changed_paths.append(path)
+        elif args.list:
+            for e in edits:
+                lineno = offset_to_line(line_starts, e.start)
+                print(f"{rel_posix}:{lineno}: `{e.old_expr}` -> `{e.new_expr}` [{e.reason}]")
         else:
             for e in edits:
                 lineno = offset_to_line(line_starts, e.start)
@@ -2516,6 +2986,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.fix:
         print(f"Rewrote {total_edits} sites across {files_changed} files.")
+    elif args.list:
+        print(f"Listed {total_edits} rewrite sites across {files_changed} files.")
     else:
         print(f"Found {total_edits} stale sites across {files_changed} files.")
 

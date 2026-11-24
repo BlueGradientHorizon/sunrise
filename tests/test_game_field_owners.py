@@ -29,7 +29,11 @@ OWNERS: dict[str, str] = {
 }
 
 
-def run_scan(src: str, index: gfo.WorkspaceIndex | None = None, rel: str = "test.rs"):
+def run_scan(
+    src: str,
+    index: gfo.WorkspaceIndex | None = None,
+    rel: str = "crates/sunrise-client/src/game/test.rs",
+):
     idx = index if index is not None else gfo.WorkspaceIndex()
     edits, ambig = gfo.scan_file(src, rel, OWNERS, idx)
     return gfo.apply_edits(src, edits), edits, ambig
@@ -327,11 +331,16 @@ class GameFieldOwnersCliAmbiguousTests(unittest.TestCase):
         path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     def test_cli_ambiguous_fails_fix_unless_allowed_and_check_catches_both_directions(self):
+        import io
+        from contextlib import redirect_stderr, redirect_stdout
+
         with tempfile.TemporaryDirectory() as td:
             td_path = Path(td)
             table = td_path / "owners.tsv"
             self._write_table(table)
-            target = td_path / "sample.rs"
+            game_dir = td_path / "crates/sunrise-client/src/game"
+            game_dir.mkdir(parents=True)
+            target = game_dir / "sample.rs"
             target.write_text(
                 "fn f(game: &Game<'_>) {\n"
                 "    let _ = mystery_macro!(game.screen);\n"
@@ -340,54 +349,35 @@ class GameFieldOwnersCliAmbiguousTests(unittest.TestCase):
                 "}\n",
                 encoding="utf-8",
             )
-            # `--check` fails on stale accesses and reports the ambiguous site.
-            rc_check = subprocess.run(
-                [sys.executable, str(ROOT / "tools/game_field_owners.py"), "--check", "--table", str(table), str(target)],
-                capture_output=True,
-                text=True,
-            )
-            self.assertEqual(rc_check.returncode, 1)
-            self.assertIn("stale Game field `client.flight` -> `flight`", rc_check.stdout)
-            self.assertIn("stale Game field `hoppers` -> `server.hoppers`", rc_check.stdout)
-            self.assertIn("ambiguous receiver for Game field `screen`", rc_check.stderr)
+            old_root = gfo.ROOT
+            try:
+                gfo.ROOT = td_path
+                out_buf, err_buf = io.StringIO(), io.StringIO()
+                with redirect_stdout(out_buf), redirect_stderr(err_buf):
+                    rc_check = gfo.main(["--check", "--table", str(table), str(target)])
+                self.assertEqual(rc_check, 1)
+                self.assertIn("stale Game field `client.flight` -> `flight`", out_buf.getvalue())
+                self.assertIn("stale Game field `hoppers` -> `server.hoppers`", out_buf.getvalue())
+                self.assertIn("ambiguous receiver for Game field `screen`", err_buf.getvalue())
 
-            # `--fix` rewrites unambiguous sites, leaves ambiguous untouched, and exits 1.
-            rc_fix = subprocess.run(
-                [
-                    sys.executable,
-                    str(ROOT / "tools/game_field_owners.py"),
-                    "--fix",
-                    "--no-fmt",
-                    "--table",
-                    str(table),
-                    str(target),
-                ],
-                capture_output=True,
-                text=True,
-            )
-            self.assertEqual(rc_fix.returncode, 1)
-            self.assertIn("ambiguous receiver for Game field `screen`", rc_fix.stderr)
-            rewritten = target.read_text(encoding="utf-8")
-            self.assertIn("mystery_macro!(game.screen);", rewritten)
-            self.assertIn("let _ = game.flight;", rewritten)
-            self.assertIn("let _ = game.server.hoppers;", rewritten)
+                out_buf, err_buf = io.StringIO(), io.StringIO()
+                with redirect_stdout(out_buf), redirect_stderr(err_buf):
+                    rc_fix = gfo.main(["--fix", "--no-fmt", "--table", str(table), str(target)])
+                self.assertEqual(rc_fix, 1)
+                self.assertIn("ambiguous receiver for Game field `screen`", err_buf.getvalue())
+                rewritten = target.read_text(encoding="utf-8")
+                self.assertIn("mystery_macro!(game.screen);", rewritten)
+                self.assertIn("let _ = game.flight;", rewritten)
+                self.assertIn("let _ = game.server.hoppers;", rewritten)
 
-            # `--fix --allow-ambiguous` exits 0 once unambiguous sites are clean.
-            rc_allow = subprocess.run(
-                [
-                    sys.executable,
-                    str(ROOT / "tools/game_field_owners.py"),
-                    "--fix",
-                    "--no-fmt",
-                    "--allow-ambiguous",
-                    "--table",
-                    str(table),
-                    str(target),
-                ],
-                capture_output=True,
-                text=True,
-            )
-            self.assertEqual(rc_allow.returncode, 0)
+                out_buf, err_buf = io.StringIO(), io.StringIO()
+                with redirect_stdout(out_buf), redirect_stderr(err_buf):
+                    rc_allow = gfo.main(
+                        ["--fix", "--no-fmt", "--allow-ambiguous", "--table", str(table), str(target)]
+                    )
+                self.assertEqual(rc_allow, 0)
+            finally:
+                gfo.ROOT = old_root
 
     def test_colliding_free_fn_reported_ambiguous(self):
         idx = gfo.WorkspaceIndex()
@@ -409,6 +399,269 @@ class GameFieldOwnersCliAmbiguousTests(unittest.TestCase):
             ("screen", "ambiguous variable `g`"),
             ("hoppers", "ambiguous variable `h`"),
         ])
+
+
+class GameFieldOwnersRound2RegressionTests(unittest.TestCase):
+    def test_block_expr_match_if_let_while_let_and_for_shadowing(self):
+        src = (
+            "fn f(game: &Game<'_>, other: Option<Other>, others: Vec<Other>) -> i32 {\n"
+            "    let a = match { other } {\n"
+            "        Some(game) => game.screen,\n"
+            "        None => 0,\n"
+            "    };\n"
+            "    if let Some(game) = { other } {\n"
+            "        return game.screen;\n"
+            "    }\n"
+            "    while let Some(game) = { other } {\n"
+            "        return game.screen;\n"
+            "    }\n"
+            "    for game in { others } {\n"
+            "        return game.screen;\n"
+            "    }\n"
+            "    a + game.screen\n"
+            "}\n"
+        )
+        out, edits, ambig = run_scan(src)
+        self.assertEqual(ambig, [])
+        self.assertEqual(len(edits), 1)
+        self.assertIn("Some(game) => game.screen,", out)
+        self.assertIn("if let Some(game) = { other } {\n        return game.screen;", out)
+        self.assertIn("while let Some(game) = { other } {\n        return game.screen;", out)
+        self.assertIn("for game in { others } {\n        return game.screen;", out)
+        self.assertIn("a + game.client.screen", out)
+
+    def test_nested_control_flow_in_match_and_if_let_scrutinee(self):
+        src = (
+            "fn f(game: &Game<'_>, flag: bool, other: Option<Other>) -> i32 {\n"
+            "    let a = match if flag { other } else { None } {\n"
+            "        Some(game) => game.screen,\n"
+            "        None => game.screen,\n"
+            "    };\n"
+            "    if let Some(game) = unsafe { other } && { game.screen > 0 } {\n"
+            "        return game.screen;\n"
+            "    }\n"
+            "    a\n"
+            "}\n"
+        )
+        out, edits, ambig = run_scan(src)
+        self.assertEqual(ambig, [])
+        self.assertEqual(len(edits), 1)
+        self.assertIn("Some(game) => game.screen,", out)
+        self.assertIn("None => game.client.screen,", out)
+        self.assertIn("&& { game.screen > 0 } {\n        return game.screen;", out)
+
+    def test_local_or_qualified_macro_shadowing_allowlisted_name_fails_closed(self):
+        src = (
+            "macro_rules! dbg {\n"
+            "    ($($tokens:tt)*) => { stringify!($($tokens)*) };\n"
+            "}\n"
+            "fn f(game: &Game<'_>) -> &'static str {\n"
+            "    let _ = other_crate::format!(\"{:?}\", game.hoppers);\n"
+            "    dbg!(game.screen)\n"
+            "}\n"
+        )
+        out, edits, ambig = run_scan(src)
+        self.assertEqual(out, src)
+        self.assertEqual(edits, [])
+        self.assertEqual(len(ambig), 2)
+        self.assertEqual({a.field for a in ambig}, {"screen", "hoppers"})
+
+    def test_imported_macro_shadowing_allowlisted_name_fails_closed(self):
+        src = (
+            "use my_macros::dbg;\n"
+            "fn f(game: &Game<'_>) -> &'static str {\n"
+            "    dbg!(game.screen)\n"
+            "}\n"
+        )
+        out, edits, ambig = run_scan(src)
+        self.assertEqual(out, src)
+        self.assertEqual(edits, [])
+        self.assertEqual(len(ambig), 1)
+        self.assertEqual(ambig[0].field, "screen")
+
+    def test_raw_identifier_shadows_ordinary_binding_and_matches_receiver(self):
+        src = (
+            "fn f(game: &Game<'_>, other: Option<Other>) -> i32 {\n"
+            "    if let Some(r#game) = other {\n"
+            "        return game.screen;\n"
+            "    }\n"
+            "    let _ = {\n"
+            "        let r#game = other;\n"
+            "        game.screen\n"
+            "    };\n"
+            "    r#game.screen\n"
+            "}\n"
+        )
+        out, edits, ambig = run_scan(src)
+        self.assertEqual(ambig, [])
+        self.assertEqual(len(edits), 1)
+        self.assertIn("if let Some(r#game) = other {\n        return game.screen;", out)
+        self.assertIn("let r#game = other;\n        game.screen", out)
+        self.assertIn("r#game.client.screen", out)
+
+    def test_uppercase_pattern_binding_colliding_with_tracked_var_fails_closed(self):
+        src = (
+            "fn f(GameVar: &Game<'_>, other: Option<Other>) -> i32 {\n"
+            "    if let Some(GameVar) = other {\n"
+            "        return GameVar.screen;\n"
+            "    }\n"
+            "    GameVar.screen\n"
+            "}\n"
+        )
+        out, edits, ambig = run_scan(src)
+        self.assertEqual(len(edits), 1)
+        self.assertEqual(len(ambig), 1)
+        self.assertEqual(ambig[0].field, "screen")
+        self.assertIn("return GameVar.screen;", out)
+        self.assertIn("\n    GameVar.client.screen\n", out)
+
+    def test_non_sunrise_qualified_or_imported_game_type_not_rewritten(self):
+        src = (
+            "fn f(game: &other::Game) -> i32 {\n"
+            "    game.screen\n"
+            "}\n"
+            "impl other::Game {\n"
+            "    fn g(&self) -> i32 {\n"
+            "        self.screen\n"
+            "    }\n"
+            "}\n"
+        )
+        out, edits, ambig = run_scan(src)
+        self.assertEqual(out, src)
+        self.assertEqual(edits, [])
+        self.assertEqual(ambig, [])
+
+    def test_imported_foreign_game_suppresses_bare_game_type(self):
+        src = (
+            "use other_crate::Game;\n"
+            "fn f(game: &Game) -> i32 {\n"
+            "    game.screen\n"
+            "}\n"
+            "impl Game {\n"
+            "    fn g(&self) -> i32 {\n"
+            "        self.screen\n"
+            "    }\n"
+            "}\n"
+        )
+        out, edits, ambig = run_scan(src)
+        self.assertEqual(out, src)
+        self.assertEqual(edits, [])
+        self.assertEqual(ambig, [])
+
+    def test_external_file_outside_game_tree_rewrites_nothing_and_reports_manual(self):
+        src = (
+            "fn mod_hook(game: &mut sunrise_client::game::Game<'_>) {\n"
+            "    let _ = game.screen;\n"
+            "    let _ = game.client.flight;\n"
+            "}\n"
+        )
+        out, edits, ambig = run_scan(src, rel="my_mod/src/lib.rs")
+        self.assertEqual(out, src)
+        self.assertEqual(edits, [])
+        self.assertEqual([a.field for a in ambig], ["screen", "flight"])
+
+    def test_cli_external_file_fails_closed_and_leaves_file_untouched(self):
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            table = td_path / "owners.tsv"
+            lines = ["field\ttype\towner\treason\tdeclaration_index"]
+            for i, (fname, owner) in enumerate(OWNERS.items()):
+                lines.append(f"{fname}\tT\t{owner}\ttest\t{i}")
+            table.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            target = td_path / "mod_hook.rs"
+            src = (
+                "fn mod_hook(game: &mut sunrise_client::game::Game<'_>) {\n"
+                "    let _ = game.screen;\n"
+                "}\n"
+            )
+            target.write_text(src, encoding="utf-8")
+            rc = subprocess.run(
+                [sys.executable, str(ROOT / "tools/game_field_owners.py"), "--fix", "--no-fmt", "--table", str(table), str(target)],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(rc.returncode, 1)
+            self.assertEqual(target.read_text(encoding="utf-8"), src)
+            self.assertIn("screen", rc.stderr)
+
+    def test_cli_list_prints_sites_with_line_and_justification_without_modifying(self):
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            table = td_path / "owners.tsv"
+            lines = ["field\ttype\towner\treason\tdeclaration_index"]
+            for i, (fname, owner) in enumerate(OWNERS.items()):
+                lines.append(f"{fname}\tT\t{owner}\ttest\t{i}")
+            table.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            game_dir = td_path / "crates/sunrise-client/src/game"
+            game_dir.mkdir(parents=True)
+            target = game_dir / "sample.rs"
+            src = (
+                "impl Game<'_> {\n"
+                "    fn demo(&mut self) {\n"
+                "        let _ = self.screen;\n"
+                "    }\n"
+                "}\n"
+                "fn helper(game: &Game<'_>) {\n"
+                "    let _ = game.hoppers;\n"
+                "}\n"
+            )
+            target.write_text(src, encoding="utf-8")
+            old_root = gfo.ROOT
+            try:
+                gfo.ROOT = td_path
+                import io
+                from contextlib import redirect_stdout, redirect_stderr
+
+                out_buf, err_buf = io.StringIO(), io.StringIO()
+                with redirect_stdout(out_buf), redirect_stderr(err_buf):
+                    rc = gfo.main(["--list", "--table", str(table), str(target)])
+            finally:
+                gfo.ROOT = old_root
+            self.assertEqual(rc, 0)
+            self.assertEqual(target.read_text(encoding="utf-8"), src)
+            listed = out_buf.getvalue()
+            self.assertIn("crates/sunrise-client/src/game/sample.rs:3:", listed)
+            self.assertIn("impl-game-self", listed)
+            self.assertIn("crates/sunrise-client/src/game/sample.rs:7:", listed)
+            self.assertIn("explicit-param", listed)
+
+    def test_aliased_std_macro_and_open_range_for_and_glob_external_import(self):
+        src_alias = (
+            "use std::stringify as dbg;\n"
+            "fn f(game: &Game<'_>) -> &'static str {\n"
+            "    dbg!(game.screen)\n"
+            "}\n"
+        )
+        out, edits, ambig = run_scan(src_alias)
+        self.assertEqual(out, src_alias)
+        self.assertEqual(edits, [])
+        self.assertEqual([a.field for a in ambig], ["screen"])
+
+        src_range = (
+            "fn f(game: &Game<'_>) {\n"
+            "    for game in 0.. {\n"
+            "        let _ = game.screen;\n"
+            "        break;\n"
+            "    }\n"
+            "    let _ = game.screen;\n"
+            "}\n"
+        )
+        out, edits, ambig = run_scan(src_range)
+        self.assertEqual(ambig, [])
+        self.assertEqual(len(edits), 1)
+        self.assertIn("for game in 0.. {\n        let _ = game.screen;", out)
+        self.assertIn("}\n    let _ = game.client.screen;", out)
+
+        src_glob = (
+            "use sunrise_client::game::*;\n"
+            "fn mod_hook(game: &mut Game<'_>) {\n"
+            "    let _ = game.screen;\n"
+            "}\n"
+        )
+        out, edits, ambig = run_scan(src_glob, rel="my_mod/src/lib.rs")
+        self.assertEqual(out, src_glob)
+        self.assertEqual(edits, [])
+        self.assertEqual([a.field for a in ambig], ["screen"])
 
 
 if __name__ == "__main__":
