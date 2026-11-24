@@ -1260,6 +1260,8 @@ mod general_handle_tests {
             rotation: [0.0, 0.0],
             owner: None,
             fall_distance: fall,
+            custom_name: None,
+            custom_name_visible: false,
             payload_version: 1,
             payload_bytes: Vec::new(),
             mount: None,
