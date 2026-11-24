@@ -185,6 +185,57 @@ impl Game<'_> {
             .map(|(structure, position)| mod_api::StructureSearchResult::new(structure, position))
     }
 
+    /// `StructureManager.getStructureWithPieceAt`, through the active or parked level's
+    /// generator starts.
+    pub(super) fn level_structures_with_piece_at(
+        &self,
+        level: LevelRef,
+        pos: [i32; 3],
+        structure: &str,
+    ) -> Option<Vec<String>> {
+        self.native_structures_at(level, pos, structure, true)
+    }
+
+    /// `StructureManager.getStructureAt`, the start's bounding box instead of a piece's.
+    pub(super) fn level_structures_at(
+        &self,
+        level: LevelRef,
+        pos: [i32; 3],
+        structure: &str,
+    ) -> Option<Vec<String>> {
+        self.native_structures_at(level, pos, structure, false)
+    }
+
+    /// The structures `structure` names whose start reaches `pos` from the loaded chunk's
+    /// references: inside a piece where `piece`, inside the start's box otherwise.
+    fn native_structures_at(
+        &self,
+        level: LevelRef,
+        pos: [i32; 3],
+        structure: &str,
+        piece: bool,
+    ) -> Option<Vec<String>> {
+        let world = self.native_level_world(level)?;
+        world.chunks.get(&(pos[0] >> 4, pos[2] >> 4))?;
+        let names = self.structure_names(&normalized_selector(structure));
+        let active = level.dimension() == self.dim.key();
+        let locator = || {
+            if active {
+                self.end.locator()
+            } else {
+                self.levels.parked_locator_of(level.dimension_id())
+            }
+        };
+        let wanted = |id: &str| names.iter().any(|name| name == id);
+        Some(
+            sunrise_gameplay::structures::structures_reaching_in(world, &locator, pos, &wanted)
+                .into_iter()
+                .filter(|(_, in_piece)| !piece || *in_piece)
+                .map(|(name, _)| name)
+                .collect(),
+        )
+    }
+
     /// `LevelReader.getBiome`: the noise cell selected by this level's BiomeManager zoom.
     /// Unlike a generating server query, an absent selected column returns None.
     fn native_read_biome(&self, level: LevelRef, pos: [i32; 3]) -> Option<String> {
@@ -3742,6 +3793,114 @@ pub(in crate::game) mod environment_read_tests {
             );
             assert_eq!(
                 stale.find_nearest_structure(game, "minecraft:stronghold", search),
+                None
+            );
+        });
+    }
+
+    /// `getStructureWithPieceAt` and `getStructureAt` over a stronghold start the generator
+    /// builds: inside a piece both name it, between its pieces only the bounding box does, a tag
+    /// and a bare id name it too, another structure is not there, and an unloaded chunk or a
+    /// stale level gives no answer.
+    #[test]
+    #[ignore = "daily"]
+    fn structures_at_reads_the_loaded_chunks_references() {
+        use mod_api::StructureSearch;
+        use sunrise_client::vanillagen::{TerrainResources, VanillaTerrain};
+
+        with_game(|game| {
+            let directory = game.options.resources.join("worldgen");
+            let terrain = VanillaTerrain::for_dimension(
+                TerrainResources {
+                    data: Some(&game.pack.data_changes),
+                    dir: &directory,
+                    registry: game.pack.assets.registry,
+                    biomes: world_biomes!(game),
+                    item_data: &game.res.core.item_data,
+                },
+                12345,
+                "minecraft:overworld",
+            )
+            .unwrap();
+            let terrain = Arc::new(terrain);
+            game.end.set_locator(Some(terrain.clone()));
+            let overworld = game.level("minecraft:overworld").unwrap();
+            let found = overworld
+                .find_nearest_structure(
+                    game,
+                    "minecraft:stronghold",
+                    StructureSearch::new([0, 64, 0], 100),
+                )
+                .unwrap();
+            let start_chunk = (found.position[0] >> 4, found.position[2] >> 4);
+            let start = terrain
+                .starts_at(start_chunk.0, start_chunk.1)
+                .into_iter()
+                .find(|start| start.name == "minecraft:stronghold")
+                .unwrap();
+            let in_a_piece = |pos: [i32; 3]| {
+                start
+                    .pieces
+                    .iter()
+                    .any(|piece| piece.bounding_box().is_inside(pos))
+            };
+            let in_piece = start.pieces[0].bounding_box().min;
+            let [min, max] = [start.bounding_box.min, start.bounding_box.max];
+            let between = (min[1]..=max[1])
+                .flat_map(|y| {
+                    (min[0]..=max[0]).flat_map(move |x| (min[2]..=max[2]).map(move |z| [x, y, z]))
+                })
+                .find(|&pos| !in_a_piece(pos))
+                .expect("a stronghold's box has room between its pieces");
+
+            let stronghold = || Some(vec!["minecraft:stronghold".to_owned()]);
+            for pos in [in_piece, between] {
+                let chunk = (pos[0] >> 4, pos[2] >> 4);
+                if game.world.chunks.contains_key(&chunk) {
+                    continue;
+                }
+                assert_eq!(
+                    overworld.structures_at(game, pos, "minecraft:stronghold"),
+                    None
+                );
+                let mut referring = Chunk::empty(chunk.0, chunk.1);
+                referring
+                    .structure_refs
+                    .push(("minecraft:stronghold".into(), start_chunk));
+                game.world.chunks.insert(chunk, Arc::new(referring));
+            }
+            for selector in [
+                "minecraft:stronghold",
+                "stronghold",
+                "#minecraft:eye_of_ender_located",
+            ] {
+                assert_eq!(
+                    overworld.structures_with_piece_at(game, in_piece, selector),
+                    stronghold()
+                );
+                assert_eq!(
+                    overworld.structures_at(game, in_piece, selector),
+                    stronghold()
+                );
+            }
+            assert_eq!(
+                overworld.structures_with_piece_at(game, between, "minecraft:stronghold"),
+                Some(Vec::new())
+            );
+            assert_eq!(
+                overworld.structures_at(game, between, "minecraft:stronghold"),
+                stronghold()
+            );
+            assert_eq!(
+                overworld.structures_at(game, in_piece, "minecraft:fortress"),
+                Some(Vec::new())
+            );
+            let stale = LevelRef::new(
+                WorldEpoch::new(overworld.epoch().get() + 1),
+                overworld.dimension(),
+            );
+            assert_eq!(
+                stale.structures_at(game, in_piece, "minecraft:stronghold"),
                 None
             );
         });
