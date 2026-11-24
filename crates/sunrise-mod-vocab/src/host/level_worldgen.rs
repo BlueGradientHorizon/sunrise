@@ -50,7 +50,7 @@ pub trait LevelWorldgenBackend {
         structure: &str,
     ) -> Option<Vec<String>>;
     /// Side: server.
-    /// `StructureManager.getStructureAt`: as [`Self::level_structures_with_piece_at`], with the
+    /// `StructureManager.getStructureAt`: as [`LevelRef::structures_with_piece_at`], with the
     /// start's whole bounding box reaching `pos` instead of a piece's, so a position between a
     /// structure's pieces counts.
     fn level_structures_at(
