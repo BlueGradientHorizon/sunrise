@@ -11,15 +11,36 @@ use std::marker::PhantomData;
 #[derive(Clone, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
 pub struct StructureKey(pub Identifier);
 
+impl Hash for StructureKey {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.namespace().hash(state);
+        self.0.path().hash(state);
+    }
+}
+
 /// A potion's persistent resource identity (`minecraft:swiftness`).
 // exhaustive: a key newtype mods construct directly.
 #[derive(Clone, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
 pub struct PotionKey(pub Identifier);
 
+impl Hash for PotionKey {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.namespace().hash(state);
+        self.0.path().hash(state);
+    }
+}
+
 /// A world clock's persistent resource identity (`minecraft:overworld`).
 // exhaustive: a key newtype mods construct directly.
 #[derive(Clone, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
 pub struct WorldClockKey(pub Identifier);
+
+impl Hash for WorldClockKey {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.namespace().hash(state);
+        self.0.path().hash(state);
+    }
+}
 
 #[derive(Clone, Copy, Debug)]
 enum TagKeyRepr {
