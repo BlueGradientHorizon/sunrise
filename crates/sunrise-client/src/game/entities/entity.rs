@@ -3474,6 +3474,7 @@ impl Entity for ArmorStand {
         let pitch = if pitch.is_nan() { previous[1] } else { pitch };
         self.yaw = yaw;
         self.previous_yaw = yaw;
+        self.previous_body_yaw = yaw;
         self.pitch = pitch.clamp(-90.0, 90.0);
     }
     fn fluid_eye_y(&self) -> f64 {
