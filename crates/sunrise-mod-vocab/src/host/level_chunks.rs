@@ -63,6 +63,12 @@ pub trait LevelChunksBackend {
     /// Returns `None` if the handle is stale or the chunk is not currently resident in its level
     /// (works on open server levels, active or parked, and on a logged-in client's loaded level).
     fn chunk_snapshot(&self, chunk: ChunkRef) -> Option<ChunkSnapshot>;
+    /// Side: server.
+    /// Returns a thread-safe handle for reading **last saved** chunks from this level's
+    /// Anvil storage off the server tick thread, without loading them into the live world.
+    ///
+    /// Returns `None` on a client, for a stale handle, or for an unsaved/ephemeral level.
+    fn level_saved_chunk_reader(&self, level: LevelRef) -> Option<SavedChunkReader>;
 }
 /// The handles' writes of the `level_chunks` area, implemented by the game and reached through [`BackendMut`].
 // hidden: a handle's backend, reached through `Backend`; mods call the handle, never this trait

@@ -2046,6 +2046,7 @@ impl Game<'_> {
         }
         self.attachment_indexes.remove(&dim);
         self.passages.retire_level(dim.key());
+        self.close_saved_chunk_readers_for_dim(dim);
     }
 
     /// Every level still open closes with the server, however it ends

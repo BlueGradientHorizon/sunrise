@@ -52,6 +52,7 @@ pub(crate) mod reload_order;
 pub mod rotation;
 pub(crate) mod runtime_files;
 pub(crate) mod runtime_levels;
+pub(crate) mod saved_chunk;
 pub(crate) mod scheduler;
 pub(crate) mod server_console;
 pub(crate) mod server_reload;
