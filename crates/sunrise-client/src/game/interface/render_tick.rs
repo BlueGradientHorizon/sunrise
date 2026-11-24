@@ -1080,14 +1080,20 @@ impl Game<'_> {
             _ => unreachable!(),
         };
         if let Some(options) = options {
-            self.particles
-                .add_admitted_with_world(Some(&self.world), &options, at, [0.0; 3]);
+            self.particles.add_admitted_with_world(
+                Some(&self.world),
+                &options,
+                at,
+                [0.0; 3],
+                override_limiter,
+            );
         }
     }
 
     /// `ParticleEngine.tick` (and the pickups and sounds it raises): in `Minecraft.tick` after
     /// `Level.tickBlockEntities`, so a particle a block entity just added ages with the rest.
     pub(in crate::game) fn tick_particle_engine(&mut self) {
+        self.sync_render_hooks();
         let mut laps = sunrise_client::spans::laps();
         let world = &self.world;
         let facts = self.res.facts();
