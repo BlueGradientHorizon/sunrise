@@ -535,6 +535,12 @@ impl crate::prelude::TagsHost for FakeHost {
     fn tags(&self) -> &dyn crate::Tags {
         &self.registries
     }
+    fn fluid_bucket(&self, fluid: &str) -> Option<crate::ItemKey> {
+        self.registries.bucket_of(fluid)
+    }
+    fn bucket_fluid(&self, bucket: crate::ItemKey) -> Option<crate::FluidKey> {
+        self.registries.fluid_of(bucket)
+    }
     fn fluid_pickup_sound(&self, fluid: &str) -> Option<&'static str> {
         self.registries.fluid_sound(fluid, true)
     }

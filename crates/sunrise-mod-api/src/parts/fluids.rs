@@ -28,7 +28,7 @@ pub mod tests {
                 value
             };
             assert_ne!(
-                registrar.declare_world_fluid(first, options),
+                registrar.declare_world_fluid(first, options.clone()),
                 mod_vocab::__private::parts_installation::fluid_key(u32::MAX)
             );
             assert_eq!(
@@ -36,7 +36,7 @@ pub mod tests {
                 mod_vocab::__private::parts_installation::fluid_key(u32::MAX)
             );
             assert_eq!(registrar.world_fluids.len(), 1);
-            let (_, (_, world)) = registrar.world_fluids[0];
+            let (_, (_, world)) = &registrar.world_fluids[0];
             assert_eq!(
                 (
                     world.tick_delay,
@@ -48,6 +48,71 @@ pub mod tests {
                 (20, 2, 3, true, false)
             );
         }
+    }
+
+    /// A port keeps its mod's ids: the flowing form and bucket are paths in the fluid's
+    /// namespace, a bucket the mod declares itself any item id.
+    #[test]
+    fn world_fluid_declarations_name_their_flowing_form_and_bucket() {
+        let named = |flowing: Option<&str>, bucket: bool, item: Option<&str>| {
+            let mut value: crate::WorldFluid = Default::default();
+            value.flowing = flowing.map(str::to_owned);
+            value.bucket = bucket;
+            value.bucket_item = item.map(str::to_owned);
+            value
+        };
+        let mut registrar = super::PartRegistrar::new("maker");
+        registrar.declare_world_fluid(
+            "xp_still",
+            named(Some("xp_flowing"), true, Some("xp_bucket")),
+        );
+        registrar.declare_world_fluid("tar", named(None, false, Some("other:tar_pot")));
+        registrar.declare_world_fluid("oil", Default::default());
+        let declared: Vec<_> = registrar
+            .world_fluids
+            .iter()
+            .map(|(_, (id, world))| {
+                (
+                    id.as_str(),
+                    world.flowing.as_deref(),
+                    world.bucket_item.as_deref(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            declared,
+            [
+                (
+                    "maker:xp_still",
+                    Some("maker:xp_flowing"),
+                    Some("maker:xp_bucket")
+                ),
+                (
+                    "maker:tar",
+                    Some("maker:flowing_tar"),
+                    Some("other:tar_pot")
+                ),
+                ("maker:oil", Some("maker:flowing_oil"), None),
+            ]
+        );
+        assert!(
+            registrar
+                .registry_keys
+                .borrow()
+                .declared_fluids
+                .contains_key("maker:xp_flowing")
+        );
+        for refused in [
+            named(Some("other:flowing"), true, None),
+            named(None, true, Some("other:bucket")),
+            named(Some("Bad Name"), true, None),
+            named(Some("refused"), true, None),
+        ] {
+            let before = registrar.refused.len();
+            registrar.declare_world_fluid("refused", refused);
+            assert_eq!(registrar.refused.len(), before + 1);
+        }
+        assert_eq!(registrar.world_fluids.len(), 3);
     }
 
     #[test]
@@ -718,7 +783,7 @@ impl FluidsRegistrar for PartRegistrar {
         self.insert_declared_fluid(id)
     }
 
-    fn declare_world_fluid(&mut self, path: &str, fluid: crate::WorldFluid) -> crate::FluidKey {
+    fn declare_world_fluid(&mut self, path: &str, mut fluid: crate::WorldFluid) -> crate::FluidKey {
         let id = match self.owned_declaration_id(path) {
             Ok(id) => id,
             Err(reason) => {
@@ -727,13 +792,45 @@ impl FluidsRegistrar for PartRegistrar {
             }
         };
         let (namespace, path) = id.split_once(':').expect("validated declaration id");
-        let flowing = format!("{namespace}:flowing_{path}");
-        if [id.as_str(), flowing.as_str()].iter().any(|id| {
-            self.registry_keys
-                .borrow()
-                .declared_fluids
-                .contains_key(*id)
-        }) {
+        // A name the fluid gives is a path in its namespace, or an id there.
+        let in_namespace = |name: &str| {
+            let full = match name.split_once(':') {
+                Some((own, _)) if own == namespace => name.to_owned(),
+                Some(_) => return None,
+                None => format!("{namespace}:{name}"),
+            };
+            crate::Identifier::parse_namespaced(&full).map(|_| full)
+        };
+        let flowing = match fluid.flowing.as_deref() {
+            None => Some(format!("{namespace}:flowing_{path}")),
+            Some(name) => in_namespace(name),
+        };
+        let bucket_item = match fluid.bucket_item.as_deref() {
+            None => Some(None),
+            // An item the mod declares itself may be in any namespace.
+            Some(name) if !fluid.bucket && name.contains(':') => {
+                crate::Identifier::parse_namespaced(name).map(|_| Some(name.to_owned()))
+            }
+            Some(name) => in_namespace(name).map(Some),
+        };
+        let (Some(flowing), Some(bucket_item)) = (flowing, bucket_item) else {
+            self.refused.push(format!(
+                "mod {}: world fluid {path:?}: flowing and a generated bucket_item are ids in \
+                 namespace {namespace}, bucket_item an item id",
+                self.mod_id
+            ));
+            return mod_vocab::__private::parts_installation::fluid_key(u32::MAX);
+        };
+        fluid.flowing = Some(flowing.clone());
+        fluid.bucket_item = bucket_item;
+        if flowing == id
+            || [id.as_str(), flowing.as_str()].iter().any(|id| {
+                self.registry_keys
+                    .borrow()
+                    .declared_fluids
+                    .contains_key(*id)
+            })
+        {
             self.refused
                 .push(format!("world fluid {id}: name declared twice"));
             return mod_vocab::__private::parts_installation::fluid_key(u32::MAX);

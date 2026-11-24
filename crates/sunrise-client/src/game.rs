@@ -1144,6 +1144,9 @@ pub(crate) mod native_collision_shape;
 #[cfg(test)]
 #[path = "game/modding/native_command_completion_tests.rs"]
 mod native_command_completion_tests;
+#[cfg(test)]
+#[path = "game/modding/native_command_entity_tests.rs"]
+mod native_command_entity_tests;
 #[path = "game/modding/native_command_reads.rs"]
 mod native_command_reads;
 #[path = "game/modding/native_components.rs"]
@@ -9196,11 +9199,13 @@ impl Game<'_> {
             return false;
         };
         let sword = self.held().is_some_and(|s| {
-            self.res
+            let sword = self
+                .res
                 .items()
                 .item_tags
                 .get("minecraft:swords")
-                .is_some_and(|tag| tag.contains(&*s.item))
+                .is_some_and(|tag| tag.contains(&*s.item));
+            self.stack_can_perform(s, item_abilities::ability::SWORD_SWEEP, sword)
         });
         let vanilla = p.is_sweep_attack(scale, crit, sword);
         let (mut sweeping, mut canceled) = (vanilla, false);
@@ -10113,15 +10118,8 @@ impl Game<'_> {
             if !self.may_build() && !self.can_place_on_in_adventure(hit.pos) {
                 return Ok(UseResult::Fail);
             }
-            let name = self.res.facts().get(clicked).name.clone();
-            if self.can_light(clicked, &name) {
-                let registry = self.pack.assets.registry;
-                let mut state = registry
-                    .state(clicked)
-                    .cloned()
-                    .ok_or("missing lit block state")?;
-                state.properties.insert("lit".into(), "true".into());
-                self.level_set(hit.pos, registry.resolve(&state)?)?;
+            if let Some(lit) = self.fire_starter_lit(&hit, stack, true)? {
+                self.level_set(hit.pos, lit)?;
                 let sound = if item == "fire_charge" {
                     "minecraft:item.firecharge.use"
                 } else {
@@ -10645,7 +10643,7 @@ impl Game<'_> {
             }
         }
     }
-    fn tick_sleep(&mut self) {
+    pub(in crate::game) fn tick_sleep(&mut self) {
         self.sleep_timer = tick_sleep_timer(self.sleep_timer, self.sleeping.is_some());
         if let Some(head) = self.sleeping {
             // LivingEntity.tick's checkBedExists: a sleeper whose bed is
@@ -10680,8 +10678,9 @@ impl Game<'_> {
         }
         // ServerLevel.tick: once enough of the players have slept 100 ticks,
         // skip to morning if `advance_time` is on, wake everyone, and
-        // resetWeatherCycle if `advance_weather` is on and it is raining.
-        if self.enough_slept() {
+        // resetWeatherCycle if `advance_weather` is on and it is raining,
+        // unless a mod's `sleep_skip_night` cancels it.
+        if self.sleep_skips_night() {
             if self
                 .ui
                 .rules

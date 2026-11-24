@@ -498,7 +498,7 @@ impl Game<'_> {
         }
         // Entity.shearOffAllLeashConnections: its own lead and every one
         // hanging on it.
-        if item.as_deref() == Some("minecraft:shears") {
+        if self.held_shears(super::item_abilities::ability::SHEARS_HARVEST) {
             let held_mobs: Vec<u32> = self
                 .mobs
                 .iter()

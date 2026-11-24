@@ -61,7 +61,7 @@ cargo sunrise-mod release patch
 
 Use `minor`, `major`, or a higher SemVer instead of `patch` to choose another version. `--check` runs the
 release checks for the proposed version without changing the checkout. Without it, `release` refreshes the
-workflow, commits the version bump signed off (`Signed-off-by`, from your Git `user.name` and `user.email`), and pushes the branch and tag together to `origin`. The tag is `v<version>`
+workflow, commits the version bump signed off (`Signed-off-by`, from your Git `user.name` and `user.email`), and pushes the branch, then the tag, to `origin` in two pushes: GitHub starts no workflow for a tag pushed together with the commit that first adds its workflow file. The tag is `v<version>`
 at the repository root or `<id>/v<version>` for a subfolder package. GitHub Actions builds and attests both the
 `.smod` and its page bundle, with no signing key for you to manage.
 
@@ -71,7 +71,7 @@ If your default branch accepts changes only through pull requests, add `--pull-r
 cargo sunrise-mod release patch --pull-request
 ```
 
-The release commit then goes on a new branch, `release/<tag>`, which is pushed together with the tag, and your
+The release commit then goes on a new branch, `release/<tag>`, which is pushed before the tag, and your
 checkout is left on that branch. The tag starts the release as usual. Open the pull request it prints, from
 `release/<tag>` into the branch you released from, and merge it before your next release, so that branch carries
 the new version.

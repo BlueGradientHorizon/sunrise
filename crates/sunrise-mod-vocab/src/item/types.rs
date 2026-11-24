@@ -654,6 +654,8 @@ pub enum ToolAbility {
     ShovelDouse,
     /// A hoe tills soil.
     HoeTill,
+    /// A fire starter (flint and steel, a fire charge) lights a campfire, candle or candle cake.
+    FirestarterLight,
 }
 
 /// Read-only context for a tool modification.
