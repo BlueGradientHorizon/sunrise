@@ -93,4 +93,4 @@ against the public key set in `SUNRISE_SDK_TRUSTED_KEY`. The launcher's own copi
 The tool unpacks `build-data.tar.xz` into `.sunrise/cache/<build id>/build-data/`. `internals sync` checks
 pinned game source instead, as does `internals add` when the mod declares `[[native.module]]` rows. Source
 discovery uses the Rust named by the signed SDK, but does not need its compiled game slices.
-See [Native dependency tools](../registry-index.md#native-dependency-tools).
+See [Native dependency tools](05-commands.md#native-dependency-tools).
