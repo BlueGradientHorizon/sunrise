@@ -116,9 +116,11 @@ standard operation; `copy_components`, `copy_custom_data`, `copy_state` and
 ## Reading tags
 
 `LootTypeContext::tags() -> &dyn Tags` gives either codec a read-only view of the
-current evaluator's merged tags. Resolve a tag's `Identifier` with `context.tags().key(&id)`
-and use the resulting `TagKey` with `is_in_tag(item, tag)` to check item membership.
-A retained key keeps its identity across reloads; its members come from the current tables.
+current evaluator's merged tags. Resolve a tag's `Identifier` with `context.tags().key(&id)`,
+bind it to the target registry with `.typed()`, and pass the resulting typed `TagKey<K>`
+to `is_in_tag(item, tag)` or the typed membership methods below (or pass a built-in
+constant from `mod_api::tags::c::*` directly). A retained key keeps its identity across
+reloads; its members come from the current tables.
 
 - `items(tag)`, `blocks(tag)` and `fluids(tag)` return `TagMembers::Members(keys)` for ordered
   members (possibly empty), `TagMembers::Missing` for an absent tag, or `TagMembers::Unavailable`

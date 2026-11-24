@@ -113,7 +113,7 @@ pub(crate) fn check_namespace(name: &str, manifest: &Manifest) -> Result<(), Str
         || name == RECIPE_PRIORITIES_PATH;
     if !allowed {
         return Err(format!(
-            "{name}: a mod adds files in its own namespaces ({top}/{id}/ and those listed in namespaces), to vanilla and convention (c) tags, to vanilla's atlases, or to declared shared resource paths"
+            "{name}: a mod adds files in its own namespaces ({top}/{id}/ and those listed in namespaces), to vanilla and convention (c, neoforge) tags, to vanilla's atlases, or to declared shared resource paths"
         ));
     }
 
