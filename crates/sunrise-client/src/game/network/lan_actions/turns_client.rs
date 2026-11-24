@@ -28,18 +28,14 @@ impl Game<'_> {
         self.send_level_sound(LevelSound::new(sound, at, 1.0, 1.0), Some(conn));
     }
     #[inline(always)]
-    pub(in crate::game) fn guest_turn_client_enter_input(
-        &mut self,
-        sneaking: bool,
+    pub(in crate::game) fn guest_turn_client_take_input(
+        client: &mut crate::game::client_side::ClientState,
     ) -> (
         sunrise_client::held::HeldKeys,
         sunrise_client::keymapping::VanillaMappings,
     ) {
-        let host_keys = std::mem::take(&mut self.client.keys);
-        let saved_mappings = std::mem::take(&mut self.client.vanilla_mappings);
-        if sneaking {
-            self.insert_device_key(KeyCode::ShiftLeft);
-        }
+        let host_keys = std::mem::take(&mut client.keys);
+        let saved_mappings = std::mem::take(&mut client.vanilla_mappings);
         (host_keys, saved_mappings)
     }
     #[inline(always)]

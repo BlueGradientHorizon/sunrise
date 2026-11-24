@@ -274,12 +274,14 @@ impl Game<'_> {
         );
         let level_up_sound =
             std::mem::replace(&mut self.server.level_up_sound, play.level_up_sound);
-        // Copy before the `&mut self` client helpers so the `host` borrow ends here.
-        let sneaking = g.sneaking;
-        let guest_vehicle = g.vehicle;
         // The host's held keys stay theirs: the guest holds only sneak, and a
         // screen the guest opens (`keys.clear()`) leaves the host walking.
-        let (host_keys, saved_mappings) = self.guest_turn_client_enter_input(sneaking);
+        let (host_keys, saved_mappings) = Game::guest_turn_client_take_input(&mut self.client);
+        let sneaking = g.sneaking;
+        let guest_vehicle = g.vehicle;
+        if sneaking {
+            self.insert_device_key(KeyCode::ShiftLeft);
+        }
         // The window's screens are the host's: a sign, book, command block or
         // mount menu the guest's action opens is not drawn over the host's
         // world (#687). The guest's client opens its own.
