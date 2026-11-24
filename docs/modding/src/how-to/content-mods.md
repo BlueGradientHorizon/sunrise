@@ -215,9 +215,16 @@ NeoForge's `IClientFluidTypeExtensions`; the fluid needs no block, and a recipe 
 object makes it exist in the world: `{"world": {}}` adds the block `<id>:<path>`, a copy of `minecraft:water` that flows
 with vanilla's fluid simulation, and the bucket item `<id>:<path>_bucket`, which needs its model as any item does. `world`
 takes `tick_delay` (1 or more, default 5), `drop_off` (1 to 7, default 1), `slope_find_distance` (1 to 4, default 4),
-`source_conversion` (default false) and `bucket` (default true). Beside `world`, a fluid file may state NeoForge's
+`source_conversion` (default false), `bucket` (default true) and `flowing`, the flowing form's id in the fluid's
+namespace and not the fluid's own id (default `<id>:flowing_<path>`). Beside `world`, `bucket_item` names the item that
+holds a bucket of the fluid (`Fluid.getBucket`): the generated bucket's id, in the fluid's namespace, or, for a tank-only
+fluid or one with `"bucket": false`, an item the mod declares itself, which keeps the fluid through its own parts. An
+empty bucket fills to that item from any fluid handler, with the bucket's fill sound, and a generated bucket empties
+back into one. An item no item has, or the game's bucket of another fluid such as `minecraft:water_bucket`, is no
+bucket of it. A fluid file may also state NeoForge's
 `FluidType` numbers, which other mods read through `FluidTypeProperties`: `temperature` and `density` (any signed
-32-bit integer, defaults 300 and 1000) and `viscosity` (0 or more, default 1000). A file without `world` declares no
+32-bit integer, defaults 300 and 1000), `viscosity` (0 or more, default 1000) and `light_level` (0 to 15, default 0,
+whether or not the fluid has a block). A file without `world` declares no
 fluid by itself; its numbers describe the tank-only fluid a native mod declares in code with `declare_fluid`. The fluid is in no vanilla fluid tag, so entities don't
 swim in it or get pushed by it. In the world it draws its `sprite`, a block atlas texture such as `mymod:block/oil`, times
 its `tint`; with neither it looks like water, and a `tint` alone colours water's textures. A client mod's
