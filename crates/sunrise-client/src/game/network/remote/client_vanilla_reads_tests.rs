@@ -58,10 +58,15 @@ fn stand(game: &mut Game<'_>, teleport: i32) {
 
 /// Joins as entity [`PLAYER`] in the overworld.
 fn join(game: &mut Game<'_>) -> (ConnReader, ConnWriter) {
+    join_world(game, false)
+}
+
+/// Joins as [`join`] does, in a hardcore world or not.
+fn join_world(game: &mut Game<'_>, hardcore: bool) -> (ConnReader, ConnWriter) {
     let connection = super::connect_menu_test(game);
     game.handle_packet(C::Login(play::Login {
         player_id: PLAYER as i32,
-        hardcore: false,
+        hardcore,
         levels: vec!["minecraft:overworld".into()],
         max_players: 20,
         chunk_radius: 2,
@@ -641,6 +646,31 @@ fn has_channel_follows_what_the_server_negotiated() {
                     );
                 });
             });
+        },
+    );
+}
+
+/// `LevelData.isHardcore` on a client is the login packet's flag (`ClientPacketListener.handleLogin`
+/// builds the client level's data from it), read through the level the client is in.
+#[test]
+#[ignore = "daily"]
+fn a_client_reads_hardcore_from_the_login_for_the_level_it_is_in() {
+    crate::game::in_own_process(
+        "game::remote::tests::client_vanilla_reads_tests::a_client_reads_hardcore_from_the_login_for_the_level_it_is_in",
+        || {
+            for hardcore in [false, true] {
+                with_client_game(|game| {
+                    let _connection = join_world(game, hardcore);
+                    let overworld = game.level("minecraft:overworld").unwrap();
+                    assert_eq!(
+                        overworld.is_hardcore(game as &dyn ClientHost),
+                        Some(hardcore)
+                    );
+                    let elsewhere =
+                        mod_api::LevelRef::new(overworld.epoch(), mod_api::DimensionKey::NETHER);
+                    assert_eq!(elsewhere.is_hardcore(game as &dyn ClientHost), None);
+                });
+            }
         },
     );
 }
