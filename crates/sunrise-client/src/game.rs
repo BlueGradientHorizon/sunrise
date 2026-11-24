@@ -7182,8 +7182,10 @@ impl Game<'_> {
                 crack: None,
             });
         }
+        // BlockState.getDestroyProgress each tick: a block Part may answer for an unbreakable block.
+        let progress = self.destroy_progress(hit.pos);
         let state = self.world.block(hit.pos[0], hit.pos[1], hit.pos[2]);
-        if self.res.facts().get(state).hardness < 0.0 {
+        if progress == 0.0 && self.res.facts().get(state).hardness < 0.0 {
             // The server still counts its destroy ticks on an unbreakable block.
             let m = self.mining.as_mut().ok_or("mining")?;
             m.per_tick = 0.0;
@@ -7192,7 +7194,6 @@ impl Game<'_> {
             self.destroy_progress_event(pos, hit.face, ticks);
             return Ok(());
         }
-        let progress = self.destroy_progress(hit.pos);
         self.swing_arm();
         let m = self.mining.as_mut().ok_or("mining")?;
         m.per_tick = progress;
