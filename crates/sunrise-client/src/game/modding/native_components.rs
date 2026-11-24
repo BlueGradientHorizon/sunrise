@@ -396,6 +396,56 @@ impl Game<'_> {
     pub(in crate::game) fn enchantments_compatible(&self, a: &str, b: &str) -> bool {
         world_stations!(self).enchantments.compatible(a, b)
     }
+    /// `ItemStack.hurtAndBreak(amount, level, player, onBreak)` on a stack nobody wears: the
+    /// stack after the wear, None once it broke away. A named player is checked as the other
+    /// player reads check it (`player_handle_read`) and must be in `level`, so the wear and its
+    /// random draws stay in the level in place; the player is then swapped in for the wear
+    /// (their infinite materials, their durability trigger) without changing levels. Refused
+    /// off the server, for another level than the one in place, or for a player who is not
+    /// here or is in another level.
+    pub(in crate::game) fn item_stack_hurt_and_break(
+        &mut self,
+        stack: &ItemStack,
+        level: mod_api::LevelRef,
+        amount: i32,
+        player: Option<mod_api::PlayerRef>,
+    ) -> Result<Option<ItemStack>, mod_api::StackWriteError> {
+        use super::commands::Target;
+        use super::durability::Wearer;
+        use mod_api::StackWriteError::Unavailable;
+        if !self.is_logical_server()
+            || level.dimension() != self.dim.key()
+            || self.native_level_world(level).is_none()
+        {
+            return Err(Unavailable);
+        }
+        let (worn, _broken) = match player {
+            None => self.damage_stack_worn(stack, amount, Wearer::Nobody),
+            Some(player) => {
+                self.player_handle_read(player).ok_or(Unavailable)?;
+                let target = self
+                    .native_entity_target(player.entity())
+                    .ok_or(Unavailable)?;
+                let here = match target {
+                    Target::Player => self.acting_in_level_in_place(),
+                    Target::Guest(conn) => self
+                        .lan
+                        .as_ref()
+                        .and_then(|lan| lan.hub.guest(conn))
+                        .is_some_and(|guest| super::Dim::from_id(&guest.dimension) == self.dim),
+                    _ => false,
+                };
+                if !here {
+                    return Err(Unavailable);
+                }
+                self.for_player(target, |game| {
+                    game.damage_stack_worn(stack, amount, Wearer::Player)
+                })
+                .ok_or(Unavailable)?
+            }
+        };
+        Ok(worn)
+    }
     /// Roll through the game's enchantment registry and the active level's random source.
     pub(in crate::game) fn item_resource_enchant_randomly(
         &mut self,
@@ -425,6 +475,22 @@ impl Game<'_> {
         Ok(sunrise_client::stations::apply_enchantment_list(
             stack, picked,
         ))
+    }
+    /// `EnchantmentHelper.modifyDurabilityToRepairFromXp` for `stack` and `points`, by the world's
+    /// enchantment definitions, drawing from the active level's random as Mending's repair does,
+    /// behind `ItemResource::durability_to_repair_from_xp`. API @API:item_components@.
+    pub(in crate::game) fn item_resource_durability_to_repair_from_xp(
+        &mut self,
+        stack: &ItemStack,
+        points: u32,
+    ) -> u32 {
+        super::enchant_effects::repair_from_xp(
+            &world_stations!(self).enchantments,
+            Some(world_items!(self)),
+            stack,
+            points,
+            &mut self.world.random,
+        )
     }
     /// Whether an enchantment on `stack` has effect component `effect`, by the world's
     /// enchantment definitions (`EnchantmentHelper.has`), behind
@@ -593,6 +659,32 @@ mod enchantment_conflict_tests {
                     .is_empty()
             );
             assert_eq!(game.world.random.next_long(), expected_random.next_long());
+        });
+    }
+
+    /// `EnchantmentHelper.modifyDurabilityToRepairFromXp` through `ItemResource`: vanilla
+    /// Mending's `repair_with_xp` multiplies the points by 2, a stack without the effect keeps
+    /// them, and an unconditioned effect draws nothing from the level's random.
+    #[test]
+    #[ignore = "daily"]
+    fn durability_to_repair_from_xp_runs_the_stacks_repair_with_xp_effects() {
+        with_game(|game| {
+            let mut mending = ItemStack::new("minecraft:diamond_pickaxe", 1);
+            mending.enchant("minecraft:mending", 1);
+            let mending = ItemResource::of(&test_snapshot(&mending));
+            let mut unbreaking = ItemStack::new("minecraft:diamond_pickaxe", 1);
+            unbreaking.enchant("minecraft:unbreaking", 3);
+            let unbreaking = ItemResource::of(&test_snapshot(&unbreaking));
+            let expected_random = game.world.random.clone();
+
+            assert_eq!(mending.durability_to_repair_from_xp(game, 7), 14);
+            assert_eq!(mending.durability_to_repair_from_xp(game, 0), 0);
+            // Vanilla starts from the points and lets the effects change them: none, none changed.
+            assert_eq!(unbreaking.durability_to_repair_from_xp(game, 7), 7);
+            assert_eq!(
+                game.world.random.clone().next_long(),
+                expected_random.clone().next_long()
+            );
         });
     }
 
