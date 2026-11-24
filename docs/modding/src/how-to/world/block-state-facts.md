@@ -26,8 +26,8 @@ known state reads as `Ok(None)`; unavailable metadata, invalid states and refuse
 | `has_block_entity(state) -> Option<bool>` | `BlockState.hasBlockEntity()` |
 | `light_emission(state) -> Option<u8>` | `BlockState.getLightEmission()`: 0 to 15; a block with `dynamic_light` answers per cell through its parts, which this does not ask |
 | `friction(state) -> Option<f32>` | `BlockBehaviour.getFriction()` of the block: 0.6 usually, 0.98 ice, 0.8 slime |
-| `speed_factor(state) -> Option<f32>` | `Block.getSpeedFactor()`: 1.0 usually, 0.4 soul sand and honey; the declared value, which a block's `block_speed_factor` part can change where an entity stands ([movement factors](movement-factors.md)) |
-| `jump_factor(state) -> Option<f32>` | `Block.getJumpFactor()`: 1.0 usually, 0.5 honey; the declared value, which a block's `block_jump_factor` part can change ([movement factors](movement-factors.md)) |
+| `speed_factor(state) -> Option<f32>` | `Block.getSpeedFactor()`: 1.0 usually, 0.4 soul sand and honey; the declared value, which a block's `block_speed_factor` part can change where an entity stands |
+| `jump_factor(state) -> Option<f32>` | `Block.getJumpFactor()`: 1.0 usually, 0.5 honey; the declared value, which a block's `block_jump_factor` part can change |
 | `is_solid_render(state) -> Option<bool>` | `BlockState.isSolidRender()`: a full, occluding cube (stone yes; glass, leaves, slabs no) |
 | `is_redstone_conductor(state) -> Option<bool>` | `BlockState.isRedstoneConductor` when it depends only on the block state; `None` when a position is needed |
 | `map_color(state) -> Option<u8>` | `BlockState.getMapColor`: the `MapColor.id` a map item colours a column by, 0 for none |
