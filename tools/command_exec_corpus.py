@@ -7211,6 +7211,33 @@ def falling_block_in_moving_piston():
     return ops
 
 
+def falling_block_resting_in_moving_piston():
+    """#2363 (26.3): a falling block resting inside a moving_piston cell stays across ticks."""
+    ops = []
+    selector = '@e[type=minecraft:falling_block,tag=moving_piston_rest,limit=1]'
+    cases = (
+        ('minecraft:sand', 'Time:1,Motion:[0.1d,0.0d,0.0d]', 2),
+        ('minecraft:sand', 'Time:1,CancelDrop:1b,Motion:[0.1d,0.0d,-0.05d]', 1),
+        ('minecraft:gravel', 'Time:5,Motion:[-0.08d,-0.25d,0.04d]', 1),
+    )
+    for block_state, fields, ticks in cases:
+        ops += setup('/kill @e[tag=moving_piston_rest]', '/fill 0 208 0 4 212 4 air',
+                     '/fill 0 209 0 4 209 4 stone', '/setblock 2 210 2 minecraft:moving_piston')
+        ops.append(cmd('/summon minecraft:falling_block 2.5 210 2.5 '
+                       f'{{BlockState:"{block_state}",{fields},Tags:["moving_piston_rest"]}}'))
+        for _ in range(ticks):
+            ops.append({'op': 'tick', 'n': 1})
+            ops.append(cmd(f'/data get entity {selector} Pos'))
+            ops.append(cmd(f'/data get entity {selector} Motion'))
+            ops.append(cmd(f'/data get entity {selector} Time'))
+            ops.append(cmd(f'/data get entity {selector} OnGround'))
+            ops.append(cmd(f'/data get entity {selector} BlockState'))
+            ops.append(cmd('/execute if block 2 210 2 minecraft:moving_piston'))
+            ops.append(cmd('/execute if entity @e[type=minecraft:item,x=0,y=208,z=0,dx=5,dy=5,dz=5]'))
+    ops += setup('/kill @e[tag=moving_piston_rest]', '/fill 0 208 0 4 212 4 air')
+    return ops
+
+
 def primed_tnt_box():
     """#12020: `EntityTypes.TNT` is sized 0.98F, so its box is half 0.49F wide
     and 0.98F tall, both widened from float: TNT stopped by a wall ends 0.49F
@@ -8840,6 +8867,7 @@ def groups():
         ('scheduled block item birth', scheduled_item_birth()),
         ('piston push ground', piston_push_ground()),
         ('falling block in a moving piston', falling_block_in_moving_piston()),
+        ('falling block resting in moving piston', falling_block_resting_in_moving_piston()),
         ('piston tnt effects', piston_tnt_effects()),
         ('carpet farms', carpet_farms(cmd, setup)),
         ('passenger teleports', passenger_teleports(cmd, setup)),

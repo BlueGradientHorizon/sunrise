@@ -206,6 +206,9 @@ def main():
     parser.add_argument('--record-shulker-motion', nargs='?',
                         const=lab.LOCAL / 'witness' / lab.VERSION / 'shulker_motion' / 'shulker_motion.json',
                         type=Path, help='record the shulker motion/yaw witness into .local from VanillaCommandExecOracle only')
+    parser.add_argument('--record-moving-piston-witness', nargs='?', type=Path,
+                        const=lab.LOCAL / 'witness' / lab.VERSION / 'falling_moving_piston' / 'falling_block_moving_piston.jsonl',
+                        help='write the validated Java reference records with a version header and meta.json to this path (default under .local/witness/) and stop')
     args = parser.parse_args()
     if args.record_eye_item_witness:
         args.reference_only = True
@@ -605,7 +608,7 @@ def main():
                 any(len(r.get('bits', [])) != 3 or
                     any(re.fullmatch(r'[0-9a-f]{1,16}', b) is None for b in r['bits']) for r in direct)):
             sys.exit('Java direct underwater reference prerequisite failed')
-    if args.reference_only or args.record_shulker_motion:
+    if args.reference_only or args.record_shulker_motion or args.record_moving_piston_witness:
         reference = [json.loads(line) for line in (build / 'vanilla.jsonl').read_text().splitlines()]
         recorded = [op for op in script if op['op'] in ('player_state', 'player_loop', 'map_state', 'frame_map_state', 'mob_anger', 'projectile_saved_type', 'raid_state', 'menu_state', 'craft_menu_state', 'map_files', 'merchant_state', 'merchant_saved_stats') or
                     (op['op'] == 'cmd' and op.get('record', True)) or
@@ -635,6 +638,39 @@ def main():
             from mob_attribute_save_corpus import record_oxygen_bonus_witness
             record_oxygen_bonus_witness(reference, lock['minecraft']['version'], args.record_oxygen_bonus_witness)
             print(f'Recorded oxygen_bonus witness: {args.record_oxygen_bonus_witness}')
+        if args.record_moving_piston_witness:
+            target = args.record_moving_piston_witness if args.record_moving_piston_witness.is_absolute() else lab.ROOT / args.record_moving_piston_witness
+            target.parent.mkdir(parents=True, exist_ok=True)
+            recorded_groups = [name for name, _ in groups if name != 'setup']
+            header = json.dumps({
+                'minecraft': lock['minecraft']['version'],
+                'oracle': 'dev.sunriselab.parity.VanillaCommandExecOracle',
+                'groups': recorded_groups,
+            }, ensure_ascii=False)
+            target.write_text(header + '\n' + (build / 'vanilla.jsonl').read_text(encoding='utf-8'), encoding='utf-8')
+            java_ver_proc = subprocess.run(['java', '-version'], capture_output=True, text=True, check=True)
+            java_version = (java_ver_proc.stderr or java_ver_proc.stdout).strip().splitlines()[0]
+            lab.write_json(target.parent / 'meta.json', {
+                'game_version': lock['minecraft']['version'],
+                'java_major': lock['minecraft']['java_major'],
+                'java_version': java_version,
+                'harness': 'tools/test_falling_moving_piston_parity.py',
+                'oracle': 'dev.sunriselab.parity.VanillaCommandExecOracle',
+                'groups': recorded_groups,
+                'witness_env': 'SUNRISE_FALLING_MOVING_PISTON_WITNESS',
+                'command': [sys.executable, *sys.argv],
+                'input_hashes': {
+                    'research-lock.json': lab.digest(lab.LOCK, 'sha256'),
+                    'server.jar': lab.digest(jars['server'], 'sha256'),
+                    'mods/sunrise/src/test/java/dev/sunriselab/parity/VanillaCommandExecOracle.java': lab.digest(oracle, 'sha256'),
+                    'tools/command_exec_corpus.py': lab.digest(lab.ROOT / 'tools/command_exec_corpus.py', 'sha256'),
+                    'tools/test_command_exec_parity.py': lab.digest(Path(__file__), 'sha256'),
+                },
+                'outputs': {
+                    target.name: {'sha256': lab.digest(target, 'sha256'), 'bytes': target.stat().st_size},
+                },
+            })
+            print(f'Recorded witness ({len(reference)} records): {target}')
         print(f'Java reference: {len(reference)} records, fixture guards passed')
         return
 
