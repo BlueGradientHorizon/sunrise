@@ -15,8 +15,7 @@ interface; archive entries stay in their archives. Files vanilla reads as a reso
 Every loader reads that view; `game/world/packs/mod.rs` (`reload_packs`) prepares a new generation on a worker and
 publishes it after loading succeeds, as `Minecraft.reloadResourcePacks` does. Readers of the previous
 archive generation retain its open files. Prepared registry tables and disposable decoding caches have
-separate filesystem locations. [The older overlay measurements](reuse-pack-overlays.md) describe the
-previous materializing loader, not the current startup path.
+separate filesystem locations.
 
 Vanilla 26.3's reload listeners (`Minecraft.<init>`, `Gui`, `Hud`): languages, textures, shaders, sounds, atlases,
 fonts, grass / foliage / dry foliage colour maps, models (block states, block models, item definitions), equipment
