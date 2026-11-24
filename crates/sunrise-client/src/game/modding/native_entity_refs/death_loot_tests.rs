@@ -41,6 +41,12 @@ fn rolls_live_death_context_without_dropping() {
                   {"rolls":1,"entries":[{"type":"minecraft:item","name":"minecraft:diamond",
                       "modifier":{"type":"minecraft:set_count","count":{"type":"minecraft:uniform","min":1,"max":4}}}]}
                 ]}"#.to_vec()]),
+            ("loot_table/test:ridden".into(), vec![br#"{
+                "type":"minecraft:entity","pools":[
+                  {"rolls":1,"condition":{"type":"minecraft:entity_properties","entity":"this",
+                      "predicate":{"minecraft:vehicle":{"minecraft:entity_type":"minecraft:zombie"}}},
+                   "entries":[{"type":"minecraft:item","name":"minecraft:saddle"}]}
+                ]}"#.to_vec()]),
         ];
         let loot = LootData::load(
             &game.options.resources,
@@ -128,6 +134,20 @@ fn rolls_live_death_context_without_dropping() {
             roll(Some(&seeded), source, None),
             [("minecraft:diamond", 3)]
         );
+        // The victim's vehicle is read as at its death.
+        let ridden = Identifier::parse("test:ridden").unwrap();
+        let saddles = |game: &mut Game<'_>| {
+            victim
+                .roll_death_loot(game, Some(&ridden), source, None)
+                .unwrap()
+                .iter()
+                .map(|stack| mod_api::__private::item_key_id(stack.item()).unwrap())
+                .collect::<Vec<_>>()
+        };
+        assert!(saddles(game).is_empty());
+        game.mobs[0].extra.mount = Some(14);
+        assert_eq!(saddles(game), ["minecraft:saddle"]);
+        game.mobs[0].extra.mount = None;
         assert!(game.dropped.is_empty());
         assert!(game.orbs.is_empty());
         assert_eq!(game.mobs[0].health, health);

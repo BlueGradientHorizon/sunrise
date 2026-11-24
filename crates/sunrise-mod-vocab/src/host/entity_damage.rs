@@ -72,6 +72,11 @@ pub trait EntityDamageBackendMut {
     ///
     /// This uses a mob's nonzero death-table seed if set, otherwise the named random
     /// sequence or the level random. The latter draws advance the live streams.
+    ///
+    /// The roll asks `enchanted_entity_loot` for its enchantment levels, as a death does
+    /// (NeoForge's `EventHooks.getEntityLootEnchantmentLevel` fires for any entity loot
+    /// with a damage source). A listener of that hook that rolls from inside it rolls
+    /// again inside itself, so it must stop its own recursion.
     fn entity_roll_death_loot(
         &mut self,
         entity: EntityRef,

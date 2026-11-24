@@ -25,6 +25,10 @@ set; otherwise it advances the table's random sequence or the level's random str
 Stale handles, non-living targets, unknown tables and unregistered damage types return a
 `DeathLootError` before any draw.
 
+The roll asks `enchanted_entity_loot` for enchantment levels, as a real death does. A
+listener of that hook that calls `roll_death_loot` rolls again inside itself, so it must
+stop its own recursion.
+
 ## Read the source of an actual death
 
 `LootDrops::damage_source` carries the death's damage type and causing/direct entity IDs.

@@ -252,7 +252,15 @@ impl Game<'_> {
                 .mobs
                 .iter()
                 .find(|mob| mob.id == id)
-                .map(|mob| sunrise_client::mobs::drops::loot_entity(mob, None))
+                .map(|mob| {
+                    // EntityPredicate's `vehicle`: the mob it rides, as at its death.
+                    let vehicle = mob
+                        .extra
+                        .mount
+                        .and_then(|mount| self.mobs.iter().find(|o| o.id == mount))
+                        .map(|o| sunrise_world::loot::LootEntity::new(&o.kind.id));
+                    sunrise_client::mobs::drops::loot_entity(mob, vehicle)
+                })
                 .unwrap_or_else(|| sunrise_world::loot::LootEntity::new(&self.target_type(target))),
             _ => {
                 let mut entity = sunrise_world::loot::LootEntity {
