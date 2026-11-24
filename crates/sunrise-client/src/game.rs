@@ -2711,7 +2711,8 @@ struct InteractTarget {
     location: [f64; 3],
 }
 
-/// The client world as seen by the vanilla block-behaviour library.
+/// The world as seen by the vanilla block-behaviour library on both the server (authoritative
+/// ticks) and remote clients (prediction; controlled by `client_side` and `native_authoritative`).
 struct GameLevel<'w> {
     cake_probe: bool,
     cake_requested: std::cell::Cell<bool>,
@@ -3754,7 +3755,8 @@ struct Game<'a> {
     /// Mobs whose death (`LivingEntity.die`) has been handled.
     /// Looked up per mob each tick: a fast hasher (never iterated).
     died: sunrise_client::fast_hash::FxHashSet<u32>,
-    /// Client-ticked block-entity animation state (`game/blocks/block_entity_anims.rs`).
+    /// Block-entity animation state (`game/blocks/block_entity_anims.rs`) plus authoritative
+    /// server `gateway_servers` and `conduit_servers` (swapped per dimension in `game/world/levels.rs`).
     be_anims: sunrise_client::block_entity_anim::BlockEntityAnims,
     /// Item being used (eaten): hotbar slot and ticks used.
     using: Option<(usize, u32)>,

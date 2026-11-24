@@ -103,7 +103,7 @@ pub(super) struct LanHost {
     /// The entity id counter when this tick's states were taken for guests
     /// (`lan_note_joined`), None when no guest tracked them.
     pub(super) states_next_entity: Option<u32>,
-    /// Last tick's states of the idle mobs and items (game/network/lan_idle.rs).
+    /// Last tick's states of the idle mobs and items (`crates/sunrise-gameplay/src/lan/idle.rs`).
     pub(super) idle_states: super::lan_idle::IdleStates,
 }
 
@@ -1861,7 +1861,7 @@ impl Game<'_> {
     /// The entities guests track: mobs, items and the rest (game/network/lan_entities.rs).
     /// Only the entities whose id is above `after` (0: all of them). With
     /// `kept`, idle mobs and items no client can pair with are described bare
-    /// (game/network/lan_idle.rs).
+    /// (`crates/sunrise-gameplay/src/lan/idle.rs`).
     pub(super) fn lan_entities(
         &mut self,
         out: &mut States,
