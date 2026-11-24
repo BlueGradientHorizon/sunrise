@@ -539,6 +539,16 @@ fn open_live_rules_fixture(
         containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields, ModContainer},
         lan::menu::Slots,
     };
+    // The game fixture stops before content loading freezes the block-entity type registry.
+    // Resolve this fixture's declarations in its scoped Parts table so block-entity parts fire.
+    let types = mod_api::__private::block_entity_types();
+    if !types.is_empty() {
+        mod_api::__private::resolve_block_entity_types(
+            types.iter().map(|(_, kind)| kind.id.as_str()),
+            |id| types.iter().any(|(_, kind)| kind.id == id).then_some(()),
+        )
+        .unwrap();
+    }
     let pos = (1, 64, 1);
     game.world
         .chunks
