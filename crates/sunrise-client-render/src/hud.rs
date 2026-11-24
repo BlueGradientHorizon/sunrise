@@ -16,7 +16,6 @@ use model_reducing::reducible_model_sprites;
 
 mod animate;
 pub mod cit_glint;
-mod clip_corner;
 pub mod dynamic_textures;
 mod gui_sprite;
 pub use gui_sprite::atlas_key_of_gui_sprite;
