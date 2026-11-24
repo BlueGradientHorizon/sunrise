@@ -1976,6 +1976,15 @@ impl ItemSink for WorldSink<'_> {
 pub fn item_spin(age_in_ticks: f32, bob_offset: f32) -> f32 {
     age_in_ticks / 20.0 + bob_offset
 }
+/// `ItemEntityRenderer`'s bob: how far a dropped stack rises as it spins, or
+/// nothing when its item does not bob (NeoForge's `shouldBobAsEntity`).
+pub fn item_bob(age_in_ticks: f32, bob_offset: f32, bobs: bool) -> f32 {
+    if bobs {
+        (age_in_ticks / 10.0 + bob_offset).sin() * 0.1 + 0.1
+    } else {
+        0.0
+    }
+}
 /// `ItemClusterRenderState.getRenderedAmount`.
 pub fn rendered_amount(count: u32) -> u32 {
     match count {
@@ -1996,6 +2005,23 @@ pub fn cluster_poses(state: &ItemRenderState, pose: Mat4, amount: u32, seed: i64
     // `AABB.getZsize`, in doubles, then narrowed.
     let depth = (f64::from(hi.z) - f64::from(lo.z)) as f32;
     cluster_poses_with_depth(pose, amount, seed, depth)
+}
+
+/// The poses of a dropped stack's copies: spread apart as [`cluster_poses_with_depth`]
+/// places them, or one pose for the whole stack when its item's copies do not spread
+/// (NeoForge's `shouldSpreadAsEntity`).
+pub fn dropped_copy_poses(
+    pose: Mat4,
+    amount: u32,
+    seed: i64,
+    depth: f32,
+    spreads: bool,
+) -> Vec<Mat4> {
+    if spreads {
+        cluster_poses_with_depth(pose, amount, seed, depth)
+    } else {
+        vec![pose]
+    }
 }
 
 /// [`cluster_poses`] with the depth of the resolved model's bounding box
@@ -2675,6 +2701,28 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn a_dropped_stack_that_does_not_bob_keeps_its_height() {
+        let (age, offset) = (17.5, 0.3);
+        assert_eq!(item_bob(age, offset, false), 0.0);
+        assert_eq!(
+            item_bob(age, offset, true),
+            (age / 10.0 + offset).sin() * 0.1 + 0.1
+        );
+    }
+    #[test]
+    fn a_stack_whose_copies_do_not_spread_draws_once_in_its_pose() {
+        let pose = Mat4::from_translation(glam::Vec3::new(1.0, 2.0, 3.0))
+            * Mat4::from_rotation_y(0.7);
+        let amount = rendered_amount(8);
+        for depth in [0.0625, 0.5] {
+            assert_eq!(dropped_copy_poses(pose, amount, 42, depth, false), [pose]);
+            assert_eq!(
+                dropped_copy_poses(pose, amount, 42, depth, true),
+                cluster_poses_with_depth(pose, amount, 42, depth)
+            );
+        }
+    }
     #[test]
     fn rendered_amounts_follow_the_count_bands() {
         let bands: Vec<u32> = [0, 1, 2, 16, 17, 32, 33, 48, 49, 64]
