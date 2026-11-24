@@ -148,6 +148,7 @@ impl CommandArgument {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]
+#[wire(via = InvocationRecord)]
 pub struct CommandInvocation {
     /// The literal path, including the registered command name and subcommands.
     pub literals: Vec<String>,
@@ -166,7 +167,57 @@ pub struct CommandInvocation {
     /// after `execute at`, `rotated` or `facing`, like `CommandArgumentValue::Rotation`. The
     /// console's is zero; a command block's yaw is the direction it faces.
     pub rotation: [f32; 2],
+    /// `entity` as a player, set with it by `with_player`. `player()` answers it only while
+    /// `entity` is still its entity, and a record where the two differ does not decode.
     player: Option<PlayerRef>,
+}
+
+/// `CommandInvocation`'s wire record: its fields in order. Decoding refuses a player whose
+/// entity is not the invocation's.
+#[derive(sunrise_mod_api_macros::Wire)]
+struct InvocationRecord {
+    literals: Vec<String>,
+    arguments: Vec<CommandArgument>,
+    dimension: DimensionKey,
+    position: [f64; 3],
+    entity: Option<EntityRef>,
+    rotation: [f32; 2],
+    player: Option<PlayerRef>,
+}
+
+impl From<&CommandInvocation> for InvocationRecord {
+    fn from(invocation: &CommandInvocation) -> Self {
+        Self {
+            literals: invocation.literals.clone(),
+            arguments: invocation.arguments.clone(),
+            dimension: invocation.dimension,
+            position: invocation.position,
+            entity: invocation.entity,
+            rotation: invocation.rotation,
+            player: invocation.player,
+        }
+    }
+}
+
+impl TryFrom<InvocationRecord> for CommandInvocation {
+    type Error = &'static str;
+    fn try_from(record: InvocationRecord) -> Result<Self, Self::Error> {
+        if record
+            .player
+            .is_some_and(|player| record.entity != Some(player.entity()))
+        {
+            return Err("the player is not the invocation's entity");
+        }
+        Ok(Self {
+            literals: record.literals,
+            arguments: record.arguments,
+            dimension: record.dimension,
+            position: record.position,
+            entity: record.entity,
+            rotation: record.rotation,
+            player: record.player,
+        })
+    }
 }
 
 impl CommandInvocation {
@@ -208,11 +259,12 @@ impl CommandInvocation {
         }
     }
 
-    /// The entity the command executes as when it is a player (`CommandSourceStack.getPlayer`).
-    /// A command that needs one maps `None` to its own failure, such as
-    /// `permissions.requires.player`.
+    /// The entity the command executes as when it is a player (`CommandSourceStack.getPlayer`):
+    /// the player `with_player` set, while `entity` is still theirs. A command that needs one
+    /// maps `None` to its own failure, such as `permissions.requires.player`.
     pub fn player(&self) -> Option<PlayerRef> {
         self.player
+            .filter(|player| self.entity == Some(player.entity()))
     }
 
     /// The last argument registered under `name`, or `None` when it is absent.
@@ -252,3 +304,6 @@ pub(crate) mod entity_selector;
 pub(crate) mod suggestion;
 pub(crate) mod suggestion_provider;
 pub(crate) mod types;
+
+#[cfg(test)]
+mod invocation_tests;
