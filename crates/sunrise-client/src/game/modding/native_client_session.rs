@@ -347,6 +347,32 @@ pub(super) mod tests {
         );
     }
 
+    /// `LocalPlayer.permissionLevel` (#5529): on a client the local player's level is the one the
+    /// server's entity events 24 to 28 last set, and another player's is unknown.
+    #[test]
+    #[ignore = "daily"]
+    fn the_local_players_permission_level_follows_the_servers_events() {
+        use mod_api::{EntityRef, WorldEpoch};
+        use sunrise_protocol::packets::play::{self, Clientbound as C};
+        super::super::native_entity_refs::tests::with_client_game(|game| {
+            let _server = logged_client(game);
+            let player = game.local_player().unwrap();
+            assert_eq!(player.permission_level(game), Some(0));
+            for (event, level) in [(26, 2), (28, 4), (24, 0)] {
+                game.handle_packet(C::EntityEvent(play::EntityEvent { id: 7, event }))
+                    .unwrap();
+                assert_eq!(player.permission_level(game), Some(level), "event {event}");
+            }
+            // Another entity's event leaves the local player's level alone.
+            game.handle_packet(C::EntityEvent(play::EntityEvent { id: 8, event: 28 }))
+                .unwrap();
+            assert_eq!(player.permission_level(game), Some(0));
+            let epoch: WorldEpoch = player.entity().epoch();
+            let other = mod_api::__private::game::player_ref(EntityRef::new(epoch, 99), 5);
+            assert_eq!(other.permission_level(game), None);
+        });
+    }
+
     pub(in crate::game) fn logged_client(
         game: &mut Game<'_>,
     ) -> sunrise_protocol::connection::Pipe {
