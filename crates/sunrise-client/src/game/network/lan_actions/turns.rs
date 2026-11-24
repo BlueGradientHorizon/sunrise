@@ -451,23 +451,17 @@ impl Game<'_> {
         );
         let level_up_sound =
             std::mem::replace(&mut self.server.level_up_sound, play.level_up_sound);
-        // The host's held keys stay theirs: the guest holds only sneak, and a
-        // screen the guest opens (`keys.clear()`) leaves the host walking.
-        let host_keys = std::mem::take(&mut self.client.keys);
-        let saved_mappings = std::mem::take(&mut self.client.vanilla_mappings);
+        // Copy before the `&mut self` client helpers so the `host` borrow ends here.
         let sneaking = g.sneaking;
         let guest_vehicle = g.vehicle;
-        if sneaking {
-            self.insert_device_key(KeyCode::ShiftLeft);
-        }
+        // The host's held keys stay theirs: the guest holds only sneak, and a
+        // screen the guest opens (`keys.clear()`) leaves the host walking.
+        let (host_keys, saved_mappings) = self.guest_turn_client_enter_input(sneaking);
         // The window's screens are the host's: a sign, book, command block or
         // mount menu the guest's action opens is not drawn over the host's
         // world (#687). The guest's client opens its own.
-        let screen = std::mem::replace(&mut self.client.screen, Screen::Playing);
-        let host_sign = self.client.sign_edit.take();
-        let host_book = self.client.book.take();
-        let host_command_block = self.command_block_screen.0.take();
-        let host_mount_menu = std::mem::take(&mut self.client.mount_menu);
+        let (screen, host_sign, host_book, host_command_block, host_mount_menu) =
+            self.guest_turn_client_enter_screens();
         // The host's crafting grid stays theirs; a crafting table the guest
         // opens shows as the 3x3 size.
         let craft_size = std::mem::replace(&mut self.craft_size, 2);
@@ -524,7 +518,7 @@ impl Game<'_> {
             .respawn_elsewhere
             .as_ref()
             .and_then(RespawnConfig::from_saved);
-        let message = self.client.message.take();
+        let message = self.guest_turn_client_replace_message(None);
         // The guest's own ender inventory; one the host has open goes back
         // into the host's while the guest acts.
         let host_ender = self.server.ender_open;
@@ -814,7 +808,7 @@ impl Game<'_> {
         let guest_respawn = std::mem::replace(&mut self.server.respawn_config, respawn.0);
         self.level.spawn = respawn.1;
         // ServerPlayer.displayClientMessage(_, true): the guest's action bar.
-        let guest_message = std::mem::replace(&mut self.client.message, message);
+        let guest_message = self.guest_turn_client_replace_message(message);
         let guest_vehicle = std::mem::replace(&mut self.riding, outer_player.riding);
         play.mining = std::mem::replace(&mut self.mining, mining);
         play.destroy_delay = std::mem::replace(&mut self.server.destroy_delay, destroy_delay);
@@ -831,26 +825,15 @@ impl Game<'_> {
         std::mem::swap(&mut self.mount, &mut play.mount);
         std::mem::swap(&mut self.portals.player, &mut play.portal);
         self.container = container;
-        self.client.screen = screen;
-        // A sign the guest's placement opened (SignBlock.openTextEdit).
-        let guest_sign = std::mem::replace(&mut self.client.sign_edit, host_sign);
-        // A lectern the guest's use opened (LecternBlock.openScreen).
-        let guest_lectern = match std::mem::replace(&mut self.client.book, host_book) {
-            Some(crate::game::books::BookScreen::View {
-                lectern: Some(key), ..
-            }) => Some(key),
-            _ => None,
-        };
-        // A command block the guest's use opened (Player.openCommandBlock).
-        let guest_command_block =
-            std::mem::replace(&mut self.command_block_screen.0, host_command_block)
-                .map(|s| s.pos());
-        // A mount inventory the guest's action opened (shift + use, or the
-        // inventory key while riding).
-        let guest_mount =
-            std::mem::replace(&mut self.client.mount_menu, host_mount_menu).opened_mob();
-        self.client.keys = host_keys;
-        self.client.vanilla_mappings = saved_mappings;
+        let (guest_sign, guest_lectern, guest_command_block, guest_mount) =
+            self.guest_turn_client_leave_screens(
+                screen,
+                host_sign,
+                host_book,
+                host_command_block,
+                host_mount_menu,
+            );
+        self.guest_turn_client_leave_input(host_keys, saved_mappings);
         let new_mode = self.mode_id();
         let turn_previous = std::mem::replace(&mut self.previous_mode, outer_previous);
         let turn_abilities = std::mem::replace(&mut self.server.acting_abilities, outer_abilities);
@@ -1101,6 +1084,97 @@ impl Game<'_> {
             self.server.interrupted_turns.retain(|&c| c != conn);
         }
         Ok(())
+    }
+
+    pub(in crate::game) fn guest_turn_client_enter_input(
+        &mut self,
+        sneaking: bool,
+    ) -> (
+        sunrise_client::held::HeldKeys,
+        sunrise_client::keymapping::VanillaMappings,
+    ) {
+        let host_keys = std::mem::take(&mut self.client.keys);
+        let saved_mappings = std::mem::take(&mut self.client.vanilla_mappings);
+        if sneaking {
+            self.insert_device_key(KeyCode::ShiftLeft);
+        }
+        (host_keys, saved_mappings)
+    }
+
+    pub(in crate::game) fn guest_turn_client_enter_screens(
+        &mut self,
+    ) -> (
+        Screen,
+        Option<crate::game::sign_edit::SignEditor>,
+        Option<crate::game::books::BookScreen>,
+        Option<sunrise_client_gameplay::command_block_screen::CommandBlockScreen>,
+        crate::game::mount_menu::MountMenu,
+    ) {
+        let screen = std::mem::replace(&mut self.client.screen, Screen::Playing);
+        let host_sign = self.client.sign_edit.take();
+        let host_book = self.client.book.take();
+        let host_command_block = self.command_block_screen.take();
+        let host_mount_menu = std::mem::take(&mut self.client.mount_menu);
+        (
+            screen,
+            host_sign,
+            host_book,
+            host_command_block,
+            host_mount_menu,
+        )
+    }
+
+    #[inline]
+    pub(in crate::game) fn guest_turn_client_replace_message(
+        &mut self,
+        message: Option<(String, std::time::Instant)>,
+    ) -> Option<(String, std::time::Instant)> {
+        std::mem::replace(&mut self.client.message, message)
+    }
+
+    pub(in crate::game) fn guest_turn_client_leave_screens(
+        &mut self,
+        screen: Screen,
+        host_sign: Option<crate::game::sign_edit::SignEditor>,
+        host_book: Option<crate::game::books::BookScreen>,
+        host_command_block: Option<
+            sunrise_client_gameplay::command_block_screen::CommandBlockScreen,
+        >,
+        host_mount_menu: crate::game::mount_menu::MountMenu,
+    ) -> (
+        Option<crate::game::sign_edit::SignEditor>,
+        Option<(i32, i32, i32)>,
+        Option<(i32, i32, i32)>,
+        Option<u32>,
+    ) {
+        self.client.screen = screen;
+        // A sign the guest's placement opened (SignBlock.openTextEdit).
+        let guest_sign = std::mem::replace(&mut self.client.sign_edit, host_sign);
+        // A lectern the guest's use opened (LecternBlock.openScreen).
+        let guest_lectern = match std::mem::replace(&mut self.client.book, host_book) {
+            Some(crate::game::books::BookScreen::View {
+                lectern: Some(key), ..
+            }) => Some(key),
+            _ => None,
+        };
+        // A command block the guest's use opened (Player.openCommandBlock).
+        let guest_command_block =
+            std::mem::replace(&mut self.command_block_screen, host_command_block).map(|s| s.pos());
+        // A mount inventory the guest's action opened (shift + use, or the
+        // inventory key while riding).
+        let guest_mount =
+            std::mem::replace(&mut self.client.mount_menu, host_mount_menu).opened_mob();
+        (guest_sign, guest_lectern, guest_command_block, guest_mount)
+    }
+
+    #[inline]
+    pub(in crate::game) fn guest_turn_client_leave_input(
+        &mut self,
+        host_keys: sunrise_client::held::HeldKeys,
+        saved_mappings: sunrise_client::keymapping::VanillaMappings,
+    ) {
+        self.client.keys = host_keys;
+        self.client.vanilla_mappings = saved_mappings;
     }
 
     /// `ServerLevel.broadcastDamageEvent` for a guest that took an unblocked hit.

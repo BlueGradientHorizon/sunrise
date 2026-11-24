@@ -8554,8 +8554,7 @@ impl Game<'_> {
         prepared: world_loading::PreparedWorld,
     ) -> Result<functions::PackStack> {
         self.reset_tutorial();
-        // Another world: its generator, not the last one's Density line.
-        self.client.debug_density.borrow_mut().clear();
+        self.finish_open_world_client_clear_debug_density();
         let world_loading::PreparedWorld {
             save_root,
             shapes,
@@ -8683,12 +8682,7 @@ impl Game<'_> {
         book.to_be_displayed.retain(|r| index.contains(r));
         self.enter_opened_dim(dim);
         self.audio.0.set_world(dim.id());
-        // LevelStorageAccess.getIconFile: this save's icon.png is what the
-        // Select World list shows.
-        self.client.world_icon = Some(WorldIcon {
-            path: save_root.join("icon.png"),
-            last_attempt: None,
-        });
+        self.finish_open_world_client_set_world_icon(&save_root);
         self.world_flat = sunrise_client::save::WorldGen::read(&save_root)
             .is_some_and(|w| w.preset == sunrise_client::save::WorldPreset::Flat);
         self.server.world_debug = sunrise_client::save::WorldGen::read(&save_root)
@@ -8746,6 +8740,21 @@ impl Game<'_> {
         self.open_builtin_levels()?;
         Ok(stack)
     }
+    pub(in crate::game) fn finish_open_world_client_clear_debug_density(&mut self) {
+        // Another world: its generator, not the last one's Density line.
+        self.client.debug_density.borrow_mut().clear();
+    }
+    pub(in crate::game) fn finish_open_world_client_set_world_icon(
+        &mut self,
+        save_root: &std::path::Path,
+    ) {
+        // LevelStorageAccess.getIconFile: this save's icon.png is what the
+        // Select World list shows.
+        self.client.world_icon = Some(WorldIcon {
+            path: save_root.join("icon.png"),
+            last_attempt: None,
+        });
+    }
     fn finish_close_world(&mut self) -> Result<()> {
         self.client.ambience.clear(&mut self.audio.0);
         // updateLevelInEngines(null): every sound stops; the music manager
@@ -8763,8 +8772,7 @@ impl Game<'_> {
         self.server_items = None;
         self.session_lock.0 = None;
         self.clear_world_parts();
-        self.server.world_adopted = false;
-        self.server.startup_ticket_restore_pending = false;
+        self.finish_close_world_server_clear_world_flags();
         self.client.world_icon = None;
         sunrise_client::crash::clear_detail("World");
         self.client.debug_charts.reset();
@@ -8773,7 +8781,7 @@ impl Game<'_> {
         self.client.item_activation.reset();
         self.client.kept_block_entities.get_mut().clear();
         self.client.mod_view_distances.take();
-        self.server.bosses = Default::default();
+        self.finish_close_world_server_clear_bosses();
         self.streaming.paused = true;
         self.world = Game::world_for_mods(self.res.facts().air, 0);
         self.player = None;
@@ -8782,7 +8790,7 @@ impl Game<'_> {
         self.reset_toggle_keys();
         self.sleeping = None;
         self.sleep_timer = 0;
-        self.server.player_beds.clear();
+        self.finish_close_world_server_clear_player_beds();
         self.clear_entities();
         self.set_screen(Screen::Playing);
         self.clear_lod();
@@ -8803,6 +8811,16 @@ impl Game<'_> {
         self.capture(false);
         Ok(())
     }
+    pub(in crate::game) fn finish_close_world_server_clear_world_flags(&mut self) {
+        self.server.world_adopted = false;
+        self.server.startup_ticket_restore_pending = false;
+    }
+    pub(in crate::game) fn finish_close_world_server_clear_bosses(&mut self) {
+        self.server.bosses = Default::default();
+    }
+    pub(in crate::game) fn finish_close_world_server_clear_player_beds(&mut self) {
+        self.server.player_beds.clear();
+    }
     /// Let go of every entity of the level (saved first): the next world
     /// opened must not inherit them, nor save them as its own.
     pub(super) fn clear_entities(&mut self) {
@@ -8812,7 +8830,7 @@ impl Game<'_> {
         self.orbs.clear();
         self.creatures.projectiles.clear();
         self.falling.clear();
-        self.client.transient_blocks.clear();
+        self.clear_entities_client_transient_blocks();
         self.tnts.clear();
         self.boats.clear();
         self.carts.clear();
@@ -8830,11 +8848,20 @@ impl Game<'_> {
         self.clear_client_particles();
         self.riding = None;
         self.persist = Default::default();
-        self.server.missing_professions.clear();
+        self.clear_entities_server_missing_professions();
         self.entity_attachments.clear();
         self.clear_remote_objects();
         self.clear_remote_projectiles();
         self.levels.0.clear();
+        self.clear_entities_client_render_caches();
+    }
+    pub(in crate::game) fn clear_entities_client_transient_blocks(&mut self) {
+        self.client.transient_blocks.clear();
+    }
+    pub(in crate::game) fn clear_entities_server_missing_professions(&mut self) {
+        self.server.missing_professions.clear();
+    }
+    pub(in crate::game) fn clear_entities_client_render_caches(&mut self) {
         self.client.entity_vertices.clear();
         self.client.see_through_vertices.clear();
         self.client.glowing_vertices.get_mut().clear();
