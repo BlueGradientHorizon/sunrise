@@ -2125,26 +2125,33 @@ impl Game<'_> {
                 ));
             }
             "say" if !rest.is_empty() => self.dedicated_console_say(rest.join(" ")),
-            _ => {
-                // The game's dispatcher, captured for the console.
-                self.chat_capture = Some(Vec::new());
-                // A command a native mod registered goes to the mods first,
-                // looked up by the same first word the match above read.
-                if !self.perform_native_console_command(line.trim()) {
-                    self.as_console_in_spawn_level(|g| g.run_command(line));
-                }
-                for text in self.chat_capture.take().unwrap_or_default() {
-                    self.console_reply(text);
-                }
-                // ServerPlayer.onEffectAdded and onEffectUpdated send an effect
-                // the command gave as it was given: vanilla's console runs after
-                // the players' tick (`DedicatedServer.tickConnection`), so the
-                // next tick is the first to count it down. A player's own
-                // commands sync theirs the same way (`run_guest_command`).
-                if let Some(h) = self.lan.as_mut() {
-                    h.hub.sync_all_effects();
-                }
-            }
+            _ => self.console_dispatch(line),
+        }
+    }
+
+    /// A console line none of the dedicated-only commands took: a native mod's
+    /// command, else the game's dispatcher. Its output is the console's
+    /// (`MinecraftServer.sendSystemMessage`), logged once; `send_success` has
+    /// already told the operators of what it broadcasts, so it is not filtered
+    /// through `console_reply` again.
+    pub(in crate::game) fn console_dispatch(&mut self, line: &str) {
+        // The game's dispatcher, captured for the console.
+        self.chat_capture = Some(Vec::new());
+        // A command a native mod registered goes to the mods first,
+        // looked up by the same first word the match above read.
+        if !self.perform_native_console_command(line.trim()) {
+            self.as_console_in_spawn_level(|g| g.run_command(line));
+        }
+        for text in self.chat_capture.take().unwrap_or_default() {
+            log("INFO", &format!("System chat: {}", text.plain()));
+        }
+        // ServerPlayer.onEffectAdded and onEffectUpdated send an effect
+        // the command gave as it was given: vanilla's console runs after
+        // the players' tick (`DedicatedServer.tickConnection`), so the
+        // next tick is the first to count it down. A player's own
+        // commands sync theirs the same way (`run_guest_command`).
+        if let Some(h) = self.lan.as_mut() {
+            h.hub.sync_all_effects();
         }
     }
 
