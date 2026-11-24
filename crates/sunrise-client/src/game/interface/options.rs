@@ -541,12 +541,14 @@ impl Game<'_> {
                 }
                 Event::NativeSettings(i) => self.native_settings_refresh(i),
                 Event::ModConfigScreen(i) => {
-                    let id = self.settings.mods.installed[i].id.clone();
+                    let Some(id) = self.settings.mods.installed.get(i).map(|m| m.id.clone()) else {
+                        continue;
+                    };
                     match mod_api::__private::create_config_screen(self, &id) {
                         Some(Ok(true)) => {
                             self.native_mod_screen_parent = self.mod_screen_open(&id);
                         }
-                        Some(Err(reason)) => log::error!("config screen of {reason}"),
+                        Some(Err(reason)) => log::error!("mod {id}: {reason}"),
                         Some(Ok(false)) | None => {}
                     }
                 }

@@ -3369,10 +3369,11 @@ impl OptionsUi {
                 Do::OpenFolder => events.push(Event::OpenModFolder),
                 Do::Back => events.extend(self.back(s)),
                 Do::Config(i)
-                    if s.mods.installed[i]
-                        .native
-                        .as_ref()
-                        .is_some_and(|page| page.own_screen) =>
+                    if s.mods.is_on(i)
+                        && s.mods.installed[i]
+                            .native
+                            .as_ref()
+                            .is_some_and(|page| page.own_screen) =>
                 {
                     events.push(Event::ModConfigScreen(i));
                 }
