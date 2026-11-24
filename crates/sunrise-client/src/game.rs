@@ -1191,6 +1191,8 @@ mod native_datafix_tests;
 mod native_datapack_refs;
 #[path = "game/modding/native_death_weapon.rs"]
 mod native_death_weapon;
+#[path = "game/modding/native_detached_generation.rs"]
+mod native_detached_generation;
 #[path = "game/modding/native_dimensions.rs"]
 mod native_dimensions;
 #[path = "game/modding/native_disconnect.rs"]
@@ -4306,6 +4308,8 @@ struct Game<'a> {
     async_chunk_requests: native_chunk_requests::AsyncChunkRequests,
     /// Open-state flags for `SavedChunkReader` handles per dimension (`native_saved_chunks.rs`).
     saved_chunk_readers: std::cell::RefCell<HashMap<Dim, Arc<std::sync::atomic::AtomicBool>>>,
+    /// Open detached chunk generators handed out by `LevelRef::detached_generator`.
+    detached_generators: native_detached_generation::DetachedGenerators,
     /// PauseScreen.showPauseMenu (false after F3+Escape).
     pause_menu: bool,
     pause_focus: Option<u8>,
@@ -14422,6 +14426,7 @@ impl<'a> Game<'a> {
             passages: Default::default(),
             async_chunk_requests: Default::default(),
             saved_chunk_readers: Default::default(),
+            detached_generators: Default::default(),
             pause_menu: true,
             pause_focus: None,
             death_focus: None,

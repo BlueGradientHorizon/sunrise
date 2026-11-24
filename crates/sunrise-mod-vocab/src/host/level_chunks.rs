@@ -69,6 +69,13 @@ pub trait LevelChunksBackend {
     ///
     /// Returns `None` on a client, for a stale handle, or for an unsaved/ephemeral level.
     fn level_saved_chunk_reader(&self, level: LevelRef) -> Option<SavedChunkReader>;
+    /// Side: server.
+    /// Returns a thread-safe detached generator bound to this level's seed, dimension type, data
+    /// packs, and mod worldgen hooks, callable off the server tick thread without mutating the
+    /// live world or save directory.
+    ///
+    /// Returns `None` on a client, for a stale handle, or when the level has no generator.
+    fn level_detached_generator(&self, level: LevelRef) -> Option<DetachedChunkGenerator>;
 }
 /// The handles' writes of the `level_chunks` area, implemented by the game and reached through [`BackendMut`].
 // hidden: a handle's backend, reached through `Backend`; mods call the handle, never this trait
