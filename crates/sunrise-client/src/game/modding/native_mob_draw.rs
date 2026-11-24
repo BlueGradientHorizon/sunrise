@@ -377,7 +377,7 @@ impl Game<'_> {
     ) -> bool {
         let mut canceled = false;
         // The entity's light as `packed_light` packs it.
-        let light = u32::from(light >> 4) * 16 | (u32::from(light & 15) * 16) << 8;
+        let light = (u32::from(light >> 4) * 16) | ((u32::from(light & 15) * 16) << 8);
         let pose = Mat4::from_translation((origin - camera + DVec3::new(0.0, lift, 0.0)).as_vec3());
         self.entity_draw(partial, light, origin, pose, out, |draw| {
             self.native_render_name_tag_do_render(
