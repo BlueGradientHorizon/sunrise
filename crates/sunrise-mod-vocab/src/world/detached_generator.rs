@@ -3,36 +3,45 @@ use crate::world::chunk_snapshot::ChunkSnapshot;
 use std::fmt;
 use std::sync::Arc;
 
-/// Generation stage requested from [`DetachedChunkGenerator::generate_chunk`], matching vanilla's
-/// `net.minecraft.world.level.chunk.status.ChunkStatus` progression.
+/// Generation stage requested from [`DetachedChunkGenerator::generate_chunk`].
+///
+/// Follows vanilla 26.3's `net.minecraft.world.level.chunk.status.ChunkStatus` progression
+/// (`BIOMES -> TERRAIN -> FEATURES -> INITIALIZE_LIGHT -> LIGHT -> SPAWN -> FULL`), exposing the
+/// three sub-phases of `ChunkStatus.TERRAIN` ([`Self::Noise`], [`Self::Surface`], and
+/// [`Self::Carvers`]) so callers can stop before surface painting or cave carving when they only
+/// need coarse terrain.
 #[derive(
     Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, sunrise_mod_api_macros::Wire,
 )]
 #[non_exhaustive]
 pub enum GenerationStage {
-    /// Biome layout only (3D quart biomes, no terrain blocks).
+    /// `ChunkStatus.BIOMES`: biome layout only (3D quart biomes, no terrain blocks).
     /// Deterministic and bit-exact with live worldgen. `has_light() == false`.
     Biomes,
-    /// Noise terrain and aquifers (default stone/fluid/air; flat layers for superflat).
+    /// First sub-phase of `ChunkStatus.TERRAIN`: noise terrain and aquifers (default
+    /// stone/fluid/air; flat layers for superflat), before surface rules or carvers.
     /// Deterministic and bit-exact with live worldgen. `has_light() == false`.
     Noise,
-    /// Noise plus surface rules (grass, sand, snow, badlands strata, bedrock).
+    /// Second sub-phase of `ChunkStatus.TERRAIN`: noise plus surface rules (grass, sand, snow,
+    /// badlands strata, bedrock), before cave/ravine carvers.
     /// Deterministic and bit-exact with live worldgen. `has_light() == false`.
     Surface,
-    /// Surface plus caves and ravines.
+    /// Complete `ChunkStatus.TERRAIN`: surface plus caves and ravines.
     /// Deterministic and bit-exact with live worldgen. `has_light() == false`.
     Carvers,
-    /// Decorated as vanilla would (trees, lakes, ores, structures) over a 3x3 detached scratch
-    /// neighbourhood. Not guaranteed identical to the saved world (cross-chunk placements from
-    /// neighbours' decoration passes and generation order are not replicated). `has_light() == false`.
+    /// `ChunkStatus.FEATURES`: decorated as vanilla would (trees, lakes, ores, structures) over a
+    /// 3x3 detached scratch neighbourhood. Not guaranteed identical to the saved world (cross-chunk
+    /// placements from neighbours' decoration passes and generation order are not replicated).
+    /// `has_light() == false`.
     Features,
-    /// [`Self::Features`] followed by the engine's real light engine over the detached 3x3
-    /// neighbourhood. Produces real sky and block light (`has_light() == true`). Not guaranteed
-    /// identical to the saved world for the same reasons as [`Self::Features`].
+    /// `ChunkStatus.LIGHT`: [`Self::Features`] followed by the engine's real light engine over the
+    /// detached 3x3 neighbourhood. Produces real sky and block light (`has_light() == true`). Not
+    /// guaranteed identical to the saved world for the same reasons as [`Self::Features`].
     Light,
 }
 
 /// Why a detached generation or surface sample call failed.
+// no wire: returned only to the caller of the in-process DetachedChunkGenerator.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum GenerationError {

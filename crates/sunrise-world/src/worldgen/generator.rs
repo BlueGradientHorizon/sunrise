@@ -1271,8 +1271,9 @@ where
     }
 }
 
-/// Single-chunk pre-decoration generation stages (`ChunkStatus`: `BIOMES`, `NOISE`, `SURFACE`,
-/// `CARVERS`), run in order by [`GeneratorWorker::generate_proto_stage`].
+/// Single-chunk pre-decoration generation stages (`ChunkStatus.BIOMES` and the `Noise`, `Surface`,
+/// and `Carvers` sub-phases of vanilla 26.3's unified `ChunkStatus.TERRAIN`), run in order by
+/// [`GeneratorWorker::generate_proto_stage`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ProtoStage {
     Biomes,
