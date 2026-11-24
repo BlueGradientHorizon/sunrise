@@ -606,6 +606,37 @@ pub fn tick_until_consumption(
     })
 }
 
+/// Resume after flushing staged `register_behaviors` with the current navigation owner.
+pub fn resume_after_register_behaviors(
+    mobs: &mut JoinList<Mob>,
+    index: usize,
+    w: &MobWorld,
+    level: &mut super::DamageLevel<'_>,
+    was_on_fire: bool,
+    stage: super::ai::BrainStage,
+    events: &mut Vec<super::MobEvent>,
+    movement: &mut Option<super::ai::MobMovement>,
+) -> super::ai::TickProgress {
+    if mobs[index].removed {
+        return super::ai::TickProgress::Complete(false);
+    }
+    tick_with(mobs, index, w, level, events, |m, w, level, events| {
+        let progress = super::ai::resume_after_register_behaviors(
+            m,
+            w,
+            level,
+            was_on_fire,
+            stage,
+            events,
+            Some(movement),
+        );
+        if matches!(progress, super::ai::TickProgress::Complete(_)) {
+            super::neutral_anger::after_tick(m, w.game_time);
+        }
+        progress
+    })
+}
+
 /// Resume after equipment detection with the current navigation owner.
 pub fn resume_after_equipment(
     mobs: &mut JoinList<Mob>,

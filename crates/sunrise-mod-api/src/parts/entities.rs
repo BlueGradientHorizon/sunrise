@@ -12,14 +12,22 @@ pub mod tests {
         struct Once;
         #[mod_api::sunrise_part]
         impl super::EntityPart for Once {
-            fn register_goals(&self, event: &mut crate::RegisterGoalsEvent<'_, '_>) {
+            fn register_goals(
+                &self,
+                _host: &mut dyn crate::ServerHost,
+                event: &mut crate::RegisterGoalsEvent<'_, '_>,
+            ) {
                 let _ = event;
             }
         }
         struct Twice;
         #[mod_api::sunrise_part]
         impl super::EntityPart for Twice {
-            fn register_goals(&self, event: &mut crate::RegisterGoalsEvent<'_, '_>) {
+            fn register_goals(
+                &self,
+                _host: &mut dyn crate::ServerHost,
+                event: &mut crate::RegisterGoalsEvent<'_, '_>,
+            ) {
                 let _ = event;
             }
         }

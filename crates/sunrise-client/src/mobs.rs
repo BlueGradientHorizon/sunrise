@@ -1593,6 +1593,24 @@ pub struct MovementEmission {
     pub in_water: bool,
 }
 
+/// Staged `register_goals` / `register_behaviors` dispatches waiting for the
+/// owning server `Game` boundary. A clone (e.g. a corpse kept for death events)
+/// resets to non-authoritative with no pending work.
+#[derive(Debug, Default)]
+pub struct StagedMobParts {
+    pub authoritative: bool,
+    pub goal_generation: u64,
+    pub brain_generation: u64,
+    pub pending_goals: Option<u64>,
+    pub pending_behaviors: Option<mod_behaviors::BehaviorTarget>,
+}
+
+impl Clone for StagedMobParts {
+    fn clone(&self) -> Self {
+        Self::default()
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Mob {
     /// Entity-owned registration metadata; content clones are detached.
@@ -1664,6 +1682,9 @@ pub struct Mob {
     pub effects_dirty: bool,
     pub random: LegacyRandom,
     pub ai: Box<ai::Ai>,
+    /// Staged `register_goals` and `register_behaviors` dispatches waiting for
+    /// the owning server `Game` boundary.
+    pub staged_parts: StagedMobParts,
     pub extra: Extra,
     pub fluids: living::Fluids,
     /// Entity.wasEyeInWater: the eyes were in water before this tick's fluid
@@ -3905,11 +3926,80 @@ impl Mob {
         mob.attach_mod_parts();
         mob
     }
-    /// Register the server-only goals and behaviors after the mob has its
+    /// Stage the server-only goals and behaviors after the mob has its
     /// runtime id. A deferred NBT load can read geometry before taking an id.
+    /// The owning `Game` flushes staged registrations with a scoped server host.
     pub fn attach_mod_parts(&mut self) {
-        part_goals::attach(self);
-        mod_behaviors::attach_at_construction(self);
+        self.staged_parts.authoritative = true;
+        if mod_api::__private::entity_part_hooked(
+            mod_api::HookId::RegisterGoals,
+            "register_goals",
+            &self.kind.id,
+        ) {
+            self.stage_mod_goals();
+        }
+        self.stage_initial_mod_behaviors();
+    }
+    /// Stage a `register_goals` dispatch for this mob's current selectors.
+    pub fn stage_mod_goals(&mut self) {
+        self.staged_parts.authoritative = true;
+        self.staged_parts.goal_generation = self.staged_parts.goal_generation.wrapping_add(1);
+        self.staged_parts.pending_goals = Some(self.staged_parts.goal_generation);
+    }
+    /// Stage construction-time `register_behaviors`: `NoBrain` for species with no
+    /// brain, or the already-built brain for species whose brain is constructed inside
+    /// `ai::register` (warden, axolotl, tadpole). Lazy-brain species stage when their
+    /// brain is built.
+    fn stage_initial_mod_behaviors(&mut self) {
+        if !mod_api::__private::entity_part_hooked(
+            mod_api::HookId::RegisterBehaviors,
+            "register_behaviors",
+            &self.kind.id,
+        ) {
+            return;
+        }
+        let target = if !mod_behaviors::has_brain(self.species()) {
+            Some(mod_behaviors::BehaviorTarget::NoBrain)
+        } else if let Some(warden) = self.extra.warden.as_ref() {
+            Some(mod_behaviors::BehaviorTarget::Warden(
+                warden.brain.generation,
+            ))
+        } else if let Some(animal) = self.extra.animal_brain.as_ref() {
+            Some(mod_behaviors::BehaviorTarget::Animal(animal.generation))
+        } else if let Some(monster) = self.extra.brain.as_ref() {
+            Some(mod_behaviors::BehaviorTarget::Monster(monster.generation))
+        } else {
+            villager::ext(self)
+                .and_then(|e| e.brain.as_ref())
+                .map(|b| mod_behaviors::BehaviorTarget::Villager(b.generation))
+        };
+        if let Some(target) = target {
+            self.staged_parts.pending_behaviors = Some(target);
+        }
+    }
+    /// Allocate the next brain generation token on this mob.
+    pub(crate) fn next_brain_generation(&mut self) -> u64 {
+        self.staged_parts.brain_generation = self.staged_parts.brain_generation.wrapping_add(1);
+        self.staged_parts.brain_generation
+    }
+    /// Stage `register_behaviors` for a freshly built or rebuilt brain when this mob
+    /// is authoritative and at least one part subscribed to `register_behaviors` is
+    /// attached to its entity type.
+    pub(crate) fn stage_brain_behaviors(&mut self, target: mod_behaviors::BehaviorTarget) {
+        if self.staged_parts.authoritative
+            && mod_api::__private::entity_part_hooked(
+                mod_api::HookId::RegisterBehaviors,
+                "register_behaviors",
+                &self.kind.id,
+            )
+        {
+            self.staged_parts.pending_behaviors = Some(target);
+        }
+    }
+    /// Whether this mob has staged `register_goals` or `register_behaviors` waiting
+    /// for the owning server `Game`.
+    pub fn has_pending_mod_parts(&self) -> bool {
+        self.staged_parts.pending_goals.is_some() || self.staged_parts.pending_behaviors.is_some()
     }
     /// The same construction without the mod parts' goals: a client's copy of
     /// a server's mob, from its spawn packet. The species' goals stand — the
@@ -3968,6 +4058,7 @@ impl Mob {
             persistent: false,
             random,
             ai: Box::default(),
+            staged_parts: StagedMobParts::default(),
             extra: Extra::default(),
             fluids: living::Fluids::default(),
             was_eye_in_water: false,

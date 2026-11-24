@@ -599,10 +599,13 @@ impl Game<'_> {
         if resident {
             self.bind_saved_entity_attachments(id, &mut m.attachment_lifetime);
             self.mobs.push(m);
+            let join = self.mobs.last().unwrap().join;
+            self.flush_resident_mob_parts(id, join);
             if restore_target {
                 self.native_restore_loaded_target(id, anger_uuid);
             }
         } else {
+            self.flush_unjoined_mob_parts(&mut m);
             self.persist.off_level.insert(id, OffLevel::Mob(m));
         }
         id
