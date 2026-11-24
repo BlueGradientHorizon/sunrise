@@ -309,7 +309,7 @@ fn a_library_whose_crates_another_mod_changed_is_refused_beside_its_dependent() 
     let scratch = Scratch::new();
     let native = scratch.new_mod(
         "native",
-        &library("pub fn magic() -> u32 { ascii::AsciiChar::A as u32 + 1663 }"),
+        &library("pub fn magic() -> u32 { ascii::AsciiChar::A as u32 + 1664 }"),
         "",
         "ascii = { version = \"1\", default-features = false }\n",
     );
