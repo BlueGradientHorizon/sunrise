@@ -295,6 +295,8 @@ mod tests {
                 sec.set(0, stone_id); // (0, 0, 0)
                 sec.set((3 << 8) | (1 << 4) | 2, water_id); // (2, 3, 1)
                 sec.set((5 << 8) | (1 << 4) | 2, leaves_id); // (2, 5, 1)
+                sec.set((1 << 8) | (1 << 4) | 3, stone_id); // (3, 1, 1)
+                sec.set((3 << 8) | (1 << 4) | 3, water_id); // (3, 3, 1)
                 let mut light_arr = Box::new([0xF0u8; 4096]);
                 light_arr[0] = (12 << 4) | 7;
                 sec.light = Light::packed(light_arr);
@@ -376,7 +378,8 @@ mod tests {
                 assert!(sec0.uniform_block().is_some());
                 assert!(sec0.uniform_biome().is_some());
 
-                // Heightmaps at (2, 1): water at y=3, oak_leaves at y=5.
+                // Heightmaps at (2, 1): water at y=3, oak_leaves at y=5 (leaves block motion so
+                // OceanFloor matches leaves; MotionBlockingNoLeaves ignores leaves and stops at water).
                 assert_eq!(
                     worker_snap.heightmap(Heightmap::WorldSurface, 2, 1),
                     Some(6)
@@ -389,10 +392,21 @@ mod tests {
                     worker_snap.heightmap(Heightmap::MotionBlockingNoLeaves, 2, 1),
                     Some(4)
                 );
+                assert_eq!(worker_snap.heightmap(Heightmap::OceanFloor, 2, 1), Some(6));
+                // Heightmaps at (3, 1): stone at y=1 under water at y=3 (OceanFloor skips fluid).
                 assert_eq!(
-                    worker_snap.heightmap(Heightmap::OceanFloor, 2, 1),
-                    Some(-64)
+                    worker_snap.heightmap(Heightmap::WorldSurface, 3, 1),
+                    Some(4)
                 );
+                assert_eq!(
+                    worker_snap.heightmap(Heightmap::MotionBlocking, 3, 1),
+                    Some(4)
+                );
+                assert_eq!(
+                    worker_snap.heightmap(Heightmap::MotionBlockingNoLeaves, 3, 1),
+                    Some(4)
+                );
+                assert_eq!(worker_snap.heightmap(Heightmap::OceanFloor, 3, 1), Some(2));
                 assert_eq!(worker_snap.heightmap(Heightmap::OceanFloor, 0, 0), Some(1));
 
                 // Out-of-bounds checks never panic.
