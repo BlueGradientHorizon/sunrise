@@ -2006,6 +2006,119 @@ fn a_quotable_custom_completion_replaces_the_partly_quoted_prefix() {
     );
 }
 
+/// `quest open <object> <count:integer>` whose object, of `kind`, declares a provider answering
+/// `candidates`; it records the prefix each request carries.
+fn quest_provider_dispatcher(
+    kind: CustomArgumentKind,
+    candidates: &[&str],
+    prefixes: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+) -> Dispatcher {
+    let candidates: Vec<CustomSuggestion> = candidates
+        .iter()
+        .map(|text| CustomSuggestion {
+            text: (*text).to_owned(),
+            tooltip: None,
+            replace_start: None,
+        })
+        .collect();
+    let argument = CustomArgument::new(
+        "example:quest",
+        kind,
+        |input| Ok(format!("[{input}]")),
+        |_, _| panic!("the type's own suggest is not called once it declares a provider"),
+    )
+    .with_provider(move |_, prefix, _| {
+        prefixes.lock().unwrap().push(prefix.to_owned());
+        candidates.clone()
+    });
+    let mut dispatcher = Dispatcher::new();
+    let quest = dispatcher.literal(0, "quest");
+    let open = dispatcher.literal(quest, "open");
+    let object = dispatcher.argument(open, "object", ArgType::Custom(argument));
+    let count = dispatcher.argument(
+        object,
+        "count",
+        ArgType::Integer {
+            min: i32::MIN,
+            max: i32::MAX,
+        },
+    );
+    dispatcher.executes(count, "test");
+    dispatcher
+}
+
+#[test]
+fn a_quotable_providers_quoted_candidate_matches_the_phrase_content_typed() {
+    // The engine's match for a declared provider compares phrase content for a `Quotable`
+    // argument: an unquoted `Get`, a `'Get` and a `"Get` all keep the insertable
+    // `"Getting Started"`, while the provider still gets the raw typed text and the candidate is
+    // inserted as written over the whole typed argument.
+    let candidates = [
+        r#""Getting Started""#,
+        r#""Other Quest""#,
+        "getaway",
+        r#"'say "hi"'"#,
+    ];
+    let registries = reg();
+    for (typed, kept) in [
+        ("Get", vec![r#""Getting Started""#, "getaway"]),
+        ("'Get", vec![r#""Getting Started""#, "getaway"]),
+        (r#""Get"#, vec![r#""Getting Started""#, "getaway"]),
+        (r#""getting s"#, vec![r#""Getting Started""#]),
+        (r#""say \"h"#, vec![r#"'say "hi"'"#]),
+    ] {
+        let prefixes = std::sync::Arc::default();
+        let dispatcher = quest_provider_dispatcher(
+            CustomArgumentKind::Quotable,
+            &candidates,
+            std::sync::Arc::clone(&prefixes),
+        );
+        let line = format!("quest open {typed}");
+        let parse = dispatcher.parse(&line, &registries);
+        let (range, suggestions) = dispatcher.suggestions(&parse, line.len(), &registries);
+        assert_eq!(*prefixes.lock().unwrap(), [typed], "{line}: the raw prefix");
+        let mut offered: Vec<&str> = suggestions.iter().map(|s| s.text.as_str()).collect();
+        offered.sort_unstable();
+        let mut kept = kept;
+        kept.sort_unstable();
+        assert_eq!(offered, kept, "{line}");
+        assert_eq!(range, (11, line.len()), "{line}: the whole typed argument");
+        for suggestion in &suggestions {
+            let completed = format!("{} 1", suggestion.apply(&line));
+            assert!(
+                dispatcher
+                    .parse(&completed, &registries)
+                    .executable()
+                    .is_ok(),
+                "{completed}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_word_providers_candidates_still_match_the_raw_typed_text() {
+    // Only `Quotable` reads phrase content: a `Word` argument keeps SharedSuggestionProvider's
+    // raw match, so a quoted candidate is not a completion of `Get`.
+    let prefixes = std::sync::Arc::default();
+    let dispatcher = quest_provider_dispatcher(
+        CustomArgumentKind::Word,
+        &[r#""Getting Started""#, "getaway"],
+        prefixes,
+    );
+    let registries = reg();
+    let line = "quest open Get";
+    let parse = dispatcher.parse(line, &registries);
+    let (_, suggestions) = dispatcher.suggestions(&parse, line.len(), &registries);
+    assert_eq!(
+        suggestions
+            .iter()
+            .map(|s| s.text.as_str())
+            .collect::<Vec<_>>(),
+        ["getaway"]
+    );
+}
+
 #[test]
 fn a_greedy_custom_argument_takes_the_rest_of_the_line() {
     let argument = ArgType::Custom(CustomArgument::new(

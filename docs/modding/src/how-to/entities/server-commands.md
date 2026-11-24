@@ -372,7 +372,9 @@ A `Quotable` type's `suggest`, or its provider's `SuggestionRequest::prefix`, ge
 typed, quote included and often unclosed: `"Getting St`. Brigadier gives a suggestion provider
 the same. Its suggestions replace that whole prefix, so a type returns text the player could
 have typed: a candidate that is not one word is quoted, and its quotes and `\` escaped, as
-NeoForge's `EntityCommand` quotes an entity id that needs it:
+NeoForge's `EntityCommand` quotes an entity id that needs it. For a declared provider, the
+engine's match compares phrase content, without the quotes and their escapes, on both sides. So
+`Get`, `'Get` and `"Get` all keep `"Getting Started"`, which is inserted as written:
 
 ```rust,ignore
 /// Whether `text` can be typed without quotes: one word of `StringReader.isAllowedInUnquotedString`'s
