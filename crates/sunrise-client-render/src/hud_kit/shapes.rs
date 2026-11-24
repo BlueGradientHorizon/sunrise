@@ -47,7 +47,7 @@ pub struct Stop(pub f32, pub u32);
 
 /// How many segments an arc spanning `span` radians at `radius` GUI px is cut into: one per
 /// `ARC_STEP` of its outer edge, at least 1 and at most `MAX_SEGMENTS`.
-pub fn arc_segments(span: f32, radius: f32) -> usize {
+pub(crate) fn arc_segments(span: f32, radius: f32) -> usize {
     let length = span.abs() * radius.max(0.0);
     ((length / ARC_STEP).ceil() as usize).clamp(1, MAX_SEGMENTS)
 }
@@ -58,7 +58,7 @@ pub fn snap(radius: f32) -> f32 {
 }
 
 /// The point `radius` GUI px from `centre` at `angle` (radians from up, clockwise).
-pub fn on_circle([cx, cy]: [f32; 2], radius: f32, angle: f32) -> [f32; 2] {
+pub(crate) fn on_circle([cx, cy]: [f32; 2], radius: f32, angle: f32) -> [f32; 2] {
     [cx + radius * angle.sin(), cy - radius * angle.cos()]
 }
 
@@ -109,7 +109,7 @@ impl HudBatch {
     /// An annular sector in one colour: between radii `r0` and `r1` (GUI px, snapped to whole
     /// px) from `angles[0]` to `angles[1]` (radians from up, clockwise), cut into
     /// [`arc_segments`]. With `r0` 0 it is a pie slice; a span of `TAU` is a whole ring.
-    pub fn fill_arc(
+    pub(crate) fn fill_arc(
         &mut self,
         atlas: &HudAtlas,
         centre: [f32; 2],
@@ -154,7 +154,13 @@ impl HudBatch {
     }
 
     /// A disc of radius `radius` GUI px (snapped) in one colour.
-    pub fn fill_disc(&mut self, atlas: &HudAtlas, centre: [f32; 2], radius: f32, color: u32) {
+    pub(crate) fn fill_disc(
+        &mut self,
+        atlas: &HudAtlas,
+        centre: [f32; 2],
+        radius: f32,
+        color: u32,
+    ) {
         self.fill_arc(
             atlas,
             centre,
@@ -168,7 +174,7 @@ impl HudBatch {
     /// centre out, blending linearly between them: a dark disc fading to nothing at its rim is
     /// `[Stop(0.0, dark), Stop(1.0, dark with alpha 0)]`. Stops are in order of their fraction;
     /// before the first and after the last the colour holds.
-    pub fn fill_disc_gradient(
+    pub(crate) fn fill_disc_gradient(
         &mut self,
         atlas: &HudAtlas,
         centre: [f32; 2],
@@ -201,7 +207,7 @@ impl HudBatch {
 
     /// Multiplies the alpha of every vertex added since `start` by `factor` (0 to 1): a fade over
     /// what one piece drew, its text included.
-    pub fn alpha_since(&mut self, start: usize, factor: f32) {
+    pub(crate) fn alpha_since(&mut self, start: usize, factor: f32) {
         if factor >= 1.0 {
             return;
         }
@@ -211,7 +217,7 @@ impl HudBatch {
     }
 
     /// Moves every vertex added since `start` by `(dx, dy)` GUI px.
-    pub fn translate_since(&mut self, start: usize, dx: f32, dy: f32) {
+    pub(crate) fn translate_since(&mut self, start: usize, dx: f32, dy: f32) {
         if dx == 0.0 && dy == 0.0 {
             return;
         }
