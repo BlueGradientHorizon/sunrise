@@ -78,7 +78,7 @@ pub(crate) fn check_namespace(name: &str, manifest: &Manifest) -> Result<(), Str
     let owned = own || manifest.namespaces.iter().any(|n| n == namespace);
     // Vanilla's own files stay vanilla's; a mod may only add to its
     // tags and atlases, and to the convention tags mods share.
-    let shared = matches!(namespace, "minecraft" | "c");
+    let shared = matches!(namespace, "minecraft" | "c" | "neoforge");
     let atlas = top == "assets" && namespace == "minecraft" && rest.starts_with("atlases/");
     let mut extension = false;
     if top == "data" && namespace == "sunrise" && rest.starts_with("tags/") {

@@ -86,7 +86,7 @@ fn tag_predicates_keep_vague_properties_and_refuse_duplicate_transport() {
     let vague = StatePredicate::tag(
         &metadata,
         &TagsAvailable,
-        TagKey(0),
+        TagKey::slot_unchecked(0),
         &[StateConstraint::new(
             "property_no_member_has",
             "arbitrary_value",
@@ -94,13 +94,13 @@ fn tag_predicates_keep_vague_properties_and_refuse_duplicate_transport() {
     )
     .unwrap();
     assert_eq!(vague.constraints()[0].name, "property_no_member_has");
-    assert_eq!(vague.tag_key(), Some(TagKey(0)));
+    assert_eq!(vague.tag_key(), Some(TagKey::slot_unchecked(0)));
     assert_eq!(
         StatePredicate::from(StatePredicateRecord::from(&vague)),
         vague
     );
     let decoded = StatePredicate::from(StatePredicateRecord::new(
-        StatePredicateTarget::Tag(TagKey(0)),
+        StatePredicateTarget::Tag(TagKey::slot_unchecked(0)),
         vec![
             StateConstraint::new("unknown", "a"),
             StateConstraint::new("unknown", "b"),

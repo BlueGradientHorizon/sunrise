@@ -15,8 +15,8 @@ mod __private {
         item_id as item_key_id, menu_key_id, registry_name_snapshot,
     };
     pub use crate::content::registry_keys::{
-        block_keys, effect_key, effect_key_by_index, enchantment_keys, entity_type_keys, fluid_id,
-        fluid_key, fluid_key_utf16, item_key, item_key_by_identifier, item_keys, menu_keys,
-        resolve_fluids, resolve_items, world_fluid_key,
+        block_keys, effect_key, effect_key_by_index, enchantment_key, enchantment_keys,
+        entity_type_keys, fluid_id, fluid_key, fluid_key_utf16, item_key, item_key_by_identifier,
+        item_keys, menu_keys, resolve_fluids, resolve_items, world_fluid_key,
     };
 }

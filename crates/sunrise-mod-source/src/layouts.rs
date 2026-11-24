@@ -337,12 +337,43 @@ impl<W: Wires> Layouts<W> {
         let resolved = index.resolve_path(module, &segments);
         if let Ok(Found::Item(id)) = resolved {
             match index.item(id).clone() {
-                Item::Struct(_) | Item::Enum(_) | Item::Union(_) => {
+                Item::Struct(item) => {
                     let key = self.key(index, id);
-                    let args = args
-                        .iter()
-                        .map(|a| self.shape(index, module, a, params, depth))
-                        .collect();
+                    let args = self.named_args(
+                        index,
+                        module,
+                        &args,
+                        params,
+                        depth,
+                        id.module,
+                        &item.generics,
+                    );
+                    return Shape::Named(key, args);
+                }
+                Item::Enum(item) => {
+                    let key = self.key(index, id);
+                    let args = self.named_args(
+                        index,
+                        module,
+                        &args,
+                        params,
+                        depth,
+                        id.module,
+                        &item.generics,
+                    );
+                    return Shape::Named(key, args);
+                }
+                Item::Union(item) => {
+                    let key = self.key(index, id);
+                    let args = self.named_args(
+                        index,
+                        module,
+                        &args,
+                        params,
+                        depth,
+                        id.module,
+                        &item.generics,
+                    );
                     return Shape::Named(key, args);
                 }
                 Item::Type(alias) if depth < 16 => {
@@ -414,6 +445,49 @@ impl<W: Wires> Layouts<W> {
             },
             _ => opaque,
         }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn named_args(
+        &mut self,
+        index: &mut Index<'_>,
+        module: usize,
+        explicit: &[Type],
+        params: &[GenericName],
+        depth: usize,
+        item_module: usize,
+        generics: &syn::Generics,
+    ) -> Vec<Shape> {
+        let mut out: Vec<Shape> = explicit
+            .iter()
+            .map(|a| self.shape(index, module, a, params, depth))
+            .collect();
+        let non_lifetimes: Vec<&syn::GenericParam> = generics
+            .params
+            .iter()
+            .filter(|p| !matches!(p, syn::GenericParam::Lifetime(_)))
+            .collect();
+        if out.len() < non_lifetimes.len() && depth < 16 {
+            let names = param_names(generics);
+            let mut filled: Vec<Type> = explicit.to_vec();
+            for param in &non_lifetimes[out.len()..] {
+                let syn::GenericParam::Type(ty_param) = param else {
+                    break;
+                };
+                let Some(mut default) = ty_param.default.clone() else {
+                    break;
+                };
+                let mut substitute = Substitute {
+                    names: &names,
+                    args: &filled,
+                };
+                substitute.visit_type_mut(&mut default);
+                let _ = substitute;
+                out.push(self.shape(index, item_module, &default, params, depth + 1));
+                filled.push(default);
+            }
+        }
+        out
     }
 }
 

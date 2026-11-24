@@ -114,7 +114,7 @@ impl crate::Tags for FakeRegistries {
     fn key(&self, id: &crate::Identifier) -> Option<crate::TagKey> {
         crate::world::tags::tag_key(id)
     }
-    fn is_in_tag(&self, item: crate::ItemKey, _: crate::TagKey) -> Option<bool> {
+    fn is_in_tag(&self, item: crate::ItemKey, _: crate::TagKey<crate::ItemKey>) -> Option<bool> {
         Self::resolved_item_id(item)?;
         Some(false)
     }
@@ -126,7 +126,7 @@ impl crate::Tags for FakeRegistries {
         crate::parts::installed()?.resolved_items.get()?;
         Some(Vec::new())
     }
-    fn items(&self, _: crate::TagKey) -> crate::TagMembers<crate::ItemKey> {
+    fn items(&self, _: crate::TagKey<crate::ItemKey>) -> crate::TagMembers<crate::ItemKey> {
         if crate::parts::installed()
             .and_then(|parts| parts.resolved_items.get())
             .is_some()
@@ -136,14 +136,14 @@ impl crate::Tags for FakeRegistries {
             crate::TagMembers::Unavailable
         }
     }
-    fn fluids(&self, _: crate::TagKey) -> crate::TagMembers<crate::FluidKey> {
+    fn fluids(&self, _: crate::TagKey<crate::FluidKey>) -> crate::TagMembers<crate::FluidKey> {
         if crate::parts::resolved_fluids().get().is_some() {
             crate::TagMembers::Missing
         } else {
             crate::TagMembers::Unavailable
         }
     }
-    fn blocks(&self, _: crate::TagKey) -> crate::TagMembers<crate::BlockKey> {
+    fn blocks(&self, _: crate::TagKey<crate::BlockKey>) -> crate::TagMembers<crate::BlockKey> {
         if crate::parts::installed()
             .and_then(|parts| parts.resolved_blocks.get())
             .is_some()

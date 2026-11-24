@@ -117,6 +117,7 @@ fn read_optional_bundle(
 /// vanilla's TagLoader leaves it out. Without packs the prepared tags must
 /// all resolve; with them (a pack's tag can also break a prepared tag that
 /// includes it), each failed tag goes into `dropped` for the log.
+#[cfg(test)]
 pub(super) fn build_tags(
     raw: &Bundle,
     overrides: &WorldgenOverrides,
@@ -124,7 +125,21 @@ pub(super) fn build_tags(
     dropped: &mut Vec<String>,
     known: impl Fn(&str) -> bool,
 ) -> Result<BTreeMap<String, Vec<String>>, GeneratorError> {
+    build_tags_with_base(&[], raw, overrides, name, dropped, known)
+}
+
+fn build_tags_with_base(
+    base: &[(String, String)],
+    raw: &Bundle,
+    overrides: &WorldgenOverrides,
+    name: &str,
+    dropped: &mut Vec<String>,
+    known: impl Fn(&str) -> bool,
+) -> Result<BTreeMap<String, Vec<String>>, GeneratorError> {
     let mut definitions = TagDefinitions::default();
+    for (tag_id, json) in base {
+        definitions.apply_json(tag_id, "sunrise:convention", json)?;
+    }
     for (name, json) in raw {
         definitions.apply_json(name, "vanilla", json)?;
     }
@@ -181,7 +196,8 @@ impl GeneratorData {
         if flags.len() != registry.len() {
             return Err(resource("block_flags.json does not match the registry"));
         }
-        let block_tags = build_tags(
+        let block_tags = build_tags_with_base(
+            crate::tag_layers::convention::json_entries("block"),
             &read_bundle(dir, ov, "block_tags")?,
             ov,
             "block_tags",
@@ -189,16 +205,23 @@ impl GeneratorData {
             |id| registry.default_state(id).is_some(),
         )?;
         let fluid_tags = match read_optional_bundle(dir, ov, "fluid_tags")? {
-            Some(raw) => build_tags(&raw, ov, "fluid_tags", &mut warnings, |id| {
-                matches!(
-                    id,
-                    "minecraft:water"
-                        | "minecraft:flowing_water"
-                        | "minecraft:lava"
-                        | "minecraft:flowing_lava"
-                        | "minecraft:empty"
-                )
-            })?,
+            Some(raw) => build_tags_with_base(
+                crate::tag_layers::convention::json_entries("fluid"),
+                &raw,
+                ov,
+                "fluid_tags",
+                &mut warnings,
+                |id| {
+                    matches!(
+                        id,
+                        "minecraft:water"
+                            | "minecraft:flowing_water"
+                            | "minecraft:lava"
+                            | "minecraft:flowing_lava"
+                            | "minecraft:empty"
+                    )
+                },
+            )?,
             None => BTreeMap::new(),
         };
         // The three biggest reads (the block tables, the structure templates
@@ -261,7 +284,8 @@ impl GeneratorData {
             .collect::<Vec<_>>();
         let integers = super::super::block_feature::integer_properties(registry);
         let biomes = read_bundle(dir, ov, "biomes")?;
-        let biome_tags = build_tags(
+        let biome_tags = build_tags_with_base(
+            crate::tag_layers::convention::json_entries("worldgen/biome"),
             &read_bundle(dir, ov, "biome_tags")?,
             ov,
             "biome_tags",

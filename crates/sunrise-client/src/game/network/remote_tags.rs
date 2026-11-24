@@ -6,10 +6,16 @@ use sunrise_client::items::{Items, TagRegistry};
 use sunrise_protocol::{item::Names, packets::configuration::UpdateTags, registry::SyncedNames};
 
 /// The registries whose tags the tag helpers read.
-const READ_REGISTRIES: [(&str, TagRegistry); 3] = [
+const READ_REGISTRIES: [(&str, TagRegistry); 9] = [
     ("minecraft:block", TagRegistry::Block),
     ("minecraft:item", TagRegistry::Item),
     ("minecraft:fluid", TagRegistry::Fluid),
+    ("minecraft:entity_type", TagRegistry::EntityType),
+    ("minecraft:worldgen/biome", TagRegistry::Biome),
+    ("minecraft:enchantment", TagRegistry::Enchantment),
+    ("minecraft:worldgen/structure", TagRegistry::Structure),
+    ("minecraft:potion", TagRegistry::Potion),
+    ("minecraft:world_clock", TagRegistry::WorldClock),
 ];
 /// The synced registry whose tags `Tags::damage_type_in_tag` reads.
 const DAMAGE_TYPE: &str = "minecraft:damage_type";
@@ -86,7 +92,7 @@ impl Game<'_> {
         // sent with no tag group binds its types with no tags, as vanilla binds received
         // elements whose tag payload was omitted.
         if let Some(types) = damage_types {
-            let members = |ids: &[i32]| {
+            let members = |ids: &[i32]| -> Vec<String> {
                 ids.iter()
                     .filter_map(|&id| names.name(DAMAGE_TYPE, id))
                     .collect()
@@ -167,13 +173,13 @@ mod tests {
             let stick = context.item_key(&Identifier::parse("minecraft:stick").unwrap());
             self.0.lock().unwrap().push(Seen {
                 cause: event.cause,
-                items: tags.items(key("test:items")),
-                empty_items: tags.items(key("test:empty_items")),
-                fluids: tags.fluids(key("test:fluids")),
+                items: tags.items(key("test:items").typed()),
+                empty_items: tags.items(key("test:empty_items").typed()),
+                fluids: tags.fluids(key("test:fluids").typed()),
                 stone_in_block_tag: context
                     .block_in_tag(block_key("minecraft:stone"), "test:blocks"),
                 dirt_in_block_tag: context.block_in_tag(block_key("minecraft:dirt"), "test:blocks"),
-                stick_in_item_tag: tags.is_in_tag(stick.unwrap(), key("test:items")),
+                stick_in_item_tag: tags.is_in_tag(stick.unwrap(), key("test:items").typed()),
                 lava_in_fluid_tag: context.fluid_in_tag("minecraft:lava", "test:fluids"),
             });
         }
@@ -277,7 +283,7 @@ mod tests {
                     scoped(tags.item_tag_names()),
                     [id("always"), id("empty"), id(current)]
                 );
-                let key = |path| tags.key(&id(path)).unwrap();
+                let key = |path| tags.key(&id(path)).unwrap().typed();
                 assert_eq!(tags.is_in_tag(stick, key(current)), Some(true));
                 if reloaded {
                     assert_eq!(tags.is_in_tag(stick, key("old")), Some(false));
@@ -389,13 +395,15 @@ mod tests {
 
                 use mod_api::LoopContext;
                 use sunrise_client_render::api_context::LoopReader;
-                let tag =
-                    mod_api::__private::tag_key(&Identifier::parse("test:items").unwrap()).unwrap();
+                let tag = mod_api::__private::tag_key(&Identifier::parse("test:items").unwrap())
+                    .unwrap()
+                    .typed();
                 let stick = mod_api::__private::item_key("minecraft:stick").unwrap();
                 let potion = mod_api::__private::item_key("minecraft:potion").unwrap();
                 let empty_tag =
                     mod_api::__private::tag_key(&Identifier::parse("test:empty_items").unwrap())
-                        .unwrap();
+                        .unwrap()
+                        .typed();
                 assert_eq!(mod_api::Tags::items(game, tag), TagMembers::Unavailable);
                 let item_reads = |game: &super::Game<'_>| {
                     let reader = LoopReader(&game.loop_context);
@@ -494,7 +502,8 @@ mod tests {
                     let key = mod_api::__private::tag_key(
                         &Identifier::parse(&format!("binding:{path}")).unwrap(),
                     )
-                    .unwrap();
+                    .unwrap()
+                    .typed();
                     assert_eq!(
                         mod_api::Tags::items(game, key),
                         if is_bound {
@@ -648,19 +657,19 @@ mod tests {
         let check_host = |game: &Game<'_>, keep: usize| {
             let probe = key("tag_reload:probe");
             assert_eq!(
-                mod_api::Tags::items(game, probe),
+                mod_api::Tags::items(game, probe.typed()),
                 resolved(&members[0].1[..keep], mod_api::__private::item_key)
             );
             assert_eq!(
-                mod_api::Tags::blocks(game, probe),
+                mod_api::Tags::blocks(game, probe.typed()),
                 resolved(&members[1].1[..keep], mod_api::__private::block_key)
             );
             assert_eq!(
-                mod_api::Tags::fluids(game, probe),
+                mod_api::Tags::fluids(game, probe.typed()),
                 resolved(&members[2].1[..keep], mod_api::__private::fluid_key)
             );
             assert_eq!(
-                mod_api::Tags::items(game, key("tag_reload:old")),
+                mod_api::Tags::items(game, key("tag_reload:old").typed()),
                 if keep == 0 {
                     TagMembers::Missing
                 } else {
@@ -1020,7 +1029,8 @@ mod tests {
         fn reads(tags: &dyn Tags) -> Reads {
             let key = tags
                 .key(&Identifier::parse("minecraft:is_projectile").unwrap())
-                .unwrap();
+                .unwrap()
+                .typed();
             [
                 tags.damage_type_in_tag("minecraft:arrow", key),
                 tags.damage_type_in_tag("minecraft:mob_attack", key),

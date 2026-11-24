@@ -3375,14 +3375,17 @@ pub fn biome_modifiers_over_packs(
             }
         };
         let (values, remove) = (tag_list(&tag, "values"), tag_list(&tag, "remove"));
-        let old = match tag.get("replace") {
-            Some(J::Bool(true)) => None,
-            _ => biome_tags.get(id).map(String::as_str),
+        let replaced = matches!(tag.get("replace"), Some(J::Bool(true)));
+        let old = if replaced {
+            None
+        } else {
+            biome_tags.get(id).map(String::as_str)
         };
         let layers = [load_conditions::TagLayers { values, remove }];
         let merged = merge_tag(
             old,
             &layers,
+            replaced,
             id,
             &sunrise_world::conditions::LoadConditions::new(
                 saved.enabled_mods.iter().map(String::as_str),
@@ -3642,7 +3645,12 @@ impl Known {
             Some(tag) => {
                 let (tns, path) = tag.split_once(':').unwrap_or(("minecraft", tag));
                 let rel = format!("data/{tns}/tags/{kind}/{path}.json");
-                if self.tag_files.contains(&rel) {
+                if self.tag_files.contains(&rel)
+                    || sunrise_world::tag_layers::convention::has_tag(
+                        kind,
+                        &format!("{tns}:{path}"),
+                    )
+                {
                     return true;
                 }
                 match kind {

@@ -749,7 +749,8 @@ mod tests {
                 let tags = host.tags();
                 let oak_tag = tags
                     .key(&mod_api::Identifier::parse("minecraft:oak_logs").unwrap())
-                    .unwrap();
+                    .unwrap()
+                    .typed();
                 let mod_api::TagMembers::Members(keys) = tags.items(oak_tag) else {
                     panic!("the oak logs tag is loaded");
                 };
@@ -1049,7 +1050,8 @@ mod tests {
             let tags = host.tags();
             let oak_tag = tags
                 .key(&mod_api::Identifier::parse("minecraft:oak_logs").unwrap())
-                .unwrap();
+                .unwrap()
+                .typed();
             let item = host
                 .item_key(&mod_api::Identifier::parse("minecraft:oak_log").unwrap())
                 .unwrap();

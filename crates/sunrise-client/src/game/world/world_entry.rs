@@ -418,6 +418,60 @@ impl Game<'_> {
             };
         let providers = providers?;
         install_items_result?;
+        // Bind the world-owned registries' ordered tags against the admitted entries
+        // (including datapack and mod biomes, enchantments, structures, and world clocks).
+        items.bind_enchantment_tags(root, &tag_files)?;
+        {
+            let biomes = self
+                .world_biomes
+                .as_ref()
+                .unwrap_or_else(|| self.res.biomes());
+            items.bind_registry_tags(
+                root,
+                &tag_files,
+                sunrise_client::items::TagRegistry::Biome,
+                "worldgen/biome",
+                |id| biomes.contains(id),
+            )?;
+            let mut structures: std::collections::HashSet<String> = items
+                .component_registry
+                .ids("minecraft:worldgen/structure")
+                .iter()
+                .cloned()
+                .collect();
+            for (id, _) in overlay.kind("worldgen/structure") {
+                structures.insert(id.to_owned());
+            }
+            items.bind_registry_tags(
+                root,
+                &tag_files,
+                sunrise_client::items::TagRegistry::Structure,
+                "worldgen/structure",
+                |id| structures.contains(id),
+            )?;
+            let mut clocks: std::collections::HashSet<String> = items
+                .component_registry
+                .ids("minecraft:world_clock")
+                .iter()
+                .cloned()
+                .collect();
+            for id in mod_api::__private::world_clock_declarations() {
+                clocks.insert(id.to_owned());
+            }
+            for (id, _) in overlay.kind("world_clock") {
+                clocks.insert(id.to_owned());
+            }
+            items.bind_registry_tags(
+                root,
+                &tag_files,
+                sunrise_client::items::TagRegistry::WorldClock,
+                "world_clock",
+                |id| clocks.contains(id),
+            )?;
+            if reload {
+                items.retain_unbound_tags(self.items());
+            }
+        }
         let sources = sources?;
         let mut loot = loot?;
         let recipes = Recipes::from_resolved(root, &items, &overlay, &sources)?;
