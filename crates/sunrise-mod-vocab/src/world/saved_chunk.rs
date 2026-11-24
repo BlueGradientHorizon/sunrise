@@ -3,10 +3,11 @@ use std::fmt;
 use std::sync::Arc;
 
 /// Why reading a saved chunk or region listing via [`SavedChunkReader`] failed.
+// no wire: returned only to the caller of the in-process SavedChunkReader.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum SavedChunkError {
-    /// Stale handle, client side, level closed, or level has no persistent save directory.
+    /// The server level this reader was obtained from has closed.
     Unavailable,
     /// Out-of-bounds chunk or region coordinate (`!ChunkPos.isValid`).
     InvalidPos,

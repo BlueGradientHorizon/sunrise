@@ -3,7 +3,7 @@
 //! Hands mods a `Send + Sync + 'static` handle backed by a `Weak<SaveDir>` and an open-state
 //! `AtomicBool` cleared when the level closes. Reads inspect `SaveDir`'s pending-write queue first
 //! and then open `region/r.<rx>.<rz>.mca` directly read-only (with write-stamp fallback to the
-//! locked `RegionCache` path), decoding blocks, biomes, heightmaps, and light into a G1
+//! locked `RegionCache` path), decoding blocks, biomes, heightmaps, and light into a
 //! `ChunkSnapshot` without loading chunks into `World`, spawning entities, or firing hooks.
 use super::native_chunk_snapshot::EngineChunkSnapshot;
 use super::{Dim, Game};
@@ -78,6 +78,7 @@ impl SavedChunkReaderBackend for EngineSavedChunkReader {
             let has_light = column.lit || column.light_loaded;
             EngineChunkSnapshot::from_chunk(
                 &column,
+                save.shape,
                 self.states.clone(),
                 self.biomes.clone(),
                 self.properties.clone(),
@@ -91,12 +92,13 @@ impl SavedChunkReaderBackend for EngineSavedChunkReader {
         if !region_overlaps_valid_chunks(rx, rz) {
             return Err(SavedChunkError::InvalidPos);
         }
-        let chunks = save
+        let mut chunks = save
             .saved_region_chunks(rx, rz)
             .map_err(|error| SavedChunkError::Io(error.to_string()))?;
         if !self.open.load(Ordering::Acquire) {
             return Err(SavedChunkError::Unavailable);
         }
+        chunks.retain(|&[cx, cz]| chunk_pos_is_valid((cx, cz)));
         Ok(chunks)
     }
 }
@@ -445,6 +447,127 @@ mod tests {
 
             let dim = game.dim;
             game.close_saved_chunk_readers_for_dim(dim);
+            drop(save);
+            let _ = std::fs::remove_dir_all(&world_root);
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn saved_chunk_reader_respects_nether_level_shape_and_rejects_malformed_nbt() {
+        with_game(|game| {
+            let world_root = temp_world_dir("shape_and_malformed");
+            let nether_root = dimension_dir(&world_root, "minecraft:the_nether");
+            std::fs::create_dir_all(nether_root.join("region")).unwrap();
+            let save = Arc::new(SaveDir::new(
+                nether_root.clone(),
+                LevelShape::NETHER,
+                Some(game.res.shared_items()),
+            ));
+            let back = game.dim;
+            game.enter_level(Dim::Nether).unwrap();
+            game.save = save.clone();
+
+            let netherrack_key = mod_api::__private::block_key("minecraft:netherrack").unwrap();
+            let netherrack_id = super::super::api_values::default_state(netherrack_key)
+                .unwrap()
+                .0;
+            let biomes = world_biomes!(game).clone();
+
+            // 1. Save a Nether chunk and verify SavedChunkReader slices to LevelShape::NETHER
+            // (0..256, 16 sections), never the widened internal column (-64..320, 24 sections).
+            let mut nether_col = Chunk::with_layout(1, 1, LevelShape::NETHER.column());
+            nether_col.lit = true;
+            // Section index for y=0 in the widened -64..320 column is 4.
+            Arc::make_mut(&mut nether_col.sections[4]).set(0, netherrack_id);
+            save.save(&[Arc::new(nether_col)], game.pack.assets.registry, &biomes)
+                .expect("save nether chunk");
+
+            let nether = game.level("minecraft:the_nether").unwrap();
+            let reader = nether.saved_chunk_reader(game).expect("nether reader");
+            let snap = reader
+                .read([1, 1])
+                .expect("read nether ok")
+                .expect("nether chunk present");
+            assert_eq!(snap.min_y(), 0);
+            assert_eq!(snap.height(), 256);
+            assert_eq!(snap.section_count(), 16);
+            assert_eq!(snap.block_state(0, 0, 0).unwrap().block(), netherrack_key);
+            assert!(snap.block_state(0, -1, 0).is_none());
+            assert!(snap.block_state(0, 256, 0).is_none());
+            assert_eq!(
+                snap.heightmap(mod_api::HeightmapKind::WorldSurface, 1, 1),
+                0,
+                "empty column heightmap in Nether returns min_y (0), not -64"
+            );
+
+            // 2. Malformed saved NBT records return Err(SavedChunkError::Io(_)) (or Ok(None) for
+            // non-full status) without panicking.
+            let write_raw_tag = |cx: i32, cz: i32, snbt: &str| {
+                let tag = sunrise_client::command::snbt::parse_fully(snbt).expect("valid snbt");
+                let mut region =
+                    RegionFile::open_writable(nether_root.join("region/r.0.0.mca"), true)
+                        .expect("open writable region");
+                let record = ChunkRecord::from_nbt(
+                    &NamedTag {
+                        name: "".into(),
+                        tag,
+                    },
+                    Compression::Zlib,
+                    0,
+                    Limits::saved(),
+                )
+                .expect("encode malformed chunk");
+                region.write(ChunkPos::new(cx, cz), &record).expect("write");
+                region.sync().expect("sync");
+            };
+
+            // Missing Status -> Err(Io)
+            write_raw_tag(2, 0, r#"{DataVersion:4775,xPos:2,zPos:0,sections:[]}"#);
+            assert!(
+                matches!(reader.read([2, 0]), Err(SavedChunkError::Io(_))),
+                "missing Status must fail cleanly"
+            );
+
+            // Non-full Status -> Ok(None)
+            write_raw_tag(
+                3,
+                0,
+                r#"{DataVersion:4775,xPos:3,zPos:0,Status:"minecraft:biomes",sections:[]}"#,
+            );
+            assert!(
+                matches!(reader.read([3, 0]), Ok(None)),
+                "non-full proto chunk returns Ok(None)"
+            );
+
+            // Mismatched xPos/zPos -> Err(Io)
+            write_raw_tag(
+                4,
+                0,
+                r#"{DataVersion:4775,xPos:99,zPos:-99,Status:"minecraft:full",sections:[]}"#,
+            );
+            assert!(
+                matches!(reader.read([4, 0]), Err(SavedChunkError::Io(_))),
+                "mismatched xPos/zPos must fail cleanly"
+            );
+
+            // Extreme section Y (overflows i32 * 16) + extreme block_entities coordinate -> never
+            // panics, ignores out-of-range section and skips block entities.
+            write_raw_tag(
+                5,
+                0,
+                r#"{DataVersion:4775,xPos:5,zPos:0,Status:"minecraft:full",sections:[{Y:2147483647,block_states:{palette:[{Name:"minecraft:netherrack"}]}},{Y:-2147483648,block_states:{palette:[{Name:"minecraft:netherrack"}]}}],block_entities:[{id:"minecraft:chest",x:2147483647,y:0,z:0}]}"#,
+            );
+            let safe_snap = reader
+                .read([5, 0])
+                .expect("extreme section Y must not panic")
+                .expect("full chunk returned");
+            assert_eq!(safe_snap.pos(), [5, 0]);
+            assert_eq!(safe_snap.min_y(), 0);
+            assert_eq!(safe_snap.section_count(), 16);
+
+            game.close_saved_chunk_readers_for_dim(Dim::Nether);
+            game.enter_level(back).unwrap();
             drop(save);
             let _ = std::fs::remove_dir_all(&world_root);
         });
