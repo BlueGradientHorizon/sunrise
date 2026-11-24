@@ -20,39 +20,6 @@ pub const MAX_EXPRESSIONS: usize = 20_000;
 /// Texture reads (samples, gathers and loads) a stage may write.
 pub const MAX_TEXTURE_READS: usize = 64;
 
-/// What is wrong, and where: a file of the pack, with the line and column
-/// when known (0 when not).
-#[derive(Clone, Debug, PartialEq)]
-pub struct Problem {
-    pub file: String,
-    pub line: usize,
-    pub column: usize,
-    pub message: String,
-}
-
-impl fmt::Display for Problem {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if self.line == 0 {
-            write!(f, "{}: {}", self.file, self.message)
-        } else {
-            write!(
-                f,
-                "{}:{}:{}: {}",
-                self.file, self.line, self.column, self.message
-            )
-        }
-    }
-}
-
-pub(crate) fn problem(file: &str, message: impl Into<String>) -> Problem {
-    Problem {
-        file: file.to_owned(),
-        line: 0,
-        column: 0,
-        message: message.into(),
-    }
-}
-
 /// One stage that passed, ready for the renderer.
 #[derive(Debug)]
 pub struct CheckedStage {
@@ -321,25 +288,6 @@ fn build_stage(
     })
 }
 
-/// Validates `module`, parsed from `composed`, locating a refusal in the file it came from.
-pub(crate) fn validate(
-    composed: &Composed,
-    module: &naga::Module,
-) -> Result<ModuleInfo, Vec<Problem>> {
-    Validator::new(ValidationFlags::all(), Capabilities::default())
-        .validate(module)
-        .map_err(|e| {
-            let at = e.spans().next().and_then(|(span, _)| span.to_range());
-            let mut message = e.as_inner().to_string();
-            let mut source = std::error::Error::source(e.as_inner());
-            while let Some(s) = source {
-                message += &format!(": {s}");
-                source = s.source();
-            }
-            vec![located(composed, at.map(|r| r.start), message)]
-        })
-}
-
 /// A refusal for each of `cost`'s counts over its cap; `what` names what holds them.
 pub(crate) fn cost_problems(
     (expressions, texture_reads): (usize, usize),
@@ -360,21 +308,6 @@ pub(crate) fn cost_problems(
         ));
     }
     problems
-}
-
-pub(crate) fn located(composed: &Composed, offset: Option<usize>, message: String) -> Problem {
-    match offset {
-        Some(at) => {
-            let (file, line, column) = composed.locate(at);
-            Problem {
-                file: file.to_owned(),
-                line,
-                column,
-                message,
-            }
-        }
-        None => problem(&composed.parts[composed.parts.len() - 2].0, message),
-    }
 }
 
 fn parse(composed: &Composed) -> Result<naga::Module, Vec<Problem>> {
@@ -719,126 +652,6 @@ fn option_sets(options: &[PackOption]) -> [(&'static str, Vec<(String, f64)>); 3
             }),
         ),
     ]
-}
-
-/// Translates every entry point for Vulkan (SPIR-V), Metal and DirectX 12
-/// (HLSL) with each option set, as wgpu does when it builds the pipelines. `None` for a
-/// shader with no options: translated once, and a refusal names only its backend.
-pub(crate) fn translate(
-    module: &naga::Module,
-    info: &ModuleInfo,
-    options: Option<&[PackOption]>,
-    file: &str,
-) -> Vec<Problem> {
-    let present: HashSet<&str> = module
-        .overrides
-        .iter()
-        .filter_map(|(_, o)| o.name.as_deref())
-        .collect();
-    let mut problems = Vec::new();
-    let sets = match options {
-        Some(options) => Vec::from(option_sets(options)),
-        None => vec![("", Vec::new())],
-    };
-    for (set, values) in sets {
-        let mut constants = naga::back::PipelineConstants::default();
-        for (id, value) in values
-            .into_iter()
-            .filter(|(id, _)| present.contains(id.as_str()))
-        {
-            constants.insert(id, value);
-        }
-        for e in &module.entry_points {
-            let fail = |backend: &str, err: String| {
-                problem(
-                    file,
-                    if options.is_some() {
-                        format!("with the options at their {set}, {backend} refuses it: {err}")
-                    } else {
-                        format!("{backend} refuses it: {err}")
-                    },
-                )
-            };
-            let processed = naga::back::pipeline_constants::process_overrides(
-                module,
-                info,
-                Some((e.stage, &e.name)),
-                &constants,
-            );
-            let (m, i) = match processed {
-                Ok(p) => p,
-                Err(err) => {
-                    problems.push(fail("the override step", err.to_string()));
-                    return problems;
-                }
-            };
-            let spv = refusal(|| {
-                naga::back::spv::write_vec(
-                    &m,
-                    &i,
-                    &naga::back::spv::Options::default(),
-                    Some(&naga::back::spv::PipelineOptions {
-                        shader_stage: e.stage,
-                        entry_point: e.name.clone(),
-                    }),
-                )
-            });
-            let msl = refusal(|| {
-                naga::back::msl::write_string(
-                    &m,
-                    &i,
-                    &naga::back::msl::Options {
-                        lang_version: (2, 2),
-                        ..Default::default()
-                    },
-                    &naga::back::msl::PipelineOptions {
-                        entry_point: Some((e.stage, e.name.clone())),
-                        ..Default::default()
-                    },
-                )
-            });
-            let hlsl = refusal(|| {
-                naga::back::hlsl::Writer::new(
-                    &mut String::new(),
-                    &naga::back::hlsl::Options::default(),
-                    &naga::back::hlsl::PipelineOptions {
-                        entry_point: Some((e.stage, e.name.clone())),
-                    },
-                )
-                .write(&m, &i, None)
-            });
-            let errors = [
-                ("Vulkan (SPIR-V)", spv),
-                ("Metal", msl),
-                ("DirectX 12 (HLSL)", hlsl),
-            ];
-            for (backend, err) in errors {
-                if let Some(err) = err {
-                    problems.push(fail(backend, err));
-                }
-            }
-            if !problems.is_empty() {
-                return problems;
-            }
-        }
-    }
-    problems
-}
-
-/// Why a backend refused: its error, or the panic of a backend that cannot translate a
-/// shader it was given (a mod's shader must never take the game or the tool down).
-fn refusal<T, E: fmt::Display>(translate: impl FnOnce() -> Result<T, E>) -> Option<String> {
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(translate)) {
-        Ok(result) => result.err().map(|e| e.to_string()),
-        Err(panic) => Some(format!(
-            "it panicked: {}",
-            panic
-                .downcast_ref::<String>()
-                .map(String::as_str)
-                .or(panic.downcast_ref::<&str>().copied())
-                .unwrap_or("no reason given")
-        )),
-    }
 }
 
 #[cfg(test)]

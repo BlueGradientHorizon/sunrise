@@ -10,7 +10,7 @@ use super::world_primitives::Upload;
 use crate::mod_pipelines::{Built, BuiltTexture, Pipelines};
 use glam::Mat4;
 use mod_api::{PipelineBlend, WorldDepth};
-use sunrise_shader_api::mod_pipeline::{FRAGMENT_ENTRY, VERTEX_ENTRY};
+use sunrise_mod_pipeline::{FRAGMENT_ENTRY, VERTEX_ENTRY};
 
 /// One corner of a pipeline quad, camera-relative.
 #[repr(C)]
