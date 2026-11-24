@@ -965,12 +965,14 @@ pub fn decode_datapack_entry(
     decode_fields(&declaration.fields, object, metadata, "").map(|values| DatapackEntry { values })
 }
 
-pub(crate) enum RecordMetadata {
+pub(crate) enum RecordMetadata<'a> {
     None,
     /// The feature dispatch key is allowed, and a schema can also read it.
     FeatureType,
     /// The inlined condition wrapper's key is not part of the schema input.
     DatapackConditions,
+    /// A dispatched variant's fields sit beside the key that named the variant.
+    DispatchKey(&'a str),
 }
 
 /// Decodes a JSON object against a flat record schema. An undeclared key (other than
@@ -979,7 +981,7 @@ pub(crate) enum RecordMetadata {
 pub(crate) fn decode_record(
     fields: &[DatapackField],
     object: &serde_json::Map<String, Value>,
-    metadata: RecordMetadata,
+    metadata: RecordMetadata<'_>,
 ) -> Result<DatapackEntry, DatapackDecodeError> {
     let object: Vec<_> = object
         .iter()
@@ -992,7 +994,7 @@ pub(crate) fn decode_record(
 fn decode_fields(
     fields: &[DatapackField],
     object: &[(String, Json)],
-    metadata: RecordMetadata,
+    metadata: RecordMetadata<'_>,
     path: &str,
 ) -> Result<Vec<(String, DatapackValue)>, DatapackDecodeError> {
     let (extra, hidden) = match metadata {
@@ -1001,6 +1003,7 @@ fn decode_fields(
         RecordMetadata::DatapackConditions => {
             (Some("neoforge:conditions"), Some("neoforge:conditions"))
         }
+        RecordMetadata::DispatchKey(key) => (Some(key), None),
     };
     if let Some((unknown, _)) = object.iter().find(|(key, _)| {
         Some(key.as_str()) != extra && !fields.iter().any(|field| field.name == *key)
@@ -1143,7 +1146,12 @@ fn decode_value(
             let Some(variant) = variants.iter().find(|variant| variant.id == id) else {
                 return Err(DatapackDecodeError::UnknownVariant { field: at, id });
             };
-            let fields = decode_fields(&variant.fields, object, &[key.as_str()], path)?;
+            let fields = decode_fields(
+                &variant.fields,
+                object,
+                RecordMetadata::DispatchKey(key),
+                path,
+            )?;
             Ok(DatapackValue::Variant { id, fields })
         }
     }
