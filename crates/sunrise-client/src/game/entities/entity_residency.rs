@@ -72,9 +72,6 @@ macro_rules! resident_visible {
     (Mob, $entity:expr) => {
         !$entity.removed
     };
-    (Item, $entity:expr) => {
-        !$entity.removed
-    };
     ($kind:ident, $entity:expr) => {
         true
     };

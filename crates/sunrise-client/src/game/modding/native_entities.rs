@@ -623,9 +623,7 @@ impl Game<'_> {
             }
         };
         super::entity::for_each_entity!(super::entity::entity_lists_of!(self), e => {
-            if !e.is_removed() {
-                seen(e.id());
-            }
+            seen(e.id());
         });
         self.crystals.iter().for_each(|c| seen(c.id));
         self.cushions.iter().for_each(|c| seen(c.id));

@@ -1842,7 +1842,7 @@ impl Game<'_> {
             Some(Target::General(id))
         } else if self.mobs.iter().any(|m| m.id == id) {
             Some(Target::Mob(id))
-        } else if self.dropped.iter().any(|e| e.id == id && !e.removed) {
+        } else if self.dropped.iter().any(|e| e.id == id) {
             Some(Target::Item(id))
         } else if self.armor_stands.iter().any(|a| a.id == id) {
             Some(Target::Stand(id))

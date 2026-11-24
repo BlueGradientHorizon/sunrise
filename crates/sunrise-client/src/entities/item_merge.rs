@@ -19,7 +19,17 @@ impl ItemCells {
             list.clear();
         }
         for (i, item) in items.iter().enumerate() {
-            if !item.removed {
+            self.add(i, item.position);
+        }
+        self.cells.retain(|_, list| !list.is_empty());
+    }
+    /// Refill the grid from live (non-`removed`) entries of `items`, reusing capacities.
+    pub fn rebuild_live(&mut self, items: &[ItemEntity], removed: &[bool]) {
+        for list in self.cells.values_mut() {
+            list.clear();
+        }
+        for (i, item) in items.iter().enumerate() {
+            if !removed[i] {
                 self.add(i, item.position);
             }
         }
@@ -94,8 +104,8 @@ where
     )
 }
 
-/// [`merge_with_neighbours`], also invoking `on_removed` for each item emptied
-/// by a merge so callers can record departures without scanning `removed`.
+/// [`merge_with_neighbours`], also invoking `on_removed` with each emptied
+/// item's id so callers can record departures without scanning `removed`.
 pub fn merge_with_neighbours_recording<I>(
     items: &mut I,
     removed: &mut [bool],
@@ -103,7 +113,7 @@ pub fn merge_with_neighbours_recording<I>(
     i: usize,
     age_is_ticked: bool,
     max_stack: &dyn Fn(&ItemStack) -> u32,
-    on_removed: &mut dyn FnMut(&mut ItemEntity),
+    on_removed: &mut dyn FnMut(u32),
 ) -> bool
 where
     I: AsRef<[ItemEntity]> + std::ops::IndexMut<usize, Output = ItemEntity> + ?Sized,
@@ -167,7 +177,7 @@ where
         if items[from].stack.count == 0 {
             removed[from] = true;
             cells.remove(from, items[from].position);
-            on_removed(&mut items[from]);
+            on_removed(items[from].id);
         }
         if removed[i] {
             break;

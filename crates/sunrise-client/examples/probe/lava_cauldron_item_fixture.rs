@@ -77,7 +77,6 @@ pub fn main() -> sunrise_client::Result<()> {
             age: 0,
             stack_revision: 0,
             lifespan: ItemEntity::LIFETIME,
-            removed: false,
             pickup_delay: 0,
             bob_offset: 0.0,
             ticks: 0,

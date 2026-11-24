@@ -15,11 +15,7 @@ impl Game<'_> {
         causing: Option<Target>,
         position: Option<[f64; 3]>,
     ) -> bool {
-        let Some(index) = self
-            .dropped
-            .iter()
-            .position(|item| item.id == id && !item.removed)
-        else {
+        let Some(index) = self.dropped.iter().position(|item| item.id == id) else {
             return false;
         };
         let entity_id = |target| match target {
