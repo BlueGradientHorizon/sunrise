@@ -1697,10 +1697,11 @@ impl Game<'_> {
 
     // remote_send_carried: remote/sync.rs
 
-    /// `MultiPlayerGameMode.attack` runs `Player.attack` on this client too: its
-    /// `isSweepAttack` for a damaging hit on `target` (`living`: a
-    /// `LivingEntity`, which may be hit critically), heard by native mods on
-    /// both sides. Only the server sweeps.
+    /// `MultiPlayerGameMode.attack` runs `Player.attack` on this client too:
+    /// for a damaging hit on `target` (`living`: a `LivingEntity`, which may be
+    /// hit critically) its `CriticalHitEvent`, then its `isSweepAttack` with
+    /// the critical hit as decided, heard by native mods on both sides. This
+    /// client only asks: only the server hits critically and sweeps.
     fn remote_sweep_event(&mut self, target: &str, living: bool) {
         if mod_api::__private::mods().is_empty() {
             return;
@@ -1710,7 +1711,12 @@ impl Game<'_> {
         if damage <= 0.0 && magic <= 0.0 {
             return;
         }
-        let crit = living && self.critical_attack(scale);
+        let mut crit = living && self.critical_attack(scale);
+        if living {
+            let vanilla = crit;
+            let mut multiplier = if vanilla { 1.5 } else { 1.0 };
+            self.native_critical_hit(target, vanilla, &mut crit, &mut multiplier);
+        }
         self.sweep_decision(scale, crit, target);
     }
 
