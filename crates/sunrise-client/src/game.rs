@@ -6808,22 +6808,28 @@ impl Game<'_> {
         self.with_level(|b, level, ticks| b.set_block(level, ticks, at, cracked, 260));
         cracked
     }
-    fn break_block_as_player(&mut self, pos: [i32; 3]) -> Result<bool> {
+    /// `CommonHooks.fireBlockBreak` where `ServerPlayerGameMode.destroyBlock` asks it: the
+    /// acting player's checks, then the mods' `break_block`. The state at `pos` and the
+    /// experience `break_block` left, or None when a check refused the break or a mod canceled it.
+    pub(in crate::game) fn break_block_allowed(
+        &mut self,
+        pos: [i32; 3],
+    ) -> Result<Option<(BlockStateId, Option<u32>)>> {
         // DebugStickItem.canDestroyBlock: a left click selects a property and
         // never destroys the block.
         if !self.debug_stick_can_destroy(pos)? {
-            return Ok(false);
+            return Ok(None);
         }
         // ServerPlayerGameMode.destroyBlock.
         if self.block_action_restricted(pos) {
-            return Ok(false);
+            return Ok(None);
         }
         if !self
             .res
             .items()
             .can_destroy_block(self.held(), self.creative)
         {
-            return Ok(false);
+            return Ok(None);
         }
         // ServerPlayerGameMode.destroyBlock (and MultiPlayerGameMode.destroyBlock
         // on the client): a GameMasterBlock stays when the player cannot use
@@ -6832,16 +6838,19 @@ impl Game<'_> {
         if !self.can_use_game_master_blocks()
             && is_game_master_block(&self.res.facts().get(state).name)
         {
-            return Ok(false);
+            return Ok(None);
         }
         // Native mods, once the game allowed the break: a canceled one keeps
         // the block, and a guest's acknowledgement puts it back in its world.
         let mut canceled = false;
         let mut exp_to_drop = None;
         self.native_break_block(pos, state, &mut canceled, &mut exp_to_drop);
-        if canceled {
+        Ok((!canceled).then_some((state, exp_to_drop)))
+    }
+    fn break_block_as_player(&mut self, pos: [i32; 3]) -> Result<bool> {
+        let Some((state, exp_to_drop)) = self.break_block_allowed(pos)? else {
             return Ok(false);
-        }
+        };
         self.input_feedback(sunrise_client::input_source::Feedback::BlockBroken);
         let broken = state;
         let facts = self.res.facts().get(state).clone();
