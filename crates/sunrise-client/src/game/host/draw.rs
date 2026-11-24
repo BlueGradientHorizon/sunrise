@@ -1,4 +1,4 @@
-//! The game's side of the `draw` area (`sunrise-mod-vocab/src/host/draw.rs`).
+//! The game's side of the `draw` area (`sunrise-mod-api/src/host/draw.rs`).
 use crate::game::{
     Game,
     api_values::{TryIntoApi, TryIntoEngine},

@@ -124,9 +124,8 @@ pub trait ConfigServerHost {
     fn set_tick_rate(&mut self, rate: f32) -> bool;
     /// Side: server.
     /// Whether the server's ticking is frozen (`TickRateManager.isFrozen`, `/tick freeze`). A
-    /// frozen server still runs the ticks `/tick step` asks for, so `server_tick`'s
-    /// `ServerTickPhase::ServerTickStart { world_running }` can be true while this is true. None
-    /// on a client.
+    /// frozen server still runs the ticks `/tick step` asks for, so `server_tick_start`'s
+    /// `world_running` can be true while this is true. None on a client.
     fn tick_rate_is_frozen(&self) -> Option<bool>;
     /// Side: server.
     /// The open world's folder (`world/`, beside its `level.dat`): a server

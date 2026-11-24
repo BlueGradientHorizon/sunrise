@@ -1,4 +1,4 @@
-//! The host traits: the area files under `sunrise-mod-vocab/src/host/` are the hand-written
+//! The host traits: the area files under `sunrise-mod-api/src/host/` are the hand-written
 //! declarations of what the game implements for mods. This reads them and writes the unions
 //! that name them (`Host`, `ServerHost`, `ClientHost` and the hidden backends), the handles'
 //! forwarding methods and the mob tick's goal view.
@@ -161,7 +161,7 @@ pub(super) const GOAL_VIEW_LOOKUPS: &[&str] = &[
 ];
 
 pub(super) const DIRECTORY: &str = "crates/sunrise-mod-vocab/src/host";
-/// The generated file `sunrise-mod-vocab/src/host.rs` includes: the area modules and the prelude.
+/// The generated file `sunrise-mod-api/src/host.rs` includes: the area modules and the prelude.
 pub(super) const AREAS_OUTPUT: &str = "mod_api_host_areas.rs";
 
 /// The traits an area file may hold, each a part of one of the unions.
