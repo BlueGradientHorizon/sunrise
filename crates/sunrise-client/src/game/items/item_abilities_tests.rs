@@ -26,12 +26,11 @@ impl ItemPart for Abilities {
         context: &ItemAbilityContext<'_>,
         event: &mut CanPerformActionEvent<'_>,
     ) {
-        let host = context.host().expect("gameplay ability check lends Host");
-        assert!(context.loot().is_none());
-        let expected_key = host
-            .item_key(&Identifier::parse(self.item).unwrap())
-            .expect("live host resolves known item keys");
-        assert_eq!(event.stack.item(), expected_key);
+        let expected_key = event.stack.item();
+        assert_eq!(
+            mod_api::__private::item_key_id(expected_key),
+            Some(self.item)
+        );
         let swords = context
             .tags()
             .key(&Identifier::parse("minecraft:swords").unwrap())

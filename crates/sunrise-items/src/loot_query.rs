@@ -43,7 +43,6 @@ impl<R: RandomSource> LootContext<'_, R> {
             &self.query,
             self.held
                 .map(|tool| tool as &dyn sunrise_world::loot::LootAbilityTool),
-            || self.roll_facts(),
             self.items,
             |item, ability| self.items.vanilla_can_perform(item, ability),
         )

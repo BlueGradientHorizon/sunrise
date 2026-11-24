@@ -60,15 +60,13 @@ ids = [
     "type:LootStackEditError",
     "type:LootStackEditor",
     "type:LootList",
-    # Item ability hook: borrowed stack view and honest gameplay-vs-loot context
+    # Item ability hook: borrowed stack view, no host on either route
     "hook:can_perform_action",
     "hook:can_perform_action.stack",
     "type:CanPerformActionEvent.stack",
     "method:ItemPart::can_perform_action",
     "type:ItemAbilityContext",
-    "handle:ItemAbilityContext::host",
     "handle:ItemAbilityContext::tags",
-    "handle:ItemAbilityContext::loot",
 ]
 why = """
 Vanilla 26.3 (`net.minecraft.world.level.storage.loot.LootContext`, `LootParams`,
@@ -81,6 +79,9 @@ functions and conditions once when data loads into bound rule objects, lend
 read-only loot parameters instead of cloning snapshots per callback, edit live
 loot candidates and modifier output lists in place, and evaluate
 `neoforge:can_item_perform_ability` without fabricating a gameplay `Host`.
+NeoForge's `IItemExtension.canPerformAction(ItemStack, ItemAbility)` gets no level
+on either route, so its answer for a stack is the same whether gameplay or a loot
+predicate asks; Sunrise's hook now matches it and lends only the merged tags.
 
 Sunrise previously passed raw `LootEntryData` JSON on every roll, cloned full
 `LootContext`, `LootTool`, `LootEntity`, `LootDamage`, `LootPlace`, `LootLevel`
@@ -95,7 +96,7 @@ editors (`LootParamsView`, `LootToolView`, `LootEntityView`, `LootDamageView`,
 `LootList`), adds direct `LootModifierContext::append_raw` alongside a
 borrowed-view `roll_raw` visitor, removes `Wire` from in-process loot value
 types, and moves `ItemPart::can_perform_action` to `ItemAbilityContext` +
-`ItemStackView` (hook version 2).
+`ItemStackView` (hook version 2), which lends no `Host` on either route.
 """
 migrate = """
 1. Custom loot functions and conditions (`ModLootFunctionCodec` / `ModLootConditionCodec`):
@@ -153,10 +154,11 @@ migrate = """
    - Change the signature from
      `fn can_perform_action(&self, host: &dyn Host, event: &mut CanPerformActionEvent)`
      to `fn can_perform_action(&self, context: &ItemAbilityContext<'_>, event: &mut CanPerformActionEvent<'_>)`.
-   - Use `context.tags()` for tag lookups on both gameplay and loot paths,
-     `context.host()` when gameplay host queries are needed (`None` in
-     `neoforge:can_item_perform_ability` loot predicates), and `context.loot()`
-     when inspecting `LootParamsView` during a loot predicate (`None` in gameplay).
+   - Use `context.tags()` for tag lookups. The old `host` argument is gone with no
+     replacement: answer from the stack and the ability alone, since gameplay and
+     `neoforge:can_item_perform_ability` loot predicates must get the same answer.
+     Move behaviour that depends on the world to the hook for that moment (block
+     breaking, item use).
    - Read item identity and count directly from `event.stack` (`ItemStackView<'_>`)
      and call `event.stack.project()` only when components or an owned `ItemStack` are needed.
 """

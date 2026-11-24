@@ -309,11 +309,7 @@ fn queried_context_and_ability_reach_native_adapter() {
             },
             loot_table_load: |_, _, _| {},
             modify_default_components: |_, _, _| {},
-            loot_ability: |tool, ability, facts, _tags, holds| {
-                assert_eq!(
-                    facts.tool.map(LootToolAccess::item_id),
-                    Some(tool.item_id())
-                );
+            loot_ability: |tool, ability, _tags, holds| {
                 OBSERVED_ABILITY.with(|v| {
                     *v.borrow_mut() = Some((tool.item_id().to_owned(), ability.to_owned()))
                 });
