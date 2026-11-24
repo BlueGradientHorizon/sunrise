@@ -127,7 +127,7 @@ impl<'r> FeatureBlockBindings<'r> {
     pub fn tag_states(&self, name: &str) -> Option<&Arc<BTreeSet<BlockStateId>>> {
         self.tags.get(name)
     }
-    /// Decode one vanilla block-state JSON object (`{"Name": ..., "Properties": ...}`).
+    /// Decode one vanilla block-state JSON value (a bare block ID or `{"id": ..., "properties": ...}`).
     pub fn decode_block_state(&self, json: &str) -> Result<BlockStateId, DecodeError> {
         self.codec
             .decode(json, false)

@@ -48,9 +48,11 @@ pub trait RuleTestDecodeContext {
     /// Every registered state of block `block` (canonical or unqualified ID).
     /// Returns `Err` when `block` is not a registered block ID.
     fn block_states(&self, block: &str) -> Result<Vec<BlockState>, StructureError>;
-    /// Decode a vanilla block state object (`{"id": "...", "properties": {...}}`),
-    /// binding its block ID and state properties at load time. Returns `Err`
-    /// for an unknown block ID or invalid property name or value.
+    /// Decode a vanilla block state (`"minecraft:stone"` or
+    /// `{"id": "...", "properties": {...}}`), binding its block ID and state
+    /// properties at load time. As vanilla's `BlockState.CODEC`, an unknown
+    /// property or invalid value keeps the default; returns `Err` for a
+    /// missing or unknown block ID.
     fn decode_block_state(&self, config: &Tag) -> Result<BlockState, StructureError>;
     /// Every block state in block tag `tag` (with or without a leading `#`).
     /// Returns `Err` when `tag` is not a known block tag.
