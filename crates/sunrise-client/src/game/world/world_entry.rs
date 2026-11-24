@@ -688,7 +688,7 @@ impl Game<'_> {
     }
     /// Sends each joined Sunrise client the snapshot of the set just published, built from the
     /// offer owned by its connection. A refused replacement ends that connection with its reason.
-    fn send_datapack_snapshots(&mut self) {
+    pub(super) fn send_datapack_snapshots(&mut self) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
@@ -781,8 +781,16 @@ impl Game<'_> {
             self.with_advancement_hub(|hub, owners| hub.reload_resources(sync, owners));
         }
         // Send datapack snapshots after `UpdateTags` so clients re-decoding vanilla values
-        // (`HolderSet` / `BlockPredicate` tags) already hold the reload's tags.
-        self.send_datapack_snapshots();
+        // (`HolderSet` / `BlockPredicate` tags) already hold the reload's tags. When native mods
+        // defer `finish_reload_resources` until `run_native_advancement_grants`, that path sends
+        // the snapshots right after `UpdateTags`.
+        if !self
+            .lan
+            .as_ref()
+            .is_some_and(|lan| lan.hub.native_reload_pending)
+        {
+            self.send_datapack_snapshots();
+        }
         self.adv.tree = advancements;
         self.adv.reset_tree();
         self.announce_data_bound(mod_api::TagsUpdateCause::ServerDataLoad { reload: true });

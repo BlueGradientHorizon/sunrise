@@ -1409,13 +1409,120 @@ mod tests {
                         Ok(false)
                     );
 
-                    // 7. Client sync round-trip: snapshot re-decodes and evaluates on the client side.
+                    // 7. /reload with native mods defers datapack snapshots until after UpdateTags
+                    //    (run_native_advancement_grants), so a connected client rebinds a newly
+                    //    added block tag referenced by a synced HolderSet cleanly.
                     let offer = datapack_net::offer().unwrap();
-                    let datapack_net::Step::Send(bytes) =
-                        datapack_net::server_step(true, Some(&offer))
-                    else {
-                        panic!("expected snapshot for Required registry");
+                    let rx = crate::game::lan::world_spawn_sync_tests::host_for(game);
+                    {
+                        let host = game.lan.as_mut().unwrap();
+                        host.hub.mods_loaded = true;
+                        host.hub.guests.update(0, |guest| {
+                            guest.brand = "sunrise".into();
+                            guest.sender.datapack_offer = Some(offer.clone().into());
+                        });
+                    }
+                    let drain_guest_packets = || {
+                        rx.try_iter()
+                            .flat_map(|out| match out {
+                                sunrise_client::lan::Out::Packet(body) => vec![body],
+                                sunrise_client::lan::Out::Packets(bodies) => bodies,
+                                sunrise_client::lan::Out::Disconnect(reason) => {
+                                    panic!("unexpected guest disconnect: {reason:?}")
+                                }
+                            })
+                            .map(|body| {
+                                let mut reader = sunrise_protocol::buf::Reader::new(&body);
+                                let id = reader.varint().unwrap();
+                                sunrise_protocol::packets::play::Clientbound::decode(
+                                    id,
+                                    reader.rest(),
+                                )
+                                .unwrap()
+                            })
+                            .collect::<Vec<_>>()
                     };
+                    let _ = drain_guest_packets();
+
+                    let added_tag_file = pack.join("data/ubm_test/tags/block/reload_added.json");
+                    write(&added_tag_file, r#"{"values":["minecraft:clay"]}"#);
+                    write(
+                        &rule_file,
+                        r##"{
+                            "blocks_to_grow": 5,
+                            "increase": 2,
+                            "vegetation": {"id":"minecraft:sugar_cane","properties":{"age":"0"}},
+                            "ground_state": {"id":"minecraft:fern"},
+                            "predicate": {"type":"minecraft:solid"},
+                            "spread_sources": "minecraft:stone",
+                            "tag_targets": "#ubm_test:reload_added",
+                            "single_target": "minecraft:cactus",
+                            "variant": {"type":"ubm_test:random_tick","growth_attempts":4}
+                        }"##,
+                    );
+                    let resources = game.options.resources.clone();
+                    let stack = crate::game::functions::pack_stack(
+                        root,
+                        &resources,
+                        &game.pack.data_source,
+                        &game.pack.data_changes,
+                        false,
+                        &[],
+                        &[],
+                    );
+                    let prepared = game.prepare_world_reload(&stack, &resources).unwrap();
+                    game.install_world_tables(prepared);
+                    assert!(
+                        game.lan.as_ref().unwrap().hub.native_reload_pending,
+                        "native mods must defer finish_reload_resources"
+                    );
+                    let before_finish = drain_guest_packets();
+                    assert!(
+                        !before_finish.iter().any(|packet| matches!(
+                            packet,
+                            sunrise_protocol::packets::play::Clientbound::UpdateTags(_)
+                        )),
+                        "UpdateTags must wait for finish_reload_resources"
+                    );
+                    assert!(
+                        !before_finish.iter().any(|packet| matches!(
+                            packet,
+                            sunrise_protocol::packets::play::Clientbound::CustomPayload(p)
+                                if p.channel == datapack_net::CHANNEL
+                        )),
+                        "datapack snapshot must not precede UpdateTags during deferred reload"
+                    );
+
+                    game.run_native_advancement_grants();
+                    let reload_packets = drain_guest_packets();
+                    let tags_idx = reload_packets
+                        .iter()
+                        .position(|packet| {
+                            matches!(
+                                packet,
+                                sunrise_protocol::packets::play::Clientbound::UpdateTags(_)
+                            )
+                        })
+                        .expect("UpdateTags must be sent on finish_reload_resources");
+                    let snapshot_idx = reload_packets
+                        .iter()
+                        .position(|packet| {
+                            matches!(
+                                packet,
+                                sunrise_protocol::packets::play::Clientbound::CustomPayload(p)
+                                    if p.channel == datapack_net::CHANNEL
+                            )
+                        })
+                        .expect("datapack snapshot must be sent after finish_reload_resources");
+                    assert!(
+                        tags_idx < snapshot_idx,
+                        "UpdateTags ({tags_idx}) must arrive before datapack snapshot ({snapshot_idx})"
+                    );
+                    // Clean up LAN host before switching this fixture Game to client mode.
+                    game.lan = None;
+
+                    // 8. Client sync round-trip: replaying the reload's wire packets in order
+                    //    installs the newly added block tag before binding the snapshot.
                     game.options.execution_role =
                         crate::game::execution_role::ExecutionRole::Client;
                     let _server = logged_client(game);
@@ -1440,22 +1547,15 @@ mod tests {
                         .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
                     game.world.set(0, 64, 0, stone).unwrap();
                     game.world.set(0, 65, 0, air).unwrap();
-                    for chunk in datapack_net::chunks(&bytes).unwrap() {
-                        game.remote
-                            .as_mut()
-                            .unwrap()
-                            .datapacks
-                            .accept_chunk(&chunk)
-                            .unwrap();
+                    for packet in reload_packets {
+                        if matches!(
+                            packet,
+                            sunrise_protocol::packets::play::Clientbound::UpdateTags(_)
+                                | sunrise_protocol::packets::play::Clientbound::CustomPayload(_)
+                        ) {
+                            game.apply_packet(packet).unwrap();
+                        }
                     }
-                    // Client needs the custom block tag in its synced tags before binding.
-                    let mut tags_items = game.items().clone();
-                    tags_items.block_tags.insert(
-                        "ubm_test:bonemeal_targets".into(),
-                        HashSet::from(["minecraft:gravel".to_owned()]),
-                    );
-                    game.remote.as_mut().unwrap().tags = Some(tags_items);
-                    game.bind_client_datapack_values().unwrap();
                     let client_level = game.level("minecraft:overworld").unwrap();
                     let mut c_int = None;
                     let mut c_state = None;
@@ -1500,8 +1600,12 @@ mod tests {
                         Ok(false)
                     );
                     assert_eq!(
-                        c_tag.unwrap().contains(game, key(game, "minecraft:gravel")),
+                        c_tag.unwrap().contains(game, key(game, "minecraft:clay")),
                         Ok(true)
+                    );
+                    assert_eq!(
+                        c_tag.unwrap().contains(game, key(game, "minecraft:gravel")),
+                        Ok(false)
                     );
                     // Re-binding a new client snapshot invalidates the previous client handles.
                     game.bind_client_datapack_values().unwrap();
