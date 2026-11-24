@@ -387,9 +387,7 @@ impl Game<'_> {
     /// The hit landing on the victim with its extra knockback, then the
     /// attacker's attack sound. A landed hit returns whether it stopped the attacker's sprint.
     pub(super) fn pvp_land(&mut self, victim: Victim, s: &Strike) -> Option<bool> {
-        if self.lan.is_none() {
-            return None;
-        }
+        self.lan.as_ref()?;
         if s.knockback_attack {
             self.play_audio(
                 "minecraft:entity.player.attack.knockback",

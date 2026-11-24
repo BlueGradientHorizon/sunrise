@@ -847,20 +847,11 @@ struct WindContinuationObserved {
 
 struct WindContinuationObserver {
     spawn_on_shoot: bool,
-    watch_breeze_each: bool,
     observed: Arc<WindContinuationObserved>,
 }
 
 #[mod_api::__subscriptions]
 impl Hooks for WindContinuationObserver {
-    fn entity_tick_listened(
-        &self,
-        _: mod_api::HostSide<'_>,
-        event: &mut mod_api::EntityTickListenedEvent,
-    ) {
-        event.listened = true;
-    }
-
     fn entity_tick_post(
         &self,
         _: mod_api::HostSide<'_>,
@@ -873,12 +864,19 @@ impl Hooks for WindContinuationObserver {
             .extend_from_slice(event.entities);
     }
 
-    fn projectile_launch(
+    fn entity_join_level(
         &self,
-        _: &mut dyn ServerHost,
-        event: &mut mod_api::ProjectileLaunchEvent<'_>,
-    ) {
-        self.observed.launches.lock().unwrap().push(event.entity);
+        host: &mut dyn ServerHost,
+        event: &mut mod_api::EntityJoinLevelEvent<'_>,
+    ) -> Flow {
+        if host.projectile(event.subject).is_some() {
+            self.observed
+                .launches
+                .lock()
+                .unwrap()
+                .push(event.subject.id());
+        }
+        Flow::Continue
     }
 
     fn vanilla_game_event(
@@ -890,22 +888,18 @@ impl Hooks for WindContinuationObserver {
             let mut buffered = self.observed.buffered.lock().unwrap();
             if !*buffered {
                 // Spawn into the lifted buffer so SpawnsFirst restores it ahead of survivors.
-                let _ = host.summon(
-                    event.dimension,
-                    "minecraft:snowball",
-                    [12.5, -55.0, 8.5],
-                    Default::default(),
-                );
+                if let Some(level) = host.level(event.dimension) {
+                    let _ = level.summon(
+                        host,
+                        "minecraft:snowball",
+                        [12.5, -55.0, 8.5],
+                        Default::default(),
+                    );
+                }
                 *buffered = true;
             }
         }
         Flow::Continue
-    }
-
-    fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-        if self.watch_breeze_each {
-            r.entity_tick_each("minecraft:breeze_wind_charge");
-        }
     }
 }
 
@@ -1019,7 +1013,6 @@ pub(in crate::game) fn run_continuing_wind_charge_keeps_tick_order_and_skips_rel
         "wind-continuation-observer",
         Box::new(WindContinuationObserver {
             spawn_on_shoot: case == "mixed-batch",
-            watch_breeze_each: case != "reversed",
             observed: observed.clone(),
         }),
     )]
