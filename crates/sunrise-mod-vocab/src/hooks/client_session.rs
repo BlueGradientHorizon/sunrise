@@ -20,6 +20,9 @@ use `.map(str::to_owned)` on a field only to keep it beyond the host borrow.
 `client_language()` shares an `Arc<str>` snapshot of the applied language code,
 not a pending options choice. Use `.as_deref()` to compare it with `Some("en_us")`.
 A later language change leaves the snapshot intact.
+`client_language_right_to_left()` says whether that language reads right to left
+(`Language.isDefaultRightToLeft`, its `bidirectional` flag), for laying out a row
+of GUI pieces in reading order.
 Use the existing `ClientHost::is_paused()` for the applied pause state.
 `ClientFrameStats` reports the game's most recently computed `fps`, lifetime
 `rendered_frames` (menus included), and the newest completed frame's wall

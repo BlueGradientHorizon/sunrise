@@ -10,6 +10,9 @@ impl ClientSession for Game<'_> {
     fn client_language(&self) -> Option<Arc<str>> {
         self.native_client_language()
     }
+    fn client_language_right_to_left(&self) -> Option<bool> {
+        self.native_client_language_right_to_left()
+    }
     fn client_latency(&self) -> Option<u32> {
         self.native_client_latency()
     }

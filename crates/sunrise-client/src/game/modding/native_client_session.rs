@@ -34,6 +34,13 @@ impl Game<'_> {
         Some(sunrise_client::lang::code_snapshot())
     }
 
+    /// `Language.isDefaultRightToLeft` of the applied language, the flag `Font.isBidirectional`
+    /// reads. None outside a logged-in client world.
+    pub(super) fn native_client_language_right_to_left(&self) -> Option<bool> {
+        self.native_session()?;
+        Some(sunrise_client::lang::bidirectional())
+    }
+
     /// `PlayerInfo.getLatency` of the local player in milliseconds, 0 before the server's first
     /// measurement; None outside a logged-in client world or before the server lists the player.
     pub(super) fn native_client_latency(&self) -> Option<u32> {
@@ -375,6 +382,27 @@ pub(super) mod tests {
                 "es_es",
                 "publication does not mutate earlier snapshots"
             );
+            // A pack's `bidirectional` language reads right to left; English does not.
+            assert_eq!(
+                game.client_session().client_language_right_to_left(),
+                Some(false)
+            );
+            let pack = tempfile::tempdir().unwrap();
+            let lang_dir = pack.path().join("assets/minecraft/lang");
+            std::fs::create_dir_all(&lang_dir).unwrap();
+            std::fs::write(lang_dir.join("ar_sa.json"), "{}").unwrap();
+            std::fs::write(
+                pack.path().join("pack.mcmeta"),
+                r#"{"language":{"ar_sa":{"name":"Arabic","region":"Saudi Arabia","bidirectional":true}}}"#,
+            )
+            .unwrap();
+            let root = pack.path().to_path_buf();
+            let rtl = lang::isolate_publication(Language::load(&[&root], "ar_sa"));
+            assert_eq!(
+                game.client_session().client_language_right_to_left(),
+                Some(true)
+            );
+            drop(rtl);
             game.debug_charts.frame_times.reset();
             assert_eq!(
                 game.client_session()
@@ -413,6 +441,7 @@ pub(super) mod tests {
             game.remote.as_mut().unwrap().logged_in = false;
             assert_eq!(game.client_session().client_server(), None);
             assert_eq!(game.client_session().client_language(), None);
+            assert_eq!(game.client_session().client_language_right_to_left(), None);
             assert_eq!(game.client_session().client_frame_stats(), None);
             game.remote = None;
             // A reconnect target must not be mistaken for the current session.
