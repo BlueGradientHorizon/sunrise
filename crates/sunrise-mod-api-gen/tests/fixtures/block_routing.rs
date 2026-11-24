@@ -138,7 +138,12 @@ mod game {
             }
             pub fn bind(registry: &BlockRegistry) -> Result<(), String> {
                 let forward = (0..registry.len())
-                    .map(|id| registry.state(BlockStateId(id as u32)).unwrap().try_into_api())
+                    .map(|id| {
+                        registry
+                            .state(BlockStateId(id as u32))
+                            .unwrap()
+                            .try_into_api()
+                    })
                     .collect::<Result<Vec<_>, _>>()
                     .map_err(|error| format!("{error:?}"))?;
                 INDEX.with_borrow_mut(|index| *index = forward);
@@ -150,7 +155,10 @@ mod game {
                 fn try_into_api(&self) -> Result<BlockState, BlockStateError> {
                     crate::CONVERSIONS.fetch_add(1, crate::Ordering::Relaxed);
                     INDEX.with_borrow(|index| {
-                        index.get(self.0 as usize).copied().ok_or(BlockStateError::UnknownState)
+                        index
+                            .get(self.0 as usize)
+                            .copied()
+                            .ok_or(BlockStateError::UnknownState)
                     })
                 }
             }
