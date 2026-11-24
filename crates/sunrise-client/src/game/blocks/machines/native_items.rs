@@ -5,10 +5,14 @@
 use super::{
     Game, Insertion, Kind, MoveIn, PlacementAttempt, Pos, Slots, TakeAsk, TakeAttempt, View,
 };
-use crate::game::{decorated_pot::DECORATED_POT, transactions::After};
+use crate::game::{
+    api_values::{project_stack, stack_read_metadata},
+    decorated_pot::DECORATED_POT,
+    transactions::After,
+};
 use mod_api::{
-    BlockCapabilitySite, BlockSide, ItemResource, LevelReadError, LevelRef, StorageSlot,
-    TransactionContext,
+    BlockCapabilitySite, BlockSide, ItemResource, ItemStackView, LevelReadError, LevelRef,
+    StorageSlot, TransactionContext,
 };
 use sunrise_client::{containers::BlockEntity, items::ItemStack, save};
 use sunrise_core::geometry::Direction;
@@ -113,12 +117,14 @@ impl super::Containers<'_> {
         let entity = self.world.block_entities.get(&pos);
         match self.item_target(state, at.side, entity)? {
             ItemTarget::Composter(level) => Some(View {
-                parts: vec![(pos, 1)],
+                first: (pos, 1),
+                second: None,
                 kind: Kind::Composter(level),
                 container: None,
             }),
             ItemTarget::Pot => Some(View {
-                parts: vec![(pos, 1)],
+                first: (pos, 1),
+                second: None,
                 kind: Kind::Pot,
                 container: None,
             }),
@@ -128,15 +134,26 @@ impl super::Containers<'_> {
     pub(in crate::game) fn capability_size(&self, at: BlockSide) -> Option<usize> {
         Some(self.capability_view(at)?.capability_slots(at.side).count())
     }
-    pub(in crate::game) fn capability_stack(
+    pub(in crate::game) fn lend_capability_stack(
         &self,
         at: BlockSide,
         slot: usize,
-    ) -> Option<ItemStack> {
-        let view = self.capability_view(at)?;
-        let slot = view.capability_slots(at.side).nth(slot)?;
-        self.insertion_item(&view, slot)
-            .map(std::borrow::Cow::into_owned)
+        read: &mut dyn for<'a> FnMut(ItemStackView<'a>),
+    ) {
+        let Some(view) = self.capability_view(at) else {
+            return;
+        };
+        let Some(slot) = view.capability_slots(at.side).nth(slot) else {
+            return;
+        };
+        let Some(stack) = self.insertion_item(&view, slot) else {
+            return;
+        };
+        let Ok(metadata) = stack_read_metadata(&stack) else {
+            return;
+        };
+        let project = |metadata| project_stack(&stack, metadata).ok();
+        read(ItemStackView::resident(metadata, &project));
     }
     /// The block entity slot that slot `slot` of `at`'s side reaches (`WorldlyContainer.
     /// getSlotsForFace`), owned by the half that holds it in a double chest (`ChestBlock.
@@ -256,11 +273,11 @@ impl Game<'_> {
     /// Up to `count` out of slot `slot` of `view`, without `setChanged`.
     fn take_up_to(&mut self, view: &View, slot: usize, count: u32) -> Option<ItemStack> {
         if matches!(view.kind, Kind::Composter(_)) {
-            let (x, y, z) = view.parts[0].0;
+            let (x, y, z) = view.first.0;
             return self.composter_capability_extract([x, y, z], count);
         }
         if view.kind == Kind::Pot {
-            let pos = view.parts[0].0;
+            let pos = view.first.0;
             let at = [pos.0, pos.1, pos.2];
             let mut tag = super::spill::saved_entity(&self.world, at)?;
             let mut item = tag.get("item").and_then(save::item_from_nbt)?;
@@ -319,7 +336,7 @@ impl Game<'_> {
         if matches!(view.kind, Kind::Composter(_)) {
             return false;
         }
-        for &(pos, _) in &view.parts {
+        for (pos, _) in view.parts() {
             self.journal_block_entity(pos);
             self.world.set_container_stack_limit(pos, limit);
         }
@@ -332,10 +349,16 @@ impl Game<'_> {
         self.level_in_place(at.level).then_some(())?;
         self.containers().capability_size(at)
     }
-    /// The stack in slot `slot` of those `at`'s side reaches (`container_size`).
-    pub(in crate::game) fn container_stack(&self, at: BlockSide, slot: usize) -> Option<ItemStack> {
-        self.level_in_place(at.level).then_some(())?;
-        self.containers().capability_stack(at, slot)
+    /// Lend the resident stack in a side-local slot of the level in place.
+    pub(in crate::game) fn lend_container_stack(
+        &self,
+        at: BlockSide,
+        slot: usize,
+        read: &mut dyn for<'a> FnMut(ItemStackView<'a>),
+    ) {
+        if self.level_in_place(at.level) {
+            self.containers().lend_capability_stack(at, slot, read);
+        }
     }
     /// The block entity slot that slot `slot` of those `at`'s side reaches (`container_size`) is:
     /// each slot of a double chest reports the half that owns it, and a composter has none.
@@ -352,7 +375,7 @@ impl Game<'_> {
     pub(super) fn journal_view_slot(&mut self, view: &View, slot: usize) {
         match view.kind {
             Kind::Composter(_) => return,
-            Kind::Pot => return self.journal_saved_pot(view.parts[0].0),
+            Kind::Pot => return self.journal_saved_pot(view.first.0),
             _ => {}
         }
         let slot_only = match view.kind {
@@ -370,7 +393,7 @@ impl Game<'_> {
         if slot_only && let Some((pos, slot)) = view.locate(slot) {
             return self.journal_block_entity_slot(pos, slot);
         }
-        for &(part, _) in &view.parts {
+        for (part, _) in view.parts() {
             self.journal_block_entity(part);
         }
     }
@@ -379,7 +402,7 @@ impl Game<'_> {
         if matches!(view.kind, Kind::Composter(_)) {
             return;
         }
-        for &(pos, _) in &view.parts {
+        for (pos, _) in view.parts() {
             self.after_commit(After::Changed(pos));
         }
     }
@@ -667,7 +690,8 @@ mod tests {
 
     fn view(kind: Kind, slots: usize) -> View {
         View {
-            parts: vec![((0, 0, 0), slots)],
+            first: ((0, 0, 0), slots),
+            second: None,
             kind,
             container: (kind == Kind::Mod).then(|| {
                 Arc::new(ModContainer {
@@ -784,7 +808,7 @@ mod tests {
     #[test]
     fn a_mod_container_reports_its_owning_block_and_declared_face_slots() {
         let mut mod_view = view(Kind::Mod, 4);
-        mod_view.parts = vec![((5, 6, 7), 4)];
+        mod_view.first = ((5, 6, 7), 4);
         let mut container = ModContainer {
             slots: 4,
             ..Default::default()
@@ -811,7 +835,8 @@ mod tests {
     #[test]
     fn a_double_chest_reports_each_slot_with_the_half_that_owns_it() {
         let double = View {
-            parts: vec![((0, 64, 0), 27), ((1, 64, 0), 27)],
+            first: ((0, 64, 0), 27),
+            second: Some(((1, 64, 0), 27)),
             kind: Kind::Generic,
             container: None,
         };
