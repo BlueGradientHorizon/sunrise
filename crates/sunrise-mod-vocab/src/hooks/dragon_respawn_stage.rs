@@ -14,5 +14,5 @@ pub trait Hooks {
         contract = "listen",
         neoforge = "none (NeoForge has no dragon fight event)"
     )]
-    fn dragon_respawn_stage(level: LevelRef, stage: DragonRespawnStage);
+    fn dragon_respawn_stage(level: LevelRef, stage: mod_api::DragonRespawnStage);
 }
