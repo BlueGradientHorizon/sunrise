@@ -5798,6 +5798,135 @@ struct ConstructEffects {
     client: Box<client_state::ClientConstructEffects>,
 }
 
+// Out-of-line init bundles for wrapped Game fields so finish_construct's unoptimised stack stays small.
+struct WrappedClientInit {
+    rest_loader: client_side::ClientShared<Option<WorldRestLoader>>,
+    pending_entry: client_side::ClientOnly<Option<PendingWorldEntry>>,
+    pack_reload: client_side::ClientOnly<Option<packs::PackReload>>,
+    server_packs: client_side::ClientOnly<server_packs::ServerPackState>,
+    client_reports: client_side::ClientOnly<Arc<sunrise_client::chunk_io::Reports>>,
+    command_prompt: client_side::ClientOnly<Option<remote_chat::CommandPrompt>>,
+    dialogs: client_side::ClientOnly<dialogs::DialogState>,
+    pending_initial_models:
+        client_side::ClientOnly<Option<Box<initial_client_models::PendingClientStart>>>,
+    stitching_block_atlas: client_side::ClientOnly<Option<Arc<RenderAssets>>>,
+    lod: client_side::ClientShared<Option<sunrise_client::lod::Lod>>,
+    lod_blue_map: client_side::ClientShared<Option<Arc<sunrise_client::bluemap::BlueMap>>>,
+    video_modes: client_side::ClientOnly<sunrise_client::window::VideoModeList>,
+    screen_state: client_side::ClientOnly<screen_build::ScreenState>,
+    window: client_side::ClientShared<Option<Arc<Window>>>,
+    skin_models:
+        client_side::ClientOnly<std::cell::RefCell<sunrise_client::mobs::skin::SkinModels>>,
+    lent_level_random: client_side::ClientOnly<
+        Option<std::rc::Rc<std::cell::RefCell<mod_api::LegacyRandomSource>>>,
+    >,
+    pad: client_side::ClientShared<pad::Pads>,
+    live_scenes: client_side::ClientOnly<std::cell::RefCell<native_scene_live::LiveScenes>>,
+    debug_renderers:
+        client_side::ClientOnly<Vec<sunrise_client::debug_entries::ActiveDebugRenderer>>,
+    pickups: client_side::ClientShared<pickups::Pickups>,
+    creation_job:
+        client_side::ClientOnly<Option<std::thread::JoinHandle<std::result::Result<(), String>>>>,
+    title: client_side::ClientShared<Option<Title>>,
+    text_displays:
+        client_side::ClientShared<indexmap::IndexMap<i32, text_displays::RemoteTextDisplay>>,
+    recipe_ui: client_side::ClientOnly<recipe_book::RecipeUi>,
+    spawners: client_side::ClientOnly<spawner::SpawnerState>,
+    mod_screen: client_side::ClientOnly<Option<native_hooks::OpenNativeScreen>>,
+    creative_contents: client_side::ClientOnly<native_hooks::CreativeCache>,
+    pending_screenshot: client_side::ClientOnly<Option<std::sync::mpsc::Sender<String>>>,
+    screenshot_sequence: client_side::ClientOnly<Option<screenshot_sequence::Sequence>>,
+    pending_render_capture: client_side::ClientOnly<Option<std::sync::mpsc::Sender<String>>>,
+    pending_bench:
+        client_side::ClientOnly<Option<(Instant, std::sync::mpsc::Sender<String>, bool)>>,
+    flight: client_side::ClientShared<Option<control::Flight>>,
+    ui_wait: client_side::ClientOnly<ui_control::UiWait>,
+    input_trace: client_side::ClientOnly<input_trace::InputTrace>,
+    repro: client_side::ClientOnly<repro::Repro>,
+    occlusion: client_side::ClientOnly<entity_culling::EntityOcclusion>,
+    async_particle_culler: client_side::ClientOnly<RefCell<particle_culling::ParticleAsyncState>>,
+    pending_uploads: client_side::ClientShared<Vec<sunrise_client::streaming::MeshUpload>>,
+    pending_uploads_merge: client_side::ClientShared<Vec<sunrise_client::streaming::MeshUpload>>,
+    mod_jobs: client_side::ClientOnly<mod_browser::Jobs>,
+    client_item_use: client_side::ClientShared<Option<native_claimed_items::ActiveClientItemUse>>,
+    client_tasks: client_side::ClientOnly<sunrise_client::net::ClientTasks>,
+    pending_client_tasks:
+        client_side::ClientOnly<std::collections::VecDeque<sunrise_client::net::ClientTask>>,
+    world_options: client_side::ClientOnly<Option<lan_screen::WorldOptions>>,
+    command_block_screen: client_side::ClientOnly<Option<command_blocks::CommandBlockScreen>>,
+    block_editor: client_side::ClientOnly<Option<block_editor::BlockEditScreen>>,
+    clipboard: client_side::ClientOnly<sunrise_client::clipboard::SystemClipboard>,
+    pending_save: client_side::ClientShared<Option<saving::ClosingSave>>,
+    tab_list: client_side::ClientOnly<sunrise_client::tab_list::TabList>,
+    adv_ui: client_side::ClientOnly<advancements_screen::AdvUi>,
+}
+
+struct WrappedServerInit {
+    player_autosaves: server_side::ServerOnly<sunrise_client::lan::playerdata::Autosaves>,
+    session_lock: server_side::ServerShared<Option<sunrise_client::save::SessionLock>>,
+    paused_mob_hurt: server_side::ServerShared<Option<Box<sunrise_client::mobs::PausedMobHurt>>>,
+    raiding: server_side::ServerShared<raids::Raiding>,
+    world_tables: server_side::ServerShared<Option<WorldTables>>,
+    server_loot: server_side::ServerOnly<sunrise_client::structure_blocks::LootSnapshot>,
+    levels: server_side::ServerShared<levels::Levels>,
+    tickets: server_side::ServerShared<sunrise_client::ticket_levels::ChunkTickets>,
+    random_tick_sections:
+        server_side::ServerOnly<sunrise_client::random_tick_sections::RandomTickSections>,
+    others:
+        server_side::ServerShared<sunrise_client::join_seq::ResidentList<commands::OtherEntity>>,
+    spill: server_side::ServerOnly<spill::Spill>,
+    lent_mobs: server_side::ServerOnly<RefCell<native_unspawned_mob::LentMobs>>,
+    test_defs: server_side::ServerOnly<
+        std::cell::RefCell<HashMap<String, Option<test_instances::TestDef>>>,
+    >,
+    game_tests: server_side::ServerOnly<game_tests::GameTests>,
+    native_commands: server_side::ServerOnly<native_server::NativeCommandState>,
+    lan_building_boxes: server_side::ServerOnly<building_players::BuildingPlayers>,
+    lan_displaced_players: server_side::ServerOnly<Vec<lan_actions::DisplacedPlayer>>,
+    fake_action: server_side::ServerOnly<std::sync::Arc<native_server::FakeAction>>,
+    server_lists:
+        server_side::ServerOnly<Option<std::sync::Arc<std::sync::Mutex<dedicated::Lists>>>>,
+    cmds: server_side::ServerOnly<commands::extra::CommandExtras>,
+    reload_resources: server_side::ServerOnly<mod_api::RetainedListeners>,
+    combat: server_side::ServerOnly<combat::CombatTracker>,
+    guest_combat: server_side::ServerOnly<std::collections::HashMap<u32, combat::CombatTracker>>,
+    fns: server_side::ServerShared<functions::FnState>,
+    exec: server_side::ServerOnly<commands::execute::ExecState>,
+}
+
+struct WrappedRendererInit {
+    renderer: client_side::ClientShared<Option<Renderer>>,
+}
+
+struct WrappedPrepInit {
+    save: server_side::ServerShared<Arc<SaveDir>>,
+    audio: client_side::ClientShared<Audio>,
+    particles: client_side::ClientShared<sunrise_client::particles::ParticleEngine>,
+    armor_stand_assets: client_side::ClientOnly<armor_stands::ArmorStandAssets>,
+    creative_screen: client_side::ClientOnly<Creative>,
+    skin_downloads: client_side::ClientOnly<RefCell<sunrise_client::skins::Downloader>>,
+    skin_profiles: client_side::ClientOnly<RefCell<sunrise_client::skins::Resolver>>,
+    registered_debug_entries: client_side::ClientOnly<
+        std::sync::Arc<[sunrise_client::debug_entries::RegisteredDebugEntry]>,
+    >,
+    debug_entries: client_side::ClientOnly<sunrise_client::debug_entries::DebugEntries>,
+    level: Level,
+    painting_variants: paintings::PaintingVariants,
+    world: World,
+    now: Instant,
+    pack: PackResources,
+    gui: UiResources,
+    options: Options,
+    settings: Settings,
+    streaming: Streaming,
+    clock: FixedStep,
+    tick: sunrise_client::parallel::TickThread,
+    profile: profile_capture::Profile,
+    ui: chat::UiState,
+    server: Box<ServerState>,
+    client: Box<ClientState>,
+}
+
 impl<'a> Game<'a> {
     /// A game with no world open, over the loaded resources: the window's,
     /// or an integrated server's on its own thread.
@@ -6048,139 +6177,6 @@ impl<'a> Game<'a> {
         prep: Box<ConstructPrep>,
         effects: Box<ConstructEffects>,
     ) -> Self {
-        // Build wrapped drop-order fields in out-of-line helpers so finish_construct's unoptimised stack stays small.
-        struct WrappedClientInit {
-            rest_loader: client_side::ClientShared<Option<WorldRestLoader>>,
-            pending_entry: client_side::ClientOnly<Option<PendingWorldEntry>>,
-            pack_reload: client_side::ClientOnly<Option<packs::PackReload>>,
-            server_packs: client_side::ClientOnly<server_packs::ServerPackState>,
-            client_reports: client_side::ClientOnly<Arc<sunrise_client::chunk_io::Reports>>,
-            command_prompt: client_side::ClientOnly<Option<remote_chat::CommandPrompt>>,
-            dialogs: client_side::ClientOnly<dialogs::DialogState>,
-            pending_initial_models:
-                client_side::ClientOnly<Option<Box<initial_client_models::PendingClientStart>>>,
-            stitching_block_atlas: client_side::ClientOnly<Option<Arc<RenderAssets>>>,
-            lod: client_side::ClientShared<Option<sunrise_client::lod::Lod>>,
-            lod_blue_map: client_side::ClientShared<Option<Arc<sunrise_client::bluemap::BlueMap>>>,
-            video_modes: client_side::ClientOnly<sunrise_client::window::VideoModeList>,
-            screen_state: client_side::ClientOnly<screen_build::ScreenState>,
-            window: client_side::ClientShared<Option<Arc<Window>>>,
-            skin_models:
-                client_side::ClientOnly<std::cell::RefCell<sunrise_client::mobs::skin::SkinModels>>,
-            lent_level_random: client_side::ClientOnly<
-                Option<std::rc::Rc<std::cell::RefCell<mod_api::LegacyRandomSource>>>,
-            >,
-            pad: client_side::ClientShared<pad::Pads>,
-            live_scenes: client_side::ClientOnly<std::cell::RefCell<native_scene_live::LiveScenes>>,
-            debug_renderers:
-                client_side::ClientOnly<Vec<sunrise_client::debug_entries::ActiveDebugRenderer>>,
-            pickups: client_side::ClientShared<pickups::Pickups>,
-            creation_job: client_side::ClientOnly<
-                Option<std::thread::JoinHandle<std::result::Result<(), String>>>,
-            >,
-            title: client_side::ClientShared<Option<Title>>,
-            text_displays: client_side::ClientShared<
-                indexmap::IndexMap<i32, text_displays::RemoteTextDisplay>,
-            >,
-            recipe_ui: client_side::ClientOnly<recipe_book::RecipeUi>,
-            spawners: client_side::ClientOnly<spawner::SpawnerState>,
-            mod_screen: client_side::ClientOnly<Option<native_hooks::OpenNativeScreen>>,
-            creative_contents: client_side::ClientOnly<native_hooks::CreativeCache>,
-            pending_screenshot: client_side::ClientOnly<Option<std::sync::mpsc::Sender<String>>>,
-            screenshot_sequence: client_side::ClientOnly<Option<screenshot_sequence::Sequence>>,
-            pending_render_capture:
-                client_side::ClientOnly<Option<std::sync::mpsc::Sender<String>>>,
-            pending_bench:
-                client_side::ClientOnly<Option<(Instant, std::sync::mpsc::Sender<String>, bool)>>,
-            flight: client_side::ClientShared<Option<control::Flight>>,
-            ui_wait: client_side::ClientOnly<ui_control::UiWait>,
-            input_trace: client_side::ClientOnly<input_trace::InputTrace>,
-            repro: client_side::ClientOnly<repro::Repro>,
-            occlusion: client_side::ClientOnly<entity_culling::EntityOcclusion>,
-            async_particle_culler:
-                client_side::ClientOnly<RefCell<particle_culling::ParticleAsyncState>>,
-            pending_uploads: client_side::ClientShared<Vec<sunrise_client::streaming::MeshUpload>>,
-            pending_uploads_merge:
-                client_side::ClientShared<Vec<sunrise_client::streaming::MeshUpload>>,
-            mod_jobs: client_side::ClientOnly<mod_browser::Jobs>,
-            client_item_use:
-                client_side::ClientShared<Option<native_claimed_items::ActiveClientItemUse>>,
-            client_tasks: client_side::ClientOnly<sunrise_client::net::ClientTasks>,
-            pending_client_tasks: client_side::ClientOnly<
-                std::collections::VecDeque<sunrise_client::net::ClientTask>,
-            >,
-            world_options: client_side::ClientOnly<Option<lan_screen::WorldOptions>>,
-            command_block_screen:
-                client_side::ClientOnly<Option<command_blocks::CommandBlockScreen>>,
-            block_editor: client_side::ClientOnly<Option<block_editor::BlockEditScreen>>,
-            clipboard: client_side::ClientOnly<sunrise_client::clipboard::SystemClipboard>,
-            pending_save: client_side::ClientShared<Option<saving::ClosingSave>>,
-            tab_list: client_side::ClientOnly<sunrise_client::tab_list::TabList>,
-            adv_ui: client_side::ClientOnly<advancements_screen::AdvUi>,
-        }
-        struct WrappedServerInit {
-            player_autosaves: server_side::ServerOnly<sunrise_client::lan::playerdata::Autosaves>,
-            session_lock: server_side::ServerShared<Option<sunrise_client::save::SessionLock>>,
-            paused_mob_hurt:
-                server_side::ServerShared<Option<Box<sunrise_client::mobs::PausedMobHurt>>>,
-            raiding: server_side::ServerShared<raids::Raiding>,
-            world_tables: server_side::ServerShared<Option<WorldTables>>,
-            server_loot: server_side::ServerOnly<sunrise_client::structure_blocks::LootSnapshot>,
-            levels: server_side::ServerShared<levels::Levels>,
-            tickets: server_side::ServerShared<sunrise_client::ticket_levels::ChunkTickets>,
-            random_tick_sections:
-                server_side::ServerOnly<sunrise_client::random_tick_sections::RandomTickSections>,
-            others: server_side::ServerShared<
-                sunrise_client::join_seq::ResidentList<commands::OtherEntity>,
-            >,
-            spill: server_side::ServerOnly<spill::Spill>,
-            lent_mobs: server_side::ServerOnly<RefCell<native_unspawned_mob::LentMobs>>,
-            test_defs: server_side::ServerOnly<
-                std::cell::RefCell<HashMap<String, Option<test_instances::TestDef>>>,
-            >,
-            game_tests: server_side::ServerOnly<game_tests::GameTests>,
-            native_commands: server_side::ServerOnly<native_server::NativeCommandState>,
-            lan_building_boxes: server_side::ServerOnly<building_players::BuildingPlayers>,
-            lan_displaced_players: server_side::ServerOnly<Vec<lan_actions::DisplacedPlayer>>,
-            fake_action: server_side::ServerOnly<std::sync::Arc<native_server::FakeAction>>,
-            server_lists:
-                server_side::ServerOnly<Option<std::sync::Arc<std::sync::Mutex<dedicated::Lists>>>>,
-            cmds: server_side::ServerOnly<commands::extra::CommandExtras>,
-            reload_resources: server_side::ServerOnly<mod_api::RetainedListeners>,
-            combat: server_side::ServerOnly<combat::CombatTracker>,
-            guest_combat:
-                server_side::ServerOnly<std::collections::HashMap<u32, combat::CombatTracker>>,
-            fns: server_side::ServerShared<functions::FnState>,
-            exec: server_side::ServerOnly<commands::execute::ExecState>,
-        }
-        struct WrappedPrepInit {
-            save: server_side::ServerShared<Arc<SaveDir>>,
-            audio: client_side::ClientShared<Audio>,
-            particles: client_side::ClientShared<sunrise_client::particles::ParticleEngine>,
-            armor_stand_assets: client_side::ClientOnly<armor_stands::ArmorStandAssets>,
-            creative_screen: client_side::ClientOnly<Creative>,
-            skin_downloads: client_side::ClientOnly<RefCell<sunrise_client::skins::Downloader>>,
-            skin_profiles: client_side::ClientOnly<RefCell<sunrise_client::skins::Resolver>>,
-            registered_debug_entries: client_side::ClientOnly<
-                std::sync::Arc<[sunrise_client::debug_entries::RegisteredDebugEntry]>,
-            >,
-            debug_entries: client_side::ClientOnly<sunrise_client::debug_entries::DebugEntries>,
-            level: Level,
-            painting_variants: paintings::PaintingVariants,
-            world: World,
-            now: Instant,
-            pack: PackResources,
-            gui: UiResources,
-            options: Options,
-            settings: Settings,
-            streaming: Streaming,
-            clock: FixedStep,
-            tick: sunrise_client::parallel::TickThread,
-            profile: profile_capture::Profile,
-            ui: chat::UiState,
-            server: Box<ServerState>,
-            client: Box<ClientState>,
-        }
         #[inline(never)]
         fn build_wrapped_client() -> Box<WrappedClientInit> {
             Box::new(WrappedClientInit {
@@ -6237,9 +6233,6 @@ impl<'a> Game<'a> {
                 tab_list: client_side::ClientOnly::new(Default::default()),
                 adv_ui: client_side::ClientOnly::new(Default::default()),
             })
-        }
-        struct WrappedRendererInit {
-            renderer: client_side::ClientShared<Option<Renderer>>,
         }
         #[inline(never)]
         fn build_wrapped_renderer() -> Box<WrappedRendererInit> {

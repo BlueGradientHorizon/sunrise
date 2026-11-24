@@ -4247,6 +4247,18 @@ def plan_game_struct_and_ctor_edits(
     helper_lit_bodies: dict[str, tuple[int, int]] = {}
     i = 0
     while i < n:
+        if (
+            tokens[i][0] == "IDENT"
+            and tokens[i][1] == "struct"
+            and i + 2 < n
+            and tokens[i + 1][1] in helper_names
+            and tokens[i + 2][1] == "{"
+        ):
+            sname = tokens[i + 1][1]
+            send = skip_balanced(tokens, i + 2, "{", "}")
+            helper_struct_bodies[sname] = (i + 2, send)
+            i = send
+            continue
         if tokens[i][0] == "IDENT" and tokens[i][1] == "fn" and i + 1 < n and tokens[i + 1][1] == "finish_construct":
             j = i + 2
             while j < n and tokens[j][1] != "{":
