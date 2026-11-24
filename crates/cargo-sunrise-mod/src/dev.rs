@@ -419,6 +419,9 @@ fn prepare(
             update_lock,
         )
         .map_err(build_error)?;
+        // Those pins come from a copy without the SDK's path packages; the committed lock also
+        // names them, as the registry's `cargo fetch --locked` requires.
+        refresh_lock(rust, &project).map_err(build_error)?;
     }
     crate::registry_source::write_files(
         &input.path().join(stage_name(&id)),
