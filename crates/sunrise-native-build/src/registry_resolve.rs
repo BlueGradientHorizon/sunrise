@@ -143,7 +143,9 @@ pub(super) fn resolve(
                 patched = true;
                 fs::write(&manifest_path, constrained.to_string()).map_err(|e| e.to_string())?;
                 fs::write(&lock_path, &unlocked_seed).map_err(|e| e.to_string())?;
-                match update(unlock) {
+                let constrained_update = update(unlock);
+                crate::check_cancelled()?;
+                match constrained_update {
                     Ok(()) => {
                         let (text, constrained) = read()?;
                         if check(&constrained).is_ok() {
@@ -176,7 +178,6 @@ pub(super) fn resolve(
                     }
                     Err(_) => {}
                 }
-                crate::check_cancelled()?;
                 fs::write(&manifest_path, manifest.to_string()).map_err(|e| e.to_string())?;
             }
         }
