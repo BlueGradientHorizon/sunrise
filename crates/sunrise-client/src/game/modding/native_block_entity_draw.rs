@@ -52,6 +52,9 @@ pub(super) struct StandaloneGeometry {
 /// A block state's faces as vanilla draws it outside the terrain: default tints in the colour.
 pub(super) struct StateModel {
     faces: Vec<sunrise_client::models::catalog::BakedFace>,
+    /// The state is also drawn by its block's special renderer, with default data
+    /// (`BuiltInBlockModels`' `CompositeBlockModel`: the block-state model, then the special one).
+    special: bool,
     bounds: [[f32; 3]; 2],
 }
 
@@ -60,25 +63,26 @@ pub(super) struct InstanceSlot {
     pub translucent: bool,
     /// A block state's model: drawn on the CPU route only, never as a GPU instance.
     pub state: bool,
+    /// The block state whose special renderer draws after the model's faces.
+    pub special: Option<BlockStateId>,
     pub bounds: [[f32; 3]; 2],
 }
 
-fn face_bounds(faces: &[super::minecarts::PreparedModelFace]) -> [[f32; 3]; 2] {
+/// The box around `points`, or `None` when there are none.
+pub(super) fn point_bounds(points: impl IntoIterator<Item = [f32; 3]>) -> Option<[[f32; 3]; 2]> {
     let mut min = [f32::INFINITY; 3];
     let mut max = [f32::NEG_INFINITY; 3];
-    for face in faces {
-        for pos in face.positions() {
-            for axis in 0..3 {
-                min[axis] = min[axis].min(pos[axis]);
-                max[axis] = max[axis].max(pos[axis]);
-            }
+    for pos in points {
+        for axis in 0..3 {
+            min[axis] = min[axis].min(pos[axis]);
+            max[axis] = max[axis].max(pos[axis]);
         }
     }
-    if min[0].is_finite() {
-        [min, max]
-    } else {
-        [[0.0; 3], [0.0; 3]]
-    }
+    min[0].is_finite().then_some([min, max])
+}
+
+fn face_bounds(faces: &[super::minecarts::PreparedModelFace]) -> [[f32; 3]; 2] {
+    point_bounds(faces.iter().flat_map(|face| face.positions())).unwrap_or_default()
 }
 
 impl StandaloneGeometry {
@@ -131,6 +135,7 @@ impl StandaloneGeometry {
             return Some(InstanceSlot {
                 translucent: false,
                 state: true,
+                special: model.special.then_some(BlockStateId(state)),
                 bounds: model.bounds,
             });
         }
@@ -138,15 +143,20 @@ impl StandaloneGeometry {
         self.slots.get(index)?.is_some().then_some(InstanceSlot {
             translucent: self.translucent[index],
             state: false,
+            special: None,
             bounds: self.bounds[index],
         })
     }
 
-    /// The slot of block state `state`, resolved with `faces` the first time.
+    /// The slot of block state `state`, resolved the first time with `resolve`: its faces,
+    /// and the box of what its special renderer draws when it has one.
     pub(super) fn state_slot(
         &self,
         state: u32,
-        faces: impl FnOnce() -> Vec<sunrise_client::models::catalog::BakedFace>,
+        resolve: impl FnOnce() -> (
+            Vec<sunrise_client::models::catalog::BakedFace>,
+            Option<[[f32; 3]; 2]>,
+        ),
     ) -> Option<u32> {
         let states = self.states.get_or_init(|| {
             std::iter::repeat_with(Default::default)
@@ -154,23 +164,22 @@ impl StandaloneGeometry {
                 .collect()
         });
         let model = states.get(state as usize)?.get_or_init(|| {
-            let faces = faces();
-            let mut min = [f32::INFINITY; 3];
-            let mut max = [f32::NEG_INFINITY; 3];
-            for pos in faces.iter().flat_map(|face| face.quad.positions) {
-                for axis in 0..3 {
-                    min[axis] = min[axis].min(pos[axis]);
-                    max[axis] = max[axis].max(pos[axis]);
-                }
+            let (faces, special) = resolve();
+            let corners = special.into_iter().flatten();
+            let bounds = point_bounds(
+                faces
+                    .iter()
+                    .flat_map(|face| face.quad.positions)
+                    .chain(corners),
+            )
+            .unwrap_or_default();
+            StateModel {
+                faces,
+                special: special.is_some(),
+                bounds,
             }
-            let bounds = if min[0].is_finite() {
-                [min, max]
-            } else {
-                [[0.0; 3], [0.0; 3]]
-            };
-            StateModel { faces, bounds }
         });
-        (!model.faces.is_empty()).then_some(self.states_from + state)
+        (!model.faces.is_empty() || model.special).then_some(self.states_from + state)
     }
 
     /// The baked faces of a block state's slot.
@@ -1666,6 +1675,21 @@ impl Game<'_> {
             .standalone_geometry
             .state_slot(id.0, || {
                 use sunrise_client::models::catalog::BakedFace;
+                // `BuiltInBlockModels.addDefaults`: these blocks' states are a composite of the
+                // block-state model and the special renderer, drawn with default data.
+                let special = self
+                    .res
+                    .facts()
+                    .get(id)
+                    .name
+                    .strip_prefix("minecraft:")
+                    .is_some_and(super::text_displays::has_special_model)
+                    .then(|| {
+                        let mut drawn = Vec::new();
+                        self.special_block_model(id, Mat4::IDENTITY, 0, &mut drawn);
+                        point_bounds(drawn.iter().map(|vertex| vertex.pos))
+                    })
+                    .flatten();
                 // An unknown state resolves to no faces, which `state_slot` refuses.
                 let Ok(models) = self
                     .pack
@@ -1673,10 +1697,10 @@ impl Game<'_> {
                     .model_catalog
                     .collect_seeded(id, Self::BLOCK_MODEL_SEED)
                 else {
-                    return Vec::new();
+                    return (Vec::new(), special);
                 };
                 let default_tint = self.default_block_tint(id);
-                models
+                let faces = models
                     .iter()
                     .flat_map(|(_, model)| &model.faces)
                     .map(|face| {
@@ -1690,13 +1714,39 @@ impl Game<'_> {
                         }
                         BakedFace::new(quad, face.layer, face.opaque, face.translucent, None)
                     })
-                    .collect()
+                    .collect();
+                (faces, special)
             })
             .ok_or(ModelError::UnknownModel)?;
         Ok(mod_api::__private::built::model_ref(
             self.standalone_geometry.generation(),
             slot,
         ))
+    }
+
+    /// `CompositeBlockModel`'s second part for block state `state`: what its special renderer
+    /// draws with default data, after the block-state model's faces, under the same pose and
+    /// packed `light`. It takes no tint and no hidden faces; `color` (`0xAARRGGBB`) multiplies
+    /// it, and below opaque it blends as `entityTranslucent` does.
+    pub(super) fn special_model_part(
+        &self,
+        state: BlockStateId,
+        pose: Mat4,
+        light: u32,
+        color: u32,
+        out: &mut Vec<Vertex>,
+    ) {
+        let start = out.len();
+        self.special_block_model(state, pose, super::minecarts::special_light(light), out);
+        if color != u32::MAX {
+            for vertex in &mut out[start..] {
+                vertex.color =
+                    sunrise_client::terrain_model::multiply_draw_color(vertex.color, color);
+            }
+        }
+        if color >> 24 != 0xFF {
+            sunrise_client::gfx::mark_oit(&mut out[start..]);
+        }
     }
 
     /// The baked faces a slot draws through the terrain materials: a standalone model's, or a

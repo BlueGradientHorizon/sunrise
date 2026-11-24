@@ -27,12 +27,13 @@ impl Game<'_> {
         if fields.generation != self.standalone_geometry.generation() {
             return Err(TerrainModelError::Model(ModelError::StaleModel));
         }
-        let faces = self
+        let (faces, special) = self
             .standalone_geometry
             .instance_slot(fields.slot)
-            .and_then(|_| self.model_faces(fields.slot))
+            .and_then(|slot| Some((self.model_faces(fields.slot)?, slot.special)))
             .ok_or(TerrainModelError::Model(ModelError::UnknownModel))?;
         let layers = &self.pack.render.sprite_layers;
+        let color = options.color;
         draw_terrain_model(
             draw,
             faces,
@@ -43,6 +44,11 @@ impl Game<'_> {
                     .copied()
             },
             options,
+            |pose, light, out| {
+                if let Some(state) = special {
+                    self.special_model_part(state, pose, light, color, out);
+                }
+            },
         )
     }
 }
@@ -76,13 +82,15 @@ fn engine_options(options: TerrainModelOptions<'_>) -> NativeModelRenderOptions<
     }
 }
 
-/// Appends `faces` under `draw`'s pose, or appends nothing and returns `Refused` when
-/// the renderer refuses the model or `options`.
+/// Appends `faces` under `draw`'s pose, then `special`'s vertices under the same pose and
+/// light, or appends nothing and returns `Refused` when the renderer refuses the model or
+/// `options`.
 fn draw_terrain_model(
     draw: &mut BlockEntityDraw,
     faces: &[BakedFace],
     sprite_layer: impl Fn(&str) -> Option<u32>,
     options: TerrainModelOptions<'_>,
+    special: impl FnOnce(glam::Mat4, u32, &mut Vec<sunrise_client::mesher::Vertex>),
 ) -> Result<(), TerrainModelError> {
     let pose = draw.pose();
     let light = draw.element_ambient();
@@ -96,6 +104,9 @@ fn draw_terrain_model(
         sprite_layer,
         |vertex| vertices.push(vertex),
     );
+    if drawn {
+        special(pose, light, vertices);
+    }
     draw.lit_since(start, BlockEntityDraw::cell_centre, draw.light() & 0xffff);
     drawn.then_some(()).ok_or(TerrainModelError::Refused)
 }
@@ -158,7 +169,7 @@ mod tests {
             diffuse_lights(false),
             Vec::new(),
         );
-        let result = draw_terrain_model(&mut draw, faces, sprite, options);
+        let result = draw_terrain_model(&mut draw, faces, sprite, options, |_, _, _| {});
         (result, draw.into_vertices())
     }
 
@@ -262,7 +273,7 @@ mod tests {
             draw.unlit(unlit);
             let options = TerrainModelOptions::default().with_shade(TerrainShade::Model);
             assert_eq!(
-                draw_terrain_model(&mut draw, &faces, sprite, options),
+                draw_terrain_model(&mut draw, &faces, sprite, options, |_, _, _| {}),
                 Ok(())
             );
             draw.into_vertices()

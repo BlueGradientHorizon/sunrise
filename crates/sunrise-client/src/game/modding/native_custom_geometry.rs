@@ -580,10 +580,10 @@ impl Game<'_> {
                 let Some(faces) = self.model_faces(copy.slot) else {
                     continue;
                 };
-                let state = self
+                let (state, special) = self
                     .standalone_geometry
                     .instance_slot(copy.slot)
-                    .is_some_and(|slot| slot.state);
+                    .map_or((false, None), |slot| (slot.state, slot.special));
                 let shift = (DVec3::from(copy.origin) - camera).as_vec3();
                 let pose =
                     Mat4::from_translation(shift) * world_geometry::row_major_3x4(copy.transform);
@@ -599,7 +599,7 @@ impl Game<'_> {
                     hidden_faces: copy.hidden_faces,
                     ..Default::default()
                 };
-                terrain_model::draw_model(
+                let drawn = terrain_model::draw_model(
                     faces,
                     pose,
                     copy.light,
@@ -612,6 +612,11 @@ impl Game<'_> {
                     },
                     |vertex| entities.push(vertex),
                 );
+                if let Some(state) = special
+                    && drawn
+                {
+                    self.special_model_part(state, pose, copy.light, copy.color, entities);
+                }
             }
         }
         draw.clear_copies();
@@ -801,6 +806,57 @@ mod tests {
                 .find_map(|state| slot(state).ok().map(|slot| (state, slot)))
                 .expect("some block state has a model");
             assert_eq!(slot(state), Ok(first));
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_special_block_state_draws_its_renderer_and_a_faded_copy_blends() {
+        let _fixture = sunrise_client::models::standalone_fixture(Vec::new());
+        super::super::native_entity_refs::tests::with_client_game(|game| {
+            let _restore = Restore;
+            let chest = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:chest")
+                .unwrap();
+            // `BuiltInBlockModels`: a chest is its block-state model plus its special renderer.
+            let model = game
+                .native_block_state_model(chest)
+                .expect("a chest resolves to its composite model");
+            let slot = mod_api::__private::game::Fields::fields(&model).slot;
+            let instance = game.standalone_geometry.instance_slot(slot).unwrap();
+            assert_eq!(instance.special, Some(chest));
+            // The chest's box reaches 14/16 up, so copies cull by the renderer's geometry.
+            assert!(instance.bounds[1][1] > 0.8, "{:?}", instance.bounds);
+            let camera = DVec3::new(0.0, 70.0, 0.0);
+            let mut draw = WorldGeometry::default();
+            draw.reset(camera.to_array(), Mat4::IDENTITY, [0.0, 0.0]);
+            context(game, &mut draw)
+                .draw_model_instances(
+                    model,
+                    &[
+                        ModelInstance::at([3.0, 70.0, 0.0], u32::MAX),
+                        ModelInstance::at([6.0, 70.0, 0.0], u32::MAX).with_color(0x80FF_FFFF),
+                    ],
+                )
+                .unwrap();
+            let mut entities = Vec::new();
+            game.commit_model_instances(&mut draw, camera, &mut entities);
+            let (opaque, faded): (Vec<&Vertex>, Vec<&Vertex>) =
+                entities.iter().partition(|vertex| vertex.pos[0] < 5.0);
+            assert!(!opaque.is_empty() && opaque.len() == faded.len());
+            assert!(
+                opaque.iter().all(
+                    |v| v.layer & sunrise_client::gfx::OIT_ENTITY == 0 && v.color >> 24 == 0xFF
+                )
+            );
+            assert!(
+                faded
+                    .iter()
+                    .all(|v| v.layer & sunrise_client::gfx::OIT_ENTITY != 0 && v.color >> 24 < 0xFF)
+            );
         });
     }
 

@@ -2860,7 +2860,8 @@ impl Game<'_> {
         }
     }
     /// The model of a block drawn by its block-entity renderer, as a chest
-    /// minecart shows its chest and a block display its special block.
+    /// minecart shows its chest and a block display its special block. `light` is the
+    /// level's packed `sky << 4 | block` byte: see [`special_light`].
     pub(super) fn special_block_model(
         &self,
         state: BlockStateId,
@@ -2898,6 +2899,11 @@ impl Game<'_> {
             .block_entity_render()
             .render_state(&scene, state.0, m, light, out);
     }
+}
+/// Packed vertex light as the level's `sky << 4 | block` byte that
+/// [`Game::special_block_model`] takes: the inverse of `block_entity_render::vertex_light`.
+pub(super) fn special_light(light: u32) -> u8 {
+    ((((light & 0xFF) / 16) << 4) | (((light >> 8) & 0xFF) / 16)) as u8
 }
 /// Saving and loading.
 impl Minecart {
