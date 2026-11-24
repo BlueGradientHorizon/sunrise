@@ -2,7 +2,7 @@
 
 The stable `mod_api` surface and published loops (including `loop:block_entities.tick`, whose defining module `block_entity_ticks` remains at `sunrise_client::game::block_entity_ticks`) are unchanged. Native engine catalog changes are outside the stable API gate, but unresolved manifest declarations still fail `cargo sunrise-mod check` and `cargo sunrise-mod build`.
 
-For the full modding-book guide, see [`docs/modding/src/concepts/native-route/8-game-side-modules.md`](../../../docs/modding/src/concepts/native-route/8-game-side-modules.md) (`https://playsunrise.net/docs/modding/concepts/native-route/8-game-side-modules`).
+For the modding-book guide, see [Game side modules](https://playsunrise.net/docs/modding/concepts/native-route/game-side-modules) ([`docs/modding/src/concepts/native-route/8-game-side-modules.md`](../../../docs/modding/src/concepts/native-route/8-game-side-modules.md)).
 
 ## Path rule and state-module exceptions
 
