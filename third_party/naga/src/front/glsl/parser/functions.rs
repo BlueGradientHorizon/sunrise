@@ -134,22 +134,28 @@ impl ParsingContext<'_> {
                 };
                 self.expect(frontend, TokenValue::RightParen)?;
 
+                // A name declared in the if-statement or the else-statement is scoped to its
+                // end, braced or not (GLSL 4.60, 4.2.2).
                 let accept = ctx.new_body(|ctx| {
+                    ctx.symbol_table.push_scope();
                     if let Some(more_meta) =
                         self.parse_statement(frontend, ctx, &mut None, is_inside_loop)?
                     {
                         meta.subsume(more_meta);
                     }
+                    ctx.symbol_table.pop_scope();
                     Ok(())
                 })?;
 
                 let reject = ctx.new_body(|ctx| {
                     if self.bump_if(frontend, TokenValue::Else).is_some() {
+                        ctx.symbol_table.push_scope();
                         if let Some(more_meta) =
                             self.parse_statement(frontend, ctx, &mut None, is_inside_loop)?
                         {
                             meta.subsume(more_meta);
                         }
+                        ctx.symbol_table.pop_scope();
                     }
                     Ok(())
                 })?;
@@ -189,6 +195,9 @@ impl ParsingContext<'_> {
                 let mut default_present = false;
 
                 self.expect(frontend, TokenValue::LeftBrace)?;
+                // The switch's body is one nested scope, shared by all its cases (GLSL 4.60,
+                // 4.2.2 and 6.2).
+                ctx.symbol_table.push_scope();
                 loop {
                     let value = match self.expect_peek(frontend)?.value {
                         TokenValue::Case => {
@@ -233,6 +242,7 @@ impl ParsingContext<'_> {
                         }
                         TokenValue::RightBrace => {
                             end_meta = self.bump(frontend)?.meta;
+                            ctx.symbol_table.pop_scope();
                             break;
                         }
                         _ => {
@@ -363,9 +373,12 @@ impl ParsingContext<'_> {
 
                     meta.subsume(expr_meta);
 
+                    // The loop's body is scoped to the loop, braced or not (GLSL 4.60, 4.2.2).
+                    ctx.symbol_table.push_scope();
                     if let Some(body_meta) = self.parse_statement(frontend, ctx, &mut None, true)? {
                         meta.subsume(body_meta);
                     }
+                    ctx.symbol_table.pop_scope();
                     Ok(())
                 })?;
 
@@ -385,7 +398,10 @@ impl ParsingContext<'_> {
 
                 let loop_body = ctx.new_body(|ctx| {
                     let mut terminator = None;
+                    // The loop's body is scoped to its end, braced or not (GLSL 4.60, 4.2.2).
+                    ctx.symbol_table.push_scope();
                     self.parse_statement(frontend, ctx, &mut terminator, true)?;
+                    ctx.symbol_table.pop_scope();
 
                     let mut stmt = ctx.stmt_ctx();
 

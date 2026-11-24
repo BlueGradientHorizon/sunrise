@@ -140,6 +140,78 @@ fn a_constructor_in_a_case_label_is_sized_by_the_const_local() {
     }
 }
 
+/// A shader with a global `n` of 3 where `inner` declares a `const` local `n` of 2 in a nested
+/// scope, then sizes an array and labels a case with `n` after that scope has ended.
+fn after_scope(inner: &str) -> Program {
+    fragment(&format!(
+        "uniform int pick;\nconst int n = 3;\nvoid main() {{\nfloat s = 0.0;\n{inner}\nfloat a[n];\n\
+         a[0] = s;\nswitch (pick) {{ case n: a[0] = 1.0; break; default: break; }}\n\
+         gl_FragColor = vec4(a[0]);\n}}\n"
+    ))
+    .unwrap_or_else(|e| panic!("{inner}\n{e:?}"))
+}
+
+/// Sizes and labels with the global `n` of 3 after a scope that declared a local `n` of 2.
+fn assert_global_after(inner: &str, labels_before: &[naga::SwitchValue]) {
+    let program = after_scope(inner);
+    assert_eq!(local_array_sizes(&program), [3], "{inner}");
+    let mut labels = labels_before.to_vec();
+    labels.extend([naga::SwitchValue::I32(3), naga::SwitchValue::Default]);
+    assert_eq!(case_labels(&program), labels, "{inner}");
+}
+
+// A name declared in a nested scope is not in scope after it (GLSL 4.60, 4.2.2): the
+// if-statement and else-statement, a loop's body (braced or not) and a switch's body (6.2).
+
+#[test]
+fn a_const_local_in_a_switch_body_ends_with_the_switch() {
+    assert_global_after(
+        "switch (pick) { default: const int n = 2; s = float(n); break; }",
+        &[naga::SwitchValue::Default],
+    );
+}
+
+#[test]
+fn a_const_local_in_an_unbraced_if_ends_with_it() {
+    assert_global_after("if (pick == 1) const int n = 2;", &[]);
+}
+
+#[test]
+fn a_const_local_in_an_unbraced_else_ends_with_it() {
+    assert_global_after("if (pick == 1) s = 1.0; else const int n = 2;", &[]);
+}
+
+#[test]
+fn a_const_local_in_an_unbraced_while_ends_with_it() {
+    assert_global_after("while (pick > 9) const int n = 2;", &[]);
+}
+
+#[test]
+fn a_const_local_in_an_unbraced_do_ends_with_it() {
+    assert_global_after("do const int n = 2; while (pick > 9);", &[]);
+}
+
+#[test]
+fn a_const_local_in_a_for_or_a_block_ends_with_it() {
+    // Scoped before this change too: guards that they stay so.
+    assert_global_after("for (int i = 0; i < 1; i++) const int n = 2;", &[]);
+    assert_global_after("for (const int n = 2; pick > 9;) s = 1.0;", &[]);
+    assert_global_after("{ const int n = 2; s = float(n); }", &[]);
+}
+
+#[test]
+fn a_const_local_in_one_case_is_in_scope_in_the_next() {
+    // The cases share the switch's one scope (6.2), so a later case sees an earlier one's name.
+    let program = fragment(
+        "uniform int pick;\nvoid main() {\nfloat s = 0.0;\nswitch (pick) {\n\
+         case 0: const int k = 4; s = float(k); break;\n\
+         default: float b[k]; b[0] = 1.0; s = b[0]; break;\n}\n\
+         gl_FragColor = vec4(s);\n}\n",
+    )
+    .unwrap_or_else(|e| panic!("{e:?}"));
+    assert_eq!(local_array_sizes(&program), [4]);
+}
+
 #[test]
 fn names_that_are_not_constant_expressions_still_size_nothing() {
     // A `const` local from a uniform is not a constant expression; one in another function is

@@ -114,6 +114,8 @@ lowered to its low 32 bits (GLSL 4.60 §4.1.3).
 A constant expression inside a function (an array size, a `case` label) names the `const` locals
 in scope there, the innermost declaration of a name first, as a global `const` is named (GLSL
 4.60 §4.3.3); so does a constant expression nested in it (an array constructor's size).
+A name declared in an `if` or `else` statement, a `while` or `do` body (braced or not) or a
+`switch` body is scoped to its end (GLSL 4.60 §4.2.2, §6.2), not to the enclosing block.
 The HLSL backend writes an ordinary level-zero texture sample as `SampleLevel(..., 0.0)`, while
 comparison textures keep `SampleCmpLevelZero`; HLSL has no ordinary `SampleLevelZero` method.
 The shared interpolation defaults also compile with `glsl-in` alone, without needing the
