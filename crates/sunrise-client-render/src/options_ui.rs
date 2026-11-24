@@ -2094,6 +2094,12 @@ fn tooltip_text(s: &Settings, wd: &Widget) -> Option<Text> {
         Act::Push(Page::Accessibility) => Some("options.accessibility.tooltip".into()),
         Act::PvpPreset => Some("sunrise.pvp.preset.tooltip".into()),
         Act::HudEditor => Some("sunrise.pvp.editor.tooltip".into()),
+        // A toggle, choice or colour shows its tooltip as a range's slider does.
+        Act::NativeSetting(i, j) => s
+            .mods
+            .installed
+            .get(*i)
+            .and_then(|m| m.native.as_ref()?.settings.get(*j)?.tooltip.clone()),
         _ => None,
     };
     if let Some(key) = key.filter(|key| lang::has(key)) {
@@ -5690,6 +5696,67 @@ mod tests {
                 value: 4.0
             }
         );
+    }
+
+    /// A native mod's toggle shows the tooltip it registered, as its range slider does
+    /// (`OptionInstance.createButton` hands every kind its `Tooltip`).
+    #[test]
+    fn a_native_toggle_shows_its_tooltip_like_a_slider() {
+        use crate::mod_list::{NativeSetting, NativeSettingValue as V};
+        let key = "native.setting.tooltip";
+        let text = "Shows a mod setting's tooltip.";
+        let mut s = Settings::default();
+        let setting = |name: &str, value| NativeSetting {
+            key: name.into(),
+            label: name.into(),
+            tooltip: Some(key.into()),
+            value,
+        };
+        s.mods.installed.push(crate::mod_list::Installed {
+            id: "native".into(),
+            title: "Native 1.0".into(),
+            description: String::new(),
+            problem: None,
+            dev: false,
+            native: Some(crate::mod_list::NativePage {
+                settings: vec![
+                    setting("trails", V::Toggle(true)),
+                    setting(
+                        "speed",
+                        V::Range {
+                            min: 0.0,
+                            max: 4.0,
+                            step: 1.0,
+                            value: 1.0,
+                        },
+                    ),
+                ],
+                ..Default::default()
+            }),
+        });
+        let mut ui = OptionsUi::default();
+        ui.show(Page::NativeMod(0));
+        let language = lang::Language::of("en_us", [(key.into(), text.into())]);
+        let (tips, _) = lang::scoped(language, || {
+            let (widgets, ..) = ui.layout(&s, 480.0, 240.0);
+            widgets
+                .iter()
+                .filter(|w| {
+                    matches!(
+                        w.kind,
+                        WKind::Button {
+                            act: Act::NativeSetting(0, 0),
+                            ..
+                        } | WKind::Slider {
+                            opt: Opt::ModSetting(0, 1),
+                            ..
+                        }
+                    )
+                })
+                .map(|w| tooltip_text(&s, w).map(|t| t.plain()))
+                .collect::<Vec<_>>()
+        });
+        assert_eq!(tips, [Some(text.to_owned()), Some(text.to_owned())]);
     }
 
     /// Typing goes to the Mods search box once a click focuses it; the one match is selected,
