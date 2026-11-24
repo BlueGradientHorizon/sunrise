@@ -564,7 +564,12 @@ fn a_registered_atlas_sprite_and_a_model_of_one_name_both_survive() {
         }
     );
     let prefixed = format!("minecraft:{raw_name}");
-    assert!(atlas.texture_rect(&prefixed).is_none());
+    // A sprite name a hook resolved with its namespace draws as the raw texture too.
+    assert_eq!(atlas.texture_rect(&prefixed), Some(raw));
+    assert_eq!(
+        atlas.texture_atlas_page(&prefixed),
+        atlas.texture_atlas_page(raw_name)
+    );
     assert_eq!(atlas.gui_rect(&prefixed), Some(raw));
     assert!(
         atlas

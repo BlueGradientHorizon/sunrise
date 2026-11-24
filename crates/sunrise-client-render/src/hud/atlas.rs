@@ -415,7 +415,7 @@ impl HudAtlas {
         self.sprites.get(MISSING_SPRITE)
     }
     /// The rect of a texture by its exact name: the packed sprite, else a registered atlas's
-    /// sprite. The raw lookup of the camera draw; a GUI id goes through [`HudAtlas::gui_lookup`].
+    /// sprite, whose name may carry the `minecraft:` namespace. The raw lookup of the camera draw; a GUI id goes through [`HudAtlas::gui_lookup`].
     pub fn texture_rect(&self, name: &str) -> Option<&Rect> {
         self.sprites.get(name).or_else(|| {
             self.registered

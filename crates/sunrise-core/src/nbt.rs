@@ -1433,55 +1433,11 @@ impl Writer {
         modified_utf8::encode(&string.0, len, &mut self.bytes);
         Ok(())
     }
+    // Only the containers recurse: the entry checks and the leaf arms stay out of the
+    // recursive frame, so a tree at the depth limit fits the writer threads' stacks.
     fn payload(&mut self, tag: &Tag, depth: usize) -> Result<(), Error> {
-        if self.nodes >= self.limits.max_nodes {
-            return Err(self.error("node limit exceeded"));
-        }
-        self.nodes += 1;
-        if matches!(tag, Tag::List(_) | Tag::Compound(_)) && depth >= self.limits.max_depth {
-            return Err(self.error("depth limit exceeded"));
-        }
-        self.charge(match tag {
-            Tag::End => 8,
-            Tag::Byte(_) => 9,
-            Tag::Short(_) => 10,
-            Tag::Int(_) | Tag::Float(_) => 12,
-            Tag::Long(_) | Tag::Double(_) => 16,
-            Tag::ByteArray(_) | Tag::IntArray(_) | Tag::LongArray(_) => 24,
-            Tag::String(_) | Tag::List(_) => 36,
-            Tag::Compound(_) => 48,
-        })?;
+        self.enter(tag, depth)?;
         match tag {
-            Tag::End => {}
-            Tag::Byte(v) => self.put(&[*v as u8])?,
-            Tag::Short(v) => self.put(&v.to_be_bytes())?,
-            Tag::Int(v) => self.put(&v.to_be_bytes())?,
-            Tag::Long(v) => self.put(&v.to_be_bytes())?,
-            Tag::Float(v) => self.put(
-                &if self.canonical_nan && f32::from_bits(*v).is_nan() {
-                    0x7fc0_0000_u32
-                } else {
-                    *v
-                }
-                .to_be_bytes(),
-            )?,
-            Tag::Double(v) => self.put(
-                &if self.canonical_nan && f64::from_bits(*v).is_nan() {
-                    0x7ff8_0000_0000_0000_u64
-                } else {
-                    *v
-                }
-                .to_be_bytes(),
-            )?,
-            Tag::ByteArray(v) => {
-                self.charge(v.len() as u64)?;
-                self.count(v.len())?;
-                self.put(v)?;
-            }
-            Tag::String(v) => {
-                self.charge(2 * v.0.len() as u64)?;
-                self.string(v)?
-            }
             Tag::List(values) => {
                 if values.iter().any(|v| matches!(v, Tag::End)) {
                     return Err(self.error("End cannot be a list element"));
@@ -1526,6 +1482,63 @@ impl Writer {
                 }
                 self.put(&[0])?;
             }
+            _ => self.leaf(tag)?,
+        }
+        Ok(())
+    }
+    #[inline(never)]
+    fn enter(&mut self, tag: &Tag, depth: usize) -> Result<(), Error> {
+        if self.nodes >= self.limits.max_nodes {
+            return Err(self.error("node limit exceeded"));
+        }
+        self.nodes += 1;
+        if matches!(tag, Tag::List(_) | Tag::Compound(_)) && depth >= self.limits.max_depth {
+            return Err(self.error("depth limit exceeded"));
+        }
+        self.charge(match tag {
+            Tag::End => 8,
+            Tag::Byte(_) => 9,
+            Tag::Short(_) => 10,
+            Tag::Int(_) | Tag::Float(_) => 12,
+            Tag::Long(_) | Tag::Double(_) => 16,
+            Tag::ByteArray(_) | Tag::IntArray(_) | Tag::LongArray(_) => 24,
+            Tag::String(_) | Tag::List(_) => 36,
+            Tag::Compound(_) => 48,
+        })
+    }
+    #[inline(never)]
+    fn leaf(&mut self, tag: &Tag) -> Result<(), Error> {
+        match tag {
+            Tag::End => {}
+            Tag::Byte(v) => self.put(&[*v as u8])?,
+            Tag::Short(v) => self.put(&v.to_be_bytes())?,
+            Tag::Int(v) => self.put(&v.to_be_bytes())?,
+            Tag::Long(v) => self.put(&v.to_be_bytes())?,
+            Tag::Float(v) => self.put(
+                &if self.canonical_nan && f32::from_bits(*v).is_nan() {
+                    0x7fc0_0000_u32
+                } else {
+                    *v
+                }
+                .to_be_bytes(),
+            )?,
+            Tag::Double(v) => self.put(
+                &if self.canonical_nan && f64::from_bits(*v).is_nan() {
+                    0x7ff8_0000_0000_0000_u64
+                } else {
+                    *v
+                }
+                .to_be_bytes(),
+            )?,
+            Tag::ByteArray(v) => {
+                self.charge(v.len() as u64)?;
+                self.count(v.len())?;
+                self.put(v)?;
+            }
+            Tag::String(v) => {
+                self.charge(2 * v.0.len() as u64)?;
+                self.string(v)?
+            }
             Tag::IntArray(v) => {
                 self.charge(4 * v.len() as u64)?;
                 self.count(v.len())?;
@@ -1540,6 +1553,7 @@ impl Writer {
                     self.put(&item.to_be_bytes())?;
                 }
             }
+            Tag::List(_) | Tag::Compound(_) => unreachable!("containers are written by payload"),
         }
         Ok(())
     }
