@@ -673,6 +673,22 @@ impl Game<'_> {
         }
     }
 
+    /// `AbstractContainerMenu.getStateId`: on a client the value the server last sent for the
+    /// open menu, on a server the open menu's counter or the inventory menu's.
+    pub(super) fn menu_state_id(&self, menu: MenuRef) -> Option<i32> {
+        if let Some(remote) = self.remote.as_ref() {
+            self.native_client_menu_name(menu)?;
+            return Some(remote.state_id);
+        }
+        let guest = self.native_menu_guest(menu)?;
+        Some(
+            guest
+                .menu
+                .as_ref()
+                .map_or(guest.menu_state, |open| open.state),
+        )
+    }
+
     /// Carried (cursor) stack; outer None means unavailable.
     pub(super) fn menu_carried(&self, menu: MenuRef) -> Option<Option<ItemStack>> {
         if self.remote.is_some() {

@@ -522,7 +522,7 @@ impl PlacementModifier {
                 let mut failure = None;
                 let result = modifier.modify(
                     &mut mod_placements::PlacementRunContext::new(context, &budget),
-                    &mut mod_placements::EngineRandom(&random),
+                    &mut super::mod_random::EngineRandom(&random),
                     position,
                     &mut |pos| {
                         if budget.get() == 0 {

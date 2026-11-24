@@ -10,6 +10,7 @@ in client setup.
 | `text_split(&Text, i32)` | `Vec<Text>`: wrapped, styled lines. |
 | `visit_text_visual_order(&Text, visit)` | Lends a styled character on each call, in display order; returns whether the visitor finished. |
 | `visit_text_lines(&Text, spec, visit)` | Lends logical-order wrapped lines and returns the layout dimensions. |
+| `language_right_to_left()` | `bool`: whether the active language reads right to left (`Language.isDefaultRightToLeft` / `Font.isBidirectional`), for laying out a row of GUI or tooltip pieces in reading order. |
 
 `ClientHost::visit_text_lines` takes a `TextLayoutSpec` with `max_width`, `align` and `scale`.
 The font wraps at `max_width / scale`. The visitor receives a borrowed `Text` with applied styles
@@ -19,7 +20,8 @@ only reads those dimensions. Invalid width, scale or non-finite scaled geometry 
 `TextLayoutError` without visiting any lines. To paint a label, use [the canvas's wrapped draw](screens.md#labels-wrapped-text-without-a-widget)
 rather than retaining and redrawing the lines.
 
-Build an owned `Text` directly with `Text::literal`, `Text::translate` or
+Build an owned `Text` directly with `Text::literal`, `Text::translate`,
+`Text::translate_with_fallback` (a template a language without the key formats instead) or
 `Text::new(TextContent::…)`. Use `with_style` to set the style and `append` to
 add an ordered child, then pass `&text` to the host read. In-process text reads
 (`text_string`, `text_width`, `text_split`, `visit_text_visual_order`, and

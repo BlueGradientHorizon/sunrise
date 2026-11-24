@@ -213,6 +213,24 @@ fn open(game: &mut Game<'_>, key: MenuKey) -> (i32, MenuRef) {
     (window, game.player_container_menu(player).unwrap())
 }
 
+/// `AbstractContainerMenu.getStateId` on a server (#5323): the open menu's handle reads the state
+/// its opening content was sent with.
+#[test]
+#[ignore = "daily"]
+fn an_open_menus_state_id_is_the_one_its_content_was_sent_with() {
+    with_owned_menu(false, |game, rx, key| {
+        let (window, menu) = open(game, key);
+        let state = sent(&rx)
+            .iter()
+            .find_map(|p| match p {
+                C::ContainerSetContent(p) if p.container == window => Some(p.state),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(menu.state_id(game), Some(state));
+    });
+}
+
 fn click(game: &mut Game<'_>, container: i32, slot: i16) {
     game.lan_guest_packet(
         1,
