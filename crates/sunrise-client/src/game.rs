@@ -3342,6 +3342,12 @@ struct Game<'a> {
     pack_reload: Option<packs::PackReload>,
     /// A server's resource packs (game/world/server_packs.rs).
     server_packs: server_packs::ServerPackState,
+    /// The window's inbox for server notices, kept across world disconnects.
+    client_reports: Arc<sunrise_client::chunk_io::Reports>,
+    /// A command the player didn't type, waiting for their answer
+    /// (game/network/remote_chat.rs).
+    command_prompt: Option<remote_chat::CommandPrompt>,
+    dialogs: dialogs::DialogState,
     /// Single player's server while it loads its world (`Minecraft.doWorldLoad`).
     integrated_starting: Option<integrated::Starting>,
     collision: &'a BlockCollisionRegistry<'a>,
@@ -3390,11 +3396,19 @@ struct Game<'a> {
     creative: bool,
     /// The game mode; `creative` mirrors `mode == Creative`.
     mode: sunrise_client::command::args::GameMode,
+    /// The monitor whose video modes `settings.video_modes` holds.
+    video_modes: sunrise_client::window::VideoModeList,
     /// Minecraft.pause: a single-player screen that pauses the game is open.
     pause: bool,
     screen_state: screen_build::ScreenState,
     window: Option<Arc<Window>>,
     renderer: Option<Renderer>,
+    /// Mob models posed on the GPU (`Frame::skin`, `mobs::skin`): the models stored there,
+    /// and this frame's draws.
+    skin_models: std::cell::RefCell<sunrise_client::mobs::skin::SkinModels>,
+    /// The level random a block part's `animate_tick` holds as `event.random`, while it runs:
+    /// the game's own draws during the call go through it (`with_lent_level_random`).
+    lent_level_random: Option<std::rc::Rc<std::cell::RefCell<mod_api::LegacyRandomSource>>>,
     previous: Instant,
     /// Controllers (Sunrise's own).
     pad: pad::Pads,
@@ -3433,6 +3447,7 @@ struct Game<'a> {
     mob_index: mob_index::MobIndex,
     creatures: creatures::Creatures,
     sculk: sculk::SculkState,
+    raiding: raids::Raiding,
     /// Client-ticked block-entity animation state (`game/blocks/block_entity_anims.rs`).
     be_anims: sunrise_client::block_entity_anim::BlockEntityAnims,
     /// Item being used (eaten): hotbar slot and ticks used.
@@ -3489,6 +3504,8 @@ struct Game<'a> {
     portals: nether_portal::Portals,
     end: end::EndState,
     block_ticks: Ticks,
+    tickets: sunrise_client::ticket_levels::ChunkTickets,
+    random_tick_sections: sunrise_client::random_tick_sections::RandomTickSections,
     level_events: Vec<LevelEvent>,
     falling: sunrise_client::join_seq::JoinList<FallingBlock, false>,
     paintings: sunrise_client::join_seq::JoinList<sunrise_client::entities::Painting>,
@@ -3509,6 +3526,7 @@ struct Game<'a> {
     dragon: native_entity_refs::dragon_parts_table::DragonSlot,
     crystals: sunrise_client::join_seq::JoinList<dragon::Crystal>,
     breath_clouds: sunrise_client::join_seq::ResidentList<dragon::Breath>,
+    text_displays: indexmap::IndexMap<i32, text_displays::RemoteTextDisplay>,
     /// Player skin downloads, and which skin each atlas skin slot holds
     /// (least recently shown first).
     skin_downloads: RefCell<sunrise_client::skins::Downloader>,
@@ -3547,6 +3565,8 @@ struct Game<'a> {
     trial_spawner_tick_positions: Vec<sunrise_client::block_entities::Pos>,
     /// The `[[native.loop]]` slots' state, per published loop (`published_loops.rs`).
     loop_states: published_loops::LoopStates,
+    creative_screen: Creative,
+    creative_contents: native_hooks::CreativeCache,
     control: Option<sunrise_client::control::Server>,
     /// This play session's frame and tick times, for opt-in performance statistics.
     perf: sunrise_client::telemetry::Session,
@@ -3623,13 +3643,18 @@ struct Game<'a> {
     /// The open world is shared behind an invite code (game/network/friends.rs).
     #[cfg(feature = "friends")]
     friends: Option<friends::Sharing>,
+    world_options: Option<lan_screen::WorldOptions>,
     command_block_screen: Option<command_blocks::CommandBlockScreen>,
+    block_editor: Option<block_editor::BlockEditScreen>,
     /// The game tests read so far, by id (the test instance registry).
     test_defs: std::cell::RefCell<HashMap<String, Option<test_instances::TestDef>>>,
     /// `GameTestTicker.SINGLETON`: the game tests running on this server.
     game_tests: game_tests::GameTests,
     /// Startup declarations shared by F3 options, the overlay and renderer selection.
     registered_debug_entries: std::sync::Arc<[sunrise_client::debug_entries::RegisteredDebugEntry]>,
+    /// `Minecraft.debugEntries`: what the overlay and the debug renderers
+    /// show (`debug-profile.json`, F3+F6).
+    debug_entries: sunrise_client::debug_entries::DebugEntries,
     /// The passages mods registered in each level, and a client's copy (`native_passages.rs`).
     passages: native_passages::Passages,
     /// MultiPlayerGameMode.previousLocalPlayerMode (F3+N goes back to it).
@@ -3645,17 +3670,35 @@ struct Game<'a> {
     /// A mod asked for the command trees again (`native_refresh_commands`):
     /// the next server tick asks every mod for its commands and resends them.
     native_commands: native_server::NativeCommandState,
+    /// Other players in the current guest turn, including borrowed ancestor bodies.
+    lan_building_boxes: building_players::BuildingPlayers,
+    /// Bodies and their statistics displaced by guest turns, outer first.
+    lan_displaced_players: Vec<lan_actions::DisplacedPlayer>,
     /// Live attachments and original snapshots retained during player replacement.
     player_state: original_player::PlayerState,
+    /// A fake player's `perform_action` in progress, and what it refused.
+    fake_action: std::sync::Arc<native_server::FakeAction>,
+    /// A dedicated server's operator, whitelist and ban lists, for `/op`,
+    /// `/ban` and friends (`DedicatedPlayerList`).
+    server_lists: Option<std::sync::Arc<std::sync::Mutex<dedicated::Lists>>>,
+    /// State of `/spectate`, `/posteffect`, `/debug`, `/waypoint` and friends.
+    cmds: commands::extra::CommandExtras,
     /// The retained server reload listeners of the last successful reload.
     reload_resources: mod_api::RetainedListeners,
     ui: chat::UiState,
+    combat: combat::CombatTracker,
+    /// Each guest's own `CombatTracker`, out of `combat` between turns.
+    guest_combat: std::collections::HashMap<u32, combat::CombatTracker>,
     mount: mounts::MountState,
     stats: stats::Stats,
     score: scoreboard::ScoreState,
     fns: functions::FnState,
+    exec: commands::execute::ExecState,
     border: sunrise_client::worldborder::WorldBorder,
+    /// `Hud.tabList`: the player list's header, footer and heart states.
+    tab_list: sunrise_client::tab_list::TabList,
     adv: advancements::AdvState,
+    adv_ui: advancements_screen::AdvUi,
     fangs: fangs::FangState,
     pub(in crate::game) server: ServerState,
     pub(in crate::game) client: ClientState,
@@ -12871,6 +12914,7 @@ struct ConstructPrep {
     save: Arc<SaveDir>,
     painting_variants: paintings::PaintingVariants,
     armor_stand_assets: armor_stands::ArmorStandAssets,
+    creative_screen: Creative,
     client_prepared: Box<client_state::ClientCpuResources>,
     world: World,
     tutorial: tutorial::Tutorial,
@@ -12892,6 +12936,7 @@ struct ConstructEffects {
     skin_downloads: RefCell<sunrise_client::skins::Downloader>,
     skin_profiles: RefCell<sunrise_client::skins::Resolver>,
     registered_debug_entries: std::sync::Arc<[sunrise_client::debug_entries::RegisteredDebugEntry]>,
+    debug_entries: sunrise_client::debug_entries::DebugEntries,
     ui: chat::UiState,
     client: Box<client_state::ClientConstructEffects>,
 }
@@ -13049,13 +13094,13 @@ impl<'a> Game<'a> {
             bee_stinger_model,
             trident_model,
             entity_models,
-            creative_screen,
         });
         Ok(Box::new(ConstructPrep {
             level,
             save,
             painting_variants,
             armor_stand_assets,
+            creative_screen,
             client_prepared,
             world,
             tutorial,
@@ -13117,7 +13162,6 @@ impl<'a> Game<'a> {
             frame_clock,
             narration,
             tick_script,
-            debug_entries,
         });
         Box::new(ConstructEffects {
             structure_spawns,
@@ -13125,6 +13169,7 @@ impl<'a> Game<'a> {
             skin_downloads,
             skin_profiles,
             registered_debug_entries,
+            debug_entries,
             ui,
             client,
         })
@@ -13157,6 +13202,9 @@ impl<'a> Game<'a> {
             pending_entry: None,
             pack_reload: None,
             server_packs: Default::default(),
+            client_reports: Arc::default(),
+            command_prompt: None,
+            dialogs: Default::default(),
             integrated_starting: None,
             collision: res.collision(),
             motion: res.motion(),
@@ -13195,10 +13243,13 @@ impl<'a> Game<'a> {
             } else {
                 sunrise_client::command::args::GameMode::Survival
             },
+            video_modes: Default::default(),
             pause: false,
             screen_state: screen_build::ScreenState::default(),
             window: None,
             renderer: None,
+            skin_models: Default::default(),
+            lent_level_random: None,
             previous: prep.now,
             pad: Default::default(),
             live_scenes: Default::default(),
@@ -13223,6 +13274,7 @@ impl<'a> Game<'a> {
             mob_index: Default::default(),
             creatures: Default::default(),
             sculk: Default::default(),
+            raiding: Default::default(),
             be_anims: {
                 let mut anims = sunrise_client::block_entity_anim::BlockEntityAnims::default();
                 anims.classify(registry);
@@ -13255,6 +13307,8 @@ impl<'a> Game<'a> {
             portals: Default::default(),
             end: Default::default(),
             block_ticks: Ticks::new(0),
+            tickets: Default::default(),
+            random_tick_sections: Default::default(),
             level_events: Vec::new(),
             falling: Default::default(),
             paintings: Default::default(),
@@ -13272,6 +13326,7 @@ impl<'a> Game<'a> {
             dragon: Default::default(),
             crystals: Default::default(),
             breath_clouds: Default::default(),
+            text_displays: Default::default(),
             skin_downloads: effects.skin_downloads,
             skin_profiles: effects.skin_profiles,
             riding: None,
@@ -13290,6 +13345,8 @@ impl<'a> Game<'a> {
             spawner_tick_positions: Vec::new(),
             trial_spawner_tick_positions: Vec::new(),
             loop_states: Default::default(),
+            creative_screen: prep.creative_screen,
+            creative_contents: Default::default(),
             control: None,
             perf: Default::default(),
             pending_screenshot: None,
@@ -13333,10 +13390,13 @@ impl<'a> Game<'a> {
             serving: None,
             #[cfg(feature = "friends")]
             friends: None,
+            world_options: None,
             command_block_screen: None,
+            block_editor: None,
             test_defs: std::cell::RefCell::new(HashMap::new()),
             game_tests: game_tests::GameTests::default(),
             registered_debug_entries: effects.registered_debug_entries,
+            debug_entries: effects.debug_entries,
             passages: Default::default(),
             previous_mode: None,
             clipboard: Default::default(),
@@ -13344,16 +13404,26 @@ impl<'a> Game<'a> {
             entity_reach: 3.0,
             block_reach: 4.5,
             native_commands: Default::default(),
+            lan_building_boxes: Default::default(),
+            lan_displaced_players: Vec::new(),
             player_state: Default::default(),
+            fake_action: Default::default(),
+            server_lists: None,
+            cmds: Default::default(),
             server_items: None,
             reload_resources: Default::default(),
             ui: effects.ui,
+            combat: Default::default(),
+            guest_combat: Default::default(),
             mount: Default::default(),
             stats: Default::default(),
             score: Default::default(),
             fns: Default::default(),
+            exec: Default::default(),
             border: Default::default(),
+            tab_list: Default::default(),
             adv: Default::default(),
+            adv_ui: Default::default(),
             fangs: Default::default(),
             server: ServerState::new(effects.structure_spawns),
             client: ClientState::new(

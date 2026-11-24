@@ -43,7 +43,6 @@ pub(in crate::game) struct ServerState {
     /// Chunks a respawn search waits for this tick, kept loading beside the
     /// player's own (taken by `update_world`).
     pub(in crate::game) spawn_wait: Vec<(i32, i32)>,
-    pub(in crate::game) raiding: raids::Raiding,
     pub(in crate::game) attack_ticks: u32,
     /// The main hand's item at the last player tick, whose attack damage and
     /// speed modifiers apply (`LivingEntity.detectEquipmentUpdates`): a hotbar
@@ -110,9 +109,6 @@ pub(in crate::game) struct ServerState {
     pub(in crate::game) end_portal_travel: bool,
     pub(in crate::game) tick_scratch: TickScratch,
     pub(in crate::game) tick_chunks: sunrise_client::tick_chunk_membership::TickChunkMembership,
-    pub(in crate::game) tickets: sunrise_client::ticket_levels::ChunkTickets,
-    pub(in crate::game) random_tick_sections:
-        sunrise_client::random_tick_sections::RandomTickSections,
     /// Worn armor as of the last equipment check (frost walker).
     pub(in crate::game) location_armor: [Option<ItemStack>; 4],
     /// The boats a mob's lead can hang on, for this tick's mob ticks.
@@ -244,15 +240,11 @@ pub(in crate::game) struct ServerState {
     /// The abilities of the server player whose turn it is (`as_guest`): their record's
     /// copy, which the turn reads and writes and the put-back at the end of `guest_turn` stores. None outside a turn.
     pub(in crate::game) acting_abilities: Option<sunrise_client::lan::abilities::PlayerAbilities>,
-    /// Other players in the current guest turn, including borrowed ancestor bodies.
-    pub(in crate::game) lan_building_boxes: building_players::BuildingPlayers,
     /// A guest's `/save-all`: saved once their turn ends (`run_guest_command`),
     /// when their own state is back in their record.
     pub(in crate::game) save_after_guest_turn: bool,
     /// Guests whose records are displaced by nested player swaps, outer first.
     pub(in crate::game) lan_guest_swaps: Vec<u32>,
-    /// Bodies and their statistics displaced by guest turns, outer first.
-    pub(in crate::game) lan_displaced_players: Vec<lan_actions::DisplacedPlayer>,
     /// Connections whose turn a panic interrupted this tick: the turn helpers record the
     /// player before re-raising, the end-of-turn path records it before its callbacks run and
     /// clears it after a clean put-back. Cleared at the start of every server tick; the crash
@@ -289,8 +281,6 @@ pub(in crate::game) struct ServerState {
     pub(in crate::game) lan_acting_entity: Option<u32>,
     /// Whether the player currently swapped into the game is connectionless.
     pub(in crate::game) lan_acting_fake: bool,
-    /// A fake player's `perform_action` in progress, and what it refused.
-    pub(in crate::game) fake_action: std::sync::Arc<native_server::FakeAction>,
     /// Command feedback to forward to a guest.
     pub(in crate::game) chat_capture: Option<Vec<sunrise_client::text::Text>>,
     /// Packets for the guest acting now, sent once its action returns.
@@ -324,16 +314,7 @@ pub(in crate::game) struct ServerState {
     /// The command the console is running came over RCON: its source is named `Rcon`
     /// (`RconConsoleSource.createCommandSourceStack`), not `Server`.
     pub(in crate::game) rcon_source: bool,
-    /// A dedicated server's operator, whitelist and ban lists, for `/op`,
-    /// `/ban` and friends (`DedicatedPlayerList`).
-    pub(in crate::game) server_lists: Option<std::sync::Arc<std::sync::Mutex<dedicated::Lists>>>,
-    /// State of `/spectate`, `/posteffect`, `/debug`, `/waypoint` and friends.
-    pub(in crate::game) cmds: commands::extra::CommandExtras,
-    pub(in crate::game) combat: combat::CombatTracker,
-    /// Each guest's own `CombatTracker`, out of `combat` between turns.
-    pub(in crate::game) guest_combat: std::collections::HashMap<u32, combat::CombatTracker>,
     pub(in crate::game) bosses: bossbars::BossState,
-    pub(in crate::game) exec: commands::execute::ExecState,
     pub(in crate::game) rand_sequences: sunrise_client::random_sequences::RandomSequences,
     /// `BrushableBlockEntity`'s brush counts of the blocks being brushed.
     pub(in crate::game) brushing: brush::Brushing,
@@ -364,7 +345,6 @@ impl ServerState {
             spawn_spiral: Default::default(),
             player_spawn: None,
             spawn_wait: Vec::new(),
-            raiding: Default::default(),
             attack_ticks: 100,
             attack_item: None,
             last_hurt_by_player: HashMap::new(),
@@ -396,8 +376,6 @@ impl ServerState {
             end_portal_travel: false,
             tick_scratch: TickScratch::default(),
             tick_chunks: Default::default(),
-            tickets: Default::default(),
-            random_tick_sections: Default::default(),
             location_armor: Default::default(),
             leash_boats: Vec::new(),
             watched_vehicles: Vec::new(),
@@ -454,10 +432,8 @@ impl ServerState {
             lid_openers: HashMap::new(),
             lan_acting: None,
             acting_abilities: None,
-            lan_building_boxes: Default::default(),
             save_after_guest_turn: false,
             lan_guest_swaps: Vec::new(),
-            lan_displaced_players: Vec::new(),
             interrupted_turns: Vec::new(),
             crash_save: Default::default(),
             lan_ender_menus: Vec::new(),
@@ -477,17 +453,11 @@ impl ServerState {
             lan_acting_spawn_protection: None,
             lan_acting_entity: None,
             lan_acting_fake: false,
-            fake_action: Default::default(),
             chat_capture: None,
             admin_feedback: Vec::new(),
             console_broadcast: None,
             rcon_source: false,
-            server_lists: None,
-            cmds: Default::default(),
-            combat: Default::default(),
-            guest_combat: Default::default(),
             bosses: Default::default(),
-            exec: Default::default(),
             rand_sequences: Default::default(),
             brushing: Default::default(),
             restore_player_state: true,

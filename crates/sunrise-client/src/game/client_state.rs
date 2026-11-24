@@ -18,16 +18,10 @@ pub(in crate::game) struct ClientState {
     /// Its `LoadingOverlay`, up from the reload's start until it has faded
     /// out after it: no input reaches the game meanwhile.
     pub(in crate::game) reload_overlay: Option<packs::ReloadOverlay>,
-    /// The window's inbox for server notices, kept across world disconnects.
-    pub(in crate::game) client_reports: Arc<sunrise_client::chunk_io::Reports>,
     /// The link a chat click asks to open (`ConfirmLinkScreen`).
     pub(in crate::game) link_prompt: Option<String>,
-    /// A command the player didn't type, waiting for their answer
-    /// (game/network/remote_chat.rs).
-    pub(in crate::game) command_prompt: Option<remote_chat::CommandPrompt>,
     /// A server's Code of Conduct to accept (game/interface/code_of_conduct.rs).
     pub(in crate::game) code_of_conduct: Option<code_of_conduct::Prompt>,
-    pub(in crate::game) dialogs: dialogs::DialogState,
     pub(in crate::game) world_renderer_ready: bool,
     pub(in crate::game) instance_groups:
         std::cell::RefCell<native_instance_groups::InstanceGroupStorage>,
@@ -125,8 +119,6 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game) modifiers: winit::keyboard::ModifiersState,
     /// The window's fullscreen request and reported state.
     pub(in crate::game) fullscreen: sunrise_client::window::FullscreenState,
-    /// The monitor whose video modes `settings.video_modes` holds.
-    pub(in crate::game) video_modes: sunrise_client::window::VideoModeList,
     /// MouseHandler's accumulated look and wheel state.
     pub(in crate::game) mouse: MouseLook,
     /// An agent moved the mouse (`mouse-move`) since the pointer was last
@@ -168,9 +160,6 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game) entity_motion: std::cell::RefCell<Vec<(u32, u64)>>,
     /// The GPU-posed vertex count at each of `entity_motion`'s marks (`Frame::entity_motion_posed`).
     pub(in crate::game) entity_motion_posed: std::cell::RefCell<Vec<u32>>,
-    /// Mob models posed on the GPU (`Frame::skin`, `mobs::skin`): the models stored there,
-    /// and this frame's draws.
-    pub(in crate::game) skin_models: std::cell::RefCell<sunrise_client::mobs::skin::SkinModels>,
     pub(in crate::game) skin_frame: std::cell::RefCell<sunrise_client::gfx::entity_skin::SkinFrame>,
     /// The glowing entities' silhouettes this frame (game/entities/glowing.rs).
     pub(in crate::game) glowing_vertices: std::cell::RefCell<Vec<Vertex>>,
@@ -180,10 +169,6 @@ pub(in crate::game) struct ClientState {
     /// A client mod asked to clear the particles (`clear_particles`), done before
     /// the next frame or particle tick (`apply_mod_particle_clear`).
     pub(in crate::game) mod_clear_particles: std::cell::Cell<bool>,
-    /// The level random a block part's `animate_tick` holds as `event.random`, while it runs:
-    /// the game's own draws during the call go through it (`with_lent_level_random`).
-    pub(in crate::game) lent_level_random:
-        Option<std::rc::Rc<std::cell::RefCell<mod_api::LegacyRandomSource>>>,
     /// The shader pack's entity and block entity ids, while one draws entities.
     pub(in crate::game) pack_ids: Option<shader_packs::PackIds>,
     pub(in crate::game) started: Instant,
@@ -367,7 +352,6 @@ pub(in crate::game) struct ClientState {
     /// Map textures waiting for the next HUD batch to upload them.
     pub(in crate::game) map_patches: Vec<sunrise_client::font::Patch>,
     pub(in crate::game) name_tag_layouts: names::NameTagLayouts,
-    pub(in crate::game) text_displays: indexmap::IndexMap<i32, text_displays::RemoteTextDisplay>,
     pub(in crate::game) see_through_collector: text_displays::SeeThroughCollector,
     pub(in crate::game) translucent_display_collector: text_displays::TranslucentDisplayCollector,
     pub(in crate::game) display_visible_scratch: Vec<(i32, f64)>,
@@ -390,10 +374,8 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game) trident_model: Option<sunrise_client::mobs::Part>,
     pub(in crate::game) arrow_model: Option<sunrise_client::mobs::Part>,
     pub(in crate::game) bee_stinger_model: Option<sunrise_client::mobs::Part>,
-    pub(in crate::game) creative_screen: Creative,
     /// The creative search projection whose stacks the mods' `item_name` parts last named.
     pub(in crate::game) creative_search_named: Option<u64>,
-    pub(in crate::game) creative_contents: native_hooks::CreativeCache,
     /// `CreativeModeInventoryScreen.ignoreTextInput`: the chat key opened the
     /// search tab, so the letter it carries is not typed into the box.
     pub(in crate::game) creative_ignore_text: bool,
@@ -446,10 +428,8 @@ pub(in crate::game) struct ClientState {
     pub(super) studio: studio::Studio,
     /// The Social Interactions screen and the players whose chat is hidden (game/network/social.rs).
     pub(in crate::game) social: social::Social,
-    pub(in crate::game) world_options: Option<lan_screen::WorldOptions>,
     /// Chat Settings opened from RestrictionsScreen: Done returns to World Options.
     pub(in crate::game) options_to_world_options: bool,
-    pub(in crate::game) block_editor: Option<block_editor::BlockEditScreen>,
     /// `GameTestBlockHighlightRenderer.markers`: block, text, removal time.
     pub(in crate::game) test_highlights: HashMap<(i32, i32, i32), (String, std::time::Instant)>,
     /// KeyboardHandler's debug key state (game/interface/debug_keys.rs), the physical
@@ -457,9 +437,6 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game) debug_keys: sunrise_client::debug_keys::DebugKeys,
     /// The F3 overlay's charts (F3+2, F3+3).
     pub(in crate::game) debug_charts: sunrise_client::debug_chart::DebugCharts,
-    /// `Minecraft.debugEntries`: what the overlay and the debug renderers
-    /// show (`debug-profile.json`, F3+F6).
-    pub(in crate::game) debug_entries: sunrise_client::debug_entries::DebugEntries,
     /// `DebugOptionsScreen` while it is open (game/interface/debug_options.rs).
     pub(in crate::game) debug_options: Option<debug_options::DebugOptionsUi>,
     /// `DebugEntryMemory`'s readings (game/interface/debug_lines.rs).
@@ -513,11 +490,8 @@ pub(in crate::game) struct ClientState {
     /// The camera's 16-block section when the wall was last invalidated.
     pub(in crate::game) border_section: Option<[i32; 3]>,
     pub(in crate::game) border_state: sunrise_client::border_render::BorderRenderState,
-    /// `Hud.tabList`: the player list's header, footer and heart states.
-    pub(in crate::game) tab_list: sunrise_client::tab_list::TabList,
     pub(in crate::game) subtitles: subtitle_hud::SubtitleState,
     pub(in crate::game) stats_ui: stats_screen::StatsUi,
-    pub(in crate::game) adv_ui: advancements_screen::AdvUi,
     /// The Server Links screens' state (game/network/server_links.rs).
     pub(in crate::game) links_ui: server_links::LinksUi,
     pub(in crate::game) camera_type: sunrise_client::camera::CameraType,
@@ -542,7 +516,6 @@ pub(in crate::game) struct ClientCpuResources {
     pub(in crate::game) bee_stinger_model: Option<sunrise_client::mobs::Part>,
     pub(in crate::game) trident_model: Option<sunrise_client::mobs::Part>,
     pub(in crate::game) entity_models: EntityModels,
-    pub(in crate::game) creative_screen: Creative,
 }
 
 pub(in crate::game) struct ClientConstructEffects {
@@ -554,7 +527,6 @@ pub(in crate::game) struct ClientConstructEffects {
     pub(in crate::game) frame_clock: sunrise_client::window::SystemClock,
     pub(in crate::game) narration: sunrise_client::screen_narrator::ScreenNarrator,
     pub(in crate::game) tick_script: tick_script::TickScript,
-    pub(in crate::game) debug_entries: sunrise_client::debug_entries::DebugEntries,
 }
 
 impl ClientState {
@@ -574,11 +546,8 @@ impl ClientState {
             frame_attempted: render_settings::FrameAttempt::default(),
             pack_folder: None,
             reload_overlay: None,
-            client_reports: Arc::default(),
             link_prompt: None,
-            command_prompt: None,
             code_of_conduct: None,
-            dialogs: Default::default(),
             world_renderer_ready: false,
             instance_groups: Default::default(),
             standalone_geometry,
@@ -629,7 +598,6 @@ impl ClientState {
             focus_lost: None,
             modifiers: winit::keyboard::ModifiersState::empty(),
             fullscreen: sunrise_client::window::FullscreenState::new(false),
-            video_modes: Default::default(),
             mouse: MouseLook::default(),
             agent_pointer: false,
             smooth_camera: false,
@@ -650,12 +618,10 @@ impl ClientState {
             entity_runs: Vec::new(),
             entity_motion: Default::default(),
             entity_motion_posed: Default::default(),
-            skin_models: Default::default(),
             skin_frame: Default::default(),
             glowing_vertices: Default::default(),
             mod_sounds: Default::default(),
             mod_clear_particles: Default::default(),
-            lent_level_random: None,
             pack_ids: None,
             health_hud: effects.health_hud,
             started: now,
@@ -752,7 +718,6 @@ impl ClientState {
             dragon_model: prepared.dragon_model,
             map_patches: Vec::new(),
             name_tag_layouts: Default::default(),
-            text_displays: Default::default(),
             see_through_collector: Default::default(),
             translucent_display_collector: Default::default(),
             display_visible_scratch: Vec::new(),
@@ -769,9 +734,7 @@ impl ClientState {
             trident_model: prepared.trident_model,
             arrow_model: prepared.arrow_model,
             bee_stinger_model: prepared.bee_stinger_model,
-            creative_screen: prepared.creative_screen,
             creative_search_named: None,
-            creative_contents: Default::default(),
             creative_ignore_text: false,
             agent_control_on: false,
             agent_last: None,
@@ -795,14 +758,11 @@ impl ClientState {
             retry_due: None,
             window_title: None,
             studio: Default::default(),
-            world_options: None,
             options_to_world_options: false,
-            block_editor: None,
             test_highlights: HashMap::new(),
             social: Default::default(),
             debug_keys: Default::default(),
             debug_charts: Default::default(),
-            debug_entries: effects.debug_entries,
             debug_options: None,
             memory_meter: Default::default(),
             debug_paint: Default::default(),
@@ -828,10 +788,8 @@ impl ClientState {
             border_renderer: Default::default(),
             border_section: None,
             border_state: Default::default(),
-            tab_list: Default::default(),
             subtitles: Default::default(),
             stats_ui: Default::default(),
-            adv_ui: Default::default(),
             links_ui: Default::default(),
             camera_type: Default::default(),
             requested_camera_type: Default::default(),
