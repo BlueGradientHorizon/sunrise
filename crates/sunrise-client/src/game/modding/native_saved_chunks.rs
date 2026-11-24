@@ -496,8 +496,8 @@ mod tests {
             assert!(snap.block_state(0, -1, 0).is_none());
             assert!(snap.block_state(0, 256, 0).is_none());
             assert_eq!(
-                snap.heightmap(mod_api::HeightmapKind::WorldSurface, 1, 1),
-                0,
+                snap.heightmap(mod_api::Heightmap::WorldSurface, 1, 1),
+                Some(0),
                 "empty column heightmap in Nether returns min_y (0), not -64"
             );
 
