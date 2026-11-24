@@ -61,6 +61,8 @@ pub(crate) struct Installed {
     pub(crate) pool_element_types: Vec<crate::world::pool_element::PoolElementTypeInfo>,
     pub(crate) structure_processor_types:
         Vec<crate::world::structure_processor::StructureProcessorTypeInfo>,
+    pub(crate) rule_test_types: Vec<crate::world::rule_test::RuleTestTypeInfo>,
+    pub(crate) pos_rule_test_types: Vec<crate::world::rule_test::PosRuleTestTypeInfo>,
     pub(crate) feature_types: Vec<crate::world::feature_type::FeatureTypeInfo>,
     pub(crate) placement_modifier_types:
         Vec<crate::world::placement_modifier::PlacementModifierTypeInfo>,
