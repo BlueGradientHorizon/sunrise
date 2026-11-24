@@ -85,3 +85,5 @@ sunrise-client game::stand_low_health_tests::a_stand_breaks_on_low_health_only_t
 sunrise-client game::lan_pvp::arrow_hit_sound_tests::an_arrow_that_hurts_another_player_dings_its_shooter tools/test_arrow_hit_ding_parity.py harness
 sunrise-client-lib mobs::shulker::saved_bytes_tests::a_loaded_shulker_has_no_motion_and_keeps_its_yaw tools/test_shulker_motion_parity.py harness
 sunrise-client-lib mobs::shulker::saved_bytes_tests::a_noai_shulker_in_flowing_water_keeps_zero_motion tools/test_shulker_motion_parity.py harness
+sunrise-items item_data::ingredient_components::tests::writable_book_pages_keep_their_filtered_text tools/test_writable_book_parity.py harness
+sunrise-client game::native_client_screens::client_screen_tests::done_on_an_unedited_book_sends_it_and_drops_its_filtered_text tools/test_writable_book_parity.py harness
