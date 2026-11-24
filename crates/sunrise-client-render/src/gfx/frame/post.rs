@@ -261,6 +261,16 @@ impl Renderer {
                 indices: self.indices.clone(),
                 quads: cloud_quads,
             }));
+            if let Some(wp) = self.world_primitives.as_ref() {
+                for &(name, value) in wp.pack_uniforms() {
+                    post.set_mod_uniform(name, crate::mod_pipelines::mod_uniform_value(value));
+                }
+                post.fill_mod_draws(|bound_slots, out| {
+                    wp.pack_bound_chunks_into(bound_slots, out);
+                });
+            } else {
+                post.fill_mod_draws(|_, _| {});
+            }
             // Fails only on a wait that found the device lost: the frame stops here, with
             // the pack kept for the next one and nothing more encoded.
             let ran = post.run(

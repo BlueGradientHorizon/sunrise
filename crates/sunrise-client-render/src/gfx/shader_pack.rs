@@ -60,13 +60,14 @@ impl Renderer {
                 weather: true,
                 hand: true,
             };
-            pack_post::PackPost::new(
-                &self.device,
-                &self.queue,
-                &self.adapter,
+            let mod_runtime = crate::mod_pipelines::pack_runtime_specs();
+            let mod_vertex_buffers = [Some(mod_pipelines::PipelineVertex::buffer_layout())];
+            pack_post::PackPost::new_with_mods(
+                (&self.device, &self.queue, &self.adapter),
                 post,
                 self.output.frame.format,
                 world,
+                mod_runtime.as_runtime(&mod_vertex_buffers),
                 &std::sync::atomic::AtomicBool::new(false),
             )
         });
@@ -200,11 +201,13 @@ impl Renderer {
         let terrain = self.pack_atlas.is_some();
         let draws_sections = PackLoading::draws_of(&pack, terrain);
         let clouds = self.cloud_bindings.clone();
+        let mod_runtime = crate::mod_pipelines::pack_runtime_specs();
         let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let cancelled = cancel.clone();
         let build = move || {
             let buffers = pack_terrain_buffers();
             let buffers = &buffers[..terrain_buffer_count(draws)];
+            let mod_vertex_buffers = [Some(mod_pipelines::PipelineVertex::buffer_layout())];
             let world = pack_post::World {
                 atlas,
                 sprite_rects: &sprite_rects,
@@ -228,7 +231,14 @@ impl Renderer {
                 weather: true,
                 hand: true,
             };
-            pack_post::PackPost::new(&device, &queue, &adapter, pack, format, world, &cancelled)
+            pack_post::PackPost::new_with_mods(
+                (&device, &queue, &adapter),
+                pack,
+                format,
+                world,
+                mod_runtime.as_runtime(&mod_vertex_buffers),
+                &cancelled,
+            )
         };
         // A pack is not the game's code: a panic building it turns the pack off (#3525).
         let thread = std::thread::Builder::new()
@@ -369,6 +379,7 @@ impl Renderer {
         let terrain = self.pack_terrain_inputs();
         sunrise_shaders::GameInputs {
             interface_limits: crate::core_shader::interface_limits(&self.device.limits()),
+            mod_programs: crate::mod_pipelines::pack_program_requests(),
             ..pack_atlas::game_inputs(terrain, self.pack_terrain_flat, &self.pack_lava_layers)
         }
     }
@@ -496,6 +507,23 @@ impl Renderer {
             ] {
                 macros.define(format!("MC_GL_KHR_shader_subgroup_{ext}"), "");
             }
+        }
+        for (name, value) in crate::mod_pipelines::pack_defines() {
+            macros.define(name, value);
+        }
+    }
+
+    /// How the active translated shader pack binds mod pipeline `slot`.
+    pub fn pack_override_state(&self, slot: usize) -> mod_api::PackOverrideState {
+        match &self.pack_post {
+            Some((_, Some(post))) => {
+                if post.is_mod_pipeline_bound(slot) {
+                    mod_api::PackOverrideState::Bound
+                } else {
+                    mod_api::PackOverrideState::UnboundPack
+                }
+            }
+            _ => mod_api::PackOverrideState::NoPack,
         }
     }
 

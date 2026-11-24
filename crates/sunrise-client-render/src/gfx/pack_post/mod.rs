@@ -16,6 +16,7 @@ pub use types::*;
 
 pub use sunrise_render_shaderpack::pack_post::construction::*;
 pub use sunrise_render_shaderpack::pack_post::execution::*;
+pub use sunrise_render_shaderpack::pack_post::mod_pack::*;
 
 use super::pack_entities::PackEntitiesExt as _;
 use crate::gfx::Frame;
@@ -426,3 +427,6 @@ mod sign_text_target_tests;
 mod block_atlas_group_tests;
 #[cfg(test)]
 mod mod_stage_tests;
+
+#[cfg(test)]
+mod mod_pack_binding_tests;

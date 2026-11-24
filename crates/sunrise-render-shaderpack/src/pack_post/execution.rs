@@ -13,6 +13,7 @@ use sunrise_render_core::UniformFrameView;
 use sunrise_shaders::{BUFFERS, Group, SHADOW_COLORS};
 
 use super::construction::*;
+use super::mod_pack::{ModDrawChunk, ModPassSlot, ModUniformValue};
 use crate::PollLive;
 use crate::pack_entities::{
     BEAM, BLOCK, BLOCK_TRANSLUCENT, DESTROY, ENTITY, PARTICLE, PARTICLE_TRANSLUCENT, TRANSLUCENT,
@@ -110,6 +111,7 @@ impl PackPost {
     /// and the centre depth too. Compiled programs and the pack's textures stay.
     pub fn reset_history(&mut self, device: &wgpu::Device) {
         self.uniforms.reset_history();
+        self.mod_uniforms.reset_history();
         // A parsed pack's custom uniforms start at tick 0's seed, before any frame of the world.
         self.custom.restart_at(0);
         self.custom.forget_world();
@@ -159,9 +161,67 @@ impl PackPost {
             .chain(&mut self.shadow_terrain)
             .chain(&mut self.shadow_water)
             .chain(&mut self.shadow_comp)
+            .chain(self.mod_passes.iter_mut().map(|m| &mut m.pass))
         {
             pass.reset_history();
         }
+    }
+
+    /// Supplies the uploaded quad chunks for bound mod render pipelines on the next frame.
+    pub fn set_mod_draws(&mut self, draws: Vec<ModDrawChunk>) {
+        self.mod_draws = draws;
+    }
+
+    /// Reuses the internal mod-draw buffer to collect uploaded quad chunks for the next frame
+    /// without per-frame `Vec` allocation.
+    pub fn fill_mod_draws(&mut self, fill: impl FnOnce(&[usize], &mut Vec<ModDrawChunk>)) {
+        self.mod_draws.clear();
+        if !self.bound_mod_slots.is_empty() {
+            fill(&self.bound_mod_slots, &mut self.mod_draws);
+        }
+    }
+
+    /// Sets the current frame's value for a mod-declared shader-pack uniform.
+    /// Returns `true` if `name` matches a declared uniform with compatible type.
+    pub fn set_mod_uniform(&mut self, name: &str, value: ModUniformValue) -> bool {
+        self.mod_uniforms.set(name, value)
+    }
+
+    /// Whether mod pipeline `slot` is bound to a compiled shader-pack program in this pack.
+    pub fn is_mod_pipeline_bound(&self, slot: usize) -> bool {
+        self.bound_mod_slots.contains(&slot)
+    }
+
+    /// Whether this pack compiled at least one mod pipeline pass.
+    pub fn has_mod_passes(&self) -> bool {
+        !self.bound_mod_slots.is_empty()
+    }
+
+    /// Mod pipeline slots currently bound to compiled shader-pack programs in this pack.
+    pub fn bound_mod_slots(&self) -> &[usize] {
+        &self.bound_mod_slots
+    }
+
+    /// Counts of currently allocated mod auxiliary `(depth, opaque_depth)` targets.
+    pub fn allocated_mod_depth_targets(&self) -> (usize, usize) {
+        let Some(targets) = &self.targets else {
+            return (0, 0);
+        };
+        let depth = targets.mod_depth.iter().filter(|d| d.is_some()).count();
+        let opaque = targets
+            .mod_opaque_depth
+            .iter()
+            .filter(|d| d.is_some())
+            .count();
+        (depth, opaque)
+    }
+
+    fn has_mod_slot(&self, slot: ModPassSlot) -> bool {
+        self.mod_passes.iter().any(|m| m.pass_slot == slot)
+    }
+
+    fn has_mod_opaque_depth(&self) -> bool {
+        self.mod_opaque_depth_used.iter().any(|&used| used)
     }
     /// Splits `entities` (`Frame::entities`) between the pack and Sunrise by its runs
     /// (`spans`): the pack's part is uploaded for this frame's draw, Sunrise's goes to `rest`.
@@ -387,6 +447,29 @@ impl PackPost {
             });
             self.water_mask_dirty = false;
         }
+        // Clear any allocated mod auxiliary depth targets to 1.0 before the frame's draws.
+        if let Some(targets) = &self.targets {
+            for (idx, entry) in targets.mod_depth.iter().enumerate() {
+                if let Some((_, view)) = entry {
+                    let label = self
+                        .mod_depth_decls
+                        .get(idx)
+                        .map_or("Shader pack mod depth clear", |d| d.label.as_str());
+                    encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some(label),
+                        depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                            view,
+                            depth_ops: Some(wgpu::Operations {
+                                load: wgpu::LoadOp::Clear(1.0),
+                                store: wgpu::StoreOp::Store,
+                            }),
+                            stencil_ops: None,
+                        }),
+                        ..Default::default()
+                    });
+                }
+            }
+        }
         // A resolution scale leaves the picture smaller (or larger) than the window: the pack's
         // `final` draws it at the picture's size, and one copy takes it to the window (#9291).
         let final_view = if size != window && self.passes.iter().any(|p| p.group == Group::Final) {
@@ -452,6 +535,7 @@ impl PackPost {
             .get_or_insert_with(|| crate::pack_center_depth::CenterDepth::new(device))
             .collect();
         self.uniforms.update(frame_view, inputs, size);
+        self.mod_uniforms.advance_frame();
         // `smooth` starts on the first frame that knows the camera's biome.
         self.custom.world_frame(inputs.biome_known);
         self.uniforms.eval_custom(&mut self.custom);
@@ -674,7 +758,10 @@ impl PackPost {
             && self.lines.is_none()
             && self.hand.is_none()
             && !self.depth1
-            && !self.depth2;
+            && !self.depth2
+            && !self.has_mod_slot(ModPassSlot::AfterSky)
+            && !self.has_mod_slot(ModPassSlot::AfterOpaqueGbuffers)
+            && !self.has_mod_opaque_depth();
         let late_entities = self.entities.as_ref().is_some_and(|e| {
             e.passes
                 .iter()
@@ -686,7 +773,9 @@ impl PackPost {
             && !boundaries.custom_geometry
             && self.water.is_none()
             && self.weather.is_none()
-            && !late_entities;
+            && !late_entities
+            && !self.has_mod_slot(ModPassSlot::AfterTranslucentGbuffers)
+            && !self.has_mod_slot(ModPassSlot::AfterWeather);
         let mut shadow_drawn = false;
         let mut world_finished = false;
         for pass in &mut passes {
@@ -973,6 +1062,7 @@ impl PackPost {
             rp.set_bind_group(0, &group, &[]);
             rp.draw(0..3, 0..1);
         }
+        self.mod_draws.clear();
         Ok(())
     }
 }
@@ -1050,6 +1140,11 @@ impl PackPost {
                 v.write(ty, &mut pass.block, *offset as usize);
             }
         }
+        for &(index, previous, offset) in &pass.mod_uniforms {
+            if let Some(value) = self.mod_uniforms.value(index, previous) {
+                value.write_std140(&mut pass.block, offset as usize);
+            }
+        }
         if !pass.block.is_empty() {
             queue.write_buffer(&pass.ubo, 0, &pass.block);
         }
@@ -1119,6 +1214,34 @@ impl PackPost {
                     }
                     Source::Depth => &targets.depth,
                     Source::WaterMask => targets.water_mask.as_ref().map_or(&self.dummy, |m| &m.1),
+                    Source::ModDepth(idx) => targets
+                        .mod_depth
+                        .get(idx)
+                        .and_then(|d| d.as_ref().map(|(_, v)| v))
+                        .unwrap_or(&targets.depth),
+                    Source::ModOpaqueDepth(idx) => targets
+                        .mod_opaque_depth
+                        .get(idx)
+                        .and_then(|d| {
+                            d.as_ref()
+                                .filter(|_| {
+                                    matches!(
+                                        pass.group,
+                                        Group::Deferred
+                                            | Group::Composite
+                                            | Group::Final
+                                            | Group::Translucent
+                                    )
+                                })
+                                .map(|(_, v)| v)
+                        })
+                        .or_else(|| {
+                            targets
+                                .mod_depth
+                                .get(idx)
+                                .and_then(|d| d.as_ref().map(|(_, v)| v))
+                        })
+                        .unwrap_or(&targets.depth),
                     // Before translucent terrain the two are the same.
                     Source::Depth1 => match &targets.depth1 {
                         Some(d)
@@ -1327,6 +1450,16 @@ impl PackPost {
         pass: &Pass,
         water_mask: bool,
     ) -> wgpu::RenderPass<'e> {
+        self.begin_with_depth(encoder, pass, water_mask, None)
+    }
+
+    fn begin_with_depth<'e>(
+        &mut self,
+        encoder: &'e mut wgpu::CommandEncoder,
+        pass: &Pass,
+        water_mask: bool,
+        mod_depth: Option<usize>,
+    ) -> wgpu::RenderPass<'e> {
         let targets = self.targets.as_ref().expect("resized");
         let load = wgpu::Operations {
             load: wgpu::LoadOp::Load,
@@ -1355,21 +1488,86 @@ impl PackPost {
                     .and_then(|t| attach(&t[usize::from(self.main & 1 << buffer != 0)], load)),
             };
         }
+        let depth_view = if let Some(s) = shadow {
+            &s.depth.1
+        } else if water_mask && let Some((_, view)) = &targets.water_mask {
+            view
+        } else if let Some(idx) = mod_depth
+            && let Some(Some((_, view))) = targets.mod_depth.get(idx)
+        {
+            view
+        } else {
+            &targets.depth
+        };
         let timestamp_writes = self.timing.as_mut().and_then(|t| t.writes(&pass.name));
         encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some(&pass.name),
             color_attachments: &attachments,
             timestamp_writes,
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                view: match &targets.water_mask {
-                    Some((_, view)) if water_mask => view,
-                    _ => shadow.map_or(&targets.depth, |s| &s.depth.1),
-                },
+                view: depth_view,
                 depth_ops: Some(depth_ops),
                 stencil_ops: None,
             }),
             ..Default::default()
         })
+    }
+
+    fn draw_mod_slot(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        size: [u32; 2],
+        slot: ModPassSlot,
+    ) {
+        if self.mod_passes.is_empty() || self.mod_draws.is_empty() {
+            return;
+        }
+        let mut mod_passes = std::mem::take(&mut self.mod_passes);
+        for m in &mut mod_passes {
+            if m.pass_slot != slot {
+                continue;
+            }
+            let has_draws = self
+                .mod_draws
+                .iter()
+                .any(|d| d.slot == m.slot && !d.quads.is_empty());
+            if !has_draws {
+                continue;
+            }
+            let group = self.bind(device, queue, encoder, &mut m.pass, size);
+            {
+                let mut rp = self.begin_with_depth(encoder, &m.pass, false, m.depth_target);
+                rp.set_pipeline(m.pass.render());
+                rp.set_bind_group(0, &group, &[]);
+                if m.pass.buffers
+                    && let Some(g) = &self.buffers.group
+                {
+                    rp.set_bind_group(4, g, &[]);
+                }
+                if m.pass.draw {
+                    let stage = if slot == ModPassSlot::AfterTranslucentGbuffers {
+                        "TERRAIN_TRANSLUCENT"
+                    } else {
+                        "TERRAIN_SOLID"
+                    };
+                    self.draws.bind(&mut rp, stage);
+                }
+                for chunk in &self.mod_draws {
+                    if chunk.slot != m.slot || chunk.quads.is_empty() {
+                        continue;
+                    }
+                    rp.set_vertex_buffer(0, chunk.vertices.slice(..));
+                    rp.set_index_buffer(chunk.indices.slice(..), wgpu::IndexFormat::Uint32);
+                    rp.draw_indexed(chunk.quads.start * 6..chunk.quads.end * 6, 0, 0..1);
+                }
+            }
+            if slot != ModPassSlot::Shadow {
+                self.mips_valid &= !m.pass.written;
+            }
+        }
+        self.mod_passes = mod_passes;
     }
 
     /// Terrain (or, `translucent`, translucent terrain) with the pack's program; `draw` issues
@@ -1826,6 +2024,7 @@ impl PackPost {
         if boundaries.sky {
             boundary(encoder, WorldBoundary::AfterSky);
         }
+        self.draw_mod_slot(device, queue, encoder, size, ModPassSlot::AfterSky);
         self.draw_terrain(device, queue, encoder, size, TerrainList::Solid, terrain);
         if boundaries.opaque_blocks {
             self.target_boundary(encoder, boundary, |color, depth| {
@@ -1862,6 +2061,26 @@ impl PackPost {
                 copy.as_image_copy(),
                 t.depth_texture.size(),
             );
+        }
+        self.draw_mod_slot(
+            device,
+            queue,
+            encoder,
+            size,
+            ModPassSlot::AfterOpaqueGbuffers,
+        );
+        // Snapshot each allocated auxiliary depth target after opaque mod geometry so
+        // translucent, deferred, composite and final passes can sample its opaque depth.
+        if let Some(t) = &self.targets {
+            for (src, dst) in t.mod_depth.iter().zip(&t.mod_opaque_depth) {
+                if let (Some((src_tex, _)), Some((dst_tex, _))) = (src, dst) {
+                    encoder.copy_texture_to_texture(
+                        src_tex.as_image_copy(),
+                        dst_tex.as_image_copy(),
+                        src_tex.size(),
+                    );
+                }
+            }
         }
     }
 
@@ -2043,12 +2262,20 @@ impl PackPost {
             &[PARTICLE, PARTICLE_TRANSLUCENT],
         );
         self.draw_hand_water(device, queue, encoder, size);
+        self.draw_mod_slot(
+            device,
+            queue,
+            encoder,
+            size,
+            ModPassSlot::AfterTranslucentGbuffers,
+        );
         self.draw_weather(device, queue, encoder, size);
         if boundaries.weather {
             self.target_boundary(encoder, boundary, |color, depth| {
                 WorldBoundary::AfterWeather { color, depth }
             });
         }
+        self.draw_mod_slot(device, queue, encoder, size, ModPassSlot::AfterWeather);
         if boundaries.custom_geometry {
             self.target_boundary(encoder, boundary, |color, depth| {
                 WorldBoundary::CustomGeometry { color, depth }
@@ -2232,7 +2459,8 @@ impl PackPost {
             .chain(&mut self.hand_water)
             .chain(&mut self.shadow_terrain)
             .chain(&mut self.shadow_water)
-            .chain(&mut self.shadow_comp);
+            .chain(&mut self.shadow_comp)
+            .chain(self.mod_passes.iter_mut().map(|m| &mut m.pass));
         for pass in passes {
             pass.forget_groups();
             for c in &mut pass.compute {
@@ -2388,6 +2616,48 @@ impl PackPost {
             let view = t.create_view(&Default::default());
             (t, view)
         });
+        let mod_depth: Vec<Option<(wgpu::Texture, wgpu::TextureView)>> = self
+            .mod_depth_decls
+            .iter()
+            .enumerate()
+            .map(|(idx, decl)| {
+                self.mod_depth_used
+                    .get(idx)
+                    .copied()
+                    .unwrap_or(false)
+                    .then(|| {
+                        let mut usage = wgpu::TextureUsages::RENDER_ATTACHMENT;
+                        if self
+                            .mod_opaque_depth_used
+                            .get(idx)
+                            .copied()
+                            .unwrap_or(false)
+                        {
+                            usage |= wgpu::TextureUsages::COPY_SRC;
+                        }
+                        let t = texture(&decl.label, depth32, usage);
+                        let view = t.create_view(&Default::default());
+                        (t, view)
+                    })
+            })
+            .collect();
+        let mod_opaque_depth: Vec<Option<(wgpu::Texture, wgpu::TextureView)>> = self
+            .mod_depth_decls
+            .iter()
+            .enumerate()
+            .map(|(idx, decl)| {
+                self.mod_opaque_depth_used
+                    .get(idx)
+                    .copied()
+                    .unwrap_or(false)
+                    .then(|| {
+                        let label = format!("{} (opaque)", decl.label);
+                        let t = texture(&label, depth32, wgpu::TextureUsages::COPY_DST);
+                        let view = t.create_view(&Default::default());
+                        (t, view)
+                    })
+            })
+            .collect();
         self.water_mask_dirty = true;
         let scratch = std::array::from_fn(|i| {
             (self.copied & 1 << i != 0).then(|| {
@@ -2424,6 +2694,8 @@ impl PackPost {
             depth1,
             depth2,
             water_mask,
+            mod_depth,
+            mod_opaque_depth,
             mips,
         });
         self.forget_groups();
@@ -2475,7 +2747,15 @@ impl PackPost {
         // same inputs give another result. The pack's storage buffers (`bufferObject.*`) are
         // never cleared and aren't in the key, so a shadow program that binds them, reading or
         // writing, is never kept either.
+        let has_shadow_mod_draws = self.mod_passes.iter().any(|m| {
+            m.pass_slot == ModPassSlot::Shadow
+                && self
+                    .mod_draws
+                    .iter()
+                    .any(|d| d.slot == m.slot && !d.quads.is_empty())
+        });
         let cache_hit = !has_shadow_entities
+            && !has_shadow_mod_draws
             && self.images.is_empty()
             && self.shadow_images_outside == 0
             && !self.shadow_buffers
@@ -2527,6 +2807,7 @@ impl PackPost {
             TerrainList::ShadowTranslucent,
             terrain,
         );
+        self.draw_mod_slot(device, queue, encoder, size, ModPassSlot::Shadow);
         let mut comp = std::mem::take(&mut self.shadow_comp);
         for pass in &mut comp {
             let mut compute = std::mem::take(&mut pass.compute);
