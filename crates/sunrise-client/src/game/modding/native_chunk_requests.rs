@@ -289,6 +289,17 @@ impl Game<'_> {
         }
     }
 
+    /// Drop all pending and undrained async chunk requests across every dimension.
+    pub(super) fn clear_all_async_chunk_requests(&mut self) {
+        self.async_chunk_requests.pending.clear();
+        self.async_chunk_requests.holders.clear();
+        self.async_chunk_requests.completed.clear();
+        self.streaming.clear_async_requests();
+        for parked in self.levels.parked.values_mut() {
+            parked.streaming.clear_async_requests();
+        }
+    }
+
     /// Capture ready (or failed) pending async chunk requests for the level in place (`self.dim`)
     /// during spare tick time (`server_has_time()`), releasing their level-33 tickets once
     /// captured so the chunks unload and save through vanilla's ordinary path.
@@ -548,7 +559,8 @@ mod tests {
             assert_eq!(remaining, vec![(10, 10)]);
 
             // Level close drops pending requests and releases tickets.
-            game.native_levels_closing();
+            let dim = game.dim;
+            game.clear_async_chunk_requests_for_dim(dim);
             assert!(!game.streaming.has_async_requests());
             assert!(!game.has_async_chunk_requests(crate::game::Dim::Overworld));
         });
