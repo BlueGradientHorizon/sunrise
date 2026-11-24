@@ -47,7 +47,8 @@ fn fire_lava_and_water_reach_a_projectile_in_its_tick() {
         Ok("lava_impact_batch") => {
             use mod_api::{
                 EntityTickListenedEvent, EntityTickPostEvent, Flow, HearsProjectileImpactsEvent,
-                Hooks, HostSide, ProjectileImpactEvent, Registrar, RegistrationContext, ServerHost,
+                Hooks, HostBlockStates, HostSide, ProjectileImpactEvent, Registrar,
+                RegistrationContext, ServerHost,
             };
             use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
