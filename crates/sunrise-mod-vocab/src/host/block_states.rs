@@ -192,7 +192,7 @@ pub trait BlockStatesBackend {
     fn block_state_is_solid_render(&self, state: BlockState) -> Option<bool>;
     /// Side: both.
     /// `BlockState.propagatesSkylightDown()`: whether sky light passes down through the state
-    /// unchanged, the block's own answer included (leaves, glass and vegetation override the
+    /// unchanged, the block's own answer included (glass, barriers and vegetation override the
     /// shape's). None for an unknown state.
     fn block_state_propagates_skylight_down(&self, state: BlockState) -> Option<bool>;
     /// Side: both.

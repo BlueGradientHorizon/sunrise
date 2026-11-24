@@ -463,7 +463,7 @@ impl BlockStates<'_> {
         self.backend.block_state_is_solid_render(state)
     }
     /// `BlockState.propagatesSkylightDown()`: whether sky light passes down through `state`
-    /// unchanged, the block's own answer included (leaves, glass and vegetation override what
+    /// unchanged, the block's own answer included (glass, barriers and vegetation override what
     /// the shape would say), as `NetherrackBlock.isValidBonemealTarget` tests the block above.
     /// None as for `replaceable`.
     pub fn propagates_skylight_down(&self, state: BlockState) -> Option<bool> {
