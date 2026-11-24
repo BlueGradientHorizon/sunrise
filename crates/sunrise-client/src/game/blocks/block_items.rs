@@ -853,6 +853,7 @@ mod tests {
                 let state = |name| game.pack.assets.registry.default_state(name).unwrap();
                 game.world.set(0, 64, 0, state("minecraft:wheat")).unwrap();
                 game.world.set(1, 64, 0, state("minecraft:stone")).unwrap();
+                game.world.set(3, 64, 0, state("minecraft:chest")).unwrap();
                 let player = game.player(12).unwrap();
                 let level = player.level(&*game).unwrap();
                 let pick = |game: &mut crate::game::Game<'_>,
@@ -878,7 +879,6 @@ mod tests {
                 );
                 // A chest's items and name stay off the read's stack with data:
                 // addBlockDataToItem comes after getCloneItemStack.
-                game.world.set(3, 64, 0, state("minecraft:chest")).unwrap();
                 let mut items = vec![None; 27];
                 items[0] = Some(sunrise_client::items::ItemStack::new("minecraft:stone", 5));
                 game.world.block_entities.insert(
