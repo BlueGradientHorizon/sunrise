@@ -5823,6 +5823,35 @@ mod tests {
     }
 
     #[test]
+    fn is_op_follows_player_list_on_integrated_and_dedicated_servers() {
+        let (mut hub, _rx) = hub_with_a_guest();
+        let owner = 1u128;
+        let level_0_op = 2u128;
+        let guest = 3u128;
+
+        hub.config.integrated = true;
+        hub.config.guest_commands = true;
+        hub.singleplayer_owner = Some(owner);
+        hub.ops.insert(owner, 0);
+        hub.ops.insert(level_0_op, 0);
+
+        assert!(!hub.is_op(owner), "owner at level 0 while commands off");
+        assert!(hub.is_op(level_0_op), "explicit level-0 op is still op");
+        assert!(
+            !hub.is_op(guest),
+            "LAN guest_commands does not make guest op"
+        );
+
+        hub.ops.insert(owner, 4);
+        assert!(hub.is_op(owner), "owner at level 4 while commands on");
+
+        hub.config.integrated = false;
+        hub.ops.insert(owner, 0);
+        assert!(hub.is_op(owner), "dedicated level-0 op is op");
+        assert!(!hub.is_op(guest), "dedicated non-op is not op");
+    }
+
+    #[test]
     fn modprofile_guest_tree_survives_refresh_with_permissions() {
         for level in 0..=4 {
             let mut sync = SyncData::empty();
