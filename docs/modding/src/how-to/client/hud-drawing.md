@@ -75,6 +75,22 @@ installed body nor Post runs. For work that must happen even when the HUD is hid
 paints separately in its screen. The original subtitle layer can defer paint to a screen
 background without running its hooks again. Cancel that layer to suppress scheduled paint.
 
+### Editing the hotbar attack indicator
+
+Use `hotbar_attack_indicator_progress` to edit `event.progress` without replacing
+`minecraft:hotbar`. The hook receives a read-only `ClientHost`. It runs inside the original
+hotbar body after the items, and starts from the local player's attack charge at partial tick
+zero, even when the camera follows a different player. It runs even at full charge, so setting
+progress below `1.0` can make the indicator visible. Setting it to `1.0` hides the indicator.
+
+Listeners see the last accepted progress. A non-finite value or one outside `0.0..=1.0` is
+refused without erasing earlier accepted edits or disabling the listener. The change applies
+only to this draw: it does not change the crosshair indicator, attack charge, or combat.
+
+The hook runs only in Hotbar indicator mode with the HUD visible and a player camera outside
+spectator mode. It does not run if Pre cancels the hotbar, a replacement takes over, or a
+wrapper skips the original body. A wrapper that delegates to the original body reaches it.
+
 ## Status rows and fixed text positions
 
 `minecraft:player_health` draws the hearts. The neighbouring `minecraft:armor_level`,
@@ -110,6 +126,14 @@ You can keep a `GuiDraw` list: pass it to `draw.gui_paint(&draws)` and handle it
 Sunrise's radial overlay keeps clear of the actual paint from installed status-layer bodies,
 including replacements and wrappers.
 
+To sit on a row, read how far the status rows reach: `host.gui_status_heights()` gives the left
+and right columns' heights above the bottom edge (NeoForge's `Hud.leftHeight` and `rightHeight`),
+as they stand when your layer starts. Both are 39 before the hearts; each vanilla row adds its
+height as it draws, so a layer `Below("minecraft:food_level".into())` sees the height the food row
+draws at and one `Above` it the height after it. A row that is hidden, cancelled or replaced adds
+nothing, and a replacement does not reserve space for the rows after it. Outside the HUD layers
+the read is `None`.
+
 Adding a taller status bar does not move the selected item name or the action bar. The name starts
 59 GUI pixels from the bottom (45 outside survival and adventure); the action bar is centred 68
 pixels from the bottom. A mod that needs to move either can cancel and redraw its layer:
@@ -135,8 +159,10 @@ way round. Nothing is added to chat, narrated or sent. Text the boundary refuses
 Push a `DebugEntry::text(id, group, lines)` in `Hooks::register_debug_entries` at client
 startup. Use any valid `<namespace>:<path>` ID (including custom `minecraft:<path>` IDs that do
 not collide with built-in vanilla entries); it identifies the entry in the debug options and
-saved profile. The group says which vanilla lines yours join; the closure receives the current
-client host and appends to the entry's lines.
+saved profile. The group says which vanilla lines yours join, or `DebugGroup::Named(id)` puts
+them in a group of your own that every entry naming the same ID shares (`minecraft:memory` is
+vanilla's memory group). The closure receives the current client host and appends to the
+entry's lines.
 
 ```rust,ignore
 use mod_api::{DebugEntry, DebugGroup, RegisterDebugEntriesEvent, RegistrationContext};
@@ -285,6 +311,84 @@ vanilla's corner arguments: `top` stays on the `y0` edge and `bottom` on the `y1
   visible winding and colour placement. A `fill_gradient` rectangle with a NaN or infinite coordinate draws nothing.
   Zero-area calls are culled here; vanilla can retain their layering bounds without drawing pixels.
 - **Cost.** One quad on the GUI batch, as `fill`; nothing is drawn or kept when a mod doesn't call it.
+
+## Player faces
+
+The `gui_paint` op `GuiDraw::PlayerFace { uuid, x, y, size, hat, flip, color }` draws a player's skin head as
+vanilla's `PlayerFaceExtractor` does, the head the player list, a team screen or a waystone's owner line shows:
+the face, then the hat layer when `hat`, each `size` GUI pixels square at `x, y`, tinted by the ARGB `color`
+(`0xFFFF_FFFF` for none).
+
+```rust,ignore
+use mod_api::client::hud_layout::GuiDraw;
+
+fn draw_member(draw: &mut dyn DrawContext, member: u128, x: i32, y: i32) -> Result<(), GuiPaintError> {
+    draw.gui_paint(&[GuiDraw::PlayerFace {
+        uuid: member,
+        x,
+        y,
+        size: 8,
+        hat: true,
+        flip: false,
+        color: 0xFFFF_FFFF,
+    }])
+}
+```
+
+- **Which skin.** A player with an entry on the connection's player list (`PlayerInfo`) draws the skin the
+  player list draws. Any other UUID, an offline team member say, draws its profile's skin, looked up by id the
+  way a player head's profile is: the lookup starts in the background the first time and is kept as heads keep
+  theirs. Until the skin is downloaded and in the atlas, and when the profile has none, the face is the UUID's
+  default skin (`DefaultPlayerSkin.get`). The op never waits, so draw it every frame and the real skin appears
+  when it is ready.
+- **Upside down.** `flip` draws the face upside down. The op never guesses it from a name: vanilla's player
+  list flips Dinnerbone and Grumm only while their player is in the level, so set it yourself if you want that.
+- **Pose and clip.** The face follows the buffer's pose (`Push`) and the hook call's clip (`push_clip`), as
+  `Blit` does; the hat layer is drawn under the same pose, clip and tint as the face.
+
+## Standalone textures
+
+The `gui_paint` op `GuiDraw::Texture { id, x, y, w, h, uv, src, tex, color }` is vanilla's
+`GuiGraphicsExtractor.blit` with a texture's `Identifier`: a picture that isn't in the GUI atlas, such as a
+guide book's chapter art. It takes `blit`'s arguments: the quad at `x, y`, `w` by `h` GUI pixels, showing the
+`src` texels from `uv` of an image `tex` texels big, tinted by the ARGB `color`.
+
+```rust,ignore
+use mod_api::client::hud_layout::GuiDraw;
+
+fn draw_chapter(draw: &mut dyn DrawContext, art: &Identifier) -> Result<(), GuiPaintError> {
+    // `art` is `mymod:textures/book/chapter.png`, parsed once at load.
+    draw.gui_paint(&[GuiDraw::Texture {
+        id: art.clone(),
+        x: 20,
+        y: 20,
+        w: 128,
+        h: 64,
+        uv: [0.0, 0.0],
+        src: [256, 128],
+        tex: [256, 128],
+        color: 0xFFFF_FFFF,
+    }])
+}
+```
+
+- **Which file.** `id` is the exact resource, `assets/<namespace>/<path>`, from the active resource stack:
+  any namespace, a mod's own included, and a resource pack can replace it. Nothing is added to it, so name the
+  `textures/` folder and the `.png` yourself. Only packed resources are read: not files, URLs or dynamic
+  textures.
+- **When it loads.** The image is decoded and uploaded the first time it is drawn and kept until the next resource
+  reload, which loads the new one, even while no screen draws it. Drawing it every frame costs one quad.
+- **Coordinates.** The quad samples from `uv / tex` to `(uv + src) / tex`, as `innerBlit` does, without
+  clamping: past 1 the image repeats (or clamps, below), and a negative `src` or `tex` flips that axis.
+- **Sampler.** As the image's `.png.mcmeta` says, from the image's pack or a pack above it: `"blur": true`
+  filters linearly, `"clamp": true` clamps to the edge; otherwise nearest and repeat. No mipmaps.
+- **Missing images.** An id with no image, one that doesn't decode, or one whose `.png.mcmeta` isn't valid JSON or
+  has a `texture` section vanilla's codec refuses, draws vanilla's magenta and black missing texture in its place, in
+  order with the other ops. The buffer isn't refused for it.
+- **Refused.** A `tex` with a zero side, or a NaN or infinite `uv`, refuses the whole buffer with
+  `GuiPaintError::TextureSize`: its coordinates would not be finite.
+- **Pose and clip.** The quad follows the buffer's pose (`Push`) and the hook call's clip (`push_clip`), as
+  `Blit` does.
 
 ## Scaled text
 

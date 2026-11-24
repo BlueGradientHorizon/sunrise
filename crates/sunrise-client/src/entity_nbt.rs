@@ -71,11 +71,20 @@ fn hidden_effect_nbt(effect: &crate::effects::EffectInstance) -> Tag {
     Tag::compound(fields)
 }
 
+/// `MobEffectInstance.Details`' `amplifier`, `ExtraCodecs.UNSIGNED_BYTE` (default 0): Codec.BYTE
+/// takes the stored number's `byteValue()`, read as 0..255, so `-56b` is 200 and an int `256` is
+/// 0. The same codec reads an active effect and every hidden effect of its chain.
+fn effect_amplifier(tag: &Tag) -> i32 {
+    tag.get("amplifier")
+        .and_then(sunrise_world::datafix::dynamic::as_number)
+        .map_or(0, |n| i32::from(n.byte_value() as u8))
+}
+
 fn hidden_effect_from_nbt(effect: &'static str, tag: &Tag) -> crate::effects::EffectInstance {
     let mut instance = crate::effects::EffectInstance::new(
         effect,
         number(tag.get("duration")).unwrap_or(0) as i32,
-        number(tag.get("amplifier")).unwrap_or(0) as i32,
+        effect_amplifier(tag),
     );
     instance.ambient = number(tag.get("ambient")).is_some_and(|v| v != 0);
     instance.visible = number(tag.get("show_particles")) != Some(0);
@@ -94,6 +103,31 @@ pub fn position(tag: &Tag) -> Option<Vec3> {
 }
 pub fn uuid(tag: &Tag) -> Option<[i32; 4]> {
     uuid_from_tag(tag.get("UUID"))
+}
+/// `UUIDUtil.CODEC` through `NbtOps.getIntStream`: a 4-element numeric array or
+/// list (`Entity.load` ignores quoted UUID strings and keeps the constructor UUID).
+pub fn entity_uuid(tag: &Tag) -> Option<[i32; 4]> {
+    match tag.get("UUID")? {
+        Tag::IntArray(v) if v.len() == 4 => Some([v[0], v[1], v[2], v[3]]),
+        Tag::ByteArray(v) if v.len() == 4 => Some([
+            i32::from(v[0] as i8),
+            i32::from(v[1] as i8),
+            i32::from(v[2] as i8),
+            i32::from(v[3] as i8),
+        ]),
+        Tag::LongArray(v) if v.len() == 4 => {
+            Some([v[0] as i32, v[1] as i32, v[2] as i32, v[3] as i32])
+        }
+        Tag::List(v) if v.len() == 4 => {
+            let int = |t: &Tag| match t {
+                Tag::Float(v) => Some(f32::from_bits(*v) as i32),
+                Tag::Double(v) => Some(f64::from_bits(*v) as i32),
+                other => number(Some(other)).map(|v| v as i32),
+            };
+            Some([int(&v[0])?, int(&v[1])?, int(&v[2])?, int(&v[3])?])
+        }
+        _ => None,
+    }
 }
 pub fn motion(tag: &Tag) -> Vec3 {
     read_doubles::<3>(tag.get("Motion")).map_or(Vec3::ZERO, |m| Vec3::new(m[0], m[1], m[2]))
@@ -129,6 +163,10 @@ pub fn flag_or(tag: &Tag, key: &str, default: bool) -> bool {
     tag.get(key)
         .and_then(int_value)
         .map_or(default, |value| value as i8 != 0)
+}
+/// `Entity.load`: `input.getShortOr("Fire", 0)` via vanilla's numeric tag short conversion.
+pub fn fire_ticks_from_nbt(tag: &Tag) -> i32 {
+    i32::from(tag.get("Fire").and_then(int_value).unwrap_or(0) as i16)
 }
 
 /// `Entity.saveWithoutId`: write the movement flags and the flags retained
@@ -1859,16 +1897,36 @@ fn put_sulfur_attributes(map: &mut EntityTagWriter, m: &Mob) {
 /// `Brain.Packed`: the memories finalizeSpawn set, over the saved ones.
 /// `CustomName`: a text component saved as a string or a `{text: ..}` compound.
 pub(crate) fn custom_name(tag: &Tag) -> Option<String> {
-    match tag.get("CustomName")? {
-        Tag::String(s) => Some(s.to_string_lossy()),
-        t @ Tag::Compound(_) => match t.get("text") {
-            Some(Tag::String(s)) => Some(s.to_string_lossy()),
-            _ => None,
-        },
-        _ => None,
+    tag.get("CustomName")
+        .and_then(decode_custom_name_text)
+        .map(|text| text.plain())
+}
+/// `Entity.load`'s `CustomName` validation (`ComponentSerialization.CODEC`):
+/// an empty string is still a custom name, whereas non-components decode to none.
+pub fn valid_custom_name_tag(tag: &Tag) -> bool {
+    crate::command::component::decode(tag).is_ok()
+}
+/// Decode an entity's `CustomName` tag with vanilla's component rules,
+/// returning `None` when it fails `ComponentSerialization.CODEC`.
+pub fn decode_custom_name_text(tag: &Tag) -> Option<crate::text::Text> {
+    if !valid_custom_name_tag(tag) {
+        return None;
+    }
+    Some(crate::scoreboard::text_from_canonical_component(
+        crate::scoreboard::canonical_component(&crate::scoreboard::tag_to_json(tag)),
+    ))
+}
+/// Drop an invalid `CustomName` from an entity compound at the NBT boundary
+/// (`Entity.load`: `input.read("CustomName", ComponentSerialization.CODEC).orElse(null)`).
+pub fn sanitize_custom_name(tag: &mut Tag) {
+    if let Tag::Compound(map) = tag
+        && let Some(raw) = map.get(&"CustomName".into())
+        && !valid_custom_name_tag(raw)
+    {
+        map.remove(&"CustomName".into());
     }
 }
-pub use sunrise_client_core::component::name_text;
+pub use sunrise_client_core::component::{name_text, validated_component};
 /// `Mob.readAdditionalSaveData`: negative radii retain the live homePosition.
 /// Used after the command adapter restores runtime AI, as well as fresh load.
 pub fn read_mob_home(m: &mut Mob, tag: &Tag) {
@@ -1966,7 +2024,11 @@ fn mob_from_nbt_at(
             let (Some(id), Some(v)) = (text(a.get("id")), float(a.get("base"))) else {
                 continue;
             };
-            let v = m.kind.attribute_bounds.loaded_base(&id, v);
+            let v = if crate::living_attributes::own_unbounded_base(&m.kind.id, &id) {
+                v
+            } else {
+                m.kind.attribute_bounds.loaded_base(&id, v)
+            };
             // A mount's rolled health and speed stay attribute bases, which the server syncs.
             let equine = crate::mobs::equine::is_equine(m.species());
             match id.as_str() {
@@ -1993,7 +2055,13 @@ fn mob_from_nbt_at(
                         v,
                     )
                 }
-                "minecraft:max_health" => m.attrs.max_health = v as f32,
+                "minecraft:max_health" => {
+                    m.attrs.max_health = m
+                        .kind
+                        .attribute_bounds
+                        .sanitize(crate::mobs::finalize::Attr::MaxHealth, v)
+                        as f32
+                }
                 "minecraft:movement_speed"
                     if crate::mobs::finalize::base_value(
                         &m,
@@ -2161,8 +2229,9 @@ fn mob_from_nbt_at(
         .get("CanPickUpLoot")
         .and_then(int_value)
         .map_or(piglin, |value| value as i8 != 0);
-    m.custom_name = custom_name(tag);
-    m.custom_name_text = tag.get("CustomName").map(name_text);
+    let decoded_name = tag.get("CustomName").and_then(decode_custom_name_text);
+    m.custom_name = decoded_name.as_ref().map(crate::text::Text::plain);
+    m.custom_name_text = decoded_name;
     m.extra.left_handed = flag(tag, "LeftHanded");
     if let Some(Tag::Compound(c)) = tag.get("drop_chances") {
         let mut chances = [crate::mobs::drops::DEFAULT_DROP_CHANCE; 8];
@@ -2197,12 +2266,7 @@ fn mob_from_nbt_at(
             };
             let effect = crate::brewing::namespaced(def.id);
             let duration = number(e.get("duration")).unwrap_or(0) as i32;
-            // `MobEffectInstance.Details`: Codec.BYTE uses boxed Number.byteValue,
-            // then UNSIGNED_BYTE interprets the resulting byte as 0..255.
-            let amplifier = e
-                .get("amplifier")
-                .and_then(sunrise_world::datafix::dynamic::as_number)
-                .map_or(0, |n| i32::from(n.byte_value() as u8));
+            let amplifier = effect_amplifier(e);
             // Details.CODEC: `show_particles` defaults to true, `show_icon` to `show_particles`.
             let particles = number(e.get("show_particles")) != Some(0);
             let mut stored = crate::mobs::StoredEffect::new(effect, duration, amplifier);
@@ -2684,6 +2748,8 @@ fn mob_from_nbt_at(
         m.extra.counter = number(tag.get("still_timeout")).unwrap_or(0) as i32;
     }
     if m.species() == crate::mobs::Species::Shulker {
+        // `Shulker.setDeltaMovement` ignores the loaded `Motion`.
+        m.velocity = Vec3::ZERO;
         m.extra.variant3 = (number(tag.get("AttachFace")).unwrap_or(0) as i8 % 6).unsigned_abs();
         m.extra.counter = number(tag.get("Peek")).map_or(0, |v| v as i8 as i32);
         m.extra.color = number(tag.get("Color")).map_or(16, |v| v as i8 as u8);
@@ -2880,6 +2946,8 @@ pub fn tnt_owner(tag: &Tag) -> Option<[i32; 4]> {
 /// loaded Owner data remains in the raw compound.
 pub fn evoker_fangs_to_nbt(
     position: Vec3,
+    motion: Vec3,
+    fire_ticks: i32,
     yaw: f32,
     warmup: i32,
     owner: Option<[i32; 4]>,
@@ -2890,12 +2958,13 @@ pub fn evoker_fangs_to_nbt(
         id: "minecraft:evoker_fangs",
         uuid,
         position,
-        motion: raw.map(motion).unwrap_or(Vec3::ZERO),
+        motion,
         rotation: [yaw, raw.map(rotation).unwrap_or([0.0; 2])[1]],
         on_ground: raw.is_some_and(|t| flag(t, "OnGround")),
         fall_distance: raw.map_or(0.0, |t| ground_from_nbt(t).1),
     }
     .tag(raw);
+    put(&mut tag, "Fire", Tag::Short(fire_ticks as i16));
     put(&mut tag, "Warmup", Tag::Int(warmup));
     if let Some(owner) = owner {
         put(&mut tag, "Owner", Tag::IntArray(owner.to_vec()));
@@ -2943,6 +3012,7 @@ pub fn item_entity_from_nbt(tag: &Tag, id: u32, bob_offset: f32) -> Option<ItemE
         other => number(other).unwrap_or(default) as i16,
     };
     Some(ItemEntity {
+        size_answer: None,
         attachment_lifetime: Default::default(),
         rotation: rotation(tag),
         join: Default::default(),
@@ -2981,6 +3051,7 @@ pub fn ominous_item_spawner_to_nbt(
     item: &crate::items::ItemStack,
     position: Vec3,
     spawn_item_after: i64,
+    fire_ticks: i32,
     uuid: [i32; 4],
     raw: Option<&Tag>,
     items: &crate::items::Items,
@@ -3007,6 +3078,7 @@ pub fn ominous_item_spawner_to_nbt(
         "spawn_item_after_ticks",
         Tag::Long(spawn_item_after),
     );
+    put(&mut tag, "Fire", Tag::Short(fire_ticks as i16));
     tag
 }
 /// `OminousItemSpawner.readAdditionalSaveData`: the item, where it floats
@@ -3058,6 +3130,7 @@ pub fn orbs_from_nbt(tag: &Tag) -> Vec<ExperienceOrb> {
     };
     let count = number(tag.get("Count")).unwrap_or(1).max(1) as u32;
     let orb = ExperienceOrb {
+        size_answer: None,
         fire_ticks: number(tag.get("Fire")).unwrap_or(0) as i16 as i32,
         attachment_lifetime: Default::default(),
         fall_distance: float(tag.get("fall_distance")).unwrap_or(0.0),
@@ -3198,7 +3271,8 @@ pub fn arrow_from_nbt(
     };
     let mut p = Projectile::new(kind, position, from_player.then_some(Who::Player));
     p.velocity = motion(tag);
-    [p.yaw, p.pitch] = rotation(tag);
+    [p.yaw, p.pitch] = loaded_rotation(tag);
+    p.set_old_pos_and_rot();
     p.left_owner = flag(tag, "LeftOwner");
     p.owner_uuid = owner;
     p.no_gravity = flag(tag, "NoGravity");
@@ -3316,14 +3390,99 @@ const THROWABLE_ITEMS: [&str; 6] = [
     "minecraft:lingering_potion",
     "minecraft:experience_bottle",
 ];
-/// The item a throwable flies as: its stack (a potion's), the mod type's
-/// item, or the item its entity type is named after.
-fn throwable_item(kind: &ProjectileKind) -> Option<&str> {
-    match kind {
-        ProjectileKind::Thrown(t) => Some(t.item),
-        ProjectileKind::Potion(stack, _) => Some(&stack.item),
-        _ => THROWABLE_ITEMS.iter().find(|id| **id == kind.id()).copied(),
+
+fn decode_throwable_components(raw: &Tag, items: &crate::items::Items) -> Option<Tag> {
+    let Tag::Compound(entries) = raw else {
+        return None;
+    };
+    let reg = &items.component_registry;
+    let type_ids = reg.ids("minecraft:data_component_type");
+    let check_registry = !type_ids.is_empty();
+    let mut decoded = Compound::new();
+    for (raw_key, value) in entries {
+        let Ok(key_text) = raw_key.to_string() else {
+            continue;
+        };
+        let (removed, name) = match key_text.strip_prefix('!') {
+            Some(rest) => (true, rest),
+            None => (false, key_text.as_str()),
+        };
+        let Ok(parsed) = sunrise_core::identifier::Identifier::parse(name) else {
+            continue;
+        };
+        let id = parsed.to_string();
+        if sunrise_world::item_defaults::is_transient_component(&id) {
+            continue;
+        }
+        if check_registry {
+            let known = type_ids.iter().any(|entry| entry == &id)
+                || reg.persistent_components.iter().any(|entry| entry == &id)
+                || sunrise_command::item::DECODED_COMPONENTS.contains(&id.as_str())
+                || sunrise_protocol::item::custom::id(&id).is_some();
+            if !known {
+                continue;
+            }
+        }
+        if removed {
+            if !matches!(value, Tag::Compound(_)) {
+                continue;
+            }
+            decoded.remove(&JavaString::from(id.as_str()));
+            decoded.insert(
+                JavaString::from(format!("!{id}").as_str()),
+                Tag::Compound(Compound::new()),
+            );
+            continue;
+        }
+        let value = if id.starts_with("minecraft:") {
+            let Ok(value) = sunrise_command::item::decoded_component_value(&id, value, reg) else {
+                continue;
+            };
+            value
+        } else {
+            if sunrise_core::nbt::validate_component_value(value).is_err() {
+                continue;
+            }
+            value.clone()
+        };
+        decoded.remove(&JavaString::from(format!("!{id}").as_str()));
+        decoded.insert(JavaString::from(id.as_str()), value);
     }
+    (!decoded.is_empty()).then_some(Tag::Compound(decoded))
+}
+
+/// Decodes a throwable `Item` tag with vanilla's item and per-entry component codec rules.
+pub fn decode_throwable_item(
+    tag: &Tag,
+    items: &crate::items::Items,
+) -> Option<crate::items::ItemStack> {
+    let Tag::Compound(_) = tag else {
+        return None;
+    };
+    let (namespace, path) = sunrise_world::datafix::identifier(&text(tag.get("id"))?)?;
+    let id = format!("{namespace}:{path}");
+    if id == "minecraft:air" || (!items.items.is_empty() && items.get(&id).is_none()) {
+        return None;
+    }
+    let components = tag
+        .get("components")
+        .and_then(|raw| decode_throwable_components(raw, items));
+    let (damage, extra) = crate::item_data::decode_components(components.as_ref());
+    Some(crate::items::ItemStack {
+        item: Arc::from(id.as_str()),
+        count: 1,
+        damage,
+        extra,
+    })
+}
+
+/// Decode the `Item` field of a throwable compound using vanilla's item and component codecs.
+pub fn decode_throwable_item_field(
+    tag: &Tag,
+    items: &crate::items::Items,
+) -> Option<crate::items::ItemStack> {
+    tag.get("Item")
+        .and_then(|item| decode_throwable_item(item, items))
 }
 
 /// The thrown kind an entity id names: vanilla's, or a content mod's type.
@@ -3383,7 +3542,7 @@ pub fn throwable_to_nbt(
     raw: Option<&Tag>,
     items: &crate::items::Items,
 ) -> Option<Tag> {
-    let item = throwable_item(&p.kind)?;
+    let stack = p.thrown_item_stack()?;
     let base = Base {
         id: p.kind.id(),
         uuid,
@@ -3400,37 +3559,25 @@ pub fn throwable_to_nbt(
     if p.no_gravity {
         put(&mut tag, "NoGravity", Tag::Byte(1));
     }
-    // the loaded item stays (blue egg, potion effects) at `setItem`'s count 1.
-    if let Tag::Compound(m) = &mut tag {
-        let st = match &p.kind {
-            ProjectileKind::Potion(s, _) => (**s).clone(),
-            _ => crate::items::ItemStack::new(item, 1),
-        };
-        if let Tag::Compound(i) = m
-            .entry("Item".into())
-            .or_insert_with(|| item_to_nbt(&st, items))
-        {
-            i.insert("count".into(), Tag::Int(1));
-        }
-    }
+    // ThrowableItemProjectile.addAdditionalSaveData writes the entity's typed Item at count 1.
+    put(&mut tag, "Item", item_to_nbt(&stack, items));
     Some(tag)
 }
 
-/// `ThrowableItemProjectile.readAdditionalSaveData` for the kinds
-/// [`throwable_to_nbt`] writes; the owner is the player when it is theirs.
-pub fn throwable_from_nbt(tag: &Tag, player: Option<[i32; 4]>) -> Option<Projectile> {
-    let mut kind = throwable_kind(&kind(tag)?)?;
-    if let ProjectileKind::Potion(stack, _) = &mut kind
-        && let Some(item) = tag.get("Item").and_then(item_from_nbt)
-    {
-        **stack = item;
-        stack.count = 1;
-    }
+/// `ThrowableItemProjectile.readAdditionalSaveData`, validating `Item` against `items`.
+pub fn throwable_from_nbt_with_items(
+    tag: &Tag,
+    player: Option<[i32; 4]>,
+    items: &crate::items::Items,
+) -> Option<Projectile> {
+    let kind = throwable_kind(&kind(tag)?)?;
     let owner = owner_uuid(tag);
     let from_player = player.is_some() && owner == player;
     let mut p = Projectile::new(kind, position(tag)?, from_player.then_some(Who::Player));
+    p.set_thrown_item(decode_throwable_item_field(tag, items));
     p.velocity = motion(tag);
-    [p.yaw, p.pitch] = rotation(tag);
+    [p.yaw, p.pitch] = loaded_rotation(tag);
+    p.set_old_pos_and_rot();
     p.left_owner = flag(tag, "LeftOwner");
     p.has_been_shot = flag(tag, "HasBeenShot");
     p.owner_uuid = owner;
@@ -3438,6 +3585,11 @@ pub fn throwable_from_nbt(tag: &Tag, player: Option<[i32; 4]>) -> Option<Project
     load_projectile_entity_fields(&mut p, tag);
     p.ground.on_ground = flag(tag, "OnGround");
     Some(p)
+}
+
+/// `ThrowableItemProjectile.readAdditionalSaveData` without a loaded item catalog.
+pub fn throwable_from_nbt(tag: &Tag, player: Option<[i32; 4]>) -> Option<Projectile> {
+    throwable_from_nbt_with_items(tag, player, &crate::items::Items::default())
 }
 
 /// `LlamaSpit` and `ShulkerBullet` as `/summon` or a chunk loads them, with
@@ -3570,7 +3722,8 @@ pub fn fireball_from_nbt(tag: &Tag, player: Option<[i32; 4]>) -> Option<Projecti
     let from_player = player.is_some() && owner == player;
     let mut p = Projectile::new(kind, position(tag)?, from_player.then_some(Who::Player));
     p.velocity = motion(tag);
-    [p.yaw, p.pitch] = rotation(tag);
+    [p.yaw, p.pitch] = loaded_rotation(tag);
+    p.set_old_pos_and_rot();
     p.left_owner = flag(tag, "LeftOwner");
     p.has_been_shot = flag(tag, "HasBeenShot");
     p.owner_uuid = owner;
@@ -3908,6 +4061,7 @@ pub fn armor_stand_tag(
     let mut out = EntityTagWriter::new(raw);
     out.saved
         .insert("Fire".into(), Tag::Short(a.fire_ticks as i16));
+    out.saved.insert("Air".into(), Tag::Short(a.air as i16));
     for (key, value) in [
         ("NoGravity", a.no_gravity),
         ("CustomNameVisible", a.name_visible),
@@ -3936,10 +4090,13 @@ pub fn armor_stand_tag(
 
     // LivingEntity.addAdditionalSaveData.
     out.insert("Health".into(), Tag::Float(a.health.to_bits()));
-    out.retain_or("HurtTime", || Tag::Short(0));
-    out.retain_or("DeathTime", || Tag::Short(0));
+    out.insert("HurtTime".into(), Tag::Short(a.hurt_time as i16));
+    out.insert("DeathTime".into(), Tag::Short(a.death_time));
     out.retain_or("AbsorptionAmount", || Tag::Float(0));
-    out.retain_or("current_impulse_context_reset_grace_time", || Tag::Int(0));
+    out.insert(
+        "current_impulse_context_reset_grace_time".into(),
+        Tag::Int(a.impulse_grace),
+    );
     out.retain("current_explosion_impact_pos");
     out.retain_or("attributes", || Tag::List(Vec::new()));
     // `removeFrost`'s first-tick movement_speed, over a saved list without it.
@@ -3956,7 +4113,7 @@ pub fn armor_stand_tag(
     }
     put_live_attributes(&mut out.fields, &a.live);
     out.retain("active_effects");
-    out.retain_or("FallFlying", || Tag::Byte(0));
+    out.insert("FallFlying".into(), Tag::Byte(i8::from(a.fall_flying)));
     out.retain("sleeping_pos");
     out.retain_or("Brain", || {
         Tag::compound([("memories", Tag::Compound(Compound::new()))])
@@ -4016,8 +4173,15 @@ pub fn armor_stand_from_nbt(tag: &Tag, id: u32) -> Option<ArmorStand> {
         if list.iter().any(|attr| text(attr.get("id")).as_deref() == Some(SPEED_ATTRIBUTE)));
     a.velocity = loaded_motion(tag);
     a.health = float(tag.get("Health")).unwrap_or(20.0) as f32;
+    a.death_time = number(tag.get("DeathTime")).unwrap_or(0) as i16;
     a.fire_ticks = i32::from(number(tag.get("Fire")).unwrap_or(0) as i16);
     a.custom_name = tag.get("CustomName").map(name_text);
+    // Entity.load and LivingEntity.readAdditionalSaveData.
+    a.hurt_time = i32::from(number(tag.get("HurtTime")).unwrap_or(0) as i16);
+    a.air = number(tag.get("Air")).map_or(300, |v| v as i32);
+    a.fall_flying = flag(tag, "FallFlying");
+    a.impulse_grace =
+        number(tag.get("current_impulse_context_reset_grace_time")).map_or(0, |v| v as i32);
     a.name_visible = flag(tag, "CustomNameVisible");
     if let Some(eq) = tag.get("equipment") {
         a.equipment = sunrise_items::equipment::Equipment::read(eq);
@@ -4422,7 +4586,14 @@ mod tests {
         .0;
         let at = super::Vec3::new(1.0, 200.0, 1.0);
         let fall = |raw: Option<&super::Tag>| match super::evoker_fangs_to_nbt(
-            at, 0.0, 99, None, [1; 4], raw,
+            at,
+            super::Vec3::ZERO,
+            0,
+            0.0,
+            99,
+            None,
+            [1; 4],
+            raw,
         )
         .get("fall_distance")
         {
@@ -5385,6 +5556,7 @@ mod tests {
             &item,
             at,
             97,
+            0,
             [1, 2, 3, 4],
             Some(&raw),
             &Default::default(),
@@ -5410,6 +5582,7 @@ mod tests {
         let empty = ominous_item_spawner_to_nbt(
             &crate::items::ItemStack::new("minecraft:air", 1),
             at,
+            0,
             0,
             [1, 2, 3, 4],
             Some(&tag),
@@ -6604,6 +6777,7 @@ mod tests {
     #[test]
     fn orbs_save_and_load_their_fire() {
         let mut o = ExperienceOrb {
+            size_answer: None,
             attachment_lifetime: Default::default(),
             rotation: [0.0, 0.0],
             join: Default::default(),

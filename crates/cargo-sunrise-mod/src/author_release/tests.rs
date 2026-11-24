@@ -1,13 +1,11 @@
 use super::*;
 
-const WATCHED: &str = "\
-[[repository]]
-id = 101
+const REPOSITORY: &str = "\
 name = 'author/example'
-[[repository.package]]
+[[package]]
 path = '.'
 project = 'Ab3dE9xQ'
-[[repository.package]]
+[[package]]
 path = 'mods/example'
 project = 'Ab3dE9xY'
 ";
@@ -54,7 +52,9 @@ const METADATA: &str = "https://raw.githubusercontent.com/sunrise-org/sunrise-mo
 fn registry(url: &str) -> Result<Option<String>, String> {
     let file = url.strip_prefix(METADATA).and_then(|f| f.strip_prefix('/'));
     Ok(Some(match file {
-        Some("watched.toml") => WATCHED.into(),
+        Some("repositories/101.toml") => REPOSITORY.into(),
+        // Raw GitHub answers not found for a repository with no registration file.
+        Some(f) if f.starts_with("repositories/") => return Ok(None),
         Some("release-workflow.toml") => format!("uses = '{USES}'"),
         Some("projects/Ab3dE9xQ/project.toml") => "mod = 'example'\nkind = 'mod'\n".into(),
         Some("projects/Ab3dE9xY/project.toml") => "mod = 'example'\nkind = 'native-mod'\n".into(),
@@ -68,66 +68,52 @@ fn registry(url: &str) -> Result<Option<String>, String> {
 }
 
 #[test]
-fn registration_is_the_repository_id_package_path_mod_id_and_kind() {
+fn registration_is_the_repository_id_package_path_and_mod_id() {
     for remote in [
         "https://github.com/Author/example.git",
         "ssh://git@github.com/author/example.git",
         "git@github.com:author/example.git",
     ] {
-        registered(&registry, remote, "mods/example", "example", "native-mod").unwrap();
-        assert!(registered(&registry, remote, "mods", "example", "native-mod").is_err());
-        assert!(registered(&registry, remote, "mods/example", "other", "native-mod").is_err());
-        assert!(registered(&registry, remote, ".", "example", "native-mod").is_err());
+        assert_eq!(
+            registered(&registry, remote, "mods/example", "example").unwrap(),
+            "native-mod"
+        );
+        // The kind is reported, not required: the registry's pull request for a release of
+        // another kind changes the project's.
+        assert_eq!(
+            registered(&registry, remote, ".", "example").unwrap(),
+            "mod"
+        );
+        assert!(registered(&registry, remote, "mods", "example").is_err());
+        assert!(registered(&registry, remote, "mods/example", "other").is_err());
     }
     assert!(
         registered(
             &registry,
             "https://github.com.example/author/example",
             ".",
-            "example",
-            "mod"
+            "example"
         )
         .is_err()
     );
-    // A repository listed under another name is found by its ID; a reused name is not trusted.
+    // A repository registered under another name is found by its ID; a reused name is not trusted.
     let fetch = |url: &str| match url {
         "https://api.github.com/repos/author/renamed" => Ok(Some(r#"{"id":101}"#.into())),
         "https://api.github.com/repos/author/example" => Ok(Some(r#"{"id":102}"#.into())),
         _ => registry(url),
     };
-    registered(
-        &fetch,
-        "git@github.com:author/renamed.git",
-        ".",
-        "example",
-        "mod",
-    )
-    .unwrap();
-    assert!(
-        registered(
-            &fetch,
-            "git@github.com:author/example.git",
-            ".",
-            "example",
-            "mod"
-        )
-        .is_err()
+    registered(&fetch, "git@github.com:author/renamed.git", ".", "example").unwrap();
+    // Repository 102 has no registration file.
+    assert_eq!(
+        registered(&fetch, "git@github.com:author/example.git", ".", "example"),
+        Err(NOT_REGISTERED.into())
     );
-    let unknown = format!("unknown = true\n{WATCHED}");
-    let fetch = |url: &str| match url.ends_with("watched.toml") {
+    let unknown = format!("unknown = true\n{REPOSITORY}");
+    let fetch = |url: &str| match url.ends_with("repositories/101.toml") {
         true => Ok(Some(unknown.clone())),
         false => registry(url),
     };
-    assert!(
-        registered(
-            &fetch,
-            "git@github.com:author/example.git",
-            ".",
-            "example",
-            "mod"
-        )
-        .is_err()
-    );
+    assert!(registered(&fetch, "git@github.com:author/example.git", ".", "example").is_err());
 }
 
 #[test]
@@ -641,6 +627,67 @@ mod git_fixtures {
         assert_eq!(
             repo.git(["rev-parse", "refs/tags/v1.4.3"]),
             repo.git(["rev-parse", "HEAD"])
+        );
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn release_pushes_the_branch_before_the_tag() {
+        let repo = Repo::new();
+        repo.put(MANIFEST, MOD);
+        repo.commit();
+        repo.git(["push", "-u", "origin", "main"]);
+        let old = repo.git(["rev-parse", "HEAD"]);
+        // The hook logs each push with the refs it carries, and refuses the tag.
+        let pushes = repo.bare.join("pushes");
+        let hook = repo.bare.join("hooks/pre-receive");
+        fs::write(
+            &hook,
+            format!(
+                "#!/bin/sh\nline=push\nwhile read -r _ _ ref; do line=\"$line $ref\"; done\necho \"$line\" >> '{}'\ncase \"$line\" in *' refs/tags/v1.4.3') exit 1;; esac\n",
+                pushes.display()
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(&hook, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let error = repo.release(".", &["patch"], |_, _| Ok(())).unwrap_err();
+        assert!(
+            error.contains("The release commit is on origin and only v1.4.3 remains local"),
+            "{error}"
+        );
+        assert!(
+            error.contains("then push it with `git push origin refs/tags/v1.4.3`"),
+            "{error}"
+        );
+        // Two pushes, the branch alone first.
+        assert_eq!(
+            fs::read_to_string(&pushes).unwrap(),
+            "push refs/heads/main\npush refs/tags/v1.4.3\n"
+        );
+        let commit = repo.git(["rev-parse", "HEAD"]);
+        assert_eq!(repo.git(["rev-parse", "HEAD~1"]), old);
+        assert_eq!(
+            repo.git
+                .text(&repo.bare, ["rev-parse", "refs/heads/main"])
+                .unwrap(),
+            commit
+        );
+        assert!(
+            repo.git
+                .text(&repo.bare, ["rev-parse", "--verify", "refs/tags/v1.4.3"])
+                .is_err()
+        );
+        assert_eq!(repo.git(["rev-parse", "refs/tags/v1.4.3"]), commit);
+
+        // Finishing as the message says publishes the tag on its own.
+        fs::remove_file(&hook).unwrap();
+        repo.git(["push", "origin", "refs/tags/v1.4.3"]);
+        assert_eq!(
+            repo.git
+                .text(&repo.bare, ["rev-parse", "refs/tags/v1.4.3"])
+                .unwrap(),
+            commit
         );
     }
 

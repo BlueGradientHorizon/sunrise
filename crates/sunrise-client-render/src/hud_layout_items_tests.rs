@@ -3,7 +3,7 @@
 //! blend; an op that cannot be drawn refuses the whole buffer; and [`super::super::paint`]
 //! still leaves items and screen-effect blits to its caller.
 use super::super::{Blend, GuiDraw, PoseOp, paint};
-use super::{GuiItems, Undrawable, paint_checked, paint_items, undrawable};
+use super::{GuiFaces, GuiItems, Undrawable, paint_checked, paint_items, undrawable};
 use crate::hud::{Blend as Run, HudAtlas, HudBatch};
 
 /// A run-time atlas slot every atlas has: map slot 0 (`hud::map_slot_sprite`).
@@ -41,6 +41,14 @@ impl GuiItems for Items {
             4.0,
             DECORATION + slot,
         );
+    }
+}
+
+/// These buffers hold no `PlayerFace`.
+struct NoFaces;
+impl GuiFaces for NoFaces {
+    fn skin(&mut self, uuid: u128) -> std::borrow::Cow<'_, str> {
+        panic!("no face was painted, but {uuid:032x}'s skin was asked for")
     }
 }
 
@@ -109,7 +117,7 @@ fn an_item_is_scaled_about_its_pivot_and_its_decorations_are_not() {
     let mut items = Items::default();
     let draws = [item(0, 20, 20, [2.0, 2.0], [28.0, 28.0])];
     assert_eq!(
-        paint_checked(&mut batch, &atlas, &draws, &mut items),
+        paint_checked(&mut batch, &atlas, &draws, &mut items, &mut NoFaces),
         Ok(())
     );
     assert_eq!(
@@ -132,7 +140,7 @@ fn items_follow_the_current_pose_and_every_hotbar_slot_and_the_off_hand_draw() {
         item(40, 0, 0, [1.0, 1.0], [8.0, 12.0]),
     ];
     assert_eq!(
-        paint_checked(&mut batch, &atlas, &draws, &mut items),
+        paint_checked(&mut batch, &atlas, &draws, &mut items, &mut NoFaces),
         Ok(())
     );
     assert_eq!(bounds(&batch, ITEM + 8), [100.0, 10.0, 116.0, 26.0]);
@@ -151,7 +159,13 @@ fn every_blit_blend_draws_with_its_blend() {
         blit(SLOT, Blend::Crosshair, [8, 8]),
     ];
     assert_eq!(
-        paint_checked(&mut batch, &atlas, &draws, &mut Items::default()),
+        paint_checked(
+            &mut batch,
+            &atlas,
+            &draws,
+            &mut Items::default(),
+            &mut NoFaces
+        ),
         Ok(())
     );
     assert_eq!(batch.vertices.len(), 24);
@@ -215,6 +229,43 @@ fn an_op_the_paint_cannot_draw_refuses_the_buffer_and_draws_nothing_of_it() {
     assert_eq!(refused_alone(&atlas, cases.to_vec()), cases.len());
 }
 
+fn texture(uv: [f32; 2], tex: [i32; 2]) -> GuiDraw {
+    GuiDraw::Texture {
+        id: sunrise_core::identifier::Identifier::parse("test:textures/missing.png").unwrap(),
+        x: 0,
+        y: 0,
+        w: 4,
+        h: 4,
+        uv,
+        src: [4, 4],
+        tex,
+        color: 0xFFFF_FFFF,
+    }
+}
+
+#[test]
+fn a_texture_whose_coordinates_would_not_be_finite_refuses_the_buffer() {
+    // `innerBlit` divides by `tex`: a zero side, or a NaN or infinite `uv`, has no finite UV.
+    let atlas = atlas();
+    let cases = vec![
+        (texture([0.0, 0.0], [0, 16]), Undrawable::TextureSize),
+        (texture([0.0, 0.0], [16, 0]), Undrawable::TextureSize),
+        (texture([f32::NAN, 0.0], [16, 16]), Undrawable::TextureSize),
+        (
+            texture([0.0, f32::INFINITY], [16, 16]),
+            Undrawable::TextureSize,
+        ),
+    ];
+    assert_eq!(refused_alone(&atlas, cases), 4);
+    // A negative size flips the axis and an unknown id draws the missing texture: both draw.
+    for op in [
+        texture([0.0, 0.0], [-16, 16]),
+        texture([0.0, 0.0], [16, 16]),
+    ] {
+        assert_eq!(undrawable(&atlas, &[op]), None);
+    }
+}
+
 /// Each case refused after a fill and an item, at index 2, with nothing of the buffer drawn;
 /// answers how many were checked.
 fn refused_alone(atlas: &HudAtlas, cases: Vec<(GuiDraw, Undrawable)>) -> usize {
@@ -231,7 +282,7 @@ fn refused_alone(atlas: &HudAtlas, cases: Vec<(GuiDraw, Undrawable)>) -> usize {
         let mut items = Items::default();
         let draws = [fill.clone(), item(0, 0, 0, [1.0, 1.0], [0.0, 0.0]), op];
         assert_eq!(
-            paint_checked(&mut batch, atlas, &draws, &mut items),
+            paint_checked(&mut batch, atlas, &draws, &mut items, &mut NoFaces),
             Err((2, why))
         );
         assert!(batch.vertices.is_empty());

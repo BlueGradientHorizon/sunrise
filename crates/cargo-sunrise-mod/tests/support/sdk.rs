@@ -51,7 +51,12 @@ impl OfflineSdk {
             let tar = archive.into_inner().unwrap();
             fs::write(folder.join("build-data.tar.xz"), xz_stored(&tar)).unwrap();
         }
-        fs::write(folder.join("surface.json"), surface).unwrap();
+        // A test may put its own surface in the folder first, such as one of a schema this tool
+        // no longer reads.
+        let path = folder.join("surface.json");
+        if !path.exists() {
+            fs::write(&path, surface).unwrap();
+        }
         // Repinning also fetches the project's API archive. These tests have no Rust sources to scan.
         fs::write(
             folder.join("api-source.tar.xz"),

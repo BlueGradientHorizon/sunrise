@@ -6,10 +6,10 @@
 //! camera and lets go when the player sneaks.
 #[cfg(test)]
 #[path = "tests/camera_mount_tests.rs"]
-mod camera_mount_tests;
+pub(in crate::game) mod camera_mount_tests;
 #[cfg(test)]
 #[path = "tests/remote_camera_tests.rs"]
-mod camera_tests;
+pub(in crate::game) mod camera_tests;
 
 use super::{Game, remote::Remote};
 #[cfg(test)]
@@ -774,9 +774,9 @@ impl Game<'_> {
             } else {
                 MAINHAND
             };
-            let item = match m.extra.slot_stack(slot).map(|s| &*s.item) {
-                Some("minecraft:bow") => UseItem::Bow,
-                Some("minecraft:spyglass") => UseItem::Spyglass,
+            let item = match m.extra.slot_stack(slot) {
+                Some(s) if &*s.item == "minecraft:bow" => UseItem::Bow,
+                Some(s) if self.stack_scopes(s) => UseItem::Spyglass,
                 _ => UseItem::Other,
             };
             (item, (m.extra.using_item - 1).max(0))

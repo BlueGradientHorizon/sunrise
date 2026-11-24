@@ -535,6 +535,12 @@ impl crate::prelude::TagsHost for FakeHost {
     fn tags(&self) -> &dyn crate::Tags {
         &self.registries
     }
+    fn fluid_bucket(&self, fluid: &str) -> Option<crate::ItemKey> {
+        self.registries.bucket_of(fluid)
+    }
+    fn bucket_fluid(&self, bucket: crate::ItemKey) -> Option<crate::FluidKey> {
+        self.registries.fluid_of(bucket)
+    }
     fn fluid_pickup_sound(&self, fluid: &str) -> Option<&'static str> {
         self.registries.fluid_sound(fluid, true)
     }
@@ -845,9 +851,13 @@ impl crate::prelude::ItemsBackend for FakeHost {
     fn entity_equipment_size(&self, _: u32) -> Option<usize> {
         None
     }
-    fn item_bundle_slots(&self, _: &ItemStack) -> Option<Vec<Option<ItemStack>>> {
+    fn bundle_slots(
+        &self,
+        _: &ItemStack,
+        _: &crate::BundleConfig,
+    ) -> Result<Option<Vec<Option<ItemStack>>>, crate::BundleReadError> {
         // The fake registry models declared containers, not game bundle components.
-        None
+        Ok(None)
     }
     fn item_container_slots(&self, stack: &ItemStack) -> Option<Vec<Option<ItemStack>>> {
         self.registries.container_slots(stack)

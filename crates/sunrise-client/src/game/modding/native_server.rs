@@ -13,6 +13,9 @@ mod argument_kinds;
 #[path = "native_server/command_failure_tests.rs"]
 mod command_failure_tests;
 #[cfg(test)]
+#[path = "native_server/command_shape_tests.rs"]
+mod command_shape_tests;
+#[cfg(test)]
 #[path = "native_server/provider_tests.rs"]
 mod provider_tests;
 #[path = "native_server/registered_commands.rs"]
@@ -20,14 +23,17 @@ mod registered_commands;
 #[cfg(test)]
 #[path = "native_server/selector_tests.rs"]
 mod selector_tests;
+#[cfg(test)]
+#[path = "native_server/sidebar_tests.rs"]
+mod sidebar_tests;
 
 use super::api_values::{TryIntoApi, TryIntoEngine};
 use super::{Dim, Game, commands::execute, respawn_anchor::RespawnConfig};
 use crate::game::level_control_hooks::LevelControl;
 pub(super) use argument_kinds::{CommandArguments, command_arguments};
 use argument_kinds::{
-    UNCENTERED, argument_type, custom_value, dimension_value, nbt_value, parsed_type, parser,
-    positional_value, resource_parser,
+    UNCENTERED, argument_type, bounded_parser, custom_parser, custom_value, dimension_value,
+    nbt_value, parsed_type, parser, positional_value, resource_parser,
 };
 use mod_api::__private::game::*;
 pub(super) use registered_commands::NativeCommandState;
@@ -35,7 +41,8 @@ pub(super) use registered_commands::NativeCommandState;
 use mod_api::LevelRef;
 use mod_api::{
     ActionOutcome, ActionRefused, FakeEffect, GameMode, GlobalPos, Identifier, PlayerAction,
-    PlayerActionSetup, PlayerFood, PlayerRef, PlayerRespawnConfig, ScopedActionResult,
+    PlayerActionSetup, PlayerFood, PlayerRef, PlayerRespawnConfig, ScopedActionResult, Sidebar,
+    TextFormError, VirtualHost,
 };
 use serde_json::{Map, Value, json};
 use std::sync::{
@@ -46,26 +53,14 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use sunrise_client::{
     command::{Arg, ArgType, Context, Dispatcher},
     items::ItemStack,
-    lan::{abilities::PlayerAbilities, data::component_nbt, guest::Guest},
+    lan::{
+        abilities::PlayerAbilities, data::component_nbt, guest::Guest, scoreboard::SidebarContents,
+    },
     motion::PlayerMotion,
     text::Text,
 };
 use sunrise_core::position::BlockPos;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
-
-/// A sidebar a server mod shows one player (`native_sidebar`): its title and
-/// up to 15 lines, top first, each a text on the left and, where the score's
-/// number would be, an optional text on the right.
-#[allow(dead_code)]
-#[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct NativeSidebar {
-    pub(crate) title: Text,
-    pub(crate) lines: Vec<(Text, Option<Text>)>,
-}
-
-/// The objective a mod's sidebar is sent as: the player's client only; the
-/// server's scoreboard never holds it.
-const SIDEBAR_OBJECTIVE: &str = "sunrise:native_sidebar";
 
 /// The report's name of an operator level (`commands.json`'s
 /// `permissions`).
@@ -109,8 +104,12 @@ fn usage_nodes(
             .strip_prefix("resource:")
             .map(|registry| resource_parser(registry).map_err(|e| format!("`{usage}`: {e}")))
             .transpose()?;
-        let builtin =
-            resource.or_else(|| parser(kind).map(|(parser, properties, _)| (parser, properties)));
+        let bounded = bounded_parser(kind)
+            .transpose()
+            .map_err(|e| format!("`{usage}`: {e}"))?;
+        let builtin = resource
+            .or(bounded)
+            .or_else(|| parser(kind).map(|(parser, properties, _)| (parser, properties)));
         let (parser, properties, greedy, custom) = match builtin {
             Some((parser, properties)) => (parser, properties, kind == "text", None),
             None => {
@@ -126,20 +125,16 @@ fn usage_nodes(
                          only a server command can offer; a client command completes without one"
                     ));
                 }
-                let (properties, greedy) = match std::panic::catch_unwind(
-                    std::panic::AssertUnwindSafe(|| argument.kind()),
-                )
-                .map_err(|_| format!("`{usage}`: argument type `{kind}` panicked"))?
-                {
-                    mod_api::CommandArgumentKind::Word => (json!({"type": "word"}), false),
-                    mod_api::CommandArgumentKind::Greedy => (json!({"type": "greedy"}), true),
-                    _ => {
-                        return Err(format!(
-                            "`{usage}`: argument type `{kind}` uses a kind this build cannot read"
-                        ));
-                    }
+                let declared =
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| argument.kind()))
+                        .map_err(|_| format!("`{usage}`: argument type `{kind}` panicked"))?;
+                let Some((parser, properties)) = custom_parser(declared) else {
+                    return Err(format!(
+                        "`{usage}`: argument type `{kind}` uses a kind this build cannot read"
+                    ));
                 };
-                ("brigadier:string", properties, greedy, Some(kind))
+                let greedy = properties["type"] == "greedy";
+                (parser, properties, greedy, Some(kind))
             }
         };
         optional_seen |= optional;
@@ -151,8 +146,9 @@ fn usage_nodes(
         if kind == "vec3_uncentered" {
             node[UNCENTERED] = true.into();
         }
-        // A registered type goes out as a Brigadier string an unmodded client can read; it and
-        // the free `id`, which has no list of its own, ask the server (the mods' `tab_complete`).
+        // A registered type goes out as the Brigadier type its kind names, which an unmodded
+        // client can read; it and the free `id`, which has no list of its own, ask the server
+        // (the mods' `tab_complete`).
         if custom.is_some() || kind == "id" {
             if let Some(id) = custom {
                 node["custom_argument"] = id.into();
@@ -167,31 +163,93 @@ fn usage_nodes(
     Ok(out)
 }
 
+/// The tree a mod's usages meet at their root word.
+#[derive(Clone, Copy)]
+enum BaseTree<'a> {
+    /// The client's own chat tree: a client command whose root it has (`has` answers) is left
+    /// out, so it never hides a server command.
+    Reserved(&'a dyn Fn(&str) -> bool),
+    /// The server's vanilla tree. A usage whose root vanilla registers merges into that root, as
+    /// NeoForge's `RegisterCommandsEvent` registers into vanilla's `CommandDispatcher`, whose
+    /// `register` adds the literal with Brigadier's `CommandNode.addChild`: vanilla's usages
+    /// stay, the mod's children are added beside them, and vanilla's nodes keep their
+    /// permissions. Sunrise's own tools (`/modprofile`, `/pregen`) are not merged into.
+    Merged(&'a Dispatcher),
+}
+
 /// Native mods' commands as a root in the commands report's format
 /// (`lan::commands`, which sends each player what their level allows), and
-/// each command's traversal level: the lowest of its usages. A node is runnable where
-/// only optional arguments follow it; like Brigadier's `CommandNode.addChild`, each
-/// later accepted runnable registration overwrites the node's executor and execution level.
-/// A command vanilla has (`vanilla`
-/// answers) or a usage that doesn't parse is left out, with why.
+/// the traversal level of each command a mod owns: the lowest of its usages. A node is runnable
+/// where only optional arguments follow it; like Brigadier's `CommandNode.addChild`, each
+/// later accepted runnable registration overwrites the node's executor and execution level,
+/// a vanilla node's executor too. A root merged into vanilla's keeps vanilla's level, so it has
+/// none here. A usage that doesn't parse, meets a vanilla node it cannot share or names a root
+/// `base` keeps is left out, with why.
 #[cfg(test)]
 pub(super) fn command_tree(
     commands: &[mod_api::Command],
-    vanilla: impl Fn(&str) -> bool,
+    vanilla: &Dispatcher,
     custom: &CommandArguments,
 ) -> (Value, HashMap<String, u8>, Vec<String>) {
-    command_tree_for(commands, vanilla, custom, false, None)
+    command_tree_for(commands, BaseTree::Merged(vanilla), custom, false, None)
 }
 
 /// Build the display tree for the client's own commands. An argument type that declares a
 /// suggestion provider is refused by name because a client command has no server to answer it.
-/// Every other argument kind builds exactly as on the server.
+/// A root the chat tree already has (`vanilla` answers) is left out. Every other argument kind
+/// builds exactly as on the server.
 pub(super) fn client_command_tree(
     commands: &[mod_api::Command],
     vanilla: impl Fn(&str) -> bool,
     custom: &CommandArguments,
 ) -> (Value, HashMap<String, u8>, Vec<String>) {
-    command_tree_for(commands, vanilla, custom, true, None)
+    command_tree_for(commands, BaseTree::Reserved(&vanilla), custom, true, None)
+}
+
+/// Whether a usage merges into a vanilla root of `base`, or why it cannot go into the tree. Each
+/// word under a merged root that vanilla has at the same place must be a literal on a literal:
+/// Brigadier would keep vanilla's argument type for the mod's argument of the same name, and the
+/// mod's executor would read a value of another kind.
+fn base_root(
+    base: BaseTree<'_>,
+    usage: &str,
+    nodes: &[(String, Value, bool)],
+) -> Result<bool, String> {
+    let root = nodes[0].0.as_str();
+    let vanilla = match base {
+        BaseTree::Reserved(has) if has(root) => {
+            return Err(format!("`{usage}`: vanilla has /{root}"));
+        }
+        BaseTree::Reserved(_) => return Ok(false),
+        BaseTree::Merged(vanilla) => vanilla,
+    };
+    let Some(mut at) = vanilla.find(root) else {
+        return Ok(false);
+    };
+    if sunrise_client::command::vanilla::is_session_tool(root) {
+        return Err(format!("`{usage}`: /{root} is the game's own command"));
+    }
+    for (name, node, _) in &nodes[1..] {
+        let Some(child) = vanilla.nodes[at]
+            .children
+            .iter()
+            .copied()
+            .find(|&child| vanilla.nodes[child].name() == name)
+        else {
+            break;
+        };
+        let literal = matches!(
+            vanilla.nodes[child].kind,
+            sunrise_client::command::NodeKind::Literal(_)
+        );
+        if !literal || node["type"] != "literal" {
+            return Err(format!(
+                "`{usage}`: `{name}` is a node of vanilla's /{root} that a mod argument cannot share"
+            ));
+        }
+        at = child;
+    }
+    Ok(true)
 }
 
 /// Whether `argument` declares a suggestion provider, read once per tree. A panic is logged and
@@ -216,7 +274,7 @@ type CommandExecutorSlots = HashMap<Vec<String>, usize>;
 
 fn command_tree_for(
     commands: &[mod_api::Command],
-    vanilla: impl Fn(&str) -> bool,
+    base: BaseTree<'_>,
     custom: &CommandArguments,
     client: bool,
     mut executors: Option<&mut CommandExecutorSlots>,
@@ -232,10 +290,13 @@ fn command_tree_for(
                 continue;
             }
         };
-        if vanilla(&nodes[0].0) {
-            problems.push(format!("`{}`: vanilla has /{}", command.usage, nodes[0].0));
-            continue;
-        }
+        let merged = match base_root(base, &command.usage, &nodes) {
+            Ok(merged) => merged,
+            Err(e) => {
+                problems.push(e);
+                continue;
+            }
+        };
         // A rejected usage must not open an earlier executable prefix or lower its level.
         let mut children = &root;
         let mut conflict = None;
@@ -298,14 +359,16 @@ fn command_tree_for(
             }
             children = entry["children"].as_object_mut().expect("made above");
         }
-        let level = levels.entry(nodes[0].0.clone()).or_insert(4);
-        *level = (*level).min(command.level);
+        if !merged {
+            let level = levels.entry(nodes[0].0.clone()).or_insert(4);
+            *level = (*level).min(command.level);
+        }
     }
-    let mut root = Value::Object(root);
-    finish(&mut root);
-    let tree = if levels.is_empty() {
+    let tree = if root.is_empty() {
         Value::Null
     } else {
+        let mut root = Value::Object(root);
+        finish(&mut root);
         json!({"type": "root", "children": root})
     };
     (tree, levels, problems)
@@ -368,16 +431,21 @@ fn register_command_nodes(
     ) {
         for (name, node) in children {
             path.push(name.clone());
+            let before = dispatcher.nodes.len();
             let id = if node["type"] == "literal" {
                 dispatcher.literal(parent, name)
             } else {
                 dispatcher.argument(parent, name, argument_type(node, arguments))
             };
-            let level = node["permissions"]["permission"]["level"]
-                .as_str()
-                .and_then(|level| LEVELS.iter().position(|known| *known == level))
-                .unwrap_or(0) as u8;
-            dispatcher.requires(id, level);
+            // `CommandNode.addChild` merges into a node vanilla already has, which keeps its
+            // own requirement; a node the mod adds takes the usage's level.
+            if dispatcher.nodes.len() > before {
+                let level = node["permissions"]["permission"]["level"]
+                    .as_str()
+                    .and_then(|level| LEVELS.iter().position(|known| *known == level))
+                    .unwrap_or(0) as u8;
+                dispatcher.requires(id, level);
+            }
             if node["executable"] == true {
                 dispatcher.executes(id, handler);
                 dispatcher.requires_execution(
@@ -1425,6 +1493,13 @@ impl Game<'_> {
         (self.native_acting_player() == Some(player)).then_some("")
     }
 
+    pub(super) fn player_virtual_host(&self, player: PlayerRef) -> Option<&VirtualHost> {
+        if !self.is_logical_server() {
+            return None;
+        }
+        self.online_player_record(player)?.sender.virtual_host()
+    }
+
     /// The brand the player's client announced when it connected (`ServerPlayer.clientBrand`),
     /// empty when it sent none. Displaced connected players keep theirs; an acting player with
     /// no known connection has an empty one. None for a stale or unavailable player.
@@ -1492,51 +1567,23 @@ impl Game<'_> {
         }
         true
     }
-    /// Shows `sidebar` on that player's screen, in place of the one shown
-    /// before, or takes it away (None). Only their client holds it: the
-    /// server's scoreboard, its `/scoreboard` and the other players don't
-    /// see it, and it is gone when they leave (a mod sends it again when
-    /// they come back). It takes the sidebar's place from an objective the
-    /// world shows there, for this player, until they rejoin. False when
-    /// they aren't on.
-    pub(super) fn native_sidebar(&mut self, uuid: u128, sidebar: Option<&NativeSidebar>) -> bool {
-        let objective = SIDEBAR_OBJECTIVE.to_owned();
-        // Removed first, so the new one's lines replace all the old ones.
-        let mut packets = vec![C::SetObjective(play::SetObjective {
-            name: objective.clone(),
-            method: 1,
-            display: None,
-        })];
-        if let Some(sidebar) = sidebar {
-            let title = component_nbt(&sidebar.title.component());
-            packets.push(C::SetObjective(play::SetObjective {
-                name: objective.clone(),
-                method: 0,
-                display: Some((title, 0, Some(play::NumberFormat::Blank))),
-            }));
-            // DisplaySlot.SIDEBAR.
-            packets.push(C::SetDisplayObjective(play::SetDisplayObjective {
-                slot: 1,
-                objective: objective.clone(),
-            }));
-            let lines = &sidebar.lines[..sidebar.lines.len().min(15)];
-            for (i, (left, right)) in lines.iter().enumerate() {
-                packets.push(C::SetScore(play::SetScore {
-                    // Highest first. The display name shows, not the owner;
-                    // an owner starting with '#' is hidden from the sidebar
-                    // (ScoreHolder's isHidden), and ':' is in no player's name.
-                    owner: format!("sunrise:line{i:02}"),
-                    objective: objective.clone(),
-                    score: (lines.len() - i) as i32,
-                    display: Some(component_nbt(&left.component())),
-                    number_format: Some(match right {
-                        Some(t) => play::NumberFormat::Fixed(component_nbt(&t.component())),
-                        None => play::NumberFormat::Blank,
-                    }),
-                }));
-            }
-        }
-        self.native_send_all(uuid, packets)
+    /// Resolve the physical recipient before converting any of the supplied text.
+    pub(super) fn player_set_sidebar(
+        &mut self,
+        player: PlayerRef,
+        sidebar: Option<Sidebar>,
+    ) -> Result<bool, TextFormError> {
+        let Some(conn) = self.online_player_record(player).map(|guest| guest.conn) else {
+            return Ok(false);
+        };
+        let contents = sidebar
+            .map(|sidebar| {
+                let items = self.res.item_defaults().entries();
+                SidebarContents::prepare(sidebar, &|item| items.contains_key(item)).map(Box::new)
+            })
+            .transpose()?;
+        self.after_commit(super::transactions::After::PersonalSidebar(conn, contents));
+        Ok(true)
     }
     /// The lines over and under that player's list of players (Tab):
     /// `ClientboundTabListPacket`, an empty text for none. False when they
@@ -1903,16 +1950,26 @@ impl Game<'_> {
         super::dedicated::events::record("announce", name, uuid, json!({ "message": message }));
         true
     }
-    /// A command's success feedback, routed to its originating source using
-    /// vanilla's silence, send-command-feedback and block/cart track-output rules.
-    pub(super) fn native_feedback(&mut self, line: Text) {
+    /// A command's success feedback: `CommandSourceStack.sendSuccess(line,
+    /// broadcast_to_admins)` from the executor's source, the line to its
+    /// originating source and, with `broadcast_to_admins`, the other operators
+    /// and the log (`send_success`). The executing level is in place: the
+    /// entity's name is read there, the origin block or minecart in its own.
+    pub(super) fn native_feedback(&mut self, line: Text, broadcast_to_admins: bool) {
+        let source = self.command_source.unwrap_or_else(|| self.player_source());
+        self.with_source(source, |game| game.send_success(line, broadcast_to_admins));
+    }
+    /// `CommandSourceStack.sendFailure` for a mod's executor: the red line to the originating
+    /// source, using vanilla's silence and block/cart track-output rules. The command's result
+    /// is whatever the executor returns.
+    pub(super) fn native_failure(&mut self, line: Text) {
         let source = self.command_source.unwrap_or_else(|| self.player_source());
         self.with_source(
             super::commands::execute::Source {
                 dimension: source.origin_dimension,
                 ..source
             },
-            |game| game.feedback_unbroadcast(line),
+            |game| game.command_failure(line),
         );
     }
     /// The player whose action or command a hook hears, as their state is
@@ -2338,13 +2395,29 @@ impl Game<'_> {
         }
     }
 
-    fn native_command_player_target(&self, target: super::commands::Target) -> Option<PlayerRef> {
+    pub(super) fn native_command_player_target(
+        &self,
+        target: super::commands::Target,
+    ) -> Option<PlayerRef> {
         use super::commands::Target;
         match target {
             Target::Player => self.native_acting_player(),
-            Target::Guest(conn) => self
-                .command_guest(conn)
-                .and_then(|guest| self.player(guest.uuid)),
+            Target::Guest(conn) if self.lan_acting == Some(conn) => self.native_acting_player(),
+            // The selected guest's own identity, a fake player's too (`execute on origin` of
+            // its projectile). `player_handle_read` keeps the checks: a real guest must be
+            // online, not displaced (or the one being cloned) and still that entity; a fake
+            // must be placed and not displaced.
+            Target::Guest(conn) => {
+                let guest = self.command_guest(conn)?;
+                let player = mod_api::__private::game::player_ref(
+                    mod_api::EntityRef::new(
+                        self.native_lifecycle.epoch()?,
+                        u32::try_from(guest.entity_id).ok()?,
+                    ),
+                    guest.uuid,
+                );
+                self.player_handle_read(player).map(|_| player)
+            }
             _ => None,
         }
     }
@@ -2376,6 +2449,7 @@ impl Game<'_> {
                 Arg::Str(text) if matches!(ty, Some(ArgType::Nbt)) => nbt_value(&text)?,
                 Arg::Str(value) => Value::String(value),
                 Arg::Int(value) => Value::Integer(value),
+                Arg::Long(value) => Value::Long(value),
                 Arg::Double(value) => Value::Number(value),
                 Arg::Bool(value) => Value::Boolean(value),
                 Arg::Entity(selector) => {
@@ -2677,6 +2751,7 @@ mod tests {
         game.options.dedicated = Some(Vec::new());
         let at = sunrise_core::geometry::Vec3::new(1.0, 70.0, 1.0);
         game.orbs.push(sunrise_client::entities::ExperienceOrb {
+            size_answer: None,
             attachment_lifetime: Default::default(),
             fall_distance: 0.0,
             rotation: [0.0, 0.0],
@@ -2796,7 +2871,9 @@ mod tests {
                     block.track_output = track;
                     block.last_output = None;
                 }
-                game.with_source(source, |game| game.native_feedback(Text::literal("answer")));
+                game.with_source(source, |game| {
+                    game.native_feedback(Text::literal("answer"), false)
+                });
                 let Some(BlockEntity::CommandBlock(block)) =
                     game.world.block_entities.get(&(1, 64, 1))
                 else {
@@ -2811,7 +2888,7 @@ mod tests {
                     block: None,
                     ..source
                 },
-                |game| game.native_feedback(Text::literal("silent")),
+                |game| game.native_feedback(Text::literal("silent"), false),
             );
             assert!(game.chat_capture.take().unwrap().is_empty());
             assert!(game.command_source.is_none());
@@ -2997,7 +3074,7 @@ mod tests {
     }
 
     fn tree(commands: &[mod_api::Command]) -> (Value, HashMap<String, u8>, Vec<String>) {
-        command_tree(commands, |name| name == "give", &HashMap::new())
+        command_tree(commands, &Dispatcher::new(), &HashMap::new())
     }
 
     fn stack(item: &str, count: u32) -> Option<ItemStack> {
@@ -3060,6 +3137,106 @@ mod tests {
         assert!(inventory_add(&mut inv, &mut off, 0, 64, &mut apple));
         assert!(off.is_none(), "never into an empty off hand (getFreeSlot)");
         assert_eq!(apple.count, 3);
+    }
+
+    /// The game's `Inventory.add` (pickups, `/give`, a bucket's or a bottle's result) takes
+    /// its slots from `getSlotWithRemainingSpace` and `getFreeSlot`
+    /// (`sunrise_client::menu::{slot_with_remaining_space, free_slot}`): one dirt at a time
+    /// lands where they answer and nowhere else, in vanilla's order (the selected slot, the
+    /// off hand, the main slots, then the first empty one).
+    #[test]
+    fn every_added_item_lands_where_the_slot_pickers_answer() {
+        use super::super::inventory_add;
+        use sunrise_client::menu::{OFFHAND, free_slot, slot_with_remaining_space};
+        let mut inv = vec![stack("minecraft:stone", 64); 36];
+        for (slot, have) in [
+            (0, stack("minecraft:stone", 5)),
+            (1, None),
+            (2, None),
+            (3, stack("minecraft:dirt", 63)),
+            (7, stack("minecraft:dirt", 63)),
+            (20, None),
+        ] {
+            inv[slot] = have;
+        }
+        let mut off = stack("minecraft:dirt", 62);
+        let selected = 3;
+        let dirt = stack("minecraft:dirt", 1).unwrap();
+        let mut landed = Vec::new();
+        for _ in 0..6 {
+            let answer = slot_with_remaining_space(&inv, off.as_ref(), selected, &dirt, 64)
+                .or_else(|| free_slot(&inv))
+                .unwrap();
+            let (mut inv_after, mut off_after) = (inv.clone(), off.clone());
+            let cell = if answer == OFFHAND {
+                &mut off_after
+            } else {
+                &mut inv_after[answer]
+            };
+            match cell {
+                Some(have) => have.count += 1,
+                empty => *empty = Some(dirt.clone()),
+            }
+            let mut one = dirt.clone();
+            assert!(!inventory_add(&mut inv, &mut off, selected, 64, &mut one));
+            assert_eq!((&inv, &off), (&inv_after, &off_after), "into {answer}");
+            landed.push(answer);
+        }
+        assert_eq!(landed, [3, OFFHAND, OFFHAND, 7, 1, 1]);
+    }
+
+    /// A mod's rows that keep hotbar slots 6 to 8 free change the slot the game's
+    /// `Inventory.add` takes (replaced on this thread through `rule_replacements::ADD_SLOT`):
+    /// a dirt passes the stack in slot 6 with room and the selected slot 7 for slot 0.
+    #[test]
+    fn a_replaced_slot_choice_reaches_the_games_inventory_add() {
+        use super::super::inventory_add;
+        use super::super::rule_replacements::{ADD_SLOT, replaced};
+        use sunrise_client::menu::OFFHAND;
+        fn open(i: usize) -> bool {
+            !(6..=8).contains(&i)
+        }
+        fn locked(
+            items: &[Option<ItemStack>],
+            offhand: Option<&ItemStack>,
+            selected: usize,
+            stack: &ItemStack,
+            max: u32,
+        ) -> Option<usize> {
+            let has = |have: Option<&ItemStack>| {
+                have.is_some_and(|have| have.same_item_same_components(stack) && have.count < max)
+            };
+            if open(selected) && has(items[selected].as_ref()) {
+                Some(selected)
+            } else if has(offhand) {
+                Some(OFFHAND)
+            } else {
+                (0..items.len())
+                    .find(|&i| open(i) && has(items[i].as_ref()))
+                    .or_else(|| (0..items.len()).find(|&i| open(i) && items[i].is_none()))
+            }
+        }
+        let mut inv = vec![None; 36];
+        inv[6] = stack("minecraft:dirt", 10);
+        let mut vanilla = inv.clone();
+        let mut off = None;
+        let mut one = stack("minecraft:dirt", 1).unwrap();
+        let left = replaced(&ADD_SLOT, locked, || {
+            inventory_add(&mut inv, &mut off, 7, 64, &mut one)
+        });
+        assert!(!left);
+        assert_eq!(
+            (&inv[0], &inv[6], &inv[7]),
+            (
+                &stack("minecraft:dirt", 1),
+                &stack("minecraft:dirt", 10),
+                &None
+            )
+        );
+        // Without the rows, vanilla's slot: the stack in slot 6 with room.
+        let mut one = stack("minecraft:dirt", 1).unwrap();
+        assert!(!inventory_add(&mut vanilla, &mut off, 7, 64, &mut one));
+        assert_eq!(vanilla[6], stack("minecraft:dirt", 11));
     }
 
     #[test]
@@ -3319,7 +3496,7 @@ mod tests {
         )]);
         let (tree, _, problems) = super::command_tree(
             &[mod_api::Command::new("probe <value:test:hostile>")],
-            |_| false,
+            &sunrise_client::command::Dispatcher::new(),
             &arguments,
         );
         assert!(problems.is_empty());
@@ -3364,7 +3541,7 @@ mod tests {
         )]);
         let (_, _, problems) = super::command_tree(
             &[mod_api::Command::new("probe <value:test:panic>")],
-            |_| false,
+            &sunrise_client::command::Dispatcher::new(),
             &arguments,
         );
         assert_eq!(problems.len(), 1);
@@ -3392,7 +3569,7 @@ mod tests {
 
         let (tree, _, problems) = super::command_tree(
             &[mod_api::Command::new("machine use <machine:test:machine>")],
-            |_| false,
+            &sunrise_client::command::Dispatcher::new(),
             &arguments,
         );
         assert!(problems.is_empty(), "{problems:?}");
@@ -3513,7 +3690,7 @@ mod tests {
         )]);
         let (tree, _, problems) = super::command_tree(
             &[mod_api::Command::new("replace <pattern:test:pattern>")],
-            |_| false,
+            &sunrise_client::command::Dispatcher::new(),
             &arguments,
         );
         assert!(problems.is_empty(), "{problems:?}");
@@ -3575,7 +3752,7 @@ mod tests {
         )]);
         let (tree, _, problems) = super::command_tree(
             &[mod_api::Command::new("fill <blocks:test:mixed>")],
-            |_| false,
+            &sunrise_client::command::Dispatcher::new(),
             &arguments,
         );
         assert!(problems.is_empty(), "{problems:?}");
@@ -3611,7 +3788,7 @@ mod tests {
                 mod_api::Command::new("worse <kind:resource:a:b:c>"),
                 mod_api::Command::new("worst <kind:resource:a/b:c>"),
             ],
-            |_| false,
+            &sunrise_client::command::Dispatcher::new(),
             &arguments,
         );
         assert_eq!(problems.len(), 3, "{problems:?}");
@@ -4380,7 +4557,7 @@ mod tests {
                                   _: &mod_api::CommandInvocation| {
                                 heard.lock().unwrap().push(source.clone());
                                 host.commands()
-                                    .feedback(mod_api::Text::literal("source answer"))
+                                    .feedback(mod_api::Text::literal("source answer"), false)
                                     .unwrap();
                                 Ok(1)
                             };
@@ -4669,7 +4846,7 @@ mod tests {
             let mut executors = HashMap::new();
             let (tree, _, problems) = command_tree_for(
                 &commands,
-                |_| false,
+                BaseTree::Merged(&Dispatcher::new()),
                 &arguments,
                 false,
                 Some(&mut executors),
@@ -4757,9 +4934,8 @@ mod tests {
     }
 
     #[test]
-    fn bad_usages_and_vanilla_names_are_left_out() {
+    fn bad_usages_are_left_out() {
         let (t, levels, problems) = tree(&[
-            mod_api::Command::new("give <x:integer>"),
             mod_api::Command::new("a [x:integer] <y:integer>"),
             mod_api::Command::new("b <x:text> <y:word>"),
             mod_api::Command::new("c <x:colour>"),
@@ -4768,7 +4944,7 @@ mod tests {
             mod_api::Command::new("d <x:integer>"),
             mod_api::Command::new("d <x:word>"),
         ]);
-        assert_eq!(problems.len(), 7, "{problems:?}");
+        assert_eq!(problems.len(), 6, "{problems:?}");
         assert_eq!(levels.keys().collect::<Vec<_>>(), ["d"]);
         assert_eq!(
             t["children"]["d"]["children"]["x"]["parser"],
@@ -4776,6 +4952,328 @@ mod tests {
         );
         let (none, levels, _) = tree(&[]);
         assert!(none.is_null() && levels.is_empty());
+    }
+
+    /// `integer(min,max)` and `long(min,max)` go out as vanilla's `IntegerArgumentInfo` and
+    /// `LongArgumentInfo` write them (a bound at the type's extreme is left out), and the server
+    /// refuses a value out of range with Brigadier's message before any executor runs.
+    #[test]
+    fn bounded_numbers_keep_their_bounds_in_the_tree_and_the_dispatcher() {
+        let (t, _, problems) = tree(&[
+            mod_api::Command::new("pay <amount:integer(0,1000)>"),
+            mod_api::Command::new("bank <total:long(-5,9000000000)>"),
+            mod_api::Command::new("floor <level:integer(0,)>"),
+            mod_api::Command::new("whole <n:integer(-2147483648,2147483647)>"),
+            mod_api::Command::new("plain <n:long>"),
+            mod_api::Command::new("bad <n:integer(5,1)>"),
+            mod_api::Command::new("bad <n:integer(0,2147483648)>"),
+            mod_api::Command::new("bad <n:long(1)>"),
+            mod_api::Command::new("bad <n:integer(a,)>"),
+        ]);
+        assert_eq!(problems.len(), 4, "{problems:?}");
+        assert!(
+            problems.iter().all(|p| p.starts_with("`bad ")),
+            "{problems:?}"
+        );
+        let c = &t["children"];
+        let node = |root: &str, name: &str| c[root]["children"][name].clone();
+        assert_eq!(node("pay", "amount")["parser"], "brigadier:integer");
+        assert_eq!(
+            node("pay", "amount")["properties"],
+            json!({"min": 0, "max": 1000})
+        );
+        assert_eq!(node("bank", "total")["parser"], "brigadier:long");
+        assert_eq!(
+            node("bank", "total")["properties"],
+            json!({"min": -5, "max": 9_000_000_000_i64})
+        );
+        assert_eq!(node("floor", "level")["properties"], json!({"min": 0}));
+        assert!(node("whole", "n").get("properties").is_none());
+        assert_eq!(node("plain", "n")["parser"], "brigadier:long");
+        assert!(node("plain", "n").get("properties").is_none());
+
+        let mut dispatcher = Dispatcher::new();
+        register_dispatcher(&mut dispatcher, &t, "native_mod_command", &HashMap::new());
+        let registries = sunrise_client::command::Registries::default();
+        let value = |line: &str, name: &str| {
+            dispatcher
+                .parse(line, &registries)
+                .executable()
+                .unwrap()
+                .0
+                .get(name)
+                .cloned()
+        };
+        assert_eq!(value("pay 1000", "amount"), Some(Arg::Int(1000)));
+        assert_eq!(
+            value("bank 9000000000", "total"),
+            Some(Arg::Long(9_000_000_000))
+        );
+        assert_eq!(
+            value("plain -9223372036854775808", "n"),
+            Some(Arg::Long(i64::MIN))
+        );
+        for (line, expected) in [
+            (
+                "pay 1001",
+                Text::tr("argument.integer.big", &[&1000, &1001]),
+            ),
+            ("pay -1", Text::tr("argument.integer.low", &[&0, &-1])),
+            ("floor -1", Text::tr("argument.integer.low", &[&0, &-1])),
+            (
+                "bank 9000000001",
+                Text::tr(
+                    "argument.long.big",
+                    &[&9_000_000_000_i64, &9_000_000_001_i64],
+                ),
+            ),
+            ("bank -6", Text::tr("argument.long.low", &[&-5, &-6])),
+            ("bank 1.5", Text::tr("parsing.long.invalid", &[&"1.5"])),
+        ] {
+            let error = dispatcher
+                .parse(line, &registries)
+                .executable()
+                .unwrap_err();
+            assert_eq!(error.message, expected, "{line}");
+        }
+    }
+
+    /// A mod argument type that declares `CommandArgumentKind::Integer` goes out as vanilla's
+    /// bounded `brigadier:integer`, so a client refuses what the server refuses; the server checks
+    /// the bounds before the mod's parser.
+    #[test]
+    fn a_registered_integer_kind_goes_out_bounded() {
+        struct Stack;
+        impl mod_api::CommandArgumentType for Stack {
+            fn kind(&self) -> mod_api::CommandArgumentKind {
+                mod_api::CommandArgumentKind::Integer {
+                    min: Some(1),
+                    max: Some(64),
+                }
+            }
+            fn parse(&self, input: &str) -> Result<String, mod_api::CommandArgumentError> {
+                Ok(format!("{input} items"))
+            }
+            fn suggest(
+                &self,
+                _: Option<&mod_api::CommandSender>,
+                _: &str,
+            ) -> Vec<mod_api::CommandSuggestion> {
+                Vec::new()
+            }
+        }
+        let arguments: CommandArguments = HashMap::from([(
+            "test:stack".to_owned(),
+            Arc::new(Stack) as Arc<dyn mod_api::CommandArgumentType>,
+        )]);
+        let (t, _, problems) = command_tree(
+            &[mod_api::Command::new("stack <count:test:stack>")],
+            &Dispatcher::new(),
+            &arguments,
+        );
+        assert!(problems.is_empty(), "{problems:?}");
+        let count = &t["children"]["stack"]["children"]["count"];
+        assert_eq!(count["parser"], "brigadier:integer");
+        assert_eq!(count["properties"], json!({"min": 1, "max": 64}));
+        assert_eq!(count["custom_argument"], "test:stack");
+        let mut dispatcher = Dispatcher::new();
+        register_dispatcher(&mut dispatcher, &t, "native_mod_command", &arguments);
+        let registries = sunrise_client::command::Registries::default();
+        let parsed = dispatcher.parse("stack 64", &registries);
+        assert_eq!(
+            parsed.executable().unwrap().0.get("count"),
+            Some(&Arg::Custom {
+                kind: "test:stack".into(),
+                value: "64 items".into(),
+            })
+        );
+        let error = dispatcher
+            .parse("stack 65", &registries)
+            .executable()
+            .unwrap_err();
+        assert_eq!(error.message, Text::tr("argument.integer.big", &[&64, &65]));
+    }
+
+    /// `<name:string>` and a type declaring `CommandArgumentKind::Quotable` read Brigadier's
+    /// `StringArgumentType.string()`: a word or a quoted phrase, decoded, with an argument after
+    /// it. Both go to clients as `brigadier:string` in its quotable mode; only the mod's type asks
+    /// the server for completions, as `word` and a `Word` type do.
+    #[test]
+    fn a_string_usage_and_a_quotable_type_read_a_quoted_phrase_before_the_next_argument() {
+        struct QuestObject;
+        impl mod_api::CommandArgumentType for QuestObject {
+            fn kind(&self) -> mod_api::CommandArgumentKind {
+                mod_api::CommandArgumentKind::Quotable
+            }
+            fn parse(&self, input: &str) -> Result<String, mod_api::CommandArgumentError> {
+                Ok(input.to_lowercase())
+            }
+            fn suggest(
+                &self,
+                _: Option<&mod_api::CommandSender>,
+                _: &str,
+            ) -> Vec<mod_api::CommandSuggestion> {
+                Vec::new()
+            }
+        }
+        let arguments: CommandArguments = HashMap::from([(
+            "test:quest_object".to_owned(),
+            Arc::new(QuestObject) as Arc<dyn mod_api::CommandArgumentType>,
+        )]);
+        let (t, _, problems) = command_tree(
+            &[
+                mod_api::Command::new("quests open <object:test:quest_object> <count:integer>"),
+                mod_api::Command::new("quests rename <title:string> <count:integer>"),
+            ],
+            &Dispatcher::new(),
+            &arguments,
+        );
+        assert!(problems.is_empty(), "{problems:?}");
+        let quests = &t["children"]["quests"]["children"];
+        let object = &quests["open"]["children"]["object"];
+        assert_eq!(object["parser"], "brigadier:string");
+        assert_eq!(object["properties"], json!({"type": "phrase"}));
+        assert_eq!(object["custom_argument"], "test:quest_object");
+        assert_eq!(object["suggestions"], "minecraft:ask_server");
+        let title = &quests["rename"]["children"]["title"];
+        assert_eq!(title["parser"], "brigadier:string");
+        assert_eq!(title["properties"], json!({"type": "phrase"}));
+        assert_eq!(
+            title["suggestions"],
+            Value::Null,
+            "vanilla's string suggests nothing"
+        );
+
+        let mut dispatcher = Dispatcher::new();
+        register_dispatcher(&mut dispatcher, &t, "native_mod_command", &arguments);
+        let registries = sunrise_client::command::Registries::default();
+        for (line, value) in [
+            (r##"quests open "#Chapter_One" 3"##, "#chapter_one"),
+            ("quests open 1A2B3C4D5E6F7A8B 3", "1a2b3c4d5e6f7a8b"),
+            (r#"quests open "" 3"#, ""),
+        ] {
+            let parsed = dispatcher.parse(line, &registries);
+            let (context, _) = parsed
+                .executable()
+                .unwrap_or_else(|e| panic!("{line}: {e:?}"));
+            assert_eq!(
+                context.get("object"),
+                Some(&Arg::Custom {
+                    kind: "test:quest_object".into(),
+                    value: value.into(),
+                }),
+                "{line}"
+            );
+            assert_eq!(context.get("count"), Some(&Arg::Int(3)), "{line}");
+        }
+        for (line, value) in [
+            (
+                r#"quests rename "Getting \"Started\"" 2"#,
+                r#"Getting "Started""#,
+            ),
+            (r"quests rename 'back\\slash' 2", r"back\slash"),
+            ("quests rename '' 2", ""),
+            ("quests rename Plain 2", "Plain"),
+        ] {
+            let parsed = dispatcher.parse(line, &registries);
+            let (context, _) = parsed
+                .executable()
+                .unwrap_or_else(|e| panic!("{line}: {e:?}"));
+            assert_eq!(
+                context.get("title"),
+                Some(&Arg::Str(value.into())),
+                "{line}"
+            );
+            assert_eq!(context.get("count"), Some(&Arg::Int(2)), "{line}");
+        }
+        for line in [r#"quests rename "Getting 2"#, r#"quests open "Getting 2"#] {
+            let error = dispatcher
+                .parse(line, &registries)
+                .executable()
+                .unwrap_err();
+            assert_eq!(
+                error.message,
+                Text::tr("parsing.quote.expected.end", &[]),
+                "{line}"
+            );
+            assert_eq!(error.cursor, line.len(), "{line}");
+        }
+    }
+
+    /// NeoForge's `RegisterCommandsEvent` registers into vanilla's dispatcher, whose literal
+    /// merges by Brigadier's `CommandNode.addChild`: a mod usage under `/time` sits beside
+    /// vanilla's, which stay; vanilla's node keeps its permission; an executor at a vanilla node
+    /// replaces vanilla's, and a later one replaces that. A mod argument at a vanilla node's
+    /// place, a mod argument on a vanilla literal and Sunrise's own tools are refused.
+    #[test]
+    fn usages_under_a_vanilla_root_merge_beside_its_usages() {
+        let vanilla = sunrise_client::command::vanilla::session_dispatcher(
+            &sunrise_client::gamerules::RuleRegistry::vanilla(),
+            &[],
+        );
+        let commands = [
+            mod_api::Command::new("time season <name:word>"),
+            mod_api::Command::new("seed"),
+            mod_api::Command::op("seed", 3),
+            mod_api::Command::new("time set <time:integer>"),
+            mod_api::Command::new("time <set:word>"),
+            mod_api::Command::new("modprofile extra"),
+            mod_api::Command::new("raidplus go"),
+        ];
+        let arguments = HashMap::new();
+        let mut executors = HashMap::new();
+        let (t, levels, problems) = command_tree_for(
+            &commands,
+            BaseTree::Merged(&vanilla),
+            &arguments,
+            false,
+            Some(&mut executors),
+        );
+        assert_eq!(problems.len(), 3, "{problems:?}");
+        for (problem, usage) in problems.iter().zip([
+            "time set <time:integer>",
+            "time <set:word>",
+            "modprofile extra",
+        ]) {
+            assert!(problem.starts_with(&format!("`{usage}`")), "{problem}");
+        }
+        // A merged root keeps vanilla's level: only the mod's own root routes as a mod command.
+        assert_eq!(levels.keys().collect::<Vec<_>>(), ["raidplus"]);
+        let mut dispatcher = vanilla.clone();
+        register_command_nodes(
+            &mut dispatcher,
+            &t,
+            "native_mod_command",
+            &arguments,
+            Some(&executors),
+        );
+        let at = |permission| sunrise_client::command::Registries {
+            permission,
+            ..Default::default()
+        };
+        let run = |line: &str, permission| {
+            dispatcher
+                .parse(line, &at(permission))
+                .executable()
+                .map(|(context, command)| (command, context.executor.map(|key| key.slot())))
+        };
+        let vanilla_time = vanilla
+            .parse("time set day", &at(2))
+            .executable()
+            .unwrap()
+            .1;
+        assert_eq!(run("time set day", 2), Ok((vanilla_time, None)));
+        assert_eq!(
+            run("time season spring", 2),
+            Ok(("native_mod_command", Some(0)))
+        );
+        assert!(
+            run("time season spring", 0).is_err(),
+            "vanilla's /time keeps its permission"
+        );
+        assert!(run("seed", 2).is_err(), "the later usage's level runs it");
+        assert_eq!(run("seed", 3), Ok(("native_mod_command", Some(2))));
+        assert_eq!(run("raidplus go", 0), Ok(("native_mod_command", Some(6))));
     }
 
     /// WorldEdit-style `//set`: the usage `/set <x:word>` (typed `//set` with the chat slash) is a

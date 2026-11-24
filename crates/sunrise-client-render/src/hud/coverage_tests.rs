@@ -458,3 +458,73 @@ fn a_pack_text_shader_without_a_colour_output_is_dropped_not_wrapped() {
     gpu.hud.set_text_shader(&gpu.device, Some((&program, &[])));
     assert!(gpu.hud.pack_text.is_none());
 }
+
+/// A 2 x 1 picture, red then green, nearest and repeating.
+fn red_green() -> Arc<pictures::Picture> {
+    Arc::new(pictures::Picture {
+        id: u64::MAX - 1,
+        width: 2,
+        height: 1,
+        pixels: vec![255, 0, 0, 255, 0, 255, 0, 255],
+        flags: TextureFlags::default(),
+    })
+}
+
+fn prepare(gpu: &mut Gpu, batch: &HudBatch) {
+    let mut uploads = crate::gfx::upload::Uploads::new(&gpu.device);
+    let mut encoder = gpu.device.create_command_encoder(&Default::default());
+    gpu.hud
+        .prepare_pictures(&gpu.device, &mut uploads, &mut encoder, batch);
+    uploads.finish(&encoder);
+    gpu.queue.submit([encoder.finish()]);
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_repeating_picture_past_u_2_draws_itself_not_a_glint() {
+    let _gpu = crate::gfx::test_gpu::lock();
+    let Some(mut gpu) = Gpu::new() else { return };
+    let image = red_green();
+    // The harness's frame is 4 x 2 GUI pixels.
+    let mut batch = HudBatch::scratch([4, 2]);
+    batch.pictures.push(image.clone());
+    // `innerBlit` with u from 1 to 3: texel centres at u 1.25, 1.75, 2.25 and 2.75, the last two
+    // past the HUD shader's glint marker at u = 2. Repeating, they are red, green, red, green.
+    let rect = Rect {
+        u0: 1.0,
+        v0: 0.0,
+        u1: 3.0,
+        v1: 1.0,
+        w: 2,
+        h: 1,
+    };
+    batch.rect_uv(0.0, 0.0, 4.0, 2.0, rect, u32::MAX);
+    batch.blend_since(0, Blend::Picture(image.id));
+    prepare(&mut gpu, &batch);
+    let (pixels, _) = gpu.draw(&batch, 0.0, 0.0, true);
+    let (red, green) = ([255, 0, 0, 255], [0, 255, 0, 255]);
+    let drawn: Vec<[u8; 4]> = pixels.as_chunks::<4>().0.to_vec();
+    assert_eq!(drawn, [red, green, red, green].repeat(2));
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_held_picture_keeps_its_texture_between_frames_until_released() {
+    let _gpu = crate::gfx::test_gpu::lock();
+    let Some(mut gpu) = Gpu::new() else { return };
+    // `held` is the atlas's strong reference to a standalone texture.
+    let held = red_green();
+    let mut batch = HudBatch::scratch([2, 1]);
+    batch.pictures.push(held.clone());
+    prepare(&mut gpu, &batch);
+    drop(batch);
+    // A frame that doesn't draw it (another screen) keeps the uploaded texture.
+    prepare(&mut gpu, &HudBatch::scratch([2, 1]));
+    assert!(gpu.hud.pictures.contains_key(&held.id));
+    // A reload drops the atlas: the next frame releases it.
+    let weak = Arc::downgrade(&held);
+    drop(held);
+    prepare(&mut gpu, &HudBatch::scratch([2, 1]));
+    assert!(gpu.hud.pictures.is_empty());
+    assert!(weak.upgrade().is_none());
+}

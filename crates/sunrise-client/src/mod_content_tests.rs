@@ -7256,7 +7256,7 @@ fn sign_text_colors_are_the_signs_dye_ids() {
 }
 
 /// A content mod of recipes, a tag and a name, for vanilla's items: what
-/// switches live (docs/design/mod-hotload.md).
+/// switches live.
 fn glint_mod(dir: &Path) -> ContentMod {
     folder_mod(
         dir,
@@ -7840,7 +7840,10 @@ fn structure_modifiers_and_biome_modifier_reject_out_of_range_spawns() {
         let biome = format!(
             r#"{{"type":"neoforge:add_spawns","biomes":"minecraft:plains","spawners":{spawner}}}"#
         );
-        assert!(biomes::Modifier::read("zinc", "bad.json", &biome, &mut Vec::new()).is_err());
+        assert!(
+            biomes::Modifier::read("zinc", "bad.json", &biome, &|_| false, &mut Vec::new())
+                .is_err()
+        );
     }
 }
 

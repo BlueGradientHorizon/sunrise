@@ -156,11 +156,24 @@ its sky, its spawning and its beds follow that clock, and `/time` in the level s
 `level.clock_marker_time(host, &marker)` gives the next time the level's own clock reaches a time marker, as
 `/time set <marker>` moves it. Only the Overworld's clock defines markers today, so any other clock answers None.
 
+To give a dimension a clock of its own, register a `WorldClock` with `r.register_world_clock("dungeon")` in
+`register` and name it in the dimension's settings, `DimensionSettings { clock: Some("mymod:dungeon".into()), .. }`:
+the dimension type takes it as its `default_clock` in place of `day_cycle`'s, and every level of that type follows it.
+A registered clock is an entry of the world's `minecraft:world_clock` registry, sent to players, and runs from the
+world's first tick like the vanilla clocks. `level.clock(host)` gives the level's clock as a `WorldClockRef`
+(`None` for a level without one), whose writes are `ServerClockManager`'s: `set_total_ticks(host, ticks)` sets its
+time, `set_rate(host, rate)` the ticks it counts each game tick, and `set_paused(host, paused)` stops or restarts it,
+so a paused clock gives the level a fixed time.
+
 When enough players have slept, `sleep_finished_time` hands its listeners a `ClockAdjustment` for the level's own
 clock: `Absolute(time)`, `Relative(ticks)` from the time now, or `Marker(id)`. It starts as vanilla's
 `Marker(minecraft:wake_up_from_sleep)`, a later mod reads what an earlier one set, and the game resolves it once
 after all of them. A time before now or past `i64::MAX`, or a marker the clock does not define, is refused and the
 clock moves to the morning instead; `new_time` is that morning, read only.
+
+Before any of that, `sleep_skip_night` is asked once each tick that enough players have slept, with the
+`players_sleeping_percentage` rule and how many players sleep and count. Canceling it keeps the night for that tick:
+the clock does not move, nobody is woken and the rain goes on, and `sleep_finished_time` is not asked.
 
 ## Which level a hook is in
 
@@ -259,6 +272,42 @@ Inside a hook, use `level.request_save(host)`, not a synchronous `save-all` comm
 While an entity pass or held-out row is borrowed, synchronous saving refuses with vanilla's
 `commands.save.failed` feedback and a failed command result, without writing a partial snapshot.
 Requested saves wait for a settled start-of-tick boundary.
+
+## Resolve an entity by UUID
+
+In a server hook, wrap a saved `u128` in `EntityUuid` and ask the level that
+should hold the entity with `LevelRef::entity_by_uuid`. The level may be the one
+in place or a parked one; the lookup returns `None` if the entity is unloaded or
+in another level. To search every level, do as vanilla's
+`ServerLevel.getEntityInAnyDimension` does: ask the hook's own level first, then
+each other level `host.levels()` lists.
+
+```rust,ignore
+use mod_api::prelude::*;
+use mod_api::{EntityRef, EntityUuid, LevelRef, ServerHost};
+
+fn find_saved_entity(host: &dyn ServerHost, level: LevelRef, saved_uuid: u128) -> Option<EntityRef> {
+    level.entity_by_uuid(host, EntityUuid(saved_uuid))
+}
+
+fn find_in_any_level(host: &dyn ServerHost, own: LevelRef, saved_uuid: u128) -> Option<EntityRef> {
+    let uuid = EntityUuid(saved_uuid);
+    own.entity_by_uuid(host, uuid).or_else(|| {
+        let levels = host.levels().list_levels();
+        levels
+            .into_iter()
+            .filter(|level| *level != own)
+            .find_map(|level| level.entity_by_uuid(host, uuid))
+    })
+}
+
+fn entity_identity(host: &mut dyn ServerHost, entity: EntityRef) -> Option<EntityUuid> {
+    entity.uuid(host).map(EntityUuid)
+}
+```
+
+`EntityRef::uuid` returns the raw `u128`. Use `EntityUuid(raw_uuid)` to pass
+that value back into the lookup.
 
 ## Chunk generators
 

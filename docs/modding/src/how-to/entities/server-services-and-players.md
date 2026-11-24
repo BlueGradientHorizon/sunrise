@@ -7,7 +7,7 @@ players.
 
 | Accessor | Operations |
 |---|---|
-| `host.commands()` | `run_command(line)` runs through the console command path with permission level 4. `feedback(text)` answers the command source. |
+| `host.commands()` | `run_command(line)` runs through the console command path with permission level 4. `feedback(text, broadcast_to_admins)` answers the command source and, broadcast, tells the other operators and the log (`sendSuccess(text, true)`). |
 | `host.messages()` | `broadcast(text)` fires the broadcast hook and writes to the server log. |
 | `host.players()` | `server_players()` returns `Vec<PlayerRef>` in join order. `acting_player()` returns the optional player whose state is active in the hook. `player_by_name(name)` finds a connected real player by case-insensitive account name, not nickname. `singleplayer_profile()` is an integrated server's launch profile ([below](#identity-and-location)). |
 | `host.levels()` | `list_levels()` returns loaded server levels in vanilla dimension order, or an empty list before a server world opens. |
@@ -32,10 +32,12 @@ exceeding the boundary's size or nesting limits is refused before reaching the H
 ## Running a command as an entity
 
 `host.commands().run_command` runs as the console. To run a line as a player or another entity instead, at a level
-you choose, call `entity.run_command(host, line, PermissionLevel::Gamemasters)`: `@s` is that entity, `~` its
-position, and only a player is answered. It returns `false` for a line that fails, a stale or removed entity, and an
-entity outside the level in place (a player in another level included, since that level is parked while the hook
-runs). To run a command in another level, do it from a moment in that level or from a task scheduled there.
+you choose, call `entity.run_command(host, line, PermissionLevel::Gamemasters, false)`: `@s` is that entity and
+`~` its position. Pass `true` as the last argument to suppress the player's command feedback and operator
+notifications. Other entities already have a silent source. It returns `false` for a line that fails, a stale or
+removed entity, and an entity outside the level in place (a player in another level included, since that level is
+parked while the hook runs). To run a command in another level, do it from a moment in that level or from a task
+scheduled there.
 
 ## Identity and location
 
@@ -46,6 +48,16 @@ client announced. Name, address and brand return `Option<&str>`: borrow them
 for comparisons, and use `.map(str::to_owned)` only to keep the text beyond the
 host borrow. A stale or unavailable player gives `None`; an acting player without
 a known connection gives `Some("")` for address and brand.
+
+`player.virtual_host(host)` returns `Option<&VirtualHost>` on the server. Its
+`host` and `port` are the destination sent in this connection's login handshake,
+not the peer IP, after any `player_handshake` listener's rewrite. The host keeps its original case and punctuation up to the
+first NUL; any suffix is discarded. A transfer uses the new login handshake.
+The value comes from the client, so it is not a verified name or necessarily
+what the player originally typed. Clone it only if you need it after the host
+borrow ends. The host may be empty. The window's own player on an integrated server
+reports its memory connection's handshake: the host `local`, standing for the local address, and port 0. It is `None`
+on a client, for stale or unavailable players, and for fake players.
 
 `player.announced_channels(host)` returns `Option<Arc<[String]>>` in announcement
 order. The snapshot includes `minecraft:register` minus `minecraft:unregister`
@@ -85,8 +97,8 @@ reported. Configuration, login, status, and the separate play latency request
 do not fire this hook. Neither API changes keep-alive latency.
 
 The online list includes connected players during nested player turns. Name,
-permission and address reads work for connected players whose bodies are displaced
-by another player's turn; stale handles are refused. Entity and living handles
+permission, address and virtual-host reads work for connected players whose bodies
+are displaced by another player's turn; stale handles are refused. Entity and living handles
 provide world-state reads, which require a resolvable body.
 
 In `player_stat_award`, find the recipient with
@@ -275,6 +287,17 @@ ticking is frozen, `None` on a client. A frozen server still runs the ticks `/ti
 `server_tick_start`'s `world_running` can be true while it is frozen; read this to tell a frozen server from a
 paused level.
 
+## Account profiles
+
+`host.profiles().resolve_name(name)` and `resolve_id(uuid)` look an account's profile up
+through the server's own resolver, the one `/fetchprofile` and dynamic player heads use, also on
+an offline-mode server. The first call starts the lookup and answers
+`ProfileResolution::Pending`; call again with the same name or UUID to poll it until it answers
+`Done`, with the `AccountProfile` (UUID, the account's own spelling of its name, and the signed
+properties such as `textures`) or `None`. As in vanilla, a failed request also answers `None`, and
+that answer is kept like any other: the same name or UUID answers `Done(None)` until the entry
+expires, ten minutes after its last lookup.
+
 ## Finding blocks in a chunk
 
 `chunk.sections_with_block(host, block)` names the sections of a loaded chunk whose block palette may hold any
@@ -288,8 +311,8 @@ loaded; it loads nothing.
 ## Loading a chunk
 
 `level.load_chunk(host, [x, z])` is vanilla's `Level.getChunk(x, z)` (`ServerChunkCache.getChunk(x, z, FULL, true)`):
-it loads the chunk from the save, or generates it, to FULL, in any open server level, and returns true once it is
-there with its initial light done, so the level's block and light reads find it. To light it, the 8 chunks around
+it loads the chunk from the save, or generates it, to FULL, in any open server level, and returns `Ok(())` once it
+is there with its initial light done, so the level's block and light reads find it. To light it, the 8 chunks around
 it are loaded too (vanilla only generates them part of the way); they hold no ticket and unload with the next sweep. **It blocks the server tick until the chunk is loaded or
 generated**, as vanilla does, with no timeout; a chunk already full answers at once. Generating a new chunk takes
 long enough to be felt, so load ahead of time rather than many chunks in one tick. Like vanilla, the call leaves an
@@ -299,10 +322,11 @@ any other. Loading a chunk of a parked level doesn't put the level in place: `se
 need it in place still answer `LevelWriteError::Unavailable` there. To keep a chunk, force it (`chunk.set_forced`)
 or hold a ticket controller's
 ticket. The `chunk_load` listeners of each chunk the call brings in run during the call, while that chunk is loaded
-and before the call returns, as NeoForge's `ChunkEvent.Load` does inside `getChunk`. `false` for a
-stale handle, a client, a level the server has not opened, a chunk past `ChunkPos.isValid`
+and before the call returns, as NeoForge's `ChunkEvent.Load` does inside `getChunk`. `Err(ChunkLoadError::Unloaded)`
+for a stale handle, a client, a level the server has not opened, a chunk past `ChunkPos.isValid`
 (`ChunkPyramid.MAX_CHUNK_COORDINATE_VALUE`, where vanilla's block reads and writes stop), and while the level's
-generation is paused or stopped.
+generation is paused or stopped; `Err(ChunkLoadError::Failed)` when a mod's chunk generator panicked for the chunk
+or one its generation needs, which the call reports instead of waiting forever.
 
 ## World mutation: chunks, blocks shown and placed as a player
 
@@ -426,3 +450,31 @@ server, but the crash save writes nothing for that player: their `players/data/<
 advancements stay as last saved, so an item taken but not yet placed is never duplicated or lost in the player's
 files. The world save does not roll back what the turn already changed in the world, and a vehicle that player rides
 alone stays in the world. The log names the turn with a warning. A panic your code caught does not count: the record ends with the server tick.
+
+## Custom statistics
+
+Declare custom statistic identities in `Hooks::register`, using `Registrar`:
+
+```rust,ignore
+fn register(&self, registrar: &mut dyn Registrar, _: &RegistrationContext) {
+    registrar.register_custom_stat("steps").unwrap();
+}
+```
+
+For a mod named `rewrite`, this declares `rewrite:steps` in
+`minecraft:custom_stat`. An explicit `rewrite:steps`, another manifest-owned
+namespace, or a namespace delegated to the mod through `served_by` (see
+[Declare content in code](../content-mods.md#declare-content-in-code)) is also accepted; `minecraft`, foreign namespaces, malformed IDs and
+duplicates are refused. Ignoring the returned `Result<(), DeclarationError>` does not
+bypass installation failure. A mod's explicit registration refusal rolls back
+its declarations, and the installed inventory freezes before worlds open.
+
+These declarations populate the integrated command/statistic inventory and
+append after vanilla's IDs in LAN and client built-in registry reads, preserving
+vanilla IDs. Servers declaring custom statistics require Sunrise clients with
+the same ordered statistic inventory; configuration rejects mismatches before
+play. Register the target before rewriting an award to it; an arbitrary
+identifier alone does not register a statistic.
+
+`/scoreboard objectives add steps minecraft.custom:rewrite.steps` creates an
+objective for this registered counter.

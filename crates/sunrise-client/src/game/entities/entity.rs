@@ -72,6 +72,9 @@ pub(super) struct Blast {
     pub(super) spared: Option<u32>,
 }
 
+/// `EntityType.TRIDENT.getDimensions()`: width, height and eye height.
+const THROWN_TRIDENT_DIMENSIONS: [f32; 3] = [0.5, 0.5, 0.13];
+
 pub(super) trait Entity: EntityRules {
     /// The kind's serializer overlays its object-owned attachments itself (for
     /// recursive object trees); the common save walk must not encode them twice.
@@ -100,6 +103,18 @@ pub(super) trait Entity: EntityRules {
     /// (clamped to -90..90), then `setOldRot`.
     fn set_rotation(&mut self, rotation: [f32; 2]);
     fn bounds(&self) -> Aabb;
+    /// `Entity.getDimensions(getPose())` before `entity_size`, for a kind the server asks for
+    /// at its size passes (`modding/entity_sizes.rs`), its pose standing; None for one asked
+    /// another way (a mob, by `native_mob_sizes`) or not at all.
+    fn vanilla_dimensions(&self) -> Option<[f32; 3]> {
+        None
+    }
+    /// What `entity_size` last answered for it ([`Self::vanilla_dimensions`]).
+    fn size_answer(&self) -> Option<sunrise_client::pose::SizeAnswer> {
+        None
+    }
+    /// Keep `answer`: its box takes it while it holds.
+    fn set_size_answer(&mut self, _answer: sunrise_client::pose::SizeAnswer) {}
     /// What a selector finds this entity as (`@e`), or `None` for one it cannot
     /// name yet. Required, so a new kind states which.
     fn selector_target(&self) -> Option<Target>;
@@ -804,6 +819,21 @@ mod render_bounds_tests {
         assert!(bounds.min_position().y <= 9.5);
         assert!(bounds.max_position().y >= 12.8);
     }
+}
+
+/// The `entity_size` answer a kind keeps in its `size_answer` field, for its vanilla size `$vanilla`.
+macro_rules! stored_size {
+    ($vanilla:expr) => {
+        fn vanilla_dimensions(&self) -> Option<[f32; 3]> {
+            Some($vanilla(self))
+        }
+        fn size_answer(&self) -> Option<sunrise_client::pose::SizeAnswer> {
+            self.size_answer
+        }
+        fn set_size_answer(&mut self, answer: sunrise_client::pose::SizeAnswer) {
+            self.size_answer = Some(answer);
+        }
+    };
 }
 
 /// The common retained support owned by moving bodies.
@@ -1806,6 +1836,95 @@ macro_rules! hit_reads_of {
     };
 }
 pub(super) use hit_reads_of;
+/// A hit's one decision about its causing entity `$causing` (an entity id, 0 for none), taken
+/// before the site borrows the game's fields for the hit: whether a `HitHost` hook listens,
+/// the causer's place in `$game.mobs` when it is a mob, and otherwise, when it is not the player
+/// in place either, the parked guest it may be (see [`Game::native_parked_causer`]). Expands to
+/// `(i32, bool, Option<usize>, Option<u32>)`: the causing id with the three; without a
+/// listener it looks nothing up.
+macro_rules! causer_decision {
+    ($game:ident, $causing:expr) => {{
+        let causing: i32 = $causing;
+        let listened = causing != 0 && sunrise_client::health::hit_host_listened();
+        let mob = listened
+            .then(|| $game.mobs.iter().position(|m| m.id as i32 == causing))
+            .flatten();
+        let in_place = $game
+            .player
+            .as_ref()
+            .is_some_and(|p| p.entity_id == causing);
+        let parked = (listened && mob.is_none() && !in_place)
+            .then(|| $game.native_parked_causer(causing))
+            .flatten();
+        (causing, listened, mob, parked)
+    }};
+}
+pub(super) use causer_decision;
+/// The causing entity `$causing` a hit on the mob at `$index` of `$game.mobs` lends its
+/// listeners, beside that victim, as `$decision` ([`causer_decision`]) decided: another mob of
+/// the list (split with `get_disjoint_mut`), the player in place, or a parked guest's record
+/// (read-only, as its `LivingRef` reads answer from it). A mob that caused its own hit is not
+/// lent again: the listener reads it as the victim. Expands to `(&mut Mob, Option<HitLend>)`.
+macro_rules! victim_and_causer {
+    ($game:ident, $index:expr, $causing:expr, $decision:expr) => {{
+        let (index, causing): (usize, i32) = ($index, $causing);
+        let (_, listened, mob, parked): (i32, bool, Option<usize>, Option<u32>) = $decision;
+        match mob {
+            Some(other) if other != index => {
+                let [victim, causer] = $game
+                    .mobs
+                    .get_disjoint_mut([index, other])
+                    .expect("the victim and its causer are two mobs");
+                (victim, sunrise_client::health::HitLend::mob(causer))
+            }
+            Some(_) => (&mut $game.mobs[index], None),
+            None => (
+                &mut $game.mobs[index],
+                if listened {
+                    sunrise_client::health::HitLend::attacking_player(
+                        $game.player.as_mut(),
+                        causing,
+                        &$game.potions.effects,
+                        acting_equipment!($game),
+                    )
+                    .or_else(|| {
+                        sunrise_client::health::HitLend::parked_guest(
+                            $game.lan.as_ref().map(|lan| &lan.hub),
+                            parked?,
+                        )
+                    })
+                } else {
+                    None
+                },
+            ),
+        }
+    }};
+}
+pub(super) use victim_and_causer;
+/// The causing entity a hit on the player in place lends its listeners, as `$decision`
+/// ([`causer_decision`]) decided: a mob of `$game.mobs`, or a parked guest's record. The player
+/// causing its own hit is not lent again: the listener reads it as the victim.
+macro_rules! player_victim_causer {
+    ($game:ident, $decision:expr) => {{
+        let (causing, _, mob, parked): (i32, bool, Option<usize>, Option<u32>) = $decision;
+        match mob {
+            // The decision may be older than this level (the player's hurt builds three): the
+            // row must still be the causer.
+            Some(index) => $game
+                .mobs
+                .get_mut(index)
+                .filter(|m| m.id as i32 == causing)
+                .and_then(sunrise_client::health::HitLend::mob),
+            None => parked.and_then(|conn| {
+                sunrise_client::health::HitLend::parked_guest(
+                    $game.lan.as_ref().map(|lan| &lan.hub),
+                    conn,
+                )
+            }),
+        }
+    }};
+}
+pub(super) use player_victim_causer;
 /// The level `$game` ticks, lent to a hit's damage hooks with its block registry and merged
 /// tag tables, so a mob or the player beside them can take the hit. `$attack` is the
 /// [`Attack`](sunrise_client::health::Attack) the site took first. Every site names what it
@@ -2057,6 +2176,7 @@ impl Game<'_> {
             .chain(self.paintings.iter().map(|e| e.id))
             .chain(self.others.iter().map(|e| e.id))
             .chain(self.breath_clouds.iter().map(|e| e.id))
+            .chain(self.bolts.iter().map(|e| e.id))
             .chain(self.fangs.list.iter().map(|e| e.id))
             .chain(self.crystals.iter().map(|e| e.id))
             .chain(self.dragon.iter().map(|e| e.id))
@@ -2248,6 +2368,7 @@ impl Entity for Mob {
 }
 
 impl Entity for ItemEntity {
+    stored_size!(|_: &Self| ItemEntity::DIMENSIONS);
     stored_ground!();
     fn fall_distance(&self) -> f64 {
         self.fall_distance
@@ -2343,6 +2464,7 @@ impl Entity for ItemEntity {
 }
 
 impl Entity for ExperienceOrb {
+    stored_size!(|_: &Self| ExperienceOrb::DIMENSIONS);
     stored_ground!();
     fn reset_fall_distance(&mut self) {
         // An orb keeps no fall distance here.
@@ -2415,6 +2537,7 @@ impl Entity for ExperienceOrb {
 }
 
 impl Entity for Boat {
+    stored_size!(|_: &Self| Boat::DIMENSIONS);
     stored_ground!();
     fn reset_fall_distance(&mut self) {
         // A boat keeps no fall distance here.
@@ -2505,6 +2628,7 @@ impl Entity for Boat {
 }
 
 impl Entity for Minecart {
+    stored_size!(|_: &Self| Minecart::DIMENSIONS);
     stored_ground!();
     fn fall_distance(&self) -> f64 {
         self.fall_distance
@@ -2608,6 +2732,7 @@ pub(super) fn armor_stand_size(stand: &ArmorStand) -> (f64, f64) {
 }
 
 impl Entity for ArmorStand {
+    stored_size!(ArmorStand::default_dimensions);
     stored_ground!(enchantment_fall_distance);
     fn support_collision(
         &self,
@@ -2759,6 +2884,7 @@ impl Entity for ArmorStand {
 }
 
 impl Entity for PrimedTnt {
+    stored_size!(|_: &Self| PrimedTnt::DIMENSIONS);
     stored_ground!();
     fn support_collision(
         &self,
@@ -2852,6 +2978,7 @@ impl Entity for PrimedTnt {
 }
 
 impl Entity for FallingBlock {
+    stored_size!(|_: &Self| FallingBlock::DIMENSIONS);
     stored_ground!();
     fn fall_distance(&self) -> f64 {
         self.fall_distance
@@ -2930,7 +3057,7 @@ impl Entity for FallingBlock {
         Some(Target::Falling(self.id))
     }
     fn bounds(&self) -> Aabb {
-        sunrise_client::falling_block::bounds(self.position)
+        FallingBlock::bounds(self)
     }
     fn is_pickable(&self) -> bool {
         true
@@ -2938,6 +3065,7 @@ impl Entity for FallingBlock {
 }
 
 impl Entity for Projectile {
+    stored_size!(|p: &Self| p.kind.dimensions());
     stored_ground!();
     fn fall_distance(&self) -> f64 {
         self.arrow
@@ -3133,6 +3261,7 @@ impl Entity for Projectile {
 }
 
 impl Entity for Rocket {
+    stored_size!(|_: &Self| Rocket::DIMENSIONS);
     stored_ground!();
     fn reset_fall_distance(&mut self) {
         // A firework rocket keeps no fall distance here.
@@ -3210,6 +3339,7 @@ impl Entity for Rocket {
 }
 
 impl Entity for ThrownTrident {
+    stored_size!(|_: &Self| THROWN_TRIDENT_DIMENSIONS);
     stored_ground!();
     fn reset_fall_distance(&mut self) {
         // A thrown trident keeps no fall distance here.
@@ -3284,9 +3414,15 @@ impl Entity for ThrownTrident {
     }
     fn bounds(&self) -> Aabb {
         let p = self.position;
-        Aabb::new(
+        let vanilla = Aabb::new(
             Vec3::new(p.x - 0.25, p.y, p.z - 0.25),
             Vec3::new(p.x + 0.25, p.y + 0.5, p.z + 0.25),
+        );
+        sunrise_client::pose::SizeAnswer::sized_box(
+            self.size_answer,
+            THROWN_TRIDENT_DIMENSIONS,
+            p,
+            vanilla,
         )
     }
     /// `AbstractArrow.noPhysics`, set once a loyal trident turns back. Its own
@@ -3681,6 +3817,7 @@ mod set_rotation_tests {
     #[test]
     fn set_rotation_keeps_yaw_and_clamps_pitch_on_kinds_that_had_none() {
         let mut orb = ExperienceOrb {
+            size_answer: None,
             attachment_lifetime: Default::default(),
             fall_distance: 0.0,
             join: Default::default(),

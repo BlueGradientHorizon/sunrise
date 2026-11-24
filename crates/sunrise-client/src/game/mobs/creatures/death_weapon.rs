@@ -91,9 +91,14 @@ impl Game<'_> {
             return false;
         };
         let plan = self.prepare_knockback_credit(id as i32, source.attacker, self.combat.attack());
+        // The projectile's shooter, the hit's causing entity.
+        let shooter = self.combat.attack().attacker;
+        let decision = crate::game::entity::causer_decision!(self, shooter);
         let mut credit = plan.lend(&mut self.last_hurt_by_player);
-        let hurt = self.mobs[index].damage_projectile(
-            crate::game::entity::damage_level_of!(self, self.combat.attack(), &mut credit, None),
+        let (victim, lend) =
+            crate::game::entity::victim_and_causer!(self, index, shooter, decision);
+        let hurt = victim.damage_projectile(
+            crate::game::entity::damage_level_of!(self, self.combat.attack(), &mut credit, lend),
             amount,
             source,
             aim,
@@ -206,30 +211,57 @@ impl Game<'_> {
         pos: [f64; 3],
         source: Option<(&'static str, u32)>,
     ) {
-        let mob_drops = self
-            .ui
-            .rules
-            .bool_at(sunrise_client::gamerules::vanilla::MOB_DROPS);
-        self.drop_death_loot_items(m, player_uuid, player_killed, killer, pos, source);
-        let experience =
-            sunrise_client::mobs::drops::experience_reward(m, player_killed, mob_drops);
-        if let Some(reward) = experience.filter(|_| !consumed) {
-            let kind = crate::game::native_hooks::mob_kind(m);
-            let amount = self.living_experience_drop(m.id, &kind, player_uuid, reward);
+        let orbs = self.drop_death_loot_items(
+            m,
+            player_uuid,
+            player_killed,
+            killer,
+            consumed,
+            pos,
+            source,
+        );
+        if let Some(amount) = orbs {
             self.spawn_orbs(pos, amount as u32);
         }
     }
 
-    /// The snapshot-dependent item half of a death; experience is handled by the caller.
+    /// `LivingEntity.dropExperience` for a dying mob: the reward (drawn from
+    /// the mob's random after its loot rolls), heard by the mods
+    /// (`living_experience_drop`). The orbs to spawn; none when the mob drops
+    /// no experience or a sculk catalyst took it.
+    fn death_experience(
+        &mut self,
+        m: &mut Mob,
+        player_uuid: Option<u128>,
+        player_killed: bool,
+        consumed: bool,
+    ) -> Option<i32> {
+        let mob_drops = self
+            .ui
+            .rules
+            .bool_at(sunrise_client::gamerules::vanilla::MOB_DROPS);
+        let experience =
+            sunrise_client::mobs::drops::experience_reward(m, player_killed, mob_drops);
+        let reward = experience.filter(|_| !consumed)?;
+        let kind = crate::game::native_hooks::mob_kind(m);
+        Some(self.living_experience_drop(m.id, &kind, player_uuid, reward))
+    }
+
+    /// The snapshot-dependent item half of a death. As NeoForge's
+    /// `dropAllDeathLoot`, the experience is heard (`death_experience`) after
+    /// the loot rolls and before the mods hear the item list
+    /// (`living_drops`); the item entities still join the level before the
+    /// orbs, which the caller spawns from the returned amount.
     fn drop_death_loot_items(
         &mut self,
         m: &mut Mob,
         player_uuid: Option<u128>,
         player_killed: bool,
         killer: sunrise_world::loot::LootEntity,
+        consumed: bool,
         pos: [f64; 3],
         source: Option<(&'static str, u32)>,
-    ) {
+    ) -> Option<i32> {
         use sunrise_client::mobs::{DamageKind, Who, drops};
         use sunrise_world::loot::{LootDamage, LootEntity};
         let accepted = m
@@ -242,7 +274,7 @@ impl Game<'_> {
         let weapon = accepted.as_ref().and_then(|hit| hit.weapon.as_ref());
         let weapon = weapon.and_then(|stack| stack.try_into_api().ok());
         let Some(loot) = self.server_loot.get() else {
-            return;
+            return self.death_experience(m, player_uuid, player_killed, consumed);
         };
         let player = || killer.clone();
         let damage = m.last_damage.map(|(d, _)| {
@@ -265,29 +297,25 @@ impl Game<'_> {
                     }),
                 None => None,
             };
-            let direct = match d.kind {
-                DamageKind::Arrow => Some(LootEntity {
-                    kind: "minecraft:arrow".into(),
+            let projectile = match d.kind {
+                DamageKind::Arrow => Some("minecraft:arrow"),
+                DamageKind::Fireball => Some("minecraft:fireball"),
+                DamageKind::WitherSkull => Some("minecraft:wither_skull"),
+                DamageKind::Fireworks => Some("minecraft:firework_rocket"),
+                _ => None,
+            };
+            let direct = match projectile {
+                Some(kind) => Some(LootEntity {
+                    kind: kind.into(),
                     ..LootEntity::default()
                 }),
-                DamageKind::Fireball => Some(LootEntity {
-                    kind: "minecraft:fireball".into(),
-                    ..LootEntity::default()
-                }),
-                DamageKind::WitherSkull => Some(LootEntity {
-                    kind: "minecraft:wither_skull".into(),
-                    ..LootEntity::default()
-                }),
-                DamageKind::Fireworks => Some(LootEntity {
-                    kind: "minecraft:firework_rocket".into(),
-                    ..LootEntity::default()
-                }),
-                _ => source.clone(),
+                None => source.clone(),
             };
             LootDamage {
                 kind: source_damage_type(d).into(),
                 source,
                 direct,
+                is_direct: projectile.is_none(),
             }
         });
         let vehicle = m
@@ -482,7 +510,9 @@ impl Game<'_> {
             source: hurt,
             recently_hit: player_killed,
         };
+        let orbs = self.death_experience(m, player_uuid, player_killed, consumed);
         self.drop_death_items(&dying, stacks, 10, |_| None);
+        orbs
     }
 }
 

@@ -75,7 +75,7 @@ impl Game<'_> {
         if f.ground.on_ground {
             self.falling_block_impact(&mut f);
             if f.fall_distance > 0.0 {
-                let bounds = sunrise_client::falling_block::bounds(f.position);
+                let bounds = f.bounds();
                 self.post_landing_event(f.position, bounds, false);
             }
             f.fall_distance = 0.0;
@@ -116,11 +116,24 @@ impl Game<'_> {
                 return Ok(());
             }
             if game.ordered.defer_landings {
+                if let Some(mut kept) = game.finish_falling_step(step, f) {
+                    // Entity.scale(getAirDrag()) ends the tick of a block that stays.
+                    kept.velocity = sunrise_client::entity_rules::scale_air_drag(kept.velocity);
+                    let state = kept.state;
+                    if !game
+                        .persist
+                        .removals
+                        .contains(&super::commands::Target::Falling(id))
+                        && game.falling.store_back(i, kept)
+                    {
+                        game.note_falling_tick(id, join, state);
+                    }
+                    return Ok(());
+                }
                 // Only other falling blocks run before compaction, and their
                 // collision search excludes falling blocks. Finish this entity
                 // now so subsequent falls see its placed block.
                 game.ordered.landed.insert(join);
-                game.finish_falling_step(step, f);
                 return Ok(());
             }
             // Only terminal owners leave storage. Carry the original lifetime
@@ -129,21 +142,38 @@ impl Game<'_> {
                 return Ok(());
             };
             sunrise_client::join_seq::store_back(&mut owner, f);
-            game.finish_falling_step(step, owner);
+            if let Some(mut kept) = game.finish_falling_step(step, owner)
+                && !game
+                    .persist
+                    .removals
+                    .contains(&super::commands::Target::Falling(id))
+            {
+                // Entity.scale(getAirDrag()) ends the tick of a block that stays.
+                kept.velocity = sunrise_client::entity_rules::scale_air_drag(kept.velocity);
+                let state = kept.state;
+                game.falling.put_back(i.min(game.falling.len()), kept);
+                game.note_falling_tick(id, join, state);
+                return Ok(());
+            }
             game.falling.retire_extracted(id, join);
             Ok(())
         })
     }
-    /// The terminal work of a falling block's tick: nothing for one gone, its item for one
-    /// that dropped, the placed block for one that landed.
-    fn finish_falling_step(&mut self, step: FallStep, owner: FallingBlock) {
+    /// The landing work of a falling block's tick: nothing for one gone, its item for one
+    /// that dropped, or the landing decision for one on the ground (returning the block when
+    /// it stays).
+    fn finish_falling_step(&mut self, step: FallStep, owner: FallingBlock) -> Option<FallingBlock> {
         match step {
-            FallStep::Gone => {}
-            FallStep::Dropped(at) => self.drop_falling_block(owner.state, at),
+            FallStep::Gone => None,
+            FallStep::Dropped(at) => {
+                self.drop_falling_block(owner.state, at);
+                None
+            }
             FallStep::Landed(pos) => {
                 let sample = sunrise_client::spans::SpanTotal::start();
-                self.finish_falling_block(owner, pos);
+                let kept = self.finish_falling_block(owner, pos);
                 self.ordered.landing_time.add(sample);
+                kept
             }
             FallStep::Falling => unreachable!(),
         }
@@ -213,7 +243,7 @@ impl Game<'_> {
         let movement = sunrise_client::move_gate::entities_resolve_with_context(
             &mut gate,
             &mut collisions,
-            sunrise_client::falling_block::bounds(f.position),
+            f.bounds(),
             wanted,
             0.0,
             false,
@@ -240,10 +270,7 @@ impl Game<'_> {
         if !gate.skipped() {
             body.record_move(
                 sunrise_client::motion::BodyCollision {
-                    footprint: (
-                        f.position,
-                        sunrise_client::falling_block::bounds(f.position),
-                    ),
+                    footprint: (f.position, f.bounds()),
                     movement: (wanted, movement),
                     authoritative: !self.options.execution_role.is_client(),
                     context,
@@ -260,11 +287,7 @@ impl Game<'_> {
         if !self.options.execution_role.is_client() && f.ground.on_ground {
             self.falling_block_impact(f);
             if f.fall_distance > 0.0 {
-                self.post_landing_event(
-                    f.position,
-                    sunrise_client::falling_block::bounds(f.position),
-                    false,
-                );
+                self.post_landing_event(f.position, f.bounds(), false);
             }
             f.fall_distance = 0.0;
         }
@@ -285,15 +308,8 @@ impl Game<'_> {
         let side = game_side!(self);
         let body = self.body_motion(&side);
         body.apply_block_speed(f.position, &mut f.velocity);
-        let writes = self.body_step_on(
-            entity,
-            (
-                f.position,
-                sunrise_client::falling_block::bounds(f.position),
-            ),
-            &f.ground,
-            &mut f.velocity,
-        );
+        let writes =
+            self.body_step_on(entity, (f.position, f.bounds()), &f.ground, &mut f.velocity);
         super::entity::apply_contact_writes(
             writes,
             &mut f.velocity,
@@ -373,13 +389,7 @@ impl Game<'_> {
         for pos in tops {
             self.bubble_column_particles(pos);
         }
-        self.entity_powder_snow_particles(
-            from,
-            f.position,
-            sunrise_client::falling_block::bounds(f.position),
-            f.velocity,
-            false,
-        );
+        self.entity_powder_snow_particles(from, f.position, f.bounds(), f.velocity, false);
         // FallingBlockEntity.tick handles its portal after the move's block
         // effects, before placing/dropping on the floor under an End portal.
         let teleported = self.falling_through_portal(f);
@@ -405,11 +415,17 @@ impl Game<'_> {
             });
         }
         if !self.options.execution_role.is_client() && f.ground.on_ground {
-            return Ok(FallStep::Landed([
+            let pos = [
                 f.position.x.floor() as i32,
                 f.position.y.floor() as i32,
                 f.position.z.floor() as i32,
-            ]));
+            ];
+            // On the ground, before the landing decision.
+            f.velocity = f.velocity.multiply(Vec3::new(0.7, -0.5, 0.7));
+            let at = self.world.block(pos[0], pos[1], pos[2]);
+            if &*self.res.facts().get(at).name != "minecraft:moving_piston" {
+                return Ok(FallStep::Landed(pos));
+            }
         }
         // Entity.scale(getAirDrag()): 0.98F, widened before it scales motion.
         f.velocity = sunrise_client::entity_rules::scale_air_drag(f.velocity);
@@ -436,6 +452,10 @@ impl Game<'_> {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "falling_blocks/moving_piston_tests.rs"]
+pub(in crate::game) mod moving_piston_tests;
 
 #[cfg(test)]
 mod geometry_tests {

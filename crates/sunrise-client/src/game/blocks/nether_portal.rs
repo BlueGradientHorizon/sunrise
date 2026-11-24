@@ -931,6 +931,18 @@ impl Game<'_> {
             );
         }
     }
+    /// `Entity.load` on a live entity (`/data merge`): `portalCooldown` is the
+    /// compound's (0 when it has none), and the portal process is kept.
+    pub(super) fn merge_portal_cooldown(&mut self, id: u32, tag: &Tag) {
+        if let Some(portal) = self.portals.entities.get_mut(&id) {
+            portal.cooldown = tag
+                .get("PortalCooldown")
+                .and_then(sunrise_client::nbt_path::int_value)
+                .unwrap_or(0);
+        } else {
+            self.restore_portal_cooldown(id, tag);
+        }
+    }
     /// `Entity.saveWithoutId` writes the live `PortalCooldown`: the countdown
     /// `Entity.processPortalCooldown` ticks down, not the value the entity was
     /// loaded with. Every entity that can stand in a portal takes it from the
@@ -1395,6 +1407,7 @@ impl Game<'_> {
                 | super::commands::Target::Dragon(_)
                 | super::commands::Target::Spawner(_)
                 | super::commands::Target::Cloud(_)
+                | super::commands::Target::Bolt(_)
         ) {
             let at = self.target_position(target)?;
             let [width, height] = self.entity_dimensions(entity)?;
@@ -1434,6 +1447,7 @@ impl Game<'_> {
                 | Target::Dragon(_)
                 | Target::Spawner(_)
                 | Target::Cloud(_)
+                | Target::Bolt(_)
         ) {
             let mut tag = self.command_target_nbt(target)?;
             super::persist::write_attachments(&mut tag, id, &self.entity_attachments);
@@ -1451,6 +1465,7 @@ impl Game<'_> {
                 Target::Dragon(_) => self.discard_resident_dragon(),
                 Target::Spawner(_) => self.ominous_spawners.retain(|e| e.id != id),
                 Target::Cloud(_) => self.breath_clouds.retain(|e| e.id != id),
+                Target::Bolt(_) => self.bolts.retain(|e| e.id != id),
                 _ => unreachable!("lone traveller kind selected above"),
             }
             self.forget_entity(id);
@@ -2005,7 +2020,7 @@ impl Game<'_> {
 impl Game<'_> {}
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::super::server_travel::TravelCause;
     use super::*;
     use std::sync::{
@@ -2573,6 +2588,11 @@ mod tests {
 
     #[test]
     fn portal_transfer_pending_arrival_does_not_save_transient_tnt_immunity() {
+        run_portal_transfer_pending_arrival_does_not_save_transient_tnt_immunity();
+    }
+
+    pub(in crate::game) fn run_portal_transfer_pending_arrival_does_not_save_transient_tnt_immunity()
+     {
         let arrival = Arrival {
             plan: Plan::end_portal(
                 Dim::End,
@@ -2737,7 +2757,7 @@ mod tests {
 
 #[cfg(test)]
 #[path = "tests/portal_cooldown_tests.rs"]
-mod cooldown_tests;
+pub(in crate::game) mod cooldown_tests;
 
 #[cfg(test)]
 #[path = "nether_portal/arrival_effects_tests.rs"]

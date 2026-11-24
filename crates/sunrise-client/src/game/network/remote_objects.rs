@@ -282,6 +282,21 @@ impl Game<'_> {
                     }
                     _ => {}
                 }
+            } else if let Some(i) = self.bolts.iter().position(|b| b.id == id) {
+                self.bolts.update(i, |b| match (index, value) {
+                    (0, Value::Byte(flags)) => {
+                        b.fire_ticks = i32::from(flags & 1);
+                        b.glowing = (*flags as u8 & 0x40) != 0;
+                    }
+                    (1, Value::Int(air)) => b.air = *air,
+                    (2, Value::OptText(name)) => b.custom_name = name.clone(),
+                    (2, Value::Text(name)) => b.custom_name = Some(name.clone()),
+                    (3, Value::Bool(visible)) => b.custom_name_visible = *visible,
+                    (4, Value::Bool(silent)) => b.silent = *silent,
+                    (5, Value::Bool(no_gravity)) => b.no_gravity = *no_gravity,
+                    (7, Value::Int(frozen)) => b.ticks_frozen = *frozen,
+                    _ => {}
+                });
             } else if let Some(c) = self.cushions.iter_mut().find(|c| c.id == id) {
                 // Cushion.DATA_COLOR (DyeColor, a byte-backed id).
                 if let (8, Value::Id(color)) = (index, value) {
@@ -406,6 +421,7 @@ impl Game<'_> {
         mut turn: impl FnMut(u32, f32) -> f32,
         mut lerp_cart: impl FnMut(&mut super::minecarts::Minecart) -> bool,
     ) {
+        let improved = self.minecart_improvements();
         let mut cart = 0;
         while cart < self.carts.len() {
             let (id, from, to, kind, fuse, fuel) = self.carts.update(cart, |c| {
@@ -424,6 +440,15 @@ impl Game<'_> {
                 }
                 (c.id, from, c.position, c.kind, fuse, c.fuel)
             });
+            // NewMinecartBehavior.tick: sample the rail at the interpolated position,
+            // even when this tick has no new movement.
+            if improved {
+                let [x, y, z] = self.rail_block(to, true);
+                let on_rails = self.is_rail(self.world.block(x, y, z));
+                if self.carts[cart].on_rails != on_rails {
+                    self.carts.update(cart, |c| c.on_rails = on_rails);
+                }
+            }
             if kind == super::minecarts::CartKind::Tnt && fuse {
                 self.particles.add(
                     &ParticleOptions::simple(ParticleType::Smoke),

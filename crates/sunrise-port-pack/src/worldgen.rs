@@ -14,11 +14,12 @@
 //! as it is is listed, so the coverage report can say what generates and how
 //! closely.
 //!
-//! YUNG's API's files are carried as written ([`crate::yung`]).
+//! YUNG's API's `yungsapi:yung_jigsaw` structures and their elements need YUNG's API
+//! itself, a mod that registers that structure type; they are listed as unsupported.
 //! Lithostitched's jigsaws, elements, modifiers and processors are carried by
 //! [`crate::lithostitched`]; the entries CTOV adds to vanilla's structure sets
 //! by `legacy_structure_mods`, called from [`crate::carry`].
-use crate::{lithostitched, yung};
+use crate::lithostitched;
 use serde_json::Value;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -198,14 +199,14 @@ fn features(kind: &str, v: &mut Value, report: &mut Upgrade) -> bool {
     changed
 }
 
-/// Takes the processors written in Java (any type outside `minecraft:` and
-/// the game's own `sunrise:`) out of a processor list: `{"processors":
-/// [...]}`, a bare list, or an id (left as it is). The ones with a data form
-/// were rewritten before ([`crate::processors::carry`]). The game, like vanilla, refuses a list holding a type it
-/// does not know, and with it every pool that names the list, so without
-/// this the structure does not generate at all. Without them it generates
-/// undecorated: no pillars under it, spawners left as the template has
-/// them, blocks not swapped. Whether anything was taken out.
+/// Takes non-`minecraft:` processors out of a processor list: `{"processors":
+/// [...]}`, a bare list, or an id (left as it is). Any processor with a
+/// vanilla data form was rewritten before ([`crate::processors::carry`]);
+/// remaining third-party types require a library mod that registers them via
+/// `STRUCTURE_PROCESSOR`. The game, like vanilla, refuses a list holding a
+/// type it does not know, and with it every pool that names the list, so
+/// without this the structure does not generate at all. Whether anything was
+/// taken out.
 fn drop_java_processors(list: &mut Value, dropped: &mut BTreeMap<String, usize>) -> bool {
     let Some(processors) = crate::processors::processors(list) else {
         return false;
@@ -213,29 +214,13 @@ fn drop_java_processors(list: &mut Value, dropped: &mut BTreeMap<String, usize>)
     let before = processors.len();
     processors.retain(|p| {
         let t = p["processor_type"].as_str().unwrap_or_default();
-        let java = !t.starts_with("minecraft:")
-            && !t.starts_with("sunrise:")
-            && !lithostitched::game_reads(p);
-        if java {
+        let keep = t.starts_with("minecraft:");
+        if !keep {
             *dropped.entry(t.to_owned()).or_default() += 1;
         }
-        !java
+        keep
     });
-    let mut changed = processors.len() != before;
-    // The inline lists inside Lithostitched's apply_random and condition.
-    for p in processors.iter_mut() {
-        let inner: Vec<&mut Value> = match p["processor_type"].as_str() {
-            Some(t) if t.starts_with("lithostitched:") => lithostitched::inner_lists(p),
-            Some("sunrise:pillar" | "sunrise:bottom_pillar") => {
-                p.get_mut("pillar_processor_list").into_iter().collect()
-            }
-            _ => Vec::new(),
-        };
-        for list in inner {
-            changed |= drop_java_processors(list, dropped);
-        }
-    }
-    changed
+    processors.len() != before
 }
 
 /// 1.21.1 writes a block or fluid state as `{"Name": ..., "Properties":
@@ -274,10 +259,8 @@ fn upgrade_types(
     set_tags: &BTreeMap<String, Vec<String>>,
 ) -> bool {
     let lost = &mut report.rules_lost;
-    // YUNG's and Lithostitched's types are converted apart from this code.
-    if let Some(changed) =
-        yung::upgrade(kind, v, lost).or_else(|| lithostitched::upgrade(kind, v, lost))
-    {
+    // Lithostitched's types are converted apart from this code.
+    if let Some(changed) = lithostitched::upgrade(kind, v, lost) {
         report.mapped += usize::from(changed);
         return changed;
     }
@@ -419,9 +402,7 @@ fn upgrade_types(
                 }
             }
             for element in elements {
-                if yung::upgrade_pool_element(element, lost)
-                    || lithostitched::upgrade_pool_element(element, lost)
-                {
+                if lithostitched::upgrade_pool_element(element, lost) {
                     changed = true;
                     continue;
                 }
@@ -1003,6 +984,32 @@ mod tests {
             BTreeMap::from([
                 ("somelib:element".into(), 1),
                 ("somelib:structure".into(), 1),
+            ])
+        );
+    }
+
+    /// YUNG's API's structure type and element need YUNG's API itself: each is left as written
+    /// and listed once as unsupported.
+    #[test]
+    fn yungs_jigsaw_and_element_are_unsupported() {
+        let mut report = Upgrade::default();
+        let mut structure = json!({"type": "yungsapi:yung_jigsaw", "start_pool": "m:start",
+            "size": 30, "biomes": "#minecraft:is_overworld"});
+        let written = structure.clone();
+        assert!(!upgrade("structure", &mut structure, &mut report, &NO_TAGS));
+        assert_eq!(structure, written);
+        let mut pool = json!({"fallback": "minecraft:empty", "elements": [
+            {"weight": 1, "element": {"element_type": "yungsapi:yung_single_element",
+                "location": "m:room", "projection": "rigid", "processors": "minecraft:empty"}}
+        ]});
+        let written = pool.clone();
+        assert!(!upgrade("template_pool", &mut pool, &mut report, &NO_TAGS));
+        assert_eq!(pool, written);
+        assert_eq!(
+            report.unsupported,
+            BTreeMap::from([
+                ("yungsapi:yung_jigsaw".into(), 1),
+                ("yungsapi:yung_single_element".into(), 1),
             ])
         );
     }

@@ -12,8 +12,8 @@ pub(in crate::game) use block_entity_tick::ResidentBlockEntityAccess;
 pub(in crate::game) use build_creative_mode_tab_contents::CreativeCache;
 pub(in crate::game) use client_pick::ClientPick;
 pub(in crate::game) use fire::{
-    ConnectsToCall, EntityChangeBlockPreCall, ItemAfterVerticalCollisionCall, PlayerPongCall,
-    PreRemoveSideEffectsCall, UpdateShapeCall,
+    ConnectsToCall, EnchantEffectCall, EntityChangeBlockPreCall, HotbarAttackIndicatorProgressCall,
+    ItemAfterVerticalCollisionCall, PlayerPongCall, PreRemoveSideEffectsCall, UpdateShapeCall,
 };
 use mod_api::{BlockEntityDataSource, BlockEntityRef, ClockAdjustment};
 
@@ -318,9 +318,11 @@ mod grindstone_take;
 #[cfg(test)]
 mod guest_death_lifecycle_tests;
 mod gui_render_post;
+mod gui_status_heights;
 mod gui_ticks;
 mod held_item_tint;
 mod highlight_tip;
+mod hotbar_attack_indicator_progress;
 mod hud_mode;
 mod humanoid_setup_anim;
 mod ignited_by_lava;
@@ -339,6 +341,7 @@ mod item_after_vertical_collision;
 mod item_attack;
 mod item_container;
 mod item_crafted;
+mod item_destroyed;
 mod item_fished;
 mod item_interact_mob;
 mod item_model_property;
@@ -377,6 +380,7 @@ mod map_decoration_types;
 mod math;
 mod menu_extra_data;
 mod menu_links;
+mod menu_slot_changed;
 mod menu_slot_rules;
 mod menu_slot_take;
 mod menu_transfer;
@@ -518,7 +522,7 @@ mod render_player_post;
 mod render_player_pre;
 mod render_tooltip_gather_components;
 mod render_tooltip_pre;
-mod render_tooltip_texture;
+pub(in crate::game) mod render_tooltip_texture;
 mod resolve_player_skin;
 mod respawn_position;
 mod right_click_empty;

@@ -1,7 +1,10 @@
 //! Fishing: `FishingRodItem.use` (cast / reel in), the `FishingHook` (flight,
 //! bobbing, lure and bite timers, open water, hooking mobs, retrieving the
 //! `gameplay/fishing` loot) and `FishingHookRenderer` (bobber and line).
-use super::{Game, billboard_axes, creatures::ProjectileHitter, lan_mobs::guest_bounds};
+use super::{
+    Game, billboard_axes, creatures::ProjectileHitter, item_abilities::ability,
+    lan_mobs::guest_bounds,
+};
 use std::sync::Arc;
 use sunrise_client::advancements::EntityView;
 use sunrise_client::lan::entity::States;
@@ -510,9 +513,14 @@ impl Game<'_> {
             .get(&stack.item)
             .is_some_and(|i| i.is("minecraft:fishing_rod"))
     }
+    /// Whether `stack` holds a cast line as a rod does (`fishing_rod_cast`).
+    fn casts(&self, stack: &ItemStack) -> bool {
+        self.stack_can_perform(stack, ability::FISHING_ROD_CAST, self.is_rod(stack))
+    }
+    /// `FishingHook.shouldStopFishing`: a hand still holds a casting stack.
     fn holds_rod(&self) -> bool {
-        self.held().is_some_and(|s| self.is_rod(s))
-            || self.offhand.as_ref().is_some_and(|s| self.is_rod(s))
+        self.held().is_some_and(|s| self.casts(s))
+            || self.offhand.as_ref().is_some_and(|s| self.casts(s))
     }
     /// `FishingRodItem.use`.
     pub(super) fn use_fishing_rod(&mut self, stack: &ItemStack) -> bool {
@@ -1590,7 +1598,7 @@ impl Game<'_> {
         }
     }
     pub(super) fn main_hand_rod(&self) -> bool {
-        self.held().is_some_and(|s| self.is_rod(s))
+        self.held().is_some_and(|s| self.casts(s))
     }
     /// The hook's position this frame.
     fn hook_position(&self, alpha: f64) -> Option<glam::DVec3> {
@@ -2548,7 +2556,7 @@ fn cast_direction(yaw: f32, pitch: f32) -> (f32, f32, f32) {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::{Hook, cast_direction, entity_hit_margin, first_entity_hit, pull_item, rebound};
 
     /// `FishingHookRenderer.getPlayerHandPos` in first person on HotSpot 25.0.4.1: the camera at
@@ -2630,6 +2638,10 @@ mod tests {
     #[test]
     #[ignore = "requires prepared resources and the vanilla fishing reference"]
     fn fishing_retrieve_reference() {
+        run_fishing_retrieve_reference();
+    }
+
+    pub(in crate::game) fn run_fishing_retrieve_reference() {
         use sunrise_core::random::{LegacyRandom, RandomSource};
         use sunrise_world::loot::{LootData, PackOverlay};
         let resources = std::env::var_os("SUNRISE_FISHING_RESOURCES").unwrap();
@@ -2756,6 +2768,10 @@ mod tests {
     #[test]
     #[ignore = "run by tools/test_breeze_hook_parity.py"]
     fn breeze_hook_parity_fixture() {
+        run_breeze_hook_parity_fixture();
+    }
+
+    pub(in crate::game) fn run_breeze_hook_parity_fixture() {
         use super::{EntityCollision, Hook};
         use std::io::Write;
         let input =
@@ -2827,6 +2843,7 @@ mod tests {
     #[test]
     fn reeling_an_item_requests_an_immediate_motion_update() {
         let mut item = ItemEntity {
+            size_answer: None,
             random: sunrise_core::random::LegacyRandom::new(0),
             attachment_lifetime: Default::default(),
             fall_distance: 0.0,
@@ -2998,4 +3015,4 @@ mod fishing_medium_tests;
 
 #[cfg(test)]
 #[path = "fishing_tests/fishing_targets_tests.rs"]
-mod fishing_targets_tests;
+pub(in crate::game) mod fishing_targets_tests;

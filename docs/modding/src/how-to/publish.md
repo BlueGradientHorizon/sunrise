@@ -22,7 +22,34 @@ permanent project ID. A reviewer approves it after checking that you administer 
 project is not claiming someone else's. This approves no code: each release is reviewed on its own. Two separate
 projects may use the same mod ID, so a port can sit beside the mod it replaces.
 
+You can also register by opening a
+[Register a repository](https://github.com/sunrise-org/sunrise-mods/issues/new?template=register.yml) issue on
+sunrise-org/sunrise-mods, from a GitHub account that administers the repository. Without a browser, for example
+from an agent, open it with the [GitHub CLI](https://cli.github.com/). `gh issue create --template` cannot fill an
+issue form's fields, so write the body with the form's headings:
+
+```sh
+gh issue create -R sunrise-org/sunrise-mods \
+  --title "Register <owner>/<repository>" \
+  --body "### Repository
+
+https://github.com/<owner>/<repository>
+
+### Package folders
+
+_No response_"
+```
+
+Leave `_No response_` under **Package folders** for a mod at the repository's root; otherwise list one folder per
+line, each holding a `sunrise-mod.toml`. Registration reads the default branch only. A maintainer then checks that
+you administer the repository, opens the registration pull request and links it on the issue, so this route waits
+for a person where the form answers at once. Registering lists nothing: your project appears on Discover once its
+first release is reviewed and merged.
+
 ## Releasing
+
+`release` is in the [newest tool from main](../start/install-tool.md#newest-tool-from-main). A Nightly's tool that
+lacks it answers `"release" is not a cargo sunrise-mod command`.
 
 Commit your mod's source, its page, and `Cargo.lock` for a native mod. From the mod's folder on a clean branch
 that is up to date with its upstream:
@@ -34,7 +61,7 @@ cargo sunrise-mod release patch
 
 Use `minor`, `major`, or a higher SemVer instead of `patch` to choose another version. `--check` runs the
 release checks for the proposed version without changing the checkout. Without it, `release` refreshes the
-workflow, commits the version bump signed off (`Signed-off-by`, from your Git `user.name` and `user.email`), and pushes the branch and tag together to `origin`. The tag is `v<version>`
+workflow, commits the version bump signed off (`Signed-off-by`, from your Git `user.name` and `user.email`), and pushes the branch, then the tag, to `origin` in two pushes: GitHub starts no workflow for a tag pushed together with the commit that first adds its workflow file. The tag is `v<version>`
 at the repository root or `<id>/v<version>` for a subfolder package. GitHub Actions builds and attests both the
 `.smod` and its page bundle, with no signing key for you to manage.
 
@@ -44,7 +71,7 @@ If your default branch accepts changes only through pull requests, add `--pull-r
 cargo sunrise-mod release patch --pull-request
 ```
 
-The release commit then goes on a new branch, `release/<tag>`, which is pushed together with the tag, and your
+The release commit then goes on a new branch, `release/<tag>`, which is pushed before the tag, and your
 checkout is left on that branch. The tag starts the release as usual. Open the pull request it prints, from
 `release/<tag>` into the branch you released from, and merge it before your next release, so that branch carries
 the new version.
@@ -60,7 +87,9 @@ updates your caller in the release commit when it has moved, so you never edit t
    artifact attestation that names your repository and the shared workflow, then publishes them on a GitHub
    release with their attestation bundles. A native `.smod` holds source and `Cargo.lock`, never a compiled library.
 2. The registry bot watches registered repositories. For a new release it opens a pull request on
-   sunrise-org/sunrise-mods that adds the release and updates the project's page.
+   sunrise-org/sunrise-mods that adds the release and updates the project's page. A release whose package is of
+   another kind than the project (a content mod that gained `[native]` code, or the reverse) changes the project's
+   kind in the same pull request and removes the project's earlier releases; `release` says so before it tags.
 3. The bot's checks run on that pull request. They are static checks plus a compile, and never load the mod in the
    game:
    - the files' format, sizes and SHA-256 hashes, and both attestations against the registered repository, the

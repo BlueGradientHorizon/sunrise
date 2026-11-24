@@ -468,6 +468,31 @@ pub enum RaidStatus {
     Stopped,
 }
 
+/// The world clock a level follows (`WorldClock`, a `minecraft:world_clock` registry entry): the
+/// one its dimension type names as `default_clock`, shared by every level of that dimension type
+/// and saved with the world (`ServerClockManager`). `level.clock(host)` makes one; its writes are
+/// `ServerClockManager`'s `setTotalTicks`, `setRate` and `setPaused`. A paused clock is a fixed
+/// time. A handle resolves again on each call, through its level: `false` once the level is gone,
+/// for a handle of an earlier open, and on a client.
+#[derive(sunrise_mod_api_macros::Wire, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+// exhaustive: its fields are private, so mods cannot build or destructure it
+pub struct WorldClockRef {
+    pub(crate) level: LevelRef,
+}
+
+impl WorldClockRef {
+    /// Create a handle for the game.
+    // hidden: a game-side helper, not part of the mod surface
+    #[doc(hidden)]
+    pub fn new(level: LevelRef) -> Self {
+        Self { level }
+    }
+    /// The level whose default clock this is.
+    pub fn level(self) -> LevelRef {
+        self.level
+    }
+}
+
 /// A chunk position in an open level. A handle may be kept after unloading;
 /// reads resolve it again, returning `false` or `None` when it is no longer loaded.
 #[derive(sunrise_mod_api_macros::Wire, Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -501,6 +526,32 @@ impl ChunkRef {
 pub enum ChunkStatus {
     /// A full chunk in a level's live world.
     Full,
+}
+
+/// Why `level.load_chunk` did not bring its chunk to FULL: the error of the `ChunkResult`
+/// vanilla's chunk futures carry (`ServerChunkCache.getChunkFuture`, `ChunkResult.isSuccess`),
+/// and the failure Sunrise adds where vanilla would crash. `Ok(())` is the chunk loaded.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+#[derive(sunrise_mod_api_macros::Wire)]
+pub enum ChunkLoadError {
+    /// Vanilla's `ChunkResult` error (`ChunkHolder.UNLOADED_CHUNK`): the chunk could not be
+    /// held, or the level went away during the wait. A stale handle, a client, a level the
+    /// server has not opened, a chunk past `ChunkPos.isValid` and a level whose generation is
+    /// paused or stopped answer it too.
+    Unloaded,
+    /// Generation panicked for this chunk or for one its generation needs around it: a mod's
+    /// chunk generator, contained by the engine where vanilla would crash. The level stays open
+    /// and is not generated there again until it opens again; asking again answers `Failed` at
+    /// once.
+    Failed,
+}
+
+impl crate::NoBackend for ChunkLoadError {
+    /// No game: as for a level the server has not opened.
+    fn no_backend() -> Self {
+        Self::Unloaded
+    }
 }
 
 /// A chunk's ticket level (`ChunkLevel`), as the server holds it: how much of
@@ -1753,10 +1804,19 @@ pub trait LevelRandomHost: LevelHost {
 /// A sound is queued at the call, and its seed is drawn then from the level's sound-seed
 /// stream, never from the level's [draw stream](LevelRandomHost::lend_random). An entity's
 /// own stream (`Entity.getRandom`) advances in listener order, so the hit's continuation sees
-/// the draws. A hit lends its attacker where the game applies a melee hit (the attacking player or mob,
-/// for player → mob, mob → mob and mob → player) and no entity at any other damage site
-/// (environment, projectiles, explosions, potions and the like); any other entity, a stale
-/// handle and a call on a client answer `None` or `false`.
+/// the draws. A hit lends the entity its source names as its causing entity, where the game
+/// has it at hand: the attacking player or mob of a melee hit (player → mob, mob → mob and
+/// mob → player) or of Thorns, the shooter or owner of a projectile, a firework rocket, evoker
+/// fangs, a wither skull, a thrown trident or a wind charge, the igniter or owner of an
+/// explosion, and a pufferfish stinging a mob inside its own tick. A guest that is not in place
+/// is lent from its hub record, for its reads only (no random, no sound); the integrated owner
+/// displaced by another player's turn is not lent. Other damage lends none: damage with no
+/// causing entity (environment, fall, fire, drowning) and the sites that do not lend theirs (a
+/// thrown potion's or an effect cloud's owner, among others). When the victim caused its own
+/// hit (a player's own TNT hurting that player), the source names the victim and nothing else is
+/// lent: [`causing`](Self::causing) answers `None` and the listener reads the entity through
+/// [`victim`](Self::victim). Any other entity, a stale handle and a call on a client answer
+/// `None` or `false`.
 pub trait HitHost: LevelRandomHost {
     /// `Level.playSound(null, x, y, z, sound, source, volume, pitch)`: plays sound event
     /// `sound` at `at` for every player in this level within range (16 blocks, times the
@@ -1814,10 +1874,12 @@ pub trait HitHost: LevelRandomHost {
         unimplemented!("HitHost::victim")
     }
     /// The hit's causing entity (`DamageSource.getEntity`), at the same three hooks, when the
-    /// hit already lends that entity (the attacking player or mob it lends for the entity's own
-    /// random) and the source names it: None where the source names another entity or none
-    /// (a wither skull whose shooter was removed), for a removed entity, at a damage site that
-    /// lends no entity, for a non-living causer and for a causer in another level.
+    /// hit lends that entity (see [`HitHost`]: a melee attacker, a projectile's shooter, an
+    /// explosion's igniter, a parked guest's record...) and the source names it: None where the
+    /// source names another entity or none (a wither skull whose shooter was removed), where it
+    /// names the victim itself (read that through [`Self::victim`]), for a removed entity, at a
+    /// damage site that lends no entity, for a non-living causer and for a causer in another
+    /// level.
     fn causing(&self) -> Option<LivingView<'_>> {
         unimplemented!("HitHost::causing")
     }

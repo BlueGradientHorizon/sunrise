@@ -110,6 +110,7 @@ impl Game<'_> {
                 if let Some(state) = transferred.take() {
                     self.adopt_transferred_entity_state(id, state);
                 }
+                let uuid = with_constructor_uuid(uuid);
                 self.remember_uuid(id, uuid, &tag);
                 self.bind_saved_entity_attachments(id, &mut orb.attachment_lifetime);
             }
@@ -205,7 +206,9 @@ impl Game<'_> {
         player_uuid: Option<[i32; 4]>,
         transferred: Option<crate::game::entity_initialization::TransferredEntityState>,
     ) {
-        if let Some(mut p) = entity_nbt::throwable_from_nbt(&tag, player_uuid) {
+        if let Some(mut p) =
+            entity_nbt::throwable_from_nbt_with_items(&tag, player_uuid, self.res.items())
+        {
             self.claim_owner(&mut p);
             // A projectile that came through a portal keeps its cooldown.
             self.next_entity += 1;
@@ -224,10 +227,11 @@ impl Game<'_> {
 
     pub(in crate::game) fn load_falling_transferred(
         &mut self,
-        tag: Tag,
+        mut tag: Tag,
         uuid: Option<[i32; 4]>,
         transferred: Option<crate::game::entity_initialization::TransferredEntityState>,
     ) {
+        entity_nbt::sanitize_custom_name(&mut tag);
         if let Some((state, position, velocity, age, fall_distance)) =
             entity_nbt::falling_block_from_nbt(&tag)
             && let Some(state) =
@@ -242,8 +246,10 @@ impl Game<'_> {
             self.remember_uuid(self.next_entity, uuid, &tag);
             let uuid = self.uuid_for(self.next_entity);
             self.falling.push(FallingBlock {
+                size_answer: None,
                 attachment_lifetime: Default::default(),
-                rotation: [0.0, 0.0],
+                // Entity.load's rotation, which nothing turns afterwards.
+                rotation: entity_nbt::loaded_rotation(&tag),
                 join: Default::default(),
                 id: self.next_entity,
                 state,
@@ -346,6 +352,7 @@ impl Game<'_> {
             // to int before short narrowing; integer tags narrow directly.
             let fuse = tnt_fuse(&tag);
             self.tnts.push(crate::game::tnt::PrimedTnt {
+                size_answer: None,
                 used_portal,
                 attachment_lifetime: Default::default(),
                 rotation: [0.0, 0.0],
@@ -933,6 +940,7 @@ impl Game<'_> {
             .cloned()
             .unwrap_or_else(|| Tag::Compound(Default::default()));
         self.put_last_hurt_by_mob(self.mob_at(object), &mut retained);
+        self.save_portal_cooldown(id, &mut retained);
         // `write_leash` may assign the holder a UUID. Other references retain
         // the lookup they had before that assignment.
         let holder = match self.mob_at(object).extra.leash {

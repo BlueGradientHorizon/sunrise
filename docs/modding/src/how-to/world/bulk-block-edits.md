@@ -30,7 +30,7 @@ states are converted to API values, not each block in the returned columns.
 `ColumnBlocks.water_colors` carries one `0xRRGGBB` server-side biome JSON water
 colour (`BiomeSpecialEffects.waterColor`) per column at the column's top (`0` where
 unloaded). Colormap-derived grass and foliage tints are client-side only. See
-[Read blended biome tints on the client](read-biome-data.md#read-blended-biome-tints-on-the-client)
+[Read blended biome tints on the client](biomes.md#read-blended-biome-tints-on-the-client)
 for `ClientHost::biome_tint(pos, resolver)` and the equivalent read inside a block tint callback.
 
 ## Query terrain before loading chunks
@@ -71,9 +71,11 @@ standalone entity and block-entity fixers can retain old root keys alongside the
 
 Unknown mod IDs are preserved, though generic format changes like the item-stack count and
 components still apply. A well-formed compound from the current game version is unchanged.
+Data older than the first schema is read with that schema, as in vanilla. Pass `-1` for
+unversioned data.
 
-`NbtUpgradeError` distinguishes a future source version, a version without a source schema,
-a malformed compound (for example, one missing its `id`, called `Name` on block states before
-DataVersion 5006), and legacy tables that a fix needed but could not read. `TooDeep` and `UpgradedTooDeep` distinguish
+`NbtUpgradeError` distinguishes a future source version, a malformed compound (for example,
+one missing its `id`, called `Name` on block states before DataVersion 5006), and legacy
+tables that a fix needed but could not read. `TooDeep` and `UpgradedTooDeep` distinguish
 input and output past vanilla's NBT read depth. This counts the root at level zero and includes
 wrapper compounds when a mixed list is encoded. The upgrade has no size or node cap.

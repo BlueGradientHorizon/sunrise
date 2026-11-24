@@ -8,6 +8,8 @@
 //! copy: the local player and the entities the server told it of, in the level
 //! it shows. The entities are those of the level in place (the one a hook runs
 //! in) and the server's players, whatever their level.
+#[path = "native_entity_refs/death_loot.rs"]
+mod death_loot;
 #[path = "native_entity_refs/dragon_parts_table.rs"]
 pub(in crate::game) mod dragon_parts_table;
 #[path = "native_entity_refs/dragon_query.rs"]
@@ -1804,6 +1806,63 @@ pub(super) mod tests {
         );
     }
 
+    /// Create a hidden desktop window during winit's initial `Resumed` callback.
+    /// Keep the returned event loop alive while the fixture uses the window.
+    pub(in crate::game) fn test_window(
+        size: [u32; 2],
+    ) -> (
+        winit::event_loop::EventLoop<()>,
+        std::sync::Arc<winit::window::Window>,
+    ) {
+        use winit::application::ApplicationHandler;
+        use winit::dpi::PhysicalSize;
+        use winit::event::WindowEvent;
+        use winit::event_loop::{ActiveEventLoop, EventLoop};
+        use winit::platform::pump_events::EventLoopExtPumpEvents;
+        use winit::window::{Window, WindowId};
+
+        struct HiddenWindow {
+            size: [u32; 2],
+            window: Option<Window>,
+        }
+
+        impl ApplicationHandler for HiddenWindow {
+            fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+                let [width, height] = self.size;
+                self.window = Some(
+                    event_loop
+                        .create_window(
+                            Window::default_attributes()
+                                .with_visible(false)
+                                .with_inner_size(PhysicalSize::new(width, height)),
+                        )
+                        .unwrap(),
+                );
+            }
+
+            fn window_event(&mut self, _: &ActiveEventLoop, _: WindowId, _: WindowEvent) {}
+        }
+
+        let mut builder = EventLoop::builder();
+        #[cfg(target_os = "linux")]
+        {
+            use winit::platform::x11::EventLoopBuilderExtX11;
+            builder.with_x11().with_any_thread(true);
+        }
+        #[cfg(target_os = "windows")]
+        {
+            use winit::platform::windows::EventLoopBuilderExtWindows;
+            builder.with_any_thread(true);
+        }
+        let mut event_loop = builder.build().unwrap();
+        let mut app = HiddenWindow { size, window: None };
+        event_loop.pump_app_events(Some(std::time::Duration::ZERO), &mut app);
+        let window = app
+            .window
+            .expect("winit did not resume to create the fixture window");
+        (event_loop, std::sync::Arc::new(window))
+    }
+
     pub(in crate::game) fn with_client_game(test: impl FnOnce(&mut super::Game<'_>)) {
         with_game_role(
             fixture_root(),
@@ -3146,6 +3205,7 @@ pub(super) mod tests {
                 mob.extra.set_body_stack(Some(stack.clone()));
                 let index = game.mobs.len();
                 game.mobs.push(mob);
+                game.inventory[game.selected] = Some(ItemStack::new("minecraft:shears", 1));
                 let used = if item.ends_with("carpet") {
                     game.interact_llama(index, "minecraft:shears")
                 } else {

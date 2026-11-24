@@ -1163,8 +1163,8 @@ mod tests {
         };
         use mod_api::InteractionResult as Answer;
         use mod_api::{
-            self, BlockPart, CloneItemStackEvent, Hooks, Host, ItemPart, ItemStack, Registrar,
-            ServerHost, UseItemOnEvent, UseOnEvent, UseWithoutItemEvent,
+            self, BlockPart, CloneItemStackEvent, Hooks, Host, HostSide, ItemPart, ItemStack,
+            Registrar, UseItemOnEvent, UseOnEvent, UseWithoutItemEvent,
         };
         use std::sync::{
             Arc, Mutex,
@@ -1221,9 +1221,12 @@ mod tests {
         impl BlockPart for User {
             fn use_item_on(
                 &self,
-                host: &mut dyn ServerHost,
+                host: HostSide<'_>,
                 event: &mut UseItemOnEvent<'_>,
             ) -> Option<Answer> {
+                let HostSide::Server(host) = host else {
+                    return None;
+                };
                 let replacement = self.replace_with.lock().unwrap().take();
                 if let Some(state) = replacement {
                     let level = host.level("minecraft:overworld").unwrap();
@@ -1245,9 +1248,12 @@ mod tests {
             }
             fn use_without_item(
                 &self,
-                host: &mut dyn ServerHost,
+                host: HostSide<'_>,
                 event: &mut UseWithoutItemEvent<'_>,
             ) -> Option<Answer> {
+                let HostSide::Server(host) = host else {
+                    return None;
+                };
                 assert_eq!(event.click.hand, mod_api::client::first_person::Hand::Main);
                 if let Some(level) = self.empty_food.lock().unwrap().take() {
                     let player = host.player(event.click.player).unwrap();
@@ -1895,7 +1901,7 @@ mod tests {
     fn block_part_use_item_on_consumes_once() {
         use super::super::native_entity_refs::tests::with_game;
         use mod_api::InteractionResult as Answer;
-        use mod_api::{self, BlockPart, Hooks, Registrar, ServerHost, UseItemOnEvent};
+        use mod_api::{self, BlockPart, Hooks, HostSide, Registrar, UseItemOnEvent};
         use std::sync::{
             Arc,
             atomic::{AtomicUsize, Ordering::SeqCst},
@@ -1906,11 +1912,7 @@ mod tests {
         struct BlockUse(Arc<AtomicUsize>);
         #[mod_api::sunrise_part]
         impl BlockPart for BlockUse {
-            fn use_item_on(
-                &self,
-                _: &mut dyn ServerHost,
-                _: &mut UseItemOnEvent<'_>,
-            ) -> Option<Answer> {
+            fn use_item_on(&self, _: HostSide<'_>, _: &mut UseItemOnEvent<'_>) -> Option<Answer> {
                 self.0.fetch_add(1, SeqCst);
                 Some(Answer::Success)
             }
@@ -1963,7 +1965,7 @@ mod tests {
     fn replacing_empty_note_block_use_does_not_award_vanilla_stats() {
         use super::super::native_entity_refs::tests::with_game;
         use mod_api::InteractionResult as Answer;
-        use mod_api::{self, BlockPart, Hooks, Registrar, ServerHost, UseWithoutItemEvent};
+        use mod_api::{self, BlockPart, Hooks, HostSide, Registrar, UseWithoutItemEvent};
         use std::sync::{
             Arc,
             atomic::{AtomicBool, Ordering::SeqCst},
@@ -1976,7 +1978,7 @@ mod tests {
         impl BlockPart for Replacement {
             fn use_without_item(
                 &self,
-                _: &mut dyn ServerHost,
+                _: HostSide<'_>,
                 _: &mut UseWithoutItemEvent<'_>,
             ) -> Option<Answer> {
                 self.0.load(SeqCst).then_some(Answer::Success)
@@ -2421,6 +2423,7 @@ mod pickup_xp_tests {
             game.lan.as_mut().unwrap().hub.guests.push(g);
             let p = Vec3::new(0.5, 70.0, 0.5);
             game.orbs.push(ExperienceOrb {
+                size_answer: None,
                 attachment_lifetime: Default::default(),
                 rotation: [0.0, 0.0],
                 join: Default::default(),
@@ -3417,7 +3420,7 @@ mod bundle_slot_tests;
 
 #[cfg(test)]
 #[path = "tests/crack_feedback_tests.rs"]
-mod crack_feedback_tests;
+pub(in crate::game) mod crack_feedback_tests;
 
 #[cfg(test)]
 #[path = "tests/menu_still_valid_tests.rs"]

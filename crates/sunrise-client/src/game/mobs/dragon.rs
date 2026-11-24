@@ -252,17 +252,23 @@ pub(super) struct Crystal {
     /// as loaded until `/tp` grounds it or a cobweb or powder snow resets the
     /// fall (`crystal.rs`).
     pub fall: (bool, f64),
+    /// What `entity_size` answered at its last size refresh (`EntityEvent.Size`): its box takes
+    /// the answer while it holds for its vanilla size.
+    pub size_answer: Option<sunrise_client::pose::SizeAnswer>,
 }
 sunrise_client::impl_joined!(Crystal);
 sunrise_mod_runtime::impl_attachment_lifetime!(Crystal);
 impl Crystal {
+    /// `EntityType.END_CRYSTAL.getDimensions()`: width, height and eye height.
+    pub(super) const DIMENSIONS: [f32; 3] = [2.0, 2.0, 1.7];
     /// `EntityType.END_CRYSTAL`: 2 x 2.
     pub(super) fn bounds(&self) -> Aabb {
         let p = self.position;
-        Aabb::new(
+        let vanilla = Aabb::new(
             Vec3::new(p.x - 1.0, p.y, p.z - 1.0),
             Vec3::new(p.x + 1.0, p.y + 2.0, p.z + 1.0),
-        )
+        );
+        sunrise_client::pose::SizeAnswer::sized_box(self.size_answer, Self::DIMENSIONS, p, vanilla)
     }
 }
 #[derive(Clone, Debug, Default)]
@@ -2582,38 +2588,8 @@ impl Game<'_> {
                         next = Some(Phase::Attacking { ticks: 0 });
                     } else {
                         let d = self.dragon.as_mut().expect("dragon");
-                        // It turns only while the player is more than 10 degrees off its
-                        // heading (`Math.acos` of the float dot, in degrees, plus 0.5).
-                        let aim = vanilla_normalize(glam::DVec3::new(
-                            pp.x - d.position.x,
-                            0.0,
-                            pp.z - d.position.z,
-                        ));
-                        let r = f64::from(d.yaw * trig::DEG_TO_RAD);
-                        let dir = vanilla_normalize(glam::DVec3::new(
-                            f64::from(trig::sin(r)),
-                            0.0,
-                            f64::from(-trig::cos(r)),
-                        ));
-                        let dot = dir.dot(aim) as f32;
-                        let angle = (f64::from(dot).acos() * 180.0
-                            / f64::from(std::f32::consts::PI))
-                            as f32
-                            + 0.5;
-                        if angle < 0.0 || angle > 10.0 {
-                            let head = d.parts[0].0;
-                            let (xd, zd) = (pp.x - head.x, pp.z - head.z);
-                            let delta = wrap64(
-                                180.0
-                                    - trig::atan2(xd, zd) * 180.0 / f64::from(std::f32::consts::PI)
-                                    - f64::from(d.yaw),
-                            )
-                            .clamp(-100.0, 100.0);
-                            d.yaw_accel *= 0.8;
-                            let dist = ((xd * xd + zd * zd).sqrt() as f32 + 1.0).min(40.0);
-                            d.yaw_accel += delta as f32 * (0.7 / dist / dist);
-                            d.yaw += d.yaw_accel;
-                        }
+                        let head = d.parts[0].0;
+                        scanning_turn(&mut d.yaw, &mut d.yaw_accel, d.position, head, pp);
                     }
                 } else if *time >= 100 {
                     // CHARGE_TARGETING: within 150 blocks.
@@ -2674,6 +2650,9 @@ impl Game<'_> {
                         id,
                         at: [x, y.floor() + 1.0, z],
                         motion: [0.0; 3],
+                        fall_distance: 0.0,
+                        fire_ticks: 0,
+                        first_tick: true,
                         radius: 5.0,
                         age: 0,
                         duration: 200,
@@ -3249,6 +3228,9 @@ impl Game<'_> {
             id,
             at,
             motion: [0.0; 3],
+            fall_distance: 0.0,
+            fire_ticks: 0,
+            first_tick: true,
             radius: 3.0,
             age: 0,
             duration: 600,
@@ -3293,10 +3275,18 @@ impl Game<'_> {
         let mobs: Vec<(u32, Aabb, Vec3)> = if no_breath {
             Vec::new()
         } else {
-            let tags = &self.stations().enchantments.entity_tags;
+            let tags = &self.items().entity_type_tags;
             self.mobs
                 .iter()
-                .filter(|m| m.alive() && mob_can_be_affected(tags, &m.kind.id, "instant_damage"))
+                .filter(|m| {
+                    m.alive()
+                        && mob_can_be_affected(
+                            tags,
+                            &m.kind.id,
+                            m.kind.flags.entity_tag_slot,
+                            "instant_damage",
+                        )
+                })
                 .map(|m| (m.id, m.bounds(), m.position))
                 .collect()
         };
@@ -3304,6 +3294,7 @@ impl Game<'_> {
         self.end_dragon_flame();
         let mut harmed_mobs: Vec<(u32, i32, [f64; 3])> = Vec::new();
         let ticking = self.entity_ticking_area();
+        let through = self.ticked_entities_through;
         let mut clouds = self.breath_clouds.lift();
         #[cfg(test)]
         super::entity::taken_pass_tests::after_take(self);
@@ -3312,9 +3303,10 @@ impl Game<'_> {
             if c.potion.is_some() {
                 return true;
             }
-            if !ticking(c.at[0].floor() as i32, c.at[2].floor() as i32) {
+            if c.id > through || !ticking(c.at[0].floor() as i32, c.at[2].floor() as i32) {
                 return true;
             }
+            self.cloud_fluid_step(c);
             c.age += 1;
             if breath_expired(c.age, c.duration) {
                 return self.forget_expired_cloud(c.id);
@@ -3607,6 +3599,13 @@ pub(super) struct Breath {
     pub(super) id: u32,
     pub(super) at: [f64; 3],
     pub(super) motion: [f64; 3],
+    /// `Entity.fallDistance`: as loaded, until water resets or lava halves it.
+    pub(super) fall_distance: f64,
+    /// `Entity.remainingFireTicks`: a cloud is fire immune, so its first tick
+    /// clears a burning one to 0.
+    pub(super) fire_ticks: i32,
+    /// `Entity.firstTick`: true until the first base tick finishes, gating `isInLava()`.
+    pub(super) first_tick: bool,
     pub(super) radius: f32,
     pub(super) age: i32,
     pub(super) duration: i32,
@@ -4088,6 +4087,7 @@ impl Crystal {
             value => nbt_value::number(value).unwrap_or_default() as i16,
         };
         Some(Self {
+            size_answer: None,
             attachment_lifetime: Default::default(),
             join: Default::default(),
             id: 0,
@@ -5218,9 +5218,105 @@ impl Game<'_> {
 #[path = "dragon/crystal.rs"]
 mod crystal;
 
+/// `DragonSittingScanningPhase.doServerTick` with a player at `target` and 25 ticks or fewer of
+/// scanning: the dragon turns only while that player is more than 10 degrees off its heading
+/// (`Math.acos` of the float dot, in degrees, plus 0.5). `yRotA` then eases by 0.8 and gains the
+/// delta (`180 - Mth.atan2` in degrees less the yaw, wrapped, held within 100) over the distance
+/// from the head plus one capped at 40 and over that distance uncapped, and the yaw takes it.
+fn scanning_turn(yaw: &mut f32, yaw_accel: &mut f32, body: Vec3, head: Vec3, target: Vec3) {
+    let aim = vanilla_normalize(glam::DVec3::new(target.x - body.x, 0.0, target.z - body.z));
+    let r = f64::from(*yaw * trig::DEG_TO_RAD);
+    let dir = vanilla_normalize(glam::DVec3::new(
+        f64::from(trig::sin(r)),
+        0.0,
+        f64::from(-trig::cos(r)),
+    ));
+    let dot = dir.dot(aim) as f32;
+    let angle =
+        (sunrise_core::jmath::acos(f64::from(dot)) * f64::from(trig::RAD_TO_DEG)) as f32 + 0.5;
+    if angle < 0.0 || angle > 10.0 {
+        let (xd, zd) = (target.x - head.x, target.z - head.z);
+        let delta =
+            wrap64(180.0 - trig::atan2(xd, zd) * f64::from(trig::RAD_TO_DEG) - f64::from(*yaw))
+                .clamp(-100.0, 100.0);
+        *yaw_accel *= 0.8;
+        let rot_speed = (xd * xd + zd * zd).sqrt() as f32 + 1.0;
+        let dist = if rot_speed > 40.0 { 40.0 } else { rot_speed };
+        *yaw_accel += delta as f32 * (0.7 / dist / rot_speed);
+        *yaw += *yaw_accel;
+    }
+}
+
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
+
+    /// The pinned vanilla 26.3 side is `VanillaTurnOracle`'s `dragon.txt`
+    /// (`tools/test_mob_turn_parity.py`, recorded into `.local/witness/26.3/mob_turn/dragon.txt`):
+    /// `DragonSittingScanningPhase.doServerTick` with its scan's player at each place, from each
+    /// yaw, `yRotA` and head, as the yaw and `yRotA` bits it leaves.
+    #[test]
+    #[ignore = "run by tools/test_mob_turn_parity.py"]
+    fn the_scanning_turn_matches_the_pinned_oracle() {
+        run_the_scanning_turn_matches_the_pinned_oracle();
+    }
+
+    pub(in crate::game) fn run_the_scanning_turn_matches_the_pinned_oracle() {
+        let witness_dir = std::env::var_os("SUNRISE_MOB_TURN_WITNESS_DIR").expect(
+            "SUNRISE_MOB_TURN_WITNESS_DIR must be set; run through tools/test_mob_turn_parity.py, which records the witness",
+        );
+        let witness_path = std::path::Path::new(&witness_dir).join("dragon.txt");
+        let witness = std::fs::read_to_string(&witness_path).unwrap_or_else(|err| {
+            panic!(
+                "failed to read {} ({err}); run through tools/test_mob_turn_parity.py, which records the witness",
+                witness_path.display()
+            )
+        });
+        let bits = |v: f64| format!("{:016x}", v.to_bits());
+        let mut rows = Vec::new();
+        let places = [
+            [4.0, -3.0],
+            [0.0, 30.0],
+            [-35.0, 25.0],
+            [50.0, 0.0],
+            [0.5, -0.5],
+            [12.0, 12.0],
+            [-1.0, -60.0],
+        ];
+        for [px, pz] in places {
+            for yaw in [45.0f32, 0.0, -170.0, 359.5, 180.0] {
+                for accel in [0.0f32, 2.5, -7.25] {
+                    for [hx, hz] in [[0.0, 0.0], [6.0, -4.0]] {
+                        let (mut y, mut a) = (yaw, accel);
+                        super::scanning_turn(
+                            &mut y,
+                            &mut a,
+                            Vec3::new(0.0, 70.0, 0.0),
+                            Vec3::new(hx, 72.0, hz),
+                            Vec3::new(px, 70.0, pz),
+                        );
+                        rows.push(format!(
+                            "{} {} {:08x} {:08x} {} {} {:08x} {:08x}",
+                            bits(px),
+                            bits(pz),
+                            yaw.to_bits(),
+                            accel.to_bits(),
+                            bits(hx),
+                            bits(hz),
+                            y.to_bits(),
+                            a.to_bits()
+                        ));
+                    }
+                }
+            }
+        }
+        let actual = rows.join("\n") + "\n";
+        if let Some(dir) = std::env::var_os("SUNRISE_TURN_OUTPUT_DIR") {
+            std::fs::write(std::path::Path::new(&dir).join("dragon.txt"), &actual).unwrap();
+        }
+        assert_eq!(rows.len(), 7 * 5 * 3 * 2);
+        assert_eq!(actual, witness);
+    }
 
     #[test]
     fn dragon_part_wire_ids_wrap_like_vanilla_i32() {
@@ -5741,6 +5837,10 @@ mod tests {
     #[test]
     #[ignore]
     fn dragon_render_parity_fixture() {
+        run_dragon_render_parity_fixture();
+    }
+
+    pub(in crate::game) fn run_dragon_render_parity_fixture() {
         let path = std::env::var("SUNRISE_DRAGON_RENDER_OUTPUT").expect("harness output path");
         let mut cases = Vec::new();
         for t in [0.0, 0.05, 0.25, 0.5, 0.8, 0.9, 0.95, 1.0] {

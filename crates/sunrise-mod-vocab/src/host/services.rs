@@ -16,6 +16,9 @@ pub trait ServicesServerHost {
     /// The players service.
     #[service]
     fn players(&self) -> &dyn Players;
+    /// The profiles service.
+    #[service]
+    fn profiles(&self) -> &dyn Profiles;
     /// The runtime_levels service.
     #[service]
     fn runtime_levels(&mut self) -> &mut dyn RuntimeLevels;
@@ -101,12 +104,44 @@ pub trait Commands {
         unimplemented!("Commands::refresh_commands")
     }
     /// Side: server.
-    /// An executor can send success feedback to the command's originating source, using
-    /// vanilla's silence, send-command-feedback and block/cart track-output rules.
-    /// This sends a message; the executor's return value determines the command result.
+    /// An executor's success line, as vanilla's `CommandSourceStack.sendSuccess(line,
+    /// broadcast_to_admins)`. A silent source (`execute` run quietly, a function, a mod's
+    /// suppressed run) sends nothing at all. Otherwise the line goes to the originating
+    /// source when it takes success feedback: a player while `send_command_feedback` is on,
+    /// the console and RCON always, a command block or minecart that tracks output while
+    /// `send_command_feedback` is on; never to the `execute as` entity.
+    ///
+    /// With `broadcast_to_admins`, and when the origin informs operators (a player always,
+    /// a block or minecart that tracks output while `command_block_output` is on, the
+    /// console and RCON per `broadcast-console-to-ops` / `broadcast-rcon-to-ops`), the line
+    /// is also wrapped as `[name: line]` (`chat.type.admin`, gray and italic, with the
+    /// display name of the `execute as` entity, else the block's, minecart's or server's).
+    /// That line goes to every operator (`PlayerList.isOp`, a level-0 operator too) but
+    /// the source player while `send_command_feedback` is on, and to the server log while
+    /// `log_admin_commands` is on unless the console is the source; neither rule gates
+    /// the other. Pass `false` for a query or list, as vanilla does.
+    ///
+    /// The text is converted once. Delivering to no one is still `Ok(())`, and the
+    /// executor's return value alone determines the command result.
     /// Refuses text deeper than 512 component nodes before applying any changes.
-    fn feedback(&mut self, line: Text) -> Result<(), TextFormError> {
+    fn feedback(&mut self, line: Text, broadcast_to_admins: bool) -> Result<(), TextFormError> {
         unimplemented!("Commands::feedback")
+    }
+    /// Side: server.
+    /// An executor can send a failure line to the command's originating source, as vanilla's
+    /// `CommandSourceStack.sendFailure` (the same call a NeoForge command registered in
+    /// `RegisterCommandsEvent` makes on its source): the line in red, shown unless the source is
+    /// silent or does not accept failures (a command block or minecart with track output off),
+    /// and independent of `sendCommandFeedback`. A command block or minecart keeps it as its last
+    /// output. It changes nothing else: the executor still returns the command's result, so
+    /// Java's `source.sendFailure(text); return 0;` is `failure(text)` then `Ok(0)`: `execute
+    /// store result` reads 0, without the `Err` path of a failed command (`execute store success`
+    /// reads 1 and a command block counts a success, as for any vanilla command that returns 0).
+    /// Refuses text deeper than 512 component nodes before
+    /// applying any changes; a line whose red formatting no longer fits a packet or a saved
+    /// command block is replaced by `command.failed`, as a returned failure is.
+    fn failure(&mut self, line: Text) -> Result<(), TextFormError> {
+        unimplemented!("Commands::failure")
     }
     /// Side: server.
     /// Runs `line` (no slash) as the server's console does: permission
@@ -189,6 +224,29 @@ pub trait Players {
     /// [`PlayerRef::is_singleplayer_owner`] matches a player to it by name.
     fn singleplayer_profile(&self) -> Option<GameProfile<'_>> {
         unimplemented!("Players::singleplayer_profile")
+    }
+}
+/// The profiles service, reached through its host: account profiles by name or UUID through
+/// the server's `ProfileResolver.Cached`, the one `/fetchprofile` and dynamic player heads use,
+/// also on an offline-mode server. Each name and each UUID is kept 10 minutes after its last
+/// lookup, at most 256 of each, so polling a lookup keeps its answer. A lookup that failed
+/// or found no account is kept the same way, as `Done(None)`; a new request is sent only
+/// once it has expired.
+pub trait Profiles {
+    /// Side: server.
+    /// The profile of the account named `name`, any case (`ProfileResolver.fetchByName`):
+    /// its UUID from the name lookup, then the session service's signed profile. A name
+    /// `StringUtil.isValidPlayerName` refuses (over 16 UTF-16 units, or anything but printable
+    /// ASCII other than a space) answers `Done(None)` without a request. `Done(None)` off a
+    /// server.
+    fn resolve_name(&self, name: &str) -> ProfileResolution {
+        unimplemented!("Profiles::resolve_name")
+    }
+    /// Side: server.
+    /// The session service's signed profile of the account `uuid`
+    /// (`ProfileResolver.fetchById`). `Done(None)` off a server.
+    fn resolve_id(&self, uuid: u128) -> ProfileResolution {
+        unimplemented!("Profiles::resolve_id")
     }
 }
 /// The runtime_levels service, reached through its host.

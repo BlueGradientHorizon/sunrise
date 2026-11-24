@@ -511,6 +511,10 @@ pub struct Ai {
     pub malus: [Option<f32>; PATH_TYPES],
     /// A path computed in canUse and consumed by start.
     pub pending_path: Option<Path>,
+    /// `OwnerHurtTargetGoal.timestamp`: the owner's `getLastHurtMobTimestamp` the goal
+    /// last started on. On the mob, not the goal, so the mob tick can tell that a pet
+    /// has nothing new to read without building the level's player views.
+    pub owner_hurt_timestamp: i32,
     /// Sensing: line-of-sight results cached for one tick.
     pub seen_cache: Vec<(Who, bool)>,
     /// Swing animation progress (attackAnim) and ticks.
@@ -1589,7 +1593,8 @@ fn ai_and_finish_tick(
         // NoAI mob pushes what it overlaps (and is pushed back by its own
         // push).
         drop_tiny_motion(m);
-        return start_ai_tail(m, w, level, events, was_on_fire, movement.is_some());
+        let progress = ridden_without_ai(m, w, level, events, movement.is_some());
+        return finish_ai_progress(m, w, level, events, was_on_fire, movement, progress);
     }
     let progress = ai_step(m, w, level, events, movement.is_some());
     finish_ai_progress(m, w, level, events, was_on_fire, movement, progress)
@@ -1663,7 +1668,7 @@ fn continue_ai_tail(
             // `stepOn` and no block insides.
             AiStage::BlockWalk if m.removed => AiStage::Freeze,
             AiStage::BlockWalk => {
-                if !no_ai {
+                if !no_ai || super::equine::controlled(m) {
                     m.apply_effects_from_blocks(w, events);
                 }
                 let mut walk = start_block_walk(m, w, level, events);
@@ -2545,28 +2550,17 @@ pub(super) fn in_rain(m: &Mob, w: &MobWorld) -> bool {
     w.raining_at(x, y, z) || w.raining_at(x, top, z)
 }
 /// `LivingEntity.baseTick` refills a breather's air by 4, then
-/// `Axolotl.handleAirSupply` (unless the mob has no AI): water or rain fills
-/// it, anywhere else it runs down from the pre-tick value, and at -20 the
-/// axolotl dries out.
-fn axolotl_air_step(m: &mut Mob, w: &MobWorld) -> Option<AirStep> {
-    if m.no_ai {
-        m.air = (m.air + 4).min(super::axolotl::MAX_AIR);
-        return None;
-    }
+/// `Axolotl.handleAirSupply` (a mob with AI): water or rain fills it, anywhere
+/// else it runs down from the pre-tick value, and at -20 the axolotl dries out.
+fn axolotl_air_step(m: &Mob, w: &MobWorld) -> AirStep {
     let breathes = m.fluids.in_water || in_rain(m, w);
-    Some(AirStep::own(m.air, super::axolotl::MAX_AIR, breathes))
+    AirStep::own(m.air, super::axolotl::MAX_AIR, breathes)
 }
 /// `Nautilus.baseTick`: `LivingEntity.baseTick` refills the air of this
-/// water breather, then, unless it has no AI, `Nautilus.handleAirSupply`
-/// takes it back out of water, where the nautilus dries out.
+/// water breather, then `Nautilus.handleAirSupply` (a mob with AI) takes it
+/// back out of water, where the nautilus dries out.
 fn nautilus_air_step(m: &mut Mob) -> Option<AirStep> {
     const MAX_AIR: i32 = 300;
-    if m.no_ai {
-        if m.alive() {
-            m.air = (m.air + 4).min(MAX_AIR);
-        }
-        return None;
-    }
     if !m.alive() {
         m.air = MAX_AIR;
         return None;
@@ -2681,6 +2675,32 @@ fn keeps_its_air(m: &Mob) -> bool {
     m.species() == Species::IronGolem
 }
 
+/// `LivingEntity.decreaseAirSupply` starts with `getAttribute(OXYGEN_BONUS)`, and
+/// `AttributeMap.getInstance` makes the instance, which `AttributeMap.pack` saves from then on.
+fn make_oxygen_bonus(m: &mut Mob, w: &MobWorld) {
+    if m.extra.oxygen_bonus_made {
+        return;
+    }
+    m.extra.oxygen_bonus_made = true;
+    let seed: Vec<_> = if m.extra.live.built().is_none() {
+        crate::entity_nbt::attribute_entries(m)
+            .into_iter()
+            .map(|(_, entry)| entry)
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let kind = m.kind.clone();
+    m.extra.live.edit(
+        w.attributes,
+        &kind.id,
+        "minecraft:oxygen_bonus",
+        true,
+        move || seed,
+        |_, _| Ok(()),
+    );
+}
+
 /// `base_tick` finished, or stopped at its air update for the owner to ask
 /// the mods (`living_breathe`) with a host.
 enum BaseTick {
@@ -2752,7 +2772,8 @@ fn base_tick(
         m.fire_ticks = 0;
     }
     let burning = m.fire_ticks > 0;
-    if burning && m.fire_ticks % 20 == 0 && !m.fluids.in_lava {
+    // `Entity.isInLava` is false on the first tick, so a mob loaded in lava burns then.
+    if burning && m.fire_ticks % 20 == 0 && (m.first_tick || !m.fluids.in_lava) {
         m.damage(level, 1.0, Damage::of(DamageKind::OnFire));
         hurt_teleports(m, w, events);
         if m.hurt_needs_owner() {
@@ -2859,13 +2880,14 @@ fn continue_base_tick(
             }
             BaseStage::Air => {
                 // Air supply and drowning (WaterAnimal.handleAirSupply for aquatic mobs).
-                // Nautilus.baseTick: NoAI skips only the custom handler; the
-                // superclass Breath/drown path must still process its air.
-                let step = if m.species() == Species::Axolotl {
-                    axolotl_air_step(m, w).map(|step| (step, AirDamage::DryOut))
-                } else if m.species() == Species::Nautilus {
+                // Axolotl.baseTick and Nautilus.baseTick: NoAI skips only their own
+                // handleAirSupply, so a NoAI one takes LivingEntity.baseTick's path below,
+                // under the liveness check made before the in-wall hurt.
+                let step = if m.species() == Species::Axolotl && !m.no_ai {
+                    Some((axolotl_air_step(m, w), AirDamage::DryOut))
+                } else if m.species() == Species::Nautilus && !m.no_ai {
                     nautilus_air_step(m).map(|step| (step, AirDamage::DryOut))
-                } else if m.kind.flags.needs_water {
+                } else if m.kind.flags.needs_water && m.species() != Species::Nautilus {
                     Some((
                         AirStep::own(m.air, 300, m.fluids.in_water),
                         AirDamage::Drown,
@@ -2887,6 +2909,9 @@ fn continue_base_tick(
                         && !can_breathe_under_water(m, w)
                         && !water_breathing
                         && !nautilus;
+                    if drowns && !keeps_its_air(m) {
+                        make_oxygen_bonus(m, w);
+                    }
                     let held = submerged && nautilus && !water_breathing;
                     let max = m.max_air_supply();
                     let vanilla = Breath {
@@ -3936,6 +3961,34 @@ mod selector_restore_tests {
             assert_eq!(drops.load(Ordering::SeqCst), 2);
         }
     }
+}
+
+// LivingEntity.aiStep travelRidden: a player rider still drives a NoAI mount.
+fn ridden_without_ai(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+    pause_movement: bool,
+) -> ControlFlow<AiPause> {
+    if !m.alive() || !super::equine::controlled(m) {
+        return ControlFlow::Continue(());
+    }
+    super::equine::ridden_step(m, w.loop_context);
+    m.handle_jumping(w);
+    let input = Vec3::new(
+        f64::from(m.ai.xxa),
+        f64::from(m.ai.yya),
+        f64::from(m.ai.zza),
+    );
+    if super::equine::moved_by_client(m) {
+        m.velocity = Vec3::ZERO;
+    } else {
+        m.travel_until_pause(w, level, input, events, pause_movement)
+            .map_break(|travel| AiPause::Movement(MovementPhase::Travel(travel)))?;
+        hurt_teleports(m, w, events);
+    }
+    ControlFlow::Continue(())
 }
 
 /// The replacement slot the staging pass writes at the head of `server_ai_step`, for tests: a
@@ -5073,9 +5126,12 @@ pub fn feed_animal(
     }
     Some(sound)
 }
-/// `AgeableMob.canAgeUp`: a baby that no age lock holds back.
+/// `AgeableMob.canAgeUp`: a baby that no age lock holds back. `SkeletonHorse.canAgeUp` and
+/// `ZombieHorse.canAgeUp` are `false`: an undead foal never grows.
 pub fn can_age_up(m: &Mob) -> bool {
-    m.is_baby() && !m.extra.age_locked
+    m.is_baby()
+        && !m.extra.age_locked
+        && !matches!(m.species(), Species::SkeletonHorse | Species::ZombieHorse)
 }
 /// `AgeableMob.canUseGoldenDandelion`: a golden dandelion in hand, a baby
 /// whose particle timer has run out, and a type outside
@@ -7716,11 +7772,19 @@ mod age_up_tests {
 
     /// Official Java 26.3: NoAI leaves both age clocks running. AgeLocked
     /// holds a baby's age, but a positive breeding cooldown still expires.
+    /// An undead horse's `canAgeUp` is false, so its foal's age never moves.
     #[test]
     #[ignore = "daily"]
     fn age_clocks_tick_with_no_ai_and_respect_baby_age_lock() {
         let ran = crate::mobs::world::with_test_world(&[], |w, types| {
-            for species in ["pig", "cow", "horse", "turtle"] {
+            for species in [
+                "pig",
+                "cow",
+                "horse",
+                "turtle",
+                "skeleton_horse",
+                "zombie_horse",
+            ] {
                 for no_ai in [true, false] {
                     for locked in [false, true] {
                         for age in [-2, 2] {
@@ -7737,7 +7801,8 @@ mod age_up_tests {
                             let level = &mut test_level.level();
                             let expected = if age > 0 {
                                 [1, 0, 0, 0]
-                            } else if locked {
+                            } else if locked || matches!(species, "skeleton_horse" | "zombie_horse")
+                            {
                                 [-2, -2, -2, -2]
                             } else {
                                 [-1, 0, 0, 0]
@@ -7918,6 +7983,120 @@ mod burn_and_rose_tests {
             }
             world.set(0, 64, 0, state).unwrap();
         }
+    }
+
+    /// Vanilla 26.3 witness recorded by `tools/test_first_tick_lava_burn_parity.py`: a NoAI pig in lava or dry air on its first and later ticks.
+    #[test]
+    #[ignore = "run by tools/test_first_tick_lava_burn_parity.py"]
+    fn a_mob_loaded_in_lava_burns_on_its_first_tick() {
+        let path = std::env::var("SUNRISE_FIRST_TICK_LAVA_BURN_WITNESS").expect(
+            "run through tools/test_first_tick_lava_burn_parity.py, which records the witness",
+        );
+        let witness = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+            panic!(
+                "missing witness {path} ({err}); run through tools/test_first_tick_lava_burn_parity.py"
+            )
+        });
+        struct Row {
+            in_lava: bool,
+            initial_fire: i32,
+            initial_absorption_bits: u32,
+            ticks: usize,
+            hurt_time: i32,
+            fire: i32,
+            health_bits: u32,
+            absorption_bits: u32,
+        }
+        let mut rows = Vec::new();
+        for line in witness.lines() {
+            if line.is_empty() || line.starts_with('#') || line.starts_with("in_lava\t") {
+                continue;
+            }
+            let mut cols = line.split('\t');
+            let in_lava = match cols.next().unwrap() {
+                "0" => false,
+                "1" => true,
+                other => panic!("unexpected in_lava flag {other} in {line}"),
+            };
+            let initial_fire: i32 = cols.next().unwrap().parse().unwrap();
+            let initial_absorption_bits: u32 =
+                u32::from_str_radix(cols.next().unwrap(), 16).unwrap();
+            let ticks: usize = cols.next().unwrap().parse().unwrap();
+            let hurt_time: i32 = cols.next().unwrap().parse().unwrap();
+            let fire: i32 = cols.next().unwrap().parse().unwrap();
+            let health_bits: u32 = u32::from_str_radix(cols.next().unwrap(), 16).unwrap();
+            let absorption_bits: u32 = u32::from_str_radix(cols.next().unwrap(), 16).unwrap();
+            assert!(
+                cols.next().is_none(),
+                "unexpected trailing column in {line}"
+            );
+            rows.push(Row {
+                in_lava,
+                initial_fire,
+                initial_absorption_bits,
+                ticks,
+                hurt_time,
+                fire,
+                health_bits,
+                absorption_bits,
+            });
+        }
+        assert!(!rows.is_empty(), "empty 26.3 witness");
+        let ran = crate::mobs::world::with_built_test_world(
+            &[],
+            build_with("minecraft:lava"),
+            |w, types| {
+                for row in &rows {
+                    let kind = Arc::new(types.types["minecraft:pig"].clone());
+                    let pos = if row.in_lava {
+                        Vec3::new(0.5, 64.0, 0.5)
+                    } else {
+                        Vec3::new(2.5, 64.0, 2.5)
+                    };
+                    let mut m = Mob::new(1, kind, pos, 0.0);
+                    register(&mut m);
+                    m.no_ai = true;
+                    m.persistent = true;
+                    m.fire_ticks = row.initial_fire;
+                    m.absorption = f32::from_bits(row.initial_absorption_bits);
+                    assert!(m.first_tick);
+                    let (mut lr, mut events) = (crate::health::TestLevel::new(0), Vec::new());
+                    for _ in 0..row.ticks {
+                        events.clear();
+                        assert!(tick(&mut m, w, &mut lr.level(), &mut events));
+                    }
+                    assert_eq!(
+                        m.hurt_time, row.hurt_time,
+                        "lava:{} Fire:{} abs:{:08x} ticks:{}",
+                        row.in_lava, row.initial_fire, row.initial_absorption_bits, row.ticks
+                    );
+                    assert_eq!(
+                        m.fire_ticks, row.fire,
+                        "lava:{} Fire:{} abs:{:08x} ticks:{}",
+                        row.in_lava, row.initial_fire, row.initial_absorption_bits, row.ticks
+                    );
+                    assert_eq!(
+                        m.health.to_bits(),
+                        row.health_bits,
+                        "lava:{} Fire:{} abs:{:08x} ticks:{}",
+                        row.in_lava,
+                        row.initial_fire,
+                        row.initial_absorption_bits,
+                        row.ticks
+                    );
+                    assert_eq!(
+                        m.absorption.to_bits(),
+                        row.absorption_bits,
+                        "lava:{} Fire:{} abs:{:08x} ticks:{}",
+                        row.in_lava,
+                        row.initial_fire,
+                        row.initial_absorption_bits,
+                        row.ticks
+                    );
+                }
+            },
+        );
+        assert!(ran, "vanilla data is missing");
     }
 
     /// `LavaCauldronBlock.entityInside`: a pig in a lava cauldron is set alight and takes lava's
@@ -8586,6 +8765,215 @@ mod allay_healing_tests {
         if !ran {
             eprintln!("Prepared mob data unavailable; Allay tick coverage did not run");
         }
+    }
+}
+
+#[cfg(test)]
+mod noai_ridden_tests {
+    use super::*;
+    use std::sync::Arc;
+
+    const WITNESS_ENV: &str = "SUNRISE_NOAI_RIDDEN_TRAVEL_WITNESS";
+
+    struct WitnessRow<'a> {
+        case: &'a str,
+        saddled: bool,
+        no_ai: bool,
+        client_auth: bool,
+        init_vx: f64,
+        init_vy: f64,
+        init_vz: f64,
+        forward: f32,
+        strafe: f32,
+        rider_yaw: f32,
+        rider_pitch: f32,
+        tick: u32,
+        px: u64,
+        py: u64,
+        pz: u64,
+        vx: u64,
+        vy: u64,
+        vz: u64,
+        yaw: u32,
+        pitch: u32,
+        body_yaw: u32,
+        head_yaw: u32,
+        on_ground: bool,
+    }
+
+    struct ActiveCase<'a> {
+        case: &'a str,
+        mob: Mob,
+        level: crate::health::TestLevel,
+        events: Vec<MobEvent>,
+        last_tick: u32,
+    }
+
+    fn parse_bool(s: &str) -> bool {
+        match s {
+            "0" => false,
+            "1" => true,
+            other => panic!("unexpected bool token {other:?}"),
+        }
+    }
+
+    fn parse_f64_bits(s: &str) -> u64 {
+        u64::from_str_radix(s, 16).unwrap_or_else(|e| panic!("bad f64 hex {s:?}: {e}"))
+    }
+
+    fn parse_f32_bits(s: &str) -> u32 {
+        u32::from_str_radix(s, 16).unwrap_or_else(|e| panic!("bad f32 hex {s:?}: {e}"))
+    }
+
+    fn parse_witness(text: &str) -> Vec<WitnessRow<'_>> {
+        text.lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+            .map(|line| {
+                let c: Vec<&str> = line.split('\t').collect();
+                assert_eq!(c.len(), 23, "unexpected column count: {line}");
+                WitnessRow {
+                    case: c[0],
+                    saddled: parse_bool(c[1]),
+                    no_ai: parse_bool(c[2]),
+                    client_auth: parse_bool(c[3]),
+                    init_vx: f64::from_bits(parse_f64_bits(c[4])),
+                    init_vy: f64::from_bits(parse_f64_bits(c[5])),
+                    init_vz: f64::from_bits(parse_f64_bits(c[6])),
+                    forward: f32::from_bits(parse_f32_bits(c[7])),
+                    strafe: f32::from_bits(parse_f32_bits(c[8])),
+                    rider_yaw: f32::from_bits(parse_f32_bits(c[9])),
+                    rider_pitch: f32::from_bits(parse_f32_bits(c[10])),
+                    tick: c[11].parse().unwrap(),
+                    px: parse_f64_bits(c[12]),
+                    py: parse_f64_bits(c[13]),
+                    pz: parse_f64_bits(c[14]),
+                    vx: parse_f64_bits(c[15]),
+                    vy: parse_f64_bits(c[16]),
+                    vz: parse_f64_bits(c[17]),
+                    yaw: parse_f32_bits(c[18]),
+                    pitch: parse_f32_bits(c[19]),
+                    body_yaw: parse_f32_bits(c[20]),
+                    head_yaw: parse_f32_bits(c[21]),
+                    on_ground: parse_bool(c[22]),
+                }
+            })
+            .collect()
+    }
+
+    /// Vanilla 26.3 parity (#3040): a ridden NoAI donkey matches the vanilla 26.3 witness
+    /// `tools/test_noai_ridden_travel_parity.py` records bit-for-bit.
+    #[test]
+    #[ignore = "run by tools/test_noai_ridden_travel_parity.py"]
+    fn a_ridden_noai_donkey_travels_and_turns_with_its_rider() {
+        let witness_path = std::env::var(WITNESS_ENV).unwrap_or_else(|_| {
+            panic!(
+                "{WITNESS_ENV} is not set; run through tools/test_noai_ridden_travel_parity.py, which records the witness"
+            )
+        });
+        let witness_file = {
+            let path = std::path::PathBuf::from(&witness_path);
+            if path.is_dir() {
+                path.join("noai_ridden_travel.tsv")
+            } else {
+                path
+            }
+        };
+        let witness = std::fs::read_to_string(&witness_file).unwrap_or_else(|err| {
+            panic!(
+                "could not read {} (from {WITNESS_ENV}): {err}; run through tools/test_noai_ridden_travel_parity.py",
+                witness_file.display()
+            )
+        });
+        let rows = parse_witness(&witness);
+        assert!(!rows.is_empty(), "26.3 witness must not be empty");
+        let ran = crate::mobs::world::with_built_test_world(
+            &[],
+            |world, registry| {
+                world
+                    .chunks
+                    .insert((0, 0), Arc::new(crate::chunk::Chunk::empty(0, 0)));
+                let stone = registry.default_state("minecraft:stone").unwrap();
+                for x in 0..16 {
+                    for z in 0..16 {
+                        world.set(x, 63, z, stone).unwrap();
+                    }
+                }
+            },
+            |w, types| {
+                let kind = Arc::new(types.types["minecraft:donkey"].clone());
+                let mut active: Option<ActiveCase<'_>> = None;
+                for row in &rows {
+                    if active.as_ref().is_none_or(|a| a.case != row.case) {
+                        assert_eq!(row.tick, 1, "{}: first tick must be 1", row.case);
+                        let mut mob = Mob::new(1, kind.clone(), Vec3::new(8.5, 64.0, 8.5), 0.0);
+                        mob.no_ai = row.no_ai;
+                        mob.persistent = true;
+                        mob.extra.tame = true;
+                        if row.saddled {
+                            mob.set_saddle(Some(crate::items::ItemStack::new(
+                                "minecraft:saddle",
+                                1,
+                            )));
+                        }
+                        mob.velocity = Vec3::new(row.init_vx, row.init_vy, row.init_vz);
+                        active = Some(ActiveCase {
+                            case: row.case,
+                            mob,
+                            level: crate::health::TestLevel::new(0),
+                            events: Vec::new(),
+                            last_tick: 0,
+                        });
+                    }
+                    let state = active.as_mut().unwrap();
+                    assert_eq!(
+                        row.tick,
+                        state.last_tick + 1,
+                        "{}: contiguous ticks",
+                        row.case
+                    );
+                    state.last_tick = row.tick;
+                    state.mob.rider = Some(super::super::equine::Rider {
+                        forward: row.forward,
+                        strafe: row.strafe,
+                        yaw: row.rider_yaw,
+                        pitch: row.rider_pitch,
+                        client: row.client_auth,
+                        ..Default::default()
+                    });
+                    assert!(tick(
+                        &mut state.mob,
+                        w,
+                        &mut state.level.level(),
+                        &mut state.events
+                    ));
+                    let ctx = format!("{} tick {}", row.case, row.tick);
+                    assert_eq!(state.mob.position.x.to_bits(), row.px, "{ctx}: px");
+                    assert_eq!(state.mob.position.y.to_bits(), row.py, "{ctx}: py");
+                    assert_eq!(state.mob.position.z.to_bits(), row.pz, "{ctx}: pz");
+                    assert_eq!(state.mob.velocity.x.to_bits(), row.vx, "{ctx}: vx");
+                    assert_eq!(state.mob.velocity.y.to_bits(), row.vy, "{ctx}: vy");
+                    assert_eq!(state.mob.velocity.z.to_bits(), row.vz, "{ctx}: vz");
+                    assert_eq!(state.mob.yaw.to_bits(), row.yaw, "{ctx}: yaw");
+                    assert_eq!(state.mob.head_pitch.to_bits(), row.pitch, "{ctx}: pitch");
+                    assert_eq!(
+                        state.mob.body_yaw.to_bits(),
+                        row.body_yaw,
+                        "{ctx}: body_yaw"
+                    );
+                    assert_eq!(
+                        state.mob.head_yaw.to_bits(),
+                        row.head_yaw,
+                        "{ctx}: head_yaw"
+                    );
+                    assert_eq!(
+                        state.mob.ground.on_ground, row.on_ground,
+                        "{ctx}: on_ground"
+                    );
+                }
+            },
+        );
+        assert!(ran, "vanilla data is missing");
     }
 }
 
@@ -9262,11 +9650,199 @@ mod dolphin_noai_air_tests {
 }
 
 #[cfg(test)]
-mod nautilus_noai_air_tests {
+mod oxygen_bonus_tests {
+    use super::*;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+    use sunrise_core::nbt::Tag;
+
+    #[derive(serde::Deserialize)]
+    struct Witness {
+        minecraft: String,
+        cases: Vec<Case>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct Case {
+        name: String,
+        entity: String,
+        medium: String,
+        effect: Option<String>,
+        stored_oxygen_bonus_bits: Option<String>,
+        ticks: u32,
+        attributes: Vec<AttrRow>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct AttrRow {
+        id: String,
+        base_bits: String,
+    }
+
+    fn saved_attributes(case: &Case) -> Vec<(String, u64)> {
+        let mut out = Vec::new();
+        let medium = case.medium.as_str();
+        let ran = crate::mobs::world::with_built_test_world(
+            &[],
+            |world, registry| {
+                world
+                    .chunks
+                    .insert((0, 0), Arc::new(crate::chunk::Chunk::empty(0, 0)));
+                let block = match medium {
+                    "air" => None,
+                    "water" => Some("minecraft:water"),
+                    "bubble_column" => Some("minecraft:bubble_column"),
+                    other => panic!("unexpected medium {other}"),
+                };
+                if let Some(name) = block {
+                    let state = registry.default_state(name).unwrap();
+                    for x in 1..=3 {
+                        for z in 1..=3 {
+                            for y in 3..=8 {
+                                world.set(x, y, z, state).unwrap();
+                            }
+                        }
+                    }
+                }
+            },
+            |w, types| {
+                let kind = Arc::new(types.types[case.entity.as_str()].clone());
+                let kind_map = HashMap::from([(case.entity.clone(), kind)]);
+                let mut entries: Vec<(&str, Tag)> = vec![
+                    ("id", Tag::String(case.entity.as_str().into())),
+                    (
+                        "Pos",
+                        Tag::List(vec![
+                            Tag::Double(2.5_f64.to_bits()),
+                            Tag::Double(3.0_f64.to_bits()),
+                            Tag::Double(2.5_f64.to_bits()),
+                        ]),
+                    ),
+                    ("NoAI", Tag::Byte(1)),
+                    ("NoGravity", Tag::Byte(1)),
+                    ("PersistenceRequired", Tag::Byte(1)),
+                ];
+                if let Some(effect) = &case.effect {
+                    entries.push((
+                        "active_effects",
+                        Tag::List(vec![Tag::compound([
+                            ("id", Tag::String(effect.as_str().into())),
+                            ("duration", Tag::Int(100)),
+                            ("amplifier", Tag::Byte(0)),
+                        ])]),
+                    ));
+                }
+                if let Some(bits) = &case.stored_oxygen_bonus_bits {
+                    let raw = u64::from_str_radix(bits, 16).unwrap();
+                    entries.push((
+                        "attributes",
+                        Tag::List(vec![Tag::compound([
+                            ("id", Tag::String("minecraft:oxygen_bonus".into())),
+                            ("base", Tag::Double(raw)),
+                        ])]),
+                    ));
+                }
+                let input = Tag::compound(entries);
+                let mut m = crate::entity_nbt::mob_from_nbt(&input, &kind_map, 1, None).unwrap();
+                let (mut level, mut events) = (crate::health::TestLevel::new(0), Vec::new());
+                for _ in 0..case.ticks {
+                    assert!(tick(&mut m, w, &mut level.level(), &mut events));
+                }
+                if case.ticks > 0 {
+                    assert_eq!(m.fluids.eye_in_water, medium != "air", "{}", case.name);
+                }
+                let tag = crate::entity_nbt::mob_to_nbt(
+                    &m,
+                    [1, 2, 3, 4],
+                    None,
+                    None,
+                    |_| None,
+                    &Default::default(),
+                );
+                let Some(Tag::List(list)) = tag.get("attributes") else {
+                    panic!("no attributes list for {}", case.name);
+                };
+                for entry in list {
+                    let Some(Tag::String(name)) = entry.get("id") else {
+                        panic!("attribute entry missing id for {}", case.name);
+                    };
+                    let Some(Tag::Double(base_bits)) = entry.get("base") else {
+                        panic!("attribute entry missing double base for {}", case.name);
+                    };
+                    out.push((name.to_string().unwrap(), *base_bits));
+                }
+            },
+        );
+        assert!(ran, "vanilla data is missing");
+        out.sort_by(|a, b| a.0.cmp(&b.0));
+        out
+    }
+
+    /// Saved `attributes` against the vanilla 26.3 witness `tools/test_mob_oxygen_bonus_parity.py` records (#2679).
+    #[test]
+    #[ignore = "run by tools/test_mob_oxygen_bonus_parity.py"]
+    fn a_mob_losing_air_under_water_saves_oxygen_bonus() {
+        let path = std::env::var_os("SUNRISE_MOB_OXYGEN_BONUS_WITNESS").unwrap_or_else(|| {
+            panic!(
+                "SUNRISE_MOB_OXYGEN_BONUS_WITNESS is unset; run tools/test_mob_oxygen_bonus_parity.py, which records the witness"
+            )
+        });
+        let raw = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+            panic!(
+                "failed to read SUNRISE_MOB_OXYGEN_BONUS_WITNESS ({}): {err}; run tools/test_mob_oxygen_bonus_parity.py",
+                std::path::Path::new(&path).display()
+            )
+        });
+        let witness: Witness = serde_json::from_str(&raw).unwrap();
+        assert_eq!(witness.minecraft, "26.3");
+        assert!(!witness.cases.is_empty());
+        for case in &witness.cases {
+            let expected: Vec<(String, u64)> = case
+                .attributes
+                .iter()
+                .map(|row| {
+                    (
+                        row.id.clone(),
+                        u64::from_str_radix(&row.base_bits, 16).unwrap(),
+                    )
+                })
+                .collect();
+            assert_eq!(saved_attributes(case), expected, "{}", case.name);
+        }
+    }
+}
+
+#[cfg(test)]
+mod noai_breather_air_tests {
     use super::*;
     use std::sync::Arc;
 
+    fn witness_26_3_rows() -> Vec<String> {
+        let raw = std::env::var("SUNRISE_NOAI_BREATHER_AIR_WITNESS").expect(
+            "run through tools/test_noai_breather_air_parity.py, which records the 26.3 witness",
+        );
+        let mut path = std::path::PathBuf::from(&raw);
+        if path.is_dir() {
+            path.push("noai_breather_air.txt");
+        }
+        let witness = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+            panic!(
+                "failed to read {} (run tools/test_noai_breather_air_parity.py to record the 26.3 witness): {err}",
+                path.display()
+            )
+        });
+        witness
+            .lines()
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+            .map(str::to_owned)
+            .collect()
+    }
+
     fn check(water: bool, no_ai: bool, initial: i32, expected: [i32; 2]) {
+        check_species("minecraft:nautilus", water, no_ai, initial, expected);
+    }
+
+    fn check_species(id: &str, water: bool, no_ai: bool, initial: i32, expected: [i32; 2]) {
         let build = |world: &mut crate::world::World,
                      registry: &sunrise_world::registry::BlockRegistry| {
             world
@@ -9284,9 +9860,13 @@ mod nautilus_noai_air_tests {
             }
         };
         let ran = crate::mobs::world::with_built_test_world(&[], build, |w, types| {
-            let kind = Arc::new(types.types["minecraft:nautilus"].clone());
-            assert!(kind.flags.needs_water);
-            assert!(w.entity_tag_bit(&kind, crate::items::EntityTypeTags::CAN_BREATHE_UNDER_WATER));
+            let kind = Arc::new(types.types[id].clone());
+            if id == "minecraft:nautilus" {
+                assert!(kind.flags.needs_water);
+            }
+            assert!(
+                w.entity_tag_bit(&kind, crate::items::EntityTypeTags::CAN_BREATHE_UNDER_WATER,)
+            );
             let mut mob = Mob::new(1, kind, Vec3::new(2.5, 3.0, 2.5), 0.0);
             mob.no_ai = no_ai;
             mob.no_gravity = true;
@@ -9305,14 +9885,12 @@ mod nautilus_noai_air_tests {
                 assert_eq!(
                     mob.air,
                     expected,
-                    "water={water}, NoAI={no_ai}, initial={initial}, tick={}",
+                    "{id} water={water}, NoAI={no_ai}, initial={initial}, tick={}",
                     index + 1
                 );
             }
         });
-        if !ran {
-            eprintln!("Prepared mob data unavailable; Nautilus full-tick coverage did not run");
-        }
+        assert!(ran, "prepared mob data must run the {id} full-tick fixture");
     }
 
     /// `Nautilus.baseTick`: NoAI skips only handleAirSupply; super.baseTick
@@ -9326,6 +9904,46 @@ mod nautilus_noai_air_tests {
         }
     }
 
+    /// Vanilla 26.3 (witness recorded by `tools/test_noai_breather_air_parity.py`): `LivingEntity.baseTick`
+    /// refills only while the air is below the maximum, so a NoAI axolotl or nautilus
+    /// loaded above it keeps its air across full mob ticks, and one just below tops up to it.
+    #[test]
+    #[ignore = "run by tools/test_noai_breather_air_parity.py"]
+    fn noai_breathers_keep_air_above_their_maximum() {
+        let rows = witness_26_3_rows();
+        let mut checked = 0usize;
+        for (species, max) in [("axolotl", 6000), ("nautilus", 300)] {
+            let id = format!("minecraft:{species}");
+            for (water, scene) in [(false, "0"), (true, "1")] {
+                for initial in [max + 1, 32767, max - 6] {
+                    let initial_str = initial.to_string();
+                    let row = rows
+                        .iter()
+                        .find(|line| {
+                            let mut cols = line.split_ascii_whitespace();
+                            cols.next() == Some(species)
+                                && cols.next() == Some(scene)
+                                && cols.next() == Some("0")
+                                && cols.next() == Some(initial_str.as_str())
+                        })
+                        .unwrap_or_else(|| {
+                            panic!(
+                                "missing 26.3 witness row for {species} scene={scene} air={initial}"
+                            )
+                        });
+                    let cols: Vec<&str> = row.split_ascii_whitespace().collect();
+                    let expected = [
+                        cols[6].parse::<i32>().unwrap(),
+                        cols[9].parse::<i32>().unwrap(),
+                    ];
+                    check_species(&id, water, true, initial, expected);
+                    checked += 1;
+                }
+            }
+        }
+        assert_eq!(checked, 12);
+    }
+
     /// With AI, handleAirSupply still uses the pre-super air on land and
     /// writes300 in water. The NoAI exception must not alter that policy.
     #[test]
@@ -9335,6 +9953,141 @@ mod nautilus_noai_air_tests {
         check(false, false, 100, [99, 98]);
         check(true, false, 300, [300, 300]);
         check(true, false, 100, [300, 300]);
+    }
+
+    /// Vanilla 26.3 (`VanillaNoAiBreatherAirOracle`, `tools/test_noai_breather_air_parity.py`):
+    /// a NoAI axolotl or nautilus loaded with a signed-short `Air`, ticked, saved, reloaded and
+    /// ticked again, over dry air, water, bubble columns at the eye and feet, the breathing
+    /// effects and a lethal in-wall hurt.
+    #[test]
+    #[ignore = "run by tools/test_noai_breather_air_parity.py"]
+    fn noai_breathers_match_the_pinned_oracle() {
+        use std::collections::HashMap;
+        use sunrise_core::nbt::Tag;
+        let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
+        let water = |scene: i32| (1..=4).contains(&scene);
+        let ran = crate::mobs::world::with_resource_test_world(
+            &root,
+            &[],
+            true,
+            true,
+            |world, registry| {
+                world
+                    .chunks
+                    .insert((0, 0), Arc::new(crate::chunk::Chunk::empty(0, 0)));
+                for scene in 0..6 {
+                    let x = 2 * scene;
+                    let (eye, feet) = match scene {
+                        1 => ("minecraft:water", "minecraft:water"),
+                        2 => ("minecraft:bubble_column", "minecraft:bubble_column"),
+                        3 => ("minecraft:bubble_column", "minecraft:water"),
+                        4 => ("minecraft:water", "minecraft:bubble_column"),
+                        5 => ("minecraft:stone", "minecraft:air"),
+                        _ => ("minecraft:air", "minecraft:air"),
+                    };
+                    world
+                        .set(x, 65, 2, registry.default_state(eye).unwrap())
+                        .unwrap();
+                    world
+                        .set(x, 64, 2, registry.default_state(feet).unwrap())
+                        .unwrap();
+                }
+            },
+            |world, types| {
+                let types: HashMap<String, Arc<crate::mobs::MobType>> = types
+                    .types
+                    .iter()
+                    .map(|(id, kind)| (id.clone(), Arc::new(kind.clone())))
+                    .collect();
+                let saved_air = |tag: &Tag| match tag.get("Air") {
+                    Some(Tag::Short(air)) => i32::from(*air),
+                    other => panic!("no short Air: {other:?}"),
+                };
+                let mut rows = Vec::new();
+                for (species, max) in [("axolotl", 6000), ("nautilus", 300)] {
+                    let id = format!("minecraft:{species}");
+                    let probe = Mob::new(1, types[&id].clone(), Vec3::ZERO, 0.0);
+                    // The eye in block 65, the feet in block 64.
+                    let y = 65.05 - probe.eye_height();
+                    for scene in 0..6 {
+                        for mask in 0..8 {
+                            if scene == 5 && mask != 0 {
+                                continue;
+                            }
+                            for air in [10, max - 6, max - 1, max, max + 1, 32767] {
+                                let health = if scene == 5 { ",Health:1f" } else { "" };
+                                let snbt = format!(
+                                    "{{id:\"{id}\",Pos:[{}.5d,{y:?}d,2.5d],NoAI:1b,Air:{air}s{health}}}",
+                                    2 * scene
+                                );
+                                let tag = sunrise_core::nbt::parse_snbt(&snbt).unwrap().0;
+                                let mut first =
+                                    crate::entity_nbt::mob_from_nbt(&tag, &types, 1, None).unwrap();
+                                for (bit, effect) in [
+                                    (1, "minecraft:water_breathing"),
+                                    (2, "minecraft:conduit_power"),
+                                    (4, "minecraft:breath_of_the_nautilus"),
+                                ] {
+                                    if mask & bit != 0 {
+                                        first.add_effect(effect, 100, 0);
+                                    }
+                                }
+                                let loaded = first.air;
+                                let tick = |mob: &mut Mob| {
+                                    base_tick(
+                                        mob,
+                                        world,
+                                        &mut crate::health::TestLevel::new(0).level(),
+                                        &mut Vec::new(),
+                                    );
+                                    assert_eq!(
+                                        mob.fluids.eye_in_water,
+                                        water(scene),
+                                        "fixture immersion"
+                                    );
+                                    crate::entity_nbt::mob_to_nbt(
+                                        mob,
+                                        [1, 2, 3, 4],
+                                        None,
+                                        None,
+                                        |_| None,
+                                        &Default::default(),
+                                    )
+                                };
+                                let saved = tick(&mut first);
+                                let ticked = first.air;
+                                let mut second =
+                                    crate::entity_nbt::mob_from_nbt(&saved, &types, 1, None)
+                                        .unwrap();
+                                let reloaded = second.air;
+                                let again = tick(&mut second);
+                                rows.push(format!(
+                                    "{species} {scene} {mask} {air} {:016x} {loaded} {ticked} {} {reloaded} {} {:08x}",
+                                    y.to_bits(),
+                                    saved_air(&saved),
+                                    saved_air(&again),
+                                    first.health.to_bits()
+                                ));
+                            }
+                        }
+                    }
+                }
+                if let Some(path) = std::env::var_os("SUNRISE_NOAI_BREATHER_AIR_OUTPUT") {
+                    std::fs::write(path, rows.join("\n") + "\n").unwrap();
+                }
+                let expected = witness_26_3_rows();
+                assert_eq!(expected.len(), 2 * (5 * 8 + 1) * 6);
+                assert_eq!(rows.len(), expected.len());
+                for (index, (actual, expected)) in rows.iter().zip(expected.iter()).enumerate() {
+                    assert_eq!(
+                        actual.as_str(),
+                        expected.as_str(),
+                        "26.3 NoAI breather air row {index} diverged"
+                    );
+                }
+            },
+        );
+        assert!(ran, "prepared resources must run the NoAI breather fixture");
     }
 }
 
