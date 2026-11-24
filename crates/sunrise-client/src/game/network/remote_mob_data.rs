@@ -10,7 +10,7 @@ use sunrise_client::mobs::{
     phantom, raider, sniffer, species::can_be_a_baby, sync, tame, zombie_villager,
 };
 use sunrise_client::particles::{ParticleOptions, ParticleType};
-use sunrise_protocol::entity_data::{Particle, ParticleData, Value};
+use sunrise_protocol::entity_data::{ParticleData, Particles, Value};
 use sunrise_protocol::registry::{Builtin, Dynamic};
 use sunrise_world::registry::BlockStateId;
 
@@ -34,6 +34,10 @@ pub(super) fn apply(
             // Entity's signed air and frozen counters are synced as-is.
             (1, Value::Int(air)) => m.air = *air,
             (7, Value::Int(frozen)) => m.ticks_frozen = *frozen,
+            // Player.DATA_PLAYER_ABSORPTION_ID.
+            (17, Value::Float(absorption)) if &*m.kind.id == "minecraft:player" => {
+                m.absorption = *absorption;
+            }
             // Entity.DATA_POSE: a player's or mannequin's box follows it.
             (6, Value::Id(pose))
                 if matches!(&*m.kind.id, "minecraft:player" | "minecraft:mannequin") =>
@@ -350,6 +354,8 @@ pub(super) fn apply(
             // Pillager.IS_CHARGING_CROSSBOW: the charge pose (Raider's
             // IS_CELEBRATING takes 16).
             (Species::Pillager, 17, Value::Bool(charging)) => m.extra.flag = *charging,
+            // Witch.DATA_USING_ITEM: `isDrinkingPotion` (after Raider's IS_CELEBRATING).
+            (Species::Witch, 17, Value::Bool(drinking)) => m.extra.flag = *drinking,
             // HappyGhast.STAYS_STILL (after AgeableMob's two and IS_LEASH_HOLDER):
             // `isOnStillTimeout` on a client, which keeps the ghast solid to
             // the player (`canBeCollidedWith`).
@@ -458,20 +464,23 @@ fn player_poses(m: &mut Mob, values: &[(u8, i32, Value)]) {
 
 /// The options of a synched particle list: an entity effect carries its ARGB
 /// colour, the omens none.
-fn swirls(list: &[Particle], builtin: &Builtin) -> Vec<ParticleOptions> {
+fn swirls(list: &Particles, builtin: &Builtin) -> Vec<ParticleOptions> {
     let channel = |argb: i32, shift: u32| ((argb >> shift) & 255) as f32 / 255.0;
     list.iter()
         .filter_map(|p| {
+            if let Some(ParticleData::Mod { name, options }) = &p.data {
+                return super::lan_particles::decode_mod_particle(name, options);
+            }
             let name = builtin.get("minecraft:particle_type")?.name(p.id)?;
             let ty = ParticleType::from_name(name)?;
-            Some(match p.data {
+            Some(match &p.data {
                 Some(ParticleData::Color(argb)) => ParticleOptions::colored(
                     ty,
                     [
-                        channel(argb, 16),
-                        channel(argb, 8),
-                        channel(argb, 0),
-                        channel(argb, 24),
+                        channel(*argb, 16),
+                        channel(*argb, 8),
+                        channel(*argb, 0),
+                        channel(*argb, 24),
                     ],
                 ),
                 _ => ParticleOptions::simple(ty),
@@ -488,17 +497,30 @@ impl Game<'_> {
         let Some(r) = &self.remote else {
             return;
         };
-        // LivingEntity.onSyncedDataUpdated(SLEEPING_POS_ID): a villager lies
-        // in its bed the way the bed faces, or gets up.
-        let bed = values.iter().find_map(|v| match v {
-            (14, _, Value::OptPos(bed)) => Some(bed.map_or(0, |b| self.bed_facing(b))),
+        // LivingEntity.onSyncedDataUpdated(SLEEPING_POS_ID): any living entity
+        // records its sleeping block pos; villagers also keep the legacy facing code.
+        let sleeping_pos = values.iter().find_map(|v| match v {
+            (14, _, Value::OptPos(bed)) => Some(*bed),
             _ => None,
         });
+        let bed = sleeping_pos.map(|bed| bed.map_or(0, |b| self.bed_facing(b)));
+        let sleep_at = sleeping_pos
+            .flatten()
+            .and_then(|head| self.sleeping_position(head));
         let professions = r.professions.clone();
         if let Some(m) = self.mob_index.get_mut(&mut self.mobs, id as u32) {
             let stare_sound =
                 super::villager_client::receive(m, values, &r.builtin, r.entity_id, &professions);
             apply_registry_data(m, values, &r.registries, self.world.game_time);
+            if let Some(pos) = sleeping_pos {
+                m.extra.sleeping_pos = pos;
+                if pos.is_some()
+                    && let Some(at) = sleep_at
+                {
+                    // LivingEntity.onSyncedDataUpdated(SLEEPING_POS_ID): setPosToBed.
+                    m.position = at;
+                }
+            }
             if let Some(code) = bed
                 && m.species() == Species::Villager
             {
@@ -531,11 +553,11 @@ pub(super) fn client_defaults(m: &mut Mob) {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
     use sunrise_protocol::entity_data::serializer as s;
 
-    fn fixture_mob(kind: &str) -> Mob {
+    pub(super) fn fixture_mob(kind: &str) -> Mob {
         use std::sync::Arc;
         use sunrise_client::mobs::{Anim, Brain, Flags, MobType, Part};
         let species = match kind {
@@ -556,6 +578,7 @@ mod tests {
         // Metadata needs no AI or model. Avoid the resource loader, which also
         // initializes process-wide item tags used by unrelated mob tests.
         let kind = Arc::new(MobType {
+            type_key: Default::default(),
             shadow: None,
             id: kind.into(),
             species,
@@ -594,6 +617,7 @@ mod tests {
                 pose: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
                 polygons: Vec::new(),
                 children: Vec::new(),
+                layer: None,
             }),
             layers: Default::default(),
             texture: String::new(),
@@ -722,6 +746,7 @@ mod tests {
                     permission: 0,
                     sunrise: true,
                     general_entity: true,
+                    attachment_sender: None,
                     moved: true,
                     position: [0.0; 3],
                     view_distance: 10,
@@ -730,6 +755,7 @@ mod tests {
                     tracker: &mut tracker,
                     out: &mut packets,
                 }],
+                None,
                 |_| Some(100),
             );
             let mut sent = Vec::new();
@@ -795,6 +821,10 @@ mod tests {
     #[test]
     #[ignore = "run by tools/test_mob_air_parity.py"]
     fn mob_air_parity_fixture() {
+        run_mob_air_parity_fixture();
+    }
+
+    pub(in crate::game) fn run_mob_air_parity_fixture() {
         use std::io::Write;
         let input =
             std::fs::read_to_string(std::env::var("SUNRISE_MOB_AIR_INPUT").unwrap()).unwrap();
@@ -852,10 +882,27 @@ mod tests {
     }
 
     fn celebration_trace(kind: &str, sequence: &[bool]) -> Vec<(Vec<bool>, bool)> {
-        use sunrise_client::{
-            lan::entity::{Entities, EntityState, Riding, Tracker, Viewer},
-            mobs::raider,
-        };
+        use sunrise_client::mobs::raider;
+        raider_flag_trace(
+            kind,
+            16,
+            |m, on| raider::state_mut(m).celebrating = on,
+            |m| raider::state(m).is_some_and(|state| state.celebrating),
+            sequence,
+        )
+    }
+
+    /// A raider's boolean at `index`, set on the host by `set` for each step of `sequence`,
+    /// sent by `mob_raider_meta` through the tracker and the wire to a client copy: per step,
+    /// what went out at `index` and what the client then reads (`read`).
+    fn raider_flag_trace(
+        kind: &str,
+        index: u8,
+        set: impl Fn(&mut Mob, bool),
+        read: impl Fn(&Mob) -> bool,
+        sequence: &[bool],
+    ) -> Vec<(Vec<bool>, bool)> {
+        use sunrise_client::lan::entity::{Entities, EntityState, Riding, Tracker, Viewer};
         use sunrise_protocol::{buf::Reader, packets::play::Clientbound};
         let name = format!("minecraft:{kind}");
         let mut server = fixture_mob(&name);
@@ -872,7 +919,7 @@ mod tests {
         };
         let mut trace = Vec::new();
         for &on in sequence {
-            raider::state_mut(&mut server).celebrating = on;
+            set(&mut server, on);
             state.meta.clear();
             state.defaults.clear();
             super::super::lan::mob_raider_meta(&server, &mut state.meta, &mut state.defaults);
@@ -886,6 +933,7 @@ mod tests {
                     permission: 0,
                     sunrise: true,
                     general_entity: true,
+                    attachment_sender: None,
                     moved: true,
                     position: [0.0; 3],
                     view_distance: 10,
@@ -894,6 +942,7 @@ mod tests {
                     tracker: &mut tracker,
                     out: &mut packets,
                 }],
+                None,
                 |_| Some(100),
             );
             let mut sent = Vec::new();
@@ -902,8 +951,8 @@ mod tests {
                 let id = reader.varint().unwrap();
                 if let Ok(Clientbound::SetEntityData(data)) = Clientbound::decode(id, reader.rest())
                 {
-                    for (index, serializer, value) in &data.values {
-                        if *index == 16 {
+                    for (at, serializer, value) in &data.values {
+                        if *at == index {
                             assert_eq!(*serializer, s::BOOLEAN);
                             let Value::Bool(on) = value else {
                                 panic!("boolean metadata");
@@ -914,12 +963,40 @@ mod tests {
                     let _ = super::apply(&mut client, &data.values, &Builtin::default(), 99);
                 }
             }
-            trace.push((
-                sent,
-                raider::state(&client).is_some_and(|state| state.celebrating),
-            ));
+            trace.push((sent, read(&client)));
         }
         trace
+    }
+
+    /// Witch.DATA_USING_ITEM (17): her drink goes out on her own flag, the end
+    /// of it too, and nothing repeats.
+    #[test]
+    fn a_witchs_drink_crosses_the_tracker_on_her_own_flag() {
+        let drink = |m: &mut Mob, on: bool| {
+            m.extra.flag = on;
+            m.extra.using_item = if on { 32 } else { 0 };
+        };
+        let sequence = [false, true, true, false, true, false];
+        let expected = vec![
+            (vec![], false),
+            (vec![true], true),
+            (vec![], true),
+            (vec![false], false),
+            (vec![true], true),
+            (vec![false], false),
+        ];
+        let trace = raider_flag_trace("witch", 17, drink, |m| m.extra.flag, &sequence);
+        assert_eq!(trace, expected);
+
+        // A pillager's 17 is its crossbow charge, still.
+        let mut pillager = fixture_mob("minecraft:pillager");
+        let _ = super::apply(
+            &mut pillager,
+            &[(17, s::BOOLEAN, Value::Bool(true))],
+            &Builtin::default(),
+            99,
+        );
+        assert!(pillager.extra.flag);
     }
 
     #[test]
@@ -954,6 +1031,10 @@ mod tests {
     #[test]
     #[ignore = "run by tools/test_raider_celebration_parity.py"]
     fn raider_celebration_parity_fixture() {
+        run_raider_celebration_parity_fixture();
+    }
+
+    pub(in crate::game) fn run_raider_celebration_parity_fixture() {
         use std::io::Write;
         let input =
             std::fs::read_to_string(std::env::var("SUNRISE_RAIDER_SYNC_INPUT").unwrap()).unwrap();
@@ -1634,3 +1715,6 @@ mod tests {
 #[cfg(test)]
 #[path = "remote_mob_data/pet_pose_meta_tests.rs"]
 mod pet_pose_meta_tests;
+#[cfg(test)]
+#[path = "remote_mob_data/witch_drink_meta_tests.rs"]
+mod witch_drink_meta_tests;

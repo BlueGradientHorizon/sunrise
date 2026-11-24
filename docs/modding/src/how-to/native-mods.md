@@ -9,6 +9,12 @@ Native code runs with the player's rights, outside any sandbox. The first instal
 launcher builds native mods only on an install that allows native code (`--trust-native-code`, revocable in
 **Settings > Storage**).
 
+If your mod calls another mod's Rust library, put the requirement in `sunrise-mod.toml`. In the add-on's folder,
+use `cargo sunrise-mod check --with ../library` for a local copy, then use the same flag with `build` or `run`.
+Without `--with`, the tool looks for required libraries in the Sunrise mod registry. Use `--with` to
+include optional libraries. The built `.smod` contains only your add-on; see
+[dependencies between mods](../concepts/dependencies.md) for the wiring and version rules.
+
 The pages in this section follow a mod from its source to a player's game and a server:
 
 <!-- section-pages -->
@@ -23,21 +29,44 @@ and 0.8 for `Full`. There is no second hook dispatch. Two non-commuting listener
 in dispatch order, each completing its rewrites before the next; this does not simulate
 two separate passes over the listener list. Cancellation still leaves motion unchanged.
 
-Version 2 also supplies `kill_credit` and `kill_credit_main`: the pushed living entity's
-kill credit and that entity's current main-hand stack, read after accepted-hit memories
-are committed and before the push. A remembered player takes precedence over the last
-hurting mob, including a tame wolf's owner. An unresolved remembered player yields 0 and
-no stack, not a fallback to the mob. After the remembered player expires, the recent mob
-may receive credit. This context is distinct from `attacker` and its captured source weapon. Both fields are additions: NeoForge's
-`LivingKnockBackEvent` doesn't carry them.
+On the server, `living.knockback(host, strength, [x, z])` enters the short overload. The
+entity moves away from `[x, z]`, and a player's own client gets the resulting velocity.
+It returns `false` if the handle is unavailable, the input isn't finite, the hook cancels,
+or no push remains after resistance. This call deals no damage and adds no kill credit:
+its source is unattributed `minecraft:generic`, so any attacker fallback and kill credit
+come only from the victim's existing hurt memory.
 
-## Living death contract version 2
+`kill_credit` identifies who receives kill credit for the pushed living entity, and `kill_credit_main`
+is that credited entity's current main-hand stack (if any), both read after accepted-hit memories are
+committed and before the push. A remembered player takes precedence over the last hurting mob,
+including a tame wolf's owner. An unresolved remembered player yields 0 and no stack, not a fallback
+to the mob. After the remembered player expires, the recent mob may receive credit. This context is
+distinct from `attacker` and its captured source weapon, and the credited entity can differ from both
+the victim and the immediate attacker. NeoForge's `LivingKnockBackEvent` doesn't carry either field.
 
-[`living_death` version 2](https://github.com/sunrise-org/sunrise/blob/main/docs/native-mods.md#living-death-version-2) supplies
+## Living death
+
+`living_death` (see its rustdoc and [Hook notes](../reference/hook-notes.md)) supplies
 the accepted killing source and its captured weapon stack. Cancellation keeps the
 health a listener leaves, suppresses loot, experience and death messages, and does
 not heal the body. An unhealed cancelled body is removed at tick 20 without loot
 or another death dispatch.
+
+`LivingRef::kill_credit` can still resolve a mob's remembered player after the
+lethal hit while the mob remains in the level. As in `LivingEntity.baseTick`,
+the player reference survives the tick that decrements its timer to zero and
+expires on the next tick. Death loot and experience still use the positive timer
+to determine whether a player hit the mob recently.
+
+### Last attacker and last hurt target
+
+On the server, `LivingRef::last_attacker(host)` reads who last hurt the entity,
+within its recent-attacker window. `LivingRef::last_hurt_mob(host)` instead
+reads the living target the entity last attacked, as `(EntityRef, i32)`. The
+number is the holder's `tick_count` at the hit, not level time. Melee records
+a successful hit; arrow and wind-charge impacts record the target before
+damage, even if damage is refused. There is no expiry window on this read.
+It returns `None` for a stale holder, an empty record, or a dead or gone target.
 
 ### Custom statistics
 
@@ -50,8 +79,9 @@ fn register(&self, registrar: &mut dyn Registrar, _: &RegistrationContext) {
 ```
 
 For a mod named `rewrite`, this declares `rewrite:steps` in
-`minecraft:custom_stat`. An explicit `rewrite:steps` or another manifest-owned
-namespace is also accepted; `minecraft`, foreign namespaces, malformed IDs and
+`minecraft:custom_stat`. An explicit `rewrite:steps`, another manifest-owned
+namespace, or a namespace delegated to the mod through `served_by` (see
+[Declare content in code](content-mods.md#declare-content-in-code)) is also accepted; `minecraft`, foreign namespaces, malformed IDs and
 duplicates are refused. Ignoring the returned `Result<(), DeclarationError>` does not
 bypass installation failure. A mod's explicit registration refusal rolls back
 its declarations, and the installed inventory freezes before worlds open.
@@ -71,11 +101,7 @@ objective for this registered counter.
 A native mod gives an entity boxes that every other entity collides with:
 
 ```rust
-entity.set_collider(host, Some(Collider {
-    boxes: vec![ColliderBox { min: [-1.5, -1.0, -10.0], max: [1.5, 0.0, 10.0] }],
-    rotation: [0.0, 0.0, 0.0, 1.0],
-}))?;
-entity.set_collider_transform(host, turned)?; // the rotation alone, as the entity turns
+{{#include ../../examples/src/entity_and_native.rs:custom_collider}}
 ```
 
 The boxes are in the entity's own frame (its position is the origin), turned by `rotation`, a unit
@@ -84,7 +110,8 @@ the entity's box is swept against each turned box (a separating-axis test with t
 steps up onto a top within its step height, and standing on a tilted top follows the surface. The
 collider is solid to every mover except spectators, entities with no physics and the entities in its
 own vehicle stack (the root vehicle and every passenger, at any depth, the collider's entity among them).
-**Contact effects are not applied yet:** a box is solid ground and walls and nothing more, so standing or walking on one has no block's step sound, sprint particles, friction or bounce ([#1909](https://github.com/sunrise-org/sunrise/issues/1909)).
+Collider boxes are solid but do not supply block contact effects such as step sounds, sprint particles,
+friction or bounce.
 
 The game checks a collider when it is set and refuses by name (`ColliderError`), keeping the old one:
 every value finite, the rotation a unit quaternion within 1e-3, at most `Collider::MAX_BOXES` (32,768)
@@ -99,6 +126,10 @@ index, and the rotation alone for `set_collider_transform`. **A vanilla client d
 it sees the entity and walks through it. A mod that needs players to stand on one requires the Sunrise
 client at join.
 
+A shape edit does not immediately move a body it overlaps. On its movement tick, the Sunrise local
+player's ordinary wall-escape nudge also checks solid collider boxes, except those in the same
+vehicle stack. It checks the sampled pose, not the space a rotating box swept between poses.
+
 ### Carrying
 
 A collider that moves carries what stands on it. Once a tick, after the level's entities ticked
@@ -111,10 +142,16 @@ under its feet with the highest top (a tie goes to the lower entity id). A colli
 collider is carried first, and the bodies on it take its whole displacement. A body that rides something is not carried itself; it
 follows its vehicle. The server carries the entities it simulates, and each Sunrise client its own player.
 
-Carrying never pushes through a wall and the collider is never stopped by what is in its way: a
-body caught between a collider and a wall stays where the collision leaves it, overlapping the collider, and
-a living body takes `in_wall` damage while a box covers its eyes, as it does in a block. (A vanilla armor stand takes no
-`in_wall` damage and so none here.) A vanilla client does not carry its player: only the Sunrise client does.
+After carrying, a collider that translated without turning shoves bodies in the path of its boxes,
+in its direction of travel. This also uses `MoveCause::Carried`. Changing a box's bounds does not
+sweep that box between the old and new shape. Turning colliders carry bodies but do not shove them.
+A shove does not cancel velocity into the collider; the ordinary entity move handles velocity when
+the body hits an obstacle. The client predicts a shove for its own player, and ordinary server movement
+checks still apply.
+
+Neither carrying nor shoving pushes through a wall, and the collider is never stopped by a body in
+its way. A squeezed body stays where the collision leaves it. A living body still takes `in_wall`
+damage while a box covers its eyes, as in a block. The shove itself does not deal impact damage.
 
 ### Players on a moving collider
 
@@ -154,10 +191,14 @@ Past a second of round trip the window stops growing: a player whose copy is
 older than it reaches is judged as a walker in the frame the cap allows, not carried. A vanilla client, which sends no age, gets the
 window around the expected age.
 
-## Host calls a load phase refuses
+## What a callback can access
 
-Each Host method says in which load phases it may be called (`#[access(...)]`).
-World reads and writes require the World phase. The other Host phases admit only the following classes:
+Registration, setup, initial config loading and data/asset reloads lend only the
+context in the hook signature, not a full game host. An operation that is not on
+the context cannot be called there. Config reload and unload lend the polling
+or stopping game's host; world and session lookups on a live host return
+`None` when no world or session is open. See [load callbacks](../concepts/load-phases.md)
+for the callback order and types.
 
 | Phase | Open |
 |---|---|
@@ -170,18 +211,24 @@ even if the hook is refused afterwards. A native mod that calls a method in a ph
 **refused, not crashed**:
 
 - The call ends the mod's hook call (it unwinds out of the listener; the game makes no panic report). The game logs
-  `native refusal: <mod> hook <hook>: mod API <method> is unavailable during <phase>` once for each mod and method.
+  `native refusal: <mod> hook <hook>: mod API <method> is unavailable during <phase>` on each refused callback.
 - The latch: after one refusal, every later Host call that hook call makes is refused too, whatever it asks, and the
   refusal counts even if the mod caught the unwind itself and returned normally.
 - The listener is dropped, and the hook goes on with the next one. The event outputs the listener touched are put
   back to what they were before its call, and the answers of earlier listeners stand. What its earlier allowed calls
   did (a sound, a narrator line, a HUD mode) stands too.
 - The hook uses its default return value: `Flow::Continue` for a cancel hook, `None` for a replace
-  hook that answers an `Option`, and the type's default (`false`, an empty list, `()`) for any other. A hook that
-  isolates its listeners (`entity_move`) disables the refused listener for the session, and a retained callback
-  (loot types, payload handlers, selectors, command argument types) is refused for that call only.
-- A method that returns `Result<_, LevelReadError>` or `Result<_, LevelWriteError>` does not unwind: it returns
-  `Err(Unavailable)` and the mod goes on.
+  hook that answers an `Option`, and the type's default (`false`, an empty list, `()`) for any other. A
+  refused listener is not disabled for the session; a panicking listener is.
+- A method with a typed phase refusal (for example, one returning `Result<_, LevelReadError>`,
+  `Result<_, LevelWriteError>`, or `Result<_, TeamMembersReadError>`) returns its `Err(Unavailable)`
+  instead of unwinding, and the mod goes on.
+  `LevelRef::with_random` returns `None` without calling your closure when world access is unavailable.
+
+A panic is logged and shown in a client error toast naming the mod and hook. Only that callback is
+disabled for the session. Its staged outputs are discarded, and writes covered by an existing
+transaction are undone. Effects outside a transaction, such as a dynamic texture already created
+by `client_tick_pre`, are not undone.
 
 **The limit:** if the thread is already unwinding when the call is refused (a mod's `Drop` that calls the Host while
 another panic unwinds), the game logs the same line and panics, and a panic during an unwind aborts the process.

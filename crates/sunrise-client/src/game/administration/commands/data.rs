@@ -251,7 +251,14 @@ impl Game<'_> {
             Target::Orb(id) => {
                 let uuid = self.uuid_for(id);
                 let tag = entity_nbt::orb_to_nbt(self.orbs.iter().find(|o| o.id == id)?, uuid);
-                crate::game::persist::with_raw(tag, self.persist.raw.get(&id))
+                // Entity.saveWithoutId: the live fire, air and portal cooldown.
+                let mut tag = crate::game::persist::with_raw_over(
+                    tag,
+                    self.persist.raw.get(&id),
+                    crate::game::persist::ORB_LIVE,
+                );
+                self.save_portal_cooldown(id, &mut tag);
+                tag
             }
             Target::Projectile(id) => {
                 let uuid = self.uuid_for(id);
@@ -300,10 +307,7 @@ impl Game<'_> {
             }
             Target::Crystal(id) => {
                 let c = self.crystals.iter().find(|c| c.id == id)?;
-                let raw = self.persist_anon("minecraft:end_crystal", c.position);
-                let uuid = self.persist.uuids.get(&id).copied();
-                let tag = c.to_nbt(uuid.unwrap_or_else(random_uuid), raw);
-                crate::game::persist::with_raw(tag, self.persist.raw.get(&id))
+                self.crystal_nbt(c)
             }
             Target::Dragon(id) => {
                 let d = self.dragon.as_ref().filter(|d| d.id == id)?;
@@ -335,7 +339,7 @@ impl Game<'_> {
                     f.drop_item,
                     f.damage,
                     f.fall_distance,
-                    f.on_ground,
+                    f.ground.on_ground,
                     f.rotation,
                     uuid,
                 );
@@ -364,6 +368,7 @@ impl Game<'_> {
                 // the raw compound alone does not contain generated clouds.
                 let mut tag = self.other_to_nbt(
                     &super::OtherEntity {
+                        size_answer: None,
                         attachment_lifetime: Default::default(),
                         join: Default::default(),
                         id,
@@ -446,6 +451,7 @@ impl Game<'_> {
                 let fence = self.natural_knot(id)?;
                 let uuid = *self.persist.uuids.get(&id)?;
                 let knot = super::OtherEntity {
+                    size_answer: None,
                     attachment_lifetime: Default::default(),
                     // A serialization view, not a second resident entity.
                     join: sunrise_client::join_seq::JoinSeq::UNJOINED,
@@ -485,6 +491,8 @@ impl Game<'_> {
         // `TypedEntityData.loadInto`). `sunrise:finalize` is worldgen's, and
         // `Game::load_mob` would run the finalize it asks for on the next load.
         strip_finalize_tree(&mut tag);
+        // `Entity.load`'s `setPos` moves the entity in its section storage like any other write.
+        let before = self.target_position(t);
         // Entity.load does not read Passengers: the riders stay, and so do the
         // passengers the load kept raw (none, when it kept none).
         let kept_passengers = match t {
@@ -530,13 +538,13 @@ impl Game<'_> {
                     .is_none();
                 if let Some(slot) = self.mobs.iter_mut().find(|m| m.id == id) {
                     // LivingEntity.readAdditionalSaveData only replaces a decoded
-                    // Brain. Keep the Allay's modeled LIKED_PLAYER when the
-                    // required root memory map cannot load; valid empty maps clear it.
-                    let keep_liked_player = slot.species() == sunrise_client::mobs::Species::Allay
-                        && !matches!(
-                            tag.get("Brain").and_then(|brain| brain.get("memories")),
-                            Some(Tag::Compound(_))
-                        );
+                    // Brain. A missing or unreadable memory map is not an empty map.
+                    let unreadable_brain = !matches!(
+                        tag.get("Brain").and_then(|brain| brain.get("memories")),
+                        Some(Tag::Compound(_))
+                    );
+                    let keep_liked_player =
+                        unreadable_brain && slot.species() == sunrise_client::mobs::Species::Allay;
                     // Runtime identity and lifetime stay on the resident owner.
                     new.join = slot.join;
                     new.random = slot.random.clone();
@@ -594,6 +602,12 @@ impl Game<'_> {
                     }
                     if slot.species() == sunrise_client::mobs::Species::Shulker {
                         sunrise_client::mobs::shulker::keep_eased_peek(slot, &old);
+                    }
+                    if unreadable_brain
+                        && let (Some(st), Some(was)) =
+                            (slot.extra.warden.as_mut(), old.extra.warden)
+                    {
+                        st.brain = was.brain;
                     }
                     slot.ai = old.ai;
                     // Mob.readAdditionalSaveData updates persistent home fields,
@@ -714,7 +728,7 @@ impl Game<'_> {
                     b.previous_yaw = yaw;
                     b.pitch = entity_nbt::rotation(&tag)[1];
                     b.no_gravity = entity_nbt::flag(&tag, "NoGravity");
-                    b.on_ground = entity_nbt::flag(&tag, "OnGround");
+                    b.ground.on_ground = entity_nbt::flag(&tag, "OnGround");
                     b.fire_ticks = crate::game::boats::saved_fire(&tag);
                     b.ticks_frozen = crate::game::boats::saved_ticks_frozen(&tag);
                     if b.chest {
@@ -751,7 +765,7 @@ impl Game<'_> {
                     falling.no_gravity = no_gravity;
                     falling.drop_item = drop_item;
                     falling.fall_distance = fall_distance;
-                    falling.on_ground = entity_nbt::flag(&tag, "OnGround");
+                    falling.ground.on_ground = entity_nbt::flag(&tag, "OnGround");
                     falling.fire_ticks = crate::game::boats::saved_fire(&tag);
                     falling.damage = damage;
                     // Keep id/join, start_pos, portal state and stuck multiplier.
@@ -782,7 +796,7 @@ impl Game<'_> {
                 tnt.velocity = entity_nbt::motion(&tag);
                 tnt.rotation = entity_nbt::rotation(&tag);
                 tnt.fuse = super::super::persist::tnt_fuse(&tag);
-                tnt.on_ground = entity_nbt::flag(&tag, "OnGround");
+                tnt.ground.on_ground = entity_nbt::flag(&tag, "OnGround");
                 tnt.fall_distance =
                     sunrise_client::save::float(tag.get("fall_distance")).unwrap_or(0.0);
                 tnt.no_gravity = entity_nbt::flag(&tag, "NoGravity");
@@ -810,11 +824,13 @@ impl Game<'_> {
                 orb.velocity = new.velocity;
                 orb.value = new.value;
                 orb.age = new.age;
-                orb.on_ground = new.on_ground;
+                orb.ground.on_ground = new.ground.on_ground;
                 orb.count = new.count;
                 orb.health = new.health;
                 orb.no_gravity = new.no_gravity;
                 orb.fall_distance = new.fall_distance;
+                orb.fire_ticks = new.fire_ticks;
+                orb.air = new.air;
                 // Entity.load reads portalCooldown and leaves the portal
                 // process as it is.
                 if let Some(portal) = self.portals.entities.get_mut(&id) {
@@ -895,18 +911,27 @@ impl Game<'_> {
                     .iter()
                     .position(|p| p.id == id)
                     .ok_or_else(stale)?;
-                self.creatures.projectiles.update(index, |p| {
-                    if let Some(pos) = entity_nbt::position(&tag) {
-                        p.position = pos;
-                        p.previous = pos;
-                    }
-                    p.velocity = entity_nbt::motion(&tag);
-                    let [yaw, pitch] = entity_nbt::rotation(&tag);
-                    p.yaw = yaw;
-                    p.pitch = pitch;
-                    p.no_gravity = entity_nbt::flag(&tag, "NoGravity");
-                    p.on_ground = entity_nbt::flag(&tag, "OnGround");
-                });
+                if let Some(spectral) = self.creatures.projectiles[index]
+                    .arrow
+                    .as_ref()
+                    .map(|a| a.spectral)
+                {
+                    self.load_resident_arrow(index, spectral, &tag)
+                        .ok_or_else(stale)?;
+                } else {
+                    self.creatures.projectiles.update(index, |p| {
+                        if let Some(pos) = entity_nbt::position(&tag) {
+                            p.position = pos;
+                            p.previous = pos;
+                        }
+                        p.velocity = entity_nbt::motion(&tag);
+                        let [yaw, pitch] = entity_nbt::rotation(&tag);
+                        p.yaw = yaw;
+                        p.pitch = pitch;
+                        p.no_gravity = entity_nbt::flag(&tag, "NoGravity");
+                        p.ground.on_ground = entity_nbt::flag(&tag, "OnGround");
+                    });
+                }
                 set_key(&mut tag, "UUID", Tag::IntArray(uuid.to_vec()));
             }
             _ => return Err(stale()),
@@ -940,8 +965,69 @@ impl Game<'_> {
                 }
             }
             self.persist.raw.insert(id, tag);
+            if let (Some(from), Some(to)) = (before, self.target_position(t)) {
+                self.entity_section_moved(id, Some(from), to);
+            }
         }
         Ok(())
+    }
+    /// `Entity.load` with `AbstractArrow.readAdditionalSaveData` on the resident arrow or
+    /// spectral arrow at `index` of the projectile list: the loader's decoding
+    /// (`arrow_from_nbt`), over the entity it already is. Its type, id, join,
+    /// random, UUID and tick count stay; so does what no save holds (its pierced
+    /// entities, `inGroundTime`, fluid state). None when the data has no position.
+    fn load_resident_arrow(&mut self, index: usize, spectral: bool, tag: &Tag) -> Option<()> {
+        // `Entity.load` cannot change the type, and `/data`'s compound has no `id`.
+        let mut tag = tag.clone();
+        let kind = if spectral {
+            "minecraft:spectral_arrow"
+        } else {
+            "minecraft:arrow"
+        };
+        set_key(&mut tag, "id", Tag::String(kind.into()));
+        let (mut new, in_block) = entity_nbt::arrow_from_nbt(
+            &tag,
+            self.saved_player_uuid(),
+            crate::game::dispenser::tipped_effect,
+        )?;
+        // Projectile.readAdditionalSaveData: `setOwner(EntityReference.read(..))`.
+        self.claim_owner(&mut new);
+        let last_state = in_block.and_then(|t| self.state_from_nbt(&t));
+        let read = new.arrow.take()?;
+        self.creatures.projectiles.update(index, |p| {
+            p.kind = new.kind;
+            p.position = new.position;
+            // Entity.load: setOldPosAndRot.
+            p.previous = new.position;
+            p.velocity = new.velocity;
+            (p.yaw, p.pitch) = (new.yaw, new.pitch);
+            (p.previous_yaw, p.previous_pitch) = (new.yaw, new.pitch);
+            p.left_owner = new.left_owner;
+            (p.owner, p.guest, p.owner_vehicle) = (new.owner, new.guest, new.owner_vehicle);
+            p.owner_uuid = new.owner_uuid;
+            p.no_gravity = new.no_gravity;
+            p.ground.on_ground = new.ground.on_ground;
+            p.air_supply = new.air_supply;
+            p.stuck = new.stuck;
+            let Some(a) = p.arrow.as_mut() else {
+                return;
+            };
+            a.life = read.life;
+            a.last_state = last_state;
+            a.shake = read.shake;
+            a.in_ground = read.in_ground;
+            a.pickup = read.pickup;
+            a.pierce = read.pierce;
+            a.has_been_shot = read.has_been_shot;
+            a.can_break = read.can_break;
+            a.spectral_duration = read.spectral_duration;
+            a.pickup_item = read.pickup_item;
+            a.fired_from_weapon = read.fired_from_weapon;
+            a.crossbow_hit_sound = read.crossbow_hit_sound;
+            a.fire_ticks = read.fire_ticks;
+            a.fall_distance = read.fall_distance;
+        });
+        Some(())
     }
     /// The block entity part of `BlockInput.place`: load the block entity
     /// from the argument's tag (read; `load_block_entity_nbt` reads SNBT); true when its saved data changed.
@@ -1584,12 +1670,12 @@ impl Game<'_> {
             let (_, provider) = self.provider_arg(ctx, registry)?;
             if integer {
                 // ContextIntProvider.getInt: an ArithmeticException reads as 0.
-                let value = self.provider_int(&provider, &compute, 0).unwrap_or(0);
+                let value = self.provider_int(&provider, &compute).unwrap_or(0);
                 vec![Tag::Int(value)]
             } else {
                 // ContextFloatProvider.getFloat: a failure or a non-finite
                 // value reads as 0.
-                let value = self.provider_float(&provider, &compute, 0).unwrap_or(0.0);
+                let value = self.provider_float(&provider, &compute).unwrap_or(0.0);
                 let value = if value.is_finite() { value } else { 0.0 };
                 vec![Tag::Float(value.to_bits())]
             }
@@ -2011,6 +2097,7 @@ mod tests {
             game.persist.raw.insert(12, Tag::Compound(raw));
             game.persist.uuids.insert(12, [1, 2, 3, 4]);
             game.others.push(super::super::OtherEntity {
+                size_answer: None,
                 attachment_lifetime: Default::default(),
                 join: Default::default(),
                 item_transformation: None,
@@ -2048,6 +2135,7 @@ mod tests {
                     range: (0, 23),
                 }],
                 command: None,
+                executor: None,
                 range: (0, 23),
                 child: None,
                 literals: vec![],
@@ -2499,6 +2587,9 @@ mod residency_tests;
 
 #[cfg(test)]
 mod hopper_cooldown_tests;
+
+#[cfg(test)]
+mod arrow_reload_tests;
 
 #[cfg(test)]
 mod arrow_owner_tests {

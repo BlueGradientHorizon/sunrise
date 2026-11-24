@@ -1,6 +1,9 @@
 use super::super::Received;
-use super::{connect_play_test, spawn_menu_test};
-use crate::game::{native_entity_refs::tests::with_client_game, viewed_worlds::tests::column};
+use super::{connect_play_test, finish_play_test, offer_test_payloads, spawn_menu_test};
+use crate::game::{
+    native_entity_refs::tests::{run_fresh_cases, with_client_game},
+    viewed_worlds::tests::column,
+};
 use mod_api::{
     HandlerThread, Hooks, IPayloadContext, IPayloadHandler, ModEntry, PayloadBytes,
     PayloadContextError, PayloadHandleError, PayloadId, PayloadSendError, PayloadWork,
@@ -14,13 +17,13 @@ use std::{
 use sunrise_client::{net::Event, raw_payloads};
 use sunrise_protocol::{
     connection::ConnReader,
+    connection_groups::{self, Cell, Entry, Section},
     packets::{
         Empty, configuration as cfg,
         custom_payload::CustomPayload,
         handshake, login,
         play::{self, Clientbound as C, Serverbound as S},
     },
-    payload_negotiation::{CHANNEL, Control},
 };
 
 const MAIN: &str = "bundle_probe:main";
@@ -240,19 +243,7 @@ fn connect_probe(
 ) {
     let local = raw_payloads::Local::capture(raw_payloads::Side::Server).unwrap();
     let (reader, writer) = connect_play_test(game, |reader, writer| {
-        writer
-            .send(
-                &cfg::Clientbound::CustomPayload(CustomPayload {
-                    channel: CHANNEL.into(),
-                    data: Control::Offer(local.manifest.clone()).encode().unwrap(),
-                })
-                .encode(),
-            )
-            .unwrap();
-        let (id, body) = reader.recv().unwrap();
-        assert!(
-            matches!(cfg::Serverbound::decode(id, &body).unwrap(), cfg::Serverbound::CustomPayload(p) if p.channel == CHANNEL)
-        );
+        offer_test_payloads(reader, writer, &local.manifest);
     });
     spawn_menu_test(game);
     (local, reader, writer)
@@ -430,23 +421,7 @@ fn a_post_disconnect_droppable_reply_cannot_join_the_writer_drain() {
 fn accept_transfer_login(
     listener: std::net::TcpListener,
 ) -> sunrise_protocol::connection::Connection {
-    listener.set_nonblocking(true).unwrap();
-    let deadline = Instant::now() + Duration::from_secs(5);
-    let stream = loop {
-        match listener.accept() {
-            Ok((stream, _)) => break stream,
-            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
-                assert!(Instant::now() < deadline, "no transfer connection");
-                thread::yield_now();
-            }
-            Err(error) => panic!("transfer accept: {error}"),
-        }
-    };
-    stream.set_nonblocking(false).unwrap();
-    stream
-        .set_read_timeout(Some(Duration::from_secs(5)))
-        .unwrap();
-    let mut connection = sunrise_protocol::connection::Connection::from_stream(stream).unwrap();
+    let mut connection = accept_tcp(listener);
     let (id, body) = connection.recv().unwrap();
     let handshake::Serverbound::Intention(packet) =
         handshake::Serverbound::decode(id, &body).unwrap()
@@ -488,6 +463,161 @@ fn transfer_to(target: std::net::SocketAddr) -> C {
 
 #[test]
 #[ignore = "daily"]
+fn a_grouped_column_split_across_tcp_reads_is_adopted_as_one_bundle() {
+    use std::sync::atomic::Ordering;
+    with_probe(|game, _| {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap().to_string();
+        game.connect_remote_session(&address, "BundleProbe", None, None, false, false, None)
+            .unwrap();
+        let local = raw_payloads::Local::capture(raw_payloads::Side::Server).unwrap();
+        let (_reader, mut writer) =
+            finish_play_test(game, accept_tcp(listener), |reader, writer| {
+                offer_test_payloads(reader, writer, &local.manifest);
+            });
+        spawn_menu_test(game);
+        let counters = game
+            .remote
+            .as_ref()
+            .unwrap()
+            .session
+            .counters
+            .lock()
+            .unwrap()
+            .clone()
+            .unwrap();
+        let group = C::CustomPayload(CustomPayload {
+            channel: connection_groups::CHANNEL.into(),
+            data: Section {
+                pos: [0, 4, 0],
+                entries: vec![Entry {
+                    cell: Cell::of([3, 70, 5]),
+                    group: Some(78),
+                }],
+            }
+            .encode()
+            .unwrap(),
+        });
+        let delimiter = C::BundleDelimiter(Empty).encode();
+        let mut frames = Vec::new();
+        for body in [
+            delimiter.clone(),
+            column(0, 0).encode(),
+            group.try_encode_with_payload_codecs(&local.codecs).unwrap(),
+        ] {
+            writer.frame_into(&writer.contents(&body).unwrap(), &mut frames);
+        }
+        let before = counters.bytes_in.load(Ordering::Relaxed);
+        let (prefix, suffix) = frames.split_at(frames.len() - 1);
+        let wait_bytes = |sent| {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while counters.bytes_in.load(Ordering::Relaxed) < before + sent as i64 {
+                assert!(
+                    Instant::now() < deadline,
+                    "client did not read the fragment"
+                );
+                thread::yield_now();
+            }
+        };
+        writer.write_raw(prefix).unwrap();
+        wait_bytes(prefix.len());
+        game.poll_remote_events(false).unwrap();
+        assert!(!game.world.loaded(0, 0));
+
+        writer.write_raw(suffix).unwrap();
+        wait_bytes(frames.len());
+        game.poll_remote_events(false).unwrap();
+        assert!(
+            !game.world.loaded(0, 0),
+            "no adoption before the closing delimiter"
+        );
+
+        writer.send(&delimiter).unwrap();
+        wait_for_bundle(game);
+        game.poll_remote_events(true).unwrap();
+        assert!(game.world.loaded(0, 0));
+        assert_eq!(game.world.block(3, 70, 5).0, 1);
+        assert_eq!(game.world.connection_group(3, 70, 5), Some(78));
+    });
+}
+
+fn accept_tcp(listener: std::net::TcpListener) -> sunrise_protocol::connection::Connection {
+    listener.set_nonblocking(true).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let stream = loop {
+        match listener.accept() {
+            Ok((stream, _)) => break stream,
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                assert!(Instant::now() < deadline, "no test connection");
+                thread::yield_now();
+            }
+            Err(error) => panic!("test connection accept: {error}"),
+        }
+    };
+    stream.set_nonblocking(false).unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+    sunrise_protocol::connection::Connection::from_stream(stream).unwrap()
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_split_frame_group_bundle_refuses_a_mismatched_companion() {
+    with_probe(|game, _| {
+        let (local, _reader, mut writer) = connect_probe(game);
+        game.handle_packet(column(0, 0)).unwrap();
+        let pos = [3, 70, 5];
+        let original = game.world.block(pos[0], pos[1], pos[2]);
+        assert_ne!(original.0, 0);
+        let delimiter = C::BundleDelimiter(Empty).encode();
+        writer.send(&delimiter).unwrap();
+        writer
+            .send(&C::BlockUpdate(play::BlockUpdate { pos, state: 0 }).encode())
+            .unwrap();
+        let companion = C::CustomPayload(CustomPayload {
+            channel: connection_groups::CHANNEL.into(),
+            data: Section {
+                pos: [0, 4, 0],
+                entries: vec![Entry {
+                    cell: Cell::of([4, 70, 5]),
+                    group: Some(7),
+                }],
+            }
+            .encode()
+            .unwrap(),
+        });
+        let body = companion
+            .try_encode_with_payload_codecs(&local.codecs)
+            .unwrap();
+        let mut frame = Vec::new();
+        writer.frame_into(&writer.contents(&body).unwrap(), &mut frame);
+        let (prefix, suffix) = frame.split_at(frame.len() - 1);
+        writer.write_raw(prefix).unwrap();
+        game.poll_remote_events(false).unwrap();
+        assert_eq!(game.world.block(pos[0], pos[1], pos[2]), original);
+        assert!(game.remote.is_some());
+        writer.write_raw(suffix).unwrap();
+        writer.send(&delimiter).unwrap();
+        wait_for_bundle(game);
+        game.poll_remote_events(true).unwrap();
+        assert!(game.remote.is_none());
+        let Some(sunrise_client::title::Mode::Multiplayer(
+            sunrise_client::multiplayer::Screen::Disconnected { reason, .. },
+        )) = game.title.as_ref().map(|title| &title.mode)
+        else {
+            panic!("expected the multiplayer refusal screen");
+        };
+        assert!(
+            reason
+                .plain()
+                .contains("connection groups: group cell not in block update")
+        );
+    });
+}
+
+#[test]
+#[ignore = "daily"]
 fn a_bundled_transfer_starts_the_next_session_before_later_members() {
     with_probe(|game, witness| {
         let (local, _reader, mut writer) = connect_probe(game);
@@ -500,7 +630,6 @@ fn a_bundled_transfer_starts_the_next_session_before_later_members() {
         let unexpected = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         unexpected.set_nonblocking(true).unwrap();
         let (started, observed) = mpsc::channel();
-        let (finished, after_members) = mpsc::channel();
         *witness.transfer_started.lock().unwrap() = Some(observed);
         let queued = "bundle_probe:after_bundle";
         let rejected = CustomPayload {
@@ -521,10 +650,9 @@ fn a_bundled_transfer_starts_the_next_session_before_later_members() {
         let cookie = "bundle_probe:transfer";
         old.lock().unwrap().insert(cookie.into(), vec![16]);
         let target = thread::spawn(move || {
-            let mut target = accept_transfer_login(listener);
+            let target = accept_transfer_login(listener);
             started.send(()).unwrap();
-            after_members.recv_timeout(Duration::from_secs(5)).unwrap();
-            assert_eq!(login_cookie(&mut target, cookie), Some(vec![16]));
+            target
         });
         for packet in [
             C::BundleDelimiter(Empty),
@@ -558,13 +686,14 @@ fn a_bundled_transfer_starts_the_next_session_before_later_members() {
             matches!(event, Event::Packet(packet) if matches!(&**packet, C::Ping(p) if p.id == 33))
         });
         game.poll_remote_events(true).unwrap();
-        finished.send(()).unwrap();
         assert_eq!(*witness.order.lock().unwrap(), ["network after transfer"]);
         let next = &game.remote.as_ref().unwrap().session;
         assert_eq!(next.address, destination.to_string());
         assert_eq!(old.lock().unwrap().get(cookie), Some(&vec![27]));
         assert_eq!(old.lock().unwrap().get(queued), Some(&vec![42]));
-        target.join().unwrap();
+        // Probe the same accepted socket after the old listener's cookie writes.
+        let mut target = target.join().unwrap();
+        assert_eq!(login_cookie(&mut target, cookie), Some(vec![16]));
         assert!(
             matches!(unexpected.accept(), Err(e) if e.kind() == std::io::ErrorKind::WouldBlock)
         );
@@ -574,6 +703,10 @@ fn a_bundled_transfer_starts_the_next_session_before_later_members() {
 #[test]
 #[ignore = "daily"]
 fn standalone_transfer_keeps_its_earlier_cookie_even_after_source_eof() {
+    const NAME: &str = "game::remote::tests::play_bundle_tests::standalone_transfer_keeps_its_earlier_cookie_even_after_source_eof";
+    if run_fresh_cases(NAME, "SUNRISE_TRANSFER_COOKIE_CHILD", &["cookie"]) {
+        return;
+    }
     with_client_game(|game| {
         for eof in [false, true] {
             let (mut reader, mut writer) = connect_play_test(game, |_, _| {});
@@ -586,11 +719,7 @@ fn standalone_transfer_keeps_its_earlier_cookie_even_after_source_eof() {
             let bundled = "bundle_probe:bundled";
             let standalone = "bundle_probe:standalone";
             let late = "bundle_probe:after_transfer";
-            let target = thread::spawn(move || {
-                let mut target = accept_transfer_login(listener);
-                assert_eq!(login_cookie(&mut target, bundled), (!eof).then(|| vec![1]));
-                assert_eq!(login_cookie(&mut target, standalone), Some(vec![2]));
-            });
+            let target = thread::spawn(move || accept_transfer_login(listener));
             for packet in [
                 C::BundleDelimiter(Empty),
                 C::StoreCookie(cfg::StoreCookie {
@@ -636,6 +765,15 @@ fn standalone_transfer_keeps_its_earlier_cookie_even_after_source_eof() {
                 game.remote.as_ref().unwrap().session.address,
                 destination.to_string()
             );
+            // The login listener has already copied the cookies when it sends Hello.
+            let mut target = target.join().unwrap();
+            assert_eq!(login_cookie(&mut target, bundled), (!eof).then(|| vec![1]));
+            assert_eq!(login_cookie(&mut target, standalone), Some(vec![2]));
+            // The admitted tail can drain before or after the login listener takes its copy.
+            // Write a separate cookie after Hello to distinguish a snapshot from a shared map.
+            let after_hello = "bundle_probe:after_hello";
+            old.lock().unwrap().insert(after_hello.into(), vec![44]);
+            assert_eq!(login_cookie(&mut target, after_hello), None);
             assert_eq!(old.lock().unwrap().get(standalone), Some(&vec![2]));
             assert_eq!(old.lock().unwrap().get(late), Some(&vec![43]));
             if !eof {
@@ -648,7 +786,7 @@ fn standalone_transfer_keeps_its_earlier_cookie_even_after_source_eof() {
                     }
                 }
             }
-            target.join().unwrap();
+            drop(target);
             game.leave_server(None).unwrap();
         }
     });
@@ -657,6 +795,10 @@ fn standalone_transfer_keeps_its_earlier_cookie_even_after_source_eof() {
 #[test]
 #[ignore = "daily"]
 fn a_second_admitted_standalone_transfer_keeps_the_first_opening() {
+    const NAME: &str = "game::remote::tests::play_bundle_tests::a_second_admitted_standalone_transfer_keeps_the_first_opening";
+    if run_fresh_cases(NAME, "SUNRISE_TRANSFER_FIRST_OPENING_CHILD", &["opening"]) {
+        return;
+    }
     with_client_game(|game| {
         let (_reader, mut writer) = connect_play_test(game, |_, _| {});
         spawn_menu_test(game);
@@ -665,9 +807,7 @@ fn a_second_admitted_standalone_transfer_keeps_the_first_opening() {
         let first = listener.local_addr().unwrap();
         let unexpected = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         unexpected.set_nonblocking(true).unwrap();
-        let target = thread::spawn(move || {
-            accept_transfer_login(listener);
-        });
+        let target = thread::spawn(move || accept_transfer_login(listener));
         for packet in [
             transfer_to(first),
             transfer_to(unexpected.local_addr().unwrap()),
@@ -688,7 +828,7 @@ fn a_second_admitted_standalone_transfer_keeps_the_first_opening() {
         });
         assert_eq!(admitted.collect::<Vec<_>>(), [true, true]);
         game.poll_remote_events(true).unwrap();
-        target.join().unwrap();
+        let target = target.join().unwrap();
         assert_eq!(
             game.remote.as_ref().unwrap().session.address,
             first.to_string()
@@ -696,6 +836,7 @@ fn a_second_admitted_standalone_transfer_keeps_the_first_opening() {
         assert!(
             matches!(unexpected.accept(), Err(e) if e.kind() == std::io::ErrorKind::WouldBlock)
         );
+        drop(target);
     });
 }
 

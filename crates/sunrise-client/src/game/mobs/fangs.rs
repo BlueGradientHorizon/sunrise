@@ -252,18 +252,32 @@ impl Game<'_> {
             Vec::new()
         };
         let attacker = owner.map(sunrise_client::mobs::Who::Mob);
-        for index in 0..self.mobs.len() {
-            let m = &self.mobs[index];
-            let id = m.id;
-            if id == f.owner || allies.contains(&id) || !m.alive() || !m.bounds().intersects(b) {
+        // A hurt can run server hooks that change the mob list. Keep the selected
+        // victims by identity, as `EvokerFangs.tick` does before `dealDamageTo`.
+        let victims: Vec<_> = self
+            .mobs
+            .iter()
+            .filter(|m| m.id != f.owner && !allies.contains(&m.id) && m.bounds().intersects(b))
+            .map(|m| m.id)
+            .collect();
+        for id in victims {
+            let Some(index) = self.mob_index.find(&self.mobs, id) else {
+                continue;
+            };
+            if !self.mobs[index].alive() {
                 continue;
             }
             // So `living_knockback` sees who the fangs' owner is and what they hold.
             let attack = self.attack_of_who(attacker);
             let plan = self.prepare_knockback_credit(id as i32, attacker, &attack);
+            // The hit's causing entity, lent to its listeners beside the victim.
+            let causing = self.causer_id(attacker);
+            let decision = crate::game::entity::causer_decision!(self, causing);
             let mut credit = plan.lend(&mut self.last_hurt_by_player);
-            if self.mobs[index].damage(
-                crate::game::entity::damage_level_of!(self, &attack, &mut credit, None),
+            let (victim, lend) =
+                crate::game::entity::victim_and_causer!(self, index, causing, decision);
+            let hurt = victim.damage(
+                crate::game::entity::damage_level_of!(self, &attack, &mut credit, lend),
                 6.0,
                 sunrise_client::mobs::Damage {
                     kind: if owner.is_some() {
@@ -275,8 +289,13 @@ impl Game<'_> {
                     from: Some(f.pos),
                     attacker_species: None,
                 },
-            ) && owner.is_some()
-            {
+            );
+            let Some((index, hurt)) = self.complete_mob_hurt(index, hurt) else {
+                continue;
+            };
+            self.finish_mob_damage_at(index);
+            self.settle_mob_hurt(id);
+            if hurt && owner.is_some() {
                 self.mob_post_attack(
                     id,
                     attacker,
@@ -284,8 +303,6 @@ impl Game<'_> {
                     Some("minecraft:indirect_magic"),
                 );
             }
-            // Warden.hurtServer: anger and target at hurt time, refused hit or not.
-            self.settle_warden_hurt(id);
         }
     }
     /// `EvokerFangsRenderer`: the jaws snapping up and closing.
@@ -309,7 +326,7 @@ impl Game<'_> {
         };
         let partial = alpha as f32;
         for f in &self.fangs.list {
-            if !f.started {
+            if !f.started || self.hides_as_camera(f.id) {
                 continue;
             }
             // getAnimationProgress.

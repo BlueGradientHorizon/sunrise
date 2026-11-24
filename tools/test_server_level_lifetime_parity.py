@@ -45,12 +45,15 @@ IDLE_TICKS = 400
 
 def say_payloads(server, start, barrier, timeout):
     """Read the console's `say` payloads only up to the command queue barrier."""
+    # SayCommand broadcasts unsigned console chat; MinecraftServer.logChatMessage
+    # writes the trust tag before the decorated sender. Sunrise logs it the same way.
+    prefix = '[Not Secure] [Server] '
     server.console(f'say {barrier}')
-    server.wait_for(rf': \[Server\] {re.escape(barrier)}$', timeout=timeout, after=start)
+    server.wait_for(rf': {re.escape(prefix + barrier)}$', timeout=timeout, after=start)
     payloads = []
     for line in server.lines[start:]:
-        if (match := CONSOLE_LINE.match(line)) and match[2].startswith('[Server] '):
-            payload = match[2].removeprefix('[Server] ')
+        if (match := CONSOLE_LINE.match(line)) and match[2].startswith(prefix):
+            payload = match[2].removeprefix(prefix)
             if payload == barrier:
                 return payloads
             payloads.append(payload)

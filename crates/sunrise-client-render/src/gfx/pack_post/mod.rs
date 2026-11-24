@@ -26,11 +26,6 @@ use sunrise_render_shaderpack::pack_uniforms::PackInputs;
 
 pub(crate) use super::external::ShadowView;
 
-/// The path-facing names the game reaches through `gfx::pack_post` keep their visibility.
-pub(crate) use sunrise_render_shaderpack::pack_post::construction::{
-    Geometry, TerrainDraw, TerrainList, TerrainPage,
-};
-
 /// The shader pack's `PackPost` methods that still take the client's own `Frame`: `run`, whose
 /// `Frame` it turns into the crate's `UniformFrameView`, sky and hand inputs; `shadow_view`; and
 /// `prepare_entities`, which uploads the frame's `Vertex` runs and its `SkinFrame`.
@@ -303,6 +298,9 @@ mod shadow_faces_tests;
 mod r11f_image_tests;
 
 #[cfg(test)]
+mod normalized_image_tests;
+
+#[cfg(test)]
 mod work_group_fold_tests;
 
 #[cfg(test)]
@@ -340,6 +338,9 @@ mod player_boolean_tests;
 
 #[cfg(test)]
 mod snorm_tests;
+
+#[cfg(test)]
+mod far_location_tests;
 
 #[cfg(test)]
 mod terrain_parts_tests;
@@ -402,3 +403,6 @@ mod colortex_mip_blend_tests;
 
 #[cfg(test)]
 mod material_route_tests;
+
+#[cfg(test)]
+mod sign_text_target_tests;

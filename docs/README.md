@@ -44,7 +44,7 @@ To play, use [the launcher](https://github.com/sunrise-org/sunrise-launcher/blob
 - [Security](security.md): how Sunrise protects code, CI and automatic releases against untrusted input while work is performed by AI agents.
 - [Known issues](known-issues.md): player-facing issues listed in each game release and removed as pull requests fix them.
 - [Sunrise APIs](api/README.md): every surface other programs build on (mods, shaders, agent control, servers, the launcher, data formats), each with its guide, generated reference, stability and changelog, and the [stability and versioning policy](api/stability.md).
-- Menus: every screen is vanilla's (title, world list, create world, multiplayer, options, pause), except Sunrise's graphics settings, drawn in the design system's Blocks palette. Sunrise's own settings hang off vanilla's Options the way mods add theirs, each in one place: **Video Settings...** opens Sunrise's graphics settings screen (every video option, the graphics extras and the shader packs), **Controls → Controller Settings...** the controller settings screen in the same style, **Mods...** and **Sunrise Settings...** take the last two slots of the Options grid (Sunrise Settings opens Extras, PvP & HUD, Replay Studio and AI Agent, each a vanilla options list). The title screen's and pause menu's Friends buttons open Join a Friend and Play with Friends ([play-with-friends.md](play-with-friends.md)).
+- Menus: every screen is vanilla's (title, world list, create world, multiplayer, options, pause), except Sunrise's graphics settings, drawn in the design system's Blocks palette. Sunrise's own settings hang off vanilla's Options the way mods add theirs, each in one place: **Video Settings...** is vanilla's, and Sunrise's graphics settings screen (every video option, the graphics extras and the shader packs) opens from **Extras → Sunrise Graphics...**, **Controls → Controller Settings...** the controller settings screen in the same style, **Mods...** and **Sunrise Settings...** take the last two slots of the Options grid (Sunrise Settings opens Extras, PvP & HUD, Replay Studio and AI Agent, each a vanilla options list). The title screen's and pause menu's Friends buttons open Join a Friend and Play with Friends ([play-with-friends.md](play-with-friends.md)).
 
 ## Launcher and platforms
 
@@ -54,7 +54,6 @@ To play, use [the launcher](https://github.com/sunrise-org/sunrise-launcher/blob
 - [Launcher resource preparation](launcher-preparation.md): compiling Java exporter classes into release bundles, verifying local Minecraft assets against `research-lock.json`, and multi-lane export workflows.
 - [Microsoft account sign-in](microsoft-account.md): signing players in with their Microsoft account in the launcher, joining online-mode servers, the owner gate, and the OAuth device-code flow.
 - [Windows allocators](windows-allocators.md): mimalloc defaults, the optional `windows-segment-heap` Cargo feature for Win32 heap APIs, and how to validate the executable manifest.
-- [Windows ARM64](windows-arm64.md): building and running native Windows ARM64 executables for `aarch64-pc-windows-msvc`, cross-compilation, and release packaging.
 
 ## Parity
 
@@ -73,12 +72,6 @@ To play, use [the launcher](https://github.com/sunrise-org/sunrise-launcher/blob
 
 - [Design system](design-system.md): shared tokens and interface rules for the launcher, website and Sunrise-only game overlays.
 - [HUD kit](ui-kit.md): the pieces Sunrise's own HUD overlays share: `Room`, which keeps controller notices below the boss bars, and `Plate`, the box behind their text.
-- [Linear light for HDR and shader packs](design/hdr-linear-light.md): the proposed shader API 0.2 colour contract and frame format for HDR output.
-- [The shader API 0.2 frame](design/shader-api-frame.md): proposed: where a 0.2 pack's stages, post chain and tone curve run, who owns anti-aliasing and coverage, and room for clouds, mods, LabPBR and ray tracing.
-- [Live mod reloading](design/mod-hotload.md): loading, enabling and updating mods from inside the game without a restart.
-- [Mod registry v2](design/registry-v2.md): project kinds, metadata, installation locations and the registry rollout.
-- [Scoped whole-stack rollback](design/stack-snapshot.md): transaction-scoped, same-place savepoints for internals mods; the real transaction lifetime must be confirmed before implementation, and provider-owned places are initially refused.
-- [Modularizing gfx.rs](design/gfx-modularization.md): the move-only extractions out of the renderer's 13,837-line module, what each phase took, and the blocks still in `gfx.rs`.
 
 ## Architecture: world generation
 

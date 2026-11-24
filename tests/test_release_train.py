@@ -290,14 +290,18 @@ class ReleaseTrainTests(unittest.TestCase):
             git("init", "-q", "-b", "main")
             git("config", "user.name", "Test")
             git("config", "user.email", "test@example.invalid")
+            release = Path(folder, "crates/sunrise-core/src/release.rs")
+            release.parent.mkdir(parents=True)
             commits = []
             for n in range(3):
+                release.write_text('const PREFIX: &str = "snapshot-";' if n == 0 else 'const PREFIX: &str = "dev-";')
+                git("add", ".")
                 git("commit", "-q", "--allow-empty", "-m", str(n))
                 commits.append(git("rev-parse", "HEAD"))
             with mock.patch.object(train, "ROOT", Path(folder)), \
                     mock.patch.object(train, "daily_green_commit", return_value=commits[1]), \
                     mock.patch.object(train, "nightly_branch_head", return_value=""):
-                for channel in ("snapshot", "nightly"):
+                for channel in ("dev", "nightly"):
                     git("update-ref", "refs/remotes/origin/main", commits[1])
                     head = commits[1]
                     green = {"workflow_runs": [dict(head_sha=head, head_branch="main", event="push", id=7)]}
@@ -305,7 +309,7 @@ class ReleaseTrainTests(unittest.TestCase):
                     gates = [{"jobs": [dict(name=name, **done) for name in ("lint", "verify", "verify-static")]}]
                     with mock.patch.object(train, "REPO", "sunrise-org/sunrise"), \
                             mock.patch.object(train, "gh_json", side_effect=[[green], gates]):
-                        self.assertEqual(train.channel_head(channel, ""), head, "a snapshot needs the gate only")
+                        self.assertEqual(train.channel_head(channel, ""), head, "a Dev build needs the gate only")
                     with mock.patch.object(train, "REPO", "sunrise-org/sunrise"), \
                             mock.patch.object(train, "gh_json", side_effect=[[green], [{"jobs": gates[0]["jobs"][:2]}]]):
                         with self.assertRaisesRegex(SystemExit, f"a {channel} needs the gate green"):
@@ -321,6 +325,11 @@ class ReleaseTrainTests(unittest.TestCase):
                             train.channel_head(channel, commits[2])
                         with self.assertRaisesRegex(SystemExit, "not a commit of this repository"):
                             train.channel_head(channel, "f" * 40)
+                # The worktree knows Dev, but the selected commit would call itself Nightly.
+                with mock.patch.object(train, "fork_gate_passed", return_value=True) as gate:
+                    with self.assertRaises(SystemExit):
+                        train.channel_head("dev", commits[0])
+                    gate.assert_not_called()
 
     def test_a_nightly_ships_only_daily_green_unless_the_owner_granted_an_exception(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -329,6 +338,10 @@ class ReleaseTrainTests(unittest.TestCase):
             git("init", "-q", "-b", "main")
             git("config", "user.name", "Test")
             git("config", "user.email", "test@example.invalid")
+            release = Path(folder, "crates/sunrise-core/src/release.rs")
+            release.parent.mkdir(parents=True)
+            release.write_text('const PREFIX: &str = "dev-";')
+            git("add", ".")
             commits = []
             for n in range(2):
                 git("commit", "-q", "--allow-empty", "-m", str(n))
@@ -342,7 +355,7 @@ class ReleaseTrainTests(unittest.TestCase):
                     self.assertEqual(train.channel_head("nightly", ""), commits[0], "the default is daily-green")
                     with self.assertRaisesRegex(SystemExit, "not the commit `daily-green` points to"):
                         train.channel_head("nightly", commits[1])
-                    self.assertEqual(train.channel_head("snapshot", commits[1]), commits[1], "a snapshot needs no daily")
+                    self.assertEqual(train.channel_head("dev", commits[1]), commits[1], "a Dev build needs no daily")
                 with mock.patch.object(train, "daily_green_commit", return_value=""):
                     with self.assertRaisesRegex(SystemExit, "none yet"):
                         train.channel_head("nightly", "")
@@ -356,7 +369,9 @@ class ReleaseTrainTests(unittest.TestCase):
                     for named in ("", "main", commits[1][:9]):
                         with self.assertRaisesRegex(SystemExit, "names the full 40-character commit"):
                             train.channel_head("nightly", named, "owner 2026-11-17: the cursor fix")
-                    self.assertEqual(train.channel_head("snapshot", "", "ignored"), commits[1], "a snapshot takes none")
+                    self.assertEqual(
+                        train.channel_head("dev", "", "ignored"), commits[1], "a Dev build takes no exception"
+                    )
                 with mock.patch.object(train, "fork_gate_passed", return_value=False), \
                         mock.patch.object(train, "daily_green_commit", side_effect=AssertionError("not consulted")):
                     with self.assertRaisesRegex(SystemExit, "needs the gate green"):
@@ -443,9 +458,9 @@ class ReleaseTrainTests(unittest.TestCase):
         step = next(step for step in pick["steps"] if step.get("id") == "pick")
         self.assertEqual(step["env"]["GATE_RERUN"], "${{ steps.mode.outputs.publish == 'true' && '1' || '' }}")
 
-    def test_a_snapshot_is_tagged_by_kind_date_and_commit(self):
+    def test_a_dev_build_is_tagged_by_kind_date_and_commit(self):
         sha = "0c02067" + "a" * 33
-        self.assertEqual(train.build_tag("snapshot", "2026-11-13", sha), "snapshot-2026-11-13-0c02067")
+        self.assertEqual(train.build_tag("dev", "2026-11-13", sha), "dev-2026-11-13-0c02067")
         self.assertEqual(train.build_tag("nightly", "2026-11-13", sha), "nightly-2026-11-13-0c02067")
 
     def test_a_release_is_published_only_after_its_smoke_test_and_with_no_blocker(self):
@@ -566,26 +581,26 @@ class NightlyTrainTests(unittest.TestCase):
         self.assertTrue(train.nightly_decision(True, "forced", self.PRS, None, 30, force=True)[0])
         self.assertFalse(train.nightly_decision(True, "forced", self.PRS, 7, 0, force=True)[0])
 
-    def test_a_snapshot_build_never_holds_the_nightly_back(self):
+    def test_a_dev_build_never_holds_the_nightly_back(self):
         def runs(*entries):
             return [dict(databaseId=n, status=status, displayTitle=title) for n, (status, title) in enumerate(entries, 1)]
-        snapshot = ("in_progress", "snapshot build " + "a" * 40)
-        with mock.patch.object(train, "gh_json", return_value=runs(snapshot, ("queued", "snapshot build "))):
-            self.assertIsNone(train.nightly_building(), "an active snapshot, real or dry, is no Nightly")
-        with mock.patch.object(train, "gh_json", return_value=runs(snapshot, ("queued", "nightly build"))):
+        dev = ("in_progress", "dev build " + "a" * 40)
+        with mock.patch.object(train, "gh_json", return_value=runs(dev, ("queued", "dev build "))):
+            self.assertIsNone(train.nightly_building(), "an active Dev build, real or dry, is no Nightly")
+        with mock.patch.object(train, "gh_json", return_value=runs(dev, ("queued", "nightly build"))):
             self.assertEqual(train.nightly_building(), 2)
         with mock.patch.object(train, "gh_json", return_value=runs(("in_progress", "nightly build (request 7)"))):
             self.assertEqual(train.nightly_building(), 1)
-        with mock.patch.object(train, "gh_json", return_value=runs(("completed", "nightly build"), snapshot)):
+        with mock.patch.object(train, "gh_json", return_value=runs(("completed", "nightly build"), dev)):
             self.assertIsNone(train.nightly_building())
-        # The workflow names a snapshot's run exactly so, and a Nightly's never so.
+        # The workflow names a Dev build's run exactly so, and a Nightly's never so.
         run_name = (train.ROOT / ".github/workflows/nightly-build.yml").read_text().split("\nrun-name: ", 1)[1].split("\n", 1)[0]
-        self.assertIn("inputs.kind == 'snapshot' && format('snapshot build {0}', inputs.base)", run_name)
+        self.assertIn("inputs.kind == 'dev' && format('dev build {0}', inputs.base)", run_name)
         self.assertIn("format('nightly build{0}'", run_name)
 
-    def test_a_running_nightly_never_holds_a_snapshot_back(self):
+    def test_a_running_nightly_never_holds_a_dev_build_back(self):
         sha = "a" * 40
-        argv = ["release_train.py", "decide", "--kind", "game", "--channel", "snapshot"]
+        argv = ["release_train.py", "decide", "--kind", "game", "--channel", "dev"]
         with mock.patch("sys.argv", argv), mock.patch.object(train, "channel_head", return_value=sha), \
                 mock.patch.object(train, "run", return_value=sha + "\n"), \
                 mock.patch.object(train, "nightly_building", side_effect=AssertionError("asked")), \
@@ -593,7 +608,7 @@ class NightlyTrainTests(unittest.TestCase):
             self.assertEqual(train.main(), 0)
         values = outputs.call_args.args[0]
         self.assertEqual(values["release"], "true")
-        self.assertTrue(values["tag"].startswith("snapshot-") and values["tag"].endswith("-aaaaaaa"))
+        self.assertTrue(values["tag"].startswith("dev-") and values["tag"].endswith("-aaaaaaa"))
 
     def test_the_cap_is_the_nightly_sets(self):
         from tools.ci import nightly_set
