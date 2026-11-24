@@ -6,7 +6,7 @@
 //! predicates, item modifiers, and slot sources.
 //!
 //! Run 1 (both `chemlib` and `boiler` installed): all guarded entries load and the conditional
-//! `recipe_filter` removes `boiler:filtered_out`, while `neoforge:false` siblings stay omitted.
+//! `recipe_filter` removes `boiler:filtered_out`, while `neoforge:never` siblings stay omitted.
 //! Run 2 (`boiler` installed alone): `boiler` starts cleanly with zero errors, `boiler:filtered_out`
 //! survives, every `chemlib`-guarded entry is absent, and the static-tag `tag_empty` pack feature
 //! still loads.
@@ -147,10 +147,10 @@ fn write_world_datapack(game_dir: &Path) {
         &pack.join("data/boiler/worldgen/feature/pack_tag_feature.json"),
         r#"{"neoforge:conditions":[{"type":"neoforge:not","value":{"type":"neoforge:tag_empty","registry":"minecraft:block","tag":"minecraft:logs"}}],"type":"minecraft:no_op","config":{}}"#,
     );
-    // Sibling guarded by neoforge:false must stay omitted in both runs.
+    // Sibling guarded by neoforge:never must stay omitted in both runs.
     write_file(
         &pack.join("data/boiler/worldgen/feature/never_feature.json"),
-        r#"{"neoforge:conditions":[{"type":"neoforge:false"}],"type":"minecraft:no_op","config":{}}"#,
+        r#"{"neoforge:conditions":[{"type":"neoforge:never"}],"type":"minecraft:no_op","config":{}}"#,
     );
 }
 
