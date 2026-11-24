@@ -5,7 +5,7 @@
 //! entry points after it, and checks the whole shader, so the renderer (`gfx::mod_pipelines`) is
 //! only ever handed WGSL that compiles. A required pipeline the load cannot build fails the load;
 //! an optional one is logged and left out. A frame reads none of this by name.
-//! The shader's composition and checks live in `sunrise_shader_api::mod_pipeline`, shared with
+//! The shader's composition and checks live in `sunrise_mod_pipeline`, shared with
 //! `cargo sunrise-mod check`.
 use mod_api::{
     Identifier, PackGlslInput, PackPassSlot, PackUniformType, PackUniformValue, PipelineBlend,
@@ -15,7 +15,7 @@ use mod_api::{
 use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
 use std::sync::OnceLock;
-use sunrise_shader_api::mod_pipeline::{FOLDER, compose_with};
+use sunrise_mod_pipeline::{FOLDER, compose_with};
 
 static REGISTERED: OnceLock<Vec<RenderPipeline>> = OnceLock::new();
 
