@@ -161,14 +161,13 @@ fn trait_exclusion(
         return Some("path-written trait owner");
     };
     let owner = owner.ident.to_string();
-    let undeclared = types.exclusion(module, &owner);
+    let undeclared = types.exclusion(module, &owner, foreign);
     [
         (negative.is_some(), "negative trait impl"),
         (block.unsafety.is_some(), "unsafe trait impl"),
         (!last.arguments.is_none(), "trait generic arguments"),
         (!traits.contains(&last.ident.to_string()), "foreign trait"),
         (undeclared.is_some(), undeclared.unwrap_or_default()),
-        (foreign.contains(&owner), "imported trait owner"),
     ]
     .into_iter()
     .find_map(|(applies, name)| applies.then_some(name))
@@ -206,30 +205,43 @@ pub struct OwnerTypes {
     modules: BTreeMap<String, Uses>,
 }
 
-/// One module's `use`s.
+/// One module's own child modules and `use`s.
 #[derive(Default)]
 struct Uses {
-    /// Each name a `use` brings in, under the name it has here (a renamed import under its new
-    /// one), with where the path takes it from.
-    named: BTreeMap<String, Import>,
+    /// Child `mod` declarations: `Some(limit)` when unconditional (`None` = `pub`), `None` if gated/conflicting.
+    submodules: BTreeMap<String, Option<Option<String>>>,
+    /// Named `use` bindings: `Some(import)` when single and unconditional, `None` if gated/conflicting.
+    named: BTreeMap<String, Option<Import>>,
     globs: Vec<Glob>,
 }
 
-/// Where a `use` takes a name from: `original` is the name it has there.
-enum Import {
-    /// A module of the crate, written from `crate`, `self` or `super`.
-    Module { from: String, original: String },
-    /// A path written from a bare name, as [`Glob::Bare`].
-    Bare { path: Vec<String>, original: String },
+/// Where a `use` path starts, before resolving intermediate module segments.
+#[derive(Clone, PartialEq, Eq)]
+enum Anchor {
+    /// A known module of this crate, written from `crate`, `self` or `super`.
+    Module(String),
+    /// A bare first segment: child module, imported module, crate name, or another crate.
+    Bare,
+    /// A leading `::`: another crate or extern prelude.
+    External,
+}
+
+/// Where a `use` takes a name from: `original` is the name it has there (`None` for `…::self`).
+#[derive(Clone, PartialEq, Eq)]
+struct Import {
+    anchor: Anchor,
+    path: Vec<String>,
+    original: Option<String>,
+    limit: Option<String>,
 }
 
 /// A `use …::*`.
-enum Glob {
-    /// Of a module of the crate, written from `crate`, `self` or `super`.
-    Module(String),
-    /// Written from a bare name: a child module, an enum's variants, the crate under its own
-    /// name, or another crate. Which one is known once every module is read.
-    Bare(Vec<String>),
+#[derive(Clone)]
+struct Glob {
+    anchor: Anchor,
+    path: Vec<String>,
+    limit: Option<String>,
+    gated: bool,
 }
 
 /// What a name is in a module, as far as its `use`s say.
@@ -247,144 +259,499 @@ enum Binding {
     NotFound,
 }
 
+/// What a module segment resolves to while following an intermediate path.
+enum ModuleBinding {
+    Local(String),
+    /// An item of this crate that is not a module (such as an enum whose variants are globbed).
+    NonModule,
+    Foreign,
+    Unresolved,
+    Ambiguous,
+    NotFound,
+}
+
+fn parent_module(module: &str) -> Option<String> {
+    module
+        .rsplit_once("::")
+        .map(|(parent, _)| parent.to_owned())
+}
+
+fn within(viewer: &str, ancestor: &str) -> bool {
+    viewer == ancestor
+        || viewer
+            .strip_prefix(ancestor)
+            .is_some_and(|rest| rest.starts_with("::"))
+}
+
+fn visible_to(viewer: &str, limit: &Option<String>) -> bool {
+    limit
+        .as_ref()
+        .is_none_or(|ancestor| within(viewer, ancestor))
+}
+
+fn common_ancestor(a: &str, b: &str) -> String {
+    a.split("::")
+        .zip(b.split("::"))
+        .take_while(|(x, y)| x == y)
+        .map(|(x, _)| x)
+        .collect::<Vec<_>>()
+        .join("::")
+}
+
+fn vis_limit(module: &str, vis: &syn::Visibility) -> Option<String> {
+    match vis {
+        syn::Visibility::Public(_) => None,
+        syn::Visibility::Inherited => Some(module.to_owned()),
+        syn::Visibility::Restricted(restricted) => {
+            let segments: Vec<String> = restricted
+                .path
+                .segments
+                .iter()
+                .map(|s| source::unraw(&s.ident))
+                .collect();
+            let mut iter = segments.iter().map(String::as_str).peekable();
+            let mut base = match iter.peek().copied() {
+                Some("crate") => {
+                    iter.next();
+                    module.split("::").next().unwrap_or(module).to_owned()
+                }
+                Some("self") => {
+                    iter.next();
+                    module.to_owned()
+                }
+                Some("super") => {
+                    let mut cur = module.to_owned();
+                    while iter.peek().copied() == Some("super") {
+                        iter.next();
+                        if let Some(parent) = parent_module(&cur) {
+                            cur = parent;
+                        }
+                    }
+                    cur
+                }
+                _ => module.to_owned(),
+            };
+            for seg in iter {
+                base.push_str("::");
+                base.push_str(seg);
+            }
+            Some(base)
+        }
+    }
+}
+
 impl OwnerTypes {
     /// Adds what `items`, a file of `module`, declare and import, inline modules included.
     pub fn declare(&mut self, module: &str, items: &[Item]) {
-        fn parent(module: &str) -> String {
-            module
-                .rsplit_once("::")
-                .map_or(module, |(parent, _)| parent)
-                .to_owned()
+        #[derive(Clone)]
+        enum Prefix {
+            Root,
+            External(Vec<String>),
+            Bare(Vec<String>),
+            Module {
+                base: String,
+                path: Vec<String>,
+                allow_super: bool,
+            },
         }
-        fn bare(tree: &syn::UseTree, path: &mut Vec<String>, uses: &mut Uses) {
-            let import = |path: &[String], original: &syn::Ident| Import::Bare {
-                path: path.to_vec(),
-                original: original.to_string(),
-            };
-            match tree {
-                syn::UseTree::Path(next) => {
-                    path.push(next.ident.to_string());
-                    bare(&next.tree, path, uses);
-                    path.pop();
-                }
-                syn::UseTree::Name(name) if name.ident == "self" => {}
-                syn::UseTree::Name(name) => {
-                    uses.named
-                        .insert(name.ident.to_string(), import(path.as_slice(), &name.ident));
-                }
-                syn::UseTree::Rename(rename) => {
-                    uses.named.insert(
-                        rename.rename.to_string(),
-                        import(path.as_slice(), &rename.ident),
-                    );
-                }
-                syn::UseTree::Glob(_) => uses.globs.push(Glob::Bare(path.clone())),
-                syn::UseTree::Group(group) => {
-                    for tree in &group.items {
-                        bare(tree, path, uses);
-                    }
+        impl Prefix {
+            fn into_anchor(self) -> (Anchor, Vec<String>) {
+                match self {
+                    Prefix::Root => (Anchor::Bare, Vec::new()),
+                    Prefix::External(path) => (Anchor::External, path),
+                    Prefix::Bare(path) => (Anchor::Bare, path),
+                    Prefix::Module { base, path, .. } => (Anchor::Module(base), path),
                 }
             }
         }
-        fn local(tree: &syn::UseTree, at: &str, uses: &mut Uses) {
-            let import = |original: &syn::Ident| Import::Module {
-                from: at.to_owned(),
-                original: original.to_string(),
-            };
+        fn insert_named(uses: &mut Uses, key: String, entry: Option<Import>) {
+            uses.named
+                .entry(key)
+                .and_modify(|slot| {
+                    if *slot != entry {
+                        *slot = None;
+                    }
+                })
+                .or_insert(entry);
+        }
+        fn walk_use(
+            tree: &syn::UseTree,
+            module: &str,
+            prefix: &Prefix,
+            limit: &Option<String>,
+            gated: bool,
+            uses: &mut Uses,
+        ) {
             match tree {
-                syn::UseTree::Path(path) if path.ident == "super" => {
-                    local(&path.tree, &parent(at), uses)
+                syn::UseTree::Path(next) => {
+                    let seg = source::unraw(&next.ident);
+                    let next_prefix = match prefix {
+                        Prefix::Root if seg == "crate" => Prefix::Module {
+                            base: module.split("::").next().unwrap_or(module).to_owned(),
+                            path: Vec::new(),
+                            allow_super: false,
+                        },
+                        Prefix::Root if seg == "self" => Prefix::Module {
+                            base: module.to_owned(),
+                            path: Vec::new(),
+                            allow_super: false,
+                        },
+                        Prefix::Root if seg == "super" => match parent_module(module) {
+                            Some(parent) => Prefix::Module {
+                                base: parent,
+                                path: Vec::new(),
+                                allow_super: true,
+                            },
+                            None => Prefix::External(vec![seg]),
+                        },
+                        Prefix::Root => Prefix::Bare(vec![seg]),
+                        Prefix::Module {
+                            base,
+                            path,
+                            allow_super: true,
+                        } if path.is_empty() && seg == "super" => match parent_module(base) {
+                            Some(parent) => Prefix::Module {
+                                base: parent,
+                                path: Vec::new(),
+                                allow_super: true,
+                            },
+                            None => Prefix::External(vec![seg]),
+                        },
+                        Prefix::Module { base, path, .. } => {
+                            let mut next_path = path.clone();
+                            next_path.push(seg);
+                            Prefix::Module {
+                                base: base.clone(),
+                                path: next_path,
+                                allow_super: false,
+                            }
+                        }
+                        Prefix::Bare(path) => {
+                            let mut next_path = path.clone();
+                            next_path.push(seg);
+                            Prefix::Bare(next_path)
+                        }
+                        Prefix::External(path) => {
+                            let mut next_path = path.clone();
+                            next_path.push(seg);
+                            Prefix::External(next_path)
+                        }
+                    };
+                    walk_use(&next.tree, module, &next_prefix, limit, gated, uses);
                 }
-                syn::UseTree::Path(path) => {
-                    local(&path.tree, &format!("{at}::{}", path.ident), uses)
-                }
-                syn::UseTree::Name(name) if name.ident == "self" => {}
                 syn::UseTree::Name(name) => {
-                    uses.named
-                        .insert(name.ident.to_string(), import(&name.ident));
+                    let ident = source::unraw(&name.ident);
+                    if ident == "self" {
+                        let (anchor, path) = prefix.clone().into_anchor();
+                        if let Some(key) = path.last().cloned() {
+                            let entry = (!gated).then(|| Import {
+                                anchor,
+                                path,
+                                original: None,
+                                limit: limit.clone(),
+                            });
+                            insert_named(uses, key, entry);
+                        }
+                    } else {
+                        let (anchor, path) = prefix.clone().into_anchor();
+                        let entry = (!gated).then(|| Import {
+                            anchor,
+                            path,
+                            original: Some(ident.clone()),
+                            limit: limit.clone(),
+                        });
+                        insert_named(uses, ident, entry);
+                    }
                 }
-                // A module under another name names no type.
-                syn::UseTree::Rename(rename) if rename.ident == "self" => {}
                 syn::UseTree::Rename(rename) => {
-                    uses.named
-                        .insert(rename.rename.to_string(), import(&rename.ident));
+                    let alias = source::unraw(&rename.rename);
+                    if alias == "_" {
+                        return;
+                    }
+                    let ident = source::unraw(&rename.ident);
+                    let (anchor, path) = prefix.clone().into_anchor();
+                    let original = (ident != "self").then_some(ident);
+                    let entry = (!gated).then(|| Import {
+                        anchor,
+                        path,
+                        original,
+                        limit: limit.clone(),
+                    });
+                    insert_named(uses, alias, entry);
                 }
-                syn::UseTree::Glob(_) => uses.globs.push(Glob::Module(at.to_owned())),
+                syn::UseTree::Glob(_) => {
+                    let (anchor, path) = prefix.clone().into_anchor();
+                    uses.globs.push(Glob {
+                        anchor,
+                        path,
+                        limit: limit.clone(),
+                        gated,
+                    });
+                }
                 syn::UseTree::Group(group) => {
-                    for tree in &group.items {
-                        local(tree, at, uses);
+                    for item in &group.items {
+                        walk_use(item, module, prefix, limit, gated, uses);
                     }
                 }
             }
         }
         let mut uses = self.modules.remove(module).unwrap_or_default();
         for item in items {
-            let name = match item {
-                Item::Struct(item) => &item.ident,
-                Item::Enum(item) => &item.ident,
-                Item::Union(item) => &item.ident,
-                Item::Mod(item) => {
-                    if let Some((_, inner)) = &item.content {
-                        self.declare(&format!("{module}::{}", item.ident), inner);
-                    }
-                    continue;
+            match item {
+                Item::Struct(item) if !mod_source::modules::test_only(&item.attrs) => {
+                    self.types
+                        .entry(source::unraw(&item.ident))
+                        .or_default()
+                        .insert(module.to_owned());
                 }
-                Item::Use(item) => {
-                    let from = match &item.tree {
-                        syn::UseTree::Path(path) if path.ident == "crate" => {
-                            Some(module.split("::").next().unwrap_or(module).to_owned())
-                        }
-                        syn::UseTree::Path(path) if path.ident == "self" => Some(module.to_owned()),
-                        syn::UseTree::Path(path) if path.ident == "super" => Some(parent(module)),
-                        _ => None,
+                Item::Enum(item) if !mod_source::modules::test_only(&item.attrs) => {
+                    self.types
+                        .entry(source::unraw(&item.ident))
+                        .or_default()
+                        .insert(module.to_owned());
+                }
+                Item::Union(item) if !mod_source::modules::test_only(&item.attrs) => {
+                    self.types
+                        .entry(source::unraw(&item.ident))
+                        .or_default()
+                        .insert(module.to_owned());
+                }
+                Item::Mod(item) if !mod_source::modules::test_only(&item.attrs) => {
+                    let name = source::unraw(&item.ident);
+                    let gated = mod_source::modules::gated(&item.attrs);
+                    let entry = (!gated).then(|| vis_limit(module, &item.vis));
+                    uses.submodules
+                        .entry(name.clone())
+                        .and_modify(|slot| {
+                            if *slot != entry {
+                                *slot = None;
+                            }
+                        })
+                        .or_insert(entry);
+                    if !gated && let Some((_, inner)) = &item.content {
+                        self.declare(&format!("{module}::{name}"), inner);
+                    }
+                }
+                Item::Use(item) if !mod_source::modules::test_only(&item.attrs) => {
+                    let prefix = if item.leading_colon.is_some() {
+                        Prefix::External(Vec::new())
+                    } else {
+                        Prefix::Root
                     };
-                    match (&item.tree, from) {
-                        (syn::UseTree::Path(path), Some(from)) => {
-                            local(&path.tree, &from, &mut uses)
-                        }
-                        (tree, _) => bare(tree, &mut Vec::new(), &mut uses),
-                    }
-                    continue;
+                    let limit = vis_limit(module, &item.vis);
+                    let gated = mod_source::modules::gated(&item.attrs);
+                    walk_use(&item.tree, module, &prefix, &limit, gated, &mut uses);
                 }
-                _ => continue,
-            };
-            self.types
-                .entry(name.to_string())
-                .or_default()
-                .insert(module.to_owned());
+                _ => {}
+            }
         }
         self.modules.insert(module.to_owned(), uses);
     }
 
-    /// The module a path written from a bare name leads to: `Ok(None)` for one that holds no
-    /// type (an enum's variants), `Err(())` for another crate's.
-    fn bare_module(&self, module: &str, path: &[String]) -> Result<Option<String>, ()> {
-        let Some(first) = path.first() else {
-            return Err(());
-        };
-        if self.modules.contains_key(&format!("{module}::{first}")) {
-            Ok(Some(format!("{module}::{}", path.join("::"))))
-        } else if self
-            .types
-            .get(first)
-            .is_some_and(|modules| modules.contains(module))
-        {
-            Ok(None)
-        } else if module.split("::").next() == Some(first.as_str()) {
-            // The crate under its own name.
-            Ok(Some(path.join("::")))
-        } else {
-            Err(())
+    /// Follow a path written in `written_in` (seen by `viewer`) to the module it designates.
+    fn resolve_module_path(
+        &self,
+        written_in: &str,
+        viewer: &str,
+        anchor: &Anchor,
+        path: &[String],
+        active_mods: &mut BTreeSet<(String, String)>,
+    ) -> ModuleBinding {
+        let walk_rest =
+            |mut cur: String, rest: &[String], active_mods: &mut BTreeSet<(String, String)>| {
+                for seg in rest {
+                    match self.resolve_module_segment(&cur, viewer, seg, active_mods) {
+                        ModuleBinding::Local(next) => cur = next,
+                        ModuleBinding::NonModule => return ModuleBinding::NonModule,
+                        ModuleBinding::Foreign => return ModuleBinding::Foreign,
+                        ModuleBinding::Ambiguous => return ModuleBinding::Ambiguous,
+                        ModuleBinding::Unresolved | ModuleBinding::NotFound => {
+                            return ModuleBinding::Unresolved;
+                        }
+                    }
+                }
+                ModuleBinding::Local(cur)
+            };
+        match anchor {
+            Anchor::External => ModuleBinding::Foreign,
+            Anchor::Module(base) => walk_rest(base.clone(), path, active_mods),
+            Anchor::Bare => {
+                let Some((first, rest)) = path.split_first() else {
+                    return ModuleBinding::Foreign;
+                };
+                match self.resolve_module_segment(written_in, viewer, first, active_mods) {
+                    ModuleBinding::Local(next) => walk_rest(next, rest, active_mods),
+                    ModuleBinding::NonModule => ModuleBinding::NonModule,
+                    ModuleBinding::Foreign => ModuleBinding::Foreign,
+                    ModuleBinding::Ambiguous => ModuleBinding::Ambiguous,
+                    ModuleBinding::Unresolved => ModuleBinding::Unresolved,
+                    ModuleBinding::NotFound => {
+                        if written_in.split("::").next() == Some(first.as_str()) {
+                            // The crate under its own name.
+                            walk_rest(first.clone(), rest, active_mods)
+                        } else {
+                            ModuleBinding::Foreign
+                        }
+                    }
+                }
+            }
         }
     }
 
-    /// What `name` is in `module`: the module's own type; else what a `use` names, followed to
-    /// where it leads under the name it has there; else what its globs bring in, where two
-    /// different answers are no answer.
-    fn binding(&self, module: &str, name: &str, seen: &mut BTreeSet<(String, String)>) -> Binding {
-        if !seen.insert((module.to_owned(), name.to_owned())) {
+    /// Resolve a single module segment `seg` inside `in_module`, enforcing visibility and `cfg`.
+    fn resolve_module_segment(
+        &self,
+        in_module: &str,
+        viewer: &str,
+        seg: &str,
+        active_mods: &mut BTreeSet<(String, String)>,
+    ) -> ModuleBinding {
+        let key = (in_module.to_owned(), seg.to_owned());
+        if !active_mods.insert(key.clone()) {
+            return ModuleBinding::NotFound;
+        }
+        let result = self.resolve_module_segment_inner(in_module, viewer, seg, active_mods);
+        active_mods.remove(&key);
+        result
+    }
+
+    fn resolve_module_segment_inner(
+        &self,
+        in_module: &str,
+        viewer: &str,
+        seg: &str,
+        active_mods: &mut BTreeSet<(String, String)>,
+    ) -> ModuleBinding {
+        let direct = format!("{in_module}::{seg}");
+        if let Some(uses) = self.modules.get(in_module)
+            && let Some(declared) = uses.submodules.get(seg)
+        {
+            return match declared {
+                None => ModuleBinding::Unresolved,
+                Some(limit) if visible_to(viewer, limit) => ModuleBinding::Local(direct),
+                Some(_) => ModuleBinding::NotFound,
+            };
+        }
+        if self.modules.contains_key(&direct) {
+            return ModuleBinding::Local(direct);
+        }
+        if self
+            .types
+            .get(seg)
+            .is_some_and(|modules| modules.contains(in_module))
+        {
+            return ModuleBinding::NonModule;
+        }
+        let Some(uses) = self.modules.get(in_module) else {
+            return ModuleBinding::NotFound;
+        };
+        if let Some(import) = uses.named.get(seg) {
+            let Some(import) = import else {
+                return ModuleBinding::Unresolved;
+            };
+            if !visible_to(viewer, &import.limit) {
+                return ModuleBinding::NotFound;
+            }
+            let base = self.resolve_module_path(
+                in_module,
+                in_module,
+                &import.anchor,
+                &import.path,
+                active_mods,
+            );
+            return match (&import.original, base) {
+                (None, ModuleBinding::NotFound) => ModuleBinding::Unresolved,
+                (None, other) => other,
+                (Some(orig), ModuleBinding::Local(target)) => {
+                    match self.resolve_module_segment(&target, in_module, orig, active_mods) {
+                        ModuleBinding::NotFound => ModuleBinding::Unresolved,
+                        found => found,
+                    }
+                }
+                (Some(_), ModuleBinding::Foreign) => ModuleBinding::Foreign,
+                (Some(_), ModuleBinding::NonModule) => ModuleBinding::NonModule,
+                (Some(_), ModuleBinding::Ambiguous) => ModuleBinding::Ambiguous,
+                (Some(_), ModuleBinding::Unresolved | ModuleBinding::NotFound) => {
+                    ModuleBinding::Unresolved
+                }
+            };
+        }
+        let mut found: BTreeSet<Option<String>> = BTreeSet::new();
+        let mut unresolved = false;
+        let glob_viewer = common_ancestor(in_module, viewer);
+        for glob in &uses.globs {
+            if !visible_to(viewer, &glob.limit) {
+                continue;
+            }
+            if glob.gated {
+                unresolved = true;
+                continue;
+            }
+            let from = match self.resolve_module_path(
+                in_module,
+                in_module,
+                &glob.anchor,
+                &glob.path,
+                active_mods,
+            ) {
+                ModuleBinding::Local(from) => from,
+                ModuleBinding::NonModule => continue,
+                ModuleBinding::Foreign | ModuleBinding::Unresolved | ModuleBinding::NotFound => {
+                    unresolved = true;
+                    continue;
+                }
+                ModuleBinding::Ambiguous => return ModuleBinding::Ambiguous,
+            };
+            match self.resolve_module_segment(&from, &glob_viewer, seg, active_mods) {
+                ModuleBinding::Local(target) => drop(found.insert(Some(target))),
+                ModuleBinding::Foreign => drop(found.insert(None)),
+                ModuleBinding::NonModule | ModuleBinding::NotFound => {}
+                ModuleBinding::Unresolved => unresolved = true,
+                ModuleBinding::Ambiguous => return ModuleBinding::Ambiguous,
+            }
+        }
+        if unresolved {
+            return if found.len() > 1 {
+                ModuleBinding::Ambiguous
+            } else {
+                ModuleBinding::Unresolved
+            };
+        }
+        let mut found = found.into_iter();
+        match (found.next(), found.next()) {
+            (Some(Some(target)), None) => ModuleBinding::Local(target),
+            (Some(None), None) => ModuleBinding::Foreign,
+            (Some(_), Some(_)) => ModuleBinding::Ambiguous,
+            (None, _) => ModuleBinding::NotFound,
+        }
+    }
+
+    /// Resolve type name `name` in `module` as seen by `viewer`, following intermediate module bindings.
+    fn binding(
+        &self,
+        module: &str,
+        viewer: &str,
+        name: &str,
+        active_types: &mut BTreeSet<(String, String)>,
+        active_mods: &mut BTreeSet<(String, String)>,
+    ) -> Binding {
+        let key = (module.to_owned(), name.to_owned());
+        if !active_types.insert(key.clone()) {
             return Binding::NotFound;
         }
+        let result = self.binding_inner(module, viewer, name, active_types, active_mods);
+        active_types.remove(&key);
+        result
+    }
+
+    fn binding_inner(
+        &self,
+        module: &str,
+        viewer: &str,
+        name: &str,
+        active_types: &mut BTreeSet<(String, String)>,
+        active_mods: &mut BTreeSet<(String, String)>,
+    ) -> Binding {
         if self
             .types
             .get(name)
@@ -396,16 +763,30 @@ impl OwnerTypes {
             return Binding::NotFound;
         };
         if let Some(import) = uses.named.get(name) {
-            let (from, original) = match import {
-                Import::Module { from, original } => (from.clone(), original),
-                Import::Bare { path, original } => match self.bare_module(module, path) {
-                    Ok(Some(from)) => (from, original),
-                    Ok(None) | Err(()) => return Binding::Foreign,
-                },
+            let Some(import) = import else {
+                return Binding::Unresolved;
+            };
+            if !visible_to(viewer, &import.limit) {
+                return Binding::NotFound;
+            }
+            let Some(original) = &import.original else {
+                return Binding::Unresolved;
+            };
+            let from = match self.resolve_module_path(
+                module,
+                module,
+                &import.anchor,
+                &import.path,
+                active_mods,
+            ) {
+                ModuleBinding::Local(from) => from,
+                ModuleBinding::Foreign | ModuleBinding::NonModule => return Binding::Foreign,
+                ModuleBinding::Ambiguous => return Binding::Ambiguous,
+                ModuleBinding::Unresolved | ModuleBinding::NotFound => return Binding::Unresolved,
             };
             // The `use` binds the name: where it leads nowhere this pass reads, nothing else
             // may stand in for it.
-            return match self.binding(&from, original, seen) {
+            return match self.binding(&from, module, original, active_types, active_mods) {
                 Binding::NotFound => Binding::Unresolved,
                 found => found,
             };
@@ -413,19 +794,31 @@ impl OwnerTypes {
         // One module reached through two globs is one answer: `None` here is another crate's.
         let mut found: BTreeSet<Option<String>> = BTreeSet::new();
         let mut unresolved = false;
+        let glob_viewer = common_ancestor(module, viewer);
         for glob in &uses.globs {
-            let from = match glob {
-                Glob::Module(from) => from.clone(),
-                Glob::Bare(path) => match self.bare_module(module, path) {
-                    Ok(Some(from)) => from,
-                    Ok(None) => continue,
-                    Err(()) => {
-                        unresolved = true;
-                        continue;
-                    }
-                },
+            if !visible_to(viewer, &glob.limit) {
+                continue;
+            }
+            if glob.gated {
+                unresolved = true;
+                continue;
+            }
+            let from = match self.resolve_module_path(
+                module,
+                module,
+                &glob.anchor,
+                &glob.path,
+                active_mods,
+            ) {
+                ModuleBinding::Local(from) => from,
+                ModuleBinding::NonModule => continue,
+                ModuleBinding::Foreign | ModuleBinding::Unresolved | ModuleBinding::NotFound => {
+                    unresolved = true;
+                    continue;
+                }
+                ModuleBinding::Ambiguous => return Binding::Ambiguous,
             };
-            match self.binding(&from, name, seen) {
+            match self.binding(&from, &glob_viewer, name, active_types, active_mods) {
                 Binding::Local(declaring) => drop(found.insert(Some(declaring))),
                 Binding::Foreign => drop(found.insert(None)),
                 Binding::Unresolved => unresolved = true,
@@ -433,12 +826,18 @@ impl OwnerTypes {
                 Binding::NotFound => {}
             }
         }
+        if unresolved {
+            return if found.len() > 1 {
+                Binding::Ambiguous
+            } else {
+                Binding::Unresolved
+            };
+        }
         let mut found = found.into_iter();
         match (found.next(), found.next()) {
             (Some(Some(declaring)), None) => Binding::Local(declaring),
             (Some(None), None) => Binding::Foreign,
             (Some(_), Some(_)) => Binding::Ambiguous,
-            (None, _) if unresolved => Binding::Unresolved,
             (None, _) => Binding::NotFound,
         }
     }
@@ -449,16 +848,33 @@ impl OwnerTypes {
     /// type of that name. A name that a `use` binds to another crate's type, or to something
     /// this pass can't follow, is refused, as is one that several modules declare with nothing
     /// to choose between them.
-    fn exclusion(&self, module: &str, owner: &str) -> Option<&'static str> {
-        match self.binding(module, owner, &mut BTreeSet::new()) {
+    fn exclusion(
+        &self,
+        module: &str,
+        owner: &str,
+        foreign: &BTreeSet<String>,
+    ) -> Option<&'static str> {
+        match self.binding(
+            module,
+            module,
+            owner,
+            &mut BTreeSet::new(),
+            &mut BTreeSet::new(),
+        ) {
             Binding::Local(_) => None,
             Binding::Foreign | Binding::Unresolved => Some("imported trait owner"),
             Binding::Ambiguous => Some(AMBIGUOUS_OWNER),
-            Binding::NotFound => match self.types.get(owner).map_or(0, BTreeSet::len) {
-                0 => Some("foreign trait owner"),
-                1 => None,
-                _ => Some(AMBIGUOUS_OWNER),
-            },
+            Binding::NotFound => {
+                if foreign.contains(owner) {
+                    Some("imported trait owner")
+                } else {
+                    match self.types.get(owner).map_or(0, BTreeSet::len) {
+                        0 => Some("foreign trait owner"),
+                        1 => None,
+                        _ => Some(AMBIGUOUS_OWNER),
+                    }
+                }
+            }
         }
     }
 }
@@ -470,7 +886,10 @@ pub fn foreign_imports(items: &[Item]) -> BTreeSet<String> {
         match tree {
             syn::UseTree::Path(path) => leaves(&path.tree, out),
             syn::UseTree::Name(name) => drop(out.insert(name.ident.to_string())),
-            syn::UseTree::Rename(rename) => drop(out.insert(rename.rename.to_string())),
+            syn::UseTree::Rename(rename) if rename.rename != "_" => {
+                out.insert(rename.rename.to_string());
+            }
+            syn::UseTree::Rename(_) => {}
             syn::UseTree::Group(group) => group.items.iter().for_each(|tree| leaves(tree, out)),
             syn::UseTree::Glob(_) => {}
         }
@@ -478,6 +897,7 @@ pub fn foreign_imports(items: &[Item]) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     for item in items {
         if let Item::Use(item) = item
+            && !mod_source::modules::test_only(&item.attrs)
             && !matches!(&item.tree, syn::UseTree::Path(path) if path.ident == "crate" || path.ident == "self" || path.ident == "super")
         {
             leaves(&item.tree, &mut out);
@@ -524,6 +944,36 @@ fn names_associated(sig: &syn::Signature) -> bool {
     find.0
 }
 
+/// Whether `before` is a valid visibility and/or `unsafe` prefix on a `trait` item line.
+fn is_trait_prefix(before: &str) -> bool {
+    let before = before.trim();
+    let vis = if before == "unsafe" {
+        ""
+    } else if let Some(rest) = before.strip_suffix("unsafe")
+        && rest.ends_with(|c: char| c.is_whitespace() || c == ')')
+    {
+        rest.trim_end()
+    } else {
+        before
+    };
+    if vis.is_empty() {
+        return true;
+    }
+    if !vis.starts_with("pub") {
+        return false;
+    }
+    match syn::parse_str::<syn::Visibility>(vis) {
+        Ok(syn::Visibility::Public(_)) => true,
+        Ok(syn::Visibility::Restricted(restricted)) => {
+            restricted.in_token.is_some()
+                || restricted.path.is_ident("crate")
+                || restricted.path.is_ident("super")
+                || restricted.path.is_ident("self")
+        }
+        _ => false,
+    }
+}
+
 /// The names of the traits the game's own crates declare: every `trait` item under `crates/`.
 pub fn declared_traits(root: &Path) -> Result<BTreeSet<String>, String> {
     fn walk(dir: &Path, out: &mut BTreeSet<String>) -> Result<(), String> {
@@ -542,10 +992,7 @@ pub fn declared_traits(root: &Path) -> Result<BTreeSet<String>, String> {
                 for (at, _) in text.match_indices("trait ") {
                     // An item keyword, not the end of a longer word or a doc sentence's.
                     let before = text[..at].lines().next_back().unwrap_or_default().trim();
-                    if !matches!(
-                        before,
-                        "" | "pub" | "unsafe" | "pub unsafe" | "pub(crate)" | "pub(super)"
-                    ) {
+                    if !is_trait_prefix(before) {
                         continue;
                     }
                     let name: String = text[at + "trait ".len()..]
@@ -2001,12 +2448,308 @@ mod tests {
         fs::create_dir_all(&src).unwrap();
         fs::write(
             src.join("a.rs"),
-            "/// Not a trait Item, only words.\npub trait Goal {}\n    pub(crate) trait Inner: Goal {}\nunsafe trait Raw {}\nfn f(x: &dyn Portrait) {}\n",
+            "/// Not a trait Item, only words.\n/// pub(in crate::game) trait DocFake {}\npub trait Goal {}\n    pub(crate) trait Inner: Goal {}\n    pub(in crate::game) trait Entity {}\n    pub(in crate::game::client_side) trait Editor {}\n    pub(in crate::game::server_side) unsafe trait SideUnsafe {}\n    pub(self) trait SelfTrait {}\n    pub(super) unsafe trait SuperUnsafe {}\n    pub(not_a_vis) trait BadVis {}\nunsafe trait Raw {}\nfn f(x: &dyn Portrait) {}\n",
         )
         .unwrap();
         assert_eq!(
             declared_traits(root.path()).unwrap(),
-            BTreeSet::from(["Goal".to_owned(), "Inner".to_owned(), "Raw".to_owned()])
+            BTreeSet::from([
+                "Editor".to_owned(),
+                "Entity".to_owned(),
+                "Goal".to_owned(),
+                "Inner".to_owned(),
+                "Raw".to_owned(),
+                "SelfTrait".to_owned(),
+                "SideUnsafe".to_owned(),
+                "SuperUnsafe".to_owned(),
+            ])
+        );
+    }
+
+    #[test]
+    fn reparented_side_module_resolves_parent_glob_owner_modules() {
+        let traits = BTreeSet::from(["Entity".to_owned(), "EntityRules".to_owned()]);
+        let mut types = OwnerTypes::default();
+        types.declare(
+            "k::game",
+            &syn::parse_file(
+                "mod boats; mod fireworks; mod minecarts; pub(in crate::game) mod server_side;\n\
+                 pub(in crate::game) use server_side::{entity, general};\n\
+                 pub(in crate::game) use boats::Boat as ExportedBoat;",
+            )
+            .unwrap()
+            .items,
+        );
+        types.declare(
+            "k::game::boats",
+            &syn::parse_file("pub(in crate::game) struct Boat;")
+                .unwrap()
+                .items,
+        );
+        types.declare(
+            "k::game::fireworks",
+            &syn::parse_file("pub(in crate::game) struct Rocket;")
+                .unwrap()
+                .items,
+        );
+        types.declare(
+            "k::game::minecarts",
+            &syn::parse_file("pub(in crate::game) struct Minecart;")
+                .unwrap()
+                .items,
+        );
+        types.declare(
+            "k::game::server_side",
+            &syn::parse_file(
+                "pub(in crate::game::server_side) use super::*;\n\
+                 pub(in crate::game) mod entity;\n\
+                 pub(in crate::game) mod general;",
+            )
+            .unwrap()
+            .items,
+        );
+        types.declare(
+            "k::game::server_side::general",
+            &syn::parse_file("pub(in crate::game) struct GeneralRow;")
+                .unwrap()
+                .items,
+        );
+        let entity = syn::parse_file(
+            "use super::{boats::Boat, fireworks::Rocket, minecarts::Minecart};\n\
+             impl Entity for Boat { fn bounds(&self) {} }\n\
+             impl EntityRules for Boat { fn gravity(&self) {} }\n\
+             impl Entity for Rocket { fn bounds(&self) {} }\n\
+             impl Entity for Minecart { fn bounds(&self) {} }\n",
+        )
+        .unwrap();
+        types.declare("k::game::server_side::entity", &entity.items);
+        assert_eq!(
+            targets("k::game::server_side::entity", &entity, &traits, &types),
+            [
+                "k::game::server_side::entity::<Boat as Entity>::bounds",
+                "k::game::server_side::entity::<Boat as EntityRules>::gravity",
+                "k::game::server_side::entity::<Rocket as Entity>::bounds",
+                "k::game::server_side::entity::<Minecart as Entity>::bounds",
+            ]
+        );
+        // Unmoved module reaches moved `general` through `game`'s re-export, and module aliases work.
+        let unmoved = syn::parse_file(
+            "use super::general::GeneralRow;\n\
+             use super::boats::{self as b};\n\
+             use b::Boat;\n\
+             impl Entity for GeneralRow { fn bounds(&self) {} }\n\
+             impl Entity for Boat { fn bounds(&self) {} }\n",
+        )
+        .unwrap();
+        types.declare("k::game::unmoved", &unmoved.items);
+        assert_eq!(
+            targets("k::game::unmoved", &unmoved, &traits, &types),
+            [
+                "k::game::unmoved::<GeneralRow as Entity>::bounds",
+                "k::game::unmoved::<Boat as Entity>::bounds",
+            ]
+        );
+        // Child using `use super::*;` reaches an owner re-exported in `game` through `server_side`.
+        let via_glob = syn::parse_file(
+            "use super::*;\nimpl Entity for ExportedBoat { fn bounds(&self) {} }\n",
+        )
+        .unwrap();
+        types.declare("k::game::server_side::via_glob", &via_glob.items);
+        assert_eq!(
+            targets("k::game::server_side::via_glob", &via_glob, &traits, &types),
+            ["k::game::server_side::via_glob::<ExportedBoat as Entity>::bounds"]
+        );
+    }
+
+    #[test]
+    fn intermediate_module_resolution_checks_foreign_visibility_cfg_and_ambiguity() {
+        let traits = BTreeSet::from(["Entity".to_owned()]);
+        let run = |modules: &[(&str, &str)], impl_mod: &str, impl_src: &str| {
+            let mut types = OwnerTypes::default();
+            for (module, src) in modules {
+                types.declare(module, &syn::parse_file(src).unwrap().items);
+            }
+            let file = syn::parse_file(impl_src).unwrap();
+            types.declare(impl_mod, &file.items);
+            let block = file
+                .items
+                .iter()
+                .find_map(|item| match item {
+                    Item::Impl(block) => Some(block),
+                    _ => None,
+                })
+                .unwrap();
+            let foreign = foreign_imports(&file.items);
+            trait_exclusion(impl_mod, block, &traits, &types, &foreign)
+        };
+        let impl_boat = "use super::boats::Boat; impl Entity for Boat { fn bounds(&self) {} }";
+        // Foreign types with the same name as a unique local `k::unrelated::Boat` stay refused.
+        for (label, modules) in [
+            (
+                "foreign module re-export",
+                vec![
+                    ("k::unrelated", "pub struct Boat;"),
+                    ("k::game", "use engine::boats;"),
+                    (
+                        "k::game::server_side",
+                        "pub(in crate::game::server_side) use super::*;",
+                    ),
+                ],
+            ),
+            (
+                "local module re-exporting foreign type",
+                vec![
+                    ("k::unrelated", "pub struct Boat;"),
+                    ("k::game", "mod boats;"),
+                    ("k::game::boats", "pub use engine::Boat;"),
+                    (
+                        "k::game::server_side",
+                        "pub(in crate::game::server_side) use super::*;",
+                    ),
+                ],
+            ),
+            (
+                "foreign glob in parent",
+                vec![
+                    ("k::unrelated", "pub struct Boat;"),
+                    ("k::game", "use engine::*;"),
+                    (
+                        "k::game::server_side",
+                        "pub(in crate::game::server_side) use super::*;",
+                    ),
+                ],
+            ),
+            (
+                "foreign glob beside parent glob",
+                vec![
+                    ("k::unrelated", "pub struct Boat;"),
+                    ("k::game", "mod boats;"),
+                    ("k::game::boats", "pub struct Boat;"),
+                    (
+                        "k::game::server_side",
+                        "pub(in crate::game::server_side) use super::*; use engine::*;",
+                    ),
+                ],
+            ),
+            (
+                "unresolved missing module never falls back to unique local",
+                vec![
+                    ("k::unrelated", "pub struct Boat;"),
+                    ("k::game", ""),
+                    (
+                        "k::game::server_side",
+                        "pub(in crate::game::server_side) use super::*;",
+                    ),
+                ],
+            ),
+            (
+                "cfg-gated child module",
+                vec![
+                    ("k::unrelated", "pub struct Boat;"),
+                    ("k::game", "#[cfg(feature = \"x\")] mod boats;"),
+                    ("k::game::boats", "pub struct Boat;"),
+                    (
+                        "k::game::server_side",
+                        "pub(in crate::game::server_side) use super::*;",
+                    ),
+                ],
+            ),
+            (
+                "cfg-gated parent glob",
+                vec![
+                    ("k::unrelated", "pub struct Boat;"),
+                    ("k::game", "mod boats;"),
+                    ("k::game::boats", "pub struct Boat;"),
+                    (
+                        "k::game::server_side",
+                        "#[cfg(feature = \"x\")] pub(in crate::game::server_side) use super::*;",
+                    ),
+                ],
+            ),
+        ] {
+            assert_eq!(
+                run(&modules, "k::game::server_side::entity", impl_boat),
+                Some("imported trait owner"),
+                "{label}"
+            );
+        }
+        // Visibility: restricted `server_side` glob is not visible to `client_side` or outside `game`.
+        let restricted = [
+            ("k::unrelated", "pub struct Boat;"),
+            ("k::game", "mod boats; pub mod server_side;"),
+            ("k::game::boats", "pub struct Boat;"),
+            (
+                "k::game::server_side",
+                "pub(in crate::game::server_side) use super::*;",
+            ),
+        ];
+        assert_eq!(
+            run(
+                &restricted,
+                "k::game::client_side::outsider",
+                "use crate::game::server_side::boats::Boat; impl Entity for Boat { fn bounds(&self) {} }",
+            ),
+            Some("imported trait owner")
+        );
+        let pub_glob_private_mod = [
+            ("k::unrelated", "pub struct Boat;"),
+            ("k::game", "mod boats; pub mod server_side;"),
+            ("k::game::boats", "pub struct Boat;"),
+            ("k::game::server_side", "pub use super::*;"),
+        ];
+        assert_eq!(
+            run(
+                &pub_glob_private_mod,
+                "k::outside",
+                "use crate::game::server_side::boats::Boat; impl Entity for Boat { fn bounds(&self) {} }",
+            ),
+            Some("imported trait owner")
+        );
+        // Ambiguity: two globs supplying different `boats` modules refuse; same module keeps slot.
+        let ambiguous = [
+            ("k::game", "pub mod a; pub mod b;"),
+            ("k::game::a", "pub mod boats;"),
+            ("k::game::a::boats", "pub struct Boat;"),
+            ("k::game::b", "pub mod boats;"),
+            ("k::game::b::boats", "pub struct Boat;"),
+            (
+                "k::game::server_side",
+                "pub(in crate::game::server_side) use super::a::*; pub(in crate::game::server_side) use super::b::*;",
+            ),
+        ];
+        assert_eq!(
+            run(&ambiguous, "k::game::server_side::entity", impl_boat),
+            Some(AMBIGUOUS_OWNER)
+        );
+        let diamond = [
+            ("k::game", "mod boats; pub mod prelude;"),
+            ("k::game::boats", "pub struct Boat;"),
+            ("k::game::prelude", "pub(in crate::game) use super::boats;"),
+            (
+                "k::game::server_side",
+                "pub(in crate::game::server_side) use super::*; pub(in crate::game::server_side) use super::prelude::*;",
+            ),
+        ];
+        assert_eq!(
+            run(&diamond, "k::game::server_side::entity", impl_boat),
+            None
+        );
+        // A `#[cfg(test)]` foreign import does not shadow the production local import.
+        let with_test_import = [
+            ("k::game", "mod boats;"),
+            ("k::game::boats", "pub struct Boat;"),
+            (
+                "k::game::server_side",
+                "pub(in crate::game::server_side) use super::*;",
+            ),
+        ];
+        assert_eq!(
+            run(
+                &with_test_import,
+                "k::game::server_side::entity",
+                "#[cfg(test)] use engine::Boat; use super::boats::Boat; impl Entity for Boat { fn bounds(&self) {} }",
+            ),
+            None
         );
     }
 
