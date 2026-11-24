@@ -294,7 +294,7 @@ harnesses = [
   "named_predicate_reference", "predicate_reference_startup", "run_coordinate_feedback", "terminal_execute_fork",
   "fork_function_feedback", "loaded_command", "storage_alias", "seed_sync", "team_rules", "local_coordinate_rotation",
   "folder_datapack_metadata", "world_pack_enchantment_loader", "entity_type_tags", "world_test_def*", "vehicle_command_damage",
-  "stand_command_hurt", "dialog_codec", "clone_dimensions", "inline_object", "entity_lookup_order", "eye_item",
+  "stand_command_hurt", "stand_living_counters", "dialog_codec", "clone_dimensions", "inline_object", "entity_lookup_order", "eye_item",
   "cloud_falling_loaded_rotation",
 ]
 lan = [

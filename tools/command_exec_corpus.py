@@ -7906,6 +7906,90 @@ def item_frame_rotation():
                        f'/fill {x0} {y0} {z0} {x0 + 15} {y0 + 8} {z0 + 15} air', f'/forceload remove {x0} {z0}')
 
 
+STAND_LIVING_GROUP = 'armor stand living counters'
+STAND_LIVING_FIELDS = ('HurtTime', 'Air', 'FallFlying', 'current_impulse_context_reset_grace_time', 'PortalCooldown')
+STAND_LIVING_TICKS = (0, 1, 2, 5, 20, 40, 50)
+STAND_LIVING_CASES = (
+    ('main', False, (2.5, 200.0, 2.5),
+     '{NoGravity:1b,HurtTime:40s,Air:100s,FallFlying:1b,current_impulse_context_reset_grace_time:20,PortalCooldown:20}'),
+    ('full', False, (4.5, 200.0, 2.5), '{NoGravity:1b,Air:32767s}'),
+    ('cap', False, (3.5, 200.0, 2.5), '{NoGravity:1b,Air:298s}'),
+    ('negative', False, (2.5, 200.0, 4.5),
+     '{NoGravity:1b,HurtTime:-5s,Air:-10s,current_impulse_context_reset_grace_time:-3,PortalCooldown:-4}'),
+    ('underwater', True, (7.5, 200.0, 7.5), '{NoGravity:1b,Air:5s}'),
+    ('underwater_full', True, (7.5, 200.0, 6.5), '{NoGravity:1b,Air:300s}'),
+)
+STAND_LIVING_PIG_CONTROL = ('pig_water', (8.5, 200.0, 8.5), '{NoAI:1b,NoGravity:1b,Air:5s}')
+
+
+def armor_stand_living_counters():
+    """ArmorStand living counters across ticks in dry air and water (26.3)."""
+    ops = [
+        *setup('/forceload add 0 0 15 15', '/fill 0 199 0 15 206 15 air', '/fill 0 199 0 15 199 15 stone',
+               '/fill 5 200 5 10 204 10 glass hollow', '/fill 6 200 6 9 203 9 water'),
+        {'op': 'settle'},
+        cmd('/execute if block 7 200 7 water', expect_result=1),
+        cmd('/execute if block 7 201 7 water', expect_result=1),
+        cmd('/execute if block 7 202 7 water', expect_result=1),
+    ]
+    for name, _, (x, y, z), nbt in STAND_LIVING_CASES:
+        tagged = f'{{Tags:["stand_living_actor","stand_living_{name}"],{nbt[1:]}'
+        ops += setup(f'/summon minecraft:armor_stand {x} {y} {z} {tagged}')
+    pig_name, (px, py, pz), pig_nbt = STAND_LIVING_PIG_CONTROL
+    ops += setup(f'/summon minecraft:pig {px} {py} {pz} {{Tags:["stand_living_actor","stand_living_{pig_name}"],{pig_nbt[1:]}')
+    elapsed = 0
+    for tick in STAND_LIVING_TICKS:
+        if tick > elapsed:
+            ops.append({'op': 'tick', 'n': tick - elapsed})
+            elapsed = tick
+        for name, _, _, _ in STAND_LIVING_CASES:
+            for field in STAND_LIVING_FIELDS:
+                ops.append(cmd(f'/data get entity @e[tag=stand_living_{name},limit=1] {field}'))
+        ops.append(cmd(f'/data get entity @e[tag=stand_living_{pig_name},limit=1] Air'))
+    return ops + setup('/kill @e[tag=stand_living_actor]', '/fill 0 199 0 15 206 15 air', '/forceload remove 0 0 15 15')
+
+
+def extract_stand_living_witness(version, records):
+    """Build a 26.3 witness JSON from VanillaCommandExecOracle records for armor_stand_living_counters."""
+    prefix = ' has the following entity data: '
+    index = 3
+    cases = [{'name': name, 'in_water': in_water, 'nbt': nbt, 'snapshots': []}
+             for name, in_water, _, nbt in STAND_LIVING_CASES]
+    pig_name, _, pig_nbt = STAND_LIVING_PIG_CONTROL
+    pig_snapshots = []
+    for tick in STAND_LIVING_TICKS:
+        for case in cases:
+            values = {}
+            for field in STAND_LIVING_FIELDS:
+                row = records[index]
+                index += 1
+                expected_cmd = f'/data get entity @e[tag=stand_living_{case["name"]},limit=1] {field}'
+                if row.get('cmd') != expected_cmd:
+                    raise ValueError(f'unexpected record at {index - 1}: {row.get("cmd")!r} != {expected_cmd!r}')
+                text = ''.join(span[0] for span in row['messages'][0])
+                values[field] = text.split(prefix, 1)[1]
+            case['snapshots'].append({'tick': tick, 'values': values})
+        row = records[index]
+        index += 1
+        expected_cmd = f'/data get entity @e[tag=stand_living_{pig_name},limit=1] Air'
+        if row.get('cmd') != expected_cmd:
+            raise ValueError(f'unexpected pig control record at {index - 1}: {row.get("cmd")!r}')
+        text = ''.join(span[0] for span in row['messages'][0])
+        pig_snapshots.append({'tick': tick, 'value': text.split(prefix, 1)[1]})
+    if index != len(records):
+        raise ValueError(f'unconsumed records: {index} != {len(records)}')
+    return {
+        'minecraft': version,
+        'oracle': 'VanillaCommandExecOracle',
+        'group': STAND_LIVING_GROUP,
+        'fields': list(STAND_LIVING_FIELDS),
+        'cases': cases,
+        'controls': {
+            pig_name: {'in_water': True, 'nbt': pig_nbt, 'field': 'Air', 'snapshots': pig_snapshots},
+        },
+    }
+
+
 def living_short_timers():
     """#13846: `LivingEntity` reads `HurtTime` and `DeathTime` with `getShortOr` and writes them back as `(short)`
     casts: a negative value stays."""
@@ -8975,6 +9059,7 @@ def groups():
         ('vehicle ground and fall', vehicle_ground_and_fall()),
         ('vehicle saved ground and fall', vehicle_saved_ground_and_fall()),
         ('ravager saved movement speed', ravager_saved_movement_speed()),
+        (STAND_LIVING_GROUP, armor_stand_living_counters()),
         # Last: it leaves the player in other food than it found.
         (player_food.GROUP, player_food.cases(cmd, setup)),
     ]

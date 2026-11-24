@@ -3926,6 +3926,7 @@ pub fn armor_stand_tag(
     let mut out = EntityTagWriter::new(raw);
     out.saved
         .insert("Fire".into(), Tag::Short(a.fire_ticks as i16));
+    out.saved.insert("Air".into(), Tag::Short(a.air as i16));
     for (key, value) in [
         ("NoGravity", a.no_gravity),
         ("CustomNameVisible", a.name_visible),
@@ -3954,10 +3955,13 @@ pub fn armor_stand_tag(
 
     // LivingEntity.addAdditionalSaveData.
     out.insert("Health".into(), Tag::Float(a.health.to_bits()));
-    out.retain_or("HurtTime", || Tag::Short(0));
+    out.insert("HurtTime".into(), Tag::Short(a.hurt_time as i16));
     out.insert("DeathTime".into(), Tag::Short(a.death_time));
     out.retain_or("AbsorptionAmount", || Tag::Float(0));
-    out.retain_or("current_impulse_context_reset_grace_time", || Tag::Int(0));
+    out.insert(
+        "current_impulse_context_reset_grace_time".into(),
+        Tag::Int(a.impulse_grace),
+    );
     out.retain("current_explosion_impact_pos");
     out.retain_or("attributes", || Tag::List(Vec::new()));
     // `removeFrost`'s first-tick movement_speed, over a saved list without it.
@@ -3974,7 +3978,7 @@ pub fn armor_stand_tag(
     }
     put_live_attributes(&mut out.fields, &a.live);
     out.retain("active_effects");
-    out.retain_or("FallFlying", || Tag::Byte(0));
+    out.insert("FallFlying".into(), Tag::Byte(i8::from(a.fall_flying)));
     out.retain("sleeping_pos");
     out.retain_or("Brain", || {
         Tag::compound([("memories", Tag::Compound(Compound::new()))])
@@ -4037,6 +4041,12 @@ pub fn armor_stand_from_nbt(tag: &Tag, id: u32) -> Option<ArmorStand> {
     a.death_time = number(tag.get("DeathTime")).unwrap_or(0) as i16;
     a.fire_ticks = i32::from(number(tag.get("Fire")).unwrap_or(0) as i16);
     a.custom_name = tag.get("CustomName").map(name_text);
+    // Entity.load and LivingEntity.readAdditionalSaveData.
+    a.hurt_time = i32::from(number(tag.get("HurtTime")).unwrap_or(0) as i16);
+    a.air = number(tag.get("Air")).map_or(300, |v| v as i32);
+    a.fall_flying = flag(tag, "FallFlying");
+    a.impulse_grace =
+        number(tag.get("current_impulse_context_reset_grace_time")).map_or(0, |v| v as i32);
     a.name_visible = flag(tag, "CustomNameVisible");
     if let Some(eq) = tag.get("equipment") {
         a.equipment = sunrise_items::equipment::Equipment::read(eq);

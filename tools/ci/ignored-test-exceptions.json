@@ -1334,5 +1334,13 @@
     "path": "crates/sunrise-client/src/game/administration/commands/data/portal_cooldown_tests.rs",
     "reason": "run by tools/test_mob_portal_cooldown_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_mob_portal_cooldown_parity.py records the vanilla 26.3 mob portal cooldown witness into .local and runs this test against it through SUNRISE_MOB_PORTAL_COOLDOWN_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::commands::data::stand_living_tests::an_armor_stand_ticks_its_living_counters",
+    "path": "crates/sunrise-client/src/game/administration/commands/data/stand_living_tests.rs",
+    "reason": "run by tools/test_stand_living_counters_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_stand_living_counters_parity.py records the vanilla 26.3 armor stand living counters witness into .local and runs this test against it through SUNRISE_STAND_LIVING_COUNTERS_WITNESS, so no recorded vanilla data is committed."
   }
 ]

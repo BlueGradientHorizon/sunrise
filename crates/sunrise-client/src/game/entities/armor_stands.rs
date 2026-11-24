@@ -1027,8 +1027,14 @@ impl Game<'_> {
 
     fn tick_armor_stand_turns(&mut self, joins: impl IntoIterator<Item = JoinSeq>) -> Result<()> {
         let mut dead = Vec::new();
+        let mut drowned = Vec::new();
         // ServerLevel.tick: only entities in entity-ticking chunks tick.
         let ticking = self.entity_ticking_area();
+        let server = self.remote.is_none();
+        let stand_breathes_under_water = self.items().entity_type_tags.has_flag(
+            TYPE_ID,
+            sunrise_client::items::EntityTypeTags::CAN_BREATHE_UNDER_WATER,
+        );
         // EntityGetter.getEntityCollisions: the boxes that stop a stand's move
         // (a living shulker, a boat, a happy ghast held still), gathered when
         // the first stand travels. A server's stand rides nothing (`vehicle`
@@ -1088,9 +1094,78 @@ impl Game<'_> {
                 self.dim.id(),
                 &mut a.equipment,
             );
-            let (water_height, lava_height) =
-                a.push_by_fluid(&self.world, &self.res.motion().fluids, &self.loop_context);
+            // Entity.baseTick's updateFluidInteraction; a marker takes none.
+            let (water_height, lava_height, eye_in_water) = if a.marker {
+                (0.0, 0.0, false)
+            } else {
+                let (bounds, at, eye) = (a.bounds(), a.position, a.fluid_eye_y());
+                sunrise_client::entities::update_entity_fluids(
+                    bounds,
+                    at,
+                    eye,
+                    &mut a.velocity,
+                    &self.world,
+                    &self.res.motion().fluids,
+                    &self.loop_context,
+                )
+            };
             let in_water = water_height > 0.0;
+            // LivingEntity.baseTick: shared air logic, then hurt time; aiStep clears fall flying.
+            let stand_air = if server && a.health > 0.0 {
+                let in_bubble_column = eye_in_water && {
+                    let eye = a.fluid_eye_y();
+                    let eye_block = sunrise_core::position::BlockPos::containing(Vec3::new(
+                        a.position.x,
+                        eye,
+                        a.position.z,
+                    ));
+                    &*self
+                        .res
+                        .facts()
+                        .get(self.world.block(eye_block.x, eye_block.y, eye_block.z))
+                        .name
+                        == "minecraft:bubble_column"
+                };
+                let drowns = eye_in_water && !in_bubble_column && !stand_breathes_under_water;
+                let vanilla = sunrise_client::breathing::Breath {
+                    can_breathe: !drowns,
+                    consume: 1,
+                    refill: if drowns { 0 } else { 4 },
+                };
+                Some((
+                    a.id,
+                    sunrise_client::breathing::AirStep::generic(a.air, 300, vanilla),
+                ))
+            } else {
+                None
+            };
+            let i = if let Some((stand_id, step)) = stand_air {
+                let answer = if sunrise_client::breathing::heard() {
+                    self.ask_stand_breath(stand_id, step)
+                } else {
+                    Some(step.vanilla)
+                };
+                let Some(i) = self.armor_stands.locate(join) else {
+                    continue;
+                };
+                let a = &mut self.armor_stands[i];
+                if let Some(breath) = answer
+                    && a.air == step.air
+                    && let Some(drowning) =
+                        step.finish(&self.loop_context, a.id, TYPE_ID, &mut a.air, breath)
+                {
+                    // Stand refuses drown damage; queue entity event 67 / bubble particles.
+                    drowned.push((a.id, drowning.bubbles));
+                }
+                i
+            } else {
+                i
+            };
+            let a = &mut self.armor_stands[i];
+            if a.hurt_time > 0 {
+                a.hurt_time -= 1;
+            }
+            a.fall_flying = false;
             let medium =
                 sunrise_client::entities::StandMedium::from_heights(water_height, lava_height);
             // Entity.collide asks for the entities meeting the box stretched
@@ -1249,6 +1324,25 @@ impl Game<'_> {
             }
             let (id, from, to) = section_step;
             self.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
+            // The end of LivingEntity.tick.
+            let a = &mut self.armor_stands[i];
+            if a.impulse_grace > 0 {
+                a.impulse_grace -= 1;
+            }
+        }
+        for (id, bubbles) in drowned {
+            let Some((at, v)) = self.armor_stands.iter().find(|a| a.id == id).map(|a| {
+                (
+                    [a.position.x, a.position.y, a.position.z],
+                    [a.velocity.x, a.velocity.y, a.velocity.z],
+                )
+            }) else {
+                continue;
+            };
+            if self.drown_bubbles(at, v, bubbles) {
+                self.lan_entity_event(id as i32, super::combat::DROWN_EVENT, at);
+                self.drown_particles(at, v, 8);
+            }
         }
         for (id, damage_type) in dead.into_iter().rev() {
             match damage_type {

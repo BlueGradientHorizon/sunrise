@@ -209,6 +209,8 @@ def main():
     parser.add_argument('--record-moving-piston-witness', nargs='?', type=Path,
                         const=lab.LOCAL / 'witness' / lab.VERSION / 'falling_moving_piston' / 'falling_block_moving_piston.jsonl',
                         help='write the validated Java reference records with a version header and meta.json to this path (default under .local/witness/) and stop')
+    parser.add_argument('--record-stand-living-witness', type=Path,
+                        help='write a versioned JSON witness from the Java reference run (with --reference-only)')
     args = parser.parse_args()
     if args.record_eye_item_witness:
         args.reference_only = True
@@ -638,6 +640,14 @@ def main():
             from mob_attribute_save_corpus import record_oxygen_bonus_witness
             record_oxygen_bonus_witness(reference, lock['minecraft']['version'], args.record_oxygen_bonus_witness)
             print(f'Recorded oxygen_bonus witness: {args.record_oxygen_bonus_witness}')
+        if args.record_stand_living_witness:
+            names = [name for name, _ in groups if name != 'setup']
+            if names != [corpus_module.STAND_LIVING_GROUP]:
+                sys.exit(f'--record-witness supports only {corpus_module.STAND_LIVING_GROUP!r}, got {names!r}')
+            witness = corpus_module.extract_stand_living_witness(lock['minecraft']['version'], reference)
+            args.record_stand_living_witness.parent.mkdir(parents=True, exist_ok=True)
+            args.record_stand_living_witness.write_text(json.dumps(witness, indent=2) + '\n', encoding='utf-8')
+            print(f'Recorded witness: {args.record_stand_living_witness}')
         if args.record_moving_piston_witness:
             target = args.record_moving_piston_witness if args.record_moving_piston_witness.is_absolute() else lab.ROOT / args.record_moving_piston_witness
             target.parent.mkdir(parents=True, exist_ok=True)

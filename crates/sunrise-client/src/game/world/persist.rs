@@ -1608,12 +1608,14 @@ impl Game<'_> {
             self.cart_object(root)?
                 .to_nbt(uuid, self.persist.raw.get(&root), self.res.items())
         } else if let Some(stand) = self.armor_stands.iter().find(|a| a.id == root) {
-            entity_nbt::armor_stand_to_nbt(
+            let mut tag = entity_nbt::armor_stand_to_nbt(
                 stand,
                 uuid,
                 self.persist.raw.get(&root),
                 self.res.items(),
-            )
+            );
+            self.save_portal_cooldown(root, &mut tag);
+            tag
         } else {
             let other = self
                 .others
@@ -2619,6 +2621,7 @@ impl Game<'_> {
         let mut tag =
             entity_nbt::armor_stand_to_nbt(a, uuid, self.persist.raw.get(&id), self.res.items());
         self.put_passengers(&mut tag, id);
+        self.save_portal_cooldown(id, &mut tag);
         Some((key, tag))
     }
     /// The UUID kept for `id`, or a new one that is not remembered (what a
