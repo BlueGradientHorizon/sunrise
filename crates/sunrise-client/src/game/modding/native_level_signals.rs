@@ -360,7 +360,7 @@ impl LevelHost for ReadLevel<'_, '_> {
             .unwrap_or(false)
     }
     fn is_raining(&self) -> Option<bool> {
-        self.game.level_is_raining(self.level)
+        self.game.level_read_is_raining(self.level)
     }
     fn sky_darken(&self) -> Option<i32> {
         self.game.level_get_sky_darken(self.level)
