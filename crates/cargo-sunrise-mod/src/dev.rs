@@ -412,6 +412,11 @@ fn prepare(
     let lock = project.join("Cargo.lock");
     if registry && (update_lock || !lock.exists()) {
         println!("Pinning dependencies in Cargo.lock");
+        // The lock names the SDK's packages, read from `.sunrise/sdk/` (`run` fetches no SDK before).
+        if sdk_fetch::game_tree(&project)?.is_none() {
+            sdk_fetch::fetch_pinned(&project, &build)?;
+        }
+        let before = fs::read(&lock).ok();
         sunrise_native_build::registry_generate::generate(
             || Ok(rust.clone()),
             sunrise_native_build::registry_generate::game_lock,
@@ -420,8 +425,21 @@ fn prepare(
         )
         .map_err(build_error)?;
         // Those pins come from a copy without the SDK's path packages; the committed lock also
-        // names them, as the registry's `cargo fetch --locked` requires.
-        refresh_lock(rust, &project).map_err(build_error)?;
+        // names them, as the registry's `cargo fetch --locked` requires. A lock without them is
+        // never left behind: the one before comes back.
+        if let Err(error) = refresh_lock(rust, &project) {
+            let restored = match &before {
+                Some(text) => fs::write(&lock, text),
+                None => fs::remove_file(&lock),
+            };
+            return Err(match restored {
+                Ok(()) => format!("Cargo.lock could not name the SDK's packages: {error}"),
+                Err(e) => format!(
+                    "Cargo.lock could not name the SDK's packages: {error}\n{} was left without them: {e}",
+                    lock.display()
+                ),
+            });
+        }
     }
     crate::registry_source::write_files(
         &input.path().join(stage_name(&id)),
