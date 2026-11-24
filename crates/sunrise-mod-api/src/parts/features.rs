@@ -123,13 +123,14 @@ pub mod tests {
         #[derive(Debug)]
         struct Pass;
         impl mod_api::PlacementModifier for Pass {
-            fn get_positions(
+            fn modify(
                 &self,
                 _: &mut dyn mod_api::PlacementModifierContext,
                 _: &mut dyn mod_api::RandomSource,
                 origin: [i32; 3],
-            ) -> Result<Vec<[i32; 3]>, mod_api::FeatureError> {
-                Ok(vec![origin])
+                output: &mut dyn FnMut([i32; 3]) -> Result<(), mod_api::FeatureError>,
+            ) -> Result<(), mod_api::FeatureError> {
+                output(origin)
             }
         }
         struct BelowSea;

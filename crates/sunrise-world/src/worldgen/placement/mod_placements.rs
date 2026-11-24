@@ -3,15 +3,14 @@
 //! at startup and looked up while a placed feature decodes, after the vanilla
 //! placement modifier types. A decoded modifier is
 //! [`PlacementModifier::Mod`](super::PlacementModifier::Mod): the placement
-//! chain runs [`ModPlacementModifier::get_positions`] for each incoming
-//! position. Runs on worldgen worker threads, so a modifier keeps no mutable
+//! chain runs [`ModPlacementModifier::modify`] for each incoming position. Runs on worldgen worker threads, so a modifier keeps no mutable
 //! state and its contexts carry no `Host`.
 use super::{PlacementContext, PlacementError, PlacementModifier, PlacementQueryError};
 use crate::heightmap::HeightmapType;
 use crate::registry::{BlockRegistry, BlockStateId};
 use crate::worldgen::DecodeError;
 use crate::worldgen::block_predicate::PredicateBlockResolver;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
 use std::marker::PhantomData;
 use std::sync::{Arc, OnceLock};
@@ -77,18 +76,19 @@ pub trait ModPlacementModifierType: Send + Sync {
 /// `PlacementModifier`. `Send + Sync` because neighbouring chunks decorate at
 /// once on worker threads; the same random gives the same positions.
 pub trait ModPlacementModifier: Send + Sync + std::fmt::Debug + std::any::Any {
-    /// `PlacementModifier.getPositions(context, random, origin)`: transform
-    /// `origin` into zero or more output positions.
-    fn get_positions(
+    /// `PlacementModifier.modify(context, random, origin, output)`: pass zero
+    /// or more positions to `output`, returning the first error it gives.
+    fn modify(
         &self,
         context: &mut dyn ModPlacementContext,
         random: &mut dyn mod_api::RandomSource,
         origin: [i32; 3],
-    ) -> Result<Vec<[i32; 3]>, PlacementQueryError>;
+        output: &mut dyn FnMut([i32; 3]) -> Result<(), PlacementQueryError>,
+    ) -> Result<(), PlacementQueryError>;
 }
 
 /// Read-only world and nested-modifier queries available to
-/// [`ModPlacementModifier::get_positions`].
+/// [`ModPlacementModifier::modify`].
 pub trait ModPlacementContext {
     fn block_registry(&self) -> Option<&'static BlockRegistry>;
     fn world_seed(&mut self) -> Option<i64>;
@@ -100,42 +100,47 @@ pub trait ModPlacementContext {
     fn height(&mut self, kind: HeightmapType, x: i32, z: i32) -> Option<i32>;
     fn biome(&mut self, pos: [i32; 3]) -> Option<mod_api::BiomeKey>;
     /// Run a decoded nested placement modifier on `origin`, sharing `random`
-    /// and the current placement budget.
+    /// and the current placement budget, passing each position it produces to
+    /// `output`.
     fn apply_modifier(
         &mut self,
         modifier: &PlacementModifier,
         random: &mut dyn mod_api::RandomSource,
         origin: [i32; 3],
-    ) -> Result<Vec<[i32; 3]>, PlacementQueryError>;
+        output: &mut dyn FnMut([i32; 3]) -> Result<(), PlacementQueryError>,
+    ) -> Result<(), PlacementQueryError>;
 }
 
-/// Adapts an engine `R: RandomSource` into `mod_api::RandomSource`.
-pub(super) struct EngineRandom<'a, R>(pub(super) &'a mut R);
-impl<R: RandomSource> mod_api::RandomSource for EngineRandom<'_, R> {
+/// Adapts an engine `R: RandomSource` into `mod_api::RandomSource`. The
+/// placement chain's output closure needs the same random while the mod holds
+/// this adapter, so both share it through a `RefCell`; each borrow lasts one
+/// call and neither side calls the other while it holds one.
+pub(super) struct EngineRandom<'a, 'r, R>(pub(super) &'a RefCell<&'r mut R>);
+impl<R: RandomSource> mod_api::RandomSource for EngineRandom<'_, '_, R> {
     fn next_int(&mut self) -> i32 {
-        self.0.next_int()
+        self.0.borrow_mut().next_int()
     }
     fn next_int_bound(&mut self, bound: i32) -> i32 {
         if bound <= 0 {
             0
         } else {
-            self.0.next_int_bound(bound).unwrap_or(0)
+            self.0.borrow_mut().next_int_bound(bound).unwrap_or(0)
         }
     }
     fn next_long(&mut self) -> i64 {
-        self.0.next_long()
+        self.0.borrow_mut().next_long()
     }
     fn next_boolean(&mut self) -> bool {
-        self.0.next_boolean()
+        self.0.borrow_mut().next_boolean()
     }
     fn next_float(&mut self) -> f32 {
-        self.0.next_float()
+        self.0.borrow_mut().next_float()
     }
     fn next_double(&mut self) -> f64 {
-        self.0.next_double()
+        self.0.borrow_mut().next_double()
     }
     fn next_gaussian(&mut self) -> f64 {
-        self.0.next_gaussian()
+        self.0.borrow_mut().next_gaussian()
     }
 }
 
@@ -176,10 +181,19 @@ impl<'a> RandomSource for ApiRandom<'a> {
         if bound <= 0 {
             return Err(InvalidBound);
         }
-        Ok(match self {
-            Self::Borrowed(r) => r.next_int_bound(bound),
-            Self::Forked(r) => r.next_int_bound(bound)?,
-        })
+        match self {
+            // A mod's own `RandomSource` may answer outside `0..bound`; the
+            // engine indexes with the answer, so refuse it here.
+            Self::Borrowed(r) => {
+                let value = r.next_int_bound(bound);
+                if (0..bound).contains(&value) {
+                    Ok(value)
+                } else {
+                    Err(InvalidBound)
+                }
+            }
+            Self::Forked(r) => r.next_int_bound(bound),
+        }
     }
     fn next_long(&mut self) -> i64 {
         match self {
@@ -224,10 +238,10 @@ impl<'a> RandomSource for ApiRandom<'a> {
 
 pub(super) struct PlacementRunContext<'a, C> {
     context: &'a mut C,
-    remaining: &'a mut usize,
+    remaining: &'a Cell<usize>,
 }
 impl<'a, C> PlacementRunContext<'a, C> {
-    pub(super) fn new(context: &'a mut C, remaining: &'a mut usize) -> Self {
+    pub(super) fn new(context: &'a mut C, remaining: &'a Cell<usize>) -> Self {
         Self { context, remaining }
     }
 }
@@ -264,25 +278,27 @@ impl<C: PlacementContext> ModPlacementContext for PlacementRunContext<'_, C> {
         modifier: &PlacementModifier,
         random: &mut dyn mod_api::RandomSource,
         origin: [i32; 3],
-    ) -> Result<Vec<[i32; 3]>, PlacementQueryError> {
-        let mut out = Vec::new();
+        output: &mut dyn FnMut([i32; 3]) -> Result<(), PlacementQueryError>,
+    ) -> Result<(), PlacementQueryError> {
         let mut random = ApiRandom::Borrowed(random);
-        let result: Result<(), PlacementError<std::convert::Infallible>> = modifier.modify_inner(
+        let start = self.remaining.get();
+        let mut nested = start;
+        let result = modifier.modify_inner(
             self.context,
             &mut random,
             origin,
-            &mut |_, pos| {
-                out.push(pos);
-                Ok(())
-            },
-            self.remaining,
+            &mut |_, pos| output(pos),
+            &mut nested,
         );
+        // `output` may spend from the same budget while the nested modifier
+        // runs, so take only the nested modifier's own spending off what is left.
+        self.remaining
+            .set(self.remaining.get().saturating_sub(start - nested));
         match result {
-            Ok(()) => Ok(out),
-            Err(PlacementError::World(err)) => Err(err),
+            Ok(()) => Ok(()),
+            Err(PlacementError::World(err) | PlacementError::Output(err)) => Err(err),
             Err(PlacementError::WorkLimit) => Err(PlacementQueryError::WorkLimit),
             Err(PlacementError::Random(err)) => Err(PlacementQueryError::Failed(err.to_string())),
-            Err(PlacementError::Output(never)) => match never {},
         }
     }
 }

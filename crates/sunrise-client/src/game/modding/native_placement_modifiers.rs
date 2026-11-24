@@ -76,6 +76,9 @@ struct Placing<'a> {
     fallback_index: &'a Index,
     fallback_metadata: &'static Blocks,
     fallback_air: BlockState,
+    /// The engine's own error from the last nested modifier that failed, so a
+    /// mod passing that failure on keeps its kind (the work limit above all).
+    failure: Option<PlacementQueryError>,
 }
 impl Placing<'_> {
     fn index(&self) -> &Index {
@@ -153,12 +156,29 @@ impl PlacementModifierContext for Placing<'_> {
         modifier: &PlacementModifierRef,
         random: &mut dyn RandomSource,
         origin: [i32; 3],
-    ) -> Result<Vec<[i32; 3]>, FeatureError> {
+        output: &mut dyn FnMut([i32; 3]) -> Result<(), FeatureError>,
+    ) -> Result<(), FeatureError> {
         let modifier = engine_modifier(modifier)
             .ok_or_else(|| FeatureError("invalid placement modifier handle".into()))?;
-        self.inner
-            .apply_modifier(&modifier, random, origin)
-            .map_err(|e| FeatureError(e.to_string()))
+        let mut refused = None;
+        let result = self
+            .inner
+            .apply_modifier(&modifier, random, origin, &mut |pos| {
+                output(pos).map_err(|e| {
+                    let failed = PlacementQueryError::Failed(e.0.clone());
+                    refused = Some(e);
+                    failed
+                })
+            });
+        match (result, refused) {
+            (Ok(()), _) => Ok(()),
+            (Err(_), Some(refused)) => Err(refused),
+            (Err(e), None) => {
+                let message = FeatureError(e.to_string());
+                self.failure = Some(e);
+                Err(message)
+            }
+        }
     }
 }
 
@@ -207,12 +227,13 @@ impl std::fmt::Debug for ModModifier {
     }
 }
 impl ModPlacementModifier for ModModifier {
-    fn get_positions(
+    fn modify(
         &self,
         context: &mut dyn ModPlacementContext,
         random: &mut dyn RandomSource,
         origin: [i32; 3],
-    ) -> Result<Vec<[i32; 3]>, PlacementQueryError> {
+        output: &mut dyn FnMut([i32; 3]) -> Result<(), PlacementQueryError>,
+    ) -> Result<(), PlacementQueryError> {
         let registry = context.block_registry();
         let worker = registry.and_then(|r| WorkerResources::get(r).ok());
         let mut placing = Placing {
@@ -222,10 +243,22 @@ impl ModPlacementModifier for ModModifier {
             fallback_index: &self.index,
             fallback_metadata: self.metadata,
             fallback_air: self.air,
+            failure: None,
         };
-        self.inner
-            .get_positions(&mut placing, random, origin)
-            .map_err(|e| PlacementQueryError::Failed(e.0))
+        let mut refused = None;
+        let result = self.inner.modify(&mut placing, random, origin, &mut |pos| {
+            output(pos).map_err(|e| {
+                let message = FeatureError(e.to_string());
+                refused = Some(e);
+                message
+            })
+        });
+        // A mod's error that passes on the engine's own keeps the engine's kind.
+        result.map_err(|e| {
+            refused
+                .or(placing.failure)
+                .unwrap_or(PlacementQueryError::Failed(e.0))
+        })
     }
 }
 

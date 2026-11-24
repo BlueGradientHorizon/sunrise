@@ -515,18 +515,35 @@ impl PlacementModifier {
                 placements[index].modify_inner(context, random, position, emit, remaining)?;
             }
             Self::Mod(modifier) => {
-                let positions = {
-                    let mut ctx = mod_placements::PlacementRunContext::new(context, remaining);
-                    let mut rng = mod_placements::EngineRandom(random);
-                    modifier.get_positions(&mut ctx, &mut rng, position)?
-                };
-                for pos in positions {
-                    if *remaining == 0 {
-                        return Err(PlacementError::WorkLimit);
-                    }
-                    *remaining -= 1;
-                    emit(random, pos).map_err(PlacementError::Output)?;
+                let budget = std::cell::Cell::new(*remaining);
+                let random = std::cell::RefCell::new(random);
+                // The output's own failure wins over whatever the mod returns,
+                // so a refused position or the work limit always stops placement.
+                let mut failure = None;
+                let result = modifier.modify(
+                    &mut mod_placements::PlacementRunContext::new(context, &budget),
+                    &mut mod_placements::EngineRandom(&random),
+                    position,
+                    &mut |pos| {
+                        if budget.get() == 0 {
+                            failure = Some(PlacementError::WorkLimit);
+                            return Err(PlacementQueryError::WorkLimit);
+                        }
+                        budget.set(budget.get() - 1);
+                        emit(&mut **random.borrow_mut(), pos).map_err(|e| {
+                            failure = Some(PlacementError::Output(e));
+                            PlacementQueryError::Failed("placement output refused".into())
+                        })
+                    },
+                );
+                *remaining = budget.get();
+                if let Some(failure) = failure {
+                    return Err(failure);
                 }
+                result.map_err(|e| match e {
+                    PlacementQueryError::WorkLimit => PlacementError::WorkLimit,
+                    e => PlacementError::World(e),
+                })?;
             }
         }
         Ok(())

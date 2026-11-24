@@ -8,8 +8,8 @@ use sunrise_world::{
         anchor::WorldGenerationContext,
         block_feature::FeatureBlockBindings,
         placement::{
-            FeaturePlacer, PlacementContext, PlacementModifier, PlacementQueryError,
-            mod_placements::with_test_placement_modifier_types,
+            FeaturePlacementError, FeaturePlacer, PlacementContext, PlacementModifier,
+            PlacementQueryError, mod_placements::with_test_placement_modifier_types,
         },
     },
 };
@@ -75,17 +75,18 @@ struct BelowSeaWrapped {
     inner: PlacementModifierRef,
 }
 impl ApiPlacementModifier for BelowSeaWrapped {
-    fn get_positions(
+    fn modify(
         &self,
         context: &mut dyn PlacementModifierContext,
         random: &mut dyn RandomSource,
         origin: [i32; 3],
-    ) -> Result<Vec<[i32; 3]>, FeatureError> {
+        output: &mut dyn FnMut([i32; 3]) -> Result<(), FeatureError>,
+    ) -> Result<(), FeatureError> {
         let sea = context.sea_level().unwrap_or(63);
         if origin[1] >= sea {
-            return Ok(Vec::new());
+            return Ok(());
         }
-        context.apply_modifier(&self.inner, random, origin)
+        context.apply_modifier(&self.inner, random, origin, output)
     }
 }
 
@@ -186,4 +187,114 @@ fn unknown_or_invalid_mod_placement_modifier_fails_decode_cleanly() {
         let invalid = serde_json::json!({"type": "testmod:below_sea"});
         assert!(PlacementModifier::from_json_with_blocks(&invalid.to_string(), &bindings).is_err());
     });
+}
+
+/// A mod's own random that answers outside `0..bound`.
+struct OutOfRange;
+impl RandomSource for OutOfRange {
+    fn next_int(&mut self) -> i32 {
+        0
+    }
+    fn next_int_bound(&mut self, bound: i32) -> i32 {
+        bound
+    }
+    fn next_long(&mut self) -> i64 {
+        0
+    }
+    fn next_boolean(&mut self) -> bool {
+        false
+    }
+    fn next_float(&mut self) -> f32 {
+        0.
+    }
+    fn next_double(&mut self) -> f64 {
+        0.
+    }
+    fn next_gaussian(&mut self) -> f64 {
+        0.
+    }
+}
+
+/// Runs its wrapped modifier with [`OutOfRange`] instead of the chain's random.
+#[derive(Debug)]
+struct OwnRandom {
+    inner: PlacementModifierRef,
+}
+impl ApiPlacementModifier for OwnRandom {
+    fn modify(
+        &self,
+        context: &mut dyn PlacementModifierContext,
+        _: &mut dyn RandomSource,
+        origin: [i32; 3],
+        output: &mut dyn FnMut([i32; 3]) -> Result<(), FeatureError>,
+    ) -> Result<(), FeatureError> {
+        context.apply_modifier(&self.inner, &mut OutOfRange, origin, output)
+    }
+}
+struct OwnRandomType;
+impl PlacementModifierType for OwnRandomType {
+    fn decode(
+        &self,
+        context: &dyn PlacementModifierDecodeContext,
+        config: &Tag,
+    ) -> Result<Arc<dyn ApiPlacementModifier>, FeatureError> {
+        let Some(inner_tag) = config.get("inner") else {
+            return Err(FeatureError("missing inner placement modifier".into()));
+        };
+        Ok(Arc::new(OwnRandom {
+            inner: context.modifier(inner_tag)?,
+        }))
+    }
+}
+
+/// A mod random answering outside `0..bound` to `minecraft:randomly_selected`
+/// fails the placement instead of indexing past the list.
+#[test]
+fn a_mod_random_out_of_range_fails_placement_without_panicking() {
+    let registry = test_registry();
+    let bindings = FeatureBlockBindings::new(registry, BTreeSet::new()).unwrap();
+    let mut types = ModPlacementModifierTypes::new();
+    types.insert(
+        "testmod:own_random".to_owned(),
+        Arc::new(ModifierType {
+            inner: Arc::new(OwnRandomType),
+        }),
+    );
+    let chain = with_test_placement_modifier_types(&types, || {
+        vec![
+            PlacementModifier::from_json_with_blocks(
+                &serde_json::json!({
+                    "type": "testmod:own_random",
+                    "inner": {
+                        "type": "minecraft:randomly_selected",
+                        "placements": [{"type": "minecraft:in_square"}, {"type": "minecraft:in_square"}]
+                    }
+                })
+                .to_string(),
+                &bindings,
+            )
+            .unwrap(),
+        ]
+    });
+    let mut world = StubWorld {
+        registry,
+        sea_level: 63,
+        blocks: BTreeMap::new(),
+    };
+    let mut placed = Vec::new();
+    let result = FeaturePlacer::new().place_in(
+        &chain,
+        &mut world,
+        &mut LegacyRandom::new(7),
+        [0, 0, 0],
+        |_, pos| {
+            placed.push(pos);
+            Ok::<bool, std::convert::Infallible>(true)
+        },
+    );
+    assert!(matches!(
+        result,
+        Err(FeaturePlacementError::World(PlacementQueryError::Failed(_)))
+    ));
+    assert!(placed.is_empty());
 }

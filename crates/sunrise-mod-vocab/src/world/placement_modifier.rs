@@ -96,20 +96,22 @@ pub fn placement_modifier_payload(modifier: &PlacementModifierRef) -> &Arc<dyn A
 /// `PlacementModifier`. Runs on worldgen worker threads, so it must be
 /// immutable and deterministic.
 pub trait PlacementModifier: Any + Send + Sync + std::fmt::Debug {
-    /// `PlacementModifier.getPositions(context, random, origin)`: transform
-    /// `origin` into zero or more output positions passed to the next modifier
-    /// in the placed feature's chain (or to the configured feature itself).
-    fn get_positions(
+    /// `PlacementModifier.modify(context, random, origin, output)`: pass zero
+    /// or more positions, in order, to `output`, which hands them to the next
+    /// modifier in the placed feature's chain (or to the configured feature
+    /// itself). An error from `output` means placement stops: return it, as
+    /// `output(pos)?` does.
+    fn modify(
         &self,
         context: &mut dyn PlacementModifierContext,
         random: &mut dyn RandomSource,
         origin: [i32; 3],
-    ) -> Result<Vec<[i32; 3]>, FeatureError>;
+        output: &mut dyn FnMut([i32; 3]) -> Result<(), FeatureError>,
+    ) -> Result<(), FeatureError>;
 }
 
 /// Level and generation queries available to
-/// [`PlacementModifier::get_positions`], mirroring vanilla's
-/// `PlacementContext`.
+/// [`PlacementModifier::modify`], mirroring vanilla's `PlacementContext`.
 pub trait PlacementModifierContext {
     /// Immutable, load-owned block metadata.
     fn metadata(&self) -> &dyn BlockMetadata;
@@ -136,13 +138,15 @@ pub trait PlacementModifierContext {
     /// `WorldGenLevel.getBiome(pos)`, or `None` where unavailable.
     fn biome(&mut self, pos: [i32; 3]) -> Option<BiomeKey>;
     /// Run a decoded nested placement modifier on `origin`, sharing `random`
-    /// and this placement context.
+    /// and this placement context, passing each position it produces to
+    /// `output`.
     fn apply_modifier(
         &mut self,
         modifier: &PlacementModifierRef,
         random: &mut dyn RandomSource,
         origin: [i32; 3],
-    ) -> Result<Vec<[i32; 3]>, FeatureError>;
+        output: &mut dyn FnMut([i32; 3]) -> Result<(), FeatureError>,
+    ) -> Result<(), FeatureError>;
 }
 
 /// A registered API behaviour; the game builds its engine adapter at startup.
