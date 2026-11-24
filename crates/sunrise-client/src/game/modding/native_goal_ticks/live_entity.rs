@@ -37,8 +37,7 @@ impl GoalCx<'_, '_> {
             _ => self
                 .entity_mob(entity)
                 .and_then(super::super::native_entity_data::mob_custom_name)
-                .try_into_api()
-                .map_err(Into::into),
+                .try_into_api(),
         }
     }
 
