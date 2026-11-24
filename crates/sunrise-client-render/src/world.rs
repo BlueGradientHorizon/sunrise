@@ -1188,11 +1188,10 @@ mod tests {
             Some(vec![(1, 64, 1)])
         );
         world.block_entities.put(taken.0, taken.1);
-        // The maximum is exclusive; the build height clips the box.
-        assert_eq!(
-            world.block_entities_in_box([1, 64, 1], [1, 65, 2]),
-            Some(vec![])
-        );
+        // The maximum is exclusive on every axis; the build height clips the box.
+        for max in [[1, 65, 2], [2, 64, 2], [2, 65, 1]] {
+            assert_eq!(world.block_entities_in_box([0, 63, 0], max), Some(vec![]));
+        }
         assert_eq!(
             world.block_entities_in_box([0, 320, 0], [16, top[1], 16]),
             Some(vec![])

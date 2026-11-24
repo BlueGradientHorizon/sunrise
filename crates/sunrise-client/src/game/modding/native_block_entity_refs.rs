@@ -7,6 +7,7 @@ use mod_api::{
     BlockEntityShapes, BlockEntityShapesError, BlockEntityTypeKey, LevelRef, PlayerRef,
     TransactionContext,
 };
+use sunrise_client::block_entities::TakenType;
 use sunrise_client::{
     block_entity_nbt,
     containers::{BlockEntity, ModBlockEntity},
@@ -143,16 +144,25 @@ impl Game<'_> {
                 .block_entities_in_box(min, max)?
                 .into_iter()
                 .filter_map(|(x, y, z)| {
-                    let block = &registry.state(world.block(x, y, z))?.name;
-                    let id = match world.block_entities.get(&(x, y, z)) {
-                        Some(entity) => save::block_entity_id(entity, block),
-                        // Taken out for its tick: its block's factory names its type.
-                        None => sunrise_client::block_entity_types::type_for(block)
-                            .or_else(|| sunrise_client::lan::chunks::block_entity_type(block))?,
+                    let pos = (x, y, z);
+                    let kind = match world.block_entities.taken_type(&pos) {
+                        // Taken out: a mod's keeps its own type, a vanilla one is its block's.
+                        Some(TakenType::Mod(kind)) => kind?,
+                        Some(TakenType::Block) | None => {
+                            let block = &registry.state(world.block(x, y, z))?.name;
+                            let id = match world.block_entities.get(&pos) {
+                                Some(entity) => save::block_entity_id(entity, block),
+                                None => sunrise_client::block_entity_types::type_for(block)
+                                    .or_else(|| {
+                                        sunrise_client::lan::chunks::block_entity_type(block)
+                                    })?,
+                            };
+                            mod_api::__private::block_entity_type_key(id)?
+                        }
                     };
                     Some(BlockEntityAt {
                         pos: [x, y, z],
-                        kind: mod_api::__private::block_entity_type_key(id)?,
+                        kind,
                     })
                 })
                 .collect(),

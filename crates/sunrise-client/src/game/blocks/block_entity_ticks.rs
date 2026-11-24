@@ -2031,6 +2031,61 @@ mod own_block_entity_tests {
         });
     }
 
+    /// `LevelRef::block_entities` names mod B's type on a daylight detector, an additional valid
+    /// type its block's factory doesn't make, before and while it is taken out, and the vanilla
+    /// detector beside it by its own; it reads the level parked too, and answers None for a stale
+    /// handle or on a client.
+    #[test]
+    #[ignore = "daily"]
+    fn level_block_entities_name_an_additional_valid_type_while_it_is_taken_out() {
+        // The content root freezes the process's block entity types.
+        if run_fresh_cases(
+            "game::block_entity_ticks::own_block_entity_tests::level_block_entities_name_an_additional_valid_type_while_it_is_taken_out",
+            "SUNRISE_OWN_BLOCK_ENTITIES_CHILD",
+            &["run"],
+        ) {
+            return;
+        }
+        let mods: Mods = vec![ModEntry::new(
+            "own_b",
+            Box::new(Machines::new(B, Some(DETECTOR))),
+        )]
+        .into();
+        let (modded, vanilla) = ((5, 64, 1), (7, 64, 1));
+        with_machines(mods, &[(vanilla, DETECTOR)], |game| {
+            place_mod_entity(game, modded, DETECTOR, B);
+            let level = game.level(game.dim.id()).unwrap();
+            let listed = |game: &Game<'_>| {
+                let mut found: Vec<([i32; 3], String)> = level
+                    .block_entities(game, [0, 64, 0], [16, 65, 16])
+                    .unwrap()
+                    .into_iter()
+                    .map(|at| (at.pos, at.kind.id(game).unwrap().to_string()))
+                    .collect();
+                found.sort();
+                found
+            };
+            let expected = vec![
+                ([5, 64, 1], B.to_string()),
+                ([7, 64, 1], DETECTOR.to_string()),
+            ];
+            assert_eq!(listed(game), expected);
+            for pos in [modded, vanilla] {
+                let (lease, taken) = game.world.block_entities.take(&pos).unwrap();
+                assert_eq!(listed(game), expected, "{pos:?} taken out");
+                assert!(game.world.block_entities.put(lease, taken));
+            }
+            game.enter_level(crate::game::Dim::Nether).unwrap();
+            assert_eq!(listed(game), expected, "parked");
+            game.enter_level(crate::game::Dim::Overworld).unwrap();
+            let stale = LevelRef::new(WorldEpoch::new(level.epoch().get() + 1), level.dimension());
+            assert_eq!(stale.block_entities(game, [0, 64, 0], [16, 65, 16]), None);
+            game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
+            game.options.dedicated = None;
+            assert_eq!(level.block_entities(game, [0, 64, 0], [16, 65, 16]), None);
+        });
+    }
+
     /// Once, when asked about the block entity at `at`, replaces it in place (the loop's ticker
     /// stays live) with a new one of mod B's type and answers Continue. Notes the entities it
     /// sees after their tick.
