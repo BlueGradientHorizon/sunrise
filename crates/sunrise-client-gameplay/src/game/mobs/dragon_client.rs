@@ -847,7 +847,7 @@ impl ClientGame<'_> {
                 (16, Value::Int(phase)) => d.set_phase(Phase::from_id(*phase)),
                 // Mob.DATA_MOB_FLAGS_ID: isNoAi and isLeftHanded.
                 (15, Value::Byte(flags)) => {
-                    sunrise_gameplay_common::game::mobs::dragon_common::apply_mob_flags(d, *flags);
+                    sunrise_gameplay_common::game::dragon_common::apply_mob_flags(d, *flags);
                 }
                 _ => {}
             }

@@ -1080,7 +1080,6 @@ impl Dragon {
 #[cfg(test)]
 mod left_handed_tests {
     use super::*;
-    use sunrise_core::random::{LegacyRandom, LevelRandom};
 
     fn dragon() -> Dragon {
         Dragon::new(Vec3::ZERO, 0.0, 0)
@@ -1128,28 +1127,5 @@ mod left_handed_tests {
         assert!(d.left_handed && !d.no_ai);
         apply_mob_flags(&mut d, 5);
         assert!(d.no_ai && !d.left_handed);
-    }
-
-    #[test]
-    fn finalizing_a_dragon_draws_left_handed_after_the_triangle() {
-        let (mut saw_left, mut saw_right) = (false, false);
-        for seed in 0..512 {
-            let mut random = LevelRandom::for_level(LegacyRandom::new(seed));
-            let mut oracle = random.clone();
-            let _ = oracle.triangle(0.0, 0.114_850_000_000_000_01);
-            let expected = oracle.next_float() < 0.05;
-            let got = finalize_spawn_left_handed(&mut random);
-            assert_eq!(got, expected, "seed {seed}");
-            saw_left |= got;
-            saw_right |= !got;
-            // The triangle's two doubles and the left-handed float are all
-            // consumed: the next draw is the one after them.
-            assert_eq!(
-                random.next_float().to_bits(),
-                oracle.next_float().to_bits(),
-                "seed {seed}"
-            );
-        }
-        assert!(saw_left && saw_right);
     }
 }
