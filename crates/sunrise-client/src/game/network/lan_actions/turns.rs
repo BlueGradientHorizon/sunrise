@@ -825,8 +825,8 @@ impl Game<'_> {
         std::mem::swap(&mut self.mount, &mut play.mount);
         std::mem::swap(&mut self.portals.player, &mut play.portal);
         self.container = container;
-        let (guest_sign, guest_lectern, guest_command_block, guest_mount) =
-            self.guest_turn_client_leave_screens(
+        let (guest_sign, guest_lectern, guest_command_block, guest_mount) = self
+            .guest_turn_client_leave_screens(
                 screen,
                 host_sign,
                 host_book,
