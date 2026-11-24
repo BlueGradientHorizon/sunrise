@@ -328,7 +328,7 @@ paused level.
 
 Use the setter on any resident server level to request a storm for the server:
 
-```rust
+```rust,ignore
 use mod_api::{LevelRef, ServerHost};
 
 fn request_storm(host: &mut dyn ServerHost, origin: LevelRef) -> bool {
@@ -373,7 +373,7 @@ same setters as `/worldborder`, without the command's range and no-change checks
 For example, request a border of 256 blocks over 200 ticks in the level a
 `LevelRef` names:
 
-```rust
+```rust,ignore
 use mod_api::{LevelRef, ServerHost};
 
 fn resize_border(host: &mut dyn ServerHost, level: LevelRef) -> bool {
