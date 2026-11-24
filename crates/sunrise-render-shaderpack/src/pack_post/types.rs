@@ -22,7 +22,7 @@ pub use crate::pack_post::construction::{
 pub use crate::pack_weather::Weather;
 
 /// The texture behind a pack sampler name.
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Source {
     Color(usize),
     Depth,
@@ -57,6 +57,10 @@ pub enum Source {
     ShadowColor(usize),
     /// The boats' water patches' depth (`sunrise_shaders::WATER_MASK`), for translucent terrain.
     WaterMask,
+    /// A mod-declared auxiliary full depth target (index into `PackPost::mod_depth_decls`).
+    ModDepth(usize),
+    /// A mod-declared auxiliary opaque-depth snapshot (index into `PackPost::mod_depth_decls`).
+    ModOpaqueDepth(usize),
 }
 
 #[derive(Clone)]
@@ -96,7 +100,9 @@ impl SamplerKind {
             | Source::Depth1
             | Source::Depth2
             | Source::ShadowDepth(_, false)
-            | Source::WaterMask => Self::Nearest,
+            | Source::WaterMask
+            | Source::ModDepth(_)
+            | Source::ModOpaqueDepth(_) => Self::Nearest,
             Source::Noise => Self::Repeat,
             Source::Shadow | Source::ShadowDepth(_, true) => Self::Comparison,
             // Blocks look as the game draws them: nearest texels. Between levels, Iris 1.11.7
@@ -372,6 +378,12 @@ pub enum Pipeline {
         render: [f32; 2],
         local: [u32; 3],
     },
+    /// A composite-style program whose fragment stage writes no buffer and no image: it draws
+    /// nothing, and only its compute stages (2.6) and forced flips (6.1.6) run at its place in
+    /// the chain. `storage`: its fragment stage binds storage buffers, and so is left out.
+    NoDraw {
+        storage: bool,
+    },
 }
 
 #[derive(Clone)]
@@ -395,6 +407,8 @@ pub struct Pass {
     pub initial_block: Vec<u8>,
     /// (index into `pack_uniforms::NAMES`, declared type, offset).
     pub uniforms: Vec<(Option<usize>, String, u32)>,
+    /// Mod-declared frame uniforms bound to this pass: `(table_index, is_previous, std140_offset)`.
+    pub mod_uniforms: Vec<(usize, bool, u32)>,
     pub samplers: Vec<Binding>,
     /// (location, buffer) of each output that reaches a buffer.
     pub writes: Vec<(u32, usize)>,
@@ -475,6 +489,9 @@ impl Pass {
         match &self.pipeline {
             Pipeline::Render(p) => p.get().expect("compiled with its pack"),
             Pipeline::Compute { .. } => unreachable!("a compute pass draws nothing"),
+            Pipeline::NoDraw { .. } => {
+                unreachable!("a pass of compute stages and flips draws nothing")
+            }
         }
     }
 }
@@ -507,6 +524,10 @@ pub struct Targets {
     pub depth2: Option<(wgpu::Texture, wgpu::TextureView)>,
     /// The boats' water patches' depth, when translucent terrain reads it (`Source::WaterMask`).
     pub water_mask: Option<(wgpu::Texture, wgpu::TextureView)>,
+    /// Mod-declared auxiliary full depth targets, allocated lazily only when sampled by the pack.
+    pub mod_depth: Vec<Option<(wgpu::Texture, wgpu::TextureView)>>,
+    /// Mod-declared auxiliary opaque-depth copies, allocated lazily only when sampled by the pack.
+    pub mod_opaque_depth: Vec<Option<(wgpu::Texture, wgpu::TextureView)>>,
     /// Both sides' mip chains of the buffers with mipmaps (`color` is their first level).
     pub mips: [Option<[Mips; 2]>; BUFFERS],
     /// Where a pass that both samples and stores a buffer samples it from.
