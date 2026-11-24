@@ -209,7 +209,7 @@ pub(super) struct Parked {
     pub(super) world: World,
     streaming: Streaming,
     locator: Option<Arc<VanillaTerrain>>,
-    save: Arc<SaveDir>,
+    pub(super) save: Arc<SaveDir>,
     block_ticks: Ticks,
     tick_chunks: TickChunkMembership,
     tickets: ChunkTickets,
