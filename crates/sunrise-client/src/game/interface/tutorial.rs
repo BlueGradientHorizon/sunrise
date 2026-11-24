@@ -44,17 +44,12 @@ impl super::Game<'_> {
         tags.get(tag).is_some_and(|members| members.contains(id))
     }
 
-    #[inline]
-    pub(in crate::game) fn tutorial_lan_acting(&self) -> bool {
-        self.server.lan_acting.is_some()
-    }
-
     pub(super) fn tutorial_get_item(&mut self, stack: Option<&sunrise_client::items::ItemStack>) {
         // The server thread's settings are a stale copy of the window's: a
         // guest's tutorial is their own client's to record.
         if self.options.dedicated.is_some()
             || self.serving.is_some()
-            || self.tutorial_lan_acting()
+            || self.lan_guest_acting()
             || self.title.0.is_some()
             || self.player.is_none()
         {
@@ -79,7 +74,7 @@ impl super::Game<'_> {
         // guest's tutorial is their own client's to record.
         if self.options.dedicated.is_some()
             || self.serving.is_some()
-            || self.tutorial_lan_acting()
+            || self.lan_guest_acting()
             || self.title.0.is_some()
             || self.player.is_none()
         {

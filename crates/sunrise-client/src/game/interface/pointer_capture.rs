@@ -142,10 +142,6 @@ impl Game<'_> {
             }
         }
     }
-    #[inline]
-    pub(in crate::game) fn pointer_capture_lan_acting(&self) -> bool {
-        self.server.lan_acting.is_some()
-    }
     /// `MouseHandler.grabMouse` / `releaseMouse`. Both put the pointer at
     /// the window's centre, so a screen opened from gameplay (inventory,
     /// chest, pause, chat, sign, book, death) starts with the cursor in the
@@ -156,7 +152,7 @@ impl Game<'_> {
     pub(super) fn capture(&mut self, capture: bool) {
         // A guest's action (`as_guest`) opens and closes screens on the
         // guest's own client: the window's pointer stays the host's (#687).
-        if self.pointer_capture_lan_acting() {
+        if self.lan_guest_acting() {
             return;
         }
         // MouseHandler.grabMouse never captures an inactive window, and vanilla

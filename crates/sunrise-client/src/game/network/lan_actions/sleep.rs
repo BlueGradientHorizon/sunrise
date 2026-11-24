@@ -274,15 +274,8 @@ impl Game<'_> {
                 .overlay_message(sunrise_client::lan::data::component_nbt(&text.component()));
         }
         if self.options.dedicated.is_none() {
-            self.announce_sleep_status_client(text);
+            self.set_hud_overlay(text);
         }
-    }
-
-    pub(in crate::game) fn announce_sleep_status_client(
-        &mut self,
-        text: sunrise_client::text::Text,
-    ) {
-        self.client.titles.set_overlay(text, false);
     }
 
     /// `ServerLevel.wakeUpAllPlayers` for the guests.

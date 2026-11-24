@@ -922,7 +922,9 @@ impl Game<'_> {
     }
 
     pub(in crate::game) fn integrated_tick_loop_client(&mut self, started: Instant) -> f32 {
-        self.client.debug_charts.log_tick(started, started.elapsed());
+        self.client
+            .debug_charts
+            .log_tick(started, started.elapsed());
         self.client.debug_charts.smoothed_tick_ms
     }
 

@@ -62,8 +62,10 @@ class WorldInputCaptureTests(unittest.TestCase):
         tick = (remote_dir / "tick.rs").read_text(encoding="utf-8")
         level_tick = (remote_dir / "client_level_tick.rs").read_text(encoding="utf-8")
         spawn = method(game, "spawn_player")
-        self.assertLess(spawn.index("self.player = Some(player)"),
-                        spawn.index("self.capture_loaded_world()"))
+        self.assertIn("self.spawn_player_client(", spawn)
+        spawn_client = method(game, "spawn_player_client")
+        self.assertLess(spawn_client.index("self.player = Some(player)"),
+                        spawn_client.index("self.capture_loaded_world()"))
         # ClientPacketListener.tick: the level load tracker ends the loading screen,
         # the server hears PlayerLoaded, the mouse is captured, then the player moves.
         ready = method(tick, "tick_client_load")
@@ -81,7 +83,7 @@ class WorldInputCaptureTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("rustc"), "requires Rust")
     def test_capture_lifecycle(self):
         source = "".join((ROOT / "crates/sunrise-client/src" / path).read_text(encoding="utf-8")
-                         for path in ("game.rs", "game/interface/pointer_capture.rs"))
+                         for path in ("game.rs", "game/interface/pointer_capture.rs", "game/network/lan/mod.rs"))
         fixture = r'''
 use std::cell::Cell;
 #[derive(Clone, Copy, PartialEq)]
@@ -536,7 +538,8 @@ fn main() {
 }
 '''
         fixture = fixture.replace("POINTER_PROJECTION", pointer_projection_sources())
-        fixture = fixture.replace("METHODS", method(source, "capture") + "\n" +
+        fixture = fixture.replace("METHODS", method(source, "lan_guest_acting") + "\n" +
+                                  method(source, "capture") + "\n" +
                                   method(source, "pointer_space") + "\n" +
                                   method(source, "pointer_projection") + "\n" +
                                   method(source, "set_window_cursor") + "\n" +

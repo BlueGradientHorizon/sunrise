@@ -541,11 +541,7 @@ impl Game<'_> {
             host.hub.send_to(*conn, packet);
         }
     }
-    pub(in crate::game) fn publish_boss_bars_client(
-        &mut self,
-        event: &play::BossEvent,
-        now: u128,
-    ) {
+    pub(in crate::game) fn publish_boss_bars_client(&mut self, event: &play::BossEvent, now: u128) {
         self.client.boss_overlay.apply(event, now);
     }
     /// `EnderDragonFight.updateDragon`: the fight's dragon's custom name

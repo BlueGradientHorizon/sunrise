@@ -7679,11 +7679,6 @@ impl Game<'_> {
         }
         Some(index)
     }
-    #[inline]
-    pub(in crate::game) fn mob_interact_sneaking(&self) -> bool {
-        self.held_mapping(Action::Sneak)
-            || self.client.keys.raw(&winit::keyboard::KeyCode::ShiftRight)
-    }
     /// Right click on a mob (Mob.interact / mobInteract), on the mob under the
     /// crosshair or on the one a guest's interact packet named: returns true
     /// when consumed.
@@ -7925,7 +7920,7 @@ impl Game<'_> {
             .map(|p| [p.position.x, p.position.y, p.position.z]);
         let acting = self.acting_player_uuid();
         let (acting_id, acting_entity_id) = (self.native_acting_id(), self.own_entity_id());
-        let sneaking = self.mob_interact_sneaking();
+        let sneaking = self.sneak_or_right_shift_held();
         let held_damage = held.as_ref().map_or(0, |h| h.damage as i32);
         let held_extra = held.as_ref().and_then(|h| h.extra.clone());
         let feeder = sunrise_client::health::Attack {

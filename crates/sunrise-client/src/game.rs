@@ -76,6 +76,9 @@ macro_rules! acting_equipment {
 /// borrows of the game. Build it before taking a field mutably.
 macro_rules! game_side {
     ($s:expr) => {
+        game_side!($s, $s.server.lan_acting_uuid)
+    };
+    ($s:expr, $player_uuid:expr) => {
         $crate::game::native_surface::GameSide {
             dim: $s.dim,
             level: $s.native_lifecycle.epoch().and_then(|epoch| {
@@ -103,7 +106,7 @@ macro_rules! game_side {
                 living_types: $s.res.living_type_keys(),
                 attributes: &$s.motion.attributes,
                 player_effects: &$s.potions.effects,
-                player_uuid: $s.server.lan_acting_uuid,
+                player_uuid: $player_uuid,
                 player_attachments: &$s.player_state.attachments,
                 entity_attachments: &*$s.entity_attachments,
             },
@@ -9925,10 +9928,6 @@ impl Game<'_> {
             }
         }
     }
-    #[inline]
-    pub(in crate::game) fn sleep_chat_screen_open(&self) -> bool {
-        self.client.screen == Screen::Chat
-    }
     fn tick_sleep(&mut self) {
         self.sleep_timer = tick_sleep_timer(self.sleep_timer, self.sleeping.is_some());
         if let Some(head) = self.sleeping {
@@ -9943,9 +9942,7 @@ impl Game<'_> {
                     .player
                     .as_ref()
                     .is_none_or(|p| p.health.dead_or_dying());
-            if wake_immediately
-                || (!self.sleep_chat_screen_open() && self.held_mapping(Mapping::Sneak))
-            {
+            if wake_immediately || (!self.chat_screen_open() && self.held_mapping(Mapping::Sneak)) {
                 self.wake_up(wake_immediately, true);
                 return;
             }

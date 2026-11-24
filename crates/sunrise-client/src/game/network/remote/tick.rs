@@ -1,54 +1,6 @@
 use super::*;
 
-/// Like `game_side!`, with `player_uuid` passed in so client ticks stay one-sided.
-macro_rules! remote_game_side {
-    ($s:expr, $player_uuid:expr) => {
-        $crate::game::native_surface::GameSide {
-            dim: $s.dim,
-            level: $s.native_lifecycle.epoch().and_then(|epoch| {
-                let key = $s.dim.key();
-                let id = mod_api::__private::dimension_id(key)?;
-                Some(mod_api::LevelRef::with_generation(
-                    epoch,
-                    key,
-                    $s.levels.runtime.generation_of(id),
-                ))
-            }),
-            facts: $s.res.facts(),
-            biomes: world_biomes!($s),
-            behaviours: $s.res.behaviours(),
-            features: $s
-                .remote
-                .as_ref()
-                .map_or($s.level.enabled_features.as_arc(), |remote| {
-                    &remote.features
-                }),
-            items: $s.res.items(),
-            damage_types: &$s.health_resources.damage,
-            player_equipment: acting_equipment!($s),
-            hit_borrows: $crate::game::native_surface::HitBorrows {
-                living_types: $s.res.living_type_keys(),
-                attributes: &$s.motion.attributes,
-                player_effects: &$s.potions.effects,
-                player_uuid: $player_uuid,
-                player_attachments: &$s.player_state.attachments,
-                entity_attachments: &*$s.entity_attachments,
-            },
-            tag_items: if $s.options.execution_role.is_client() {
-                $s.remote.as_ref().and_then(|remote| remote.tags.as_ref())
-            } else {
-                $s.session_lock.is_some().then(|| $s.res.items())
-            },
-        }
-    };
-}
-
 impl Game<'_> {
-    #[inline]
-    pub(in crate::game) fn remote_tick_lan_acting_uuid(&self) -> Option<u128> {
-        self.server.lan_acting_uuid
-    }
-
     /// One client tick while connected (Minecraft.tick with a ClientLevel).
     pub(in crate::game) fn tick_remote(&mut self) -> Result<()> {
         self.tick_remote_level()?;
@@ -822,7 +774,7 @@ impl Game<'_> {
                 .next_float()
         };
         if running {
-            let lan_acting_uuid = self.remote_tick_lan_acting_uuid();
+            let lan_acting_uuid = self.lan_acting_uuid();
             let sections = self.client.client_pick.sections.get_mut();
             self.orbs.retain_mut(|o| {
                 let distance = |feet: &[f64; 3]| -> f64 {
@@ -856,7 +808,7 @@ impl Game<'_> {
                     sections.move_id(o.id, o.position.components());
                 }
                 let before = o.position;
-                let side = remote_game_side!(self, lan_acting_uuid);
+                let side = game_side!(self, lan_acting_uuid);
                 let kept = o.tick(
                     world,
                     facts,
@@ -1261,7 +1213,7 @@ impl Game<'_> {
                 }
             };
         }
-        let lan_acting_uuid = self.remote_tick_lan_acting_uuid();
+        let lan_acting_uuid = self.lan_acting_uuid();
         let Some(player) = self.player.as_mut() else {
             return Ok(None);
         };
@@ -1272,7 +1224,7 @@ impl Game<'_> {
         // shape is unavailable here; only the server decides when to wake.
         if sleeping.is_some() {
             // Entity.baseTick still samples fluids while sleeping, before LocalPlayer.aiStep.
-            let side = remote_game_side!(self, lan_acting_uuid);
+            let side = game_side!(self, lan_acting_uuid);
             player.client_side = true;
             motion_world!(side, player).fluid_base_tick()?;
             if let Some(player) = self.player.as_mut().filter(|p| p.entity_id == body) {
@@ -1283,7 +1235,7 @@ impl Game<'_> {
                 self.tick_local_water_vision();
             }
         } else if walks {
-            let side = remote_game_side!(self, lan_acting_uuid);
+            let side = game_side!(self, lan_acting_uuid);
             player.client_side = true;
             // LivingEntity.checkAutoSpinAttack: a Riptide spin that touches a
             // mob ends and bounces back; the server deals the hit.
@@ -1304,8 +1256,8 @@ impl Game<'_> {
                 None
             };
             let answer = self.ask_swim_entry(decision);
-            let lan_acting_uuid = self.remote_tick_lan_acting_uuid();
-            let side = remote_game_side!(self, lan_acting_uuid);
+            let lan_acting_uuid = self.lan_acting_uuid();
+            let side = game_side!(self, lan_acting_uuid);
             let Some(player) = self.player.as_mut().filter(|p| p.entity_id == body) else {
                 return Ok(None);
             };
@@ -1319,8 +1271,8 @@ impl Game<'_> {
             // LocalPlayer.aiStep: water vision reads this tick's `Entity.baseTick`
             // `isEyeInFluid(FluidTags.WATER)` sample and `this.isSpectator()`, before `super.aiStep()`.
             self.tick_local_water_vision();
-            let lan_acting_uuid = self.remote_tick_lan_acting_uuid();
-            let side = remote_game_side!(self, lan_acting_uuid);
+            let lan_acting_uuid = self.lan_acting_uuid();
+            let side = game_side!(self, lan_acting_uuid);
             let Some(player) = self.player.as_mut().filter(|p| p.entity_id == body) else {
                 return Ok(None);
             };
@@ -1334,7 +1286,7 @@ impl Game<'_> {
             // player too (controlled_simulation_tick does it otherwise): left
             // at 10, the hurt tilt restarted every frame and shook the camera.
             player.health.advance_clock();
-            let side = remote_game_side!(self, lan_acting_uuid);
+            let side = game_side!(self, lan_acting_uuid);
             player.client_side = true;
             let mut passenger = motion_world!(side, player);
             if riding && !dead {
@@ -1350,8 +1302,8 @@ impl Game<'_> {
                     None
                 };
                 let answer = self.ask_swim_entry(decision);
-                let lan_acting_uuid = self.remote_tick_lan_acting_uuid();
-                let side = remote_game_side!(self, lan_acting_uuid);
+                let lan_acting_uuid = self.lan_acting_uuid();
+                let side = game_side!(self, lan_acting_uuid);
                 let Some(player) = self.player.as_mut().filter(|p| p.entity_id == body) else {
                     return Ok(None);
                 };
@@ -1361,8 +1313,8 @@ impl Game<'_> {
                     return Ok(None);
                 }
                 self.tick_local_water_vision();
-                let lan_acting_uuid = self.remote_tick_lan_acting_uuid();
-                let side = remote_game_side!(self, lan_acting_uuid);
+                let lan_acting_uuid = self.lan_acting_uuid();
+                let side = game_side!(self, lan_acting_uuid);
                 let Some(player) = self.player.as_mut().filter(|p| p.entity_id == body) else {
                     return Ok(None);
                 };
