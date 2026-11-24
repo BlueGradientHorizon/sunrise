@@ -13644,7 +13644,7 @@ impl<'a> Game<'a> {
         gui: UiResources,
         options: Options,
         settings: Settings,
-        audio: Audio,
+        mut audio: Audio,
         prepared: Option<GameCpuResources>,
         initial: Option<&mut Option<initial_client_models::InitialModelGeneration>>,
     ) -> Result<Self> {
@@ -13653,6 +13653,7 @@ impl<'a> Game<'a> {
         // A scoped hook on this thread asks this game's parts.
         mod_api::__private::mark_game_thread();
         let role = options.execution_role;
+        audio.set_play_sound_hooks(role.is_client());
         let loop_side = role.loop_side();
         let item_data = res.core.item_data.context();
         let mut native_settings = native_hooks::mod_settings::NativeSettings::default();

@@ -11,7 +11,7 @@
 //! backend through `stopped`.
 use crate::sound_events::{INTENTIONALLY_EMPTY, Sentinel, Sound, SoundRegistry};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, VecDeque},
     sync::{Arc, RwLock},
 };
 use sunrise_core::random::LegacyRandom;
@@ -235,7 +235,6 @@ pub struct TickContext {
 /// `AbstractSoundInstance` and its subclasses' fields.
 #[derive(Clone, Debug)]
 pub struct SoundInstance {
-    live_settings: std::cell::OnceCell<std::cell::RefCell<hooks::LiveSettings>>,
     pub identifier: String,
     pub source: usize,
     pub volume: f32,
@@ -279,7 +278,6 @@ impl SoundInstance {
         relative: bool,
     ) -> Self {
         Self {
-            live_settings: std::cell::OnceCell::new(),
             identifier: identifier.to_owned(),
             source,
             volume,
@@ -1103,6 +1101,13 @@ pub struct SoundEngine {
     /// The client's loop context, rebuilt with each resource generation, for the
     /// sound hooks (`hooks`). Absent on a server, which has no sound.
     loop_context: Option<sunrise_world::native_load_context::LoopContext>,
+    /// True on a client `Game` that drains staged `play_sound` decisions with `ClientHost`.
+    /// False on servers and standalone sound engines so `play_sound` never stages unread.
+    play_sound_hooks: bool,
+    /// Pending `play_sound` decisions staged in vanilla FIFO order, drained by `Game`.
+    pending_play_sound: VecDeque<hooks::PendingPlaySound>,
+    /// Instances currently waiting for a staged `play_sound` start decision to be applied.
+    pending_starts: HashSet<InstanceId>,
     unmuffled: HashSet<String>,
 }
 // Check edited base values without changing untouched engine inputs. Their sign is
@@ -1147,6 +1152,9 @@ impl SoundEngine {
             listener_reserve: 0,
             notifications: Vec::new(),
             loop_context: None,
+            play_sound_hooks: false,
+            pending_play_sound: VecDeque::new(),
+            pending_starts: HashSet::new(),
             unmuffled: HashSet::new(),
         }
     }
@@ -1168,19 +1176,15 @@ impl SoundEngine {
     pub fn set_test_playback_hook(&mut self, hook: PlaybackHook) {
         self.playback_hook = Some(hook);
     }
-    /// The volume, pitch and effects to play instance `id` with, after the mods' `play_sound`
-    /// edits; None when a hook cancelled it.
-    fn playback_parameters(
+    /// Apply the test-only `playback_hook` on top of the base playback parameters.
+    fn test_playback_parameters(
         &self,
         id: InstanceId,
         starting: bool,
+        base: (f32, f32, mod_api::SoundEffects),
     ) -> Option<(f32, f32, mod_api::SoundEffects)> {
         let instance = self.instances.get(&id)?;
-        let (mut volume, mut pitch, mut effects) =
-            (instance.volume, instance.pitch, instance.effects);
-        if !starting {
-            (volume, pitch, effects) = self.playback_update_parameters(id)?;
-        }
+        let (mut volume, mut pitch, effects) = base;
         if let Some(hook) = self.playback_hook {
             let sound = SoundPlayback {
                 instance: id,
@@ -1198,7 +1202,7 @@ impl SoundEngine {
         }
         Some((volume, pitch, effects))
     }
-    fn cancel_playback(&mut self, id: InstanceId, backend: &mut impl Backend) {
+    pub(super) fn cancel_playback(&mut self, id: InstanceId, backend: &mut impl Backend) {
         if let Some(instance) = self.instances.get_mut(&id) {
             instance.stop();
         }
@@ -1219,6 +1223,9 @@ impl SoundEngine {
     pub fn release(&mut self, id: InstanceId) {
         self.retained.remove(&id);
         self.collect(id);
+        if !self.instances.contains_key(&id) {
+            self.pending_starts.remove(&id);
+        }
     }
     fn referenced(&self, id: InstanceId) -> bool {
         self.retained.contains_key(&id)
@@ -1227,7 +1234,7 @@ impl SoundEngine {
             || self.queued_tickable.contains(&id)
             || self.ticking.contains(&id)
     }
-    fn collect(&mut self, id: InstanceId) {
+    pub(super) fn collect(&mut self, id: InstanceId) {
         if !self.referenced(id) {
             self.instances.remove(&id);
         }
@@ -1281,43 +1288,61 @@ impl SoundEngine {
     pub fn calculate_pitch(pitch: f32) -> f32 {
         pitch.clamp(0.5, 2.0)
     }
-    fn channel_of(&self, id: InstanceId) -> Option<u64> {
+    pub(super) fn channel_of(&self, id: InstanceId) -> Option<u64> {
         self.instance_to_channel
             .iter()
             .find(|(i, _)| *i == id)
             .map(|(_, h)| *h)
+    }
+    pub(super) fn apply_category_refresh(
+        &mut self,
+        id: InstanceId,
+        handle: u64,
+        base: (f32, f32, mod_api::SoundEffects),
+        backend: &mut impl Backend,
+    ) {
+        let Some(original_pitch) = self.instances.get(&id).map(|i| i.pitch) else {
+            return;
+        };
+        let Some((base_volume, base_pitch, _)) = self.test_playback_parameters(id, false, base)
+        else {
+            self.cancel_playback(id, backend);
+            return;
+        };
+        let instance = self.instances.get_mut(&id).expect("present");
+        let (v, s) = (instance.volume_with(base_volume), instance.source);
+        let pitch_edited = base_pitch.to_bits() != original_pitch.to_bits();
+        // Restore a prior edit, but an always-no-op hook samples exactly as before.
+        let restore_pitch = self.handles.get(&handle).is_some_and(|h| h.pitch_edited);
+        let pitch = (pitch_edited || restore_pitch)
+            .then(|| Self::calculate_pitch(instance.pitch_with(base_pitch)));
+        let volume = self.calculate_volume(v, s);
+        if let Some(h) = self.handles.get_mut(&handle) {
+            h.pitch_edited = pitch_edited;
+        }
+        if let Some(c) = self.handles.get(&handle).and_then(handle_channel) {
+            backend.set_volume(c, volume);
+            if let Some(pitch) = pitch {
+                backend.set_pitch(c, pitch);
+            }
+        }
     }
     /// `refreshCategoryVolume`.
     pub fn refresh_category_volume(&mut self, source: usize, backend: &mut impl Backend) {
         if !self.loaded {
             return;
         }
+        let stage = self.should_stage_play_sound();
         for (id, handle) in self.instance_to_channel.clone() {
-            let Some(instance) = self.instances.get_mut(&id) else {
+            let Some(instance) = self.instances.get(&id) else {
                 continue;
             };
             if source == instance.source || source == MASTER {
-                let original_pitch = instance.pitch;
-                let Some((base_volume, base_pitch, _)) = self.playback_parameters(id, false) else {
-                    self.cancel_playback(id, backend);
-                    continue;
-                };
-                let instance = self.instances.get_mut(&id).expect("present");
-                let (v, s) = (instance.volume_with(base_volume), instance.source);
-                let pitch_edited = base_pitch.to_bits() != original_pitch.to_bits();
-                // Restore a prior edit, but an always-no-op hook samples exactly as before.
-                let restore_pitch = self.handles.get(&handle).is_some_and(|h| h.pitch_edited);
-                let pitch = (pitch_edited || restore_pitch)
-                    .then(|| Self::calculate_pitch(instance.pitch_with(base_pitch)));
-                let volume = self.calculate_volume(v, s);
-                if let Some(h) = self.handles.get_mut(&handle) {
-                    h.pitch_edited = pitch_edited;
-                }
-                if let Some(c) = self.handles.get(&handle).and_then(handle_channel) {
-                    backend.set_volume(c, volume);
-                    if let Some(pitch) = pitch {
-                        backend.set_pitch(c, pitch);
-                    }
+                if stage {
+                    self.stage_category_refresh(id, handle);
+                } else {
+                    let base = (instance.volume, instance.pitch, instance.effects);
+                    self.apply_category_refresh(id, handle, base, backend);
                 }
             }
         }
@@ -1339,6 +1364,9 @@ impl SoundEngine {
     }
     /// `stop(SoundInstance)`.
     pub fn stop(&mut self, id: InstanceId, backend: &mut impl Backend) {
+        if self.pending_starts.remove(&id) {
+            self.collect(id);
+        }
         if !self.loaded {
             return;
         }
@@ -1379,6 +1407,9 @@ impl SoundEngine {
         if let Some(instance) = self.instances.get_mut(&id) {
             instance.stop();
         }
+        self.pending_starts.remove(&id);
+        self.pending_play_sound
+            .retain(|pending| pending.instance != id);
         self.queued.retain(|(queued, _)| *queued != id);
         self.queued_tickable.retain(|queued| *queued != id);
         self.stop(id, backend);
@@ -1396,7 +1427,12 @@ impl SoundEngine {
     }
     /// `stopAll`.
     pub fn stop_all(&mut self, backend: &mut impl Backend) {
+        self.pending_play_sound.clear();
+        let pending_starts: Vec<InstanceId> = self.pending_starts.drain().collect();
         if !self.loaded {
+            for id in pending_starts {
+                self.collect(id);
+            }
             return;
         }
         let ids: Vec<InstanceId> = self.instances.keys().copied().collect();
@@ -1500,7 +1536,16 @@ impl SoundEngine {
     }
     /// `play(SoundInstance)`.
     pub fn play(&mut self, id: InstanceId, backend: &mut impl Backend) -> PlayResult {
-        let result = self.play_inner(id, backend);
+        if !self.instances.contains_key(&id) {
+            return PlayResult::NotStarted;
+        }
+        if self.should_stage_play_sound() {
+            // Keep unretained starts alive until `apply_play_sound` runs (or until `release`,
+            // `stop`, `stop_for_good`, or `stop_all` drops them before apply).
+            self.stage_start(id);
+            return PlayResult::NotStarted;
+        }
+        let result = self.play_after_hook(id, backend);
         self.collect(id);
         result
     }
@@ -1514,8 +1559,12 @@ impl SoundEngine {
         let id = self.add(instance, retain);
         (id, self.play(id, backend))
     }
-    fn play_inner(&mut self, id: InstanceId, backend: &mut impl Backend) -> PlayResult {
-        if !self.instances.contains_key(&id) || !self.play_sound_allowed(id) || !self.loaded {
+    pub(super) fn play_after_hook(
+        &mut self,
+        id: InstanceId,
+        backend: &mut impl Backend,
+    ) -> PlayResult {
+        if !self.instances.contains_key(&id) || !self.loaded {
             return PlayResult::NotStarted;
         }
         if !self.instances[&id].can_play_sound() {
@@ -1530,7 +1579,10 @@ impl SoundEngine {
         if sound.sentinel != Sentinel::None {
             return PlayResult::NotStarted;
         }
-        let Some((base_volume, base_pitch, effects)) = self.playback_parameters(id, true) else {
+        let base = (instance.volume, instance.pitch, instance.effects);
+        let Some((base_volume, base_pitch, effects)) =
+            self.test_playback_parameters(id, true, base)
+        else {
             return PlayResult::NotStarted;
         };
         let instance = self.instances.get_mut(&id).expect("present");
@@ -1666,14 +1718,52 @@ impl SoundEngine {
         self.live_scratch = live;
         self.mapped_scratch = mapped;
     }
-    fn handle_stopped(&self, handle: u64) -> bool {
+    pub(super) fn handle_stopped(&self, handle: u64) -> bool {
         self.handles.get(&handle).is_none_or(|h| h.stopped)
+    }
+    pub(super) fn apply_tick_refresh(
+        &mut self,
+        id: InstanceId,
+        handle: u64,
+        tick_count: i64,
+        base: (f32, f32, mod_api::SoundEffects),
+        backend: &mut impl Backend,
+    ) {
+        let Some((base_volume, base_pitch, effects)) =
+            self.test_playback_parameters(id, false, base)
+        else {
+            self.cancel_playback(id, backend);
+            return;
+        };
+        let instance = self.instances.get_mut(&id).expect("present");
+        let pitch_edited = base_pitch.to_bits() != instance.pitch.to_bits();
+        let (v, source) = (instance.volume_with(base_volume), instance.source);
+        let pitch = Self::calculate_pitch(instance.pitch_with(base_pitch));
+        let position = instance.position;
+        let volume = self.calculate_volume(v, source);
+        if let Some(h) = self.handles.get_mut(&handle) {
+            h.pitch_edited = pitch_edited;
+        }
+        if let Some(c) = self.handles.get(&handle).and_then(handle_channel) {
+            backend.update_channel(c, volume, pitch, position, effects);
+        }
+        let instance = self.instances.get_mut(&id).expect("present");
+        if instance.looping
+            && tick_count % 10 == 0
+            && volume > 0.0
+            && self.listening
+            && let (Some(sound), Some(subtitle)) = (instance.sound.clone(), instance.event.clone())
+        {
+            let distance = sound.attenuation_distance(instance.volume_with(base_volume));
+            self.notify(id, subtitle, distance);
+        }
     }
     fn tick_in_game(&mut self, ctx: &TickContext, backend: &mut impl Backend) {
         self.tick_count += 1;
         for id in std::mem::take(&mut self.queued_tickable) {
             self.play(id, backend);
         }
+        let stage = self.should_stage_play_sound();
         let mut ticking = std::mem::take(&mut self.ticking_scratch);
         ticking.clear();
         ticking.extend(self.ticking.iter().copied());
@@ -1691,36 +1781,14 @@ impl SoundEngine {
                 self.stop(id, backend);
                 continue;
             }
-            let Some((base_volume, base_pitch, effects)) = self.playback_parameters(id, false)
-            else {
-                self.cancel_playback(id, backend);
-                continue;
-            };
-            let instance = self.instances.get_mut(&id).expect("present");
-            let pitch_edited = base_pitch.to_bits() != instance.pitch.to_bits();
-            let (v, source) = (instance.volume_with(base_volume), instance.source);
-            let pitch = Self::calculate_pitch(instance.pitch_with(base_pitch));
-            let position = instance.position;
-            let volume = self.calculate_volume(v, source);
+            let base = (instance.volume, instance.pitch, instance.effects);
             let Some(handle) = self.channel_of(id) else {
                 continue;
             };
-            if let Some(h) = self.handles.get_mut(&handle) {
-                h.pitch_edited = pitch_edited;
-            }
-            if let Some(c) = self.handles.get(&handle).and_then(handle_channel) {
-                backend.update_channel(c, volume, pitch, position, effects);
-            }
-            let instance = self.instances.get_mut(&id).expect("present");
-            if instance.looping
-                && self.tick_count % 10 == 0
-                && volume > 0.0
-                && self.listening
-                && let (Some(sound), Some(subtitle)) =
-                    (instance.sound.clone(), instance.event.clone())
-            {
-                let distance = sound.attenuation_distance(instance.volume_with(base_volume));
-                self.notify(id, subtitle, distance);
+            if stage {
+                self.stage_tick_refresh(id, handle, self.tick_count);
+            } else {
+                self.apply_tick_refresh(id, handle, self.tick_count, base, backend);
             }
         }
         let mut removed = std::mem::take(&mut self.removed_scratch);

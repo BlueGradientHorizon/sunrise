@@ -27,7 +27,7 @@ use sunrise_client::{
     particles::{ParticleOptions, ParticleType},
     random_source,
     scoreboard::pushable_by,
-    sound_engine::{BLOCKS, CartSound, PlayResult, SoundInstance, Sounds},
+    sound_engine::{BLOCKS, CartSound, PlayResult, SoundInstance},
 };
 use sunrise_core::{
     geometry::{Aabb, Vec3, trig},
@@ -2051,7 +2051,7 @@ impl Game<'_> {
         for cart in &carts {
             if !self.cart_sounds.contains(&cart.id) {
                 let instance = SoundInstance::minecart(cart, random_source::create());
-                let (_, res) = self.audio.play_instance(instance, false);
+                let (_, res) = self.play_sound_instance(instance, false);
                 if res != PlayResult::NotStarted {
                     self.cart_sounds.insert(cart.id);
                 }
@@ -2065,7 +2065,7 @@ impl Game<'_> {
             for underwater in [true, false] {
                 let instance =
                     SoundInstance::riding_minecart(cart, underwater, random_source::create());
-                let (_, res) = self.audio.play_instance(instance, false);
+                let (_, res) = self.play_sound_instance(instance, false);
                 if res == PlayResult::NotStarted {
                     started = false;
                 }

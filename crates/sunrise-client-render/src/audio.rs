@@ -1546,6 +1546,29 @@ impl Audio {
         self.engine.set_loop_context(context);
         self.engine.notify_loaded();
     }
+    /// Enable or disable staging `play_sound` decisions for `Game` to dispatch with `ClientHost`.
+    pub fn set_play_sound_hooks(&mut self, enabled: bool) {
+        self.engine.set_play_sound_hooks(enabled);
+    }
+    /// True while staged `play_sound` decisions are waiting for `Game` to fire and apply.
+    pub fn has_pending_play_sound(&self) -> bool {
+        self.engine.has_pending_play_sound()
+    }
+    /// Pop the next staged `play_sound` decision in FIFO order.
+    pub fn next_pending_play_sound(
+        &mut self,
+    ) -> Option<crate::sound_engine::hooks::PendingPlaySound> {
+        self.engine.next_pending_play_sound()
+    }
+    /// Apply a `play_sound` decision back to the same instance on this audio backend.
+    pub fn apply_play_sound(
+        &mut self,
+        pending: crate::sound_engine::hooks::PendingPlaySound,
+        decision: Option<mod_api::SoundPlay>,
+    ) -> PlayResult {
+        self.engine
+            .apply_play_sound(pending, decision, &mut self.backend)
+    }
     fn with_output(
         root: &ResourceSource,
         registry: SoundRegistry,
