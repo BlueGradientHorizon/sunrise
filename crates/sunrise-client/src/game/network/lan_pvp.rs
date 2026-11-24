@@ -74,6 +74,9 @@ pub(super) struct Strike {
     /// The weapon's `minecraft:ignite` (Fire Aspect) on the victim, in
     /// seconds (`EnchantmentHelper.doPostAttackEffects`).
     ignite: f32,
+    /// The weapon taken before the hit, for mods' own `post_attack` kinds
+    /// after it (lethal Thorns may empty the hand first).
+    pub(super) weapon: Option<sunrise_client::items::ItemStack>,
 }
 
 /// A player's blow on another player as the native hooks name it: the hit's
@@ -105,6 +108,7 @@ impl Strike {
             team: None,
             item: None,
             ignite: 0.0,
+            weapon: None,
         }
     }
 }
@@ -210,6 +214,8 @@ impl Game<'_> {
                 .map_or(0.0, |stack| self.items().weapon_disable_blocking(stack))
         };
         let ignite = self.weapon_ignite_seconds();
+        // `Player.getWeaponItem`: the main hand.
+        let weapon = self.native_post_attack_weapon(self.inventory[self.selected].as_ref());
         Some(Strike {
             attacker: self.lan_acting,
             creative: self.creative,
@@ -225,6 +231,7 @@ impl Game<'_> {
             team: self.player_team().cloned(),
             item: self.main_hand_custom_name(),
             ignite,
+            weapon,
         })
     }
 
@@ -370,6 +377,26 @@ impl Game<'_> {
             }),
         };
         result.unwrap_or(Ok(()))
+    }
+
+    /// `AbstractArrow.onHitEntity`: an arrow that hurt a player tells its owner, a player other
+    /// than the one hit, with `PLAY_ARROW_HIT_SOUND`, unless the arrow is silent.
+    pub(super) fn arrow_hit_sound_to_shooter(&self, p: &Projectile) {
+        let (Some(host), Some(shooter)) = (self.lan.as_ref(), p.guest) else {
+            return;
+        };
+        if self.lan_acting == Some(shooter) || self.entity_silent(p.id) {
+            return;
+        }
+        host.hub.send_to(
+            shooter,
+            &sunrise_protocol::packets::play::Clientbound::GameEvent(
+                sunrise_protocol::packets::play::GameEvent {
+                    event: sunrise_client::lan::hub::game_event::PLAY_ARROW_HIT_SOUND,
+                    param: 0.0,
+                },
+            ),
+        );
     }
 
     pub(super) fn player_attacker(&self, conn: Option<u32>) -> Option<(u32, Text)> {
@@ -736,9 +763,9 @@ impl Game<'_> {
                         let _ = p.ignite_for_ticks((sweep.ignite * 20.0) as i32);
                     }
                     // The swept player's thorns are dealt after the hit.
-                    return g.thorns_damage();
+                    return Some(g.thorns_damage());
                 }
-                Vec::new()
+                None
             })
         };
         let attacker_id = attacker.as_ref().map_or(attacker_id, |(id, _)| *id as i32);
@@ -750,7 +777,9 @@ impl Game<'_> {
                 continue;
             }
             let Victim::Guest(conn) = victim;
-            let thorns = self.guest_struck_by(conn, land).unwrap_or_default();
+            let Some(thorns) = self.guest_struck_by(conn, land).flatten() else {
+                continue;
+            };
             // doPostAttackEffects' victim side: its armour's thorns hurt the
             // attacker, as on a direct hit (pvp_land).
             let thorns_cause = self.player_attacker(victim.conn());
@@ -772,6 +801,256 @@ impl Game<'_> {
                     }
                 }
             }
+            // doPostAttackEffects' attacker side, after the victim's: the mod
+            // kinds of the weapon the attacker holds now (`getWeaponItem`).
+            let weapon = match sweep.attacker {
+                // The attacker's turn is over: their record holds the hand.
+                Some(conn) => self.lan.as_ref().and_then(|host| {
+                    let g = host.hub.guest(conn)?;
+                    self.native_post_attack_weapon(g.inventory[g.selected].as_ref())
+                }),
+                None => self.native_post_attack_weapon(self.inventory[self.selected].as_ref()),
+            };
+            if let (Some(weapon), Some((attacker, _))) = (weapon, &attacker) {
+                self.native_weapon_post_attack(
+                    &weapon,
+                    (*attacker, "minecraft:player"),
+                    (id as u32, "minecraft:player"),
+                    // The type `land` hurt the player with.
+                    "minecraft:player_attack",
+                );
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+pub(in crate::game) mod arrow_hit_sound_tests {
+    use super::{Victim, Who};
+    use std::fmt::Write as _;
+    use std::path::PathBuf;
+    use std::sync::{Arc, atomic::AtomicUsize, mpsc};
+    use sunrise_client::{
+        command::args::GameMode,
+        gamerules::Value,
+        lan::{Out, PlayerSender},
+        motion::PlayerMotion,
+        projectiles::{Hit, Projectile, ProjectileKind},
+    };
+    use sunrise_core::geometry::Vec3;
+    use sunrise_protocol::packets::play::Clientbound;
+
+    fn load_witness() -> Witness {
+        let value = std::env::var_os("SUNRISE_ARROW_HIT_DING_WITNESS").unwrap_or_else(|| {
+            panic!(
+                "SUNRISE_ARROW_HIT_DING_WITNESS is unset; run tools/test_arrow_hit_ding_parity.py, which records the witness"
+            )
+        });
+        let raw_path = PathBuf::from(value);
+        let path = if raw_path.is_dir() {
+            raw_path.join("arrow_hit_ding.json")
+        } else {
+            raw_path
+        };
+        let raw = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+            panic!(
+                "failed to read witness {} (record via tools/test_arrow_hit_ding_parity.py): {e}",
+                path.display()
+            )
+        });
+        serde_json::from_str(&raw).expect("valid 26.3 arrow-hit witness JSON")
+    }
+
+    #[derive(serde::Deserialize)]
+    struct Witness {
+        minecraft_version: String,
+        cases: Vec<WitnessCase>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct WitnessCase {
+        name: String,
+        shooter: String,
+        victim: String,
+        silent: bool,
+        pvp: bool,
+        victim_mode: String,
+        victim_hurt: bool,
+        victim_health_before_bits: String,
+        victim_health_after_bits: String,
+        alice_game_events: Vec<WireGameEvent>,
+        bob_game_events: Vec<WireGameEvent>,
+    }
+
+    #[derive(Debug, PartialEq, Eq, serde::Deserialize)]
+    struct WireGameEvent {
+        event: u8,
+        param_bits: String,
+        payload_hex: String,
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    struct CaseOutcome {
+        victim_hurt: bool,
+        victim_health_before_bits: String,
+        victim_health_after_bits: String,
+        alice_game_events: Vec<WireGameEvent>,
+        bob_game_events: Vec<WireGameEvent>,
+    }
+
+    fn hex(bytes: &[u8]) -> String {
+        let mut out = String::with_capacity(bytes.len() * 2);
+        for &b in bytes {
+            write!(out, "{b:02x}").unwrap();
+        }
+        out
+    }
+
+    fn float_bits_hex(value: f32) -> String {
+        format!("{:08x}", value.to_bits())
+    }
+
+    fn player_conn(name: &str) -> u32 {
+        match name {
+            "Alice" => 12,
+            "Bob" => 13,
+            other => panic!("unexpected witness player: {other}"),
+        }
+    }
+
+    /// Wire `ClientboundGameEventPacket` records sent to a guest connection.
+    fn game_events(receiver: &mpsc::Receiver<Out>) -> Vec<WireGameEvent> {
+        let mut events = Vec::new();
+        for sent in receiver.try_iter() {
+            let bodies = match sent {
+                Out::Packet(p) => vec![p],
+                Out::Packets(p) => p,
+                Out::Disconnect(_) => panic!("unexpected disconnect"),
+            };
+            for body in bodies {
+                let mut reader = sunrise_protocol::buf::Reader::new(&body);
+                let id = reader.varint().unwrap();
+                if let Ok(Clientbound::GameEvent(e)) = Clientbound::decode(id, reader.rest()) {
+                    events.push(WireGameEvent {
+                        event: e.event,
+                        param_bits: float_bits_hex(e.param),
+                        payload_hex: hex(&body),
+                    });
+                }
+            }
+        }
+        events
+    }
+
+    /// Run one recorded vanilla 26.3 arrow-hit case between guests 12 (Alice) and 13 (Bob).
+    fn run_case(case: &WitnessCase) -> CaseOutcome {
+        let shooter = player_conn(&case.shooter);
+        let victim = player_conn(&case.victim);
+        let victim_mode = match case.victim_mode.as_str() {
+            "survival" => GameMode::Survival,
+            "creative" => GameMode::Creative,
+            other => panic!("unexpected witness victim_mode: {other}"),
+        };
+        let mut outcome = None;
+        crate::game::native_guest_turn_tests::with_guests(|game| {
+            let mut receivers = Vec::new();
+            for conn in [12, 13] {
+                let (tx, rx) = mpsc::channel();
+                game.lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .update_guest(conn, |g| {
+                        g.sender = PlayerSender::new(tx, Arc::new(AtomicUsize::new(0)));
+                    })
+                    .unwrap();
+                receivers.push(rx);
+            }
+            let mut body = PlayerMotion::new(game.motion, Vec3::new(3.0, 64.0, 5.0)).unwrap();
+            body.entity_id = victim as i32;
+            game.lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .update_guest(victim, |g| {
+                    g.motion = Some(Box::new(body));
+                    g.load_timeout = 0;
+                })
+                .unwrap();
+            assert!(game.ui.rules.set("pvp", Value::Bool(case.pvp)));
+            game.as_guest(victim, |g| {
+                g.set_game_mode(GameMode::Creative);
+                if victim_mode != GameMode::Creative {
+                    g.set_game_mode(victim_mode);
+                }
+            })
+            .unwrap();
+            for g in &game.lan.as_ref().unwrap().hub.guests {
+                g.sender.flush();
+            }
+            for rx in &receivers {
+                while rx.try_recv().is_ok() {}
+            }
+            let health_before = game.lan.as_ref().unwrap().hub.guest(victim).unwrap().health;
+            let mut arrow = Projectile::new(
+                ProjectileKind::Arrow {
+                    base_damage: 2.0,
+                    critical: false,
+                    effect: None,
+                },
+                Vec3::new(1.0, 65.0, 5.0),
+                Some(Who::Player),
+            );
+            arrow.guest = Some(shooter);
+            arrow.velocity = Vec3::new(0.0, -1.0, 0.0);
+            if case.silent {
+                game.persist.raw.insert(
+                    arrow.id,
+                    sunrise_core::nbt::Tag::compound([("Silent", sunrise_core::nbt::Tag::Byte(1))]),
+                );
+            }
+            let hit = Hit::Entity {
+                who: Who::Player,
+                at: Vec3::new(2.7, 65.0, 5.0),
+            };
+            game.projectile_hits_player(&arrow, hit, Victim::Guest(victim))
+                .unwrap();
+            let health_after = game.lan.as_ref().unwrap().hub.guest(victim).unwrap().health;
+            for g in &game.lan.as_ref().unwrap().hub.guests {
+                g.sender.flush();
+            }
+            outcome = Some(CaseOutcome {
+                victim_hurt: health_after < health_before,
+                victim_health_before_bits: float_bits_hex(health_before),
+                victim_health_after_bits: float_bits_hex(health_after),
+                alice_game_events: game_events(&receivers[0]),
+                bob_game_events: game_events(&receivers[1]),
+            });
+        });
+        outcome.unwrap()
+    }
+
+    /// Vanilla 26.3 witness recorded by `tools/test_arrow_hit_ding_parity.py`: exact wire `ClientboundGameEventPacket` and victim health bits on player arrow hits.
+    #[test]
+    #[ignore = "run by tools/test_arrow_hit_ding_parity.py"]
+    fn an_arrow_that_hurts_another_player_dings_its_shooter() {
+        run_an_arrow_that_hurts_another_player_dings_its_shooter();
+    }
+
+    pub(in crate::game) fn run_an_arrow_that_hurts_another_player_dings_its_shooter() {
+        let witness = load_witness();
+        assert_eq!(witness.minecraft_version, "26.3");
+        assert!(!witness.cases.is_empty());
+        for case in witness.cases {
+            let actual = run_case(&case);
+            let expected = CaseOutcome {
+                victim_hurt: case.victim_hurt,
+                victim_health_before_bits: case.victim_health_before_bits,
+                victim_health_after_bits: case.victim_health_after_bits,
+                alice_game_events: case.alice_game_events,
+                bob_game_events: case.bob_game_events,
+            };
+            assert_eq!(actual, expected, "26.3 witness case {}", case.name);
         }
     }
 }

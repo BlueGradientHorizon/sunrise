@@ -1437,6 +1437,11 @@ pub struct Extra {
     /// attribute modifiers is worn or it is read. Mob logic still reads
     /// `MobType::attributes` and `attributes` above.
     pub live: crate::living_attributes::LivingAttributes,
+    /// A sulfur cube's fuse countdown and synced `MAX_FUSE`.
+    pub sulfur_fuse: sulfur_cube::Fuse,
+    /// Whether `live` already holds the `oxygen_bonus` instance that
+    /// `LivingEntity.decreaseAirSupply` makes (`ai::make_oxygen_bonus`).
+    pub oxygen_bonus_made: bool,
     /// The knockback resistance modifiers of the items it wears or holds.
     pub gear_knockback: Option<Box<GearKnockback>>,
     /// What the game last read from the hands' `minecraft:death_protection`
@@ -2075,6 +2080,9 @@ pub enum MobEvent {
         amount: f32,
         from: [f64; 3],
         kind: &'static str,
+        /// The mob whose main-hand weapon's `post_attack` effects follow the
+        /// hit when it lands (a spear's stab).
+        wielder: Option<u32>,
     },
     /// `ElderGuardian`'s curse on players within 50 blocks; a silent elder's
     /// shows the apparition without the curse sound.

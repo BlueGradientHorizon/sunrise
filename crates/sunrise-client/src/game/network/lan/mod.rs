@@ -674,9 +674,11 @@ pub(super) fn mob_meta(
             }
             defaults.push((18, serializer::INT, Value::Int(1)));
             if kind == "minecraft:sulfur_cube" {
-                let fuse = sunrise_client::mobs::sulfur_cube::fuse(m);
-                if fuse >= 0 {
-                    meta.push((19, serializer::INT, Value::Int(fuse)));
+                // The synced MAX_FUSE, not the countdown: a late tracker gets the value the
+                // fuse was set from, and only a change of it reaches those already tracking.
+                let max = sunrise_client::mobs::sulfur_cube::max_fuse(m);
+                if max != -1 {
+                    meta.push((19, serializer::INT, Value::Int(max)));
                 }
                 defaults.push((19, serializer::INT, Value::Int(-1)));
                 if e.scratch[3] != 0 {
@@ -2860,6 +2862,8 @@ impl Game<'_> {
         // Apply its packets before taking the snapshot too.
         self.tick_lan_packets();
         if self.lan.is_none() {
+            // No one else to tell: the host's `broadcastToAdmins` lines go.
+            self.admin_feedback.clear();
             if self.level_pass.running.is_none() {
                 self.level_pass.packets_drained = false;
             }
@@ -2874,7 +2878,7 @@ impl Game<'_> {
             self.run_level_teleports();
         }
         if !self.admin_feedback.is_empty() {
-            self.send_admin_feedback(None);
+            self.send_admin_feedback();
         }
         // An animal whose rider left the game (or the level) stops taking
         // its input.
@@ -5862,7 +5866,7 @@ pub(in crate::game) mod tests {
 }
 
 #[cfg(test)]
-mod sources_tests {
+pub(in crate::game) mod sources_tests {
     use super::sync::overlay_key;
     use sunrise_world::loot::PackOverlay;
 

@@ -7,6 +7,7 @@
 use crate::{font::Font, text::Text};
 pub use mod_api::client::hud_layout::{Blend, HeartKind, PoseOp};
 use std::borrow::Cow;
+use sunrise_core::identifier::Identifier;
 use sunrise_core::random::{LegacyRandom, RandomSource};
 
 /// One `GuiGraphicsExtractor` call.
@@ -40,6 +41,19 @@ pub enum GuiDraw {
     Blit {
         texture: Cow<'static, str>,
         blend: Blend,
+        x: i32,
+        y: i32,
+        w: i32,
+        h: i32,
+        uv: [f32; 2],
+        src: [i32; 2],
+        tex: [i32; 2],
+        color: u32,
+    },
+    /// `blit(pipeline, id, x, y, u, v, w, h, srcW, srcH, texW, texH, color)` of the standalone
+    /// texture `id`, an exact resource name ([`crate::hud::HudBatch::texture`]).
+    Texture {
+        id: Identifier,
         x: i32,
         y: i32,
         w: i32,
@@ -558,6 +572,13 @@ pub struct StatusBarHeights {
     right: StatusColumn,
 }
 
+impl StatusBarHeights {
+    /// The left and right columns' heights (NeoForge's `Hud.leftHeight`, `rightHeight`).
+    pub fn heights(&self) -> [i32; 2] {
+        [self.left.height, self.right.height]
+    }
+}
+
 struct StatusColumn {
     height: i32,
 }
@@ -950,14 +971,26 @@ fn paint_with<'a>(
                     r.v0 = v0;
                 }
                 let at = [*x as f32, *y as f32, *w as f32, *h as f32];
+                // A whole GUI sprite draws as its `gui.scaling` says (`GuiGraphicsExtractor.blitSprite`).
+                let draw = |batch: &mut crate::hud::HudBatch,
+                            key: &str,
+                            rect: crate::hud::Rect,
+                            at: [f32; 4],
+                            color: u32| {
+                    if region.is_none() && !effect {
+                        crate::ui::draw_whole_sprite(batch, atlas, key, rect, at, color);
+                    } else {
+                        batch.rect_uv(at[0], at[1], at[2], at[3], rect, color);
+                    }
+                };
                 match crate::hud::sprite_modifiers::draws(atlas, sprite, r, at, abgr(*color)) {
                     // A Polytone screen sprite modifier: the sprite changed, then its overlays.
                     Some(draws) => {
                         for d in draws {
-                            batch.rect_uv(d.at[0], d.at[1], d.at[2], d.at[3], d.rect, d.color);
+                            draw(batch, &d.key, d.rect, d.at, d.color);
                         }
                     }
-                    None => batch.rect_uv(at[0], at[1], at[2], at[3], r, abgr(*color)),
+                    None => draw(batch, sprite.as_ref(), r, at, abgr(*color)),
                 }
                 if *blend == Blend::Crosshair {
                     batch.invert_since(start);
@@ -1000,6 +1033,17 @@ fn paint_with<'a>(
                     Blend::Crosshair => batch.invert_since(start),
                 }
             }
+            GuiDraw::Texture {
+                id,
+                x,
+                y,
+                w,
+                h,
+                uv,
+                src,
+                tex,
+                color,
+            } => batch.texture(atlas, id, [*x, *y, *w, *h], *uv, [*src, *tex], abgr(*color)),
             GuiDraw::Item {
                 slot,
                 x,
