@@ -152,6 +152,7 @@ client	client_reload::texture_atlases::tests	impl mod_api::Hooks for Checker	-	#
 client	client_reload::texture_atlases::tests	impl mod_api::Hooks for Maps	-	#[cfg(test)]	trait_impl	-	trait-impl
 client	client_tick_steps	impl Game<'_>	client_tick_steps	-	method	test	called
 client	client_tick_steps	impl Game<'_>	tick_client_lead	-	method	game	called
+client	client_tick_steps::tests	impl EventLoopCtl for NoLoop	-	#[cfg(test)]	trait_impl	-	trait-impl
 client	clipboard	impl Game<'_>	clipboard_text	-	method	generated	called
 client	clipboard	impl Game<'_>	set_clipboard_text	-	method	generated	called
 client	clipboard	impl Game<'_>	types_text	-	method	game	called
@@ -3169,6 +3170,7 @@ server	levels	impl Game<'_>	server_resident_entity	-	method	client,game	called
 server	levels	impl Game<'_>	target_removed	-	method	client,game	called
 server	levels	impl Game<'_>	tick_first_level	-	method	game	called
 server	levels	impl Game<'_>	tick_server	-	method	test	called
+server	levels	impl Game<'_>	tick_server_first	-	method	game,test	called
 server	levels	impl Game<'_>	with_resident_slot	-	method	test	called
 server	levels	impl Default for Pass	-	-	trait_impl	-	trait-impl
 server	levels::tests	impl log::Log for LogCapture	-	#[cfg(test)]	trait_impl	-	trait-impl

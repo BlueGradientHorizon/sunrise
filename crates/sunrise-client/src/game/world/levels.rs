@@ -3610,7 +3610,7 @@ mod request_save_tests {
 
 impl Game<'_> {
     /// `Game::tick` as a server runs it for its first level: no window lead, which only the window's `Game` has.
-    pub(in crate::game::server_side) fn tick_server_first(&mut self) -> Result<()> {
+    pub(in crate::game) fn tick_server_first(&mut self) -> Result<()> {
         if !self.is_logical_server() {
             return Err("client-role game cannot tick a server level".into());
         }
