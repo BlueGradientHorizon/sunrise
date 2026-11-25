@@ -243,7 +243,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
     }
     /// `TntBlock.prime` without a source: `new PrimedTnt` draws its push angle
     /// from the level random, then the primed sound and `prime_fuse` event.
-    pub fn prime_tnt(&mut self, pos: BlockPos) {
+    pub(crate) fn prime_tnt(&mut self, pos: BlockPos) {
         let rot = self.random().next_double() * f64::from(std::f32::consts::TAU);
         self.emit(LevelEvent::PrimeTnt { pos, rot });
         self.sound(
@@ -302,7 +302,12 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         });
     }
     /// `Level.gameEvent(event, pos, Context.of(state))`.
-    pub fn game_event_state(&mut self, pos: BlockPos, event: &'static str, state: BlockStateId) {
+    pub(crate) fn game_event_state(
+        &mut self,
+        pos: BlockPos,
+        event: &'static str,
+        state: BlockStateId,
+    ) {
         self.level.emit(LevelEvent::GameEvent {
             pos,
             event,
@@ -312,7 +317,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
     pub fn block_of(&self, state: BlockStateId) -> BlockId {
         self.b.table.block(state)
     }
-    pub fn is_in_valid_bounds(&self, pos: BlockPos) -> bool {
+    pub(crate) fn is_in_valid_bounds(&self, pos: BlockPos) -> bool {
         pos.y >= self.level.min_y()
             && pos.y < self.level.max_y()
             && (-30_000_000..30_000_000).contains(&pos.x)
@@ -323,7 +328,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
     pub fn schedule_tick(&mut self, pos: BlockPos, block: BlockId, delay: i32) -> ScheduleResult {
         self.schedule_tick_priority(pos, block, delay, TickPriority::Normal)
     }
-    pub fn schedule_tick_priority(
+    pub(crate) fn schedule_tick_priority(
         &mut self,
         pos: BlockPos,
         block: BlockId,
@@ -347,7 +352,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
     pub fn set_block(&mut self, pos: BlockPos, state: BlockStateId, flags: i32) -> bool {
         self.set_block_limit(pos, state, flags, flags::UPDATE_LIMIT)
     }
-    pub fn set_block_and_update(&mut self, pos: BlockPos, state: BlockStateId) -> bool {
+    pub(crate) fn set_block_and_update(&mut self, pos: BlockPos, state: BlockStateId) -> bool {
         self.set_block(pos, state, flags::UPDATE_ALL)
     }
     pub fn set_block_limit(
@@ -578,11 +583,8 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
     }
     /// `Block.spawnDestroyParticles`: fire spawns none, straw beds their own.
     pub(crate) fn destroy_particles(&mut self, pos: BlockPos, state: BlockStateId) {
-        let data = self.b.data(state);
-        if data.is(Class::StrawBed) {
-            self.level_event(2014, pos, state.0 as i32);
-        } else if !(data.is(Class::BaseFire) || data.is(Class::Fire) || data.is(Class::SoulFire)) {
-            self.level_event(2001, pos, state.0 as i32);
+        if let Some(id) = self.b.destroy_particle_event(state) {
+            self.level_event(id, pos, state.0 as i32);
         }
     }
     pub fn drop_resources(&mut self, state: BlockStateId, pos: BlockPos) {
@@ -601,7 +603,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         }
     }
     /// `Block.updateOrDestroy`.
-    pub fn update_or_destroy(
+    pub(crate) fn update_or_destroy(
         &mut self,
         old: BlockStateId,
         new: BlockStateId,
@@ -667,7 +669,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         let orientation = self.initial_orientation(None, None);
         self.update_neighbors_at_oriented(pos, block, orientation);
     }
-    pub fn update_neighbors_at_oriented(
+    pub(crate) fn update_neighbors_at_oriented(
         &mut self,
         pos: BlockPos,
         block: BlockId,
@@ -681,11 +683,16 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
             index: 0,
         });
     }
-    pub fn update_neighbors_at_except(&mut self, pos: BlockPos, block: BlockId, skip: Direction) {
+    pub(crate) fn update_neighbors_at_except(
+        &mut self,
+        pos: BlockPos,
+        block: BlockId,
+        skip: Direction,
+    ) {
         let orientation = self.initial_orientation(None, None);
         self.update_neighbors_at_except_oriented(pos, block, skip, orientation);
     }
-    pub fn update_neighbors_at_except_oriented(
+    pub(crate) fn update_neighbors_at_except_oriented(
         &mut self,
         pos: BlockPos,
         block: BlockId,
@@ -707,7 +714,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
     pub fn neighbor_changed_at(&mut self, pos: BlockPos, block: BlockId) {
         self.neighbor_changed_at_oriented(pos, block, None);
     }
-    pub fn neighbor_changed_at_oriented(
+    pub(crate) fn neighbor_changed_at_oriented(
         &mut self,
         pos: BlockPos,
         block: BlockId,
@@ -719,7 +726,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
             orientation,
         });
     }
-    pub fn neighbor_changed_full(
+    pub(crate) fn neighbor_changed_full(
         &mut self,
         state: BlockStateId,
         pos: BlockPos,
@@ -728,7 +735,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
     ) {
         self.neighbor_changed_full_oriented(state, pos, block, None, moved);
     }
-    pub fn neighbor_changed_full_oriented(
+    pub(crate) fn neighbor_changed_full_oriented(
         &mut self,
         state: BlockStateId,
         pos: BlockPos,
@@ -744,7 +751,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
             moved,
         });
     }
-    pub fn neighbor_shape_changed(
+    pub(crate) fn neighbor_shape_changed(
         &mut self,
         direction: Direction,
         pos: BlockPos,
