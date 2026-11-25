@@ -147,15 +147,21 @@
     {
       "edge": "sunrise-mod-package -> sunrise-shader-api",
       "reason": "The optional `index` feature validates shader packages in the registry index; the portable crates take sunrise-mod-package without it."
+    },
+    {
+      "edge": "sunrise-client -> sunrise-optifine",
+      "reason": "OptiFine entity models and random textures are client-only behind the `client` feature; server-only builds omit them."
+    },
+    {
+      "edge": "sunrise-client -> sunrise-theme",
+      "reason": "UI theme tokens and fonts are client-only behind the `client` feature; server-only builds omit them."
     }
   ],
   "allowed": [
     "sunrise-client -> sunrise-dualsense",
     "sunrise-client -> sunrise-friends",
-    "sunrise-client -> sunrise-optifine",
     "sunrise-client -> sunrise-shader-api",
     "sunrise-client -> sunrise-shaders",
-    "sunrise-client -> sunrise-theme",
     "sunrise-client-lib -> sunrise-dualsense",
     "sunrise-client-lib -> sunrise-mcp",
     "sunrise-client-lib -> sunrise-optifine",

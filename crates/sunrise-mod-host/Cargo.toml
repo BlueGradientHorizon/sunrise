@@ -26,7 +26,8 @@ object = { version = "0.39", default-features = false, features = ["read", "std"
 workspace = true
 
 [features]
-default = ["audio", "controllers", "sunrise-extras"]
+default = ["client", "audio", "controllers", "sunrise-extras"]
+client = ["sunrise-client/client"]
 audio = ["sunrise-client/audio"]
 controllers = ["sunrise-client/controllers"]
 sunrise-extras = ["sunrise-client/sunrise-extras"]
