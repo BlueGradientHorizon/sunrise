@@ -84,6 +84,13 @@ fn face_bounds(positions: impl IntoIterator<Item = [f32; 3]>) -> [[f32; 3]; 2] {
 }
 
 impl StandaloneGeometry {
+    /// The standalone models and every block state's model of `pack`.
+    ///
+    /// With `block_entity_render`, a state whose block has a special renderer also records it
+    /// (`StateModel::special`) and widens its bounds by that part's default geometry. With `None`
+    /// no state records a special part and its bounds hold the block-state faces alone: only
+    /// for a caller that reads `prepared_upload`, which holds the standalone slots and no state.
+    /// A `Game` always passes its renderer, joined before the first world frame.
     pub(super) fn new(
         pack: &super::PackResources,
         gui: &super::UiResources,
