@@ -595,6 +595,7 @@ mod tests {
     #[ignore = "daily"]
     fn mod_host_releases_and_grabs_the_pointer_as_vanilla_does() {
         use super::*;
+        use mod_api::prelude::ClientInputClientHost;
         use sunrise_assets::resource_source::{ResourceRoot, ResourceSource};
 
         let root = PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
