@@ -26,6 +26,7 @@ impl SideOps for crate::game::server_side::ServerState {
         { game.server_handle_mob_events_reusable(events) }
     }
 }
+#[cfg(feature = "client")]
 #[allow(unused_variables)]
 impl SideOps for crate::game::client_side::ClientState {
     fn side_handle_mob_events_reusable(

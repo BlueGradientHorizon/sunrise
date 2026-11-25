@@ -1,6 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// A play packet from the server reached the window's game, decoded,
     /// just before the game handles it (`Connection.genericsFtw` handing it

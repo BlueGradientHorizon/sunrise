@@ -9,6 +9,7 @@ pub(in crate::game::client_side) use sunrise_protocol::packets::configuration::{
     ClientInformation, Transfer,
 };
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn client_refresh_infiniburn(&mut self) {
         self.world.infiniburn = Some(self.resolve_level_infiniburn(self.dimension_type()));

@@ -2,6 +2,7 @@
 pub(in crate::game::server_side) use super::{
     Game, billboard_axes, creatures::ProjectileHitter, lan_mobs::guest_bounds,
 };
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::fishing_client::*;
 #[allow(unused_imports)]

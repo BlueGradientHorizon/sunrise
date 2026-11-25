@@ -1,3 +1,4 @@
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use super::native_shaders::{
     fingerprint, outcome, refused, remember,
@@ -6,16 +7,22 @@ pub(in crate::game::server_side) use super::native_shaders::{
 pub(in crate::game::server_side) use super::remote_camera::CameraFogEffects;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use super::{Dim, Game, Screen};
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::shader_packs::BlockIdVotes;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::shader_packs::PackIds;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::shader_packs::PickedPack;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::shader_packs::TogglePlan;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::shader_packs::picks_material_pack;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::shader_packs::*;
 #[allow(unused_imports)]

@@ -209,6 +209,7 @@ fn report_tooltip_prepare_error(err: &TooltipComponentPrepareError) {
     log::error!("tooltip component preparation failed: {err}");
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `getEmptyBundleDescriptionTextHeight`'s lines: the empty bundle's description wrapped at
     /// the grid's width in `default_font`.
@@ -796,6 +797,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -966,10 +968,12 @@ mod tests {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "tooltip_bundle_tests.rs"]
 mod bundle_tests;
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "tooltip_component_tests.rs"]
 mod component_tests;

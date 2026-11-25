@@ -617,6 +617,7 @@ pub(in crate::game) fn collect_dragon_breath(
     }
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// A client's own effects (`LivingEntity.tickEffects` on the client,
     /// `MobEffectInstance.tickClient`): they count down and blend, and the
@@ -898,6 +899,7 @@ pub(in crate::game::client_side) fn client_tick_effects(
     *darkness = super::sculk::darkness_blend_tick(effects, *darkness);
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
     #[allow(unused_imports)]
@@ -1857,6 +1859,7 @@ pub(in crate::game) fn sound_on_added(effect: &str) -> Option<&'static str> {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "potions/cloud_water_tests.rs"]
 pub(in crate::game) mod cloud_water_tests;

@@ -9,6 +9,7 @@ pub(in crate::game::client_side) use sunrise_client::{
     chunk_map::ClientChunkRange, fast_hash::FxHashSet,
 };
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Every column goes with the client level, including hidden ring slots.
     pub(in crate::game) fn forget_all_remote_columns(&mut self) -> Vec<Column> {

@@ -176,6 +176,7 @@ fn recipe(id: String, kind: RecipeKind) -> Recipe {
     }
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn registered_recipe_book_category(
         &mut self,
@@ -449,6 +450,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// A new play session (`Login`): what the last server sent is gone.
     pub(in crate::game::client_side) fn forget_synced_recipes(&mut self) {
@@ -519,6 +521,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
     /// A part with a malformed serializer refuses the whole update: the

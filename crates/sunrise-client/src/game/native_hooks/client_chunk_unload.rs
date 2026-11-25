@@ -1,5 +1,6 @@
 use super::*;
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Chunk `chunk` (`[x, z]`, in chunks) of `dimension` is leaving this
     /// client's level (NeoForge's `ChunkEvent.Unload` on the client), with its

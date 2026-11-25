@@ -1,5 +1,6 @@
 use super::*;
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Read-only client dispatch at the actual mid-setupAnim seam.
     pub(in crate::game) fn native_humanoid_setup_anim(

@@ -437,6 +437,7 @@ fn detach_columns_for_free(world: &mut ViewedWorld) -> ChunkMap {
     chunks
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
     use super::*;

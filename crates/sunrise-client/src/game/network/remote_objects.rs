@@ -33,6 +33,7 @@ pub(in crate::game) fn lerp_yaw_step(yaw: f32, target: f32, steps: u32) -> f32 {
     }
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `handleAddEntity` for an object type; false when `kind` isn't one.
     /// Hanging entities come at their block, with their direction as the
@@ -637,6 +638,7 @@ fn painting_facing(direction: i32) -> Option<u8> {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
     use super::*;

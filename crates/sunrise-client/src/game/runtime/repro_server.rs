@@ -1,41 +1,59 @@
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use super::event_loop::EventLoopCtl;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use super::input_trace::{InputOrigin, TraceEvent, TraceKind};
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use super::owner_link::{ControlRequest, OwnerRequest};
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use super::{Game, Screen};
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::repro::ENTITIES_TICKS;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::repro::Export;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::repro::FORMAT;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::repro::HELP;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::repro::KEPT_RECORDINGS;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::repro::KEYFRAME_TICKS;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::repro::MAX_INPUT_EVENTS;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::repro::MAX_RECORDING_SECS;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::repro::PendingReplay;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::repro::REPLAY_COMMANDS;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::repro::REPLAY_TIMEOUT_SECS;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::repro::Recording;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::repro::Replay;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::repro::Repro;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::repro::SessionMeta;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::repro::*;
 #[allow(unused_imports)]

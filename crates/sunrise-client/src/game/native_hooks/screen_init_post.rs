@@ -1,6 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// A screen initialized or resized (`ScreenEvent.Init.Post`).
     pub(in crate::game) fn native_screen_init_post(

@@ -50,6 +50,7 @@ pub(in crate::game) struct Open {
     pub(in crate::game) show_armor: bool,
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Whether the mount menu is the open screen.
     pub(in crate::game::client_side) fn mount_active(&self) -> bool {
@@ -488,10 +489,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "tests/mount_menu_reach_tests.rs"]
 pub(in crate::game) mod reach_tests;
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;

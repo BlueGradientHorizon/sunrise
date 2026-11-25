@@ -12,6 +12,7 @@ use sunrise_core::{geometry::Direction, position::BlockPos};
 #[allow(unused_imports)]
 use sunrise_world::{level::classes::Class, worldgen::live::LiveFeatures};
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `BonemealEvent` for the acting hand's bone meal `stack` on `pos`:
     /// the event's answer, and the stack as the mods left it, which goes
@@ -119,6 +120,7 @@ pub(in crate::game) fn install_live_features(
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::{Arc, build_live_features, install_live_features};

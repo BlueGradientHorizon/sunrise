@@ -2,6 +2,7 @@
 use super::*;
 use crate::game::api_values::block_state::block_listens;
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn with_break_progress_positions(
         &mut self,

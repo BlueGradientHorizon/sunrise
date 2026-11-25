@@ -1,5 +1,6 @@
 #[allow(unused_imports)]
 use super::*;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 use crate::game::host::draw::GameDrawContext;
 #[allow(unused_imports)]

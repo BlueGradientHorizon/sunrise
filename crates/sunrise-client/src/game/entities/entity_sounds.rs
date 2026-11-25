@@ -7,6 +7,7 @@ pub(in crate::game) fn saved_silent(extra: Option<&Tag>) -> bool {
     sunrise_client::save::number(extra.and_then(|tag| tag.get("Silent"))).unwrap_or(0) != 0
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `Entity.isSilent` for the player this window plays.
     #[allow(dead_code)]

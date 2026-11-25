@@ -5,6 +5,7 @@ pub(in crate::game::client_side) use crate::game::remote::status::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::skins;
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn remote_status(&self) -> Option<serde_json::Value> {
         let r = self.remote.as_ref()?;

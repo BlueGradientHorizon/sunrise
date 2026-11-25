@@ -491,6 +491,7 @@ fn swirls(list: &Particles, builtin: &Builtin) -> Vec<ParticleOptions> {
 
 use super::villager_client::villager_data;
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// SetEntityData for a mob of the server's.
     pub(in crate::game::client_side) fn remote_mob_data(
@@ -560,6 +561,7 @@ pub(in crate::game) fn client_defaults(m: &mut Mob) {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
@@ -1789,9 +1791,11 @@ pub(in crate::game) mod tests {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "remote_mob_data/pet_pose_meta_tests.rs"]
 mod pet_pose_meta_tests;
+#[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "remote_mob_data/witch_drink_meta_tests.rs"]
 mod witch_drink_meta_tests;

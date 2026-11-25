@@ -1,6 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// After the whole HUD walk, including under F1 (`RenderGuiEvent.Post`). Place a box with
     /// `corners.place` (boxes stack away from their edge) and

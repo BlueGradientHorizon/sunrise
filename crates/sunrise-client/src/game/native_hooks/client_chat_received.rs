@@ -1,6 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// NeoForge's `ClientChatReceivedEvent`: a chat line from the server is
     /// about to show, once Chat Delay lets it through. `system` is a system

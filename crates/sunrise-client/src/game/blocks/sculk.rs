@@ -23,6 +23,7 @@ fn center(p: (i32, i32, i32)) -> [f64; 3] {
     ]
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn client_post_block_game_event(
         &mut self,
@@ -390,6 +391,7 @@ pub(in crate::game) fn darkness_blend_added(e: &EffectInstance, blend: bool) -> 
     (factor, factor)
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod shriek_capture_tests {
     use super::*;
@@ -593,6 +595,7 @@ pub(in crate::game) mod shriek_capture_tests {
 }
 
 // Milking and shearing farm animals; lives here for `TEST_POSTED_EVENTS`.
+#[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "tests/farm_animal_interaction_tests.rs"]
 pub(in crate::game) mod farm_animal_interaction_tests;

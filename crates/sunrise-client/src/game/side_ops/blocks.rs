@@ -112,6 +112,7 @@ impl SideOps for crate::game::server_side::ServerState {
         { game.server_carry_pass(start) }
     }
 }
+#[cfg(feature = "client")]
 #[allow(unused_variables)]
 impl SideOps for crate::game::client_side::ClientState {
     fn side_encode_live_block_entity(

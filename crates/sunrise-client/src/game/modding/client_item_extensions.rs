@@ -298,6 +298,7 @@ fn bake_model(name: &str, model: &ModelPart) -> std::result::Result<Part, &'stat
     bake(name, model, MAX_ARMOR_MODEL_DEPTH)
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn prepare_client_item_extensions(
         gui: &UiResources,
@@ -332,6 +333,7 @@ fn hide_other_slots(part: &mut Part, slot: super::equipment_piece::ArmorSlot) {
     }
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Item-owned tooltip font (`ClientHooks.getTooltipFont` -> `IClientItemExtensions.getFont`).
     ///
@@ -565,6 +567,7 @@ fn dispatch_equipment<'a>(
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
     use super::super::equipment_piece::{ArmorSlot, EquipmentAssetLayer, EquipmentPiece};

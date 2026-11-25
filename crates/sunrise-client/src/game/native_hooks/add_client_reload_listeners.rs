@@ -1,6 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Register client asset reload listeners before a reload stages its
     /// assets (NeoForge's `AddClientReloadListenersEvent`, the client's

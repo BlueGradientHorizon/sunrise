@@ -1,9 +1,12 @@
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use super::inventory_input::drop_whole_stack;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use super::*;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::play_keys::GUI_KEYS;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::play_keys::*;
 #[allow(unused_imports)]

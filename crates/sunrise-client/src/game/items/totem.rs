@@ -22,6 +22,7 @@ pub(in crate::game) const TOTEM: &str = "minecraft:totem_of_undying";
 /// `EntityEvent.TOTEM_OF_UNDYING`.
 pub(in crate::game) const TOTEM_EVENT: i8 = 35;
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Entity event 35 from a server, for this client's own player or an
     /// entity it draws.
@@ -145,6 +146,7 @@ pub(in crate::game) fn death_protection_of<'m>(
         .map(std::borrow::Cow::Borrowed)
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod death_protection_tests {
     use super::death_protection_of;

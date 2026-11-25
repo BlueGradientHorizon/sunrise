@@ -24,6 +24,7 @@ pub(in crate::game) struct SlotInputs {
     native: Option<(u64, u32, Option<f32>, Option<f32>)>,
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     fn native_slot_inputs(&self) -> Option<(u64, u32, Option<f32>, Option<f32>)> {
         self.shown_native_screen().map(|s| {

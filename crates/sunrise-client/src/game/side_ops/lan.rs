@@ -27,6 +27,7 @@ impl SideOps for crate::game::server_side::ServerState {
         { game.server_object_target(id) }
     }
 }
+#[cfg(feature = "client")]
 #[allow(unused_variables)]
 impl SideOps for crate::game::client_side::ClientState {
     fn side_object_target(

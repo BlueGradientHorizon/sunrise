@@ -1,6 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Which hearts the camera player's health bar draws (`PlayerHeartTypeEvent`): `kind` is
     /// vanilla's pick, and a mod may set another.

@@ -38,6 +38,7 @@ impl ArmorSlot {
     }
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn equipment_piece<'a>(
         &'a self,
@@ -123,6 +124,7 @@ fn resolve_piece<'a>(
     })
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn mob_equipment_layers(
         &self,
@@ -204,6 +206,7 @@ pub(in crate::game) struct ResolvedEquipmentLayer<'a> {
     pub final_texture: bool,
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn equipment_materials<'a>(
         &'a self,
@@ -338,6 +341,7 @@ impl EquipmentPiece<'_> {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -513,6 +517,7 @@ mod tests {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 mod material_tests {
     use super::tests::asset_layer;

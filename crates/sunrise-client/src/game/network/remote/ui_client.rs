@@ -3,6 +3,7 @@ pub(in crate::game::client_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::remote::ui::*;
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Connecting / loading screens; true when it covered the frame.
     pub(in crate::game::client_side) fn remote_overlay(&mut self, batch: &mut HudBatch) -> bool {

@@ -247,6 +247,7 @@ pub(in crate::game::client_side) fn parse_wait(
     ))
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn snapshot(&self) -> Snapshot {
         let world =
@@ -386,6 +387,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;

@@ -55,6 +55,7 @@ impl Replay {
     }
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// How far the window's own player model is between two ticks: on the replay's clock while a
     /// replay plays, else the game's.
@@ -933,6 +934,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
     use super::*;

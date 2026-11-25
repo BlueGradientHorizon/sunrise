@@ -1,5 +1,6 @@
 use super::*;
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Before a player is drawn (NeoForge's `RenderPlayerEvent.Pre`): once a frame for each other
     /// player in view and this window's player in third person, before its `render_living_pre`.

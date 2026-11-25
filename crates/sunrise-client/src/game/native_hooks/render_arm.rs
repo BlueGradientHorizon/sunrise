@@ -1,6 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Before this window's player's first-person `left` or right arm is
     /// drawn (`RenderArmEvent`, in `renderPlayerArm` and `renderMapHand`):

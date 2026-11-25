@@ -39,6 +39,7 @@ pub(in crate::game) use sunrise_gameplay::command_blocks::{
 
 pub(in crate::game) use super::command_blocks_common::Pos;
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `CommandBlock.useWithoutItem` on a server's client, which opens the
     /// screen itself (`Player.openCommandBlock`) while the server only
@@ -476,6 +477,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;

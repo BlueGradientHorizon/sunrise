@@ -222,6 +222,7 @@ impl Bolt {
     }
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `ClientLevel.addEntity` for a server's lightning bolt: on a client it
     /// only flashes, sounds and draws (`LightningBolt.tick` off the server).
@@ -328,6 +329,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
     #[allow(unused_imports)]
@@ -618,6 +620,7 @@ pub(in crate::game) mod tests {
 }
 
 // A conversion keeps the old mob's state; lives here for the lightning's.
+#[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "tests/mob_conversion_state_tests.rs"]
 pub(in crate::game) mod mob_conversion_state_tests;

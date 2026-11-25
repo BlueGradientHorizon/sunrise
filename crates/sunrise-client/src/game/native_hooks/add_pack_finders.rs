@@ -15,6 +15,7 @@ macro_rules! impl_pack_discovery_context {
 }
 
 impl_pack_discovery_context!(crate::game::ServerGame<'_>);
+#[cfg(feature = "client")]
 impl_pack_discovery_context!(crate::game::ClientGame<'_>);
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {

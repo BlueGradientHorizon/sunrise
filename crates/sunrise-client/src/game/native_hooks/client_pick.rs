@@ -28,6 +28,7 @@ pub(in crate::game) struct ClientPick {
     pub(in crate::game) taken: u64,
 }
 
+#[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
     /// A window always has a decision, including before the first pick (a miss).
     /// None in the outer option means a server ray or the current pick computation.

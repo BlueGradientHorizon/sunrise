@@ -1,6 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// The milliseconds a client tick lasts (`Minecraft.getTickTargetMillis`): `millis` comes
     /// in as the clock's, and a mod may set another.

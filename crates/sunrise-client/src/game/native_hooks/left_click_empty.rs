@@ -1,6 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// The local player left-clicks empty space, with any main-hand stack.
     /// Client-side only; the server does not receive this event.

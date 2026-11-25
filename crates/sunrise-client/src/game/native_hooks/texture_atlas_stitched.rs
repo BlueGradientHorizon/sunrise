@@ -1,5 +1,6 @@
 use super::*;
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     #[cfg(test)]
     pub(in crate::game) fn texture_atlases_stitched(&mut self) {

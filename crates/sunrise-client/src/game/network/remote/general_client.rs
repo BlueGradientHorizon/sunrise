@@ -23,6 +23,7 @@ pub(in crate::game::client_side) use sunrise_mod_runtime::attachments::{Attachme
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_protocol::general_entity::{self, Message};
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// The server removed general row `id` from the window.
     pub(in crate::game::client_side) fn forget_remote_general(r: &mut Remote, id: i32) {

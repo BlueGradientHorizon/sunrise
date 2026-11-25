@@ -11,6 +11,7 @@ use sunrise_client::{
 #[allow(unused_imports)]
 pub(in crate::game) use crate::game::storage_common::{chest_connected_pos, is_shulker_box};
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// The custom name of the open container, or its default title
     /// (a double chest is named by whichever half has a name).
@@ -32,6 +33,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
 // ---- chest menus: titles, rendering and shift-click ----
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn container_slot(&self, mut n: usize) -> &Option<ItemStack> {
         for (pos, size) in self.container_parts() {
@@ -189,6 +191,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `quickMoveStack` of the open chest-like, hopper, dispenser or furnace
     /// menu for a shift-click on `slot`, run by the verified menu engine

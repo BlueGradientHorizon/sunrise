@@ -55,6 +55,7 @@ fn env_flag(name: &str, default: bool) -> bool {
     std::env::var(name).map_or(default, |v| v != "0")
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Start sharing the open world.
     pub(in crate::game::client_side) fn friends_start(&mut self) -> Result<()> {

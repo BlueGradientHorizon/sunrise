@@ -1,6 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// After the complete normal GUI batch, including screens, prompts, toasts,
     /// debug overlays, the pad cursor and IME. Fires even with F1 or a menu open;

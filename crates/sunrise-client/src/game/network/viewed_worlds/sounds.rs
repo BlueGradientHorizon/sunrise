@@ -62,6 +62,7 @@ pub(super) struct ViewedPlay {
     pub seed: i64,
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// A sound in a `run` of viewed level `level`, kept by the decoder because a mod listens: its
     /// play clientbound id and bytes, which the codec read exactly. One bound to an entity is at its emitter in the viewed world, and plays nothing

@@ -300,6 +300,7 @@ pub(in crate::game::client_side) fn wrap(d: f32) -> f32 {
         d
     }
 }
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `key.togglePerspective`: the next camera type, as a mod's `camera_type_cycle` leaves it.
     pub(in crate::game::client_side) fn cycle_camera(&mut self) {
@@ -1095,6 +1096,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `WingsLayer` for a player wearing `chest`.
     pub(in crate::game::client_side) fn player_elytra_geometry(
@@ -1762,6 +1764,7 @@ pub(in crate::game::client_side) fn player_walk_distance(from: Vec3, to: Vec3) -
     (dx * dx + dz * dz).sqrt() as f32
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod preview_tests {
     use super::*;

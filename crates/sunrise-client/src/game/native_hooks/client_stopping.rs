@@ -1,6 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// The client is closing: once per process, at the start of the game's shutdown,
     /// after its world is left, while settings and resources are still held.

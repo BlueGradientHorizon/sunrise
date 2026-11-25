@@ -150,6 +150,7 @@ fn random_uuid() -> u128 {
     u128::from_be_bytes(bytes)
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// handleLogin: a new session state and signature cache, and prepareKeyPair.
     /// The session itself goes out from `tick_chat_session`, never from here:
@@ -536,6 +537,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
     use super::truncate_utf16;

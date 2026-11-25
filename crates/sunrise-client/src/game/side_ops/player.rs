@@ -463,6 +463,7 @@ impl SideOps for crate::game::server_side::ServerState {
         { game.server_has_remote_text_display(id) }
     }
 }
+#[cfg(feature = "client")]
 #[allow(unused_variables)]
 impl SideOps for crate::game::client_side::ClientState {
     fn side_wear_glider(game: &mut crate::game::Game<'_, Self>, points: u32) {

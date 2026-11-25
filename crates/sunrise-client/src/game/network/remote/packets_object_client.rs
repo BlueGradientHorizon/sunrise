@@ -3,6 +3,7 @@ pub(in crate::game::client_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::remote::packets_object::*;
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `C::AddEntity`: admit the entity before replacing an old ID.
     pub(in crate::game::client_side) fn apply_add_entity_packet(&mut self, p: play::AddEntity) {

@@ -3,6 +3,7 @@ pub(in crate::game::client_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::remote::fall_sound::*;
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn block_fall(
         &mut self,
@@ -42,6 +43,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "fall_sound_tests_client.rs"]
 pub(in crate::game) mod tests;

@@ -12,6 +12,7 @@ impl InteractionDecision {
     }
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// An interaction key acts on what the crosshair points at
     /// (`InputEvent.InteractionKeyMappingTriggered`), while playing: `key` says which.

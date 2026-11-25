@@ -8,6 +8,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     }
 }
 
+#[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
     /// Set HUD and hand visibility on the client window.
     pub(in crate::game) fn set_hud_mode(&mut self, mode: mod_api::HudMode) {

@@ -129,6 +129,7 @@ pub(in crate::game) fn block_groups(
     Ok(updates)
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -874,6 +874,7 @@ impl SideOps for crate::game::server_side::ServerState {
         { game.online_player_record(player).map(|g| g.sender.clone()) }
     }
 }
+#[cfg(feature = "client")]
 #[allow(unused_variables)]
 impl SideOps for crate::game::client_side::ClientState {
     fn side_bind_constructed_entity_attachments(game: &mut crate::game::Game<'_, Self>, id: u32) {

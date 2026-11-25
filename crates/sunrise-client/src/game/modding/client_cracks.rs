@@ -9,6 +9,7 @@ pub(in crate::game) struct ClientCrack {
     pub positions: Vec<[i32; 3]>,
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn expire_client_cracks(&mut self) {
         let now = self.world.game_time;
@@ -78,6 +79,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use crate::game::{

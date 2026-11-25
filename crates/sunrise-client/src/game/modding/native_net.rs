@@ -18,6 +18,7 @@ pub(in crate::game) struct NativeNet {
     pub(in crate::game) leave: Option<super::native_disconnect::LeaveRequest>,
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// A mod's chat line or command (`/` first), sent as `send_chat` sends
     /// it (ClientPacketListener.sendChat / sendCommand), to any server: no
@@ -80,6 +81,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
     use super::super::native_entity_refs::tests::{run_fresh_cases, with_client_game};

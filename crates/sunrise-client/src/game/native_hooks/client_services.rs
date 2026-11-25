@@ -1,6 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Before an actual connection is discarded, not on a dimension change.
     /// NeoForge's `ClientPlayerNetworkEvent.LoggingOut`, told here after

@@ -1,6 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `Gui.setScreen` is about to replace the `current` screen with `new`
     /// (`ScreenEvent.Opening`; the screen `playing` is none: vanilla's null).

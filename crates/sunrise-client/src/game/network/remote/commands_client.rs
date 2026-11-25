@@ -5,6 +5,7 @@ pub(in crate::game::client_side) use crate::game::remote::commands::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_protocol::packets::play::CommandSuggestions;
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `ClientPacketListener.handleCommandSuggestions`: forward the reply to the command edit box.
     pub(in crate::game) fn handle_command_suggestions(&mut self, packet: CommandSuggestions) {

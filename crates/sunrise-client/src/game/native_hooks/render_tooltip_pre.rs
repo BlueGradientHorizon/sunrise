@@ -1,6 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `RenderTooltipEvent.Pre`: a tooltip whose components have been prepared and are about to
     /// be measured, positioned and drawn. `place` is the point it hangs from, before `positioner`

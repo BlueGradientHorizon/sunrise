@@ -68,6 +68,7 @@ impl DebugHost for Host<'_, '_> {
     }
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `DebugScreenEntryList.setOverlayVisible`: rebuild on each visibility transition.
     fn set_debug_overlay(&mut self, visible: bool) {
@@ -1503,6 +1504,7 @@ impl DensityCache {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1575,6 +1577,7 @@ mod tests {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "tests/lightmap_chart_tests.rs"]
 mod lightmap_chart_tests;

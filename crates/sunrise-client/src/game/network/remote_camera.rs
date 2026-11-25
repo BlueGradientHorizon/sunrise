@@ -4,9 +4,11 @@
 //! view follows that entity while the player stands still and sends no moves
 //! (`LocalPlayer.isControlledCamera`); the server keeps its player on the
 //! camera and lets go when the player sneaks.
+#[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "tests/camera_mount_tests.rs"]
 pub(in crate::game) mod camera_mount_tests;
+#[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "tests/remote_camera_tests.rs"]
 pub(in crate::game) mod camera_tests;
@@ -432,6 +434,7 @@ pub(in crate::game::client_side) fn entity_post_effect(kind: &str) -> Option<&'s
     sunrise_client_render::spectator_shaders::chain(kind)
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// True if this client holds a live entity with `id` in any runtime list or slot.
     fn holds_camera_entity(&self, id: u32) -> bool {
@@ -1565,6 +1568,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
     use super::{camera_after_packet, entity_post_effect, stand_camera_entity};

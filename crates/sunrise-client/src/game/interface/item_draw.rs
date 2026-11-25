@@ -52,6 +52,7 @@ impl sunrise_client::hud_kit::icon::IconPainter for IconPainter<'_, '_> {
 pub(in crate::game) struct Env<'a, 'g> {
     game: &'a Game<'g, crate::game::client_side::ClientState>,
 }
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Before a frame is drawn: drop the model draws prepared for the last one.
     pub(in crate::game::client_side) fn begin_frame_draws(&self) {
@@ -460,6 +461,7 @@ fn use_duration(components: ComponentsView<'_>) -> i32 {
     }
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn item_env(&self) -> Env<'_, '_> {
         Env { game: self }
@@ -1117,10 +1119,12 @@ fn item_hdr_light(state: &ItemRenderState, light: u32) -> u32 {
     (light & !0xff00) | block << 8
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "spawn_border_tests.rs"]
 mod spawn_border_tests;
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;

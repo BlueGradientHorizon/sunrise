@@ -14,6 +14,7 @@ pub(in crate::game) use sunrise_client_gameplay::entity_occlusion::{
 use sunrise_client_gameplay::occlusion_culling::QuerySource;
 use sunrise_core::geometry::{Aabb, Vec3};
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn prepare_entity_culling(&mut self) {
         // The mods' render hooks: whether any listens this frame, and no entity canceled yet.
@@ -224,6 +225,7 @@ pub(in crate::game) fn streaming_radius_for(
     }
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Options.getEffectiveRenderDistance: the client setting, capped by the server's view distance.
     pub(in crate::game) fn effective_render_distance(&self) -> i32 {
@@ -241,6 +243,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `LevelRenderer.isSectionCompiledAndVisible(BlockPos)`: entities outside build height
     /// always render; inside build height they wait for a compiled section past the fade gate.
@@ -280,6 +283,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `entity_in_view` for an entity whose box stands on its position,
     /// `width` wide and `height` tall, interpolated by `alpha` and grown by
@@ -304,6 +308,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn prepare_occlusion_culling(&mut self, camera: glam::DVec3) {
         self.side.occlusion.0.section_camera = None;
@@ -370,6 +375,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 mod precheck_envelope_tests {
     use super::super::entity_client::RenderEntityBounds;

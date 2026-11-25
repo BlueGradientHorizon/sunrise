@@ -3,6 +3,7 @@ pub(in crate::game::client_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::remote::recipe_properties::*;
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Minecraft.disconnect's `ClientPlayerNetworkEvent.LoggingOut`: on
     /// leaving a world, and on quitting the game from one. Once per

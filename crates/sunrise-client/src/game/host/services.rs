@@ -6,6 +6,7 @@ use mod_api::*;
 #[allow(unused_imports)]
 use std::sync::Arc;
 
+#[cfg(feature = "client")]
 impl ClientSession for ClientGame<'_> {
     fn client_server(&self) -> Option<ClientServer<'_>> {
         self.native_client_server()

@@ -17,6 +17,7 @@ pub(in crate::game) use crate::game::pick_entity_common::{
     AttackRangePickResult, CrosshairDecision, CrosshairEntityHit, aabb_extents, knot_bounds,
 };
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn client_has_pick_result(&self, id: i32) -> bool {
         let uid = id as u32;
@@ -262,6 +263,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
     #[allow(unused_imports)]

@@ -1,3 +1,4 @@
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use super::block_entity_client_tick::ClientBlockEntityAccess;
 #[allow(unused_imports)]

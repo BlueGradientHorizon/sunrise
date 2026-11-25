@@ -9,6 +9,7 @@ pub(in crate::game::client_side) use sunrise_client::{multiplayer, title::Mode};
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_hooks::connection::{By, Ended, Left, Retry, Server};
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `ConnectScreen`'s Cancel: a server's (single player's server isn't
     /// joined through `ConnectScreen`), until the login is done.

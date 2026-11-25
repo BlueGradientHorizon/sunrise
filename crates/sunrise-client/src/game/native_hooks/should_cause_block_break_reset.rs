@@ -1,6 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `IItemExtension.shouldCauseBlockBreakReset`: does the break that began
     /// with `stack` restart now that the main hand holds `held`? `reset`

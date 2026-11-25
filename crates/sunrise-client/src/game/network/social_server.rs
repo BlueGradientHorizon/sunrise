@@ -1,7 +1,9 @@
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use super::{Game, Screen};
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::social::Social;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::social::*;
 #[allow(unused_imports)]

@@ -131,6 +131,7 @@ impl RemoteInteraction {
     }
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// An `Interaction` keeps `Entity`'s no-op interpolation handler: the
     /// server's position replaces its own at once.
@@ -157,6 +158,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;

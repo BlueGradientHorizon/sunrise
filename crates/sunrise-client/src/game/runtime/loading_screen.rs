@@ -19,6 +19,7 @@ pub(in crate::game) fn leave_fullscreen_after(
     }
 }
 
+#[cfg(feature = "client")]
 pub(in crate::game) fn run_event_loop(
     mut game: Game<'_, crate::game::client_side::ClientState>,
 ) -> Result<()> {
@@ -314,6 +315,7 @@ impl Loading {
             );
         }
     }
+    #[cfg(feature = "client")]
     pub(in crate::game::client_side) fn finish(
         &mut self,
         mut loaded: Loaded,

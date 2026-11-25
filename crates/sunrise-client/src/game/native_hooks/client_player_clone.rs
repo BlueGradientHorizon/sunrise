@@ -1,6 +1,7 @@
 use super::*;
 
 /// The hook point after the client replaces its player.
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// After the client replaces its player on respawn or dimension change
     /// (NeoForge's `ClientPlayerNetworkEvent.Clone`). Client-side.

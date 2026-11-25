@@ -30,6 +30,7 @@ struct Travel {
     slot: i32,
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `handleRespawn`'s new level: a travel into a viewed level swaps the worlds; any other
     /// Respawn drops every viewed world (the server opens again what it still views) and enters
@@ -153,6 +154,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
     use super::super::tests::{

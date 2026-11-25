@@ -7,6 +7,7 @@ pub(in crate::game::client_side) use crate::game::remote::client_level_tick::*;
 
 /// Per-level client work bracketed by the shared LevelTickEvent hooks.
 /// No level means no event; failed ticks never emit the post event.
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn tick_remote_level(&mut self) -> Result<()> {
         self.tick_remote_level_with(Self::tick_remote_level_body)
@@ -96,6 +97,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "boss_darken_tests_client.rs"]
 pub(in crate::game) mod boss_darken_tests;

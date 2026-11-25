@@ -1,5 +1,6 @@
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use super::Game;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::sniffers::*;
 #[allow(unused_imports)]

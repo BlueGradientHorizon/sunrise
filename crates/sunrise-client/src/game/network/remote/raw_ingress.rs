@@ -49,6 +49,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 impl crate::game::ClientGame<'_> {
     #[cfg(test)]

@@ -1,5 +1,6 @@
 //! Predicate stock is rebuilt only when the panel's component-aware stock cache changes.
 use super::*;
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(super) fn mod_book_placement_stocks(&mut self) -> Vec<(ItemStack, i32)> {
         let Some(menu) = self.native_screen_menu() else {

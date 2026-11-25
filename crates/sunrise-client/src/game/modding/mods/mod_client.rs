@@ -196,6 +196,7 @@ pub(in crate::game::client_side) use sunrise_world::{
 #[path = "package_files_client.rs"]
 pub(in crate::game) mod package_files;
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// The content mods the resources load with: the ones applied, which a
     /// switch that needs a restart doesn't change.

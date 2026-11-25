@@ -1,5 +1,6 @@
 use super::*;
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `ModelEvent.BakingCompleted`: the resources' models are baked and published, the
     /// standalone ones included, so `model` resolves them in the new store. Once per successful

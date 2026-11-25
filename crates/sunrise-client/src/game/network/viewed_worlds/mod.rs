@@ -20,6 +20,7 @@ mod switch;
 mod worlds;
 pub(in crate::game) use worlds::ViewedWorlds;
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::routing::RouteError;

@@ -1,6 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `LevelExtractor.extractPlayerState`: let client listeners choose the overlay renderer
     /// using the overlay's state and position and the world and player interpolation values.

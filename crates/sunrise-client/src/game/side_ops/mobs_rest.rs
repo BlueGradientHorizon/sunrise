@@ -358,6 +358,7 @@ impl SideOps for crate::game::server_side::ServerState {
         { game.server_game_side_fields() }
     }
 }
+#[cfg(feature = "client")]
 #[allow(unused_variables)]
 impl SideOps for crate::game::client_side::ClientState {
     fn side_passenger_riding_position(

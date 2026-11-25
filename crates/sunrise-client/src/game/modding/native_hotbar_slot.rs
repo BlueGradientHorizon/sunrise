@@ -4,6 +4,7 @@
 use super::Game;
 use mod_api::HotbarSlotError;
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `Inventory.setSelectedSlot` for a client mod: `slot` (0 to 8) becomes the hotbar slot the
     /// local player holds. Refused above 8, without a client world, and for a spectator (its
@@ -26,6 +27,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod hotbar_slot_tests {
     use super::*;

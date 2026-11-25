@@ -154,6 +154,7 @@ impl MountedWidgetEntry {
         owner.dispose("screen widget", "screen_widget_drop", kind);
     }
 
+    #[cfg(feature = "client")]
     pub(in crate::game) fn press_button(
         &mut self,
         game: &mut Game<'_, crate::game::client_side::ClientState>,
@@ -434,6 +435,7 @@ impl MountedWidgetEntry {
     }
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Run `ScreenEvent.Init.Post` to mount widgets on the initialized screen and apply focus.
     pub(in crate::game::client_side) fn init_screen_widgets(&mut self, view: &ScreenView<'_>) {

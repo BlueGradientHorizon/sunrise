@@ -63,6 +63,7 @@ pub(super) fn refusal(block: &str, menu: &str, anchored: bool) -> String {
     };
     format!("recipe book refused for mod block {block} menu {menu}: {reason}")
 }
+#[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
     use super::*;

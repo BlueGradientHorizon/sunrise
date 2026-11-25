@@ -12,6 +12,7 @@ pub(in crate::game::server_side) use super::{
     native_projectiles::{Impact, PendingImpact, ProjectileHit, projectile_impact_event},
     view_vector,
 };
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::creatures_client::*;
 #[allow(unused_imports)]

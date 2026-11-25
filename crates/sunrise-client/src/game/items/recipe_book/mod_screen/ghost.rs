@@ -1,5 +1,6 @@
 //! Custom ghost slots share the vanilla painter, but never its slot-coordinate fallback.
 use super::*;
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(super) fn draw_mod_book_ghosts(&mut self, batch: &mut HudBatch) {
         let (ox, oy) = self.inventory_origin(batch);

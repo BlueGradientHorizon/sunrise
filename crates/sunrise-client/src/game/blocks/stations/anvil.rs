@@ -14,6 +14,7 @@ pub(in crate::game::client_side) fn input_changed(station: &mut Station, name: S
     station.rename.editable = station.inputs[0].is_some();
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
     use super::super::{Kind, Station};
@@ -58,6 +59,7 @@ mod tests {
 }
 
 // The previews in a server session read the server's enchantments (#8688).
+#[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "remote_anvil_tests.rs"]
 mod remote_anvil_tests;

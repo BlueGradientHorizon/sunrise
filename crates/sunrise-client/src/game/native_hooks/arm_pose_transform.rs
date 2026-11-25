@@ -1,5 +1,6 @@
 use super::*;
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Transform only a selected registered humanoid pose, before species animation.
     pub(in crate::game) fn native_arm_pose_transform(

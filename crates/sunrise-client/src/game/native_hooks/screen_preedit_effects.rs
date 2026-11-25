@@ -1,6 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Ahead of the effect panels beside the survival and creative
     /// inventories (`ScreenEvent.RenderInventoryMobEffects`, vanilla's

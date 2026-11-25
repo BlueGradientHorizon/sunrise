@@ -266,6 +266,7 @@ fn keep<T>(table: &mut Vec<T>, value: T, key: impl Fn(&T) -> i32) -> Result<(), 
     Ok(())
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
     use super::*;

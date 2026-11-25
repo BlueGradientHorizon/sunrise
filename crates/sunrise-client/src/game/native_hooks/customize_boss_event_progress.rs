@@ -1,6 +1,7 @@
 #[allow(unused_imports)]
 use super::*;
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// One boss bar is about to be drawn (`CustomizeGuiOverlayEvent.BossEventProgress`): `x`,
     /// `y` are its top-left corner and `increment` the spacing to the next bar, in GUI pixels,

@@ -11,6 +11,7 @@ pub(in crate::game::client_side) use crate::game::remote::raw_ingress::packet_er
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::remote::raw_ingress::*;
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `ClientCommonPacketListenerImpl.handlePostEffects`.
     pub(in crate::game::client_side) fn apply_post_effects_packet(
@@ -591,14 +592,17 @@ impl Remote {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "bundle_parity_tests_client.rs"]
 pub(in crate::game) mod bundle_parity_tests;
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "post_effects_parity_tests_client.rs"]
 pub(in crate::game) mod post_effects_parity_tests;
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
     #[allow(unused_imports)]

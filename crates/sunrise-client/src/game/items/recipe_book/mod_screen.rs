@@ -142,6 +142,7 @@ fn registered_book_tab_bounds(calls: &[Drawn], first_category_arrow: usize) -> O
     })
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     fn mod_book_panel(&self) -> Option<sunrise_client::recipe_book::ModBookPanel<'_>> {
         let key = self.native_screen_book()?;
@@ -606,6 +607,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
     use super::*;

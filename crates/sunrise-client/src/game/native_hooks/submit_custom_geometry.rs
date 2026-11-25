@@ -1,6 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// After particle submission, before the renderer executes world draws.
     pub(in crate::game) fn native_submit_custom_geometry(

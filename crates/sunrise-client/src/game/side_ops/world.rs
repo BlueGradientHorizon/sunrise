@@ -224,6 +224,7 @@ impl SideOps for crate::game::server_side::ServerState {
         { game.server_game_side_meta() }
     }
 }
+#[cfg(feature = "client")]
 #[allow(unused_variables)]
 impl SideOps for crate::game::client_side::ClientState {
     fn side_with_level_access<R>(

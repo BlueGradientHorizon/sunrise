@@ -1,6 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `GuiGraphicsExtractor.componentHoverEffect`: the hovered text component's hover, about
     /// to be drawn at the cursor `x`, `y`. Set `cancel` and the game draws nothing for it.

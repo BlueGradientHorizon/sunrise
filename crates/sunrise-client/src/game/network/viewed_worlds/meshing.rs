@@ -75,6 +75,7 @@ pub(super) fn block_changed(world: &mut World, [x, y, z]: [i32; 3]) {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
     use super::super::worlds::ViewedWorld;

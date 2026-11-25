@@ -3,12 +3,14 @@
 //! like a player (walk, look, break, place, use, click buttons). Actions that
 //! take time run as a task advanced every frame and reply when they finish or
 //! time out, so `sunrise-ctl break 10 64 3` returns what the block dropped.
+#[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "face_pick_tests.rs"]
 pub(in crate::game) mod face_pick_tests;
 #[allow(unused_imports)]
 use sunrise_client_gameplay::agent_navigation as navigation;
 
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 use super::event_loop::EventLoopCtl;
 #[allow(unused_imports)]
@@ -392,6 +394,7 @@ pub(in crate::game) enum Handled {
     No,
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn block_json(&self, pos: [i32; 3]) -> Value {
         let state = self.world.block(pos[0], pos[1], pos[2]);
@@ -2529,6 +2532,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;

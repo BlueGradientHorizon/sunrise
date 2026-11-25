@@ -1,6 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// The client accepted a play login and initialized its level and player
     /// identity (NeoForge's `ClientPlayerNetworkEvent.LoggingIn`). `player_id`

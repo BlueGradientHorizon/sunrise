@@ -19,6 +19,7 @@ fn payload<'a>(packet: &'a C, channel: &str) -> Option<&'a [u8]> {
     }
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// True means this whole bundle was routed. Ordinary bundles still use the
     /// usual dispatch, with the same packet observations in their original order.
@@ -120,6 +121,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
     use super::*;

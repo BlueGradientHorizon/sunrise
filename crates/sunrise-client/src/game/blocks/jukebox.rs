@@ -6,6 +6,7 @@ pub(in crate::game) use crate::game::jukebox_common::{
 };
 use sunrise_client::{containers::BlockEntity, text::Text};
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Level event 1010: the song from the jukebox, and the "Now Playing" overlay.
     pub(in crate::game::client_side) fn start_song(&mut self, pos: [i32; 3], song: &str) {
@@ -98,6 +99,7 @@ pub(in crate::game::client_side) fn keeps_song(
     active && (server_client || jukebox_playing)
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::{jukebox_song_name, keeps_song};

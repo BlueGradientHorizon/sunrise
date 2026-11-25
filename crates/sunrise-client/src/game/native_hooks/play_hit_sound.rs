@@ -5,6 +5,7 @@ use crate::game::Audio;
 #[allow(unused_imports)]
 use sunrise_core::{geometry::Direction, position::BlockPos};
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn native_play_hit_sound(
         &mut self,

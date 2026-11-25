@@ -121,6 +121,7 @@ fn cycle(open: &mut Open, input: usize, delta: i32) {
     }
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `DialogScreen.WarningScreen` uses the local-server disconnect label.
     fn warning_texts(&self) -> (Text, Text, [Text; 2]) {
@@ -1386,6 +1387,7 @@ fn draw_background(batch: &mut HudBatch, atlas: &sunrise_client::hud::HudAtlas, 
     ui::menu_background(batch, atlas, 0.0, 0.0, w, h, in_world);
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 mod warning_tests {
     use crate::game::{
@@ -1423,6 +1425,7 @@ mod warning_tests {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 mod background_tests {
     use super::*;
@@ -1483,6 +1486,7 @@ mod background_tests {
         }
     }
 }
+#[cfg(feature = "client")]
 #[cfg(test)]
 mod pause_tests {
     use super::*;

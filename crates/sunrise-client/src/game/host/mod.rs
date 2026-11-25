@@ -24,6 +24,7 @@ impl Host for ServerGame<'_> {
     }
 }
 
+#[cfg(feature = "client")]
 impl Host for ClientGame<'_> {
     fn backend(&self) -> Option<BackendRef<'_>> {
         Some(BackendRef::of(self))
@@ -115,6 +116,7 @@ impl ServerHost for ServerGame<'_> {
     }
 }
 
+#[cfg(feature = "client")]
 impl ClientHost for ClientGame<'_> {
     fn client_backend_mut(&mut self) -> Option<ClientBackendMutRef<'_>> {
         Some(ClientBackendMutRef::of(self))
@@ -122,6 +124,8 @@ impl ClientHost for ClientGame<'_> {
 }
 
 impl Backend for ServerGame<'_> {}
+#[cfg(feature = "client")]
 impl Backend for ClientGame<'_> {}
 impl BackendMut for ServerGame<'_> {}
+#[cfg(feature = "client")]
 impl ClientBackendMut for ClientGame<'_> {}

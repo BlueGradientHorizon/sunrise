@@ -1,6 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `GatherEffectScreenTooltipsEvent`: the tooltip of the effect panel the
     /// cursor is over beside the survival or creative inventory. `tooltip`

@@ -1,3 +1,4 @@
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 use super::block_entity_client_tick::ClientBlockEntityAccess;
 #[allow(unused_imports)]

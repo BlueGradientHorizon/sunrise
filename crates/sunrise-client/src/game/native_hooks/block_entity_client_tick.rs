@@ -108,6 +108,7 @@ impl BlockEntityClientAccess for ClientBlockEntityAccess<'_, '_> {
     }
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Whether block `block`'s block entity ticks on the client
     /// (`EntityBlock.getTicker` asked with the client level): set `ticks` when
@@ -130,6 +131,7 @@ pub(in crate::game) fn native_block_entity_client_tick(
     crate::game::native_hooks::fire::fire_block_entity_client_tick(subject);
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `ClientLevel.tickBlockEntities` on a server's client, for the block entities with a client
     /// ticker: spawners, trial spawners, vaults, the animated ones, campfires, beacons, potent

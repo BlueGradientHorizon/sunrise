@@ -44,6 +44,7 @@ const BUTTON: f32 = 14.0;
 fn inside(p: (f32, f32), x: f32, y: f32, w: f32, h: f32) -> bool {
     p.0 >= x && p.1 >= y && p.0 < x + w && p.1 < y + h
 }
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `LoomScreen.containerChanged`: the error flag, whether the pattern
     /// buttons show (only when an input changed), and the scroller reset.
@@ -338,6 +339,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -431,6 +431,7 @@ pub(in crate::game) fn profiler_words(literals: &[String], name: Option<&str>) -
     words
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `profile [client|server] start|stop|status|mark`; None while a `stop` waits for its file.
     pub(in crate::game::client_side) fn profile_command(
@@ -1229,6 +1230,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;

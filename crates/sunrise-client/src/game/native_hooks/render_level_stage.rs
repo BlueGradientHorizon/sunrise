@@ -1,6 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// One stage of a world view (NeoForge's `RenderLevelStageEvent`), asked for each stage in
     /// frame order as the view is extracted; what `draw` takes is drawn at `stage`.

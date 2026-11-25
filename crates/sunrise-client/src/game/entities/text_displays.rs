@@ -746,6 +746,7 @@ impl RemoteTextDisplay {
     }
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn move_remote_text_display(
         &mut self,
@@ -1507,6 +1508,7 @@ pub(in crate::game::client_side) fn has_special_model(block: &str) -> bool {
         || block.contains("copper_golem_statue")
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
     #[allow(unused_imports)]
@@ -1795,6 +1797,7 @@ pub(in crate::game) mod tests {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "text_displays/display_parity_tests.rs"]
 pub(in crate::game) mod display_parity_tests;

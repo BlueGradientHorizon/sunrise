@@ -3,6 +3,7 @@ pub(in crate::game::client_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::remote::tick::*;
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Whether entity `id` of the client level rides another (`Entity.vehicle`): its tick is a
     /// ride visit, counted whatever its Pre answers.

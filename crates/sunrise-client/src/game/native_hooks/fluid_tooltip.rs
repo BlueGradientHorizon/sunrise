@@ -1,6 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `FluidTooltipEvent`: the tooltip of `stack`, a fluid the game draws a slot of (the recipe
     /// viewer's fluid wells), once its name, its amount in millibuckets and, with F3+H, its id

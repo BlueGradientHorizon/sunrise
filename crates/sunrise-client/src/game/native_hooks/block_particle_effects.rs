@@ -3,6 +3,7 @@ use super::*;
 use crate::game::api_values::block_state::block_listens;
 use sunrise_core::{geometry::Direction, position::BlockPos};
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn mod_add_hit_effects(
         &mut self,

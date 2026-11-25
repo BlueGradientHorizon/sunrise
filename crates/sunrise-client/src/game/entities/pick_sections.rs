@@ -66,6 +66,7 @@ impl PickFingerprint {
         self.epoch == other.epoch && self.dim == other.dim && self.is_remote == other.is_remote
     }
 
+    #[cfg(feature = "client")]
     fn of(game: &Game<'_, crate::game::client_side::ClientState>) -> Self {
         Self {
             epoch: game.native_lifecycle.epoch(),
@@ -271,6 +272,7 @@ impl PickSectionStorage {
         self.by_id.get(&id).map(|&(kind, _, _)| kind)
     }
 
+    #[cfg(feature = "client")]
     fn note_fingerprint(&mut self, game: &Game<'_, crate::game::client_side::ClientState>) {
         let fp = PickFingerprint::of(game);
         if !self.fingerprint.same_level(fp) {
@@ -280,6 +282,7 @@ impl PickSectionStorage {
     }
 
     /// Reconciles only when the world context or container counts changed outside incremental hooks.
+    #[cfg(feature = "client")]
     fn sync_with(&mut self, game: &Game<'_, crate::game::client_side::ClientState>) {
         let fp = PickFingerprint::of(game);
         if self.initialized && self.fingerprint == fp {
@@ -369,6 +372,7 @@ impl PickSectionStorage {
 
 /// Every entity the section index files, with its admission order, kind, id and position, family
 /// by family.
+#[cfg(feature = "client")]
 pub(in crate::game) fn visit_section_members(
     game: &Game<'_, crate::game::client_side::ClientState>,
     consider: &mut impl FnMut(u64, PickKind, u32, [f64; 3]),
@@ -561,6 +565,7 @@ pub(in crate::game) fn visit_section_members(
     }
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Take one candidate per borrow so match checks and nested native reads can use the host.
     pub(in crate::game) fn client_section_candidates(
@@ -1235,6 +1240,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
     use super::*;

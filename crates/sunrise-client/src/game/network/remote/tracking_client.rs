@@ -5,6 +5,7 @@ pub(in crate::game::client_side) use crate::game::remote::tracking::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::particles::TrackingBody;
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn detach_remote_tracking_entity(&mut self, id: i32) {
         let target = TrackingTarget::Entity(id);

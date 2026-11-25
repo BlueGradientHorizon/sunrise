@@ -111,6 +111,7 @@ impl NameTagLayouts {
     }
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `Entity.belowNameDisplay`: the score holder's score in the objective
     /// shown below names, then a space and the objective's name.
@@ -905,10 +906,12 @@ pub(in crate::game) fn name_component(m: &Mob, name: &str) -> sunrise_core::nbt:
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "tests/name_tag_tests.rs"]
 pub(in crate::game) mod name_tag_tests;
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;

@@ -10,6 +10,7 @@ pub(super) struct Resolver<'a, 'w> {
 }
 
 impl<'a, 'w> Resolver<'a, 'w> {
+    #[cfg(feature = "client")]
     pub(super) fn new(
         game: &'a Game<'w, crate::game::client_side::ClientState>,
         stocks: &'a Stacked,
@@ -97,6 +98,7 @@ impl sunrise_client::recipe_book::mod_presentation::DisplayResolver for Resolver
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
     use super::*;

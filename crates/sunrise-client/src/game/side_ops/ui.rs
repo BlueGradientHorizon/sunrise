@@ -47,6 +47,7 @@ impl SideOps for crate::game::server_side::ServerState {
         { game.server_level_min_y() }
     }
 }
+#[cfg(feature = "client")]
 #[allow(unused_variables)]
 impl SideOps for crate::game::client_side::ClientState {
     fn side_block_entity_nbt(game: &crate::game::Game<'_, Self>, pos: [i32; 3]) -> Option<Tag> {

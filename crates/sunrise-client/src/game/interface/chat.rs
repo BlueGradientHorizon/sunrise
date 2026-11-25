@@ -1,5 +1,6 @@
 //! Chat, the command registries and the per-world state behind commands
 //! (game rules, the world clock, difficulty), bound to the game.
+#[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "chat/suggestion_completion_tests.rs"]
 pub(in crate::game) mod suggestion_completion_tests;
@@ -154,6 +155,7 @@ pub(in crate::game::client_side) fn with_studio_commands(base: &Dispatcher) -> D
     d
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// The tree the chat box colours, completes and parses with for the
     /// world's connection: `base`, the tree the server sent, or the game's own
@@ -353,6 +355,7 @@ impl UiState {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod hud_mode_tests {
     use super::UiState;
@@ -404,6 +407,7 @@ pub(in crate::game) mod hud_mode_tests {
     }
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn client_sound_event_names(&self) -> Vec<String> {
         self.side.audio.0.event_names()
@@ -1613,6 +1617,7 @@ pub(in crate::game::client_side) fn screenshot_name(
 pub(in crate::game) const LINK_YES: usize = 0;
 pub(in crate::game) const LINK_COPY: usize = 1;
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
@@ -2202,18 +2207,21 @@ pub(in crate::game) mod tests {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod enchantment_snapshot_tests {
     #[allow(unused_imports)]
     use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod damage_type_registry_tests {
     #[allow(unused_imports)]
     use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "tests/end_clock_tests.rs"]
 pub(in crate::game) mod end_clock_tests;

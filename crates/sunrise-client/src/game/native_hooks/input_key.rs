@@ -1,5 +1,6 @@
 use super::*;
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// A key event after handling, the window's or the control socket's `key` (one press, then
     /// one release for a tap), including repeats and consumed shortcuts (`InputEvent.Key`). `key` is vanilla's name for the physical key (`key.keyboard.a`,

@@ -1,3 +1,4 @@
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use super::event_loop::EventLoopCtl;
 #[allow(unused_imports)]

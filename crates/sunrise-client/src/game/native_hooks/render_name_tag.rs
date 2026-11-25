@@ -1,6 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Name tag visibility and optional replacement text. API 372.
     pub(in crate::game) fn native_render_name_tag(

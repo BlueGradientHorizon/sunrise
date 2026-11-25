@@ -9,6 +9,7 @@ pub(in crate::game::client_side) use crate::game::remote::abilities::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::lan::abilities::PlayerAbilities;
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Mirror `Remote::abilities` onto the live `PlayerMotion` body.
     pub(in crate::game::client_side) fn apply_remote_abilities(&mut self) {
@@ -103,6 +104,7 @@ impl Remote {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "gamemode_split_tests_client.rs"]
 pub(in crate::game) mod gamemode_split_tests;

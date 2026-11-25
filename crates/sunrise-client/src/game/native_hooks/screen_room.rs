@@ -1,6 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Room for a mod's own panel right of the open container screen's window, in GUI pixels:
     /// `right` starts at 0; raise it to the width your panel takes beside the window, its gap

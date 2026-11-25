@@ -426,6 +426,7 @@ pub(in crate::game::client_side) fn argb(c: i32) -> u32 {
 pub(in crate::game::client_side) fn rgb_of(rgba: u32) -> u32 {
     (rgba & 0xFF) << 16 | (rgba >> 8 & 0xFF) << 8 | (rgba >> 16 & 0xFF)
 }
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `EnchantmentScreen.containerTick`'s `tickBook` for an open enchanting table.
     pub(in crate::game::client_side) fn tick_enchanting_book(&mut self) {
@@ -2220,6 +2221,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     // ---------------------------------------------------------------- brewing stand
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
     #[test]
@@ -3348,6 +3350,7 @@ pub(in crate::game) mod tests {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod cycling_tests {
     use super::*;
@@ -3511,14 +3514,17 @@ pub(in crate::game) mod cycling_tests {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "tests/brewing_changed_tests.rs"]
 pub(in crate::game) mod brewing_changed_tests;
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "stations/brewing_tick_tests.rs"]
 pub(in crate::game) mod brewing_tick_tests;
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "stations/stonecutter_scroll_tests.rs"]
 pub(in crate::game) mod stonecutter_scroll_tests;

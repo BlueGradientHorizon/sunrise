@@ -12,6 +12,7 @@ pub(in crate::game::client_side) fn title() -> String {
     sunrise_client::lang::get_or("sunrise.friends.title", TITLE)
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn friends_lan_closed(&mut self) {}
 

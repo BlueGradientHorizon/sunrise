@@ -7,6 +7,7 @@ pub(in crate::game::client_side) use sunrise_client::first_person::Hand;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::items::ItemStack;
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `FlintAndSteelItem.useOn` / `FireChargeItem.useOn` on this client's level:
     /// lighting an unlit campfire, candle or candle cake, or placing fire at the hit face.
@@ -85,6 +86,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
     #[allow(unused_imports)]

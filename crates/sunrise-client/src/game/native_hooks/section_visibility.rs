@@ -1,5 +1,6 @@
 use super::*;
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// A section in the player's level is about to mesh (`section_visibility`): each listener
     /// may return one answer from the raw section and its border. Client world thread only.

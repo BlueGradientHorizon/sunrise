@@ -116,6 +116,7 @@ pub(in crate::game) fn observed_overlay_id(
     overlays.iter().find_map(|(open, id)| open.then_some(*id))
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 #[allow(unused_imports)]
 use crate::game::client_side::native_hooks_client::posed_camera;

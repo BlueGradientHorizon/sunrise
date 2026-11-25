@@ -2,6 +2,7 @@
 //! menu blur and transparent background, the world border wall, and the screens' render events.
 #[allow(unused_imports)]
 use super::*;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 use crate::game::host::draw::GameDrawContext;
 

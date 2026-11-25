@@ -5,6 +5,7 @@ pub(in crate::game::client_side) use crate::game::remote::sync::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::tab_list::{TabPlayer, default_skin};
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn apply_remote_health(&mut self) {
         let Some((health, food, saturation)) = self.remote.as_ref().map(|r| r.health) else {

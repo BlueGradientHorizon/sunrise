@@ -97,6 +97,7 @@ pub(in crate::game) struct ObjectHit {
     pub location: [f64; 3],
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Whether a use starts on an entity (`Minecraft.hitResult` is an `EntityHitResult`).
     pub(in crate::game) fn remote_use_targets_entity(&self) -> bool {
@@ -992,6 +993,7 @@ pub(in crate::game::client_side) fn generic_player_seat(
     )
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
     #[test]
@@ -1462,6 +1464,7 @@ pub(in crate::game) mod tests {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 mod plugin_seat_tests {
     #[test]

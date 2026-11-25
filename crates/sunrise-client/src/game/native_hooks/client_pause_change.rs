@@ -1,6 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// NeoForge's `ClientPauseChangeEvent.Pre`: cancel a proposed pause change.
     pub(in crate::game) fn native_client_pause_change_pre(

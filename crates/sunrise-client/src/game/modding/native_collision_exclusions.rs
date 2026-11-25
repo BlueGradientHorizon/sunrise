@@ -56,6 +56,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 }
 
+#[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
     /// For a client mod: the local player's collision exclusions, in place of the last ones.
     /// Refused with no player of its own, and for boxes the set refuses; the set there was stays.

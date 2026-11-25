@@ -1,5 +1,6 @@
 use super::*;
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `Camera.getFluidInCamera`: the fog type at `camera`, after `state_at_viewpoint`; the mods
     /// may replace it.

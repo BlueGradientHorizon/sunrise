@@ -1,5 +1,6 @@
 use super::*;
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `IBlockExtension.getStateAtViewpoint`: the state the camera at `viewpoint` sees of
     /// `state` at `pos`. `seen` starts at `state`; the block's parts may change it.

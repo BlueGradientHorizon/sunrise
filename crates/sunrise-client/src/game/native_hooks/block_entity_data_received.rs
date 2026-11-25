@@ -61,6 +61,7 @@ impl BlockEntityClientReadAccess for ClientDataReadAccess<'_, '_> {
     }
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn notify_block_entity_data_received(
         &self,

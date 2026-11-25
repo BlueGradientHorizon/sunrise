@@ -1,5 +1,6 @@
 //! The options screens bound to the game: drawing, input, applying settings
 //! (video, sound, chat, font, language) and the F11 fullscreen toggle.
+#[cfg(feature = "client")]
 use super::shader_packs::{TogglePlan, active_pack, dev_pack, plan_shader_toggle};
 use super::{Game, ResizeState, Screen};
 use serde_json::{Value, json};
@@ -23,6 +24,7 @@ pub(in crate::game) const CONTROL_HELP: &[&str] = &[
     "options-set KEY VALUE          set an option (enums by name, keys as key.keyboard.w, lists as JSON), apply and save it",
 ];
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn save_title_options(&mut self) {
         if let Some(title) = &self.side.title.0
@@ -910,6 +912,7 @@ pub(in crate::game) fn game_dir() -> std::path::PathBuf {
     std::env::current_dir().unwrap_or_default()
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Fullbright as this window may draw it (`fullbright_held`): the renderer's flag and the
     /// graphics screen's row. Each tick (`tick_frame_visuals`) and when settings apply, so
@@ -944,6 +947,7 @@ fn detected_controller_style(
     })
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 mod resize_state_tests {
     use super::ResizeState;
@@ -1172,6 +1176,7 @@ mod resize_state_tests {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 mod fullbright_tests {
     use super::fullbright_held;
@@ -1189,6 +1194,7 @@ mod fullbright_tests {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 mod controller_context_tests {
     use super::detected_controller_style;

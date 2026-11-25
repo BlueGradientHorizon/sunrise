@@ -44,6 +44,7 @@ pub(in crate::game) fn has_smoke_trail(kind: &ProjectileKind) -> bool {
     )
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `Arrow.handleEntityEvent(0)`: a tipped arrow stuck for 600 ticks bursts
     /// into twenty particles in its colour. The server turns it into a plain
@@ -820,6 +821,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `Arrow.tick` and `SpectralArrow.tick` on a client: a tipped arrow
     /// sheds two entity-effect swirls in its colour while flying, one every
@@ -1100,6 +1102,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
@@ -1303,6 +1306,7 @@ pub(in crate::game) mod tests {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod nested_spawn_tests {
     use super::*;
@@ -1540,6 +1544,7 @@ pub(in crate::game) mod nested_spawn_tests {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod entity_tick_tests {
     use std::sync::{Arc, Mutex};
@@ -1757,6 +1762,7 @@ pub(in crate::game) mod entity_tick_tests {
 
 /// The visit of one entity told alone: a passenger counts before its Pre (`tickPassenger`), a
 /// root once `pre` let it through (`tickNonPassenger`).
+#[cfg(feature = "client")]
 pub(in crate::game::client_side) fn told_visit(
     game: &mut Game<'_, crate::game::client_side::ClientState>,
     id: u32,

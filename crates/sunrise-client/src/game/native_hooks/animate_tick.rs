@@ -43,6 +43,7 @@ impl mod_api::RandomSource for LevelRandom {
     }
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Whether `state`'s block has a part answering `animate_tick`: the per-block table's
     /// answer, no dispatch. The sampler asks it after each loaded pick's block effects.

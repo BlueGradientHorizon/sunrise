@@ -1,6 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// NeoForge's `FMLClientSetupEvent`: the client started. Fires once per game process,
     /// after the first client load has applied and before the title screen's first frame;

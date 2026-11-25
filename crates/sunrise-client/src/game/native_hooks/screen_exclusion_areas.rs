@@ -2,6 +2,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// The hook `screen_exclusion` asks: a mod adds the rectangles it
     /// draws over `screen` (a side panel, a button column) to `areas`, in GUI

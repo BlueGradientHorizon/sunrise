@@ -124,6 +124,7 @@ pub(in crate::game::client_side) fn view_pages(data: Option<&StackData>) -> Vec<
         })
         .collect()
 }
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn book_lines(&self, page: &str) -> Vec<Text> {
         self.page_lines(&Text::untrusted(page))
@@ -1420,6 +1421,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 }
 #[allow(unused_imports)]
 pub(in crate::game) use sunrise_gameplay::lectern::lectern_signal;
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod title_box_tests {
     use super::book_title_box;
@@ -1433,6 +1435,7 @@ pub(in crate::game) mod title_box_tests {
         assert_eq!(edit.max_length, 15);
     }
 }
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod lectern_books_tag_tests {
     #[allow(unused_imports)]
@@ -1441,14 +1444,17 @@ pub(in crate::game) mod lectern_books_tag_tests {
     use sunrise_client::{containers::BlockEntity, items::ItemStack};
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "tests/book_escape_tests.rs"]
 pub(in crate::game) mod book_escape_tests;
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "tests/lectern_tests.rs"]
 pub(in crate::game) mod lectern_tests;
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod lectern_signal_tests {
     use super::super::game_tests::tests::server_game;
@@ -1593,6 +1599,7 @@ impl BookScreen {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod pause_tests {
     use super::BookScreen;
@@ -1631,6 +1638,7 @@ pub(in crate::game) mod pause_tests {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod sign_tests {
     use super::{BookScreen, book_page_box, book_title_box};
@@ -1674,6 +1682,7 @@ pub(in crate::game) mod sign_tests {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "tests/sign_book_tests.rs"]
 pub(in crate::game) mod sign_book_tests;
@@ -1686,6 +1695,7 @@ pub(in crate::game::client_side) fn link_cursor(
         .is_some()
         .then_some(sunrise_client::widgets::Cursor::PointingHand)
 }
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod link_cursor_tests {
     use super::link_cursor;

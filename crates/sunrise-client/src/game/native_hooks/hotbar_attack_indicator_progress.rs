@@ -1,5 +1,6 @@
 use super::Game;
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// After the stock hotbar's items, before its attack indicator checks for full charge.
     pub(in crate::game) fn native_hotbar_attack_indicator_progress(

@@ -1,9 +1,12 @@
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use super::Game;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::remote_tags::DAMAGE_TYPE;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::remote_tags::READ_REGISTRIES;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::remote_tags::*;
 #[allow(unused_imports)]

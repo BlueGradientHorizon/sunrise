@@ -25,6 +25,7 @@ impl ScreenshotWrite {
     }
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn poll_screenshot_writes(&mut self) {
         let mut index = 0;

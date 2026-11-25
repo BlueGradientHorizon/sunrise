@@ -1,5 +1,6 @@
 use super::*;
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Draws the open station or brewing stand screen; false when none is open.
     pub(in crate::game::client_side) fn draw_station(&mut self, batch: &mut HudBatch) -> bool {

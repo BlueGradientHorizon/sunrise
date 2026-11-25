@@ -270,6 +270,7 @@ pub(in crate::game::client_side) fn save_pack_options(
     }
     packs::set_polytone_choices(all);
 }
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn drop_pack_file(&mut self, path: &Path) {
         let size = self.gui_size();
@@ -1045,6 +1046,7 @@ pub(in crate::game) fn reload_files(
     ReloadFiles::new(files)
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
@@ -1307,6 +1309,7 @@ pub(in crate::game) mod tests {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "clouds_reload_tests.rs"]
 pub(in crate::game) mod clouds_reload_tests;

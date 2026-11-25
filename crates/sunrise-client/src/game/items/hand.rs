@@ -87,6 +87,7 @@ pub(in crate::game) fn matches_for_swap(a: Option<&ItemStack>, b: Option<&ItemSt
 
 pub(in crate::game) use super::held_items::{BreakSpeedDispatch, HarvestDispatch};
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// A slot of the inventory (`OFFHAND_SLOT` for the off hand) was set to
     /// a new stack: the hand holding it compares it as another `ItemStack`
@@ -240,6 +241,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &self,
         range: &serde_json::Value,
     ) -> super::pick_entity::AttackRangePickResult {
+        #[cfg(feature = "client")]
         use super::pick_accumulator::PickCandidate;
         use super::pick_entity::AttackRangePickResult;
 
@@ -614,6 +616,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;

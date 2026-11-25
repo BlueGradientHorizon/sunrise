@@ -193,6 +193,7 @@ impl<T: TryIntoApi, E: Clone> TryIntoApi for Result<T, E> {
     }
 }
 
+#[cfg(feature = "client")]
 impl super::Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn api_block_entity_submit(
         &self,

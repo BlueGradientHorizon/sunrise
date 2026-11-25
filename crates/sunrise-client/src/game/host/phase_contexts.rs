@@ -135,8 +135,10 @@ macro_rules! impl_shared_phase_contexts {
 }
 
 impl_shared_phase_contexts!(ServerGame<'_>);
+#[cfg(feature = "client")]
 impl_shared_phase_contexts!(ClientGame<'_>);
 
+#[cfg(feature = "client")]
 impl ClientReloadHost for ClientGame<'_> {
     fn render_assets(&self) -> &dyn RenderAssets {
         <Self as prelude::ServicesClientHost>::render_assets(self)
@@ -186,6 +188,7 @@ impl ClientReloadHost for ClientGame<'_> {
     }
 }
 
+#[cfg(feature = "client")]
 impl ClientReloadListenerContext for ClientGame<'_> {
     fn dist(&self) -> Dist {
         <Self as prelude::ConfigHost>::dist(self)
@@ -222,6 +225,7 @@ impl ClientReloadListenerContext for ClientGame<'_> {
     }
 }
 
+#[cfg(feature = "client")]
 impl ClientSetupContext for ClientGame<'_> {
     fn config_files(&self) -> &'static dyn ConfigFiles {
         <Self as prelude::ConfigHost>::config_files(self)

@@ -12,6 +12,7 @@ pub(in crate::game) mod fire;
 pub(in crate::game) use block_entity_tick::ResidentBlockEntityAccess;
 #[allow(unused_imports)]
 pub(in crate::game) use build_creative_mode_tab_contents::CreativeCache;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_pick::ClientPick;
 #[allow(unused_imports)]
@@ -744,6 +745,7 @@ pub(in crate::game) mod wind_burst;
 pub(in crate::game) mod window_resize;
 pub(in crate::game) mod xp_orb_targeting;
 pub(in crate::game) mod xp_repair_ratio;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use add_attribute_tooltips::HookedAttributeTooltips;
 #[allow(unused_imports)]
@@ -771,6 +773,7 @@ pub(in crate::game) use base::{
 };
 #[allow(unused_imports)]
 pub(in crate::game) use block_entity_client_tick::native_block_entity_client_tick;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use block_entity_data_received::native_block_entity_data_received;
 #[allow(unused_imports)]
@@ -783,6 +786,7 @@ pub(in crate::game) use block_entity_tick::native_block_entity_tick;
 pub(in crate::game) use block_entity_type_add_blocks::native_block_entity_type_add_blocks;
 #[allow(unused_imports)]
 pub(in crate::game) use can_place_item::native_can_place_item;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_pick::native_can_rider_interact;
 #[allow(unused_imports)]
@@ -823,6 +827,7 @@ pub(in crate::game) use register_debug_renderers::native_register_debug_renderer
 pub(in crate::game) use register_dimension_transition_screen::native_register_dimension_transition_screen;
 #[allow(unused_imports)]
 pub(in crate::game) use register_enchantment_damage_effects::native_register_enchantment_damage_effects;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use register_entity_layers::native_register_entity_layers;
 #[allow(unused_imports)]

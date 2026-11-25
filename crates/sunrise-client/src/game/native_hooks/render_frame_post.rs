@@ -2,6 +2,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Once a frame, in a world or not, right after the frame was rendered
     /// (`RenderFrameEvent.Post`).

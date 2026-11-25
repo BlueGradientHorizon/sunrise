@@ -3,6 +3,7 @@ pub(in crate::game::client_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::remote::packets_world::*;
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `C::BlockDestruction`: its arms of `apply_packet`, guard and order kept.
     pub(in crate::game) fn apply_block_destruction_packet(&mut self, p: play::BlockDestruction) {

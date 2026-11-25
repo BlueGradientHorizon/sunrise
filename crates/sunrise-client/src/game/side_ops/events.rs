@@ -291,6 +291,7 @@ impl SideOps for crate::game::server_side::ServerState {
         }
     }
 }
+#[cfg(feature = "client")]
 #[allow(unused_variables)]
 impl SideOps for crate::game::client_side::ClientState {
     fn side_process_level_events(game: &mut crate::game::Game<'_, Self>) -> Result<()> {

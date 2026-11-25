@@ -7,6 +7,7 @@ pub(in crate::game::client_side) use crate::game::remote::effect::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::effects::EffectInstance;
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `ClientPacketListener.handleUpdateMobEffect` (`LivingEntity.forceAddEffect`): for the
     /// player itself, or another living entity the level holds (a mob, another player or an

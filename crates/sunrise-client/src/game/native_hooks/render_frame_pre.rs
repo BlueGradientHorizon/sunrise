@@ -2,6 +2,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn frame_partial_ticks(&self) -> (f32, f32) {
         let partial_tick = self.clock.window_fraction();

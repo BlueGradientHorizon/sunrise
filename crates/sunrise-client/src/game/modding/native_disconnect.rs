@@ -11,6 +11,7 @@ pub(in crate::game) struct LeaveRequest {
     reason: Option<Text>,
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Asks to leave the joined server or world at the end of this frame.
     /// Unavailable with no world joined, or while the world is already closing.

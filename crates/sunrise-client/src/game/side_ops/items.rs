@@ -161,6 +161,7 @@ impl SideOps for crate::game::server_side::ServerState {
         { game.server_current_level_ref() }
     }
 }
+#[cfg(feature = "client")]
 #[allow(unused_variables)]
 impl SideOps for crate::game::client_side::ClientState {
     fn side_emit_consume(

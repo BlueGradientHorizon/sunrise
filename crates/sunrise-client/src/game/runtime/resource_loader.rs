@@ -393,6 +393,7 @@ impl WorldRestLoader {
     }
 }
 
+#[cfg(feature = "client")]
 pub(in crate::game) fn write_report(
     game: &Game<'_, crate::game::client_side::ClientState>,
 ) -> Result<()> {

@@ -138,6 +138,7 @@ fn motion_blocking_leaves(
     }
     world.bottom_y()
 }
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Polytone GPU particles, before the frame's quads are built: any pending clear, the
     /// renderer's verdict on each shader and on the quads drawn here, then the heightmap for the readers that draw (a custom shader's `Sampler1`,
@@ -1195,6 +1196,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
     }
 }
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// What the packs' Polytone animation modes read this tick (wiki "Variant Textures"): the
     /// time of day, the weather, and for expressions the packs' Polytone frame, or the time and
@@ -1228,6 +1230,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 }
 
 /// The packs' expression uniforms on core shaders (`shader_modifiers`, wiki "Shaders").
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Whether an installed pack core shader reads expression uniforms this frame. Fullbright
     /// excludes the lightmap only, and a frame where no world runs the text
@@ -1276,6 +1279,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
     use super::{Properties, World, splash_height};
@@ -1549,6 +1553,7 @@ mod tests {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "tests/ambient_particle_tests.rs"]
 mod ambient_particle_tests;

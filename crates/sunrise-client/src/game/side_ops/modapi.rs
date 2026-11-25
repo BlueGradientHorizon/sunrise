@@ -44,6 +44,7 @@ impl SideOps for crate::game::server_side::ServerState {
         { game.server_entity_residence(holder) }
     }
 }
+#[cfg(feature = "client")]
 #[allow(unused_variables)]
 impl SideOps for crate::game::client_side::ClientState {
     fn side_attachment_map<'__side_g>(

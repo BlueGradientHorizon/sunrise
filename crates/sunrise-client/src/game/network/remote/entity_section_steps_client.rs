@@ -3,6 +3,7 @@ pub(in crate::game::client_side) use super::Game;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_core::geometry::Vec3;
 
+#[cfg(feature = "client")]
 pub(in crate::game) fn player_teleport(
     game: &mut Game<'_, crate::game::client_side::ClientState>,
     had_player: bool,
@@ -14,6 +15,7 @@ pub(in crate::game) fn player_teleport(
     }
 }
 
+#[cfg(feature = "client")]
 pub(in crate::game) fn tick_items(
     game: &mut Game<'_, crate::game::client_side::ClientState>,
     entered: &mut Vec<sunrise_client::entities::ItemSplash>,
@@ -47,6 +49,7 @@ pub(in crate::game) fn tick_items(
     game.put_back_dropped(items);
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `ClientLevel.isTickingEntity`: players always tick; other entities tick while their chunk is loaded.
     pub(in crate::game::client_side) fn remote_entity_is_ticking(&self, id: i32) -> bool {

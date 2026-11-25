@@ -187,6 +187,7 @@ pub(in crate::game) const CHECK_WAIT: Duration = Duration::from_millis(500);
 /// The answers kept for one view of the menu.
 pub(in crate::game) const CHECK_KEPT: usize = 64;
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod transfer_check_cache_tests {
     use super::*;
@@ -249,6 +250,7 @@ pub(in crate::game) fn sprite(name: &str) -> String {
     format!("recipe_book/{name}")
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// A viewer's transfer of a recipe by id, into a mod menu or a grid.
     pub(in crate::game) fn transfer_recipe_id(&mut self, recipe: &str, max: bool) {
@@ -2368,6 +2370,7 @@ pub(in crate::game) fn sub_rect(r: Rect, [x, y, w, h]: [f32; 4]) -> Rect {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod request_generation_tests {
     use super::*;
@@ -2387,6 +2390,7 @@ pub(in crate::game) mod request_generation_tests {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
     /// `RecipeBookComponent.keyPressed`: Escape closes a narrow window's open
@@ -2400,10 +2404,12 @@ pub(in crate::game) mod tests {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "recipe_book/check_mod_menu_tests.rs"]
 pub(in crate::game) mod check_mod_menu_tests;
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod screen_room_tests {
     use super::*;

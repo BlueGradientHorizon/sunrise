@@ -281,6 +281,7 @@ pub(in crate::game::client_side) fn click(
         .map(|b| b.action)
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
     use super::*;

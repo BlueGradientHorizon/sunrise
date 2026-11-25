@@ -133,6 +133,7 @@ fn back_button(w: f32, h: f32) -> (f32, f32) {
     )
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `connection.serverLinks()`: the links the open server sent (empty for
     /// a world without a connection or one that sent none).
@@ -589,6 +590,7 @@ fn dialog_warning_layout(atlas: &sunrise_client::hud::HudAtlas, size: (f32, f32)
     )
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
     use super::*;

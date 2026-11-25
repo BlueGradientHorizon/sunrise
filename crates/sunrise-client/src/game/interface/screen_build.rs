@@ -584,6 +584,7 @@ impl ScreenBuildState {
     }
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `Gui.setScreen`: `KeyMapping.releaseAll` on a successful screen or overlay
     /// opening/replacement transition (never on per-frame observation or resize).
@@ -931,6 +932,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
     use super::{

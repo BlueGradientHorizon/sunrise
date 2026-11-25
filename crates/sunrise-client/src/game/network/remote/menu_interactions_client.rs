@@ -3,6 +3,7 @@ pub(in crate::game::client_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::remote::menu_interactions::*;
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `LocalPlayer.closeContainer` as the creative inventory closes: its
     /// `ItemPickerMenu` is window 0, and a server hears the close as it does

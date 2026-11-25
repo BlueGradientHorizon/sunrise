@@ -29,6 +29,7 @@ pub(super) struct PlacementOverlay {
     pub(super) recipe: String,
     pub(super) sources: Vec<u32>,
 }
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(super) fn request_mod_book_recipe(&mut self, recipe: String, source: u32) {
         if !self
@@ -162,6 +163,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
     use super::*;

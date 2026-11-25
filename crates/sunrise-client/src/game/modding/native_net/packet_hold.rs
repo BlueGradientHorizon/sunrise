@@ -126,6 +126,7 @@ impl<T: AsRef<[u8]> + Default> Holds<T> {
     }
 }
 
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     fn hold_incarnation(&self) -> Option<(u64, u64)> {
         self.remote
@@ -227,6 +228,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let _ = holds.queue(packet, |packet| packet.publish(remote, incarnation));
     }
 }
+#[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `Connection.send` for the game's play packets. True only if there is a remote,
     /// `client_packet_send` did not cancel, and the packet was accepted by the active
@@ -239,6 +241,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
+#[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "packet_hold_tests.rs"]
 mod tests;

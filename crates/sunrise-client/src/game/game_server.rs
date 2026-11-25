@@ -1,9 +1,11 @@
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::api_values::TryIntoApi;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_state::ClientState;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::condition_reload_state::PreparedWorldReload;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::event_loop::EventLoopCtl;
 #[allow(unused_imports)]
@@ -13,6 +15,7 @@ pub(in crate::game::server_side) use crate::game::hud_render::block_outline_draw
 pub(in crate::game::server_side) use crate::game::hud_render::{
     debug_crosshair_drawn, is_game_master_block,
 };
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 #[cfg(test)]
 pub(in crate::game::server_side) use crate::game::inventory_input::drop_whole_stack;
@@ -28,10 +31,12 @@ pub(in crate::game::server_side) use crate::game::loading_screen::{
     App, Loading, leave_fullscreen_after, preflight_resources, run_event_loop,
     unclean_start_recovery,
 };
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::loading_window::{
     build_renderer, loading_frame, loading_renderer, prepare_renderer_textures, start_client_game,
 };
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::motion_ids::{motion_at, motion_block_entity};
 #[allow(unused_imports)]
@@ -51,6 +56,7 @@ pub(in crate::game::server_side) use crate::game::resource_loader::{
 pub(in crate::game::server_side) use crate::game::server_side::loading_server::start_dedicated_game;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::server_state::ServerState;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::subtitles::{Subtitles, in_game_ui, subtitles};
 #[allow(unused_imports)]
