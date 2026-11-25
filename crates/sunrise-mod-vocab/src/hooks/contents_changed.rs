@@ -31,7 +31,8 @@ pub trait Hooks {
         scope = "block",
         key = "state",
         neoforge = "none (Container.setChanged has no bus event)",
-        cancellable = false
+        cancellable = false,
+        listener_transaction = "always"
     )]
     fn contents_changed(
         level: LevelRef,

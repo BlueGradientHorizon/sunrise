@@ -74,6 +74,9 @@ trait ServerHost: Host {
     ) -> Option<item::transaction::TransactionError<core::convert::Infallible>> {
         None
     }
+    fn transaction_matches(&self, tx: Option<&()>) -> bool {
+        tx.is_none()
+    }
 }
 trait ClientHost: Host {}
 
@@ -291,7 +294,7 @@ mod generated {
     }
     include!(concat!(env!("OUT_DIR"), "/mod_api_generated.rs"));
     pub(super) use self::mod_api::InlineImageReplacement;
-    pub(super) use self::mod_api::{BlockFace, BlockKey, BlockState, CrosshairTarget};
+    pub(super) use self::mod_api::{BlockFace, BlockKey, BlockState, CrosshairTarget, NameTagLine};
     use self::mod_api::{GuiCanvas, StandaloneModelRegistration};
     pub use sunrise_mod_api_macros::__subscriptions;
 }
