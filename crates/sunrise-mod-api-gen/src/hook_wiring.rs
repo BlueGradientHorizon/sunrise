@@ -2,7 +2,11 @@
 mod calls;
 mod sources;
 
-use crate::{Catalog, Hook, catalog::DispatchStyle, dispatch, free_function_source, source};
+use crate::{
+    Catalog, Hook,
+    catalog::{DispatchStyle, Side},
+    dispatch, free_function_source, source,
+};
 pub(super) use calls::{Callee, has_call_matching};
 use calls::{Routes, Target, path_is};
 use sources::{Build, Sources};
@@ -202,6 +206,11 @@ fn check_target(sources: &mut Sources<'_>, hook: &Hook, build: &Build) -> Result
         return Ok(false);
     }
     let Some(module) = found_module else {
+        // Server-only builds (`not(feature = "client")`) intentionally omit `Side::Client` hook
+        // impls even inside hybrid modules that still compile on the server.
+        if hook.side == Side::Client && build.is_disabled("feature = \"client\"") {
+            return Ok(false);
+        }
         return Err("target definition not found".into());
     };
     let name = &hook.name;

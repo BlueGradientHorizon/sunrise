@@ -98,6 +98,10 @@ impl Build {
     pub(super) fn enabled(&self, attrs: &[syn::Attribute]) -> bool {
         self.permits(&cfg_conditions(attrs))
     }
+
+    pub(super) fn is_disabled(&self, atom: &str) -> bool {
+        self.values.get(atom) == Some(&false)
+    }
 }
 
 fn is_target_atom(atom: &str) -> bool {
