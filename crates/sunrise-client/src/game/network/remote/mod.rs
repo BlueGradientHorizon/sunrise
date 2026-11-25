@@ -2087,6 +2087,8 @@ pub(in crate::game) mod level_sound_tests;
 #[cfg(test)]
 pub(in crate::game) mod attachment_query_tests;
 #[cfg(test)]
+pub(in crate::game) mod client_camera_tests;
+#[cfg(test)]
 pub(in crate::game) mod passage_cross_tests;
 #[cfg(test)]
 pub(in crate::game) mod respawn_motion_tests;

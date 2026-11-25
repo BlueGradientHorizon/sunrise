@@ -485,7 +485,7 @@ impl Game<'_> {
 #[cfg(test)]
 pub(in crate::game) mod select_on_a_server_tests {
     #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::trading::select_on_a_server_tests::*;
+pub(in crate::game::client_side) use crate::game::server_side::trading::select_on_a_server_tests::*;
 
     /// Picking a trade on a server moves payment locally, sends SelectTrade, and leaves effects to server.
     #[test]

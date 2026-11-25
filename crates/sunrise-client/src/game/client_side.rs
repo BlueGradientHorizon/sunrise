@@ -602,18 +602,61 @@ pub(in crate::game) mod zombie_villagers_client;
 
 #[path = "interface/advancements/mod_client.rs"]
 pub(in crate::game) mod advancements_client;
+#[path = "blocks/block_entity_anims_client.rs"]
+pub(in crate::game) mod block_entity_anims_client;
+#[path = "entities/boats/mod_client.rs"]
+pub(in crate::game) mod boats_client;
+#[path = "administration/commands/mod_client.rs"]
+pub(in crate::game) mod commands_client;
+#[path = "mobs/creatures/mod_client.rs"]
+pub(in crate::game) mod creatures_client;
+#[path = "mobs/dragon_client.rs"]
+pub(in crate::game) mod dragon_client;
+#[path = "world/end_client.rs"]
+pub(in crate::game) mod end_client;
+#[path = "modding/entity_sizes_client.rs"]
+pub(in crate::game) mod entity_sizes_client;
+#[path = "mobs/fangs_client.rs"]
+pub(in crate::game) mod fangs_client;
+#[path = "entities/fireworks_client.rs"]
+pub(in crate::game) mod fireworks_client;
+#[path = "items/fishing_client.rs"]
+pub(in crate::game) mod fishing_client;
+#[path = "interface/game_mode_client.rs"]
+pub(in crate::game) mod game_mode_client;
+#[path = "world/integrated_client.rs"]
+pub(in crate::game) mod integrated_client;
+#[path = "interface/level_particles_client.rs"]
+pub(in crate::game) mod level_particles_client;
+#[path = "blocks/machines/mod_client.rs"]
+pub(in crate::game) mod machines_client;
+#[path = "runtime/memory_client.rs"]
+pub(in crate::game) mod memory_client;
+#[path = "modding/native_entity_refs_client.rs"]
+pub(in crate::game) mod native_entity_refs_client;
+#[path = "modding/native_living_effects_client.rs"]
+pub(in crate::game) mod native_living_effects_client;
+#[path = "mobs/ominous_item_spawner/mod_client.rs"]
+pub(in crate::game) mod ominous_item_spawner_client;
+#[path = "entities/paintings_client.rs"]
+pub(in crate::game) mod paintings_client;
+#[path = "world/saving_client.rs"]
+pub(in crate::game) mod saving_client;
+#[path = "items/spear_client.rs"]
+pub(in crate::game) mod spear_client;
+#[path = "entities/tnt_client.rs"]
+pub(in crate::game) mod tnt_client;
+#[path = "items/trident_client.rs"]
+pub(in crate::game) mod trident_client;
+
 #[path = "entities/armor_stands_client.rs"]
 pub(in crate::game) mod armor_stands_client;
 #[path = "mobs/beehives_client.rs"]
 pub(in crate::game) mod beehives_client;
-#[path = "blocks/block_entity_anims_client.rs"]
-pub(in crate::game) mod block_entity_anims_client;
 #[path = "blocks/block_particles_client.rs"]
 pub(in crate::game) mod block_particles_client;
 #[path = "entities/boat_leads_client.rs"]
 pub(in crate::game) mod boat_leads_client;
-#[path = "entities/boats/mod_client.rs"]
-pub(in crate::game) mod boats_client;
 #[path = "interface/bossbars_client.rs"]
 pub(in crate::game) mod bossbars_client;
 #[path = "mobs/breezes_client.rs"]
@@ -626,15 +669,11 @@ pub(in crate::game) mod campfire_douse_client;
 pub(in crate::game) mod cauldron_interactions_client;
 #[path = "items/combat_client.rs"]
 pub(in crate::game) mod combat_client;
-#[path = "administration/commands/mod_client.rs"]
-pub(in crate::game) mod commands_client;
 #[path = "items/consume_client.rs"]
 pub(in crate::game) mod consume_client;
 #[cfg(test)]
 #[path = "runtime/core_tests_client.rs"]
 pub(in crate::game) mod core_tests_client;
-#[path = "mobs/creatures/mod_client.rs"]
-pub(in crate::game) mod creatures_client;
 #[path = "items/crossbow_client.rs"]
 pub(in crate::game) mod crossbow_client;
 #[path = "entities/cushions_client.rs"]
@@ -644,35 +683,19 @@ pub(in crate::game) mod deflect_client;
 #[cfg(test)]
 #[path = "modding/disabled_block_tests_client.rs"]
 pub(in crate::game) mod disabled_block_tests_client;
-#[path = "mobs/dragon_client.rs"]
-pub(in crate::game) mod dragon_client;
 #[path = "items/enchant_effects_client.rs"]
 pub(in crate::game) mod enchant_effects_client;
-#[path = "world/end_client.rs"]
-pub(in crate::game) mod end_client;
-#[path = "modding/entity_sizes_client.rs"]
-pub(in crate::game) mod entity_sizes_client;
 #[path = "entities/extinguish_client.rs"]
 pub(in crate::game) mod extinguish_client;
 #[path = "blocks/falling_blocks_client.rs"]
 pub(in crate::game) mod falling_blocks_client;
-#[path = "mobs/fangs_client.rs"]
-pub(in crate::game) mod fangs_client;
-#[path = "entities/fireworks_client.rs"]
-pub(in crate::game) mod fireworks_client;
-#[path = "items/fishing_client.rs"]
-pub(in crate::game) mod fishing_client;
 #[path = "entities/frames_client.rs"]
 pub(in crate::game) mod frames_client;
-#[path = "interface/game_mode_client.rs"]
-pub(in crate::game) mod game_mode_client;
 #[path = "mobs/golems_client.rs"]
 pub(in crate::game) mod golems_client;
 #[cfg(test)]
 #[path = "modding/initial_client_models_tests_client.rs"]
 pub(in crate::game) mod initial_client_models_tests_client;
-#[path = "world/integrated_client.rs"]
-pub(in crate::game) mod integrated_client;
 #[path = "items/item_entities_client.rs"]
 pub(in crate::game) mod item_entities_client;
 #[path = "items/item_use_client.rs"]
@@ -690,20 +713,14 @@ pub(in crate::game) mod lan_trade_decisions_tests_client;
 pub(in crate::game) mod lan_vehicles_client;
 #[path = "entities/leads_client.rs"]
 pub(in crate::game) mod leads_client;
-#[path = "interface/level_particles_client.rs"]
-pub(in crate::game) mod level_particles_client;
 #[path = "interface/level_sounds_client.rs"]
 pub(in crate::game) mod level_sounds_client;
 #[path = "mobs/llamas_client.rs"]
 pub(in crate::game) mod llamas_client;
 #[path = "items/mace_client.rs"]
 pub(in crate::game) mod mace_client;
-#[path = "blocks/machines/mod_client.rs"]
-pub(in crate::game) mod machines_client;
 #[path = "blocks/maps/mod_client.rs"]
 pub(in crate::game) mod maps_client;
-#[path = "runtime/memory_client.rs"]
-pub(in crate::game) mod memory_client;
 #[path = "entities/minecarts_client.rs"]
 pub(in crate::game) mod minecarts_client;
 #[cfg(test)]
@@ -715,8 +732,6 @@ pub(in crate::game) mod mods_client;
 pub(in crate::game) mod native_block_sounds_client;
 #[path = "modding/native_entity_motion_client.rs"]
 pub(in crate::game) mod native_entity_motion_client;
-#[path = "modding/native_entity_refs_client.rs"]
-pub(in crate::game) mod native_entity_refs_client;
 #[path = "modding/native_entity_riding_client.rs"]
 pub(in crate::game) mod native_entity_riding_client;
 #[cfg(test)]
@@ -729,8 +744,6 @@ pub(in crate::game) mod native_item_places_client;
 pub(in crate::game) mod native_level_sound_except_tests_client;
 #[path = "modding/native_lifecycle_client.rs"]
 pub(in crate::game) mod native_lifecycle_client;
-#[path = "modding/native_living_effects_client.rs"]
-pub(in crate::game) mod native_living_effects_client;
 #[path = "modding/native_living_writes_client.rs"]
 pub(in crate::game) mod native_living_writes_client;
 #[path = "modding/native_mob_refs_client.rs"]
@@ -742,10 +755,6 @@ pub(in crate::game) mod native_player_level_tests_client;
 pub(in crate::game) mod native_server_client;
 #[path = "blocks/nether_portal_client.rs"]
 pub(in crate::game) mod nether_portal_client;
-#[path = "mobs/ominous_item_spawner/mod_client.rs"]
-pub(in crate::game) mod ominous_item_spawner_client;
-#[path = "entities/paintings_client.rs"]
-pub(in crate::game) mod paintings_client;
 #[path = "mobs/pandas_client.rs"]
 pub(in crate::game) mod pandas_client;
 #[path = "entities/passengers_client.rs"]
@@ -761,12 +770,8 @@ pub(in crate::game) mod projectile_spawned_tests_client;
 pub(in crate::game) mod raids_client;
 #[path = "network/remote/mod_client.rs"]
 pub(in crate::game) mod remote_client;
-#[path = "world/saving_client.rs"]
-pub(in crate::game) mod saving_client;
 #[path = "interface/scoreboard/mod_client.rs"]
 pub(in crate::game) mod scoreboard_client;
-#[path = "items/spear_client.rs"]
-pub(in crate::game) mod spear_client;
 #[cfg(test)]
 #[path = "modding/stacked_on_other_tests_client.rs"]
 pub(in crate::game) mod stacked_on_other_tests_client;
@@ -774,12 +779,8 @@ pub(in crate::game) mod stacked_on_other_tests_client;
 pub(in crate::game) mod sulfur_cubes_client;
 #[path = "administration/test_instances_client.rs"]
 pub(in crate::game) mod test_instances_client;
-#[path = "entities/tnt_client.rs"]
-pub(in crate::game) mod tnt_client;
 #[path = "items/trading_client.rs"]
 pub(in crate::game) mod trading_client;
-#[path = "items/trident_client.rs"]
-pub(in crate::game) mod trident_client;
 #[path = "items/use_hand_client.rs"]
 pub(in crate::game) mod use_hand_client;
 #[path = "blocks/vault_client.rs"]

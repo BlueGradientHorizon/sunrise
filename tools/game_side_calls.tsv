@@ -1506,6 +1506,7 @@ client	replay	impl Replay	playing	-	method	game	called
 client	repro	impl Game<'_>	repro_tick	-	method	server	called
 client	resource_loader	-	run_loading	-	fn	game	called
 client	resource_loader	-	write_report	-	fn	game	called
+client	resource_loader	impl GameCpuResources	clone_for_tests	#[cfg(test)]	method	test	test resource cache helper
 client	resource_loader	impl GameCpuResources	load	-	method	game,test	called
 client	resource_loader	impl WorldRestLoader	finish	-	method	test	called
 client	resource_loader	impl WorldRestLoader	ready	-	method	test	called
@@ -1826,6 +1827,7 @@ server	api_values	-	placement_source_into_engine	-	fn	game	called
 server	api_values	-	project_stack	-	fn	client,game	called
 server	api_values	-	register_game_keys	#[cfg(test)]	fn	test	called
 server	api_values	-	resolve_block_definitions	-	fn	game,test	called
+server	api_values	-	resolve_cached_block_definitions	#[cfg(test)]	fn	test	test resource cache helper
 server	api_values	-	resolve_item_registry	-	fn	game	called
 server	api_values	-	stack_read_metadata	-	fn	client,game	called
 server	api_values	-	stack_value	-	fn	client,game,generated,test	called
@@ -1981,6 +1983,7 @@ server	armor_stands	-	preview_slot	-	fn	client	called
 server	armor_stands	-	skull_kind	-	fn	client	called
 server	armor_stands	-	stand_box	-	fn	client	called
 server	armor_stands	impl ArmorStandAssets	apply_resources	-	method	client,test	called
+server	armor_stands	impl ArmorStandAssets	clone_for_tests	#[cfg(test)]	method	test	test resource cache helper
 server	armor_stands	impl ArmorStandAssets	load	-	method	client,test	called
 server	armor_stands	impl ArmorStandAssets	trim_texture	-	method	client	called
 server	armor_stands	impl Game<'_>	armor_stand_death_drops	-	method	client	called
@@ -4220,6 +4223,8 @@ server	native_entity_refs::tests	-	with_game	#[cfg(test)]	fn	test	called
 server	native_entity_refs::tests	-	with_game_at	#[cfg(test)]	fn	test	called
 server	native_entity_refs::tests	-	with_game_role	#[cfg(test)]	fn	test	called
 server	native_entity_refs::tests	-	with_game_role_and_facts	#[cfg(test)]	fn	test	called
+server	native_entity_refs::tests	-	with_uncached_client_game	#[cfg(test)]	fn	test	test resource cache helper
+server	native_entity_refs::tests	-	with_uncached_game	#[cfg(test)]	fn	test	test resource cache helper
 server	native_entity_remove	impl Game<'_>	entity_discard	-	method	generated,test	called
 server	native_entity_remove	impl Game<'_>	entity_remove	-	method	generated	called
 server	native_entity_remove	impl Game<'_>	entity_spawn_at_location	-	method	generated	called

@@ -10,63 +10,6 @@ pub(in crate::game::client_side) use sunrise_client::{multiplayer, title::Mode};
 pub(in crate::game::client_side) use sunrise_hooks::connection::{By, Ended, Left, Retry, Server};
 
 impl Game<'_> {
-    pub(in crate::game) fn set_registries(&mut self, registries: Arc<Dynamic>) {
-        let entries: Vec<(&str, serde_json::Value)> = registries
-            .registries
-            .get("minecraft:enchantment")
-            .into_iter()
-            .flatten()
-            .filter_map(|(name, data)| {
-                Some((
-                    name.as_str(),
-                    sunrise_client::scoreboard::tag_to_json(data.as_ref()?),
-                ))
-            })
-            .collect();
-        let enchantments = match self
-            .stations()
-            .enchantments
-            .with_entries(entries.iter().map(|(n, v)| (*n, v)))
-        {
-            Ok(table) => table.map(Arc::new),
-            Err(error) => {
-                log::warn!("Sunrise: refused enchantment registry: {error}");
-                return;
-            }
-        };
-        // Bind a per-session biome pair so client biome-color mods never mutate `pack.context`.
-        let table = registries
-            .registries
-            .get(BIOME_REGISTRY)
-            .and_then(|list| client_biomes(self.res.biomes(), list))
-            .map(Arc::new)
-            .unwrap_or_else(|| self.res.biomes().clone());
-        self.world_biomes_base = Some(table.clone());
-        self.world_biomes = Some(table);
-        let context = self.worker_context();
-        self.streaming.reload_resources(&mut self.world, context);
-        let biomes: Vec<u16> = registries
-            .registries
-            .get(BIOME_REGISTRY)
-            .map(|list| {
-                list.iter()
-                    .map(|(name, _)| world_biomes!(self).id(name))
-                    .collect()
-            })
-            .unwrap_or_default();
-        if let Some(r) = self.remote.as_mut() {
-            r.enchantments = enchantments;
-            let bits = ceil_log2(biomes.len());
-            let column = r.chunk_format.layout();
-            r.chunk_format =
-                Arc::new(ChunkFormat::new(&r.dimension, biomes, bits).in_column(column));
-            r.registries = registries;
-            r.resolve_clocks();
-            self.install_server_items();
-            self.reset_creative_contents();
-            self.refresh_creative_search_tags();
-        }
-    }
     /// A click on `ConnectScreen`: Cancel aborts the connection
     /// (`connect.aborted`) and goes back. Escape does nothing there
     /// (`shouldCloseOnEsc` is false).
@@ -258,5 +201,62 @@ impl Game<'_> {
             .last_connection
             .as_ref()
             .is_some_and(|server| server.lan)
+    }
+    pub(in crate::game) fn set_registries(&mut self, registries: Arc<Dynamic>) {
+        let entries: Vec<(&str, serde_json::Value)> = registries
+            .registries
+            .get("minecraft:enchantment")
+            .into_iter()
+            .flatten()
+            .filter_map(|(name, data)| {
+                Some((
+                    name.as_str(),
+                    sunrise_client::scoreboard::tag_to_json(data.as_ref()?),
+                ))
+            })
+            .collect();
+        let enchantments = match self
+            .stations()
+            .enchantments
+            .with_entries(entries.iter().map(|(n, v)| (*n, v)))
+        {
+            Ok(table) => table.map(Arc::new),
+            Err(error) => {
+                log::warn!("Sunrise: refused enchantment registry: {error}");
+                return;
+            }
+        };
+        // Bind a per-session biome pair so client biome-color mods never mutate `pack.context`.
+        let table = registries
+            .registries
+            .get(BIOME_REGISTRY)
+            .and_then(|list| client_biomes(self.res.biomes(), list))
+            .map(Arc::new)
+            .unwrap_or_else(|| self.res.biomes().clone());
+        self.world_biomes_base = Some(table.clone());
+        self.world_biomes = Some(table);
+        let context = self.worker_context();
+        self.streaming.reload_resources(&mut self.world, context);
+        let biomes: Vec<u16> = registries
+            .registries
+            .get(BIOME_REGISTRY)
+            .map(|list| {
+                list.iter()
+                    .map(|(name, _)| world_biomes!(self).id(name))
+                    .collect()
+            })
+            .unwrap_or_default();
+        if let Some(r) = self.remote.as_mut() {
+            r.enchantments = enchantments;
+            let bits = ceil_log2(biomes.len());
+            let column = r.chunk_format.layout();
+            r.chunk_format =
+                Arc::new(ChunkFormat::new(&r.dimension, biomes, bits).in_column(column));
+            r.registries = registries;
+            r.resolve_clocks();
+            self.install_server_items();
+            self.reset_creative_contents();
+            self.refresh_creative_search_tags();
+        }
     }
 }

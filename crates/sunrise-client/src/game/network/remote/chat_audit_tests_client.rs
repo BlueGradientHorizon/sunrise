@@ -44,10 +44,7 @@ pub(in crate::game::client_side) use sunrise_protocol::rsa::{
 #[ignore = "daily"]
 fn delayed_player_chat_checks_block_filter_and_visibility_on_accept() {
     with_delayed_chat(
-        concat!(
-            module_path!(),
-            "::delayed_player_chat_checks_block_filter_and_visibility_on_accept"
-        ),
+        "sunrise_client::game::client_side::remote_client::chat_audit_tests::delayed_player_chat_checks_block_filter_and_visibility_on_accept",
         |game| {
             let key = RsaPrivateKey::generate(2048).unwrap();
             add_signed_sender(game, &key, ALICE);
@@ -94,10 +91,7 @@ fn delayed_player_chat_checks_block_filter_and_visibility_on_accept() {
 #[ignore = "daily"]
 fn validation_error_acks_on_accept_and_checks_the_current_block_list() {
     with_delayed_chat(
-        concat!(
-            module_path!(),
-            "::validation_error_acks_on_accept_and_checks_the_current_block_list"
-        ),
+        "sunrise_client::game::client_side::remote_client::chat_audit_tests::validation_error_acks_on_accept_and_checks_the_current_block_list",
         |game| {
             sunrise_narrator::set_status(sunrise_narrator::Status::All);
             let prior_speech = sunrise_narrator::recent();

@@ -10,6 +10,9 @@ pub(in crate::game::client_side) use sunrise_protocol::packets::configuration::{
 };
 
 impl Game<'_> {
+    pub(in crate::game::client_side) fn client_refresh_infiniburn(&mut self) {
+        self.world.infiniburn = Some(self.resolve_level_infiniburn(self.dimension_type()));
+    }
     /// Close the transport before finishing any pack feedback, but keep the pack manager's
     /// prompt state until that feedback has been processed.
     pub(in crate::game) fn close_server_session(
@@ -156,13 +159,6 @@ impl Game<'_> {
         self.offer_retry();
         self.capture(false);
         Ok(())
-    }
-    pub(in crate::game::client_side) fn client_refresh_infiniburn(&mut self) {
-        self.world.infiniburn = Some(self.resolve_level_infiniburn(self.dimension_type()));
-    }
-    pub(in crate::game::client_side) fn finish_remote_level(&mut self) {
-        self.client_refresh_infiniburn();
-        self.apply_settings();
     }
     /// Switch to a (possibly new) dimension: a fresh client level.
     pub(in crate::game) fn enter_remote_dimension(
@@ -395,6 +391,10 @@ impl Game<'_> {
         {
             r.level_load.set_transition_screen(presentation);
         }
+    }
+    pub(in crate::game::client_side) fn finish_remote_level(&mut self) {
+        self.client_refresh_infiniburn();
+        self.apply_settings();
     }
     /// Prepare a client session and remote state to receive packets from a studio replay.
     /// A replayed or viewed world checks its players' signed properties as a joined

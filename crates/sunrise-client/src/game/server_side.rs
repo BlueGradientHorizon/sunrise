@@ -933,6 +933,29 @@ pub(in crate::game) mod xp_repair_ratio_tests;
 #[path = "mobs/zombie_reinforcements.rs"]
 pub(in crate::game) mod zombie_reinforcements;
 
+#[path = "interface/books_server.rs"]
+pub(in crate::game) mod books_server;
+#[path = "interface/chat_server.rs"]
+pub(in crate::game) mod chat_server;
+#[path = "administration/command_blocks_server.rs"]
+pub(in crate::game) mod command_blocks_server;
+#[path = "administration/commands/mod_server.rs"]
+pub(in crate::game) mod commands_server;
+#[path = "mobs/creatures/mod_server.rs"]
+pub(in crate::game) mod creatures_server;
+#[path = "game_server.rs"]
+pub(in crate::game) mod game_server;
+#[path = "items/hand_server.rs"]
+pub(in crate::game) mod hand_server;
+#[path = "entities/lightning_server.rs"]
+pub(in crate::game) mod lightning_server;
+#[path = "interface/sign_edit_server.rs"]
+pub(in crate::game) mod sign_edit_server;
+#[path = "mobs/spawner_server.rs"]
+pub(in crate::game) mod spawner_server;
+#[path = "world/world_update_server.rs"]
+pub(in crate::game) mod world_update_server;
+
 #[path = "runtime/agent/mod_server.rs"]
 pub(in crate::game) mod agent_server;
 #[path = "world/autosave_server.rs"]
@@ -942,41 +965,25 @@ pub(in crate::game) mod block_breaking_server;
 #[cfg(test)]
 #[path = "interface/block_screen_effect_draw_tests_server.rs"]
 pub(in crate::game) mod block_screen_effect_draw_tests_server;
-#[path = "interface/books_server.rs"]
-pub(in crate::game) mod books_server;
 #[path = "mobs/breezes_server.rs"]
 pub(in crate::game) mod breezes_server;
-#[path = "interface/chat_server.rs"]
-pub(in crate::game) mod chat_server;
-#[path = "administration/command_blocks_server.rs"]
-pub(in crate::game) mod command_blocks_server;
-#[path = "administration/commands/mod_server.rs"]
-pub(in crate::game) mod commands_server;
 #[cfg(test)]
 #[path = "runtime/core_tests_server.rs"]
 pub(in crate::game) mod core_tests_server;
 #[cfg(test)]
 #[path = "modding/crafting_recipe_kind_tests_server.rs"]
 pub(in crate::game) mod crafting_recipe_kind_tests_server;
-#[path = "mobs/creatures/mod_server.rs"]
-pub(in crate::game) mod creatures_server;
 #[path = "interface/debug_lines_server.rs"]
 pub(in crate::game) mod debug_lines_server;
 #[path = "entities/fireworks_server.rs"]
 pub(in crate::game) mod fireworks_server;
-#[path = "game_server.rs"]
-pub(in crate::game) mod game_server;
 #[cfg(test)]
 #[path = "items/hand_part_tests_server.rs"]
 pub(in crate::game) mod hand_part_tests_server;
-#[path = "items/hand_server.rs"]
-pub(in crate::game) mod hand_server;
 #[path = "blocks/jukebox_server.rs"]
 pub(in crate::game) mod jukebox_server;
 #[path = "network/lan_actions/mod_server.rs"]
 pub(in crate::game) mod lan_actions_server;
-#[path = "entities/lightning_server.rs"]
-pub(in crate::game) mod lightning_server;
 #[path = "entities/minecarts_server.rs"]
 pub(in crate::game) mod minecarts_server;
 #[path = "modding/mods/mod_server.rs"]
@@ -1013,10 +1020,6 @@ pub(in crate::game) mod repro_server;
 pub(in crate::game) mod saving_server;
 #[path = "interface/shader_packs_server.rs"]
 pub(in crate::game) mod shader_packs_server;
-#[path = "interface/sign_edit_server.rs"]
-pub(in crate::game) mod sign_edit_server;
-#[path = "mobs/spawner_server.rs"]
-pub(in crate::game) mod spawner_server;
 #[cfg(test)]
 #[path = "modding/stacked_on_other_tests_server.rs"]
 pub(in crate::game) mod stacked_on_other_tests_server;
@@ -1030,8 +1033,6 @@ pub(in crate::game) mod text_displays_server;
 pub(in crate::game) mod titles_server;
 #[path = "items/totem_server.rs"]
 pub(in crate::game) mod totem_server;
-#[path = "world/world_update_server.rs"]
-pub(in crate::game) mod world_update_server;
 
 pub(in crate::game) struct ServerState {
     /// The registries native mods registered data map types for, as of the

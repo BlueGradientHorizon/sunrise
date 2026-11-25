@@ -28,7 +28,8 @@ pub(in crate::game::client_side) use crate::game::remote::tests::client_level_en
 pub(in crate::game::client_side) use crate::game::remote::tests::client_level_environment_tests::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::{
-    Dim, Game, Progress, native_entity_refs::tests::with_client_game, packs::stage_pack,
+    Dim, Game, Progress, native_entity_refs::tests::with_uncached_client_game as with_client_game,
+    packs::stage_pack,
 };
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use std::sync::Arc;

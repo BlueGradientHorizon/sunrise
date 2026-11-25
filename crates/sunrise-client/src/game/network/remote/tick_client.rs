@@ -45,6 +45,17 @@ impl Game<'_> {
         }
         self.remote = Some(r);
     }
+    #[inline(always)]
+    pub(in crate::game::client_side) fn game_side_client(
+        &self,
+    ) -> (Option<u128>, Option<mod_api::LevelRef>, bool) {
+        let level = self.native_lifecycle.epoch().and_then(|epoch| {
+            let key = self.dim.key();
+            mod_api::__private::dimension_id(key)?;
+            Some(mod_api::LevelRef::with_generation(epoch, key, 0))
+        });
+        (None, level, false)
+    }
     /// `ClientPacketListener.tick`'s `LevelLoadTracker.tickClientLoad`: the
     /// player's section is shown once the renderer has its mesh and it is 30%
     /// faded in (without a renderer: once its column and the 8 around it are
@@ -129,17 +140,6 @@ impl Game<'_> {
             &[],
         ));
         self.capture_loaded_world();
-    }
-    #[inline(always)]
-    pub(in crate::game::client_side) fn game_side_client(
-        &self,
-    ) -> (Option<u128>, Option<mod_api::LevelRef>, bool) {
-        let level = self.native_lifecycle.epoch().and_then(|epoch| {
-            let key = self.dim.key();
-            mod_api::__private::dimension_id(key)?;
-            Some(mod_api::LevelRef::with_generation(epoch, key, 0))
-        });
-        (None, level, false)
     }
     /// `LocalPlayer.tick`'s `Player.tick` work: input, riding, motion and
     /// sleep, and the input `sendChanges` sends for it (`None`: nothing ticked).

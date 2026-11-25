@@ -794,6 +794,10 @@ pub(in crate::game) mod camera_view_tests;
 pub(in crate::game) mod level_sound_tests;
 
 #[cfg(test)]
+#[path = "client_camera_tests_client.rs"]
+pub(in crate::game) mod client_camera_tests;
+
+#[cfg(test)]
 #[path = "riptide_tests_client.rs"]
 pub(in crate::game) mod riptide_tests;
 
@@ -1129,7 +1133,3 @@ pub(in crate::game) mod player_tick_tests;
 #[cfg(test)]
 #[path = "rider_tick_tests_client.rs"]
 pub(in crate::game) mod rider_tick_tests;
-
-#[cfg(test)]
-#[path = "client_camera_tests.rs"]
-pub(in crate::game) mod client_camera_tests;
