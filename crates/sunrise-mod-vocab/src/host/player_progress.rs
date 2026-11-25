@@ -29,7 +29,8 @@ pub trait PlayerProgressBackend {
     /// change) and when a nested player turn has displaced the player.
     ///
     /// Returns `None` for an unknown advancement id, a stale, offline or unavailable
-    /// player, or a client host.
+    /// player, or a client host, and until the engine has loaded the player's
+    /// advancements, which happens by the player's first tick.
     fn player_advancement_progress(
         &self,
         player: PlayerRef,

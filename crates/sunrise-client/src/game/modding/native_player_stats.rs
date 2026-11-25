@@ -78,10 +78,11 @@ impl Game<'_> {
         Some(json.to_string())
     }
     /// The player's live advancement progress, including one lent to a nested turn.
+    /// `None` while the engine has not loaded that player's advancements.
     fn native_player_advancements(&self, player: PlayerRef) -> Option<&Progress> {
         match self.player_handle_read(player) {
-            Some(PlayerRead::Guest(g)) => Some(&g.advancements),
-            Some(PlayerRead::Acting { .. }) => Some(&self.adv.progress),
+            Some(PlayerRead::Guest(g)) => g.advancements_loaded.then_some(&g.advancements),
+            Some(PlayerRead::Acting { .. }) => self.adv.loaded.then_some(&self.adv.progress),
             None => {
                 let entity = player.entity();
                 if self.lan_displaced_players.is_empty()
@@ -93,7 +94,7 @@ impl Game<'_> {
                     return None;
                 };
                 let frame = &self.lan_displaced_players[depth];
-                if frame.uuid != Some(player.uuid()) {
+                if frame.uuid != Some(player.uuid()) || !frame.adv_loaded {
                     return None;
                 }
                 Some(
@@ -831,6 +832,20 @@ mod tests {
                         ),
                     ]
                 );
+
+                // A guest whose advancements the engine has not loaded yet answers None,
+                // and the other guest is unaffected.
+                let hub = &mut game.lan.as_mut().unwrap().hub;
+                hub.guests
+                    .update_connection(12, |g| g.advancements_loaded = false)
+                    .unwrap();
+                assert_eq!(player.advancement_progress(game, &adv_id), None);
+                assert!(other.advancement_progress(game, &adv_id).is_some());
+                let hub = &mut game.lan.as_mut().unwrap().hub;
+                hub.guests
+                    .update_connection(12, |g| g.advancements_loaded = true)
+                    .unwrap();
+                assert!(player.advancement_progress(game, &adv_id).is_some());
 
                 // Stale handles, client role, and offline players answer None.
                 let stale_epoch = mod_api::__private::game::player_ref(
