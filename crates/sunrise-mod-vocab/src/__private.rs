@@ -348,10 +348,6 @@ pub mod built {
     pub fn model_ref(generation: u64, slot: u32) -> crate::ModelRef {
         crate::ModelRef(generation, slot)
     }
-    /// What a mod may still create of its dynamic textures: `images` and `bytes` of pixels left.
-    pub fn dynamic_texture_budget(images: u32, bytes: u64) -> crate::DynamicTextureBudget {
-        crate::DynamicTextureBudget { images, bytes }
-    }
     /// Wrap a slot in the pipeline set's published generation.
     pub fn render_pipeline_ref(generation: u64, slot: u32) -> crate::RenderPipelineRef {
         crate::RenderPipelineRef::from_parts(generation, slot)

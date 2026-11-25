@@ -83,6 +83,7 @@ impl EntityRenderLayer for Layer {
         entity: &EntityRenderState,
         model: Option<&dyn FrameModel>,
         draw: &mut dyn BlockEntityDrawContext,
+        _: &mut dyn mod_api::StockLayerDraw,
     ) -> Result<(), String> {
         let event = format!("layer {} model {}", entity.id, model.is_some());
         self.0.lock().unwrap().events.push(event);

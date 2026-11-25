@@ -243,6 +243,8 @@ pub struct Renderer {
     pub(crate) static_entity_indices: wgpu::Buffer,
     pub(crate) static_entity_index_quads: u32,
     pub(crate) entity_batch: EntityBatch,
+    /// Quads of client mods' dynamic textures (`BlockEntityDrawContext::textured_quad`).
+    pub(super) dynamic_entity: dynamic_entity::DynamicEntity,
     pub(crate) entity_order: entity_skin::OrdinaryOrder,
     /// Ordinary entity models posed on the GPU; `None` without compute shaders.
     pub(crate) entity_skin: Option<entity_skin::EntitySkin>,

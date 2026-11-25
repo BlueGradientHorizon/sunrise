@@ -11,7 +11,7 @@ renderers use their CPU routes; groups are a world-drawing facility, not another
 
 Implement `Hooks::resolve_player_skin` to change the local player's appearance
 without changing their profile. Upload the skin with
-[`create_dynamic_texture`](dynamic-textures.md) as a 64×64 RGBA image once per
+[`create_dynamic_texture`](dynamic-textures.md) as a 64×64 texture once per
 skin file. Normalize legacy 64×32 skins before uploading. Keep the texture id
 and its model width, then select them in the hook:
 
@@ -26,7 +26,8 @@ fn resolve_player_skin(&self, _: &dyn ClientHost, event: &mut ResolvePlayerSkinE
 Use `PlayerModel::Wide` for four-pixel arms and `PlayerModel::Slim` for
 three-pixel arms. The selection starts at `None` each frame; listeners can leave
 an earlier answer alone or clear it with `*event.selection = None`. A missing,
-freed or wrongly sized texture keeps the original texture **and** model.
+released or wrongly sized texture keeps the original texture **and** model. A selected
+texture is copied on the GPU into the player's skin slot each frame it is selected.
 The selection affects the third-person avatar and its skin layers, first-person
 arms, and inventory and creative previews. It does not change the cape, tab
 list, or anyone else's view.
@@ -617,6 +618,17 @@ shading and draws at full-bright light whatever `set_light` or `level_light` say
 top cell still applies, so night, `darkness` and coloured lights still tint it. An enchanted item
 keeps its glint. It lasts until `unlit(false)` or the end of the draw; `terrain_model` keeps its
 own shading option.
+
+To draw a texture of your own (a dynamic texture a mod made), get a render type from
+`RenderAssets::entity_solid`, `entity_cutout` or `entity_translucent` with the texture's id and call
+`BlockEntityDrawContext::textured_quad(render_type, corners, uv, tint)`. Unlike `quad`, the UVs are
+in the texture's own unit square (0 to 1), not texels of 16. The same texture gives the same render
+type, so keep it. Light and `unlit` apply as for `quad`. The call returns false, drawing nothing,
+for an id that is not a live dynamic texture, a first-person hand draw or a coordinate that is not
+finite. A texture released after the quad was submitted draws the missing texture. Resource-stack
+textures are not accepted. Under a shader pack these quads are drawn by the
+pack's entity program (the block entity program in a block entity's draw) with the texture bound
+as the entity texture.
 
 ## Copycat faces
 

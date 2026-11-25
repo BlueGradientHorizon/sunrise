@@ -366,6 +366,7 @@ fn entity_layer_and_scene_entity_receive_their_view_and_placement() {
                 entity: &EntityRenderState,
                 _: Option<&dyn FrameModel>,
                 draw: &mut dyn BlockEntityDrawContext,
+                _: &mut dyn mod_api::StockLayerDraw,
             ) -> Result<(), String> {
                 self.log
                     .lock()
@@ -429,11 +430,17 @@ fn entity_layer_and_scene_entity_receive_their_view_and_placement() {
                     &[],
                 );
                 let mut out = Vec::new();
+                let stock_ctx = super::native_entity_layers::StockLayerContext::none(
+                    0.5,
+                    DVec3::from(cam_1.position),
+                    0xF0F0,
+                );
                 game.registered_layer_geometry_with_view(
                     &mob,
                     mob.id,
                     &layers,
                     None,
+                    &stock_ctx,
                     0.5,
                     DVec3::from(cam_1.position),
                     Some(&view_1),

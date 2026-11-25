@@ -1076,6 +1076,10 @@ impl Renderer {
             }),
         )?;
         hud.atlas_texture = Some(atlas.clone());
+        // On the same device the previous renderer's dynamic textures are still valid.
+        if let Some(previous) = previous {
+            hud.share_dynamic(previous.hud.dynamic().clone());
+        }
         let entity_step = crate::spans::startup::step("renderer.entity_pipelines");
         let entity_shader = kept.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Sunrise entities"),
@@ -1153,6 +1157,14 @@ impl Renderer {
             })
         };
         let entity_group = entity_group_for(&atlas_view);
+        let dynamic_entity = dynamic_entity::DynamicEntity::new(
+            &device,
+            entity_bindings.clone(),
+            globals.clone(),
+            (lightmap_view.clone(), lightmap_sampler.clone()),
+            (glint_view.clone(), glint_sampler.clone()),
+            glint_armor_view.clone(),
+        );
         let screen_page_groups = hud
             .atlas_page_views()
             .map(|view| view.map(entity_group_for))
@@ -1613,28 +1625,7 @@ impl Renderer {
                 multiview_mask: None,
                 cache: None,
             });
-        // RenderPipelines.ENERGY_SWIRL: BlendFunction.ADDITIVE (one, one), no culling; no depth
-        // writes either: vanilla sorts the quads far to near, so every face passes the test.
-        let one_one = wgpu::BlendComponent {
-            src_factor: wgpu::BlendFactor::One,
-            dst_factor: wgpu::BlendFactor::One,
-            operation: wgpu::BlendOperation::Add,
-        };
-        let energy_swirl_pipeline = entity_pipeline_with(EntityPipelineOptions {
-            label: "Energy swirls",
-            cull_mode: None,
-            depth_write: false,
-            compare: wgpu::CompareFunction::GreaterEqual,
-            bias: Default::default(),
-            blend: wgpu::BlendState {
-                color: one_one,
-                alpha: one_one,
-            },
-            clouds: false,
-            vertex: "vs_entity",
-            fragment: "fs_energy_swirl",
-            write_mask: wgpu::ColorWrites::ALL,
-        });
+        let energy_swirl_pipeline = entity_pipeline_with(energy_swirl_options(false));
         // HDR output's mark on light-giving particles (entity.wgsl fs_hdr_mark).
         let hdr_mark_pipeline = entity_pipeline_with(EntityPipelineOptions {
             label: "HDR particle mark",
@@ -2478,6 +2469,7 @@ impl Renderer {
             static_entity_indices,
             static_entity_index_quads,
             entity_batch: EntityBatch::default(),
+            dynamic_entity,
             entity_order: entity_skin::OrdinaryOrder::default(),
             entity_skin,
             group,

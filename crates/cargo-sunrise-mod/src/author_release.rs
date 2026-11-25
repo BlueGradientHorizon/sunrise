@@ -25,7 +25,12 @@ pub(crate) const NOT_REGISTERED: &str = "This repository isn't registered yet: r
 pub(crate) type Fetch<'a> = &'a dyn Fn(&str) -> Result<Option<String>, String>;
 
 pub(crate) fn fetch(url: &str) -> Result<Option<String>, String> {
-    match sunrise_proxy::get(url, &[("User-Agent", "cargo-sunrise-mod")], None) {
+    let authorization = github_authorization(url, |name| std::env::var(name).ok());
+    let mut headers = vec![("User-Agent", "cargo-sunrise-mod")];
+    if let Some(authorization) = &authorization {
+        headers.push(("Authorization", authorization));
+    }
+    match sunrise_proxy::get(url, &headers, None) {
         Ok(response) => response
             .into_string()
             .map(Some)
@@ -33,6 +38,22 @@ pub(crate) fn fetch(url: &str) -> Result<Option<String>, String> {
         Err(e) if e.status() == Some(404) => Ok(None),
         Err(e) => Err(e.to_string()),
     }
+}
+
+/// `Bearer <token>` for a GitHub API request (`https://api.github.com/`) when `GH_TOKEN` or
+/// `GITHUB_TOKEN` is set, in that order as the GitHub CLI reads them, so a batch of releases is
+/// not held to the 60 unauthenticated requests an hour. No other host is sent the token, and
+/// `sunrise_proxy::get` does not carry it to a redirect's destination.
+fn github_authorization(url: &str, var: impl Fn(&str) -> Option<String>) -> Option<String> {
+    if !url.starts_with("https://api.github.com/") {
+        return None;
+    }
+    ["GH_TOKEN", "GITHUB_TOKEN"]
+        .into_iter()
+        .filter_map(var)
+        .map(|token| token.trim().to_owned())
+        .find(|token| !token.is_empty())
+        .map(|token| format!("Bearer {token}"))
 }
 
 pub(crate) fn registry_file(fetch: Fetch<'_>, name: &str) -> Result<String, String> {
