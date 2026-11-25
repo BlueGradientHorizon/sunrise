@@ -161,8 +161,10 @@ mod tests {
     /// snapshot's resolvers give the colour the engine's own text backdrops use.
     #[test]
     fn gui_snapshot_resolves_the_text_background_as_vanilla_does() {
-        let mut settings = sunrise_client::settings::Settings::default();
-        settings.text_background_opacity = 0.6;
+        let mut settings = sunrise_client::settings::Settings {
+            text_background_opacity: 0.6,
+            ..Default::default()
+        };
         let gui = gui_options_snapshot(&settings);
         assert!(gui.background_for_chat_only);
         assert_eq!(gui.background_opacity(0.4), 0.4);
