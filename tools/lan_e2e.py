@@ -6663,7 +6663,9 @@ def ride(player, other, label, spot, kind, nbt, ready, stick, test):
     finally:
         player('command', command=f'kill @e[type=minecraft:{kind},x={x},y={y},z={z},distance=..48]')
         player('command', command=f'tp @s {x + 0.5} {y} {z + 0.5} 0 0')
-        player.wait(5)
+        # Wait out the 20-tick death animation so a stationary mount's dying body
+        # (e.g. llama before happy_ghast) does not intercept the next mount's click.
+        player.wait(25)
 
 
 def check_riding(host, guest, out):
@@ -9865,8 +9867,12 @@ def check_villagers(host, guest, out):
     seen = {}
     try:
         host('command', command='time set 2000')
-        host('command', command=f'fill {x - 4} {y - 1} {z - 3} {x + 6} {y - 1} {z + 4} minecraft:stone')
-        host('command', command=f'fill {x - 4} {y} {z - 3} {x + 6} {y + 3} {z + 4} minecraft:air')
+        host('command', command=f'fill {x - 4} {y - 1} {z - 4} {x + 6} {y - 1} {z + 4} minecraft:stone')
+        host('command', command=f'fill {x - 4} {y} {z - 4} {x + 6} {y + 3} {z + 4} minecraft:air')
+        # Fence the platform perimeter so the AI-enabled unemployed villager cannot walk off
+        # when spawn sits over lower terrain.
+        host('command', command=f'fill {x - 4} {y} {z - 4} {x + 6} {y} {z + 4} minecraft:oak_fence')
+        host('command', command=f'fill {x - 3} {y} {z - 3} {x + 5} {y} {z + 3} minecraft:air')
         for kind, dx, t, p, level in summoned:
             # The unemployed one keeps its AI to take the job.
             ai = '' if p == 'none' else 'NoAI:1b,Invulnerable:1b,'
@@ -9889,7 +9895,7 @@ def check_villagers(host, guest, out):
         guest.shot(out, 'villagers')
     finally:
         host('command', command=f'kill @e[tag={tag}]')
-        host('command', command=f'fill {x - 4} {y} {z - 3} {x + 6} {y + 3} {z + 4} minecraft:air')
+        host('command', command=f'fill {x - 4} {y} {z - 4} {x + 6} {y + 3} {z + 4} minecraft:air')
         host('command', command='time set day')
     host_view, guest_view = seen['summoned']['host'], seen['summoned']['guest']
     for _, _, t, p, level in summoned:
