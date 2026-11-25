@@ -290,19 +290,17 @@ fn wrap_main(src: &mut Expanded) -> Result<(), String> {
     Err("no main".into())
 }
 
-/// Parses and validates one stage, with the backend's defines every program has
-/// (`core_shader::glsl_options`: a post pass has none of its own); errors at the files and lines
-/// the author wrote.
+/// Runs the directives of one stage, with the backend's defines every program has
+/// (`core_shader::run_directives`: a post pass has none of its own), then parses and validates
+/// it; errors at the files and lines the author wrote. With the code that was parsed.
 fn parse(
     stage: ShaderStage,
     code: &Expanded,
     limits: naga::front::glsl::InterfaceLimits,
-) -> Result<(naga::Module, naga::valid::ModuleInfo), Vec<Error>> {
+) -> Result<(naga::Module, naga::valid::ModuleInfo, Expanded), Vec<Error>> {
+    let code = crate::core_shader::run_directives(code, &[]).map_err(|e| vec![e])?;
     let module = Frontend::default()
-        .parse(
-            &crate::core_shader::glsl_options(stage, &[], limits),
-            code.text(),
-        )
+        .parse(&sunrise_glsl::glsl_options(stage, limits), code.text())
         .map_err(|e| code.errors_in(e.errors.iter().map(|e| (e.meta, e.kind.to_string()))))?;
     let info = Validator::new(ValidationFlags::all(), Capabilities::empty())
         .validate(&module)
@@ -314,7 +312,7 @@ fn parse(
             let span = span.unwrap_or_default();
             vec![code.error_in(span, format!("{:?}", e.into_inner()))]
         })?;
-    Ok((module, info))
+    Ok((module, info, code))
 }
 
 /// Translates the vertex and fragment shader a pass names (`minecraft:post/invert`), refused
@@ -370,17 +368,18 @@ pub fn translate(
     rewrite(&mut fs, &blocks, &samplers);
     vs.wrap("#version 450\n", "");
     fs.wrap("#version 450\n", "");
-    let vertex_module = parse(ShaderStage::Vertex, &vs, declarable.interface)
+    let (vertex_module, vertex_info, vs) = parse(ShaderStage::Vertex, &vs, declarable.interface)
         .map_err(|errors| refused(vertex, errors))?;
-    let fragment_module = parse(ShaderStage::Fragment, &fs, declarable.interface)
-        .map_err(|errors| refused(fragment, errors))?;
+    let (fragment_module, fragment_info, fs) =
+        parse(ShaderStage::Fragment, &fs, declarable.interface)
+            .map_err(|errors| refused(fragment, errors))?;
     let read = sunrise_glsl::bindings_read([
-        (&vertex_module.0, &vertex_module.1),
-        (&fragment_module.0, &fragment_module.1),
+        (&vertex_module, &vertex_info),
+        (&fragment_module, &fragment_info),
     ]);
     Ok(Program {
-        vertex: vertex_module.0,
-        fragment: fragment_module.0,
+        vertex: vertex_module,
+        fragment: fragment_module,
         blocks,
         samplers,
         read,

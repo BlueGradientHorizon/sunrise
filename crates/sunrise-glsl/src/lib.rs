@@ -8,6 +8,9 @@
 //! - GLSL a GL compiler takes and naga doesn't is rewritten first ([`glsl_fixups`]: a helper
 //!   taking the `sampler2D` it reads, an array sized by its initializer only);
 //! - includes are inlined ([`Includes`]), under the defines the program is compiled with;
+//! - after the rewrites below, the directives run ([`run_directives`]): conditions and macros
+//!   are Sunrise's own preprocessor's ([`condition`], [`macros`]), and naga reads code with no
+//!   directive or define left but `#version`, `#extension` and `#pragma`;
 //! - the uniform blocks get the bindings of [`Inputs::blocks`], and each sampler of
 //!   [`Inputs::samplers`] is split into a texture and a sampler object, combined again where the
 //!   sampler is named;
@@ -33,12 +36,17 @@ use naga::ShaderStage;
 use naga::front::glsl::{Frontend, InterfaceLimits, Options};
 use naga::valid::{Capabilities, ValidationFlags, Validator};
 
+pub mod condition;
+mod directives;
 mod glsl_fixups;
 mod located;
+pub mod macros;
 mod stage;
 
+pub use directives::run_directives;
 pub use located::{Error, Expanded, Location, describe};
 use located::{Lines, Origin};
+pub use macros::Macros;
 pub use stage::{BindingMap, Source, compile_stage};
 
 /// What a program's pipeline gives it, beyond its [`Glue`].
@@ -425,25 +433,24 @@ pub fn translate(
     };
     let vertex_code = rewritten(&vertex_text, ShaderStage::Vertex, &mut names)?;
     let fragment_code = rewritten(&fragment_text, ShaderStage::Fragment, &mut names)?;
+    // The directives run where naga's preprocessor ran them: on the rewritten stage, the
+    // program's defines first.
+    let directives = |code: &Expanded, stage| {
+        run_directives(code, inputs.defines).map_err(|e| vec![in_stage(stage, e)])
+    };
+    let vertex_parsed = directives(&vertex_code, ShaderStage::Vertex)?;
+    let fragment_parsed = directives(&fragment_code, ShaderStage::Fragment)?;
     let compiled = |code: &Expanded, stage| {
-        compile(
-            stage,
-            code,
-            inputs.defines,
-            &names,
-            provided,
-            glue.interface,
-        )
-        .map_err(|errors: Vec<Error>| {
+        compile(stage, code, &names, provided, glue.interface).map_err(|errors: Vec<Error>| {
             errors
                 .into_iter()
                 .map(|e| in_stage(stage, e))
                 .collect::<Vec<_>>()
         })
     };
-    let vertex = compiled(&vertex_code, ShaderStage::Vertex)?;
+    let vertex = compiled(&vertex_parsed, ShaderStage::Vertex)?;
     let fragment: (naga::Module, naga::valid::ModuleInfo) =
-        compiled(&fragment_code, ShaderStage::Fragment)?;
+        compiled(&fragment_parsed, ShaderStage::Fragment)?;
     let given = locations(&vertex.0, false);
     if let Some(missing) = locations(&fragment.0, true)
         .into_iter()
@@ -459,9 +466,17 @@ pub fn translate(
         )]);
     }
     let mut program = Translated::new(vertex, fragment, names.other, names.other_base);
+    // Each output's declaration, at the start of its line in the code that was parsed: the
+    // directives keep every line where it was.
+    let outputs = (names.outputs.into_iter())
+        .map(|(location, at)| {
+            let line = fragment_code.lines.line_of(at);
+            (location, fragment_parsed.lines.line_start(line))
+        })
+        .collect();
     program.sources = Some(Box::new(Sources {
-        code: [vertex_code, fragment_code],
-        outputs: names.outputs,
+        code: [vertex_parsed, fragment_parsed],
+        outputs,
     }));
     Ok(program)
 }
@@ -470,7 +485,11 @@ pub fn translate(
 const MAX_PASTES: u32 = 1024;
 pub const MAX_EXPANDED: usize = 1 << 20;
 /// A bound on the bytes the expansion scans (each pasted file, every time), however little of
-/// them it keeps: lines of imports already pasted add nothing to the shader.
+/// them it keeps: lines of imports already pasted add nothing to the shader. The directives'
+/// macro expansion takes it as a count of tokens ([`run_directives`], [`Macros::checked`]): a
+/// token is at least a byte, so that bound is no looser than the bytes'. Each token the expansion
+/// holds is a small allocation of its own (its text and the macros hidden from it), so a stage
+/// that reaches the bound holds a few GiB at its peak (3.3 GiB measured).
 const MAX_SCANNED: usize = 8 * MAX_EXPANDED;
 
 /// Why a shader's includes refuse it ([`expand_includes`]).
@@ -563,18 +582,13 @@ pub fn expand_includes(
     )
 }
 
-/// naga's options for one `stage` of a program with its `defines` (`NAME` or `NAME value`, in
-/// order) and the device's stage interface `limits`.
-pub fn glsl_options(stage: ShaderStage, defines: &[&str], limits: InterfaceLimits) -> Options {
-    let mut options = Options {
+/// naga's options for one `stage` of code whose directives have run ([`run_directives`]),
+/// under the device's stage interface `limits`: no defines, as no macro is left.
+pub fn glsl_options(stage: ShaderStage, limits: InterfaceLimits) -> Options {
+    Options {
         interface_limits: limits,
         ..Options::from(stage)
-    };
-    for define in defines {
-        let (name, value) = define.split_once(' ').unwrap_or((define, ""));
-        options.defines.insert(name.to_owned(), value.to_owned());
     }
-    options
 }
 
 mod import_conditions;
@@ -871,25 +885,6 @@ fn strip_comments(text: &str) -> String {
 
 fn is_ident(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '_'
-}
-
-/// `text` with each whole identifier `from` written as `to`.
-fn replace_ident(text: &str, from: &str, to: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    let mut rest = text;
-    while let Some(at) = rest.find(from) {
-        let before = rest[..at].chars().next_back();
-        let after = rest[at + from.len()..].chars().next();
-        out.push_str(&rest[..at]);
-        if before.is_some_and(is_ident) || after.is_some_and(is_ident) {
-            out.push_str(from);
-        } else {
-            out.push_str(to);
-        }
-        rest = &rest[at + from.len()..];
-    }
-    out.push_str(rest);
-    out
 }
 
 /// A global declaration on one line: `layout(...) qualifiers storage type name;`.
@@ -1291,12 +1286,11 @@ fn main_at(text: &str) -> impl Iterator<Item = usize> + '_ {
 fn compile(
     stage: ShaderStage,
     code: &Expanded,
-    defines: &[&str],
     names: &Names,
     provided: &dyn Fn(&str) -> bool,
     limits: InterfaceLimits,
 ) -> Result<(naga::Module, naga::valid::ModuleInfo), Vec<Error>> {
-    let options = glsl_options(stage, defines, limits);
+    let options = glsl_options(stage, limits);
     let text = code.text();
     let module = Frontend::default().parse(&options, text).map_err(|e| {
         // The line naga read, as the translator wrote it, each found among the line breaks.
@@ -2224,3 +2218,6 @@ mod texel_buffer_tests;
 #[cfg(test)]
 #[path = "located_tests.rs"]
 mod located_program_tests;
+
+#[cfg(test)]
+mod directives_tests;
