@@ -2075,10 +2075,15 @@ fn not_built(
     paths.sort();
     let mut out: Vec<Installed> = Vec::new();
     for path in paths {
-        let Ok(bundle) = sunrise_mod_package::index::native::Bundle::read(&path) else {
+        // The row names the mod, so the manifest is all it needs: the package's other entries,
+        // its source among them, stay unread.
+        let Ok(package) = sunrise_mod_package::Package::read(&path) else {
             continue;
         };
-        let m = bundle.manifest;
+        if !package.is_native() {
+            continue;
+        }
+        let m = package.manifest;
         let listed = rows.iter().chain(&out).any(|row| row.id == m.id);
         if !listed && !built.iter().any(|b| b.id == m.id) {
             out.push(Installed {

@@ -517,9 +517,13 @@ pub(super) fn stage_and_cargo(
         }
     }
     super::crates::check_game_graph_names(projects, &generated_facades, &resolved, &game_names)?;
-    let inventory = metadata.inventory(&plan, &sdk.native_links)?;
-    if inventory.added_crates > 0 && !options.consent.is_some_and(|ask| ask(&inventory)) {
-        return Err(crate::host::tr("The mods' crates.io dependencies were not compiled: the plan's \"registry\" field is false or the question was declined. \"registry\": true approves compiling them; their build scripts and proc macros then run on this computer").into());
+    let inventory = metadata.inventory(&plan, &sdk.native_links, &mod_dirs)?;
+    // The mods' own build scripts run under the same yes as the registry crates', so a mod with a
+    // build script and no registry crate still asks.
+    if (inventory.added_crates > 0 || !inventory.build_scripts.is_empty())
+        && !options.consent.is_some_and(|ask| ask(&inventory))
+    {
+        return Err(crate::host::tr("The mods' build scripts and crates.io dependencies were not compiled: the plan's \"registry\" field is false or the question was declined. \"registry\": true approves compiling them; the mods' own build scripts, their dependencies' build scripts and proc macros then run on this computer").into());
     }
     let externs = prebuilt::wrapper_externs(&deps)?;
     for (name, path) in &externs {

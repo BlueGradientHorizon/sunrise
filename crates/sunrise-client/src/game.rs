@@ -3523,6 +3523,13 @@ struct Game<'a> {
     /// wanting it takes it again (`MouseHandler.grabMouse`, whose grab
     /// outlives the window's focus).
     regrab_on_refocus: bool,
+    /// The open mod screen holds the pointer (`ClientHost::set_pointer_grab`): `captured` is
+    /// its grab, and the device's motion goes to `screen_pointer_motion`, not the camera.
+    /// Cleared by any release and when the screen changes.
+    screen_grab: bool,
+    /// A grab or release the calling mod asked for through `&self` (`set_pointer_grab`),
+    /// applied by `apply_pointer_grab_request` at the next input event or frame.
+    pointer_grab_request: std::cell::Cell<Option<bool>>,
     /// Controller connection notices.
     controller_notice: sunrise_client::controller_notice::NoticeSlot,
     focused: bool,
@@ -12915,11 +12922,21 @@ impl Game<'_> {
                             // up as vanilla's do; their pending clicks stay.
                             self.mod_keys.set_all_up();
                             self.capture(false);
+                        } else if self.screen_grab {
+                            // A mod screen's grab goes with the focus under a control
+                            // connection too; the game's own grab stays as it was.
+                            self.capture(false);
                         }
                         self.regrab_on_refocus = held;
                     }
                 }
                 WindowEvent::CursorMoved { .. } => {
+                    // A screen holding the pointer grab hears only `screen_pointer_motion`:
+                    // where the system merely confines the hidden cursor (Windows, X11), its
+                    // moves leave the screen's cursor and drags alone.
+                    if self.mod_screen_grabs_pointer() {
+                        return Ok(());
+                    }
                     if let (Some(r), Some(sample)) = (&self.renderer, cursor_sample) {
                         let size = [r.config.width, r.config.height];
                         let projection = self.pointer_projection(size);
@@ -12942,6 +12959,12 @@ impl Game<'_> {
                             self.drag_button
                                 .filter(|b| self.physical_buttons.contains(b))
                         };
+                        if self.screen_mouse_moved(delta) {
+                            return Ok(());
+                        }
+                        if self.screen_state.screen_instance != initial_instance {
+                            return Ok(());
+                        }
                         match self.screen_mouse_dragged(delta) {
                             native_hooks::ScreenMousePre::Canceled => return Ok(()),
                             native_hooks::ScreenMousePre::Passed(post) => mouse_post = Some(post),
@@ -14236,6 +14259,8 @@ impl<'a> Game<'a> {
             captured: false,
             capture_mode: None,
             regrab_on_refocus: false,
+            screen_grab: false,
+            pointer_grab_request: std::cell::Cell::new(None),
             controller_notice: Default::default(),
             focused: true,
             unclaimed_window: false,
