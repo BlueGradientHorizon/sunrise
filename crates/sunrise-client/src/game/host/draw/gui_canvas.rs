@@ -171,6 +171,17 @@ impl GameGuiCanvas<'_, '_> {
     }
 }
 
+/// Two packed colours multiplied channel by channel, as a shader multiplies a vertex colour by
+/// `ColorModulator`: `u32::MAX` leaves `color` unchanged.
+fn multiply_abgr(color: u32, tint: u32) -> u32 {
+    let channel = |shift: u32| {
+        let product = ((color >> shift) & 0xFF) * ((tint >> shift) & 0xFF);
+        // Rounded division by 255, exact for every product of two bytes.
+        ((product + 128 + ((product + 128) >> 8)) >> 8) << shift
+    };
+    channel(0) | channel(8) | channel(16) | channel(24)
+}
+
 /// The opposite corner of a finite `[x, y, w, h]`, including finite endpoint arithmetic.
 fn rect_end([x, y, w, h]: [f32; 4]) -> Result<[f32; 2], GuiDrawError> {
     let end = [x + w, y + h];
@@ -331,6 +342,27 @@ impl GuiCanvas for GameGuiCanvas<'_, '_> {
         })
     }
 
+    fn item_tinted(
+        &mut self,
+        stack: &ItemStack,
+        at: [f32; 2],
+        seed: i32,
+        argb: u32,
+    ) -> Result<(), GuiDrawError> {
+        if argb >> 24 == 0 {
+            return Ok(());
+        }
+        let start = self.batch.vertices.len();
+        self.item(stack, at, seed)?;
+        let tint = abgr(argb);
+        if tint != u32::MAX {
+            for vertex in &mut self.batch.vertices[start..] {
+                vertex.color = multiply_abgr(vertex.color, tint);
+            }
+        }
+        Ok(())
+    }
+
     fn item_decorations(
         &mut self,
         stack: &ItemStack,
@@ -484,6 +516,65 @@ impl GuiCanvas for GameGuiCanvas<'_, '_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The multiply rounds to the nearest byte for every pair of channels, and white is neutral.
+    #[test]
+    fn multiplying_packed_colours_rounds_each_channel() {
+        for a in 0..=255u32 {
+            for b in 0..=255u32 {
+                let want = ((a * b) as f64 / 255.0).round() as u32;
+                assert_eq!(multiply_abgr(a, b), want, "{a} * {b}");
+                assert_eq!(multiply_abgr(a << 24, b << 24), want << 24, "{a} * {b}");
+            }
+        }
+        assert_eq!(multiply_abgr(0x8040_20FF, u32::MAX), 0x8040_20FF);
+        assert_eq!(multiply_abgr(0xFFFF_FFFF, 0x80FF_0000), 0x80FF_0000);
+    }
+
+    /// `item_tinted` multiplies every vertex `item` draws: opaque white draws `item` itself and
+    /// a zero alpha draws nothing.
+    #[test]
+    #[ignore = "daily"]
+    fn a_tinted_item_multiplies_the_vertices_the_item_draws() {
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
+            let stack = mod_api::ItemStack::new(
+                mod_api::__private::item_key("minecraft:diamond_sword").unwrap(),
+                1,
+            )
+            .unwrap();
+            let draw = |argb: Option<u32>| {
+                let mut batch = HudBatch::scratch([320, 240]);
+                GameGuiCanvas::draw(
+                    &mut batch,
+                    &game.gui.atlas,
+                    Some(&*game),
+                    None,
+                    &mut |root| match argb {
+                        None => root.item(&stack, [4.0, 4.0], 0),
+                        Some(argb) => root.item_tinted(&stack, [4.0, 4.0], 0, argb),
+                    },
+                )
+                .unwrap();
+                batch
+                    .vertices
+                    .iter()
+                    .map(|v| (v.pos, v.uv, v.color))
+                    .collect::<Vec<_>>()
+            };
+            let plain = draw(None);
+            assert!(!plain.is_empty());
+            assert_eq!(draw(Some(0xFFFF_FFFF)), plain);
+            assert!(draw(Some(0x00FF_FFFF)).is_empty());
+            let tint = 0x80FF_4000;
+            let tinted = draw(Some(tint));
+            assert_eq!(tinted.len(), plain.len());
+            for ((pos, uv, color), (plain_pos, plain_uv, plain_color)) in tinted.iter().zip(&plain)
+            {
+                assert_eq!((pos, uv), (plain_pos, plain_uv));
+                assert_eq!(*color, multiply_abgr(*plain_color, abgr(tint)));
+            }
+        });
+    }
     use crate::hud::{Blend as HudBlend, Rect};
     use crate::resource_source::ResourceSource;
     use std::panic::{AssertUnwindSafe, catch_unwind};
