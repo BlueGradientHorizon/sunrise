@@ -77,7 +77,6 @@ members = [
     "crates/sunrise-connected",
     "crates/sunrise-optifine",
     "crates/sunrise-polytone",
-    "crates/sunrise-shader-api",
     "crates/sunrise-mod-pipeline",
     "crates/sunrise-release-sign",
     "crates/sunrise-mod-deps",
