@@ -1,8 +1,8 @@
 //! Per-view custom geometry; buffers pre-reserve initial space and grow dynamically.
 use crate::gfx::mod_meshes::ResolvedMeshDraw;
 use crate::gfx::mod_pipelines::{
-    self, PipelineDraw, PipelineDrawSource, PipelineRun, PipelineVertex, ResolvedDrawBindings,
-    ResolvedSet1Entry,
+    self, IndirectSource, PipelineDraw, PipelineDrawSource, PipelineRun, PipelineVertex,
+    ResolvedDrawBindings, ResolvedSet1Entry,
 };
 use crate::gfx::world_primitives::{
     Batch, DEFAULT_CAPACITY as CAPACITY, DrawRanges, OIT_STAGES, OitBatch,
@@ -973,6 +973,30 @@ impl WorldGeometry {
         draw: mod_api::MeshDraw,
         bindings: Option<ResolvedDrawBindings>,
     ) {
+        self.draw_source_slot(slot, draw, PipelineDrawSource::Retained(resolved), bindings);
+    }
+    /// Record a GPU-driven draw command. Caller has already validated the pipeline, the mesh,
+    /// the command buffer and the bindings.
+    pub fn draw_indirect_slot(
+        &mut self,
+        slot: u32,
+        indirect: IndirectSource,
+        bindings: Option<ResolvedDrawBindings>,
+    ) {
+        self.draw_source_slot(
+            slot,
+            mod_api::MeshDraw::vertices(0..0).with_instances(0..1),
+            PipelineDrawSource::Indirect(indirect),
+            bindings,
+        );
+    }
+    fn draw_source_slot(
+        &mut self,
+        slot: u32,
+        draw: mod_api::MeshDraw,
+        source: PipelineDrawSource,
+        bindings: Option<ResolvedDrawBindings>,
+    ) {
         let modifier_stack = self.active_modifier_stack();
         let (draws, stage) = match self.active {
             ActiveTarget::Primary => (&mut self.pipeline_draws, self.stage as u32),
@@ -987,7 +1011,7 @@ impl WorldGeometry {
             stage,
             modifier_stack,
             draw,
-            source: PipelineDrawSource::Retained(resolved),
+            source,
             bindings,
         });
     }

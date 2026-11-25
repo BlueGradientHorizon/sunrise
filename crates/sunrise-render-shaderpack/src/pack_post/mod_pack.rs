@@ -288,6 +288,14 @@ pub enum ModDrawKind {
         indices: std::ops::Range<u32>,
         base_vertex: i32,
     },
+    /// `count` GPU-written commands from `offset` of `buffer`: indexed (20 bytes each) with the
+    /// index buffer and format in `index`, else non-indexed (16 bytes each).
+    Indirect {
+        buffer: wgpu::Buffer,
+        offset: u64,
+        count: u32,
+        index: Option<(wgpu::Buffer, wgpu::IndexFormat)>,
+    },
 }
 
 /// One vertex-buffer draw chunk submitted for a mod pipeline slot (covers both transient
@@ -339,6 +347,7 @@ impl ModDrawChunk {
         match &self.kind {
             ModDrawKind::Vertices { vertices } => vertices.is_empty(),
             ModDrawKind::Indexed { indices, .. } => indices.is_empty(),
+            ModDrawKind::Indirect { count, .. } => *count == 0,
         }
     }
 }

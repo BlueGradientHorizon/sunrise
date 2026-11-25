@@ -1608,6 +1608,18 @@ impl PackPost {
                             rp.set_index_buffer(buffer.slice(..), *format);
                             rp.draw_indexed(indices.clone(), *base_vertex, chunk.instances.clone());
                         }
+                        ModDrawKind::Indirect {
+                            buffer,
+                            offset,
+                            count,
+                            index,
+                        } => match index {
+                            Some((index_buffer, format)) => {
+                                rp.set_index_buffer(index_buffer.slice(..), *format);
+                                rp.multi_draw_indexed_indirect(buffer, *offset, *count);
+                            }
+                            None => rp.multi_draw_indirect(buffer, *offset, *count),
+                        },
                     }
                 }
             }

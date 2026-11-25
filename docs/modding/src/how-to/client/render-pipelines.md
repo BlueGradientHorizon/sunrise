@@ -616,3 +616,41 @@ binding count over the device's limits makes the pipeline resolve `Invalid`, a s
 subgroup operations resolves `UnsupportedFeature` when `RenderCapabilities::subgroup` is false,
 and a dispatch over `max_compute_workgroups_per_dimension` is `TooManyWorkgroups`. Your GPU
 objects survive a resource reload and a world close; free them with `release`.
+
+## Indirect draws
+
+A compute shader that culls can write what to draw, and the draw reads it with no CPU readback.
+Create a storage buffer with `StorageBufferDescriptor::new(size).indirect(true)`, fill it from a
+compute pass, and draw it from a world stage, an offscreen pass or a translated shader pack's slot:
+
+```rust,ignore
+let bindings = DrawBindings::new().storage_buffer("Pages", pages.slice(0, pages_len));
+ctx.draw_indirect(
+    &IndirectDraw::new(pipeline, commands, max_count, &bindings).with_mesh(mesh),
+)?;
+```
+
+`draw_indirect` is on `WorldDrawContext`, `PrepareRenderBuffersContext` (with the stage, as
+`draw_mesh` is) and `OffscreenDrawContext`. It draws exactly `max_count` commands from
+`indirect_offset`, the same on every backend, as vanilla's `RenderPass.drawIndexedIndirect(commands,
+drawCount)` does. There is no GPU-written count: have the culling shader write `instance_count = 0`
+into each slot it drops, which draws nothing. A `max_count` of zero is a legal no-op.
+
+- **Layout.** With a `MeshRef` that has an index buffer, each command is five 4-byte words
+  (`index_count, instance_count, first_index, base_vertex, first_instance`; `INDIRECT_INDEXED_DRAW_SIZE`
+  bytes) and the index format is the mesh's own. Without a mesh, or with a mesh that has no indices,
+  each command is four words (`vertex_count, instance_count, first_vertex, first_instance`;
+  `INDIRECT_DRAW_SIZE` bytes), and the pipeline's topology cannot be `Quads`, `Lines` or `TriangleFan`.
+  A pipeline that pulls its vertices from a storage buffer passes no mesh and declares no vertex
+  bindings.
+- **First instance.** A command's `first_instance` is honoured only where
+  `RenderCapabilities::indirect_first_instance` is true; keep it zero otherwise.
+- **Base vertex.** An indexed command's `base_vertex` offsets the vertex fetch and `gl_VertexID` on
+  every backend; the engine's daily GPU test draws a command with a non-zero `base_vertex` on each
+  one (DirectX 12's multi-draws are the known risk), so a backend that drops it fails there rather
+  than drawing wrong geometry in your mod.
+
+The command buffer must have been created with `indirect: true`, its offset be a multiple of 4, and
+`indirect_offset + max_count * stride` lie inside it. A stale or foreign buffer is
+`PipelineDrawError::Buffer`, any other misuse `PipelineDrawError::InvalidIndirect`, and nothing is
+recorded.

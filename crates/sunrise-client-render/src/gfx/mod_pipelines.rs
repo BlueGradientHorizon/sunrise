@@ -79,6 +79,77 @@ pub enum PipelineDrawSource {
     },
     /// Zero-copy retained GPU buffers resolved from a [`mod_api::MeshRef`].
     Retained(ResolvedMeshDraw),
+    /// Commands read on the GPU from a retained storage buffer ([`mod_api::IndirectDraw`]). The
+    /// command's `draw` range is unused.
+    Indirect(IndirectSource),
+}
+
+/// What an [`mod_api::IndirectDraw`] resolved to: the mesh buffers it binds, and the commands
+/// it draws (vanilla `RenderPass.drawIndexedIndirect(commands, drawCount)`).
+#[derive(Clone, Debug)]
+pub struct IndirectSource {
+    /// The buffers of the draw's [`mod_api::MeshRef`]; `None` for a pipeline that pulls its
+    /// geometry from a storage buffer. The commands are indexed iff it has an index buffer.
+    pub mesh: Option<ResolvedMeshDraw>,
+    /// The buffer holding the commands, created with `INDIRECT` usage.
+    pub buffer: wgpu::Buffer,
+    /// Byte offset of the first command, a multiple of 4 inside `buffer` for all `max_count`.
+    pub offset: u64,
+    /// How many commands are drawn.
+    pub max_count: u32,
+}
+
+impl IndirectSource {
+    /// Check `max_count` commands from `offset` of `buffer` against how they are drawn, before
+    /// any GPU call: a non-indexed draw (`mesh` without an index buffer) cannot take a pipeline
+    /// of a `Quads`, `Lines` or `TriangleFan` `topology`, which the engine expands from a vertex
+    /// range an indirect command does not give it; `buffer` needs `INDIRECT` usage and a
+    /// 4-byte `offset`, and must hold `max_count` commands of vanilla's
+    /// `INDIRECT_INDEXED_DRAW_SIZE` (indexed) or `INDIRECT_DRAW_SIZE` bytes.
+    pub fn new(
+        topology: PrimitiveTopology,
+        mesh: Option<ResolvedMeshDraw>,
+        buffer: wgpu::Buffer,
+        offset: u64,
+        max_count: u32,
+    ) -> Result<Self, mod_api::PipelineDrawError> {
+        let source = Self {
+            mesh,
+            buffer,
+            offset,
+            max_count,
+        };
+        let stride = if source.index_buffer().is_some() {
+            mod_api::INDIRECT_INDEXED_DRAW_SIZE
+        } else {
+            if matches!(
+                topology,
+                PrimitiveTopology::Quads
+                    | PrimitiveTopology::Lines
+                    | PrimitiveTopology::TriangleFan
+            ) {
+                return Err(mod_api::PipelineDrawError::TopologyMismatch);
+            }
+            mod_api::INDIRECT_DRAW_SIZE
+        };
+        if !source.buffer.usage().contains(wgpu::BufferUsages::INDIRECT)
+            || !offset.is_multiple_of(wgpu::COPY_BUFFER_ALIGNMENT)
+            || u64::from(max_count)
+                .checked_mul(stride)
+                .and_then(|bytes| bytes.checked_add(offset))
+                .is_none_or(|end| end > source.buffer.size())
+        {
+            return Err(mod_api::PipelineDrawError::InvalidIndirect);
+        }
+        Ok(source)
+    }
+
+    /// The index buffer and format that make the commands indexed, if any.
+    fn index_buffer(&self) -> Option<&(wgpu::Buffer, wgpu::IndexFormat)> {
+        self.mesh
+            .as_ref()
+            .and_then(|mesh| mesh.index_buffer.as_ref())
+    }
 }
 
 /// One resolved set-1 binding entry for a [`PipelineDraw`] (`#5428`).
@@ -3167,6 +3238,31 @@ impl ModPipelines {
                         .map(|(buf, fmt)| (buf.clone(), *fmt, 0..buf.size()));
                     (vbs, ib)
                 }
+                PipelineDrawSource::Indirect(indirect) => {
+                    if indirect.max_count > 0 {
+                        let vertex_buffers = indirect
+                            .mesh
+                            .iter()
+                            .flat_map(|mesh| mesh.vertex_buffers.iter())
+                            .map(|(binding, buf, len)| (*binding, buf.clone(), 0..*len))
+                            .collect();
+                        out.push(super::pack_post::ModDrawChunk {
+                            slot: cmd.slot,
+                            vertex_buffers,
+                            kind: super::pack_post::ModDrawKind::Indirect {
+                                buffer: indirect.buffer.clone(),
+                                offset: indirect.offset,
+                                count: indirect.max_count,
+                                index: indirect
+                                    .index_buffer()
+                                    .map(|(buf, format)| (buf.clone(), *format)),
+                            },
+                            instances: 0..1,
+                            mod_bind_group: cmd.set1_bind_group.clone(),
+                        });
+                    }
+                    continue;
+                }
             };
             let kind = match &cmd.draw.range {
                 DrawRange::Vertices(range) => {
@@ -4073,6 +4169,33 @@ impl ModPipelines {
                         );
                     }
                     _ => {}
+                }
+            }
+            PipelineDrawSource::Indirect(indirect) => {
+                if indirect.max_count == 0 {
+                    return;
+                }
+                if let Some(mesh) = &indirect.mesh {
+                    for (binding, buf, len) in &mesh.vertex_buffers {
+                        pass.set_vertex_buffer(*binding, buf.slice(0..*len));
+                    }
+                }
+                // One path on every backend: `max_count` commands, those the mod's culling
+                // shader zeroed (`instance_count = 0`) drawing nothing.
+                match indirect.index_buffer() {
+                    Some((ibuf, fmt)) => {
+                        pass.set_index_buffer(ibuf.slice(..), *fmt);
+                        pass.multi_draw_indexed_indirect(
+                            &indirect.buffer,
+                            indirect.offset,
+                            indirect.max_count,
+                        );
+                    }
+                    None => pass.multi_draw_indirect(
+                        &indirect.buffer,
+                        indirect.offset,
+                        indirect.max_count,
+                    ),
                 }
             }
         }
@@ -6753,6 +6876,219 @@ void main() {
         let at = render(&gpu, &mut primitives, format, batch, STAGES - 1);
         assert_near(at(16, 16), [255.0, 0.0, 0.0, 255.0], 2.0, "first range");
         assert_near(at(48, 16), [0.0, 255.0, 0.0, 255.0], 2.0, "second range");
+    }
+
+    /// `max_count` indexed commands a shader-less CPU wrote into an `INDIRECT` storage buffer
+    /// draw their quads: a `base_vertex` other than zero reaches the vertex fetch (the DirectX 12
+    /// case), a command with `instance_count = 0` draws nothing (how a mod's culling shader drops
+    /// a slot), and the buffer is refused unless it is `INDIRECT`, 4-aligned and large enough.
+    #[test]
+    #[ignore = "daily"]
+    fn indirect_commands_draw_with_base_vertex_skip_zeroed_slots_and_are_refused_when_unfit() {
+        let _gpu = crate::gfx::test_gpu::lock();
+        let Some((device, queue)) = device() else {
+            return;
+        };
+        let vsh = "\
+#version 330
+in uvec4 PackedPos;
+in vec4 PackedColor;
+out vec4 vertexColor;
+void main() {
+    vec2 ndc = vec2(float(PackedPos.x) / 32.0 - 1.0, 1.0 - float(PackedPos.y) / 32.0);
+    gl_Position = vec4(ndc, 0.5, 1.0);
+    vertexColor = PackedColor;
+    // Red says whether `gl_VertexID` counted the command's base vertex: the second and third
+    // quad's vertices are 4 and up only if it did.
+    vertexColor.r = gl_VertexID >= 4 ? 1.0 : 0.0;
+}
+";
+        let fsh = "\
+#version 330
+in vec4 vertexColor;
+out vec4 fragColor;
+void main() {
+    fragColor = vertexColor;
+}
+";
+        let fmt = VertexFormat::builder(VertexStepMode::Vertex)
+            .attribute("PackedPos", VertexAttributeFormat::Uint8x4)
+            .attribute("PackedColor", VertexAttributeFormat::Unorm8x4)
+            .build()
+            .unwrap();
+        let id = Identifier::parse("example:indirect_mesh").unwrap();
+        let reg = [RenderPipeline::new(
+            id.clone(),
+            id,
+            PipelineBlend::Opaque,
+            WorldDepth::ThroughWalls,
+        )
+        .topology(PrimitiveTopology::Triangles)
+        .vertex_binding(0, fmt)];
+        let set = Pipelines::build(&reg, 1, |file| {
+            if file.ends_with(".vsh") {
+                Ok(Some(vsh.to_owned()))
+            } else if file.ends_with(".fsh") {
+                Ok(Some(fsh.to_owned()))
+            } else {
+                Ok(stub_asset(file))
+            }
+        })
+        .unwrap();
+
+        // Three quads of the same four-vertex shape, side by side at y 0..16: a green one at
+        // x 0..16 (vertices 0..4), a blue one at x 16..32 (4..8) and a red one at x 32..48 (8..12).
+        let quad = |x: u8, color: [u8; 4]| {
+            [[x, 0], [x, 16], [x + 16, 16], [x + 16, 0]]
+                .map(|[x, y]| [x, y, 0, 0, color[0], color[1], color[2], color[3]])
+        };
+        let vertices: Vec<[u8; 8]> = [
+            quad(0, [0, 220, 40, 255]),
+            quad(16, [255, 40, 220, 255]),
+            quad(32, [220, 20, 40, 255]),
+        ]
+        .concat();
+        let indices: [u16; 6] = [0, 1, 2, 0, 2, 3];
+        let vb_inits = [mod_api::MeshBufferInit::from_bytes(
+            8,
+            bytemuck::cast_slice(&vertices),
+        )];
+        let desc = mod_api::MeshDescriptor::new(&vb_inits).with_indices(
+            mod_api::MeshIndexInit::from_bytes(IndexFormat::Uint16, bytemuck::cast_slice(&indices)),
+        );
+        let mut meshes = crate::gfx::mod_meshes::ModMeshes::default();
+        let mesh = meshes.create_mesh(&device, &queue, None, &desc).unwrap();
+        let resolved = meshes
+            .resolve_indirect(None, mesh, set.vertex_bindings(0).unwrap())
+            .unwrap();
+
+        // Command 0: base vertex 0. Command 1: base vertex 4, the case DirectX 12's count draws
+        // lose. Command 2: base vertex 8 with `instance_count = 0`, culled.
+        let commands: [[u32; 5]; 3] = [[6, 1, 0, 0, 0], [6, 1, 0, 4, 0], [6, 0, 0, 8, 0]];
+        let mut storage = crate::gfx::mod_storage::ModStorageBuffers::default();
+        let buffer = storage
+            .create(
+                &device,
+                None,
+                &mod_api::StorageBufferDescriptor::new(60).indirect(true),
+            )
+            .unwrap();
+        storage
+            .write_range(None, buffer, 0, bytemuck::cast_slice(&commands))
+            .unwrap();
+        storage.flush(&device, &queue);
+        let commands_buffer = storage.resolve_buffer(None, buffer).unwrap();
+        let indirect = IndirectSource::new(
+            PrimitiveTopology::Triangles,
+            Some(resolved.clone()),
+            commands_buffer.clone(),
+            0,
+            3,
+        )
+        .unwrap();
+
+        let format = wgpu::TextureFormat::Rgba8Unorm;
+        let mut primitives = WorldPrimitives::new(&device, (format, false));
+        let draw_cmd = PipelineDraw {
+            slot: 0,
+            stage: 4,
+            modifier_stack: 0,
+            draw: MeshDraw::vertices(0..0),
+            source: PipelineDrawSource::Indirect(indirect),
+            bindings: None,
+        };
+        let gpu = (device, queue);
+        let batch = Batch {
+            set: Some(&set),
+            draws: std::slice::from_ref(&draw_cmd),
+            time: 0.0,
+            ..Default::default()
+        };
+        let at = render(&gpu, &mut primitives, format, batch, STAGES - 1);
+        assert_near(at(4, 4), [0.0, 220.0, 40.0, 255.0], 1.0, "command 0");
+        assert_near(
+            at(20, 4),
+            [255.0, 40.0, 220.0, 255.0],
+            1.0,
+            "command 1: base vertex 4 must reach the vertex fetch and gl_VertexID on this backend",
+        );
+        assert_eq!(at(36, 4), at(36, 40), "command 2 is culled");
+
+        let ok = |topology, offset, count| {
+            IndirectSource::new(
+                topology,
+                Some(resolved.clone()),
+                commands_buffer.clone(),
+                offset,
+                count,
+            )
+            .map(|_| ())
+        };
+        let triangles = PrimitiveTopology::Triangles;
+        assert_eq!(ok(triangles, 0, 0), Ok(()));
+        assert_eq!(ok(triangles, 0, 3), Ok(()));
+        assert_eq!(ok(triangles, 40, 1), Ok(()));
+        assert_eq!(
+            ok(triangles, 0, 4),
+            Err(mod_api::PipelineDrawError::InvalidIndirect)
+        );
+        assert_eq!(
+            ok(triangles, 44, 1),
+            Err(mod_api::PipelineDrawError::InvalidIndirect)
+        );
+        assert_eq!(
+            ok(triangles, 2, 1),
+            Err(mod_api::PipelineDrawError::InvalidIndirect)
+        );
+        assert_eq!(
+            ok(triangles, u64::MAX - 3, u32::MAX),
+            Err(mod_api::PipelineDrawError::InvalidIndirect)
+        );
+        let plain = {
+            let device = &gpu.0;
+            device.create_buffer(&wgpu::BufferDescriptor {
+                label: None,
+                size: 60,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            })
+        };
+        assert_eq!(
+            IndirectSource::new(triangles, Some(resolved.clone()), plain, 0, 1).map(|_| ()),
+            Err(mod_api::PipelineDrawError::InvalidIndirect)
+        );
+        // Without an index buffer the commands are 16 bytes each, and an expanded topology has
+        // no vertex range to expand.
+        let bare = crate::gfx::mod_meshes::ResolvedMeshDraw {
+            vertex_buffers: resolved.vertex_buffers.clone(),
+            index_buffer: None,
+        };
+        let non_indexed = |topology, count| {
+            IndirectSource::new(
+                topology,
+                Some(bare.clone()),
+                commands_buffer.clone(),
+                0,
+                count,
+            )
+            .map(|_| ())
+        };
+        assert_eq!(non_indexed(triangles, 3), Ok(()));
+        assert_eq!(
+            non_indexed(triangles, 4),
+            Err(mod_api::PipelineDrawError::InvalidIndirect)
+        );
+        assert_eq!(
+            non_indexed(PrimitiveTopology::Quads, 1),
+            Err(mod_api::PipelineDrawError::TopologyMismatch)
+        );
+        meshes.release(None, mesh).unwrap();
+        assert_eq!(
+            meshes
+                .resolve_indirect(None, mesh, set.vertex_bindings(0).unwrap())
+                .unwrap_err(),
+            mod_api::PipelineDrawError::Mesh(mod_api::MeshError::Stale)
+        );
     }
 
     #[test]

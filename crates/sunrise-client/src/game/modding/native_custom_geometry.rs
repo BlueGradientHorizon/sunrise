@@ -1220,6 +1220,68 @@ impl Game<'_> {
         }
         Ok(())
     }
+    /// Check a GPU-driven [`mod_api::IndirectDraw`] against its pipeline, mesh and command
+    /// buffer, before anything is recorded: the pipeline's vertex bindings against the mesh (a
+    /// pipeline with bindings needs a mesh), the command buffer's handle, and the rest in
+    /// `IndirectSource::new`.
+    fn resolve_indirect_draw(
+        &self,
+        slot: u32,
+        topology: mod_api::PrimitiveTopology,
+        draw: &mod_api::IndirectDraw<'_>,
+    ) -> Result<sunrise_client::gfx::mod_pipelines::IndirectSource, PipelineDrawError> {
+        let vertex_bindings = self.pack.render.mod_pipelines.vertex_bindings(slot).ok_or(
+            PipelineDrawError::Pipeline(mod_api::RenderPipelineError::Invalid),
+        )?;
+        let renderer = self
+            .renderer
+            .as_ref()
+            .ok_or(PipelineDrawError::Mesh(mod_api::MeshError::Unavailable))?;
+        let owner = mod_api::content::crash::current_native_mod();
+        let mesh = match draw.mesh {
+            Some(handle) => {
+                Some(renderer.resolve_mod_mesh_indirect(owner, handle, vertex_bindings)?)
+            }
+            None if vertex_bindings.is_empty() => None,
+            None => return Err(PipelineDrawError::VertexFormatMismatch),
+        };
+        let buffer = renderer
+            .resolve_mod_storage_buffer(owner, draw.indirect_buffer)
+            .map_err(PipelineDrawError::Buffer)?;
+        sunrise_client::gfx::mod_pipelines::IndirectSource::new(
+            topology,
+            mesh,
+            buffer,
+            draw.indirect_offset,
+            draw.max_count,
+        )
+    }
+    /// Record a GPU-driven [`mod_api::IndirectDraw`] for the world pass, after checking it.
+    pub(super) fn native_world_draw_indirect(
+        &self,
+        draw: &mut WorldGeometry,
+        indirect: &mod_api::IndirectDraw<'_>,
+    ) -> Result<(), PipelineDrawError> {
+        let slot = self
+            .pack
+            .render
+            .mod_pipelines
+            .slot(indirect.pipeline)
+            .map_err(PipelineDrawError::Pipeline)?;
+        let base_topology = self
+            .pack
+            .render
+            .mod_pipelines
+            .topology(slot)
+            .unwrap_or(mod_api::PrimitiveTopology::Quads);
+        let source =
+            self.resolve_indirect_draw(slot, draw.effective_topology(base_topology), indirect)?;
+        let resolved_bindings = self.resolve_draw_bindings(draw, slot, indirect.bindings)?;
+        if indirect.max_count > 0 {
+            draw.draw_indirect_slot(slot, source, resolved_bindings);
+        }
+        Ok(())
+    }
     /// Validate and queue a transient per-frame vertex/index draw call.
     pub(super) fn native_world_draw_vertices(
         &self,
@@ -1496,6 +1558,59 @@ impl Game<'_> {
                     draw: mesh_draw,
                     source: sunrise_client::gfx::mod_pipelines::PipelineDrawSource::Retained(
                         resolved,
+                    ),
+                    bindings: resolved_bindings,
+                });
+        }
+        Ok(())
+    }
+    /// Record a GPU-driven [`mod_api::IndirectDraw`] into an offscreen frame-graph pass, after
+    /// checking it.
+    pub(in crate::game) fn native_offscreen_draw_indirect(
+        &self,
+        pass: &mut sunrise_client::gfx::mod_frame_graph::RecordedFramePass,
+        transients: &[mod_api::RenderTargetDescriptor],
+        indirect: &mod_api::IndirectDraw<'_>,
+    ) -> Result<(), PipelineDrawError> {
+        let slot = self
+            .pack
+            .render
+            .mod_pipelines
+            .slot(indirect.pipeline)
+            .map_err(PipelineDrawError::Pipeline)?;
+        let topology = self
+            .pack
+            .render
+            .mod_pipelines
+            .topology(slot)
+            .unwrap_or(mod_api::PrimitiveTopology::Quads);
+        let source = self.resolve_indirect_draw(slot, topology, indirect)?;
+        let active_target = pass.target.map(|target| (target, 0));
+        let resolved_bindings = self.resolve_draw_bindings_into(
+            slot,
+            indirect.bindings,
+            active_target,
+            transients,
+            &mut |bytes| {
+                let start = pass.inline_uniforms.len();
+                pass.inline_uniforms.extend_from_slice(bytes);
+                start..pass.inline_uniforms.len()
+            },
+            &mut |bytes| {
+                let start = pass.texel_data.len();
+                pass.texel_data.extend_from_slice(bytes);
+                start..pass.texel_data.len()
+            },
+        )?;
+        if indirect.max_count > 0 {
+            pass.draws
+                .push(sunrise_client::gfx::mod_pipelines::PipelineDraw {
+                    slot,
+                    stage: 0,
+                    modifier_stack: 0,
+                    draw: mod_api::MeshDraw::vertices(0..0),
+                    source: sunrise_client::gfx::mod_pipelines::PipelineDrawSource::Indirect(
+                        source,
                     ),
                     bindings: resolved_bindings,
                 });
