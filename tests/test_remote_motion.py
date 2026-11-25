@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 @unittest.skipUnless(shutil.which("rustc"), "requires Rust")
 class RemoteMotionTests(unittest.TestCase):
     def test_mob_velocity_reaches_squid_animation(self):
-        source = (ROOT / "crates/sunrise-client/src/game/network/remote/motion.rs").read_text(encoding="utf-8")
+        source = (ROOT / "crates/sunrise-client/src/game/network/remote/motion_client.rs").read_text(encoding="utf-8")
         code = rust_tests.blank(source)
         start = code.index("fn remote_motion(")
         opening = code.index("{", start)

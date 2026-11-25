@@ -37,8 +37,8 @@ def method(source, name):
 class RemoteMiningTests(unittest.TestCase):
     def test_break_timing_and_packets(self):
         remote = ROOT / "crates/sunrise-client/src/game/network/remote"
-        breaking = method((remote / "use.rs").read_text(encoding="utf-8"), "remote_mining")
-        stopping = method((remote / "break_prediction.rs").read_text(encoding="utf-8"), "stop_remote_mining")
+        breaking = method((remote / "use_client.rs").read_text(encoding="utf-8"), "remote_mining")
+        stopping = method((remote / "break_prediction_client.rs").read_text(encoding="utf-8"), "stop_remote_mining")
         source = breaking + "\n" + stopping
         fixture = r'''
 #![allow(dead_code)]

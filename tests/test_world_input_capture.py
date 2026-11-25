@@ -70,12 +70,12 @@ class WorldInputCaptureTests(unittest.TestCase):
             (remote_dir / name).read_text(encoding="utf-8")
             for name in ("client_level_tick.rs", "client_level_tick_client.rs")
         )
+        # Server-only spawn_player initializes self.player without client mouse capture;
+        # client loading completion (singleplayer integrated server and multiplayer) captures
+        # the pointer in tick_client_load below.
         spawn = method(game, "spawn_player")
-        # The client half is a separate method: check the order across both bodies.
-        call = spawn.index("self.spawn_player_client(")
-        spawn = spawn[:call] + method(game, "spawn_player_client") + spawn[call:]
-        self.assertLess(spawn.index("self.player = Some(player)"),
-                        spawn.index("self.capture_loaded_world()"))
+        self.assertIn("self.player = Some(player)", spawn)
+        self.assertNotIn("self.capture_loaded_world()", spawn)
         # ClientPacketListener.tick: the level load tracker ends the loading screen,
         # the server hears PlayerLoaded, the mouse is captured, then the player moves.
         ready = method(tick, "tick_client_load")

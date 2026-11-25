@@ -12,9 +12,20 @@ class ItemAttackBoundary(unittest.TestCase):
         compiler = shutil.which("rustc")
         if compiler is None:
             self.skipTest("requires Rust to execute the production boundary fixture")
-        source = (ROOT / 'crates/sunrise-client/src/game/native_hooks/item_attack.rs').read_text()
-        methods = source[source.index('    pub(in crate::game) fn native_left_click_entity_event'):]
-        methods = methods.replace('pub(in crate::game)', 'pub')
+        source = (
+            (ROOT / 'crates/sunrise-client/src/game/native_hooks/item_attack_server.rs').read_text()
+            + "\n"
+            + (ROOT / 'crates/sunrise-client/src/game/native_hooks/item_attack.rs').read_text()
+        )
+        left_start = source.index('    pub(in crate::game::server_side) fn native_left_click_entity_event')
+        left_end = source.index('\n}\n', left_start)
+        swing_start = source.index('    pub(in crate::game) fn native_entity_swing_event')
+        methods = (
+            source[left_start:left_end]
+            .replace('pub(in crate::game::server_side)', 'pub')
+            + "\n"
+            + source[swing_start:].replace('pub(in crate::game)', 'pub')
+        )
         remote = (ROOT / 'crates/sunrise-client/src/game/network/swing_packet.rs').read_text()
         start = remote.index('        if ')
         packet = remote[start:remote.rfind('    }')].replace('sunrise_protocol::packets::play::Serverbound', 'S').replace('sunrise_protocol::packets::Empty', 'Empty')
