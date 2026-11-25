@@ -942,8 +942,9 @@ fn mounted_button_sprites_keep_their_pixels_and_accessibility() {
     }
     use mod_api::client::widgets::ButtonSprites;
     use sunrise_client::{
+        font::Patch,
         gfx::entity_pixel_test::render_hud,
-        hud::{GuiSprite, Rect, dynamic_textures::ImagePatch},
+        hud::{GuiSprite, Rect},
         widgets::{self, Cursor, Kind, ScreenInfo, What},
     };
 
@@ -996,8 +997,10 @@ fn mounted_button_sprites_keep_their_pixels_and_accessibility() {
             with_client_game(|game| {
                 let (_event_loop, _win_id) = attach_offscreen_window(game);
                 let atlas = &mut game.gui.atlas;
-                let [ox, oy] = atlas.dynamic_texture_pool.as_ref().unwrap().origin(0, 0);
+                // The first downloaded-skin slot, 64 x 64 texels no sprite draws, holds the palette.
+                let slot = atlas.sprites["sunrise/skin0"];
                 let (aw, ah) = (atlas.width as f32, atlas.height as f32);
+                let [ox, oy] = [(slot.u0 * aw).round() as u32, (slot.v0 * ah).round() as u32];
                 let mut palette = Vec::new();
                 for state in 0..3 {
                     for i in 0..COUNT {
@@ -1020,10 +1023,12 @@ fn mounted_button_sprites_keep_their_pixels_and_accessibility() {
                         );
                     }
                 }
-                let patch = ImagePatch {
-                    origin: [ox, oy],
-                    size: [COUNT as u32, 3],
-                    rgba: palette.into(),
+                let patch = Patch {
+                    x: ox,
+                    y: oy,
+                    width: COUNT as u32,
+                    height: 3,
+                    rgba: palette,
                 };
                 let pixel = |pixels: &[u8], [x, y, _, _]: [f32; 4]| {
                     let at = (((y as u32 + 1) * SIZE[0] + x as u32 + 1) * 4) as usize;
@@ -1050,7 +1055,7 @@ fn mounted_button_sprites_keep_their_pixels_and_accessibility() {
                 let frame = |game: &mut Game<'_>, at, serial| {
                     game.cursor = at;
                     let mut batch = HudBatch::scratch(SIZE);
-                    batch.image_patches.push(patch.clone());
+                    batch.patches.push(patch.clone());
                     widgets::begin_screen(|| ScreenInfo::new("fixture", "Mounted sprite buttons"));
                     game.draw_mounted_screen_widgets(&mut batch);
                     widgets::end_frame(serial);

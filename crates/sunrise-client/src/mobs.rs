@@ -4972,7 +4972,7 @@ impl Mob {
             // Wolf.getHurtSound: the armor's own sound when it takes the hit;
             // otherwise Wolf.getHurtSound/getDeathSound and Cat.getHurtSound/getDeathSound
             // read the world's sound variant table, as do Pig, Cow and Chicken's
-            // (their variant always resolves, so there is no sound of their own).
+            // (a pet without a variant table has no sound, like theirs).
             // A content type's declared hurt or death slot replaces the template's
             // `getHurtSound`/`getDeathSound`, variant sets included.
             let declared = matches!(
@@ -4987,8 +4987,8 @@ impl Mob {
                 None
             } else {
                 match self.species() {
-                    Species::Wolf => ai::wolf_sound(self, variants, sound_kind),
-                    Species::Cat => ai::cat_sound(self, variants, sound_kind),
+                    Species::Wolf => Some(ai::wolf_sound(self, variants, sound_kind).unwrap_or("")),
+                    Species::Cat => Some(ai::cat_sound(self, variants, sound_kind).unwrap_or("")),
                     Species::Pig | Species::Cow | Species::Chicken => {
                         Some(ai::farm_sound(self, variants, sound_kind).unwrap_or(""))
                     }

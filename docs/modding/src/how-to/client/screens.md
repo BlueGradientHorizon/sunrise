@@ -672,3 +672,12 @@ preview), call `host.set_pointer_grab(true)` from your click hook and read
 `host.set_pointer_grab(false)` releases it. The grab also ends when the screen closes, the window
 loses focus or your mod unloads, and refocusing does not bring it back: grab again. Escape reaches
 your screen like any key, so handle it yourself. The rustdoc of the hooks and `set_pointer_grab` has the contract.
+
+## Dropped files
+
+`screen_files_dropped(screen, paths)` tells a mod that files were dropped on the window while a
+screen is open, a vanilla screen or yours (vanilla's `Screen.onFilesDrop`). It fires once per drop
+with every path in the order the operating system gave them; a path that is not valid UTF-8 comes
+through unchanged, so open it as a `Path`. The game reads no file, so read the ones you want
+yourself. The hook only observes: it cannot cancel the drop, and the game's own handling of it (a
+dropped resource pack) still runs. Nothing is sent over the network.

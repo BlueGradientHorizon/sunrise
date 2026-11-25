@@ -627,7 +627,7 @@ mod tests {
             ("add_server_reload_listeners", 4, Some(PhaseContext::Reload)),
             (
                 "register_entity_layers",
-                5,
+                6,
                 Some(PhaseContext::Registration),
             ),
             (
