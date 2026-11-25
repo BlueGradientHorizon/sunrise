@@ -18,6 +18,20 @@ not touched returns all criteria with `obtained_at: None` and `done == false`, a
 `player_advancement_progress` or `player_advancement_done` observe the post-grant live state.
 Unknown ids, stale or offline players, and client hosts return `None`.
 
+To award or revoke an advancement (or one criterion of it) on the server, call
+`player.award_advancement(host, &id, criterion)` and `player.revoke_advancement(host, &id, criterion)`.
+Both take `&mut dyn ServerHost` and `criterion: Option<&str>`, mirroring
+`PlayerAdvancements.award`/`revoke` and `AdvancementCommands.Action.GRANT`/`REVOKE`: pass
+`Some(name)` for one criterion or `None` for every remaining (or obtained) criterion. They route
+through the same engine path as triggers and `/advancement`, so completion grants rewards,
+announces in chat per the display and `show_advancement_messages`, shows the toast, fires
+`player_advancement_progress` and `player_advancement_done`, and queues the client progress
+update. `Ok(bool)` reports whether progress changed; `Err(AdvancementError)` distinguishes
+`NotServer`, `PlayerUnavailable`, `UnknownAdvancement`, `UnknownCriterion`, and `NoBackend`.
+Inside a transaction, validation runs immediately and `Ok(bool)` reports whether the change
+would alter current progress; the change itself, along with its rewards, messages, hooks and
+client updates, happens at the root commit and is dropped on abort.
+
 ## Display icons
 
 An advancement's `display.icon` is an item stack, including its count, damage and

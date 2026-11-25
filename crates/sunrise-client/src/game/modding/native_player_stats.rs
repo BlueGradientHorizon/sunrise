@@ -9,7 +9,9 @@ use super::{
     stats::Stats, transactions::DeferredEffect,
 };
 use core::ops::ControlFlow;
-use mod_api::{AdvancementProgress, EntityReadError, Identifier, PlayerRef, StatType};
+use mod_api::{
+    AdvancementError, AdvancementProgress, EntityReadError, Identifier, PlayerRef, StatType,
+};
 use sunrise_client::advancements::Progress;
 use sunrise_gameplay::stats::StatValues;
 
@@ -121,6 +123,138 @@ impl Game<'_> {
         let progress = self.native_player_advancements(player)?;
         let advancement = self.adv.tree.get(id.as_str())?;
         Some(progress_snapshot(advancement, progress))
+    }
+
+    /// `PlayerAdvancements.award(holder, criterion)` (or all remaining criteria when
+    /// `criterion` is `None`, matching `AdvancementCommands.Action.GRANT`).
+    pub(super) fn player_award_advancement(
+        &mut self,
+        player: PlayerRef,
+        id: &Identifier,
+        criterion: Option<&str>,
+    ) -> Result<bool, AdvancementError> {
+        self.player_change_advancement(player, id, criterion, true)
+    }
+
+    /// `PlayerAdvancements.revoke(holder, criterion)` (or all obtained criteria when
+    /// `criterion` is `None`, matching `AdvancementCommands.Action.REVOKE`).
+    pub(super) fn player_revoke_advancement(
+        &mut self,
+        player: PlayerRef,
+        id: &Identifier,
+        criterion: Option<&str>,
+    ) -> Result<bool, AdvancementError> {
+        self.player_change_advancement(player, id, criterion, false)
+    }
+
+    fn player_change_advancement(
+        &mut self,
+        player: PlayerRef,
+        id: &Identifier,
+        criterion: Option<&str>,
+        grant: bool,
+    ) -> Result<bool, AdvancementError> {
+        if !self.is_logical_server() || self.remote.is_some() {
+            return Err(AdvancementError::NotServer);
+        }
+        if !self.native_player_writable(player) {
+            return Err(AdvancementError::PlayerUnavailable);
+        }
+        let target = self
+            .native_entity_target(player.entity())
+            .ok_or(AdvancementError::PlayerUnavailable)?;
+        let tree = self.advancement_tree();
+        let Some(index) = tree.find_id(id.as_str()) else {
+            return Err(AdvancementError::UnknownAdvancement);
+        };
+        if let Some(name) = criterion
+            && !tree.list[index].criteria.iter().any(|c| c.name == name)
+        {
+            return Err(AdvancementError::UnknownCriterion);
+        }
+        if self.transactions.last().is_some() {
+            let progress = self
+                .native_player_advancements(player)
+                .ok_or(AdvancementError::PlayerUnavailable)?;
+            let snapshot = progress_snapshot(&tree.list[index], progress);
+            let would_change = match (grant, criterion) {
+                (true, Some(name)) => snapshot
+                    .criteria
+                    .iter()
+                    .any(|c| c.name == name && c.obtained_at.is_none()),
+                (true, None) => !snapshot.done,
+                (false, Some(name)) => snapshot
+                    .criteria
+                    .iter()
+                    .any(|c| c.name == name && c.obtained_at.is_some()),
+                (false, None) => snapshot.criteria.iter().any(|c| c.obtained_at.is_some()),
+            };
+            self.defer_effect(DeferredEffect::ChangeAdvancement {
+                player,
+                id: id.as_str().to_owned(),
+                criterion: criterion.map(str::to_owned),
+                grant,
+            });
+            return Ok(would_change);
+        }
+        self.for_player(target, |game| {
+            game.load_advancements();
+            let Some(index) = game.adv.tree.find_id(id.as_str()) else {
+                return Err(AdvancementError::UnknownAdvancement);
+            };
+            if let Some(name) = criterion
+                && !game.adv.tree.list[index]
+                    .criteria
+                    .iter()
+                    .any(|c| c.name == name)
+            {
+                return Err(AdvancementError::UnknownCriterion);
+            }
+            Ok(if grant {
+                game.grant_advancement(index, criterion)
+            } else {
+                game.revoke_advancement(index, criterion)
+            })
+        })
+        .ok_or(AdvancementError::PlayerUnavailable)?
+    }
+
+    /// Apply a deferred `PlayerRef::award_advancement` / `revoke_advancement` at root commit.
+    pub(super) fn apply_deferred_advancement_change(
+        &mut self,
+        player: PlayerRef,
+        id: &str,
+        criterion: Option<&str>,
+        grant: bool,
+    ) {
+        if !self.is_logical_server()
+            || self.remote.is_some()
+            || !self.native_player_writable(player)
+        {
+            return;
+        }
+        let Some(target) = self.native_entity_target(player.entity()) else {
+            return;
+        };
+        let _ = self.for_player(target, |game| {
+            game.load_advancements();
+            let Some(index) = game.adv.tree.find_id(id) else {
+                return;
+            };
+            if let Some(name) = criterion
+                && !game.adv.tree.list[index]
+                    .criteria
+                    .iter()
+                    .any(|c| c.name == name)
+            {
+                return;
+            }
+            if grant {
+                game.grant_advancement(index, criterion);
+            } else {
+                game.revoke_advancement(index, criterion);
+            }
+        });
     }
 
     /// Decode with the server's registries before entering the player's turn. Inside a
@@ -869,6 +1003,331 @@ mod tests {
 
                 game.lan.as_mut().unwrap().hub.guests.clear();
                 assert_eq!(player.advancement_progress(game, &adv_id), None);
+            });
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn player_award_and_revoke_advancement_route_through_engine_path() {
+        use mod_api::{PlayerAdvancementDoneEvent, PlayerAdvancementProgressEvent, ProgressType};
+        use std::sync::Mutex;
+        use sunrise_client::advancements::{Advancement, Criterion, Rewards, Tree};
+
+        struct ObserveChanges {
+            id: Identifier,
+            on_progress: Arc<Mutex<Vec<(String, ProgressType)>>>,
+            on_done: Arc<Mutex<Vec<String>>>,
+        }
+
+        #[mod_api::__subscriptions]
+        impl Hooks for ObserveChanges {
+            fn player_advancement_progress(
+                &self,
+                _: &mut dyn ServerHost,
+                event: &mut PlayerAdvancementProgressEvent<'_>,
+            ) {
+                if event.advancement == self.id.as_str() {
+                    self.on_progress
+                        .lock()
+                        .unwrap()
+                        .push((event.criterion.to_owned(), event.progress_type));
+                }
+            }
+
+            fn player_advancement_done(
+                &self,
+                _: &mut dyn ServerHost,
+                event: &mut PlayerAdvancementDoneEvent<'_>,
+            ) {
+                if event.advancement == self.id.as_str() {
+                    self.on_done
+                        .lock()
+                        .unwrap()
+                        .push(event.advancement.to_owned());
+                }
+            }
+        }
+
+        let adv_id = Identifier::parse("testmod:two_step").unwrap();
+        let unknown_id = Identifier::parse("testmod:missing").unwrap();
+        let on_progress = Arc::new(Mutex::new(Vec::new()));
+        let on_done = Arc::new(Mutex::new(Vec::new()));
+        let mods = vec![mod_api::ModEntry::new(
+            "observe_advancement_changes",
+            Box::new(ObserveChanges {
+                id: adv_id.clone(),
+                on_progress: on_progress.clone(),
+                on_done: on_done.clone(),
+            }),
+        )]
+        .into();
+
+        mod_platform::testing::with_mods(mods, || {
+            with_guests(|game| {
+                game.build_registries();
+                let mut tree = Tree::default();
+                tree.list.push(Advancement {
+                    id: adv_id.as_str().into(),
+                    parent: None,
+                    display: None,
+                    criteria: vec![
+                        Criterion {
+                            name: "first".into(),
+                            trigger: "minecraft:impossible".into(),
+                            conditions: serde_json::Value::Null.into(),
+                            player: None,
+                        },
+                        Criterion {
+                            name: "second".into(),
+                            trigger: "minecraft:impossible".into(),
+                            conditions: serde_json::Value::Null.into(),
+                            player: None,
+                        },
+                    ],
+                    requirements: vec![vec!["first".into()], vec!["second".into()]],
+                    rewards: Rewards {
+                        experience: 25,
+                        ..Default::default()
+                    },
+                });
+                tree.by_id.insert(adv_id.as_str().into(), 0);
+                game.adv.tree = Arc::new(tree);
+                game.adv.loaded = true;
+                game.ui.registries.advancements = vec![adv_id.as_str().into()];
+                game.lan.as_mut().unwrap().hub.guests.update_all(|guest| {
+                    guest.advancements_loaded = true;
+                });
+
+                let player = game.player(12).unwrap();
+                let other = game.player(13).unwrap();
+
+                // Unknown advancement and unknown criterion report which was missing.
+                assert_eq!(
+                    player.award_advancement(game, &unknown_id, None),
+                    Err(AdvancementError::UnknownAdvancement)
+                );
+                assert_eq!(
+                    player.revoke_advancement(game, &unknown_id, None),
+                    Err(AdvancementError::UnknownAdvancement)
+                );
+                assert_eq!(
+                    player.award_advancement(game, &adv_id, Some("missing")),
+                    Err(AdvancementError::UnknownCriterion)
+                );
+                assert_eq!(
+                    player.revoke_advancement(game, &adv_id, Some("missing")),
+                    Err(AdvancementError::UnknownCriterion)
+                );
+
+                // Award one criterion: true, progress shows it, not done yet.
+                assert_eq!(
+                    player.award_advancement(game, &adv_id, Some("first")),
+                    Ok(true)
+                );
+                let after_first = player.advancement_progress(game, &adv_id).unwrap();
+                assert!(!after_first.done);
+                assert_eq!(after_first.completed_requirements, 1);
+                assert_eq!(
+                    after_first
+                        .criteria
+                        .iter()
+                        .map(|c| (c.name.as_str(), c.obtained_at.is_some()))
+                        .collect::<Vec<_>>(),
+                    vec![("first", true), ("second", false)]
+                );
+                assert!(on_done.lock().unwrap().is_empty());
+                assert_eq!(player.experience(game).unwrap().total, 0);
+
+                // Award the same criterion again: false, no change.
+                assert_eq!(
+                    player.award_advancement(game, &adv_id, Some("first")),
+                    Ok(false)
+                );
+
+                // Award all remaining criteria: done, reward experience given, done hook fires once.
+                assert_eq!(player.award_advancement(game, &adv_id, None), Ok(true));
+                let after_all = player.advancement_progress(game, &adv_id).unwrap();
+                assert!(after_all.done);
+                assert_eq!(after_all.completed_requirements, 2);
+                assert_eq!(player.experience(game).unwrap().total, 25);
+                assert_eq!(*on_done.lock().unwrap(), vec![adv_id.as_str().to_owned()]);
+                assert!(!other.advancement_progress(game, &adv_id).unwrap().done);
+
+                // Awarding an already-done advancement with None returns false and does not re-reward.
+                assert_eq!(player.award_advancement(game, &adv_id, None), Ok(false));
+                assert_eq!(player.experience(game).unwrap().total, 25);
+                assert_eq!(on_done.lock().unwrap().len(), 1);
+
+                // Revoke one criterion: true, no longer done.
+                assert_eq!(
+                    player.revoke_advancement(game, &adv_id, Some("second")),
+                    Ok(true)
+                );
+                let after_revoke_one = player.advancement_progress(game, &adv_id).unwrap();
+                assert!(!after_revoke_one.done);
+                assert_eq!(after_revoke_one.completed_requirements, 1);
+                assert_eq!(
+                    after_revoke_one
+                        .criteria
+                        .iter()
+                        .map(|c| (c.name.as_str(), c.obtained_at.is_some()))
+                        .collect::<Vec<_>>(),
+                    vec![("first", true), ("second", false)]
+                );
+
+                // Revoking an unobtained criterion returns false.
+                assert_eq!(
+                    player.revoke_advancement(game, &adv_id, Some("second")),
+                    Ok(false)
+                );
+
+                // Revoke all remaining obtained criteria, then revoking again returns false.
+                assert_eq!(player.revoke_advancement(game, &adv_id, None), Ok(true));
+                let after_revoke_all = player.advancement_progress(game, &adv_id).unwrap();
+                assert!(!after_revoke_all.done);
+                assert_eq!(after_revoke_all.completed_requirements, 0);
+                assert_eq!(player.revoke_advancement(game, &adv_id, None), Ok(false));
+
+                assert_eq!(
+                    *on_progress.lock().unwrap(),
+                    vec![
+                        ("first".to_owned(), ProgressType::Grant),
+                        ("second".to_owned(), ProgressType::Grant),
+                        ("second".to_owned(), ProgressType::Revoke),
+                        ("first".to_owned(), ProgressType::Revoke),
+                    ]
+                );
+
+                // Inside a transaction, award and revoke validate immediately and defer
+                // their progress change, rewards and hooks until the outermost commit.
+                use mod_api::HostTransaction as _;
+                on_progress.lock().unwrap().clear();
+                on_done.lock().unwrap().clear();
+                let xp_before = player.experience(game).unwrap().total;
+
+                let server: &mut dyn ServerHost = game;
+                let aborted = server.transaction(|server, _| {
+                    assert_eq!(
+                        player.award_advancement(server, &unknown_id, None),
+                        Err(AdvancementError::UnknownAdvancement)
+                    );
+                    assert_eq!(
+                        player.award_advancement(server, &adv_id, Some("missing")),
+                        Err(AdvancementError::UnknownCriterion)
+                    );
+                    assert_eq!(player.award_advancement(server, &adv_id, None), Ok(true));
+                    assert_eq!(player.revoke_advancement(server, &adv_id, None), Ok(false));
+                    let pending = player.advancement_progress(server, &adv_id).unwrap();
+                    assert!(!pending.done);
+                    assert_eq!(pending.completed_requirements, 0);
+                    Err::<(), ()>(())
+                });
+                assert!(aborted.is_err());
+                let after_abort = player.advancement_progress(game, &adv_id).unwrap();
+                assert!(!after_abort.done);
+                assert_eq!(after_abort.completed_requirements, 0);
+                assert_eq!(player.experience(game).unwrap().total, xp_before);
+                assert!(on_progress.lock().unwrap().is_empty());
+                assert!(on_done.lock().unwrap().is_empty());
+
+                let server: &mut dyn ServerHost = game;
+                let committed = server.transaction(|server, _| {
+                    assert_eq!(player.award_advancement(server, &adv_id, None), Ok(true));
+                    assert!(!player.advancement_progress(server, &adv_id).unwrap().done);
+                    Ok::<(), ()>(())
+                });
+                assert!(committed.is_ok());
+                let after_commit = player.advancement_progress(game, &adv_id).unwrap();
+                assert!(after_commit.done);
+                assert_eq!(after_commit.completed_requirements, 2);
+                assert_eq!(player.experience(game).unwrap().total, xp_before + 25);
+                assert_eq!(
+                    *on_progress.lock().unwrap(),
+                    vec![
+                        ("first".to_owned(), ProgressType::Grant),
+                        ("second".to_owned(), ProgressType::Grant),
+                    ]
+                );
+                assert_eq!(*on_done.lock().unwrap(), vec![adv_id.as_str().to_owned()]);
+
+                on_progress.lock().unwrap().clear();
+                let server: &mut dyn ServerHost = game;
+                let aborted_revoke = server.transaction(|server, _| {
+                    assert_eq!(player.revoke_advancement(server, &adv_id, None), Ok(true));
+                    assert!(player.advancement_progress(server, &adv_id).unwrap().done);
+                    Err::<(), ()>(())
+                });
+                assert!(aborted_revoke.is_err());
+                assert!(player.advancement_progress(game, &adv_id).unwrap().done);
+                assert!(on_progress.lock().unwrap().is_empty());
+
+                let server: &mut dyn ServerHost = game;
+                let committed_revoke = server.transaction(|server, _| {
+                    assert_eq!(
+                        player.revoke_advancement(server, &adv_id, Some("second")),
+                        Ok(true)
+                    );
+                    assert!(player.advancement_progress(server, &adv_id).unwrap().done);
+                    Ok::<(), ()>(())
+                });
+                assert!(committed_revoke.is_ok());
+                let after_commit_revoke = player.advancement_progress(game, &adv_id).unwrap();
+                assert!(!after_commit_revoke.done);
+                assert_eq!(after_commit_revoke.completed_requirements, 1);
+                assert_eq!(
+                    *on_progress.lock().unwrap(),
+                    vec![("second".to_owned(), ProgressType::Revoke)]
+                );
+
+                // Displaced player during a nested turn is unavailable for writes.
+                game.as_guest(12, |game| {
+                    game.as_guest(13, |game| {
+                        assert_eq!(
+                            player.award_advancement(game, &adv_id, None),
+                            Err(AdvancementError::PlayerUnavailable)
+                        );
+                        assert_eq!(
+                            player.revoke_advancement(game, &adv_id, None),
+                            Err(AdvancementError::PlayerUnavailable)
+                        );
+                    })
+                    .unwrap();
+                })
+                .unwrap();
+
+                // Stale handles, client role, and offline players are refused.
+                let wrong_uuid = mod_api::__private::game::player_ref(player.entity(), 999);
+                assert_eq!(
+                    wrong_uuid.award_advancement(game, &adv_id, None),
+                    Err(AdvancementError::PlayerUnavailable)
+                );
+                assert_eq!(
+                    wrong_uuid.revoke_advancement(game, &adv_id, None),
+                    Err(AdvancementError::PlayerUnavailable)
+                );
+
+                let saved_role = game.options.execution_role;
+                game.options.execution_role = super::super::execution_role::ExecutionRole::Client;
+                assert_eq!(
+                    player.award_advancement(game, &adv_id, None),
+                    Err(AdvancementError::NotServer)
+                );
+                assert_eq!(
+                    player.revoke_advancement(game, &adv_id, None),
+                    Err(AdvancementError::NotServer)
+                );
+                game.options.execution_role = saved_role;
+
+                game.lan.as_mut().unwrap().hub.guests.clear();
+                assert_eq!(
+                    player.award_advancement(game, &adv_id, None),
+                    Err(AdvancementError::PlayerUnavailable)
+                );
+                assert_eq!(
+                    player.revoke_advancement(game, &adv_id, None),
+                    Err(AdvancementError::PlayerUnavailable)
+                );
             });
         });
     }

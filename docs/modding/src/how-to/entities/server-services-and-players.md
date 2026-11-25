@@ -124,6 +124,17 @@ requirement groups, satisfied group count, and `done`. An untouched loaded
 advancement answers with all criteria remaining and `done == false`; an unknown id,
 stale or offline player, or client host answers `None`.
 
+On the server, `player.award_advancement(host, &id, criterion)` and
+`player.revoke_advancement(host, &id, criterion)` take `&mut dyn ServerHost` and
+`criterion: Option<&str>` (`Some(name)` for one criterion, `None` for all
+remaining or obtained criteria) and return `Result<bool, AdvancementError>`.
+They route through the same engine path as triggers and `/advancement`, granting
+rewards, announcements, toasts, hooks and client updates on completion, and
+reporting `UnknownAdvancement`, `UnknownCriterion`, `PlayerUnavailable`,
+`NotServer`, or `NoBackend` on refusal. Inside a transaction, validation runs
+immediately while the change, its rewards, messages and hooks are deferred to
+the root commit and dropped on abort.
+
 `player.set_statistics(host, snapshot)` takes `&mut dyn ServerHost` and borrowed
 JSON. It upgrades older saves, reports decode errors and keeps recoverable
 registered counters. An absent or empty `stats` map clears the counters. It
