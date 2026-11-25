@@ -1,3 +1,10 @@
-ids = ["method:prelude::ClientOptionsClientHost::set_session_vsync", "method:prelude::ClientOptionsClientHost::set_session_clouds", "method:prelude::ClientOptionsClientHost::cloud_status", "type:CloudStatus"]
-why = "A client mod changes VSync and the clouds for this session only, without writing options.txt, and the surface is reconfigured as changing the option does (Options.enableVsync, Options.cloudStatus, Minecraft.invalidateSurfaceConfiguration); Dynamic FPS turns them down while the window is in the background (#5553). graphics_options().vsync now reads the VSync in effect."
-migrate = "Nothing to change: additive. graphics_options().vsync is the player's option unless a mod set the session's."
+ids = [
+    "method:prelude::ClientOptionsClientHost::set_session_vsync",
+    "method:prelude::ClientOptionsClientHost::set_session_clouds",
+    "method:prelude::ClientOptionsClientHost::set_session_view_bobbing",
+    "method:prelude::ClientOptionsClientHost::cloud_status",
+    "method:prelude::ClientOptionsClientHost::graphics_options",
+    "type:CloudStatus",
+]
+why = "A client mod changes VSync, the clouds and view bobbing for this session only, without writing options.txt, and the surface is reconfigured as changing the option does (Options.enableVsync, Options.cloudStatus, Options.bobView, Minecraft.invalidateSurfaceConfiguration) (#5553). graphics_options().vsync and view_bobbing now read the values in effect."
+migrate = "A mod that read graphics_options().vsync or view_bobbing as the player's saved option now reads the value in effect, which differs only while a mod has set a session value. Nothing else changes."

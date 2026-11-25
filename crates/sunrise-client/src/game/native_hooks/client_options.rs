@@ -14,7 +14,7 @@ impl Game<'_> {
             max_fps: s.max_fps,
             vsync: self.effective_vsync(),
             fullscreen: s.fullscreen,
-            view_bobbing: s.view_bobbing,
+            view_bobbing: self.effective_view_bobbing(),
             smooth_lighting: s.smooth_lighting,
             particles: s.particles,
             entity_distance: s.entity_distance as f32,
@@ -46,6 +46,17 @@ impl Game<'_> {
             mod_api::CloudStatus::Fast => "fast",
             mod_api::CloudStatus::Fancy => "true",
         });
+    }
+    /// View bobbing in effect: the session's (`set_session_view_bobbing`), else the player's
+    /// option (`Options.bobView`).
+    pub(in crate::game) fn effective_view_bobbing(&self) -> bool {
+        self.session_video
+            .view_bobbing
+            .unwrap_or(self.settings.view_bobbing)
+    }
+    /// `Options.bobView` for this session only; the next frame's camera reads it.
+    pub(in crate::game) fn set_session_view_bobbing(&mut self, view_bobbing: Option<bool>) {
+        self.session_video.view_bobbing = view_bobbing;
     }
     /// The clouds in effect (`Options.getCloudsType`).
     pub(in crate::game) fn cloud_status(&self) -> mod_api::CloudStatus {
@@ -152,8 +163,10 @@ fn resolved_gui_scale(framebuffer: Option<[u32; 2]>, gui_scale: u32, unicode: bo
 mod tests {
     use super::*;
 
-    /// Session-only VSync and clouds take effect in the reads and never reach the player's
-    /// options or `options.txt`; `None` goes back to the option.
+    /// Session-only VSync, clouds and view bobbing take effect in the host's reads and never reach
+    /// the player's options or `options.txt`; `None` goes back to the option. No renderer runs
+    /// here (no GPU): the surface reconfiguration is the same `set_present_mode` call the options
+    /// screen makes when VSync changes.
     #[test]
     #[ignore = "daily"]
     fn session_video_options_take_effect_without_being_saved() {
@@ -161,7 +174,9 @@ mod tests {
         crate::game::native_entity_refs::tests::with_client_game(|game| {
             game.settings.vsync = true;
             game.settings.clouds = "true".into();
+            game.settings.view_bobbing = true;
             assert!(ClientOptionsClientHost::graphics_options(game).vsync);
+            assert!(ClientOptionsClientHost::graphics_options(game).view_bobbing);
             assert_eq!(
                 ClientOptionsClientHost::cloud_status(game),
                 CloudStatus::Fancy
@@ -169,14 +184,16 @@ mod tests {
 
             ClientOptionsClientHost::set_session_vsync(game, Some(false));
             ClientOptionsClientHost::set_session_clouds(game, Some(CloudStatus::Fast));
+            ClientOptionsClientHost::set_session_view_bobbing(game, Some(false));
             assert!(!ClientOptionsClientHost::graphics_options(game).vsync);
+            assert!(!ClientOptionsClientHost::graphics_options(game).view_bobbing);
             assert_eq!(
                 ClientOptionsClientHost::cloud_status(game),
                 CloudStatus::Fast
             );
-            assert_eq!(game.effective_clouds(), "fast");
             assert!(game.settings.vsync);
             assert_eq!(game.settings.clouds, "true");
+            assert!(game.settings.view_bobbing);
             let dir = tempfile::tempdir().unwrap();
             let path = dir.path().join("options.txt");
             game.settings.save(&path);
@@ -192,12 +209,18 @@ mod tests {
                 }),
                 "{saved}"
             );
+            assert!(saved.lines().any(|line| line == "bobView:true"), "{saved}");
 
             ClientOptionsClientHost::set_session_clouds(game, Some(CloudStatus::Off));
-            assert_eq!(game.effective_clouds(), "false");
+            assert_eq!(
+                ClientOptionsClientHost::cloud_status(game),
+                CloudStatus::Off
+            );
             ClientOptionsClientHost::set_session_vsync(game, None);
             ClientOptionsClientHost::set_session_clouds(game, None);
+            ClientOptionsClientHost::set_session_view_bobbing(game, None);
             assert!(ClientOptionsClientHost::graphics_options(game).vsync);
+            assert!(ClientOptionsClientHost::graphics_options(game).view_bobbing);
             assert_eq!(
                 ClientOptionsClientHost::cloud_status(game),
                 CloudStatus::Fancy

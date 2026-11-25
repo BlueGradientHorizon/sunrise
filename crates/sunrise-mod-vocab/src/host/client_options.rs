@@ -15,14 +15,19 @@ pub trait ClientOptionsClientHost {
     /// reconfigures the window's surface at once, as changing the option does
     /// (`Options.enableVsync`, `Minecraft.invalidateSurfaceConfiguration`). `None` goes back to
     /// the player's saved option. The options screen keeps showing and saving the player's own
-    /// value; `graphics_options().vsync` reads the one in effect. Dynamic FPS turns VSync off
-    /// while the window is in the background.
+    /// value; `graphics_options().vsync` reads the one in effect.
     fn set_session_vsync(&mut self, vsync: Option<bool>);
     /// Side: client.
     /// Sets how clouds are drawn for this session only, without writing `options.txt`
     /// (`Options.cloudStatus`); `None` goes back to the player's saved option. The options screen
     /// keeps showing and saving the player's own value. The next frame draws with it.
     fn set_session_clouds(&mut self, clouds: Option<CloudStatus>);
+    /// Side: client.
+    /// Turns view bobbing on or off for this session only, without writing `options.txt`
+    /// (`Options.bobView`); `None` goes back to the player's saved option. The options screen
+    /// keeps showing and saving the player's own value; `graphics_options().view_bobbing` reads
+    /// the one in effect. The next frame's camera bobs, or not, with it.
+    fn set_session_view_bobbing(&mut self, view_bobbing: Option<bool>);
     /// Side: client.
     /// How clouds are drawn now: the session's choice (`set_session_clouds`), else the option.
     fn cloud_status(&self) -> CloudStatus;

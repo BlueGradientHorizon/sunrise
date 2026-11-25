@@ -3364,6 +3364,7 @@ struct SessionVideo {
     vsync: Option<bool>,
     /// As `options.txt` names it: `false`, `fast` or `true`.
     clouds: Option<&'static str>,
+    view_bobbing: Option<bool>,
 }
 
 struct Game<'a> {
