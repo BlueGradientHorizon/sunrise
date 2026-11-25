@@ -902,9 +902,9 @@ client	native_hooks_client::book_screen::open	impl Game<'_>	menu_opener_block	-	
 client	native_hooks_client::book_screen::placement	impl Game<'_>	native_book_placement_catalog_matches	-	method	game	called
 client	native_hooks_client::book_screen::placement	impl Game<'_>	native_book_placement_window_matches	-	method	game	called
 client	native_hooks_client::build_creative_mode_tab_contents	impl Game<'_>	built_creative_tabs	-	method	generated	called
+client	native_hooks_client::build_creative_mode_tab_contents	impl Game<'_>	client_creative_holders	-	method	game	called
 client	native_hooks_client::build_creative_mode_tab_contents	impl Game<'_>	client_creative_tab_change	-	method	game	called
 client	native_hooks_client::build_creative_mode_tab_contents	impl Game<'_>	client_creative_tab_entries	-	method	game	called
-client	native_hooks_client::build_creative_mode_tab_contents	impl Game<'_>	creative_holders	-	method	game	called
 client	native_hooks_client::build_creative_mode_tab_contents	impl Game<'_>	creative_search_items	-	method	generated	called
 client	native_hooks_client::build_creative_mode_tab_contents	impl Game<'_>	creative_stack_key	-	method	generated	called
 client	native_hooks_client::build_creative_mode_tab_contents	impl Game<'_>	creative_tab_insert	-	method	game	called
@@ -4404,6 +4404,7 @@ server	native_entity_refs	impl Game<'_>	server_entity_residency	-	method	game	ca
 server	native_entity_refs	impl Game<'_>	server_level_visit_entities_in	-	method	game	called
 server	native_entity_refs::dragon_parts_table	impl DragonSlot	discard	-	method	client	called
 server	native_entity_refs::dragon_parts_table	impl DragonSlot	next_part	-	method	game	called
+server	native_entity_refs::dragon_parts_table	impl DragonSlot	replace	-	method	client	called
 server	native_entity_refs::dragon_parts_table	impl Default for DragonPartsTable	-	-	trait_impl	-	trait-impl
 server	native_entity_refs::dragon_parts_table	impl std::ops::Deref for DragonSlot	-	-	trait_impl	-	trait-impl
 server	native_entity_refs::dragon_parts_table	impl std::ops::DerefMut for DragonSlot	-	-	trait_impl	-	trait-impl
@@ -4735,6 +4736,7 @@ server	native_hooks_server::block_entity_tick::tick_tests	-	with_ticker_mods	#[c
 server	native_hooks_server::block_entity_tick::tick_tests	impl BlockEntityPart for Effects	-	#[cfg(test)]	trait_impl	-	trait-impl
 server	native_hooks_server::block_entity_tick::tick_tests	impl BlockPart for Effects	-	#[cfg(test)]	trait_impl	-	trait-impl
 server	native_hooks_server::block_entity_tick::tick_tests	impl Hooks for Effects	-	#[cfg(test)]	trait_impl	-	trait-impl
+server	native_hooks_server::build_creative_mode_tab_contents	impl Game<'_>	server_creative_holders	-	method	game	called
 server	native_hooks_server::build_creative_mode_tab_contents	impl Game<'_>	server_creative_tab_change	-	method	game	called
 server	native_hooks_server::build_creative_mode_tab_contents	impl Game<'_>	server_creative_tab_entries	-	method	game	called
 server	native_hooks_server::build_creative_mode_tab_contents::tests	-	install_dedicated_holders	#[cfg(test)]	fn	test	called
@@ -5228,6 +5230,7 @@ server	native_passages	impl Game<'_>	level_remove_passage	-	method	generated,tes
 server	native_passages	impl Game<'_>	send_chunk_passages	-	method	game	called
 server	native_passages	impl Passages	find	-	method	client	called
 server	native_passages	impl Passages	retire_world	-	method	client	called
+server	native_passages::cross_tests	impl mod_api::Hooks for Veto	-	#[cfg(test)]	trait_impl	-	trait-impl
 server	native_passages::tests	-	doorway	#[cfg(test)]	fn	test	called
 server	native_passages::tests	-	listen	#[cfg(test)]	fn	test	called
 server	native_passages::tests	-	packets	#[cfg(test)]	fn	test	called

@@ -3725,7 +3725,7 @@ struct Game<'a> {
     dropped: sunrise_client::join_seq::JoinList<ItemEntity>,
     particles: client_side::ClientShared<sunrise_client::particles::ParticleEngine>,
     /// `ItemPickupParticle`s: taken items, orbs and arrows flying to their collector.
-    pickups: client_side::ClientShared<pickups::Pickups>,
+    pickups: client_side::ClientOnly<pickups::Pickups>,
     /// `CreateWorldScreen.openCreateWorldScreen`'s data read, on a worker,
     /// while the title says `createWorld.preparing`.
     creation_job:
@@ -5565,7 +5565,7 @@ struct WrappedClientInit {
     live_scenes: client_side::ClientOnly<std::cell::RefCell<native_scene_live::LiveScenes>>,
     debug_renderers:
         client_side::ClientOnly<Vec<sunrise_client::debug_entries::ActiveDebugRenderer>>,
-    pickups: client_side::ClientShared<pickups::Pickups>,
+    pickups: client_side::ClientOnly<pickups::Pickups>,
     creation_job:
         client_side::ClientOnly<Option<std::thread::JoinHandle<std::result::Result<(), String>>>>,
     title: client_side::ClientShared<Option<Title>>,
@@ -5692,7 +5692,7 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             pad: client_side::ClientShared::new(Default::default()),
             live_scenes: client_side::ClientOnly::new(Default::default()),
             debug_renderers: client_side::ClientOnly::new(Vec::new()),
-            pickups: client_side::ClientShared::new(Default::default()),
+            pickups: client_side::ClientOnly::new(Default::default()),
             creation_job: client_side::ClientOnly::new(None),
             title: client_side::ClientShared::new(None),
             text_displays: client_side::ClientOnly::new(Default::default()),

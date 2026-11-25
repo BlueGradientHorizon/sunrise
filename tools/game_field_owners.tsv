@@ -197,7 +197,7 @@ ticked_entities_through	u32	server	server (survey + review)	194	game	-
 contact_drops	std::ops::Range<u32>	server	server (survey + review)	195	side	-
 particles	sunrise_client::particles::ParticleEngine	game	drop-order (client): ParticleEngine holds Provided impl Drop atomic live-count tracking; precedes remote (460), fangs (603)	196	-	client_shared
 explicit_particle_quads	sunrise_client::particles::ParticleQuads	client	client (survey + review)	197	side	-
-pickups	pickups::Pickups	game	drop-order (client): Pickups owns Taken::{Item,Orb,Arrow,Trident} holding AttachmentLifetime impl Drop; precedes mobs (213), remote (460) and fangs (603)	198	-	client_shared
+pickups	pickups::Pickups	game	drop-order (client): Pickups owns Taken::{Item,Orb,Arrow,Trident} holding AttachmentLifetime impl Drop; precedes mobs (213), remote (460) and fangs (603)	198	-	client_only
 sign_edit	Option<sign_edit::SignEditor>	client	client (survey; review=common from unpruned BFS, group=screens)	199	game	-
 book	Option<books::BookScreen>	client	client (survey; review=common from unpruned BFS, group=screens)	200	game	-
 book_last_click	Option<std::time::Instant>	client	client (survey + review)	201	side	-
