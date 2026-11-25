@@ -1691,6 +1691,7 @@ pub(crate) fn check_file<R: Read>(
 /// The type check of a native package's source file, before it is opened: a plain file. Its name
 /// and mode play no part, so a C source tree may carry a `configure` script, a `.bat` or a file
 /// with the executable bit; its bytes are checked by [`refuse_binary`].
+#[cfg(feature = "folder")]
 fn check_source_type(name: &str, mode: u32) -> Result<(), ContentFileError> {
     if matches!(mode & 0o170000, 0 | 0o100000) {
         Ok(())
