@@ -1322,7 +1322,8 @@ impl Game<'_> {
                 host.settings = settings;
                 host.hub.config.force_game_mode = settings.force_game_mode;
                 // IntegratedServer.setGuestCommandAccess, then updatePermissions.
-                host.hub.config.guest_commands = settings.guest_commands && allow_commands;
+                host.hub.allow_commands = allow_commands;
+                host.hub.config.guest_commands = settings.guest_commands;
                 self.resend_commands_filtered();
             }
             Publish::Close => {
@@ -1392,10 +1393,11 @@ impl Game<'_> {
         };
         let published = self.published_port().is_some();
         if let Some(host) = self.lan.as_mut() {
+            host.hub.allow_commands = allow;
             let level = if allow { 4 } else { 0 };
             host.hub.ops.insert(owner, level);
             if published {
-                host.hub.config.guest_commands = allow && host.settings.guest_commands;
+                host.hub.config.guest_commands = host.settings.guest_commands;
             }
             self.resend_commands_filtered();
         }

@@ -744,6 +744,9 @@ impl Game<'_> {
     pub(super) fn set_allow_commands(&mut self, allow: bool) {
         self.level.allow_commands = Some(allow);
         self.ui.registries.permission = owner_permission(allow);
+        if let Some(host) = self.lan.as_mut() {
+            host.hub.allow_commands = allow;
+        }
     }
     /// Commands the game issues itself (the server console, harnesses, the
     /// control socket) run at the owner's level whatever Allow Commands says.

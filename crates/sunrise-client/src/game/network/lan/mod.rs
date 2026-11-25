@@ -1303,6 +1303,7 @@ impl Game<'_> {
             .then(|| sunrise_client::lod_net::Service::new(net.lod_distance, biome_names.clone()));
         let lan = super::lan_configuration_tasks::start(sync.clone(), net)?;
         let mut hub = Hub::new(lan, sync, encoder, config, self.loop_context.clone());
+        hub.allow_commands = self.allow_commands();
         hub.dispatch_move_effects = true;
         self.bind_guest_residency(&mut hub);
         self.passages.record_on(&mut hub);
@@ -1878,10 +1879,9 @@ impl Game<'_> {
         }
         // An integrated server gives guests commands only where the world
         // allows them (IntegratedServer.getCustomPermissionLevel).
-        let effective = guest_commands && (!self.serving() || self.allow_commands());
         if let Some(host) = self.lan.as_mut() {
             host.settings.guest_commands = guest_commands;
-            host.hub.config.guest_commands = effective;
+            host.hub.config.guest_commands = guest_commands;
         }
         self.set_force_game_mode(force);
         self.resend_commands_filtered();
@@ -2375,7 +2375,9 @@ impl Game<'_> {
                         guest,
                     );
                     // PlayerList.placeNewPlayer remembers the joined identity on either server.
-                    if let (Some(cache), Some(g)) = (self.user_cache.as_mut(), guest) {
+                    if let (Some(cache), Some(g)) =
+                        (self.user_cache.as_mut(), guest.filter(|g| g.placed))
+                    {
                         cache.add(NameAndId {
                             id: g.uuid,
                             name: g.name.clone(),

@@ -1,13 +1,17 @@
 use super::Game;
-use crate::game::{dedicated::Lists, in_own_process, native_guest_turn_tests::with_guests};
+use crate::game::{Dim, dedicated::Lists, in_own_process, native_guest_turn_tests::with_guests};
 use mod_api::{
     Command, CommandArgumentValue, Flow, Hooks, ModEntry, PermissionLevel, PlayerLoginEvent,
     RegisterCommandsEvent, ServerHost, prelude::ServicesServerHost as _,
 };
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicI32, AtomicUsize},
+    mpsc,
+};
 use sunrise_client::{
     command::{Dispatcher, Registries, network::from_packet},
-    lan::{Out, PlayerSender},
+    lan::{Joined, Out, PlayerSender, guest::Guest, hub::HostEvent},
     server::{
         user_cache::UserCache,
         user_lists::{BanList, IpBanList, OpList, WhiteList},
@@ -18,7 +22,7 @@ use sunrise_core::profile::AccountProperty;
 use sunrise_protocol::{
     buf::{Codec, Reader},
     ids,
-    packets::play::Commands,
+    packets::{configuration::ClientInformation, play::Commands},
 };
 
 const OFFLINE: u128 = 31;
@@ -141,11 +145,20 @@ fn check_profile_reads(game: &mut Game<'_>, root: &std::path::Path, seen: &Mutex
         (false, true, 13, "guest13", PermissionLevel::All),
     ] {
         game.set_allow_commands(allow);
-        game.lan.as_mut().unwrap().settings.guest_commands = guest_commands;
+        game.lan_apply_settings(guest_commands, false);
         assert_eq!(
             game.players().profile_permission_level(uuid, name),
             expected
         );
+        if let Some(guest) = game.lan.as_ref().unwrap().hub.guest(uuid as u32)
+            && guest.uuid == uuid
+        {
+            assert_eq!(
+                PermissionLevel::from_level(i32::from(guest.permission)),
+                expected,
+                "hub dispatch permission for {name} (allow={allow}, guest_commands={guest_commands}) must agree with profile_permission_level"
+            );
+        }
     }
 
     game.lan.as_mut().unwrap().hub.ops.insert(33, 1);
@@ -184,6 +197,80 @@ fn check_profile_reads(game: &mut Game<'_>, root: &std::path::Path, seen: &Mutex
     );
     game.native_player_login(OFFLINE, "OfflineOp", &mut false, &mut None);
     assert_eq!(seen.lock().unwrap().login, Some(PermissionLevel::Admins));
+}
+
+#[test]
+#[ignore = "daily"]
+fn failed_join_placement_does_not_populate_user_cache() {
+    in_own_process(
+        "game::native_server::profile_tests::failed_join_placement_does_not_populate_user_cache",
+        || {
+            with_profile_game(|game, root, _| {
+                let conn = 14u32;
+                let uuid = 44u128;
+                game.next_entity = game.next_entity.max(conn);
+                let (tx, _rx) = mpsc::channel();
+                let guest = Guest::new(
+                    Joined {
+                        conn,
+                        uuid,
+                        name: "Unplaced".into(),
+                        properties: Vec::new(),
+                        info: ClientInformation::new(8),
+                        brand: String::new(),
+                        sender: PlayerSender::new(tx, Arc::new(AtomicUsize::new(0))),
+                        latency: Arc::new(AtomicI32::new(0)),
+                        address: "127.0.0.1:1".parse().unwrap(),
+                        expected: false,
+                    },
+                    conn as i32,
+                    [3.0, 64.0, 5.0],
+                    10,
+                );
+                game.lan.as_mut().unwrap().hub.guests.push(guest);
+
+                // Force `lan_guest_joined` to fail opening the fallback level so placement aborts.
+                let saved_dim = game.dim;
+                let saved_resources =
+                    std::mem::replace(&mut game.options.resources, root.to_path_buf());
+                let saved_test_terrain = std::mem::replace(&mut game.options.test_terrain, false);
+                game.dim = Dim::Nether;
+
+                let host = game.lan.take().unwrap();
+                game.lan = game.lan_process_events(
+                    host,
+                    [HostEvent::Joined(conn, None)],
+                    &[],
+                    [0.5, 64.0, 0.5],
+                );
+                assert!(
+                    !game.lan.as_ref().unwrap().hub.guest(conn).unwrap().placed,
+                    "join must fail to place when the target level cannot open"
+                );
+                assert!(
+                    game.user_cache.as_ref().unwrap().find_by_id(uuid).is_none(),
+                    "failed join must not write the user cache"
+                );
+                assert!(game.players().profile_by_uuid(uuid).is_none());
+                assert!(game.players().profile_by_name("Unplaced").is_none());
+
+                // Once the target level is active, the join places the guest and populates the cache.
+                game.dim = saved_dim;
+                game.options.resources = saved_resources;
+                game.options.test_terrain = saved_test_terrain;
+                let host = game.lan.take().unwrap();
+                game.lan = game.lan_process_events(
+                    host,
+                    [HostEvent::Joined(conn, None)],
+                    &[],
+                    [0.5, 64.0, 0.5],
+                );
+                assert!(game.lan.as_ref().unwrap().hub.guest(conn).unwrap().placed);
+                let cached = game.user_cache.as_ref().unwrap().find_by_id(uuid).unwrap();
+                assert_eq!(cached.name, "Unplaced");
+            })
+        },
+    );
 }
 
 #[test]
