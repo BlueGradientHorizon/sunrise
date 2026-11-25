@@ -581,23 +581,17 @@ pub(in crate::game) mod consume_client;
 #[cfg(test)]
 #[path = "runtime/core_tests_client.rs"]
 pub(in crate::game) mod core_tests_client;
-#[path = "mobs/creaking_client.rs"]
-pub(in crate::game) mod creaking_client;
 #[path = "mobs/creatures/mod_client.rs"]
 pub(in crate::game) mod creatures_client;
 #[path = "items/crossbow_client.rs"]
 pub(in crate::game) mod crossbow_client;
 #[path = "entities/cushions_client.rs"]
 pub(in crate::game) mod cushions_client;
-#[path = "blocks/decorated_pot_client.rs"]
-pub(in crate::game) mod decorated_pot_client;
 #[path = "items/deflect_client.rs"]
 pub(in crate::game) mod deflect_client;
 #[cfg(test)]
 #[path = "modding/disabled_block_tests_client.rs"]
 pub(in crate::game) mod disabled_block_tests_client;
-#[path = "blocks/dispenser_client.rs"]
-pub(in crate::game) mod dispenser_client;
 #[path = "mobs/dragon_client.rs"]
 pub(in crate::game) mod dragon_client;
 #[path = "items/enchant_effects_client.rs"]
@@ -641,8 +635,6 @@ pub(in crate::game) mod lan_actions_client;
 pub(in crate::game) mod lan_client;
 #[path = "network/lan_particles_client.rs"]
 pub(in crate::game) mod lan_particles_client;
-#[path = "network/lan_trade_decisions_client.rs"]
-pub(in crate::game) mod lan_trade_decisions_client;
 #[cfg(test)]
 #[path = "network/lan_trade_decisions_tests_client.rs"]
 pub(in crate::game) mod lan_trade_decisions_tests_client;
@@ -693,8 +685,6 @@ pub(in crate::game) mod native_level_sound_except_tests_client;
 pub(in crate::game) mod native_lifecycle_client;
 #[path = "modding/native_living_effects_client.rs"]
 pub(in crate::game) mod native_living_effects_client;
-#[path = "modding/native_living_refs_client.rs"]
-pub(in crate::game) mod native_living_refs_client;
 #[path = "modding/native_living_writes_client.rs"]
 pub(in crate::game) mod native_living_writes_client;
 #[path = "modding/native_mob_refs_client.rs"]
@@ -718,14 +708,10 @@ pub(in crate::game) mod pandas_client;
 pub(in crate::game) mod passengers_client;
 #[path = "blocks/piston_carry_state_client.rs"]
 pub(in crate::game) mod piston_carry_state_client;
-#[path = "entities/player_equip_client.rs"]
-pub(in crate::game) mod player_equip_client;
 #[path = "world/player_spawn_client.rs"]
 pub(in crate::game) mod player_spawn_client;
 #[path = "blocks/potent_sulfur_client.rs"]
 pub(in crate::game) mod potent_sulfur_client;
-#[path = "items/projectile_spawned_client.rs"]
-pub(in crate::game) mod projectile_spawned_client;
 #[cfg(test)]
 #[path = "items/projectile_spawned_tests_client.rs"]
 pub(in crate::game) mod projectile_spawned_tests_client;
@@ -746,12 +732,11 @@ pub(in crate::game) mod stacked_on_other_tests_client;
 pub(in crate::game) mod sulfur_cubes_client;
 #[path = "administration/test_instances_client.rs"]
 pub(in crate::game) mod test_instances_client;
+#[cfg(test)]
 #[path = "entities/tnt_client.rs"]
 pub(in crate::game) mod tnt_client;
 #[path = "items/trading_client.rs"]
 pub(in crate::game) mod trading_client;
-#[path = "runtime/transactions_client.rs"]
-pub(in crate::game) mod transactions_client;
 #[path = "items/trident_client.rs"]
 pub(in crate::game) mod trident_client;
 #[path = "items/use_hand_client.rs"]

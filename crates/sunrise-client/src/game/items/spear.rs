@@ -470,8 +470,8 @@ impl Game<'_> {
     pub(in crate::game::server_side) fn kinetic_hit_feedback(
         &mut self,
         entity: i32,
-        kinetic: &Kinetic,
-        at: [f64; 3],
+        _kinetic: &Kinetic,
+        _at: [f64; 3],
     ) {
         let now = self.world.game_time;
         if self

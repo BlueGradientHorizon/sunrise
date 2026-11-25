@@ -65,6 +65,7 @@ impl Game<'_> {
         self.client.ambience.clear(&mut self.audio.0);
         self.client.music.stop_playing(None, &mut self.audio.0);
         self.audio.0.leave_level();
+        self.client.jukebox_sounds.clear();
         self.client.mod_sounds.clear();
         self.update_window_title();
         self.gui.atlas.clear_object_skins();

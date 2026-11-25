@@ -166,7 +166,7 @@ impl Game<'_> {
                 command,
                 track_output,
             }));
-        } else {
+        } else if self.is_logical_server() {
             self.apply_cart_command(id, command, track_output);
         }
         if !track_output {

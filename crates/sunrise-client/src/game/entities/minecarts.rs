@@ -2744,6 +2744,168 @@ pub(in crate::game) fn java_degrees(y: f64, x: f64) -> f64 {
     sunrise_core::jmath::atan2(y, x) * 180.0 / std::f64::consts::PI
 }
 
+impl Game<'_> {
+    /// `MinecartTNT.primeFuse`: fuse 80, then `Level.broadcastEntityEvent`
+    /// (`EntityEvent.TNT_PRIME`, 70) and, unless the cart is silent,
+    /// `SoundEvents.TNT_PRIMED` on `SoundSource.BLOCKS`. A client that
+    /// receives 70 only sets the fuse (`handleEntityEvent`).
+    pub(in crate::game) fn prime_cart(&mut self, c: &mut Minecart) {
+        if !self
+            .ui
+            .rules
+            .bool_at(sunrise_client::gamerules::vanilla::TNT_EXPLODES)
+        {
+            return;
+        }
+        c.fuse = 80;
+        let at = [c.position.x, c.position.y, c.position.z];
+        let id = c.id as i32;
+        self.lan_entity_event(id, TNT_PRIME_EVENT, at);
+        if !self.entity_silent(c.id) {
+            self.server_play_sound_on(BLOCKS, "minecraft:entity.tnt.primed", at, 1.0, 1.0);
+        }
+    }
+
+    /// `AbstractMinecart.tick` for one cart; returns false once it is gone.
+    /// `slot` is where the cart is stored (where to look first).
+    pub(in crate::game) fn tick_cart(
+        &mut self,
+        c: &mut Minecart,
+        intent: [f64; 2],
+        slot: usize,
+        index: &mut CartIndex,
+    ) -> bool {
+        c.tick_count += 1;
+        c.previous = c.position;
+        c.previous_yaw = c.yaw;
+        c.previous_pitch = c.pitch;
+        if c.hurt_time > 0 {
+            c.hurt_time -= 1;
+        }
+        if c.damage > 0.0 {
+            c.damage -= 1.0;
+        }
+        let improved = self.minecart_improvements();
+        if improved && c.first_tick {
+            let pos = self.rail_block(c.position, true);
+            if let Some(rail) = self.rail(Some(c.id), pos[0], pos[1], pos[2]) {
+                c.on_rails = true;
+                Self::adjust_cart_to_rails(c, pos, rail.shape);
+            } else {
+                c.on_rails = false;
+            }
+        }
+        c.velocity.y -= c.get_gravity();
+        if improved {
+            if !self.move_along_track_new(c, intent) {
+                return false;
+            }
+        } else {
+            let pos = self.rail_block(c.position, false);
+            let rail = self.rail(Some(c.id), pos[0], pos[1], pos[2]);
+            c.on_rails = rail.is_some();
+            if let Some(rail) = rail {
+                if !self.move_along_track(c, pos, &rail, intent, slot) {
+                    return false;
+                }
+                self.note_cart_pass(c, pos);
+                if &*rail.name == "minecraft:activator_rail" {
+                    self.activate_cart(c, rail.powered);
+                }
+            } else if !self.come_off_track(c) {
+                return false;
+            }
+        }
+        c.first_tick = false;
+        if !self.minecart_improvements() {
+            c.pitch = 0.0;
+            let (xd, zd) = (c.previous.x - c.position.x, c.previous.z - c.position.z);
+            if xd * xd + zd * zd > 0.001 {
+                c.yaw = sunrise_core::geometry::trig::atan2_degrees_double(zd, xd);
+                if c.flipped {
+                    c.yaw += 180.0;
+                }
+            }
+            let diff = (c.yaw - c.previous_yaw + 180.0).rem_euclid(360.0) - 180.0;
+            if !(-170.0..170.0).contains(&diff) {
+                c.yaw += 180.0;
+                c.flipped = !c.flipped;
+            }
+            c.yaw %= 360.0;
+            c.pitch %= 360.0;
+        }
+        if !self.minecart_improvements() {
+            self.cart_block_effects(c);
+            let here = c.position;
+            self.cart_inside_blocks(c, slot, here, here);
+        }
+        self.push_from_ticked_cart(c, slot, index);
+        c.in_water = c
+            .push_by_fluid(&self.world, &self.res.motion().fluids, &self.loop_context)
+            .0
+            > 0.0;
+        if c.in_water {
+            c.fall_distance = 0.0;
+        }
+        self.entity_powder_snow_particles(c.previous, c.position, c.bounds(), c.velocity, false);
+        match c.kind {
+            CartKind::Furnace => {
+                if c.fuel > 0 {
+                    c.fuel -= 1;
+                }
+                if c.fuel <= 0 {
+                    c.push = Vec3::ZERO;
+                }
+                if c.fuel > 0 && c.random.next_int_bound(4).unwrap_or(1) == 0 {
+                    let at = [c.position.x, c.position.y + 0.8, c.position.z];
+                    self.server_particle_at(
+                        crate::lan::server_effects::ServerParticle::simple(
+                            ParticleType::LargeSmoke,
+                        ),
+                        at,
+                        [0.0; 3],
+                    );
+                }
+            }
+            CartKind::Tnt => {
+                if c.fuse > 0 {
+                    c.fuse -= 1;
+                    let at = [c.position.x, c.position.y + 0.5, c.position.z];
+                    self.server_particle_at(
+                        crate::lan::server_effects::ServerParticle::simple(ParticleType::Smoke),
+                        at,
+                        [0.0; 3],
+                    );
+                } else if c.fuse == 0 {
+                    let speed = c.velocity.x * c.velocity.x + c.velocity.z * c.velocity.z;
+                    if self.explode_cart(c, speed) {
+                        return false;
+                    }
+                }
+                let speed = c.velocity.horizontal_distance_squared();
+                if tnt_ignites_by_collision(c.ground.horizontal_collision, speed)
+                    && self.explode_cart(c, speed)
+                {
+                    return false;
+                }
+            }
+            CartKind::Spawner => {
+                if let Some(mut spawner) = c.spawner.take() {
+                    let key = (
+                        c.position.x.floor() as i32,
+                        c.position.y.floor() as i32,
+                        c.position.z.floor() as i32,
+                    );
+                    let _ = self.server_tick_spawner_of(key, &mut spawner, Some(c.id));
+                    c.spawner = Some(spawner);
+                }
+            }
+            _ => {}
+        }
+        true
+    }
+}
+
 #[cfg(test)]
 #[path = "minecarts/minecart_tnt_tests.rs"]
 pub(in crate::game) mod minecart_tnt_tests;

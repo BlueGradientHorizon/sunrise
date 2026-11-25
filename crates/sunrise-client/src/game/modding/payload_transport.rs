@@ -17,7 +17,7 @@ pub(in crate::game) struct Deferred {
 }
 const _: () = assert!(std::mem::size_of::<Deferred>() <= 256);
 impl Deferred {
-    pub(in crate::game::client_side) fn publish(self) {
+    pub(in crate::game) fn publish(self) {
         let _ = self.epoch.with_active(|| self.prepared.publish());
     }
 }

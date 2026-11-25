@@ -21,41 +21,6 @@ pub(in crate::game::client_side) use sunrise_core::{
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_world::level::flags as level_flags;
 
-impl Game<'_> {
-    /// `new PrimedTnt(level, x + 0.5, y, z + 0.5, owner)`; `short` applies
-    /// `wasExploded`'s random short fuse. Plays `entity.tnt.primed` for primes.
-    pub(in crate::game) fn spawn_primed_tnt(
-        &mut self,
-        pos: BlockPos,
-        short: bool,
-        owner: Option<Who>,
-        guest: Option<u32>,
-    ) {
-        // PrimedTnt: the fuse is lit.
-        let who = self.sculk_actor();
-        self.post_block_game_event("minecraft:prime_fuse", [pos.x, pos.y, pos.z], who, None);
-        let r = &mut self.world.random;
-        let rot = r.next_double() * f64::from(std::f32::consts::TAU);
-        let fuse = if short {
-            // PrimedTnt.getRandomShortFuse
-            r.next_int_bound(20).unwrap_or(0) + 10
-        } else {
-            self.audio.0.play(
-                "minecraft:entity.tnt.primed",
-                Some([
-                    f64::from(pos.x) + 0.5,
-                    f64::from(pos.y),
-                    f64::from(pos.z) + 0.5,
-                ]),
-                1.0,
-                1.0,
-            );
-            80
-        };
-        self.add_primed_tnt(pos, rot, fuse, owner, guest);
-    }
-}
-
 #[cfg(test)]
 pub(in crate::game) mod tests {
     #[allow(unused_imports)]

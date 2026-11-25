@@ -1458,9 +1458,6 @@ impl Game<'_> {
         if !self.boat_splash_roll(i) {
             return;
         }
-        // A window that is its own client hears and sees the splash too.
-        if self.options.execution_role.is_client() {
-        }
         let (id, p) = (self.boats[i].id, self.boats[i].position);
         // Entity.gameEvent(SPLASH, getControllingPassenger()): the window's
         // own player when it drives the boat.

@@ -139,7 +139,7 @@ impl Game<'_> {
             if !f.started {
                 f.started = true;
                 self.lan_entity_event(f.id as i32, 4, f.pos);
-                let pitch = fang_attack_pitch(&mut f.random);
+                let _pitch = fang_attack_pitch(&mut f.random);
             }
             f.life -= 1;
             f.life >= 0

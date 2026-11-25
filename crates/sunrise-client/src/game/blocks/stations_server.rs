@@ -188,4 +188,63 @@ impl Game<'_> {
         }
         Ok(())
     }
+    /// Opens a workstation menu for the block; false when it is not one.
+    pub(in crate::game) fn open_station(&mut self, pos: [i32; 3], name: &str) -> bool {
+        let Some(kind) = Kind::from_block(name) else {
+            return false;
+        };
+        if self.level.xp_seed == 0 {
+            self.level.xp_seed = self.world.random.next_int();
+        }
+        self.station = Some(Station::new(kind, pos));
+        self.station_changed();
+        self.beacon_opened();
+        // The block's interaction statistic.
+        let stat = match name {
+            "minecraft:crafting_table" => "interact_with_crafting_table",
+            "minecraft:furnace" => "interact_with_furnace",
+            "minecraft:blast_furnace" => "interact_with_blast_furnace",
+            "minecraft:smoker" => "interact_with_smoker",
+            "minecraft:brewing_stand" => "interact_with_brewingstand",
+            "minecraft:beacon" => "interact_with_beacon",
+            "minecraft:grindstone" => "interact_with_grindstone",
+            "minecraft:smithing_table" => "interact_with_smithing_table",
+            "minecraft:stonecutter" => "interact_with_stonecutter",
+            "minecraft:loom" => "interact_with_loom",
+            "minecraft:cartography_table" => "interact_with_cartography_table",
+            n if n.ends_with("anvil") => "interact_with_anvil",
+            _ => "",
+        };
+        if !stat.is_empty() {
+            self.award_custom_stat(stat, 1);
+        }
+        true
+    }
+    /// `AbstractContainerMenu.clearContainer`: inputs go back to the player.
+    pub(in crate::game) fn close_station_server(&mut self) {
+        assert!(
+            self.is_logical_server(),
+            "close_station_server called on Client role"
+        );
+        if self
+            .station
+            .as_ref()
+            .is_some_and(|s| s.kind == Kind::Merchant)
+        {
+            // MerchantMenu.removed: the carried stack and the payment go back.
+            self.menu_session(|menu, env, _| {
+                menu.merchant_close(env);
+                Some(true)
+            });
+        }
+        let Some(mut station) = self.station.take() else {
+            return;
+        };
+        if let Some(m) = station.merchant.as_mut() {
+            self.merchant_closed(m);
+        }
+        for stack in station.inputs.into_iter().flatten() {
+            self.give_or_drop(stack);
+        }
+    }
 }

@@ -84,11 +84,6 @@ impl Game<'_> {
         };
         // Level event 1009 (SOUND_EXTINGUISH_FIRE) goes to every player.
         self.level_event_at(1009, pos, 0);
-        // CampfireBlock.douse: the acting client's own smoke (twenty puffs),
-        // then the block change game event from the player.
-        if self.server.lan_acting.is_none() {
-            let signal = state.properties.get("signal_fire").map(String::as_str) == Some("true");
-        }
         self.post_block_game_event("minecraft:block_change", pos, self.sculk_actor(), None);
         self.level_set(pos, unlit)?;
         self.damage_held(1);

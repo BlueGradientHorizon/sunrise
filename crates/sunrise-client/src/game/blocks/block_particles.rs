@@ -11,14 +11,6 @@ use sunrise_client::{
 use sunrise_core::geometry::Direction;
 
 impl Game<'_> {
-    /// `TerrainParticle` at `pos`: the model's particle sprite and tint source
-    /// 0's `colorAsTerrainParticle` (white when the block has none).
-    /// `HoneyBlock.showSlideParticles` (entity event 53): five honey block
-    /// particles at the entity.
-    pub(in crate::game) fn honey_slide_particles(&mut self, at: [f64; 3]) {
-        self.honey_entity_particles(at, 53);
-    }
-
     /// `BlockStateModelSet.getParticleMaterial`: the sprite of the model's
     /// `particle` texture, else its first face (entity-rendered blocks may
     /// have a particle texture without faces, and faces without one).

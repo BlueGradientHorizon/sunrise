@@ -4,7 +4,7 @@
 //! moment vanilla draws them. The item entities they make are added to the
 //! world as soon as the behaviour returns, within the same tick.
 use super::api_values::{TryIntoApi, TryIntoEngine};
-use super::{Game, GameLevel, Screen};
+use super::{Game, GameLevel};
 use mod_api::EntityRef;
 use std::collections::HashMap;
 use sunrise_client::{

@@ -262,9 +262,7 @@ impl Game<'_> {
             } else {
                 "minecraft:block.sign.waxed_interact_fail"
             };
-            self.audio
-                .0
-                .play(sound, Some(pos.map(|v| f64::from(v) + 0.5)), 1.0, 1.0);
+            self.server_play_sound(sound, pos.map(|v| f64::from(v) + 0.5), 1.0, 1.0);
         } else if !executed
             && !self.other_player_is_editing_sign(key)
             && self.may_build()

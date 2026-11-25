@@ -720,4 +720,21 @@ impl Game<'_> {
             }
         }
     }
+    pub(in crate::game) fn merchant_sound(
+        &mut self,
+        sound: &'static str,
+        at: [f64; 3],
+        pitch: f32,
+    ) {
+        if self.merchant_take_active() {
+            self.defer_effect(super::transactions::DeferredEffect::Sound {
+                sound,
+                at,
+                volume: 1.0,
+                pitch,
+            });
+        } else {
+            self.server_play_sound(sound, at, 1.0, pitch);
+        }
+    }
 }

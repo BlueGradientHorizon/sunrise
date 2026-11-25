@@ -790,6 +790,38 @@ impl Game<'_> {
         };
         self.sweep_other_players(sweep);
     }
+
+    /// The attacker's side of `MaceItem.hurtEnemy` for a smash: the fall
+    /// stops, its damage is waived from where the hit landed, and the ground
+    /// or air smash sound plays. The fall distance it was, if there is a
+    /// player.
+    pub(in crate::game) fn mace_smash_self(&mut self, target_on_ground: bool) -> Option<f64> {
+        let p = self.player.as_mut()?;
+        p.velocity = Vec3::new(p.velocity.x, f64::from(0.01f32), p.velocity.z);
+        // A server player's client is told (ClientboundSetEntityMotionPacket): it moves by
+        // itself, so without it a Wind Burst's push would add to the speed of the fall.
+        p.health.sync_velocity = true;
+        // calculateImpactPosition: an earlier impact below the player stays.
+        let impact = match p.impulse.impact_position {
+            Some(at) if at.y <= p.position.y => at,
+            _ => p.position,
+        };
+        p.impulse.set_ignore_fall_damage(true, Some(impact));
+        let fall = p.fall_distance;
+        let feet = [p.position.x, p.position.y, p.position.z];
+        let sound = if target_on_ground {
+            p.spawn_extra_particles_on_fall = true;
+            if fall > HEAVY_THRESHOLD {
+                "minecraft:item.mace.smash_ground_heavy"
+            } else {
+                "minecraft:item.mace.smash_ground"
+            }
+        } else {
+            "minecraft:item.mace.smash_air"
+        };
+        self.server_play_sound(sound, feet, 1.0, 1.0);
+        Some(fall)
+    }
 }
 
 #[cfg(test)]

@@ -417,7 +417,8 @@ impl Game<'_> {
                     let side = game_side!(self);
                     let o = &mut self.orbs[i];
                     o.velocity = velocity;
-                    let audio = &mut self.audio.0;
+                    let pending_sounds = &mut self.server.pending_sounds;
+                    let capture_active = self.server.audio_capture_active;
                     let lava_random = &mut self.server.ordered.lava_random;
                     let mut next_float = || {
                         lava_random
@@ -433,7 +434,16 @@ impl Game<'_> {
                         sunrise_client::entities::OrbLavaEffects {
                             next_float: &mut next_float,
                             on_sound: &mut |pos, pitch| {
-                                audio.play("minecraft:entity.generic.burn", Some(pos), 0.4, pitch)
+                                if capture_active {
+                                    pending_sounds.push(
+                                        sunrise_client_core::sound_source::ServerSound::new(
+                                            "minecraft:entity.generic.burn",
+                                            pos,
+                                            0.4,
+                                            pitch,
+                                        ),
+                                    );
+                                }
                             },
                             invulnerable: &mut |world| {
                                 let source = sunrise_client::health::HurtSource {

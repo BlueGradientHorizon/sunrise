@@ -387,7 +387,7 @@ impl Game<'_> {
         }
     }
     /// Opening the menu shows the beacon's current powers.
-    pub(in crate::game::client_side) fn beacon_opened(&mut self) {
+    pub(in crate::game) fn beacon_opened(&mut self) {
         let Some(s) = self.station.as_ref().filter(|s| s.kind == Kind::Beacon) else {
             return;
         };

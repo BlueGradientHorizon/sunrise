@@ -643,9 +643,7 @@ impl Game<'_> {
             {
                 m.velocity = velocity;
             }
-            self.audio
-                .0
-                .play("minecraft:entity.silverfish.hurt", Some(at), 1.0, 1.0);
+            self.server_play_sound("minecraft:entity.silverfish.hurt", at, 1.0, 1.0);
         }
     }
 }
@@ -858,13 +856,10 @@ impl Game<'_> {
             return Ok(false);
         }
         let centre = pos.map(|v| f64::from(v) + 0.5);
-        self.audio
-            .0
-            .play("minecraft:entity.generic.splash", Some(centre), 1.0, 1.0);
+        self.server_play_sound("minecraft:entity.generic.splash", centre, 1.0, 1.0);
         self.fill_held(ItemStack::new("minecraft:glass_bottle", 1));
         // PotionItem.useOn: five ServerLevel.sendParticles(SPLASH). The level
-        // random places each one (count 1, no spread, speed 1). The packet is
-        // what the window draws; a window that runs this itself still adds it.
+        // random places each one (count 1, no spread, speed 1).
         for _ in 0..5 {
             let r = &mut self.world.random;
             let at = [
@@ -883,9 +878,7 @@ impl Game<'_> {
                 except: None,
             });
         }
-        self.audio
-            .0
-            .play("minecraft:item.bottle.empty", Some(centre), 1.0, 1.0);
+        self.server_play_sound("minecraft:item.bottle.empty", centre, 1.0, 1.0);
         self.post_block_game_event("minecraft:fluid_place", pos, None, None);
         if let Some(mud) = self.pack.assets.registry.default_state("minecraft:mud") {
             self.level_set(pos, mud)?;
@@ -929,9 +922,7 @@ impl Game<'_> {
         // Consumable.emitParticlesAndSounds: the drink sound every 4 ticks near the end.
         if remaining > 0 && remaining <= 25 && remaining % 4 == 0 {
             let pitch = self.world.random.next_float() * 0.1 + 0.9;
-            self.audio
-                .0
-                .play("minecraft:entity.generic.drink", Some(eye), 0.5, pitch);
+            self.server_play_sound("minecraft:entity.generic.drink", eye, 0.5, pitch);
         }
         // ItemStack.onUseTick: the item's own tick after the consumable's.
         if !self.item_on_use_tick(stack, ticks - 1) {
@@ -3695,7 +3686,7 @@ pub(in crate::game) mod tests {
 
 /// `MobEffect.withSoundOnAdded`: the sound `onEffectAdded` plays when the
 /// effect is new on an entity (`MobEffects`: the three omens).
-pub(in crate::game::client_side) fn sound_on_added(effect: &str) -> Option<&'static str> {
+pub(in crate::game) fn sound_on_added(effect: &str) -> Option<&'static str> {
     match effect.strip_prefix("minecraft:").unwrap_or(effect) {
         "bad_omen" => Some("minecraft:event.mob_effect.bad_omen"),
         "trial_omen" => Some("minecraft:event.mob_effect.trial_omen"),

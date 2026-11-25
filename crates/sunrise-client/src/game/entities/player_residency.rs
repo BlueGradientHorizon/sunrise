@@ -91,20 +91,6 @@ impl Game<'_> {
         self.hook.replace(hook);
     }
 
-    pub(in crate::game) fn remove_local_player_body(&mut self) {
-        self.reset_client_item_use();
-        self.hook.discard();
-        let id = self.player.as_ref().map(|player| player.entity_id as u32);
-        self.resident_entities.local_player.retire();
-        self.player_state.attachments.retire();
-        self.player = None;
-        if self.remote.is_some()
-            && let Some(id) = id
-        {
-            self.pick_section_remove(id);
-        }
-    }
-
     pub(in crate::game) fn bind_local_player_residency(&mut self) {
         if self.server.lan_acting.is_some() {
             return;

@@ -1188,6 +1188,7 @@ impl Game<'_> {
         // lets go of its track.
         self.client.music.stop_playing(None, &mut self.audio.0);
         self.audio.0.leave_level();
+        self.client.jukebox_sounds.clear();
         if self.remote.is_some() {
             self.client.world_icon = None;
             return self.leave_server(None);
@@ -2977,20 +2978,6 @@ impl Game<'_> {
             .play_unshared("minecraft:block.end_gateway.spawn", Some(at), 10.0, pitch);
     }
     #[inline(always)]
-    pub(in crate::game) fn process_level_events_note_custom_sound_client(&mut self, pos: BlockPos) {
-        if let Some(BlockEntity::Skull(skull)) =
-            self.world.block_entities.get(&(pos.x, pos.y + 1, pos.z))
-            && let Some(sound) = skull.note_block_sound.as_deref()
-        {
-            let at = [
-                f64::from(pos.x) + 0.5,
-                f64::from(pos.y) + 0.5,
-                f64::from(pos.z) + 0.5,
-            ];
-            self.audio.0.play(sound, Some(at), 3.0, 1.0);
-        }
-    }
-    #[inline(always)]
     pub(in crate::game) fn process_level_events_portal_travel_client(&mut self) {
         let pitch = self.particles.0.level_random().next_float() * 0.4 + 0.8;
         self.audio.0.play_on(
@@ -4742,5 +4729,58 @@ impl Game<'_> {
             dynamic_visible: Some(dynamic_visible),
         };
         draw(&scene);
+    }
+
+    /// `LeverBlock.makeParticle` at full scale: a powered lever puffs one red
+    /// dust on the clicking client (`LeverBlock.useWithoutItem`).
+    pub(in crate::game) fn lever_puff(&mut self, pos: [i32; 3]) {
+        assert!(
+            !self.is_logical_server(),
+            "lever_puff called on Server role"
+        );
+        let state = self.world.block(pos[0], pos[1], pos[2]);
+        let Some(registry_state) = self.pack.assets.registry.state(state) else {
+            return;
+        };
+        let prop = |key: &str| registry_state.properties.get(key).map(String::as_str);
+        if prop("powered") != Some("true") {
+            return;
+        }
+        // FACING is horizontal; getConnectedDirection is the face's direction.
+        let facing = match prop("facing") {
+            Some("north") => [0, 0, -1],
+            Some("south") => [0, 0, 1],
+            Some("west") => [-1, 0, 0],
+            Some("east") => [1, 0, 0],
+            _ => return,
+        };
+        let connected = match prop("face") {
+            Some("ceiling") => [0, -1, 0],
+            Some("floor") => [0, 1, 0],
+            _ => facing,
+        };
+        let at = |base: i32, i: usize| {
+            f64::from(base) + 0.5 + 0.1 * f64::from(-facing[i]) + 0.2 * f64::from(-connected[i])
+        };
+        let p = [at(pos[0], 0), at(pos[1], 1), at(pos[2], 2)];
+        self.particles.0.add(
+            &sunrise_client::particles::ParticleOptions::dust([1.0, 0.0, 0.0], 1.0),
+            p,
+            [0.0; 3],
+        );
+    }
+
+    pub(in crate::game) fn remove_local_player_body(&mut self) {
+        self.reset_client_item_use();
+        self.hook.discard();
+        let id = self.player.as_ref().map(|player| player.entity_id as u32);
+        self.resident_entities.local_player.retire();
+        self.player_state.attachments.retire();
+        self.player = None;
+        if self.remote.is_some()
+            && let Some(id) = id
+        {
+            self.pick_section_remove(id);
+        }
     }
 }

@@ -4,7 +4,6 @@
 use super::Game;
 use super::level_sounds::LevelSound;
 use mod_api::SoundSource;
-use sunrise_client::actions::Action;
 use sunrise_client::mobs::{MobEvent, happy_ghast};
 use sunrise_core::geometry::Vec3;
 use sunrise_world::registry::BlockStateId;

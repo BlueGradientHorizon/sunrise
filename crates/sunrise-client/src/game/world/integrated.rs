@@ -1294,7 +1294,7 @@ impl Game<'_> {
                             let api_smoke = smoke
                                 .try_into_api()
                                 .map_err(|_| "failed to convert smoke particle options")?;
-                            let mut check = |game: &mut Game<'_>| -> Result<()> {
+                            let check = |game: &mut Game<'_>| -> Result<()> {
                                 game.particles.0.requested = Some(Vec::new());
                                 game.player = Some(sunrise_client::motion::PlayerMotion::new(
                                     game.motion,

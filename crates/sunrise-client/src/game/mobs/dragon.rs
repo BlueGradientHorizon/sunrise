@@ -3339,13 +3339,8 @@ impl Game<'_> {
             }
             let r = c.radius;
             for _ in 0..((std::f32::consts::PI * r * r) as i32).min(40) {
-                let a = self.world.random.next_float() * std::f32::consts::TAU;
-                let d = self.world.random.next_float().sqrt() * r;
-                let at = [
-                    c.at[0] + f64::from(a.cos() * d),
-                    c.at[1],
-                    c.at[2] + f64::from(a.sin() * d),
-                ];
+                let _a = self.world.random.next_float() * std::f32::consts::TAU;
+                let _d = self.world.random.next_float().sqrt() * r;
             }
             // AreaEffectCloud: after its wait, each entity every 20 ticks.
             // Instant damage I from the flame cloud, II from a fireball's,

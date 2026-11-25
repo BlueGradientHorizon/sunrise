@@ -475,18 +475,18 @@ impl Game<'_> {
         let player = self.player.as_ref();
         let from = player.map(|p| [p.position.x, p.position.y, p.position.z]);
         if full && player.is_some_and(|p| p.sprinting) {
-            self.audio
-                .0
-                .play("minecraft:entity.player.attack.knockback", from, 1.0, 1.0);
+            if let Some(at) = from {
+                self.server_play_sound("minecraft:entity.player.attack.knockback", at, 1.0, 1.0);
+            }
         }
         let crit = living.is_some() && crit;
         if let Some(at) = sweep {
             self.sweep_attack(at, from, Some((area, spared)), scale);
         }
         if crit {
-            self.audio
-                .0
-                .play("minecraft:entity.player.attack.crit", from, 1.0, 1.0);
+            if let Some(at) = from {
+                self.server_play_sound("minecraft:entity.player.attack.crit", at, 1.0, 1.0);
+            }
             if let Some(id) = living {
                 self.area_critical_hit(id, area, false);
             }

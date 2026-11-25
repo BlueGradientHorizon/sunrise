@@ -157,23 +157,48 @@ impl Game<'_> {
     ) {
         use sunrise_client::arrows::{ArrowEvent, ArrowParticle, ArrowSound, BlockReaction};
         use sunrise_client::particles::{ParticleOptions, ParticleType};
-        let kind = |k| match k {
-            ArrowParticle::Bubble => ParticleType::Bubble,
-            ArrowParticle::Crit => ParticleType::Crit,
-            ArrowParticle::Splash => ParticleType::Splash,
+        let sound_name = |sound| match sound {
+            ArrowSound::Splash => "minecraft:entity.generic.splash",
+            ArrowSound::HitGround => "minecraft:entity.arrow.hit",
+            ArrowSound::CrossbowHit => "minecraft:item.crossbow.hit",
+            ArrowSound::Extinguish => "minecraft:entity.generic.extinguish_fire",
+            ArrowSound::TridentHitGround => "minecraft:item.trident.hit_ground",
+            ArrowSound::TridentHit => "minecraft:item.trident.hit",
         };
+        if !self.is_logical_server() {
+            let kind = |k| match k {
+                ArrowParticle::Bubble => ParticleType::Bubble,
+                ArrowParticle::Crit => ParticleType::Crit,
+                ArrowParticle::Splash => ParticleType::Splash,
+            };
+            match event {
+                ArrowEvent::Particle {
+                    kind: k,
+                    position,
+                    velocity,
+                } => self.particles.0.add(
+                    &ParticleOptions::simple(kind(k)),
+                    [position.x, position.y, position.z],
+                    [velocity.x, velocity.y, velocity.z],
+                ),
+                ArrowEvent::Sound {
+                    sound,
+                    volume,
+                    pitch,
+                } => self.audio.0.play_on(
+                    6,
+                    sound_name(sound),
+                    Some([at.x, at.y, at.z]),
+                    volume,
+                    pitch,
+                ),
+                _ => {}
+            }
+            return;
+        }
         match event {
-            ArrowEvent::Particle {
-                kind: k,
-                position,
-                velocity,
-            } => self.particles.0.add(
-                &ParticleOptions::simple(kind(k)),
-                [position.x, position.y, position.z],
-                [velocity.x, velocity.y, velocity.z],
-            ),
-            // Arrow.tick: `broadcastEntityEvent(this, 0)`. The window and the
-            // guests burst the particles themselves (`remote_arrow_puff`).
+            ArrowEvent::Particle { .. } => {}
+            // Arrow.tick: `broadcastEntityEvent(this, 0)`. The guests burst the particles.
             ArrowEvent::PotionPuff { id, .. } => {
                 self.lan_entity_event(id as i32, 0, [at.x, at.y, at.z]);
             }
@@ -182,20 +207,8 @@ impl Game<'_> {
                 volume,
                 pitch,
             } => {
-                let name = match sound {
-                    ArrowSound::Splash => "minecraft:entity.generic.splash",
-                    ArrowSound::HitGround => "minecraft:entity.arrow.hit",
-                    ArrowSound::CrossbowHit => "minecraft:item.crossbow.hit",
-                    ArrowSound::Extinguish => "minecraft:entity.generic.extinguish_fire",
-                    ArrowSound::TridentHitGround => "minecraft:item.trident.hit_ground",
-                    ArrowSound::TridentHit => "minecraft:item.trident.hit",
-                };
-                // Each one is the projectile's own `Entity.playSound`, on `getSoundSource()`:
-                // NEUTRAL, which neither AbstractArrow nor ThrownTrident overrides. The
-                // name-based guess would put `entity.arrow.*` and `item.*` on PLAYERS.
-                self.audio
-                    .0
-                    .play_on(6, name, Some([at.x, at.y, at.z]), volume, pitch);
+                // NEUTRAL, which neither AbstractArrow nor ThrownTrident overrides.
+                self.server_play_sound_on(6, sound_name(sound), [at.x, at.y, at.z], volume, pitch);
             }
             ArrowEvent::BubbleColumnParticles { pos } => self.bubble_column_particles(pos),
             ArrowEvent::Block {
@@ -881,75 +894,6 @@ impl Game<'_> {
             .0
             .as_ref()
             .is_some_and(|r| r.skins_entities() && r.skinned_models().is_some())
-    }
-    /// `Player.aiStep` touching arrows in its box grown by (1, 0.5, 1):
-    /// `AbstractArrow.playerTouch`, then `Player.take`'s pickup sound at the
-    /// arrow (`ClientPacketListener.handleTakeItemEntity`).
-    pub(in crate::game) fn touch_arrows(&mut self) {
-        use sunrise_client::arrows::Touch;
-        let Some(p) = self.player.as_ref() else {
-            return;
-        };
-        if p.health.dead_or_dying() || self.spectator() {
-            return;
-        }
-        let w = f64::from(p.dimensions.width) / 2.0;
-        let reach = Aabb::new(
-            Vec3::new(p.position.x - w, p.position.y, p.position.z - w),
-            Vec3::new(
-                p.position.x + w,
-                p.position.y + f64::from(p.dimensions.height),
-                p.position.z + w,
-            ),
-        )
-        .inflate(Vec3::new(1.0, 0.5, 1.0));
-        // Player.hasInfiniteMaterials.
-        let creative = self.creative;
-        let mut projectiles = self.creatures.projectiles.lift();
-        #[cfg(test)]
-        super::entity::taken_pass_tests::after_take(self);
-        let mut picked = Vec::new();
-        projectiles.retain(|shot| {
-            let Some(a) = shot.arrow.as_ref().filter(|a| !a.removed) else {
-                return true;
-            };
-            let at = shot.position;
-            let bounds = Aabb::new(
-                Vec3::new(at.x - 0.25, at.y, at.z - 0.25),
-                Vec3::new(at.x + 0.25, at.y + 0.5, at.z + 0.25),
-            );
-            if !bounds.intersects(reach) {
-                return true;
-            }
-            let taken = match a.player_touch(creative) {
-                Touch::Ignore => false,
-                Touch::Take => true,
-                // Inventory.add: a creative player takes what does not fit.
-                Touch::Give(stack) => self.add_stack_to_inventory(stack).is_none() || creative,
-            };
-            if taken {
-                let r = &mut self.world.random;
-                let pitch = (r.next_float() - r.next_float()) * 1.4 + 2.0;
-                self.audio.0.play(
-                    "minecraft:entity.item.pickup",
-                    Some([at.x, at.y, at.z]),
-                    0.2,
-                    pitch,
-                );
-                picked.push(shot.clone());
-            }
-            !taken
-        });
-        self.creatures.projectiles.restore(
-            projectiles,
-            sunrise_client::join_seq::RestoreOrder::SurvivorsFirst,
-        );
-        for shot in picked {
-            self.add_pickup(
-                super::pickups::Taken::Arrow(Box::new(shot)),
-                super::pickups::Collector::Player,
-            );
-        }
     }
 }
 

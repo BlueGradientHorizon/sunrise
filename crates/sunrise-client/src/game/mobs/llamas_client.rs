@@ -53,9 +53,7 @@ impl Game<'_> {
                 // Equippable.canBeSheared: the carpet comes off.
                 let at = m.center();
                 let carpet = self.mobs[index].take_body_equipment().unwrap();
-                self.audio
-                    .0
-                    .play("minecraft:item.llama_carpet.unequip", Some(at), 1.0, 1.0);
+                self.server_play_sound("minecraft:item.llama_carpet.unequip", at, 1.0, 1.0);
                 self.spawn_item(carpet, at, [0.0, 0.2, 0.0], 10);
                 self.damage_held_tool();
                 let id = self.mobs[index].id;
@@ -98,8 +96,6 @@ impl Game<'_> {
     pub(in crate::game) fn llama_sound(&mut self, index: usize, sound: &str, volume: f32) {
         let at = self.mobs[index].center();
         let pitch = (self.world.random.next_float() - self.world.random.next_float()) * 0.2 + 1.0;
-        self.audio
-            .0
-            .play(&format!("minecraft:{sound}"), Some(at), volume, pitch);
+        self.server_play_sound(&format!("minecraft:{sound}"), at, volume, pitch);
     }
 }

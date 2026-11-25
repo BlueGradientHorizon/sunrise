@@ -101,9 +101,6 @@ pub(in crate::game::client_side) use sunrise_core::{
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_protocol::entity_data::Value;
 
-#[path = "dragon/walls_client.rs"]
-pub(in crate::game) mod walls;
-
 impl Game<'_> {
     /// The boss bars' draws on a `w` x `h` GUI.
     pub(in crate::game) fn boss_bar_draws(&self, w: i32, h: i32) -> Vec<hud_layout::GuiDraw> {

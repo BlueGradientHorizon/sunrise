@@ -98,11 +98,7 @@ impl Game<'_> {
         // Keep queued motion and packet effects with this body across the owning callbacks.
         let mut events = std::mem::take(&mut player.events);
         if std::mem::take(&mut player.health.totem_used) {
-            if let Some(body) = self.apply_totem(entity)
-                && self.serving.is_none()
-                && !self.is_dedicated_server()
-            {
-            }
+            let _ = self.apply_totem(entity);
         } else if let Some(index) = self.lan.as_ref().and_then(|host| {
             host.hub
                 .guests

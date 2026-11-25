@@ -265,8 +265,8 @@ impl Game<'_> {
         facing: Direction,
         event: i32,
     ) {
-        self.dispenser_event(event, pos, 0);
-        self.dispenser_event(2000, pos, data_value(facing));
+        self.level_event_at(event, [pos.0, pos.1, pos.2], 0);
+        self.level_event_at(2000, [pos.0, pos.1, pos.2], data_value(facing));
     }
 
     /// `DefaultDispenseItemBehavior.execute`: drop one item.
@@ -2511,6 +2511,84 @@ pub(in crate::game) mod tests {
                 super::PlacementSource::Directional { direction: facing }
             );
         }
+    }
+
+    /// `DispenserBlock.getDispenseMethod`: the block the dispenser faces
+    /// answers first and wins for any item; with no answer from it the item's
+    /// part decides; with neither, vanilla drops one item as before.
+    #[test]
+    #[ignore = "daily"]
+    fn the_faced_block_answers_before_the_item_and_vanilla_stands_when_no_part_listens() {
+        use std::sync::Arc;
+        use sunrise_client::chunk::Chunk;
+
+        let heard = Heard::default();
+        let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+            "dispense_probe",
+            Box::new(Probe(heard.clone())),
+        )]
+        .into();
+        super::super::api_values::install_parts(&mods).unwrap();
+        mod_platform::testing::with_mods(mods, || {
+            super::super::native_entity_refs::tests::with_game(|game| {
+                game.options.dedicated = Some(Vec::new());
+                game.world
+                    .chunks
+                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                let stone = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:stone")
+                    .unwrap();
+                let air = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:air")
+                    .unwrap();
+                game.world.set(6, 64, 5, stone).unwrap();
+                let dispense = |game: &mut Game<'_>, item: &str| {
+                    super::super::dispense_fixture::start_recording();
+                    let out = game
+                        .dispense_item((5, 64, 5), Direction::East, ItemStack::new(item, 1))
+                        .unwrap()
+                        .continue_value()
+                        .unwrap();
+                    let events = super::super::dispense_fixture::stop_recording();
+                    (out, events)
+                };
+
+                let (out, events) = dispense(game, "minecraft:dirt");
+                assert_eq!(out, None);
+                assert_eq!(heard.take(), [("block", [5, 64, 5], stone.0)]);
+                assert!(events.iter().any(|e| e == "L 1001 5,64,5 0"), "{events:?}");
+                assert!(game.dropped.is_empty());
+
+                let (out, events) = dispense(game, "minecraft:cobblestone");
+                assert_eq!(out, None);
+                assert_eq!(heard.take(), [("block", [5, 64, 5], stone.0)]);
+                assert!(events.iter().any(|e| e == "L 1001 5,64,5 0"), "{events:?}");
+                assert!(game.dropped.is_empty());
+
+                let (out, events) = dispense(game, "minecraft:stone");
+                assert_eq!(out, None);
+                assert_eq!(
+                    heard.take(),
+                    [("block", [5, 64, 5], stone.0), ("item", [5, 64, 5], 0)]
+                );
+                assert!(events.iter().any(|e| e == "L 1000 5,64,5 0"), "{events:?}");
+                assert!(game.dropped.is_empty());
+
+                game.world.set(6, 64, 5, air).unwrap();
+                let (out, events) = dispense(game, "minecraft:stick");
+                assert_eq!(out, None);
+                assert!(heard.take().is_empty());
+                assert_eq!(game.dropped.len(), 1);
+                assert_eq!(game.dropped[0].stack, ItemStack::new("minecraft:stick", 1));
+                assert!(events.iter().any(|e| e == "L 1000 5,64,5 0"), "{events:?}");
+            });
+        });
     }
 }
 

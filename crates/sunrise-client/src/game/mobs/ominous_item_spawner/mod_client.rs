@@ -27,6 +27,10 @@ impl Game<'_> {
     /// `OminousItemSpawner.addParticles`: one to three ominous spawning
     /// particles from the spawner out to points around it.
     pub(in crate::game) fn ominous_spawner_particles(&mut self, at: [f64; 3]) {
+        assert!(
+            !self.is_logical_server(),
+            "ominous_spawner_particles called on Server role"
+        );
         let options = ParticleOptions::simple(ParticleType::OminousSpawning);
         let r = self.particles.0.random();
         let count = r.next_int_between_inclusive(1, 3).unwrap_or(1);

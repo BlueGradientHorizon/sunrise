@@ -177,9 +177,6 @@ impl Game<'_> {
                 self.spawn_ominous_item(s);
                 return self.forget_finished_spawner(s.id);
             }
-            if self.world.game_time % 5 == 0 {
-                self.ominous_spawner_particles(s.position);
-            }
             true
         });
         self.ominous_spawners.restore(

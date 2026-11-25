@@ -517,4 +517,89 @@ impl Game<'_> {
         }
         false
     }
+
+    /// `GameEvent.Context.of(player, state)`.
+    pub(in crate::game) fn player_context(&self, state: Option<BlockStateId>) -> Context {
+        let (dead, creative) = self
+            .player
+            .as_ref()
+            .map_or((true, true), |p| (p.health.dead_or_dying(), self.creative));
+        Context {
+            source: Some(Who::Player.into()),
+            owner: None,
+            affected_state: state,
+            source_uuid: None,
+            owner_uuid: None,
+            dampening_state: self.state_dampens(state),
+            spectator: self.spectator(),
+            stepping_carefully: self.server_acting_sneak(),
+            dampens: false,
+            targetable: !dead && !creative && !self.spectator(),
+            living: true,
+            player: true,
+        }
+    }
+
+    /// Events from entities moving, getting hurt and dying, derived from what
+    /// changed this tick.
+    pub(in crate::game) fn tick_entity_events(&mut self) {
+        self.tick_player_sculk_events();
+        self.tick_mob_sculk_events();
+        if !self.sculk.falling_items.is_empty() {
+            let present: std::collections::HashSet<u32> =
+                self.dropped.iter().map(|item| item.id).collect();
+            self.sculk.falling_items.retain(|id| present.contains(id));
+        }
+        // Dropped items are entities too: Entity.applyEffectsFromBlocks, from
+        // ItemEntity.tick, so only for the items in entity-ticking chunks.
+        let ticking = self.entity_ticking_area();
+        let items: Vec<[f64; 3]> = self
+            .dropped
+            .iter()
+            .filter(|i| {
+                i.ground.on_ground
+                    && ticking(i.position.x.floor() as i32, i.position.z.floor() as i32)
+            })
+            .map(|i| [i.position.x, i.position.y, i.position.z])
+            .collect();
+        for at in items {
+            self.step_on_redstone_ore(at, false, false);
+        }
+    }
+
+    /// Entity.move emits on the authoritative server too, for each ServerPlayer.
+    pub(in crate::game) fn tick_player_sculk_events(&mut self) {
+        // The player.
+        let player = self.player.as_ref().map(|p| {
+            (
+                [p.position.x, p.position.y, p.position.z],
+                p.ground.on_ground,
+                p.health.health(),
+                p.flying,
+            )
+        });
+        if let Some((at, on_ground, health, flying)) = player {
+            let crouch = self.server_acting_sneak();
+            if on_ground && !self.spectator() {
+                self.step_on_redstone_ore(at, crouch, true);
+            }
+            self.mount_events(Who::Player, self.riding, true);
+            let in_water = self.in_water_at(at);
+            self.entity_motion_events(
+                Who::Player,
+                at,
+                on_ground,
+                in_water,
+                crouch && on_ground,
+                flying,
+                false,
+            );
+            if let Some(last) = self.sculk.last_health
+                && health < last
+            {
+                self.post_entity_event("minecraft:entity_damage", Who::Player);
+            }
+            self.sculk.last_health = Some(health);
+        }
+    }
 }

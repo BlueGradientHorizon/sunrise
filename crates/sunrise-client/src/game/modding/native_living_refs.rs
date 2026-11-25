@@ -3283,4 +3283,215 @@ pub(in crate::game) mod tests {
             assert_eq!(living.can_use_portal(host), Some(false));
         });
     }
+
+    #[test]
+    #[ignore = "daily"]
+    fn armor_stand_first_tick_equipment_change_fires_after_base_tick() {
+        use mod_api::{self, Hooks, LivingEquipmentChangeEvent, ModEntry, ServerHost};
+        struct Reequip;
+        #[mod_api::__subscriptions]
+        impl Hooks for Reequip {
+            fn living_equipment_change(
+                &self,
+                host: &mut dyn ServerHost,
+                event: &mut LivingEquipmentChangeEvent<'_>,
+            ) {
+                if event.entity == 18 && event.slot == "mainhand" {
+                    let entity = host.entity(event.entity).unwrap();
+                    let living = host.living(entity).unwrap();
+                    assert!(
+                        living
+                            .set_equipment(
+                                host,
+                                EquipmentSlot::Head,
+                                Some(
+                                    ItemStack::new("minecraft:iron_helmet", 1)
+                                        .try_into_api()
+                                        .unwrap()
+                                ),
+                            )
+                            .unwrap()
+                    );
+                }
+            }
+        }
+        mod_platform::testing::with_mods(
+            vec![ModEntry::new("first_tick_equipment", Box::new(Reequip))].into(),
+            || {
+                super::super::native_entity_refs::tests::with_game(|game| {
+                    let mut stand = sunrise_client::entities::ArmorStand::new(
+                        18,
+                        Vec3::new(0.5, 70.0, 0.5),
+                        0.0,
+                    );
+                    stand.no_gravity = true;
+                    stand.equipment[0] = Some(ItemStack::new("minecraft:stone", 1));
+                    game.armor_stands.push(stand);
+                    game.start_audio_capture();
+                    super::super::dispense_fixture::start_recording();
+                    game.tick_armor_stands().unwrap();
+                    let events = super::super::dispense_fixture::stop_recording();
+                    assert_eq!(
+                        game.armor_stands[0].equipment[5],
+                        Some(ItemStack::new("minecraft:iron_helmet", 1)),
+                        "real listener/handle write control",
+                    );
+                    assert!(!game.armor_stands[0].first_tick);
+                    let sounds = game.server.pending_sounds.len();
+                    let equips = events
+                        .iter()
+                        .filter(|e| e.ends_with("minecraft:equip"))
+                        .count();
+                    assert_eq!((sounds, equips), (1, 1));
+                });
+            },
+        );
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn mob_equipment_writes_emit_vanilla_equip_events() {
+        use sunrise_client::mobs::Mob;
+        use sunrise_core::geometry::Vec3;
+        super::super::native_entity_refs::tests::with_game(|game| {
+            let kind = game
+                .res
+                .mob_types()
+                .get("minecraft:zombie")
+                .unwrap()
+                .clone();
+            game.mobs.push(Mob::new(12, kind, Vec3::ZERO, 0.0));
+            let living = game.living(game.entity(12).unwrap()).unwrap();
+            game.start_audio_capture();
+            super::super::dispense_fixture::start_recording();
+            let helmet = ItemStack::new("minecraft:iron_helmet", 1);
+            assert!(game.living_set_equipment(living, EquipmentSlot::Head, Some(helmet.clone())));
+            assert!(game.living_set_equipment(living, EquipmentSlot::Head, None));
+            assert!(game.server.pending_sounds.is_empty());
+            game.mobs[0].first_tick = false;
+            assert!(game.living_set_equipment(living, EquipmentSlot::Head, Some(helmet.clone())));
+            assert_eq!(game.server.pending_sounds.len(), 1);
+            assert!(game.living_set_equipment(living, EquipmentSlot::Head, Some(helmet)));
+            assert_eq!(game.server.pending_sounds.len(), 1);
+            game.mobs[0].silent = true;
+            assert!(game.living_set_equipment(
+                living,
+                EquipmentSlot::Head,
+                Some(ItemStack::new("minecraft:diamond_helmet", 1))
+            ));
+            assert!(game.living_set_equipment(living, EquipmentSlot::Head, None));
+            game.mobs[0].silent = false;
+            assert!(game.living_set_equipment(
+                living,
+                EquipmentSlot::Chest,
+                Some(ItemStack::new("minecraft:iron_helmet", 1))
+            ));
+            assert_eq!(game.server.pending_sounds.len(), 1);
+            let events = super::super::dispense_fixture::stop_recording();
+            assert_eq!(
+                events
+                    .iter()
+                    .filter(|e| e.ends_with("minecraft:equip"))
+                    .count(),
+                3
+            );
+            assert_eq!(
+                events
+                    .iter()
+                    .filter(|e| e.ends_with("minecraft:unequip"))
+                    .count(),
+                1
+            );
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn stand_and_dragon_equipment_writes_run_on_equip_item() {
+        use sunrise_core::geometry::Vec3;
+        super::super::native_entity_refs::tests::with_game(|game| {
+            game.world.chunks.insert(
+                (0, 0),
+                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            );
+            let mut stand = sunrise_client::entities::ArmorStand::new(16, Vec3::ZERO, 0.0);
+            stand.id = 16;
+            game.armor_stands.push(stand);
+            let mut dragon = super::super::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
+            dragon.id = 17;
+            game.dragon.replace(dragon);
+            let stand = game.living(game.entity(16).unwrap()).unwrap();
+            let dragon = game.living(game.entity(17).unwrap()).unwrap();
+            game.start_audio_capture();
+            super::super::dispense_fixture::start_recording();
+            let helmet = ItemStack::new("minecraft:iron_helmet", 1);
+            assert!(game.living_set_equipment(stand, EquipmentSlot::Head, Some(helmet.clone())));
+            assert!(game.living_set_equipment(stand, EquipmentSlot::Head, None));
+            assert!(game.server.pending_sounds.is_empty());
+            game.tick_armor_stands().unwrap();
+            game.dragon.as_mut().unwrap().ticks = 1;
+            for _ in 0..2 {
+                assert!(game.living_set_equipment(
+                    stand,
+                    EquipmentSlot::Head,
+                    Some(helmet.clone())
+                ));
+            }
+            let body = ItemStack::new("minecraft:diamond_horse_armor", 1);
+            assert!(game.living_set_equipment(stand, EquipmentSlot::Body, Some(body)));
+            let stone = ItemStack::new("minecraft:stone", 1);
+            assert!(game.living_set_equipment(stand, EquipmentSlot::Saddle, Some(stone.clone())));
+            let chest = ItemStack::new("minecraft:iron_chestplate", 1);
+            assert!(game.living_set_equipment(dragon, EquipmentSlot::Chest, Some(chest)));
+            assert!(game.living_set_equipment(dragon, EquipmentSlot::Saddle, Some(stone)));
+            assert_eq!(game.server.pending_sounds.len(), 3);
+            let events = super::super::dispense_fixture::stop_recording();
+            let count = |name: &str| events.iter().filter(|e| e.ends_with(name)).count();
+            assert_eq!(count("minecraft:equip"), 3);
+            assert_eq!(count("minecraft:unequip"), 2);
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn the_host_players_body_and_saddle_are_slots_and_saved_in_equipment() {
+        super::super::native_entity_refs::tests::with_game(|game| {
+            let owner = Owner::Entity(Target::Player);
+            let mut body = ItemStack::new("minecraft:diamond_horse_armor", 1);
+            body.damage = 4;
+            body.data_mut().custom_name = Some(sunrise_core::nbt::Tag::String("armor".into()));
+            let saddle = ItemStack::new("minecraft:saddle", 1);
+            game.player = Some(
+                sunrise_client::motion::PlayerMotion::new(
+                    game.motion,
+                    sunrise_core::geometry::Vec3::ZERO,
+                )
+                .unwrap(),
+            );
+            game.start_audio_capture();
+            for (name, stack) in [("armor.body", &body), ("saddle", &saddle)] {
+                let slots = game.slots_named(&owner, name);
+                assert_eq!(slots.len(), 1, "{name} is one slot");
+                assert!(game.slot_set(&slots[0], Some(stack.clone())));
+            }
+            assert_eq!(
+                (game.equipment.get(6), game.equipment.get(7)),
+                (Some(&body), Some(&saddle))
+            );
+            assert_eq!(game.server.pending_sounds.len(), 2);
+            game.sync_level();
+            let tag = game.level.player_tag(&Default::default());
+            let equipment = tag.get("equipment").unwrap();
+            assert!(equipment.get("body").is_some() && equipment.get("saddle").is_some());
+            let mut read = sunrise_client::save::Level::default();
+            read.read_player(&tag);
+            game.equipment = Default::default();
+            let level = read;
+            game.load_saved_inventory(&level);
+            assert_eq!(
+                (game.equipment.get(6), game.equipment.get(7)),
+                (Some(&body), Some(&saddle))
+            );
+        });
+    }
 }

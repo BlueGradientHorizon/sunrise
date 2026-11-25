@@ -208,8 +208,6 @@ impl Game<'_> {
         if let Some(result) = ticked {
             result?;
         }
-        if self.options.dedicated.is_none() {
-        }
         Ok(())
     }
     /// `VaultBlock.useItemOn` with `held` in the hand that acts: true when the

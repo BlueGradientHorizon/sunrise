@@ -92,9 +92,7 @@ impl Game<'_> {
             ],
             _ => [0.0; 3],
         };
-        self.audio
-            .0
-            .play("minecraft:block.chest.locked", Some(at), 1.0, 1.0);
+        self.server_play_sound("minecraft:block.chest.locked", at, 1.0, 1.0);
         true
     }
     /// ShulkerBoxSlot.mayPlace: no shulker box inside a shulker box.

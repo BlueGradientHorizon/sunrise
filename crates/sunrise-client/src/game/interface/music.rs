@@ -226,6 +226,7 @@ impl Game<'_> {
     pub(in crate::game::client_side) fn stop_sounds_for_new_level(&mut self) {
         self.client.ambience.clear(&mut self.audio.0);
         self.audio.0.leave_level();
+        self.client.jukebox_sounds.clear();
         // Mod plays still queued for the next audio update go too.
         self.client.mod_sounds.clear();
     }

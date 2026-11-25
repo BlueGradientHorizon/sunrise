@@ -81,8 +81,6 @@ impl Game<'_> {
             "minecraft:suspicious_gravel" => ("minecraft:item.brush.brushing.gravel", true),
             _ => ("minecraft:item.brush.brushing.generic", false),
         };
-        if self.server.lan_acting.is_none() {
-        }
         let at = hit.pos.map(|v| f64::from(v) + 0.5);
         self.server_play_sound(sound, at, 1.0, 1.0);
         if brushable && self.brush_block(hit.pos, hit.face, slot) {

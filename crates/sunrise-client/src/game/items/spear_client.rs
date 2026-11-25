@@ -28,7 +28,11 @@ impl Game<'_> {
     pub(in crate::game) fn play_at_feet(&mut self, sound: &str) {
         if let Some(p) = &self.player {
             let at = [p.position.x, p.position.y, p.position.z];
-            self.audio.0.play(sound, Some(at), 1.0, 1.0);
+            if self.is_logical_server() {
+                self.server_play_sound(sound, at, 1.0, 1.0);
+            } else {
+                self.audio.0.play(sound, Some(at), 1.0, 1.0);
+            }
         }
     }
 }

@@ -1210,14 +1210,8 @@ impl Game<'_> {
         if active.is_some_and(|e| e.amplifier >= 2 && !e.ends_within(1199)) {
             return false;
         }
-        let at = [p.position.x, p.position.y, p.position.z];
         self.give_player_effect("minecraft:mining_fatigue", 6000, 2);
-        if self.server.lan_acting.is_none() {
-            // ClientPacketListener.handleGameEvent: the apparition always, the
-            // curse sound unless the elder is silent.
-            if crate::mobs::guardian::elder_curse_param(silent) == 1.0 {
-            }
-        }
+        let _ = silent;
         true
     }
     /// Whether the chunk's own status is entity-ticking (block coordinates), whatever the
@@ -1558,11 +1552,9 @@ impl Game<'_> {
                     count,
                 } => {
                     if let Some(ty) = sunrise_client::particles::ParticleType::from_name(kind) {
-                        let options = sunrise_client::particles::ParticleOptions::simple(ty);
                         self.server_level_particles(&crate::lan::server_effects::ServerParticle::simple(ty), at, spread, speed, count);
                     }
                 }
-                // The LAN packet has no item for a particle yet: the host's window only.
                 MobEvent::ItemParticles {
                     item,
                     at,
@@ -1570,8 +1562,6 @@ impl Game<'_> {
                     speed,
                     count,
                 } => {
-                    let options =
-                        self.item_particle(&sunrise_client::items::ItemStack::new(item, 1));
                     self.server_level_particles(&crate::lan::server_effects::ServerParticle::item(sunrise_client::items::ItemStack::new(item, 1)), at, spread, speed, count);
                 }
                 MobEvent::Sound(name, at, volume, pitch) => {
@@ -1580,8 +1570,7 @@ impl Game<'_> {
                 MobEvent::ProfessionWorkSound(name, at, volume, pitch) => {
                     self.server_play_sound(&name, at, volume, pitch)
                 }
-                MobEvent::LocalSound(name, at, volume, pitch) => {
-                }
+                MobEvent::LocalSound(..) => {}
                 MobEvent::BoundSound {
                     mob,
                     sound,
@@ -2618,15 +2607,14 @@ impl Game<'_> {
                 MobEvent::Particles { kind, at, count } => {
                     // Mob particle bursts (hearts, smoke, splashes) around a point.
                     if let Some(ty) = sunrise_client::particles::ParticleType::from_name(kind) {
-                        if kind.starts_with("item_") {
-                        }
-                        let options = sunrise_client::particles::ParticleOptions::simple(ty);
                         if ty == sunrise_client::particles::ParticleType::SonicBoom {
                             self.lan_sonic_boom(&crate::lan::server_effects::ServerParticle::simple(ty), at);
                         }
                         // Count 0: one particle exactly there, at rest.
                         if count == 0 {
-                            if ty != sunrise_client::particles::ParticleType::SonicBoom { self.server_particle_at(crate::lan::server_effects::ServerParticle::simple(ty), at, [0.0; 3]); };
+                            if ty != sunrise_client::particles::ParticleType::SonicBoom {
+                                self.server_particle_at(crate::lan::server_effects::ServerParticle::simple(ty), at, [0.0; 3]);
+                            }
                         }
                         for _ in 0..count {
                             let r = &mut self.world.random;
@@ -2647,17 +2635,13 @@ impl Game<'_> {
                 MobEvent::AroundSelf {
                     mob,
                     event,
-                    kind,
                     feet,
-                    width,
-                    height,
-                    burst,
+                    ..
                 } => {
                     self.lan_entity_event(mob as i32, event, feet);
                 }
                 MobEvent::ParticleAt { kind, at, velocity } => {
                     if let Some(ty) = sunrise_client::particles::ParticleType::from_name(kind) {
-                        let options = sunrise_client::particles::ParticleOptions::simple(ty);
                         self.server_particle_at(crate::lan::server_effects::ServerParticle::simple(ty), at, velocity);
                     }
                 }
@@ -2665,10 +2649,6 @@ impl Game<'_> {
                     at,
                     color: [r, g, b],
                 } => {
-                    let options = sunrise_client::particles::ParticleOptions::colored(
-                        sunrise_client::particles::ParticleType::EntityEffect,
-                        [r, g, b, 1.0],
-                    );
                     self.server_particle_at(crate::lan::server_effects::ServerParticle::colored(sunrise_client::particles::ParticleType::EntityEffect, [r, g, b, 1.0]), at, [0.0; 3]);
                 }
                 MobEvent::Experience { at, amount } => self.add_orb(at, amount),
@@ -4096,12 +4076,67 @@ impl Game<'_> {
     pub(in crate::game) fn launch_mob_projectile(&mut self, mut p: Projectile) {
         self.server.next_entity += 1;
         p.id = self.server.next_entity;
-        let at = [p.position.x, p.position.y, p.position.z];
-        // LlamaSpit.recreateFromPacket: the spit's burst on the client.
-        if p.kind == ProjectileKind::LlamaSpit {
-            let v = p.velocity;
-        }
         self.spawn_mob_projectile(p);
+    }
+
+    pub(in crate::game) fn touch_arrows(&mut self) {
+        use sunrise_client::arrows::Touch;
+        let Some(p) = self.player.as_ref() else {
+            return;
+        };
+        if p.health.dead_or_dying() || self.spectator() {
+            return;
+        }
+        let w = f64::from(p.dimensions.width) / 2.0;
+        let reach = Aabb::new(
+            Vec3::new(p.position.x - w, p.position.y, p.position.z - w),
+            Vec3::new(
+                p.position.x + w,
+                p.position.y + f64::from(p.dimensions.height),
+                p.position.z + w,
+            ),
+        )
+        .inflate(Vec3::new(1.0, 0.5, 1.0));
+        let creative = self.creative;
+        let mut projectiles = self.creatures.projectiles.lift();
+        #[cfg(test)]
+        super::entity::taken_pass_tests::after_take(self);
+        let mut picked = Vec::new();
+        projectiles.retain(|shot| {
+            let Some(a) = shot.arrow.as_ref().filter(|a| !a.removed) else {
+                return true;
+            };
+            let at = shot.position;
+            let bounds = Aabb::new(
+                Vec3::new(at.x - 0.25, at.y, at.z - 0.25),
+                Vec3::new(at.x + 0.25, at.y + 0.5, at.z + 0.25),
+            );
+            if !bounds.intersects(reach) {
+                return true;
+            }
+            let taken = match a.player_touch(creative) {
+                Touch::Ignore => false,
+                Touch::Take => true,
+                Touch::Give(stack) => self.add_stack_to_inventory(stack).is_none() || creative,
+            };
+            if taken {
+                let r = &mut self.world.random;
+                let pitch = (r.next_float() - r.next_float()) * 1.4 + 2.0;
+                self.server_play_sound("minecraft:entity.item.pickup", [at.x, at.y, at.z], 0.2, pitch);
+                picked.push(shot.clone());
+            }
+            !taken
+        });
+        self.creatures.projectiles.restore(
+            projectiles,
+            sunrise_client::join_seq::RestoreOrder::SurvivorsFirst,
+        );
+        for shot in picked {
+            self.add_pickup(
+                crate::game::client_side::pickups::Taken::Arrow(Box::new(shot)),
+                crate::game::client_side::pickups::Collector::Player,
+            );
+        }
     }
     /// `LivingEntity.die` / `dropAllDeathLoot`. Does not finish a hurt.
     pub(in crate::game) fn mob_die(&mut self, m: &Mob) {
@@ -5179,7 +5214,6 @@ impl Game<'_> {
             (ProjectileKind::ShulkerBullet { .. }, Hit::Block { .. }) => {
                 self.server_play_sound("minecraft:entity.shulker_bullet.hit", atp, 1.0, 1.0);
                 if let Some(ty) = sunrise_client::particles::ParticleType::from_name("explosion") {
-                    let options = sunrise_client::particles::ParticleOptions::simple(ty);
                     for _ in 0..2 {
                         let r = &mut self.world.random;
                         let at = [

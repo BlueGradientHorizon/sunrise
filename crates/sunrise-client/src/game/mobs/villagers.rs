@@ -293,15 +293,10 @@ impl Game<'_> {
     /// `particles::around_self` about mob `id`.
     pub(in crate::game) fn particles_around_mob(
         &mut self,
-        id: u32,
-        kind: &'static str,
-        burst: sunrise_client::particles::Burst,
+        _id: u32,
+        _kind: &'static str,
+        _burst: sunrise_client::particles::Burst,
     ) {
-        let Some(m) = self.mobs.iter().find(|m| m.id == id) else {
-            return;
-        };
-        let feet = [m.position.x, m.position.y, m.position.z];
-        let size = [f64::from(m.width()), f64::from(m.height())];
     }
 
     /// `NearestItemSensor.doTick` for the villagers whose sensor is due: the

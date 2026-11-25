@@ -64,9 +64,6 @@ pub(in crate::game::client_side) use sunrise_protocol::packets::play::{self, Cli
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_world::registry::BlockStateId;
 
-#[path = "effects_client.rs"]
-pub(in crate::game) mod effects;
-
 #[path = "execute_client.rs"]
 pub(in crate::game) mod execute;
 

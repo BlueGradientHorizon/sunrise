@@ -192,7 +192,7 @@ impl Game<'_> {
             }
         }
     }
-    pub(in crate::game::client_side) fn publish_mod_held(
+    pub(in crate::game) fn publish_mod_held(
         &self,
         prepared: sunrise_client::net::PreparedPacket,
         packet: ServerboundPlayPacket,

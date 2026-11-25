@@ -465,15 +465,6 @@ impl Game<'_> {
         this.server.pass_mobs = None;
         this.tick_sign_editors();
         this.scan_for_hearts();
-        // The client ticks (particles, sounds, the turning mob) are for a
-        // window; a dedicated or integrated server has none.
-        if this.options.dedicated.is_none() {
-            let trial_spawners = std::mem::take(&mut this.trial_spawner_tick_positions);
-            for key in trial_spawners.iter().copied() {
-                this.client_tick_trial_spawner(key);
-            }
-            this.trial_spawner_tick_positions = trial_spawners;
-        }
         // `ShulkerBoxBlockEntity.tick`: the lids of the boxes this level
         // animates. Their grown collision shape reaches the collision queries
         // through `World::shulkers`, and an opening lid pushes what it runs

@@ -769,44 +769,6 @@ impl Game<'_> {
         let (origin, direction) = self.aim()?;
         self.clip_ray(origin, direction, self.block_reach)
     }
-    /// `LeverBlock.makeParticle` at full scale: a powered lever puffs one red
-    /// dust on the clicking client (`LeverBlock.useWithoutItem`).
-    pub(in crate::game) fn lever_puff(&mut self, pos: [i32; 3]) {
-        assert!(
-            !self.is_logical_server(),
-            "lever_puff called on Server role"
-        );
-        let state = self.world.block(pos[0], pos[1], pos[2]);
-        let Some(registry_state) = self.pack.assets.registry.state(state) else {
-            return;
-        };
-        let prop = |key: &str| registry_state.properties.get(key).map(String::as_str);
-        if prop("powered") != Some("true") {
-            return;
-        }
-        // FACING is horizontal; getConnectedDirection is the face's direction.
-        let facing = match prop("facing") {
-            Some("north") => [0, 0, -1],
-            Some("south") => [0, 0, 1],
-            Some("west") => [-1, 0, 0],
-            Some("east") => [1, 0, 0],
-            _ => return,
-        };
-        let connected = match prop("face") {
-            Some("ceiling") => [0, -1, 0],
-            Some("floor") => [0, 1, 0],
-            _ => facing,
-        };
-        let at = |base: i32, i: usize| {
-            f64::from(base) + 0.5 + 0.1 * f64::from(-facing[i]) + 0.2 * f64::from(-connected[i])
-        };
-        let p = [at(pos[0], 0), at(pos[1], 1), at(pos[2], 2)];
-        self.particles.0.add(
-            &sunrise_client::particles::ParticleOptions::dust([1.0, 0.0, 0.0], 1.0),
-            p,
-            [0.0; 3],
-        );
-    }
     /// `LivingEntity.startSleeping`: the player takes the bed whose head
     /// `head` names, moved onto it and asleep from now on. False when the
     /// bed gives no shape to lie on.

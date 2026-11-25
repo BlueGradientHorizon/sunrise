@@ -935,7 +935,7 @@ impl Game<'_> {
 
     /// The whole station menu and its changed data slots for the client
     /// (`sendAllDataToRemote` / `broadcastChanges`).
-    pub(in crate::game::client_side) fn lan_send_station(&mut self, conn: u32) {
+    pub(in crate::game) fn lan_send_station(&mut self, conn: u32) {
         let Some(host) = self.lan.as_mut() else {
             return;
         };

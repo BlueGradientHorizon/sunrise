@@ -327,9 +327,6 @@ pub(in crate::game) mod farmland_trample;
 #[path = "general_entity_tick_server.rs"]
 pub(in crate::game) mod general_entity_tick;
 
-#[path = "hud_mode_server.rs"]
-pub(in crate::game) mod hud_mode;
-
 #[path = "incoming_tests_server.rs"]
 pub(in crate::game) mod incoming_tests;
 

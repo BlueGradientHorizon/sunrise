@@ -899,9 +899,7 @@ impl Game<'_> {
         };
         let mut f = self.item_frames.remove(index);
         self.entity_killed_event_by(center(&f), source);
-        self.audio
-            .0
-            .play(&sound(&f, "break"), Some(center(&f)), 1.0, 1.0);
+        self.server_play_sound(&sound(&f, "break"), center(&f), 1.0, 1.0);
         self.drop_frame_items(&mut f, true, false, false);
         // ItemFrame.dropItem(level, causedBy): BLOCK_CHANGE after the drops.
         let ctx = self.who_context(None, None);
@@ -958,9 +956,7 @@ impl Game<'_> {
                     i = now;
                     let mut f = self.item_frames.remove(i);
                     // BlockAttachedEntity.tick discards without a death event.
-                    self.audio
-                        .0
-                        .play(&sound(&f, "break"), Some(center(&f)), 1.0, 1.0);
+                    self.server_play_sound(&sound(&f, "break"), center(&f), 1.0, 1.0);
                     if f.item.is_some() {
                         self.frame_output_changed(f.pos);
                     }

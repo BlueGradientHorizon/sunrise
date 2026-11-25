@@ -774,15 +774,6 @@ impl Game<'_> {
         // The raid tracks one participant (`bar.player`): the first player in
         // the level. Everyone else is heard by distance alone.
         let local_first = self.player.is_some();
-        if let Some(p) = self.player.as_ref()
-            && let Some(at) = raid::horn_at(
-                [p.position.x, p.position.y, p.position.z],
-                rx,
-                rz,
-                in_raid && local_first,
-            )
-        {
-        }
         let Some(host) = self.lan.as_ref() else {
             return;
         };
@@ -1281,9 +1272,33 @@ impl Game<'_> {
             }
         }
     }
-    #[inline(always)]
-    pub(in crate::game) fn sync_villager_raids_client(&mut self) -> bool {
-        self.server.effect_rng.next_int_bound(100) == Ok(0)
+    /// `OminousBottleAmplifier.onConsume`: Bad Omen for 100 minutes at the
+    /// bottle's amplifier. The consumable list owns the dispose sound.
+    pub(in crate::game) fn drink_ominous_bottle(
+        &mut self,
+        stack: &sunrise_client::items::ItemStack,
+    ) {
+        let amplifier = stack.data().and_then(|d| d.ominous_amplifier).unwrap_or(0);
+        let mut effect =
+            sunrise_client::effects::EffectInstance::new("bad_omen", 120_000, i32::from(amplifier));
+        effect.visible = false;
+        let new = self.potions.effects.get("bad_omen").is_none();
+        self.apply_player_effect(effect);
+        // MobEffect.onEffectAdded: Bad Omen's sound when it is new, at the
+        // player's feet.
+        if new && let Some(p) = self.player.as_ref() {
+            let at = [p.position.x, p.position.y, p.position.z];
+            self.server_play_sound("minecraft:event.mob_effect.bad_omen", at, 1.0, 1.0);
+        }
+    }
+    /// The Raid Omen sound when the effect is first added
+    /// (`MobEffect.onEffectAdded`: at the player's feet).
+    pub(in crate::game) fn raid_omen_added(&mut self) {
+        let Some(p) = self.player.as_ref() else {
+            return;
+        };
+        let at = [p.position.x, p.position.y, p.position.z];
+        self.server_play_sound("minecraft:event.mob_effect.raid_omen", at, 1.0, 1.0);
     }
     /// Entity event 42 for villager `id`: the guests get the byte, and this
     /// game draws `AbstractVillager.addParticlesAroundSelf(SPLASH)` itself.

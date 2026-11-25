@@ -425,23 +425,7 @@ impl Game<'_> {
     /// `LivingEntity.handleEntityEvent(46)` for this client: 128 portal
     /// particles from the old position to the new one. The local player's
     /// random is the particle engine's.
-    pub(in crate::game) fn portal_particles(&mut self) {
-        let (from, to, width, height) = {
-            let Some(p) = self.player.as_ref() else {
-                return;
-            };
-            (
-                [
-                    self.previous_position.x,
-                    self.previous_position.y,
-                    self.previous_position.z,
-                ],
-                [p.position.x, p.position.y, p.position.z],
-                f64::from(p.dimensions.width),
-                f64::from(p.dimensions.height),
-            )
-        };
-    }
+    pub(in crate::game) fn portal_particles(&mut self) {}
     /// `LivingEntity.stopRiding`.
     pub(in crate::game) fn stop_riding(&mut self) {
         let Some(id) = self.riding else {
