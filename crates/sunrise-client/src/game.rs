@@ -3440,6 +3440,8 @@ struct Game<'a> {
     /// `DebugEntryChunkGeneration`'s `lastPos` and `result`: F3's `Density` line is sampled
     /// again only when the feet block (or the dimension) changes.
     debug_density: RefCell<debug_keys::DensityCache>,
+    /// What each mod added to F3's frame rate line (`set_debug_fps_text`), by mod id.
+    debug_fps_texts: RefCell<Vec<(&'static str, String)>>,
     pending_pack_reload: bool,
     /// HDR, Smooth Gradients, picked path and outcome at the last frame attempt, including a failed
     /// replacement (`follow_frame`).
@@ -14354,6 +14356,7 @@ impl<'a> Game<'a> {
             rest_loader: None,
             pending_entry: None,
             debug_density: RefCell::default(),
+            debug_fps_texts: RefCell::default(),
             pending_pack_reload: false,
             frame_attempted: render_settings::FrameAttempt::default(),
             pack_folder: None,
