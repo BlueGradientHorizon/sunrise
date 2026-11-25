@@ -2936,7 +2936,8 @@ impl Game<'_> {
         tag: &sunrise_core::nbt::Tag,
         entity: &mut sunrise_client::containers::BlockEntity,
     ) -> bool {
-        let pending = matches!(entity, sunrise_client::containers::BlockEntity::Chest(_))
+        let block = self.data_block_name([key.0, key.1, key.2]);
+        let pending = sunrise_client::save::randomizable_container(entity, &block)
             .then(|| sunrise_client::save::PendingContainerLoot::from_tag(tag))
             .flatten();
         let mut changed = false;
@@ -2947,16 +2948,20 @@ impl Game<'_> {
         });
         changed
     }
-    /// Raw NBT inspection overlays metadata without unpacking the inventory.
+    /// Raw NBT inspection overlays metadata without unpacking the inventory: a container's
+    /// table, which a slotless mod block entity at `block` never has (its `LootTable` field is
+    /// its own).
     pub(super) fn write_pending_loot(
         world: &sunrise_client::world::World,
         key: (i32, i32, i32),
+        block: &str,
         tag: &mut sunrise_core::nbt::Tag,
     ) {
-        if !matches!(
-            world.block_entities.get(&key),
-            Some(sunrise_client::containers::BlockEntity::Chest(_))
-        ) {
+        if !world
+            .block_entities
+            .get(&key)
+            .is_some_and(|entity| sunrise_client::save::randomizable_container(entity, block))
+        {
             return;
         }
         if let sunrise_core::nbt::Tag::Compound(map) = tag {
