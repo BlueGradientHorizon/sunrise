@@ -808,7 +808,7 @@ impl Game<'_> {
                 p.z.floor() as i32,
             );
             // Frame generation and temporal upscaling follow its own flight.
-            self.mark_motion(out.len(), Self::MOTION_OBJECT | u64::from(r.id));
+            self.mark_motion(out.len(), crate::game::MOTION_OBJECT | u64::from(r.id));
             self.submit_item_world(&state, pose, vertex_light(light), out);
         }
         self.mark_motion(out.len(), 0);

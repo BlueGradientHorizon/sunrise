@@ -465,7 +465,7 @@ impl ApplicationHandler for Game<'_> {
                         "startedCleanly",
                         sunrise_client::options_file::V::Bool(true),
                     );
-                    self.settings.save(&Game::options_path());
+                    self.settings.save(&crate::game::options_path());
                 }
                 Ok(false) => {
                     event_loop.exit();

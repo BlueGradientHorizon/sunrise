@@ -12,7 +12,7 @@ pub(in crate::game) fn leave_fullscreen_after(
 ) {
     if matches!(result, Err(EventLoopError::ExitFailure(_))) && settings.fullscreen {
         settings.fullscreen = false;
-        settings.save(&Game::options_path());
+        settings.save(&crate::game::options_path());
         log::warn!(
             "the window system closed the game in fullscreen; the next start opens windowed"
         );
@@ -407,7 +407,7 @@ impl Loading {
             "startedCleanly",
             sunrise_client::options_file::V::Bool(true),
         );
-        game.settings.save(&Game::options_path());
+        game.settings.save(&crate::game::options_path());
         log::info!(
             "Sunrise: startup handoff {} ms (renderer {} ms, start_game {} ms)",
             handoff_at.elapsed().as_millis(),

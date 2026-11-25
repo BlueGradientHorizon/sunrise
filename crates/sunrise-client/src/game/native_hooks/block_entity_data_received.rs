@@ -62,15 +62,6 @@ impl BlockEntityClientReadAccess for ClientDataReadAccess<'_, '_> {
 }
 
 impl Game<'_> {
-    /// Notice after a matching mod block entity has merged its synchronized tag.
-    pub(in crate::game) fn native_block_entity_data_received(
-        subject: mod_api::BlockEntityClientReadScope<'_>,
-        source: BlockEntityDataSource,
-        tag: &sunrise_core::nbt::Compound,
-    ) {
-        Self::fire_block_entity_data_received(subject, source, tag);
-    }
-
     pub(in crate::game) fn notify_block_entity_data_received(
         &self,
         pos: [i32; 3],
@@ -95,10 +86,21 @@ impl Game<'_> {
             game: self,
             subject,
         };
-        Self::native_block_entity_data_received(
+        crate::game::native_hooks::native_block_entity_data_received(
             BlockEntityClientReadScope::new(&access),
             source,
             tag,
         );
     }
 }
+
+
+/// Notice after a matching mod block entity has merged its synchronized tag.
+pub(in crate::game) fn native_block_entity_data_received(
+    subject: mod_api::BlockEntityClientReadScope<'_>,
+    source: BlockEntityDataSource,
+    tag: &sunrise_core::nbt::Compound,
+) {
+    crate::game::native_hooks::fire::fire_block_entity_data_received(subject, source, tag);
+}
+

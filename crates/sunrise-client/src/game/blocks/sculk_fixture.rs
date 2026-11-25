@@ -336,7 +336,7 @@ impl Game<'_> {
     }
 
     pub(in crate::game::server_side) fn sculk_fixture_reset(&mut self, s: &Scenario) -> Result<()> {
-        self.world = Game::world_for_mods(self.res.facts().air, 0);
+        self.world = crate::game::world_for_mods(self.res.facts().air, 0);
         let plains = u32::from(world_biomes!(self).id("minecraft:plains"));
         let layers = [
             self.fixture_state("minecraft:bedrock")?,

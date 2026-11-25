@@ -5001,21 +5001,12 @@ impl Game<'_> {
             self.settings.file.bool("darkMojangStudiosBackground"),
         );
     }
-
-    /// `mark_motion` ids of entities that aren't mobs or dropped items (boats, minecarts, armor
-    /// stands, item frames, paintings, primed TNT, falling blocks, rockets, tridents, thrown
-    /// potions): their entity id under this tag.
-    pub(super) const MOTION_OBJECT: u64 = 3 << 32;
     /// An item frame's held item, apart from the frame (one id may mark one run).
     pub(super) const MOTION_FRAME_ITEM: u64 = 4 << 32;
-    /// A block entity, by its position (`motion_block_entity`).
-    pub(super) const MOTION_BLOCK_ENTITY: u64 = 5 << 32;
     /// A block a piston moves, by the cell it moves to (`motion_at`).
     pub(super) const MOTION_MOVING_BLOCK: u64 = 6 << 32;
-    /// The player's own model (third person, and a shader pack's shadow pass).
-    pub(super) const MOTION_OWN_PLAYER: u64 = 7 << 32;
     /// The local player's flame vertices are tracked separately from the body run.
-    const MOTION_OWN_PLAYER_FIRE: u64 = Self::MOTION_OWN_PLAYER | 1;
+    const MOTION_OWN_PLAYER_FIRE: u64 = crate::game::MOTION_OWN_PLAYER | 1;
     /// The reach of the block entity a block state holds (see [`Self::block_entity_reach_entry`]).
     pub(super) fn block_entity_reach(&self, state: u32) -> Reach {
         self.block_entity_reach_entry(state).0
@@ -5082,7 +5073,7 @@ impl Game<'_> {
             let light = self.world.light(x, y + 1, z);
             let packed = (u32::from(light >> 4) * 16) | ((u32::from(light & 15) * 16) << 8);
             let start = out.len();
-            self.mark_motion(start, Self::MOTION_OBJECT | u64::from(f.id));
+            self.mark_motion(start, crate::game::MOTION_OBJECT | u64::from(f.id));
             self.falling_model_vertices(f.state, f.start_pos, o, packed, out);
             let tint = sunrise_client::mobs::render::abgr(tint);
             for vertex in &mut out[start..] {
@@ -5734,6 +5725,19 @@ impl Game<'_> {
         })
     }
 }
+
+
+/// `mark_motion` ids of entities that aren't mobs or dropped items (boats, minecarts, armor
+/// stands, item frames, paintings, primed TNT, falling blocks, rockets, tridents, thrown
+/// potions): their entity id under this tag.
+pub(super) const MOTION_OBJECT: u64 = 3 << 32;
+
+/// A block entity, by its position (`motion_block_entity`).
+pub(super) const MOTION_BLOCK_ENTITY: u64 = 5 << 32;
+
+/// The player's own model (third person, and a shader pack's shadow pass).
+pub(super) const MOTION_OWN_PLAYER: u64 = 7 << 32;
+
 /// `computeNextAutosaveInterval`'s arithmetic: `Math.max(100, (int)(rate * 300.0F))`.
 fn autosave_interval(rate: f32) -> i64 {
     i64::from((rate * 300.0) as i32).max(100)
@@ -6446,9 +6450,9 @@ impl<'a> Game<'a> {
             )
         })?;
         let world = if options.execution_role.is_logical_server() {
-            Game::authoritative_world_for_mods(res, 0)
+            crate::game::authoritative_world_for_mods(res, 0)
         } else {
-            Game::world_for_mods(res.facts().air, 0)
+            crate::game::world_for_mods(res.facts().air, 0)
         };
         let tutorial = tutorial::Tutorial::new(tutorial::Step::from_option(
             settings.file.int("tutorialStep"),
@@ -6463,7 +6467,7 @@ impl<'a> Game<'a> {
                 &gui.atlas.translucent,
             )
         };
-        particles.set_block_state_source(Game::particle_block_states);
+        particles.set_block_state_source(crate::game::particle_block_states);
         let resource_source = pack.source.clone();
         let (pack, gui) = if let Some(initial) = initial {
             let mut unpublished = pack.clone();
@@ -6744,13 +6748,13 @@ pub(crate) fn run_with(
                     .is_file()
             {
                 log::error!("Sunrise: {error}");
-                let settings = Settings::load(&Game::options_path());
+                let settings = Settings::load(&crate::game::options_path());
                 return no_resources::show(&vanilla_root, &settings);
             }
             return Err(error.into());
         }
     };
-    let mut early_settings = Settings::load(&Game::options_path());
+    let mut early_settings = Settings::load(&crate::game::options_path());
     options
         .mods
         .capture_code_switches(&early_settings.mods.disabled);
@@ -6833,7 +6837,7 @@ pub(crate) fn run_with(
             "startedCleanly",
             sunrise_client::options_file::V::Bool(false),
         );
-        early_settings.save(&Game::options_path());
+        early_settings.save(&crate::game::options_path());
     }
     // Minecraft's constructor opens the narrator; a server has none.
     if options.execution_role.is_client() {
@@ -6918,7 +6922,7 @@ pub(crate) fn run_with(
                 "startedCleanly",
                 sunrise_client::options_file::V::Bool(true),
             );
-            game.settings.save(&Game::options_path());
+            game.settings.save(&crate::game::options_path());
         }
         run_event_loop(game)?;
     }
@@ -7163,3 +7167,17 @@ pub(in crate::game) use client_side::sign_outline_tests;
 #[cfg(test)]
 #[path = "game/interface/tests/sign_use_tests.rs"]
 mod sign_use_tests;
+
+#[allow(unused_imports)]
+pub(in crate::game) use {
+    copper_golems::golem_preserved_equipment,
+    native_client_particles::particle_block_states,
+    native_datafix::upgrade_nbt,
+    native_hooks::{
+        another_mods, authoritative_world_for_mods, mod_data_root, native_config_dir,
+        startup_math_profile, startup_setting, world_for_mods,
+    },
+    options::{game_dir, options_path},
+    remote::{inventory_screen_slot, inventory_screen_slot_with_type, remote_station_kind},
+    stacked_on_other::{stacked_listened, stacked_listens_for},
+};

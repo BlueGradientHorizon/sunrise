@@ -55,10 +55,10 @@ impl ClientReloadListenerContext for StartupReloadContext<'_> {
         mod_api::__private::loaded_mods().get(id).is_some()
     }
     fn setting(&self, mod_id: &str, key: &str) -> Option<String> {
-        Game::startup_setting(mod_id, key)
+        crate::game::startup_setting(mod_id, key)
     }
     fn math_profile(&self) -> mod_api::MathProfile {
-        Game::startup_math_profile()
+        crate::game::startup_math_profile()
     }
     fn text_string(&self, text: &mod_api::Text) -> String {
         sunrise_client::lang::scoped(sunrise_client::lang::Language::default(), || {

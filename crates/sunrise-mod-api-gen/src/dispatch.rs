@@ -746,7 +746,7 @@ pub(super) fn emit<'a>(
                 .collect::<Vec<_>>()
                 .join(", ");
             fire.push_str(&format!(
-                "#[inline] pub(super) fn fire_{name}({}) {{ super::{name}({forwarded}); }}\n",
+                "#[inline] pub(in crate::game) fn fire_{name}({}) {{ super::{name}({forwarded}); }}\n",
                 dispatch_params.join(", ")
             ));
             continue;
@@ -770,6 +770,12 @@ pub(super) fn emit<'a>(
             let target_path: syn::Path = syn::parse_str(target)
                 .map_err(|error| format!("invalid target for {name}: {error}"))?;
             let receiver = &target_path.segments[target_path.segments.len() - 2];
+            let is_game_assoc = hook.receiver == Receiver::Associated
+                && (matches!(
+                    receiver.ident.to_string().as_str(),
+                    "Game" | "ServerGame" | "ClientGame"
+                ) || (target.starts_with("sunrise_client::game::native_hooks::")
+                    && target_path.segments.len() == 5));
             let receiver_impl = receiver.to_token_stream();
             let scoped_read_host = receiver.ident == "NativeHookHost";
             if scoped_read_host
@@ -952,10 +958,18 @@ pub(super) fn emit<'a>(
             } else {
                 format!("mod_api::dispatch_{name}({passed});")
             };
-            fire.push_str(&format!(
-                "impl {receiver_impl} {{ #[inline] pub(super) fn fire_{name}({signature}) {{ {before} {dispatch_call} {after} }} }}\n"
-            ));
-            let receiver = if receiver.is_empty() {
+            if is_game_assoc {
+                fire.push_str(&format!(
+                    "#[inline] pub(in crate::game) fn fire_{name}({signature}) {{ {before} {dispatch_call} {after} }}\n"
+                ));
+            } else {
+                fire.push_str(&format!(
+                    "impl {receiver_impl} {{ #[inline] pub(in crate::game) fn fire_{name}({signature}) {{ {before} {dispatch_call} {after} }} }}\n"
+                ));
+            }
+            let receiver = if is_game_assoc {
+                "super::fire::"
+            } else if receiver.is_empty() {
                 "Self::"
             } else {
                 "self."

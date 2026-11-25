@@ -453,7 +453,7 @@ fn a_panicking_load_condition_registrar_leaves_neither_handlers_nor_errors() {
             let mut registrar = mod_api::LoadConditionDeclarations::new(
                 sunrise_world::conditions::is_builtin_condition,
             );
-            super::Game::native_register_load_conditions(
+            crate::game::native_hooks::native_register_load_conditions(
                 &RegistrationContext::new(),
                 &mut registrar,
             );

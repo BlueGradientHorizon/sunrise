@@ -300,7 +300,7 @@ impl Game<'_> {
             // `spawnAtLocation` with no offset: at the golem's feet.
             let feet = [m.position.x, m.position.y, m.position.z];
             stacks.extend(
-                Self::golem_preserved_equipment(m)
+                crate::game::golem_preserved_equipment(m)
                     .into_iter()
                     .map(|stack| (stack, feet, 0)),
             );

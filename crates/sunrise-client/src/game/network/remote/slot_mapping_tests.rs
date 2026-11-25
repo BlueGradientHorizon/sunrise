@@ -3,13 +3,13 @@ use super::*;
 #[test]
 fn every_inventory_menu_slot_is_a_game_slot_and_45_is_the_off_hand() {
     // InventoryMenu: result, 2x2 grid, armour, 27 + 9 inventory slots, then the off hand.
-    assert_eq!(Game::inventory_screen_slot("inventory", 45), Some(504));
+    assert_eq!(crate::game::inventory_screen_slot("inventory", 45), Some(504));
     let mut seen = std::collections::HashSet::new();
     for slot in 0..46 {
-        let internal = Game::inventory_screen_slot("inventory", slot);
+        let internal = crate::game::inventory_screen_slot("inventory", slot);
         assert!(internal.is_some_and(|i| seen.insert(i)), "slot {slot}");
     }
-    assert_eq!(Game::inventory_screen_slot("inventory", 46), None);
+    assert_eq!(crate::game::inventory_screen_slot("inventory", 46), None);
 }
 
 #[test]
@@ -55,26 +55,26 @@ fn large_mod_menu_backing_slots_never_alias_armor_station_or_mount_slots() {
     };
     for s in [0usize, 199, 200, 204, 300, 400, 32_731] {
         let internal =
-            Game::inventory_screen_slot_with_type(with_inv.id, s as i32, || Some(&with_inv))
+            crate::game::inventory_screen_slot_with_type(with_inv.id, s as i32, || Some(&with_inv))
                 .expect("backing slot");
         assert_eq!(internal, MOD_MENU_SLOT_BASE + s);
         assert_eq!(container_slot_index(internal), Some(s));
         assert!(internal >= MOD_MENU_SLOT_BASE);
     }
     assert_eq!(
-        Game::inventory_screen_slot_with_type(with_inv.id, 32_732, || Some(&with_inv)),
+        crate::game::inventory_screen_slot_with_type(with_inv.id, 32_732, || Some(&with_inv)),
         Some(9)
     );
     assert_eq!(
-        Game::inventory_screen_slot_with_type(with_inv.id, 32_759, || Some(&with_inv)),
+        crate::game::inventory_screen_slot_with_type(with_inv.id, 32_759, || Some(&with_inv)),
         Some(0)
     );
     assert_eq!(
-        Game::inventory_screen_slot_with_type(with_inv.id, 32_767, || Some(&with_inv)),
+        crate::game::inventory_screen_slot_with_type(with_inv.id, 32_767, || Some(&with_inv)),
         Some(8)
     );
     assert_eq!(
-        Game::inventory_screen_slot_with_type(with_inv.id, 32_768, || Some(&with_inv)),
+        crate::game::inventory_screen_slot_with_type(with_inv.id, 32_768, || Some(&with_inv)),
         None
     );
 
@@ -91,15 +91,15 @@ fn large_mod_menu_backing_slots_never_alias_armor_station_or_mount_slots() {
         owned_slots: None,
     };
     assert_eq!(
-        Game::inventory_screen_slot_with_type(without_inv.id, 0, || Some(&without_inv)),
+        crate::game::inventory_screen_slot_with_type(without_inv.id, 0, || Some(&without_inv)),
         Some(MOD_MENU_SLOT_BASE)
     );
     assert_eq!(
-        Game::inventory_screen_slot_with_type(without_inv.id, 32_767, || Some(&without_inv)),
+        crate::game::inventory_screen_slot_with_type(without_inv.id, 32_767, || Some(&without_inv)),
         Some(MOD_MENU_SLOT_BASE + 32_767)
     );
     assert_eq!(
-        Game::inventory_screen_slot_with_type(without_inv.id, 32_768, || Some(&without_inv)),
+        crate::game::inventory_screen_slot_with_type(without_inv.id, 32_768, || Some(&without_inv)),
         None
     );
 }

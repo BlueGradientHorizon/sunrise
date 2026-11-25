@@ -213,7 +213,7 @@ impl mod_api::prelude::DatafixHost for LiveSectionHost {
         data_version: i32,
         nbt: mod_api::Compound,
     ) -> Result<mod_api::Compound, mod_api::NbtUpgradeError> {
-        super::Game::upgrade_nbt(kind, data_version, nbt)
+        crate::game::upgrade_nbt(kind, data_version, nbt)
     }
 }
 

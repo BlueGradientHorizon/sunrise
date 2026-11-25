@@ -199,7 +199,7 @@ impl Game<'_> {
             (true, c) => c - 1,
         };
         self.settings.file.set("debugGuiScale", V::Int(next));
-        self.settings.save(&Self::options_path());
+        self.settings.save(&crate::game::options_path());
     }
     pub(in crate::game::client_side) fn draw_debug_options(&mut self, batch: &mut HudBatch) {
         let Some(s) = self.client.debug_options.as_ref() else {

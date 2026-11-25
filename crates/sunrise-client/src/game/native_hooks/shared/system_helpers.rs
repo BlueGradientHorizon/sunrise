@@ -53,20 +53,7 @@ impl Game<'_> {
     }
     /// A native mod's own folder: `sunrise-mods/.sunrise-mod-data/<id>/`. Not created here.
     pub(in crate::game) fn native_data_dir(&self, mod_id: &str) -> PathBuf {
-        Self::mod_data_root().join(mod_id)
-    }
-    pub(in crate::game) fn mod_data_root() -> PathBuf {
-        Self::game_dir()
-            .join(mod_list::DIR)
-            .join(".sunrise-mod-data")
-    }
-    /// The game's `config/` folder beside `options.txt`, shared by every mod
-    /// as on Fabric and NeoForge. The same folder on the window, its server
-    /// thread and a LAN host; a dedicated server's is in its own folder,
-    /// beside `server.properties`. Made when missing. Mods reach their own
-    /// files in it through `Host::config_files`.
-    pub(in crate::game) fn native_config_dir() -> std::io::Result<PathBuf> {
-        config_dir(&Self::game_dir())
+        crate::game::mod_data_root().join(mod_id)
     }
     /// No world is open: a client without a player (the title screen). A
     /// server's `Game` (the server thread, a dedicated server, a LAN host)
@@ -84,3 +71,19 @@ impl Game<'_> {
         self.made_recipes()
     }
 }
+
+pub(in crate::game) fn mod_data_root() -> PathBuf {
+    crate::game::game_dir()
+        .join(mod_list::DIR)
+        .join(".sunrise-mod-data")
+}
+
+/// The game's `config/` folder beside `options.txt`, shared by every mod
+/// as on Fabric and NeoForge. The same folder on the window, its server
+/// thread and a LAN host; a dedicated server's is in its own folder,
+/// beside `server.properties`. Made when missing. Mods reach their own
+/// files in it through `Host::config_files`.
+pub(in crate::game) fn native_config_dir() -> std::io::Result<PathBuf> {
+    config_dir(&crate::game::game_dir())
+}
+

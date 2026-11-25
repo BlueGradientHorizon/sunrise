@@ -50,15 +50,6 @@ impl Game<'_> {
         round
     }
 
-    /// `IItemExtension.onEntityItemUpdate`: a dropped item entity is about to
-    /// tick (`ItemEntity.tick`). Set `canceled` and its
-    /// movement and merging are skipped for this tick. Server-side.
-    pub(in crate::game) fn native_on_entity_item_update(
-        call: mod_api::__private::OnEntityItemUpdateCall<'_>,
-    ) {
-        Self::fire_on_entity_item_update(call);
-    }
-
     /// Asks the parts of the item entity at `index` of `dropped` whether its tick
     /// ends here. An item no part is attached to is told nothing: its stack is not
     /// converted and no scope is made.
@@ -83,13 +74,24 @@ impl Game<'_> {
             subject,
             index,
         };
-        Self::native_on_entity_item_update(mod_api::__private::OnEntityItemUpdateCall {
+        crate::game::native_hooks::native_on_entity_item_update(mod_api::__private::OnEntityItemUpdateCall {
             subject: mod_api::ItemEntityServerScope::new(&mut access, &item_id),
             canceled: &mut canceled,
         });
         canceled
     }
 }
+
+
+/// `IItemExtension.onEntityItemUpdate`: a dropped item entity is about to
+/// tick (`ItemEntity.tick`). Set `canceled` and its
+/// movement and merging are skipped for this tick. Server-side.
+pub(in crate::game) fn native_on_entity_item_update(
+    call: mod_api::__private::OnEntityItemUpdateCall<'_>,
+) {
+    crate::game::native_hooks::fire::fire_on_entity_item_update(call);
+}
+
 
 pub(in crate::game) struct ResidentDroppedItem<'g, 'w> {
     pub(in crate::game) game: &'g mut Game<'w>,

@@ -620,3 +620,109 @@ use sound_and_shader_helpers::{finite, finite_params, local_sound_ok};
 #[allow(unused_imports)]
 pub(in crate::game) use sound_and_shader_helpers::{level_sound_playable, mod_sound_ok, sound_id};
 include!("shared.rs");
+
+// Free-function associated native hooks re-exported at native_hooks::*
+#[allow(unused_imports)]
+pub(in crate::game) use add_section_geometry::{native_add_section_geometry};
+#[allow(unused_imports)]
+pub(in crate::game) use base::{native_block_entity_update_tag, native_blocks, native_component_types, native_items, native_menu_button, native_menu_quick_move, native_standalone_models};
+#[allow(unused_imports)]
+pub(in crate::game) use block_entity_client_tick::{native_block_entity_client_tick};
+#[allow(unused_imports)]
+pub(in crate::game) use block_entity_data_received::{native_block_entity_data_received};
+#[allow(unused_imports)]
+pub(in crate::game) use block_entity_on_load::{native_block_entity_on_load};
+#[allow(unused_imports)]
+pub(in crate::game) use block_entity_tick::{native_block_entity_tick};
+#[allow(unused_imports)]
+pub(in crate::game) use block_entity_type_add_blocks::{native_block_entity_type_add_blocks};
+#[allow(unused_imports)]
+pub(in crate::game) use can_place_item::{native_can_place_item};
+#[allow(unused_imports)]
+pub(in crate::game) use client_pick::{native_can_rider_interact};
+#[allow(unused_imports)]
+pub(in crate::game) use create_skull_models::{native_create_skull_models};
+#[allow(unused_imports)]
+pub(in crate::game) use extend_poi_types::{native_extend_poi_types};
+#[allow(unused_imports)]
+pub(in crate::game) use general_entity_tick::{native_general_entity_tick};
+#[allow(unused_imports)]
+pub(in crate::game) use map_decoration_types::{native_map_decoration_types};
+#[allow(unused_imports)]
+pub(in crate::game) use menu_slot_take::{native_menu_slot_take};
+#[allow(unused_imports)]
+pub(in crate::game) use on_entity_item_update::{native_on_entity_item_update};
+#[allow(unused_imports)]
+pub(in crate::game) use piston_push_reaction::{native_piston_push_reaction};
+#[allow(unused_imports)]
+pub(in crate::game) use register_block_state_models::{native_register_block_state_models};
+#[allow(unused_imports)]
+pub(in crate::game) use register_block_tint_sources::{native_register_block_tint_sources};
+#[allow(unused_imports)]
+pub(in crate::game) use register_cauldron_fluid_content::{native_register_cauldron_fluid_content};
+#[allow(unused_imports)]
+pub(in crate::game) use register_cauldron_interaction::{native_register_cauldron_interaction};
+#[allow(unused_imports)]
+pub(in crate::game) use register_client_item_extensions::{native_register_client_item_extensions};
+#[allow(unused_imports)]
+pub(in crate::game) use register_client_tooltip_component_factories::{native_register_client_tooltip_component_factories};
+#[allow(unused_imports)]
+pub(in crate::game) use register_color_resolvers::{native_register_color_resolvers};
+#[allow(unused_imports)]
+pub(in crate::game) use register_debug_entries::{native_register_debug_entries};
+#[allow(unused_imports)]
+pub(in crate::game) use register_debug_renderers::{native_register_debug_renderers};
+#[allow(unused_imports)]
+pub(in crate::game) use register_dimension_transition_screen::{native_register_dimension_transition_screen};
+#[allow(unused_imports)]
+pub(in crate::game) use register_enchantment_damage_effects::{native_register_enchantment_damage_effects};
+#[allow(unused_imports)]
+pub(in crate::game) use register_entity_layers::{native_register_entity_layers};
+#[allow(unused_imports)]
+pub(in crate::game) use register_entity_renderers::{native_register_entity_renderers};
+#[allow(unused_imports)]
+pub(in crate::game) use register_entity_spectator_shaders::{native_register_entity_spectator_shaders};
+#[allow(unused_imports)]
+pub(in crate::game) use register_fluid_models::{native_register_fluid_models};
+#[allow(unused_imports)]
+pub(in crate::game) use register_gui_layers::{native_register_gui_layers};
+#[allow(unused_imports)]
+pub(in crate::game) use register_item_models::{native_register_item_models};
+#[allow(unused_imports)]
+pub(in crate::game) use register_item_tint_sources::{native_register_item_tint_sources};
+#[allow(unused_imports)]
+pub(in crate::game) use register_json_animation_types::{native_register_json_animation_types};
+#[allow(unused_imports)]
+pub(in crate::game) use register_layer_definitions::{native_register_layer_definitions};
+#[allow(unused_imports)]
+pub(in crate::game) use register_load_conditions::{native_register_load_conditions};
+#[allow(unused_imports)]
+pub(in crate::game) use register_model_loaders::{native_register_model_loaders};
+#[allow(unused_imports)]
+pub(in crate::game) use register_particle_groups::{native_register_particle_groups};
+#[allow(unused_imports)]
+pub(in crate::game) use register_particle_providers::{native_register_particle_providers};
+#[allow(unused_imports)]
+pub(in crate::game) use register_preset_editors::{native_register_preset_editors};
+#[allow(unused_imports)]
+pub(in crate::game) use register_range_select_item_model_property::{native_register_range_select_item_model_property};
+#[allow(unused_imports)]
+pub(in crate::game) use register_render_pipelines::{native_register_render_pipelines};
+#[allow(unused_imports)]
+pub(in crate::game) use register_select_item_model_property::{native_register_select_item_model_property};
+#[allow(unused_imports)]
+pub(in crate::game) use register_special_model_renderer::{native_register_special_model_renderer};
+#[allow(unused_imports)]
+pub(in crate::game) use register_sprite_sources::{native_register_sprite_sources};
+#[allow(unused_imports)]
+pub(in crate::game) use register_texture_atlases::{native_register_texture_atlases};
+#[allow(unused_imports)]
+pub(in crate::game) use register_villager_professions::{native_register_villager_professions};
+#[allow(unused_imports)]
+pub(in crate::game) use block_entity_on_load::{authoritative_world_for_mods, world_for_mods};
+#[allow(unused_imports)]
+pub(in crate::game) use math::startup_math_profile;
+#[allow(unused_imports)]
+pub(in crate::game) use system_helpers::{mod_data_root, native_config_dir};
+#[allow(unused_imports)]
+pub(in crate::game) use base::{another_mods, startup_setting};

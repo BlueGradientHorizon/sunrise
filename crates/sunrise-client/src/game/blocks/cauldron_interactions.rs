@@ -288,7 +288,7 @@ impl Game<'_> {
         items: &Items,
     ) -> Result<Arc<Table>> {
         let mut registrar = Registrar::new(items, self.pack.assets.registry);
-        Self::native_register_cauldron_interaction(
+        crate::game::native_hooks::native_register_cauldron_interaction(
             &mod_api::RegistrationContext::new(),
             &mut registrar,
         );

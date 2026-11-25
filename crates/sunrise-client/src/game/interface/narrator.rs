@@ -215,7 +215,7 @@ impl Game<'_> {
         self.ui.options.layout_changed();
         // OptionInstance.set runs the option's onValueUpdate.
         self.narrator_status_changed();
-        self.settings.save(&Self::options_path());
+        self.settings.save(&crate::game::options_path());
         self.on_narrator_status_changed(was_disabled, Trigger::Keyboard);
     }
     /// Where vanilla calls `screen.updateNarratorStatus(wasDisabled, trigger)`

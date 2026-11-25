@@ -224,7 +224,7 @@ pub(super) fn conditions_for_mods(
             let mut registrar = mod_api::LoadConditionDeclarations::new(
                 sunrise_world::conditions::is_builtin_condition,
             );
-            Game::native_register_load_conditions(
+            crate::game::native_hooks::native_register_load_conditions(
                 &mod_api::RegistrationContext::new(),
                 &mut registrar,
             );

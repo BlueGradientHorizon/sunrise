@@ -1220,7 +1220,7 @@ impl Game<'_> {
         self.client.mod_view_distances.take();
         self.finish_close_world_server_clear_bosses();
         self.streaming.paused = true;
-        self.world = Game::world_for_mods(self.res.facts().air, 0);
+        self.world = crate::game::world_for_mods(self.res.facts().air, 0);
         self.player = None;
         // `LocalPlayer`'s constructor: `KeyMapping.resetToggleKeys`, so a sneak or sprint toggled
         // in this world is not still on in the next one.
@@ -2126,7 +2126,7 @@ impl Game<'_> {
                 "onboardAccessibility",
                 sunrise_client::options_file::V::Bool(false),
             );
-            self.settings.save(&Self::options_path());
+            self.settings.save(&crate::game::options_path());
         }
         if let Some(title) = &self.title.0 {
             for found in title.lan_found_narrations((w, h)) {

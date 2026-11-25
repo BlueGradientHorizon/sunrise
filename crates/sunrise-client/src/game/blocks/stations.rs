@@ -3391,7 +3391,7 @@ pub(in crate::game) mod tests {
         mod_platform::testing::with_mods(mods, || {
             let mut factories = TooltipComponentFactories::default();
             {
-                super::Game::native_register_client_tooltip_component_factories(
+                crate::game::native_hooks::native_register_client_tooltip_component_factories(
                     &RegistrationContext::new(),
                     &mut factories,
                 );

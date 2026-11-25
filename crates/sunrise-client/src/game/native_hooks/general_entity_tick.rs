@@ -161,23 +161,25 @@ impl Game<'_> {
             subject,
             kind,
         };
-        Self::native_general_entity_tick(mod_api::__private::GeneralEntityTickCall {
+        crate::game::native_hooks::native_general_entity_tick(mod_api::__private::GeneralEntityTickCall {
             kind,
             subject: EntityServerScope::new(&mut access),
         });
     }
-
-    /// The authoritative tick of one general entity row of type `kind`
-    /// (`mymod:robot`) (#792 stage 4): `ServerLevel.tickNonPassenger`'s
-    /// `entity.tick()` for a row the type registry owns, its rider subtree
-    /// ticked after it. The scope lends the live row sequentially with `ServerHost`.
-    /// Vanilla families never reach this call. Server-side.
-    pub(in crate::game) fn native_general_entity_tick(
-        call: mod_api::__private::GeneralEntityTickCall<'_>,
-    ) {
-        Self::fire_general_entity_tick(call);
-    }
 }
+
+
+/// The authoritative tick of one general entity row of type `kind`
+/// (`mymod:robot`) (#792 stage 4): `ServerLevel.tickNonPassenger`'s
+/// `entity.tick()` for a row the type registry owns, its rider subtree
+/// ticked after it. The scope lends the live row sequentially with `ServerHost`.
+/// Vanilla families never reach this call. Server-side.
+pub(in crate::game) fn native_general_entity_tick(
+    call: mod_api::__private::GeneralEntityTickCall<'_>,
+) {
+    crate::game::native_hooks::fire::fire_general_entity_tick(call);
+}
+
 
 #[cfg(test)]
 pub(in crate::game) mod tests {

@@ -7,6 +7,6 @@ impl Game<'_> {
         &mut self,
         cause: mod_api::TagsUpdateCause,
     ) {
-        Self::fire_default_components_bound(self, cause);
+        crate::game::native_hooks::fire::fire_default_components_bound(self, cause);
     }
 }

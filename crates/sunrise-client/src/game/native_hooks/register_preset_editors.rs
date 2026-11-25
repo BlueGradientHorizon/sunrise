@@ -2,15 +2,6 @@
 use super::*;
 
 impl Game<'_> {
-    /// Collect attributed world-preset editor factories once at client startup
-    /// (NeoForge's `RegisterPresetEditorsEvent`).
-    pub(in crate::game) fn native_register_preset_editors(
-        context: &mod_api::RegistrationContext,
-        editors: &mut Vec<Answered<PresetEditorFactoryRegistration>>,
-    ) {
-        Self::fire_register_preset_editors(context, editors);
-    }
-
     pub(in crate::game) fn preset_editor_dimensions(&self) -> Option<mod_api::Compound> {
         let sunrise_core::nbt::Tag::Compound(dimensions) =
             self.preset_editor_title()?.preset_editor_dimensions()?
@@ -29,6 +20,17 @@ impl Game<'_> {
         })
     }
 }
+
+
+/// Collect attributed world-preset editor factories once at client startup
+/// (NeoForge's `RegisterPresetEditorsEvent`).
+pub(in crate::game) fn native_register_preset_editors(
+    context: &mod_api::RegistrationContext,
+    editors: &mut Vec<Answered<PresetEditorFactoryRegistration>>,
+) {
+    crate::game::native_hooks::fire::fire_register_preset_editors(context, editors);
+}
+
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
@@ -377,7 +379,7 @@ pub(in crate::game) mod tests {
                 with_client_game(|game| {
                     sunrise_client::logging::init(&game.save.0.root, "Client thread");
                     let mut editors = Vec::new();
-                    Game::native_register_preset_editors(
+                    crate::game::native_hooks::native_register_preset_editors(
                         &mod_api::RegistrationContext::new(),
                         &mut editors,
                     );
@@ -502,7 +504,7 @@ pub(in crate::game) mod tests {
                         crate::game::native_hooks::particle_count_tests::frame_scene(game);
                     use mod_api::__private::game::RegistrationContextNew;
                     let mut editors = Vec::new();
-                    Game::native_register_preset_editors(
+                    crate::game::native_hooks::native_register_preset_editors(
                         &mod_api::RegistrationContext::new(),
                         &mut editors,
                     );

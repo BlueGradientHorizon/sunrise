@@ -123,7 +123,7 @@ pub(in crate::game) mod tests {
         let start = Vec3::new(0.5, 64.0, 4.5);
         game.rockets
             .push(super::Rocket::remote(77, start, Vec3::ZERO));
-        let id = super::Game::MOTION_OBJECT | 77;
+        let id = crate::game::MOTION_OBJECT | 77;
         // One frame's motion runs: the rocket's vertices open a run under its own id, and
         // a camera-only run (id 0) closes it so nothing drawn after takes its motion.
         game.client.entity_motion.borrow_mut().clear();

@@ -15,7 +15,7 @@ const MAX_SPRITES: usize = 4096;
 pub(in crate::game) fn collect_texture_atlases() -> Vec<TextureAtlasRegistration> {
     let mut atlases = Vec::new();
     if mod_api::__private::listened(mod_api::HookId::RegisterTextureAtlases) {
-        Game::native_register_texture_atlases(&mod_api::RegistrationContext::new(), &mut atlases);
+        crate::game::native_hooks::native_register_texture_atlases(&mod_api::RegistrationContext::new(), &mut atlases);
     }
     atlases
 }
@@ -676,7 +676,7 @@ mod tests {
             vec![mod_api::ModEntry::new("checker_mod", Box::new(Checker))].into();
         mod_platform::testing::with_mods(mods, || {
             let mut types = Vec::new();
-            Game::native_register_sprite_sources(&mod_api::RegistrationContext::new(), &mut types);
+            crate::game::native_hooks::native_register_sprite_sources(&mod_api::RegistrationContext::new(), &mut types);
             assert_eq!(
                 sunrise_client_render::mod_sprite_sources::register(types),
                 ["checker_mod:checker", "checker_mod:empty"]

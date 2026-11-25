@@ -236,7 +236,7 @@ impl Game<'_> {
                 });
                 let mut handled = false;
                 let mut access = ResidentBlockEntityAccess::for_handle(game, subject, state);
-                let panicked = Self::native_menu_quick_move(
+                let panicked = crate::game::native_hooks::native_menu_quick_move(
                     kind,
                     BlockEntityScope::new(&mut access),
                     size,

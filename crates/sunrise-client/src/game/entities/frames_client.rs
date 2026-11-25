@@ -77,7 +77,7 @@ impl Game<'_> {
                 continue;
             }
             let entity_start = out.len();
-            self.mark_motion(entity_start, Self::MOTION_OBJECT | u64::from(f.id));
+            self.mark_motion(entity_start, crate::game::MOTION_OBJECT | u64::from(f.id));
             if let Some(resolved) = super::native_entity_renderers::item_frame_renderer(f.glow) {
                 let step = f.step().map(f64::from);
                 let at = glam::DVec3::new(

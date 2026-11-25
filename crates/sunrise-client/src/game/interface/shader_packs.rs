@@ -773,7 +773,7 @@ impl Game<'_> {
         }
         if self.settings.sunrise.shader_pack == name {
             self.settings.sunrise.shader_pack.clear();
-            self.settings.save(&Self::options_path());
+            self.settings.save(&crate::game::options_path());
         }
         self.client_system_message(Text::colored(
             format!("Shader pack {name} could not be loaded and was turned off"),

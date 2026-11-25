@@ -352,7 +352,7 @@ mod texture_atlas_stitched_tests {
         with_mods(mods, || {
             let role = crate::game::execution_role::ExecutionRole::Client;
             let mut sources = Vec::new();
-            super::Game::native_register_sprite_sources(
+            crate::game::native_hooks::native_register_sprite_sources(
                 &mod_api::RegistrationContext::new(),
                 &mut sources,
             );

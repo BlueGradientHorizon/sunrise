@@ -393,7 +393,7 @@ impl Game<'_> {
             &self.gui.atlas.sprites,
             &self.gui.atlas.translucent,
         );
-        engine.set_block_state_source(Game::particle_block_states);
+        engine.set_block_state_source(crate::game::particle_block_states);
         engine.live_limit = Some(SCENE_MAX_PARTICLES);
         // The spawn limiter's camera at the blocks' middle: the view never changes what lives.
         if !picks.is_empty() {

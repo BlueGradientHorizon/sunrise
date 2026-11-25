@@ -64,7 +64,7 @@ pub(in crate::game) fn load_item_data(
     owning_load: OwningLoad,
 ) -> sunrise_client::Result<ItemData> {
     let _ = role;
-    let inputs = LoadInputs::new(builtin_registry_names(root)?, Game::mod_data_root());
+    let inputs = LoadInputs::new(builtin_registry_names(root)?, crate::game::mod_data_root());
     let inventory = sunrise_mod_package::enabled::EnabledMods::read(root)?;
     let ids: Vec<_> = if role.is_logical_server() {
         inventory.server_ids().collect()

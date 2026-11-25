@@ -1202,7 +1202,7 @@ pub(in crate::game) mod tests {
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new("fill", Box::new(Fill))].into();
         mod_platform::testing::with_mods(mods, || {
             let mut properties = Vec::new();
-            Game::native_register_range_select_item_model_property(
+            crate::game::native_hooks::native_register_range_select_item_model_property(
                 &mod_api::RegistrationContext::new(),
                 &mut properties,
             );
@@ -1227,7 +1227,7 @@ pub(in crate::game) mod tests {
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new("fill", Box::new(Fill))].into();
         mod_platform::testing::with_mods(mods, || {
             let mut properties = Vec::new();
-            Game::native_register_range_select_item_model_property(
+            crate::game::native_hooks::native_register_range_select_item_model_property(
                 &mod_api::RegistrationContext::new(),
                 &mut properties,
             );
@@ -1255,7 +1255,7 @@ pub(in crate::game) mod tests {
         });
         mod_platform::testing::with_mods(Vec::new().into(), || {
             let mut properties = Vec::new();
-            Game::native_register_range_select_item_model_property(
+            crate::game::native_hooks::native_register_range_select_item_model_property(
                 &mod_api::RegistrationContext::new(),
                 &mut properties,
             );
@@ -1308,7 +1308,7 @@ pub(in crate::game) mod tests {
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new("mode", Box::new(Mode))].into();
         mod_platform::testing::with_mods(mods, || {
             let mut properties = Vec::new();
-            Game::native_register_select_item_model_property(
+            crate::game::native_hooks::native_register_select_item_model_property(
                 &mod_api::RegistrationContext::new(),
                 &mut properties,
             );
@@ -1332,7 +1332,7 @@ pub(in crate::game) mod tests {
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new("mode", Box::new(Mode))].into();
         mod_platform::testing::with_mods(mods, || {
             let mut properties = Vec::new();
-            Game::native_register_select_item_model_property(
+            crate::game::native_hooks::native_register_select_item_model_property(
                 &mod_api::RegistrationContext::new(),
                 &mut properties,
             );
@@ -1372,7 +1372,7 @@ pub(in crate::game) mod tests {
         });
         mod_platform::testing::with_mods(Vec::new().into(), || {
             let mut properties = Vec::new();
-            Game::native_register_select_item_model_property(
+            crate::game::native_hooks::native_register_select_item_model_property(
                 &mod_api::RegistrationContext::new(),
                 &mut properties,
             );
@@ -1552,7 +1552,7 @@ pub(in crate::game) mod tests {
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new("cellmod", Box::new(Cell))].into();
         mod_platform::testing::with_mods(mods, || {
             let mut types = Vec::new();
-            Game::native_register_item_models(&mod_api::RegistrationContext::new(), &mut types);
+            crate::game::native_hooks::native_register_item_models(&mod_api::RegistrationContext::new(), &mut types);
             let (factories, kept) = item_render::bind_item_model_factories(types);
             assert_eq!(kept, ["cellmod:cell"]);
             let bound = item_render::decode_item_model(
@@ -1593,7 +1593,7 @@ pub(in crate::game) mod tests {
         });
         mod_platform::testing::with_mods(Vec::new().into(), || {
             let mut types = Vec::new();
-            Game::native_register_item_models(&mod_api::RegistrationContext::new(), &mut types);
+            crate::game::native_hooks::native_register_item_models(&mod_api::RegistrationContext::new(), &mut types);
             let (factories, _) = item_render::bind_item_model_factories(types);
             assert!(
                 item_render::decode_item_model(
@@ -1615,7 +1615,7 @@ pub(in crate::game) mod tests {
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new("charge", Box::new(Charge))].into();
         mod_platform::testing::with_mods(mods, || {
             let mut sources = Vec::new();
-            Game::native_register_item_tint_sources(
+            crate::game::native_hooks::native_register_item_tint_sources(
                 &mod_api::RegistrationContext::new(),
                 &mut sources,
             );
@@ -1638,7 +1638,7 @@ pub(in crate::game) mod tests {
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new("charge", Box::new(Charge))].into();
         mod_platform::testing::with_mods(mods, || {
             let mut sources = Vec::new();
-            Game::native_register_item_tint_sources(
+            crate::game::native_hooks::native_register_item_tint_sources(
                 &mod_api::RegistrationContext::new(),
                 &mut sources,
             );
@@ -1661,7 +1661,7 @@ pub(in crate::game) mod tests {
         });
         mod_platform::testing::with_mods(Vec::new().into(), || {
             let mut sources = Vec::new();
-            Game::native_register_item_tint_sources(
+            crate::game::native_hooks::native_register_item_tint_sources(
                 &mod_api::RegistrationContext::new(),
                 &mut sources,
             );

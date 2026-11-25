@@ -416,13 +416,13 @@ pub(in crate::game) fn install_registration_data(
     package_files: BTreeMap<String, Arc<dyn mod_api::PackageFileSource>>,
 ) -> sunrise_client::Result<()> {
     let packages = mod_api::__private::loaded_mods();
-    let directory = mod_api::InstanceDirectory::from_path(&Game::game_dir())
+    let directory = mod_api::InstanceDirectory::from_path(&crate::game::game_dir())
         .expect("the host path has an encoding the mod API carries");
     (mod_api::__private::platform::platform()?.install_registration_data)(
         mod_api::__private::RegistrationData::new(
             builtin_registry_names(root)?,
             sunrise_world::native_load_context::capture_settings(
-                &Game::mod_data_root(),
+                &crate::game::mod_data_root(),
                 packages.ids(),
             ),
             directory,
@@ -449,7 +449,7 @@ pub(in crate::game) fn builtin_registries(
 /// treats as no custom components, and `registries.json` isn't read.
 pub(in crate::game) fn register_components(root: &std::path::Path) -> sunrise_client::Result<()> {
     let mut names = Vec::new();
-    Game::native_component_types(&RegistrationContext::new(), &mut names);
+    crate::game::native_hooks::native_component_types(&RegistrationContext::new(), &mut names);
     if names.is_empty() {
         return Ok(());
     }
@@ -566,7 +566,7 @@ pub(in crate::game) fn native_declared() -> std::borrow::Cow<'static, NativeDecl
         use super::api_values::TryIntoEngine;
         let mut declared = NativeDeclared::default();
         let context = RegistrationContext::new();
-        Game::native_blocks(&context, &mut |listen| {
+        crate::game::native_hooks::native_blocks(&context, &mut |listen| {
             declared.stage(
                 listen,
                 |answer| {
@@ -581,7 +581,7 @@ pub(in crate::game) fn native_declared() -> std::borrow::Cow<'static, NativeDecl
                 |batch, block| batch.blocks.push(block),
             );
         });
-        Game::native_items(&context, &mut |listen| {
+        crate::game::native_hooks::native_items(&context, &mut |listen| {
             declared.stage(
                 listen,
                 |answer| {
@@ -661,7 +661,7 @@ pub(in crate::game) fn collect_fluid_models(
         return None;
     }
     let mut models = Vec::new();
-    Game::native_register_fluid_models(&RegistrationContext::new(), &mut models);
+    crate::game::native_hooks::native_register_fluid_models(&RegistrationContext::new(), &mut models);
     Some(
         models
             .into_iter()
@@ -692,10 +692,10 @@ pub(in crate::game) fn register_layer_definitions(
         return Ok(());
     }
     let mut suppliers = Vec::new();
-    Game::native_register_layer_definitions(&RegistrationContext::new(), &mut suppliers);
+    crate::game::native_hooks::native_register_layer_definitions(&RegistrationContext::new(), &mut suppliers);
     sunrise_client::mobs::model_layers::register(suppliers, vanilla_root)?;
     let mut models = Vec::new();
-    Game::native_create_skull_models(&RegistrationContext::new(), &mut models);
+    crate::game::native_hooks::native_create_skull_models(&RegistrationContext::new(), &mut models);
     sunrise_client::skull_models::register(models, vanilla_root);
     Ok(())
 }
@@ -705,14 +705,14 @@ pub(in crate::game) fn register_debug_entries(role: ExecutionRole) {
         return;
     }
     let mut entries = Vec::new();
-    Game::native_register_debug_entries(&RegistrationContext::new(), &mut entries);
+    crate::game::native_hooks::native_register_debug_entries(&RegistrationContext::new(), &mut entries);
     sunrise_client::debug_entries::register(entries);
 }
 /// The native mods' map decoration types (`native_map_decoration_types`), frozen once at start on
 /// every side.
 pub(in crate::game) fn register_map_decoration_types() {
     let mut types = Vec::new();
-    Game::native_map_decoration_types(&RegistrationContext::new(), &mut types);
+    crate::game::native_hooks::native_map_decoration_types(&RegistrationContext::new(), &mut types);
     sunrise_client::map_decoration_types::register(types, Game::is_vanilla_decoration_sprite);
 }
 /// Install the native mods' HUD draw callbacks among the vanilla anchors once at client startup.
@@ -721,7 +721,7 @@ pub(in crate::game) fn register_gui_layers(role: ExecutionRole) {
         return;
     }
     let mut layers = sunrise_client::gui_layers::GuiLayers::default();
-    Game::native_register_gui_layers(&RegistrationContext::new(), &mut layers);
+    crate::game::native_hooks::native_register_gui_layers(&RegistrationContext::new(), &mut layers);
     sunrise_client::gui_layers::freeze(layers);
 }
 /// Install the native mods' client tooltip component factories once at client startup.
@@ -730,7 +730,7 @@ pub(in crate::game) fn register_client_tooltip_component_factories(role: Executi
         return;
     }
     let mut factories = sunrise_client::tooltip_components::TooltipComponentFactories::default();
-    Game::native_register_client_tooltip_component_factories(
+    crate::game::native_hooks::native_register_client_tooltip_component_factories(
         &RegistrationContext::new(),
         &mut factories,
     );
@@ -743,7 +743,7 @@ pub(in crate::game) fn debug_renderers(
 ) -> Vec<mod_api::Answered<mod_api::DebugRenderer>> {
     let mut renderers = Vec::new();
     if role.is_client() {
-        Game::native_register_debug_renderers(&RegistrationContext::new(), entries, &mut renderers);
+        crate::game::native_hooks::native_register_debug_renderers(&RegistrationContext::new(), entries, &mut renderers);
     }
     renderers
 }
@@ -755,7 +755,7 @@ pub(in crate::game) fn register_range_select_item_model_properties(role: Executi
         return;
     }
     let mut properties = Vec::new();
-    Game::native_register_range_select_item_model_property(
+    crate::game::native_hooks::native_register_range_select_item_model_property(
         &RegistrationContext::new(),
         &mut properties,
     );
@@ -769,7 +769,7 @@ pub(in crate::game) fn register_select_item_model_properties(role: ExecutionRole
         return;
     }
     let mut properties = Vec::new();
-    Game::native_register_select_item_model_property(&RegistrationContext::new(), &mut properties);
+    crate::game::native_hooks::native_register_select_item_model_property(&RegistrationContext::new(), &mut properties);
     sunrise_client::item_render::install_select_property_factories(properties);
 }
 /// The types native mods register for resource definitions, kept once at start, before
@@ -790,22 +790,22 @@ pub(in crate::game) fn register_resource_sources(role: ExecutionRole) {
         return;
     }
     let mut sources = Vec::new();
-    Game::native_register_item_tint_sources(&RegistrationContext::new(), &mut sources);
+    crate::game::native_hooks::native_register_item_tint_sources(&RegistrationContext::new(), &mut sources);
     sunrise_client::item_render::install_item_tint_factories(sources);
     let mut sources = Vec::new();
-    Game::native_register_sprite_sources(&RegistrationContext::new(), &mut sources);
+    crate::game::native_hooks::native_register_sprite_sources(&RegistrationContext::new(), &mut sources);
     sunrise_client_render::mod_sprite_sources::register(sources);
     let mut loaders = Vec::new();
-    Game::native_register_model_loaders(&RegistrationContext::new(), &mut loaders);
+    crate::game::native_hooks::native_register_model_loaders(&RegistrationContext::new(), &mut loaders);
     sunrise_client_render::mod_model_loaders::register(loaders);
     let mut models = Vec::new();
-    Game::native_register_item_models(&RegistrationContext::new(), &mut models);
+    crate::game::native_hooks::native_register_item_models(&RegistrationContext::new(), &mut models);
     sunrise_client::item_render::install_item_model_factories(models);
     let mut types = Vec::new();
-    Game::native_register_json_animation_types(&RegistrationContext::new(), &mut types);
+    crate::game::native_hooks::native_register_json_animation_types(&RegistrationContext::new(), &mut types);
     sunrise_client_render::mod_animations::register(types);
     let mut definitions = Vec::new();
-    Game::native_register_block_state_models(&RegistrationContext::new(), &mut definitions);
+    crate::game::native_hooks::native_register_block_state_models(&RegistrationContext::new(), &mut definitions);
     sunrise_client_render::mod_block_state_models::register(definitions);
     register_special_model_renderers();
 }
@@ -815,7 +815,7 @@ pub(in crate::game) fn register_resource_sources(role: ExecutionRole) {
 /// earlier one, and the log names both mods.
 pub(in crate::game) fn register_special_model_renderers() {
     let mut registry = mod_api::SpecialModelRendererRegistry::default();
-    Game::native_register_special_model_renderer(&RegistrationContext::new(), &mut registry);
+    crate::game::native_hooks::native_register_special_model_renderer(&RegistrationContext::new(), &mut registry);
     for (kind, owner) in registry.initial_owners() {
         if sunrise_assets::item_model::SpecialModel::is_builtin_type(&kind.to_string()) {
             log::warn!(
@@ -867,7 +867,7 @@ pub(in crate::game) fn register_dimension_transition_screens(role: ExecutionRole
         return;
     }
     let mut screens = Vec::new();
-    Game::native_register_dimension_transition_screen(&RegistrationContext::new(), &mut screens);
+    crate::game::native_hooks::native_register_dimension_transition_screen(&RegistrationContext::new(), &mut screens);
     sunrise_client_render::dimension_transition::register(screens);
 }
 
@@ -877,7 +877,7 @@ pub(in crate::game) fn register_entity_spectator_shaders(role: ExecutionRole) {
         return;
     }
     let mut shaders = Vec::new();
-    Game::native_register_entity_spectator_shaders(&RegistrationContext::new(), &mut shaders);
+    crate::game::native_hooks::native_register_entity_spectator_shaders(&RegistrationContext::new(), &mut shaders);
     sunrise_client_render::spectator_shaders::register(shaders);
 }
 
@@ -886,7 +886,7 @@ pub(in crate::game) fn register_preset_editors(role: ExecutionRole) {
         return;
     }
     let mut editors = Vec::new();
-    Game::native_register_preset_editors(&RegistrationContext::new(), &mut editors);
+    crate::game::native_hooks::native_register_preset_editors(&RegistrationContext::new(), &mut editors);
     sunrise_client::title::preset_editors::register(editors);
 }
 
@@ -899,7 +899,7 @@ pub(in crate::game) fn register_render_pipelines(
         return Ok(());
     }
     let mut pipelines = Vec::new();
-    Game::native_register_render_pipelines(&RegistrationContext::new(), &mut pipelines);
+    crate::game::native_hooks::native_register_render_pipelines(&RegistrationContext::new(), &mut pipelines);
     sunrise_client_render::mod_pipelines::register(pipelines)?;
     Ok(())
 }
@@ -919,7 +919,7 @@ pub(in crate::game) fn register_color_resolvers(role: ExecutionRole) {
         return;
     }
     let mut registry = mod_api::ColorResolverRegistry::default();
-    Game::native_register_color_resolvers(&RegistrationContext::new(), &mut registry);
+    crate::game::native_hooks::native_register_color_resolvers(&RegistrationContext::new(), &mut registry);
     sunrise_client::mesher::register_color_resolvers(registry.into_resolvers());
 }
 
@@ -930,7 +930,7 @@ pub(in crate::game) fn register_block_tint_sources(role: ExecutionRole) {
         return;
     }
     let mut registry = mod_api::BlockTintRegistry::default();
-    Game::native_register_block_tint_sources(&RegistrationContext::new(), &mut registry);
+    crate::game::native_hooks::native_register_block_tint_sources(&RegistrationContext::new(), &mut registry);
     sunrise_client::mesher::register_block_tint_sources(registry.into_layers());
 }
 /// The native mods' section geometry renderers (`native_add_section_geometry`), kept once at
@@ -940,7 +940,7 @@ pub(in crate::game) fn add_section_geometry(role: ExecutionRole) {
         return;
     }
     let mut registry = mod_api::SectionGeometryRegistry::default();
-    Game::native_add_section_geometry(&RegistrationContext::new(), &mut registry);
+    crate::game::native_hooks::native_add_section_geometry(&RegistrationContext::new(), &mut registry);
     sunrise_client::mesher::register_section_geometry(registry.into_renderers());
 }
 /// The native mods' entity renderers (`native_register_entity_renderers`), kept once at start,
@@ -950,7 +950,7 @@ pub(in crate::game) fn register_entity_renderers(role: ExecutionRole) {
         return;
     }
     let mut registry = mod_api::EntityRendererRegistry::default();
-    Game::native_register_entity_renderers(&RegistrationContext::new(), &mut registry);
+    crate::game::native_hooks::native_register_entity_renderers(&RegistrationContext::new(), &mut registry);
     super::native_entity_renderers::register(registry.into_renderers());
 }
 /// The native mods' particle providers (`native_register_particle_providers`) and render groups
@@ -961,10 +961,10 @@ pub(in crate::game) fn register_particles(role: ExecutionRole) -> sunrise_client
         return Ok(());
     }
     let mut registry = mod_api::ParticleProviderRegistry::default();
-    Game::native_register_particle_providers(&RegistrationContext::new(), &mut registry);
+    crate::game::native_hooks::native_register_particle_providers(&RegistrationContext::new(), &mut registry);
     sunrise_client::particles::register_particle_providers(registry.into_providers());
     let mut group_factories = Vec::new();
-    Game::native_register_particle_groups(&RegistrationContext::new(), &mut group_factories);
+    crate::game::native_hooks::native_register_particle_groups(&RegistrationContext::new(), &mut group_factories);
     sunrise_client::particles::register_particle_groups(group_factories)?;
     Ok(())
 }
@@ -1649,7 +1649,7 @@ pub(in crate::game) fn register_block_entity_types(
             .filter_map(mod_api::__private::block_entity_type_key)
             .collect();
         let mut additions = Vec::new();
-        Game::native_block_entity_type_add_blocks(
+        crate::game::native_hooks::native_block_entity_type_add_blocks(
             &RegistrationContext::new(),
             &keys,
             &mut additions,
@@ -2140,7 +2140,7 @@ impl Game<'_> {
     /// (`content_root`); native ones are built into the game (`native_hooks.rs`). Unsupported
     /// files get the same unreadable-file row as any other invalid package.
     pub(in crate::game) fn start_mods(&mut self) {
-        let dir = Self::game_dir().join(mod_list::DIR);
+        let dir = crate::game::game_dir().join(mod_list::DIR);
         let mut paths = sunrise_mod_package::find(&dir);
         paths.retain(|p| !self.mods.dev.contains(p));
         paths.extend(self.mods.dev.iter().cloned());
@@ -2209,7 +2209,7 @@ impl Game<'_> {
             mod_api::content::crash::set_detail("Native Mods", list);
         }
 
-        let native_dir = Self::game_dir().join(mod_list::NATIVE_DIR);
+        let native_dir = crate::game::game_dir().join(mod_list::NATIVE_DIR);
         let unbuilt = not_built(&native_dir, built, &self.settings.mods.installed);
         self.settings.mods.installed.extend(unbuilt);
         self.mods.report_refusals(&mut self.settings.mods.installed);
@@ -2397,7 +2397,7 @@ pub(in crate::game) fn collect_poi_extensions(
         return (Vec::new(), Vec::new());
     };
     let mut extensions = mod_api::PoiTypeExtensionRegistry::new(metadata);
-    Game::native_extend_poi_types(&RegistrationContext::new(), &mut extensions);
+    crate::game::native_hooks::native_extend_poi_types(&RegistrationContext::new(), &mut extensions);
     let mut additions = Vec::new();
     let mut refusals = Vec::new();
     for (poi, predicate) in extensions.into_entries() {
@@ -2460,7 +2460,7 @@ pub(in crate::game) fn collect_cauldron_fluid_contents(
 ) {
     use crate::game::machines::cauldron_contents::{CauldronContent, CauldronContents};
     let mut registrations = mod_api::CauldronFluidContentRegistry::default();
-    Game::native_register_cauldron_fluid_content(&RegistrationContext::new(), &mut registrations);
+    crate::game::native_hooks::native_register_cauldron_fluid_content(&RegistrationContext::new(), &mut registrations);
     let mut contents = CauldronContents::vanilla();
     let mut refusals = Vec::new();
     for registration in registrations.into_entries() {
@@ -2492,7 +2492,7 @@ pub(in crate::game) static ENCHANTMENT_DAMAGE_EFFECTS: std::sync::OnceLock<
 
 pub(in crate::game) fn register_enchantment_damage_effects() {
     let mut effects = mod_api::EnchantmentDamageRegistry::default();
-    Game::native_register_enchantment_damage_effects(
+    crate::game::native_hooks::native_register_enchantment_damage_effects(
         &mod_api::RegistrationContext::new(),
         &mut effects,
     );

@@ -471,7 +471,7 @@ impl Game<'_> {
     /// Selection/F3+T and server-pack reloads share this point; initial startup does not
     /// (`client_setup` is the once-only moment after the initial load).
     pub(in crate::game) fn native_client_resources_reloaded(&mut self) {
-        Self::fire_client_resources_reloaded(self);
+        crate::game::native_hooks::fire::fire_client_resources_reloaded(self);
     }
     /// The client made a new level for `dimension` (NeoForge's
     /// `LevelEvent.Load` from the `ClientLevel` constructor): on joining a
@@ -859,41 +859,6 @@ impl Game<'_> {
     pub(in crate::game) fn native_shader_params(&self, partial: f32, params: &mut [[f32; 4]; 8]) {
         self.fire_shader_params(partial, params);
     }
-    /// Register namespaced NBT component types before content loads.
-    pub(in crate::game) fn native_component_types(
-        context: &mod_api::RegistrationContext,
-        types: &mut Vec<String>,
-    ) {
-        Self::fire_component_types(context, types);
-    }
-    /// Collect blocks from native mods once at startup on each side, before resources load.
-    /// Each declaration belongs to the submitting package and joins the content declarations
-    /// used by saves and the join check. The event's `register` call returns a typed error for
-    /// invalid IDs or fields. A completed listener's refusals stop startup even if ignored;
-    /// a panicking listener's batch and diagnostics are discarded.
-    pub(in crate::game) fn native_blocks(
-        context: &mod_api::RegistrationContext,
-        blocks: &mut mod_api::__private::DeclarationStage<'_, mod_api::Block>,
-    ) {
-        Self::fire_blocks(context, blocks);
-    }
-    /// Collect items from native mods at the same startup cutoff as `native_blocks`,
-    /// with the same ownership and refusal rules. A block's item is declared with its block,
-    /// not here.
-    pub(in crate::game) fn native_items(
-        context: &mod_api::RegistrationContext,
-        items: &mut mod_api::__private::DeclarationStage<'_, mod_api::Item>,
-    ) {
-        Self::fire_items(context, items);
-    }
-    /// Standalone files and bakers, registered before resource loading.
-    /// Every resource load rebakes them; dispatch attributes each entry to its owning mod.
-    pub(in crate::game) fn native_standalone_models(
-        context: &mod_api::RegistrationContext,
-        registrations: &mut Vec<Answered<StandaloneModelRegistration>>,
-    ) {
-        Self::fire_standalone_models(context, registrations);
-    }
     /// The player changed setting `key` of mod `mod_id` on its page in Options > Mods; the new
     /// value is kept already.
     pub(in crate::game) fn native_setting_changed(&mut self, mod_id: &str, key: &str) {
@@ -986,20 +951,6 @@ impl Game<'_> {
         user: mod_api::EntityRef,
     ) {
         self.fire_consume_effect(kind, data, stack, user);
-    }
-    /// What clients get of the block entity at `pos` when its `id` is
-    /// yours (`BlockEntity.getUpdateTag`): set `tag` to it, read from
-    /// `entity` alone. Asked on the server whenever a chunk holding it is
-    /// sent and whenever its block changes, on the server thread; a client's copy of the block
-    /// entity (made by `native_block_entity` there) merges it into its `nbt`.
-    /// Leave it unset to send no tag of yours. A block change puts the one-shot fields of
-    /// `BlockEntityView::set_client_update_fields` over it, and sends them alone when it is unset.
-    pub(in crate::game) fn native_block_entity_update_tag(
-        pos: [i32; 3],
-        entity: &ModBlockEntity,
-        tag: &mut Option<Compound>,
-    ) {
-        Self::fire_block_entity_update_tag(pos, entity, tag);
     }
     /// Draw the mod block entity at `pos`, of block `block`
     /// (`mymod:machine`), on this client: once a frame while it is in view
@@ -1275,20 +1226,6 @@ impl Game<'_> {
     ) {
         self.fire_screen_char_typed_pre(screen, c, modifiers, field, canceled);
     }
-    /// A player pressed a mod menu's button (`clickMenuButton`), on the
-    /// server. `subject` lends sequential access to the live resident block
-    /// entity (when present) and the server `Host`; blockless menus lend no
-    /// view while keeping `host()` and `transaction(...)` usable. Mods may
-    /// change the block entity in place and the clicking player's carried stack.
-    pub(in crate::game) fn native_menu_button(
-        menu: &str,
-        block: Option<&str>,
-        context: &mod_api::item::menu::MenuButtonContext,
-        subject: mod_api::BlockEntityScope<'_>,
-        carried: &mut Option<mod_api::ItemStack>,
-    ) {
-        Self::fire_menu_button(menu, block, context, subject, carried);
-    }
     /// Whether the owner of this menu accepts button `id`. The active menu's owner
     /// decides its own IDs; the game does not impose a shared numeric range.
     pub(in crate::game) fn native_menu_button_valid(
@@ -1299,27 +1236,6 @@ impl Game<'_> {
         accepted: &mut bool,
     ) {
         self.fire_menu_button_valid(menu, block, id, accepted);
-    }
-    /// The accepted menu lends its resident block entity and asks the Parts to route the move.
-    pub(in crate::game) fn native_menu_quick_move(
-        kind: mod_api::BlockEntityTypeKey,
-        subject: mod_api::BlockEntityScope<'_>,
-        container_slots: usize,
-        slot: usize,
-        stack: &mut Option<mod_api::ItemStack>,
-        handled: &mut bool,
-    ) -> bool {
-        let mut panicked = false;
-        Self::fire_menu_quick_move(
-            kind,
-            subject,
-            container_slots,
-            slot,
-            stack,
-            handled,
-            &mut panicked,
-        );
-        panicked
     }
     /// The commands native mods add to the session's tree: push the complete current set.
     /// Asked at world open before functions compile, on each reload and data pack change,
@@ -4052,6 +3968,98 @@ impl Game<'_> {
     }
 }
 
+/// Register namespaced NBT component types before content loads.
+pub(in crate::game) fn native_component_types(
+    context: &mod_api::RegistrationContext,
+    types: &mut Vec<String>,
+) {
+    crate::game::native_hooks::fire::fire_component_types(context, types);
+}
+
+/// Collect blocks from native mods once at startup on each side, before resources load.
+/// Each declaration belongs to the submitting package and joins the content declarations
+/// used by saves and the join check. The event's `register` call returns a typed error for
+/// invalid IDs or fields. A completed listener's refusals stop startup even if ignored;
+/// a panicking listener's batch and diagnostics are discarded.
+pub(in crate::game) fn native_blocks(
+    context: &mod_api::RegistrationContext,
+    blocks: &mut mod_api::__private::DeclarationStage<'_, mod_api::Block>,
+) {
+    crate::game::native_hooks::fire::fire_blocks(context, blocks);
+}
+
+/// Collect items from native mods at the same startup cutoff as `native_blocks`,
+/// with the same ownership and refusal rules. A block's item is declared with its block,
+/// not here.
+pub(in crate::game) fn native_items(
+    context: &mod_api::RegistrationContext,
+    items: &mut mod_api::__private::DeclarationStage<'_, mod_api::Item>,
+) {
+    crate::game::native_hooks::fire::fire_items(context, items);
+}
+
+/// Standalone files and bakers, registered before resource loading.
+/// Every resource load rebakes them; dispatch attributes each entry to its owning mod.
+pub(in crate::game) fn native_standalone_models(
+    context: &mod_api::RegistrationContext,
+    registrations: &mut Vec<Answered<StandaloneModelRegistration>>,
+) {
+    crate::game::native_hooks::fire::fire_standalone_models(context, registrations);
+}
+
+/// What clients get of the block entity at `pos` when its `id` is
+/// yours (`BlockEntity.getUpdateTag`): set `tag` to it, read from
+/// `entity` alone. Asked on the server whenever a chunk holding it is
+/// sent and whenever its block changes, on the server thread; a client's copy of the block
+/// entity (made by `native_block_entity` there) merges it into its `nbt`.
+/// Leave it unset to send no tag of yours. A block change puts the one-shot fields of
+/// `BlockEntityView::set_client_update_fields` over it, and sends them alone when it is unset.
+pub(in crate::game) fn native_block_entity_update_tag(
+    pos: [i32; 3],
+    entity: &ModBlockEntity,
+    tag: &mut Option<Compound>,
+) {
+    crate::game::native_hooks::fire::fire_block_entity_update_tag(pos, entity, tag);
+}
+
+/// A player pressed a mod menu's button (`clickMenuButton`), on the
+/// server. `subject` lends sequential access to the live resident block
+/// entity (when present) and the server `Host`; blockless menus lend no
+/// view while keeping `host()` and `transaction(...)` usable. Mods may
+/// change the block entity in place and the clicking player's carried stack.
+pub(in crate::game) fn native_menu_button(
+    menu: &str,
+    block: Option<&str>,
+    context: &mod_api::item::menu::MenuButtonContext,
+    subject: mod_api::BlockEntityScope<'_>,
+    carried: &mut Option<mod_api::ItemStack>,
+) {
+    crate::game::native_hooks::fire::fire_menu_button(menu, block, context, subject, carried);
+}
+
+/// The accepted menu lends its resident block entity and asks the Parts to route the move.
+pub(in crate::game) fn native_menu_quick_move(
+    kind: mod_api::BlockEntityTypeKey,
+    subject: mod_api::BlockEntityScope<'_>,
+    container_slots: usize,
+    slot: usize,
+    stack: &mut Option<mod_api::ItemStack>,
+    handled: &mut bool,
+) -> bool {
+    let mut panicked = false;
+    crate::game::native_hooks::fire::fire_menu_quick_move(
+        kind,
+        subject,
+        container_slots,
+        slot,
+        stack,
+        handled,
+        &mut panicked,
+    );
+    panicked
+}
+
+
 impl HitLevel<'_> {
     /// NeoForge's `LivingIncomingDamageEvent`: `LivingEntity.hurtServer`, past its guards (an
     /// invulnerable or dead entity, fire on a fire-resistant one), is about to hurt entity
@@ -4422,38 +4430,28 @@ impl Game<'_> {
     /// The folder the game runs in (`--player-dir` moves a player's options
     /// and servers only, not the instance). Nothing is created.
     pub(in crate::game) fn instance_dir(&self) -> PathBuf {
-        Self::game_dir()
+        crate::game::game_dir()
     }
     /// A mod's setting `key` (one file per key in `native_data_dir`). A mod's hook or part reads
     /// only its own mod's: another mod's id gives None.
     pub(in crate::game) fn setting(&self, mod_id: &str, key: &str) -> Option<String> {
-        if Self::another_mods(mod_id) {
+        if crate::game::another_mods(mod_id) {
             return None;
         }
         self.stored_setting(mod_id, key)
-    }
-    pub(in crate::game) fn startup_setting(mod_id: &str, key: &str) -> Option<String> {
-        if Self::another_mods(mod_id) {
-            return None;
-        }
-        mod_settings::read_raw(&Self::mod_data_root().join(mod_id), mod_id, key)
     }
     pub(in crate::game) fn stored_setting(&self, mod_id: &str, key: &str) -> Option<String> {
         mod_settings::read_raw(&self.native_data_dir(mod_id), mod_id, key)
     }
     /// Keeps a mod's setting `key`. A mod's hook or part keeps only its own mod's.
     pub(in crate::game) fn set_setting(&self, mod_id: &str, key: &str, value: &str) {
-        if Self::another_mods(mod_id) {
+        if crate::game::another_mods(mod_id) {
             return;
         }
         self.store_setting(mod_id, key, value);
     }
     pub(in crate::game) fn store_setting(&self, mod_id: &str, key: &str, value: &str) -> bool {
         mod_settings::store(&self.native_data_dir(mod_id), mod_id, key, value)
-    }
-    /// A mod's hook or part is running, and `mod_id` is another mod's.
-    pub(in crate::game) fn another_mods(mod_id: &str) -> bool {
-        mod_api::content::crash::current_native_mod().is_some_and(|running| running != mod_id)
     }
     /// The recipes of type `kind` (`minecraft:smelting`, `mymod:crusher`), vanilla's
     /// types and mods' own alike, from `data/<namespace>/recipe/*.json` of vanilla,
@@ -4572,6 +4570,19 @@ impl Game<'_> {
         self.creative_give_stack(stack)
     }
 }
+
+pub(in crate::game) fn startup_setting(mod_id: &str, key: &str) -> Option<String> {
+    if crate::game::another_mods(mod_id) {
+        return None;
+    }
+    mod_settings::read_raw(&crate::game::mod_data_root().join(mod_id), mod_id, key)
+}
+
+/// A mod's hook or part is running, and `mod_id` is another mod's.
+pub(in crate::game) fn another_mods(mod_id: &str) -> bool {
+    mod_api::content::crash::current_native_mod().is_some_and(|running| running != mod_id)
+}
+
 
 /// The level a placement or survival question is asked of: the game's level with the
 /// simulation's ticks shared beside it, which a signal read needs (comparator outputs, moving

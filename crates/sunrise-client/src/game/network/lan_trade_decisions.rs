@@ -218,7 +218,7 @@ impl Game<'_> {
         let mob = identity.target.id();
         let button = i32::from(p.button);
         let mut stacked = None::<StackedOutcome>;
-        if input == Input::Pickup && Self::stacked_listened() {
+        if input == Input::Pickup && crate::game::stacked_listened() {
             let mut seen = None;
             self.lan_merchant_op_with(
                 conn,
@@ -229,7 +229,7 @@ impl Game<'_> {
                     seen = menu.stacked_click(env, 2, button, input);
                 },
             );
-            if let Some(frozen) = seen.filter(Self::stacked_listens_for) {
+            if let Some(frozen) = seen.filter(crate::game::stacked_listens_for) {
                 let host = self.lan.as_ref().unwrap();
                 let stamp = host.menus[&conn].merchant.stamp();
                 let hub_generation = host.hub.guest(conn).expect("planned guest").menu_generation;

@@ -1,13 +1,15 @@
 use super::*;
-impl Game<'_> {
-    /// The block states mods add to vanilla POI types, once the block registry is resolved.
-    pub(in crate::game) fn native_extend_poi_types(
-        context: &mod_api::RegistrationContext,
-        extensions: &mut mod_api::PoiTypeExtensionRegistry<'_>,
-    ) {
-        Self::fire_extend_poi_types(context, |listen| extensions.register_listener(listen));
-    }
+
+
+
+/// The block states mods add to vanilla POI types, once the block registry is resolved.
+pub(in crate::game) fn native_extend_poi_types(
+    context: &mod_api::RegistrationContext,
+    extensions: &mut mod_api::PoiTypeExtensionRegistry<'_>,
+) {
+    crate::game::native_hooks::fire::fire_extend_poi_types(context, |listen| extensions.register_listener(listen));
 }
+
 
 #[cfg(test)]
 mod tests {

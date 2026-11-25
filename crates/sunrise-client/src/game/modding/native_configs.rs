@@ -161,7 +161,7 @@ impl NativeConfigs {
 impl Game<'_> {
     /// Asks the mods for their configs and loads those of `kinds`.
     fn native_configs_load(&mut self, kinds: &[mod_api::ConfigKind], world: Option<&Path>) {
-        let config_dir = match Self::native_config_dir() {
+        let config_dir = match crate::game::native_config_dir() {
             Ok(dir) => dir,
             Err(e) => {
                 log::warn!("Sunrise: mod configs: {e}");

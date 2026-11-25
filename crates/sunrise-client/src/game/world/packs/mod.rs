@@ -117,7 +117,7 @@ pub(in crate::game) fn clear_selection(settings: &mut super::Settings) {
         "incompatibleResourcePacks",
         sunrise_client::options_file::V::List(Vec::new()),
     );
-    settings.save(&Game::options_path());
+    settings.save(&crate::game::options_path());
 }
 
 /// Client packs overlay assets only, never the prepared tables or passive server data.
@@ -444,7 +444,7 @@ impl Game<'_> {
         // Only content-only packages are selectable on reload. Keep code packages' validated
         // startup manifests: changing their content must not install code or registries live.
         self.mods.selected = sunrise_mod_package::selection::content_packages(
-            &Self::game_dir(),
+            &crate::game::game_dir(),
             &enabled,
             &self.mods.dev,
         )

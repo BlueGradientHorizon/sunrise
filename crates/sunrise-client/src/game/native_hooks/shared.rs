@@ -2336,7 +2336,7 @@ impl Game<'_> {
                 Some((handle, state)) => ResidentBlockEntityAccess::for_handle(self, handle, state),
                 None => ResidentBlockEntityAccess::blockless(self),
             };
-            Game::native_menu_button(
+            crate::game::native_hooks::native_menu_button(
                 menu,
                 block,
                 &context,

@@ -38,7 +38,7 @@ impl Game<'_> {
                 "skipMultiplayerWarning",
                 sunrise_client::options_file::V::Bool(title.skip_multiplayer_warning),
             );
-            self.settings.save(&Self::options_path());
+            self.settings.save(&crate::game::options_path());
         }
     }
     /// `options-get` and `options-set`; None for other commands.
@@ -104,18 +104,9 @@ impl Game<'_> {
             _ => Ok(None),
         }
     }
-    /// This player's `options.txt`: in the game folder, or in `--player-dir` when several
-    /// players share one (`logging::set_player_dir`).
-    pub(in crate::game) fn options_path() -> std::path::PathBuf {
-        sunrise_client::logging::player_dir().join("options.txt")
-    }
-    /// The game folder (the working directory): what its players share, saves, packs, mods.
-    pub(in crate::game) fn game_dir() -> std::path::PathBuf {
-        std::env::current_dir().unwrap_or_default()
-    }
     /// `shaderpacks/` in the game folder.
     pub(in crate::game::client_side) fn shader_packs_dir() -> std::path::PathBuf {
-        Self::game_dir().join(sunrise_client::shader_pack_list::DIR)
+        crate::game::game_dir().join(sunrise_client::shader_pack_list::DIR)
     }
     pub(in crate::game) fn gui_size(&self) -> (f32, f32) {
         let size = self
@@ -436,7 +427,7 @@ impl Game<'_> {
                 Event::ButtonClick => self.audio.0.play_button_click(),
                 Event::DebugEntriesChanged => self.debug_entries.0.invalidate(),
                 Event::Changed => {
-                    self.settings.save(&Self::options_path());
+                    self.settings.save(&crate::game::options_path());
                     self.settings.keys.sync_action_bindings();
                     self.apply_settings();
                     self.switch_mods();
@@ -467,18 +458,18 @@ impl Game<'_> {
                 Event::PlayMusicTrack(event, track) => self.play_music_track(&event, &track),
                 Event::Close if self.ui.options.resource_error.is_some() => {}
                 Event::Close => {
-                    self.settings.save(&Self::options_path());
+                    self.settings.save(&crate::game::options_path());
                     self.leave_options();
                 }
                 Event::Language(code) => {
                     self.load_language(&code);
                 }
                 Event::Packs(_) => {
-                    self.settings.save(&Self::options_path());
+                    self.settings.save(&crate::game::options_path());
                     self.reload_packs();
                 }
                 Event::ReloadTextures => {
-                    self.settings.save(&Self::options_path());
+                    self.settings.save(&crate::game::options_path());
                     self.apply_settings();
                     self.reload_packs();
                 }
@@ -524,7 +515,7 @@ impl Game<'_> {
                     super::packs::open_folder(&dir);
                 }
                 Event::OpenModFolder => {
-                    let dir = Self::game_dir().join(sunrise_client::mod_list::DIR);
+                    let dir = crate::game::game_dir().join(sunrise_client::mod_list::DIR);
                     let _ = std::fs::create_dir_all(&dir);
                     super::packs::open_folder(&dir);
                 }
@@ -536,12 +527,12 @@ impl Game<'_> {
                 }
                 Event::BrowseMods => {
                     let ui = &mut self.ui.options.mod_browser;
-                    self.mod_jobs.0.browse(ui, Self::game_dir());
+                    self.mod_jobs.0.browse(ui, crate::game::game_dir());
                 }
                 Event::InstallMod(id) => {
                     if self.player.is_none() {
                         let ui = &mut self.ui.options.mod_browser;
-                        self.mod_jobs.0.install(ui, Self::game_dir(), id);
+                        self.mod_jobs.0.install(ui, crate::game::game_dir(), id);
                     }
                 }
                 // The website, through ConfirmLinkScreen as other links.
@@ -553,13 +544,13 @@ impl Game<'_> {
                     );
                     if key != self.settings.sunrise.shader_pack {
                         self.settings.sunrise.shader_pack = key;
-                        self.settings.save(&Self::options_path());
+                        self.settings.save(&crate::game::options_path());
                     }
                     self.settings.shader_packs =
                         sunrise_client::shader_pack_list::scan(&Self::shader_packs_dir());
                 }
                 // Saved; the next frame's `shader_pack_inputs` loads the pick.
-                Event::ShaderPack => self.settings.save(&Self::options_path()),
+                Event::ShaderPack => self.settings.save(&crate::game::options_path()),
                 Event::OpenShaderOptions => self.open_shader_options(),
                 Event::ShaderOptions => self.save_shader_options(),
                 Event::NativePackOptions(i) => {
@@ -645,7 +636,7 @@ impl Game<'_> {
         // driver's is dropped, so HDR output is tried again.
         if let Some(driver) = self.renderer.0.as_ref().and_then(|r| r.hdr_driver())
             && self.settings.sunrise.settle_failed_start(driver)
-            && let Some(dir) = Self::options_path().parent()
+            && let Some(dir) = crate::game::options_path().parent()
         {
             self.settings.sunrise.save(dir);
         }
@@ -687,7 +678,7 @@ impl Game<'_> {
             let _ = r.set_gpu_culling(gpu_culling);
             r.update_output(
                 &s.sunrise,
-                &Self::options_path().with_file_name(sunrise_client::graphics::HDR_MARKER),
+                &crate::game::options_path().with_file_name(sunrise_client::graphics::HDR_MARKER),
             );
         }
         let mut volumes = s.volumes.map(|gain| gain as f32);
@@ -765,14 +756,14 @@ impl Game<'_> {
             && self.settings.fullscreen != now
         {
             self.settings.fullscreen = now;
-            self.settings.save(&Self::options_path());
+            self.settings.save(&crate::game::options_path());
             self.notify_window_resize();
         }
     }
     /// F11 (key.fullscreen): Window.toggleFullScreen, remembered in options.txt.
     pub(in crate::game::client_side) fn toggle_fullscreen(&mut self) {
         self.settings.fullscreen = !self.settings.fullscreen;
-        self.settings.save(&Self::options_path());
+        self.settings.save(&crate::game::options_path());
         self.apply_ui_settings();
     }
     /// The Extras page's shader pack key: turns the picked pack off, or asks for the last
@@ -801,7 +792,7 @@ impl Game<'_> {
             }
             TogglePlan::HintClearLast => {
                 self.settings.extras.last_shader_pack.clear();
-                self.settings.save(&Self::options_path());
+                self.settings.save(&crate::game::options_path());
                 self.client_system_message(Text::tr("sunrise.shaders.noPack", &[]));
             }
             TogglePlan::HintModOff(name) => {
@@ -809,12 +800,12 @@ impl Game<'_> {
             }
             TogglePlan::Off(name) => {
                 self.settings.set_shader_pick("");
-                self.settings.save(&Self::options_path());
+                self.settings.save(&crate::game::options_path());
                 self.client_system_message(Text::tr("sunrise.shaders.suspended", &[&name]));
             }
             TogglePlan::On(name) => {
                 self.settings.set_shader_pick(&name);
-                self.settings.save(&Self::options_path());
+                self.settings.save(&crate::game::options_path());
                 self.client_system_message(Text::tr("sunrise.shaders.resumed", &[&name]));
             }
         }
@@ -894,6 +885,18 @@ impl Game<'_> {
         }
     }
 }
+
+/// This player's `options.txt`: in the game folder, or in `--player-dir` when several
+/// players share one (`logging::set_player_dir`).
+pub(in crate::game) fn options_path() -> std::path::PathBuf {
+    sunrise_client::logging::player_dir().join("options.txt")
+}
+
+/// The game folder (the working directory): what its players share, saves, packs, mods.
+pub(in crate::game) fn game_dir() -> std::path::PathBuf {
+    std::env::current_dir().unwrap_or_default()
+}
+
 
 impl Game<'_> {
     /// Fullbright as this window may draw it (`fullbright_held`): the renderer's flag and the

@@ -47,10 +47,10 @@ impl Game<'_> {
     ) -> Option<Vec<ItemStack>> {
         let host = self.lan.as_mut()?;
         let mut prepared = host.hub.prepare_click(conn, p, &self.world, false)?;
-        let frozen = if Self::stacked_listened() {
+        let frozen = if crate::game::stacked_listened() {
             host.hub
                 .stacked_click(&mut prepared, p)
-                .filter(Self::stacked_listens_for)
+                .filter(crate::game::stacked_listens_for)
         } else {
             None
         };

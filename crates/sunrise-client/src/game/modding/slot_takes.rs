@@ -42,7 +42,7 @@ impl Game<'_> {
                 }
                 None => ResidentBlockEntityAccess::blockless(self),
             };
-            Game::native_menu_slot_take(
+            crate::game::native_hooks::native_menu_slot_take(
                 menu,
                 mod_api::BlockEntityScope::new(&mut access),
                 player,

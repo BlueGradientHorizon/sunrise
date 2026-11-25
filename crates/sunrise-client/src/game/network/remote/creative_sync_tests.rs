@@ -22,7 +22,7 @@ fn the_creative_sync_covers_inventory_menu_slots_5_to_45_once_each() {
         .collect();
     // Each entry goes to the menu slot that holds that stack.
     for (i, &slot) in slots.iter().enumerate() {
-        let game_slot = Game::inventory_screen_slot("inventory", i32::from(slot)).unwrap();
+        let game_slot = crate::game::inventory_screen_slot("inventory", i32::from(slot)).unwrap();
         let expected = match game_slot {
             0..36 => &inventory[game_slot],
             504 => &offhand,

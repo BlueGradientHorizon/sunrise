@@ -535,7 +535,7 @@ impl Game<'_> {
         let op = move |menu: &mut Menu, env: &Env| {
             let _ = menu.click(env, slot, button, input);
         };
-        if !Self::stacked_listened() || !matches!(input, Input::Pickup | Input::QuickCraft) {
+        if !crate::game::stacked_listened() || !matches!(input, Input::Pickup | Input::QuickCraft) {
             return self.lan_merchant_op(conn, Some(p.container), false, op);
         }
         // Freeze what the click finds as the guest's trade state makes it, without a write.
@@ -549,7 +549,7 @@ impl Game<'_> {
                 found = menu.stacked_click(env, slot, button, input);
             },
         );
-        let Some(frozen) = found.filter(Self::stacked_listens_for) else {
+        let Some(frozen) = found.filter(crate::game::stacked_listens_for) else {
             return self.lan_merchant_op(conn, Some(p.container), false, op);
         };
         let route = match self.lan.as_mut() {

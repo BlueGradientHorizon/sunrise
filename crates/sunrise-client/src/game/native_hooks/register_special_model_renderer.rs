@@ -1,19 +1,21 @@
 use super::*;
 
-impl Game<'_> {
-    /// Collect the mods' special item model factories once at client startup, before loading
-    /// resources (NeoForge's `RegisterSpecialModelRendererEvent`). The last registration of a
-    /// type wins over any earlier mod or builtin registration. Resource loads reuse the factories
-    /// to decode and bake each `minecraft:special` node, rather than firing this hook again.
-    pub(in crate::game) fn native_register_special_model_renderer(
-        context: &mod_api::RegistrationContext,
-        renderers: &mut mod_api::SpecialModelRendererRegistry,
-    ) {
-        Self::fire_register_special_model_renderer(context, |listen| {
-            renderers.register_listener(listen)
-        });
-    }
+
+
+
+/// Collect the mods' special item model factories once at client startup, before loading
+/// resources (NeoForge's `RegisterSpecialModelRendererEvent`). The last registration of a
+/// type wins over any earlier mod or builtin registration. Resource loads reuse the factories
+/// to decode and bake each `minecraft:special` node, rather than firing this hook again.
+pub(in crate::game) fn native_register_special_model_renderer(
+    context: &mod_api::RegistrationContext,
+    renderers: &mut mod_api::SpecialModelRendererRegistry,
+) {
+    crate::game::native_hooks::fire::fire_register_special_model_renderer(context, |listen| {
+        renderers.register_listener(listen)
+    });
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -113,7 +115,7 @@ mod tests {
             .into(),
             || {
                 let mut registry = SpecialModelRendererRegistry::default();
-                Game::native_register_special_model_renderer(
+                crate::game::native_hooks::native_register_special_model_renderer(
                     &RegistrationContext::new(),
                     &mut registry,
                 );

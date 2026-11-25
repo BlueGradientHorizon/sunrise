@@ -203,7 +203,7 @@ impl mod_api::prelude::DatafixHost for LootAbilityHost {
         data_version: i32,
         nbt: mod_api::Compound,
     ) -> Result<mod_api::Compound, mod_api::NbtUpgradeError> {
-        crate::game::Game::upgrade_nbt(kind, data_version, nbt)
+        crate::game::upgrade_nbt(kind, data_version, nbt)
     }
 }
 

@@ -48,7 +48,7 @@ impl Game<'_> {
     ) -> Option<Option<ItemStack>> {
         if !self.is_logical_server() {
             let name = self.native_client_menu_name(menu)?;
-            let index = Self::inventory_screen_slot(name, i32::try_from(slot).ok()?)?;
+            let index = crate::game::inventory_screen_slot(name, i32::try_from(slot).ok()?)?;
             return Some(self.slot_view(index));
         }
         let backing = self.menu_slot_backing(menu, slot)?;

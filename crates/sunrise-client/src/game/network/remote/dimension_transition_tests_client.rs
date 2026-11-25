@@ -76,7 +76,7 @@ fn a_failed_presentation_discards_its_draws_without_disabling_its_factory() {
                 .into(),
                 || {
                     let mut registrations = Vec::new();
-                    super::Game::native_register_dimension_transition_screen(
+                    crate::game::native_hooks::native_register_dimension_transition_screen(
                         &mod_api::RegistrationContext::new(),
                         &mut registrations,
                     );

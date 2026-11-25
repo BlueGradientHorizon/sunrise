@@ -347,7 +347,7 @@ impl PlacementAttempt {
             }
         };
         let mut allowed = None;
-        Game::native_can_place_item(
+        crate::game::native_hooks::native_can_place_item(
             snapshot,
             mod_api::BlockPos::new(x, y, z),
             state,

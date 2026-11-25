@@ -4,26 +4,46 @@ use serde_json::{Value, json};
 use std::{collections::BTreeMap, fs, path::Path};
 use syn::{Item, spanned::Spanned};
 
+fn normalize_area_stem(stem: &str) -> &str {
+    stem.strip_suffix("_server")
+        .or_else(|| stem.strip_suffix("_client"))
+        .unwrap_or(stem)
+}
+
 /// Return catalog areas and lossless item line ranges for the source splitter.
 pub fn native_hook_layout(root: &Path, source: &str) -> Result<Value, String> {
     let mut engine_areas = BTreeMap::new();
     for path in sunrise_game_discovery::native_hook_files(root)? {
-        let area = path.file_stem().unwrap().to_string_lossy().into_owned();
+        let raw_area = path.file_stem().unwrap().to_string_lossy().into_owned();
+        let area = normalize_area_stem(&raw_area).to_owned();
         let file = syn::parse_file(&fs::read_to_string(&path).map_err(|e| e.to_string())?)
             .map_err(|e| e.to_string())?;
         for item in file.items {
-            if let Item::Impl(item) = item {
-                for method in item.items {
-                    if let syn::ImplItem::Fn(method) = method {
-                        let name = method.sig.ident.to_string();
-                        if name.starts_with("native_")
-                            && let Some(previous) = engine_areas.insert(name.clone(), area.clone())
-                            && previous != area
-                        {
-                            return Err(format!("{name}: found in both {previous} and {area}"));
+            match item {
+                Item::Impl(item) => {
+                    for method in item.items {
+                        if let syn::ImplItem::Fn(method) = method {
+                            let name = method.sig.ident.to_string();
+                            if name.starts_with("native_")
+                                && let Some(previous) =
+                                    engine_areas.insert(name.clone(), area.clone())
+                                && previous != area
+                            {
+                                return Err(format!("{name}: found in both {previous} and {area}"));
+                            }
                         }
                     }
                 }
+                Item::Fn(func) => {
+                    let name = func.sig.ident.to_string();
+                    if name.starts_with("native_")
+                        && let Some(previous) = engine_areas.insert(name.clone(), area.clone())
+                        && previous != area
+                    {
+                        return Err(format!("{name}: found in both {previous} and {area}"));
+                    }
+                }
+                _ => {}
             }
         }
     }
@@ -86,21 +106,28 @@ mod tests {
                 continue;
             }
             let file = syn::parse_file(&std::fs::read_to_string(&path).unwrap()).unwrap();
+            let stem = super::normalize_area_stem(path.file_stem().unwrap().to_str().unwrap());
             for item in file.items {
-                if let syn::Item::Impl(item) = item {
-                    for method in item.items {
-                        if let syn::ImplItem::Fn(method) = method {
-                            let name = method.sig.ident.to_string();
-                            if let Some(area) = areas.get(&name) {
-                                assert_eq!(
-                                    path.file_stem().unwrap().to_str().unwrap(),
-                                    area.as_str().unwrap(),
-                                    "{name}"
-                                );
-                                found.insert(name);
+                match item {
+                    syn::Item::Impl(item) => {
+                        for method in item.items {
+                            if let syn::ImplItem::Fn(method) = method {
+                                let name = method.sig.ident.to_string();
+                                if let Some(area) = areas.get(&name) {
+                                    assert_eq!(stem, area.as_str().unwrap(), "{name}");
+                                    found.insert(name);
+                                }
                             }
                         }
                     }
+                    syn::Item::Fn(func) => {
+                        let name = func.sig.ident.to_string();
+                        if let Some(area) = areas.get(&name) {
+                            assert_eq!(stem, area.as_str().unwrap(), "{name}");
+                            found.insert(name);
+                        }
+                    }
+                    _ => {}
                 }
             }
         }

@@ -141,7 +141,7 @@ impl super::Game<'_> {
         use mod_api::__private::game::RegistrationContextNew;
         let declarations = self.mods.profession_declarations.get_or_init(|| {
             let mut registrar = mod_api::ProfessionDeclarations::default();
-            Self::native_register_villager_professions(
+            crate::game::native_hooks::native_register_villager_professions(
                 &mod_api::RegistrationContext::new(),
                 &mut registrar,
             );

@@ -309,9 +309,9 @@ impl GameConfigFiles {
     fn root(&self) -> Result<FileRoot, ConfigFileError> {
         Ok(FileRoot {
             path: if self.bulk {
-                Game::game_dir()
+                crate::game::game_dir()
             } else {
-                Game::native_config_dir().map_err(io)?
+                crate::game::native_config_dir().map_err(io)?
             },
             bulk: self.bulk,
         })
@@ -875,7 +875,7 @@ mod tests {
                         .unwrap(),
                     b"world:42"
                 );
-                let settings = Game::mod_data_root();
+                let settings = crate::game::mod_data_root();
                 fs::create_dir_all(settings.join("fd")).unwrap();
                 fs::write(settings.join("fd/enabled"), b"true").unwrap();
                 WARNINGS.store(0, Ordering::Relaxed);

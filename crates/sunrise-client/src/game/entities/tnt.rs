@@ -878,7 +878,7 @@ impl Game<'_> {
             ) {
                 continue;
             }
-            self.mark_motion(out.len(), Self::MOTION_OBJECT | u64::from(t.id));
+            self.mark_motion(out.len(), crate::game::MOTION_OBJECT | u64::from(t.id));
             let fuse = t.fuse as f32 - alpha as f32 + 1.0;
             if let Some(resolved) = super::native_entity_renderers::tnt_renderer() {
                 let partial = alpha as f32;

@@ -82,56 +82,81 @@ fn functions<'a>(
 const NATIVE_HOOKS: &str = "sunrise_client::game::native_hooks::";
 
 fn check_target(sources: &mut Sources<'_>, hook: &Hook, build: &Build) -> Result<bool, String> {
-    let (package, module, owner, target) = if let Some(path) =
+    let in_native_hooks = hook.target.starts_with(NATIVE_HOOKS);
+    let (package, candidate_modules, owner, target) = if let Some(path) =
         hook.target.strip_prefix(NATIVE_HOOKS)
     {
-        let (module_and_owner, target) = path.rsplit_once("::").ok_or("expected a method")?;
-        let (module, owner) = module_and_owner
-            .rsplit_once("::")
-            .ok_or("expected a method owner")?;
+        let (prefix, target) = path.rsplit_once("::").ok_or("expected a target")?;
+        let (module, owner) = match prefix.rsplit_once("::") {
+            Some((module, owner)) => (module, Some(owner)),
+            None => (prefix, None),
+        };
         (
             "sunrise_client".to_owned(),
-            format!("game::native_hooks::{module}"),
-            Some(owner),
+            vec![
+                format!("game::native_hooks::{module}"),
+                format!("game::server_side::native_hooks_server::{module}"),
+                format!("game::client_side::native_hooks_client::{module}"),
+            ],
+            owner,
             target,
         )
     } else {
         let (package, path) = free_function_source(&hook.target).ok_or("unknown target crate")?;
         let (module, target) = path.rsplit_once("::").ok_or("expected a free function")?;
-        (package.replace('-', "_"), module.to_owned(), None, target)
+        (
+            package.replace('-', "_"),
+            vec![module.to_owned()],
+            None,
+            target,
+        )
     };
-    let Some(items) = sources.items(build, &package, &module)? else {
-        return Ok(false);
-    };
-    let bodies = if let Some(owner) = owner {
-        items
-            .filter_map(|item| match item {
-                Item::Impl(item)
-                    if item.trait_.is_none()
-                        && source::owner(&item.self_ty) == owner
-                        && build.enabled(&item.attrs) =>
-                {
-                    Some(&item.items)
-                }
-                _ => None,
-            })
-            .flatten()
-            .filter_map(|item| match item {
-                syn::ImplItem::Fn(method)
-                    if method.sig.ident == target && build.enabled(&method.attrs) =>
-                {
-                    Some(&method.block)
-                }
-                _ => None,
-            })
-            .cloned()
-            .collect::<Vec<_>>()
-    } else {
-        functions(items, target, build).cloned().collect()
-    };
-    if bodies.is_empty() {
-        return Err("target definition not found".into());
+    let mut found_module = None;
+    let mut bodies = Vec::new();
+    let mut any_module_enabled = false;
+    for candidate in &candidate_modules {
+        let Some(items) = sources.items(build, &package, candidate)? else {
+            continue;
+        };
+        any_module_enabled = true;
+        let found: Vec<_> = if let Some(owner) = owner {
+            items
+                .filter_map(|item| match item {
+                    Item::Impl(item)
+                        if item.trait_.is_none()
+                            && source::owner(&item.self_ty) == owner
+                            && build.enabled(&item.attrs) =>
+                    {
+                        Some(&item.items)
+                    }
+                    _ => None,
+                })
+                .flatten()
+                .filter_map(|item| match item {
+                    syn::ImplItem::Fn(method)
+                        if method.sig.ident == target && build.enabled(&method.attrs) =>
+                    {
+                        Some(&method.block)
+                    }
+                    _ => None,
+                })
+                .cloned()
+                .collect()
+        } else {
+            functions(items, target, build).cloned().collect()
+        };
+        if !found.is_empty() {
+            found_module = Some(candidate.clone());
+            bodies = found;
+            break;
+        }
     }
+    if !any_module_enabled {
+        return Ok(false);
+    }
+    let Some(module) = found_module else {
+        return Err("target definition not found".into());
+    };
     let name = &hook.name;
     let mut index = sources.index(build);
     let mut routes = Routes::new(&mut index, build);
@@ -166,9 +191,17 @@ fn check_target(sources: &mut Sources<'_>, hook: &Hook, build: &Build) -> Result
         require_calls(&bodies, Some(name), &[])?;
         return Ok(true);
     }
-    if owner.is_some() && hook.dispatch != DispatchStyle::Direct {
+    if in_native_hooks && hook.dispatch != DispatchStyle::Direct {
         let fire = format!("fire_{name}");
-        require_calls(&bodies, Some(&fire), &[&format!("Self::{fire}")])?;
+        let self_fire = format!("Self::{fire}");
+        let super_fire = format!("super::fire::{fire}");
+        let mod_fire = format!("fire::{fire}");
+        let full_fire = format!("crate::game::native_hooks::fire::{fire}");
+        require_calls(
+            &bodies,
+            Some(&fire),
+            &[&self_fire, &super_fire, &mod_fire, &full_fire],
+        )?;
         return Ok(true);
     }
     let direct = format!("mod_api::dispatch_{name}");

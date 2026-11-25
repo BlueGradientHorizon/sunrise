@@ -16,7 +16,7 @@ impl super::Game<'_> {
             "tutorialStep",
             sunrise_client::options_file::V::Int(self.client.tutorial.step as i32),
         );
-        self.settings.save(&Self::options_path());
+        self.settings.save(&crate::game::options_path());
     }
 }
 
@@ -116,7 +116,7 @@ impl super::Game<'_> {
                 "joinedFirstServer",
                 sunrise_client::options_file::V::Bool(true),
             );
-            self.settings.save(&Self::options_path());
+            self.settings.save(&crate::game::options_path());
         }
         if self.client.screen == super::Screen::Playing
             && ([

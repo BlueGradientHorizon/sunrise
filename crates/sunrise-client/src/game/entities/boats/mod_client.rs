@@ -112,7 +112,7 @@ impl Game<'_> {
                 continue;
             }
             let entity_start = out.len();
-            self.mark_motion(entity_start, Self::MOTION_OBJECT | u64::from(b.id));
+            self.mark_motion(entity_start, crate::game::MOTION_OBJECT | u64::from(b.id));
             let models = if b.chest {
                 &self.client.boat_models.chest_models
             } else {

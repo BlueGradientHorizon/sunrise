@@ -375,7 +375,7 @@ fn startup_saves_the_cleared_selection_even_when_a_required_pack_fails() {
         "incompatibleResourcePacks",
         V::List(settings.resource_packs.clone()),
     );
-    let path = Game::options_path();
+    let path = crate::game::options_path();
     let saved = || OptionsFile::parse(&std::fs::read_to_string(&path).unwrap());
     settings.save(&path);
     assert_eq!(saved().list("resourcePacks"), ["file/optional"]);

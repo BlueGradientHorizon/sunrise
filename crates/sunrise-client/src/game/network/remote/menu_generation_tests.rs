@@ -28,15 +28,15 @@ fn client_menu_slot_mapping_covers_inventory_and_containers() {
         ("minecraft:furnace", 39, 300, 8),
         ("minecraft:brewing_stand", 41, 300, 8),
     ] {
-        assert_eq!(super::Game::inventory_screen_slot(name, 0), Some(first));
+        assert_eq!(crate::game::inventory_screen_slot(name, 0), Some(first));
         assert_eq!(
-            super::Game::inventory_screen_slot(name, count - 1),
+            crate::game::inventory_screen_slot(name, count - 1),
             Some(last)
         );
-        assert_eq!(super::Game::inventory_screen_slot(name, count), None);
+        assert_eq!(crate::game::inventory_screen_slot(name, count), None);
     }
     assert_eq!(
-        super::Game::inventory_screen_slot("minecraft:unknown", 0),
+        crate::game::inventory_screen_slot("minecraft:unknown", 0),
         None
     );
 }

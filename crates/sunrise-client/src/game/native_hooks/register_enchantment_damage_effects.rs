@@ -1,16 +1,18 @@
 #[allow(unused_imports)]
 use super::*;
-impl Game<'_> {
-    /// Register damage value effects before loading enchantment content.
-    pub(in crate::game) fn native_register_enchantment_damage_effects(
-        context: &mod_api::RegistrationContext,
-        effects: &mut mod_api::EnchantmentDamageRegistry,
-    ) {
-        Self::fire_register_enchantment_damage_effects(context, |listen| {
-            effects.register_listener(listen)
-        });
-    }
+
+
+
+/// Register damage value effects before loading enchantment content.
+pub(in crate::game) fn native_register_enchantment_damage_effects(
+    context: &mod_api::RegistrationContext,
+    effects: &mut mod_api::EnchantmentDamageRegistry,
+) {
+    crate::game::native_hooks::fire::fire_register_enchantment_damage_effects(context, |listen| {
+        effects.register_listener(listen)
+    });
 }
+
 
 #[cfg(test)]
 pub(in crate::game) mod tests {

@@ -187,7 +187,7 @@ impl Game<'_> {
             self.ui.options.layout_changed();
         }
         if installed {
-            self.settings.save(&Self::options_path());
+            self.settings.save(&crate::game::options_path());
             self.start_mods();
             self.switch_mods();
             // A mod with blocks, items or worldgen waits for a restart: the

@@ -18,7 +18,7 @@ impl Game<'_> {
         if !self.creative_screen.0.tab().hotbar {
             return;
         }
-        let path = Self::options_path().with_file_name("hotbar.nbt");
+        let path = crate::game::options_path().with_file_name("hotbar.nbt");
         let known = |id: &str| self.res.items().get(id).is_some();
         let rows = hotbar::load(&path, &known);
         let key = |mapping: &str| keybinds::display_name(self.settings.keys.get(mapping)).plain();
@@ -69,7 +69,7 @@ impl Game<'_> {
     /// not), so a drop later in the tick drops what the server now holds; save
     /// stores the hotbar and says so on the action bar.
     pub(in crate::game::client_side) fn hotbar_load_or_save(&mut self, index: usize, load: bool) {
-        let path = Self::options_path().with_file_name("hotbar.nbt");
+        let path = crate::game::options_path().with_file_name("hotbar.nbt");
         let known = |id: &str| self.items().get(id).is_some();
         let mut rows = hotbar::load(&path, &known);
         if load {

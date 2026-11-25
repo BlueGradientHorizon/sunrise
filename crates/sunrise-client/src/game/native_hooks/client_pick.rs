@@ -77,16 +77,10 @@ impl Game<'_> {
             game: self,
             subject,
         };
-        Self::native_can_rider_interact(mod_api::__private::CanRiderInteractCall {
+        crate::game::native_hooks::native_can_rider_interact(mod_api::__private::CanRiderInteractCall {
             subject: mod_api::EntityClientScope::new(&mut access),
             allowed,
         });
-    }
-
-    pub(in crate::game) fn native_can_rider_interact(
-        call: mod_api::__private::CanRiderInteractCall<'_>,
-    ) {
-        Self::fire_can_rider_interact(call);
     }
 
     pub(in crate::game) fn native_client_pick(
@@ -96,6 +90,14 @@ impl Game<'_> {
         self.fire_client_pick(call);
     }
 }
+
+
+pub(in crate::game) fn native_can_rider_interact(
+    call: mod_api::__private::CanRiderInteractCall<'_>,
+) {
+    crate::game::native_hooks::fire::fire_can_rider_interact(call);
+}
+
 
 pub(in crate::game) struct ResidentClientPickEntity {
     pub(in crate::game) kind: Option<mod_api::EntityTypeKey>,

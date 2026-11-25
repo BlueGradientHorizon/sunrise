@@ -161,7 +161,7 @@ impl Game<'_> {
             return None;
         }
         let kind = self.native_screen_menu_type(window, name);
-        let slot_id = |slot| Self::inventory_screen_slot_with_type(name, slot, || kind);
+        let slot_id = |slot| crate::game::inventory_screen_slot_with_type(name, slot, || kind);
         match kind {
             None => {
                 slot_id(0)?;
@@ -260,7 +260,7 @@ impl Game<'_> {
                 .as_ref()
                 .map_or((0, "inventory"), |entry| (entry.0, entry.1.as_str()));
             if self.native_screen_menu_type(window, name).is_none() {
-                Self::inventory_screen_slot_with_type(name, 0, || None)?;
+                crate::game::inventory_screen_slot_with_type(name, 0, || None)?;
             }
             return Some(mod_api::__private::game::menu_ref(
                 player,
@@ -315,7 +315,7 @@ impl Game<'_> {
                 return Some(kind.slot_count());
             }
             let count = (0..)
-                .map_while(|slot| Self::inventory_screen_slot_with_type(name, slot, || None))
+                .map_while(|slot| crate::game::inventory_screen_slot_with_type(name, slot, || None))
                 .count();
             return (count != 0).then_some(count);
         }
@@ -510,7 +510,7 @@ pub(in crate::game) fn client_click_ops(
         return None;
     }
     let mapped_slot =
-        |slot| Game::inventory_screen_slot(menu, i32::from(i16::try_from(slot).ok()?));
+        |slot| crate::game::inventory_screen_slot(menu, i32::from(i16::try_from(slot).ok()?));
     let mut ops = Vec::new();
     for click in clicks {
         let op = match click {

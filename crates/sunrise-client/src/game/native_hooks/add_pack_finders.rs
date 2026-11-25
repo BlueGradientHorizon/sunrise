@@ -21,7 +21,7 @@ impl Game<'_> {
         packs: &mut crate::game::pack_finders::Registry,
     ) {
         let mods = self.mods.clone();
-        Self::fire_add_pack_finders(
+        crate::game::native_hooks::fire::fire_add_pack_finders(
             self,
             |listen| packs.register_listener(listen),
             |id| mods.code_owner_enabled(id),

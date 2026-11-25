@@ -188,7 +188,7 @@ fn two_entities_are_asked_in_the_draw_queues_order() {
         let tracked: Vec<_> = motion.iter().copied().filter(|&(_, id)| id != 0).collect();
         assert_eq!(
             tracked.iter().map(|&(_, id)| id).collect::<Vec<_>>(),
-            [(1 << 32) | 91, Game::MOTION_OWN_PLAYER, (1 << 32) | 92]
+            [(1 << 32) | 91, crate::game::MOTION_OWN_PLAYER, (1 << 32) | 92]
         );
         assert!(tracked[0].0 < tracked[1].0 && tracked[1].0 < tracked[2].0);
         let spans = game.client.entity_spans.borrow();
@@ -289,7 +289,7 @@ pub(in crate::game::client_side) fn submitted_bodies<T>(
             .filter_map(|marks| {
                 let (start, id) = marks[0];
                 (id != 0 && start < marks[1].0).then(|| {
-                    let id = if id == Game::MOTION_OWN_PLAYER {
+                    let id = if id == crate::game::MOTION_OWN_PLAYER {
                         game.own_entity_id() as u32
                     } else {
                         id as u32

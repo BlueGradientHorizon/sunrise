@@ -2005,7 +2005,7 @@ impl Game<'_> {
             let motion = if t.id == 0 {
                 0
             } else {
-                Self::MOTION_OBJECT | u64::from(t.id)
+                crate::game::MOTION_OBJECT | u64::from(t.id)
             };
             self.mark_motion(out.len(), motion);
             self.submit_item_world(&state, pose, vertex_light(light), out);

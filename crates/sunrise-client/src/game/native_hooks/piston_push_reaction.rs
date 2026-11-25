@@ -9,7 +9,7 @@ impl Game<'_> {
                 return None;
             }
             let mut reaction = None;
-            Self::native_piston_push_reaction(state, &mut reaction);
+            crate::game::native_hooks::native_piston_push_reaction(state, &mut reaction);
             reaction
                 .as_ref()
                 .map(|value| crate::game::api_values::push_reaction(value).1)
@@ -17,12 +17,14 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {
-    /// Pure state-only callback, with no game receiver or Host.
-    pub(in crate::game) fn native_piston_push_reaction(
-        state: BlockStateId,
-        reaction: &mut Option<mod_api::PushReaction>,
-    ) {
-        Self::fire_piston_push_reaction(state, reaction);
-    }
+
+
+
+/// Pure state-only callback, with no game receiver or Host.
+pub(in crate::game) fn native_piston_push_reaction(
+    state: BlockStateId,
+    reaction: &mut Option<mod_api::PushReaction>,
+) {
+    crate::game::native_hooks::fire::fire_piston_push_reaction(state, reaction);
 }
+

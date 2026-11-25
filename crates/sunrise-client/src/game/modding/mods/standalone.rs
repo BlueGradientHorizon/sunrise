@@ -12,7 +12,7 @@ pub(in crate::game) fn collect_standalone_models(
         return None;
     }
     let mut registrations = Vec::new();
-    Game::native_standalone_models(&RegistrationContext::new(), &mut registrations);
+    crate::game::native_hooks::native_standalone_models(&RegistrationContext::new(), &mut registrations);
     Some(registrations)
 }
 

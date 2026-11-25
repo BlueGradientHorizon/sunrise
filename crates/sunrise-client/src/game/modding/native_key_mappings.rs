@@ -143,7 +143,7 @@ impl Game<'_> {
     /// settings are saved as Controls saves them.
     fn mod_keys_changed(&mut self) {
         self.bind_mod_mappings();
-        self.settings.save(&Self::options_path());
+        self.settings.save(&crate::game::options_path());
     }
     /// One key event, the window's after it handled it or the control socket's: the mods'
     /// mappings bound to it hear it (`KeyMapping.set`, `KeyMapping.click`), then `input_key`

@@ -52,7 +52,7 @@ impl Game<'_> {
         {
             return Err(format!("{name}: wrong listener setup for {KIND}").into());
         }
-        self.world = Game::world_for_mods(self.res.facts().air, 7);
+        self.world = crate::game::world_for_mods(self.res.facts().air, 7);
         self.world
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));

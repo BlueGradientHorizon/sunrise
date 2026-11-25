@@ -715,7 +715,7 @@ impl Game<'_> {
         self.settings
             .file
             .set(key, sunrise_client::options_file::V::Bool(on));
-        self.settings.save(&Self::options_path());
+        self.settings.save(&crate::game::options_path());
         on
     }
     /// One matching mapping of `handleDebugKeys`; whether it counts.
@@ -832,7 +832,7 @@ impl Game<'_> {
             }
             DebugAction::ImprovedTransparency => {
                 self.settings.improved_transparency = !self.settings.improved_transparency;
-                self.settings.save(&Self::options_path());
+                self.settings.save(&crate::game::options_path());
                 self.apply_settings();
                 self.debug_translated(if self.settings.improved_transparency {
                     "debug.improvedTransparency.on"

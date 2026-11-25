@@ -37,7 +37,7 @@ impl Game<'_> {
                 .as_ref()
                 .and_then(|r| r.menu.as_ref())
                 .is_some_and(|(id, name)| {
-                    *id == container && Self::remote_station_kind(name).is_some()
+                    *id == container && crate::game::remote_station_kind(name).is_some()
                 })
     }
 

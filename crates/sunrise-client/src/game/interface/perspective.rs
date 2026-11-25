@@ -811,7 +811,7 @@ impl Game<'_> {
         let body_in_view = self.own_body_in_view();
         let start = out.len();
         self.mark_player(start, !body_in_view);
-        self.mark_motion(start, Self::MOTION_OWN_PLAYER);
+        self.mark_motion(start, crate::game::MOTION_OWN_PLAYER);
         self.player_model_geometry(camera, self.own_player_alpha(), out);
         // A native pack's shadow pass alone gets the first-person model (no per-entity draws).
         if self.client.pack_ids.is_none() && !body_in_view {

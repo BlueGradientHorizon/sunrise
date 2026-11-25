@@ -14,7 +14,7 @@ pub trait Hooks {
     /// The game records the refusal and stops startup even if a returning listener ignores it.
     /// A panic discards this listener's declarations and diagnostics without rejecting startup.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_items",
+        target = "sunrise_client::game::native_hooks::base::native_items",
         receiver = "associated",
         dispatch = "flat",
         side = "both",

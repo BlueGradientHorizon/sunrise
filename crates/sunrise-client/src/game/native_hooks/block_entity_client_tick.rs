@@ -119,16 +119,18 @@ impl Game<'_> {
     pub(in crate::game) fn native_block_entity_client_ticks(&self, block: &str, ticks: &mut bool) {
         self.fire_block_entity_client_ticks(block, ticks);
     }
-
-    /// A client tick of this client's resident mod block entity (`ClientLevel.tickBlockEntities`):
-    /// the scope lends read-only views of the resident copy sequentially with the mutable
-    /// `ClientHost`. Never called on a server, and never again once removed or unloaded.
-    pub(in crate::game) fn native_block_entity_client_tick(
-        subject: mod_api::BlockEntityClientScope<'_>,
-    ) {
-        Self::fire_block_entity_client_tick(subject);
-    }
 }
+
+
+/// A client tick of this client's resident mod block entity (`ClientLevel.tickBlockEntities`):
+/// the scope lends read-only views of the resident copy sequentially with the mutable
+/// `ClientHost`. Never called on a server, and never again once removed or unloaded.
+pub(in crate::game) fn native_block_entity_client_tick(
+    subject: mod_api::BlockEntityClientScope<'_>,
+) {
+    crate::game::native_hooks::fire::fire_block_entity_client_tick(subject);
+}
+
 
 impl Game<'_> {
     /// `ClientLevel.tickBlockEntities` on a server's client, for the block entities with a client
@@ -210,7 +212,7 @@ impl Game<'_> {
             game: self,
             subject,
         };
-        Self::native_block_entity_client_tick(BlockEntityClientScope::new(&mut access));
+        crate::game::native_hooks::native_block_entity_client_tick(BlockEntityClientScope::new(&mut access));
     }
     /// Builds the table of the states that tick on the client (once), so a block entity's
     /// ticker is decided when its block changes (`LevelChunk.updateBlockEntityTicker`).

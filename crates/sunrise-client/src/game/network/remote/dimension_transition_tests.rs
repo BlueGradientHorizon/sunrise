@@ -76,7 +76,7 @@ fn dimension_transition_screen_is_selected_at_entry_drawn_and_dropped() {
                 vec![mod_api::ModEntry::new(OWNER, Box::new(Arrival))].into(),
                 || {
                     let mut registrations = Vec::new();
-                    super::Game::native_register_dimension_transition_screen(
+                    crate::game::native_hooks::native_register_dimension_transition_screen(
                         &mod_api::RegistrationContext::new(),
                         &mut registrations,
                     );

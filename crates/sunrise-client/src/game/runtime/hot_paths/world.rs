@@ -11,7 +11,7 @@ impl Game<'_> {
     /// Replace the level with a fresh one seeded `seed`: the chunks within `radius` of the
     /// origin, plains, lit by the sky, with the floor, and no entity or block entity.
     pub(super) fn hot_level(&mut self, seed: i64, radius: i32) -> Result<()> {
-        self.world = Game::world_for_mods(self.res.facts().air, seed);
+        self.world = crate::game::world_for_mods(self.res.facts().air, seed);
         let plains = u32::from(world_biomes!(self).id("minecraft:plains"));
         for cx in -radius..=radius {
             for cz in -radius..=radius {

@@ -184,7 +184,7 @@ fn standalone_bakers_resolve_as_one_model_and_republish_after_resource_reload() 
     let (kept, mods) = keeper();
     with_mods(mods, || {
         let mut staged = Vec::new();
-        super::Game::native_standalone_models(&RegistrationContext::new(), &mut staged);
+        crate::game::native_hooks::native_standalone_models(&RegistrationContext::new(), &mut staged);
         let _fixture = sunrise_client::models::StandaloneFixture::from_registrations(staged);
         with_client_game(|game| {
             game.publish_initial_client_models(vec![
@@ -380,7 +380,7 @@ fn pack_reload_runs_listeners_on_both_sides_of_model_manager() {
         .into(),
         || {
             let mut registrations = Vec::new();
-            super::Game::native_standalone_models(&RegistrationContext::new(), &mut registrations);
+            crate::game::native_hooks::native_standalone_models(&RegistrationContext::new(), &mut registrations);
             let _fixture =
                 sunrise_client::models::StandaloneFixture::from_registrations(registrations);
             with_client_game(|game| {

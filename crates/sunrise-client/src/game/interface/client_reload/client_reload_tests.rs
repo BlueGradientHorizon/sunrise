@@ -539,7 +539,7 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
             .into();
             mod_platform::testing::with_mods(mods, || {
                 let mut registrations = Vec::new();
-                Game::native_standalone_models(&RegistrationContext::new(), &mut registrations);
+                crate::game::native_hooks::native_standalone_models(&RegistrationContext::new(), &mut registrations);
                 let _models =
                     sunrise_client::models::StandaloneFixture::from_registrations(registrations);
                 for refusal in [None, Some("renderer"), Some("extensions")] {
@@ -1252,7 +1252,7 @@ fn startup_client_reload_listener_context_reports_known_facts_and_no_published_a
     let seen = observed.lock().unwrap().take().expect("startup hook fired");
     assert_eq!(seen.dist, Dist::Client);
     assert_eq!(seen.data_version, sunrise_core::version::DATA_VERSION);
-    assert_eq!(seen.math_profile, Game::startup_math_profile());
+    assert_eq!(seen.math_profile, crate::game::startup_math_profile());
     assert!(seen.enabled_self);
     assert!(!seen.disabled_other);
     assert_eq!(seen.plain, "hello startup");

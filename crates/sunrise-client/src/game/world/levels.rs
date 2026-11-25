@@ -1004,7 +1004,7 @@ impl Game<'_> {
             terrain.set_mob_maps(self.mob_map_snapshot());
             terrain.set_biome_keys(&self.biome_key_snapshot());
         }
-        let mut world = Game::authoritative_world_for_mods(&self.res, seed);
+        let mut world = crate::game::authoritative_world_for_mods(&self.res, seed);
         world.attachments = save.load_attachments();
         world.shape = self.server.level_shapes.get(dim.id());
         world.fast_lava = self.dimension_type_of(dim).fast_lava;

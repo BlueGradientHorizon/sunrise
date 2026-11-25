@@ -32,13 +32,6 @@ fn finite_options(options: &ParticleOptions) -> bool {
 }
 
 impl Game<'_> {
-    pub(in crate::game) fn particle_block_states() -> Option<sunrise_client::particles::BlockStates>
-    {
-        super::api_values::block_state::current()
-            .ok()
-            .map(|states| -> sunrise_client::particles::BlockStates { states })
-    }
-
     /// `ClientLevel.addParticle`: request one particle in this client's loaded world.
     /// Options and provider input slots pass through unchanged, including encoded
     /// color or size values in `velocity`. Normal distance, settings and population
@@ -140,6 +133,15 @@ impl Game<'_> {
         true
     }
 }
+
+
+pub(in crate::game) fn particle_block_states() -> Option<sunrise_client::particles::BlockStates>
+{
+    super::api_values::block_state::current()
+        .ok()
+        .map(|states| -> sunrise_client::particles::BlockStates { states })
+}
+
 
 #[cfg(test)]
 mod tests {

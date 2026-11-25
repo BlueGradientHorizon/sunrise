@@ -20,7 +20,7 @@ use sunrise_client::tooltip_components::{TooltipComponentFactories, with_test_fa
 
 fn collect_factories() -> TooltipComponentFactories {
     let mut factories = TooltipComponentFactories::default();
-    Game::native_register_client_tooltip_component_factories(
+    crate::game::native_hooks::native_register_client_tooltip_component_factories(
         &RegistrationContext::new(),
         &mut factories,
     );

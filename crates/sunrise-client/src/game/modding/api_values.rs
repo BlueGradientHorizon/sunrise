@@ -1821,7 +1821,7 @@ impl super::Game<'_> {
             return;
         }
         if let Ok(api) = entity.try_into_api() {
-            Self::native_block_entity_update_tag(pos, &api, tag);
+            crate::game::native_hooks::native_block_entity_update_tag(pos, &api, tag);
         }
     }
     pub(in crate::game) fn api_block_entity_submit(

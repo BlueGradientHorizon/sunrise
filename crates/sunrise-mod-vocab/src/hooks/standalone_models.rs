@@ -43,7 +43,7 @@ pub trait Hooks {
     /// no model and log the registering mod. Look up results through `RenderAssets::model`
     /// in or after `model_baking_completed`.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_standalone_models",
+        target = "sunrise_client::game::native_hooks::base::native_standalone_models",
         receiver = "associated",
         dispatch = "flat",
         side = "client",

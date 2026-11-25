@@ -16,7 +16,7 @@ impl Game<'_> {
             None => self.menu_slot_count(menu)?,
         };
         Some(layout_kinds(name, count, content, |slot| {
-            Self::inventory_screen_slot(name, slot as i32)
+            crate::game::inventory_screen_slot(name, slot as i32)
         }))
     }
 }
@@ -29,7 +29,7 @@ fn layout_kinds(
 ) -> Vec<MenuSlotKind> {
     use MenuSlotKind::*;
     let mut kinds = vec![Other; count];
-    if content.is_none() && Game::remote_station_kind(name).is_some() {
+    if content.is_none() && crate::game::remote_station_kind(name).is_some() {
         return kinds;
     }
     for (slot, kind) in kinds.iter_mut().enumerate() {
@@ -225,7 +225,7 @@ mod tests {
                 expected = vec![Other; 39];
             }
             let got = layout_kinds(name, expected.len(), None, |s| {
-                Game::inventory_screen_slot(name, s as i32)
+                crate::game::inventory_screen_slot(name, s as i32)
             });
             assert_eq!(got, expected, "{name}");
         }

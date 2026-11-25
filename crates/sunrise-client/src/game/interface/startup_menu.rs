@@ -517,7 +517,7 @@ impl Loading {
             menu.options.layout_changed();
         }
         if installed {
-            self.settings.save(&Game::options_path());
+            self.settings.save(&crate::game::options_path());
         }
     }
     pub(in crate::game::client_side) fn apply_menu_settings(&mut self) {
@@ -612,7 +612,7 @@ impl Loading {
                 sunrise_client::options_file::V::Bool(title.skip_multiplayer_warning),
             );
         }
-        self.settings.save(&Game::options_path());
+        self.settings.save(&crate::game::options_path());
     }
 
     fn open_menu_options(&mut self, page: Page) {
@@ -712,17 +712,17 @@ impl Loading {
                     packs::open_folder(&dir);
                 }
                 Event::OpenModFolder => {
-                    let dir = Game::game_dir().join(sunrise_client::mod_list::DIR);
+                    let dir = crate::game::game_dir().join(sunrise_client::mod_list::DIR);
                     let _ = std::fs::create_dir_all(&dir);
                     packs::open_folder(&dir);
                 }
                 Event::BrowseMods => {
                     let ui = &mut self.menu.options.mod_browser;
-                    self.menu.mod_jobs.browse(ui, Game::game_dir());
+                    self.menu.mod_jobs.browse(ui, crate::game::game_dir());
                 }
                 Event::InstallMod(id) => {
                     let ui = &mut self.menu.options.mod_browser;
-                    self.menu.mod_jobs.install(ui, Game::game_dir(), id);
+                    self.menu.mod_jobs.install(ui, crate::game::game_dir(), id);
                 }
                 Event::OpenModPage(url) => packs::open_uri(&url),
                 // The startup menu has no screen stack for ConfirmLinkScreen; the link opens
@@ -1490,7 +1490,7 @@ impl Loading {
                     "onboardAccessibility",
                     sunrise_client::options_file::V::Bool(false),
                 );
-                self.settings.save(&Game::options_path());
+                self.settings.save(&crate::game::options_path());
             }
             for found in title.lan_found_narrations((batch.width, batch.height)) {
                 sunrise_narrator::say_system_queued(&found.plain());
@@ -1566,7 +1566,7 @@ fn list_menu_mods(mods: &mut sunrise_client::mod_list::ModList) {
     use sunrise_client::mod_list::{DIR, Installed, ModInfo};
     mods.installed.clear();
     mods.info.clear();
-    for path in sunrise_mod_package::find(&Game::game_dir().join(DIR)) {
+    for path in sunrise_mod_package::find(&crate::game::game_dir().join(DIR)) {
         let Ok(package) = sunrise_mod_package::Package::read(&path) else {
             continue;
         };
@@ -1858,7 +1858,7 @@ mod tests {
 
     fn saved_pack_options() -> sunrise_client::options_file::OptionsFile {
         sunrise_client::options_file::OptionsFile::parse(
-            &std::fs::read_to_string(Game::options_path()).unwrap(),
+            &std::fs::read_to_string(crate::game::options_path()).unwrap(),
         )
     }
 
@@ -1886,7 +1886,7 @@ mod tests {
             .settings
             .file
             .set("incompatibleResourcePacks", V::List(vec![OBSOLETE.into()]));
-        loading.settings.save(&Game::options_path());
+        loading.settings.save(&crate::game::options_path());
         let revision = loading.menu.pack_selection_revision;
         if superseded {
             // OptionsUi applies the new selection before emitting Event::Packs.

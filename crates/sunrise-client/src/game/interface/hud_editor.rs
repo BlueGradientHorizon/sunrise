@@ -76,7 +76,7 @@ impl Game<'_> {
             .editor
             .take()
             .is_some_and(|e| e.from_options);
-        self.settings.save(&Self::options_path());
+        self.settings.save(&crate::game::options_path());
         if from_options {
             self.open_options_at(false, sunrise_client::options_ui::Page::Pvp);
         } else {
@@ -191,7 +191,7 @@ impl Game<'_> {
                 }
             }
             self.audio.0.play_button_click();
-            self.settings.save(&Self::options_path());
+            self.settings.save(&crate::game::options_path());
             return true;
         }
         let Some((id, [x, y, _, _])) = self.widget_under_cursor() else {
@@ -199,7 +199,7 @@ impl Game<'_> {
         };
         if right {
             *self.settings.extras.pvp.layout.get_mut(id) = Place::default();
-            self.settings.save(&Self::options_path());
+            self.settings.save(&crate::game::options_path());
             return true;
         } else if let Some(e) = &mut self.client.pvp.editor {
             e.drag = Some((id, self.client.cursor.0 - x, self.client.cursor.1 - y));
@@ -233,7 +233,7 @@ impl Game<'_> {
             && e.drag.take().is_some()
         {
             e.guides = (None, None);
-            self.settings.save(&Self::options_path());
+            self.settings.save(&crate::game::options_path());
             return true;
         }
         false
@@ -250,7 +250,7 @@ impl Game<'_> {
         } else {
             place.scale.saturating_sub(10).max(lo)
         };
-        self.settings.save(&Self::options_path());
+        self.settings.save(&crate::game::options_path());
         true
     }
 }

@@ -142,7 +142,7 @@ impl Game<'_> {
             self.remote_open_lectern(target.unwrap_or_default());
             return;
         }
-        if let Some(kind) = Self::remote_station_kind(&menu) {
+        if let Some(kind) = crate::game::remote_station_kind(&menu) {
             let title = menu_title(&p.title);
             let pos = target.map_or([0, 0, 0], |t| [t.0, t.1, t.2]);
             self.remote_open_station(p.container, menu, kind, title, pos);
