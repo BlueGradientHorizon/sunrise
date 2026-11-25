@@ -40,7 +40,7 @@ DecoratedPotBlock.getStateForPlacement	port	crates/sunrise-world/src/level/place
 DecoratedPotBlock.useWithoutItem	port	crates/sunrise-client/src/game/blocks/decorated_pot_server.rs::Game::use_decorated_pot	empty-hand path plays insert_fail, negative wobble and block change
 DecoratedPotBlock.createBlockStateDefinition	skip:data		facing, waterlogged and cracked properties come from the block state tables
 DecoratedPotBlock.getFluidState	skip:data		waterlogged water source comes from the per-state fluid facts table (Level::fluid)
-DecoratedPotBlock.onProjectileHit	port	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::projectile_breaks_block	the pot is cracked first, then shattered
+DecoratedPotBlock.onProjectileHit	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::projectile_breaks_block	the pot is cracked first, then shattered
 DecoratedPotBlock.getCloneItemStack	port	crates/sunrise-client/src/game/blocks/block_items.rs::Game::picked_stack	ticked in #3516; `DecoratedPotBlock.getCloneItemStack` is cited at crates/sunrise-client/src/game/blocks/block_items.rs:135 (in a comment, so `where` names the enclosing fn)
 DecoratedPotBlock.rotate	skip:data		rotation results come from the exported BlockState rotate table (worldgen/structure.rs)
 DetectorRailBlock.entityInside	port	crates/sunrise-world/src/level/hooks.rs::Sim::entity_inside	when not powered, checks for minecarts inside the search box

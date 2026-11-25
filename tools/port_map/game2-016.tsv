@@ -3,7 +3,7 @@ SpeleothemBlock.updateShape	port	crates/sunrise-world/src/level/shapes.rs::Sim::
 SpeleothemBlock.getStateForPlacement	port	crates/sunrise-world/src/level/place.rs::Sim::placement_class	Speleothem arm picks tip direction and thickness.
 SpeleothemBlock.calculateTipDirection	inline	crates/sunrise-world/src/level/place.rs::Sim::placement_class	Tip direction choice is inside the placement arm.
 SpeleothemBlock.isSpeleothemWithDirection	port	crates/sunrise-world/src/level/speleothem.rs::Sim::speleothem_with
-SpeleothemBlock.onProjectileHit	port	crates/sunrise-client/src/game/mobs/creatures/mod.rs::projectile_breaks_block	ticked in #3516; `SpeleothemBlock.onProjectileHit` is cited at crates/sunrise-client/src/game/mobs/creatures/mod.rs:3447 (in a comment, so `where` names the enclosing fn)
+SpeleothemBlock.onProjectileHit	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::projectile_breaks_block	ticked in #3516; `SpeleothemBlock.onProjectileHit` is cited at crates/sunrise-client/src/game/mobs/creatures/mod.rs:3447 (in a comment, so `where` names the enclosing fn)
 SpeleothemBlock.tick	port	crates/sunrise-world/src/level/tick.rs::Sim::tick_block	Speleothem arm: a stalagmite that cannot survive breaks, else a falling stalactite starts.
 SpeleothemBlock.isTip	port	crates/sunrise-world/src/level/speleothem.rs::Sim::speleothem_is_tip
 SpeleothemBlock.getFluidState	port	crates/sunrise-world/src/registry_fluid.rs::RegistryFluidWorld::fluid_state	waterlogged fluid from block data
@@ -29,7 +29,7 @@ StairBlock.mirror	port	crates/sunrise-world/src/worldgen/structure.rs::StateTran
 StairBlock.createBlockStateDefinition	skip:data		block state definition is data (blocks table in sunrise-items)
 StairBlock.getFluidState	port	crates/sunrise-world/src/registry_fluid.rs::RegistryFluidWorld::fluid_state	waterlogged fluid from block data
 StrawBedBlock.getShape	port	crates/sunrise-world/src/interaction_shapes.rs::InteractionShapes::shape	head and foot shapes per state from the table
-StrawBedBlock.getSleepHeight	port	crates/sunrise-client/src/game/blocks/beds.rs::Game::sleep_height	a straw bed's head walks to its foot, then the shape's top; no foot left means no sleeping at all
+StrawBedBlock.getSleepHeight	port	crates/sunrise-client/src/game/blocks/block_props.rs::Game::sleep_height	a straw bed's head walks to its foot, then the shape's top; no foot left means no sleeping at all
 StructureBlock.useWithoutItem	port	crates/sunrise-world/src/level/interact.rs::Sim::use_without_item	a game master's click opens the editor
 StructureBlock.setPlacedBy	port	crates/sunrise-client/src/game/administration/structure_blocks.rs::structure_block_placed	the placing player becomes the block entity's author (the acting guest's name on a LAN world), as setPlacedBy writes it
 StructureBlock.neighborChanged	port	crates/sunrise-client/src/game/administration/structure_blocks.rs::Game::structure_block_neighbor_changed	a rising signal triggers the block once
@@ -48,7 +48,7 @@ TargetBlock.tick	port	crates/sunrise-world/src/level/tick.rs::Sim::tick_block	Ta
 TargetBlock.onPlace	port	crates/sunrise-world/src/level/hooks.rs::Sim::on_place	Target arm: power reset on a new placement.
 TntBlock.onPlace	port	crates/sunrise-world/src/level/redstone.rs::Sim::tnt_check	Tnt arm of on_place: primes and removes TNT when powered.
 TntBlock.neighborChanged	port	crates/sunrise-world/src/level/redstone.rs::Sim::tnt_check	Tnt arm of neighbor_changed.
-TntBlock.onProjectileHit	port	crates/sunrise-client/src/game/mobs/creatures/mod_client.rs::Game::arrow_event	gap: minor: only the burning-arrow case reaches TNT here (BlockReaction::PrimeTnt in arrows.rs).
+TntBlock.onProjectileHit	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::server_arrow_event	gap: minor: only the burning-arrow case reaches TNT here (BlockReaction::PrimeTnt in arrows.rs).
 TrialSpawnerBlock.createBlockStateDefinition	skip:data		block state definition is data (blocks table in sunrise-items)
 TrialSpawnerBlock.getTicker	port	crates/sunrise-client/src/game/mobs/trial_spawner.rs::Game::tick_trial_spawner	the per-tick trial spawner update
 TripWireBlock.getStateForPlacement	port	crates/sunrise-world/src/level/place.rs::Sim::placement_class	TripWire arm connects to neighbours.
@@ -133,10 +133,10 @@ BaseContainerBlockEntity.createMenu	port	crates/sunrise-client/src/game.rs::Game
 BaseContainerBlockEntity.applyImplicitComponents	port	crates/sunrise-client/src/block_entity_item.rs::place	container items, name and lock from item components
 BaseContainerBlockEntity.collectImplicitComponents	port	crates/sunrise-client/src/block_entity_item.rs::collect	container items, name and lock to item components
 BaseContainerBlockEntity.getLootContext	port	crates/sunrise-client/src/structure_blocks.rs::roll_container	position seed and biome feed the loot table roll.
-BeaconBlockEntity.updateBase	port	crates/sunrise-client/src/game/blocks/beacon.rs::Game::beacon_base	counts the pyramid levels (steps 1 to 4)
+BeaconBlockEntity.updateBase	port	crates/sunrise-client/src/game/blocks/beacon_common.rs::Game::beacon_base	counts the pyramid levels (steps 1 to 4)
 BeaconBlockEntity.storeEffect	port	crates/sunrise-client/src/save/block_entity_encode.rs::encode	primary and secondary written to the beacon tag
 BeaconBlockEntity.loadEffect	port	crates/sunrise-client/src/save/block_entity_decode.rs::decode_block_entity	primary and secondary read from the beacon tag
-BeaconBlockEntity.createMenu	port	crates/sunrise-client/src/game/blocks/beacon.rs::Game::beacon_opened
+BeaconBlockEntity.createMenu	port	crates/sunrise-client/src/game/blocks/beacon_common.rs::Game::beacon_opened
 BeaconBlockEntity.applyImplicitComponents	port	crates/sunrise-client/src/block_entity_item.rs::place	beacon name and lock from item components
 BeaconBlockEntity.collectImplicitComponents	port	crates/sunrise-client/src/block_entity_item.rs::collect	beacon name and lock to item components
 BeehiveBlockEntity.setChanged	port	crates/sunrise-client/src/game/mobs/beehives.rs::Game::tick_beehive	fire check runs every tick here instead of on each setChanged; releases with EMERGENCY.

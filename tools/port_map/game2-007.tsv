@@ -5,16 +5,16 @@ AbstractBoat.onAboveBubbleColumn	port	crates/sunrise-client/src/game/entities/bo
 AbstractBoat.animateHurt	port	crates/sunrise-client/src/game/entities/boats/mod.rs::Game::hurt_boat	sets the hurt wobble and time; gap: minor: uses the server damage x10, no separate client x11 wobble value
 AbstractBoat.tickBubbleColumn	port	crates/sunrise-client/src/game/entities/boats/mod.rs::Game::tick_boat_bubble_column	the countdown (`Boat::tick_bubble_countdown`) running out throws the boat up or pulls it down after BUBBLE_TIME ticks, lets the riders out of a down column first and broadcasts event 71 or 72; the client's wobble is `Boat::tick_bubble_wobble`
 AbstractBoat.handleEntityEvent	port	crates/sunrise-client/src/game/network/remote_vehicles.rs::Game::remote_boat_event	event 71 drags the boat down and 72 throws it up, on the boat the client drives; every other id is left to the super call
-AbstractBoat.handleBubbleColumnEffect	port	crates/sunrise-client/src/game/entities/boats/mod.rs::Game::handle_bubble_column_effect	an up column sets vertical velocity 0.6 and a down column adds -0.7, only while the window simulates the boat's movement
-AbstractBoat.setPaddleState	inline	crates/sunrise-client/src/game/entities/boats/mod.rs::Game::tick_boat	paddle flags are set from the rider's input inside the controlled branch
+AbstractBoat.handleBubbleColumnEffect	port	crates/sunrise-client/src/game/entities/boats_common.rs::Game::handle_bubble_column_effect	an up column sets vertical velocity 0.6 and a down column adds -0.7, only while the window simulates the boat's movement
+AbstractBoat.setPaddleState	inline	crates/sunrise-client/src/game/entities/boats_common.rs::Game::tick_boat	paddle flags are set from the rider's input inside the controlled branch
 AbstractBoat.getLeashOffset	port	crates/sunrise-client/src/mobs/leash.rs::Holder::boat_leash_offset	1.375 by 0.5625 for a boat or raft
-AbstractBoat.getStatus	port	crates/sunrise-client/src/game/entities/boats/mod.rs::Game::boat_status	in air, in water, under water or on land
-AbstractBoat.getWaterLevelAbove	port	crates/sunrise-client/src/game/entities/boats/mod.rs::Game::water_level_above
-AbstractBoat.getGroundFriction	port	crates/sunrise-client/src/game/entities/boats/mod.rs::Game::boat_ground_friction	average friction of blocks whose collision shape meets a thin slab under the hull; lily pads skipped
-AbstractBoat.checkInWater	inline	crates/sunrise-client/src/game/entities/boats/mod.rs::Game::boat_status	sets the water level and reports the in-water status
-AbstractBoat.isUnderwater	inline	crates/sunrise-client/src/game/entities/boats/mod.rs::Game::boat_status	the under-water and flowing-water check runs first in boat_status
-AbstractBoat.floatBoat	inline	crates/sunrise-client/src/game/entities/boats/mod.rs::Game::tick_boat	buoyancy, friction and the first-water-touch snap are in tick_boat
-AbstractBoat.controlBoat	inline	crates/sunrise-client/src/game/entities/boats/mod.rs::Game::tick_boat	steering, acceleration and paddle flags in the controlled branch of tick_boat
+AbstractBoat.getStatus	port	crates/sunrise-client/src/game/entities/boats_common.rs::Game::boat_status	in air, in water, under water or on land
+AbstractBoat.getWaterLevelAbove	port	crates/sunrise-client/src/game/entities/boats_common.rs::Game::water_level_above
+AbstractBoat.getGroundFriction	port	crates/sunrise-client/src/game/entities/boats_common.rs::Game::boat_ground_friction	average friction of blocks whose collision shape meets a thin slab under the hull; lily pads skipped
+AbstractBoat.checkInWater	inline	crates/sunrise-client/src/game/entities/boats_common.rs::Game::boat_status	sets the water level and reports the in-water status
+AbstractBoat.isUnderwater	inline	crates/sunrise-client/src/game/entities/boats_common.rs::Game::boat_status	the under-water and flowing-water check runs first in boat_status
+AbstractBoat.floatBoat	inline	crates/sunrise-client/src/game/entities/boats_common.rs::Game::tick_boat	buoyancy, friction and the first-water-touch snap are in tick_boat
+AbstractBoat.controlBoat	inline	crates/sunrise-client/src/game/entities/boats_common.rs::Game::tick_boat	steering, acceleration and paddle flags in the controlled branch of tick_boat
 AbstractBoat.getDismountLocationForPassenger	port	crates/sunrise-client/src/game/entities/boats/mod.rs::Game::boat_dismount_target	gap: minor: no dismount pose check; the floor and water tests are there
 AbstractBoat.clampRotation	port	crates/sunrise-client-render/src/camera.rs::clamp_boat_rotation	the rider's yaw is clamped to 105 degrees off the boat; mobs get the head clamp in boat_passengers.rs seat_boat_mobs
 AbstractBoat.calculatePassengerBodyYRot	inline	crates/sunrise-client/src/game/entities/boat_passengers.rs::Game::seat_boat_mobs	animal turned 90 or 270 degrees when the boat is full
@@ -26,14 +26,14 @@ AbstractBoat.getControllingPassenger	inline	crates/sunrise-client/src/game/entit
 AbstractBoat.setInput	inline	crates/sunrise-client/src/game/network/lan_vehicles.rs::Game::guest_paddle_boat	the paddle packet's flags are the controller's input
 AbstractBoat.isUnderWater	port	crates/sunrise-client/src/game/entities/boats/mod.rs::Boat::under_water
 AbstractBoat.modifyPassengerFluidInteractionBox	inline	crates/sunrise-client/src/motion/fluids.rs::MotionWorld::interaction_box	the ridden boat (RiddenBoat) is set on clients in remote.rs and for served players in lan_actions.rs; the passenger box keeps only the part above the boat's top
-AbstractChestBoat.remove	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::drop_vehicle_contents	Containers.dropContents on every destroying removal, whatever entity_drops says: the damage path's kill or a creative player's discard, and /kill after the open menu writes its slots back; a loot table still held drops the roll made on load
+AbstractChestBoat.remove	port	crates/sunrise-client/src/game/entities/minecarts_ops_server.rs::Game::drop_vehicle_contents	Containers.dropContents on every destroying removal, whatever entity_drops says: the damage path's kill or a creative player's discard, and /kill after the open menu writes its slots back; a loot table still held drops the roll made on load
 AbstractChestBoat.openCustomInventoryScreen	inline	crates/sunrise-client/src/game/entities/boats/mod.rs::Game::interact_boat	sneaking opens the chest; gap: minor: no piglin anger
 AbstractChestBoat.createMenu	inline	crates/sunrise-client/src/game/entities/boats/mod.rs::Game::interact_boat	the chest container is set up there; gap: minor: no spectator or loot table check
 AbstractMinecart.setInitialPos	port	crates/sunrise-client/src/game/entities/minecarts.rs::Minecart::new	spawn sets the position and its previous copy
 AbstractMinecart.createMinecart	port	crates/sunrise-client/src/game/entities/minecarts_server.rs::Game::place_minecart	placing on a rail: the rail offset for slopes and the item's kind; gap: minor: no rail snap, which only the experimental behaviour does
 AbstractMinecart.defineSynchedData	skip:java		synched display block and offset; Sunrise keeps the kind and its display offset on the Minecart struct
 AbstractMinecart.getPassengerAttachmentPoint	missing		minor: a villager or wandering trader in a cart sits at a lowered seat in vanilla; Sunrise seats only the player in a cart
-AbstractMinecart.getDismountLocationForPassenger	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::dismount_cart	beside the cart, else on top; gap: minor: the side comes from the yaw, and there is no pose or ceiling check
+AbstractMinecart.getDismountLocationForPassenger	port	crates/sunrise-client/src/game/entities/minecarts_ops_server.rs::Game::dismount_cart	beside the cart, else on top; gap: minor: the side comes from the yaw, and there is no pose or ceiling check
 AbstractMinecart.getBlockSpeedFactor	missing		minor: a cart that has left the rails takes no block speed factor (soul sand, honey); on rails the factor is 1.0 in vanilla and Sunrise has no such slowdown
 AbstractMinecart.animateHurt	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::hurt_cart	sets the hurt wobble and time; gap: minor: the damage is the server x10, with no separate client wobble value
 AbstractMinecart.getCurrentBlockPosOrRailBelow	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::rail_block	the rail one block below counts; the experimental y offset is not used
@@ -56,14 +56,14 @@ MinecartHopper.tryConsumeItems	inline	crates/sunrise-client/src/game/entities/mi
 MinecartHopper.suckInItems	port	crates/sunrise-client/src/game/blocks/machines/mod.rs::Game::hopper_cart_suck	container above first, then item entities at the hopper and the cart's box
 MinecartTNT.explode	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::explode_cart	power 4 plus speed, with the cart gone before the blast; gap: minor: the saved explosion power and speed factor are not applied
 MinecartTNT.handleEntityEvent	port	crates/sunrise-client/src/game/entities/minecarts_client.rs::Game::remote_tnt_cart_event	event 70 sets the client's fuse to 80
-MinecartTNT.primeFuse	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::prime_cart	fuse 80, entity event 70 and the primed sound; gap: minor: no ignition source is recorded for who caused the blast
+MinecartTNT.primeFuse	port	crates/sunrise-client/src/game/entities/minecarts_ops_server.rs::Game::prime_cart	fuse 80, entity event 70 and the primed sound; gap: minor: no ignition source is recorded for who caused the blast
 MinecartTNT.getBlockExplosionResistance	port	crates/sunrise-client/src/game/entities/explosion.rs::Game::exploded_positions	while the cart is primed (`combat.rail_proof_blast`, set from `fuse >= 0` in `minecarts.rs`) a rail, and a block with a rail above it, has no resistance to its blast
 MinecartTNT.shouldBlockExplode	inline	crates/sunrise-client/src/game/entities/explosion.rs::Game::exploded_positions	the same ray march leaves a spared rail out of the destroyed set, so the blast goes through it
 MinecartTNT.readAdditionalSaveData	port	crates/sunrise-client/src/game/entities/minecarts.rs::Minecart::from_nbt	fuse read back; gap: minor: explosion_power and explosion_speed_factor are not read
 MinecartTNT.addAdditionalSaveData	port	crates/sunrise-client/src/game/entities/minecarts.rs::Minecart::to_nbt	fuse written; gap: minor: explosion_power and explosion_speed_factor are not written
 MinecartTNT.damageSourceIgnitesTnt	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::hurt_cart	the fire flag from the caller primes the cart instead of breaking it
 OldMinecartBehavior.tick	port	crates/sunrise-client/src/game/entities/minecarts_server.rs::Game::tick_cart	gravity, track or off-track move, activator rail, yaw from motion and the flip
-OldMinecartBehavior.getMotionDirection	inline	crates/sunrise-client/src/game/entities/minecarts.rs::Game::dismount_cart	the dismount side is the cart's facing, taken from its yaw
+OldMinecartBehavior.getMotionDirection	inline	crates/sunrise-client/src/game/entities/minecarts_ops_server.rs::Game::dismount_cart	the dismount side is the cart's facing, taken from its yaw
 OldMinecartBehavior.getKnownMovement	skip:other		client-side clamp of the known movement for networking; Sunrise simulates carts itself
 FoodData.add	port	crates/sunrise-world/src/food.rs::FoodData::eat_properties	food points and saturation are added and clamped to 0..20 and to the food level
 FoodData.readAdditionalSaveData	port	crates/sunrise-world/src/food_storage.rs::FoodData::read_nbt	food level, tick timer, saturation and exhaustion read back

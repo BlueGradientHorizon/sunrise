@@ -35,7 +35,7 @@ Camera.createProjectionMatrixForCulling	port	crates/sunrise-client-render/src/gf
 Camera.prepareCullFrustum	port	crates/sunrise-client-render/src/gfx/view.rs::Renderer::camera_frustum	gap: minor: no captured frustum (F3+U kill and capture)
 Camera.setPosition	inline	crates/sunrise-client-render/src/camera.rs::Camera::align_with_entity	the position is stored there
 Camera.getViewRotationMatrix	port	crates/sunrise-client-render/src/camera.rs::view_matrix
-Camera.NearPlane.getPointOnPlane	inline	crates/sunrise-client/src/game/items/fishing.rs::Game::fishing_line	only the fishing line's anchor uses it
+Camera.NearPlane.getPointOnPlane	inline	crates/sunrise-client/src/game/items/fishing_client.rs::Game::fishing_line	only the fishing line's anchor uses it
 ClientBootstrap.bootstrap	skip:data		registry bootstrap
 ClientRecipeBook.rebuildCollections	port	crates/sunrise-client/src/recipe_book.rs::ClientBook::collections	tab collections built per call
 ClientRecipeBook.categorizeAndGroupRecipes	port	crates/sunrise-client/src/recipe_book.rs::ClientBook::collections	grouping by category and group id

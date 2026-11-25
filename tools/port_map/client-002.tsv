@@ -42,7 +42,7 @@ ClientPacketListener.handleBlockEvent	port	crates/sunrise-client/src/game/networ
 ClientPacketListener.handleGameEvent	port	crates/sunrise-client/src/game/network/remote/packets_world_client.rs::Game::apply_game_event_packet	GameEvent arm (weather, mode, credits, demo popup and hints, respawn, arrow hit, sting, limited crafting, chunks load start)
 ClientPacketListener.openDemoIntroScreen	port	crates/sunrise-client/src/game/interface/demo_intro.rs::Game::apply_demo_event	GameEvent demo intro creates a parentless popup with the current key bindings
 ClientPacketListener.startWaitingForNewLevel	inline	crates/sunrise-client/src/game/network/remote/session_client.rs::Game::enter_remote_dimension	the tracker starts and the LevelLoadingScreen draws until the player's section is shown
-ClientPacketListener.handleMapItemData	port	crates/sunrise-client/src/game/blocks/maps/mod.rs::Game::remote_map_item_data
+ClientPacketListener.handleMapItemData	port	crates/sunrise-client/src/game/blocks/maps/mod_client.rs::Game::remote_map_item_data
 ClientPacketListener.handleUpdateAdvancementsPacket	port	crates/sunrise-client/src/game/interface/advancements/mod_client.rs::Game::remote_advancements	UpdateAdvancements arm passes the added icons
 ClientPacketListener.handleSelectAdvancementsTab	missing		minor: the server's advancement tab choice is ignored
 ClientPacketListener.handleCommands	port	crates/sunrise-client/src/game/network/remote/packets_player_client.rs::Game::apply_commands_packet	Commands arm: command tree from the packet, merged with Sunrise's own
@@ -91,7 +91,7 @@ ClientPacketListener.handleMerchantOffers	port	crates/sunrise-client/src/game/ne
 ClientPacketListener.handleSetChunkCacheRadius	port	crates/sunrise-client/src/game/network/remote/mod_client.rs::Game::apply_packet	SetChunkCacheRadius arm: streaming radius, columns out of range dropped
 ClientPacketListener.handleSetSimulationDistance	inline	crates/sunrise-client/src/game/network/remote/mod_client.rs::Game::apply_packet	SetSimulationDistance arm: ClientLevel.serverSimulationDistance
 ClientPacketListener.handleSetChunkCacheCenter	port	crates/sunrise-client/src/game/network/remote/mod_client.rs::Game::apply_packet	SetChunkCacheCenter arm
-ClientPacketListener.handleBlockChangedAck	port	crates/sunrise-client/src/game/network/remote/break_prediction.rs::Game::end_predictions
+ClientPacketListener.handleBlockChangedAck	port	crates/sunrise-client/src/game/network/remote/break_prediction_client.rs::Game::end_predictions
 ClientPacketListener.handleBundlePacket	port	crates/sunrise-client/src/game/network/remote/raw_ingress_client.rs::Game::handle_play_bundle	complete bundle applied in one main turn, in packet order
 ClientPacketListener.handleProjectilePowerPacket	port	crates/sunrise-client/src/game/network/remote/packets_object_client.rs::Game::apply_projectile_power_packet	ProjectilePower arm: a hurting projectile's acceleration power, by id
 ClientPacketListener.handleChunkBatchFinished	inline	crates/sunrise-client/src/net.rs::PlayIo::handle	ChunkBatchFinished arm: answered with the measured rate

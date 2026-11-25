@@ -52,7 +52,7 @@ WalkNodeEvaluator.getCachedPathType	port	crates/sunrise-client/src/mobs/path.rs:
 WalkNodeEvaluator.getPathTypeWithinMobBB	port	crates/sunrise-client/src/mobs/path.rs::Finder::within_bb	-
 MapItemSavedData.type	skip:data	-	saved-data type and codec; Sunrise saves map files in save_maps
 MapItemSavedData.<init>	port	crates/sunrise-client/src/game/blocks/maps/mod.rs::MapData::fresh	gap: minor: sets the grid cell, scale and dimension; locked and the tracking flags are set by the caller or the NBT load
-MapItemSavedData.createForClient	port	crates/sunrise-client/src/game/blocks/maps/mod.rs::Game::remote_map_item_data	the client map is created from the packet (fresh map, locked flag from the packet)
+MapItemSavedData.createForClient	port	crates/sunrise-client/src/game/blocks/maps/mod_client.rs::Game::remote_map_item_data	the client map is created from the packet (fresh map, locked flag from the packet)
 MapItemSavedData.mapMatcher	inline	crates/sunrise-client/src/game/blocks/maps/mod.rs::Game::tick_maps	the carried maps are the map ids in the inventory and offhand, which is what the matcher finds
 MapItemSavedData.tickCarriedBy	port	crates/sunrise-client/src/game/blocks/maps/mod.rs::Game::tick_maps	gap: player: no framed-map marker when the map hangs in an item frame, and no removal of a player who wears map-invisibility gear
 MapItemSavedData.hasMapInvisibilityItemEquipped	port	crates/sunrise-client/src/game/blocks/maps/mod.rs::Holder::new	ticked in #3517; `MapItemSavedData.hasMapInvisibilityItemEquipped` is cited at crates/sunrise-client/src/game/blocks/maps/mod.rs:161
@@ -68,10 +68,10 @@ MapItemSavedData.toggleBanner	port	crates/sunrise-client/src/game/blocks/maps/mo
 MapItemSavedData.checkBanners	port	crates/sunrise-client/src/game/blocks/maps/mod.rs::MapData::check_banners	ticked in #3517; `MapItemSavedData.checkBanners` is cited at crates/sunrise-client/src/game/blocks/maps/mod.rs:443
 MapItemSavedData.removedFromFrame	port	crates/sunrise-client/src/game/blocks/maps/mod.rs::MapData::removed_from_frame	ticked in #3517; `MapItemSavedData.removedFromFrame` is cited at crates/sunrise-client/src/game/blocks/maps/mod.rs:387
 MapItemSavedData.setColor	port	crates/sunrise-client/src/game/blocks/maps/mod.rs::MapData::update_color	-
-MapItemSavedData.addClientSideDecorations	port	crates/sunrise-client/src/game/blocks/maps/mod.rs::Game::remote_map_item_data	decorations are replaced from the packet list
+MapItemSavedData.addClientSideDecorations	port	crates/sunrise-client/src/game/blocks/maps/mod_client.rs::Game::remote_map_item_data	decorations are replaced from the packet list
 MapItemSavedData.HoldingPlayer.createPatch	port	crates/sunrise-client/src/game/blocks/maps/mod.rs::MapData::update_packet	the dirty rectangle is copied into the patch
 MapItemSavedData.HoldingPlayer.markColorsDirty	inline	crates/sunrise-client/src/game/blocks/maps/mod.rs::MapData::update_color	the holder dirty rectangle is widened in update_color
-MapItemSavedData.MapPatch.applyToMap	port	crates/sunrise-client/src/game/blocks/maps/mod.rs::Game::remote_map_item_data	the patch loop writes each colour through update_color
+MapItemSavedData.MapPatch.applyToMap	port	crates/sunrise-client/src/game/blocks/maps/mod_client.rs::Game::remote_map_item_data	the patch loop writes each colour through update_color
 LootContext.createVisitedEntry	inline	crates/sunrise-world/src/loot.rs::Context::table_raw	gap: minor: only the loot-table cycle guard (visited list); predicates and modifiers are not tracked
 LootContext.EntityTarget.getByName	port	crates/sunrise-world/src/loot.rs::Context::target	-
 LootPool.addRandomItems	inline	crates/sunrise-world/src/loot.rs::Context::table_raw	pool condition, bonus rolls, the rolls loop and the pool modifier are in table_raw

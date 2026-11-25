@@ -48,7 +48,7 @@ GuiGraphicsExtractor.item	port	crates/sunrise-client/src/game/interface/inventor
 GuiGraphicsExtractor.fakeItem	inline	crates/sunrise-client/src/game/interface/inventory_slots_client.rs::Game::draw_item	same as item with no owner
 GuiGraphicsExtractor.itemBar	inline	crates/sunrise-client-render/src/hud_overlays.rs::item_decorations	damage bar drawn in item_decorations
 GuiGraphicsExtractor.itemCount	inline	crates/sunrise-client-render/src/hud_overlays.rs::item_decorations	stack count drawn in item_decorations
-GuiGraphicsExtractor.map	port	crates/sunrise-client/src/game/blocks/cartography.rs::Game::draw_cartography
+GuiGraphicsExtractor.map	port	crates/sunrise-client/src/game/blocks/cartography_client.rs::Game::draw_cartography
 GuiGraphicsExtractor.entity	port	crates/sunrise-client/src/game/interface/perspective.rs::Game::draw_player_preview	gap: player: only the local player is previewed; the smithing armour-stand preview has no port
 GuiGraphicsExtractor.skin	missing		minor: no skin customisation preview was found; the inventory preview is draw_player_preview
 GuiGraphicsExtractor.book	port	crates/sunrise-client/src/item_render/gui.rs::draw_enchanting_book	the enchanting table's open book, from the book's open amount and page flip (Game::tick_enchanting_book drives it)

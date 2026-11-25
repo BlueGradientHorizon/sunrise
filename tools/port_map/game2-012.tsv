@@ -78,14 +78,14 @@ CandleCakeBlock.useItemOn	port	crates/sunrise-world/src/level/interact.rs::Sim::
 CandleCakeBlock.useWithoutItem	port	crates/sunrise-world/src/level/interact.rs::Sim::use_without_item	CandleCake arm eats the cake and drops the candle.
 CandleCakeBlock.candleHit	inline	crates/sunrise-world/src/level/interact.rs::Sim::use_item_on	the hit.y - pos.y > 0.5 test inside the CandleCakeBlock.useItemOn arm, which now snuffs the candle
 CandleCakeBlock.updateShape	port	crates/sunrise-world/src/level/shapes.rs::Sim::update_shape_class	Candle cake drops to air when unsupported below.
-CarvedPumpkinBlock.getWeatherStateFromPattern	inline	crates/sunrise-client/src/game/mobs/golems_client.rs::Game::try_spawn_copper_golem	Weathering comes from the copper block below; waxed blocks count as unwaxed.
+CarvedPumpkinBlock.getWeatherStateFromPattern	inline	crates/sunrise-client/src/game/mobs/golems.rs::Game::try_spawn_copper_golem	Weathering comes from the copper block below; waxed blocks count as unwaxed.
 CarvedPumpkinBlock.getOrCreateSnowGolemBase	inline	crates/sunrise-client/src/game/mobs/golems.rs::Game::find_golem	the pattern is block_pattern::SNOW_GOLEM_BASE (a space where the head goes), matched by BlockPattern::find; the lazy pattern cache is not needed.
 CarvedPumpkinBlock.getOrCreateSnowGolemFull	inline	crates/sunrise-client/src/game/mobs/golems.rs::Game::find_golem	the pattern is block_pattern::SNOW_GOLEM_FULL, a pumpkin head on the snow column.
 CarvedPumpkinBlock.getOrCreateIronGolemBase	inline	crates/sunrise-client/src/game/mobs/golems.rs::Game::find_golem	the pattern is block_pattern::IRON_GOLEM_BASE, air beside the arms and body under the head.
 CarvedPumpkinBlock.getOrCreateIronGolemFull	inline	crates/sunrise-client/src/game/mobs/golems.rs::Game::find_golem	the pattern is block_pattern::IRON_GOLEM_FULL, with its air cells.
 CarvedPumpkinBlock.getOrCreateCopperGolemBase	port	crates/sunrise-client/src/game/mobs/golems.rs::Game::copper_golem_base	Copper block under the head.
-CarvedPumpkinBlock.getOrCreateCopperGolemFull	inline	crates/sunrise-client/src/game/mobs/golems_client.rs::Game::try_spawn_copper_golem	Copper golem spawn with the pumpkin head; the head check is in is_golem_head.
-CarvedPumpkinBlock.replaceCopperBlockWithChest	inline	crates/sunrise-client/src/game/mobs/golems_client.rs::Game::try_spawn_copper_golem	Copper block becomes its chest with flag 2 through copper_chest_from_block.
+CarvedPumpkinBlock.getOrCreateCopperGolemFull	inline	crates/sunrise-client/src/game/mobs/golems.rs::Game::try_spawn_copper_golem	Copper golem spawn with the pumpkin head; the head check is in is_golem_head.
+CarvedPumpkinBlock.replaceCopperBlockWithChest	inline	crates/sunrise-client/src/game/mobs/golems.rs::Game::try_spawn_copper_golem	Copper block becomes its chest with flag 2 through copper_chest_from_block.
 CauldronBlock.shouldHandlePrecipitation	inline	crates/sunrise-world/src/level/tick.rs::Sim::precipitation_tick	The 5 percent rain and 10 percent snow chances are inside the precipitation tick.
 CauldronBlock.handlePrecipitation	port	crates/sunrise-world/src/level/tick.rs::Sim::precipitation_tick	Rain fills to water cauldron, snow to powder snow cauldron.
 CauldronBlock.receiveStalactiteDrip	port	crates/sunrise-world/src/level/speleothem.rs::Sim::cauldron_tick	Water and lava drips fill the cauldron with level events 1047 and 1046.
@@ -110,7 +110,7 @@ ChorusFlowerBlock.updateShape	port	crates/sunrise-world/src/level/shapes.rs::Sim
 ChorusFlowerBlock.canSurvive	port	crates/sunrise-world/src/level/survive.rs::Sim::can_survive_class	Needs a chorus plant or support tag below, or a single plant neighbour in the air.
 ChorusFlowerBlock.generatePlant	port	crates/sunrise-world/src/worldgen/chorus_plant.rs::ChorusPlantFeature::place	Connects the base plant and grows the tree.
 ChorusFlowerBlock.growTreeRecursive	port	crates/sunrise-world/src/worldgen/chorus_plant.rs::ChorusPlantFeature::grow	Random height, stems and flowers at the tips.
-ChorusFlowerBlock.onProjectileHit	port	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::projectile_breaks_block	an impact projectile breaks and drops the flower under the mayBreak rules
+ChorusFlowerBlock.onProjectileHit	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::projectile_breaks_block	an impact projectile breaks and drops the flower under the mayBreak rules
 ChorusPlantBlock.updateShape	port	crates/sunrise-world/src/level/shapes.rs::Sim::update_shape_class	Class::ChorusPlant arm updates the side connection and schedules the survival check.
 ChorusPlantBlock.tick	port	crates/sunrise-world/src/level/tick.rs::Sim::tick_block	Destroys the plant when it cannot survive.
 ChorusPlantBlock.canSurvive	port	crates/sunrise-world/src/level/survive.rs::Sim::can_survive_class	Plant or support tag below, or a plant neighbour with support under it.
@@ -135,7 +135,7 @@ ComposterBlock.InputContainer.canPlaceItemThroughFace	port	crates/sunrise-client
 ComposterBlock.InputContainer.setChanged	port	crates/sunrise-client/src/game/blocks/composter.rs::Game::composter_container_insert	Composts the item at once through addLayer.
 ComposterBlock.OutputContainer.getSlotsForFace	port	crates/sunrise-client/src/game/blocks/machines/mod.rs::View::slots_for_face_iter	Down face, slot 0 at level 8.
 ComposterBlock.OutputContainer.setChanged	port	crates/sunrise-world/src/level/interact.rs::Behaviours::composter_empty	Empties the composter to level 0.
-ChestBlock.getBlockType	port	crates/sunrise-client/src/game/world/storage.rs::Game::chest_partner	Partner half and right-half flag give the single, first or second combine type.
+ChestBlock.getBlockType	port	crates/sunrise-client/src/game/world/storage_common.rs::Game::chest_partner	Partner half and right-half flag give the single, first or second combine type.
 ChestBlock.updateShape	port	crates/sunrise-world/src/level/shapes.rs::Sim::update_shape_class	Class::Chest arm joins or splits a double chest with the neighbour.
 ChestBlock.getShape	skip:data		Outline shape per state comes from extracted block shapes.
 ChestBlock.getStateForPlacement	port	crates/sunrise-world/src/level/place.rs::Sim::placement_class	Class::Chest arm sets facing, double type and waterlogged.
@@ -144,7 +144,7 @@ ChestBlock.getFluidState	port	crates/sunrise-world/src/level/mod.rs::Behaviours:
 ChestBlock.candidatePartnerFacing	port	crates/sunrise-world/src/level/place.rs::Sim::chest_candidate_partner_facing	Facing of a single chest on the side, when it can connect.
 ChestBlock.useWithoutItem	port	crates/sunrise-client/src/game.rs::Game::open_menu	Opens the chest menu, with the open stat and piglin anger.
 ChestBlock.getTicker	port	crates/sunrise-client-render/src/block_entity_anim.rs::ticker	Client-side lid animation ticker.
-ChestBlock.isCatSittingOnChest	port	crates/sunrise-client/src/game/world/storage.rs::Game::chest_blocked_at	A sitting cat above blocks the chest.
+ChestBlock.isCatSittingOnChest	port	crates/sunrise-client/src/game/world/storage_server.rs::Game::chest_blocked_at	A sitting cat above blocks the chest.
 ChestBlock.rotate	skip:data		Rotation is a precomputed table from extracted data.
 ChestBlock.createBlockStateDefinition	skip:data		Block state properties come from extracted data.
 ComparatorBlockEntity.saveAdditional	port	crates/sunrise-client/src/game/administration/commands/data.rs::Game::comparator_data	Command NBT reads the live LevelTicks comparator output; gap: major: chunk save/reopen and components are not bridged here.

@@ -108,13 +108,13 @@ ShelfBlock.isPathfindable	skip:data		path types come from the per-state path dat
 ShelfBlock.createBlockStateDefinition	skip:data		block state definition is data (blocks table in sunrise-items)
 ShelfBlock.getStateForPlacement	port	crates/sunrise-world/src/level/place.rs::Sim::placement_class	shelf arm of the placement rules
 ShelfBlock.rotate	port	crates/sunrise-world/src/worldgen/structure.rs::StateTransforms::rotate	facing rotation from the generated state table
-ShelfBlock.useItemOn	port	crates/sunrise-client/src/game/blocks/shelf.rs::Game::use_shelf	a single slot swap, the multi-block hotbar swap while powered (`block.shelf.multi_swap`) and the creative keep, with the block entity and comparator told
-ShelfBlock.swapSingleItem	inline	crates/sunrise-client/src/game/blocks/shelf.rs::Game::use_shelf	the unpowered single-slot swap is the other arm of `use_shelf`
-ShelfBlock.swapHotbar	inline	crates/sunrise-client/src/game/blocks/shelf.rs::Game::use_shelf	the powered chain's hotbar swap is the `powered` arm of `use_shelf`
+ShelfBlock.useItemOn	port	crates/sunrise-client/src/game/blocks/shelf_server.rs::Game::use_shelf	a single slot swap, the multi-block hotbar swap while powered (`block.shelf.multi_swap`) and the creative keep, with the block entity and comparator told
+ShelfBlock.swapSingleItem	inline	crates/sunrise-client/src/game/blocks/shelf_server.rs::Game::use_shelf	the unpowered single-slot swap is the other arm of `use_shelf`
+ShelfBlock.swapHotbar	inline	crates/sunrise-client/src/game/blocks/shelf_server.rs::Game::use_shelf	the powered chain's hotbar swap is the `powered` arm of `use_shelf`
 ShelfBlock.getFluidState	port	crates/sunrise-world/src/registry_fluid.rs::RegistryFluidWorld::fluid_state	waterlogged state from block data
 ShelfBlock.updateShape	port	crates/sunrise-world/src/level/shapes.rs::Sim::update_shape_class
 ShulkerBoxBlock.useWithoutItem	port	crates/sunrise-client/src/game.rs::Game::open_menu	opens the box and awards the open stat; canOpen via shulker_can_open
-ShulkerBoxBlock.playerWillDestroy	port	crates/sunrise-client/src/game/blocks/block_items.rs::Game::drop_creative_shulker	creative filled box spawns directly with collected components; ordinary removal keeps contents for survival drops
+ShulkerBoxBlock.playerWillDestroy	port	crates/sunrise-client/src/game/blocks/block_items_server.rs::Game::drop_creative_shulker	creative filled box spawns directly with collected components; ordinary removal keeps contents for survival drops
 ShulkerBoxBlock.getDrops	port	crates/sunrise-world/src/level/removal.rs::pre_remove	gap: minor: the contents kept on the dropped box come from the same kind; the loot drop is not traced here
 ShulkerBoxBlock.getBlockSupportShape	missing		unsure: shulker_is_closed returns None in the level and the client, so an open box keeps the full cube as its support shape
 ShulkerBoxBlock.rotate	port	crates/sunrise-world/src/worldgen/structure.rs::StateTransforms::rotate	facing rotation from the generated state table

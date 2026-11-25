@@ -16,11 +16,11 @@ JigsawBlock.rotate	port	crates/sunrise-world/src/worldgen/structure.rs::StateTra
 JigsawBlock.mirror	port	crates/sunrise-world/src/worldgen/structure.rs::StateTransforms::mirror	orientation property through the mirror table
 JigsawBlock.getStateForPlacement	port	crates/sunrise-world/src/level/place.rs::Sim::placement_class	orientation from clicked face and horizontal facing
 JigsawBlock.useWithoutItem	port	crates/sunrise-world/src/level/interact.rs::Sim::use_without_item	a game master gets the jigsaw editor (game/administration/jigsaw_edit.rs)
-JukeboxBlock.setPlacedBy	port	crates/sunrise-client/src/game/blocks/jukebox.rs::Game::jukebox_placed	the item's block_entity_data RecordItem turns has_record on, after apply_placed_item filled the block entity
-JukeboxBlock.useWithoutItem	port	crates/sunrise-client/src/game/blocks/jukebox.rs::Game::use_jukebox	takes the disc out through eject_record when one is in
-JukeboxBlock.ownSignal	port	crates/sunrise-client/src/game/blocks/jukebox.rs::jukebox_signals	15 while a song plays
-JukeboxBlock.getAnalogOutputSignal	port	crates/sunrise-client/src/game/blocks/jukebox.rs::jukebox_signals	comparator output of the song
-JukeboxBlock.getTicker	port	crates/sunrise-client/src/game/blocks/jukebox.rs::Game::tick_jukebox	ticks only while a song plays
+JukeboxBlock.setPlacedBy	port	crates/sunrise-client/src/game/blocks/jukebox_server.rs::Game::jukebox_placed	the item's block_entity_data RecordItem turns has_record on, after apply_placed_item filled the block entity
+JukeboxBlock.useWithoutItem	port	crates/sunrise-client/src/game/blocks/jukebox_server.rs::Game::use_jukebox	takes the disc out through eject_record when one is in
+JukeboxBlock.ownSignal	port	crates/sunrise-client/src/game/blocks/jukebox_common.rs::jukebox_signals	15 while a song plays
+JukeboxBlock.getAnalogOutputSignal	port	crates/sunrise-client/src/game/blocks/jukebox_common.rs::jukebox_signals	comparator output of the song
+JukeboxBlock.getTicker	port	crates/sunrise-client/src/game/blocks/jukebox_server.rs::Game::tick_jukebox	ticks only while a song plays
 LayeredCauldronBlock.isFull	inline	crates/sunrise-client/src/cauldron.rs::interact	the level 3 test that gates bucket filling
 LayeredCauldronBlock.canReceiveStalactiteDrip	port	crates/sunrise-world/src/level/speleothem.rs::Sim::cauldron_can_receive	the water cauldron is the rain type here
 LayeredCauldronBlock.handlePrecipitation	port	crates/sunrise-world/src/level/tick.rs::Sim::precipitation_tick	rain or snow chance, cycles the level below 3

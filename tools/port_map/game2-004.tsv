@@ -97,8 +97,8 @@ AbstractSkeleton.reassessWeaponGoal	port	crates/sunrise-client/src/mobs/undead.r
 AbstractSkeleton.onEquipItem	inline	crates/sunrise-client/src/mobs/undead.rs::SkeletonWeapon::can_use	gap: minor: the weapon is re-picked on the next goal check, not at the moment of equipping
 AbstractSkeleton.wantsToPickUp	port	crates/sunrise-client/src/mobs/equip.rs::wants_to_pick_up	spears are refused; every other item follows the generic pickup
 Bogged.getArrow	port	crates/sunrise-client/src/mobs/undead.rs::perform_ranged_attack	Bogged arrows carry poison for 100 ticks
-Bogged.shear	port	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::interact_shear_mob	shear sound, sheared flag, shearing loot, game event
-Bogged.spawnShearedMushrooms	port	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::interact_shear_mob	drops the shearing/bogged loot table at the mob's height
+Bogged.shear	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::interact_shear_mob	shear sound, sheared flag, shearing loot, game event
+Bogged.spawnShearedMushrooms	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::interact_shear_mob	drops the shearing/bogged loot table at the mob's height
 WitherSkeleton.registerGoals	port	crates/sunrise-client/src/mobs/undead.rs::register	piglin and piglin brute target at priority 3, then the skeleton goals
 WitherSkeleton.canBeAffected	port	crates/sunrise-client/src/mobs.rs::Mob::can_be_affected	the wither effect, over #minecraft:undead's poison and regeneration
 WitherSkeleton.canHoldItem	port	crates/sunrise-client/src/mobs/equip.rs::wants_to_pick_up	the wither_skeleton_disliked_weapons tag is refused

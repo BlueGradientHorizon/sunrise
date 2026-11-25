@@ -20,12 +20,12 @@ SessionSearchTrees.updateCreativeTags	inline	crates/sunrise-client/src/creative.
 SessionSearchTrees.updateCreativeTooltips	inline	crates/sunrise-client/src/creative.rs::Creative::search_results	name search uses exported English lines or lazily rebuilt translated tooltip lines
 ChatAbilities.selectVisibleMessages	port	crates/sunrise-client-render/src/chat.rs::ChatAbilities::shows	source filter: client lines always, player and server lines per the abilities
 ChatAbilities.Builder.build	inline	crates/sunrise-client-render/src/chat.rs::ChatAbilities::new	restrictions come from the Chat option alone; new() maps the visibility to them
-ChatListener.tick	port	crates/sunrise-client/src/game/network/remote/chat_queue.rs::Game::tick_chat_queue	the queue runs down with the ticks and pauses with the game
+ChatListener.tick	port	crates/sunrise-client/src/game/network/remote/chat_queue_client.rs::Game::tick_chat_queue	the queue runs down with the ticks and pauses with the game
 ChatListener.setMessageDelay	port	crates/sunrise-client/src/game/network/remote/chat_queue_client.rs::Game::chat_delay_ms	Chat Delay in milliseconds, as Java truncates it, read when a chat line arrives
-ChatListener.flushQueue	port	crates/sunrise-client/src/game/network/remote/chat_queue.rs::Game::flush_chat_queue	each message through accept_chat, so it counts as processed
-ChatListener.acceptNextDelayedMessage	port	crates/sunrise-client/src/game/network/remote/chat_queue.rs::Game::accept_next_delayed_message	the chat.queue row's click accepts one held message before the delay elapses
+ChatListener.flushQueue	port	crates/sunrise-client/src/game/network/remote/chat_queue_client.rs::Game::flush_chat_queue	each message through accept_chat, so it counts as processed
+ChatListener.acceptNextDelayedMessage	port	crates/sunrise-client/src/game/network/remote/chat_queue_client.rs::Game::accept_next_delayed_message	the chat.queue row's click accepts one held message before the delay elapses
 ChatListener.removeFromDelayedMessageQueue	port	crates/sunrise-client/src/game/network/remote/chat_queue_client.rs::Remote::remove_queued_chat	a valid queued signature is removed before presentation or acknowledgement
-ChatListener.handleMessage	port	crates/sunrise-client/src/game/network/remote/chat_queue.rs::Game::enqueue_chat	a line with a delay goes into remote.chat_queue instead of the chat
+ChatListener.handleMessage	port	crates/sunrise-client/src/game/network/remote/chat_queue_client.rs::Game::enqueue_chat	a line with a delay goes into remote.chat_queue instead of the chat
 ChatListener.handlePlayerChatMessage	port	crates/sunrise-client/src/game/network/remote/packets_player_client.rs::Game::apply_player_chat_packet	the queue keeps the receipt-time decoration, trust and Only Show Secure Chat setting
 ChatListener.handleChatMessageError	port	crates/sunrise-client/src/game/network/remote/chat_client.rs::Game::handle_chat_message_error	validation errors acknowledge the invalid signature at acceptance, then skip hidden senders or show and narrate chat.validation_error with chatError; gap: minor: no friends-only restriction
 ChatListener.handleDisguisedChatMessage	port	crates/sunrise-client/src/game/network/remote/packets_player_client.rs::Game::apply_disguised_chat_packet	disguised chat shows and narrates as player-channel chat, with the system tag; gap: minor: no reporting log
@@ -81,7 +81,7 @@ SkinReport.Builder.hasContent	skip:service		chat and player reporting
 SkinReport.Builder.checkBuildable	skip:service		chat and player reporting
 SkinReport.Builder.build	skip:service		chat and player reporting
 BlockStatePredictionHandler.updateKnownServerState	port	crates/sunrise-client/src/game/network/remote/mod.rs::Game::server_block	a predicted block keeps its predicted state; the server state is remembered
-BlockStatePredictionHandler.startPredicting	port	crates/sunrise-client/src/game/network/remote/break_prediction.rs::Game::predict_break	gap: minor: the sequence number is passed in by the caller instead of counted here
+BlockStatePredictionHandler.startPredicting	port	crates/sunrise-client/src/game/network/remote/break_prediction_client.rs::Game::predict_break	gap: minor: the sequence number is passed in by the caller instead of counted here
 AddressCheck.createFromService	missing		minor: no block-list suppliers are loaded, so no address is refused on connect
 ServerAddress.isValidAddress	port	crates/sunrise-protocol/src/servers.rs::parse_address	gap: minor: no IDN check on the host name
 ServerAddress.equals	skip:java		value equality; Sunrise compares the strings

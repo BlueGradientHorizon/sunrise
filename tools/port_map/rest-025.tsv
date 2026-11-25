@@ -1,4 +1,4 @@
-PistonMovingBlockEntity.moveCollidedEntities	port	crates/sunrise-client/src/game/blocks/piston_push.rs::Game::push_for_piston	push loop; per-box distance from crates/sunrise-world/src/piston_push.rs::collided_amount
+PistonMovingBlockEntity.moveCollidedEntities	port	crates/sunrise-client/src/game/blocks/piston_push_server.rs::Game::push_for_piston	push loop; per-box distance from crates/sunrise-world/src/piston_push.rs::collided_amount
 PistonMovingBlockEntity.tick	port	crates/sunrise-world/src/level/pistons.rs::Sim::moving_piston_tick	a moving piston reports the push moveCollidedEntities would do at its new progress, and the caller moves the entities because Ticks has none
 PistonMovingBlockEntity.finalTick	port	crates/sunrise-world/src/level/pistons.rs::Sim::moving_piston_final_tick	the arrival: the moved state is placed and the block's own update runs
 PistonMovingBlockEntity.getExtendedProgress	port	crates/sunrise-world/src/piston_push.rs::extended_progress	where along its travel the moved block is, in blocks

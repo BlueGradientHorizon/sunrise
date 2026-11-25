@@ -6,7 +6,7 @@ EndCrystalRenderer.submit	port	crates/sunrise-client/src/game/world/end_client.r
 EndCrystalRenderer.extractRenderState	inline	crates/sunrise-client/src/game/world/end_client.rs::Game::end_crystal_geometry	age, show-bottom and beam target read from the crystal there
 EndCrystalRenderer.shouldRender	inline	crates/sunrise-client/src/game/world/end_client.rs::Game::end_crystal_geometry	gap: minor: no frustum test; crystals within 256 blocks always draw, beam included
 EnderDragonRenderer.submit	port	crates/sunrise-client/src/game/mobs/dragon_client.rs::Game::dragon_geometry
-EnderDragonRenderer.submitRays	port	crates/sunrise-client/src/game/mobs/dragon.rs::Game::dragon_rays
+EnderDragonRenderer.submitRays	port	crates/sunrise-client/src/game/mobs/dragon_client.rs::Game::dragon_rays
 EnderDragonRenderer.submitCrystalBeams	port	crates/sunrise-client/src/game/mobs/dragon_client.rs::Game::crystal_beam
 EnderDragonRenderer.extractRenderState	inline	crates/sunrise-client/src/game/mobs/dragon_client.rs::Game::dragon_geometry	flap, death fade, hurt overlay, nearest-crystal beam and egg distance read there
 EndermanRenderer.getRenderOffset	port	crates/sunrise-client/src/mobs/render.rs::enderman_render_offset	EndermanRenderer.getRenderOffset's random side offset for a creepy enderman, 0.02 * minecraft:scale per axis
@@ -43,7 +43,7 @@ FireworkEntityRenderer.extractRenderState	port	crates/sunrise-client/src/game/en
 FishingHookRenderer.shouldRender	inline	crates/sunrise-client/src/game/items/fishing_client.rs::Game::fishing_geometry	hook drawn only with an owner
 FishingHookRenderer.submit	port	crates/sunrise-client/src/game/items/fishing_client.rs::Game::fishing_geometry	hook quad and line
 FishingHookRenderer.vertex	inline	crates/sunrise-client/src/game/items/fishing_client.rs::Game::fishing_geometry	hook quad vertex
-FishingHookRenderer.stringVertex	inline	crates/sunrise-client/src/game/items/fishing.rs::Game::fishing_line	line strip vertices
+FishingHookRenderer.stringVertex	inline	crates/sunrise-client/src/game/items/fishing_client.rs::Game::fishing_line	line strip vertices
 FishingHookRenderer.extractRenderState	port	crates/sunrise-client/src/game/items/fishing_client.rs::Game::rod_hand_position	line origin from the rod hand
 FoxRenderer.extractRenderState	port	crates/sunrise-client/src/mobs/body_anim.rs::fox	crouch, sleep, sit, faceplant, pounce and head roll
 FrogRenderer.extractRenderState	port	crates/sunrise-client/src/mobs/body_anim.rs::frog	jump, croak, tongue and swim animations; climate texture in mobs/render.rs::body
@@ -132,7 +132,7 @@ StriderRenderer.getShadowRadius	port	crates/sunrise-client/src/shadows.rs::mob_s
 StriderRenderer.extractRenderState	port	crates/sunrise-client/src/mobs/body_anim.rs::strider	saddle, suffocating and ridden states
 StriderRenderer.isShaking	port	crates/sunrise-client/src/mobs/render.rs::shaking	suffocating strider shakes
 SulfurCubeRenderer.submit	port	crates/sunrise-client/src/mobs/sulfur_cube.rs::body	normal or small model
-SulfurCubeRenderer.extractRenderState	port	crates/sunrise-client/src/game/mobs/sulfur_cubes.rs::Game::sulfur_cube_body_geometry	fuse flash, contained block and worn head
+SulfurCubeRenderer.extractRenderState	port	crates/sunrise-client/src/game/mobs/mob_blocks.rs::Game::sulfur_cube_body_geometry	fuse flash, contained block and worn head
 SulfurCubeRenderer.applySizeAndSquish	port	crates/sunrise-client/src/mobs/sulfur_cube.rs::scale	size and squish scale
 ThrownItemRenderer.submit	port	crates/sunrise-client/src/game/mobs/creatures/mod_client.rs::Game::mob_geometry	thrown item sprite at its scale; a fireball's stack is drawn as the item model (`DisplayContext.Ground`) at 3 or 0.75, full bright
 ThrownItemRenderer.extractRenderState	inline	crates/sunrise-client/src/game/mobs/creatures/mod_client.rs::Game::mob_geometry	item sprite read there; a fireball's stack is `Projectile.item` (`Fireball.getItem`)

@@ -86,16 +86,16 @@ Fireball.getSlot	missing		minor: entity slot access (`/loot insert` on an entity
 Fireball.readAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt.rs::fireball_from_nbt	the `Item` it is drawn as goes through `setItem`, which refuses an empty stack and keeps a single one
 Fireball.setItem	port	crates/sunrise-client/src/projectiles.rs::Projectile::set_item	an empty stack puts the default fire charge back, anything else is kept as one (`copyWithCount(1)`); a kind that is no `Fireball` has no item
 Fireball.shouldRenderAtSqrDistance	skip:ui		render distance rule for the first two ticks; Sunrise draws the projectile as its own pass
-LargeFireball.onHit	port	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::projectile_hit	LargeFireball arm: explosion power and fire flag (mob_griefing), MOB block interaction, then projectile removal. Bounded fire-presence fixture includes disabled-rule and TNT controls; exact motion/counts/geometry and UUID-view serialization are separate.
-LargeFireball.onHitEntity	port	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::projectile_hit	LargeFireball arm: 6 damage to the entity
-SmallFireball.onHitEntity	port	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::projectile_hit	SmallFireball arm: ignites for 5 seconds and deals 5 damage
+LargeFireball.onHit	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::projectile_hit	LargeFireball arm: explosion power and fire flag (mob_griefing), MOB block interaction, then projectile removal. Bounded fire-presence fixture includes disabled-rule and TNT controls; exact motion/counts/geometry and UUID-view serialization are separate.
+LargeFireball.onHitEntity	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::projectile_hit	LargeFireball arm: 6 damage to the entity
+SmallFireball.onHitEntity	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::projectile_hit	SmallFireball arm: ignites for 5 seconds and deals 5 damage
 AbstractThrownPotion.affectEntitiesAround	port	crates/sunrise-client/src/game/blocks/splash_water.rs::Game::affect_entities_around	water potion in the potion's (4, 2, 4) box: 1 indirect-magic damage to water-sensitive mobs, put out burning mobs, players and armor stands, then Axolotl.rehydrate
 AbstractThrownPotion.calculateHorizontalHurtKnockbackDirection	inline	crates/sunrise-client/src/mobs.rs::Mob::damage_with	the splash hurt is `Damage::indirect_magic` from the potion position and the hurt pushes away from the source position
 AbstractThrownPotion.douseFire	port	crates/sunrise-client/src/game/blocks/splash_water.rs::Game::douse_fire	fire blocks break without drops, lit candles and campfires go out (campfire with level event 1009 and the block-change game event, sourced from the potion's owner through `CampfireBlock.douse`)
 AbstractThrownPotion.onHitBlock	port	crates/sunrise-client/src/game/blocks/splash_water.rs::Game::potion_hit_block	a potion in #douses_fire puts out the cell in front of the face it hit, the block it hit and the four horizontal neighbours of the cell in front
 Snowball.getParticle	port	crates/sunrise-client/src/game/mobs/creatures/mod_client.rs::Game::item_burst	snowball item burst on break
-Snowball.handleEntityEvent	port	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::thrown_break_event	break event 3 for thrown items
-Snowball.onHit	inline	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::projectile_hit	Snowball arm: 3 damage to blazes, then the break burst
+Snowball.handleEntityEvent	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::thrown_break_event	break event 3 for thrown items
+Snowball.onHit	inline	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::projectile_hit	Snowball arm: 3 damage to blazes, then the break burst
 ThrowableItemProjectile.readAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt.rs::throwable_from_nbt	the `Item` it flies as is read back with the rest (a potion keeps its effects); a tag without one keeps `getItem`'s default
 Activity.equals	skip:java		value equality of a named activity; no Sunrise counterpart needed
 ModelAndTexture.codec	skip:data		codec for the variant model and texture asset; Sunrise reads variant data from files
@@ -106,7 +106,7 @@ SpawnContext.create	inline	crates/sunrise-client/src/mobs/finalize.rs::VariantRe
 variant/StructureCheck.test	inline	crates/sunrise-client/src/mobs/finalize.rs::VariantRegistry::select	Condition::Structure arm: structures with a piece at the position
 AbstractMinecartContainer.applyNaturalSlowdown	inline	crates/sunrise-client/src/game/entities/minecarts_server.rs::Game::natural_slowdown	gap: minor: plain cart friction 0.96; the container's 0.98 plus 0.001 per empty redstone level is missing
 AbstractMinecartContainer.createMenu	inline	crates/sunrise-client/src/game/entities/minecarts_server.rs::Game::interact_cart	gap: minor: opens the chest for anyone; no refusal of a loot-table cart for spectators
-AbstractMinecartContainer.remove	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::drop_vehicle_contents	Containers.dropContents on every destroying removal, whatever entity_drops says: the damage path's kill or a creative player's discard, and /kill after the open menu writes its slots back; a loot table still held drops the roll made on load
+AbstractMinecartContainer.remove	port	crates/sunrise-client/src/game/entities/minecarts_ops_server.rs::Game::drop_vehicle_contents	Containers.dropContents on every destroying removal, whatever entity_drops says: the damage path's kill or a creative player's discard, and /kill after the open menu writes its slots back; a loot table still held drops the roll made on load
 MinecartChest.interact	inline	crates/sunrise-client/src/game/entities/minecarts_server.rs::Game::interact_cart	chest arm: opens the cart's items and plays the chest sound
 MinecartCommandBlock.activateMinecart	inline	crates/sunrise-client/src/game/entities/minecarts_server.rs::Game::activate_cart	gap: minor: no command ever runs; the cart holds no command since its editor is missing
 MinecartCommandBlock.defineSynchedData	port	crates/sunrise-client/src/game/entities/minecarts.rs::Minecart::new	the cart's `synced_command` and `synced_output` start empty on the cart itself, as `DATA_ID_COMMAND_NAME` and `DATA_ID_LAST_OUTPUT` do
@@ -225,6 +225,6 @@ KnowledgeBookItem.use	port	crates/sunrise-client/src/game/interface/advancements
 LingeringPotionItem.createPotion	port	crates/sunrise-client/src/game/items/potions.rs::thrown_kind	lingering entity type
 LingeringPotionItem.use	inline	crates/sunrise-client/src/game/items/potions_server.rs::Game::use_potion_item	lingering potion throw
 NameTagItem.interactLivingEntity	port	crates/sunrise-client/src/game/interface/names_server.rs::Game::name_mob	a tag with a custom name names the mob under the crosshair, makes it persistent and is used up, in creative too
-PlaceOnWaterBlockItem.use	inline	crates/sunrise-client/src/game/blocks/block_items.rs::Game::apply_placed_item	placed by generic block placement; the water rule is not checked here
+PlaceOnWaterBlockItem.use	inline	crates/sunrise-client/src/game/blocks/block_items_server.rs::Game::apply_placed_item	placed by generic block placement; the water rule is not checked here
 Pillager.addAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt.rs::mob_to_nbt	modeled occupied Inventory list, including empty; inherited Raider fields separate
 Pillager.readAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt/mob_load.rs::mob_from_nbt	Inventory adoption into five-slot occupied-stack model; gap: aggregation and existing pickup-flag load remain separate

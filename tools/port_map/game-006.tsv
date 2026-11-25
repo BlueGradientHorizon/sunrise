@@ -49,9 +49,9 @@ LivingEntity.updateInvisibilityStatus	inline	crates/sunrise-client/src/mobs/trad
 LivingEntity.areAllEffectsAmbient	inline	crates/sunrise-client/src/game/interface/client_ambient.rs::Game::effect_swirls	a server's flag is kept in Extra::effect_ambient; a mob's own effects are never ambient
 LivingEntity.removeAllEffects	port	crates/sunrise-client-render/src/effects.rs::PlayerEffects::clear	player; a mob's list is cleared in commands/effects.rs::cmd_effect_clear
 LivingEntity.removeEffect	inline	crates/sunrise-client/src/game/administration/commands/effects.rs::Game::cmd_effect_clear	retain by effect id for the player and for mobs
-LivingEntity.onEffectUpdated	port	crates/sunrise-client/src/game/items/potions.rs::Game::apply_effect_status	gap: minor: player only; a mob's attributes follow just speed and slowness, strength, weakness, resistance and absorption do nothing on mobs
-LivingEntity.onEffectsRemoved	port	crates/sunrise-client/src/game/items/potions.rs::Game::apply_effect_status	gap: minor: same as onEffectUpdated, mobs only react to speed and slowness
-LivingEntity.refreshDirtyAttributes	port	crates/sunrise-client/src/game/items/potions.rs::Game::apply_effect_status	modifiers diffed against the applied list each tick (player)
+LivingEntity.onEffectUpdated	port	crates/sunrise-client/src/game/items/held_items.rs::Game::apply_effect_status	gap: minor: player only; a mob's attributes follow just speed and slowness, strength, weakness, resistance and absorption do nothing on mobs
+LivingEntity.onEffectsRemoved	port	crates/sunrise-client/src/game/items/held_items.rs::Game::apply_effect_status	gap: minor: same as onEffectUpdated, mobs only react to speed and slowness
+LivingEntity.refreshDirtyAttributes	port	crates/sunrise-client/src/game/items/held_items.rs::Game::apply_effect_status	modifiers diffed against the applied list each tick (player)
 LivingEntity.dealDefaultKnockback	inline	crates/sunrise-client/src/mobs.rs::Mob::damage_with	gap: minor: pushed away from the source position; an arrow uses its previous position, vanilla uses its flight direction
 LivingEntity.applyItemBlocking	port	crates/sunrise-client/src/health.rs::Environment::apply_blocking	gap: minor: the player's shield only; a mob holding a shield never blocks
 LivingEntity.playSecondaryHurtSound	port	crates/sunrise-client/src/game/items/enchant_effects.rs::Game::thorns	enchant.thorns.hit at the attacker
@@ -71,7 +71,7 @@ LivingEntity.isAlive	port	crates/sunrise-client/src/mobs.rs::Mob::alive	not remo
 LivingEntity.setIgnoreFallDamageFromCurrentImpulse	port	crates/sunrise-world/src/living_fall.rs::ImpulseContext::set_ignore_fall_damage	40 ticks of grace
 LivingEntity.getDamageAfterArmorAbsorb	inline	crates/sunrise-client/src/mobs.rs::Mob::damage_with	the player's armor wear is health.rs hurt_armor; the mob path also scales armor effectiveness (breach)
 LivingEntity.getKillCredit	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::mob_die	the last player to hit it, else the last mob
-LivingEntity.getTicksSinceLastKineticHitFeedback	port	crates/sunrise-client/src/game/items/spear_server.rs::Game::kinetic_hit_ticks
+LivingEntity.getTicksSinceLastKineticHitFeedback	port	crates/sunrise-client/src/game/items/spear_client.rs::Game::kinetic_hit_ticks
 LivingEntity.swapHandItems	inline	crates/sunrise-client/src/game/network/remote/packets_entity_client.rs::Game::apply_entity_event_packet	entity event 55 swaps another player's hands; handled by `Game::apply_entity_event_packet`
 LivingEntity.getAttackRangeWith	inline	crates/sunrise-client/src/game.rs::Game::reach	gap: minor: only the spear's range is item specific (spear.rs REACH); other items use the default reach
 LivingEntity.SwingState.getAnimation	port	crates/sunrise-client/src/first_person.rs::SwingState::animation	partial-tick interpolation wraps a restarted animation forward through one

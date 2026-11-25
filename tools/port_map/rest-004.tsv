@@ -128,7 +128,7 @@ LocalPlayer.handleEntityEvent	port	crates/sunrise-client/src/game/network/remote
 LocalPlayer.startUsingItem	port	crates/sunrise-client/src/game.rs::Game::use_hand
 LocalPlayer.isSlowDueToUsingItem	port	crates/sunrise-client/src/game.rs::Game::sync_player_body	the used item's UseEffects.canSprint reaches sprint's slow_item, which stops a sprint starting and ends one
 LocalPlayer.onSyncedDataUpdated	inline	crates/sunrise-client/src/game/interface/music.rs::Game::tick_sound_engine	starting to glide starts the elytra flying sound; the living flags are local state on this side
-LocalPlayer.jumpableVehicle	inline	crates/sunrise-client/src/game/mobs/mounts.rs::Game::charge_mount_jump	gap: minor: saddle and jump-capable check only; no separate vehicle lookup
+LocalPlayer.jumpableVehicle	inline	crates/sunrise-client/src/game/mobs/mounts_common.rs::Game::charge_mount_jump	gap: minor: saddle and jump-capable check only; no separate vehicle lookup
 LocalPlayer.openTextEdit	port	crates/sunrise-client/src/game/interface/sign_edit.rs::Game::open_sign_editor
 LocalPlayer.modifyInputSpeedForSquareMovement	port	crates/sunrise-client-input/src/input.rs::square_movement
 LocalPlayer.distanceToUnitSquare	inline	crates/sunrise-client-input/src/input.rs::square_movement
@@ -143,7 +143,7 @@ LocalPlayer.isSprintingPossible	port	crates/sunrise-client/src/sprint.rs::Condit
 LocalPlayer.canStartSprinting	port	crates/sunrise-client/src/sprint.rs::Conditions::can_start	forward, not sprinting, food or may-fly, no slow item in use and not moving slowly unless underwater; `slow_item` is set from the item use (game.rs item_use_slows_sprint), so eating or drinking blocks the start
 LocalPlayer.onGameModeChanged	missing		minor: switching to spectator keeps vertical momentum
 LocalPlayer.getRopeHoldPosition	port	crates/sunrise-client/src/game/entities/leads_client.rs::Game::player_rope_hold	the first-person rope point from the look angles and the main arm
-LocalPlayer.raycastHitResult	port	crates/sunrise-client/src/game/items/hand.rs::GameHands::hit	gap: minor: block fallback is Game::pick; no separate item attack-range pass
+LocalPlayer.raycastHitResult	port	crates/sunrise-client/src/game/items/hand.rs::Game::attack_range_pick_result	gap: minor: block fallback is Game::pick; no separate item attack-range pass
 LocalPlayer.filterHitResult	inline	crates/sunrise-client/src/game/entities/pick_ray.rs::Game::pick	gap: minor: reach is applied inside the clip; no miss direction is returned
 LocalPlayerResolver.fetchByName	missing		minor: unsure: no player-list lookup by name on the client
 LocalPlayerResolver.fetchById	inline	crates/sunrise-client/src/game/network/remote/sync_client.rs::Game::remote_pushes	the uuid -> tab entry lookup is inline wherever a player's name, team or skin is needed

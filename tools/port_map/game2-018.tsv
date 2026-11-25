@@ -115,8 +115,8 @@ PistonHeadBlock.createBlockStateDefinition	skip:data		state properties come from
 PistonMovingBlockEntity.getProgress	port	crates/sunrise-world/src/piston_shape.rs::MovingPistonState::interpolated_progress
 PistonMovingBlockEntity.getYOff	port	crates/sunrise-world/src/piston_shape.rs::MovingPistonState::interpolated_offset	the y part of the offset
 PistonMovingBlockEntity.getZOff	port	crates/sunrise-world/src/piston_shape.rs::MovingPistonState::interpolated_offset	the z part of the offset
-PistonMovingBlockEntity.moveEntityByPiston	port	crates/sunrise-client/src/game/blocks/piston_push.rs::Game::move_pushed	moves a body along the push with the piston no-clip rule
-PistonMovingBlockEntity.moveStuckEntities	port	crates/sunrise-client/src/game/blocks/piston_push.rs::Game::push_for_piston	the honey branch selects sticky passengers after the collided ones
+PistonMovingBlockEntity.moveEntityByPiston	port	crates/sunrise-client/src/game/blocks/piston_push_server.rs::Game::move_pushed	moves a body along the push with the piston no-clip rule
+PistonMovingBlockEntity.moveStuckEntities	port	crates/sunrise-client/src/game/blocks/piston_push_server.rs::Game::push_for_piston	the honey branch selects sticky passengers after the collided ones
 PistonMovingBlockEntity.loadAdditional	port	crates/sunrise-client/src/game/world/persist.rs::Game::moving_piston_from_nbt	a `minecraft:piston` entity whose block is still a moving piston: blockState, facing, progress, extending and source
 PistonMovingBlockEntity.saveAdditional	port	crates/sunrise-client/src/game/world/piston_nbt.rs::Game::moving_piston_to_nbt	the moving piston of each moving_piston block as a `minecraft:piston` entity in attach_save_data
 PistonMovingBlockEntity.setLevel	skip:data		on load an unknown moved block becomes air; Sunrise resolves moved states from the block registry

@@ -68,7 +68,7 @@ SnowGolemHeadLayer.submit	port	crates/sunrise-client/src/game/mobs/mob_blocks.rs
 SpinAttackEffectLayer.submit	port	crates/sunrise-client/src/game/interface/perspective.rs::Game::spin_attack_geometry	riptide spin model
 StuckInBodyLayer.submitStuckItem	port	crates/sunrise-client/src/mobs/render.rs::stuck_in_body	each arrow or stinger in a random cube of the posed body, ON_SURFACE snapping to a face
 StuckInBodyLayer.submit	inline	crates/sunrise-client/src/game/interface/perspective.rs::Game::stuck_in_body_geometry	the arrow and stinger counts, for another player and for the local player
-SulfurCubeInnerLayer.submit	port	crates/sunrise-client/src/game/mobs/sulfur_cubes.rs::Game::sulfur_cube_body_geometry	gap: player: a swallowed skull or head is not drawn (skull items return early), and a swallowed block ignores its item's block_state
+SulfurCubeInnerLayer.submit	port	crates/sunrise-client/src/game/mobs/mob_blocks.rs::Game::sulfur_cube_body_geometry	gap: player: a swallowed skull or head is not drawn (skull items return early), and a swallowed block ignores its item's block_state
 TropicalFishPatternLayer.submit	port	crates/sunrise-client/src/mobs/render.rs::layers	pattern on the small or large model, tinted
 VillagerProfessionLayer.submit	port	crates/sunrise-client/src/mobs/render.rs::layers	type, profession and level layers; hat masks applied in render_visible
 VillagerProfessionLayer.getIdentifier	port	crates/sunrise-client/src/mobs/render.rs::layers	texture paths built per type, profession and level

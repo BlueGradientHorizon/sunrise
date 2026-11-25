@@ -113,9 +113,9 @@ IronGolem.isPlayerCreated	inline	crates/sunrise-client/src/mobs/goals.rs::Mob::s
 IronGolem.setPlayerCreated	inline	crates/sunrise-client/src/game/mobs/golems.rs::Game::check_golem_spawn	sets extra.player_created on the golem built from blocks; mob_from_nbt sets it on load
 IronGolem.getLeashOffset	port	crates/sunrise-client/src/mobs/leash.rs::leash_offset	0.875 of the eye height, the default width/2 forwards
 SnowGolem.registerGoals	port	crates/sunrise-client/src/mobs/golem.rs::register_snow	gap: minor: stroll uses the 0.001 water-avoiding probability, vanilla 1.0000001E-5
-SnowGolem.shear	port	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::interact_shear_mob	shear sound, pumpkin off, shearing loot table at eye height
-SnowGolem.hasPumpkin	inline	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::interact_shear_mob	extra.sheared is the inverse; synced as DATA_PUMPKIN_ID in lan.rs and remote_mob_data.rs
-SnowGolem.setPumpkin	inline	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::interact_shear_mob	sets extra.sheared (shears, dispenser); nothing puts a pumpkin back, as in vanilla
+SnowGolem.shear	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::interact_shear_mob	shear sound, pumpkin off, shearing loot table at eye height
+SnowGolem.hasPumpkin	inline	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::interact_shear_mob	extra.sheared is the inverse; synced as DATA_PUMPKIN_ID in lan.rs and remote_mob_data.rs
+SnowGolem.setPumpkin	inline	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::interact_shear_mob	sets extra.sheared (shears, dispenser); nothing puts a pumpkin back, as in vanilla
 SnowGolem.getLeashOffset	port	crates/sunrise-client/src/mobs/leash.rs::leash_offset	0.75 of the eye height
 HappyGhast.setServerStillTimeout	inline	crates/sunrise-client/src/mobs/happy_ghast.rs::still_tick	gap: minor: the timeout is extra.counter (10 when a player stands on top, 10 on dismount, 0 on boarding); the one-off position sync to tracking players is not sent, lan.rs only marks the entity precise
 HappyGhast.addAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt.rs::mob_to_nbt	still_timeout, the serverStillTimeout `still_tick` keeps in `counter`

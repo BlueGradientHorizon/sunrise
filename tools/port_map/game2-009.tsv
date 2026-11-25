@@ -19,7 +19,7 @@ PotionContents.hasEffects	inline	crates/sunrise-client/src/game/items/potions_se
 PotionContents.getPotionDescription	port	crates/sunrise-client-render/src/brewing.rs::tooltip	effect name with potency; joined with a space, not the potion.withAmplifier translation
 PotionContents.onConsume	port	crates/sunrise-client/src/game/items/potions_server.rs::Game::tick_drinking	gap: minor: duration scale is always 1.0; POTION_DURATION_SCALE is not read
 AttackRange.defaultFor	inline	crates/sunrise-client/src/game/items/held_items.rs::attack_range_contains	gap: minor: fixed reach 0 to 3 with a 0.3 margin; no entity interaction range attribute
-AttackRange.getClosesetHit	port	crates/sunrise-client/src/game/items/hand.rs::GameHands::hit	gap: minor: uses the crosshair's entity or block, not the closest hit along the attack range
+AttackRange.getClosesetHit	port	crates/sunrise-client/src/game/items/hand.rs::Game::attack_range_pick_result	gap: minor: uses the crosshair's entity or block, not the closest hit along the attack range
 AttackRange.effectiveMaxRange	inline	crates/sunrise-client/src/game/items/held_items.rs::attack_range_contains	creative or survival reach; the mob factor is not used
 BlockItemStateProperties.with	port	crates/sunrise-client/src/game/blocks/block_items.rs::Game::picked_stack	gap: minor: writes only honey_level for beehives and bee nests (BeehiveBlock.getCloneItemStack)
 BlockItemStateProperties.get	port	crates/sunrise-client/src/item_tooltip.rs::honey_line	reads honey_level only
@@ -67,7 +67,7 @@ ItemContainerContents.copyInto	port	crates/sunrise-client/src/block_entity_item.
 ItemContainerContents.itemCopies	skip:other		no callers in the vanilla source
 ItemContainerContents.asMutable	skip:other		no callers in the vanilla source
 ItemContainerContents.equals	skip:java		value equality; Sunrise compares the item data directly
-KineticWeapon.makeLocalHitSound	port	crates/sunrise-client/src/game/items/spear_server.rs::Game::kinetic_hit_feedback	the local hit sound, at most once per ten ticks per entity
+KineticWeapon.makeLocalHitSound	port	crates/sunrise-client/src/game/items/spear.rs::Game::kinetic_hit_feedback	the local hit sound, at most once per ten ticks per entity
 KineticWeapon.computeDamageUseDuration	port	crates/sunrise-client/src/spear.rs::Kinetic::damage_use_duration	the delay plus the damage window's duration, which `SpearUseGoal` and `SpearAttack` read as the spear's use duration
 KineticWeapon.Condition.test	port	crates/sunrise-client/src/spear.rs::Condition::test	tick, attacker speed and relative speed against the scaled minimums
 PiercingWeapon.makeHitSound	port	crates/sunrise-client/src/game/items/spear_server.rs::Game::jab	the hit sound plays at the spear's target position through `audio.play`, shared with the LAN guests

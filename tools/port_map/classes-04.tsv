@@ -142,9 +142,9 @@ BlockEntityTicker	skip:java		ticker combinator; Sunrise ticks each block entity 
 BlockEntityType.getBlockEntity	skip:java		factory that makes the block entity object for a state
 BlockEntityTypes	skip:data		registry
 BoundingBoxRenderable.RenderableBox	skip:debug		test box outline renderer
-CopperGolemStatueBlockEntity.createStatue	port	crates/sunrise-client/src/game/mobs/copper_golems.rs::Game::golem_turn_to_statue	gap: minor: the golem's custom name is not copied onto the statue
+CopperGolemStatueBlockEntity.createStatue	port	crates/sunrise-client/src/game/mobs/copper_golems_server.rs::Game::golem_turn_to_statue	gap: minor: the golem's custom name is not copied onto the statue
 CopperGolemStatueBlockEntity.getItem	port	crates/sunrise-client/src/game/blocks/block_items.rs::Game::picked_stack	statue pose on the picked item
-CopperGolemStatueBlockEntity.initCopperGolem	port	crates/sunrise-client/src/game/mobs/copper_golems.rs::Game::use_golem_statue	axe on an unaffected statue brings the golem back
+CopperGolemStatueBlockEntity.initCopperGolem	port	crates/sunrise-client/src/game/mobs/copper_golems_server.rs::Game::use_golem_statue	axe on an unaffected statue brings the golem back
 DecoratedPotPatterns	skip:data		bootstrap and asset registration
 EnchantingTableBlockEntity.bookAnimationTick	port	crates/sunrise-client-render/src/block_entity_anim.rs::EnchantingBook::tick
 ListBackedContainer	skip:java		slot helpers over a plain list

@@ -123,7 +123,7 @@ ARGB.greyscale	skip:other		int overload has no caller in 26.3; ColorModifier use
 ARGB.alphaBlend	skip:other		int overload has no caller in 26.3; ColorModifier uses the Vector4fc overload
 ARGB.alphaBlendChannel	skip:other		private helper of alphaBlend, which has no caller in 26.3
 ARGB.linearLerp	skip:other		no caller in 26.3
-ARGB.vector4fFromARGB32	port	crates/sunrise-client/src/game/network/lan_particles.rs::rgba	ARGB int to float colour, used for particle option colours; the colour codecs have no counterpart
+ARGB.vector4fFromARGB32	port	crates/sunrise-client/src/game/network/lan_particles_client.rs::rgba	ARGB int to float colour, used for particle option colours; the colour codecs have no counterpart
 ARGB.setVector4fFromARGB32	skip:ui		clear colour of the start-up loading overlay; drawing only
 ARGB.toABGR	port	crates/sunrise-client-render/src/hud_layout.rs::abgr	swaps red and blue into the HUD's packed colour
 AbstractListBuilder.add	skip:java		DataResult list builder of the codec layer

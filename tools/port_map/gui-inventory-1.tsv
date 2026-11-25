@@ -52,7 +52,7 @@ AbstractSignEditScreen.preeditUpdated	inline	crates/sunrise-client/src/game/inte
 AbstractSignEditScreen.extractRenderState	port	crates/sunrise-client/src/game/interface/sign_edit.rs::Game::draw_sign_editor
 AbstractSignEditScreen.extractSign	inline	crates/sunrise-client/src/game/interface/sign_edit.rs::Game::draw_sign_editor	sign sprite and text scale
 AbstractSignEditScreen.extractSignText	inline	crates/sunrise-client/src/game/interface/sign_edit.rs::Game::draw_sign_editor	cursor at the end of a line is a bar; vanilla draws an underscore there; no bidirectional shaping
-AnvilScreen.subInit	port	crates/sunrise-client/src/game/blocks/stations/anvil.rs::rename_box	50 character unbordered rename box
+AnvilScreen.subInit	port	crates/sunrise-client/src/game/blocks/stations_common.rs::rename_box	50 character unbordered rename box
 AnvilScreen.resize	skip:ui		re-init on window resize
 AnvilScreen.extractBackground	inline	crates/sunrise-client/src/game/blocks/stations/draw.rs::Game::draw_station	text field sprite, disabled without an input
 AnvilScreen.extractErrorIcon	inline	crates/sunrise-client/src/game/blocks/stations/draw.rs::Game::draw_station	error sprite when there is input and no result
@@ -102,8 +102,8 @@ BookViewScreen.BookAccess.getPage	inline	crates/sunrise-client/src/game/interfac
 BookViewScreen.BookAccess.fromItem	port	crates/sunrise-client/src/game/interface/books.rs::view_pages	written book components or writable book text
 BrewingStandScreen.init	inline	crates/sunrise-client/src/game/blocks/stations/draw.rs::Game::draw_station	brewing arm centres the title
 BrewingStandScreen.extractBackground	inline	crates/sunrise-client/src/game/blocks/stations/draw.rs::Game::draw_station	fuel bar, progress arrow and bubbles
-CartographyTableScreen.extractResultingMap	port	crates/sunrise-client/src/game/blocks/cartography.rs::Game::draw_cartography
-CartographyTableScreen.extractMap	inline	crates/sunrise-client/src/game/blocks/cartography.rs::Game::draw_cartography	preview drawn from the map texture
+CartographyTableScreen.extractResultingMap	port	crates/sunrise-client/src/game/blocks/cartography_client.rs::Game::draw_cartography
+CartographyTableScreen.extractMap	inline	crates/sunrise-client/src/game/blocks/cartography_client.rs::Game::draw_cartography	preview drawn from the map texture
 CommandBlockEditScreen.addExtraControls	port	crates/sunrise-client-gameplay/src/command_block_screen.rs::CommandBlockScreen::buttons	mode, conditional and auto buttons
 CommandBlockEditScreen.enableControls	skip:other		Sunrise opens the screen with the block data in hand, so the controls are never disabled while waiting for the server
 CommandBlockEditScreen.updateGui	inline	crates/sunrise-client/src/game/administration/command_blocks.rs::Game::open_command_block	fills the box and buttons from the block entity
