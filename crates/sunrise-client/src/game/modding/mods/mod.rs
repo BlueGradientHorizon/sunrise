@@ -862,6 +862,7 @@ pub(super) fn register_client_presentations(
     register_dimension_transition_screens(role);
     register_entity_spectator_shaders(role);
     register_render_pipelines(role, vanilla_root)?;
+    register_pipeline_modifiers(role)?;
     register_entity_renderers(role);
     Ok(())
 }
@@ -895,8 +896,8 @@ pub(super) fn register_preset_editors(role: ExecutionRole) {
     sunrise_client::title::preset_editors::register(editors);
 }
 
-/// Keep the mods' render pipeline registrations once at startup, before resources load: every
-/// load builds them from its own shader files.
+/// Keep the mods' render pipeline and custom render type registrations once at startup, before
+/// resources load: every load builds them from its own shader files.
 fn register_render_pipelines(
     role: ExecutionRole,
     vanilla_root: &Path,
@@ -905,8 +906,25 @@ fn register_render_pipelines(
         return Ok(());
     }
     let mut pipelines = Vec::new();
-    Game::native_register_render_pipelines(&RegistrationContext::new(), &mut pipelines);
+    let mut render_types = Vec::new();
+    Game::native_register_render_pipelines(
+        &RegistrationContext::new(),
+        &mut pipelines,
+        &mut render_types,
+    );
     sunrise_client_render::mod_pipelines::register(pipelines, vanilla_root)?;
+    sunrise_client_render::mod_pipelines::register_render_types(render_types, vanilla_root)?;
+    Ok(())
+}
+
+/// Keep the mods' pipeline modifier registrations once at startup, before resources load.
+fn register_pipeline_modifiers(role: ExecutionRole) -> sunrise_client::Result<()> {
+    if !role.is_client() {
+        return Ok(());
+    }
+    let mut modifiers = Vec::new();
+    Game::native_register_pipeline_modifiers(&RegistrationContext::new(), &mut modifiers);
+    sunrise_client_render::mod_pipelines::register_modifiers(modifiers)?;
     Ok(())
 }
 
@@ -2435,6 +2453,10 @@ impl Game<'_> {
         self.instance_groups
             .borrow_mut()
             .retire_disabled(&effective);
+        if let Some(renderer) = &self.renderer {
+            renderer.retire_disabled_mod_meshes(&effective);
+            renderer.retire_disabled_mod_uniforms(&effective);
+        }
         self.mods.apply_code_switches(&effective);
     }
 }

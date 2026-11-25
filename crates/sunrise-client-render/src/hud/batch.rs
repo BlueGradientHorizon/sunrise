@@ -11,6 +11,10 @@ pub struct HudVertex {
     /// The `GLINT_TEXTURING` UV into the repeating glint texture, unused
     /// unless `uv.x >= 2`.
     pub glint_uv: [f32; 2],
+    /// Optional explicit packed lightmap coordinates and alpha-cutoff flags for special item
+    /// submissions (`0` for normal HUD draws): bit 24 enables frame lightmap sampling (bits
+    /// `0..8` = block byte, bits `8..16` = sky byte), bit 25 selects `0.1` item alpha cutoff.
+    pub light: u32,
     /// 1 for the GUI's text (`RenderPipelines.GUI_TEXT`), which a resource
     /// pack's text shader draws when it has one.
     pub text: u32,
@@ -417,6 +421,10 @@ impl HudBatch {
         )
     }
     pub fn quad(&mut self, p: [[f32; 2]; 4], uv: [[f32; 2]; 4], color: u32) {
+        self.quad_lit(p, uv, color, 0);
+    }
+    /// [`Self::quad`] carrying an explicit [`HudVertex::light`] word for lightmapped GUI items.
+    pub fn quad_lit(&mut self, p: [[f32; 2]; 4], uv: [[f32; 2]; 4], color: u32, light: u32) {
         for i in [0, 1, 2, 0, 2, 3] {
             self.vertices.push(HudVertex {
                 pos: p[i],
@@ -424,6 +432,7 @@ impl HudBatch {
                 color,
                 depth: 0.0,
                 glint_uv: [0.0, 0.0],
+                light,
                 text: 0,
             });
         }
@@ -444,11 +453,16 @@ impl HudBatch {
                 color,
                 depth: 0.0,
                 glint_uv: glint_uv[i],
+                light: 0,
                 text: 0,
             });
         }
     }
     pub fn quad_3d(&mut self, p: [[f32; 3]; 4], uv: [[f32; 2]; 4], color: u32) {
+        self.quad_3d_lit(p, uv, color, 0);
+    }
+    /// [`Self::quad_3d`] carrying an explicit [`HudVertex::light`] word for lightmapped GUI items.
+    pub fn quad_3d_lit(&mut self, p: [[f32; 3]; 4], uv: [[f32; 2]; 4], color: u32, light: u32) {
         for i in [0, 1, 2, 0, 2, 3] {
             self.vertices.push(HudVertex {
                 pos: [p[i][0], p[i][1]],
@@ -456,6 +470,7 @@ impl HudBatch {
                 color,
                 depth: p[i][2],
                 glint_uv: [0.0, 0.0],
+                light,
                 text: 0,
             });
         }
@@ -480,6 +495,7 @@ impl HudBatch {
                 color: u32::MAX,
                 depth: p[i][2],
                 glint_uv: glint_uv[i],
+                light: 0,
                 text: 0,
             });
         }
@@ -787,6 +803,7 @@ impl HudBatch {
                 color: c[i],
                 depth: 0.0,
                 glint_uv: [0.0, 0.0],
+                light: 0,
                 text: 0,
             });
         }

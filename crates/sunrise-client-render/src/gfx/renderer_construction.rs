@@ -1064,6 +1064,7 @@ impl Renderer {
             &atlas_view,
             &glint_view,
             &glint_armor_view,
+            &lightmap_view,
             &glint_sampler,
             hud_coverage,
             hud_pages.map_or_else(Vec::new, |atlas| {
@@ -2434,6 +2435,8 @@ impl Renderer {
             lightning: lightning::Renderer::new(),
             see_through_pipeline,
             world_primitives: Some(world_primitives),
+            mod_meshes: std::sync::Mutex::new(mod_meshes::ModMeshes::default()),
+            mod_uniforms: std::sync::Mutex::new(mod_uniforms::ModUniformBuffers::default()),
             text_polygon_offset_pipeline,
             world_text_pipeline,
             text_mark_pipelines,

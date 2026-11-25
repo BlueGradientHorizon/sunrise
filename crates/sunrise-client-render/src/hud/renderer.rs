@@ -57,6 +57,7 @@ impl HudRenderer {
         view: &wgpu::TextureView,
         glint_view: &wgpu::TextureView,
         glint_armor_view: &wgpu::TextureView,
+        lightmap_view: &wgpu::TextureView,
         glint_sampler: &wgpu::Sampler,
         coverage: bool,
         pages: Vec<Option<UploadedAtlasPage>>,
@@ -142,6 +143,16 @@ impl HudRenderer {
                     },
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 7,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
             ],
         });
         let group_for = |view: &wgpu::TextureView| {
@@ -177,6 +188,10 @@ impl HudRenderer {
                         binding: 6,
                         resource: wgpu::BindingResource::TextureView(glint_armor_view),
                     },
+                    wgpu::BindGroupEntry {
+                        binding: 7,
+                        resource: wgpu::BindingResource::TextureView(lightmap_view),
+                    },
                 ],
             })
         };
@@ -195,8 +210,7 @@ impl HudRenderer {
             bind_group_layouts: &[Some(&layout)],
             ..Default::default()
         });
-        let attributes =
-            wgpu::vertex_attr_array![0=>Float32x2,1=>Float32x2,2=>Unorm8x4,3=>Float32,4=>Float32x2];
+        let attributes = wgpu::vertex_attr_array![0=>Float32x2,1=>Float32x2,2=>Unorm8x4,3=>Float32,4=>Float32x2,5=>Uint32];
         // `depth`: the model's depth test, and whether the run writes depth.
         let create = |label, blend, fragment_entry, depth: Option<bool>| {
             let desc = wgpu::RenderPipelineDescriptor {

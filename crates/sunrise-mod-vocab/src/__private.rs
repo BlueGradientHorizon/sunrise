@@ -345,6 +345,24 @@ pub mod built {
         crate::RenderPipelineRef::from_parts(generation, slot)
             .expect("published pipeline generation")
     }
+    /// Wrap a slot in the render-type table's published generation.
+    pub fn render_type_ref(generation: u64, slot: u32) -> crate::RenderTypeRef {
+        crate::RenderTypeRef::from_parts(generation, slot)
+            .expect("published render type generation")
+    }
+    /// Wrap a registered pipeline modifier slot.
+    pub fn pipeline_modifier_ref(slot: u32) -> crate::PipelineModifierRef {
+        crate::PipelineModifierRef::from_slot(slot)
+    }
+    /// Wrap a slot in the retained GPU mesh store.
+    pub fn mesh_ref(generation: u64, slot: u32) -> crate::MeshRef {
+        crate::MeshRef::from_parts(generation, slot).expect("published mesh generation")
+    }
+    /// Wrap a slot in the retained GPU uniform buffer store.
+    pub fn uniform_buffer_ref(generation: u64, slot: u32) -> crate::UniformBufferRef {
+        crate::UniformBufferRef::from_parts(generation, slot)
+            .expect("published uniform buffer generation")
+    }
 }
 
 /// What the game reads of handles and calls on the API's own types.
@@ -551,6 +569,26 @@ pub mod game {
                 generation: self.0,
                 slot: self.1,
             }
+        }
+    }
+
+    impl Fields for RenderTypeRef {
+        type Fields<'a> = ModelRefFields;
+        fn fields(&self) -> ModelRefFields {
+            ModelRefFields {
+                generation: self.0,
+                slot: self.1,
+            }
+        }
+    }
+
+    pub struct PipelineModifierRefFields {
+        pub slot: u32,
+    }
+    impl Fields for PipelineModifierRef {
+        type Fields<'a> = PipelineModifierRefFields;
+        fn fields(&self) -> PipelineModifierRefFields {
+            PipelineModifierRefFields { slot: self.0 }
         }
     }
 
