@@ -648,6 +648,7 @@ impl Game<'_> {
             game.prepared_items.borrow_mut().clear();
             if let Some(renderer) = &game.renderer {
                 renderer.clear_mod_meshes();
+                renderer.clear_mod_uniforms();
             }
             // The new atlas's skin and map slots are blank: players and maps
             // upload into it again instead of naming sprites it does not have.

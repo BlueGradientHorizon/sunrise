@@ -230,6 +230,7 @@ impl Game<'_> {
         self.prepared_items.borrow_mut().clear();
         if let Some(renderer) = &self.renderer {
             renderer.clear_mod_meshes();
+            renderer.clear_mod_uniforms();
         }
         self.levels.clear();
         self.world.water_tickets.clear();

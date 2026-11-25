@@ -209,6 +209,12 @@ pub trait ClientRenderClientHost {
     /// stride/index/4-byte aligned, and at most `device.limits().max_buffer_size`. Handles are
     /// retired automatically on mod disable, world close, resource reload, or [`MeshRef::release`].
     fn create_mesh(&self, desc: &MeshDescriptor<'_>) -> Result<MeshRef, MeshError>;
+    /// Side: client.
+    /// Allocate a retained GPU std140 uniform buffer initialized with `bytes` (non-empty, 4-byte
+    /// aligned, and at most `device.limits().max_uniform_buffer_binding_size`), returning an
+    /// owner-checked generational [`UniformBufferRef`] handle. Retired automatically on mod
+    /// disable, world close, resource reload, or [`UniformBufferRef::release`].
+    fn create_uniform_buffer(&self, bytes: &[u8]) -> Result<UniformBufferRef, BufferError>;
 }
 
 /// The retained instance-group and mesh operations behind [`InstanceGroupRef`] and [`MeshRef`].
@@ -266,4 +272,17 @@ pub trait ClientRenderClientBackend {
     /// [`MeshRef::release`].
     #[manual_handle]
     fn mesh_release(&self, mesh: MeshRef) -> Result<(), MeshError>;
+    /// Partially or fully update a retained uniform buffer; called through
+    /// [`UniformBufferRef::write`].
+    #[manual_handle]
+    fn uniform_buffer_write(
+        &self,
+        buffer: UniformBufferRef,
+        byte_offset: u32,
+        bytes: &[u8],
+    ) -> Result<(), BufferError>;
+    /// Free a retained uniform buffer and retire the handle; called through
+    /// [`UniformBufferRef::release`].
+    #[manual_handle]
+    fn uniform_buffer_release(&self, buffer: UniformBufferRef) -> Result<(), BufferError>;
 }
