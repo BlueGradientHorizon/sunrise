@@ -1,19 +1,37 @@
 #[test]
 #[ignore = "daily"]
 fn stateful_creation_uses_actual_state_and_preserves_existing_entity() {
-    use crate::game::native_entity_refs::tests::{record_key, run_fresh_cases, with_game_at};
-    use mod_api::{self, *};
-    use std::sync::{Arc, Mutex, OnceLock};
-    use sunrise_client::{chunk::Chunk, containers::BlockEntity};
-
-    if run_fresh_cases(
+    use crate::game::native_entity_refs::tests::run_fresh_cases;
+    if !run_fresh_cases(
         "game::stateful_block_entity_tests::stateful_creation_uses_actual_state_and_preserves_existing_entity",
         "SUNRISE_STATEFUL_CREATION_GAME_CHILD",
         &["valid"],
     ) {
-        return;
+        stateful_creation_fixture(false);
     }
+}
 
+#[test]
+#[ignore = "daily"]
+fn strict_edit_retires_the_staged_placement_entity_after_its_notification() {
+    use crate::game::native_entity_refs::tests::run_fresh_cases;
+    if !run_fresh_cases(
+        "game::stateful_block_entity_tests::strict_edit_retires_the_staged_placement_entity_after_its_notification",
+        "SUNRISE_STATEFUL_STRICT_REPLAY_CHILD",
+        &["strict"],
+    ) {
+        stateful_creation_fixture(true);
+    }
+}
+
+fn stateful_creation_fixture(strict: bool) {
+    use crate::game::native_entity_refs::tests::record_key;
+    use crate::game::native_guest_turn_tests::with_guests_at;
+    use mod_api::{self, *};
+    use std::sync::{Arc, Mutex, OnceLock};
+    use sunrise_client::{chunk::Chunk, containers::BlockEntity};
+
+    const MIXED: [i32; 3] = [2, 64, 0];
     const BLOCK: &str = "state_factory_test:banner";
     const KIND: &str = "state_factory_test:machine";
     #[derive(Default)]
@@ -21,11 +39,28 @@ fn stateful_creation_uses_actual_state_and_preserves_existing_entity() {
         populated: OnceLock<BlockState>,
         calls: Mutex<Vec<BlockState>>,
         kind: OnceLock<BlockEntityTypeKey>,
+        staged: OnceLock<BlockEntityRef>,
+        published: OnceLock<BlockEntityRef>,
     }
     #[derive(Clone)]
     struct Factory(Arc<Observations>);
     #[mod_api::__subscriptions]
     impl Hooks for Factory {
+        fn entity_place(&self, host: &mut dyn ServerHost, event: &mut EntityPlaceEvent) -> Flow {
+            let level = host.level("minecraft:overworld").unwrap();
+            let pos = [event.pos.x, event.pos.y, event.pos.z];
+            let entity = host
+                .block_entity(level, pos)
+                .expect("entity at the staged property");
+            assert_eq!(entity.kind(host).as_ref(), self.0.kind.get());
+            assert_eq!(
+                entity.data(host).unwrap().get(&"progress".into()),
+                Some(&Tag::Int(37))
+            );
+            self.0.staged.set(entity).unwrap();
+            Flow::Continue
+        }
+
         fn register(&self, registrar: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
             let kind = registrar
                 .block_entity_type("machine")
@@ -41,7 +76,20 @@ fn stateful_creation_uses_actual_state_and_preserves_existing_entity() {
         }
     }
     #[mod_api::sunrise_part]
-    impl BlockPart for Factory {}
+    impl BlockPart for Factory {
+        fn on_block_state_change(&self, level: LevelSide<'_>, event: &mut OnBlockStateChangeEvent) {
+            let LevelSide::Server(level) = level else {
+                return;
+            };
+            let pos = [event.pos.x, event.pos.y, event.pos.z];
+            if pos == MIXED
+                && Some(event.new) == self.0.populated.get().copied()
+                && let Some(entity) = level.block_entity(pos)
+            {
+                self.0.published.set(entity).unwrap();
+            }
+        }
+    }
     #[mod_api::sunrise_part]
     impl BlockEntityPart for Factory {
         fn stateful_block_entity(&self, _: &dyn Host, event: &mut StatefulBlockEntityEvent<'_>) {
@@ -73,7 +121,7 @@ fn stateful_creation_uses_actual_state_and_preserves_existing_entity() {
     crate::game::api_values::install_parts(&mods).unwrap();
     let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let root = crate::game::mods::content_root(&base, &Default::default()).unwrap();
-    with_game_at(root.prepared().to_path_buf(), |game| {
+    with_guests_at(root.prepared().to_path_buf(), |game| {
         game.options.dedicated = Some(Vec::new());
         game.world
             .chunks
@@ -102,6 +150,55 @@ fn stateful_creation_uses_actual_state_and_preserves_existing_entity() {
             );
         }
         assert!(observed.calls.lock().unwrap().is_empty());
+
+        if strict {
+            let player = game.player(13).unwrap();
+            let chest = registry.default_state("minecraft:chest").unwrap();
+            let [x, y, z] = MIXED;
+            let edit = BlockEdit {
+                palette: vec![chest.try_into_api().unwrap()],
+                filters: Vec::new(),
+                runs: vec![BlockRun {
+                    x,
+                    y,
+                    z,
+                    height: 1,
+                    surface: None,
+                    block: 0,
+                    only: None,
+                }],
+            };
+            game.world.block_log = Some(Vec::new());
+            let strict_row = game
+                .storage_transaction(|game, _| {
+                    player
+                        .place_block(game, level, MIXED, populated_api, BlockFace::Up, false)
+                        .unwrap();
+                    assert_eq!(
+                        game.block_entity(level, MIXED).as_ref(),
+                        observed.staged.get()
+                    );
+                    let host: &mut dyn ServerHost = game;
+                    assert_eq!(level.edit_blocks(host, &edit), Ok(1));
+                    let strict_row = host.block_entity(level, MIXED).unwrap();
+                    assert_ne!(Some(&strict_row), observed.staged.get());
+                    assert!(observed.published.get().is_none());
+                    Ok::<_, ()>(strict_row)
+                })
+                .unwrap();
+            assert!(observed.staged.get().is_some());
+            assert_eq!(
+                observed.published.get(),
+                observed.staged.get(),
+                "ordinary publication sees the original staged generation before the strict edit"
+            );
+            assert_eq!(*observed.calls.lock().unwrap(), [populated_api]);
+            assert_eq!(game.block_entity(level, MIXED), Some(strict_row));
+            assert_eq!(game.world.block(x, y, z), chest);
+            assert!(game.world.bulk_log.contains(&(x >> 4, z >> 4)));
+            assert!(game.dropped.is_empty());
+            return;
+        }
 
         // The whole-block Host write must create inline, not call the factory
         // again after LevelChunk.setBlockState has already installed its entity.
@@ -144,6 +241,22 @@ fn stateful_creation_uses_actual_state_and_preserves_existing_entity() {
         assert!(game.world.block_entities.get(&(2, 64, 0)).is_none());
         assert!(game.block_entity(level, [2, 64, 0]).is_none());
 
+        // A chosen state of the same block can create its first entity. The
+        // veto sees it, and publication preserves that instance without asking again.
+        let player = game.player(13).unwrap();
+        assert_eq!(
+            player.place_block(game, level, [2, 64, 0], populated_api, BlockFace::Up, false),
+            Ok(())
+        );
+        assert_eq!(
+            game.block_entity(level, [2, 64, 0]).as_ref(),
+            observed.staged.get()
+        );
+        assert_eq!(
+            *observed.calls.lock().unwrap(),
+            [populated_api, empty_api, populated_api]
+        );
+
         // A hook's LevelWriteHost write takes the GameLevel path without the
         // outer Game write wrapper and still creates exactly one instance.
         let written = game.with_level(|_, level, ticks| {
@@ -157,7 +270,7 @@ fn stateful_creation_uses_actual_state_and_preserves_existing_entity() {
         assert!(written);
         assert_eq!(
             *observed.calls.lock().unwrap(),
-            [populated_api, empty_api, populated_api]
+            [populated_api, empty_api, populated_api, populated_api]
         );
         let second = game
             .block_entity(level, [3, 64, 0])

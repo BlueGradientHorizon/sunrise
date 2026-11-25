@@ -606,6 +606,9 @@ mod fishing;
 mod fluid_interaction_tests;
 #[path = "game/modding/fluid_interactions.rs"]
 mod fluid_interactions;
+#[cfg(test)]
+#[path = "game/interface/fluid_passage_tests.rs"]
+mod fluid_passage_tests;
 #[path = "game/interface/focused_text_field.rs"]
 mod focused_text_field;
 #[path = "game/interface/fov.rs"]
@@ -1830,6 +1833,11 @@ mod owner_link;
 mod pack_clouds_frame_tests;
 #[path = "game/modding/pack_finders/mod.rs"]
 mod pack_finders;
+#[cfg(test)]
+#[path = "game/interface/pack_layer_frame_tests.rs"]
+mod pack_layer_frame_tests;
+#[path = "game/interface/pack_layers.rs"]
+mod pack_layers;
 #[cfg(test)]
 #[path = "game/interface/pack_sources_tests.rs"]
 mod pack_sources_tests;
@@ -5829,18 +5837,37 @@ impl Game<'_> {
         flags: i32,
         create_entity: bool,
     ) -> bool {
+        self.set_block_live_with_entity(
+            pos,
+            state,
+            flags,
+            create_entity,
+            transactions::BlockEntityCreation::Live,
+        )
+    }
+
+    fn set_block_live_with_entity(
+        &mut self,
+        pos: [i32; 3],
+        state: BlockStateId,
+        flags: i32,
+        create_entity: bool,
+        creation: transactions::BlockEntityCreation,
+    ) -> bool {
+        use transactions::BlockEntityCreation::{Deferred, Live, Staged};
+        let live_factory = matches!(creation, Live);
         let [x, y, z] = pos;
         let at = BlockPos::new(x, y, z);
         let previous = self.world.block(x, y, z);
         let b = self.res.behaviours();
-        if self.remote.is_some()
-            || flags & level_flags::UPDATE_SKIP_BLOCK_ENTITY_SIDEEFFECTS != 0
-            || b.block(previous) == b.block(state)
-            || b.keeps_block_entity(previous, state)
-            || !(self.res.facts().get(previous).block_entity
+        let server_removal = self.remote.is_none()
+            && flags & level_flags::UPDATE_SKIP_BLOCK_ENTITY_SIDEEFFECTS == 0
+            && b.block(previous) != b.block(state)
+            && !b.keeps_block_entity(previous, state)
+            && (self.res.facts().get(previous).block_entity
                 || self.world.block_entities.stateful_entity(previous.0)
-                || self.world.block_entities.get(&(x, y, z)).is_some())
-        {
+                || self.world.block_entities.get(&(x, y, z)).is_some());
+        if !server_removal && live_factory {
             return self.with_level(|b, level, ticks| {
                 let changed = b.set_block(level, ticks, at, state, flags);
                 if create_entity {
@@ -5855,9 +5882,13 @@ impl Game<'_> {
                 let write = b.begin_block_write(level, ticks, at, state, flags)?;
                 let spawn_start = level.spill.spawns.len();
                 let orb_start = level.spill.orbs.len();
-                let removal = write
-                    .effectful_removal()
-                    .map(|old| level.pre_remove_entity(at, old, true));
+                let removal = if server_removal {
+                    write
+                        .effectful_removal()
+                        .map(|old| level.pre_remove_entity(at, old, true))
+                } else {
+                    None
+                };
                 let spawns = level.spill.spawns.split_off(spawn_start);
                 let orbs = level.spill.orbs.split_off(orb_start);
                 Some((write, removal, spawns, orbs))
@@ -5869,8 +5900,17 @@ impl Game<'_> {
         self.with_level(|b, level, ticks| {
             let removal_updates =
                 removal.map(|removal| level.finish_remove_entity(at, previous, removal));
-            let changed = b.finish_block_write(level, ticks, write, removal_updates);
-            if create_entity {
+            let changed =
+                b.finish_block_write(level, ticks, write, removal_updates, |level, at, state| {
+                    match creation {
+                        Live => level.ensure_block_entity(at, state),
+                        Deferred => {}
+                        Staged { entity, .. } => {
+                            entity.install(level.world, (at.x, at.y, at.z), true)
+                        }
+                    }
+                });
+            if create_entity && live_factory {
                 level.finish_native_block(pos, previous, state, changed);
             }
             changed
