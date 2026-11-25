@@ -420,7 +420,9 @@ mod tests {
             [
                 ("build.rs", "c"),
                 ("src/deep/b.rs", "b"),
-                ("src/lib.rs", "a")
+                ("src/lib.rs", "a"),
+                // Cargo skips only the root `target`.
+                ("src/target/aim.rs", "no")
             ]
         );
     }
