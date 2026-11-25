@@ -559,6 +559,23 @@ pub trait LevelAccess: BlockEntityNeighbors {
     ) -> crate::fluid::ModFluidRules {
         registered
     }
+    /// Whether `fluid` (`water`, `lava` or a mod fluid's id) may flow from `from` one step toward
+    /// `direction`, into `to`, where `FlowingFluid.canMaybePassThrough` is asked: the downward
+    /// step of `spread`, `getSpread`'s side choice and every step of the slope search. Asked only
+    /// after the game's own answer was true, so it can close a side and never open a wall; its
+    /// answer is not cached. The default leaves the side open.
+    #[allow(clippy::too_many_arguments)]
+    fn fluid_passage(
+        &self,
+        _fluid: &'static str,
+        _from: BlockPos,
+        _from_state: BlockStateId,
+        _direction: Direction,
+        _to: BlockPos,
+        _to_state: BlockStateId,
+    ) -> bool {
+        true
+    }
     fn allow_block_ignite(&self, _pos: BlockPos, _cause: &'static str) -> bool {
         true
     }
@@ -740,6 +757,19 @@ pub trait LevelAccess: BlockEntityNeighbors {
         _pos: BlockPos,
         _state: BlockStateId,
         _changed: BlockId,
+        _moved: bool,
+    ) {
+    }
+    /// Observe `BlockBehaviour.onPlace` (from `LevelChunk.setBlockState`) before the
+    /// block's own `onPlace` handling, with the level's `ticks`: a write goes through
+    /// `Behaviours::set_block` with them, so its neighbour updates run as vanilla's do.
+    /// `state` is the new state and `old` the one it replaced. The default does nothing.
+    fn observe_on_place(
+        &mut self,
+        _ticks: &mut Ticks,
+        _pos: BlockPos,
+        _state: BlockStateId,
+        _old: BlockStateId,
         _moved: bool,
     ) {
     }
@@ -1660,16 +1690,22 @@ impl Behaviours {
     }
 
     /// Finish the paused write. If the host ran block-entity removal, pass its number of
-    /// jukebox neighbor updates; otherwise the ordinary removal runs here.
+    /// jukebox neighbor updates; otherwise the ordinary removal runs here. `ensure_entity`
+    /// runs at the end of `LevelChunk.setBlockState`, after `onPlace`, before notifications.
     pub fn finish_block_write<L: LevelAccess + ?Sized>(
         &self,
         level: &mut L,
         ticks: &mut Ticks,
         write: BlockWrite,
         removal_updates: Option<u8>,
+        ensure_entity: impl FnOnce(&mut L, BlockPos, BlockStateId),
     ) -> bool {
-        self.sim(level, ticks)
-            .finish_block_write(write, removal_updates, flags::UPDATE_LIMIT)
+        self.sim(level, ticks).finish_block_write(
+            write,
+            removal_updates,
+            flags::UPDATE_LIMIT,
+            ensure_entity,
+        )
     }
     /// `CopperChestBlock.getFromCopperBlock(copperBlock, facing, level, pos)`.
     pub fn copper_chest_from_block<L: LevelAccess + ?Sized>(

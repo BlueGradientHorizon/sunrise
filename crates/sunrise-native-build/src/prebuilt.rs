@@ -20,8 +20,6 @@ const OPT_LEVEL: &str = "opt-level=3";
 /// Why a build can't use the prebuilt game.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Refusal {
-    /// A mod has a build script, which the prebuilt route doesn't run.
-    BuildScript { mod_id: String },
     /// A mod declares Cargo features, or asks the mod API for features of its own.
     Features { mod_id: String },
 }
@@ -29,10 +27,6 @@ pub enum Refusal {
 impl std::fmt::Display for Refusal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let text = match self {
-            Self::BuildScript { mod_id } => trf(
-                "E_NATIVE_BUILD_SCRIPT: {mod} has a build script; remove it and ship generated source in the mod",
-                &[("mod", mod_id)],
-            ),
             Self::Features { mod_id } => trf(
                 "E_NATIVE_FEATURES: {mod} requests Cargo features; use the pinned SDK feature set",
                 &[("mod", mod_id)],
@@ -47,10 +41,6 @@ impl Refusal {
     /// its remedy for the mod's author stay in the build log ([`Display`](std::fmt::Display)).
     pub fn plain(&self) -> String {
         let why = match self {
-            Self::BuildScript { mod_id } => trf(
-                "{mod} can't be built here: it brings build steps of its own, which Sunrise doesn't run.",
-                &[("mod", mod_id)],
-            ),
             Self::Features { mod_id } => trf(
                 "{mod} can't be built here: it asks for build options Sunrise's game doesn't offer.",
                 &[("mod", mod_id)],
@@ -73,20 +63,8 @@ pub fn refusal(projects: &[api::Project<'_>]) -> Option<Refusal> {
 /// Why `project` alone can't build against the prebuilt game, or `None` when it can.
 pub fn project_refusal(project: &api::Project<'_>) -> Option<Refusal> {
     let mod_id = || project.bundle.manifest.id.clone();
-    let cargo = &project.cargo;
-    let package = cargo.get("package");
-    let build = package.and_then(|p| p.get("build"));
-    let has_script = build.is_some_and(|value| value.as_bool() != Some(false))
-        || (build.and_then(toml::Value::as_bool) != Some(false)
-            && project.bundle.dir.join("build.rs").is_file())
-        || cargo
-            .get("build-dependencies")
-            .and_then(toml::Value::as_table)
-            .is_some_and(|t| !t.is_empty());
-    if has_script {
-        return Some(Refusal::BuildScript { mod_id: mod_id() });
-    }
-    if cargo
+    if project
+        .cargo
         .get("features")
         .and_then(toml::Value::as_table)
         .is_some_and(|t| !t.is_empty())
@@ -546,8 +524,9 @@ pub enum Route {
     /// A mod has a `[native]` table row (mixin, module, bridge, state, loop) or game internals:
     /// build its dylib against the whole package's metadata.
     Engine,
-    /// A mod depends on a crate outside the game's: its dylib is built with Cargo against
-    /// the whole package ([`super::registry_compile`]).
+    /// A mod depends on a crate outside the game's, or has a build script: its dylib is built
+    /// with Cargo against the whole package ([`super::registry_compile`]), which runs the build
+    /// scripts.
     Registry,
 }
 
@@ -557,10 +536,14 @@ impl Route {
         projects
             .iter()
             .map(|project| {
-                match native_route::requirement(&project.bundle.manifest, &project.cargo) {
+                match native_route::requirement(
+                    &project.bundle.manifest,
+                    &project.cargo,
+                    &project.bundle.dir,
+                ) {
                     Requirement::Api => Self::Api,
                     Requirement::Engine(_) => Self::Engine,
-                    Requirement::Registry(_) => Self::Registry,
+                    Requirement::Registry(_) | Requirement::BuildScript => Self::Registry,
                 }
             })
             .max()
@@ -1463,6 +1446,11 @@ mod tests {
             "registry",
             "sunrise-mod-api={path='.sunrise/sdk/api/crates/sunrise-mod-api'}\nserde='1'",
         );
+        let scripted = write(
+            "scripted",
+            "sunrise-mod-api={path='.sunrise/sdk/api/crates/sunrise-mod-api'}",
+        );
+        fs::write(folder.join("scripted/build.rs"), "fn main() {}").unwrap();
         let with = |change: &dyn Fn(&mut sunrise_mod_package::manifest::Manifest)| {
             let mut bundle = api_only.clone();
             change(&mut bundle.manifest);
@@ -1531,6 +1519,20 @@ mod tests {
             assert_eq!(route(&[needs, &registry]), Route::Registry);
         }
         assert_eq!(route(&[&api_only, &registry]), Route::Registry);
+        // A build script runs only under Cargo: the mod's own `build.rs` sends the set there,
+        // and `build = false` does not.
+        assert_eq!(route(&[&api_only, &scripted]), Route::Registry);
+        let unscripted = write(
+            "unscripted",
+            "sunrise-mod-api={path='.sunrise/sdk/api/crates/sunrise-mod-api'}",
+        );
+        fs::write(folder.join("unscripted/build.rs"), "fn main() {}").unwrap();
+        fs::write(
+            folder.join("unscripted/Cargo.toml"),
+            "[package]\nname='unscripted'\nversion='0.1.0'\nbuild=false\n[dependencies]\nsunrise-mod-api={path='.sunrise/sdk/api/crates/sunrise-mod-api'}\n",
+        )
+        .unwrap();
+        assert_eq!(route(&[&api_only, &unscripted]), Route::Api);
         // What ties a mod to its exact build is named by its table.
         let tie = |bundle: &super::super::Bundle| {
             let project = api::Project::read(bundle).unwrap();
@@ -1867,10 +1869,6 @@ mod tests {
             (
                 "[dependencies]\nsunrise-mod-api={path='.sunrise/sdk/api/crates/sunrise-mod-api'}\n[features]\nextra=[]",
                 Refusal::Features { mod_id: id() },
-            ),
-            (
-                "build='make.rs'\n[dependencies]\nsunrise-mod-api={path='.sunrise/sdk/api/crates/sunrise-mod-api'}",
-                Refusal::BuildScript { mod_id: id() },
             ),
         ] {
             assert_eq!(refusal_of(cargo), Some(reason), "{cargo}");

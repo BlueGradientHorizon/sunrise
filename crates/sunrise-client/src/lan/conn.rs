@@ -469,6 +469,26 @@ impl PlayerSender {
         };
         (sender, move || inspect.queued_contents())
     }
+    /// A pooled test sender whose client answered no keep-alive since joining, longer ago than
+    /// the keep-alive timeout.
+    #[cfg(test)]
+    pub(crate) fn timed_out_test_sender() -> Self {
+        let (mut sender, _) = Self::payload_executor_test_sender(Transport::empty());
+        let To::Pool(outbox, _) = &sender.to else {
+            unreachable!("the executor test sender is pooled");
+        };
+        let start = Instant::now()
+            .checked_sub(2 * KEEP_ALIVE_EVERY + Duration::from_secs(1))
+            .unwrap();
+        sender.to = To::Pool(
+            outbox.clone(),
+            Arc::new(KeepAliveWatch {
+                start,
+                alive: Arc::new(AtomicI64::new(-1)),
+            }),
+        );
+        sender
+    }
     /// Override framing on a test sender (e.g. `Framing::Network(None)` for TCP frame limits).
     #[cfg(test)]
     pub fn with_framing(mut self, framing: sunrise_protocol::connection::Framing) -> Self {
@@ -2307,17 +2327,6 @@ struct PlayConn {
     /// Shared with the player's [`PlayerSender`]: what the hub hasn't taken yet.
     undrained: Arc<Undrained>,
 }
-impl PlayConn {
-    /// `IntegratedServer.isSingleplayerOwner`: the integrated server's own player,
-    /// by name (ignoring case).
-    fn is_owner(&self) -> bool {
-        self.shared
-            .config
-            .singleplayer_profile
-            .as_ref()
-            .is_some_and(|(owner, _)| owner.eq_ignore_ascii_case(&self.name))
-    }
-}
 impl io_pool::Session for PlayConn {
     /// Forward the player's packet, or say why it ends the connection: a
     /// required resource pack declined, a rate-limit excess, a cookie response
@@ -2356,7 +2365,7 @@ impl io_pool::Session for PlayConn {
                     self.latency.store((old * 3 + ms) / 4, Ordering::Relaxed);
                     self.sent_at = None;
                     Verdict::Go
-                } else if self.is_owner() {
+                } else if self.shared.is_singleplayer_owner(&self.name) {
                     Verdict::Go
                 } else {
                     kick((
