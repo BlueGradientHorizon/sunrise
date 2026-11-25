@@ -121,11 +121,13 @@ always packaged. A file left out is never read, and the native build, which work
 it. `cargo sunrise-mod check` runs Cargo in the folder itself, so the folder's Cargo configuration applies there as
 it does to plain `cargo`. A few old input paths still refuse a folder: `sunrise-native.json`,
 `horizon-mixin.toml`, and a root `native/` or `rust/`. In an archive, any file outside the package's own names
-(the manifest, `uses.json`, `icon.png`, `runtime/`, `assets/`, `data/`) is source, within the same limits.
+(the manifest, `uses.json`, `icon.png`, `runtime/`, `assets/`, `data/`) is source, within the same limits. The game
+never compiles the source, so it does not check this list when it loads a package: it reads the manifest, the icon,
+the content and the runtime files, and skips the rest.
 
 A package never carries a prebuilt binary. A file whose first bytes are those of an ELF, Mach-O or PE executable
-or library, or of an `ar` archive (`.a`, `.lib`), refuses the package by name, whatever the file is called: ship
-the source and let the build compile it.
+or library, or of an `ar` archive (`.a`, `.lib`), is refused by name when the package is packed or checked, whatever the
+file is called: ship the source and let the build compile it.
 
 A package may also carry `uses.json`, generated metadata that `cargo sunrise-mod build` writes from a scan of the
 same source files it packs. It is never read from the folder. The build leaves it out for a mod made for exactly one

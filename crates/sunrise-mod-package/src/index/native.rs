@@ -44,6 +44,13 @@ impl Bundle {
             if bytes.len() as u64 != size {
                 return Err(format!("{name}: invalid expanded size"));
             }
+            // The game never opens a source file; the tools that do (the registry's checks, the
+            // launcher's build) refuse a prebuilt binary here.
+            if crate::manifest::source_file(&name)
+                && let Some(kind) = crate::manifest::binary_kind(&bytes)
+            {
+                return Err(crate::manifest::ContentFileError::Binary { name, kind }.to_string());
+            }
             files.insert(name, bytes);
         }
         Ok(Self {
@@ -172,34 +179,45 @@ mod tests {
     }
 
     #[test]
-    fn an_empty_archive_directory_is_allowed_but_its_unlisted_files_are_not() {
+    fn an_empty_archive_directory_is_allowed_and_any_other_file_is_carried_as_source() {
         let manifest = manifest();
         let bundle = read("empty-dirs", &manifest, &[("native/", b""), ("rust/", b"")]).unwrap();
         assert_eq!(bundle.manifest.id, "veinminer");
         assert_eq!(bundle.files.len(), 3);
         for (i, name) in [
             "sunrise-native.json",
-            "horizon-mixin.toml",
             "native/rust/src/lib.rs",
-            "rust/src/lib.rs",
+            "vendor/zlib/inflate.c",
         ]
         .into_iter()
         .enumerate()
         {
-            let result = read(&format!("not-allowed-{i}"), &manifest, &[(name, b"bad")]);
-            assert_eq!(
-                result.err().unwrap(),
-                format!("unexpected package path: {name}")
-            );
+            let bundle = read(&format!("carried-{i}"), &manifest, &[(name, b"int x;")]).unwrap();
+            assert_eq!(bundle.files[name], b"int x;");
+        }
+    }
+
+    #[test]
+    fn a_prebuilt_binary_among_the_source_is_refused_by_its_bytes() {
+        for (i, bytes) in [&b"\x7fELF\x02\x01"[..], b"!<arch>\nlib.o/"]
+            .into_iter()
+            .enumerate()
+        {
+            let error = read(
+                &format!("binary-{i}"),
+                &manifest(),
+                &[("vendor/lib.c", bytes)],
+            )
+            .err()
+            .unwrap();
+            assert!(error.starts_with("vendor/lib.c: "), "{error}");
+            assert!(error.contains("prebuilt binaries"), "{error}");
         }
     }
 
     #[test]
     fn refuses_unsafe_entries_and_unknown_fields() {
-        for (i, name) in ["../escape.rs", "src/../escape.rs", "src/blob.bin"]
-            .iter()
-            .enumerate()
-        {
+        for (i, name) in ["../escape.rs", "src/../escape.rs"].iter().enumerate() {
             assert!(
                 read(&format!("invalid-{i}"), &manifest(), &[(name, b"bad")]).is_err(),
                 "{name}"

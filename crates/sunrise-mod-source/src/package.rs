@@ -1,7 +1,11 @@
-//! Which files of a mod folder are its package's source: the one selection that packing
-//! (`sunrise_mod_package::Package::directory_files`) and the uses scan ([`crate::mod_uses`]) share.
+//! Which files of a package are its source, and which of them are refused: the one file list and
+//! the one binary rule, shared by the packer (`sunrise_mod_package::Package::write_files`), the
+//! uses scan ([`crate::mod_uses`]) and the registry bot. The game's loader never calls them. Walking
+//! a mod folder for them (`source_files`) is the `folder` feature, which only the tools enable.
+#[cfg(feature = "folder")]
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use mod_surface::uses::USES_FILE;
+#[cfg(feature = "folder")]
 use std::{io, path::Path};
 
 /// The manifest's file name in a `.smod` or a mod folder.
@@ -14,28 +18,48 @@ pub const RUNTIME_DIR: &str = "runtime";
 /// and the pinned SDK the mod tool fetches into `.sunrise/`.
 pub const NOT_PACKAGED: [&str; 3] = [".git", "target", ".sunrise"];
 
-/// Whether `name` (`/`-separated, relative to the package) is one of the package's own names:
-/// the manifest, the uses table, the icon, and what is under `runtime/`, `assets/` and `data/`.
-/// Any other file of a native package is source.
-pub fn reserved(name: &str) -> bool {
-    name == MANIFEST
-        || name == USES_FILE
-        || name == "icon.png"
-        || [RUNTIME_DIR, "assets", "data"].iter().any(|folder| {
+/// Whether `name` (`/`-separated, relative to the package) is a source file: any path outside
+/// [`NOT_PACKAGED`] folders that is not one of the package's own names, which are the manifest,
+/// the uses table, the icon, and what is under `runtime/`, `assets/` and `data/`. A name is never
+/// judged by its extension; a trailing `/` reads as a file below the folder.
+pub fn source_file(name: &str) -> bool {
+    !name.split('/').any(|part| NOT_PACKAGED.contains(&part))
+        && name != MANIFEST
+        && name != USES_FILE
+        && name != "icon.png"
+        && ![RUNTIME_DIR, "assets", "data"].iter().any(|folder| {
             name.strip_prefix(folder)
                 .is_some_and(|rest| rest.starts_with('/'))
         })
 }
 
+/// The kind of prebuilt binary a file is, from its first bytes alone, whatever its name: ELF,
+/// Mach-O (32- and 64-bit in both byte orders, and the universal header), PE, or an `ar` archive
+/// (which covers `.a` and `.lib`). `head` is the file's first bytes, at least 8 of them when the
+/// file has that many. The packer refuses a source file this names.
+pub fn binary_kind(head: &[u8]) -> Option<&'static str> {
+    match head {
+        [0x7f, b'E', b'L', b'F', ..] => Some("ELF"),
+        [0xfe, 0xed, 0xfa, 0xce | 0xcf, ..] | [0xce | 0xcf, 0xfa, 0xed, 0xfe, ..] => Some("Mach-O"),
+        [0xca, 0xfe, 0xba, 0xbe, ..] | [0xbe, 0xba, 0xfe, 0xca, ..] => {
+            Some("Mach-O universal binary or Java class file")
+        }
+        [b'M', b'Z', ..] => Some("PE"),
+        _ if head.starts_with(b"!<arch>\n") => Some("ar archive"),
+        _ => None,
+    }
+}
+
 /// The source files a package of the folder at `root` carries, `/`-separated and sorted: the files
 /// `cargo package` would put in the crate. The whole folder is walked, but not [`NOT_PACKAGED`]
 /// folders, folders whose name starts with `.`, nested packages (a folder holding its own
-/// `Cargo.toml`), the package's [`reserved`] names, or what the root `.gitignore` ignores. Then
+/// `Cargo.toml`), the names [`source_file`] refuses, or what the root `.gitignore` ignores. Then
 /// `[package] include` of `Cargo.toml` keeps only the files it matches, or else `[package]
 /// exclude` drops the files it matches, both as gitignore-style patterns. `Cargo.toml` and
 /// `Cargo.lock` at the root are always kept. No entry whose name a package path cannot hold (not
 /// UTF-8, or with a `\` in it) is read. The walk keeps its own stack, so a deep tree needs no
 /// recursion.
+#[cfg(feature = "folder")]
 pub fn source_files(root: &Path) -> io::Result<Vec<String>> {
     let invalid = |message: String| io::Error::new(io::ErrorKind::InvalidData, message);
     let manifest = match std::fs::read_to_string(root.join("Cargo.toml")) {
@@ -129,17 +153,15 @@ pub fn source_files(root: &Path) -> io::Result<Vec<String>> {
                 format!("{prefix}/{file_name}")
             };
             if kind.is_dir() {
-                // `reserved` reads a trailing `/` as a file below the folder.
                 if file_name.starts_with('.')
-                    || NOT_PACKAGED.contains(&file_name)
-                    || reserved(&format!("{name}/"))
+                    || !source_file(&format!("{name}/"))
                     || entry.path().join("Cargo.toml").exists()
                     || !packaged(&name, true)
                 {
                     continue;
                 }
                 pending.push((entry.path(), name));
-            } else if !reserved(&name) && packaged(&name, false) {
+            } else if source_file(&name) && packaged(&name, false) {
                 found.push(name);
             }
         }
@@ -150,6 +172,62 @@ pub fn source_files(root: &Path) -> io::Result<Vec<String>> {
 
 #[cfg(test)]
 mod tests {
+    use super::{binary_kind, source_file};
+
+    #[test]
+    fn a_source_file_is_any_path_but_the_packages_own_and_not_packaged_folders() {
+        for name in [
+            "Cargo.toml",
+            "build.rs",
+            "src/ffi/add.c",
+            "vendor/zlib/inflate.h",
+            "configure",
+            "Makefile",
+            "tools/gen.sh",
+            "assetsx/a.c",
+        ] {
+            assert!(source_file(name), "{name}");
+        }
+        for name in [
+            "sunrise-mod.toml",
+            "uses.json",
+            "icon.png",
+            "runtime/table.bin",
+            "assets/ruby/lang.json",
+            "data/ruby/tags.json",
+            "assets/",
+            ".git/config",
+            "target/debug/x.c",
+            "src/target/x.c",
+            ".sunrise/sdk/api/lib.rs",
+        ] {
+            assert!(!source_file(name), "{name}");
+        }
+    }
+
+    #[test]
+    fn binary_kind_reads_the_first_bytes_whatever_the_name() {
+        for (head, kind) in [
+            (&b"\x7fELF\x02\x01\x01\0"[..], Some("ELF")),
+            (b"\xcf\xfa\xed\xfe\x07\0\0\x01", Some("Mach-O")),
+            (b"\xfe\xed\xfa\xce", Some("Mach-O")),
+            (
+                b"\xca\xfe\xba\xbe\0\0\0\x02",
+                Some("Mach-O universal binary or Java class file"),
+            ),
+            (b"MZ\x90\0", Some("PE")),
+            (b"!<arch>\nfoo.o/", Some("ar archive")),
+            (b"#include <stdio.h>", None),
+            (b"!<arch>", None),
+            (b"", None),
+        ] {
+            assert_eq!(binary_kind(head), kind, "{head:?}");
+        }
+    }
+}
+
+#[cfg(all(test, feature = "folder"))]
+mod folder_tests {
     use super::source_files;
     use std::path::Path;
 

@@ -30,10 +30,13 @@ my_mod.smod
   against the pinned prebuilt game; mixins compile into a separate function-replacement patch library. The game itself does not compile. Its resources load through the same content reader as a content mod's.
 - **Runtime files:** a native package may carry a `runtime/` folder of data its code opens beside
   itself, listed in a top-level `[runtime]` table (below). A content mod has none.
-- Inconsistent code declarations or executable files in the archive refuse the package.
+- Inconsistent code declarations in a project folder, or an executable file among the assets, data or icon,
+  refuse the package.
 - The full native layout is in [Package contents](../how-to/native-mods/03-data-files.md#package-contents). Packing
   a project folder takes the files `cargo package` would carry; in an archive, any file outside the package's own
-  names is source. A prebuilt binary (ELF, Mach-O, PE, `ar`) is refused by its content, never by its name.
+  names is source. The packer and the registry's checks refuse a prebuilt binary (ELF, Mach-O, PE, `ar`) among the
+  source by its content, never by its name. The game reads only what it uses of an archive (below) and skips every
+  other entry, without a check of the file list.
 
 There is no mod-id directory level inside the archive. `sunrise-mod.toml` is the only manifest and the only
 source of the mod's id and version; Cargo's package name and version are not mod identity. IDs are plain
@@ -237,8 +240,9 @@ Your root `impl Hooks` uses `#[mod_api::sunrise_mod]`; the attribute generates t
 ([Writing hooks](../start/writing-hooks.md)).
 
 Folder packaging selects source and resource files by Cargo's rule for a crate, which leaves out `.git/` and
-`target/`. It validates selected files before copying them. Whole archives are checked, not treated as source
-folders with ignored extra entries.
+`target/`. It validates selected files before copying them. The game reads an archive's manifest, `icon.png`,
+`assets/` and `data/` files and listed `runtime/` files, and skips every other entry unread; it still refuses an
+entry whose path is absolute, has a `..` part or repeats another, and one that is a symbolic link.
 
 ## Content paths and icon
 
