@@ -173,7 +173,7 @@ fn a_gui_text_pipeline_the_device_refuses_fails_the_load() {
         return;
     };
     let program = |dimension: &str, at: &str, location: u32| {
-        crate::core_shader::CoreProgram::validated(
+        crate::core_shader::validated(
             naga::front::wgsl::parse_str(
                 "@vertex fn main(@location(0) p: vec2<f32>) -> @builtin(position) vec4<f32> { return vec4(p, 0.0, 1.0); }",
             )
@@ -207,7 +207,7 @@ fn a_gui_text_pipeline_the_device_refuses_fails_the_load() {
 }
 
 /// The pack's GUI text program of `vsh` and `fsh`, as the atlas loads it.
-fn gui_program(vsh: &str, fsh: &str) -> std::sync::Arc<CoreProgram> {
+fn gui_program(vsh: &str, fsh: &str) -> std::sync::Arc<sunrise_glsl::Translated> {
     let pack = super::text_tests::source(&[
         ("assets/minecraft/shaders/core/text.vsh", vsh.to_owned()),
         ("assets/minecraft/shaders/core/text.fsh", fsh.to_owned()),
@@ -243,7 +243,7 @@ fn a_gui_text_shader_is_taken_or_left_the_same_in_every_coverage_mode() {
         view_formats: &[],
     });
     let view = atlas.create_view(&Default::default());
-    let made = |program: &CoreProgram, coverage| {
+    let made = |program: &sunrise_glsl::Translated, coverage| {
         PackText::new(
             &gpu.device,
             crate::gfx::hud_coverage::HUD_FORMAT,

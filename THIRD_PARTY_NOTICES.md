@@ -111,6 +111,11 @@ members would take a location past `u32` (each taking the next after its `layout
 is a parse error at its declaration, not an overflow.
 An integer literal whose bit pattern does not fit in 32 bits is a parse error at the literal, not
 lowered to its low 32 bits (GLSL 4.60 §4.1.3).
+A constant expression inside a function (an array size, a `case` label) names the `const` locals
+in scope there, the innermost declaration of a name first, as a global `const` is named (GLSL
+4.60 §4.3.3); so does a constant expression nested in it (an array constructor's size).
+A name declared in an `if` or `else` statement, a `while` or `do` body (braced or not) or a
+`switch` body is scoped to its end (GLSL 4.60 §4.2.2, §6.2), not to the enclosing block.
 The HLSL backend writes an ordinary level-zero texture sample as `SampleLevel(..., 0.0)`, while
 comparison textures keep `SampleCmpLevelZero`; HLSL has no ordinary `SampleLevelZero` method.
 The shared interpolation defaults also compile with `glsl-in` alone, without needing the
@@ -157,6 +162,16 @@ sources (#3299); and
 `_mi_arenas_page_free` in `src/arena.c` lowers the `malloc_huge` statistic when a huge page is freed, at
 every `MI_STAT` level as `src/page.c` raises it, instead of `mi_stat_free` (`src/free.c`) and
 `_mi_theap_page_destroy` (`src/theap.c`) lowering it only with detailed statistics (#3299).
+
+## winit
+
+`third_party/winit` is [winit](https://github.com/rust-windowing/winit) 0.30.13 by the winit
+contributors, licensed under Apache-2.0 (`LICENSE` in that folder), without its examples and tests.
+One change: its X11 backend takes raw motion from the enabled slave pointers instead of the master
+pointer's copy, tracking them from each device-hierarchy event in stream order; raw buttons and keys
+still come from the masters. While winit holds its own pointer grab (`CursorGrabMode::Confined`, the
+grab mode winit's X11 backend supports), an X server speaking XInput 2.1 or later sends a client
+each master raw event twice, so mouse look turned twice as far (#3022); each slave's arrives once.
 
 ## Pixelify Sans
 

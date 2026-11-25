@@ -265,13 +265,19 @@ assert_eq!(host.screen_slot(MENU, 3), Some([62.0, 18.0]));
 ```
 
 `menu` is the menu type whose screen is open, so a call made for another screen refuses. Any mod can
-read, move, activate, or hide slots of the open screen for `menu`. `slot` is the index into
-`MenuScreenLayout::slots` (including slots declared `None` at open, which start inactive and can be
-activated later with `Some([x, y])`). A position is GUI pixels from the screen's top-left corner and names the item's top-left
+read, move, activate, or hide slots of the open screen for `menu`. `slot` ranges over
+`0..(container_len + player_slots)`, where `container_len` is `MenuScreenLayout::slots.len()` and
+`player_slots` is what the menu declared (`MenuScreenOpen::player_slots`, 0 for a menu with no player
+inventory). `0..container_len` indexes `MenuScreenLayout::slots` (including slots declared `None` at open, which
+start inactive and can be activated later with `Some([x, y])`). The menu's player slots follow in menu order, the
+main inventory's three rows and then the hotbar, as the menu appends them
+(`AbstractContainerMenu.addStandardInventorySlots`); each starts at its place on the `inventory_x`/`inventory_y`
+grid. A position is GUI pixels from the screen's top-left corner and names the item's top-left
 corner, as in `MenuScreenLayout::slots`; `None` hides the slot. The call takes `&self`, so a screen hook such as
 `screen_render_post` can move slots every frame; a call that repeats a slot's current place changes nothing and
-costs no layout work. The change lasts for that opening. A replacement starts from its declared layout,
-even when the server reuses the same window id without a close packet. `ClientHost::screen_slot(menu, slot)` reads where a slot will be from the next frame, `None` when it is
+costs no layout work. The change lasts for that opening, for container and player slots alike: closing the
+screen and opening it again, or a replacement even when the server reuses the same window id without a close
+packet, starts from the declared layout with every slot shown. `ClientHost::screen_slot(menu, slot)` reads where a slot will be from the next frame, `None` when it is
 hidden.
 
 From the next frame a moved slot is a vanilla slot at that position, which is what the screen reads live:
@@ -282,7 +288,7 @@ From the next frame a moved slot is a vanilla slot at that position, which is wh
 - its item, count and decorations, and its empty-slot icon, are drawn there;
 - the recipe book's ghost items are drawn there.
 
-A hidden slot is none of these: it is not hovered, drawn or listed until the mod puts it somewhere again. A move
+A hidden slot is none of these, and it is not a drag target or swapped by a number key either: it is not hovered, drawn or listed until the mod puts it somewhere again. A move
 or a hide never touches the recipe book: a bound book keeps its catalogue and its placement. The recipe book and
 `screen_room` still move the whole image, and every slot with it; a slot's own position never changes for them. A
 position outside the image is allowed and is not clamped, and a slot there takes the click instead of making it a
@@ -290,19 +296,21 @@ click outside the screen.
 
 The call is client-side only: nothing is sent, and server-side slot rules never change. A locally hidden
 slot keeps its item and a shift-click may still fill it, as a deactivated Java slot (`Slot.isActive()`)
-does. Slots declared `None` at open start inactive and can be activated later with `Some([x, y])`.
+does. The server never consults it, so a shift-click from another slot can still fill a hidden player or
+container slot: that is the menu's own quick-move answer, and the client adds no filter. Slots declared `None` at
+open start inactive and can be activated later with `Some([x, y])`.
 
 Each refusal changes nothing and is named by `ScreenSlotRefusal`:
 
 | Refusal | When |
 |---|---|
 | `NoScreen` | No mod screen is shown, or the shown one belongs to another menu type |
-| `NoSuchSlot` | `slot` is outside the menu's container backing |
+| `NoSuchSlot` | `slot` is `container_len + player_slots` or more (a menu with no player inventory has no player slots) |
 | `BadPosition` | An `x` or `y` that is NaN or infinite |
 | `Unavailable` | No game backend: screens are the client's |
 
-It moves only the slots a mod screen declares; the player's inventory stays under `inventory_x` and
-`inventory_y`.
+A hidden player slot keeps its item. The inventory label stays where the screen puts it; a screen that hides the
+player's inventory sets `own_labels` to draw its own.
 
 ## Menu slot icons
 
@@ -361,7 +369,11 @@ text or selection that must survive a rebuild on your mod struct and seed the ne
 `event.widgets.set_initial_focus(id)` to focus a widget mounted by your listener on open
 (`Screen.setInitialFocus`). Read `event.widgets.children()` for the ordered child list and
 use `event.widgets.remove(child.id)` to remove a listed child (`ScreenEvent.Init.removeListener`).
-The list includes earlier accepted mounts and the native controls on the pause menu. A later
+The list includes earlier accepted mounts and the native controls on the pause menu and the
+title screen, in vanilla's order (on the title screen: Singleplayer, Multiplayer, Minecraft Realms,
+the Mods button while it shows, the Friends, Language and Accessibility icons, Options..., Quit Game
+and the bottom notice), each labelled with its translation key. A removed native control is neither drawn nor
+pressed until the screen initializes again. A later
 listener sees your edits only if your callback completes normally. There is no live focus setter
 or mutable lookup for built-in widgets.
 A custom widget can track its own focus via `set_focused` and read or change the state it owns.
@@ -444,6 +456,9 @@ the transition, the engine runs the replaced screen's close cleanup (closing con
 menus and clearing any overlay), switches to `Screen::Mod` owned by `mod_id`, and runs
 `screen_init_post`. It returns `false` when cancelled or redirected by `screen_opening`, while a
 world or connection is loading, or without a client window.
+
+The Mods screen's **Config** button opens your screen the same way when you register a config screen factory
+([settings](../mod-settings.md#your-own-config-screen)); closing it then returns to the Mods screen.
 
 Widget callbacks (`Button` `on_press`, `TextField` `on_change` / `on_submit`, and `ScreenWidget`
 input handlers) receive `&mut dyn ClientHost` and execute screen transitions synchronously: calling
@@ -529,39 +544,26 @@ For example, to let the player press Q on the title screen while this mod is loa
 
 ## Labels: wrapped text without a widget
 
-A label is text laid out in a box: measured, wrapped and placed, and nothing else. Call
-`DrawContext::text_lines` from a drawing hook with the component, the box's width, an alignment and the
-scale the label is drawn at, and draw the lines it answers with where it says:
+A label wraps and places a styled component without registering a widget. Call
+[`GuiCanvas::text_with_word_wrap`](gui-paint.md#drawing-directly-with-a-canvas) to lay it out and
+paint it in one operation, inside the current pose and scissor:
 
 ```rust
 {{#include ../../../examples/src/client_rendering.rs:scaled_text_lines}}
 ```
 
-The layout is measured unscaled and answered scaled: the text wraps at `120 / scale` GUI pixels, and
-every dimension and position `text_lines` answers — each line's `at` and `width`, the block's `width`
-and `height` — is in scaled GUI pixels, which is why the lines are drawn inside the same
-`PoseOp::Scale`. The positions are already post-scale coordinates, whereas coordinates inside the
-scale pose are unscaled, so the example divides each line's `at` by `scale` before drawing. A `scale` of one is the text at its own size.
+The width is in label-local GUI pixels after scaling, so the text wraps at `max_width / scale`.
+Wrapping follows `Font.split`: fitting spaces break lines, overlong words break at a character,
+and newline starts another line, including an empty line after a trailing `\n`. A width below
+one unscaled pixel still wraps at one pixel. Styles, legacy formatting, inline sprites and player
+heads are preserved. A centred line sits at `wrap_width / 2 - floor(line_width / 2)` before
+scaling, as in vanilla's `TextAlignment.CENTER.calculateLeft`.
 
-Wrapping is vanilla's: a line breaks at a space that fits, a single word wider than the box is broken at
-a character rather than dropped, and an explicit `\n` starts a new line, so a trailing `\n` leaves an
-empty last line. A width below one pixel still wraps, at one pixel, as `Font.split` does: too narrow a
-box gives one character a line rather than none, and one character alone can still make a line wider
-than the box. Leading spaces are characters like any other and stay in the line.
-
-Each line keeps its styles, and its legacy `§` codes are applied to those styles and dropped, so a line
-drawn alone draws exactly what it measured: a `§r` goes back to the style its run carried, so right
-after a break it restores the tail run's carried style (a bold run stays bold). Draw the line through `GuiDraw::Text`; `DrawContext::text` draws plain
-characters only. A centred line sits at `wrapping width / 2 - floor(line width / 2)`, as vanilla's
-`TextAlignment.CENTER.calculateLeft` floors the half line width. `height` is the last line's `at[1]`
-plus one line height, so a scroll container sizes its content from it, and an empty component has no
-line at all.
-
-It refuses, answering no line at all, a `TextLinesRefusal` naming why: a width that is not finite (or
-that dividing by `scale` overflows), a `scale` that is not finite or is zero or less, text that wraps
-into more than 512 lines, or lines holding more than 8192 characters together. This is in-process
-layout, so the serialization depth limit does not apply. Inline sprites and player heads remain
-objects in the returned lines, with their fallbacks.
+Use [`ClientHost::visit_text_lines`](styled-text-measurements.md) to measure or inspect lines
+outside drawing. Both calls return the widest line and the last line's offset plus one line height
+(or zero for empty text). A non-finite width, an overflowing `max_width / scale`, or a non-positive
+or non-finite scale refuses the layout. There is no separate limit on the number of lines or
+characters.
 
 ## An item or a model turned in 3D
 
@@ -590,11 +592,83 @@ draw.model_3d(Gui3dSubject::Model(self.mirror), Gui3dView::new([120.0, 60.0], 40
 - The view is orthographic. Both subjects have a depth of their own: a draw never intersects
   what the screen drew before or after it, and later drawing covers it in call order. An item's
   faces meet each other by depth, as a model's do, and its enchantment glint follows them. The
-  OptiFine CIT glint layers of a stack are not drawn on this path. There is no z input.
-  `push_clip` cuts both as it cuts `fill`.
+  OptiFine CIT glint layers of a stack are not drawn on this path. There is no z input. Use
+  [`DrawContext::with_scissor`](#clipping-what-a-screen-draws) to clip either subject.
 - In an available draw context, a `minecraft:air` stack is a no-op (`Ok(())`) even with an
   invalid view or unreadable component overrides, matching `GuiGraphicsExtractor.item`. Refusals draw nothing: `Gui3dError::Unavailable` (no game, or a
   server), `NotFinite` (a non-finite view value or transformed corner, or a non-positive size),
   `UnknownItem` (an unknown key or an item missing from the current registry), `InvalidStack`
   (component overrides that cannot be converted for drawing), and `Model(ModelError)` (a stale
   or unknown handle).
+
+## Room beside a container
+
+`Hooks::screen_room` lets a client mod reserve room for a panel to the right of an open container.
+This is a layout query, not a drawing or cancellation hook. It does not add recipe properties,
+slot membership or ghost-placement APIs.
+
+The API is right-only because the existing recipe book occupies the left of the container; mod panels reserve the right. Left reservations are not part of this API.
+
+```rust,ignore
+fn screen_room(&self, _: &dyn ClientHost, event: &mut ScreenRoomEvent<'_>) {
+    let panel_width_with_gap = 149.0;
+    event.right = event.right.max(panel_width_with_gap);
+}
+```
+
+Import `ClientHost`, `Hooks` and `ScreenRoomEvent` from `mod_api` and implement the method in your subscribed `Hooks` implementation. Keep the query pure and cheap: do not draw, mutate game state or do expensive work here.
+
+The answer starts at zero. Later listeners see earlier answers and keep the maximum, not a sum. Panels asking for 80 and 149 GUI pixels reserve 149 pixels together, not 229. They share the reservation and must coordinate their own contents; the engine does not stack panels or assign per-mod offsets.
+
+The query's `event.screen.rect` is the **pre-reservation** container rectangle. Later drawing and input `ScreenView` values expose the shifted rectangle. Do not subtract the shift yourself from those later views.
+
+When the window, the open recipe book (including its category tabs), and the requested right room all fit, the window and book move left by half the requested room, rounded down. Slots, hit boxes and effect panels follow in the same frame. Otherwise nothing moves. A panel should check the later window rectangle's right edge plus its required room against the viewport before drawing there. A request is not a guarantee of space.
+
+A negative or non-finite final answer counts as zero. Zero and absent listeners preserve the original layout. A finite request too large to fit also preserves it. The hook runs for the inventory, containers and custom menus, but not Creative, Merchant or Beacon screens, or a narrow screen where the recipe book covers the menu.
+
+The answer is queried at most once per frame and screen and reused by every layout consumer that frame. A recursive layout query during dispatch sees zero, avoiding recursive dispatch. The next frame queries again. A geometry-changing answer rebuilds the layout that frame; unchanged geometry reuses the existing build, even if the numerical answer changed without affecting the resulting layout.
+
+## Clipping what a screen draws
+
+A scrolling list or a viewport into a larger page shows only the part inside a box.
+`DrawContext::with_scissor(rect, &mut |clipped| { ... })` cuts draws made through `clipped` to
+`[x, y, w, h]` in GUI pixels, like vanilla's `GuiGraphics.enableScissor` and `disableScissor`
+around the callback. The full drawing context is available inside, including widgets, scenes,
+items and text. The callback returns `()` and the clip does not roll back drawing; handle errors
+from draw methods inside the callback.
+
+```rust,ignore
+fn render_gui_post(&self, _: &dyn ClientHost, event: &mut RenderGuiPostEvent<'_>) {
+    let [x, y, w, h] = self.list_box;
+    let _ = event.draw.with_scissor([x, y, w, h], &mut |clipped| {
+        for (row, line) in self.lines.iter().enumerate() {
+            let top = y + row as f32 * 12.0 - self.scroll;
+            clipped.text(line, [x + 2.0, top], 0xFFFF_FFFF, false);
+        }
+    });
+}
+```
+
+- **Nesting.** An inner clip is intersected with the outer clip, so it never shows more than that
+  one. A nonpositive width or height, or a disjoint inner clip, clips everything. The enclosing
+  clip is restored on return or unwind, before any subsequent draws.
+- **Depth.** Scenes keep their own box too. Cutting an item or scene preserves depth: a cut face
+  still draws in front of or behind its neighbours as it did uncut.
+- **Refusals.** `GuiClipRefusal::NotFinite` (a coordinate, size or computed endpoint is NaN or
+  infinite) or `Unavailable` (no scissor drawing surface) leaves the enclosing clip as it was and
+  does not call the callback.
+
+For a fallible, transactional group of GUI primitives [on a canvas](gui-paint.md#drawing-directly-with-a-canvas),
+pass `Some(rect)` to `canvas.scope`. That scissor uses the child scope's pose at entry; later
+pose changes do not move it.
+
+## Hover and pointer grab
+
+A mod screen hears every pointer move through `screen_mouse_moved_pre` (vanilla's
+`Screen.mouseMoved`; it fires before `screen_mouse_dragged_pre` when a button is held). For a
+screen that wants relative motion with the cursor held (a virtual machine's display, a 3D
+preview), call `host.set_pointer_grab(true)` from your click hook and read
+`screen_pointer_motion`; `host.pointer_grabbed()` tells whether you hold it, and
+`host.set_pointer_grab(false)` releases it. The grab also ends when the screen closes, the window
+loses focus or your mod unloads, and refocusing does not bring it back: grab again. Escape reaches
+your screen like any key, so handle it yourself. The rustdoc of the hooks and `set_pointer_grab` has the contract.

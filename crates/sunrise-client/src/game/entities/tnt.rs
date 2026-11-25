@@ -405,7 +405,7 @@ impl Game<'_> {
             // PrimedTnt.getRandomShortFuse
             r.next_int_bound(20).unwrap_or(0) + 10
         } else {
-            self.audio.play(
+            self.play_audio(
                 "minecraft:entity.tnt.primed",
                 Some([
                     f64::from(pos.x) + 0.5,
@@ -763,10 +763,16 @@ impl Game<'_> {
         }
         self.mob_by_uuid(uuid).map(|m| (Who::Mob(m), None))
     }
-    /// `TntBlock.useItemOn`: flint and steel or a fire charge primes TNT.
+    /// `TntBlock.useItemOn`: a fire starter (`firestarter_light`: flint and steel or a fire
+    /// charge) primes TNT.
     pub(super) fn ignite_tnt(&mut self, stack: &ItemStack) -> Result<bool> {
         let item = &*stack.item;
-        if item != "minecraft:flint_and_steel" && item != "minecraft:fire_charge" {
+        let starter = matches!(item, "minecraft:flint_and_steel" | "minecraft:fire_charge");
+        if !self.stack_can_perform(
+            stack,
+            super::item_abilities::ability::FIRESTARTER_LIGHT,
+            starter,
+        ) {
             return Ok(false);
         }
         let Some(hit) = self.pick() else {
@@ -893,6 +899,11 @@ impl Game<'_> {
                     t.previous.y + (t.position.y - t.previous.y) * alpha,
                     t.previous.z + (t.position.z - t.previous.z) * alpha,
                 );
+                let [width, height, eye_height] = t
+                    .size_answer
+                    .filter(|s| s.vanilla == PrimedTnt::DIMENSIONS)
+                    .and_then(|s| s.size)
+                    .unwrap_or(PrimedTnt::DIMENSIONS);
                 let entity: mod_api::EntityRenderState =
                     mod_api::__private::built::EntityRenderState {
                         id: t.id,
@@ -900,6 +911,10 @@ impl Game<'_> {
                         age: t.ticks as f32 + partial,
                         yaw: t.rotation[0],
                         pitch: t.rotation[1],
+                        position: at.to_array(),
+                        size: [width, height],
+                        eye_height,
+                        distance_to_camera_sq: (at - camera).length_squared(),
                         living: None,
                         tnt_fuse: Some(fuse),
                         orb_value: None,
@@ -1885,7 +1900,8 @@ pub(in crate::game) mod tests {
             let mut cube = Mob::new(9123, kind, Vec3::new(8.5, 64.0, 8.5), 0.0);
             cube.silent = silent;
             cube.extra.set_body(Some("minecraft:tnt".into()));
-            cube.extra.counter2 = 2; // fuse 1: explodes on this tick.
+            // Fuse 1: explodes on this tick.
+            cube.extra.sulfur_fuse = sunrise_client::mobs::sulfur_cube::Fuse::set(1);
             game.mobs.push(cube);
             game.portals.entities.insert(
                 9123,

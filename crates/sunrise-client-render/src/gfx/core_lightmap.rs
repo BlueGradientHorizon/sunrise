@@ -4,10 +4,10 @@
 //! texture is computed natively ([`native_lightmap`]). `Renderer::update_lightmap` is the one
 //! entry point for the frame's light texture, either way.
 
-use crate::core_shader::{CoreProgram, Glue};
 use crate::polytone_post::ExpressionUniform;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
+use sunrise_glsl::{Glue, Translated};
 
 /// `core/screenquad`: no vertex input, three vertices from `gl_VertexIndex`. GL's framebuffer
 /// rows run from the bottom and wgpu's from the top: the flip keeps row `n` at sky level `n`.
@@ -17,6 +17,7 @@ pub(crate) const GLUE: Glue = Glue {
     setup: "",
     finish: "gl_Position.y = -gl_Position.y;",
     vertex_id: "int(gl_VertexIndex)",
+    fragment_finish: None,
     interface: sunrise_shaders::DEVICELESS_INTERFACE_LIMITS,
 };
 
@@ -193,7 +194,7 @@ impl CoreLightmap {
     /// only declared takes no binding.
     pub(super) fn new(
         device: &wgpu::Device,
-        program: &CoreProgram,
+        program: &Translated,
         expressions: &[ExpressionUniform],
     ) -> Result<Self, String> {
         let pipeline = crate::hud::pack_text::LIGHTMAP[0].pipeline;
@@ -204,14 +205,14 @@ impl CoreLightmap {
 
     fn made(
         device: &wgpu::Device,
-        program: &CoreProgram,
+        program: &Translated,
         expressions: &[ExpressionUniform],
     ) -> Self {
         let info_binding = program
             .other
             .iter()
             .position(|n| n == INFO_BLOCK)
-            .map(crate::core_shader::other_binding);
+            .map(|i| program.other_binding(i));
         let module = |label, module: &naga::Module| {
             device.create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some(label),
@@ -498,11 +499,11 @@ impl LightmapChart {
 }
 
 /// The pack's lightmap pipeline for `program`, none without one or when it is past the device's
-/// limits (`core_shader::PastDeviceLimit`: the light texture is then computed natively), or the
+/// limits (`sunrise_glsl::PastDeviceLimit`: the light texture is then computed natively), or the
 /// device's refusal of `LIGHTMAP`.
 pub(super) fn lightmap_for(
     device: &wgpu::Device,
-    program: Option<&CoreProgram>,
+    program: Option<&Translated>,
     expressions: &[ExpressionUniform],
 ) -> Result<Option<CoreLightmap>, String> {
     let pipeline = crate::hud::pack_text::LIGHTMAP[0].pipeline;
@@ -528,7 +529,7 @@ impl super::Renderer {
     /// (they decode their result at the end, `linear_blend`), as they do the native one.
     pub fn set_lightmap_shader(
         &mut self,
-        program: Option<&CoreProgram>,
+        program: Option<&Translated>,
         expressions: &[ExpressionUniform],
     ) -> Result<(), String> {
         self.core_lightmap = lightmap_for(&self.device, program, expressions)?;

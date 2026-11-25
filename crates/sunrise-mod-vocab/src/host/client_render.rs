@@ -4,23 +4,6 @@ use crate::*;
 /// The client host's methods of the `client_render` area, implemented by the game and reached through [`crate::ClientHost`].
 #[sunrise_mod_api_macros::host_area]
 pub trait ClientRenderClientHost {
-    /// Atomically overwrite retained model copies; use [`InstanceGroupRef::write`].
-    fn instance_group_write(
-        &self,
-        group: InstanceGroupRef,
-        first: u32,
-        instances: &[ModelInstance],
-    ) -> Result<(), GroupError>;
-    /// Set the drawn length; use [`InstanceGroupRef::set_len`].
-    fn instance_group_set_len(&self, group: InstanceGroupRef, len: u32) -> Result<(), GroupError>;
-    /// Replace the group pose; use [`InstanceGroupRef::set_group_transform`].
-    fn instance_group_set_transform(
-        &self,
-        group: InstanceGroupRef,
-        transform: [f32; 12],
-    ) -> Result<(), GroupError>;
-    /// Retire retained model copies; use [`InstanceGroupRef::destroy`].
-    fn instance_group_destroy(&self, group: InstanceGroupRef) -> Result<(), GroupError>;
     /// Side: client.
     /// `ItemStackRenderState.usesBlockLight` of `stack`'s model resolved for `context`
     /// (`ItemModelResolver.updateForTopItem`, no owner or level): whether the model is lit as a
@@ -30,6 +13,19 @@ pub trait ClientRenderClientHost {
     /// empty or invalid stack, and for a model that draws nothing. Reads the model the client
     /// resolved from its resource packs.
     fn item_uses_block_light(&self, stack: &ItemStack, context: ItemDisplayContext) -> bool;
+    /// Side: client.
+    /// Resolve `stack`'s item model once for `display` and `seed`
+    /// (`ItemModelResolver.updateForTopItem`, no owner), returning a retained [`PreparedItemRef`]
+    /// for [`BlockEntityDrawContext::prepared_item`]. Returns [`ModelError::UnknownModel`] for
+    /// an empty stack, an unknown/invalid stack, or a model that draws nothing. The handle goes
+    /// stale on a successful resource reload, world close, owner mod disable, or
+    /// [`PreparedItemRef::destroy`].
+    fn prepare_item(
+        &self,
+        stack: &ItemStack,
+        display: ItemDisplayContext,
+        seed: i32,
+    ) -> Result<PreparedItemRef, ModelError>;
     /// Side: client.
     /// Asks `block_render_visibility` again for every state and, when the answers differ
     /// from those in use, remeshes every loaded section with them. While a mod listens to
@@ -191,4 +187,35 @@ pub trait ClientRenderClientHost {
     /// For a client mod: changes each time the resources load (a resource pack turned on or off can move every
     /// sprite): ask `native_block_sprites` again then. API 380.
     fn block_sprites_version(&self) -> u64;
+}
+
+/// The retained instance-group operations behind [`InstanceGroupRef`].
+// hidden: a handle's backend, reached through `Backend`; mods call the handle, never this trait
+#[doc(hidden)]
+#[sunrise_mod_api_macros::host_area]
+pub trait ClientRenderClientBackend {
+    /// Atomically overwrite retained model copies; called through [`InstanceGroupRef::write`].
+    #[manual_handle]
+    fn instance_group_write(
+        &self,
+        group: InstanceGroupRef,
+        first: u32,
+        instances: &[ModelInstance],
+    ) -> Result<(), GroupError>;
+    /// Set the drawn length; called through [`InstanceGroupRef::set_len`].
+    #[manual_handle]
+    fn instance_group_set_len(&self, group: InstanceGroupRef, len: u32) -> Result<(), GroupError>;
+    /// Replace the group pose; called through [`InstanceGroupRef::set_group_transform`].
+    #[manual_handle]
+    fn instance_group_set_transform(
+        &self,
+        group: InstanceGroupRef,
+        transform: [f32; 12],
+    ) -> Result<(), GroupError>;
+    /// Retire retained model copies; called through [`InstanceGroupRef::destroy`].
+    #[manual_handle]
+    fn instance_group_destroy(&self, group: InstanceGroupRef) -> Result<(), GroupError>;
+    /// Retire a prepared item render state; called through [`PreparedItemRef::destroy`].
+    #[manual_handle]
+    fn prepared_item_destroy(&self, item: PreparedItemRef) -> Result<(), ModelError>;
 }

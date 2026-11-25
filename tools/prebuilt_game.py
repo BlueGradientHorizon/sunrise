@@ -409,6 +409,38 @@ def copy_artifacts(messages: list[dict], deps: Path, host: Path, target_dir: Pat
     return copied
 
 
+def lower_crate_cfgs(metadata: dict, messages: list[dict], staged: Path, target_dir: Path,
+                     target_cfg: set[str]) -> dict[str, list[str]]:
+    """The source-indexed target libraries' own cfgs, from this Cargo build, not a resolution
+    of the workspace's manifests (which includes other feature activations)."""
+    packages = {package["id"]: Path(package["manifest_path"]).parent.name.replace("-", "_")
+                for package in metadata["packages"]
+                if Path(package["manifest_path"]).is_relative_to(staged / "crates")
+                and package["name"] != GAME}
+    script_cfg = {message["package_id"]: message["cfgs"] for message in messages
+                  if message["reason"] == "build-script-executed"
+                  and Path(message["out_dir"]).is_relative_to(target_dir)}
+    target_cfg = target_cfg - {"debug_assertions"}
+    result = {}
+    for message in messages:
+        if message["reason"] != "compiler-artifact" or message["package_id"] not in packages:
+            continue
+        if not {"lib", "rlib", "dylib"}.intersection(message["target"]["kind"]):
+            continue
+        if not any(Path(name).is_relative_to(target_dir) for name in message["filenames"]):
+            continue
+        package_id = message["package_id"]
+        cfg = target_cfg.union(script_cfg.get(package_id, ()),
+                               (f"feature={json.dumps(name, ensure_ascii=False)}" for name in message["features"]))
+        if message["profile"]["debug_assertions"]:
+            cfg.add("debug_assertions")
+        name = packages[package_id]
+        cfg = sorted(cfg)
+        if result.setdefault(name, cfg) != cfg:
+            raise ValueError(f"target library {name} was built under conflicting cfgs")
+    return result
+
+
 def api_closure(metadata: dict) -> set[str]:
     """The package IDs an API-only mod's build reads: sunrise-mod-api and its normal dependencies.
     A proc macro is a leaf, since its own dependencies are inside its library."""
@@ -711,6 +743,10 @@ def _build_locked(out: Path, server: bool, target_dir: Path) -> None:
             and message["package_id"].split("#")[0].endswith("/sunrise-client")
             and "lib" in message["target"]["kind"]
         )),
+        # The common function index covers all legs; each leg's identity says which of its
+        # declarations actually exist in the lower libraries this patch can link against.
+        "lower_crate_cfg": lower_crate_cfgs(metadata, artifacts, staged, target_dir / host,
+                                           set(run(["rustc", "--print", "cfg", "--target", host]).splitlines())),
         "registry_patches": patches,
         "patch_files": {name: digest for name, digest in files.items() if name.startswith("patches/")},
         "registry_lock": (staged / "Cargo.lock").read_text(),
@@ -830,8 +866,12 @@ def smoke(out: Path) -> None:
     if installed.exists():
         shutil.rmtree(installed)
     installed.mkdir()
-    # The game's libraries load from beside the executable (sunrise-launcher's src/native_mods/prebuilt.rs `compile`).
-    origin = {"linux": ["-Wl,-rpath,$ORIGIN"], "darwin": ["-Wl,-rpath,@executable_path"]}.get(sys.platform, [])
+    # Use the same dylib link arguments as sunrise-native-build, not the executable's link policy.
+    platform = {"darwin": "macos", "win32": "windows"}.get(sys.platform, sys.platform)
+    prefix = f"{platform} "
+    policy = ROOT / "crates/sunrise-native-build/src/dylib-link-args.txt"
+    link_args = [line.removeprefix(prefix) for line in policy.read_text(encoding="utf-8").splitlines()
+                 if line.startswith(prefix)]
     identity = json.loads((out / IDENTITY).read_text())
     release = next(line.removeprefix("release: ") for line in identity["rustc"].splitlines() if line.startswith("release: "))
     starter = (ROOT / "crates/cargo-sunrise-mod/template/native/lib.rs").read_text()
@@ -840,27 +880,30 @@ def smoke(out: Path) -> None:
     # `smoke_user` calls `smoke` through its library, as a mod calls a declared dependency: rustc links it against
     # `smoke`'s library (on windows-gnu through its import library) and the loader resolves the call at start.
     mods = {
-        "smoke": (SMOKE_LIBRARY_ITEM, [], ""),
-        "smoke_user": (SMOKE_USER_ITEM, ["--extern", f"smoke={smoke_library}"], '\n[dependencies]\nsmoke = "^0.1"\n'),
+        "smoke": (SMOKE_LIBRARY_ITEM, [], "", []),
+        "smoke_user": (SMOKE_USER_ITEM, ["--extern", f"smoke={smoke_library}"], '\n[dependencies]\nsmoke = "^0.1"\n', ["smoke"]),
     }
     records = []
     with tempfile.TemporaryDirectory(dir=out.parent) as scratch:
         scratch = Path(scratch)
-        for mod, (item, externs, dependencies) in mods.items():
-            build = f"{identity['commit']} {mod} 0.1.0 {release}"
+        for mod, (item, externs, dependencies, links) in mods.items():
+            source = starter.replace("{id}", mod) + item
+            # The identity names each linked mod's recorded identity (`library_identity` in sunrise-mod-package).
+            recorded = {r["mod"]: r["identity"] for r in records}
+            linked = ",".join(f"{m}={hashlib.sha256(recorded[m].encode()).hexdigest()}" for m in links) or "none"
+            build = f"{identity['commit']} {mod} 0.1.0 {release} {hashlib.sha256(source.encode()).hexdigest()} {linked}"
             rows = {"NATIVE_BUILD": build, "MOD_ENTRIES": f'"{mod}" => crate::hooks,',
                     "BUILT_MODS": f'mod_api::__private::native::BuiltMod {{ id: "{mod}", version: "0.1.0", side: mod_api::Side::Both }},',
                     "MOD_REDIRECTS": ""}
             entry = template
             for marker, value in rows.items():
                 entry = entry.replace(f"/* {marker} */", value)
-            source = starter.replace("{id}", mod) + item
             (scratch / f"{mod}_entry.rs").write_text(entry)
             (scratch / f"{mod}.rs").write_text(source + f'\n#[path = "{mod}_entry.rs"] mod entry;\n')
             library = installed / f"{dylib_prefix()}{mod}{dylib_suffix()}"
             run(["rustc", *common, "-L", f"dependency={installed}", "--crate-type", "dylib", "--crate-name", mod,
                  *extern("mod_api"), "--extern", f"sunrise_mod_host={dylib(deps, 'sunrise_mod_host')}", *externs,
-                 *(flag for arg in origin for flag in ("-C", f"link-arg={arg}")),
+                 *(flag for arg in link_args for flag in ("-C", f"link-arg={arg}")),
                  "-o", str(library), str(scratch / f"{mod}.rs")])
             records.append({"file": library.name, "sha256": sha256(library), "kind": "mod", "mod": mod,
                             "identity": f"{build} unwind"})
@@ -1057,14 +1100,18 @@ def pack(out: Path, dist: Path, stage_tool: Path | None = None, with_tool: bool 
     jobs = {dist / f"{kind}-{identity['target']}{suffix}.tar.xz": (out, names)
             for kind, names in archives(out, identity["slices"]).items()}
     jobs[dist / BUILD_DATA_ARCHIVE] = (out, [".", *BUILD_DATA])
-    if identity["side"] == "client" or with_tool:
-        jobs[dist / f"tool-{identity['target']}.tar.xz"] = (tool(identity["target"]), [".", TOOL_PROGRAM])
     if with_programs:
         folder = programs(identity, out.parent / f"{PROGRAMS}-{identity['target']}{suffix}")
         jobs[dist / f"{folder.name}.tar.xz"] = (folder, tree(folder))
+    packs_tool = identity["side"] == "client" or with_tool
     # Each archive keeps its single xz stream; only independent archives run concurrently.
-    with ProcessPoolExecutor(max_workers=len(jobs)) as pool:
+    with ProcessPoolExecutor(max_workers=len(jobs) + packs_tool) as pool:
         pending = {archive: pool.submit(tar_xz, folder, names, archive) for archive, (folder, names) in jobs.items()}
+        # The tool compiles while the package's archives compress, then joins them: compressing the engine archive
+        # leaves cores idle for minutes, which the tool's build took after it (macOS, 2026-11-25: 5m52 then 7m04).
+        if packs_tool:
+            archive = dist / f"tool-{identity['target']}.tar.xz"
+            pending[archive] = pool.submit(tar_xz, tool(identity["target"]), [".", TOOL_PROGRAM], archive)
         failures = [f"{archive.name}: {error}" for archive, future in pending.items()
                     if (error := future.exception()) is not None]
     if failures:

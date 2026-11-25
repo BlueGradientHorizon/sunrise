@@ -4,10 +4,10 @@
 //! text display's background and translucent text, a discrete name tag) in each `OitStage`, as
 //! `Features::text` draws it natively.
 
-use crate::core_shader::CoreProgram;
 use crate::gfx::expression_blocks::{self, ExpressionBlocks};
 use crate::gfx::oit::{CloudSamples, Stage, stage_targets};
 use crate::polytone_post::ExpressionUniform;
+use sunrise_glsl::Translated;
 
 /// One stage's pipeline and what its group binds.
 pub(super) struct OitStage {
@@ -45,11 +45,11 @@ const VANILLA_BYTES: u64 = expression_blocks::VANILLA_OFFSETS[3] + expression_bl
 impl OitPart {
     /// `programs` (each stage's, with its expression uniforms) made into their pipelines: none
     /// when a program is past what the device takes in its stage's targets
-    /// (`core_shader::PastDeviceLimit`), which leaves the translucent world text to the native
+    /// (`sunrise_glsl::PastDeviceLimit`), which leaves the translucent world text to the native
     /// pipelines in every stage; the device refusing a pipeline fails the load, named by it.
     pub(super) fn new(
         device: &wgpu::Device,
-        programs: [(&CoreProgram, &[ExpressionUniform]); 3],
+        programs: [(&Translated, &[ExpressionUniform]); 3],
         atlas: &wgpu::TextureView,
         lightmap: (&wgpu::TextureView, &wgpu::Sampler),
     ) -> Result<Option<Box<Self>>, String> {
@@ -191,7 +191,7 @@ impl OitStage {
     /// depth tested and not written, no bias, into the stage's targets.
     fn new(
         device: &wgpu::Device,
-        program: &CoreProgram,
+        program: &Translated,
         stage: Stage,
         extra: ExpressionBlocks,
         textures: [(u32, &wgpu::TextureView, &wgpu::Sampler); 2],
@@ -216,7 +216,7 @@ impl OitStage {
             .filter(|(_, name)| names.contains(name))
             .filter_map(|(i, name)| {
                 let at = program.other.iter().position(|n| n == name)?;
-                Some((crate::core_shader::other_binding(at), i))
+                Some((program.other_binding(at), i))
             })
             .filter(|&(binding, _)| {
                 !(program.stages_reading(binding) | program.stages_reading(binding + 1)).is_empty()

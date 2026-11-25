@@ -52,7 +52,7 @@ fn pack_programs(fsh: &str) -> Box<super::super::OitPrograms> {
 
 /// `fsh` translated for each stage as `hud::pack_text` translates it, without expression
 /// uniforms.
-fn stage_programs(fsh: &[&str; 3]) -> [CoreProgram; 3] {
+fn stage_programs(fsh: &[&str; 3]) -> [Translated; 3] {
     std::array::from_fn(|i| {
         let stage = &crate::gfx::core_clouds::OIT_STAGES[i];
         crate::core_shader::translate_core_with(
@@ -63,7 +63,7 @@ fn stage_programs(fsh: &[&str; 3]) -> [CoreProgram; 3] {
             &super::super::WORLD_GLUE,
             &|name| stage.samplers.contains(&name),
         )
-        .unwrap_or_else(|e| panic!("{}: {e}", stage.pipeline))
+        .unwrap_or_else(|e| panic!("{}: {e:?}", stage.pipeline))
     })
 }
 
@@ -246,7 +246,7 @@ fn draw(
 fn part(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
-    programs: [(&CoreProgram, &[crate::polytone_post::ExpressionUniform]); 3],
+    programs: [(&Translated, &[crate::polytone_post::ExpressionUniform]); 3],
 ) -> Result<Option<Box<OitPart>>, String> {
     let atlas = super::super::tests::texture(device, queue, [255, 0, 0, 255]);
     let lightmap = super::super::tests::texture(device, queue, [0, 255, 0, 255]);

@@ -5,9 +5,9 @@
 //! canvas (`WORLD_TEXT_OVERLAY`, a native mod's) draws natively. Every pipeline vanilla requires
 //! of the shader is checked when the packs load (`hud::pack_text::TEXT`).
 
-use crate::core_shader::{CoreProgram, Glue};
 use oit::OitPart;
 use std::sync::Arc;
+use sunrise_glsl::{Glue, Translated};
 
 mod oit;
 
@@ -26,6 +26,7 @@ pub(crate) const WORLD_GLUE: Glue = Glue {
     setup: "Position = hz_pos; Color = hz_color; UV0 = hz_uv; UV2 = ivec2(hz_light.y, hz_light.x);",
     finish: "",
     vertex_id: "int(gl_VertexIndex)",
+    fragment_finish: None,
     interface: sunrise_shaders::DEVICELESS_INTERFACE_LIMITS,
 };
 
@@ -37,14 +38,15 @@ pub(crate) const SEE_THROUGH_GLUE: Glue = Glue {
     setup: "Position = hz_pos; Color = hz_color; UV0 = hz_uv;",
     finish: "",
     vertex_id: "int(gl_VertexIndex)",
+    fragment_finish: None,
     interface: sunrise_shaders::DEVICELESS_INTERFACE_LIMITS,
 };
 
 #[derive(Default)]
 pub struct TextShaders {
-    pub gui: Option<Arc<CoreProgram>>,
-    pub world: Option<Arc<CoreProgram>>,
-    pub see_through: Option<Arc<CoreProgram>>,
+    pub gui: Option<Arc<Translated>>,
+    pub world: Option<Arc<Translated>>,
+    pub see_through: Option<Arc<Translated>>,
     /// `OIT_TEXT`'s programs, which `OIT_TEXT_POLYGON_OFFSET` shares: none unless all three
     /// stages' load. Boxed, as the game holds the atlas inline.
     pub oit: Option<Box<OitPrograms>>,
@@ -65,7 +67,7 @@ pub struct TextExpressions {
 /// `OIT_TEXT`'s program in each Improved Transparency stage (`OitStage`'s order), with its
 /// Polytone expression uniforms.
 pub struct OitPrograms {
-    pub programs: [Arc<CoreProgram>; 3],
+    pub programs: [Arc<Translated>; 3],
     pub expressions: [Vec<crate::polytone_post::ExpressionUniform>; 3],
 }
 
@@ -241,8 +243,8 @@ impl CoreText {
     pub(super) fn new(
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
-        world: Option<(&CoreProgram, &[crate::polytone_post::ExpressionUniform])>,
-        see_through: Option<(&CoreProgram, &[crate::polytone_post::ExpressionUniform])>,
+        world: Option<(&Translated, &[crate::polytone_post::ExpressionUniform])>,
+        see_through: Option<(&Translated, &[crate::polytone_post::ExpressionUniform])>,
         atlas: &wgpu::TextureView,
         lightmap: (&wgpu::TextureView, &wgpu::Sampler),
     ) -> Result<Option<Self>, String> {
@@ -311,7 +313,7 @@ impl CoreText {
         let textures = [(4, atlas, &glyphs), (8, lightmap.0, lightmap.1)];
         let text = &crate::hud::pack_text::TEXT;
         // `TEXT` and `TEXT_POLYGON_OFFSET` are one program, named by the first: a program past
-        // the device's limits draws natively (`core_shader::PastDeviceLimit`), and the device
+        // the device's limits draws natively (`sunrise_glsl::PastDeviceLimit`), and the device
         // refusing a pipeline fails the load, named by it.
         let world_pipeline = text[crate::hud::pack_text::TEXT_WORLD].pipeline;
         let world = world.filter(|(program, _)| {
@@ -383,7 +385,7 @@ impl CoreText {
     fn bind_group(
         device: &wgpu::Device,
         label: &str,
-        program: &CoreProgram,
+        program: &Translated,
         extra: &super::expression_blocks::ExpressionBlocks,
         (uniform, textures): (
             &wgpu::Buffer,
@@ -412,7 +414,7 @@ impl CoreText {
     fn world_part(
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
-        program: &CoreProgram,
+        program: &Translated,
         extra: super::expression_blocks::ExpressionBlocks,
         (normal_depth, offset_depth): (wgpu::DepthStencilState, wgpu::DepthStencilState),
         (mark_normal_depth, mark_offset_depth): (wgpu::DepthStencilState, wgpu::DepthStencilState),
@@ -559,7 +561,7 @@ impl CoreText {
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
         label: &str,
-        program: &CoreProgram,
+        program: &Translated,
         extra: super::expression_blocks::ExpressionBlocks,
         depth: wgpu::DepthStencilState,
         resources: (
@@ -699,7 +701,7 @@ impl CoreText {
 /// fragment shaders: any discard or zero-alpha fragment in the pack shader also skips marking,
 /// and marked pixels match the colour pass's exact clip depth and brightness.
 pub(super) fn wrap_program_for_hdr_mark(
-    program: &CoreProgram,
+    program: &Translated,
 ) -> Option<(naga::Module, naga::Module)> {
     let (vertex, tier_location) = wrap_vertex_for_hdr_mark(&program.vertex)?;
     let fragment = wrap_fragment_for_hdr_mark(&program.fragment, tier_location)?;

@@ -40,26 +40,35 @@ pub trait ScreensClientHost {
     /// screen open.
     fn screen_hovered_stack(&self) -> Option<ItemStack>;
     /// Side: client.
-    /// Where the shown mod menu screen for `menu` puts backing slot `slot` from the next
+    /// Where the shown mod menu screen for `menu` puts menu slot `slot` from the next
     /// frame (`Slot.x`, `Slot.y` in GUI pixels from the screen's top left, the item's top left
-    /// corner): where `set_screen_slot` last put it, else where the screen declared it. None
-    /// for an inactive/hidden slot, another menu type's screen, or no shown mod screen.
+    /// corner): where `set_screen_slot` last put it, else where the screen declared it. `slot`
+    /// ranges over `0..(container_len + player_slots)` as `set_screen_slot` documents. None
+    /// for an inactive/hidden slot, a slot the menu does not have, another menu type's screen,
+    /// or no shown mod screen.
     fn screen_slot(&self, menu: &str, slot: usize) -> Option<[f32; 2]>;
     /// Side: client.
-    /// Moves container slot `slot` of the open screen of mod menu type `menu` to `pos`, or
+    /// Moves menu slot `slot` of the open screen of mod menu type `menu` to `pos`, or
     /// deactivates/hides it with None, as a Java screen that lays its slots out again sets
     /// `Slot.x`/`Slot.y` or toggles `Slot.isActive()` (Tinkers' station layouts). `slot`
-    /// indexes `MenuScreenLayout::slots` (including slots declared `None` at open, which start
-    /// inactive and may be activated later with `Some([x, y])`). From the next frame the slot is
-    /// a vanilla slot at that position: the hovered slot (the 18 by 18 box around it), its
-    /// highlight, its contents, its empty-slot icon and the recipe book's ghost items; a hidden
-    /// one is none of these. A position outside the image is allowed. The change lasts for this
-    /// opening; a replacement starts from the declared layout, even if it reuses the same window
-    /// id. Any mod may read, move, activate or hide slots of the open screen for `menu`.
-    /// This is client-only: a locally hidden slot keeps its item and a shift-click may still
-    /// fill it. It takes `&self`, so a screen callback may call it every frame; repeating a
-    /// slot's current place changes nothing and costs no layout work. Each
-    /// [`ScreenSlotRefusal`] leaves the layout unchanged.
+    /// ranges over `0..(container_len + player_slots)`, in menu order
+    /// (`AbstractContainerMenu.addStandardInventorySlots`): `0..container_len` indexes
+    /// `MenuScreenLayout::slots` (including slots declared `None` at open, which start
+    /// inactive and may be activated later with `Some([x, y])`), and the `player_slots` the
+    /// menu declared (`MenuScreenOpen::player_slots`) follow: the main inventory's three rows,
+    /// then the hotbar. A player slot starts at the screen's `inventory_x`/`inventory_y` grid.
+    /// From the next frame the slot is a vanilla slot at that position: the hovered slot (the
+    /// 18 by 18 box around it), its highlight, its contents, its empty-slot icon and the
+    /// recipe book's ghost items; a hidden one is none of these, and is neither a drag target
+    /// nor swapped by a number key. A position outside the image is allowed. The change lasts for this
+    /// opening: closing the screen and opening it again (or a replacement, even one that reuses
+    /// the same window id) starts every container and player slot from its declared place,
+    /// shown. Any mod may read, move, activate or hide slots of the open screen for `menu`.
+    /// This is client-only and the server never consults it: a locally hidden slot keeps its
+    /// item and a shift-click from another slot may still fill it, which is the menu's own
+    /// quick-move answer; nothing on the client filters that. It takes `&self`, so a screen
+    /// callback may call it every frame; repeating a slot's current place changes nothing and
+    /// costs no layout work. Each [`ScreenSlotRefusal`] leaves the layout unchanged.
     fn set_screen_slot(
         &self,
         menu: &str,
@@ -99,8 +108,36 @@ pub trait ScreensClientHost {
     /// focused mounted controls. That activation does not dispatch screen mouse hooks.
     fn mod_screen_open(&mut self, mod_id: &str) -> bool;
     /// Side: client.
-    /// Closes mod `mod_id`'s own screen, if it is open.
+    /// Closes mod `mod_id`'s own screen, if it is open: to the Mods screen when its
+    /// [`ConfigScreenFactory`](crate::ConfigScreenFactory) opened it, otherwise as Escape
+    /// closes a screen (back to the game, or to the title screen with no world).
     fn mod_screen_close(&mut self, mod_id: &str);
+    /// Side: client.
+    /// Takes (`grab` true) or gives back (`grab` false) the pointer for the calling mod's own
+    /// open screen: the cursor is hidden and held, and the screen hears the device's relative
+    /// motion only as `screen_pointer_motion`, unscaled (not as `screen_mouse_moved_pre`, and
+    /// never as camera turns), while it stays a screen that draws, takes keys (Escape
+    /// included) and has widgets. Vanilla's own screens never hold a grabbed pointer
+    /// (`MouseHandler.grabMouse` closes the screen), so this is a Sunrise capability with no
+    /// vanilla limit. A mod that wants click-to-capture grabs from its click hook and releases
+    /// with `false`.
+    ///
+    /// Returns `true` when the pointer is (or, for `false`, is no longer) held by this mod's
+    /// screen. Returns `false` and changes nothing when the open screen belongs to another
+    /// mod, when no screen is open, or, for a grab, when the window does not have focus
+    /// (`MouseHandler.grabMouse` never grabs an inactive window). A grab the system then
+    /// refuses shows as `pointer_grabbed` false. Releasing a screen that holds no grab returns `true`.
+    ///
+    /// The grab ends by itself when the screen closes by any route, when the window loses
+    /// focus, and when the mod unloads. Refocusing does not take it back: call again. The
+    /// grab takes effect at the start of the next input event or frame, and
+    /// [`pointer_grabbed`](Self::pointer_grabbed) already reports it.
+    fn set_pointer_grab(&self, grab: bool) -> bool;
+    /// Side: client.
+    /// Whether the calling mod's own open screen holds the pointer grab
+    /// ([`set_pointer_grab`](Self::set_pointer_grab)). `false` once the grab has ended by
+    /// itself, and `false` for a mod whose screen is not the open one.
+    fn pointer_grabbed(&self) -> bool;
     /// Side: client.
     /// Closes the open screen as its Escape key does: a container screen
     /// closes as the player's container close (`ServerboundContainerClosePacket`
@@ -155,4 +192,12 @@ pub trait ScreensClientHost {
     /// `key.mouse.left`, `key.mouse.4`, for example).
     /// Unknown names are not down. Modifier combinations use `ClientHost::modifiers`.
     fn is_key_down(&self, key: &str) -> bool;
+    /// Side: client.
+    /// Bounding rectangle `[x, y, width, height]` in GUI pixels of a HUD layer's
+    /// geometry after viewport and scissor clipping, before other layers can cover it.
+    /// Use a vanilla id such as `"minecraft:effects"` or a registered mod layer id.
+    /// Returns `Ok(None)` if the layer has not painted visible geometry, including
+    /// before it draws, if it is canceled, or outside the HUD pass (including screen render hooks).
+    /// Returns `Err(LevelReadError::Unavailable)` outside a client window.
+    fn hud_layer_bounds(&self, layer: &str) -> Result<Option<[f32; 4]>, LevelReadError>;
 }

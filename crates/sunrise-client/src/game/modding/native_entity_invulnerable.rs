@@ -325,7 +325,14 @@ impl Game<'_> {
         // `DamageSource(type, cause, at)`: the source position the knockback
         // pushes away from is the direct entity's.
         let from = direct.and_then(|t| self.target_position(t));
-        Some(self.hurt_target(target, amount, damage_type, direct, causing, from))
+        Some(self.hurt_target(
+            target,
+            amount,
+            damage_type,
+            direct,
+            causing.or(direct),
+            from,
+        ))
     }
 
     /// `Entity.isInvulnerableTo` for a source of `damage_type`: #842's own
@@ -543,6 +550,11 @@ mod tests {
             );
             let staged = game.stage_world_tables(&stack, false, &root).unwrap();
             game.open_world_tables(staged).unwrap();
+            // Entities are found in resident columns only (`Visibility.isAccessible`).
+            game.world.chunks.insert(
+                (0, 0),
+                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            );
 
             let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             game.mobs

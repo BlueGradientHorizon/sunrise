@@ -74,7 +74,7 @@ fn drawn_frame(game: &mut super::Game<'_>) -> (Vec<u8>, usize) {
         scaled: false,
         background: false,
     });
-    game.render_with(|renderer, frame| renderer.render(frame))
+    game.render_with(|renderer, frame| renderer.render(frame, None))
         .unwrap();
     let result = game.renderer.as_mut().unwrap().screenshot_result.take();
     let mut pending = result.unwrap().unwrap();
@@ -158,20 +158,11 @@ fn a_packs_clouds_draw_with_and_without_improved_transparency() {
         // Every pack shader the device would refuse in these pipelines is refused when the
         // packs load or made to fit, so the refused programs are built by hand: they sample
         // binding 4 (`Sampler0`'s), which no clouds pipeline binds.
-        let validated = |wgsl: &str| {
-            use wgpu::naga::valid::{Capabilities, ValidationFlags, Validator};
-            let module = wgpu::naga::front::wgsl::parse_str(wgsl).unwrap();
-            let info = Validator::new(ValidationFlags::all(), Capabilities::all())
-                .validate(&module)
-                .unwrap();
-            (module, info)
-        };
+        let parse = |wgsl: &str| wgpu::naga::front::wgsl::parse_str(wgsl).unwrap();
         let program = || {
-            sunrise_client_render::core_shader::CoreProgram::new(
-                validated(
-                    "@vertex fn main() -> @builtin(position) vec4<f32> { return vec4(1.0); }",
-                ),
-                validated(
+            sunrise_client_render::core_shader::validated(
+                parse("@vertex fn main() -> @builtin(position) vec4<f32> { return vec4(1.0); }"),
+                parse(
                     "@group(0) @binding(4) var t: texture_2d<f32>;\n@group(0) @binding(5) var s: sampler;\n\
                      @fragment fn main() -> @location(0) vec4<f32> { return textureSample(t, s, vec2(0.5)); }",
                 ),

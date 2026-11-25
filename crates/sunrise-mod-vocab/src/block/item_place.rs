@@ -13,7 +13,7 @@ use crate::item::item_stack::{component_edits::edit_item_components, read_stack_
 use crate::{
     BundleItems, Capability, Direction, ENTITY_ITEMS, EquipmentSlot, Hand, ITEMS,
     ItemComponentEditor, ItemKey, ItemResource, ItemStack, ItemStackView, LevelRef, MenuRef,
-    MenuSlotBacking, Overanswered, ResourceHandler, ServerHost, StackWriteError,
+    MenuSlotBacking, Overanswered, ResourceHandler, ServerHost, StackWriteError, StorageSlot,
     TransactionContext, TransactionError, backend_mut_of, backend_of,
 };
 use std::{
@@ -425,7 +425,9 @@ pub const ITEM_ITEMS: ItemCapabilityKey<dyn ResourceHandler<ItemResource>> = Ite
         if backend.item_container_slots(stack).is_some() {
             Some(Box::new(GameItemItems(place.clone())))
         } else {
-            backend.item_bundle_slots(stack)?;
+            backend
+                .bundle_slots(stack, &crate::BundleConfig::vanilla())
+                .ok()??;
             Some(Box::new(BundleItems::new(place.clone())))
         }
     })),
@@ -564,6 +566,37 @@ pub(crate) fn warn_broken(owner: Option<&'static str>, at: &dyn Debug) {
 }
 
 impl ItemPlace {
+    /// The block container slot this place is, if it is one: [`StorageSlot`], the same value
+    /// whichever side, half of a double chest or block of a multiblock reached it. A
+    /// [`BlockEntity`](Self::BlockEntity) place asks its [`ITEMS`] handler
+    /// ([`ResourceHandler::backing`]); a [`MenuSlot`](Self::MenuSlot) place is the slot its menu
+    /// shows when that is a block entity's ([`MenuSlotBacking::BlockEntity`]). [`Strict`](Self::Strict)
+    /// and [`OneByOne`](Self::OneByOne) are the place inside. Every other place, and a handler
+    /// that gives no backing, is `None`.
+    pub fn backing(&self, host: &mut dyn ServerHost) -> Option<StorageSlot> {
+        let mut place = self;
+        while let Self::Strict(inner) | Self::OneByOne(inner) = place {
+            place = inner;
+        }
+        match place {
+            Self::BlockEntity {
+                level,
+                pos,
+                side,
+                slot,
+            } => level
+                .capability(host, &ITEMS, *pos, *side)?
+                .backing(host, *slot),
+            Self::MenuSlot { menu, slot } => match menu.slot_backing(host, *slot) {
+                Some(MenuSlotBacking::BlockEntity { level, pos, slot }) => {
+                    Some(StorageSlot { level, pos, slot })
+                }
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
     /// Lend the stack here to `read` and return its result, or return `None` without calling it
     /// if the place is empty or unavailable. Use [`ItemStackView::project`] to inspect components
     /// or retain an owned stack. Native reads never load chunks or initialize a player; reading a
@@ -873,21 +906,23 @@ impl ItemPlace {
         spills: bool,
     ) -> Result<u32, TransactionError<Overanswered>> {
         let _ = tx;
-        // A menu slot's own rules come before its storage's: `Slot.mayPlace` and
-        // `getMaxStackSize` for what goes in, `Slot.mayPickup` for what comes out.
-        let amount = match self {
-            ItemPlace::MenuSlot { menu, slot } if insert => {
-                let holds = menu.slot_holds(host, *slot, resource.as_stack());
-                let room = holds.unwrap_or(0).saturating_sub(self.amount(host));
-                amount.min(room)
-            }
-            ItemPlace::MenuSlot { menu, slot } => {
-                let gives = if matches!(
-                    menu.slot_backing(host, *slot),
-                    Some(MenuSlotBacking::Place(_))
-                ) {
-                    // The handler owns this stack. The menu's packet mirror can lag behind
-                    // writes to the backing, including earlier writes in this transaction.
+        // Resolve the menu's backing once. Transfers to a handler-owned stack ask pickup
+        // against the current handler contents, not the packet mirror.
+        let (amount, backing) = if let ItemPlace::MenuSlot { menu, slot } = self {
+            let Some(backing) = menu.slot_backing(host, *slot) else {
+                return Ok(0);
+            };
+            let allowed = if insert {
+                let holds = if matches!(backing, MenuSlotBacking::Place(_)) {
+                    backend_of(host).and_then(|backend| {
+                        backend.menu_slot_holds_with_stack(*menu, *slot, resource.as_stack())
+                    })
+                } else {
+                    menu.slot_holds(host, *slot, resource.as_stack())
+                };
+                amount.min(holds.unwrap_or(0).saturating_sub(self.amount(host)))
+            } else {
+                let gives = if matches!(backing, MenuSlotBacking::Place(_)) {
                     self.with_stack(host, |view| view.project())
                         .flatten()
                         .and_then(|stack| {
@@ -897,8 +932,10 @@ impl ItemPlace {
                     menu.slot_gives(host, *slot)
                 };
                 if gives == Some(true) { amount } else { 0 }
-            }
-            _ => amount,
+            };
+            (allowed, Some(backing))
+        } else {
+            (amount, None)
         };
         if amount == 0 {
             return Ok(0);
@@ -959,8 +996,8 @@ impl ItemPlace {
                 let handler = entity.capability(host, &ENTITY_ITEMS, ()).ok_or(None)?;
                 through(handler, host, tx, *slot, false)
             }
-            ItemPlace::MenuSlot { menu, slot } => {
-                let (handler, index) = match menu.slot_backing(host, *slot).ok_or(None)? {
+            ItemPlace::MenuSlot { menu, .. } => {
+                let (handler, index) = match backing.ok_or(None)? {
                     MenuSlotBacking::Player(index) => {
                         let player = menu.player.entity();
                         (player.capability(host, &ENTITY_ITEMS, ()), index)
@@ -1167,19 +1204,24 @@ impl ItemPlace {
                 Some((stack.item(), projected))
             })
             .flatten()?;
+        let providers = crate::parts::installed()
+            .and_then(|installed| installed.keys.item_capabilities.get(key.name))
+            .and_then(|by_item| {
+                let id = crate::content::registry_keys::item_id(item)?;
+                by_item.get(id).map(Vec::as_slice)
+            })
+            .unwrap_or(&[]);
         let mut game = None;
-        let table = host.capability_providers();
-        let provided = table.provided(crate::ProvidedBy::Item, key.name);
-        let mut index = 0;
         crate::answered(
             crate::ask_providers(
                 host,
-                || {
-                    provided
-                        .then(|| table.item_provider(key.name, item, &mut index))
-                        .flatten()
+                providers.iter(),
+                ("capability provider", "capability_provider"),
+                |provider, host| {
+                    provider
+                        .get::<std::sync::Arc<crate::ItemProvider<T>>>()?
+                        .provide(host, self)
                 },
-                |provider, host| provider.get::<T>()?.provide(host, self),
                 |host| {
                     game = match &key.default {
                         Some(ItemCapabilityDefault::Item(default)) => default(host, self, item),
