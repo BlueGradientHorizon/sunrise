@@ -330,6 +330,11 @@ mod tests {
                     ModelLoaderSchema::ModelProperties,
                     |_| Ok(vec![quad("side", 1.0)]),
                 );
+                event.register(
+                    Identifier::parse("neoforge:empty").unwrap(),
+                    ModelLoaderSchema::ModelProperties,
+                    |_| Ok(vec![quad("side", 1.0)]),
+                );
             }
         }
         struct Second;
