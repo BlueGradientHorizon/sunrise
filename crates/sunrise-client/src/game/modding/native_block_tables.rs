@@ -7,11 +7,12 @@ use super::{
     native_world_read::{api_fluid_state, engine_fluid_kind},
 };
 use mod_api::{
-    BlockKey, BlockSoundType, BlockState, BlockStateRange, FluidDefinition, FluidKey, FluidState,
-    FluidStateError, FluidTypeProperties, StateConstraint, StateMatchError, StateProperties,
-    WeatheringAge,
+    BlockKey, BlockLanding, BlockSoundType, BlockState, BlockStateRange, FluidDefinition, FluidKey,
+    FluidState, FluidStateError, FluidTypeProperties, PathType, StateCollision, StateConstraint,
+    StateMatchError, StateProperties, WeatheringAge,
 };
 use sunrise_client::items::ItemStack;
+use sunrise_core::geometry::VoxelShape;
 use sunrise_mod_package::content::FluidMeasures;
 use sunrise_world::fluid::FluidKind;
 use sunrise_world::level::{fluid_drip_particle, fluid_explosion_resistance, fluid_randomly_ticks};
@@ -409,6 +410,38 @@ impl<'a> BlockTables<'a> {
         let block = self.res.motion().blocks.get(state).ok()?;
         Some(block.coefficients.jump_factor)
     }
+    /// The state's collision boxes with an empty collision context, and whether they hold at every
+    /// position. None for an unknown state.
+    pub(in crate::game) fn block_state_collision(
+        &self,
+        state: BlockStateId,
+    ) -> Option<StateCollision> {
+        self.pack.assets.registry.state(state)?;
+        let collision = self.res.collision();
+        Some(match collision.empty_context_shape(state).ok()? {
+            None => StateCollision::Positional,
+            Some(shape) if collision.has_context_rule(state) => {
+                StateCollision::Contextual(voxel_shape_boxes(&shape))
+            }
+            Some(shape) => StateCollision::Fixed(voxel_shape_boxes(&shape)),
+        })
+    }
+    /// The bounce restitution and fall-distance reduction the state's block declares. None for an
+    /// unknown state.
+    pub(in crate::game) fn block_state_landing(&self, state: BlockStateId) -> Option<BlockLanding> {
+        self.pack.assets.registry.state(state)?;
+        let coefficients = self.res.motion().blocks.get(state).ok()?.coefficients;
+        Some(BlockLanding {
+            bounce_restitution: coefficients.bounce_restitution,
+            fall_distance_reduction: coefficients.fall_distance_reduction,
+        })
+    }
+    /// Static walking path type of the state after per-state `isPathfindable` resolution. None for
+    /// an unknown state, and before the game's remaining resources are loaded.
+    pub(in crate::game) fn block_state_path_type(&self, state: BlockStateId) -> Option<PathType> {
+        self.pack.assets.registry.state(state)?;
+        Some(self.res.rest.get()?.mob_data.path_type(state))
+    }
     /// `BlockState.isSolidRender()`. None for an unknown state.
     pub(in crate::game) fn block_state_is_solid_render(&self, state: BlockStateId) -> Option<bool> {
         self.pack.assets.registry.state(state)?;
@@ -576,6 +609,19 @@ impl<'a> BlockTables<'a> {
             .waxed(registry, registry.state(state)?)?;
         registry.resolve(&waxed).ok()
     }
+}
+
+/// Convert a `VoxelShape`'s AABBs into `[min_x, min_y, min_z, max_x, max_y, max_z]` tuples.
+pub(in crate::game) fn voxel_shape_boxes(shape: &VoxelShape) -> Vec<[f64; 6]> {
+    shape
+        .boxes()
+        .iter()
+        .map(|bounds| {
+            let min = bounds.min_position();
+            let max = bounds.max_position();
+            [min.x, min.y, min.z, max.x, max.y, max.z]
+        })
+        .collect()
 }
 
 /// `FluidType.getTemperature`, `getDensity`, `getViscosity` and `getLightLevel` of the registered fluid `id`,

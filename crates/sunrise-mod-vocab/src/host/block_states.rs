@@ -163,6 +163,26 @@ pub trait BlockStatesBackend {
     /// declared value, not what the block's parts answer in a level. None for an unknown state.
     fn block_state_jump_factor(&self, state: BlockState) -> Option<f32>;
     /// Side: both.
+    /// The state's collision boxes with an empty collision context, in block-local
+    /// coordinates (`[min_x, min_y, min_z, max_x, max_y, max_z]`; a box may leave the cell, as a
+    /// fence's reaches y 1.5), and whether they hold at every position ([`StateCollision`]).
+    /// None for an unknown state.
+    fn block_state_collision(&self, state: BlockState) -> Option<StateCollision>;
+    /// Side: both.
+    /// The bounce restitution and fall-distance reduction the state's block declares
+    /// (`BlockBehaviour.Properties.bounceRestitution`, `fallDistanceReduction`): 0.75 and 0.5 for
+    /// beds and the shelf mushroom, a bounce of 1.0 for slime, 0 for most blocks. The static
+    /// properties only: neither a block part's `bounce_restitution` nor a custom `fallOn` (hay's
+    /// 0.2 fall damage multiplier). None for an unknown state.
+    fn block_state_landing(&self, state: BlockState) -> Option<BlockLanding>;
+    /// Side: both.
+    /// The state's walking path type (`WalkNodeEvaluator.getPathTypeFromState`) after the block
+    /// parts' `isPathfindable` answers: `Blocked`, `Open`, `Fire`, `Damaging`, `Lava`, `Water`,
+    /// `StickyHoney`, `PowderSnow`, `Fence`, doors, trapdoors, leaves. The state alone: neither the
+    /// per-position `block_path_type` hook nor the neighbour rules (`checkNeighbourBlocks`:
+    /// `FireInNeighbor`, `DamagingInNeighbor`) apply. None for an unknown state.
+    fn block_state_path_type(&self, state: BlockState) -> Option<PathType>;
+    /// Side: both.
     /// `BlockState.isSolidRender()`: whether the state is a full, occluding cube for rendering
     /// and light (stone yes; glass, leaves and slabs no). Not `isSolid` and not full collision.
     /// None for an unknown state.
