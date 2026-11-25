@@ -604,6 +604,7 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeSet;
     use sunrise_client::recipe_book::mod_presentation::PresentedRecipe;
 
     #[test]
