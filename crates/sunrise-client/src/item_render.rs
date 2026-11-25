@@ -1288,6 +1288,43 @@ fn glint_padding(filtering: i32, bit: i32) -> usize {
 }
 
 impl ItemRenderer {
+    #[cfg(any(test, feature = "test-resource-cache"))]
+    pub fn has_registered_providers() -> bool {
+        FACTORIES.get().is_some()
+            || ItemProviderTables::has_registered()
+            || crate::skull_models::all().next().is_some()
+    }
+
+    /// Cheap clone sharing `Arc<ModelLibrary>` and prototypes with fresh per-game caches.
+    #[cfg(any(test, feature = "test-resource-cache"))]
+    pub fn clone_for_tests(&self) -> Option<Self> {
+        if self.cit.is_some() {
+            return None;
+        }
+        Some(Self {
+            models: ItemModels {
+                definitions: self.models.definitions.clone(),
+                prototypes: Arc::clone(&self.models.prototypes),
+            },
+            library: Arc::clone(&self.library),
+            sprites: FileSprites::new(self.sprites.root.clone()),
+            baked: Mutex::default(),
+            extents: Mutex::default(),
+            special_generation: Arc::new(()),
+            gui_drawn: Mutex::default(),
+            gui_item_atlas: Mutex::default(),
+            max_texture_size: AtomicU32::new(self.max_texture_size.load(Ordering::Relaxed)),
+            parts: self.parts.clone(),
+            skull_textures: self.skull_textures.clone(),
+            grass: self.grass.clone(),
+            item_ids: self.item_ids.clone(),
+            cit: None,
+            glint_atlas: Mutex::default(),
+            block_glint_atlas: Mutex::default(),
+            shield_glint_atlas: Mutex::default(),
+        })
+    }
+
     /// Prepare item/block/shield glint atlases after the device exists, defaulting `mipmapLevels`
     /// to vanilla's `4`.
     pub fn prepare_glint_atlas(&self, maximum: u32, filtering: (i32, i32)) -> crate::Result<()> {

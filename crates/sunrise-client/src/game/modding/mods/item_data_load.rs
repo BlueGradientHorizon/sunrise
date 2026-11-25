@@ -4,7 +4,7 @@ use sunrise_world::native_load_context::DataLoadOrigin;
 type SettingsSnapshot = Arc<[(String, Arc<[(String, String)]>)]>;
 
 /// Whether this owning load belongs to registration's startup publication.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub(in crate::game) enum OwningLoad {
     Startup,
     Later,

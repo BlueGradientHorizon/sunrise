@@ -7,7 +7,7 @@ use sunrise_client::{
 
 pub use sunrise_client::entities::PaintingVariant as Variant;
 /// Variants by id plus the `#minecraft:placeable` list.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct PaintingVariants {
     pub all: Vec<Variant>,
     pub placeable: Vec<Arc<str>>,

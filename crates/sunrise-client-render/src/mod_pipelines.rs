@@ -16,6 +16,11 @@ use sunrise_shader_api::mod_pipeline::{FOLDER, compose_with};
 
 static REGISTERED: OnceLock<Vec<RenderPipeline>> = OnceLock::new();
 
+#[cfg(any(test, feature = "test-support"))]
+pub fn has_registered() -> bool {
+    REGISTERED.get().is_some_and(|v| !v.is_empty())
+}
+
 /// Canonical vanilla 26.3 required render pipeline paths under the `minecraft` namespace
 /// (`RenderPipelines.PIPELINES_BY_LOCATION`, sorted for binary search).
 const BUILTIN_REQUIRED_PIPELINES: &[&str] = &[

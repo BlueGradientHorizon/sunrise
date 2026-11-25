@@ -113,6 +113,35 @@ pub struct Creative {
     /// The packs' Polytone creative tab modifiers, applied by `rebuild`.
     pack: Vec<crate::polytone_creative_tabs::TabModifier>,
 }
+#[cfg(any(test, feature = "test-resource-cache"))]
+impl Creative {
+    /// Clone loaded catalog state with fresh per-game UI cache mutexes for tests.
+    pub fn clone_for_tests(&self) -> Self {
+        Self {
+            tabs: self.tabs.clone(),
+            selected_id: self.selected_id.clone(),
+            page: self.page,
+            scroll: self.scroll,
+            scrolling: self.scrolling,
+            search: self.search.clone(),
+            search_items: self.search_items.clone(),
+            search_names: self.search_names.clone(),
+            search_generation: self.search_generation,
+            search_index: self.search_index.clone(),
+            holders: Arc::clone(&self.holders),
+            items: Arc::clone(&self.items),
+            catalog: Arc::clone(&self.catalog),
+            headers: self.headers.clone(),
+            metadata: self.metadata.clone(),
+            ungrouped: self.ungrouped.clone(),
+            item_tags: self.item_tags.clone(),
+            contents: self.contents.clone(),
+            shown: Mutex::new(None),
+            lines_cache: Mutex::new(None),
+            pack: self.pack.clone(),
+        }
+    }
+}
 /// The same registries a vanilla client finishes configuring, in network ID order.
 /// Known-pack entries have already been filled from local resources by configuration.
 pub fn live_holders(

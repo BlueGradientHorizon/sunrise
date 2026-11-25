@@ -30,6 +30,7 @@ pub(in crate::game) struct GameCpuResources {
 /// document parsed once at startup: parsing entity-models.json (2.4 MB) when the first one
 /// appeared stalled that frame by 40 ms of CPU and the file read.
 #[derive(Default)]
+#[cfg_attr(test, derive(Clone))]
 pub(in crate::game) struct EntityModels {
     /// LeashKnotModel.
     pub(in crate::game) leash_knot: Option<sunrise_client::mobs::Part>,
@@ -63,7 +64,116 @@ impl EntityModels {
 }
 
 impl GameCpuResources {
+    #[cfg(test)]
+    pub(in crate::game) fn clone_for_tests(&self) -> Self {
+        Self {
+            painting_variants: self.painting_variants.clone(),
+            frame_model: self.frame_model.clone(),
+            glow_frame_model: self.glow_frame_model.clone(),
+            map_frame_model: self.map_frame_model.clone(),
+            glow_map_frame_model: self.glow_map_frame_model.clone(),
+            armor_stand_assets: self.armor_stand_assets.clone_for_tests(),
+            waypoint_styles: self.waypoint_styles.clone(),
+            boat_models: self.boat_models.clone(),
+            cart_models: self.cart_models.clone(),
+            crystal_model: self.crystal_model.clone(),
+            cushion_model: self.cushion_model.clone(),
+            dragon_model: self.dragon_model.clone(),
+            arrow_model: self.arrow_model.clone(),
+            bee_stinger_model: self.bee_stinger_model.clone(),
+            trident_model: self.trident_model.clone(),
+            entity_models: self.entity_models.clone(),
+            creative_screen: self.creative_screen.clone_for_tests(),
+        }
+    }
+
     pub(in crate::game) fn load(
+        resources: &sunrise_assets::resource_source::ResourceRoot,
+        document: Option<&sunrise_client::mobs::EntityModelDocument>,
+        model_library: Option<&sunrise_assets::resolve::ModelLibrary>,
+        draws: bool,
+    ) -> Result<Self> {
+        #[cfg(test)]
+        if let Some(cached) = Self::load_cached_for_tests(resources, document, model_library, draws)
+        {
+            return cached;
+        }
+        Self::load_uncached(resources, document, model_library, draws)
+    }
+
+    #[cfg(test)]
+    fn load_cached_for_tests(
+        resources: &sunrise_assets::resource_source::ResourceRoot,
+        document: Option<&sunrise_client::mobs::EntityModelDocument>,
+        model_library: Option<&sunrise_assets::resolve::ModelLibrary>,
+        draws: bool,
+    ) -> Option<Result<Self>> {
+        use std::sync::{Mutex, OnceLock};
+        use std::time::SystemTime;
+        type Stamp = Option<(u64, Option<SystemTime>)>;
+        #[derive(PartialEq, Eq)]
+        struct Key {
+            root: PathBuf,
+            draws: bool,
+            model_library: Option<usize>,
+            stamps: [Stamp; 3],
+        }
+        type Slot = Arc<OnceLock<std::result::Result<GameCpuResources, String>>>;
+        static CACHE: Mutex<Vec<(Key, Slot)>> = Mutex::new(Vec::new());
+
+        if document.is_some()
+            || !resources.mod_layers().is_empty()
+            || !resources.data_changes().is_empty()
+            || resources.source().as_directory() != Some(resources.prepared())
+            || !resources
+                .prepared()
+                .join("sunrise-resources.json")
+                .is_file()
+        {
+            return None;
+        }
+        let canon = std::fs::canonicalize(resources.prepared()).ok()?;
+        let stat = |name: &str| {
+            std::fs::metadata(canon.join(name))
+                .ok()
+                .map(|m| (m.len(), m.modified().ok()))
+        };
+        let key = Key {
+            root: canon.clone(),
+            draws,
+            model_library: model_library.map(|m| m as *const _ as usize),
+            stamps: [
+                stat("entity-models.json"),
+                stat("creative-inventory.json"),
+                stat("data/minecraft/painting_variant"),
+            ],
+        };
+        let slot = {
+            let mut entries = CACHE.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(pos) = entries.iter().position(|(k, _)| *k == key) {
+                let entry = entries.remove(pos);
+                let slot = entry.1.clone();
+                entries.push(entry);
+                slot
+            } else {
+                if entries.len() >= 4 {
+                    entries.remove(0);
+                }
+                let slot = Arc::new(OnceLock::new());
+                entries.push((key, slot.clone()));
+                slot
+            }
+        };
+        let built = slot.get_or_init(|| {
+            Self::load_uncached(resources, None, model_library, draws).map_err(|e| e.to_string())
+        });
+        Some(match built {
+            Ok(cpu) => Ok(cpu.clone_for_tests()),
+            Err(e) => Err(e.clone().into()),
+        })
+    }
+
+    fn load_uncached(
         resources: &sunrise_assets::resource_source::ResourceRoot,
         document: Option<&sunrise_client::mobs::EntityModelDocument>,
         model_library: Option<&sunrise_assets::resolve::ModelLibrary>,

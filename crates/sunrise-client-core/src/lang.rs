@@ -855,6 +855,27 @@ pub fn set(language: Language) {
     *CURRENT.write().unwrap_or_else(|e| e.into_inner()) = Some(Arc::new(language));
     GENERATION.fetch_add(1, Ordering::Relaxed);
 }
+#[cfg(feature = "test-language-publication")]
+pub fn set_shared(language: Arc<Language>) {
+    let language = match PUBLICATION.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        if slot.is_some() {
+            *slot = Some(language);
+            None
+        } else {
+            Some(language)
+        }
+    }) {
+        Some(language) => language,
+        None => {
+            scope_changed();
+            return;
+        }
+    };
+    BIDIRECTIONAL.store(language.bidirectional, Ordering::Relaxed);
+    *CURRENT.write().unwrap_or_else(|e| e.into_inner()) = Some(language);
+    GENERATION.fetch_add(1, Ordering::Relaxed);
+}
 pub fn current() -> Option<Arc<Language>> {
     if let Some(language) = SCOPE.with(|s| s.borrow().as_ref().map(|s| s.language.clone())) {
         return Some(language);

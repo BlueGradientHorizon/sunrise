@@ -272,6 +272,19 @@ impl SpritePixels {
             fallback();
         }
     }
+    /// Compress raw sprite pixels synchronously so cached test resources keep lz4 bytes.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn pack_sync(&self) {
+        use std::sync::atomic::Ordering;
+        if self.0.len == 0 || self.0.packing.swap(true, Ordering::Relaxed) {
+            return;
+        }
+        let raw = self.0.raw.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        if let Some(raw) = raw {
+            let _ = self.0.packed.set(lz4_flex::compress_prepend_size(&raw));
+            *self.0.raw.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        }
+    }
 }
 /// The last `RenderAssets::generation` handed out.
 static GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);

@@ -36,7 +36,7 @@ pub(crate) const SEE_THROUGH_GLUE: Glue = Glue {
     interface: sunrise_shaders::DEVICELESS_INTERFACE_LIMITS,
 };
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct TextShaders {
     pub gui: Option<Arc<CoreProgram>>,
     pub world: Option<Arc<CoreProgram>>,
@@ -48,7 +48,7 @@ pub struct TextShaders {
 }
 
 /// [`TextShaders`]' expression uniforms, program by program.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct TextExpressions {
     pub gui: Vec<crate::polytone_post::ExpressionUniform>,
     pub world: Vec<crate::polytone_post::ExpressionUniform>,

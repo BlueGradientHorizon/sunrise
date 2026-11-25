@@ -186,6 +186,22 @@ pub(in crate::game) struct ArmorStandAssets {
     /// The resources the trim textures are made from.
     pub root: ResourceSource,
 }
+#[cfg(test)]
+impl ArmorStandAssets {
+    pub(in crate::game) fn clone_for_tests(&self) -> Self {
+        Self {
+            main: self.main.clone(),
+            small: self.small.clone(),
+            layers: self.layers.clone(),
+            player: self.player.clone(),
+            equipment: self.equipment.clone(),
+            extensions: Default::default(),
+            trim_overrides: self.trim_overrides.clone(),
+            trims: self.trims.clone(),
+            root: self.root.clone(),
+        }
+    }
+}
 impl ArmorStandAssets {
     pub fn load(
         root: &ResourceSource,

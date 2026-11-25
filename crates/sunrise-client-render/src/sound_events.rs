@@ -233,9 +233,59 @@ fn sound_files(root: &ResourceSource, namespace: &str) -> HashSet<String> {
         .filter_map(|name| name.strip_prefix(&prefix).map(str::to_owned))
         .collect()
 }
+#[cfg(any(test, feature = "test-support"))]
+fn load_cached_directory(root: &ResourceSource) -> Option<SoundRegistry> {
+    use std::path::PathBuf;
+    use std::sync::{Arc, Mutex, OnceLock};
+    use std::time::SystemTime;
+    type Stamp = Option<(u64, Option<SystemTime>)>;
+    type Entry = ((PathBuf, Stamp, Stamp), Arc<OnceLock<SoundRegistry>>);
+    static CACHE: Mutex<Vec<Entry>> = Mutex::new(Vec::new());
+
+    let dir = root.as_directory()?;
+    let canon = std::fs::canonicalize(dir).ok()?;
+    let stat = |p: PathBuf| {
+        std::fs::metadata(p)
+            .ok()
+            .map(|m| (m.len(), m.modified().ok()))
+    };
+    let key = (
+        canon.clone(),
+        stat(canon.join("assets/minecraft/sounds.json")),
+        stat(canon.join("assets")),
+    );
+    let slot = {
+        let mut entries = CACHE.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(pos) = entries.iter().position(|(k, _)| *k == key) {
+            let entry = entries.remove(pos);
+            let slot = entry.1.clone();
+            entries.push(entry);
+            slot
+        } else {
+            if entries.len() >= 4 {
+                entries.remove(0);
+            }
+            let slot = Arc::new(OnceLock::new());
+            entries.push((key, slot.clone()));
+            slot
+        }
+    };
+    Some(
+        slot.get_or_init(|| SoundRegistry::load_uncached(root))
+            .clone(),
+    )
+}
+
 impl SoundRegistry {
     /// Every namespace's sounds.json, validated against resolved sound resources.
     pub fn load(root: &ResourceSource) -> Self {
+        #[cfg(any(test, feature = "test-support"))]
+        if let Some(cached) = load_cached_directory(root) {
+            return cached;
+        }
+        Self::load_uncached(root)
+    }
+    fn load_uncached(root: &ResourceSource) -> Self {
         let namespaces = root.namespaces("assets");
         let files: HashMap<&str, HashSet<String>> = namespaces
             .iter()

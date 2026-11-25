@@ -586,6 +586,7 @@ pub(in crate::game::server_side) fn registered_boat_item<'a>(
     Some(boat)
 }
 
+#[cfg_attr(test, derive(Clone))]
 pub(in crate::game) struct BoatModels {
     pub models: HashMap<String, Part>,
     pub chest_models: HashMap<String, Part>,

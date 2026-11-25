@@ -615,6 +615,7 @@ pub(in crate::game) fn container_keep(signal: i32, loot_pending: bool, in_water:
     }
     f64::from(keep)
 }
+#[cfg_attr(test, derive(Clone))]
 pub(in crate::game) struct CartModels {
     pub models: HashMap<CartKind, Part>,
 }
