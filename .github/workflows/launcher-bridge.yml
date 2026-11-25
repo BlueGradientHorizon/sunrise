@@ -131,7 +131,7 @@ jobs:
           }
           first=$(cd dist && find . -maxdepth 1 -name 'sunrise-launcher-*' -printf '%f\n' | sort | head -1)
           verify "dist/$first" --predicate-type https://playsunrise.net/attestation/launcher-release/v1 > "$RUNNER_TEMP/record.json"
-          python3 -I repo/tools/ci/check_launcher_release_record.py --attestations "$RUNNER_TEMP/record.json" --tag "v$VERSION" --commit "$COMMIT" --dist dist
+          python3 -I repo/tools/ci/check_launcher_release_record.py --attestations "$RUNNER_TEMP/record.json" --tag "v$VERSION" --commit "$COMMIT" --source-ref "$SOURCE_REF" --dist dist
           for file in dist/sunrise-launcher-*; do
             [[ "$(verify "$file" | jq -r '[.[].verificationResult.signature.certificate.buildTrigger] | unique | join(",")')" == workflow_dispatch ]] ||
               { echo "::error::$file's provenance isn't only from a dispatch"; exit 1; }
