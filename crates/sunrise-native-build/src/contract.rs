@@ -9,6 +9,10 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 /// The contract this tool speaks: a plan naming another is refused, so a caller never misreads a reply.
+///
+/// Bump it for any tool change that alters what a caller may send the tool or rely on from it:
+/// plan fields, events, exit codes and outputs. A change that also alters the package layout
+/// bumps `PACKAGE_FORMAT` in `sunrise-mod-package` too.
 pub const CONTRACT: u32 = 2;
 
 /// What to build, the first line of standard input.

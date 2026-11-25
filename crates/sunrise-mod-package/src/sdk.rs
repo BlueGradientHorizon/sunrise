@@ -20,6 +20,10 @@ pub const INDEX: &str = "sdk.json";
 pub const SCHEMA: u32 = 1;
 /// The prebuilt package's layout number. Its one place is the file `sdk/package-format`, which
 /// the archive name, the package's identity file, `sdk.json` and the scripts all read.
+///
+/// Bump it for any change to the package layout, including making an identity or index field
+/// required that older packages lack. A bump that also changes what a caller may send the tool or
+/// rely on from it bumps `CONTRACT` in `sunrise-native-build` too.
 pub const PACKAGE_FORMAT: u32 = number(include_str!("sdk/package-format"));
 
 /// A decimal number, then any trailing whitespace (a CR included), at compile time: anything else
