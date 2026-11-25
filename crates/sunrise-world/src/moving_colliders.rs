@@ -9,6 +9,7 @@
 //!
 //! The level's colliders are indexed by their world bounds in a coarse grid, so a mover far
 //! from every collider pays one lookup however many the level holds.
+use crate::entity_obstruction::EntityIdentity;
 use std::{
     cell::{Cell, RefCell},
     collections::{BTreeMap, HashMap},
@@ -20,7 +21,6 @@ use sunrise_core::geometry::{
     carried::FrameLog,
     oriented::{ColliderBoxes, OrientedCollider},
 };
-use sunrise_world::entity_obstruction::EntityIdentity;
 
 /// Side of an index cell, in blocks.
 const CELL: f64 = 16.0;

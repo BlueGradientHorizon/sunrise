@@ -25,6 +25,7 @@ pub use sunrise_items::item_data;
 pub use sunrise_items::items;
 pub use sunrise_items::random_sequences;
 pub use sunrise_world::json_folder;
+pub use sunrise_world::moving_colliders;
 
 // --- lowered modules ---
 // --- end lowered modules ---
