@@ -26,15 +26,18 @@ pub trait ClientRenderClientHost {
     /// Side: client.
     /// Marks the loaded chunk section `section` (section coordinates: block X, Y and Z shifted
     /// right by 4) for remeshing, as `LevelExtractor.setSectionDirty` does; with `with_neighbors`
-    /// also the 26 sections around it that are loaded (`ClientLevel.setSectionDirtyWithNeighbors`).
+    /// each loaded section of the 27 from one below to one above it on every axis, whether or
+    /// not `section` itself is loaded (`ClientLevel.setSectionDirtyWithNeighbors`).
     /// Use it when your mod changes how blocks look (a tint or texture toggle, an overlay) and
-    /// the meshes must follow, without unloading chunks. Returns `false`, marking nothing, when
-    /// `section` is not loaded or is outside the level's height.
+    /// the meshes must follow, without unloading chunks. Returns whether `section` itself was
+    /// marked: `false` when it is not loaded or is outside the level's height.
     fn set_section_dirty(&mut self, section: [i32; 3], with_neighbors: bool) -> bool;
     /// Side: client.
-    /// Marks every loaded chunk section that holds a block of the box from `min` to `max`
-    /// (block positions, both corners included) for remeshing, as `ClientLevel.setBlocksDirty`
-    /// does. Sections that are not loaded, or outside the level's height, are skipped.
+    /// Marks for remeshing every loaded chunk section that holds a block of the box from
+    /// `min - 1` to `max + 1` (block positions, both corners included: the box widened by one
+    /// block on each axis), as `LevelExtractor.setBlocksDirty` does, so a box touching a
+    /// section's edge also marks the section across it. Sections that are not loaded, or
+    /// outside the level's height, are skipped.
     fn set_blocks_dirty(&mut self, min: [i32; 3], max: [i32; 3]);
     /// Side: client.
     /// Asks `biome_colors` again for every biome and, when the colours
