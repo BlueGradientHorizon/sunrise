@@ -4855,6 +4855,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "sunrise-dependency-rule"
+version = "0.1.0"
+dependencies = [
+ "semver",
+]
+
+[[package]]
 name = "sunrise-discord"
 version = "0.1.0"
 dependencies = [
