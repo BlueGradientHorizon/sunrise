@@ -100,6 +100,9 @@ pub struct RenderAssets {
     pub translucent_layers: Vec<bool>,
     /// Each layer's `MipmapGenerator` settings.
     pub sprite_mips: Vec<crate::mipmap::Settings>,
+    /// The first frame, at its own side, of each layer larger than `sprite_size`
+    /// (`Sprites::oversized`), which the layer holds shrunk.
+    pub oversized_sprites: std::collections::BTreeMap<u32, (u32, Vec<u8>)>,
     /// The resource packs' LabPBR maps (normals, specular), layer by layer at `pbr_size`:
     /// empty when they ship none.
     pub pbr_normals: Vec<u8>,
@@ -136,6 +139,7 @@ impl RenderAssets {
             emissive_layers: Vec::new(),
             translucent_layers: Vec::new(),
             sprite_mips: Vec::new(),
+            oversized_sprites: Default::default(),
             pbr_normals: Vec::new(),
             pbr_specular: Vec::new(),
             pbr_size: 0,
@@ -162,7 +166,9 @@ impl RenderAssets {
     /// `split` is the layers to an array (`Renderer::sprite_split`). The layer pixels are the frame
     /// the sprite starts on (an animation's first `.mcmeta` frame), scaled up to the array edge
     /// by whole pixels when the sprite is smaller (`Sprites::finish`), so a sprite whose own side
-    /// (`Settings::native_size`) is not above the edge is read back exactly; a larger one stays at the edge.
+    /// (`Settings::native_size`) is not above the edge is read back exactly. A larger one, which the
+    /// layer holds shrunk to the edge, comes back from the frame `Sprites::finish` kept for it at
+    /// its own size.
     pub fn atlas_sprite_pixels(
         &self,
         sprite: mod_api::SpriteRef,
@@ -179,6 +185,16 @@ impl RenderAssets {
         let layer = u64::from(sprite.array) * split + u64::from(sprite.layer);
         if layer >= u64::from(self.texture_layers) {
             return Err(NoSuchSprite);
+        }
+        if let Some((side, rgba)) = u32::try_from(layer)
+            .ok()
+            .and_then(|layer| self.oversized_sprites.get(&layer))
+        {
+            return Ok(mod_api::__private::built::atlas_sprite_pixels(
+                *side,
+                *side,
+                rgba.clone(),
+            ));
         }
         let edge = self.sprite_size as usize;
         let bytes = edge * edge * 4;
@@ -741,6 +757,7 @@ impl RenderAssets {
             emissive_layers,
             translucent_layers: sprites.translucent,
             sprite_mips: sprites.mips,
+            oversized_sprites: sprites.oversized,
             pbr_normals: sprites.normals,
             pbr_specular: sprites.specular,
             pbr_size: sprites.pbr_size,
@@ -1049,13 +1066,36 @@ mod atlas_sprite_pixels_tests {
         }
     }
 
+    /// A sprite larger than the array's edge comes back at its own size from the frame
+    /// `Sprites::finish` kept, not from the layer it holds shrunk (#5814).
     #[test]
-    fn a_sprite_above_the_edge_stays_at_the_edge() {
-        let atlas = atlas(2, &[(2, frame(2, 9))]);
-        let mut shrunk = atlas;
-        shrunk.sprite_mips[0].native_size = 8;
-        let read = shrunk.atlas_sprite_pixels(sprite(0, 0), u32::MAX).unwrap();
-        assert_eq!((read.width, read.height, read.rgba.len()), (2, 2, 16));
+    fn a_sprite_above_the_edge_comes_back_at_its_own_size() {
+        let big = frame(8, 9);
+        let mut shrunk = atlas(2, &[(2, frame(2, 1)), (2, frame(2, 2))]);
+        shrunk.sprite_mips[1].native_size = 8;
+        shrunk.oversized_sprites.insert(1, (8, big.clone()));
+        let read = shrunk.atlas_sprite_pixels(sprite(0, 1), u32::MAX).unwrap();
+        assert_eq!((read.width, read.height), (8, 8));
+        assert_eq!(read.rgba, big);
+        // The layer beside it still reads from the array.
+        let other = shrunk.atlas_sprite_pixels(sprite(0, 0), u32::MAX).unwrap();
+        assert_eq!(other.rgba, frame(2, 1));
+    }
+
+    /// `Sprites::finish` keeps the frame each layer larger than the edge starts on, at its own
+    /// size, and nothing of a layer that fits.
+    #[test]
+    fn the_frame_a_shrunk_layer_starts_on_is_kept_at_its_own_size() {
+        use std::sync::Arc;
+        let (small, big, second) = (frame(16, 3), frame(32, 4), frame(32, 5));
+        let native = [
+            (16, Arc::new(vec![small]), 0),
+            (32, Arc::new(vec![big, second.clone()]), 1),
+            (16, Arc::new(vec![frame(16, 6)]), 0),
+        ];
+        let kept = crate::sprites::oversized_frames(&native, 16);
+        assert_eq!(kept.into_iter().collect::<Vec<_>>(), [(1, (32, second))]);
+        assert!(crate::sprites::oversized_frames(&native, 32).is_empty());
     }
 
     #[test]

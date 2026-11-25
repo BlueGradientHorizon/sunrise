@@ -501,10 +501,10 @@ pub trait RenderAssets {
     /// readback. `sprite` is the reference `texture_sprites` and `block_sprites` answer; it names
     /// the blocks atlas, the only atlas a `SpriteRef` indexes (`TextureAtlas::Blocks`).
     ///
-    /// The size is the sprite's own frame as the engine stitched it. It never exceeds the atlas
-    /// array's edge: a sprite larger than the texture budget allows comes back at the array's
-    /// size, and a frame the atlas squared (a `.mcmeta` frame that is not square) comes back
-    /// squared. `AtlasSpriteError::NoSuchSprite` only for a reference whose array or layer is
+    /// The size is the sprite's own frame as the engine stitched it, larger than the texture
+    /// budget lets the atlas array hold it included: such a sprite comes back at its own size, not
+    /// shrunk to the array's edge. A frame the atlas squared (a `.mcmeta` frame that is not
+    /// square) comes back squared. `AtlasSpriteError::NoSuchSprite` only for a reference whose array or layer is
     /// out of range; `AtlasSpriteError::NotReady` before any resources are published. A
     /// `SpriteRef` carries no generation: one kept across a resource reload may name a different
     /// sprite and is read as that sprite, so resolve references again whenever
