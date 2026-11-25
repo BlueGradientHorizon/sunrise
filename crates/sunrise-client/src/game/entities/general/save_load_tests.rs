@@ -6,17 +6,26 @@
 //! fault, structural fault or a UUID a live entity already owns — with zero
 //! published rows.
 use super::*;
-use crate::game::native_entity_refs::tests::with_game;
+use crate::game::native_entity_refs::tests::{
+    collect_entity_visit, fixture_resident_column, with_game,
+};
 use std::collections::HashMap;
 
-/// Declares the fixture's two types: `mymod:robot`, which saves, and
-/// `mymod:ghost`, which never does.
+/// Declares a saved type, a `noSave` type, and a type an experiment enables.
 struct Declare;
 
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for Declare {
     fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-        for (path, save) in [("robot", true), ("ghost", false)] {
+        for (path, save, features) in [
+            ("robot", true, &[][..]),
+            ("ghost", false, &[][..]),
+            (
+                "experimental",
+                true,
+                &[mod_api::FeatureFlag::RedstoneExperiments][..],
+            ),
+        ] {
             r.declare_general_entity(
                 path,
                 mod_api::GeneralEntityCategory::Misc,
@@ -34,14 +43,14 @@ impl mod_api::Hooks for Declare {
                 8,
                 3,
                 1,
-                &[],
+                features,
             )
             .unwrap();
         }
     }
 }
 
-/// A fixture game whose frozen registry holds the two declared types. The
+/// A fixture game whose frozen registry holds the declared types. The
 /// registration phase is scoped around the whole fixture: the game harness
 /// re-runs the installed mods' `register`, and a general type is only
 /// declared while that phase is current. The runtime initializes first: a
@@ -56,7 +65,16 @@ fn with_types_and(observer: Option<mod_api::ModEntry>, test: impl FnOnce(&mut Ga
     let _phase = mod_platform::__private::RegistrationGuard::open();
     let mut mods = vec![mod_api::ModEntry::new("mymod", Box::new(Declare))];
     mods.extend(observer);
-    mod_platform::testing::with_mods(mods.into(), || with_game(test));
+    mod_platform::testing::with_mods(mods.into(), || {
+        with_game(|game| resident_origin(game, test))
+    });
+}
+
+/// Run `test` with chunk (0, 0) loaded: a handle resolves only for an entity in an
+/// accessible section (`LevelEntityGetter`), and these fixtures' entities stand in it.
+fn resident_origin(game: &mut Game<'_>, test: impl FnOnce(&mut Game<'_>)) {
+    fixture_resident_column(&mut game.world, (0, 0));
+    test(game);
 }
 
 /// One record's save tag, the format `to_tag` writes.
@@ -66,6 +84,8 @@ fn record_tag(type_key: &str, uuid: [i32; 4], payload: &[u8], riders: Vec<Tag>) 
         velocity: [0.0; 3],
         rotation: [0.0, 90.0],
         owner: None,
+        custom_name: None,
+        custom_name_visible: false,
         uuid,
         envelope: GeneralTypeEnvelope {
             type_key: type_key.to_owned(),
@@ -79,6 +99,187 @@ fn record_tag(type_key: &str, uuid: [i32; 4], payload: &[u8], riders: Vec<Tag>) 
         map.insert(format::PASSENGERS.into(), Tag::List(riders));
     }
     tag
+}
+
+#[test]
+#[ignore = "daily"]
+fn bare_level_feature_enables_host_query_and_general_spawn() {
+    use mod_api::{EntitySpawn, FeatureFlag, SpawnBody};
+    use sunrise_client::{
+        chunk::Chunk,
+        save::{Level, write_dat},
+    };
+
+    with_types(|game| {
+        game.world
+            .chunks
+            .insert((0, 0), std::sync::Arc::new(Chunk::empty(0, 0)));
+        let level = game.level(game.dim.id()).unwrap();
+        let at = [0.5, 64.0, 0.5];
+        let spawn = EntitySpawn::new(SpawnBody::General);
+        assert!(
+            !level
+                .enabled_features(game)
+                .unwrap()
+                .contains_flag(FeatureFlag::RedstoneExperiments)
+        );
+        assert!(
+            level
+                .spawn_entity(game, "mymod:experimental", at, &spawn)
+                .is_none()
+        );
+
+        let dir = tempfile::tempdir().unwrap();
+        write_dat(
+            &dir.path().join("level.dat"),
+            Tag::compound([(
+                "Data",
+                Tag::compound([
+                    ("DataVersion", Tag::Int(sunrise_core::version::DATA_VERSION)),
+                    (
+                        "enabled_features",
+                        Tag::List(vec![Tag::String("redstone_experiments".into())]),
+                    ),
+                ]),
+            )]),
+        )
+        .unwrap();
+        game.level.enabled_features = Level::read(dir.path()).unwrap().enabled_features;
+
+        let flags = level.enabled_features(game).unwrap();
+        assert!(flags.contains_flag(FeatureFlag::RedstoneExperiments));
+        assert!(
+            !flags.contains_flag(FeatureFlag::Vanilla),
+            "a present list is not the default set"
+        );
+        assert_eq!(
+            flags.iter().collect::<Vec<_>>(),
+            ["minecraft:redstone_experiments"]
+        );
+        let entity = level
+            .spawn_entity(game, "mymod:experimental", at, &spawn)
+            .unwrap();
+        assert_eq!(entity.position(game), Some(at));
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn bare_pack_feature_enables_host_query_and_general_spawn_on_first_open() {
+    use mod_api::{EntitySpawn, FeatureFlag, SpawnBody};
+    use sunrise_client::{chunk::Chunk, title::WorldOptions};
+
+    let pack_root = tempfile::tempdir().unwrap();
+    let pack = pack_root.path().join("redstone_bare");
+    std::fs::create_dir_all(&pack).unwrap();
+    let format = sunrise_core::version::DATA_PACK_FORMAT;
+    std::fs::write(
+        pack.join("pack.mcmeta"),
+        serde_json::json!({
+            "pack": {
+                "description": "Bare redstone feature pack",
+                "pack_format": format.0,
+                "min_format": [format.0, format.1],
+                "max_format": [format.0, format.1],
+            },
+            "features": {
+                "enabled": ["redstone_experiments"],
+            },
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let save_root = tempfile::tempdir().unwrap();
+
+    with_types(|game| {
+        let create = WorldOptions {
+            pack_dir: Some(pack_root.path().to_path_buf()),
+            data_packs: vec!["vanilla".into(), "file/redstone_bare".into()],
+            ..WorldOptions::default()
+        };
+        let mut request = crate::game::world_loading::WorldRequest::new(
+            "bare_pack_feature",
+            Some("bare_pack_feature"),
+            Some(1),
+            true,
+            Some(&create),
+            game.level.rule_registry.clone(),
+        )
+        .unwrap();
+        request.save_root = save_root.path().to_owned();
+        game.load_world(request).unwrap();
+        game.world
+            .chunks
+            .insert((0, 0), std::sync::Arc::new(Chunk::empty(0, 0)));
+
+        let level = game.level(game.dim.id()).unwrap();
+        let flags = level.enabled_features(game).unwrap();
+        assert!(flags.contains_flag(FeatureFlag::RedstoneExperiments));
+        assert!(flags.contains_flag(FeatureFlag::Vanilla));
+        assert_eq!(
+            flags.iter().collect::<Vec<_>>(),
+            ["minecraft:redstone_experiments", "minecraft:vanilla"]
+        );
+
+        let at = [0.5, 64.0, 0.5];
+        let entity = level
+            .spawn_entity(
+                game,
+                "mymod:experimental",
+                at,
+                &EntitySpawn::new(SpawnBody::General),
+            )
+            .unwrap();
+        assert_eq!(entity.position(game), Some(at));
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn feature_disabled_saved_branches_do_not_enter_summon_uuid_admission() {
+    use crate::game::commands::Target;
+    use sunrise_client::snbt::to_snbt;
+
+    with_types(|game| {
+        let collision = [1, 2, 3, 4];
+        game.spawn_loaded_entity(
+            (0, 0),
+            record_tag("mymod:robot", collision, b"", vec![]),
+            None,
+        );
+        assert!(game.uuid_admission_refused(Some(collision)));
+        let child = record_tag("mymod:robot", collision, b"", vec![]);
+        let disabled = |uuid| record_tag("mymod:experimental", uuid, b"", vec![child.clone()]);
+
+        // A disabled root excludes its entire branch on a disk load too.
+        game.spawn_loaded_entity((0, 0), disabled([8, 0, 0, 1]), None);
+        assert_eq!(game.resident_entities.general.rows.len(), 1);
+
+        for (index, kind) in ["mymod:robot", "minecraft:minecart"]
+            .into_iter()
+            .enumerate()
+        {
+            let root = record_tag(
+                kind,
+                [9, 0, 0, index as i32],
+                b"",
+                vec![disabled(collision), disabled([8, 0, 0, 2])],
+            );
+            let mount = game
+                .summon_with_nbt(kind, [0.5, 64.0, 0.5], &to_snbt(&root))
+                .unwrap();
+            let id = match mount {
+                Some(Target::General(id) | Target::Cart(id)) => id,
+                other => panic!("expected the eligible mount, got {other:?}"),
+            };
+            assert!(game.vehicle_passenger_ids(id).is_empty());
+        }
+        assert_eq!(
+            game.resident_entities.general.rows.len(),
+            2,
+            "only the live control and general mount remain"
+        );
+    });
 }
 
 #[test]
@@ -217,6 +418,7 @@ fn general_tree_loads_joins_and_saves_one_record() {
 #[ignore = "daily"]
 fn minecart_keeps_its_general_passenger_after_the_rider_tick() {
     with_types(|game| {
+        fixture_resident_column(&mut game.world, (0, 0));
         let cart_uuid = [1, 2, 3, 4];
         let rider_uuid = [2, 3, 4, 5];
         let cart = Tag::Compound(
@@ -248,7 +450,10 @@ fn minecart_keeps_its_general_passenger_after_the_rider_tick() {
         let cart = game.entity(cart_id).unwrap();
         let rider = game.entity(rider_id).unwrap();
         assert_eq!(game.entity_start_riding(rider, cart, false), Ok(()));
-        assert_eq!(game.entity_passengers(cart), Some(vec![rider]));
+        assert_eq!(
+            collect_entity_visit(|visit| game.entity_visit_passengers(cart, visit)),
+            Ok(vec![rider])
+        );
 
         // Keep the chunk loaded but outside simulation range so the pass refreshes
         // the adjacency without rider movement invalidating it again.
@@ -263,7 +468,10 @@ fn minecart_keeps_its_general_passenger_after_the_rider_tick() {
         }));
         game.begin_ordered_ticks();
         game.tick_general().unwrap();
-        assert_eq!(game.entity_passengers(cart), Some(vec![rider]));
+        assert_eq!(
+            collect_entity_visit(|visit| game.entity_visit_passengers(cart, visit)),
+            Ok(vec![rider])
+        );
         assert_eq!(game.entity_is_vehicle(cart), Some(true));
         assert_eq!(game.boarding_order(cart_id, u32::MAX, false), 1);
         let saved = saved_chunk(game, (0, 0));
@@ -355,6 +563,9 @@ fn mixed_passengers_sit_and_unload_with_their_actual_root() {
         // The leaf's and the intermediate mob's chunks do not own the tree.
         game.mob_object_mut(pig).unwrap().position.x = 18.5;
         game.resident_entities.general.rows[1].position.x = 33.5;
+        // Loaded, so the moved riders stay resolvable while their own chunks are asked.
+        fixture_resident_column(&mut game.world, (1, 0));
+        fixture_resident_column(&mut game.world, (2, 0));
         let own = game.entity_chunks(&HashSet::from([(1, 0), (2, 0)]), true);
         assert!(own.iter().all(|(_, tags)| tags.is_empty()));
         assert!(game.entity(pig).is_some() && game.entity(leaf).is_some());
@@ -901,7 +1112,7 @@ fn with_types_and_guests(test: impl FnOnce(&mut Game<'_>)) {
     let _phase = mod_platform::__private::RegistrationGuard::open();
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new("mymod", Box::new(Declare))].into();
     mod_platform::testing::with_mods(mods, || {
-        crate::game::native_guest_turn_tests::with_guests(test)
+        crate::game::native_guest_turn_tests::with_guests(|game| resident_origin(game, test))
     });
 }
 
@@ -1564,7 +1775,10 @@ fn a_general_rider_keeps_minecart_drag_and_pickup_occupied() {
         // Exercise the maintained index, not the scan while it is stale after mounting.
         game.tick_general().unwrap();
         assert_eq!(cart.is_vehicle(game), Some(true));
-        assert_eq!(cart.passengers(game), Some(vec![rider]));
+        assert_eq!(
+            collect_entity_visit(|visit| cart.visit_passengers(game, visit)),
+            Ok(vec![rider])
+        );
         let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
         // The pig touches the moving cart, but the coincident starting positions
         // mean it applies no initial push to the cart.
@@ -1587,6 +1801,8 @@ fn a_general_rider_fills_a_chest_boat_and_keeps_it_from_being_pushed() {
 
     with_types(|game| {
         let at = Vec3::new(8.5, 64.0, 8.5);
+        fixture_resident_column(&mut game.world, (0, 0));
+        fixture_resident_column(&mut game.world, (1, 0));
         let (full, empty, pig) = (5000, 5001, 5002);
         game.boats
             .push(Boat::new(full, "oak".into(), at, 0.0).with_chest());
@@ -1610,7 +1826,10 @@ fn a_general_rider_fills_a_chest_boat_and_keeps_it_from_being_pushed() {
         game.entity_start_riding(rider, boat, false).unwrap();
         game.tick_general().unwrap();
         assert_eq!(boat.is_vehicle(game), Some(true));
-        assert_eq!(boat.passengers(game), Some(vec![rider]));
+        assert_eq!(
+            collect_entity_visit(|visit| boat.visit_passengers(game, visit)),
+            Ok(vec![rider])
+        );
 
         let pig_type = game.res.mob_types().get("minecraft:pig").unwrap().clone();
         game.mobs.push(Mob::new(
@@ -1636,5 +1855,153 @@ fn a_general_rider_fills_a_chest_boat_and_keeps_it_from_being_pushed() {
             assert_eq!(game.boats[0].velocity, Vec3::ZERO);
             assert_eq!(game.boats[1].velocity, pushed);
         }
+    });
+}
+
+/// `Entity.saveWithoutId` and `Entity.load`: a general record's `CustomName` and
+/// `CustomNameVisible` survive the save format, `CustomNameVisible` is written only when set,
+/// and a record saved without either loads with no name and false.
+#[test]
+fn a_general_records_custom_name_survives_save_and_load() {
+    let mut record = GeneralEntityRecord {
+        position: [0.5, 64.0, 0.5],
+        velocity: [0.0; 3],
+        rotation: [0.0; 2],
+        owner: None,
+        custom_name: Some(Text::colored("Grumbles", 0xFF5555)),
+        custom_name_visible: true,
+        uuid: [1, 2, 3, 4],
+        envelope: GeneralTypeEnvelope {
+            type_key: "mymod:robot".to_owned(),
+            payload_version: 3,
+            payload_bytes: Vec::new(),
+        },
+        passengers: Vec::new(),
+    };
+    let tag = record.to_tag();
+    assert_eq!(tag.get("CustomNameVisible"), Some(&Tag::Byte(1)));
+    assert_eq!(record_from_compound(&tag).unwrap(), record);
+
+    record.custom_name_visible = false;
+    let tag = record.to_tag();
+    assert_eq!(tag.get("CustomNameVisible"), None);
+    assert_eq!(record_from_compound(&tag).unwrap(), record);
+
+    // An old record never wrote either key.
+    record.custom_name = None;
+    let old = record.to_tag();
+    assert_eq!(old.get("CustomName"), None);
+    let loaded = record_from_compound(&old).unwrap();
+    assert_eq!(loaded.custom_name, None);
+    assert!(!loaded.custom_name_visible);
+}
+
+/// A live general row's name and visibility: loaded from its save, read through its handle
+/// (`EntityRef::name` and the styled `EntityRef::custom_name`), matched by `@e[name=...]` (an
+/// unnamed row is not), changed by a mod and saved again.
+#[test]
+#[ignore = "daily"]
+fn a_general_rows_custom_name_is_read_selected_and_saved() {
+    use crate::game::api_values::TryIntoApi;
+    with_types(|game| {
+        fixture_resident_column(&mut game.world, (0, 0));
+        let mut named = record_tag("mymod:robot", [1, 2, 3, 4], b"", Vec::new());
+        if let Tag::Compound(map) = &mut named {
+            map.insert("CustomName".into(), Tag::String("Grumbles".into()));
+            map.insert("CustomNameVisible".into(), Tag::Byte(1));
+        }
+        game.load_listed("mymod:robot", None, None, named).unwrap();
+        let plain = record_tag("mymod:robot", [4, 3, 2, 1], b"", Vec::new());
+        game.load_listed("mymod:robot", None, None, plain).unwrap();
+        let rows = &game.resident_entities.general.rows;
+        let (named_id, plain_id) = (rows[0].id, rows[1].id);
+        let (named, plain) = (
+            game.entity(named_id).unwrap(),
+            game.entity(plain_id).unwrap(),
+        );
+        game.build_registries();
+
+        assert_eq!(named.name(game).as_deref(), Some("Grumbles"));
+        assert_eq!(
+            named.custom_name(game).unwrap(),
+            Some(mod_api::Text::literal("Grumbles"))
+        );
+        assert_eq!(named.custom_name_visible(game), Some(true));
+        assert_ne!(plain.name(game).as_deref(), Some("Grumbles"));
+        assert_eq!(plain.custom_name(game).unwrap(), None);
+        assert_eq!(plain.custom_name_visible(game), Some(false));
+
+        // A mod names the unnamed row; the save and the selector follow.
+        let name: mod_api::Text = Text::colored("Rumbles", 0x55FF55).try_into_api().unwrap();
+        assert!(plain.set_custom_name(game, Some(name.clone())).unwrap());
+        assert!(plain.set_custom_name_visible(game, true));
+        assert_eq!(plain.name(game).as_deref(), Some("Rumbles"));
+        assert_eq!(plain.custom_name(game).unwrap(), Some(name));
+        let saved = game.general_tree_nbt(plain_id, false).unwrap();
+        let loaded = record_from_compound(&saved).unwrap();
+        assert_eq!(loaded.custom_name, Some(Text::colored("Rumbles", 0x55FF55)));
+        assert!(loaded.custom_name_visible);
+
+        assert!(plain.set_custom_name(game, None).unwrap());
+        assert!(plain.set_custom_name_visible(game, false));
+        assert_eq!(plain.custom_name(game).unwrap(), None);
+        let saved = game.general_tree_nbt(plain_id, false).unwrap();
+        assert_eq!(saved.get("CustomName"), None);
+        assert_eq!(saved.get("CustomNameVisible"), None);
+
+        assert!(game.as_console(|game| game.run_command("kill @e[name=Grumbles]")));
+        assert!(game.resident_entities.general.row(named_id).is_none());
+        assert!(game.resident_entities.general.row(plain_id).is_some());
+    });
+}
+
+/// The selectors every entity answers (`type=`, `distance=`, `@n`, a UUID) also reach a
+/// general row.
+#[test]
+#[ignore = "daily"]
+fn a_general_row_answers_distance_nearest_and_uuid_selectors() {
+    with_types(|game| {
+        for chunk in [(0, 0), (2, 0), (5, 0)] {
+            fixture_resident_column(&mut game.world, chunk);
+        }
+        for (at, uuid) in [
+            (0.5, [1, 2, 3, 4]),
+            (40.5, [5, 6, 7, 8]),
+            (80.5, [9, 10, 11, 12]),
+        ] {
+            let mut tag = record_tag("mymod:robot", uuid, b"", Vec::new());
+            if let Tag::Compound(map) = &mut tag {
+                map.insert(
+                    format::POSITION.into(),
+                    Tag::List(
+                        [at, 64.0, 0.5]
+                            .map(|p| Tag::Double(f64::to_bits(p)))
+                            .to_vec(),
+                    ),
+                );
+            }
+            game.load_listed("mymod:robot", None, None, tag).unwrap();
+        }
+        let rows = &game.resident_entities.general.rows;
+        let (near, far, last) = (rows[0].id, rows[1].id, rows[2].id);
+        game.build_registries();
+        // `distance=..5` from the origin reaches only the near row.
+        assert!(game.as_console(|game| {
+            game.run_command(
+                "execute positioned 0.5 64 0.5 run kill @e[type=mymod:robot,distance=..5]",
+            )
+        }));
+        assert!(game.resident_entities.general.row(near).is_none());
+        assert!(game.resident_entities.general.row(far).is_some());
+        // `@n` from beside the far row picks it.
+        assert!(game.as_console(|game| {
+            game.run_command("execute positioned 41 64 0.5 run kill @n[type=mymod:robot]")
+        }));
+        assert!(game.resident_entities.general.row(far).is_none());
+        // A UUID names one row.
+        assert!(
+            game.as_console(|game| game.run_command("kill 00000009-0000-000a-0000-000b0000000c"))
+        );
+        assert!(game.resident_entities.general.row(last).is_none());
     });
 }

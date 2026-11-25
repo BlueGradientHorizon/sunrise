@@ -310,9 +310,11 @@ fn feature_stage_order(
             feature_draws: [
                 DrawRanges {
                     primitives: [0..0, 0..0, 0..0, 0..1],
+                    ..Default::default()
                 },
                 DrawRanges {
                     primitives: [0..0, 0..0, 0..1, 0..0],
+                    ..Default::default()
                 },
             ],
             ..Default::default()
@@ -394,12 +396,13 @@ fn fixture(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::error::Er
         &[],
         &[],
         (&white, 16, 16),
+        None,
         (&zero, 1, 1),
         (&zero, 1, 1),
         (&zero, 1),
         Arc::new(client::gfx::panorama::Faces::colour([0, 0, 0, 255])),
         None,
-        None,
+        sunrise_client_render::gfx::RendererDevice::New,
         GraphicsApi::Vulkan,
         false,
         (true, true),
@@ -1028,12 +1031,14 @@ fn fixture_frame(hud: &HudBatch) -> Frame<'_> {
         camera: glam::DVec3::new(0.5, 100.0, 0.5),
         yaw: 0.0,
         pitch: 10.0,
+        roll: 0.0,
         fov_degrees: 85.0,
         cull_fov_degrees: 85.0,
         eye: glam::DVec3::new(0.5, 100.0, 0.5),
         eye_rotation: [0.0, 10.0],
         first_person: true,
         bob: glam::Mat4::IDENTITY,
+        view_transform: glam::Mat4::IDENTITY,
         spin: glam::Mat4::IDENTITY,
         sky: client::environment::Sky::default(),
         shadow_scene_revision: (0, 0),

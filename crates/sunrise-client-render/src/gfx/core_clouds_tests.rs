@@ -478,7 +478,7 @@ fn oit_programs_of(
         crate::core_shader::translate_core_with(vertex, fragment, s.defines, include, &GLUE, &|b| {
             b == INFO_BLOCK || b == FACES || s.samplers.contains(&b)
         })
-        .unwrap_or_else(|e| panic!("{}: {e}", s.pipeline))
+        .unwrap_or_else(|e| panic!("{}: {e:?}", s.pipeline))
     };
     [
         stage(&OIT_STAGES[0]),
@@ -1044,8 +1044,9 @@ fn linear_light_links_the_required_programs_before_suppressing_the_draw() {
         linear_light: true,
         ..super::super::EffectiveOutput::NONE.frame
     };
-    let vertex = "layout(location = 0) flat out float tag;\nvoid main() { gl_Position = vec4(1.0); tag = 1.0; }";
-    let fragment = "layout(location = 0) flat in float tag;\nlayout(location = 0) out vec4 pixel;\nvoid main() { pixel = vec4(float(tag)); }";
+    let vertex =
+        "layout(location = 0) out float tag;\nvoid main() { gl_Position = vec4(1.0); tag = 1.0; }";
+    let fragment = "layout(location = 0) in float tag;\nlayout(location = 0) out vec4 pixel;\nvoid main() { pixel = vec4(tag); }";
     let programs = |fragment: &str| crate::clouds::pack::Programs {
         classic: crate::core_shader::translate_core(
             vertex,
@@ -1062,17 +1063,49 @@ fn linear_light_links_the_required_programs_before_suppressing_the_draw() {
             .unwrap()
             .is_none()
     );
-    for (guard, pipeline) in [
-        ("1", CLASSIC_PIPELINE),
-        ("defined(OIT_TRANSMITTANCE)", OIT_STAGES[1].pipeline),
-    ] {
-        let varying = format!(
-            "#if {guard}\nlayout(location = 0) flat in int tag;\n#else\nlayout(location = 0) flat in float tag;\n#endif"
-        );
-        let mismatch = fragment.replace("layout(location = 0) flat in float tag;", &varying);
-        let error = clouds_for_frame(&device, frame, &programs(&mismatch))
+    // Every pack shader the device would refuse here is refused when the packs load (vanilla's
+    // checks, `check`) or made to fit, so the refused program is built by hand: it samples
+    // binding 4 (`Sampler0`'s), which no clouds pipeline binds.
+    let refused = || {
+        crate::core_shader::validated(
+            naga::front::wgsl::parse_str(
+                "@vertex fn main() -> @builtin(position) vec4<f32> { return vec4(1.0); }",
+            )
+            .unwrap(),
+            naga::front::wgsl::parse_str(
+                "@group(0) @binding(4) var t: texture_2d<f32>;\n@group(0) @binding(5) var s: sampler;\n\
+                 @fragment fn main() -> @location(0) vec4<f32> { return textureSample(t, s, vec2(0.5)); }",
+            )
+            .unwrap(),
+            Vec::new(),
+        )
+    };
+    for (stage, pipeline) in [(None, CLASSIC_PIPELINE), (Some(1), OIT_STAGES[1].pipeline)] {
+        let mut programs = programs(fragment);
+        match stage {
+            None => programs.classic = refused(),
+            Some(i) => programs.oit[i] = refused(),
+        }
+        let error = clouds_for_frame(&device, frame, &programs)
             .err()
-            .expect("device refused the varying");
+            .expect("the device refuses the binding");
         assert!(error.starts_with(pipeline), "{error}");
     }
+    // A colour output the device doesn't take (`vec3` into the 4-channel target), which vanilla's
+    // builder doesn't check: the native clouds draw off linear light too, and nothing fails.
+    let vec3 = "layout(location = 0) in float tag;\nlayout(location = 0) out vec3 pixel;\nvoid main() { pixel = vec3(tag); }";
+    let lit = super::super::FrameConfiguration {
+        linear_light: false,
+        ..frame
+    };
+    assert!(
+        clouds_for_frame(&device, lit, &programs(fragment))
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        clouds_for_frame(&device, lit, &programs(vec3))
+            .unwrap()
+            .is_none()
+    );
 }

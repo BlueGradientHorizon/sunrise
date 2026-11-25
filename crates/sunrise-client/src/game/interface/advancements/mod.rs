@@ -23,7 +23,7 @@ use sunrise_client::{
     items::ItemStack,
     motion::PlayerMotion,
     text::{self, Style, Text},
-    toasts::Slide,
+    toasts::{Slide, ToastClock},
 };
 use sunrise_core::geometry::Vec3;
 use sunrise_core::random::RandomSource;
@@ -91,9 +91,9 @@ impl Toast {
     pub(super) fn is_challenge(&self) -> bool {
         !self.is_recipe() && self.frame == Frame::Challenge
     }
-    pub(super) fn update(&mut self, multiplier: f64) -> (Option<bool>, bool) {
+    pub(super) fn update(&mut self, clock: ToastClock, multiplier: f64) -> (Option<bool>, bool) {
         let mut slide = std::mem::take(&mut self.slide);
-        let result = slide.update_now(|fully| self.wants_show(fully, multiplier));
+        let result = slide.update_on(clock, |fully| self.wants_show(fully, multiplier));
         self.slide = slide;
         result
     }
@@ -275,6 +275,9 @@ struct PlayerEntityState<'a> {
 /// The game's world for predicates.
 pub(in crate::game) struct View<'a, 'g>(pub(in crate::game) &'a Game<'g>);
 impl adv::World for View<'_, '_> {
+    fn is_loaded(&self, [x, y, z]: [i32; 3]) -> bool {
+        self.0.world.is_loaded_at(x, y, z)
+    }
     fn predicate(&self, id: &str) -> Option<&Value> {
         self.0.fns.store.predicates.get(id)
     }
@@ -359,8 +362,12 @@ impl adv::World for View<'_, '_> {
     fn smokey(&self, p: [i32; 3]) -> bool {
         sunrise_client::beehive::smokey(&self.0.mob_world_base(&[]), p)
     }
+    /// The same `saveWithFullMetadata` a loot roll's `match_block` reads: the live block
+    /// entity over the NBT it was loaded from, else its saved row.
     fn block_entity_nbt(&self, p: [i32; 3]) -> Option<sunrise_core::nbt::Tag> {
-        self.0.block_entity_nbt(p)
+        self.0
+            .block_entity_nbt(p)
+            .or_else(|| crate::game::spill::saved_full_metadata(&self.0.world, p))
     }
     fn in_tag(&self, registry: &str, tag: &str, id: &str) -> bool {
         let tags = TagSources {
@@ -499,7 +506,22 @@ impl Game<'_> {
     pub(super) fn advancement_tree(&mut self) -> Arc<Tree> {
         if self.adv.remote_tree.is_none() && self.adv.tree.list.is_empty() {
             let overlay = self.pack_files();
-            self.adv.tree = Tree::shared(&self.options.resources.join("data"), &overlay);
+            self.adv.tree = if self.fns.store.predicates.is_empty() {
+                Tree::shared(&self.options.resources.join("data"), &overlay)
+            } else {
+                let predicates: std::collections::HashMap<String, Value> = self
+                    .fns
+                    .store
+                    .predicates
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+                Arc::new(Tree::load_with_predicates(
+                    &self.options.resources.join("data"),
+                    &overlay,
+                    &predicates,
+                ))
+            };
             self.inventory_index();
         }
         self.adv.tree.clone()
@@ -540,15 +562,6 @@ impl Game<'_> {
         let tree = self.adv.tree.clone();
         self.adv.progress = progress;
         self.ui.registries.advancements = tree.list.iter().map(|a| a.id.clone()).collect();
-        // `PlayerAdvancements.checkForAutomaticTriggers`: an advancement with no
-        // criteria is never done (`AdvancementRequirements.test` is false), but
-        // its rewards are granted as the progress loads. Vanilla's `award(holder, "")` finds no `""`
-        // criterion to grant and so returns without a toast or an announcement;
-        // the reward grant is the whole effect, and it happens again on the next
-        // load because there is no criterion to record it.
-        for index in tree.automatic() {
-            self.grant_rewards(&tree.list[index]);
-        }
     }
     pub(super) fn save_advancements(&self) {
         if !self.adv.loaded
@@ -627,7 +640,7 @@ impl Game<'_> {
                 this,
                 origin,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             },
@@ -650,7 +663,7 @@ impl Game<'_> {
             this,
             origin,
             tool: None,
-            block_pos: None,
+            event_block: None,
             target: None,
             interacting: None,
         };
@@ -1033,10 +1046,13 @@ impl Game<'_> {
                     (id.to_owned(), amplifier, duration)
                 })
                 .collect(),
-            components: sunrise_client::mobs::finalize::variant_component(m)
-                .map(|(id, value)| (id.to_owned(), value))
-                .into_iter()
-                .collect(),
+            components: sunrise_client::mobs::finalize::variant_component_in(
+                m,
+                self.world_variants(),
+            )
+            .map(|(id, value)| (id.to_owned(), value))
+            .into_iter()
+            .collect(),
             custom_name: m.custom_name_text.as_ref().map(Text::component),
             passengers,
             nbt,
@@ -1046,7 +1062,19 @@ impl Game<'_> {
     }
     /// `SimpleCriterionTrigger.trigger`: test each open criterion of the
     /// trigger and award what it completes.
-    pub(super) fn trigger(&mut self, name: &str, test: impl Fn(&Value, &dyn adv::World) -> bool) {
+    pub(super) fn trigger(
+        &mut self,
+        name: &str,
+        mut test: impl FnMut(&Value, &dyn adv::World) -> bool,
+    ) {
+        self.trigger_custom(name, |c, view| test(&c.conditions, view));
+    }
+    /// `SimpleCriterionTrigger.trigger` with access to each loaded [`adv::Criterion`].
+    pub(super) fn trigger_custom(
+        &mut self,
+        name: &str,
+        test: impl FnMut(&adv::Criterion, &dyn adv::World) -> bool,
+    ) {
         if self.lan_acting_fake || self.remote.is_some() || self.no_player_here() {
             return;
         }
@@ -1055,7 +1083,7 @@ impl Game<'_> {
         let Some(list) = tree.by_trigger.get(name) else {
             return;
         };
-        self.trigger_criteria(&tree, list, test);
+        self.trigger_criteria_with(&tree, list, test);
     }
     /// `trigger` for some of a trigger's criteria: (advancement, criterion)
     /// indexes in `tree`, in tree order.
@@ -1063,7 +1091,15 @@ impl Game<'_> {
         &mut self,
         tree: &Tree,
         list: &[(usize, usize)],
-        test: impl Fn(&Value, &dyn adv::World) -> bool,
+        mut test: impl FnMut(&Value, &dyn adv::World) -> bool,
+    ) {
+        self.trigger_criteria_with(tree, list, |c, view| test(&c.conditions, view));
+    }
+    fn trigger_criteria_with(
+        &mut self,
+        tree: &Tree,
+        list: &[(usize, usize)],
+        mut test: impl FnMut(&adv::Criterion, &dyn adv::World) -> bool,
     ) {
         if self.lan_acting_fake {
             return;
@@ -1077,7 +1113,7 @@ impl Game<'_> {
                 if self.adv.progress.has(&a.id, &c.name) || self.adv.progress.done(a) {
                     continue;
                 }
-                if test(&c.conditions, &view) {
+                if test(c, &view) {
                     hits.push((ai, ci));
                 }
             }
@@ -1221,11 +1257,19 @@ impl Game<'_> {
                 hub.finish_native_first_tick(&task, &fresh, owners);
             });
         }
-        self.with_advancement_hub(|hub, owners| {
-            if hub.native_reload_pending {
-                hub.finish_reload_resources(owners);
-            }
-        });
+        let finished_reload = self
+            .with_advancement_hub(|hub, owners| {
+                if hub.native_reload_pending {
+                    hub.finish_reload_resources(owners);
+                    true
+                } else {
+                    false
+                }
+            })
+            .unwrap_or(false);
+        if finished_reload {
+            self.send_datapack_snapshots();
+        }
     }
     /// `PlayerAdvancements.progressChanged`, kept for a network player's client.
     fn progress_changed(&mut self, index: usize) {
@@ -1282,10 +1326,8 @@ impl Game<'_> {
         let tree = self.adv.tree.clone();
         for r in &allowed {
             let list = tree.recipe_criteria(r);
-            self.trigger_criteria(&tree, &list, |c, _| {
-                c["recipes"]
-                    .as_str()
-                    .is_some_and(|id| adv::full(id) == r.as_str())
+            self.trigger_criteria(&tree, &list, |c, w| {
+                adv::id_matches(&c["recipes"], "recipe", r, w)
             });
         }
         taken_back
@@ -1350,8 +1392,7 @@ impl Game<'_> {
         let at = [p.position.x, p.position.y, p.position.z];
         let mut random = sunrise_client::random_source::entity();
         let pitch = ((random.next_float() - random.next_float()) * 0.7 + 1.0) * 2.0;
-        self.audio
-            .play("minecraft:entity.item.pickup", Some(at), 0.2, pitch);
+        self.play_audio("minecraft:entity.item.pickup", Some(at), 0.2, pitch);
     }
     /// `PlayerAdvancements.award` once done: `AdvancementRewards.grant`,
     /// then toast and announcement.
@@ -1450,7 +1491,25 @@ impl Game<'_> {
             .level
             .recipe_book
             .add_recipes(&world_stations!(self).recipe_index, &rewards);
-        for table in &a.rewards.loot {
+        // `AdvancementRewards.loot` is a `HolderSet<LootTable>`: ids, or a tag's members in order
+        // (a tag that is not bound refused the advancement when the tree loaded).
+        let loot = self.server_loot.get();
+        let tables: Vec<String> = a
+            .rewards
+            .loot
+            .iter()
+            .flat_map(|entry| match entry.strip_prefix('#') {
+                Some(tag) => loot
+                    .as_ref()
+                    .and_then(|loot| loot.registry_tags("loot_table")?.get(&*adv::full(tag)))
+                    .into_iter()
+                    .flatten()
+                    .cloned()
+                    .collect::<Vec<String>>(),
+                None => vec![entry.clone()],
+            })
+            .collect();
+        for table in &tables {
             // `LootContextParamSets.ADVANCEMENT_REWARD`: the rewarded player is
             // THIS_ENTITY and their position the ORIGIN.
             let player = self.killer_loot_entity(None);
@@ -1583,7 +1642,7 @@ impl Game<'_> {
                         this: Some(&me),
                         origin: me.position,
                         tool: None,
-                        block_pos: None,
+                        event_block: None,
                         target: None,
                         interacting: None,
                     },
@@ -1614,7 +1673,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -1653,7 +1712,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -1670,7 +1729,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -1678,7 +1737,7 @@ impl Game<'_> {
                 this: Some(&target),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -1728,7 +1787,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -1834,7 +1893,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -1854,7 +1913,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -1867,7 +1926,7 @@ impl Game<'_> {
                             this: Some(cause),
                             origin: me.position,
                             tool: None,
-                            block_pos: None,
+                            event_block: None,
                             target: None,
                             interacting: None,
                         };
@@ -1884,7 +1943,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -1901,7 +1960,7 @@ impl Game<'_> {
                         this: Some(s),
                         origin: me.position,
                         tool: None,
-                        block_pos: None,
+                        event_block: None,
                         target: None,
                         interacting: None,
                     };
@@ -1941,7 +2000,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -1963,7 +2022,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -1982,7 +2041,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2055,7 +2114,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2101,7 +2160,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2118,7 +2177,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2172,7 +2231,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2188,7 +2247,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2207,7 +2266,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2225,7 +2284,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2255,7 +2314,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2286,7 +2345,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2301,7 +2360,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2318,7 +2377,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2333,57 +2392,88 @@ impl Game<'_> {
     }
     /// `ItemUsedOnLocationTrigger` (placed_block, item_used_on_block).
     pub(super) fn trigger_block(&mut self, name: &str, pos: [i32; 3], stack: &ItemStack) {
-        #[cfg(test)]
-        crate::game::block_use_completion_tests::record(name, Some(stack));
-        let me = self.player_entity_for(name);
-        let it = item_view(stack);
-        self.trigger(name, move |c, w| {
-            let ctx = adv::Entities {
-                this: Some(&me),
-                origin: me.position,
-                tool: Some(&it),
-                block_pos: Some(pos),
-                target: None,
-                interacting: None,
-            };
-            adv::conditions(&c["location"], &ctx, w)
-        });
+        let _ = self.trigger_block_use(name, pos, Some(stack));
     }
     /// `DefaultBlockInteractionTrigger` (default_block_use): the player, and
     /// the block's `BLOCK_USE` context at its centre, with no tool.
     pub(super) fn trigger_default_block_use(&mut self, pos: [i32; 3]) {
-        self.trigger_block_use("minecraft:default_block_use", pos, None);
+        let _ = self.trigger_block_use("minecraft:default_block_use", pos, None);
     }
     /// `AnyBlockInteractionTrigger` (any_block_use): the player, and the
     /// block's `ADVANCEMENT_LOCATION` context at its centre with the original
     /// stack and its in-place edits, as documented on `Game::finish_block_use`.
     pub(super) fn trigger_any_block_use(&mut self, pos: [i32; 3], stack: &ItemStack) {
-        self.trigger_block_use("minecraft:any_block_use", pos, Some(stack));
+        let _ = self.trigger_block_use("minecraft:any_block_use", pos, Some(stack));
     }
-    fn trigger_block_use(&mut self, name: &str, pos: [i32; 3], stack: Option<&ItemStack>) {
+    pub(super) fn trigger_block_use(
+        &mut self,
+        name: &str,
+        pos: [i32; 3],
+        stack: Option<&ItemStack>,
+    ) -> Result<(), mod_api::TriggerCriterionError> {
         #[cfg(test)]
         crate::game::block_use_completion_tests::record(name, stack);
+        if self.lan_acting_fake || self.remote.is_some() || self.no_player_here() {
+            return Ok(());
+        }
+        self.load_advancements();
+        let tree = self.adv.tree.clone();
+        let Some(criteria) = tree.by_trigger.get(name) else {
+            return Ok(());
+        };
+        let [x, y, z] = pos;
+        let column = (x >> 4, z >> 4);
+        // `Level.isInValidBounds` uses `ChunkPos.isValid`, not the world border.
+        // `ChunkPyramid.MAX_CHUNK_COORDINATE_VALUE`: packed X/Z minus the safety margin
+        // of (32 + the generation FULL step's 12 dependency distances + 1) * 2 chunks.
+        const MAX_CHUNK_COORDINATE: i32 = (33_554_431 >> 4) - (32 + 12 + 1) * 2;
+        let in_bounds = self.world.shape.contains_y(y)
+            && column.0.abs().max(column.1.abs()) <= MAX_CHUNK_COORDINATE;
+        let registry = self.pack.assets.registry;
+        let state = if !in_bounds {
+            registry.default_state("minecraft:void_air")
+        } else if self.load_full_column(column) {
+            self.world
+                .chunks
+                .get(&column)
+                .map(|chunk| chunk.block(x & 15, y, z & 15))
+        } else {
+            None
+        };
+        let Some(state) = state.and_then(|state| registry.state(state)) else {
+            log::error!(
+                "{}: {name} could not read the block at {pos:?}",
+                self.dim.id()
+            );
+            return Err(mod_api::TriggerCriterionError::BlockUnavailable);
+        };
+        let event_block = Some(adv::BlockEvent {
+            state,
+            // BLOCK_USE doesn't include BLOCK_ENTITY. ADVANCEMENT_LOCATION does.
+            block_entity: (in_bounds && stack.is_some()).then_some(pos),
+        });
         let me = self.player_entity_for(name);
         let it = stack.map(item_view);
         let centre = pos.map(|c| f64::from(c) + 0.5);
-        self.trigger(name, move |c, w| {
+        self.trigger_criteria(&tree, criteria, move |c, w| {
             let player = adv::Entities {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
             let location = adv::Entities {
                 origin: centre,
                 tool: it.as_ref(),
-                block_pos: Some(pos),
+                event_block,
                 ..player
             };
-            adv::conditions(&c["player"], &player, w)
-                && adv::conditions(&c["location"], &location, w)
+            adv::conditions(&c["location"], &location, w)
+                && adv::conditions(&c["player"], &player, w)
         });
+        Ok(())
     }
     /// `LightningStrikeTrigger`: the bolt, and the mobs around it that it did
     /// not hit (`bystander`), each tested from this player's position.
@@ -2395,7 +2485,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2428,7 +2518,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2455,7 +2545,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2481,7 +2571,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2517,7 +2607,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2550,7 +2640,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2569,7 +2659,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2592,7 +2682,7 @@ impl Game<'_> {
                     this: Some(e),
                     origin: me.position,
                     tool: None,
-                    block_pos: None,
+                    event_block: None,
                     target: None,
                     interacting: None,
                 }
@@ -2609,7 +2699,7 @@ impl Game<'_> {
                                 this: Some(e),
                                 origin: me.position,
                                 tool: None,
-                                block_pos: None,
+                                event_block: None,
                                 target: None,
                                 interacting: None,
                             },
@@ -2653,9 +2743,9 @@ impl Game<'_> {
             mod_api::ToastKind::Advancement
         };
         if self.admit_toast(kind, &mut toast.title, &mut toast.description) {
+            let clock = ToastClock::of(self.clock.still());
             self.toast_manager
-                .queued
-                .push_back(super::toast_manager::Toast::Advancement(toast));
+                .post(clock, super::toast_manager::Toast::Advancement(toast));
         }
     }
 
@@ -3013,6 +3103,7 @@ impl Game<'_> {
                     name: name.clone(),
                     trigger: String::new(),
                     conditions: Value::Null.into(),
+                    player: None,
                 });
             }
         }
@@ -3175,12 +3266,17 @@ mod tests {
                             ));
                         }
                         assert_eq!(
-                            game.toast_manager.update(1.0),
+                            game.toast_manager
+                                .update(sunrise_client::toasts::ToastClock::Real, 1.0),
                             (None, true),
                             "both challenges share a promotion sound"
                         );
                         assert_eq!(game.toast_manager.visible.len(), 5);
-                        assert_eq!(game.toast_manager.update(1.0), (Some(true), false));
+                        assert_eq!(
+                            game.toast_manager
+                                .update(sunrise_client::toasts::ToastClock::Real, 1.0),
+                            (Some(true), false)
+                        );
 
                         game.add_toast(mod_api::ModToast::new(mod_api::Text::literal(
                             "Older mod toast",
@@ -3194,7 +3290,11 @@ mod tests {
                             .unwrap();
                         fading.slide.origin = Some(Instant::now() - Duration::from_secs(1));
                         fading.force_hide();
-                        assert_eq!(game.toast_manager.update(1.0), (Some(false), false));
+                        assert_eq!(
+                            game.toast_manager
+                                .update(sunrise_client::toasts::ToastClock::Real, 1.0),
+                            (Some(false), false)
+                        );
                         assert_eq!(
                             game.toast_manager.queued.len(),
                             2,
@@ -3205,7 +3305,11 @@ mod tests {
                             .unwrap()
                             .slide
                             .origin = Some(Instant::now() - Duration::from_secs(2));
-                        assert_eq!(game.toast_manager.update(1.0), (None, false));
+                        assert_eq!(
+                            game.toast_manager
+                                .update(sunrise_client::toasts::ToastClock::Real, 1.0),
+                            (None, false)
+                        );
                         assert!(matches!(
                             game.toast_manager.visible.last().map(|entry| &entry.toast),
                             Some(QueuedToast::Mod(_))
@@ -3222,7 +3326,8 @@ mod tests {
                         narrator.slide.origin = Some(Instant::now() - Duration::from_secs(1));
                         narrator.force_hide();
                         assert_eq!(
-                            game.toast_manager.update(1.0),
+                            game.toast_manager
+                                .update(sunrise_client::toasts::ToastClock::Real, 1.0),
                             (Some(false), false),
                             "the first visibility change wins, even while another family slides in"
                         );
@@ -3445,6 +3550,7 @@ mod tests {
             name: "c".into(),
             trigger: trigger.into(),
             conditions: sunrise_world::lazy_json::LazyJson::new(&conditions),
+            player: None,
         };
         let looking = serde_json::json!({"player": {"type": "minecraft:entity_properties",
             "entity": "this", "predicate": {"minecraft:type_specific/player":
@@ -3478,6 +3584,7 @@ mod tests {
             name: "c".into(),
             trigger: trigger.into(),
             conditions: sunrise_world::lazy_json::LazyJson::new(&conditions),
+            player: None,
         };
         let nbt = serde_json::json!({"entity": [{"condition": "minecraft:entity_properties",
             "entity": "this", "predicate": {"minecraft:nbt": "{Variant:1}"}}]});
@@ -4105,7 +4212,8 @@ mod movement_predicate_tests {
         assert!(game.run_command("forceload add 0 0"));
         assert!(game.run_command("fill 0 199 0 15 199 15 stone"));
         assert!(game.world.loaded(4, 4));
-        let root = std::env::current_dir().unwrap().join("movement-world");
+        let scratch = tempfile::tempdir().unwrap();
+        let root = scratch.path().join("movement-world");
         let pack = root.join("datapacks/movement");
         let folder = pack.join("data/motion/predicate");
         std::fs::create_dir_all(&folder).unwrap();

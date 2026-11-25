@@ -1,13 +1,6 @@
 //! Host method declarations; access defaults and game forwarders are generated.
 #![allow(unused_variables)]
 use crate::*;
-/// The host's methods both sides share of the `client_view` area, implemented by the game and reached through [`Host`].
-#[sunrise_mod_api_macros::host_area]
-pub trait ClientViewHost {
-    /// Side: both.
-    /// Collision boxes in block-local coordinates with an empty collision context.
-    fn block_collision(&self, pos: [i32; 3]) -> Vec<[f64; 6]>;
-}
 /// The client host's methods of the `client_view` area, implemented by the game and reached through [`crate::ClientHost`].
 #[sunrise_mod_api_macros::host_area]
 pub trait ClientViewClientHost {
@@ -24,6 +17,16 @@ pub trait ClientViewClientHost {
     /// height that row draws at, and one placed `Above` it the height after it. A vanilla row
     /// that is hidden, canceled or replaced adds nothing. None outside the HUD layer pass.
     fn gui_status_heights(&self) -> Option<[i32; 2]>;
+    /// Side: client.
+    /// Sets the HUD status columns' heights, left and right in GUI pixels above the bottom
+    /// edge, as assigning NeoForge's `Hud.leftHeight` and `rightHeight` does: the vanilla rows
+    /// that draw after the current layer start from them, and add their own height on top. A
+    /// layer placed `Below` `minecraft:vehicle_health` that raises the right column moves the
+    /// mount's hearts and the air row up; a wrapper that sets them before `draw_previous` moves
+    /// the row it wraps. Rows already drawn stay where they are, and both columns go back to 39
+    /// at the start of each HUD pass. `gui_status_heights` reads the new heights at once. False,
+    /// setting nothing, outside the HUD layer pass.
+    fn set_gui_status_heights(&self, heights: [i32; 2]) -> bool;
     /// Side: client.
     /// Read effective HUD visibility independently of first-person hands.
     fn hud_mode(&self) -> HudMode;
@@ -49,9 +52,11 @@ pub trait ClientViewClientHost {
     /// Side: client.
     /// Request the window's camera type without cycling, also from shared-host callbacks.
     /// The last request wins and [`Self::camera_type`] reports it immediately. Requests before
-    /// or during `camera_pose` apply to that frame's camera, FOV and spectator post effects;
-    /// later requests apply at the next frame's camera extraction. Explicit pose overrides
-    /// remain unchanged when vanilla placement is refreshed. No cycle hook is emitted.
+    /// or during `compute_camera_angles` apply before that frame's detached camera placement,
+    /// FOV and spectator post effects. Requests during `camera_position` re-align an entity-bound
+    /// camera with the already-computed angles, keeping only coordinates explicitly pinned by listeners.
+    /// The selected custom camera is not re-aligned. Later requests apply at the next frame's
+    /// camera extraction. No cycle hook is emitted.
     fn set_camera_type(&self, camera_type: CameraType);
     /// Side: client.
     /// The applied client pause state, not whether a pause screen is open.
@@ -63,10 +68,19 @@ pub trait ClientViewClientHost {
     /// on the title screen.
     fn clock(&self) -> Option<Clock>;
     /// Side: client.
-    /// The first block along the view within `distance` (at most 1024), in loaded chunks only; `None` on a miss.
+    /// The tick rate state of the world this window shows (`ClientLevel.tickRateManager()`):
+    /// its rate, whether it is frozen and the frozen steps left to run, as the server last
+    /// sent them (`ClientPacketListener.handleTickingState` / `handleTickingStep`). It is there
+    /// from `Login`, when the client level is made, before the player is placed; none outside
+    /// a client world (the title screen, before login, or while reconfiguring).
+    fn tick_rate(&self) -> Option<ClientTickRate>;
+    /// Side: client.
+    /// The first block along the view within `distance`, in loaded chunks only;
+    /// `None` on a miss or a nonpositive or non-finite `distance`.
     fn raycast(&self, distance: f32) -> Option<Hit>;
     /// Side: client.
-    /// The first block along the view within 1024 blocks, in loaded chunks only, and its distance; `None` on a miss.
+    /// The first block along the view across loaded chunks only, and its distance; `None` on a miss.
+    /// The shape clip does not depend on how far away other chunks are loaded.
     fn view_hit(&self) -> Option<(f32, Hit)>;
     /// Side: client.
     /// The most recently extracted world frame's camera, if one exists.
@@ -101,17 +115,6 @@ pub trait ClientViewClientHost {
     /// the camera to, else the local player. None outside a client world.
     fn camera_entity(&self) -> Option<EntityRef>;
     /// Side: client.
-    /// Each column's height by `heightmap` in the world this window shows
-    /// (`LevelReader.getHeight(type, x, z)` on a client level): one above the highest block that
-    /// counts on that map, from the blocks the server has sent, none for a column whose chunk this
-    /// client does not hold. `Err`, reading nothing, for no client world (the title screen) or more
-    /// than 65,536 columns (`MAX_COLUMNS`).
-    fn client_surface_heights(
-        &self,
-        columns: &[(i32, i32)],
-        heightmap: Heightmap,
-    ) -> Result<Vec<Option<i32>>, String>;
-    /// Side: client.
     /// Points the view at `entity` (`Minecraft.setCameraEntity`), as a server's camera packet
     /// does; the local player's own ref puts it back. True when the view now follows it; false,
     /// with nothing changed, for a stale ref, an entity this window is not shown, or one the
@@ -137,6 +140,15 @@ pub trait ClientViewClientHost {
     /// strider never jumps. The HUD's jump bar makes the same decision. None when the player
     /// controls no such vehicle (a second passenger included), or outside a client world.
     fn jumpable_vehicle(&self) -> Option<EntityRef>;
+    /// Side: client.
+    /// How far the local player has charged its mount's jump (`LocalPlayer.getJumpRidingScale`),
+    /// 0.0 to 1.0: the value the HUD's jump bar draws and `Hud.willPrioritizeJumpInfo` tests
+    /// (`> 0`). It rises while the jump key is held on a [`Self::jumpable_vehicle`] and drops
+    /// back to 0.0 when the jump is released and its cooldown runs out. 0.0 once a client tick
+    /// has run with the player controlling no mount that can jump (that tick resets it), and
+    /// outside a client world. Read-only: the jump key
+    /// drives it, and the server checks the jump it is sent.
+    fn jump_riding_scale(&self) -> f32;
     /// Side: client.
     /// Whether the server tracks any waypoint for this client
     /// (`ClientWaypointManager.hasWaypoints`), the waypoints the locator bar draws. The HUD's

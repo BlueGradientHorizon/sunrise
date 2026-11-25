@@ -95,7 +95,15 @@ impl TryIntoEngine<()> for mod_api::BlockProperties {
             instrument: self.instrument,
             ignited_by_lava: self.ignited_by_lava,
             replaceable: self.replaceable,
-            skip_same_block_faces: self.skip_same_block_faces,
+            skip_rendering: self.skip_rendering.clone(),
+            hides_neighbor_face: self.hides_neighbor_face.clone(),
+            supports_external_face_hiding: self.supports_external_face_hiding,
+            spawn_rule: self.spawn_rule.map(|rule| match rule {
+                mod_api::SpawnRule::Default => engine::SpawnRule::Default,
+                mod_api::SpawnRule::Always => engine::SpawnRule::Always,
+                mod_api::SpawnRule::Never => engine::SpawnRule::Never,
+                mod_api::SpawnRule::OcelotOrParrot => engine::SpawnRule::OcelotOrParrot,
+            }),
             vegetation: self.vegetation,
         })
     }
@@ -508,6 +516,24 @@ mod tests {
                 "{error:?}"
             );
             assert!(content.blocks.is_empty());
+        }
+    }
+
+    #[test]
+    fn spawn_rule_declarations_share_json_values() {
+        for (rule, json) in [
+            (mod_api::SpawnRule::Default, "default"),
+            (mod_api::SpawnRule::Always, "always"),
+            (mod_api::SpawnRule::Never, "never"),
+            (mod_api::SpawnRule::OcelotOrParrot, "ocelot_or_parrot"),
+        ] {
+            let draft = BlockProperties {
+                spawn_rule: Some(rule),
+                ..Default::default()
+            };
+            let expected: engine::BlockProperties =
+                serde_json::from_str(&format!(r#"{{"spawn_rule":"{json}"}}"#)).unwrap();
+            assert_eq!(draft.try_into_engine(&()).unwrap(), expected);
         }
     }
 

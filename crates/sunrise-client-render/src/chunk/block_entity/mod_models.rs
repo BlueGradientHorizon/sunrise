@@ -93,15 +93,18 @@ impl ModBlockEntity {
             rows.iter().any(|row| saved_item_slot(row) == Some(slot)))
     }
 
-    /// A write (including an explicit clear) supersedes raw rows for this index.
-    pub fn item_slot_mut(&mut self, slot: usize) -> Option<&mut Option<ItemStack>> {
-        if slot >= self.items.len() {
-            return None;
-        }
+    /// A write (including an explicit clear) supersedes raw rows for this index. `items` holds
+    /// the slots up to the last one written, not the holder's capacity (its block declares
+    /// that), so a slot past it reads as empty and a write grows `items` to reach it only.
+    /// The caller has checked `slot` against the declared capacity.
+    pub fn item_slot_mut(&mut self, slot: usize) -> &mut Option<ItemStack> {
         if let Some(Tag::List(rows)) = self.fields.nbt.get_mut(&ITEMS) {
             rows.retain(|row| saved_item_slot(row) != Some(slot));
         }
-        self.items.get_mut(slot)
+        if slot >= self.items.len() {
+            self.items.resize(slot + 1, None);
+        }
+        &mut self.items[slot]
     }
 
     pub fn new(id: String, mut fields: ModBlockEntityFields) -> Self {
@@ -187,9 +190,7 @@ impl ModBlockEntity {
 
     /// The resolved route for a resident server tick, only when its type subscribes.
     pub fn tick_kind(&self) -> Option<mod_api::BlockEntityTypeKey> {
-        self.registered_type
-            .filter(|kind| kind.has_tick_part)
-            .and(self.kind)
+        self.registered_type?.server_ticker
     }
     /// Its type's key (`BlockEntity.getType`), resolved from [`Self::id`] when the entity was
     /// made; `None` for a type the game has not registered.

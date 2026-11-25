@@ -6,7 +6,7 @@ use crate::*;
 #[doc(hidden)]
 #[sunrise_mod_api_macros::host_area]
 pub trait PlayerInteractionBackend {
-    /// Side: server.
+    /// Side: both.
     /// `Player.getAttackStrengthScale(partial)`: the charge the player's next
     /// `Player.attack` reads, from 0 (just swung) to 1 (full), where `partial`
     /// (vanilla reads 0.5) is how far between ticks the read is. It is
@@ -15,7 +15,18 @@ pub trait PlayerInteractionBackend {
     /// Inside `attack_entity` it reads the charge that blow uses: the hook
     /// runs before `Player.attack` resets the ticker. None for a stale or unavailable player.
     /// Non-finite partial ticks return `None`; finite partials are not restricted.
+    /// On a client it answers for the local player alone (vanilla's `minecraft.player`, not the
+    /// camera entity), from the client's own ticker, as `Hud.extractCrosshair`'s attack
+    /// indicator reads it; None for any other player.
     fn player_attack_strength_scale(&self, player: PlayerRef, partial: f32) -> Option<f32>;
+    /// Side: both.
+    /// `Player.getCurrentItemAttackStrengthDelay()`: the ticks a full charge takes, `20 / attack
+    /// speed` from the attack speed attribute with the main-hand item's modifiers.
+    /// `Hud.extractCrosshair` draws the full-charge icon when it is above 5 and the target is in
+    /// reach. On a client it answers for the local player alone, as
+    /// [`player_attack_strength_scale`](Self::player_attack_strength_scale) does. None for a
+    /// stale or unavailable player.
+    fn player_current_item_attack_strength_delay(&self, player: PlayerRef) -> Option<f32>;
     /// Side: server.
     /// `Player.mayUseItemAt(pos, face, stack)`: whether the player may use `stack` at `pos`, the
     /// block it would be placed in when clicked on its `face`. A player who may build (survival,
@@ -118,24 +129,29 @@ pub trait PlayerInteractionBackendMut {
     ) -> Option<bool>;
     /// Side: server.
     /// `ServerPlayerGameMode.destroyBlock`: breaks the block at `pos` in the player's level as
-    /// this player breaks it, as FTB Ultimine does for each block of a vein. The player's own
-    /// checks hold: a spectator, an adventure player whose tool can't break it, a held item that
-    /// can't break blocks (a sword in creative), a game master block without the permission and
-    /// a dedicated server's spawn protection leave it. Then `break_block` hears it and may cancel
-    /// it, and the break runs as the player's own: the block's effects, events, particles and
-    /// sound, `player_destroyed_block`, the loot rolled for the held item and its enchantments,
-    /// `block_drops` with this player as the breaker, the item's wear, the mined statistic and
-    /// the exhaustion. A vein miner takes each block's drops and experience in `block_drops` and
-    /// sets them down where it wants with `LevelRef::pop_resource` and
-    /// `LevelRef::award_experience`; what else the break sets loose (a torch losing its support,
-    /// a container's contents) still drops in the world. With `into_inventory`, the drops left
-    /// after `block_drops` go to the player's inventory instead, and what doesn't fit drops from
-    /// them as `Inventory.placeItemBackInInventory` drops it. The player needn't reach or look at
-    /// the block. Breaking from `break_block` or `block_drops` makes them hear these breaks too:
-    /// a mod keeps its own guard, and a break started from inside eight others is refused (a
-    /// Sunrise safeguard that the reference does not have). True when the block was removed; false, with nothing broken, for a stale handle, a player who
-    /// isn't here, is dead or is in another level than the hook's, air, an unloaded block, a block no survival player can break
-    /// (bedrock), a canceled break, and off a server.
+    /// this player breaks it, as FTB Ultimine does for each block of a vein. On a live block,
+    /// `break_block` posts in NeoForge `CommonHooks.fireBlockBreak` order: pre-canceled when
+    /// the main-hand item, game mode, or game-master permissions refuse the break, and hard
+    /// game-mode and game-master restrictions still prevent removal even if a
+    /// `#[listener(receive_cancelled)]` listener clears the cancel. Unlike a dig packet
+    /// (`handleBlockBreakAction`), this does not check spawn protection, reach, or whether
+    /// normal mining could finish the block.
+    /// The break runs the block's effects, `player_destroyed_block`, the loot rolled for the
+    /// main-hand item and its enchantments, `block_drops` with this player as the breaker, item
+    /// wear, the mined statistic and exhaustion. A vein miner can take the drops and experience
+    /// in `block_drops` and place them with `LevelRef::pop_resource` and
+    /// `LevelRef::award_experience`. Indirect drops (such as a chest's contents) still spawn in
+    /// the world. With `into_inventory`, the block's remaining item drops go to the player's
+    /// inventory; overflow drops from them as in `Inventory.placeItemBackInInventory`.
+    /// Chained calls fire the break hooks without a fixed nesting limit. A break of the same
+    /// block from inside its own `break_block` callback does not call it again: it removes the
+    /// block as a nested break and the outer call then does nothing more. The position is read
+    /// from the level (a column that is not resident is loaded to read it), and `break_block`
+    /// fires for what it holds, air included.
+    /// True only if this call removed a block. False off the server, for a stale, dead or
+    /// out-of-level player, for air, on a restriction or veto, or
+    /// if a listener already removed the block or completed a nested player break at that
+    /// position in that level (even if a non-air block or fluid remains).
     fn player_destroy_block(
         &mut self,
         player: PlayerRef,
@@ -203,27 +219,35 @@ pub trait PlayerInteractionBackendMut {
     /// (an editor's or a schematic's). It is `level_set_block` with a placement's flags
     /// (`NEIGHBORS | CLIENTS`, plus `KNOWN_SHAPE` when `update_neighbour_shapes` is false; without
     /// it the neighbours' shapes update, so fences, walls and stairs connect), so the block entity
-    /// follows that write's rules, and then `Block.setPlacedBy` of the block that stands there, run in
-    /// the player's turn (a bed places its head, a door its upper half). Nothing else of vanilla's `BlockItem.place`
+    /// follows that write's rules, and then `Block.setPlacedBy` (a bed places its head, a
+    /// door its upper half). Before commit, `entity_place` sees the tentative placement,
+    /// including block entities and every cell written by `Block.setPlacedBy`, this player
+    /// as `placer`, and the staged state adjacent to `pos` opposite `face`. A change to that against state
+    /// alone does not invalidate the chosen placement. Cancel discards the tentative placement
+    /// and journalled listener writes. If a listener panics, only that listener's tentative writes
+    /// are discarded; it does not veto the placement. An enclosing transaction owns the accepted writes and
+    /// publishes their updates and placement effects at its root commit.
+    /// Nothing else of vanilla's `BlockItem.place`
     /// or `useOn` runs: no check that the block may be placed there (survival, entity
     /// obstruction, build permission, spawn protection), no `placed_block` advancement trigger or
     /// statistic, generic item placement sound or game event, or item use or consumption.
     /// The block callback may produce its own effects.
-    /// `setPlacedBy` is not given the player as placer. The player is only whose turn `setPlacedBy` runs in, so it is
-    /// not "as player" in the sense of a use-on. The state is written as given. Refuses, writing
+    /// `setPlacedBy` is not given the player as placer. The state is written as given. Refuses, writing
     /// nothing, with `PlayerWorldRefusal`: `Client`, `Stale`, `Dead`, `StaleLevel`, `OtherLevel`
     /// (that `level` is not the level in place: both placement steps, the write
     /// and `setPlacedBy`, use the supplied level), `UnknownState`, `OutOfWorld`, `NotLoaded`,
     /// `Fenced` (the origin or a direct companion or callback write is held by a carrier transfer),
-    /// `InTransaction` (a completed wither pattern in an open Host transaction), and `Unchanged`
-    /// (that state already stands there, or `level_set_block` returns false). Neighbour updates
-    /// follow the level's normal rules.
+    /// `InTransaction` (a completed wither pattern in an open Host transaction), `Unchanged`
+    /// (that state already stands there, or `level_set_block` returns false), `Canceled` (a
+    /// placement veto) or `PlacementChanged` (a written cell no longer holds its tentative
+    /// state, is unloaded or is fenced). Neighbour updates follow the level's normal rules.
     fn player_place_block(
         &mut self,
         player: PlayerRef,
         level: LevelRef,
         pos: [i32; 3],
         state: BlockState,
+        face: BlockFace,
         update_neighbour_shapes: bool,
     ) -> Result<(), PlayerWorldRefusal>;
 }

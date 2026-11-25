@@ -124,6 +124,7 @@ impl<'a, 'g> GameDrawContext<'a, 'g> {
     }
 }
 impl Drop for GameDrawContext<'_, '_> {
+    #[inline]
     fn drop(&mut self) {
         if let Some(clip) = self.clip.take() {
             clip.close(self.surface);
@@ -131,9 +132,11 @@ impl Drop for GameDrawContext<'_, '_> {
     }
 }
 impl DrawContext for GameDrawContext<'_, '_> {
+    #[inline]
     fn size(&self) -> [f32; 2] {
         self.game.native_size(&*self.surface)
     }
+    #[inline]
     fn item_model(&mut self, item: ItemKey, model: &str, at: [f32; 2], size: f32) -> bool {
         let Some(item) = mod_api::__private::item_key_id(item) else {
             return false;
@@ -141,30 +144,37 @@ impl DrawContext for GameDrawContext<'_, '_> {
         self.game
             .native_item_model(&mut *self.surface, item, model, at, size)
     }
+    #[inline]
     fn quad(&mut self, points: [[f32; 2]; 4], argb: u32) {
         self.game.native_quad(&mut *self.surface, points, argb)
     }
+    #[inline]
     fn fill(&mut self, rect: [f32; 4], argb: u32) {
         self.game.native_fill(&mut *self.surface, rect, argb)
     }
+    #[inline]
     fn fill_gradient(&mut self, rect: [f32; 4], top: u32, bottom: u32) {
         self.game
             .native_fill_gradient(&mut *self.surface, rect, top, bottom)
     }
+    #[inline]
     fn sprite(&mut self, name: &str, src: [f32; 4], dst: [f32; 4], tint: Option<u32>) -> bool {
         self.game
             .native_sprite(&mut *self.surface, name, src, dst, tint)
     }
+    #[inline]
     fn item(&mut self, item: ItemKey, at: [f32; 2], size: f32) -> bool {
         let Some(item) = mod_api::__private::item_key_id(item) else {
             return false;
         };
         self.game.native_item(&mut *self.surface, item, at, size)
     }
+    #[inline]
     fn text(&mut self, text: &str, at: [f32; 2], argb: u32, shadow: bool) {
         self.game
             .native_text(&mut *self.surface, text, at, argb, shadow)
     }
+    #[inline]
     fn text_with_font(
         &mut self,
         font: &Identifier,
@@ -195,6 +205,7 @@ impl DrawContext for GameDrawContext<'_, '_> {
             name,
         ))
     }
+    #[inline]
     fn with_tooltip_font_raw(&self, font: &Identifier, f: &mut dyn FnMut(&dyn TooltipFont)) {
         if let Some(active) = self.tooltip_font.filter(|active| active.id == font) {
             f(active);
@@ -202,10 +213,12 @@ impl DrawContext for GameDrawContext<'_, '_> {
             f(&EngineTooltipFont::new(&self.game.gui.atlas.font, font));
         }
     }
+    #[inline]
     fn text_scaled(&mut self, text: &str, at: [f32; 2], scale: f32, argb: u32, shadow: bool) {
         self.game
             .native_text_scaled(&mut *self.surface, text, at, scale, argb, shadow)
     }
+    #[inline]
     fn item_stack(&mut self, stack: &ItemStack, at: [f32; 2], size: f32) -> bool {
         let Ok(stack) = crate::game::api_values::stack_value(stack) else {
             return false;
@@ -213,6 +226,7 @@ impl DrawContext for GameDrawContext<'_, '_> {
         self.game
             .native_item_stack(&mut *self.surface, &stack, at, size)
     }
+    #[inline]
     fn draw_gui(
         &mut self,
         draw: &mut dyn FnMut(&mut dyn GuiCanvas) -> Result<(), GuiDrawError>,
@@ -225,10 +239,12 @@ impl DrawContext for GameDrawContext<'_, '_> {
             draw,
         )
     }
+    #[inline]
     fn gui_nine_slice(&mut self, sprite: &str, rect: [f32; 4], color: u32) {
         self.game
             .native_gui_nine_slice(&mut *self.surface, sprite, rect, color)
     }
+    #[inline]
     fn gui_tooltip(
         &mut self,
         lines: &[Text],
@@ -241,12 +257,15 @@ impl DrawContext for GameDrawContext<'_, '_> {
         self.game.native_gui_tooltip(&mut *self.surface, &lines, at);
         Ok(())
     }
+    #[inline]
     fn text_width(&self, text: &str) -> f32 {
         self.game.native_text_width(&*self.surface, text)
     }
+    #[inline]
     fn fluid(&mut self, fluid: &str, at: [f32; 2], size: f32) {
         self.game.native_fluid(&mut *self.surface, fluid, at, size)
     }
+    #[inline]
     fn draw_scene(
         &mut self,
         rect: [f32; 4],
@@ -257,6 +276,7 @@ impl DrawContext for GameDrawContext<'_, '_> {
         self.game
             .native_draw_scene(&mut *self.surface, rect, &blocks, scene, view)
     }
+    #[inline]
     fn model_3d(
         &mut self,
         subject: mod_api::Gui3dSubject<'_>,
@@ -264,6 +284,7 @@ impl DrawContext for GameDrawContext<'_, '_> {
     ) -> Result<(), mod_api::Gui3dError> {
         self.game.native_model_3d(&mut *self.surface, subject, view)
     }
+    #[inline]
     fn with_scissor(
         &mut self,
         rect: [f32; 4],
@@ -278,18 +299,22 @@ impl DrawContext for GameDrawContext<'_, '_> {
         });
         Ok(())
     }
+    #[inline]
     fn entity(&mut self, entity: &GuiEntity, view: GuiEntityView) -> Result<(), GuiEntityError> {
         self.game
             .native_draw_entity(&mut *self.surface, entity, view)
     }
+    #[inline]
     fn draw_menu_background(&mut self, rect: [f32; 4], in_world: bool) {
         self.game
             .native_draw_menu_background(&mut *self.surface, rect, in_world)
     }
+    #[inline]
     fn tiled_sprite(&mut self, sprite: &str, rect: [f32; 4], size: f32, argb: u32) -> bool {
         self.game
             .native_tiled_sprite(&mut *self.surface, sprite, rect, size, argb)
     }
+    #[inline]
     fn gui_draw_item_with(&mut self, stack: &ItemStack, at: [f32; 2], text: Option<&str>) {
         let Ok(stack) = crate::game::api_values::stack_value(stack) else {
             return;
@@ -299,63 +324,82 @@ impl DrawContext for GameDrawContext<'_, '_> {
     }
 }
 /// [`BlockEntityDrawContext`] on the game's `crate::game::native_block_entity_draw::BlockEntityDraw`.
-pub(crate) struct GameBlockEntityDrawContext<'a, 'g> {
+pub(crate) struct GameBlockEntityDrawContext<'a, 'g, 'v> {
     pub(crate) game: &'a Game<'g>,
-    pub(crate) surface: &'a mut crate::game::native_block_entity_draw::BlockEntityDraw,
+    pub(crate) surface: &'a mut crate::game::native_block_entity_draw::BlockEntityDraw<'v>,
 }
-impl<'a, 'g> GameBlockEntityDrawContext<'a, 'g> {
+impl<'a, 'g, 'v> GameBlockEntityDrawContext<'a, 'g, 'v> {
     pub(crate) fn new(
         game: &'a Game<'g>,
-        surface: &'a mut crate::game::native_block_entity_draw::BlockEntityDraw,
+        surface: &'a mut crate::game::native_block_entity_draw::BlockEntityDraw<'v>,
     ) -> Self {
         Self { game, surface }
     }
 }
-impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_> {
+impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_, '_> {
+    #[inline]
     fn push(&mut self) {
         self.game.native_draw_push(&mut *self.surface)
     }
+    #[inline]
     fn pop(&mut self) {
         self.game.native_draw_pop(&mut *self.surface)
     }
+    #[inline]
     fn translate(&mut self, by: [f32; 3]) {
         self.game.native_draw_translate(&mut *self.surface, by)
     }
+    #[inline]
     fn rotate_about(&mut self, axis: [f32; 3], degrees: f32, pivot: [f32; 3]) {
         self.game
             .native_draw_rotate_about(&mut *self.surface, axis, degrees, pivot)
     }
+    #[inline]
     fn scale(&mut self, by: [f32; 3]) {
         self.game.native_draw_scale(&mut *self.surface, by)
     }
+    #[inline]
     fn keep(&mut self) {
         self.game.native_draw_keep(&mut *self.surface)
     }
+    #[inline]
+    fn view(&self) -> &WorldRenderView<'_> {
+        self.surface.view()
+    }
+    #[inline]
     fn partial(&self) -> f32 {
         self.game.native_draw_partial(&*self.surface)
     }
+    #[inline]
     fn game_time(&self) -> i64 {
         self.game.native_draw_game_time(&*self.surface)
     }
+    #[inline]
     fn animation_time(&self) -> f64 {
         self.game.native_draw_animation_time(&*self.surface)
     }
+    #[inline]
     fn light(&self) -> u32 {
         self.game.native_draw_light(&*self.surface)
     }
+    #[inline]
     fn set_light(&mut self, light: u32) {
         self.game.native_draw_set_light(&mut *self.surface, light)
     }
+    #[inline]
     fn level_light(&mut self) {
         self.game.native_draw_level_light(&mut *self.surface)
     }
+    #[inline]
     fn unlit(&mut self, on: bool) {
         self.game.native_draw_unlit(&mut *self.surface, on)
     }
+    #[inline]
     fn quad(&mut self, sprite: &str, corners: [[f32; 3]; 4], uv: [f32; 4], tint: u32) -> bool {
         self.game
             .native_draw_quad(&mut *self.surface, sprite, corners, uv, tint)
     }
+    #[inline]
     fn cube(
         &mut self,
         from: [f32; 3],
@@ -366,13 +410,14 @@ impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_> {
         self.game
             .native_draw_cube(&mut *self.surface, from, to, faces, tint)
     }
-    fn block(&mut self, block: BlockKey, properties: &[(&str, &str)]) -> bool {
-        let Some(block) = mod_api::__private::block_key_id(block) else {
+    #[inline]
+    fn block(&mut self, state: BlockState) -> bool {
+        let Ok(id) = state.try_into_engine(&()) else {
             return false;
         };
-        self.game
-            .native_draw_block(&mut *self.surface, block, properties)
+        self.game.native_draw_block(&mut *self.surface, id)
     }
+    #[inline]
     fn item(
         &mut self,
         stack: &ItemStack,
@@ -389,16 +434,20 @@ impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_> {
         self.game
             .native_draw_item(&mut *self.surface, &stack, display, owner_yaw, seed)
     }
+    #[inline]
     fn spin(&mut self, axis: [f32; 3], pivot: [f32; 3], degrees_per_tick: f32, phase: f32) {
         self.game
             .native_draw_spin(&mut *self.surface, axis, pivot, degrees_per_tick, phase)
     }
+    #[inline]
     fn still(&mut self) {
         self.game.native_draw_still(&mut *self.surface)
     }
+    #[inline]
     fn model(&mut self, model: ModelRef, tint: u32) -> Result<(), ModelError> {
         self.game.native_draw_model(&mut *self.surface, model, tint)
     }
+    #[inline]
     fn text(
         &mut self,
         text: &Text,
@@ -412,33 +461,43 @@ impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_> {
             .game
             .native_draw_text(&mut *self.surface, &text, at, color, glowing, outline))
     }
+    #[inline]
     fn terrain_model(
         &mut self,
         model: ModelRef,
         options: TerrainModelOptions<'_>,
-    ) -> Result<(), TerrainModelError> {
+    ) -> Result<(), ModelError> {
         self.game
             .native_draw_terrain_model(&mut *self.surface, model, options)
     }
+    #[inline]
     fn text_width(&self, text: &Text) -> f32 {
         let text = sunrise_client_lib::api_text::to_engine_inprocess(text);
         self.game.native_draw_text_width(&*self.surface, &text)
     }
+    #[inline]
     fn model_part(&mut self, part: &ModelPart, sprite: &str, tint: u32) -> bool {
         self.game
             .native_draw_model_part(&mut *self.surface, part, sprite, tint)
     }
-    fn fluid_box(
-        &mut self,
-        stack: &FluidStack,
-        bounds: [f32; 6],
-        options: FluidBoxOptions,
-    ) -> Result<(), FluidBoxError> {
+    #[inline]
+    fn instance_group(&mut self, group: InstanceGroupRef) -> Result<(), GroupError> {
+        self.game
+            .native_draw_instance_group(&mut *self.surface, group)
+    }
+    #[inline]
+    fn prepared_item(&mut self, item: PreparedItemRef) -> Result<(), ModelError> {
+        self.game
+            .native_draw_prepared_item(&mut *self.surface, item)
+    }
+    #[inline]
+    fn fluid_box(&mut self, stack: &FluidStack, bounds: [f32; 6], options: FluidBoxOptions) {
         self.game
             .native_draw_fluid_box(&mut *self.surface, stack, bounds, options)
     }
 }
-impl HandDrawContext for GameBlockEntityDrawContext<'_, '_> {
+impl HandDrawContext for GameBlockEntityDrawContext<'_, '_, '_> {
+    #[inline]
     fn render_arm(&mut self, arm: MainHand) {
         if let Some(normals) = self.surface.normal_pose() {
             self.game.submit_first_person_arm(
@@ -505,6 +564,33 @@ impl WorldDrawContext for GameWorldDrawContext<'_, '_> {
         self.game
             .native_world_draw_pipeline_quads(&mut *self.surface, pipeline, quads)
     }
+    fn draw_mesh(
+        &mut self,
+        pipeline: RenderPipelineRef,
+        mesh: MeshRef,
+        draw: MeshDraw,
+        bindings: &DrawBindings<'_>,
+    ) -> Result<(), PipelineDrawError> {
+        self.game
+            .native_world_draw_mesh(&mut *self.surface, pipeline, mesh, draw, bindings)
+    }
+    fn draw_vertices(
+        &mut self,
+        pipeline: RenderPipelineRef,
+        vertices: &[&[u8]],
+        indices: Option<(IndexFormat, &[u8])>,
+        draw: MeshDraw,
+        bindings: &DrawBindings<'_>,
+    ) -> Result<(), PipelineDrawError> {
+        self.game.native_world_draw_vertices(
+            &mut *self.surface,
+            pipeline,
+            vertices,
+            indices,
+            draw,
+            bindings,
+        )
+    }
     fn name_tag(
         &mut self,
         at: [f64; 3],
@@ -521,6 +607,47 @@ impl WorldDrawContext for GameWorldDrawContext<'_, '_> {
     ) -> Result<(), InstanceError> {
         self.game
             .native_world_draw_model_instances(&mut *self.surface, model, instances)
+    }
+    fn with_pipeline_modifier(
+        &mut self,
+        modifier: PipelineModifierRef,
+        draw: &mut dyn FnMut(&mut dyn WorldDrawContext),
+    ) {
+        use mod_api::__private::game::Fields;
+        let pushed = self.surface.push_pipeline_modifier(modifier.fields().slot);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            draw(self);
+        }));
+        if pushed {
+            self.surface.pop_pipeline_modifier();
+        }
+        if let Err(payload) = result {
+            std::panic::resume_unwind(payload);
+        }
+    }
+    fn set_pack_uniform(&mut self, name: &str, value: PackUniformValue) -> bool {
+        let Some((static_name, ty)) = sunrise_client::mod_pipelines::lookup_pack_uniform(name)
+        else {
+            return false;
+        };
+        if ty != value.ty() {
+            return false;
+        }
+        self.surface.set_pack_uniform(static_name, value);
+        true
+    }
+    fn pack_override_state(
+        &self,
+        pipeline: RenderPipelineRef,
+    ) -> Result<PackOverrideState, RenderPipelineError> {
+        let slot = self.game.pack.render.mod_pipelines.slot(pipeline)?;
+        Ok(self
+            .game
+            .renderer
+            .as_ref()
+            .map_or(PackOverrideState::NoPack, |renderer| {
+                renderer.pack_override_state(slot as usize)
+            }))
     }
 }
 /// The only mod surface that appends CPU geometry for named passes.
@@ -562,6 +689,104 @@ impl PrepareRenderBuffersContext for GamePrepareRenderBuffersContext<'_, '_> {
         }
         self.surface.prepare_draw(stage, |surface| {
             self.game.native_world_draw_quads(surface, quads)
+        })
+    }
+
+    fn pipeline_quads(
+        &mut self,
+        stage: RenderLevelStage,
+        pipeline: RenderPipelineRef,
+        quads: &[PipelineQuad],
+    ) -> Result<PreparedWorldDraw, PipelineDrawError> {
+        if !stage.has_render_pass() {
+            return Err(PipelineDrawError::Pipeline(RenderPipelineError::Invalid));
+        }
+        let slot = self
+            .game
+            .pack
+            .render
+            .mod_pipelines
+            .slot(pipeline)
+            .map_err(PipelineDrawError::Pipeline)?;
+        if stage.oit_stage().is_some() && !self.game.pack.render.mod_pipelines.is_oit_eligible(slot)
+        {
+            self.game
+                .pack
+                .render
+                .mod_pipelines
+                .warn_oit_ineligible(slot);
+            return Err(PipelineDrawError::Pipeline(RenderPipelineError::Invalid));
+        }
+        self.surface.prepare_draw(stage, |surface| {
+            self.game
+                .native_world_draw_pipeline_quads(surface, pipeline, quads)
+        })
+    }
+
+    fn draw_mesh(
+        &mut self,
+        stage: RenderLevelStage,
+        pipeline: RenderPipelineRef,
+        mesh: MeshRef,
+        draw: MeshDraw,
+        bindings: &DrawBindings<'_>,
+    ) -> Result<PreparedWorldDraw, PipelineDrawError> {
+        if !stage.has_render_pass() {
+            return Err(PipelineDrawError::Pipeline(RenderPipelineError::Invalid));
+        }
+        let slot = self
+            .game
+            .pack
+            .render
+            .mod_pipelines
+            .slot(pipeline)
+            .map_err(PipelineDrawError::Pipeline)?;
+        if stage.oit_stage().is_some() && !self.game.pack.render.mod_pipelines.is_oit_eligible(slot)
+        {
+            self.game
+                .pack
+                .render
+                .mod_pipelines
+                .warn_oit_ineligible(slot);
+            return Err(PipelineDrawError::Pipeline(RenderPipelineError::Invalid));
+        }
+        self.surface.prepare_draw(stage, |surface| {
+            self.game
+                .native_world_draw_mesh(surface, pipeline, mesh, draw, bindings)
+        })
+    }
+
+    fn draw_vertices(
+        &mut self,
+        stage: RenderLevelStage,
+        pipeline: RenderPipelineRef,
+        vertices: &[&[u8]],
+        indices: Option<(IndexFormat, &[u8])>,
+        draw: MeshDraw,
+        bindings: &DrawBindings<'_>,
+    ) -> Result<PreparedWorldDraw, PipelineDrawError> {
+        if !stage.has_render_pass() {
+            return Err(PipelineDrawError::Pipeline(RenderPipelineError::Invalid));
+        }
+        let slot = self
+            .game
+            .pack
+            .render
+            .mod_pipelines
+            .slot(pipeline)
+            .map_err(PipelineDrawError::Pipeline)?;
+        if stage.oit_stage().is_some() && !self.game.pack.render.mod_pipelines.is_oit_eligible(slot)
+        {
+            self.game
+                .pack
+                .render
+                .mod_pipelines
+                .warn_oit_ineligible(slot);
+            return Err(PipelineDrawError::Pipeline(RenderPipelineError::Invalid));
+        }
+        self.surface.prepare_draw(stage, |surface| {
+            self.game
+                .native_world_draw_vertices(surface, pipeline, vertices, indices, draw, bindings)
         })
     }
 }

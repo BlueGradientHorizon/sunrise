@@ -50,9 +50,8 @@ mod system_helpers;
 mod world_helpers;
 
 use super::screen_build::ObservedScreen;
-use crate::game::api_values::{TryIntoApi, TryIntoEngine};
+use crate::game::api_values::{TryIntoApi, TryIntoEngine, with_stack_view};
 use screen_chars::chars_to_type;
-use sunrise_client::containers::ModBlockEntity as EngineBlockEntity;
 
 struct ContentsChangedGuard<'a, 'game> {
     game: &'a mut Game<'game>,
@@ -234,7 +233,7 @@ impl Game<'_> {
             remote.craft_result = None;
         }
         self.remove_sign_editor();
-        self.remove_chat_screen();
+        self.remove_chat_screen(crate::game::chat::ChatExit::Interrupted);
         self.close_dialogs();
         self.book = None;
         self.link_prompt = None;
@@ -284,6 +283,38 @@ impl Game<'_> {
     /// before it applies: what a screen's own `onClose` does only when it really
     /// closes (a container screen's close packet).
     pub(super) fn set_screen_with(&mut self, screen: Screen, before: impl FnOnce(&mut Self)) {
+        self.transition_screen(screen, false, |game, _| before(game));
+    }
+
+    /// `Gui.setScreen(null)`: dismisses the open screen without a vetoable
+    /// `ScreenEvent.Opening` (NeoForge only posts `Opening` for a non-null
+    /// target), firing `screen_closing` for the screen being left, running
+    /// `before`, and returning to `Screen::Playing`.
+    pub(in crate::game) fn dismiss_screen_with(&mut self, before: impl FnOnce(&mut Self)) {
+        if self.screen == Screen::Playing {
+            before(self);
+            return;
+        }
+        if self.screen_hooks_heard() {
+            let current = self.screen_change_view(self.screen);
+            self.native_screen_closing(&current);
+        }
+        before(self);
+        if self.screen == Screen::Options {
+            self.ui.options.discard_draw();
+        }
+        self.apply_screen_with_mod_book(Screen::Playing, None);
+        self.screen_state.observed = self.observed_now();
+    }
+
+    /// A new instance can replace the current screen of the same kind. The preparation
+    /// sees the accepted screen, or `None` when a replacement opens through its own path.
+    pub(in crate::game) fn transition_screen(
+        &mut self,
+        screen: Screen,
+        new_instance: bool,
+        before: impl FnOnce(&mut Self, Option<Screen>),
+    ) {
         let opening_native =
             screen == Screen::Inventory && self.active_native_screen().is_some_and(|s| !s.shown);
         let new_menu_gen = (screen == Screen::Inventory)
@@ -297,7 +328,7 @@ impl Game<'_> {
                 .as_ref()
                 .and_then(|o| o.menu_generation)
                 != new_menu_gen;
-        if self.screen == screen {
+        if self.screen == screen && !new_instance {
             if opening_native || menu_replaced {
                 self.apply_screen_with_mod_book(screen, None);
             }
@@ -307,9 +338,10 @@ impl Game<'_> {
         let mut owner = None;
         if self.screen_hooks_heard() {
             let decision = {
-                let current = self.screen_change_view(self.screen);
+                let observed = new_instance.then(|| self.observed_screen_view()).flatten();
+                let current = observed.unwrap_or_else(|| self.screen_change_view(self.screen));
                 let new = self.screen_change_view(screen);
-                self.decide_screen(&current, &new, self.screen != Screen::Playing)
+                self.decide_screen(&current, &new, current.id != "playing", new_instance)
             };
             match decision {
                 ScreenDecision::Keep => {
@@ -325,7 +357,10 @@ impl Game<'_> {
                     owner = Some(mod_id);
                 }
                 ScreenDecision::Vanilla(target) => {
-                    before(self);
+                    if new_instance {
+                        self.remove_replaced_overlays();
+                    }
+                    before(self, None);
                     if opening_native && self.active_native_screen().is_some() {
                         self.remote_close_container();
                     }
@@ -335,14 +370,30 @@ impl Game<'_> {
                 ScreenDecision::Open => {}
             }
         }
-        if self.screen == screen && owner.is_none() {
+        if self.screen == screen && owner.is_none() && !new_instance {
             return;
         }
-        before(self);
+        if new_instance {
+            self.remove_replaced_overlays();
+            self.screen_state.build.reopened();
+        }
+        before(self, Some(screen));
         if self.screen == Screen::Options {
             self.ui.options.discard_draw();
         }
         self.apply_screen_with_mod_book(screen, owner);
+    }
+
+    /// `Screen.removed` on accepted replacement. Do not run onClose actions
+    /// such as answering a prompt, following a link, or signing a book.
+    fn remove_replaced_overlays(&mut self) {
+        self.command_prompt = None;
+        self.link_prompt = None;
+        self.code_of_conduct = None;
+        self.server_packs.prompt = None;
+        self.close_dialogs();
+        self.book = None;
+        self.remove_sign_editor();
     }
     /// Whether a change of screen asks the screen hooks: a mod listens to
     /// `screen_opening` or `screen_closing`, on a client's own `Game` (not a
@@ -363,8 +414,12 @@ impl Game<'_> {
         current: &ScreenView<'_>,
         new: &ScreenView<'_>,
         closes: bool,
+        removes_overlay: bool,
     ) -> ScreenDecision {
-        self.screen_decision(self.screen_change(current, new, true, closes))
+        self.screen_decision(
+            self.screen_change(current, new, true, closes),
+            removes_overlay,
+        )
     }
     /// Like `decide_screen`, for `mod_screen_open`, which clears any active
     /// overlay via `close_replaced_screen_for_mod` before applying the
@@ -376,7 +431,7 @@ impl Game<'_> {
         new: &ScreenView<'_>,
         closes: bool,
     ) -> ScreenDecision {
-        self.screen_decision_with(self.screen_change(current, new, true, closes), true)
+        self.screen_decision(self.screen_change(current, new, true, closes), true)
     }
     /// What a mod's `screen_opening` answer does here: a `ModScreen` only
     /// where a mod's screen can open (`mod_screen_blocked`), a `Vanilla`
@@ -384,10 +439,7 @@ impl Game<'_> {
     /// world's screen where a mod's could open in a world), else the change
     /// goes ahead and the refused target is logged. Records whether a mod's
     /// answer changed what shows (`ScreenState::answered`).
-    fn screen_decision(&self, answer: Option<Answered<ScreenOpening>>) -> ScreenDecision {
-        self.screen_decision_with(answer, false)
-    }
-    fn screen_decision_with(
+    fn screen_decision(
         &self,
         answer: Option<Answered<ScreenOpening>>,
         clears_overlays: bool,
@@ -400,13 +452,7 @@ impl Game<'_> {
         clears_overlays: bool,
         title_available: bool,
     ) -> ScreenDecision {
-        let blocked = if clears_overlays {
-            self.lan_acting.is_some()
-                || (self.player.is_none() && !title_available)
-                || self.remote_loading()
-        } else {
-            self.mod_screen_blocked()
-        };
+        let blocked = self.mod_screen_blocked(clears_overlays, title_available);
         let decision = match answer {
             Some(Answered {
                 answer: ScreenOpening::Cancel,
@@ -449,6 +495,7 @@ impl Game<'_> {
     fn open_screen_target(&mut self, target: ScreenTarget) {
         let before_instance = self.screen_state.screen_instance;
         self.screen_state.replacing = true;
+        self.screen_state.build.reopened();
         match target {
             ScreenTarget::Pause => {
                 self.pause_focus = None;
@@ -467,7 +514,9 @@ impl Game<'_> {
             }
             ScreenTarget::Advancements => self.open_advancements(false),
             ScreenTarget::Stats => self.open_stats(),
-            ScreenTarget::Chat => self.begin_chat_screen("", false),
+            ScreenTarget::Chat => {
+                self.begin_chat_screen("", false);
+            }
             _ => {
                 // A title screen: set the title mode first so `set_screen(Playing)`
                 // commits directly into the target title screen without double-init.
@@ -478,6 +527,7 @@ impl Game<'_> {
                 self.set_screen(Screen::Playing);
             }
         }
+        self.build_screen();
         // Every target takes the pointer, even one opened in place of a
         // request that grabbed none (a mod's screen asked for while playing).
         self.capture(false);
@@ -525,6 +575,11 @@ impl Game<'_> {
     /// What `set_screen` does once the hooks have answered: `screen` opens,
     /// and the mod `owner`'s own screen when one answered `ModScreen`.
     fn apply_screen(&mut self, screen: Screen, owner: Option<&str>) {
+        // A screen's pointer grab ends with the screen, by any route.
+        self.pointer_grab_request.set(None);
+        if self.screen_grab {
+            self.capture(false);
+        }
         // `before` may already have closed it. Overlays that keep Inventory
         // underneath don't pass through this replacement path.
         if screen != Screen::Inventory {
@@ -536,6 +591,9 @@ impl Game<'_> {
         }
         if screen != Screen::DemoIntro {
             self.demo_intro = None;
+        }
+        if self.screen == Screen::Chat && screen != Screen::Chat {
+            self.remove_chat_screen(crate::game::chat::ChatExit::Interrupted);
         }
         self.screen = screen;
         // Set again by the Mods screen's Config once its mod screen is open.
@@ -613,10 +671,10 @@ impl Game<'_> {
     /// A mod's own screen cannot open now: over a book, a sign editor, a
     /// dialog or a prompt, with neither the title nor a player, with a
     /// world loading, or on a guest's behalf.
-    fn mod_screen_blocked(&self) -> bool {
+    fn mod_screen_blocked(&self, removes_overlay: bool, title_available: bool) -> bool {
         self.lan_acting.is_some()
-            || (self.player.is_none() && self.title.is_none())
-            || self.screen_over_playing()
+            || (self.player.is_none() && !title_available)
+            || (!removes_overlay && self.screen_over_playing())
             || self.remote_loading()
     }
 
@@ -655,7 +713,7 @@ impl Game<'_> {
                 .filter(|old| old.overlay);
             let from = from.map(ObservedScreen::view);
             let to = screen_view_with_id(&none, id);
-            self.decide_screen(from.as_ref().unwrap_or(&none), &to, from.is_some())
+            self.decide_screen(from.as_ref().unwrap_or(&none), &to, from.is_some(), false)
         };
         match decision {
             ScreenDecision::Keep => return false,
@@ -772,7 +830,7 @@ impl Game<'_> {
             let none = self.screen_change_view(Screen::Playing);
             let from = screen_view_with_id(&none, current);
             let to = screen_view_with_id(&none, id);
-            self.decide_screen(&from, &to, true)
+            self.decide_screen(&from, &to, true, false)
         } else {
             ScreenDecision::Open
         };
@@ -951,48 +1009,25 @@ impl Game<'_> {
     }
 }
 
-/// `Level.setBlock`'s flags, for the `native_set_block_property` helpers:
-/// `flags::UPDATE_CLIENTS` as a vanilla crop grows, `flags::UPDATE_ALL` as a
-/// furnace sets its `lit`.
-pub(super) use sunrise_world::level::flags;
-
-/// A mod's camera (`native_camera_pose`): each value that isn't finite keeps vanilla's from `view`.
-fn posed_camera(
-    view: (glam::DVec3, f32, f32),
-    position: [f64; 3],
-    yaw: f32,
-    pitch: f32,
-) -> (glam::DVec3, f32, f32) {
-    let position = std::array::from_fn(|i| {
-        if position[i].is_finite() {
-            position[i]
+/// The pose a native mod asks for the first-person hand, each out-of-range
+/// or non-finite component replaced by its identity.
+pub(in crate::game) fn hand_pose_matrix(values: [f32; 7]) -> glam::Mat4 {
+    let valid = |value: f32, min: f32, max: f32, default: f32| {
+        if value.is_finite() && (min..=max).contains(&value) {
+            value
         } else {
-            view.0[i]
+            default
         }
-    });
-    (
-        glam::DVec3::from_array(position),
-        if yaw.is_finite() { yaw } else { view.1 },
-        if pitch.is_finite() { pitch } else { view.2 },
-    )
-}
-
-/// The largest turn a shake gives, in degrees, on each axis.
-const SHAKE_MAX_DEGREES: f32 = 10.0;
-/// The largest offset a shake gives, in blocks, along each axis.
-const SHAKE_MAX_OFFSET: f32 = 0.5;
-
-use camera_pose::bounded_shake;
-pub(super) use camera_pose::hand_pose_matrix;
-
-/// The pose a bounded shake multiplies into the projection, after the view
-/// bobbing: the offset, then roll, pitch and yaw.
-fn shake_pose(shake: Shake) -> glam::Mat4 {
-    let [x, y, z] = shake.offset;
-    glam::Mat4::from_translation(glam::Vec3::new(-x, -y, -z))
-        * glam::Mat4::from_rotation_z(shake.roll.to_radians())
-        * glam::Mat4::from_rotation_x(shake.pitch.to_radians())
-        * glam::Mat4::from_rotation_y(shake.yaw.to_radians())
+    };
+    let [x, y, z, pitch, yaw, roll, scale] = values;
+    glam::Mat4::from_translation(glam::Vec3::new(
+        valid(x, -16.0, 16.0, 0.0),
+        valid(y, -16.0, 16.0, 0.0),
+        valid(z, -16.0, 16.0, 0.0),
+    )) * glam::Mat4::from_rotation_x(valid(pitch, -3600.0, 3600.0, 0.0).to_radians())
+        * glam::Mat4::from_rotation_y(valid(yaw, -3600.0, 3600.0, 0.0).to_radians())
+        * glam::Mat4::from_rotation_z(valid(roll, -3600.0, 3600.0, 0.0).to_radians())
+        * glam::Mat4::from_scale(glam::Vec3::splat(valid(scale, 0.01, 100.0, 1.0)))
 }
 
 /// This client's window-owned mod screen and its local slot state.
@@ -1041,7 +1076,13 @@ fn seed_native_menu(game: &mut Game<'_>, window: i32, name: &str) -> u64 {
     menu.generation
 }
 
-/// Where a mod moved the open screen's slots after it opened, over the
+/// How many of a menu's player slots are the main inventory's rows, which
+/// come before the hotbar in menu order
+/// (`AbstractContainerMenu.addStandardInventorySlots`).
+const MAIN_INVENTORY_SLOTS: usize = 27;
+
+/// Where a mod moved the open screen's slots (container slots, then the
+/// player's, in menu order) after it opened, over the
 /// positions its `MenuScreenLayout` declared. Interior state, as the screen callbacks that
 /// move slots hold `&self`. A move is pending until the layout build commits
 /// it, so drawing and hit-testing read one position within a frame and both
@@ -1065,33 +1106,34 @@ impl SlotMoves {
             .copied()
             .unwrap_or(declared)
     }
-    /// Where slot `slot` of a screen that declared `slots` will be from the
-    /// next build: the last move, pending or committed, else its declaration.
-    fn latest(&self, slots: &[Option<mod_api::ScreenSlot>], slot: usize) -> Option<[f32; 2]> {
-        let declared = slots.get(slot)?.as_ref().map(|slot| slot.position);
+    /// Where menu slot `slot` will be from the next build: the last move,
+    /// pending or committed, else its declaration. `declared` is the screen's
+    /// declaration (`OpenNativeScreen::declared_slot`), None for no such slot.
+    fn latest(&self, slot: usize, declared: Option<Option<[f32; 2]>>) -> Option<[f32; 2]> {
+        let declared = declared?;
         let pending = self.pending.borrow().get(&slot).copied();
         match pending {
             Some(pending) => pending,
             None => self.position(slot, declared),
         }
     }
-    /// Moves or activates slot `slot` of a screen that declared `slots` to `pos`,
-    /// or hides it with None, from the next build (`Slot.isActive()`). A refusal
-    /// or a repeat changes nothing, not even the move count.
+    /// Moves or activates menu slot `slot` to `pos`, or hides it with None,
+    /// from the next build (`Slot.isActive()`). `declared` is as in `latest`.
+    /// A refusal or a repeat changes nothing, not even the move count.
     fn set(
         &self,
-        slots: &[Option<mod_api::ScreenSlot>],
         slot: usize,
+        declared: Option<Option<[f32; 2]>>,
         pos: Option<[f32; 2]>,
     ) -> Result<(), mod_api::ScreenSlotRefusal> {
         use mod_api::ScreenSlotRefusal;
-        if slot >= slots.len() {
+        if declared.is_none() {
             return Err(ScreenSlotRefusal::NoSuchSlot);
         }
         if pos.is_some_and(|[x, y]| !x.is_finite() || !y.is_finite()) {
             return Err(ScreenSlotRefusal::BadPosition);
         }
-        if self.latest(slots, slot) != pos {
+        if self.latest(slot, declared) != pos {
             self.pending.borrow_mut().insert(slot, pos);
             self.count.set(self.count.get().wrapping_add(1));
         }
@@ -1203,6 +1245,49 @@ impl OpenNativeScreen {
             .map_or(36, sunrise_client::containers::ModMenuType::player_slots)
     }
 
+    /// Where the screen declared menu slot `slot` (container slots, then the
+    /// player's main inventory and hotbar, as `AbstractContainerMenu.slots`
+    /// holds them): Some(None) for a container slot declared inactive, None
+    /// for no such slot.
+    fn declared_slot(&self, slot: usize) -> Option<Option<[f32; 2]>> {
+        let layout = self.layout();
+        if let Some(declared) = layout.slots.get(slot) {
+            return Some(declared.as_ref().map(|slot| slot.position));
+        }
+        let player = slot - layout.slots.len();
+        if player >= self.player_slots() {
+            return None;
+        }
+        let (column, row_y) = if player < MAIN_INVENTORY_SLOTS {
+            (player % 9, layout.inventory_y + (player / 9) as f32 * 18.0)
+        } else {
+            (player - MAIN_INVENTORY_SLOTS, layout.inventory_y + 58.0)
+        };
+        Some(Some([layout.inventory_x + column as f32 * 18.0, row_y]))
+    }
+
+    /// Menu slot of the player's inventory slot `slot` (0..9 the hotbar, 9..36
+    /// the main inventory), None when the menu has no such player slot.
+    fn player_menu_slot(&self, slot: usize) -> Option<usize> {
+        if slot >= 9 + MAIN_INVENTORY_SLOTS {
+            return None;
+        }
+        let player = if slot >= 9 {
+            slot - 9
+        } else {
+            MAIN_INVENTORY_SLOTS + slot
+        };
+        (player < self.player_slots()).then(|| self.layout().slots.len() + player)
+    }
+
+    /// Where this frame puts the player's inventory slot `slot`: where the
+    /// last build committed it (None once hidden), else its declared place.
+    fn player_slot_position(&self, slot: usize) -> Option<[f32; 2]> {
+        let menu_slot = self.player_menu_slot(slot)?;
+        self.slot_moves
+            .position(menu_slot, self.declared_slot(menu_slot)?)
+    }
+
     fn visible_container_slots(&self) -> impl Iterator<Item = usize> + '_ {
         let base = self.container_slot_base();
         self.layout()
@@ -1217,22 +1302,10 @@ impl OpenNativeScreen {
     }
 
     pub(super) fn visible_slots(&self) -> impl Iterator<Item = usize> + '_ {
-        (0..self.player_slots()).chain(self.visible_container_slots())
+        (0..self.player_slots())
+            .filter(move |&slot| self.player_slot_position(slot).is_some())
+            .chain(self.visible_container_slots())
     }
-}
-
-/// The player as a native mod reads it.
-#[allow(dead_code)]
-#[derive(Clone, Debug, PartialEq)]
-pub struct NativePlayer {
-    pub x: f64,
-    pub y: f64,
-    pub z: f64,
-    /// Degrees; 0 faces south, 90 west (`Direction.fromYRot`).
-    pub yaw: f32,
-    pub pitch: f32,
-    /// `minecraft:overworld`, `minecraft:the_nether`, `minecraft:the_end`.
-    pub dimension: &'static str,
 }
 
 /// How the panel lays out a recipe of `native_panel_recipes`.
@@ -1285,87 +1358,6 @@ pub(crate) struct NativeRecipeView {
     pub(crate) note: String,
     /// The action button beside it: none, enabled, or shown greyed.
     pub(crate) action: Option<bool>,
-}
-
-/// An item of [`NativeRecipes::items`], by its index there, with a count
-/// and the components it has beyond the item's own, in vanilla's item
-/// syntax (`[minecraft:potion_contents={potion:"minecraft:swiftness"}]`),
-/// or "".
-#[allow(dead_code)]
-#[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct NativeRecipeStack {
-    pub(crate) item: u32,
-    pub(crate) count: u32,
-    pub(crate) components: String,
-}
-
-/// The station a recipe is made at.
-#[allow(dead_code)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum NativeRecipeKind {
-    CraftingShaped,
-    CraftingShapeless,
-    Smelting,
-    Blasting,
-    Smoking,
-    Campfire,
-    Stonecutting,
-    Smithing,
-    Brewing,
-}
-
-/// A recipe of [`NativeRecipes`].
-#[allow(dead_code)]
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct NativeRecipe {
-    /// `minecraft:oak_planks`.
-    pub(crate) id: String,
-    pub(crate) kind: NativeRecipeKind,
-    /// The recipe book's tab (`crafting_building_blocks`, `furnace_food`),
-    /// or "".
-    pub(crate) category: String,
-    /// Recipes the book shows on one button share a group, or "".
-    pub(crate) group: String,
-    /// A shaped recipe's grid: `slots` holds its cells row by row. 0 for
-    /// the other kinds.
-    pub(crate) width: u32,
-    pub(crate) height: u32,
-    /// Each slot's stacks, any one of which fits; an empty list is an empty
-    /// cell. Cooking and stonecutting: the input. Smithing: the template,
-    /// the base, the addition. Brewing: the bottle, the reagent.
-    pub(crate) slots: Vec<Vec<NativeRecipeStack>>,
-    /// What it makes; several when that varies (a trim on any armour).
-    pub(crate) results: Vec<NativeRecipeStack>,
-    /// Cooking: game ticks and experience; 0 for the other kinds.
-    pub(crate) cooking_time: u32,
-    pub(crate) experience: f32,
-    /// The recipe book's id for it (one per way the book shows it), as
-    /// `known_recipes` lists them; -1 for the kinds the book doesn't
-    /// show (campfire, stonecutting, smithing, brewing).
-    pub(crate) book_id: i32,
-}
-
-/// An item of [`NativeRecipes::items`].
-#[allow(dead_code)]
-#[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct NativeItem {
-    /// `minecraft:diamond`, `<mod>:<path>`.
-    pub(crate) id: String,
-    /// In the player's language.
-    pub(crate) name: String,
-    /// Its item tags, without the `#`.
-    pub(crate) tags: Vec<String>,
-}
-
-/// Every item and recipe the game knows (`native_recipes`): `items` in the
-/// registry's order, which each [`NativeRecipeStack::item`] indexes; the
-/// recipes are the book's in its order, then campfire, stonecutting,
-/// smithing and brewing.
-#[allow(dead_code)]
-#[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct NativeRecipes {
-    pub(crate) items: Vec<NativeItem>,
-    pub(crate) recipes: Vec<NativeRecipe>,
 }
 
 /// Which mouse Post hook owes dispatch (`ScreenMousePost`).
@@ -1633,6 +1625,41 @@ impl Game<'_> {
         // Any release ends the drag, as vanilla's `MouseHandler.onButton` clears `activeButton`:
         // left down, right down, left up sends no drag while right is still held.
         self.drag_button = pressed.then_some(button);
+    }
+    /// `Screen.mouseMoved`, asked before the move's drag: whether a mod cancelled the move.
+    /// Nothing is built with no listener. A screen holding the pointer grab hears
+    /// `screen_pointer_motion` instead (the grab's own cursor warps are not moves).
+    pub(super) fn screen_mouse_moved(&self, delta: [f32; 2]) -> bool {
+        if self.pad_synthetic_input()
+            || delta == [0.0; 2]
+            || self.screen_grab
+            || !mod_api::__private::listened(mod_api::HookId::ScreenMouseMovedPre)
+        {
+            return false;
+        }
+        let Some(receiver) = self.observed_input_screen() else {
+            return false;
+        };
+        let mut canceled = false;
+        self.native_screen_mouse_moved_pre(
+            &receiver.view(),
+            delta,
+            super::glfw_modifiers(self.modifiers),
+            &mut canceled,
+        );
+        canceled
+    }
+    /// The grabbing mod screen's raw pointer motion (`screen_pointer_motion`), unscaled.
+    pub(in crate::game) fn screen_pointer_motion(&self, delta: [f64; 2]) {
+        if delta == [0.0; 2]
+            || !self.mod_screen_grabs_pointer()
+            || !mod_api::__private::listened(mod_api::HookId::ScreenPointerMotion)
+        {
+            return;
+        }
+        if let Some(receiver) = self.observed_input_screen() {
+            self.native_screen_pointer_motion(&receiver.view(), delta);
+        }
     }
     pub(super) fn screen_mouse_dragged(&self, delta: [f32; 2]) -> ScreenMousePre {
         if self.pad_synthetic_input() || delta == [0.0; 2] {
@@ -2011,7 +2038,7 @@ impl Game<'_> {
                 let _ = self.level_set_block(level, at, state, flags);
             }
             sunrise_world::level::LandingWrite::DestroyBlock { drop } => {
-                self.level_destroy_block(level, at, drop, None, false);
+                self.level_destroy_block(level, at, drop, None, None, false);
             }
             // A write a later API adds that this game does not know is not applied.
             _ => {}
@@ -2021,22 +2048,34 @@ impl Game<'_> {
 
 /// `native_living_use_totem` for the damage code: whether it
 /// canceled the totem. The entity and the source are named as the damage hook names them.
-pub(super) fn use_totem(level: DamageLevel<'_>, hurting: Hurting<'_>, off_hand: bool) -> bool {
+pub(super) fn use_totem(
+    level: DamageLevel<'_>,
+    hurting: Hurting<'_>,
+    hand: Hand,
+    stack: &ItemStack,
+) -> bool {
     if !mod_api::__private::listened(mod_api::HookId::LivingUseTotem) {
         return false;
     }
     let (entity, kind, source) = hurt_server_args(hurting, level.attack());
-    let hand = if off_hand { Hand::Off } else { Hand::Main };
     let mut cancel = false;
-    HitLevel(level).native_living_use_totem(
-        entity,
-        kind,
-        &source,
-        hand,
-        "minecraft:totem_of_undying",
-        &mut cancel,
-    );
+    HitLevel(level).native_living_use_totem(entity, kind, &source, hand, stack, &mut cancel);
     cancel
+}
+
+/// `native_living_death_protection` for the damage code: a mod's protector from outside the
+/// hands, once neither hand protected.
+pub(super) fn death_protection_source(
+    level: DamageLevel<'_>,
+    hurting: Hurting<'_>,
+) -> Option<ItemStack> {
+    if !mod_api::__private::listened(mod_api::HookId::LivingDeathProtection) {
+        return None;
+    }
+    let (entity, kind, source) = hurt_server_args(hurting, level.attack());
+    let mut protector = None;
+    HitLevel(level).native_living_death_protection(entity, kind, &source, &mut protector);
+    protector
 }
 
 /// The level a hit or a landing happens in, as its hooks' level host: its blocks, its random and its
@@ -2044,6 +2083,14 @@ pub(super) fn use_totem(level: DamageLevel<'_>, hurting: Hurting<'_>, off_hand: 
 /// tick, where the world is read by every mob and its random is lent out, and building one
 /// per hit would allocate its entity boxes.
 pub(super) struct HitLevel<'a>(pub(super) DamageLevel<'a>);
+
+impl<'a> HitLevel<'a> {
+    /// The item table a mod's stack is checked against as it comes back into the hit
+    /// (`living_death_protection`'s protector): the authoritative world's, as for the hit's reads.
+    pub(in crate::game) fn stack_boundary_items(&self) -> Option<&'a sunrise_client::items::Items> {
+        self.0.tags()
+    }
+}
 
 /// Let listeners override the vanilla invulnerability decision for this hit.
 pub(super) fn invulnerability_check(
@@ -2193,29 +2240,44 @@ pub(super) fn incoming_damage(
     let (entity, kind, source) = hurt_server_args(hurting, level.attack());
     let mut canceled = false;
     let attack = level.attack();
-    let Ok(weapon) = attack.weapon_of(source.direct).try_into_api() else {
-        return false;
-    };
+    let weapon = attack.weapon_of(source.direct);
     let causing_weapon = (source.causing != 0 && source.causing == attack.attacker)
         .then_some(attack.held[0].as_ref())
         .flatten();
-    let Ok(causing_weapon) = causing_weapon.try_into_api() else {
-        return false;
-    };
-    let mut live = LiveDamageContainer(container);
-    HitLevel(level.caused_by(source.causing)).native_living_incoming_damage(
-        mod_api::__private::LivingIncomingDamageCall {
-            entity,
-            kind,
-            source: &source,
-            victim: &victim,
-            weapon: weapon.as_ref(),
-            causing_weapon: causing_weapon.as_ref(),
-            container: mod_api::DamageContainer::new(&mut live),
-            canceled: &mut canceled,
-        },
-    );
+    with_hit_weapons(weapon, causing_weapon, |weapon, causing_weapon| {
+        let mut live = LiveDamageContainer(container);
+        HitLevel(level.caused_by(source.causing)).native_living_incoming_damage(
+            mod_api::__private::LivingIncomingDamageCall {
+                entity,
+                kind,
+                source: &source,
+                victim: &victim,
+                weapon,
+                causing_weapon,
+                container: mod_api::DamageContainer::new(&mut live),
+                canceled: &mut canceled,
+            },
+        );
+    });
     canceled
+}
+
+/// One melee weapon can be both the direct and the causing weapon. Feed both fields the
+/// same view so reading either doesn't encode that stack's components again.
+fn with_hit_weapons(
+    direct: Option<&ItemStack>,
+    causing: Option<&ItemStack>,
+    dispatch: impl FnOnce(Option<&mod_api::ItemStackView<'_>>, Option<&mod_api::ItemStackView<'_>>),
+) {
+    with_stack_view(direct, |direct_view| {
+        if direct.zip(causing).is_some_and(|(a, b)| std::ptr::eq(a, b)) {
+            dispatch(direct_view.as_ref(), direct_view.as_ref());
+        } else {
+            with_stack_view(causing, |causing_view| {
+                dispatch(direct_view.as_ref(), causing_view.as_ref());
+            });
+        }
+    });
 }
 
 /// `native_living_damage_pre` for the damage code.
@@ -2364,29 +2426,48 @@ impl Game<'_> {
     }
 
     /// The [`Attack`] of `attacker` (an entity id, 0 for none) for the level a hit lands in
-    /// ([`DamageLevel::attacked_by`]). While a native mod listens it also records what the
-    /// attacker holds (the player's selected and off-hand stacks, a mob's main hand) for
-    /// `living_knockback` and the weapon of `living_incoming_damage`; without one it is the
-    /// id alone, two `None`s and no allocation. Taken before the level's borrows of the game.
+    /// ([`DamageLevel::attacked_by`]). Record the attacker's hand state only if a
+    /// subscribed hit, death or loot hook may read it, or when the main hand carries
+    /// `minecraft:armor_effectiveness`, which the hit reads as its weapon. Capture before
+    /// the level borrows the game so nested damage can't substitute a different attacker's
+    /// hands.
     pub(super) fn attack_of(&self, attacker: i32) -> Attack {
-        let held = if mod_api::__private::mods().is_empty() {
-            [None, None]
-        } else if self
+        let listens = [
+            mod_api::HookId::LivingIncomingDamage,
+            mod_api::HookId::LivingKnockback,
+            mod_api::HookId::LivingDeath,
+            mod_api::HookId::LootDrops,
+        ]
+        .into_iter()
+        .any(mod_api::__private::listened);
+        let enchantments = &world_stations!(self).enchantments;
+        let main = |stack: Option<&sunrise_client::items::ItemStack>| {
+            stack
+                .filter(|stack| {
+                    listens || enchantments.has_component(stack, "minecraft:armor_effectiveness")
+                })
+                .cloned()
+        };
+        let held = if self
             .player
             .as_ref()
             .is_some_and(|p| p.entity_id == attacker)
         {
-            [self.stack_in(self.selected).cloned(), self.offhand.clone()]
-        } else if let Some(mob) = self.mobs.iter().find(|m| m.id as i32 == attacker) {
-            [mob.extra.main_hand_stack().cloned(), None]
+            [
+                main(self.stack_in(self.selected)),
+                listens.then(|| self.offhand.clone()).flatten(),
+            ]
+        } else if let Some(index) = self.mob_index.find_ref(&self.mobs, attacker as u32) {
+            let mob = &self.mobs[index];
+            [main(mob.extra.main_hand_stack()), None]
         } else if let Some(guest) = self
             .lan
             .as_ref()
             .and_then(|host| host.hub.guests.iter().find(|g| g.entity_id == attacker))
         {
             [
-                guest.inventory.get(guest.selected).cloned().flatten(),
-                guest.offhand.clone(),
+                main(guest.inventory.get(guest.selected).and_then(Option::as_ref)),
+                listens.then(|| guest.offhand.clone()).flatten(),
             ]
         } else {
             [None, None]
@@ -2418,6 +2499,8 @@ impl Game<'_> {
                 .then(|| self.known_attacker_uuid(attacker as u32))
                 .flatten(),
             player_uuid,
+            enchantment_attacker: self.enchantment_actor(attacker),
+            enchantment_direct: None,
         }
     }
     /// [`Self::attack_of`] for the attacker a damage source names: the player, a mob, or (none)
@@ -2452,32 +2535,64 @@ pub(super) fn knockback(level: DamageLevel<'_>, pushed: Hurting<'_>, knock: &mut
             causing => causing,
         },
     };
-    let (kill_credit, credit_main) = level.knockback_credit(&pushed);
-    let Ok(credit_main) = credit_main.map(TryIntoApi::try_into_api).transpose() else {
-        return false;
-    };
-    let (entity, kind, source) = hurt_server_args(pushed, level.attack());
+    let (level, kill_credit, credit_main) = level.split_knockback_credit(&pushed);
+    let (entity, kind, source) = hurt_server_args(pushed, attack);
     let mut canceled = false;
     let [main, off] = &attack.held;
-    let (Ok(main), Ok(off)) = (main.try_into_api(), off.try_into_api()) else {
-        return false;
+    let read_metadata = |slot: &str, stack: Option<&sunrise_client::items::ItemStack>| {
+        let stack = stack?;
+        if stack.count == 0 || &*stack.item == "minecraft:air" {
+            return None;
+        }
+        match crate::game::api_values::stack_read_metadata(stack) {
+            Ok(metadata) => Some(metadata),
+            Err(error) => {
+                log::warn!(
+                    "living_knockback on entity {entity} ({kind}): omitting unrepresentable {slot} '{}' (count {}): {error:?}",
+                    stack.item,
+                    stack.count,
+                );
+                None
+            }
+        }
     };
-    let entry = level.knockback_entry();
+    let main_metadata = read_metadata("attacker_main", main.as_ref());
+    let off_metadata = read_metadata("attacker_off", off.as_ref());
+    let credit_metadata = read_metadata("kill_credit_main", credit_main);
+    let project_main = |metadata| {
+        main.as_ref()
+            .and_then(|stack| crate::game::api_values::project_stack(stack, metadata).ok())
+    };
+    let project_off = |metadata| {
+        off.as_ref()
+            .and_then(|stack| crate::game::api_values::project_stack(stack, metadata).ok())
+    };
+    let project_credit = |metadata| {
+        credit_main.and_then(|stack| crate::game::api_values::project_stack(stack, metadata).ok())
+    };
+    let attacker_main =
+        main_metadata.map(|metadata| mod_api::ItemStackView::resident(metadata, &project_main));
+    let attacker_off =
+        off_metadata.map(|metadata| mod_api::ItemStackView::resident(metadata, &project_off));
+    let kill_credit_main =
+        credit_metadata.map(|metadata| mod_api::ItemStackView::resident(metadata, &project_credit));
+    // NeoForge `LivingEntity.knockback` posts `(float) strength` and widens the result back.
+    let mut strength = knock.strength as f32;
     HitLevel(level).native_living_knockback(mod_api::__private::LivingKnockbackCall {
         entity,
         kind,
         source: &source,
         attacker,
-        attacker_main: main.as_ref(),
-        attacker_off: off.as_ref(),
+        attacker_main,
+        attacker_off,
         kill_credit,
-        kill_credit_main: credit_main.as_ref(),
-        entry,
-        strength: &mut knock.strength,
+        kill_credit_main,
+        strength: &mut strength,
         x: &mut knock.x,
         z: &mut knock.z,
         canceled: &mut canceled,
     });
+    knock.strength = f64::from(strength);
     canceled
 }
 
@@ -2490,6 +2605,7 @@ pub(super) const DAMAGE_HOOKS: DamageHooks = DamageHooks {
     owner_post_listened: Some(|| mod_api::__private::listened(mod_api::HookId::LivingDamagePost)),
     knockback: Some(knockback),
     totem: Some(use_totem),
+    protector: Some(death_protection_source),
     shield: Some(shield_block),
     accepted: Some(living_death::capture_hit),
 };
@@ -2509,7 +2625,7 @@ pub(super) const BLOCK_CONTACT_HOOKS: sunrise_client::block_contact::Hooks =
                 ))
                 .native_step_on(step, movement),
                 StepLevel::Client(level) => StepOnView(mod_api::LevelRandomSide::Client(
-                    &crate::game::native_surface::FrictionView(level),
+                    &crate::game::native_surface::FrictionView(level, None),
                 ))
                 .native_step_on(step, movement),
             }
@@ -2750,7 +2866,7 @@ impl Game<'_> {
         self.placement_canceled(self.entity(placer), pos, state, placed_against, companion)
     }
 
-    fn placement_canceled(
+    pub(in crate::game) fn placement_canceled(
         &mut self,
         placer: Option<EntityRef>,
         pos: BlockPos,
@@ -2852,7 +2968,8 @@ impl Game<'_> {
                 self.trigger_block("minecraft:placed_block", target, stack);
             }
         }
-        self.with_level(|b, level, ticks| b.report_placement(level, ticks, &placed));
+        let placer = by_player.then(|| self.native_clicker().1.cast_unsigned());
+        self.with_level(|b, level, ticks| b.report_placement(level, ticks, &placed, placer));
         Ok(Some(placed))
     }
     /// `MobEvent::PlaceBlock`: a mob sets `state` at `pos` unless a mod
@@ -3069,8 +3186,13 @@ impl Game<'_> {
         &mut self,
         name: &str,
         value: GameRuleValue,
-        actor: Option<&GameRuleActor<'_>>,
+        actor: Option<PlayerRef>,
     ) {
+        // MinecraftServer.onGameRuleChanged refreshes the chunk source for this
+        // rule, but not when spawn_mobs itself changes.
+        if name == "minecraft:spawn_monsters" {
+            self.update_mob_spawning_flags();
+        }
         if mod_api::__private::listened(mod_api::HookId::GameRuleChanged) {
             self.native_game_rule_changed(name, value, actor);
         }
@@ -3155,7 +3277,7 @@ impl Game<'_> {
         }
     }
     /// The mobs from index `from` on are new in the world.
-    pub(super) fn native_mobs_joined(&mut self, from: usize, natural: bool) {
+    pub(super) fn admit_new_mobs(&mut self, from: usize) {
         // Preserve saved or constructed UUIDs. Insertion paths without an
         // identity still need one before their join listeners run.
         for mob in self.mobs.iter().skip(from) {
@@ -3163,31 +3285,31 @@ impl Game<'_> {
                 .uuids
                 .get_or_insert_with(mob.id, sunrise_client::save::random_uuid);
         }
+        self.flush_pending_mob_parts();
         self.join_spawn_tags(from);
-        // A mod can keep a mob out; it is then taken out and not told of.
         self.native_joins_flush(false, 0);
-        for i in from..self.mobs.len() {
-            let m = &self.mobs[i];
-            let (kind, pos) = (mob_kind(m), [m.position.x, m.position.y, m.position.z]);
-            self.native_mob_spawned(self.dim.id(), &kind, pos, natural);
-        }
-    }
-    /// The acting player's blow killed mob `index`.
-    pub(super) fn native_kill_event(&mut self, index: usize) {
-        let (entity, kind) = (self.mobs[index].id, mob_kind(&self.mobs[index]));
-        let player = self.native_acting_id();
-        self.native_mob_killed(player, entity, &kind);
     }
     /// The acting player's hit landed on mob `index`, holding `stack`.
     pub(super) fn native_hurt_enemy_event(&mut self, stack: &ItemStack, index: usize) {
+        if !mod_api::__private::item_listens(mod_api::HookId::HurtEnemy, &stack.item) {
+            return;
+        }
         let mob = &self.mobs[index];
-        let kind = ["minecraft:", mob.kind.id.trim_start_matches("minecraft:")].concat();
-        self.native_hurt_enemy(stack, mob.id, &kind);
+        let entity = mob.id;
+        // MobTypes retains the canonical registry id for vanilla and content types alike.
+        let kind = mob.kind.clone();
+        with_stack_view(Some(stack), |view| {
+            if let Some(view) = view {
+                self.native_hurt_enemy(view, entity, &kind.id);
+            }
+        });
     }
     /// `Inventory.tick` for the acting player: each carried stack goes through
     /// `native_inventory_tick`.
     pub(super) fn native_inventory_ticks(&mut self) {
-        if self.player.is_none() {
+        if self.player.is_none()
+            || !mod_api::__private::has_part_hook(mod_api::HookId::InventoryTick)
+        {
             return;
         }
         for i in 0..self.inventory.len() {
@@ -3200,13 +3322,19 @@ impl Game<'_> {
         self.native_slot_tick(-106, false);
     }
     fn native_slot_tick(&mut self, slot: i32, selected: bool) {
-        if !mod_api::__private::has_part_hook(mod_api::HookId::InventoryTick) {
-            return;
-        }
-        let Some(stack) = self.native_carried_slot(slot).and_then(|s| s.clone()) else {
+        let Some(stack) = self.native_carried_slot(slot).and_then(|s| s.as_ref()) else {
             return;
         };
-        self.native_inventory_tick(&stack, slot, selected);
+        if stack.count > 0
+            && mod_api::__private::item_listens(mod_api::HookId::InventoryTick, &stack.item)
+            && let Some(item) = mod_api::__private::item_key(&stack.item)
+        {
+            let place = mod_api::ItemPlace::PlayerSlot {
+                player: self.native_acting_id(),
+                slot,
+            };
+            self.native_inventory_tick(item, &place, slot, selected);
+        }
         if let Some(stack) = self.native_carried_slot(slot)
             && stack.as_ref().is_some_and(|s| s.count == 0)
         {
@@ -3251,7 +3379,7 @@ impl Game<'_> {
                 let Some(state) = registry.state(BlockStateId(id)) else {
                     return false;
                 };
-                if state.name.starts_with("minecraft:") {
+                if !mod_api::__private::is_content_block(&state.name) {
                     return false;
                 }
                 *blocks.entry(state.name.as_str()).or_insert_with(|| {
@@ -3271,7 +3399,7 @@ impl Game<'_> {
         self.with_level(|_, level, _| level.new_block_entity_for_state(state))
     }
     /// The containers of the mod blocks' block entities, by block state
-    /// (`native_block_entity_container`), checked.
+    /// (`native_block_entity_container`).
     pub(super) fn native_containers(&self) -> FxHashMap<u32, Arc<ModContainer>> {
         let registry = self.pack.assets.registry;
         let mut by_block: FxHashMap<String, Option<Arc<ModContainer>>> = FxHashMap::default();
@@ -3280,7 +3408,7 @@ impl Game<'_> {
             let Some(state) = registry.state(sunrise_world::registry::BlockStateId(i)) else {
                 continue;
             };
-            if state.name.starts_with("minecraft:") {
+            if !mod_api::__private::is_content_block(&state.name) {
                 continue;
             }
             let container = by_block.entry(state.name.clone()).or_insert_with(|| {
@@ -3288,10 +3416,6 @@ impl Game<'_> {
                 self.native_block_entity_container(&state.name, &mut container);
                 container.map(|mut c| {
                     let n = c.slots;
-                    for list in c.faces.iter_mut().chain([&mut c.inputs, &mut c.outputs]) {
-                        list.retain(|&s| s < n);
-                    }
-                    c.insert_rules.truncate(n);
                     c.menu = c
                         .menu
                         .filter(|m| mod_menu(m).is_some_and(|(_, size)| size == n));
@@ -3305,7 +3429,7 @@ impl Game<'_> {
         out
     }
     /// The fluid tanks of the mod blocks' block entities, by block state
-    /// (`native_block_entity_fluids`), checked as the containers are.
+    /// (`native_block_entity_fluids`).
     pub(super) fn native_fluid_tables(&self) -> FxHashMap<u32, Arc<ModFluidTanks>> {
         let registry = self.pack.assets.registry;
         let mut by_block: FxHashMap<String, Option<Arc<ModFluidTanks>>> = FxHashMap::default();
@@ -3314,25 +3438,13 @@ impl Game<'_> {
             let Some(state) = registry.state(sunrise_world::registry::BlockStateId(i)) else {
                 continue;
             };
-            if state.name.starts_with("minecraft:") {
+            if !mod_api::__private::is_content_block(&state.name) {
                 continue;
             }
             let tanks = by_block.entry(state.name.clone()).or_insert_with(|| {
                 let mut fluids = None;
                 self.native_block_entity_fluids(&state.name, &mut fluids);
-                fluids.map(|mut f| {
-                    f.tanks.truncate(16);
-                    // Clamped, not dropped: the face and fill lists name
-                    // tanks by number, which must not shift.
-                    for c in &mut f.tanks {
-                        *c = (*c).clamp(1, 1_000_000);
-                    }
-                    let n = f.tanks.len();
-                    for list in f.faces.iter_mut().chain([&mut f.inputs, &mut f.outputs]) {
-                        list.retain(|&t| t < n);
-                    }
-                    Arc::new(f)
-                })
+                fluids.map(Arc::new)
             });
             if let Some(t) = tanks {
                 out.insert(i, Arc::clone(t));
@@ -3341,7 +3453,7 @@ impl Game<'_> {
         out
     }
     /// The energy buffers of the mod blocks' block entities, by block state
-    /// (`native_block_entity_energy`), checked as the containers are.
+    /// (`native_block_entity_energy`).
     pub(super) fn native_energy_tables(&self) -> FxHashMap<u32, Arc<ModEnergyBuffer>> {
         let registry = self.pack.assets.registry;
         let mut by_block: FxHashMap<String, Option<Arc<ModEnergyBuffer>>> = FxHashMap::default();
@@ -3350,29 +3462,19 @@ impl Game<'_> {
             let Some(state) = registry.state(sunrise_world::registry::BlockStateId(i)) else {
                 continue;
             };
-            if state.name.starts_with("minecraft:") {
+            if !mod_api::__private::is_content_block(&state.name) {
                 continue;
             }
             let buffer = by_block.entry(state.name.clone()).or_insert_with(|| {
                 let mut energy = None;
                 self.native_block_entity_energy(&state.name, &mut energy);
-                energy.filter(|e| e.capacity >= 1).map(|mut e| {
-                    e.max_insert = e.max_insert.clamp(0, e.capacity);
-                    e.max_extract = e.max_extract.clamp(0, e.capacity);
-                    Arc::new(e)
-                })
+                energy.map(Arc::new)
             });
             if let Some(b) = buffer {
                 out.insert(i, Arc::clone(b));
             }
         }
         out
-    }
-    /// Whether a native mod's block `name` has a ticking block entity.
-    pub(in crate::game) fn native_ticks(&self, name: &str) -> bool {
-        let mut ticks = false;
-        self.native_block_entity_ticks(name, &mut ticks);
-        ticks
     }
     /// A mod block's container at `key` opens its menu: its slots grown to
     /// the menu's. False for any other block.
@@ -3423,6 +3525,13 @@ impl Game<'_> {
         let [x, y] = s.slot_moves.position(slot, declared)?;
         Some((x, y))
     }
+    /// Where the open mod screen puts the player's inventory slot `slot` (0..9
+    /// the hotbar, 9..36 the main inventory) this frame; None when hidden or
+    /// when no mod screen is shown.
+    pub(in crate::game) fn native_screen_player_slot(&self, slot: usize) -> Option<(f32, f32)> {
+        let [x, y] = self.shown_native_screen()?.player_slot_position(slot)?;
+        Some((x, y))
+    }
     pub(in crate::game) fn native_screen_slot_icon(&self, slot: usize) -> Option<&str> {
         self.shown_native_screen()?
             .layout()
@@ -3432,14 +3541,16 @@ impl Game<'_> {
             .no_item_icon
             .as_deref()
     }
-    /// Where the open screen of mod menu type `menu` puts container slot
-    /// `slot` from the next frame: the mod's last move, else the screen's
-    /// declaration; None for an inactive/hidden slot, another menu type's screen or none.
+    /// Where the open screen of mod menu type `menu` puts menu slot `slot`
+    /// (container slots, then the player's) from the next frame: the mod's last
+    /// move, else the screen's declaration; None for an inactive/hidden slot,
+    /// another menu type's screen or none.
     pub(in crate::game) fn screen_slot(&self, menu: &str, slot: usize) -> Option<[f32; 2]> {
         let s = self.shown_native_screen().filter(|s| s.menu.name == menu)?;
-        s.slot_moves.latest(&s.layout().slots, slot)
+        s.slot_moves.latest(slot, s.declared_slot(slot))
     }
-    /// Moves or activates container slot `slot` of the open screen of menu type
+    /// Moves or activates menu slot `slot` (container slots, then the player's)
+    /// of the open screen of menu type
     /// `menu` to `pos` (relative to the screen's origin), or hides it with None,
     /// from the next frame (`SlotMoves::set`).
     pub(in crate::game) fn set_screen_slot(
@@ -3452,7 +3563,7 @@ impl Game<'_> {
             .shown_native_screen()
             .filter(|s| s.menu.name == menu)
             .ok_or(mod_api::ScreenSlotRefusal::NoScreen)?;
-        s.slot_moves.set(&s.layout().slots, slot, pos)
+        s.slot_moves.set(slot, s.declared_slot(slot), pos)
     }
     /// The internal container slot base of the open mod screen (`MOD_MENU_SLOT_BASE`
     /// for a `ModMenuType`, `300` for a stock menu).
@@ -3621,7 +3732,7 @@ impl Game<'_> {
         {
             return false;
         }
-        self.audio.play_button_click();
+        self.play_audio_button_click();
         true
     }
     /// The open mod screen's tooltip under the cursor.
@@ -3730,45 +3841,28 @@ impl Game<'_> {
             self.settings.mods.installed.push(row);
         }
     }
-    /// The settings mod `mod_id` registered, with their kept values, as its page shows them.
+    /// The settings mod `mod_id` registered, with their live values from the
+    /// authoritative client settings store, as its page shows them.
     fn native_page_settings(&self, mod_id: &str) -> Vec<NativeSetting> {
         mod_api::__private::settings()
             .iter()
             .filter(|(owner, _)| *owner == mod_id)
-            .map(|(_, spec)| {
-                let kept = self.stored_setting(mod_id, &spec.key);
-                let value = match (&spec.kind, spec.read(kept.as_deref())) {
-                    (_, mod_api::SettingValue::Toggle(on)) => NativeSettingValue::Toggle(on),
-                    (
-                        mod_api::SettingKind::Choice { options, .. },
-                        mod_api::SettingValue::Choice(index),
-                    ) => NativeSettingValue::Choice {
-                        options: options.clone(),
-                        index,
-                    },
-                    (
-                        mod_api::SettingKind::Range { min, max, step, .. },
-                        mod_api::SettingValue::Range(value),
-                    ) => NativeSettingValue::Range {
-                        min: *min,
-                        max: *max,
-                        step: *step,
-                        value,
-                    },
-                    (_, mod_api::SettingValue::Color(rgb)) => NativeSettingValue::Color(rgb),
-                    _ => NativeSettingValue::Toggle(false),
-                };
+            .map(|(owner, spec)| {
+                let value = mod_settings::ui_setting_value(spec, self.live_setting(owner, spec));
                 NativeSetting {
                     key: spec.key.clone(),
                     label: spec.label.clone(),
                     tooltip: spec.tooltip.clone(),
                     value,
+                    category: mod_api::__private::setting_category(mod_id, &spec.key)
+                        .map(str::to_owned),
                 }
             })
             .collect()
     }
     /// Setting `j` of native mod `i`'s page (its index in Options > Mods) changed on the page:
-    /// kept as the mod registered it, then the mod is told (`setting_changed`).
+    /// committed through the single authoritative client settings path, which persists,
+    /// updates live state, and notifies the owning mod (`setting_changed`).
     pub(super) fn native_setting_event(&mut self, i: usize, j: usize) {
         let Some(row) = self.settings.mods.installed.get(i) else {
             return;
@@ -3783,109 +3877,47 @@ impl Game<'_> {
             NativeSettingValue::Range { value, .. } => mod_api::SettingValue::Range(*value),
             NativeSettingValue::Color(rgb) => mod_api::SettingValue::Color(*rgb),
         };
-        let kept = mod_api::__private::setting(&id, &key).and_then(|spec| spec.store(value));
-        let Some(kept) = kept else {
+        let Some(handle) = mod_api::__private::setting_key_by_name(&id, &key) else {
             return;
         };
-        if self.store_setting(&id, &key, &kept) {
-            self.native_setting_changed(&id, &key);
+        let Some((owner, spec)) =
+            mod_api::__private::setting_entry(handle).map(|(owner, spec)| (*owner, spec))
+        else {
+            return;
+        };
+        let root = self.native_settings_root();
+        if self
+            .apply_native_setting_write(&root, owner, spec, value)
+            .is_err()
+        {
+            // Keep the Options > Mods widget aligned with the live store if persistence fails.
+            let live = self.live_setting(owner, spec);
+            if let Some(setting) = self
+                .settings
+                .mods
+                .installed
+                .get_mut(i)
+                .and_then(|row| row.native.as_mut())
+                .and_then(|page| page.settings.get_mut(j))
+            {
+                setting.value = mod_settings::ui_setting_value(spec, live);
+            }
         }
     }
-    /// Native mod `i`'s page opened: its settings' kept values read again.
+    /// Native mod `i`'s page opened: refresh its live values from disk through
+    /// the single authoritative settings store (notifying on external changes)
+    /// and rebuild its page rows from the store.
     pub(super) fn native_settings_refresh(&mut self, i: usize) {
         let Some(id) = self.settings.mods.installed.get(i).map(|m| m.id.clone()) else {
             return;
         };
+        let root = self.native_settings_root();
+        self.refresh_native_settings_owner(&root, &id);
         let settings = self.native_page_settings(&id);
         let row = self.settings.mods.installed.get_mut(i);
         if let Some(page) = row.and_then(|m| m.native.as_mut()) {
             page.settings = settings;
         }
-    }
-    /// A client mod's command (the `command` hook); a server never asks.
-    pub(super) fn client_mod_command(&mut self, command: &str) -> bool {
-        if self.lan_acting.is_some() {
-            return false;
-        }
-        let mut ran = false;
-        self.native_command(command, &mut ran);
-        ran
-    }
-    /// The zoom in effect while playing (a native mod's); the spyglass's own
-    /// view wins.
-    pub(super) fn native_zoom_now(&self) -> Option<mod_api::Zoom> {
-        if !self.playing() || self.scoping() {
-            return None;
-        }
-        let mut zoom = None;
-        self.native_zoom(&mut zoom);
-        let z = zoom?;
-        let factor = finite(z.factor, 1.0, 10.0);
-        (factor > 1.0).then_some(mod_api::Zoom {
-            factor,
-            smooth: z.smooth,
-            turn: if z.turn.is_finite() {
-                z.turn.clamp(0.05, 1.0)
-            } else {
-                1.0
-            },
-        })
-    }
-    /// The pose of native mods' camera shake in this frame (`native_camera_shake`),
-    /// none while not playing.
-    pub(super) fn native_shake_matrix(&self, partial: f32) -> glam::Mat4 {
-        if !self.playing() {
-            return glam::Mat4::IDENTITY;
-        }
-        let mut shake = Shake::default();
-        self.native_camera_shake(partial, &mut shake);
-        if shake == Shake::default() {
-            return glam::Mat4::IDENTITY;
-        }
-        shake_pose(bounded_shake(shake, self.screen_effect_scale()))
-    }
-
-    /// The camera native mods draw this frame from (`native_camera_pose`), starting from
-    /// `view`, vanilla's position, yaw and pitch.
-    pub(super) fn native_camera_pose_now(
-        &mut self,
-        partial: f32,
-        view: (glam::DVec3, f32, f32),
-    ) -> (glam::DVec3, f32, f32) {
-        let (mut position, mut yaw, mut pitch) = (view.0.to_array(), view.1, view.2);
-        self.native_camera_pose(partial, &mut position, &mut yaw, &mut pitch);
-        let posed = posed_camera(view, position, yaw, pitch);
-        if self.apply_requested_camera_type()
-            && let Some(refreshed) = self.camera_view(partial)
-        {
-            // Refresh vanilla components, not the listener's explicit overrides.
-            return (
-                if posed.0 == view.0 {
-                    refreshed.0
-                } else {
-                    posed.0
-                },
-                if posed.1 == view.1 {
-                    refreshed.1
-                } else {
-                    posed.1
-                },
-                if posed.2 == view.2 {
-                    refreshed.2
-                } else {
-                    posed.2
-                },
-            );
-        }
-        posed
-    }
-
-    /// What native mods hand shader packs in this frame (`native_shader_params`),
-    /// with values that aren't finite as 0.
-    pub(super) fn native_shader_params_now(&self, partial: f32) -> [[f32; 4]; 8] {
-        let mut params = [[0.0; 4]; 8];
-        self.native_shader_params(partial, &mut params);
-        finite_params(params)
     }
 }
 
@@ -3922,12 +3954,11 @@ pub(super) fn with_property(
     key: &str,
     value: &str,
 ) -> Option<BlockStateId> {
-    let mut s = registry.state(state)?.clone();
-    match s.properties.get(key) {
-        Some(v) if v == value => return Some(state),
-        Some(_) => {}
-        None => return None,
+    let current = registry.state(state)?;
+    if current.properties.get(key)? == value {
+        return Some(state);
     }
+    let mut s = current.clone();
     s.properties.insert(key.into(), value.into());
     registry.resolve(&s).ok()
 }
@@ -3935,7 +3966,7 @@ pub(super) fn with_property(
 /// The state a mod's property write changes `state` to; none when the block
 /// has no such property or value, or already has it: `LevelChunk.setBlockState`
 /// returns null for the same state, so `Level.setBlock` returns false.
-fn property_change(
+pub(super) fn property_change(
     registry: &BlockRegistry,
     state: BlockStateId,
     key: &str,
@@ -3949,31 +3980,6 @@ pub(super) fn config_dir(game_dir: &Path) -> std::io::Result<PathBuf> {
     let dir = game_dir.join("config");
     fs::create_dir_all(&dir)?;
     Ok(dir)
-}
-
-/// An item entity as `native_item_entities` lists it.
-/// Read by mods only.
-#[allow(dead_code)]
-#[derive(Clone, Debug)]
-pub(super) struct NativeItemEntity {
-    /// The entity's ID.
-    pub id: u32,
-    pub position: [f64; 3],
-    pub stack: ItemStack,
-    /// Ticks before a player may pick it up (`ItemEntity.pickupDelay`);
-    /// hoppers take it whatever this is.
-    pub pickup_delay: u32,
-}
-
-/// `AABB.intersects`: the boxes overlap, touching faces excluded.
-fn box_meets(b: &sunrise_core::geometry::Aabb, min: [f64; 3], max: [f64; 3]) -> bool {
-    let (lo, hi) = (b.min_position(), b.max_position());
-    lo.x < max[0]
-        && hi.x > min[0]
-        && lo.y < max[1]
-        && hi.y > min[1]
-        && lo.z < max[2]
-        && hi.z > min[2]
 }
 
 /// What `mod_screen_open(mod_id)` does before running a screen transition
@@ -3997,7 +4003,7 @@ pub(super) fn mod_screen_opens(
     None
 }
 
-fn client_packet_view(packet: &sunrise_protocol::packets::play::Clientbound) -> ClientPacket {
+fn client_packet_view(packet: &sunrise_protocol::packets::play::Clientbound) -> ClientPacket<'_> {
     use mod_api::Identifier;
     use std::sync::LazyLock;
     use sunrise_protocol::packets::play::Clientbound;
@@ -4012,7 +4018,9 @@ fn client_packet_view(packet: &sunrise_protocol::packets::play::Clientbound) -> 
 }
 
 /// `client_packet_send`'s view of a packet the game sends: as `client_packet_view`.
-fn serverbound_packet_view(packet: &sunrise_protocol::packets::play::Serverbound) -> ClientPacket {
+fn serverbound_packet_view(
+    packet: &sunrise_protocol::packets::play::Serverbound,
+) -> ClientPacket<'_> {
     use mod_api::Identifier;
     use std::sync::LazyLock;
     use sunrise_protocol::packets::play::Serverbound;
@@ -4035,11 +4043,11 @@ fn packet_types(names: &[&str]) -> Vec<mod_api::Identifier> {
 }
 
 /// A packet's type, `sunrise:unknown` outside the protocol's table, and its custom payload.
-fn packet_view(
-    types: &[mod_api::Identifier],
+fn packet_view<'a>(
+    types: &'static [mod_api::Identifier],
     id: i32,
-    payload: Option<&sunrise_protocol::packets::configuration::CustomPayload>,
-) -> ClientPacket {
+    payload: Option<&'a sunrise_protocol::packets::configuration::CustomPayload>,
+) -> ClientPacket<'a> {
     use mod_api::Identifier;
     use std::sync::LazyLock;
 
@@ -4048,9 +4056,8 @@ fn packet_view(
     let id = usize::try_from(id)
         .ok()
         .and_then(|id| types.get(id))
-        .unwrap_or(&UNKNOWN)
-        .clone();
-    let payload = payload.map(|p| ClientPayload::new(p.channel.clone(), p.data.clone()));
+        .unwrap_or(&UNKNOWN);
+    let payload = payload.map(|p| ClientPayload::new(p.channel.as_str(), p.data.as_slice()));
     ClientPacket::new(id, payload)
 }
 
@@ -4683,5 +4690,228 @@ mod tests {
                 assert_eq!(game.screen_hovered_stack(), None);
             },
         );
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn declared_stock_storage_honors_shapes_and_rates() {
+        use super::super::native_entity_refs::tests::{run_fresh_cases, with_game_at};
+        use mod_api::{self, *};
+        use std::sync::Arc;
+        use sunrise_client::{chunk::Chunk, containers::BlockEntity, save};
+
+        const CHILD: &str = "SUNRISE_STOCK_STORAGE_CHILD";
+        if run_fresh_cases(
+            "game::native_hooks::tests::declared_stock_storage_honors_shapes_and_rates",
+            CHILD,
+            &["run"],
+        ) {
+            return;
+        }
+
+        const VAULT: &str = "stock_test:vault";
+        // A stock container is not bounded by the menu protocol's signed-short slot index.
+        const VAULT_SLOT: usize = sunrise_mod_package::content::MAX_MENU_SLOTS as usize;
+        const TANK: &str = "stock_test:tank";
+        const BATTERY: &str = "stock_test:battery";
+
+        struct StockMod;
+        #[mod_api::__subscriptions]
+        impl Hooks for StockMod {
+            fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+                r.block_entity_type("vault").blocks(&[VAULT]).build();
+                r.block_entity_type("tank").blocks(&[TANK]).build();
+                r.block_entity_type("battery").blocks(&[BATTERY]).build();
+
+                let vault = r.block_key(VAULT);
+                let mut container_faces: [Vec<usize>; 6] = Default::default();
+                container_faces[Direction::Up as usize] = vec![VAULT_SLOT];
+                r.block_container(
+                    &vault,
+                    ModContainer {
+                        slots: VAULT_SLOT + 1,
+                        faces: container_faces,
+                        inputs: vec![VAULT_SLOT],
+                        outputs: vec![VAULT_SLOT],
+                        insert_rules: Vec::new(),
+                        menu: None,
+                    },
+                );
+
+                let tank = r.block_key(TANK);
+                let mut fluids = ModFluidTanks::default();
+                fluids.tanks = vec![1000; 17];
+                fluids.tanks[0] = 0;
+                fluids.tanks[16] = 1_000_001;
+                fluids.faces[Direction::Up as usize] = vec![0, 16];
+                fluids.inputs = vec![0, 16];
+                fluids.outputs = vec![0, 16];
+                r.block_fluids(&tank, fluids);
+
+                let battery = r.block_key(BATTERY);
+                let mut extract_faces = [false; 6];
+                extract_faces[Direction::East as usize] = true;
+                r.block_energy(
+                    &battery,
+                    ModEnergyBuffer {
+                        capacity: 0,
+                        max_insert: 500,
+                        max_extract: 500,
+                        insert_faces: [false; 6],
+                        extract_faces,
+                    },
+                );
+            }
+
+            fn blocks(&self, _: &RegistrationContext, event: &mut BlocksEvent<'_>) {
+                for id in [VAULT, TANK, BATTERY] {
+                    event
+                        .register(mod_api::Block::new(id, "minecraft:stone"))
+                        .unwrap();
+                }
+            }
+        }
+
+        let mods: Mods = Arc::from([ModEntry::new("stock_test", Box::new(StockMod))]);
+        mod_platform::__private::install(mods.clone());
+        crate::game::api_values::install_parts(&mods).unwrap();
+        let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
+        let root = super::super::mods::content_root(&base, &Default::default())
+            .unwrap()
+            .prepared()
+            .to_path_buf();
+        with_game_at(root, |game| {
+            game.options.dedicated = Some(Vec::new());
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            // Populate stock tables through the game's real declarations -> table path.
+            game.tick_block_entities_with(&mut ()).unwrap();
+
+            let level = game.level(game.dim.id()).unwrap();
+            let vault_pos = [1, 64, 0];
+            let tank_pos = [2, 64, 0];
+            let battery_pos = [3, 64, 0];
+            for (pos, id) in [(vault_pos, VAULT), (tank_pos, TANK), (battery_pos, BATTERY)] {
+                let state = game.pack.assets.registry.default_state(id).unwrap();
+                assert_eq!(
+                    game.level_set_block(level, pos, state, BlockUpdateFlags::NONE),
+                    Ok(true)
+                );
+            }
+
+            // 1. Storage beyond the menu slot range still exposes and persists its declared slot.
+            let items = level
+                .capability(game, &ITEMS, vault_pos, Some(Direction::Up))
+                .unwrap();
+            assert_eq!(items.owner(), "the game");
+            assert_eq!(items.size(game), 1);
+            let dirt = ItemResource::of(
+                &mod_api::ItemStack::new(
+                    mod_api::__private::item_key("minecraft:dirt").unwrap(),
+                    1,
+                )
+                .unwrap(),
+            );
+            assert_eq!(
+                game.transaction(|host, tx| Ok::<_, ()>(items.insert_at(host, tx, 0, &dirt, 7))),
+                Ok(Ok(7))
+            );
+            assert_eq!(items.amount(game, 0), 7);
+            assert_eq!(items.resource(game, 0), Some(dirt.clone()));
+            let vault_key = (vault_pos[0], vault_pos[1], vault_pos[2]);
+            let saved = save::block_entity_encode::encode(
+                vault_key,
+                game.world.block_entities.get(&vault_key).unwrap(),
+                VAULT,
+                &Default::default(),
+            );
+            let (saved_pos, restored) = save::decode_block_entity_for_block(&saved, VAULT).unwrap();
+            assert_eq!(saved_pos, vault_key);
+            let BlockEntity::Mod(reloaded) = &restored else {
+                panic!("expected mod block entity for vault");
+            };
+            assert_eq!(reloaded.items.len(), VAULT_SLOT + 1);
+            assert_eq!(
+                reloaded.items[VAULT_SLOT].as_ref(),
+                Some(&sunrise_client::items::ItemStack::new("minecraft:dirt", 7))
+            );
+            game.world.block_entities.insert(vault_key, restored);
+            assert_eq!(items.amount(game, 0), 7);
+            assert_eq!(items.resource(game, 0), Some(dirt));
+
+            // 2. 17-tank declaration exposes tank 16 (capacity 1,000,001), zero-capacity tank 0
+            // refuses fill, and a malformed negative saved amount decodes as empty without overflow.
+            let fluids = level
+                .capability(game, &FLUIDS, tank_pos, Some(Direction::Up))
+                .unwrap();
+            assert_eq!(fluids.owner(), "the game");
+            assert_eq!(fluids.size(game), 2);
+            let water = FluidResource::of(&FluidStack::new(
+                mod_api::__private::fluid_key("minecraft:water").unwrap(),
+                1,
+            ));
+            assert_eq!(fluids.capacity(game, 0, Some(&water)), 0);
+            assert_eq!(fluids.capacity(game, 1, Some(&water)), 1_000_001);
+            let tank_key = (tank_pos[0], tank_pos[1], tank_pos[2]);
+            if let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&tank_key) {
+                let mut list = vec![Tag::Compound(Compound::new()); 17];
+                list[16] = Tag::compound([
+                    ("Fluid", Tag::String("minecraft:water".into())),
+                    ("Amount", Tag::Int(i32::MIN)),
+                ]);
+                entity.nbt.insert("fluids".into(), Tag::List(list));
+            } else {
+                panic!("expected mod block entity for tank");
+            }
+            assert_eq!(fluids.amount(game, 1), 0);
+            assert_eq!(fluids.resource(game, 1), None);
+            assert_eq!(
+                game.transaction(|host, tx| Ok::<_, ()>((
+                    fluids.insert_at(host, tx, 0, &water, 1000),
+                    fluids.insert_at(host, tx, 1, &water, 1_000_001),
+                ))),
+                Ok((Ok(0), Ok(1_000_001)))
+            );
+            assert_eq!(fluids.amount(game, 0), 0);
+            assert_eq!(fluids.resource(game, 0), None);
+            assert_eq!(fluids.amount(game, 1), 1_000_001);
+            assert_eq!(fluids.resource(game, 1), Some(water));
+
+            // 3. Zero-capacity energy buffer with saved energy and max_extract > capacity exposes
+            // the sided handler and extracts inside the normal transaction.
+            let battery_key = (battery_pos[0], battery_pos[1], battery_pos[2]);
+            if let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&battery_key)
+            {
+                entity.nbt.insert("energy".into(), Tag::Int(800));
+            } else {
+                panic!("expected mod block entity for battery");
+            }
+            assert!(
+                level
+                    .capability(game, &ENERGY, battery_pos, Some(Direction::West))
+                    .is_none()
+            );
+            let battery = level
+                .capability(game, &ENERGY, battery_pos, Some(Direction::East))
+                .unwrap();
+            assert_eq!(battery.owner(), "the game");
+            assert_eq!(battery.capacity(game), 0);
+            assert_eq!(battery.amount(game), 800);
+            assert_eq!(
+                game.transaction(|host, tx| Ok::<_, ()>((
+                    battery.insert(host, tx, 100),
+                    battery.extract(host, tx, 600),
+                ))),
+                Ok((Ok(0), Ok(500)))
+            );
+            assert_eq!(battery.amount(game), 300);
+            let abort: Result<(), mod_api::TransactionError<()>> = game.transaction(|host, tx| {
+                assert_eq!(battery.extract(host, tx, 200), Ok(200));
+                Err(())
+            });
+            assert!(abort.is_err());
+            assert_eq!(battery.amount(game), 300);
+        });
     }
 }

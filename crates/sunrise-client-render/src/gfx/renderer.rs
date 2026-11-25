@@ -154,6 +154,7 @@ pub struct Renderer {
     pub(super) particle_pipelines: particle_draws::ParticlePipelines,
     pub(super) explicit_opaque_particles: particle_draws::ParticleDraws,
     pub(super) explicit_translucent_particles: particle_draws::ParticleDraws,
+    pub(super) explicit_additive_particles: particle_draws::ParticleDraws,
     pub(crate) static_entity_pipeline: wgpu::RenderPipeline,
     pub(crate) static_entity_group: wgpu::BindGroup,
     pub(crate) static_entity_transform: wgpu::Buffer,
@@ -187,6 +188,13 @@ pub struct Renderer {
     pub(crate) see_through_pipeline: wgpu::RenderPipeline,
     /// Native mods' world primitives (`Frame::world_primitives`), taken briefly during OIT pass.
     pub(crate) world_primitives: Option<world_primitives::WorldPrimitives>,
+    /// Retained GPU vertex/index buffers backing [`mod_api::MeshRef`].
+    pub(crate) mod_meshes: std::sync::Mutex<mod_meshes::ModMeshes>,
+    /// Retained GPU uniform buffers backing [`mod_api::UniformBufferRef`] and cached mod textures.
+    pub(crate) mod_uniforms: std::sync::Mutex<mod_uniforms::ModUniformBuffers>,
+    /// Retained GPU storage buffers backing [`mod_api::StorageBufferRef`]; they outlive a resource
+    /// reload and a world close.
+    pub(crate) mod_storage: std::sync::Mutex<mod_storage::ModStorageBuffers>,
     pub(crate) text_polygon_offset_pipeline: wgpu::RenderPipeline,
     pub(crate) world_text_pipeline: wgpu::RenderPipeline,
     pub(crate) text_mark_pipelines: [wgpu::RenderPipeline; 2],
@@ -210,6 +218,7 @@ pub struct Renderer {
     /// Screen effects: alpha-blended, then vignette (`dst * (1 - src)`)
     /// pipelines, each for every sampling (index `blend * 4 + sampling`).
     pub(crate) screen_pipelines: [wgpu::RenderPipeline; 16],
+    pub(crate) screen_page_groups: Vec<Option<wgpu::BindGroup>>,
     pub(crate) screen_buffer: wgpu::Buffer,
     pub(crate) screen_capacity: u64,
     pub(crate) entity_group: wgpu::BindGroup,
@@ -456,6 +465,8 @@ pub struct Renderer {
     pub(crate) pack_post: Option<(i32, Option<pack_post::PackPost>)>,
     /// A `shaders/` pack whose pipelines build on a thread of their own (`load_shader_pack`).
     pub(crate) pack_loading: Option<PackLoading>,
+    /// Counts shader packs loaded, switched or turned off (`ShaderPackState::generation`).
+    pub(crate) pack_generation: u32,
     /// The post passes of one of Sunrise's own shader packs; never beside `pack_post`'s.
     pub(crate) native: Option<native_pack::NativePack>,
     /// Time the shader pack's passes on the GPU (F3, or a capture made with `--gpu`).
@@ -482,17 +493,29 @@ pub struct Renderer {
     pub(crate) shared_material_maps: [Option<wgpu::Texture>; 2],
     /// The pack's terrain program reads flat draws' vertices (`pack_terrain_inputs`).
     pub(crate) pack_terrain_flat: bool,
-    /// Vertex shaders read the section arena's pages (`flat::pages_readable`): a pack's terrain
+    /// Vertex shaders read the section arena's pages (`flat::pages_readable`, and
+    /// `pack_post::Gpu::vertex_reads`): a pack's terrain
     /// program can read its quad's corners there in per-section draws too (`pack_terrain_draws`).
     pub(crate) terrain_pages: bool,
     /// The pack's terrain programs read their pages in per-section draws: decided as
     /// `pack_terrain_inputs` last took them, from `pack_terrain_bindings`.
     pub(crate) pack_terrain_pages: bool,
+    /// The pack's terrain programs read the normal stream in per-section draws that read no
+    /// pages: decided as `pack_terrain_inputs` last took them, from `pack_terrain_bindings`.
+    pub(crate) pack_terrain_normals: bool,
     /// What the pack being loaded binds in its terrain programs' vertex stage
     /// (`set_pack_terrain_bindings`).
     pub(crate) pack_terrain_bindings: pack_atlas::TerrainBindings,
-    /// The section arena's pages are storage too (`arena_storage`, `follow_arena_storage`).
+    /// The section arena's pages are storage too (`arena_storage`, `follow_arena_layout`).
     pub(crate) arena_storage: bool,
+    /// The running `shaders/` pack's block ids, two a state (`set_shader_pack`'s `block_ids`):
+    /// the normal stream holds each quad's id under them (`terrain_normals`). None without any:
+    /// no pack, or one that lists no block.
+    /// Boxed: `Game` holds the `Renderer` inline, and its tests that build a `Game` on their
+    /// thread's stack have little room left.
+    pub(crate) pack_block_ids: Option<Box<PackBlockIds>>,
+    /// The game's meshes carry a `shaders/` pack's quad sources (`keep_pack_sources`).
+    pub(crate) pack_sources_on: bool,
     /// OptiFine/Iris separate ambient occlusion: pass vertex alpha to hz_Color.a.
     pub separate_ao: bool,
     /// Shader-pack terrain pages used by post processing, retained between frames.

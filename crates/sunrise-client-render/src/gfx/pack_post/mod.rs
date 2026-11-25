@@ -16,6 +16,7 @@ pub use types::*;
 
 pub use sunrise_render_shaderpack::pack_post::construction::*;
 pub use sunrise_render_shaderpack::pack_post::execution::*;
+pub use sunrise_render_shaderpack::pack_post::mod_pack::*;
 
 use super::pack_entities::PackEntitiesExt as _;
 use crate::gfx::Frame;
@@ -32,6 +33,8 @@ pub(crate) use super::external::ShadowView;
 pub trait PackPostExt: Sized {
     /// The shadow pass this frame wants, when the pack draws one.
     fn shadow_view(&self, frame: &Frame) -> Option<ShadowView>;
+    /// The shadow pass's size, distance and matrices as `frame` reads them, for mods.
+    fn mod_shadow_state(&self, frame: &Frame) -> Option<(u32, f32, [f32; 16], [f32; 16])>;
     /// The entities and block entities the pack draws this frame, into its own buffers.
     fn prepare_entities(
         &mut self,
@@ -81,11 +84,12 @@ fn frame_view<'a>(frame: &'a Frame) -> UniformFrameView<'a> {
         camera: frame.camera,
         yaw: frame.yaw,
         pitch: frame.pitch,
+        roll: frame.roll,
         fov_degrees: frame.fov_degrees,
         eye: frame.eye,
         eye_rotation: frame.eye_rotation,
         first_person: frame.first_person,
-        bob: frame.bob,
+        bob: frame.posed_bob(),
         spin: frame.spin,
         sky: SkyView {
             sun_angle: frame.sky.sun_angle,
@@ -135,6 +139,10 @@ impl PackPostExt for PackPost {
             .with_every_face(true)
             .with_view_casters(true),
         )
+    }
+
+    fn mod_shadow_state(&self, frame: &Frame) -> Option<(u32, f32, [f32; 16], [f32; 16])> {
+        self.shadow_state(&frame_view(frame))
     }
 
     /// Splits `entities` (`Frame::entities`) between the pack and Sunrise by its runs
@@ -221,7 +229,7 @@ impl PackPostExt for PackPost {
             vertices: frame.hand,
             items: frame.hand_items,
             fov_degrees: frame.hand_fov_degrees,
-            bob: frame.bob,
+            bob: frame.posed_bob(),
             spin: frame.spin,
         };
         self.run_frame(
@@ -316,6 +324,9 @@ mod work_group_fold_tests;
 mod forced_flip_tests;
 
 #[cfg(test)]
+mod flip_only_tests;
+
+#[cfg(test)]
 mod weather_depth_tests;
 
 #[cfg(test)]
@@ -338,6 +349,9 @@ mod runtime_length_tests;
 
 #[cfg(test)]
 mod translucent_color_tests;
+
+#[cfg(test)]
+mod water_blend_tests;
 
 #[cfg(test)]
 mod noise_resolution_tests;
@@ -417,4 +431,9 @@ mod material_route_tests;
 mod sign_text_target_tests;
 
 #[cfg(test)]
+mod block_atlas_group_tests;
+#[cfg(test)]
 mod mod_stage_tests;
+
+#[cfg(test)]
+mod mod_pack_binding_tests;

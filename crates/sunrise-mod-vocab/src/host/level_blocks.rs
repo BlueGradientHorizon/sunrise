@@ -17,8 +17,8 @@ pub trait LevelBlocksBackend {
     ) -> Result<(), LevelReadError>;
     /// Side: both.
     /// The contextual friction of `state` at `pos` (`IBlockExtension.getFriction`).
-    /// The state need not occupy the position. `entity` is the optional id and type
-    /// passed to the block's part. Returns `Ok(None)` for a nested query that repeats
+    /// The state need not occupy the position. `entity` is the optional live handle passed to the block's part. A stale entity
+    /// is refused. Returns `Ok(None)` for a nested query that repeats
     /// an active read or exceeds the nesting bound. A stale level, unknown state, or
     /// unavailable host or phase returns a typed read error.
     /// The query never loads chunks or changes the world.
@@ -27,7 +27,7 @@ pub trait LevelBlocksBackend {
         level: LevelRef,
         pos: [i32; 3],
         state: BlockState,
-        entity: Option<(u32, &str)>,
+        entity: Option<EntityRef>,
     ) -> Result<Option<f32>, LevelReadError>;
     /// Side: both.
     /// The enchanting power of the supplied `state` at `pos` (`IBlockStateExtension.getEnchantPowerBonus`).
@@ -88,7 +88,8 @@ pub trait LevelBlocksBackend {
     /// Property `key` of the block state at `pos` (`BlockState.getValue`):
     /// `east` for `facing`. None for a block without it, or as for
     /// `block_state`. API 381.
-    fn level_block_property(&self, level: LevelRef, pos: [i32; 3], key: &str) -> Option<String>;
+    #[manual_handle]
+    fn level_block_property(&self, level: LevelRef, pos: [i32; 3], key: &str) -> Option<&str>;
     /// Side: both.
     /// The mod-published connection group at `pos`, or `Ok(None)` when unset, unloaded, or out
     /// of height. Returns `Err(LevelReadError::Stale)` for a stale handle or closed level, and
@@ -107,6 +108,55 @@ pub trait LevelBlocksBackend {
 #[doc(hidden)]
 #[sunrise_mod_api_macros::host_area]
 pub trait LevelBlocksBackendMut {
+    /// Side: server.
+    /// Set property `key` to `value` on the block at `pos` through `Level.setBlock`,
+    /// using the supplied update flags. Preserves the block entity. Returns `Ok(false)`
+    /// for a missing property or value, an unchanged state or a refused position.
+    /// A parked level cannot be written while a Host transaction is open.
+    fn level_set_block_property(
+        &mut self,
+        level: LevelRef,
+        pos: [i32; 3],
+        key: &str,
+        value: &str,
+        flags: BlockUpdateFlags,
+    ) -> Result<bool, LevelWriteError>;
+    /// Side: server.
+    /// Drop one item as `DefaultDispenseItemBehavior.execute` does. Use the
+    /// returned remainder in the dispenser's answer; the caller plays the answer's
+    /// event and smoke. The detached stack keeps its actual count until one item
+    /// is dropped; placement limits apply only to the final slot write. An enclosing
+    /// transaction defers the drop in the dispenser's level until commit.
+    /// A missing or mismatched dispenser returns `InvalidDispenser`.
+    /// A parked level cannot be used while a Host transaction is open.
+    #[forward_api_inputs]
+    #[forward_api_output]
+    fn level_dispense_default(
+        &mut self,
+        level: LevelRef,
+        pos: [i32; 3],
+        facing: Direction,
+        stack: ItemStack,
+    ) -> Result<Option<ItemStack>, LevelWriteError>;
+    /// Side: server.
+    /// `DefaultDispenseItemBehavior.consumeWithRemainder`: one item of `stack` is used.
+    /// If it was the last, the slot gets `remainder`; otherwise the remainder goes
+    /// into the dispenser or out its front with a click and smoke. Returns the detached
+    /// active-slot remainder immediately; inside a transaction, insertion into another
+    /// slot is provisional and slot notices, overflow drops, click and smoke are published
+    /// in the source level only when the enclosing transaction commits at the root.
+    /// A missing or mismatched dispenser returns `InvalidDispenser`.
+    /// A parked level cannot be used while a Host transaction is open.
+    #[forward_api_inputs]
+    #[forward_api_output]
+    fn level_dispense_with_remainder(
+        &mut self,
+        level: LevelRef,
+        pos: [i32; 3],
+        facing: Direction,
+        stack: ItemStack,
+        remainder: ItemStack,
+    ) -> Result<Option<ItemStack>, LevelWriteError>;
     /// Side: server.
     /// Set a block (`Level.setBlock`). Stale/unavailable levels and invalid states return
     /// typed errors without mutation. Ok(false) means vanilla refused an unchanged,
@@ -217,19 +267,24 @@ pub trait LevelBlocksBackendMut {
     /// with the same block-entity rules as [`LevelRef::set_block`].
     fn level_remove_block(&mut self, level: LevelRef, pos: [i32; 3], moved: bool) -> bool;
     /// Side: server.
-    /// Destroy a block in the level in place (`Level.destroyBlock`), optionally dropping
-    /// resources with `tool` (None is an empty hand). With `collect`, return the dropped
-    /// stacks without spawning their item entities; otherwise return an empty list after
-    /// spawning them. The one level drop path runs loot, block-drop hooks and experience
-    /// once, in vanilla's random order. `drop` false suppresses resources entirely.
-    /// `Ok(None)` means nothing broke: air, a refused write, a stale handle, a client, an
-    /// unloaded/out-of-height position, a parked level, or an open Host transaction.
+    /// Destroy a block in the level in place (`Level.destroyBlock(pos, drop, breaker, maxUpdates)`),
+    /// optionally dropping resources with `tool` (None is an empty hand) and `breaker` as the
+    /// loot's `this` entity and the `minecraft:block_destroy` game event's source. With `collect`,
+    /// return the dropped stacks without spawning their item entities; otherwise return an empty
+    /// list after spawning them. The one level drop path runs loot, block-drop hooks and
+    /// experience once, in vanilla's random order. `drop` false suppresses resources entirely.
+    /// `Ok(None)` means nothing broke: air, a refused write, a stale or foreign `breaker`, a
+    /// stale handle, a client, an unloaded/out-of-height position, or a parked level. In a
+    /// transaction in the block's level, loot is prepared against the old block, the new state
+    /// is immediately readable, and spawning and break effects are deferred to commit. Another
+    /// level's transaction alone does not defer the operation.
     fn level_destroy_block(
         &mut self,
         level: LevelRef,
         pos: [i32; 3],
         drop: bool,
         tool: Option<&ItemStack>,
+        breaker: Option<EntityRef>,
         collect: bool,
     ) -> Result<Option<Vec<ItemStack>>, StackWriteError>;
     /// Side: server.
@@ -237,6 +292,12 @@ pub trait LevelBlocksBackendMut {
     /// entity, tool)`), without breaking it or spawning anything: its loot table rolled with
     /// `tool` (None is an empty hand) and `entity` as the breaker, with what its block entity
     /// copies into the drops (a shulker box's contents, a banner's patterns, a pot's sherds).
+    /// The roll is given the block's centre as ORIGIN and its block entity as BLOCK_ENTITY,
+    /// saved as `BlockEntity.saveWithFullMetadata` gives it (stored components included), so
+    /// a `minecraft:match_block` tests the block state, then its NBT and components against
+    /// that entity. A `minecraft:location_check` tests this level at the centre moved by its
+    /// offsets (`LocationCheck.test`): its biome, structure, smoke, light, block and fluid
+    /// tests fail where that position isn't loaded (`LocationPredicate.matches`).
     /// The roll draws from the table's random sequence, else the level random, as vanilla's
     /// does, so it moves later draws: that is why this is a write. No `block_drops` event,
     /// item entity or experience: that is `destroy_block`. None for a refused write, a stale or

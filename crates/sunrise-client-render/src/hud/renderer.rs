@@ -2,6 +2,7 @@ use super::*;
 use crate::gfx::hud_coverage::{self, Pipeline};
 
 pub struct HudRenderer {
+    pub(super) atlas_pages: Vec<Option<AtlasPageGpu>>,
     pub(super) pictures: HashMap<u64, (Arc<pictures::Picture>, wgpu::BindGroup)>,
     pub sprite_animations: Vec<(
         AnimatedPlacement,
@@ -39,14 +40,16 @@ pub struct HudRenderer {
     pub zoom: f32,
 }
 impl HudRenderer {
-    pub fn new(
+    pub(crate) fn new(
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
         view: &wgpu::TextureView,
         glint_view: &wgpu::TextureView,
         glint_armor_view: &wgpu::TextureView,
+        lightmap_view: &wgpu::TextureView,
         glint_sampler: &wgpu::Sampler,
         coverage: bool,
+        pages: Vec<Option<UploadedAtlasPage>>,
     ) -> Result<Self> {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Sunrise HUD"),
@@ -129,49 +132,74 @@ impl HudRenderer {
                     },
                     count: None,
                 },
-            ],
-        });
-        let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("HUD resources"),
-            layout: &layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: uniform.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::Sampler(&sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: wgpu::BindingResource::TextureView(glint_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 4,
-                    resource: wgpu::BindingResource::Sampler(glint_sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 5,
-                    resource: wgpu::BindingResource::Sampler(&linear_sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 6,
-                    resource: wgpu::BindingResource::TextureView(glint_armor_view),
+                wgpu::BindGroupLayoutEntry {
+                    binding: 7,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
                 },
             ],
         });
+        let group_for = |view: &wgpu::TextureView| {
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("HUD resources"),
+                layout: &layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: uniform.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::TextureView(view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::Sampler(&sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: wgpu::BindingResource::TextureView(glint_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 4,
+                        resource: wgpu::BindingResource::Sampler(glint_sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 5,
+                        resource: wgpu::BindingResource::Sampler(&linear_sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 6,
+                        resource: wgpu::BindingResource::TextureView(glint_armor_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 7,
+                        resource: wgpu::BindingResource::TextureView(lightmap_view),
+                    },
+                ],
+            })
+        };
+        let group = group_for(view);
+        let atlas_pages = pages
+            .into_iter()
+            .map(|page| {
+                page.map(|page| AtlasPageGpu {
+                    group: group_for(&page.view),
+                    page,
+                })
+            })
+            .collect();
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("HUD layout"),
             bind_group_layouts: &[Some(&layout)],
             ..Default::default()
         });
-        let attributes =
-            wgpu::vertex_attr_array![0=>Float32x2,1=>Float32x2,2=>Unorm8x4,3=>Float32,4=>Float32x2];
+        let attributes = wgpu::vertex_attr_array![0=>Float32x2,1=>Float32x2,2=>Unorm8x4,3=>Float32,4=>Float32x2,5=>Uint32];
         // `depth`: the model's depth test, and whether the run writes depth.
         let create = |label, blend, fragment_entry, depth: Option<bool>| {
             let desc = wgpu::RenderPipelineDescriptor {
@@ -303,6 +331,7 @@ impl HudRenderer {
             mapped_at_creation: false,
         });
         Ok(Self {
+            atlas_pages,
             pictures: HashMap::new(),
             atlas_texture: None,
             sprite_animations: Vec::new(),
@@ -340,7 +369,8 @@ impl HudRenderer {
         });
     }
     /// Draw the GUI's text with `shader` (`HudAtlas::text_shaders`' `gui`, with the Polytone
-    /// expression uniforms its stages read, `shader_modifiers`), or natively.
+    /// expression uniforms its stages read, `shader_modifiers`), or natively; or the device's
+    /// refusal of `GUI_TEXT`, a pipeline vanilla requires, which fails the pack reload.
     pub fn set_text_shader(
         &mut self,
         device: &wgpu::Device,
@@ -348,10 +378,12 @@ impl HudRenderer {
             &sunrise_glsl::Translated,
             &[crate::polytone_post::ExpressionUniform],
         )>,
-    ) {
-        self.pack_text = shader.and_then(|shader| {
+    ) -> std::result::Result<(), String> {
+        let made = shader.map(|shader| {
             pack_text::PackText::new(device, self.format, &self.atlas_view, shader, self.coverage)
         });
+        self.pack_text = made.transpose()?.flatten();
+        Ok(())
     }
     /// The GUI text's Polytone blocks, when a pack's text shader draws it.
     pub(crate) fn text_expression_blocks(
@@ -532,13 +564,10 @@ impl HudRenderer {
         } else {
             attachment_count = 1;
         }
-        let runs = batch.runs_in(vertices);
+        let runs: SmallVec<[(std::ops::Range<u32>, Blend); 16]> = batch.runs_in(vertices).collect();
         let mut at = 0;
         while at < runs.len() {
-            let clip = match runs[at].1 {
-                Blend::Depth(clip) | Blend::DepthGlint(clip) => Some(clip),
-                _ => None,
-            };
+            let clip = runs[at].1.scissor();
             let end = if let Some(clip) = clip {
                 // The model's glint shares its pass and depth buffer.
                 at + 1
@@ -600,6 +629,23 @@ impl HudRenderer {
                     let pipeline = match blend {
                         Blend::Picture(id) => {
                             self.draw_picture(&mut pass, *id, range, coverage.is_some());
+                            continue;
+                        }
+                        Blend::AtlasPage(page, blend) => {
+                            let Some(page) = self.atlas_pages.get(*page).and_then(Option::as_ref)
+                            else {
+                                continue;
+                            };
+                            let pipeline = match blend {
+                                AtlasBlend::Alpha => &self.pipeline,
+                                AtlasBlend::Invert => &self.invert_pipeline,
+                                AtlasBlend::Additive => &self.additive_pipeline,
+                                AtlasBlend::Vignette => &self.vignette_pipeline,
+                            };
+                            pass.set_bind_group(0, &page.group, &[]);
+                            pass.set_pipeline(pipeline.get(coverage.is_some()));
+                            pass.draw(range, 0..1);
+                            pass.set_bind_group(0, &self.group, &[]);
                             continue;
                         }
                         Blend::Alpha => &self.pipeline,

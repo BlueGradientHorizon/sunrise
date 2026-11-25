@@ -4,23 +4,6 @@ use crate::*;
 /// The client host's methods of the `client_render` area, implemented by the game and reached through [`crate::ClientHost`].
 #[sunrise_mod_api_macros::host_area]
 pub trait ClientRenderClientHost {
-    /// Atomically overwrite retained model copies; use [`InstanceGroupRef::write`].
-    fn instance_group_write(
-        &self,
-        group: InstanceGroupRef,
-        first: u32,
-        instances: &[ModelInstance],
-    ) -> Result<(), GroupError>;
-    /// Set the drawn length; use [`InstanceGroupRef::set_len`].
-    fn instance_group_set_len(&self, group: InstanceGroupRef, len: u32) -> Result<(), GroupError>;
-    /// Replace the group pose; use [`InstanceGroupRef::set_group_transform`].
-    fn instance_group_set_transform(
-        &self,
-        group: InstanceGroupRef,
-        transform: [f32; 12],
-    ) -> Result<(), GroupError>;
-    /// Retire retained model copies; use [`InstanceGroupRef::destroy`].
-    fn instance_group_destroy(&self, group: InstanceGroupRef) -> Result<(), GroupError>;
     /// Side: client.
     /// `ItemStackRenderState.usesBlockLight` of `stack`'s model resolved for `context`
     /// (`ItemModelResolver.updateForTopItem`, no owner or level): whether the model is lit as a
@@ -31,6 +14,19 @@ pub trait ClientRenderClientHost {
     /// resolved from its resource packs.
     fn item_uses_block_light(&self, stack: &ItemStack, context: ItemDisplayContext) -> bool;
     /// Side: client.
+    /// Resolve `stack`'s item model once for `display` and `seed`
+    /// (`ItemModelResolver.updateForTopItem`, no owner), returning a retained [`PreparedItemRef`]
+    /// for [`BlockEntityDrawContext::prepared_item`]. Returns [`ModelError::UnknownModel`] for
+    /// an empty stack, an unknown/invalid stack, or a model that draws nothing. The handle goes
+    /// stale on a successful resource reload, world close, owner mod disable, or
+    /// [`PreparedItemRef::destroy`].
+    fn prepare_item(
+        &self,
+        stack: &ItemStack,
+        display: ItemDisplayContext,
+        seed: i32,
+    ) -> Result<PreparedItemRef, ModelError>;
+    /// Side: client.
     /// Asks `block_render_visibility` again for every state and, when the answers differ
     /// from those in use, remeshes every loaded section with them. While a mod listens to
     /// `section_visibility`, rebuilds meshes in the player's current level and asks about them
@@ -40,6 +36,22 @@ pub trait ClientRenderClientHost {
     /// answering or listener, the mesher keeps its no-mod path.
 
     fn refresh_render_visibility(&mut self);
+    /// Side: client.
+    /// Marks the loaded chunk section `section` (section coordinates: block X, Y and Z shifted
+    /// right by 4) for remeshing, as `LevelExtractor.setSectionDirty` does; with `with_neighbors`
+    /// each loaded section of the 27 from one below to one above it on every axis, whether or
+    /// not `section` itself is loaded (`ClientLevel.setSectionDirtyWithNeighbors`).
+    /// Use it when your mod changes how blocks look (a tint or texture toggle, an overlay) and
+    /// the meshes must follow, without unloading chunks. Returns whether `section` itself was
+    /// marked: `false` when it is not loaded or is outside the level's height.
+    fn set_section_dirty(&mut self, section: [i32; 3], with_neighbors: bool) -> bool;
+    /// Side: client.
+    /// Marks for remeshing every loaded chunk section that holds a block of the box from
+    /// `min - 1` to `max + 1` (block positions, both corners included: the box widened by one
+    /// block on each axis), as `LevelExtractor.setBlocksDirty` does, so a box touching a
+    /// section's edge also marks the section across it. Sections that are not loaded, or
+    /// outside the level's height, are skipped.
+    fn set_blocks_dirty(&mut self, min: [i32; 3], max: [i32; 3]);
     /// Side: client.
     /// Asks `biome_colors` again for every biome and, when the colours
     /// differ from those in use, rebuilds every loaded section and the far
@@ -191,4 +203,117 @@ pub trait ClientRenderClientHost {
     /// For a client mod: changes each time the resources load (a resource pack turned on or off can move every
     /// sprite): ask `native_block_sprites` again then. API 380.
     fn block_sprites_version(&self) -> u64;
+    /// Side: client.
+    /// Allocate retained GPU vertex buffer(s) and an optional index buffer (`GpuBuffer`),
+    /// returning an owner-checked generational [`MeshRef`] handle. Buffer sizes must be non-zero,
+    /// stride/index/4-byte aligned, and at most `device.limits().max_buffer_size`. Handles are
+    /// retired automatically on mod disable, world close, resource reload, or [`MeshRef::release`].
+    fn create_mesh(&self, desc: &MeshDescriptor<'_>) -> Result<MeshRef, MeshError>;
+    /// Side: client.
+    /// Allocate a retained GPU std140 uniform buffer initialized with `bytes` (non-empty, 4-byte
+    /// aligned, and at most `device.limits().max_uniform_buffer_binding_size`), returning an
+    /// owner-checked generational [`UniformBufferRef`] handle. Retired automatically on mod
+    /// disable, world close, resource reload, or [`UniformBufferRef::release`].
+    fn create_uniform_buffer(&self, bytes: &[u8]) -> Result<UniformBufferRef, BufferError>;
+    /// Side: client.
+    /// Allocate a retained GPU storage buffer (vanilla's `GpuBuffer`), returning an owner-checked
+    /// generational [`StorageBufferRef`]. `desc.size` is at least 4, a multiple of 4 and at most
+    /// `device.limits().max_buffer_size`; a binding takes a range of at most
+    /// `max_storage_buffer_binding_size` bytes ([`StorageBufferRef::slice`]). The buffer survives
+    /// a resource reload and a world close, and is freed by [`StorageBufferRef::release`] or when
+    /// the mod unloads. Refused, never panicking, for a size the device cannot hold.
+    fn create_storage_buffer(
+        &self,
+        desc: &StorageBufferDescriptor,
+    ) -> Result<StorageBufferRef, BufferError>;
+}
+
+/// The retained instance-group and mesh operations behind [`InstanceGroupRef`] and [`MeshRef`].
+// hidden: a handle's backend, reached through `Backend`; mods call the handle, never this trait
+#[doc(hidden)]
+#[sunrise_mod_api_macros::host_area]
+pub trait ClientRenderClientBackend {
+    /// Atomically overwrite retained model copies; called through [`InstanceGroupRef::write`].
+    #[manual_handle]
+    fn instance_group_write(
+        &self,
+        group: InstanceGroupRef,
+        first: u32,
+        instances: &[ModelInstance],
+    ) -> Result<(), GroupError>;
+    /// Set the drawn length; called through [`InstanceGroupRef::set_len`].
+    #[manual_handle]
+    fn instance_group_set_len(&self, group: InstanceGroupRef, len: u32) -> Result<(), GroupError>;
+    /// Replace the group pose; called through [`InstanceGroupRef::set_group_transform`].
+    #[manual_handle]
+    fn instance_group_set_transform(
+        &self,
+        group: InstanceGroupRef,
+        transform: [f32; 12],
+    ) -> Result<(), GroupError>;
+    /// Retire retained model copies; called through [`InstanceGroupRef::destroy`].
+    #[manual_handle]
+    fn instance_group_destroy(&self, group: InstanceGroupRef) -> Result<(), GroupError>;
+    /// Retire a prepared item render state; called through [`PreparedItemRef::destroy`].
+    #[manual_handle]
+    fn prepared_item_destroy(&self, item: PreparedItemRef) -> Result<(), ModelError>;
+    /// Partially or fully update a retained mesh's vertex buffer; called through
+    /// [`MeshRef::write_vertices`].
+    #[manual_handle]
+    fn mesh_write_vertices(
+        &self,
+        mesh: MeshRef,
+        binding: u8,
+        byte_offset: u64,
+        data: &[u8],
+    ) -> Result<(), MeshError>;
+    /// Partially or fully update a retained mesh's index buffer; called through
+    /// [`MeshRef::write_indices`].
+    #[manual_handle]
+    fn mesh_write_indices(
+        &self,
+        mesh: MeshRef,
+        byte_offset: u64,
+        data: &[u8],
+    ) -> Result<(), MeshError>;
+    /// Reallocate a retained mesh's GPU buffers in place; called through [`MeshRef::replace`].
+    #[manual_handle]
+    fn mesh_replace(&self, mesh: MeshRef, desc: &MeshDescriptor<'_>) -> Result<(), MeshError>;
+    /// Free a retained mesh's GPU buffers and retire the handle; called through
+    /// [`MeshRef::release`].
+    #[manual_handle]
+    fn mesh_release(&self, mesh: MeshRef) -> Result<(), MeshError>;
+    /// Partially or fully update a retained uniform buffer; called through
+    /// [`UniformBufferRef::write`].
+    #[manual_handle]
+    fn uniform_buffer_write(
+        &self,
+        buffer: UniformBufferRef,
+        byte_offset: u32,
+        bytes: &[u8],
+    ) -> Result<(), BufferError>;
+    /// Free a retained uniform buffer and retire the handle; called through
+    /// [`UniformBufferRef::release`].
+    #[manual_handle]
+    fn uniform_buffer_release(&self, buffer: UniformBufferRef) -> Result<(), BufferError>;
+    /// Queue `data` for `offset` of a retained storage buffer (`CommandEncoder.writeToBuffer` on a
+    /// `GpuBufferSlice`; called through [`StorageBufferRef::write_range`]); `offset` and `data.len()` are multiples of 4 and the range lies inside
+    /// the buffer. Writes are applied in call order before the next frame, as updates to dynamic
+    /// textures are.
+    #[manual_handle]
+    fn storage_buffer_write_range(
+        &self,
+        buffer: StorageBufferRef,
+        offset: u64,
+        data: &[u8],
+    ) -> Result<(), BufferError>;
+    /// The size in bytes the storage buffer was created with; called through
+    /// [`StorageBufferRef::size`].
+    #[manual_handle]
+    fn storage_buffer_size(&self, buffer: StorageBufferRef) -> Result<u64, BufferError>;
+    /// Free a retained storage buffer and retire the handle ([`BufferError::Stale`] thereafter);
+    /// called through [`StorageBufferRef::release`].
+    /// Writes queued for it and not yet applied are dropped.
+    #[manual_handle]
+    fn storage_buffer_release(&self, buffer: StorageBufferRef) -> Result<(), BufferError>;
 }

@@ -42,6 +42,19 @@ pub trait SideLevel {
         registry: &BlockRegistry,
         entity: mod_api::BlockEntityRef,
     ) -> Option<mod_api::Compound>;
+    /// The world open that owns motion entities on this side.
+    fn world_epoch(&self) -> Option<mod_api::WorldEpoch> {
+        None
+    }
+    /// The read-only block-state and fluid fact tables of this side. Only dry test/probe sides
+    /// have no tables.
+    fn block_states(&self) -> Option<mod_api::BlockStates<'_>> {
+        None
+    }
+    /// The world's frozen variant registries (server's world tables, or client's synced tables).
+    fn variant_tables(&self) -> Option<&crate::mobs::variants::VariantTables> {
+        None
+    }
 }
 
 /// Level data for tests and probes that do not have a live game.

@@ -13,6 +13,7 @@ struct Frame {
     bindings: wgpu::BindGroupLayout,
     atlas: wgpu::TextureView,
     atlas_texture: wgpu::Texture,
+    lightmap: wgpu::TextureView,
 }
 
 /// The software Vulkan adapter (lavapipe, llvmpipe) the pixel tests draw on.
@@ -209,6 +210,7 @@ fn software_frame_lit(
         bindings,
         atlas: atlas_view,
         atlas_texture,
+        lightmap: light_view,
     })
 }
 
@@ -1188,9 +1190,11 @@ fn probe_frame(hud: &HudBatch) -> super::Frame<'_> {
         camera: glam::DVec3::new(0.5, 100.0, 0.5),
         yaw: 0.0,
         pitch: 0.0,
+        roll: 0.0,
         fov_degrees: 90.0,
         cull_fov_degrees: 90.0,
         bob: Mat4::IDENTITY,
+        view_transform: Mat4::IDENTITY,
         spin: Mat4::IDENTITY,
         sky: crate::environment::Sky::default(),
         distance: 12.0,
@@ -1818,6 +1822,154 @@ fn explicit_particle_layers_render_in_device_sized_draws() {
     );
 }
 
+#[test]
+#[ignore = "daily"]
+fn additive_particles_brighten_when_overlapping_without_writing_depth() {
+    use super::particle_draws::{EXPLICIT_PARTICLE_OVERLAY, ParticleDraws, ParticlePipelines};
+    let _gpu = crate::gfx::test_gpu::lock();
+    let frame = software_frame_lit(
+        [1, 1],
+        &[255; 4],
+        Mat4::IDENTITY,
+        0.0,
+        [SIZE; 2],
+        &[255; 16 * 16 * 4],
+    )
+    .expect("software Vulkan frame");
+    let shader = frame
+        .device
+        .create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: None,
+            source: wgpu::ShaderSource::Wgsl(entity_shader().into()),
+        });
+    let layout = frame
+        .device
+        .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: None,
+            bind_group_layouts: &[Some(&frame.bindings)],
+            immediate_size: 0,
+        });
+    let buffers = [Some(wgpu::VertexBufferLayout {
+        array_stride: size_of::<Vertex>() as u64,
+        step_mode: wgpu::VertexStepMode::Vertex,
+        attributes: &ENTITY_ATTRIBUTES,
+    })];
+    let reuse = reuse::Reuse::default();
+    let kept = reuse.on(&frame.device);
+    let pipelines = ParticlePipelines::new(entity_pipeline_factory(
+        &kept,
+        &layout,
+        &layout,
+        &shader,
+        &buffers,
+        wgpu::TextureFormat::Rgba8Unorm,
+        false,
+    ));
+    let quad = |x: f32, y: f32, z, color| {
+        [(0.25, -0.25), (0.25, 0.25), (-0.25, 0.25), (-0.25, -0.25)].map(|(dx, dy)| Vertex {
+            pos: [x + dx, y + dy, z],
+            uv: [0.5; 2],
+            layer: EXPLICIT_PARTICLE_OVERLAY,
+            color,
+            light: 0,
+            normal: [0; 4],
+            glint_uv: [0.0; 2],
+        })
+    };
+    let opaque = [quad(-0.5, -0.5, 0.75, 0xff00_0040)];
+    let translucent = [quad(0.5, -0.5, 0.5, 0x80ff_0000)];
+    let additive = [
+        // Single additive particle over black.
+        quad(-0.5, 0.5, 0.75, 0x8000_0080),
+        // Two overlapping additive particles (second further in reverse-Z, testing no depth write).
+        quad(0.5, 0.5, 0.75, 0x8000_0080),
+        quad(0.5, 0.5, 0.5, 0x8000_0080),
+        // Behind the opaque blocker (testing depth test on).
+        quad(-0.5, -0.5, 0.5, 0xff00_ff00),
+        // In front of the translucent particle, drawn after it.
+        quad(0.5, -0.5, 0.75, 0x8000_00ff),
+    ];
+    let mut draws = [
+        ParticleDraws::default(),
+        ParticleDraws::default(),
+        ParticleDraws::default(),
+    ];
+    let mut uploads = super::upload::Uploads::new(&frame.device);
+    let mut encoder = frame.device.create_command_encoder(&Default::default());
+    for (draws, vertices) in draws.iter_mut().zip([
+        opaque.as_flattened(),
+        translucent.as_flattened(),
+        additive.as_flattened(),
+    ]) {
+        let limit = size_of::<[Vertex; 4]>() as u64;
+        assert_eq!(
+            draws.prepare(&frame.device, &mut uploads, &mut encoder, vertices, limit),
+            1
+        );
+    }
+    let index = super::Renderer::quad_indices(&frame.device, 1);
+    {
+        let color = frame.color.create_view(&Default::default());
+        let depth = frame.depth.create_view(&Default::default());
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &color,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: &depth,
+                stencil_ops: None,
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(0.0),
+                    store: wgpu::StoreOp::Store,
+                }),
+            }),
+            ..Default::default()
+        });
+        pass.set_bind_group(0, &frame.group, &[]);
+        pass.set_index_buffer(index.slice(..), wgpu::IndexFormat::Uint32);
+        for (draws, pipeline) in draws.iter().zip([
+            &pipelines.opaque,
+            &pipelines.translucent,
+            &pipelines.additive,
+        ]) {
+            pass.set_pipeline(pipeline);
+            draws.draw(&mut pass);
+        }
+    }
+    uploads.finish(&encoder);
+    let pixels = readback(&frame, encoder).expect("additive particle output readback");
+    let rgb = |x, y| {
+        let at = ((y * SIZE + x) * 4) as usize;
+        &pixels[at..at + 3]
+    };
+    let one = rgb(SIZE / 4, SIZE / 4);
+    let two = rgb(SIZE * 3 / 4, SIZE / 4);
+    assert!(
+        one[0] > 0 && one[1] == 0 && one[2] == 0,
+        "one additive particle lights up over black: {one:?}"
+    );
+    assert!(
+        two[0] > one[0] && two[1] == 0 && two[2] == 0,
+        "two overlapping additive particles brighten further without depth write: one={one:?}, two={two:?}"
+    );
+    assert_eq!(
+        rgb(SIZE / 4, SIZE * 3 / 4),
+        [64, 0, 0],
+        "additive particle behind an opaque surface is depth-rejected"
+    );
+    let over_translucent = rgb(SIZE * 3 / 4, SIZE * 3 / 4);
+    assert!(
+        over_translucent[0] > 0 && over_translucent[2] > 0,
+        "additive particle drawn after translucent adds onto it: {over_translucent:?}"
+    );
+}
+
 /// Draws a real screen batch through the engine HUD pipeline on software Vulkan.
 /// Uses the same adapter, atlas upload and readback as the entity pixel fixtures.
 pub fn render_hud(
@@ -1825,13 +1977,25 @@ pub fn render_hud(
     atlas: &crate::hud::HudAtlas,
     size: [u32; 2],
 ) -> std::result::Result<Vec<u8>, String> {
+    render_hud_lit(batch, atlas, size, &[255u8; 16 * 16 * 4])
+}
+
+/// [`render_hud`] with a custom 16x16 RGBA `lightmap` (block level across, sky level down)
+/// bound to the HUD lightmap slot for lightmapped special-model GUI draws.
+pub fn render_hud_lit(
+    batch: &HudBatch,
+    atlas: &crate::hud::HudAtlas,
+    size: [u32; 2],
+    lightmap: &[u8],
+) -> std::result::Result<Vec<u8>, String> {
     let _gpu = crate::gfx::test_gpu::lock();
-    let frame = software_frame(
+    let frame = software_frame_lit(
         [atlas.width, atlas.height],
         &atlas.pixels(),
         Mat4::IDENTITY,
         0.0,
         size,
+        lightmap,
     )?;
     let sampler = frame.device.create_sampler(&Default::default());
     let mut hud = crate::hud::HudRenderer::new(
@@ -1840,8 +2004,10 @@ pub fn render_hud(
         &frame.atlas,
         &frame.atlas,
         &frame.atlas,
+        &frame.lightmap,
         &sampler,
         false,
+        Vec::new(),
     )
     .map_err(|error| error.to_string())?;
     // As the game's renderer has it (gfx.rs): the batch's atlas patches, a map's or a mod's
@@ -2039,7 +2205,9 @@ pub fn render_entity_world(draw: EntityWorldDraw<'_>) -> std::result::Result<Vec
         ],
     });
     let mut batch = EntityBatch::default();
-    let counts = batch.update(draw.vertices, &[], &[], &[], draw.oit);
+    let counts = batch
+        .update_within(draw.vertices, &[], &[], &[], &[], draw.oit, usize::MAX)
+        .materials;
     let [
         entity_quads,
         _,
@@ -2560,4 +2728,65 @@ pub fn render_entity_world(draw: EntityWorldDraw<'_>) -> std::result::Result<Vec
         }
     }
     readback_texture(&device, &queue, &color, encoder)
+}
+
+#[cfg(test)]
+#[test]
+#[ignore = "daily"]
+fn hud_lightmapped_special_item_samples_frame_lightmap_without_disturbing_neighbour() {
+    let atlas = crate::hud::HudAtlas::boot();
+    let r = atlas.white;
+    let uv = [[r.u0, r.v0], [r.u1, r.v0], [r.u1, r.v1], [r.u0, r.v1]];
+    let mut batch = HudBatch::new(
+        [64, 16],
+        crate::hud::GuiScale {
+            requested: 1,
+            unicode: false,
+        },
+    );
+    let light_low = 0x0100_0000u32 | (2u32 * 16) | ((3u32 * 16) << 8);
+    let light_high = 0x0100_0000u32 | (14u32 * 16) | ((15u32 * 16) << 8);
+    // Low explicit packed light (block=2, sky=3).
+    batch.quad_lit(
+        [[0.0, 0.0], [16.0, 0.0], [16.0, 16.0], [0.0, 16.0]],
+        uv,
+        u32::MAX,
+        light_low,
+    );
+    // High explicit packed light (block=14, sky=15).
+    batch.quad_lit(
+        [[16.0, 0.0], [32.0, 0.0], [32.0, 16.0], [16.0, 16.0]],
+        uv,
+        u32::MAX,
+        light_high,
+    );
+    // Default unlightmapped HUD neighbour (`light = 0`): must remain full white.
+    batch.quad(
+        [[32.0, 0.0], [48.0, 0.0], [48.0, 16.0], [32.0, 16.0]],
+        uv,
+        u32::MAX,
+    );
+
+    let pixels = render_hud_lit(&batch, &atlas, [64, 16], &graded_lightmap())
+        .expect("software Vulkan HUD lightmap render");
+    let px = |x: u32, y: u32| {
+        let i = ((y * 64 + x) * 4) as usize;
+        [pixels[i], pixels[i + 1], pixels[i + 2], pixels[i + 3]]
+    };
+    let low = px(8, 8);
+    let high = px(24, 8);
+    let neighbour = px(40, 8);
+    assert!(
+        low[0] < high[0],
+        "higher packed light must sample brighter from graded lightmap: low={low:?}, high={high:?}"
+    );
+    assert!(
+        high[0] <= neighbour[0],
+        "lightmapped quad cannot exceed full-white neighbour: high={high:?}, neighbour={neighbour:?}"
+    );
+    assert_eq!(
+        neighbour,
+        [255, 255, 255, 255],
+        "default HUD neighbour must remain unaffected by frame lightmap"
+    );
 }

@@ -116,6 +116,9 @@ impl Game<'_> {
     pub(in crate::game) fn change_recipes(&mut self, give: bool, recipes: &[String]) -> i32 {
         let (recipes, custom_count) = self.change_mod_crafting_recipes(give, recipes);
         if give {
+            if custom_count != 0 {
+                self.invalidate_mod_book_placement_knowledge();
+            }
             return custom_count + self.award_recipes(&recipes) as i32;
         }
         let index = &world_stations!(self).recipe_index;
@@ -237,10 +240,17 @@ impl Game<'_> {
                 .unwrap_or(0),
         );
         attack.direct_type = direct.map(|target| self.target_type(target));
+        attack.enchantment_direct = direct.zip(attack.direct).map(|(target, id)| {
+            sunrise_client::health::EnchantmentActor {
+                id,
+                kind: self.target_type(target).into(),
+                motion: None,
+            }
+        });
         match direct {
             Some(Target::Projectile(id)) => {
                 if let Some(shot) = self.creatures.projectiles.iter().find(|shot| shot.id == id) {
-                    Self::set_projectile_attack(&mut attack, shot);
+                    self.set_projectile_attack(&mut attack, shot);
                 }
             }
             Some(Target::Trident(id)) => {
@@ -248,7 +258,7 @@ impl Game<'_> {
                     attack.projectile = Some(id as i32);
                     attack.projectile_kind = DirectEntity::Arrow;
                     attack.projectile_type = Some("minecraft:trident");
-                    Self::set_projectile_weapon(&mut attack, Some(&shot.stack));
+                    self.set_projectile_weapon(&mut attack, Some(&shot.stack));
                 }
             }
             _ => {}
@@ -305,8 +315,8 @@ impl Game<'_> {
                     _ => None,
                 };
                 let attacker = match cause {
-                    Some(Target::Mob(i)) => Some(Some(i)),
-                    _ => Some(None),
+                    Some(Target::Mob(i)) => crate::game::creatures::KnownCause::Entity(i),
+                    _ => crate::game::creatures::KnownCause::Attack,
                 };
                 // `DamageSource.isCreativePlayer`: a creative player's hit
                 // passes the victim's invulnerability (#916).
@@ -452,6 +462,7 @@ impl Game<'_> {
             causing: entity_id(causing),
             direct: entity_id(direct),
             position,
+            direct_type: None,
         };
         if crate::game::entity::damage_level_of!(self, self.combat.attack(), no_push, None)
             .invulnerability_check(
@@ -507,6 +518,7 @@ impl Game<'_> {
             Vec::new()
         };
         if hurt {
+            self.flush_mob_death_protection(id);
             if damage.attacker == Some(Who::Player) {
                 self.remember_mob_player_credit(id);
                 if let Some(host) = self.lan.as_mut() {
@@ -571,7 +583,7 @@ impl Game<'_> {
             };
             // LookAt.perform: Entity.lookAt from the source's anchor (the
             // feet, unless `anchored eyes`).
-            let anchored_eyes = self.command_source.is_some_and(|s| s.eyes);
+            let anchored_eyes = self.command_source.as_ref().is_some_and(|s| s.eyes);
             let eye = if anchored_eyes {
                 self.target_eye_height(t)
             } else {
@@ -599,6 +611,7 @@ impl Game<'_> {
         } else {
             vec![
                 self.command_source
+                    .as_ref()
                     .and_then(|s| s.entity)
                     .unwrap_or(Target::Player),
             ]
@@ -763,7 +776,9 @@ impl Game<'_> {
                     host.hub.send_to(conn, &packet);
                 }
             }
-            None => self.audio.play_on(source, sound, Some(at), volume, pitch),
+            None => self
+                .audio
+                .play_on_seeded(source, sound, Some(at), volume, pitch, seed),
         }
     }
     /// `StopSoundCommand`: each target's connection gets the packet; the
@@ -848,8 +863,8 @@ impl Game<'_> {
     // ---- /particle ----------------------------------------------------------------------
 
     pub(super) fn cmd_particle(&mut self, ctx: &Context) -> R<i32> {
-        use sunrise_client::particles::{ParticleOptions, ParticleType};
-        let (name, options, block_state) = match ctx.get("name") {
+        use sunrise_client::particles::{ParticleLevel, ParticleOptions, ParticleType};
+        let (name, options, block_state, drawable) = match ctx.get("name") {
             Some(Arg::Particle(opts)) => {
                 use crate::game::api_values::TryIntoEngine;
                 let options = opts
@@ -860,7 +875,7 @@ impl Game<'_> {
                     .as_deref()
                     .unwrap_or(options.ty.name())
                     .to_owned();
-                (name, options, None)
+                (name, options, None, true)
             }
             Some(Arg::Str(spec)) => {
                 // ParticleArgument: `id` then optional SNBT options (`dust{color:[1,0,0],scale:2}`).
@@ -881,6 +896,8 @@ impl Game<'_> {
                 };
                 // The block state of a block particle, for its packet.
                 let mut block_state = None;
+                // False when the window's own provider keeps no particle for the options.
+                let mut drawable = true;
                 let options = match ty {
                     // ItemParticleOption: an item id, or a stack {id, ...}.
                     ParticleType::Item => {
@@ -944,10 +961,14 @@ impl Game<'_> {
                                     .position_arg(ctx, "pos")
                                     .unwrap_or_else(|| self.source_position())
                                     .map(|c| c.floor() as i32);
-                                let (sprite, tint) = self
-                                    .particle_sprite(state, at)
-                                    .unwrap_or_else(|| ("block/stone".into(), 0xFFFFFF));
-                                ParticleOptions::block(ty, sprite, tint)
+                                // `BlockParticleOption`'s providers: the window draws what a
+                                // client would (none for air crumbs), while the viewers a
+                                // server serves are still sent the particle.
+                                self.block_provider_options(ty, state, at)
+                                    .unwrap_or_else(|| {
+                                        drawable = false;
+                                        ParticleOptions::simple(ty)
+                                    })
                             }
                             _ => ParticleOptions::simple(ty),
                         }
@@ -960,7 +981,7 @@ impl Game<'_> {
                         .and_then(|c| crate::game::potions::particle_options(ty, c))
                         .unwrap_or_else(|| ParticleOptions::simple(ty)),
                 };
-                (name.to_owned(), options, block_state)
+                (name.to_owned(), options, block_state, drawable)
             }
             _ => return Ok(0),
         };
@@ -1069,11 +1090,13 @@ impl Game<'_> {
         if sent == 0 {
             return Err(err("commands.particle.failed", &[]));
         }
+        let level = ParticleLevel::new(&self.world, self.res.facts(), self.collision);
+        let local = local && drawable;
         if local && count <= 0 {
             // handleParticleEvent, count 0: one particle, the speed times
             // the delta as velocity (both sent as floats, multiplied as floats).
-            self.particles.create_with_world(
-                Some(&self.world),
+            self.particles.create_with_level(
+                Some(&level),
                 &options,
                 pos,
                 delta.map(|d| f64::from(speed * d as f32)),
@@ -1093,7 +1116,7 @@ impl Game<'_> {
                 ];
                 if !self
                     .particles
-                    .create_with_world(Some(&self.world), &options, p, v)
+                    .create_with_level(Some(&level), &options, p, v)
                 {
                     break;
                 }
@@ -1500,22 +1523,17 @@ impl Game<'_> {
     }
 
     /// The attribute map of a living entity whose attributes Sunrise does
-    /// not model, created from its type's defaults on first use.
+    /// not model, created from its type's defaults on first use. A mob keeps
+    /// its own (`generic_attributes`), which its effects' modifiers reach
+    /// too, made with what its live map kept (`finalize::attribute_map`):
+    /// a reloaded mob reports and removes its saved modifiers.
     pub(in crate::game) fn generic_attributes(
         &mut self,
         t: Target,
-        attribute: &str,
     ) -> Option<&mut sunrise_world::attributes::entity::EntityAttributes> {
-        if let Target::Mob(id) = t
-            && (matches!(attribute, "minecraft:armor" | "minecraft:armor_toughness")
-                || self.sulfur_archetype_attribute(t, attribute))
-        {
+        if let Target::Mob(id) = t {
             let mob = self.mobs.iter_mut().find(|m| m.id == id)?;
-            if mob.extra.armor_attributes.is_none() {
-                mob.extra.armor_attributes =
-                    self.motion.attributes.create(&mob.kind.id).map(Box::new);
-            }
-            return mob.extra.armor_attributes.as_deref_mut();
+            return sunrise_client::mobs::finalize::attribute_map(mob, &self.motion.attributes);
         }
         if !self.cmds.attributes.contains_key(&t) {
             let ty = self.target_type(t);
@@ -1563,9 +1581,7 @@ impl Game<'_> {
         };
         let catalog = self.motion.attributes.clone();
         let key = catalog.id(attribute).ok_or_else(no_attribute)?;
-        let map = self
-            .generic_attributes(target, attribute)
-            .ok_or_else(no_attribute)?;
+        let map = self.generic_attributes(target).ok_or_else(no_attribute)?;
         if !map.has(key) {
             return Err(no_attribute());
         }
@@ -1604,7 +1620,7 @@ impl Game<'_> {
                 self.write_attribute(target, attribute, AttributeWrite::ResetBase)
                     .ok_or_else(no_attribute)?;
                 let v = self
-                    .generic_attributes(target, attribute)
+                    .generic_attributes(target)
                     .and_then(|map| map.base_value(key).ok())
                     .unwrap_or(0.0);
                 (
@@ -3185,7 +3201,7 @@ mod attribute_modifier_command_tests {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
             game.reset_entity_residency();
             game.native_lifecycle
-                .begin_open(mod_api::Authority::IntegratedServer);
+                .begin_open(Some(mod_api::Authority::IntegratedServer));
             crate::game::native_entity_refs::tests::bind_local_player(game, 1, 1);
             assert!(game.run_command(
                 "attribute @s minecraft:step_height modifier add test:a 0.4 add_value"

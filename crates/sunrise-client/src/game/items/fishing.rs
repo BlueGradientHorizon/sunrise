@@ -58,6 +58,7 @@ fn fishing_loot(
     level_random: &mut LegacyRandom,
     world_seed: i64,
     biome: Option<&str>,
+    location: Option<sunrise_world::loot::LootLocation<'_>>,
     open_water: bool,
     params: &sunrise_world::loot::EntityLootParams,
 ) -> Vec<sunrise_world::loot::LootStack> {
@@ -66,10 +67,18 @@ fn fishing_loot(
             table,
             sequences.get(sequence, world_seed),
             biome,
+            location,
             Some(open_water),
             params,
         ),
-        None => loot.roll_as(table, level_random, biome, Some(open_water), params),
+        None => loot.roll_as(
+            table,
+            level_random,
+            biome,
+            location,
+            Some(open_water),
+            params,
+        ),
     }
 }
 
@@ -547,11 +556,15 @@ impl Game<'_> {
             return false;
         };
         let at = [p.position.x, p.position.y, p.position.z];
+        let (owner, eye_y) = (
+            p.position,
+            p.position.y + f64::from(p.dimensions.eye_height),
+        );
         if self.hook.is_some() {
             let damage = self.retrieve_hook(stack);
             self.damage_held(damage);
             let pitch = 0.4 / (self.world.random.next_float() * 0.4 + 0.8);
-            self.audio.play(
+            self.play_audio(
                 "minecraft:entity.fishing_bobber.retrieve",
                 Some(at),
                 1.0,
@@ -564,24 +577,38 @@ impl Game<'_> {
             }
         } else {
             let pitch = 0.4 / (self.world.random.next_float() * 0.4 + 0.8);
-            self.audio.play(
+            self.play_audio(
                 "minecraft:entity.fishing_bobber.throw",
                 Some(at),
                 0.5,
                 pitch,
             );
-            // FishingHook(player, level, luck, lureSpeed)
-            let lure = stack.enchantment_level("minecraft:lure") as i32 * 5 * 20;
-            let luck = stack.enchantment_level("minecraft:luck_of_the_sea") as i32;
             let (yaw, pitch) = (self.yaw, self.pitch);
             let (y_sin, y_cos, dir_y) = cast_direction(yaw, pitch);
-            let eye_y = p.position.y + f64::from(p.dimensions.eye_height);
             // snapTo(x, getEyeY(), z): the hook's feet start at the owner's eye.
             let start = Vec3::new(
-                p.position.x - f64::from(y_sin) * 0.3,
+                owner.x - f64::from(y_sin) * 0.3,
                 eye_y,
-                p.position.z - f64::from(y_cos) * 0.3,
+                owner.z - f64::from(y_cos) * 0.3,
             );
+            // FishingRodItem samples lure time, then luck, from the fisher's stream.
+            let shooter = self.own_entity_id() as u32;
+            let lure = self.entity_enchantment_value(
+                stack,
+                shooter,
+                "minecraft:player",
+                "minecraft:fishing_time_reduction",
+                0.0,
+            );
+            let lure = ((if lure < 0.0 { 0.0 } else { lure }) * 20.0) as i32;
+            let luck = (self.entity_enchantment_value(
+                stack,
+                shooter,
+                "minecraft:player",
+                "minecraft:fishing_luck_bonus",
+                0.0,
+            ) as i32)
+                .max(0);
             // The hook's own random (`Entity.random`).
             let mut random = random_source::entity();
             let uuid = sunrise_client::save::insecure_uuid(&mut random);
@@ -743,18 +770,30 @@ impl Game<'_> {
                 Some([hook.position.x, hook.position.y, hook.position.z]),
                 Some(super::creatures::to_loot(rod)),
             );
+            // ORIGIN is the hook's position; its location checks read the level, so
+            // the roll draws from copies of the randoms put back after it.
+            let origin = [hook.position.x, hook.position.y, hook.position.z];
+            let mut random = self.world.random.clone();
+            let mut sequences = std::mem::take(&mut self.rand_sequences);
             let items = caller.with(|| {
+                let level = crate::game::advancements::View(&*self);
+                let read = |predicate: &serde_json::Value, at: [f64; 3]| {
+                    sunrise_client::advancements::location(predicate, at, &level)
+                };
                 fishing_loot(
                     &loot,
                     table,
-                    &mut self.rand_sequences,
-                    &mut self.world.random,
+                    &mut sequences,
+                    &mut random,
                     self.level.seed,
                     biome.as_deref(),
+                    Some(sunrise_client::advancements::loot_location(origin, &read)),
                     hook.open_water,
                     &params,
                 )
             });
+            self.world.random = random;
+            self.rand_sequences = sequences;
             let mut caught: Vec<ItemStack> = items
                 .into_iter()
                 .map(|stack| {
@@ -978,7 +1017,7 @@ impl Game<'_> {
                     }
                 }
                 let pitch = 1.0 + (h.random.next_float() - h.random.next_float()) * 0.4;
-                self.audio.play(
+                self.play_audio(
                     "minecraft:entity.fishing_bobber.splash",
                     Some(at),
                     0.25,
@@ -1047,7 +1086,7 @@ impl Game<'_> {
     ) {
         let options = ParticleOptions::simple(kind);
         self.particles
-            .send_particles(&options, at, spread, speed, count);
+            .send_particles(&options, at, spread, speed, count, None);
         // The players a server serves are sent them too.
         self.lan_send_particles(super::lan_particles::QueuedParticle {
             dimension: self.dim.id(),
@@ -1242,7 +1281,7 @@ impl Game<'_> {
                             EntityCollision::Deflected { first, rot } => {
                                 if first {
                                     old_yaw += rot;
-                                    self.audio.play(
+                                    self.play_audio(
                                         "minecraft:entity.breeze.deflect",
                                         breeze,
                                         1.0,
@@ -2663,6 +2702,7 @@ pub(in crate::game) mod tests {
                 &mut level_random,
                 seed,
                 None,
+                None,
                 true,
                 &super::hook_params(0.0, None),
             );
@@ -2862,6 +2902,8 @@ pub(in crate::game) mod tests {
             ground: sunrise_world::ground_support::GroundState::from_ground_flag(true),
             vertical_collision: false,
             age: 0,
+            stack_revision: 0,
+            lifespan: ItemEntity::LIFETIME,
             pickup_delay: 0,
             bob_offset: 0.0,
             ticks: 0,

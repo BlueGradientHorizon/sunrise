@@ -112,13 +112,11 @@ pub(super) struct CombatTracker {
     /// Player`), not a mob whose UUID the TNT's `owner` names.
     pub(super) blast_owner_player: bool,
     pub(super) projectile_attacker: Option<(u32, Text)>,
-    pub(super) enchantment_projectile_attacker: Option<u32>,
+    /// The player shooter identified before the victim took the acting slot.
+    pub(super) enchantment_projectile_attacker: Option<i32>,
     /// The projectile hitting the player now is another player's that
     /// `ServerPlayer.canHarmPlayer` refuses (the `pvp` rule, an ally).
     pub(super) refuse_player_hit: bool,
-    /// The hit on the player now runs its post-attack effects (thorns) only
-    /// if the player lives through it (`WitherSkull.onHitEntity`).
-    pub(super) post_attack_if_alive: bool,
     /// The mob whose swing is being applied, when the caller knows it. Without
     /// it the attacker is the mob nearest to where the hit came from, which
     /// walks every mob.
@@ -163,6 +161,9 @@ pub(super) struct CombatTracker {
     /// `blast_hit_list`'s ids as a set, so a walk's membership check stays
     /// constant time however large the list is.
     pub(super) blast_hit_ids: std::collections::HashSet<u32>,
+    /// The one list entry the blast is reaching now: while it is set, every pass that asks
+    /// [`Self::visits`] sees only that entity.
+    pub(super) blast_turn: Option<u32>,
     /// The blast's direct source is in water (`Explosion.getDirectSourceEntity`
     /// `.isInWater`): paintings, item frames and cushions ignore it
     /// (`BlockAttachedEntity.ignoreExplosion`).
@@ -204,7 +205,8 @@ impl CombatTracker {
     /// the walk, unless a listening `explosion_detonate` left a list, and
     /// then only what that list names is.
     pub(super) fn visits(&self, id: u32) -> bool {
-        self.blast_hit_list.is_none() || self.blast_hit_ids.contains(&id)
+        self.blast_turn.is_none_or(|turn| turn == id)
+            && (self.blast_hit_list.is_none() || self.blast_hit_ids.contains(&id))
     }
 
     /// The attack lent by the enclosing [`Game::with_attack`] (`damage_level_of!(game, game.combat.attack(), .., ..)`).
@@ -345,7 +347,9 @@ impl Game<'_> {
             None => Text::translate(&format!("entity.{}", m.kind.id.replace(':', ".")), &[]),
         })
     }
-    /// `getLastHurtByMob`: the last mob to hurt the player, for 100 ticks.
+    /// `getLastHurtByMob`: the last mob to hurt the player, for 100 ticks. The id is a
+    /// player's too when a player dealt the hit (`Who::Mob` names any entity id), which
+    /// `OwnerHurtByTargetGoal` resolves through the tick's player selection.
     pub(super) fn player_hurt_by(&self) -> Option<(sunrise_client::mobs::Who, i64)> {
         let ((id, _), at) = self.combat.last_hurt_by.as_ref()?;
         (self.world.game_time - at <= 100).then_some((sunrise_client::mobs::Who::Mob(*id), *at))
@@ -1072,14 +1076,12 @@ impl Game<'_> {
     ) -> bool {
         let hurt = self.mob_hits_mob(target, amount, source);
         if hurt {
-            let damage_type = super::creatures::damage_type(source.kind, false);
-            self.mob_post_attack(target, source.attacker, None, Some(damage_type));
-            if let Some(Who::Mob(attacker)) = source.attacker
-                && let Some(victim) = self.mob_index.find(&self.mobs, target)
-            {
-                let victim_kind = self.mobs[victim].kind.clone();
-                self.mob_weapon_post_attack(attacker, (target, &victim_kind.id), damage_type);
-            }
+            self.mob_post_attack(
+                target,
+                source.attacker,
+                None,
+                Some(super::creatures::damage_type(source.kind, false)),
+            );
         }
         hurt
     }
@@ -1093,9 +1095,16 @@ impl Game<'_> {
             _ => None,
         };
         let landed = match target {
-            Who::Player => {
-                self.hurt_player_from(amount, Some(from), "minecraft:mob_attack", Some(mob), false)
-            }
+            Who::Player => self.hurt_player_from(
+                amount,
+                Some(from),
+                "minecraft:mob_attack",
+                mob.map_or(
+                    crate::game::creatures::KnownCause::None,
+                    crate::game::creatures::KnownCause::Entity,
+                ),
+                false,
+            ),
             Who::Mob(id) => self.mob_attacks_mob(id, amount, source),
         };
         self.combat.hit_landed = landed;
@@ -1105,17 +1114,20 @@ impl Game<'_> {
             }
             return;
         }
+        let source = mob.and_then(|id| self.entity(id));
         match target {
             Who::Player => {
                 self.combat.stuck.add_stinger();
                 if poison_ticks > 0 {
-                    self.give_player_effect("minecraft:poison", poison_ticks, 0);
+                    self.give_player_effect_from("minecraft:poison", poison_ticks, 0, source);
                 }
             }
             Who::Mob(id) if poison_ticks > 0 => {
-                if let Some(t) = self.mobs.iter_mut().find(|m| m.id == id) {
-                    t.add_effect("minecraft:poison", poison_ticks, 0);
-                }
+                self.add_mob_effect(
+                    id,
+                    sunrise_client::effects::EffectInstance::new("poison", poison_ticks, 0),
+                    source,
+                );
             }
             Who::Mob(_) => {}
         }
@@ -1125,8 +1137,7 @@ impl Game<'_> {
         if let Some(b) = self.mobs.iter_mut().find(|m| m.id == mob)
             && sunrise_client::mobs::bee::sting_landed(b)
         {
-            self.audio
-                .play("minecraft:entity.bee.sting", Some(from), 1.0, 1.0);
+            self.play_audio("minecraft:entity.bee.sting", Some(from), 1.0, 1.0);
         }
     }
     /// Whether a hit from a mob's tick on `target`, handled after the mob

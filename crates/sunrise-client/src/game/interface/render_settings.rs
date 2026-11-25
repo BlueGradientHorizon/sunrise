@@ -28,17 +28,26 @@ impl Game<'_> {
         window: Arc<Window>,
         pack: &PackResources,
         gui: &UiResources,
+        opened: Option<sunrise_client::gfx::Opened>,
     ) -> Result<Renderer> {
         build_renderer(
             window,
             self.options.offscreen,
             pack,
             gui,
-            self.renderer.as_ref(),
+            opened.map_or_else(
+                || {
+                    self.renderer.as_ref().map_or(
+                        sunrise_client::gfx::RendererDevice::New,
+                        sunrise_client::gfx::RendererDevice::Reuse,
+                    )
+                },
+                |device| sunrise_client::gfx::RendererDevice::Opened(Box::new(device)),
+            ),
             None,
             self.settings.sunrise.api,
             self.settings.sunrise.translucent_batching,
-            self.settings.vsync,
+            self.effective_vsync(),
             &self.settings.sunrise,
             shader_packs::picked_pack_shape(&self.settings),
             self.renderer
@@ -47,8 +56,8 @@ impl Game<'_> {
                 .unwrap_or_default(),
             self.settings.texture_atlas_settings(),
         )
-        .and_then(|(renderer, clouds)| {
-            clouds?;
+        .and_then(|(renderer, required)| {
+            required?;
             Ok(renderer)
         })
     }
@@ -108,7 +117,7 @@ impl Game<'_> {
         if let Some(renderer) = &mut self.renderer {
             renderer.release_surface();
         }
-        let mut renderer = match self.renderer_for(window, &self.pack, &self.gui) {
+        let mut renderer = match self.renderer_for(window, &self.pack, &self.gui, None) {
             Ok(renderer) => renderer,
             Err(error) => {
                 if let Some(renderer) = &mut self.renderer {
@@ -246,7 +255,7 @@ impl Game<'_> {
     }
 
     pub(super) fn new_renderer(&self, window: Arc<Window>) -> Result<Renderer> {
-        self.renderer_for(window, &self.pack, &self.gui)
+        self.renderer_for(window, &self.pack, &self.gui, None)
     }
 
     /// A renderer made again from the resources loaded takes over: what named the old one's

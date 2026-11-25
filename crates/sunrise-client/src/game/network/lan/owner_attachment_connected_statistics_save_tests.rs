@@ -129,7 +129,8 @@ mod connected_statistics_save_tests {
         game.options.execution_role = ExecutionRole::DedicatedServer;
         // The command's dedicated-only guard also checks the launch mode.
         game.options.dedicated = Some(Vec::new());
-        let dir = std::env::current_dir().unwrap().join(if stale {
+        let scratch = tempfile::tempdir().unwrap();
+        let dir = scratch.path().join(if stale {
             "stats-stale"
         } else {
             "stats-missing"
@@ -238,7 +239,8 @@ mod connected_statistics_save_exclusion_tests {
         let mut resources = None;
         let mut game = crate::game::game_tests::tests::server_game(&mut resources);
         let _rx = super::super::world_spawn_sync_tests::host_for(&mut game);
-        game.world_root = std::env::current_dir().unwrap().join("stats-excluded");
+        let scratch = tempfile::tempdir().unwrap();
+        game.world_root = scratch.path().join("stats-excluded");
         std::fs::create_dir_all(&game.world_root).unwrap();
         let path = super::super::super::stats::player_json(&game.world_root, "stats", [0, 0, 0, 1]);
         let mut host = game.lan.take().unwrap();

@@ -174,7 +174,7 @@ impl Game<'_> {
             && let Some(sound) = &component.block_sound
         {
             let pitch = 0.8 + self.world.random.next_float() * 0.4;
-            self.audio.play(sound, at, 1.0, pitch);
+            self.play_audio(sound, at, 1.0, pitch);
         }
         // BlocksAttacks.hurtBlockingItem counts use even when nothing is blocked.
         if !outcome.blocking_item_used {
@@ -340,7 +340,7 @@ impl Game<'_> {
             self.stop_active_item_use();
             if let Some(sound) = &component.disabled_sound {
                 let pitch = 0.8 + self.world.random.next_float() * 0.4;
-                self.audio.play(sound, at, 0.8, pitch);
+                self.play_audio(sound, at, 0.8, pitch);
             }
         }
     }
@@ -379,6 +379,7 @@ mod durability_tests {
                     causing: 0,
                     direct: 0,
                     position: None,
+                    direct_type: None,
                 },
                 &sunrise_client::health::NO_ATTACK,
             );
@@ -416,6 +417,7 @@ mod durability_tests {
                         causing: 0,
                         direct: 0,
                         position: None,
+                        direct_type: None,
                     },
                     &sunrise_client::health::NO_ATTACK,
                 );
@@ -451,6 +453,7 @@ mod blocked_hit_use_tests {
             causing: 1,
             direct: 1,
             position: None,
+            direct_type: None,
         };
         let outcome = BlockOutcome {
             blocking_item_used: true,

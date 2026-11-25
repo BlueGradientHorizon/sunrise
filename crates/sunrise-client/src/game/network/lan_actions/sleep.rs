@@ -171,7 +171,7 @@ impl Game<'_> {
     /// of those have slept 100 ticks.
     pub(in crate::game) fn sleep_counts(&self) -> (i64, i64, i64) {
         let (mut active, mut sleeping, mut deep) = (0i64, 0i64, 0i64);
-        let mut count = |in_bed: bool, timer: u32| {
+        let mut count = |in_bed: bool, timer: i32| {
             active += 1;
             if in_bed {
                 sleeping += 1;
@@ -213,15 +213,18 @@ impl Game<'_> {
                     .is_some_and(|host| host.sleep_ignored.contains(&g.uuid)))
     }
 
-    /// `SleepStatus.sleepersNeeded`.
+    /// `SleepStatus.sleepersNeeded`, then a mod's `sleepers_needed` (at least 1).
     pub(super) fn sleepers_needed(&self, active: i64) -> i64 {
-        let percent = i64::from(
-            self.ui
-                .rules
-                .int_at(sunrise_client::gamerules::vanilla::PLAYERS_SLEEPING_PERCENTAGE)
-                .max(0),
-        );
-        ((active * percent + 99) / 100).max(1)
+        let percentage = self
+            .ui
+            .rules
+            .int_at(sunrise_client::gamerules::vanilla::PLAYERS_SLEEPING_PERCENTAGE);
+        let mut needed = ((active * i64::from(percentage.max(0)) + 99) / 100).max(1);
+        if percentage <= 100 && mod_api::__private::listened(mod_api::HookId::SleepersNeeded) {
+            self.native_sleepers_needed(self.dim.id(), percentage, active, &mut needed);
+            needed = needed.max(1);
+        }
+        needed
     }
 
     /// `SleepStatus.areEnoughSleeping` and `areEnoughDeepSleeping` over the
@@ -272,16 +275,16 @@ impl Game<'_> {
             return;
         }
         // ServerLevel.canSleepThroughNights.
-        if self
+        let percentage = self
             .ui
             .rules
-            .int_at(sunrise_client::gamerules::vanilla::PLAYERS_SLEEPING_PERCENTAGE)
-            > 100
-        {
+            .int_at(sunrise_client::gamerules::vanilla::PLAYERS_SLEEPING_PERCENTAGE);
+        if percentage > 100 {
             return;
         }
         let needed = self.sleepers_needed(active);
-        let text = if sleeping >= needed {
+        let skipping_night = sleeping >= needed;
+        let mut text = if skipping_night {
             sunrise_client::text::Text::translate("sleep.skipping_night", &[])
         } else {
             sunrise_client::text::Text::translate(
@@ -292,6 +295,23 @@ impl Game<'_> {
                 ],
             )
         };
+        if mod_api::__private::listened(mod_api::HookId::SleepStatusAnnounce) {
+            let mut canceled = false;
+            let dimension = self.dim.id();
+            self.native_sleep_status_announce(
+                dimension,
+                sleeping,
+                active,
+                percentage,
+                needed,
+                skipping_night,
+                &mut text,
+                &mut canceled,
+            );
+            if canceled {
+                return;
+            }
+        }
         if let Some(host) = self.lan.as_ref() {
             host.hub
                 .overlay_message(sunrise_client::lan::data::component_nbt(&text.component()));
@@ -333,3 +353,11 @@ impl Game<'_> {
 #[cfg(test)]
 #[path = "tests/sleep_skip_night_tests.rs"]
 mod sleep_skip_night_tests;
+
+#[cfg(test)]
+#[path = "tests/sleep_status_announce_tests.rs"]
+mod sleep_status_announce_tests;
+
+#[cfg(test)]
+#[path = "tests/sleepers_needed_tests.rs"]
+mod sleepers_needed_tests;

@@ -435,45 +435,7 @@ pub(super) fn encode_full(
                 },
             );
             let mut saved = match source {
-                Some(original) => {
-                    let items_are_payload = matches!(e, crate::containers::BlockEntity::Mod(_))
-                        && !block_has_mod_item_slots(&block);
-                    let loaded =
-                        decode_block_entity_with_history(original, None, !items_are_payload)
-                            .map_or_else(
-                                || current.clone(),
-                                |(q, e)| {
-                                    // External name removal must win over the source overlay.
-                                    let custom_name = (!matches!(
-                                        e,
-                                        crate::containers::BlockEntity::Banner(_)
-                                            | crate::containers::BlockEntity::Sign(_)
-                                            | crate::containers::BlockEntity::Mod(_)
-                                    ))
-                                    .then(|| {
-                                        original
-                                            .get("CustomName")
-                                            .and_then(crate::block_entity_nbt::component)
-                                    })
-                                    .flatten();
-                                    block_entity_encode::encode_with(
-                                        q,
-                                        &e,
-                                        &block,
-                                        block_entity_encode::DataFields {
-                                            lock,
-                                            custom_name: custom_name.as_ref(),
-                                            pending: PendingContainerLoot::from_tag(original)
-                                                .as_ref(),
-                                            hopper_cooldown,
-                                        },
-                                        items,
-                                        |_| None,
-                                    )
-                                },
-                            );
-                    merge_block_entity(original, &loaded, &current, items_are_payload)
-                }
+                Some(original) => overlay_block_entity_source(original, e, &block, &current, items),
                 None => current,
             };
             // A consumed loot table must not be restored from an opaque source.
@@ -921,7 +883,10 @@ fn decode_column(
                     if let Some(name) = name {
                         chunk.block_names.push((be.0, name));
                     }
-                    let randomizable = matches!(be.1, crate::containers::BlockEntity::Chest(_));
+                    let block = registry
+                        .state(chunk.block(be.0.0 & 15, be.0.1, be.0.2 & 15))
+                        .map_or("", |state| state.name.as_str());
+                    let randomizable = randomizable_container(&be.1, block);
                     if randomizable && let Some(pending) = PendingContainerLoot::from_tag(e) {
                         extras.pending_loot.insert(be.0, pending);
                     }
