@@ -170,23 +170,9 @@ impl mod_api::CommandArgumentType for ModifierId {
         Ok(format!("parsed {input}"))
     }
 
-    fn suggest(
-        &self,
-        _: Option<&mod_api::CommandSender>,
-        _: &str,
-    ) -> Vec<mod_api::CommandSuggestion> {
-        panic!("the declared provider should answer instead");
-    }
-
-    fn suggestion_provider(&self) -> Option<Arc<dyn mod_api::SuggestionProvider>> {
-        Some(Arc::new(ModifierId))
-    }
-}
-
-impl mod_api::SuggestionProvider for ModifierId {
-    fn suggest(&self, request: &mod_api::SuggestionRequest) -> mod_api::SuggestionReply {
+    fn suggest(&self, request: &mod_api::SuggestionRequest) -> Vec<mod_api::Suggestion> {
         assert_eq!(request.prefix, "tconstruct:ha");
-        mod_api::SuggestionReply::new(vec![mod_api::CommandSuggestion::new("tconstruct:haste")])
+        vec![request.suggest("tconstruct:haste")]
     }
 }
 

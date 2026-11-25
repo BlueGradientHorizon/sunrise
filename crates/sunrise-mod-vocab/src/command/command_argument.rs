@@ -28,10 +28,6 @@ pub enum CommandArgumentKind {
     Word,
     /// The rest of the line, spaces included: the argument must be the usage's last.
     Greedy,
-    /// A vanilla identifier (`minecraft:resource_location`), reading `a-z`, `0-9`, `_`, `-`,
-    /// `.`, `:` and `/` through the first other character. It can precede other arguments.
-    /// The parser receives the original text, not the canonical identifier. `#` tags are not read.
-    Id,
     /// One unquoted word or one quoted phrase, as Brigadier's `StringArgumentType.string()`
     /// (`QUOTABLE_PHRASE`, `StringReader.readString`): a word of [`Word`](Self::Word)'s
     /// characters, or text between `"` or `'` quotes, empty included, in which only the active
@@ -65,6 +61,10 @@ pub enum CommandArgumentKind {
         /// The largest value accepted; `None` for `i64::MAX`.
         max: Option<i64>,
     },
+    /// A vanilla identifier (`minecraft:resource_location`), reading `a-z`, `0-9`, `_`, `-`,
+    /// `.`, `:` and `/` through the first other character. It can precede other arguments.
+    /// The parser receives the original text, not the canonical identifier. `#` tags are not read.
+    Id,
 }
 
 /// Why a custom argument's parser refused the text a player wrote.

@@ -1826,7 +1826,7 @@ fn a_custom_id_parser_receives_the_original_identifier_token() {
         "example:target",
         CustomArgumentKind::Id,
         |input| Err(Text::literal(format!("unknown target `{input}`"))),
-        |_, _| Vec::new(),
+        |_, _, _| Vec::new(),
     ));
     let mut reader = Reader::new("group/path 2");
     let error = argument.parse(&mut reader, &reg()).unwrap_err();
