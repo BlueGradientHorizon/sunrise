@@ -1810,12 +1810,9 @@ impl PackPost {
                 pass,
                 (geometry.draws.iter()).any(|d| d.pack && d.program == program && d.block_atlas),
             );
-            let dynamic = self.dynamic_groups(
-                device,
-                pass,
-                geometry,
-                |d| d.pack && d.program == program && !d.water_mask,
-            );
+            let dynamic = self.dynamic_groups(device, pass, geometry, |d| {
+                d.pack && d.program == program && !d.water_mask
+            });
             {
                 let mut rp = self.begin(encoder, pass);
                 rp.set_pipeline(pass.render());

@@ -3875,7 +3875,11 @@ mod tests {
                 BuiltinRenderType::EntityCutout,
                 BuiltinRenderType::EntityTranslucent,
             ] {
-                let made = game.pack.render.textured_render_type(kind, &texture).unwrap();
+                let made = game
+                    .pack
+                    .render
+                    .textured_render_type(kind, &texture)
+                    .unwrap();
                 assert!(!game.native_draw_textured_quad(&mut d, made, CORNERS, UNIT_UV, 0xFFFFFF));
             }
             let eyes = game

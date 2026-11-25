@@ -168,9 +168,12 @@ impl DynamicEntity {
         store: &Store,
         handle: u64,
     ) -> (wgpu::TextureView, u64) {
-        store
-            .view(handle)
-            .unwrap_or_else(|| (self.missing_view(device, uploads, encoder).clone(), u64::MAX))
+        store.view(handle).unwrap_or_else(|| {
+            (
+                self.missing_view(device, uploads, encoder).clone(),
+                u64::MAX,
+            )
+        })
     }
 
     /// Draws this frame's runs of `overlay` (`DYNAMIC_TEXTURE_*_OVERLAY`) with the pipeline and

@@ -1080,8 +1080,8 @@ fn material_runs<'a>(
             let layer = vertices[i].layer;
             let material = material_program(&span, layer, drawn);
             // A mod's own texture: the program draws it with that texture bound as the atlas.
-            let texture = is_dynamic_texture(layer)
-                .then(|| dynamic_texture_handle(vertices[i].glint_uv));
+            let texture =
+                is_dynamic_texture(layer).then(|| dynamic_texture_handle(vertices[i].glint_uv));
             if !is_native_terrain(layer) {
                 return (
                     material,
