@@ -108,8 +108,8 @@ impl Game<'_> {
                 reason: "invalid registered consume effect payload".into(),
             },
             StackWriteError::InvalidComponents { reason } => map_stack_error(reason),
-            other => ItemJsonError::InvalidValue {
-                reason: format!("{other:?}"),
+            _ => ItemJsonError::InvalidValue {
+                reason: "the stack can't be written".into(),
             },
         })?;
         let allow_custom = self
