@@ -45,8 +45,8 @@ use mod_api::{
     InteractionAttempt, InteractionKey, ItemEntityRef, LifecycleContext, LivingRef, LoadConditions,
     NoteBlockChange, ParticleProviders, PathComputationType, Placement, PlayerRef,
     PoiTypeExtensions, RecipeBookCategory, ScreenId, ScreenOpening, ScreenTarget, ScreenWidgets,
-    ScreenshotImage, ServerReloadListeners, ServerTickPhase, SpecialModelRenderers, ToolUse,
-    VillagerProfessions,
+    ScreenshotImage, ServerReloadListeners, ServerTickPhase, ShaderPackState,
+    SpecialModelRenderers, ToolUse, VillagerProfessions,
 };
 use mod_api::{
     ActiveEffect, AttachmentStore, BlockClick, BlockUpdateFlags, BonemealSource, ChunkRef,
@@ -509,6 +509,7 @@ mod register_mob_parts;
 mod register_model_loaders;
 mod register_particle_groups;
 mod register_particle_providers;
+mod register_pipeline_modifiers;
 mod register_preset_editors;
 mod register_range_select_item_model_property;
 mod register_render_pipelines;

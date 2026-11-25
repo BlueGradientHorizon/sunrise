@@ -1306,12 +1306,18 @@ pub enum ClipBlock {
     Visual,
 }
 
-/// Fluid mode for a level ray. Only the listed modes are supported.
+/// Fluid mode for a level ray (`ClipContext.Fluid`).
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
 pub enum ClipFluid {
-    /// None.
+    /// `NONE`: ignore fluids.
     None,
+    /// `SOURCE_ONLY`: stop at source fluids (`FluidState.isSource`), including waterlogged blocks.
+    SourceOnly,
+    /// `ANY`: stop at every non-empty fluid (`!FluidState.isEmpty`), including waterlogged blocks.
+    Any,
+    /// `WATER`: stop at fluids in the `minecraft:water` fluid tag (`FluidState.is(FluidTags.WATER)`), including tagged mod fluids and waterlogged blocks.
+    Water,
 }
 
 /// Result of a block ray (`BlockGetter.clip`), including the vanilla miss result

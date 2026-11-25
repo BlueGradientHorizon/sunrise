@@ -43,11 +43,13 @@ pub trait LevelCollisionBackend {
         visit: &mut dyn FnMut([f64; 6]) -> core::ops::ControlFlow<()>,
     ) -> Option<core::ops::ControlFlow<()>>;
     /// Side: both.
-    /// Clip an empty-context ray from `from` to `to` against collider, outline or visual
-    /// shapes (`ClipContext.Block.COLLIDER`, `OUTLINE`, `VISUAL`), without fluids or the world
-    /// border (`BlockGetter.clip` / `BlockGetter.clipWithInteractionOverride`, not
-    /// `CollisionGetter.clipIncludingBorder`). No traversal cell cap or entity reach limit is
-    /// applied.
+    /// Clip an empty-context ray from `from` to `to` against collider, outline or visual shapes
+    /// (`ClipContext.Block.COLLIDER`, `OUTLINE`, `VISUAL`) and fluids (`BlockGetter.clip` /
+    /// `BlockGetter.clipWithInteractionOverride`, not `CollisionGetter.clipIncludingBorder`).
+    /// `fluids` selects which fluid states stop the ray (`ClipFluid`), using
+    /// `FluidState.getShape` with neighbour-dependent height; in each cell, block and fluid hits
+    /// compare squared distance at the actual hit point and the block wins a tie. No traversal
+    /// cell cap or entity reach limit is applied.
     ///
     /// Reads the named resident world without loading chunks: on a client (including a viewed
     /// level from `host.level`), missing columns read as empty chunks
