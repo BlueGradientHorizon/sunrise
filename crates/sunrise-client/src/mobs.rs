@@ -789,6 +789,13 @@ pub enum DamageKind {
     WitherSkull,
 }
 impl DamageKind {
+    /// `DamageSource.is(DamageTypes.X)`: the registered damage type's identity,
+    /// whatever variant carries it, so a contact `minecraft:thorns` reacts as
+    /// `DamageKind::Thorns` does. Tags stay the level's (`has`).
+    pub fn is(self, registry_id: &str) -> bool {
+        crate::health::damage_type(self, false) == registry_id
+    }
+
     /// DamageTypeTags.IS_EXPLOSION.
     fn is_explosion(self) -> bool {
         match self {
@@ -5012,7 +5019,7 @@ impl Mob {
             };
             // playSecondaryHurtSound: a thorns hit sounds where the mob
             // stands, silent or not.
-            let thorns = (kind == DamageKind::Thorns).then_some(villager::HurtSound(
+            let thorns = kind.is("minecraft:thorns").then_some(villager::HurtSound(
                 "enchant.thorns.hit",
                 at,
                 1.0,
@@ -7221,6 +7228,19 @@ mod magic_absorb_tests {
         m.outbox.clear();
         m.damage(level, 8.0, thorns);
         assert!(sounds(&m).is_empty(), "inside the hurt cooldown");
+
+        // A contact hit carries the registered type; the identity is
+        // `minecraft:thorns` whatever variant carries it.
+        let mut contact = witch();
+        contact.position = Vec3::new(1.0, 2.0, 3.0);
+        contact.silent = true;
+        let typed = Damage::of(DamageKind::Named(NamedDamage::new("minecraft:thorns", 0)));
+        assert!(contact.damage(level, 4.0, typed));
+        assert_eq!(
+            sounds(&contact),
+            vec![("enchant.thorns.hit", [1.0, 2.0, 3.0], 1.0, 1.0)]
+        );
+        contact.outbox.clear();
 
         let mut loud = witch();
         assert!(loud.damage(level, 4.0, thorns));

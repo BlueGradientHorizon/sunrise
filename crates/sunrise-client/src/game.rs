@@ -3465,6 +3465,8 @@ struct Game<'a> {
     motion: &'a MotionResources,
     /// This world's frozen damage definitions and reloadable tag snapshot.
     pub(super) health_resources: sunrise_client::health::HealthResources,
+    /// Contact hurts a vehicle tick queued; applied once its copy is stored.
+    pub(super) vehicle_contact_hurts: Vec<crate::game::entity::ContactHurt>,
     damage_tag_generation: u64,
     /// The registries native mods registered data map types for, as of the
     /// server tables' last build: what `data_maps_updated` fires for.
@@ -14340,6 +14342,7 @@ impl<'a> Game<'a> {
             collision: res.collision(),
             motion: res.motion(),
             health_resources: res.motion().health.clone(),
+            vehicle_contact_hurts: Vec::new(),
             damage_tag_generation: 1,
             data_map_registries: Vec::new(),
             pending_initial_models: None,
