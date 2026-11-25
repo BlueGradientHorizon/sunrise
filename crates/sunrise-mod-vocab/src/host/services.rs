@@ -105,6 +105,20 @@ pub trait ClientSession {
     fn client_frame_stats(&self) -> Option<ClientFrameStats> {
         unimplemented!("ClientSession::client_frame_stats")
     }
+    /// Side: client.
+    /// The title, subtitle and action bar on screen now. Each is None once its timer has run
+    /// out; the subtitle shows only with a title. What this client has been sent; None outside
+    /// a logged-in client world. Sends nothing.
+    fn client_titles(&self) -> Option<ClientTitles> {
+        unimplemented!("ClientSession::client_titles")
+    }
+    /// Side: client.
+    /// The boss bars the window shows, in the order the server added them: each bar's name and
+    /// progress (0 to 1, as drawn). What this client has been sent; None outside a logged-in
+    /// client world. Sends nothing.
+    fn client_boss_bars(&self) -> Option<Vec<ClientBossBarEntry>> {
+        unimplemented!("ClientSession::client_boss_bars")
+    }
 }
 /// The commands service, reached through its host.
 pub trait Commands {

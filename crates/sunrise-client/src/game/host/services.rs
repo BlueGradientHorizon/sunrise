@@ -33,6 +33,12 @@ impl ClientSession for Game<'_> {
     fn client_frame_stats(&self) -> Option<ClientFrameStats> {
         CallbackOwner::call_host(|| self.native_client_frame_stats())
     }
+    fn client_titles(&self) -> Option<ClientTitles> {
+        CallbackOwner::call_host(|| self.native_client_titles())
+    }
+    fn client_boss_bars(&self) -> Option<Vec<ClientBossBarEntry>> {
+        CallbackOwner::call_host(|| self.native_client_boss_bars())
+    }
 }
 impl Commands for Game<'_> {
     fn refresh_commands(&mut self) {
