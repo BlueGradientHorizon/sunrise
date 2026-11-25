@@ -7710,6 +7710,11 @@ pub(super) mod fake_action_tests {
         with_game(|game| {
             let (player, conn, _) = fake(game, None, 0);
             game.as_guest(conn, |g| g.attack_ticks = 2).unwrap();
+            // The base attack speed, 4: a full charge takes 5 ticks.
+            assert_eq!(
+                game.player_current_item_attack_strength_delay(player),
+                Some(5.0)
+            );
             for partial in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
                 assert_eq!(game.player_attack_strength_scale(player, partial), None);
                 game.as_guest(conn, |g| {
