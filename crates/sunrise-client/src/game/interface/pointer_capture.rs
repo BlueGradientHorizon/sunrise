@@ -543,7 +543,6 @@ mod tests {
     #[ignore = "daily"]
     fn movement_key_held_behind_a_screen_counts_after_pointer_grab() {
         use super::*;
-        use mod_api::prelude::ClientInputClientHost;
         use sunrise_assets::resource_source::{ResourceRoot, ResourceSource};
 
         let root = PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
