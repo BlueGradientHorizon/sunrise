@@ -113,8 +113,8 @@ impl Game<'_> {
             return admit_datapack_registries(root, overlay, view, declarations, &files)
                 .map(|candidate| Some((candidate, None)));
         }
-        let biome_tags =
-            sunrise_client::items::load_tags(root, "worldgen/biome", tag_files).unwrap_or_default();
+        let biome_tags = sunrise_client::items::load_tags(root, "worldgen/biome", tag_files)
+            .map_err(|error| format!("datapack vanilla value biome tags: {error}"))?;
         let live_features = self.res.behaviours().live_features();
         let catalog = live_features
             .as_ref()
