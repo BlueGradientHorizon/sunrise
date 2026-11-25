@@ -5569,10 +5569,18 @@ impl Mob {
             _ => {}
         }
     }
-    /// `LivingEntity.heal`, with the native heal hook.
-    pub fn heal(&mut self, context: &LoopContext, mut amount: f32) {
+    /// `LivingEntity.heal`, with the native heal hook; `reads` is what the hook's view of the
+    /// mob needs beyond its body ([`LivingLend`](crate::health::LivingLend)).
+    pub fn heal<'r>(
+        &mut self,
+        context: &LoopContext,
+        reads: &dyn Fn() -> Option<crate::health::HitReads<'r>>,
+        mut amount: f32,
+    ) {
         let mut cancel = false;
-        crate::hunger::native_living_heal(context, self.id, &mut amount, &mut cancel);
+        let lent = || reads();
+        let healed = crate::health::LivingLend::mob(self, &lent);
+        crate::hunger::native_living_heal(context, healed, &mut amount, &mut cancel);
         if !cancel && self.health > 0.0 {
             self.health = (self.health + amount).clamp(0.0, self.attrs.max_health);
         }
@@ -5598,7 +5606,7 @@ impl Mob {
             );
         } else {
             let heal = (scale * f64::from(4i32.wrapping_shl(shift).max(0))) as i32 as f32;
-            self.heal(context, heal);
+            self.heal(context, &|| level.reads(), heal);
         }
     }
     /// `LivingEntity.canBeAffected`: whether an effect of this kind may be added at
@@ -7093,9 +7101,9 @@ mod magic_absorb_tests {
         let context = crate::test_resources::server_loop_context();
         let mut m = witch();
         m.health = m.attrs.max_health - 3.0;
-        m.heal(context, 2.0);
+        m.heal(context, &|| None, 2.0);
         assert_eq!(m.health, m.attrs.max_health - 1.0);
-        m.heal(context, 5.0);
+        m.heal(context, &|| None, 5.0);
         assert_eq!(m.health, m.attrs.max_health);
     }
 

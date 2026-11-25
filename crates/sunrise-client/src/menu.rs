@@ -4593,11 +4593,18 @@ pub(crate) mod tests {
         assert_eq!(name(&after), "3");
         assert_eq!(tab_list(&after), Some("3".to_owned()));
         // The motion value hooks read it too, and change nothing without it.
+        let cow = crate::mobs::Mob::new(
+            1,
+            crate::mobs::sensor_scan_tests::kind(),
+            sunrise_core::geometry::Vec3::ZERO,
+            0.0,
+        );
         let values = |context: &LoopContext| {
             let (mut jump, mut speed, mut flying) = (0.5, 0.1, 0.02);
-            crate::motion::native_living_jump_power(context, 1, "minecraft:cow", &mut jump);
-            crate::motion::native_living_speed(context, 1, "minecraft:cow", &mut speed);
-            crate::motion::native_living_flying_speed(context, 1, "minecraft:cow", &mut flying);
+            let cow = crate::health::LivingLend::mob(&cow, &|| None);
+            crate::motion::native_living_jump_power(context, cow, &mut jump);
+            crate::motion::native_living_speed(context, cow, &mut speed);
+            crate::motion::native_living_flying_speed(context, cow, &mut flying);
             (jump, speed, flying)
         };
         assert_eq!(values(&before), (0.5, 0.1, 0.02));
@@ -4746,7 +4753,14 @@ pub(crate) mod tests {
         // Heal and drown read it as well.
         let health = |context: &LoopContext| {
             let (mut amount, mut cancel) = (2.0, false);
-            crate::hunger::native_living_heal(context, 1, &mut amount, &mut cancel);
+            let healed_mob = crate::mobs::Mob::new(
+                1,
+                crate::mobs::sensor_scan_tests::kind(),
+                sunrise_core::geometry::Vec3::ZERO,
+                0.0,
+            );
+            let healed = crate::health::LivingLend::mob(&healed_mob, &|| None);
+            crate::hunger::native_living_heal(context, healed, &mut amount, &mut cancel);
             let (mut drowning, mut damage, mut cancel_drown) = (false, 2.0, false);
             crate::breathing::native_living_drown(
                 context,

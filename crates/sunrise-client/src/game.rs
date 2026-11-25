@@ -2512,6 +2512,7 @@ pub(crate) use launch_options::Options;
 pub use native_block_entity_draw::BlockEntityDraw;
 pub use native_data_maps::DataMapType;
 pub use native_hooks::{PhantomSpawnResult, SleepProblem};
+pub(crate) use native_living_body::with_lent_view;
 pub use native_mob_draw::{MobRender, PlayerRender};
 use std::{
     cell::RefCell,
