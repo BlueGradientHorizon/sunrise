@@ -1,6 +1,5 @@
 ids = [
     "hook:register_render_pipelines",
-    "type:RenderPipeline",
     "type:RenderPipeline.vertex_shader",
     "type:RenderPipeline.defines",
     "handle:RenderPipeline::vertex_shader",
