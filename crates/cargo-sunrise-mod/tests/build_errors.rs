@@ -149,7 +149,7 @@ fn a_native_mod_compiles_its_c_source_with_cc_from_its_build_script() {
     // does not show the C function was linked: the library the build left in its cache must
     // define it.
     let name = format!(
-        "{}greeter{}",
+        "{}mod_greeter{}",
         std::env::consts::DLL_PREFIX,
         std::env::consts::DLL_SUFFIX
     );
