@@ -106,6 +106,10 @@ pub const REGISTRY_KINDS: &[RegistryKind] = &[
         decode: decode_chicken_variant,
     },
     RegistryKind {
+        key: "minecraft:frog_variant",
+        decode: decode_frog_variant,
+    },
+    RegistryKind {
         key: "minecraft:painting_variant",
         decode: decode_painting_variant,
     },
@@ -229,6 +233,7 @@ enum Definition {
     CowSoundVariant(crate::mobs::variants::CowSoundVariant, Tag),
     ChickenVariant(crate::mobs::variants::ChickenVariant, Tag),
     ChickenSoundVariant(crate::mobs::variants::ChickenSoundVariant, Tag),
+    FrogVariant(crate::mobs::variants::FrogVariant, Tag),
 }
 
 impl PackRegistryDefinitions {
@@ -695,6 +700,7 @@ impl PackRegistryDefinitions {
                 | "minecraft:cow_sound_variant"
                 | "minecraft:chicken_variant"
                 | "minecraft:chicken_sound_variant"
+                | "minecraft:frog_variant"
         )
     }
 
@@ -746,7 +752,8 @@ impl PackRegistryDefinitions {
                     | Definition::CowVariant(_, tag)
                     | Definition::CowSoundVariant(_, tag)
                     | Definition::ChickenVariant(_, tag)
-                    | Definition::ChickenSoundVariant(_, tag) => tag.clone(),
+                    | Definition::ChickenSoundVariant(_, tag)
+                    | Definition::FrogVariant(_, tag) => tag.clone(),
                     Definition::Validated(_, tag) => tag.clone()?,
                     Definition::Enchantment(json) => json_to_nbt(json),
                     Definition::EnchantmentProvider(_) => return None,
@@ -926,6 +933,10 @@ impl PackRegistryDefinitions {
                     _ => None,
                 },
             ),
+            frog: collect(&self.entries, "minecraft:frog_variant", |d| match d {
+                Definition::FrogVariant(v, _) => Some(v),
+                _ => None,
+            }),
         }
     }
 
@@ -1799,6 +1810,14 @@ fn decode_chicken_sound_variant(
     Ok(Definition::ChickenSoundVariant(variant, wire))
 }
 
+/// `FrogVariant.DIRECT_CODEC` on disk, `FrogVariant.NETWORK_CODEC` on the wire.
+fn decode_frog_variant(_: &mut Decoder<'_>, _: &str, value: Value) -> Result<Definition, String> {
+    let variant = crate::mobs::variants::FrogVariant::decode(&value)?;
+    let wire = variant.to_network_nbt();
+    check_network_nbt(&wire)?;
+    Ok(Definition::FrogVariant(variant, wire))
+}
+
 fn is_variant_kind(kind: &str) -> bool {
     matches!(
         kind,
@@ -1812,6 +1831,7 @@ fn is_variant_kind(kind: &str) -> bool {
             | "cow_sound_variant"
             | "chicken_variant"
             | "chicken_sound_variant"
+            | "frog_variant"
     )
 }
 
