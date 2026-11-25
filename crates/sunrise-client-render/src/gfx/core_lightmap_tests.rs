@@ -239,17 +239,19 @@ fn vanilla_textures() -> [[u8; 16 * 16 * 4]; 2] {
     out
 }
 
-/// A shader storing 0.880573 in red: 224.546 of 255 (state 0's green at sky 0, block 5), which
-/// the nearest byte stores as 225, and a half float, rounded either way (0.880371, 224.495), as
-/// 224. `SkyFactor` in green keeps `LightmapInfo` read.
+/// A shader storing 224.505 of 255 in red (0.8804118) and 224.495 in blue (0.8803725): 0.005
+/// of a byte either side of the 224.5 tie, the smallest margin any texel of [`STATES`] keeps from
+/// a tie (state 1, sky 12, block 9: green 154.4943). The nearest byte stores 225 and 224. A half
+/// float, a 10-bit or a 12-bit intermediate cannot tell the two apart and stores them alike.
+/// `SkyFactor` in green keeps `LightmapInfo` read.
 const ROUNDING_FSH: &str = "#version 330\nlayout(std140) uniform LightmapInfo {\n\
     float SkyFactor;\n} lightmapInfo;\n\
     layout(location = 0) in vec2 texCoord;\nlayout(location = 0) out vec4 fragColor;\n\
-    void main() {\n    fragColor = vec4(0.880573, lightmapInfo.SkyFactor, 0.0, 1.0);\n}\n";
+    void main() {\n    fragColor = vec4(0.8804118, lightmapInfo.SkyFactor, 0.8803725, 1.0);\n}\n";
 
-/// Whether the adapter stores a unorm byte as the nearest one to the float32 colour, as
-/// [`vanilla_textures`] does: lavapipe, which the daily GPU lane runs, does; RADV and NVIDIA's
-/// driver go through half floats first.
+/// Whether the adapter stores a unorm byte as the nearest one to the float32 colour to within the
+/// margin [`STATES`] needs, as [`vanilla_textures`] does: lavapipe, which the daily GPU lane runs,
+/// does; RADV and NVIDIA's driver go through half floats first.
 fn stores_the_nearest_byte(device: &wgpu::Device, queue: &wgpu::Queue) -> bool {
     let program = crate::core_shader::translate_core_with(
         SCREENQUAD_VSH,
@@ -263,17 +265,22 @@ fn stores_the_nearest_byte(device: &wgpu::Device, queue: &wgpu::Queue) -> bool {
     let mut core = CoreLightmap::new(device, &program, &[]).expect("the lightmap pipeline");
     core.set_readback(device, true);
     let pixels = draw(device, queue, &mut core, &PROBE);
-    match pixels[0] {
-        225 => true,
-        224 => false,
-        other => panic!("224.546 of 255 stored as {other}"),
+    match (pixels[0], pixels[2]) {
+        (225, 224) => true,
+        (above @ (224 | 225), below @ (224 | 225)) => {
+            eprintln!("224.505 and 224.495 of 255 stored as {above} and {below}");
+            false
+        }
+        other => panic!("224.505 and 224.495 of 255 stored as {other:?}"),
     }
 }
 
 /// Vanilla's own `screenquad` and `lightmap` through the pack path draw vanilla's light texture
 /// exactly, all 256 texels, in two lighting states ([`vanilla_textures`]), row by sky level and
 /// column by block level. An adapter that does not store the nearest byte (RADV, NVIDIA) skips
-/// it: its conversion, not the shader's math, moves some texels down a step.
+/// it, as its conversion, not the shader's math, moves some texels down a step; under
+/// `SUNRISE_GPU_TESTS_REQUIRE_ADAPTER=1` (the daily GPU lane) it fails instead, so the lane
+/// never passes with no texel checked.
 #[test]
 #[ignore = "daily"]
 fn vanillas_lightmap_shaders_draw_vanillas_light_texture() {
@@ -301,6 +308,10 @@ fn vanillas_lightmap_shaders_draw_vanillas_light_texture() {
         return;
     };
     if !stores_the_nearest_byte(&device, &queue) {
+        assert!(
+            !crate::gfx::test_gpu::require_adapter(),
+            "the required adapter does not store a unorm byte as the nearest one"
+        );
         eprintln!("skipped: this adapter does not store a unorm byte as the nearest one");
         return;
     }
