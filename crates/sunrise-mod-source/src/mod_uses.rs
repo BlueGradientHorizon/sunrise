@@ -306,7 +306,7 @@ fn read_bounded(path: &Path, shown: &str, most: u64) -> Result<String, ReadError
     })
 }
 
-/// Reads `dir`: the `.rs` files under `src/` and `build.rs`, which are what the crate compiles,
+/// Reads `dir`: the `.rs` files under `src/`, `build.rs` and the library root, which are what the crate compiles,
 /// when its package carries them ([`package::source_files`], the selection packing makes), but not
 /// the files `skip` names
 /// (relative and `/`-separated), which are not the mod's own source. A symbolic link among them,
@@ -328,7 +328,9 @@ pub fn read_sources(dir: &Path, skip: &[&str]) -> Result<Vec<(String, String)>, 
         return Err(ReadError::Symlink(src));
     }
     for shown in package::source_files(dir).map_err(io(dir))? {
-        let compiled = shown == "build.rs" || (shown.starts_with("src/") && shown.ends_with(".rs"));
+        let compiled = shown == "build.rs"
+            || shown == root
+            || (shown.starts_with("src/") && shown.ends_with(".rs"));
         if !compiled || skip.contains(&shown.as_str()) {
             continue;
         }
