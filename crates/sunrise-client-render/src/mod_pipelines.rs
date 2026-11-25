@@ -304,28 +304,31 @@ fn validate_pack_bindings(pipelines: &[RenderPipeline]) -> Result<(), String> {
             )
         })?;
 
-        if let Some(target) = &binding.depth_target {
-            if let Some(&(first_owner, first_target)) = depth_targets.get(&target.id) {
+        if let Some(target) = &binding.depth_target
+            && let mod_api::PackDepthTarget::Aux {
+                id,
+                depth_samplers,
+                opaque_depth_samplers,
+                ..
+            } = target
+        {
+            if let Some(&(first_owner, first_target)) = depth_targets.get(id) {
                 if first_owner != owner {
                     return Err(format!(
                         "Duplicate pack depth target registration: {} (registered by {} and {})",
-                        target.id, first_owner, owner
+                        id, first_owner, owner
                     ));
                 }
                 if first_target != target {
                     return Err(format!(
                         "Conflicting pack depth target declaration for {} in mod {}: shared targets must declare identical samplers",
-                        target.id, owner
+                        id, owner
                     ));
                 }
             } else {
-                depth_targets.insert(&target.id, (owner, target));
+                depth_targets.insert(id, (owner, target));
             }
-            for sampler in target
-                .depth_samplers
-                .iter()
-                .chain(target.opaque_depth_samplers.iter())
-            {
+            for sampler in depth_samplers.iter().chain(opaque_depth_samplers.iter()) {
                 if let Some(kind) = reserved_pack_identifier(sampler) {
                     return Err(format!(
                         "Reserved pack sampler name {:?} on render pipeline {} (registered by {}) collides with a {kind}",
@@ -351,14 +354,14 @@ fn validate_pack_bindings(pipelines: &[RenderPipeline]) -> Result<(), String> {
                             sampler, first_owner, owner
                         ));
                     }
-                    if first_target_id != &target.id {
+                    if first_target_id != id {
                         return Err(format!(
                             "Conflicting pack sampler registration {:?} in mod {}: bound to both {} and {}",
-                            sampler, owner, first_target_id, target.id
+                            sampler, owner, first_target_id, id
                         ));
                     }
                 } else {
-                    samplers.insert(sampler.as_str(), (owner, &target.id));
+                    samplers.insert(sampler.as_str(), (owner, id));
                 }
             }
         }
@@ -1668,7 +1671,8 @@ pub(crate) fn pack_runtime_specs_of(
     pipelines: &[RenderPipeline],
 ) -> sunrise_render_shaderpack::pack_post::OwnedModPackRuntime {
     use sunrise_render_shaderpack::pack_post::{
-        ModDepthTargetDecl, ModPipelinePackSpec, ModUniformDecl, OwnedModPackRuntime,
+        ModDepthTargetDecl, ModPipelinePackSpec, ModProgramMode, ModUniformDecl,
+        OwnedModPackRuntime,
     };
     let mut depth_targets = Vec::new();
     let mut depth_target_ids: Vec<Identifier> = Vec::new();
@@ -1698,26 +1702,43 @@ pub(crate) fn pack_runtime_specs_of(
             .pack_binding
             .as_ref()
             .and_then(|b| b.depth_target.as_ref())
-            .map(|target| {
-                if let Some(idx) = depth_target_ids.iter().position(|id| id == &target.id) {
-                    idx
-                } else {
-                    let idx = depth_targets.len();
-                    depth_target_ids.push(target.id.clone());
-                    depth_targets.push(ModDepthTargetDecl {
-                        label: target.id.to_string(),
-                        depth_samplers: target.depth_samplers.clone(),
-                        opaque_depth_samplers: target.opaque_depth_samplers.clone(),
-                    });
-                    idx
-                }
+            .and_then(|target| match target {
+                mod_api::PackDepthTarget::Aux {
+                    id,
+                    depth_samplers,
+                    opaque_depth_samplers,
+                    ..
+                } => Some(
+                    if let Some(idx) = depth_target_ids.iter().position(|seen| seen == id) {
+                        idx
+                    } else {
+                        let idx = depth_targets.len();
+                        depth_target_ids.push(id.clone());
+                        depth_targets.push(ModDepthTargetDecl {
+                            label: id.to_string(),
+                            depth_samplers: depth_samplers.clone(),
+                            opaque_depth_samplers: opaque_depth_samplers.clone(),
+                        });
+                        idx
+                    },
+                ),
+                // The pack's main depth: no auxiliary plane.
+                _ => None,
             });
         let depth_test = pipeline
             .state
             .depth_stencil
             .is_some_and(|ds| ds.compare != DepthCompare::Always);
+        let names_main_depth = matches!(
+            pipeline
+                .pack_binding
+                .as_ref()
+                .and_then(|b| b.depth_target.as_ref()),
+            Some(mod_api::PackDepthTarget::Main)
+        );
         let depth_write = depth_test
             && (depth_target.is_some()
+                || names_main_depth
                 || matches!(
                     pass_slot,
                     PackPassSlot::AfterOpaqueGbuffers | PackPassSlot::Shadow
@@ -1728,6 +1749,13 @@ pub(crate) fn pack_runtime_specs_of(
             depth_target,
             depth_write,
             depth_test,
+            cull: pipeline.state.cull,
+            program_mode: pipeline
+                .pack_binding
+                .as_ref()
+                .map_or(ModProgramMode::default(), |b| {
+                    mod_program_mode(b.program_mode)
+                }),
         });
     }
 
@@ -1735,6 +1763,16 @@ pub(crate) fn pack_runtime_specs_of(
         depth_targets,
         uniforms,
         pipelines: specs,
+    }
+}
+
+fn mod_program_mode(
+    mode: mod_api::PackProgramMode,
+) -> sunrise_render_shaderpack::pack_post::ModProgramMode {
+    use sunrise_render_shaderpack::pack_post::ModProgramMode as M;
+    match mode {
+        mod_api::PackProgramMode::ModVertexPackFragment => M::ModVertexPackFragment,
+        _ => M::PackVertexAndFragment,
     }
 }
 
@@ -2524,6 +2562,52 @@ void main() {
             Some(PackUniformType::Float)
         );
         assert_eq!(lookup_pack_uniform_type_in(&list, "unknown"), None);
+    }
+
+    #[test]
+    fn the_main_depth_target_enables_depth_writes_in_any_slot_and_cull_reaches_the_pack_spec() {
+        use mod_api::{PackBinding, PackDepthTarget, PackProgramMode, PipelineGeometryClass};
+        use sunrise_render_shaderpack::pack_post::ModProgramMode;
+        let translucent = |name: &str, binding: PackBinding, cull: bool| {
+            RenderPipeline::new(
+                id(name),
+                id(name),
+                PipelineBlend::Translucent,
+                WorldDepth::Tested,
+            )
+            .geometry_class(PipelineGeometryClass::Translucent)
+            .cull(cull)
+            .pack_binding(binding)
+        };
+        let list = [
+            // A translucent slot writes no depth by default.
+            translucent("example:plain", PackBinding::new(), false),
+            translucent(
+                "example:main",
+                PackBinding::new().depth_target(PackDepthTarget::Main),
+                true,
+            ),
+            translucent(
+                "example:own_vertex",
+                PackBinding::new().program_mode(PackProgramMode::ModVertexPackFragment),
+                true,
+            ),
+        ];
+        let runtime = pack_runtime_specs_of(&list);
+        let [plain, main, own_vertex] = &runtime.pipelines[..] else {
+            panic!("three pipelines expected");
+        };
+        assert!(!plain.depth_write && !plain.cull);
+        assert_eq!(plain.program_mode, ModProgramMode::PackVertexAndFragment);
+        assert!(main.depth_write && main.depth_test);
+        assert_eq!(main.depth_target, None);
+        assert!(main.cull);
+        assert_eq!(main.program_mode, ModProgramMode::PackVertexAndFragment);
+        assert!(own_vertex.cull);
+        assert_eq!(
+            own_vertex.program_mode,
+            ModProgramMode::ModVertexPackFragment
+        );
     }
 
     #[test]

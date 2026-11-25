@@ -13,7 +13,7 @@ use sunrise_render_core::UniformFrameView;
 use sunrise_shaders::{BUFFERS, Group, SHADOW_COLORS};
 
 use super::construction::*;
-use super::mod_pack::{ModDrawChunk, ModDrawKind, ModPassSlot, ModUniformValue};
+use super::mod_pack::{MOD_SET_BASE, ModDrawChunk, ModDrawKind, ModPassSlot, ModUniformValue};
 use crate::PollLive;
 use crate::pack_entities::{
     BEAM, BLOCK, BLOCK_TRANSLUCENT, DESTROY, ENTITY, PARTICLE, PARTICLE_TRANSLUCENT, TRANSLUCENT,
@@ -1576,11 +1576,21 @@ impl PackPost {
                     if chunk.slot != m.slot || chunk.is_empty() {
                         continue;
                     }
+                    // The mod's own vertex stage has its frame uniforms and set 1 after the
+                    // pack's sets; the pack's vertex stage reads the mod's set 1 at index 1.
+                    let mut set1 = 1;
+                    if m.mod_vertex {
+                        let Some(globals) = &chunk.mod_globals else {
+                            continue;
+                        };
+                        rp.set_bind_group(MOD_SET_BASE, globals, &[]);
+                        set1 = MOD_SET_BASE + 1;
+                    }
                     if m.has_mod_bind_group {
                         let Some((ref bg, ref offsets)) = chunk.mod_bind_group else {
                             continue;
                         };
-                        rp.set_bind_group(1, bg, offsets);
+                        rp.set_bind_group(set1, bg, offsets);
                     }
                     for (binding, buffer, range) in &chunk.vertex_buffers {
                         rp.set_vertex_buffer(*binding, buffer.slice(range.clone()));

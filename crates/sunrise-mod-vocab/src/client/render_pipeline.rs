@@ -672,6 +672,31 @@ pub enum PackPassSlot {
     AfterWeather,
 }
 
+/// Which stages of a pipeline's pass in a shader pack come from the pack
+/// ([`PackBinding::program_mode`]).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+// no wire: local client shader-pack program mode.
+pub enum PackProgramMode {
+    /// The pack's matched program (`.vsh` and `.fsh`) replaces both of the mod's stages; its
+    /// vertex stage reads the pipeline's vertices.
+    #[default]
+    PackVertexAndFragment,
+    /// The mod's own vertex stage, with its [`VertexFormat`] and its bind group, is linked to the
+    /// fragment stage of the pack's matched program, which writes the pack's draw buffers.
+    ///
+    /// The stages link by GLSL varying name: each varying the pack's fragment stage reads must be
+    /// written by the mod's vertex stage under the same name (a struct member or `out` variable),
+    /// type and interpolation, and the engine renumbers the mod's outputs to the locations the
+    /// pack's translation gave them. Works only when the pack ships a program for one of the
+    /// pipeline's stems without a geometry stage (that needs the pack's own vertex stage). When
+    /// a varying is missing, unnamed or mistyped, the pack has no such program, or the device
+    /// cannot hold the mod's bind groups after the pack's (its own `max_bind_groups`), the pipeline is unbound
+    /// ([`crate::RenderAssets::pipeline_pack_bound`] is `false`) and the mod's own shaders draw. The
+    /// mod's bind groups go after the pack's, which stay as the pack declared them.
+    ModVertexPackFragment,
+}
+
 /// Optional Iris/OptiFine shader-pack extras attached to a [`RenderPipeline`]
 /// ([`RenderPipeline::pack_binding`]). All identifiers are supplied by the mod; the engine
 /// hardcodes none.
@@ -692,8 +717,10 @@ pub struct PackBinding {
     /// `GL_`-prefixed) and `value`, when present, must be a non-empty single-line token.
     /// Toggling active defines triggers at most one shader-pack reload.
     pub defines: Vec<(String, Option<String>)>,
-    /// Optional auxiliary depth-plane target, allocated and populated only while an active
-    /// pack is bound and samples one of its declared samplers.
+    /// Optional depth target the pipeline draws into: an auxiliary depth plane
+    /// ([`PackDepthTarget::new`]), allocated and populated only while an active pack is bound and
+    /// samples one of its declared samplers, or the pack's main depth ([`PackDepthTarget::Main`]),
+    /// which the pipeline's vertex stage fills with the world's projection of its geometry.
     pub depth_target: Option<PackDepthTarget>,
     /// Per-frame pack uniforms supplied by the mod under pack-side GLSL names. If a pack
     /// declares a uniform with a different GLSL type, the engine leaves it unbound and logs
@@ -701,6 +728,9 @@ pub struct PackBinding {
     pub frame_uniforms: Vec<PackUniformDecl>,
     /// Mapping from the pipeline's vertex or per-draw inputs to pack-side GLSL names.
     pub glsl_bindings: Vec<PackGlslInput>,
+    /// Which stages of the matched pack program run; [`PackProgramMode::PackVertexAndFragment`]
+    /// by default.
+    pub program_mode: PackProgramMode,
 }
 
 impl PackBinding {
@@ -733,7 +763,8 @@ impl PackBinding {
         self
     }
 
-    /// Attach an auxiliary depth-plane target shared by pipelines using the same target ID.
+    /// Attach the depth target the pipeline draws into: [`PackDepthTarget::Main`], or an
+    /// auxiliary depth plane shared by pipelines using the same target ID.
     pub fn depth_target(mut self, target: PackDepthTarget) -> Self {
         self.depth_target = Some(target);
         self
@@ -742,6 +773,12 @@ impl PackBinding {
     /// Declare a per-frame pack uniform supplied by this pipeline.
     pub fn frame_uniform(mut self, uniform: PackUniformDecl) -> Self {
         self.frame_uniforms.push(uniform);
+        self
+    }
+
+    /// Choose which stages of the matched pack program run (see [`PackProgramMode`]).
+    pub fn program_mode(mut self, mode: PackProgramMode) -> Self {
+        self.program_mode = mode;
         self
     }
 
@@ -775,9 +812,14 @@ impl PackBinding {
                 ));
             }
         }
-        if let Some(target) = &self.depth_target {
+        if let Some(PackDepthTarget::Aux {
+            id,
+            depth_samplers,
+            opaque_depth_samplers,
+        }) = &self.depth_target
+        {
             let mut seen_samplers = std::collections::HashSet::new();
-            for sampler in &target.depth_samplers {
+            for sampler in depth_samplers {
                 if !is_valid_glsl_identifier(sampler) || sampler.starts_with("gl_") {
                     return Err(format!(
                         "invalid pack depth sampler name {sampler:?}: expected a valid non-gl_ GLSL identifier"
@@ -786,26 +828,26 @@ impl PackBinding {
                 if !seen_samplers.insert(sampler.as_str()) {
                     return Err(format!(
                         "duplicate pack depth sampler {sampler:?} on target {}",
-                        target.id
+                        id
                     ));
                 }
             }
-            for sampler in &target.opaque_depth_samplers {
+            for sampler in opaque_depth_samplers {
                 if !is_valid_glsl_identifier(sampler) || sampler.starts_with("gl_") {
                     return Err(format!(
                         "invalid pack depth sampler name {sampler:?}: expected a valid non-gl_ GLSL identifier"
                     ));
                 }
-                if target.depth_samplers.iter().any(|s| s == sampler) {
+                if depth_samplers.iter().any(|s| s == sampler) {
                     return Err(format!(
                         "pack depth sampler {sampler:?} on target {} cannot be both a full depth sampler and an opaque depth sampler",
-                        target.id
+                        id
                     ));
                 }
                 if !seen_samplers.insert(sampler.as_str()) {
                     return Err(format!(
                         "duplicate pack opaque depth sampler {sampler:?} on target {}",
-                        target.id
+                        id
                     ));
                 }
             }
@@ -864,43 +906,66 @@ impl PackBinding {
     }
 }
 
-/// An auxiliary depth target declared by a [`PackBinding`]. Multiple pipelines owned by the
-/// same mod may reference the same [`Self::id`] to share one `Depth32Float` attachment (cleared
-/// to OpenGL depth `1.0`, matching `depthtex0`). Allocated and populated only while an active
-/// pack is bound and samples one of its declared samplers.
+/// The depth target a [`PackBinding`]'s pipeline draws into under a shader pack.
+///
+/// A pipeline with no depth target draws into the pack's main depth (`depthtex0`) too, but
+/// [`Self::Main`] also enables depth writes there (when the pipeline is depth-tested). The depth
+/// comes from the pipeline's vertex stage: a pass naming [`Self::Main`] writes the depth its
+/// vertex stage's position gives in the world's projection, including geometry the mod projects
+/// itself, so a mod needs no separate copy into it. Under a pack the fragment stage is the
+/// pack's, so `gl_FragDepth` is not the mod's to write.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-// no wire: local client shader-pack auxiliary depth target descriptor.
-pub struct PackDepthTarget {
-    /// Mod-namespaced key identifying the shared depth attachment.
-    pub id: Identifier,
-    /// Sampler names exposed to pack passes for full depth after draws to this target.
-    pub depth_samplers: Vec<String>,
-    /// Optional sampler names exposed for an opaque-depth copy taken after
-    /// [`PackPassSlot::AfterOpaqueGbuffers`] and before
-    /// [`PackPassSlot::AfterTranslucentGbuffers`], populated only while sampled by the pack.
-    pub opaque_depth_samplers: Vec<String>,
+// no wire: local client shader-pack depth target descriptor.
+pub enum PackDepthTarget {
+    /// The pack's main depth (`depthtex0`), which the pack's later passes read as the world's.
+    Main,
+    /// An auxiliary `Depth32Float` attachment shared by pipelines of the same mod using the same
+    /// [`Self::id`] (cleared to OpenGL depth `1.0`, matching `depthtex0`). Allocated and
+    /// populated only while an active pack is bound and samples one of its declared samplers;
+    /// until then the pipeline draws into the pack's main depth.
+    #[non_exhaustive]
+    Aux {
+        /// Mod-namespaced key identifying the shared depth attachment.
+        id: Identifier,
+        /// Sampler names exposed to pack passes for full depth after draws to this target.
+        depth_samplers: Vec<String>,
+        /// Optional sampler names exposed for an opaque-depth copy taken after
+        /// [`PackPassSlot::AfterOpaqueGbuffers`] and before
+        /// [`PackPassSlot::AfterTranslucentGbuffers`], populated only while sampled by the pack.
+        opaque_depth_samplers: Vec<String>,
+    },
 }
 
 impl PackDepthTarget {
     /// Describe an auxiliary depth target keyed by `id`.
     pub fn new(id: Identifier) -> Self {
-        Self {
+        Self::Aux {
             id,
             depth_samplers: Vec::new(),
             opaque_depth_samplers: Vec::new(),
         }
     }
 
-    /// Expose the full depth buffer under GLSL sampler name `name`.
+    /// Expose the full depth buffer under GLSL sampler name `name`. [`Self::Main`] has the
+    /// pack's own samplers, so this leaves it unchanged.
     pub fn depth_sampler(mut self, name: impl Into<String>) -> Self {
-        self.depth_samplers.push(name.into());
+        if let Self::Aux { depth_samplers, .. } = &mut self {
+            depth_samplers.push(name.into());
+        }
         self
     }
 
-    /// Expose the post-opaque depth snapshot under GLSL sampler name `name`.
+    /// Expose the post-opaque depth snapshot under GLSL sampler name `name`. [`Self::Main`]
+    /// leaves it unchanged.
     pub fn opaque_depth_sampler(mut self, name: impl Into<String>) -> Self {
-        self.opaque_depth_samplers.push(name.into());
+        if let Self::Aux {
+            opaque_depth_samplers,
+            ..
+        } = &mut self
+        {
+            opaque_depth_samplers.push(name.into());
+        }
         self
     }
 }
@@ -4068,6 +4133,31 @@ mod tests {
                 .validate_syntax()
                 .is_err()
         );
+    }
+
+    #[test]
+    fn program_mode_and_depth_target_builders() {
+        assert_eq!(
+            PackBinding::new().program_mode,
+            PackProgramMode::PackVertexAndFragment
+        );
+        let own = PackBinding::new()
+            .program_mode(PackProgramMode::ModVertexPackFragment)
+            .depth_target(PackDepthTarget::Main);
+        assert_eq!(own.program_mode, PackProgramMode::ModVertexPackFragment);
+        assert_eq!(own.depth_target, Some(PackDepthTarget::Main));
+        assert_eq!(own.validate_syntax(), Ok(()));
+        // The main depth has no samplers of its own: the builders leave it as it is.
+        assert_eq!(
+            PackDepthTarget::Main.depth_sampler("modDepth"),
+            PackDepthTarget::Main
+        );
+        let aux = PackDepthTarget::new(Identifier::parse("example:aux").unwrap())
+            .depth_sampler("modDepth");
+        assert!(matches!(
+            &aux,
+            PackDepthTarget::Aux { depth_samplers, .. } if depth_samplers == &["modDepth"]
+        ));
     }
 
     #[test]

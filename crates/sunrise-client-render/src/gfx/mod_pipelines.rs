@@ -605,10 +605,15 @@ struct Compiled {
     pipeline_layout: wgpu::PipelineLayout,
     group: wgpu::BindGroup,
     pack_group: wgpu::BindGroup,
+    /// Layout of `group` and `pack_group` (set 0).
+    globals_layout: wgpu::BindGroupLayout,
     set1_layout: Option<wgpu::BindGroupLayout>,
     set1_entries: Vec<CompiledSet1Entry>,
     push_constant_slot: Option<(u32, u32)>,
     vertex_shader: wgpu::ShaderModule,
+    /// The translated vertex stage, for a shader pack pass that runs it beside the pack's own
+    /// fragment stage (`ModProgramMode::ModVertexPackFragment`).
+    vertex_module: naga::Module,
     /// Fragment shader targeting the main frame (linear-decoded when `linear_light`).
     fragment_shader: wgpu::ShaderModule,
     /// Vanilla-gamma fragment shader for shader-pack `colortex0` targets (when `linear_light`
@@ -1515,10 +1520,12 @@ impl ModPipelines {
             pipeline_layout,
             group,
             pack_group,
+            globals_layout: group_layout,
             set1_layout,
             set1_entries,
             push_constant_slot,
             vertex_shader,
+            vertex_module: built.program.vertex.clone(),
             fragment_shader,
             pack_fragment_shader,
             state: built.state,
@@ -1649,6 +1656,34 @@ impl ModPipelines {
         self.pack_pipelines = None;
         self.set1_bind_group_cache.clear();
         Ok(())
+    }
+
+    /// Each pipeline slot's own vertex stage with its layouts, for a shader-pack pass that runs it
+    /// beside the pack's fragment stage (`ModProgramMode::ModVertexPackFragment`).
+    pub fn pack_vertex_stages(
+        &self,
+    ) -> Vec<Option<sunrise_render_shaderpack::pack_post::ModVertexStage>> {
+        self.pipelines
+            .iter()
+            .map(|slot| {
+                let c = slot.as_ref()?;
+                Some(sunrise_render_shaderpack::pack_post::ModVertexStage {
+                    module: c.vertex_module.clone(),
+                    buffers: c
+                        .vertex_layouts
+                        .iter()
+                        .map(|l| sunrise_render_shaderpack::pack_post::ModVertexBuffer {
+                            binding: u32::from(l.binding),
+                            stride: l.stride,
+                            step_mode: l.step_mode,
+                            attributes: l.attributes.clone(),
+                        })
+                        .collect(),
+                    globals_layout: c.globals_layout.clone(),
+                    set1_layout: c.set1_layout.clone(),
+                })
+            })
+            .collect()
     }
 
     /// Borrow each pipeline slot's optional set-1 `wgpu::BindGroupLayout` (for `PackPost`).
@@ -2174,12 +2209,14 @@ impl ModPipelines {
                 continue;
             }
             for (buffer, quads) in self.vertices.ranges(0, run.quads.clone()) {
-                out.push(super::pack_post::ModDrawChunk::quads(
+                let mut chunk = super::pack_post::ModDrawChunk::quads(
                     run.slot,
                     buffer.clone(),
                     indices.clone(),
                     quads,
-                ));
+                );
+                chunk.mod_globals = self.pack_globals(run.slot);
+                out.push(chunk);
             }
         }
         for cmd in &self.draws {
@@ -2282,8 +2319,15 @@ impl ModPipelines {
                 kind,
                 instances: cmd.draw.instances.clone(),
                 mod_bind_group: cmd.set1_bind_group.clone(),
+                mod_globals: self.pack_globals(cmd.slot),
             });
         }
+    }
+
+    /// Slot's frame-uniform group for a shader pack's target.
+    fn pack_globals(&self, slot: usize) -> Option<wgpu::BindGroup> {
+        let compiled = self.pipelines.get(slot)?.as_ref()?;
+        Some(compiled.pack_group.clone())
     }
 
     /// Stage all per-frame inline uniforms, push constants, and texel buffers from `batch` into
