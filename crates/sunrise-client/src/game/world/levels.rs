@@ -598,7 +598,7 @@ pub(in crate::game) struct TickTiming {
 /// The levels not in place, by dimension.
 #[derive(Default)]
 pub(in crate::game) struct Levels {
-    pub(in crate::game) parked: HashMap<Dim, Parked>,
+    pub(in crate::game) parked: HashMap<Dim, Box<Parked>>,
     /// The levels whose open the mods heard (`native_level_load`), each to
     /// be told closed once.
     heard_open: Vec<Dim>,
@@ -872,7 +872,7 @@ impl Levels {
 
     /// The level not in place, in `dim`.
     pub(in crate::game::server_side) fn parked_mut(&mut self, dim: Dim) -> Option<&mut Parked> {
-        self.parked.get_mut(&dim)
+        self.parked.get_mut(&dim).map(Box::as_mut)
     }
 
     /// A parked level by its exact dimension identity, without swapping it in.
@@ -880,7 +880,7 @@ impl Levels {
         self.parked
             .iter()
             .find(|(dim, _)| dim.id() == dimension)
-            .map(|(_, level)| level)
+            .map(|(_, level)| level.as_ref())
     }
     pub(in crate::game::server_side) fn parked_mut_of(
         &mut self,
@@ -889,7 +889,7 @@ impl Levels {
         self.parked
             .iter_mut()
             .find(|(dim, _)| dim.id() == dimension)
-            .map(|(_, level)| level)
+            .map(|(_, level)| level.as_mut())
     }
 
     /// Whether a parked level's general rows hold any of these UUIDs (#792's
@@ -976,9 +976,76 @@ impl Levels {
     }
 }
 
+/// Build a parked level out of line so `open_level` keeps its stack small while
+/// `make_streaming` decodes worldgen density graphs.
+#[inline(never)]
+fn box_parked(
+    world: World,
+    streaming: Streaming,
+    locator: Option<Arc<VanillaTerrain>>,
+    save: Arc<SaveDir>,
+    seed: i64,
+    border: sunrise_client::worldborder::WorldBorder,
+) -> Box<Parked> {
+    Box::new(Parked {
+        world,
+        streaming,
+        locator,
+        save,
+        block_ticks: Ticks::new(seed as i32),
+        tick_chunks: Default::default(),
+        tickets: Default::default(),
+        random_tick_sections: Default::default(),
+        level_events: Vec::new(),
+        portal_states: HashMap::new(),
+        falling: Default::default(),
+        paintings: Default::default(),
+        item_frames: Default::default(),
+        armor_stands: Default::default(),
+        cushions: Default::default(),
+        others: Default::default(),
+        fangs: Default::default(),
+        boats: Default::default(),
+        carts: Default::default(),
+        bolts: Default::default(),
+        crystals: Default::default(),
+        dragon: Default::default(),
+        breath_clouds: Default::default(),
+        tridents: Default::default(),
+        rockets: Default::default(),
+        ominous_spawners: Default::default(),
+        tnts: Default::default(),
+        general: Default::default(),
+        hoppers: HashMap::new(),
+        mobs: Default::default(),
+        knot_ids: HashMap::new(),
+        broken_knots: Vec::new(),
+        knots: Default::default(),
+        projectiles: Default::default(),
+        dropped: Default::default(),
+        orbs: Default::default(),
+        persist: Default::default(),
+        lectern_pulses: Vec::new(),
+        lid_openers: HashMap::new(),
+        lan_events: Vec::new(),
+        lan_block_events: Vec::new(),
+        lan_entity_events: Vec::new(),
+        lan_critical_hits: Vec::new(),
+        lan_states: Default::default(),
+        anims: Default::default(),
+        raiding: Default::default(),
+        sculk: Default::default(),
+        creaking: Default::default(),
+        spawn_scratch: Default::default(),
+        idle: 0,
+        border,
+        border_sent: None,
+    })
+}
+
 impl Game<'_> {
     /// A new level for `dim`, opened from the save (`MinecraftServer.createLevels`).
-    fn open_level(&self, dim: Dim) -> Result<Parked> {
+    fn open_level(&self, dim: Dim) -> Result<Box<Parked>> {
         // A level a mod opened has the seed and generator it asked for.
         let (generate, seed) = match self.runtime_terrain(dim) {
             Some((generate, seed)) => (Some(generate), seed),
@@ -1013,60 +1080,8 @@ impl Game<'_> {
         world.shape = self.server.level_shapes.get(dim.id());
         world.fast_lava = self.dimension_type_of(dim).fast_lava;
         world.infiniburn = Some(self.resolve_level_infiniburn(self.dimension_type_of(dim)));
-        Ok(Parked {
-            world,
-            streaming,
-            locator,
-            save,
-            block_ticks: Ticks::new(seed as i32),
-            tick_chunks: Default::default(),
-            tickets: Default::default(),
-            random_tick_sections: Default::default(),
-            level_events: Vec::new(),
-            portal_states: HashMap::new(),
-            falling: Default::default(),
-            paintings: Default::default(),
-            item_frames: Default::default(),
-            armor_stands: Default::default(),
-            cushions: Default::default(),
-            others: Default::default(),
-            fangs: Default::default(),
-            boats: Default::default(),
-            carts: Default::default(),
-            bolts: Default::default(),
-            crystals: Default::default(),
-            dragon: Default::default(),
-            breath_clouds: Default::default(),
-            tridents: Default::default(),
-            rockets: Default::default(),
-            ominous_spawners: Default::default(),
-            tnts: Default::default(),
-            general: Default::default(),
-            hoppers: HashMap::new(),
-            mobs: Default::default(),
-            knot_ids: HashMap::new(),
-            broken_knots: Vec::new(),
-            knots: Default::default(),
-            projectiles: Default::default(),
-            dropped: Default::default(),
-            orbs: Default::default(),
-            persist: Default::default(),
-            lectern_pulses: Vec::new(),
-            lid_openers: HashMap::new(),
-            lan_events: Vec::new(),
-            lan_block_events: Vec::new(),
-            lan_entity_events: Vec::new(),
-            lan_critical_hits: Vec::new(),
-            lan_states: Default::default(),
-            anims: Default::default(),
-            raiding: Default::default(),
-            sculk: Default::default(),
-            creaking: Default::default(),
-            spawn_scratch: Default::default(),
-            idle: 0,
-            border: self.load_border(dim),
-            border_sent: None,
-        })
+        let border = self.load_border(dim);
+        Ok(box_parked(world, streaming, locator, save, seed, border))
     }
 
     /// `MinecraftServer.createLevels`: open the built-in levels in registry
@@ -1166,7 +1181,7 @@ impl Game<'_> {
 
     /// A level that opens after startup restores its saved command and portal
     /// tickets at once. Mod tickets still wait for validation after `level_load`.
-    pub(in crate::game::server_side) fn open_runtime_level(&self, dim: Dim) -> Result<Parked> {
+    pub(in crate::game::server_side) fn open_runtime_level(&self, dim: Dim) -> Result<Box<Parked>> {
         let mut level = self.open_level(dim)?;
         Self::load_saved_level_tickets(&level.save, &mut level.streaming, &mut level.tickets);
         Ok(level)
