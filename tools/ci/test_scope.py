@@ -127,7 +127,7 @@ NOT_READS = {
     # The retained-SDK test writes a synthetic render.rs into its temporary archive, not this checkout.
     "cargo-sunrise-mod": {"crates/sunrise-mod-render/src/render.rs"},
     "sunrise-mod-vocab": {"."}, "sunrise-port-pack": {"mods"}, "sunrise-prepare": {"crates"},
-    # A package's source-file names (`package::source_file`), never this checkout's lock.
+    # A package's source-file names (`package::source_files`), never this checkout's lock.
     "sunrise-mod-source": {"Cargo.lock"},
     # shader_fuzz's `..` path parts, in the packs it writes and reads, beside its own seed pack.
     "sunrise-render-shaderpack": {"crates"},

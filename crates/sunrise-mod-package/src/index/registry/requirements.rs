@@ -52,6 +52,11 @@ impl Review {
                 let Ok(package) = crate::Package::read_zip(&mut zip) else {
                     continue;
                 };
+                // The game's reader skips source entries unread, so they are bounded here,
+                // before `manifest_conflicts` inflates any.
+                if crate::Package::check_source_bounds(&mut zip).is_err() {
+                    continue;
+                }
                 let Some(native) = package.manifest.native else {
                     continue;
                 };
@@ -119,9 +124,9 @@ fn manifest_conflicts<R: Read + Seek>(
         let Ok(file) = zip.by_name(&name) else {
             continue;
         };
-        let size = file.size(); // Package::read_zip already bounded the source entries.
+        let size = file.size(); // `check_source_bounds` bounded the source entries.
         let mut text = String::new();
-        if file.take(size + 1).read_to_string(&mut text).is_err() || text.len() as u64 != size {
+        if file.take(size).read_to_string(&mut text).is_err() || text.len() as u64 != size {
             continue;
         }
         let Ok(manifest) = text.parse::<toml::Table>() else {

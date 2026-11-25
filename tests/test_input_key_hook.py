@@ -103,6 +103,8 @@ struct Game { window: Option<Window>, modifiers: u32, early: bool, input: bool, 
               calls: Vec<&'static str>, observed: Vec<(&'static str, Option<&'static str>, u32, KeyAction, u32)> }
 impl Game {
     fn scripted_run(&self) -> bool { false }
+    // `game/interface/pointer_capture.rs`: a mod screen's deferred pointer grab; no mod screen here.
+    fn apply_pointer_grab_request(&mut self) {}
     fn with_user_input<R>(&mut self, input: bool, f: impl FnOnce(&mut Self) -> R) -> R {
         let was = std::mem::replace(&mut self.input, input);
         let result = f(self);

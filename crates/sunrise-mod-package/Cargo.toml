@@ -12,7 +12,8 @@ sunrise-core = { path = "../sunrise-core" }
 sunrise-assets = { path = "../sunrise-assets", optional = true }
 # The uses table's file name and limit (`USES`, `MAX_USES`).
 sunrise-mod-surface = { path = "../sunrise-mod-surface", default-features = false }
-# Which files of a mod folder its package carries, shared with the uses scan.
+# The package's file list and binary rule (`package::source_file`, `binary_kind`); walking a mod
+# folder for them is the `folder` feature.
 sunrise-mod-source = { path = "../sunrise-mod-source", default-features = false }
 serde = { version = "1", features = ["derive"] }
 # float_roundtrip: a declaration's numbers read the same in every build. Without it here, the feature
@@ -65,8 +66,11 @@ required-features = ["runtime-process"]
 [features]
 # The default: what `cargo sunrise-mod check` reads content files with (`content::check_references`), the game's own
 # decoders for models, blockstates and item definitions. Consumers that only read packages leave it off.
-default = ["references"]
+default = ["references", "folder"]
 references = ["dep:sunrise-assets"]
+# Packing a mod folder (`Package::directory_files`, `pack_directory`): the mod tools and the launcher's
+# build, never the game, which reads a `.smod` or a folder as it is.
+folder = ["sunrise-mod-source/folder"]
 runtime-process = ["dep:cap-std", "dep:cap-fs-ext", "dep:os_pipe", "dep:libc", "windows-sys/Win32_Foundation", "windows-sys/Win32_System_Console", "windows-sys/Win32_Security_Authorization", "windows-sys/Win32_System_Pipes", "windows-sys/Win32_System_IO", "windows-sys/Win32_System_Threading", "dep:getrandom", "dep:subtle", "dep:socket2", "dep:rustix"]
 prebuilt = ["dep:cap-std", "dep:tar", "dep:xz4rust", "sunrise-mod-surface/scan", "sdk"]
 sdk = []
