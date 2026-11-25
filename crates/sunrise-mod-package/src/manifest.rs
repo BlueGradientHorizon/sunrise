@@ -1548,6 +1548,11 @@ fn minisign_secret_key(bytes: &[u8]) -> bool {
 pub enum ContentFileError {
     UnsupportedType(String),
     Executable(String),
+    /// A prebuilt binary of this kind ([`binary_kind`]), whatever its name.
+    Binary {
+        name: String,
+        kind: &'static str,
+    },
     Read {
         name: String,
         source: std::io::Error,
@@ -1563,6 +1568,10 @@ impl std::fmt::Display for ContentFileError {
             Self::Executable(name) => {
                 write!(f, "{name}: unsupported executable file in a content mod")
             }
+            Self::Binary { name, kind } => write!(
+                f,
+                "{name}: unsupported executable file ({kind}); a package carries source, never prebuilt binaries"
+            ),
             Self::Read { name, source } => write!(f, "{name}: {source}"),
         }
     }
@@ -1574,6 +1583,21 @@ impl std::error::Error for ContentFileError {
             Self::Read { source, .. } => Some(source),
             _ => None,
         }
+    }
+}
+
+/// The kind of prebuilt binary a file is, from its first bytes alone: ELF, Mach-O (32- and
+/// 64-bit in both byte orders, and the universal header), PE, or an `ar` archive (which covers
+/// `.a` and `.lib`). `header` is the file's first 8 bytes, zero-padded when it is shorter. This is the one test of a package's files for a prebuilt binary: every reader of a
+/// package, the mod tool, the registry bot and the game's loader, goes through [`check_file`].
+pub fn binary_kind(header: &[u8; 8]) -> Option<&'static str> {
+    match header {
+        [0x7f, b'E', b'L', b'F', ..] => Some("ELF"),
+        [0xfe, 0xed, 0xfa, 0xce | 0xcf, ..] | [0xce | 0xcf, 0xfa, 0xed, 0xfe, ..] => Some("Mach-O"),
+        [0xca, 0xfe, 0xba, 0xbe, ..] | [0xbe, 0xba, 0xfe, 0xca, ..] => Some("Mach-O universal"),
+        [b'M', b'Z', ..] => Some("PE"),
+        b"!<arch>\n" => Some("ar archive"),
+        _ => None,
     }
 }
 
@@ -1606,7 +1630,7 @@ pub(crate) fn check_file<R: Read>(
         source,
     };
     let mut file = open().map_err(error)?;
-    let mut header = [0; 4];
+    let mut header = [0; 8];
     let mut read = 0;
     while read < header.len() {
         let size = file.read(&mut header[read..]).map_err(error)?;
@@ -1615,18 +1639,14 @@ pub(crate) fn check_file<R: Read>(
         }
         read += size;
     }
-    let executable = matches!(
-        &header,
-        b"\x7fELF"
-            | b"\0asm"
-            | b"\xfe\xed\xfa\xce"
-            | b"\xce\xfa\xed\xfe"
-            | b"\xfe\xed\xfa\xcf"
-            | b"\xcf\xfa\xed\xfe"
-            | b"\xca\xfe\xba\xbe"
-            | b"\xbe\xba\xfe\xca"
-    ) || header.starts_with(b"MZ")
-        || (header.starts_with(b"#!") && header[2] != b'[');
+    if let Some(kind) = binary_kind(&header) {
+        return Err(ContentFileError::Binary {
+            name: name.into(),
+            kind,
+        });
+    }
+    let executable =
+        header.starts_with(b"\0asm") || (header.starts_with(b"#!") && header[2] != b'[');
     if executable {
         return Err(ContentFileError::Executable(name.into()));
     }
@@ -1752,6 +1772,50 @@ mod tests {
             ]
         );
         assert!(Package::read(&archive).unwrap().is_native());
+    }
+
+    /// A source file that starts as a prebuilt binary is refused by its bytes, not its name, when
+    /// a folder is packed and when a package is read, and the error names the file and the kind.
+    #[test]
+    fn a_prebuilt_binary_named_as_source_is_refused_when_packed_and_when_read() {
+        use std::io::Write;
+        let manifest = format!(
+            "{EXAMPLE}[native]\ngame='26.3'\nsunrise='{}'\nmixins='{}'\n",
+            "a".repeat(40),
+            "b".repeat(40)
+        );
+        let folder = tempfile::tempdir().unwrap();
+        std::fs::write(folder.path().join(MANIFEST), &manifest).unwrap();
+        std::fs::write(folder.path().join("Cargo.toml"), "[package]\nname='ruby'\n").unwrap();
+        std::fs::create_dir(folder.path().join("src")).unwrap();
+        std::fs::write(folder.path().join("src/lib.rs"), "pub fn hooks() {}").unwrap();
+        for (bytes, kind) in [
+            (&b"\x7fELF\x02\x01\x01\0"[..], "ELF"),
+            (b"!<arch>\nlib.o/", "ar archive"),
+        ] {
+            std::fs::write(folder.path().join("src/lib.c"), bytes).unwrap();
+            let error = Package::pack_directory(folder.path()).unwrap_err();
+            assert!(error.starts_with("src/lib.c: "), "{error}");
+            assert!(error.contains(&format!("({kind})")), "{error}");
+
+            let archive = folder.path().join("ruby.smod");
+            let mut zip = zip::ZipWriter::new(std::fs::File::create(&archive).unwrap());
+            let options = zip::write::SimpleFileOptions::default();
+            for (name, content) in [
+                (MANIFEST, manifest.as_bytes()),
+                ("Cargo.toml", b"[package]\nname='ruby'\n"),
+                ("src/lib.rs", b"pub fn hooks() {}"),
+                ("src/lib.c", bytes),
+            ] {
+                zip.start_file(name, options).unwrap();
+                zip.write_all(content).unwrap();
+            }
+            zip.finish().unwrap();
+            let error = Package::read(&archive).err().unwrap();
+            assert!(error.starts_with("src/lib.c: "), "{error}");
+            assert!(error.contains(&format!("({kind})")), "{error}");
+            std::fs::remove_file(archive).unwrap();
+        }
     }
 
     /// A short version with a pre-release or build part is padded before it, not after it.
@@ -2673,11 +2737,20 @@ issues = \"http://example.org/issues\"
             check_file(name, 0o100755, || Ok(std::io::Cursor::new(nbt))),
             Err(ContentFileError::Executable(_))
         ));
-        for header in [b"\x7fELF", b"MZ!!", b"\xcf\xfa\xed\xfe"] {
-            assert!(matches!(
-                check_file(name, 0o100644, || Ok(std::io::Cursor::new(header))),
-                Err(ContentFileError::Executable(_))
-            ));
+        for (header, expected) in [
+            (&b"\x7fELF"[..], "ELF"),
+            (b"MZ!!", "PE"),
+            (b"\xcf\xfa\xed\xfe", "Mach-O"),
+            (b"\xca\xfe\xba\xbe", "Mach-O universal"),
+            (b"!<arch>\n", "ar archive"),
+        ] {
+            assert!(
+                matches!(
+                    check_file(name, 0o100644, || Ok(std::io::Cursor::new(header))),
+                    Err(ContentFileError::Binary { kind, .. }) if kind == expected
+                ),
+                "{expected}"
+            );
         }
     }
 
