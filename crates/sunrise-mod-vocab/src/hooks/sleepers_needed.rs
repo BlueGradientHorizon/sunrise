@@ -5,7 +5,7 @@ pub trait Hooks {
     /// `SleepStatus.sleepersNeeded`. `needed` arrives with vanilla's answer, `percentage`
     /// (the `players_sleeping_percentage` game rule) of the `active` players that count toward
     /// sleeping (not spectators), rounded up and at least 1; set it to your own count for this
-    /// level and tick, such as a daytime share for sleeping bags. An answer below 1 counts as 1.
+    /// level and tick. An answer below 1 counts as 1.
     /// Asked on the server wherever vanilla reads the count: the night-skip check of
     /// `ServerLevel.tick` (`areEnoughSleeping` and `areEnoughDeepSleeping`, before
     /// `sleep_skip_night`) and the "n/m players sleeping" announcement, which shows the answered
