@@ -605,12 +605,6 @@ mod tests {
                 "{ workspace = true }",
                 Some("example: E_SDK_SOURCE: sunrise-mod-api: workspace does not name the SDK"),
             ),
-            (
-                "{ path = '../sunrise/crates/sunrise-mod-api' }",
-                Some(
-                    "example: E_SDK_SOURCE: sunrise-mod-api: the path must be \".sunrise/sdk/api/crates/sunrise-mod-api\"",
-                ),
-            ),
         ] {
             let text = format!(
                 "[package]\nname='example-mod'\nversion='1.0.0'\n[dependencies]\nsunrise-mod-api = {form}\n"
@@ -625,6 +619,14 @@ mod tests {
                 (result, _) => panic!("{form}: {:?}", result.err()),
             }
         }
+        // A path to the engine's own source leaves the package, so reading the package refuses it.
+        fs::write(
+            dir.join("Cargo.toml"),
+            "[package]\nname='example-mod'\nversion='1.0.0'\n[dependencies]\nsunrise-mod-api = { path = '../sunrise/crates/sunrise-mod-api' }\n",
+        )
+        .unwrap();
+        let error = super::super::bundle_in(&dir).err().unwrap();
+        assert!(error.contains("leaves the package"), "{error}");
         fs::remove_dir_all(dir).unwrap();
     }
 

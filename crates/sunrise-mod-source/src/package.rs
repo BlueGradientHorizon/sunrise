@@ -275,7 +275,9 @@ fn wanted_folders(
                     format!("{named}, which leaves the package"),
                 ));
             }
-            if parts.first() != Some(&".sunrise") && !parts.is_empty() {
+            // The SDK is named as `.sunrise/sdk/...` from any manifest, and the native build puts it there.
+            let sdk = parts.first() == Some(&".sunrise") || path.starts_with(".sunrise/");
+            if !sdk && !parts.is_empty() {
                 wanted.entry(parts.join("/")).or_insert(named);
             }
         }
