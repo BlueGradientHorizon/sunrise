@@ -117,7 +117,7 @@ FastBufferedInputStream.skip	skip:java		buffered stream helper; Rust readers do 
 FastBufferedInputStream.fill	skip:java		buffered stream helper; Rust readers do their own buffering
 FileSystemUtil.safeGetPath	skip:other		opens a jar or zip filesystem for a URI; Sunrise reads archives with the zip crate
 FileUtil.sanitizeName	port	crates/sunrise-client/src/title.rs::Title::target_folder	gap: minor: replaces every non-alphanumeric character with _; vanilla only replaces illegal file characters, dots, slashes and quotes
-FileUtil.isPathPortable	port	crates/sunrise-gameplay/src/structure_blocks.rs::portable_path	the structure path's check: no empty, `.` or `..` segment; vanilla also tests the part's characters (isPathPartPortable)
+FileUtil.isPathPortable	port	crates/sunrise-gameplay-common/src/structure_blocks.rs::portable_path	the structure path's check: no empty, `.` or `..` segment; vanilla also tests the part's characters (isPathPartPortable)
 FileUtil.decomposePath	skip:data		resource path handling; Sunrise reads its data from tables and files
 FileUtil.resolvePath	skip:data		resource path handling; Sunrise reads its data from tables and files
 FileUtil.isValidPathSegment	skip:data		resource path handling; Sunrise reads its data from tables and files

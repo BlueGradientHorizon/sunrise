@@ -1,5 +1,5 @@
 //! Game mode rules (`GameType`).
-use sunrise_client::command::args::GameMode;
+use sunrise_command::args::GameMode;
 
 pub fn mode_from_id(id: i32) -> GameMode {
     GameMode::from_id(id).unwrap_or(GameMode::Survival)

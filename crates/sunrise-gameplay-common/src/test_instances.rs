@@ -1,5 +1,5 @@
 //! The game test instance registry's entries: `GameTestInstance`'s codec.
-use sunrise_client::text::Text;
+use sunrise_client_core::text::Text;
 use sunrise_world::worldgen::structure::Rotation;
 
 /// The `GameTestInstance` a registry entry describes: `TestData` and what

@@ -1,7 +1,7 @@
 //! World-local generated class membership, shared by attachment and typed reads.
 use std::collections::{HashMap, HashSet};
-use sunrise_client::blocks::BlockFacts;
-use sunrise_client::items::Items;
+use sunrise_items::blocks::BlockFacts;
+use sunrise_items::items::Items;
 use sunrise_world::level::classes::{Class, is_generated_tag};
 
 fn prepare(
@@ -64,7 +64,7 @@ pub fn install(items: &mut Items, facts: &BlockFacts) {
     }
     items.block_tags = generated;
     // The mob code's flags come from this map, and from these states.
-    items.rebuild_block_tag_flags(sunrise_client::items::block_tag_state_names(facts));
+    items.rebuild_block_tag_flags(sunrise_items::items::block_tag_state_names(facts));
 }
 
 #[cfg(test)]

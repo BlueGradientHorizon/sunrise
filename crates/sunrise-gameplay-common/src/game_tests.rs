@@ -1,5 +1,5 @@
 //! The game-test leaf rules: `TestError` and `RetryOptions`.
-use sunrise_client::text::Text;
+use sunrise_client_core::text::Text;
 
 type Pos = (i32, i32, i32);
 

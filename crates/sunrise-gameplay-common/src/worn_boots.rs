@@ -1,4 +1,4 @@
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 
 /// Whether the feet slot supports walking on powder snow.
 pub fn leather_boots(armor: &[Option<ItemStack>; 4]) -> bool {

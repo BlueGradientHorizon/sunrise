@@ -106,6 +106,7 @@ CRATE_DIR_TO_MOD = {
     "sunrise-client-lib": "sunrise_client_lib",
     "sunrise-client": "sunrise_client",
     "sunrise-world": "sunrise_world",
+    "sunrise-gameplay-common": "sunrise_gameplay_common",
     "sunrise-gameplay": "sunrise_gameplay",
     "sunrise-core": "sunrise_core",
     "sunrise-items": "sunrise_items",

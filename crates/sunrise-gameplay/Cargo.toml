@@ -14,6 +14,7 @@ sunrise-client-core = { path = "../sunrise-client-core" }
 sunrise-client-lib = { path = "../sunrise-client-lib", default-features = false }
 sunrise-assets = { path = "../sunrise-assets" }
 sunrise-core = { path = "../sunrise-core" }
+sunrise-gameplay-common = { path = "../sunrise-gameplay-common" }
 sunrise-items = { path = "../sunrise-items" }
 sunrise-protocol = { path = "../sunrise-protocol" }
 sunrise-mod-runtime = { path = "../sunrise-mod-runtime" }

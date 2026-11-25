@@ -33,6 +33,7 @@
     "sunrise-command": "engine",
     "sunrise-connected": "engine",
     "sunrise-core": "engine",
+    "sunrise-gameplay-common": "engine",
     "sunrise-gameplay": "engine",
     "sunrise-items": "engine",
     "sunrise-narrator": "engine",
@@ -128,7 +129,8 @@
       "sunrise-game-discovery",
       "sunrise-threads",
       "sunrise-deflate",
-      "sunrise-java-properties"
+      "sunrise-java-properties",
+      "sunrise-gameplay-common"
     ],
     "pending": {
       "_doc": "Engine crates that still take a non-portable crate, until the types they need move down. Entries only go away.",
