@@ -235,6 +235,39 @@ impl Entry {
     fn goal_view(&self) -> bool {
         self.attrs.iter().any(|a| a.path().is_ident("goal_view"))
     }
+
+    /// `#[server_only]`: a `Host` or `Backend` method that only the logical server implements;
+    /// `ClientGame` answers with its typed refusal instead of calling an inherent method.
+    fn server_only(&self) -> bool {
+        self.attrs.iter().any(|a| a.path().is_ident("server_only"))
+    }
+
+    /// The `Side: server.` / `Side: client.` / `Side: both.` marker in the method's doc comments.
+    fn doc_side(&self) -> Option<Side> {
+        for attr in &self.attrs {
+            if !attr.path().is_ident("doc") {
+                continue;
+            }
+            if let syn::Meta::NameValue(nv) = &attr.meta
+                && let syn::Expr::Lit(syn::ExprLit {
+                    lit: syn::Lit::Str(s),
+                    ..
+                }) = &nv.value
+            {
+                let line = s.value();
+                if line.contains("Side: server.") {
+                    return Some(Side::Server);
+                }
+                if line.contains("Side: client.") {
+                    return Some(Side::Client);
+                }
+                if line.contains("Side: both.") {
+                    return Some(Side::Both);
+                }
+            }
+        }
+        None
+    }
 }
 
 /// One area file: its traits by tier.
@@ -246,6 +279,8 @@ pub(crate) struct Area {
     /// from `Game`, declared by `#[table_backend("path")]` on the trait: the view carries the
     /// reads and implements the trait once, and `Game` forwards to it.
     tables: BTreeMap<Tier, String>,
+    /// Tiers carrying `#[server_only]` on the trait itself.
+    server_only_tiers: std::collections::BTreeSet<Tier>,
 }
 
 impl Area {
@@ -353,6 +388,25 @@ fn table_backends(camel: &str, file: &syn::File) -> Result<BTreeMap<Tier, String
     Ok(tables)
 }
 
+/// Tiers carrying `#[server_only]` on the trait declaration itself.
+fn server_only_tiers(camel: &str, file: &syn::File) -> std::collections::BTreeSet<Tier> {
+    let mut set = std::collections::BTreeSet::new();
+    for item in &file.items {
+        let Item::Trait(item) = item else { continue };
+        if !item.attrs.iter().any(|a| a.path().is_ident("server_only")) {
+            continue;
+        }
+        let name = item.ident.to_string();
+        if let Some(tier) = Tier::ALL
+            .into_iter()
+            .find(|tier| name == format!("{camel}{}", tier.suffix()))
+        {
+            set.insert(tier);
+        }
+    }
+    set
+}
+
 /// The area files, `base` first and then by name, as the catalog's are.
 pub(crate) fn load(root: &Path) -> Result<Vec<Area>, String> {
     let dir = root.join(DIRECTORY);
@@ -365,12 +419,14 @@ pub(crate) fn load(root: &Path) -> Result<Vec<Area>, String> {
         let camel = stem.to_upper_camel_case();
         let tables =
             table_backends(&camel, &file).map_err(|e| format!("{}: {e}", path.display()))?;
+        let server_only_tiers = server_only_tiers(&camel, &file);
         let tiers = area_tiers(&camel, file).map_err(|e| format!("{}: {e}", path.display()))?;
         areas.push(Area {
             stem,
             camel,
             tiers,
             tables,
+            server_only_tiers,
         });
     }
     crate::rerun_if_changed(&dir.display());
@@ -523,24 +579,48 @@ pub(super) fn areas_source(root: &Path) -> Result<String, String> {
 /// Generate every area impl explicitly. Full-path calls plus a hard recursion lint
 /// refuse a missing inherent implementation instead of inheriting a trait default.
 pub(super) fn game_forwarders(root: &Path) -> Result<String, String> {
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum ForwarderTarget<'a> {
+        Table(&'a str),
+        Server,
+        Client,
+    }
+    impl<'a> ForwarderTarget<'a> {
+        fn type_name(self) -> &'a str {
+            match self {
+                Self::Table(path) => path,
+                Self::Server => "ServerGame",
+                Self::Client => "ClientGame",
+            }
+        }
+    }
+
     let mut code = String::from(
-        "use crate::game::Game;\nuse crate::game::api_values::{call_stack_write, call_state_write, call_write, TryIntoApi, TryIntoEngine};\nuse mod_api::*;\n",
+        "use crate::game::{ClientGame, ServerGame};\nuse crate::game::api_values::{call_stack_write, call_state_write, call_write, TryIntoApi, TryIntoEngine};\nuse mod_api::*;\n",
     );
     for area in load(root)? {
         for (tier, entries) in &area.tiers {
             let table = area.tables.get(tier).map(String::as_str);
-            // A table-backed area is implemented by its view, and by `Game`, which hands the
-            // view out: both forward the same reads, so neither keeps a copy of them.
-            let targets: &[&str] = match table {
-                Some(table) => &[table, "Game"],
-                None => &["Game"],
+            let tier_server_only = area.server_only_tiers.contains(tier);
+            let targets: Vec<ForwarderTarget<'_>> = match (table, tier) {
+                (Some(tbl), _) => vec![
+                    ForwarderTarget::Table(tbl),
+                    ForwarderTarget::Server,
+                    ForwarderTarget::Client,
+                ],
+                (None, Tier::ServerHost | Tier::BackendMut) => vec![ForwarderTarget::Server],
+                (None, Tier::ClientHost | Tier::ClientBackendMut) => vec![ForwarderTarget::Client],
+                (None, Tier::Host | Tier::Backend | Tier::ClientBackend) => {
+                    vec![ForwarderTarget::Server, ForwarderTarget::Client]
+                }
             };
-            for &target in targets {
-                let via_game = table.is_some() && target == "Game";
+            for target_kind in targets {
+                let target = target_kind.type_name();
+                let via_game = table.is_some() && !matches!(target_kind, ForwarderTarget::Table(_));
                 code.push_str(&format!(
-                "#[deny(unconditional_recursion)]\nimpl mod_api::prelude::{} for {target}<'_> {{\n",
-                area.trait_name(*tier)
-            ));
+                    "#[deny(unconditional_recursion)]\nimpl mod_api::prelude::{} for {target}<'_> {{\n",
+                    area.trait_name(*tier)
+                ));
                 for entry in entries {
                     let name = &entry.name;
                     // A shared published read bypasses Game's conversions and uses the same
@@ -557,6 +637,29 @@ pub(super) fn game_forwarders(root: &Path) -> Result<String, String> {
                             "{sig} {{ mod_api::__private::{}({args}) }}\n",
                             read.to_token_stream()
                         ));
+                        continue;
+                    }
+                    let refuse_on_this_side = match (tier, target_kind) {
+                        (Tier::ClientBackend, ForwarderTarget::Server) => true,
+                        (Tier::Host | Tier::Backend, ForwarderTarget::Client) => {
+                            tier_server_only
+                                || entry.server_only()
+                                || entry.doc_side() == Some(Side::Server)
+                        }
+                        (Tier::Host | Tier::Backend, ForwarderTarget::Server) => {
+                            entry.doc_side() == Some(Side::Client)
+                        }
+                        _ => false,
+                    };
+                    if refuse_on_this_side {
+                        let sig = entry.sig.to_token_stream();
+                        let args = signature_args(&entry.sig, name)?;
+                        let value = refusal(&entry.sig, name)?;
+                        if args.is_empty() {
+                            code.push_str(&format!("{sig} {{ {value} }}\n"));
+                        } else {
+                            code.push_str(&format!("{sig} {{ let _ = ({args},); {value} }}\n"));
+                        }
                         continue;
                     }
                     let keeps_api_inputs = entry
@@ -1443,6 +1546,7 @@ mod tests {
             camel: "Keys".into(),
             tiers: BTreeMap::new(),
             tables: BTreeMap::new(),
+            server_only_tiers: std::collections::BTreeSet::new(),
         };
         assert_eq!(
             goal_view(&[], &[(&area, Tier::Backend, &method)], &[]),
@@ -1561,9 +1665,20 @@ mod tests {
             .flat_map(|area| {
                 area.tiers.into_iter().flat_map(move |(tier, entries)| {
                     let owner = format!("{}{}", area.camel, tier.suffix());
-                    entries
-                        .into_iter()
-                        .map(move |entry| (owner.clone(), entry.name))
+                    let sides: &[&str] = match tier {
+                        Tier::ServerHost | Tier::BackendMut => &["ServerGame"],
+                        Tier::ClientHost | Tier::ClientBackendMut => &["ClientGame"],
+                        Tier::Host | Tier::Backend | Tier::ClientBackend => {
+                            &["ServerGame", "ClientGame"]
+                        }
+                    };
+                    entries.into_iter().flat_map(move |entry| {
+                        let owner = owner.clone();
+                        let name = entry.name;
+                        sides
+                            .iter()
+                            .map(move |&side| (side.to_owned(), owner.clone(), name.clone()))
+                    })
                 })
             })
             .collect();
@@ -1579,11 +1694,12 @@ mod tests {
                             .is_ok_and(|lint| lint == "unconditional_recursion")
                 }));
                 // The generator also emits table-backed view implementations.
-                // This assertion covers Game's complete backend surface.
+                // This assertion covers ServerGame and ClientGame's complete backend surface.
                 let syn::Type::Path(receiver) = &*item.self_ty else {
                     panic!("expected named host")
                 };
-                if receiver.path.segments.last().unwrap().ident != "Game" {
+                let side = receiver.path.segments.last().unwrap().ident.to_string();
+                if side != "ServerGame" && side != "ClientGame" {
                     continue;
                 }
                 let owner = item
@@ -1600,7 +1716,7 @@ mod tests {
                         panic!("non-method in Game impl")
                     };
                     let name = method.sig.ident.to_string();
-                    assert!(actual.insert((owner.clone(), name)));
+                    assert!(actual.insert((side.clone(), owner.clone(), name)));
                 }
             }
         }

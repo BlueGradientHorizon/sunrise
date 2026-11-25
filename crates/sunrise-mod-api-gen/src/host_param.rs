@@ -131,8 +131,9 @@ pub(super) fn host_param(hook: &Hook, mutable: Option<bool>, ticks: bool) -> Opt
     mutable.map(|mutable| {
         if !is_level {
             let (ty, call) = match hook.side {
-                Side::Server | Side::Both if hook.host == Some(HostAccess::Read) => {
-                    ("&dyn Host", "&*self")
+                Side::Server if hook.host == Some(HostAccess::Read) => ("&dyn Host", "&*self"),
+                Side::Both if hook.host == Some(HostAccess::Read) => {
+                    ("&dyn Host", "crate::game::Side::as_host(self)")
                 }
                 Side::Server => ("&mut dyn ServerHost", "self"),
                 Side::Client if mutable => ("&mut dyn ClientHost", "self"),

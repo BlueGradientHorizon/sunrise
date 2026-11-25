@@ -615,7 +615,7 @@ mod tests {
         assert_eq!(post.version, 2);
         assert_eq!(
             frame.target,
-            "sunrise_client::game::native_hooks::render_frame_pre::Game<'_>::native_render_frame_pre"
+            "sunrise_client::game::native_hooks::render_frame_pre::ClientGame<'_>::native_render_frame_pre"
         );
         assert!(frame.scope.is_none());
         let scoped = points
@@ -739,7 +739,7 @@ mod tests {
         };
         assert_eq!(
             host_param(&read, Some(false), false),
-            param("&dyn Host", "&*self")
+            param("&dyn Host", "crate::game::Side::as_host(self)")
         );
         let client = Hook {
             side: Side::Client,

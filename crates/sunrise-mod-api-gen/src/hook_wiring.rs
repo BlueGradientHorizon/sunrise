@@ -81,6 +81,57 @@ fn functions<'a>(
 
 const NATIVE_HOOKS: &str = "sunrise_client::game::native_hooks::";
 
+fn owner_matches(item: &syn::ItemImpl, expected: &str) -> bool {
+    let actual_raw = source::owner(&item.self_ty);
+    let expected = expected.replace(' ', "");
+    if actual_raw == expected {
+        return true;
+    }
+    fn strip_prefix(s: &str) -> &str {
+        s.strip_prefix("crate::game::")
+            .or_else(|| s.strip_prefix("super::"))
+            .unwrap_or(s)
+    }
+    let actual = strip_prefix(&actual_raw);
+    let expected = strip_prefix(&expected);
+    if actual == expected {
+        return true;
+    }
+    let is_server_actual = matches!(
+        actual,
+        "ServerGame<'_>"
+            | "Game<'_,crate::game::server_side::ServerState>"
+            | "Game<'_,server_side::ServerState>"
+            | "Game<'_,ServerState>"
+    );
+    let is_client_actual = matches!(
+        actual,
+        "ClientGame<'_>"
+            | "Game<'_,crate::game::client_side::ClientState>"
+            | "Game<'_,client_side::ClientState>"
+            | "Game<'_,ClientState>"
+    );
+    let is_generic_game_actual = actual
+        .strip_prefix("Game<'_,")
+        .and_then(|s| s.strip_suffix('>'))
+        .is_some_and(|param| {
+            item.generics
+                .type_params()
+                .any(|tp| tp.ident == param)
+        });
+    match expected {
+        "ServerGame<'_>" => is_server_actual,
+        "ClientGame<'_>" => is_client_actual,
+        "Game<'_,S>" => is_generic_game_actual || actual == "Game<'_>",
+        "Game<'_>" => is_server_actual || is_client_actual || is_generic_game_actual,
+        "ReadLevel<'_,'_>" => actual
+            .strip_prefix("ReadLevel<'_,'_,")
+            .and_then(|s| s.strip_suffix('>'))
+            .is_some_and(|param| item.generics.type_params().any(|tp| tp.ident == param)),
+        _ => false,
+    }
+}
+
 fn check_target(sources: &mut Sources<'_>, hook: &Hook, build: &Build) -> Result<bool, String> {
     let in_native_hooks = hook.target.starts_with(NATIVE_HOOKS);
     let (package, candidate_modules, owner, target) = if let Some(path) =
@@ -124,7 +175,7 @@ fn check_target(sources: &mut Sources<'_>, hook: &Hook, build: &Build) -> Result
                 .filter_map(|item| match item {
                     Item::Impl(item)
                         if item.trait_.is_none()
-                            && source::owner(&item.self_ty) == owner
+                            && owner_matches(item, owner)
                             && build.enabled(&item.attrs) =>
                     {
                         Some(&item.items)
