@@ -16,7 +16,7 @@ my_mod/
 A native source package requires both `Cargo.toml` and `[native]`; inconsistent declarations
 are refused. A content-only package omits both. The mod's id and version come only from `sunrise-mod.toml`,
 not Cargo's package name or version. An id is a plain `[a-z0-9_]{1,64}` name, also used as its resource namespace.
-A `rust-toolchain.toml` in the folder is packaged like any other file, but the pinned Sunrise commit decides the
+A `rust-toolchain.toml` in the folder is packaged, but the staged build leaves it out: the pinned Sunrise commit decides the
 toolchain that builds the mod. `cargo sunrise-mod check`, which runs Cargo in the folder, still reads it.
 The native builder stages the crate and writes the tool's manifest itself. Packing follows Cargo's rule for what a
 crate carries ([package contents](03-data-files.md#package-contents)), so C sources and other files of the

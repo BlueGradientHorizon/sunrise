@@ -33,9 +33,12 @@ my_mod.smod
 - Inconsistent code declarations in a project folder, or an executable file among the assets, data or icon,
   refuse the package.
 - The full native layout is in [Package contents](../how-to/native-mods/03-data-files.md#package-contents). Packing
-  a project folder takes the files `cargo package` would carry; in an archive, any file outside the package's own
-  names is source. The packer and the registry's checks refuse a prebuilt binary (ELF, Mach-O, PE, `ar`) among the
-  source by its content, never by its name. The game reads only what it uses of an archive (below) and skips every
+  a project folder takes the files `cargo package` would carry, with differences: only the root `.gitignore` is read
+  (no Git index), dot-files and dot-folders are skipped unless `include` is set, symlinks are refused, path
+  dependencies outside the package are refused, and names that differ only by case are refused. In an archive, any
+  file outside the package's own names is source. The packer and the tools that read source refuse prebuilt object
+  code (ELF, Mach-O, PE, WebAssembly, `ar`) among the source by its header, never by its name; that is a check of
+  the header, not a security boundary, since `build.rs` runs code. The game reads only what it uses of an archive (below) and skips every
   other entry, without a check of the file list.
 
 There is no mod-id directory level inside the archive. `sunrise-mod.toml` is the only manifest and the only

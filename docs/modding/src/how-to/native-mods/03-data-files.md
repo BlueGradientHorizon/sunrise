@@ -109,25 +109,42 @@ build script generate them. Embedded tables do not participate in resource reloa
 ## Package contents
 
 A native package holds the manifest, an optional `icon.png`, `assets/` and `data/`, a `runtime/` folder listed in
-`[runtime]`, and the crate's source: the files `cargo package` would put in the crate, which is Cargo's own rule.
+`[runtime]`, and the crate's source: the files `cargo package` would put in the crate, with these differences:
+
+- Only the folder's root `.gitignore` is read, and there is no Git index: a file the root `.gitignore` does not ignore
+  is packaged whether or not it is tracked.
+- Files and folders whose name starts with `.` are skipped unless `[package] include` is set (then only `include`
+  decides). `.git/`, `.cargo/` and `.sunrise/` are never packaged.
+- Only the root `target/` is skipped.
+- A symlink is refused, not followed.
+- A `path` dependency that leaves the package, or names a folder the package leaves out, is refused by manifest and
+  path (the SDK's `.sunrise/` path stays allowed: the native build replaces it).
+- Two file names that differ only by case are refused, since a Windows or macOS extraction keeps only one.
+
+A root `rust-toolchain` or `rust-toolchain.toml` may stay in the package, but the staged build leaves it out: the
+build runs the toolchain it pins.
+
 Source and resource size limits are checked separately.
 
 Packing a project folder takes the whole folder, not only `src/`, and any kind of file: Rust, C and its headers,
-data a build script reads. It leaves out `target/`, folders whose name starts with `.` (so `.git/` and
-`.cargo/`), a subfolder with its own `Cargo.toml`, and what the folder's root `.gitignore` ignores. Then
-`[package] include` in `Cargo.toml` keeps only the files its patterns match, or else `[package] exclude` drops the
-files its patterns match; both are gitignore-style patterns, as Cargo reads them. `Cargo.toml` and `Cargo.lock` are
-always packaged. A file left out is never read, and the native build, which works on the packed files, never sees
-it. `cargo sunrise-mod check` runs Cargo in the folder itself, so the folder's Cargo configuration applies there as
-it does to plain `cargo`. A few old input paths still refuse a folder: `sunrise-native.json`,
-`horizon-mixin.toml`, and a root `native/` or `rust/`. In an archive, any file outside the package's own names
-(the manifest, `uses.json`, `icon.png`, `runtime/`, `assets/`, `data/`) is source, within the same limits. The game
-never compiles the source, so it does not check this list when it loads a package: it reads the manifest, the icon,
-the content and the runtime files, and skips the rest.
+data a build script reads. Then `[package] include` in `Cargo.toml` keeps only the files its patterns match, or else
+`[package] exclude` drops the files its patterns match; both are gitignore-style patterns, as Cargo reads them.
+`Cargo.toml` and `Cargo.lock` are always packaged. A file left out is never read, and the native build, which works
+on the packed files, never sees it. `cargo sunrise-mod check` runs Cargo in the folder itself, so the folder's Cargo
+configuration applies there as it does to plain `cargo`. A few old input paths still refuse a folder:
+`sunrise-native.json`, `horizon-mixin.toml`, and a root `native/` or `rust/`.
 
-A package never carries a prebuilt binary. A file whose first bytes are those of an ELF, Mach-O or PE executable
-or library, or of an `ar` archive (`.a`, `.lib`), is refused by name when the package is packed or checked, whatever the
-file is called: ship the source and let the build compile it.
+The tools that read source out of an archive (the registry's checks, the launcher's build) count the source entries
+and add up their declared sizes from the archive's directory before inflating any, and refuse more than the source
+file and size limits allow; they also refuse an entry that is not the manifest, `uses.json`, `icon.png`, `runtime/`,
+`assets/`, `data/` or a source file (a `target/` or `.cargo/` entry), by name. The game does neither: it never reads
+or compiles the source, so it does not check this list when it loads a package. It reads the manifest, the icon, the
+content and the runtime files, and skips the rest.
+
+A package does not carry prebuilt object code. A source file whose header is an ELF, Mach-O (also universal),
+PE or WebAssembly file, or an `ar` archive (`.a`, `.lib`), is refused by name when the package is packed or read by the
+tools, whatever the file is called: ship the source and let the build compile it. The check catches prebuilt object
+code by its header; it is not a security boundary, since a `build.rs` runs code.
 
 A package may also carry `uses.json`, generated metadata that `cargo sunrise-mod build` writes from a scan of the
 same source files it packs. It is never read from the folder. The build leaves it out for a mod made for exactly one
