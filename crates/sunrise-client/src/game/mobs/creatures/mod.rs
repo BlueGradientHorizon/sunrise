@@ -1200,44 +1200,6 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn finish_creature_entities(
-        &mut self,
-        laps: &mut sunrise_client::spans::Laps,
-        primable: &[(u32, i32)],
-    ) -> Result<()> {
-        self.drain_entity_inside();
-        laps.lap("creature_events");
-        self.ordered_before(super::ordered_tick::Batch::Projectiles)?;
-        self.tick_projectiles()?;
-        self.drain_entity_inside();
-        self.tick_fangs();
-        laps.lap("creature_projectiles");
-        self.tick_allays();
-        self.tick_pandas();
-        self.tick_foxes();
-        self.tick_dolphins();
-        self.tick_mob_looting();
-        self.tick_breeze_effects();
-        self.tick_sniffer_server();
-        self.piglin_pickups();
-        self.sulfur_cube_pickups();
-        self.sulfur_cube_power_priming(primable);
-        laps.lap("creature_systems");
-        // Hurt and death sounds of damage dealt outside the mob ticks.
-        let mut queued = Vec::new();
-        for m in &mut self.mobs {
-            queued.append(&mut m.outbox);
-        }
-        self.handle_mob_events(queued)?;
-        // The enderman teleports those hurts asked for (`Enderman.hurtServer`).
-        self.settle_hurt_teleports()?;
-        laps.lap("creature_outbox");
-        // And for the sizes the ticks changed (a pose, a baby grown, a scale).
-        self.native_mob_sizes();
-        self.native_entity_sizes();
-        Ok(())
-    }
-
     /// `LivingEntity.tickDeath` broadcasts the poof before `remove`, which
     /// also splits a large cube before it reaches `Entity.setRemoved`.
     pub(in crate::game) fn finish_mob_death_animation(
@@ -1570,7 +1532,7 @@ impl Game<'_> {
                     b.destroy_block(level, ticks, at, false);
                 }
             });
-            self.process_level_events()?;
+            self.server_process_level_events()?;
         }
         Ok(())
     }
@@ -2244,7 +2206,7 @@ impl Game<'_> {
         let rang = self
             .with_level(|b, level, ticks| b.bell_projectile_hit(level, ticks, block, face, at.y));
         if rang {
-            let _ = self.process_level_events();
+            let _ = self.server_process_level_events();
             if p.owner == Some(Who::Player) {
                 self.award_custom_stat("bell_ring", 1);
             }
@@ -2266,7 +2228,7 @@ impl Game<'_> {
                 volume: 1.0,
                 pitch,
             });
-        let _ = self.process_level_events();
+        let _ = self.server_process_level_events();
     }
     /// `onProjectileHit` of chorus flowers, decorated pots and speleothems
     /// (pointed dripstone, sulfur spikes): an impact projectile
@@ -2619,15 +2581,15 @@ impl Game<'_> {
             Some(t) => Self::named_entity(&self.mobs, t.id, |m| m.id)
                 .filter(|&i| {
                     let m = &self.mobs[i];
-                    named_mob_pickable(m.alive(), m.id, self.riding, self.live_remote_camera_id())
-                        && !self.is_pick_camera(m.id)
+                    named_mob_pickable(m.alive(), m.id, self.riding, self.side_live_remote_camera_id())
+                        && !self.side_is_pick_camera(m.id)
                 })
                 .map(|i| (i, 0.0, [0.0; 3])),
             None => self.mob_hit(),
         })?;
         // Only a client's own pick is stopped by a block: the range check passed.
         if target.is_none()
-            && !self.uses_stored_pick()
+            && !self.side_uses_stored_pick()
             && let Some(hit) = self.pick_unfiltered()
             && let Some(eye) = self.eye_position()
         {
@@ -2861,42 +2823,6 @@ impl Game<'_> {
         }
     }
 
-    #[cfg(test)]
-    pub(in crate::game) fn mob_geometry(
-        &self,
-        camera: glam::DVec3,
-        alpha: f64,
-        out: &mut Vec<Vertex>,
-    ) {
-        let frame = self.begin_mob_geometry(camera, alpha);
-        self.mob_run_geometry(&frame, 0..self.mobs.len(), out);
-        self.mark_motion(out.len(), 0);
-        self.other_creature_geometry(camera, alpha, out);
-    }
-
-    pub(in crate::game) fn other_creature_geometry(
-        &self,
-        camera: glam::DVec3,
-        alpha: f64,
-        out: &mut Vec<Vertex>,
-    ) {
-        self.elder_apparition_geometry(alpha, out);
-        self.spawner_geometry(camera, alpha, out);
-        let live = self
-            .creatures
-            .projectiles
-            .iter()
-            .filter(|a| !self.hides_as_camera(a.id))
-            .map(|a| {
-                let at = [
-                    a.previous.x + (a.position.x - a.previous.x) * alpha,
-                    a.previous.y + (a.position.y - a.previous.y) * alpha,
-                    a.previous.z + (a.position.z - a.previous.z) * alpha,
-                ];
-                (a, at)
-            });
-        self.projectile_geometry(camera, alpha, live, out);
-    }
 }
 /// `ThrownItemRenderer.submit` turns the item by `CameraRenderState.orientation`
 /// (`Camera.setRotation`): the billboard's right and up axes are the camera's.

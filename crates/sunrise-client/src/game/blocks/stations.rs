@@ -602,11 +602,6 @@ impl Game<'_> {
             s.book.tick(s.inputs[0].as_ref(), costs);
         }
     }
-    /// `Component.translatable`: the selected language (which `lang` layers
-    /// over `en_us`), the caller's English text last.
-    pub(in crate::game) fn translate_with_fallback(&self, key: &str, fallback: &str) -> String {
-        sunrise_client::lang::get_or(key, fallback)
-    }
     pub(in crate::game::client_side) fn brewing_open(&self) -> bool {
         matches!(self.container_kind(), Some(BlockEntity::Brewing(_)))
     }
@@ -1005,7 +1000,7 @@ impl Game<'_> {
             return;
         }
         if kind == Kind::Smithing {
-            self.level_event_at(1044, pos, 0);
+            self.server_level_event_at(1044, pos, 0);
             return;
         }
         self.give_levels(menu.level_change);
@@ -1039,12 +1034,12 @@ impl Game<'_> {
                     let _ = self.world.set(pos[0], pos[1], pos[2], self.world.air);
                     self.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
                     self.native_anvil_damaged(self.dim.id(), pos, &name, "minecraft:air");
-                    self.level_event_at(1029, pos, 0);
+                    self.server_level_event_at(1029, pos, 0);
                     return true;
                 }
             }
         }
-        self.level_event_at(1030, pos, 0);
+        self.server_level_event_at(1030, pos, 0);
         false
     }
     /// The grindstone result's `onTake` with a level (`amount`: the menu's
@@ -1636,28 +1631,10 @@ impl Game<'_> {
     ) -> Vec<(sunrise_client::text::Text, u32)> {
         self.stack_tooltip_lines(stack, false, false)
     }
-    /// `ItemStack.getRarity().color()` in text's RGB format.
-    pub(in crate::game) fn stack_rarity_color(&self, stack: &ItemStack) -> u32 {
-        use sunrise_client::text;
-        let props = self.stations().enchantments.props(&stack.item);
-        match sunrise_client::item_tooltip::rarity(
-            stack,
-            props.map_or("common", |p| p.rarity.as_str()),
-        ) {
-            "uncommon" => text::YELLOW,
-            "rare" => text::AQUA,
-            "epic" => text::LIGHT_PURPLE,
-            _ => text::WHITE,
-        }
-    }
     /// The same rarity colour in the GUI batch's packed RGBA format.
     pub(in crate::game::client_side) fn rarity_color(&self, stack: &ItemStack) -> u32 {
         let c = self.stack_rarity_color(stack);
         rgba((c >> 16) as u8, (c >> 8) as u8, c as u8, 255)
-    }
-    /// The resolved `ItemStack.getHoverName` rendered as plain text.
-    pub(in crate::game) fn stack_hover_name(&self, stack: &ItemStack) -> String {
-        self.stack_hover_name_text(stack).plain()
     }
     /// `ItemStack.getTooltipLines`. A `nested` stack is a crossbow's
     /// projectile: `ChargedProjectiles.addProjectileTooltip` takes its details

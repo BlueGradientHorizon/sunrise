@@ -427,7 +427,7 @@ impl Game<'_> {
         // A selection reload, including startup rollback, needs tail-owned mob metadata.
         // An in-flight reload finishes first (vanilla's `pendingReload`).
         if kind == ReloadKind::Selection
-            && reload_waits(self.rest_loader.0.is_some(), self.pack_reload.0.is_some())
+            && reload_waits(self.rest_loader.is_some(), self.pack_reload.0.is_some())
         {
             self.client.pending_pack_reload = true;
             return Ok(());

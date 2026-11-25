@@ -81,7 +81,7 @@ impl Game<'_> {
                 }
             })
             .ok_or(PlaceFeatureRefusal::UnknownFeature)?;
-        let _ = self.process_level_events();
+        let _ = self.server_process_level_events();
         answer
     }
 }

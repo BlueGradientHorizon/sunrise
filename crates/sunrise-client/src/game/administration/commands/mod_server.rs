@@ -769,7 +769,7 @@ impl Game<'_> {
                     b.block(remaining),
                 );
             });
-            self.process_level_events()
+            self.server_process_level_events()
                 .map_err(|e| CommandError::new(Text::literal(e.to_string())))?;
         }
         self.feedback(Text::tr(

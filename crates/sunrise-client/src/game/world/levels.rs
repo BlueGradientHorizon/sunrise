@@ -17,7 +17,7 @@ use super::entity_residency::{define_resident_access, resident_owners};
 use super::{
     Dim, ExperienceOrb, FallingBlock, Game, ItemEntity, Mob, boats, commands,
     creaking::CreakingState, dragon, fireworks, lightning, machines, minecarts,
-    ominous_item_spawner, persist, raids::Raiding, sculk::SculkState, tnt, trident,
+    ominous_item_spawner, persist, raids::Raiding, sculk_server::SculkState, tnt, trident,
 };
 use mod_api::DimensionKey;
 use std::{
@@ -1198,7 +1198,7 @@ impl Game<'_> {
                 log::warn!("Sunrise: the chunks of the saved tickets did not load");
                 return;
             }
-            self.update_world();
+            self.server_update_world();
             self.streaming.wait(Duration::from_millis(5));
         }
     }
@@ -1270,7 +1270,7 @@ impl Game<'_> {
         swap(&mut a.gateway_servers, &mut b.gateway_servers);
         swap(&mut a.conduit_servers, &mut b.conduit_servers);
         self.raiding.0.swap_level(&mut p.raiding);
-        self.sculk.swap_level(&mut p.sculk);
+        self.server.sculk.swap_level(&mut p.sculk);
         self.server.creaking.swap_level(&mut p.creaking);
         swap(&mut self.server.spawn_scratch, &mut p.spawn_scratch);
         swap(&mut self.border, &mut p.border);
@@ -1614,7 +1614,7 @@ impl Game<'_> {
                 self.update_dedicated_streaming();
             });
             self.tick_spawn_tickets(running == Some(true), true);
-            sunrise_client::spans::time("update_world", || self.update_world());
+            sunrise_client::spans::time("update_world", || self.server_update_world());
             // The end of ServerChunkCache.tick, after its unloads: `clearCache`. A paused or held
             // server ticks no level.
             if running.is_some() {
@@ -2018,7 +2018,7 @@ impl Game<'_> {
         let spawn_wait = std::mem::take(&mut self.server.spawn_wait);
         self.streaming.radius = -1;
         self.streaming.extra.clear();
-        self.update_world();
+        self.server_update_world();
         self.server.spawn_wait = spawn_wait;
         self.enter_level(back)?;
         Ok(())
@@ -3380,7 +3380,7 @@ mod tests {
         // As the dedicated server's loop: a tick, then the chunk streaming.
         for _ in 0..2000 {
             game.tick_world(true).unwrap();
-            game.update_world();
+            game.server_update_world();
             std::thread::sleep(std::time::Duration::from_millis(10));
             if game.run_command_quietly("execute if loaded 215 64 8") {
                 loaded = true;
@@ -3443,7 +3443,7 @@ mod tests {
             // As the dedicated server's loop: a tick, then the chunk streaming.
             for _ in 0..2000 {
                 game.tick_world(true).unwrap();
-                game.update_world();
+                game.server_update_world();
                 std::thread::sleep(std::time::Duration::from_millis(10));
                 if game.run_command_quietly("execute if loaded 215 64 8") {
                     loaded = true;
@@ -3541,7 +3541,7 @@ mod tests {
         let mut loaded = false;
         for _ in 0..2000 {
             game.tick_world(true).unwrap();
-            game.update_world();
+            game.server_update_world();
             std::thread::sleep(std::time::Duration::from_millis(10));
             if game.run_command_quietly("execute if loaded 215 64 8") {
                 loaded = true;
@@ -3612,7 +3612,6 @@ impl Game<'_> {
         if self.remote.is_some() {
             return Err("server-role game cannot tick a remote connection".into());
         }
-        self.expire_client_cracks();
         if self.agent.hold_server {
             return Ok(());
         }
@@ -3629,7 +3628,6 @@ impl Game<'_> {
         // Only a server ticks its own world from here: its players are guests, swapped in for
         // their turns (`as_guest`), and the window's player is a client of it.
         self.ticks += 1;
-        self.repro_tick();
         // `/tick freeze` stops the world but not the player.
         let running = match self.server.level_pass.running {
             Some(running) => running,

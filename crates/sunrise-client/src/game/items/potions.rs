@@ -609,7 +609,7 @@ impl Game<'_> {
         }
         for at in chosen {
             if self.set_state_named(at, "minecraft:cobweb", &[]).is_ok() {
-                self.level_event_at(3018, at, 0);
+                self.server_level_event_at(3018, at, 0);
             }
         }
     }
@@ -1164,7 +1164,7 @@ impl Game<'_> {
     /// server removes them. Their modifiers and flags move the predicted
     /// player.
     pub(in crate::game) fn tick_client_effects(&mut self) {
-        client_tick_effects(&mut self.potions.effects, &mut self.sculk.darkness);
+        client_tick_effects(&mut self.potions.effects, &mut self.client.darkness_blend);
         self.apply_effect_status();
     }
     /// Add an active effect to the player and update attributes / absorption.

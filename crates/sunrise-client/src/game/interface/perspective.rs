@@ -1404,14 +1404,6 @@ impl Game<'_> {
         self.transform_selected_arm_poses(m, &mut poses, humanoid);
         poses
     }
-    /// The entity id of this game's player: the acting body on a server, the login id on a client.
-    pub(in crate::game) fn own_entity_id(&self) -> i32 {
-        if self.is_logical_server() {
-            self.player.as_ref().map_or(0, |p| p.entity_id)
-        } else {
-            self.remote.as_ref().map_or(0, |r| r.entity_id)
-        }
-    }
     /// `ArrowLayer` and `BeeStingerLayer` (`StuckInBodyLayer`) for a player:
     /// the arrows and bee stingers stuck in the body, placed from the entity
     /// id `id`.

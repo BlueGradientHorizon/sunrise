@@ -431,7 +431,7 @@ impl Game<'_> {
         };
         if name == "minecraft:honeycomb" && !waxed {
             self.mobs[index].extra.vector[0] = -2.0;
-            self.level_event_at(3003, block, 0);
+            self.server_level_event_at(3003, block, 0);
             self.server_play_sound("minecraft:item.honeycomb.wax_on", at, 1.0, 1.0);
             self.consume_held();
             return true;
@@ -442,7 +442,7 @@ impl Game<'_> {
             let scrape = LevelSound::new("minecraft:item.axe.scrape", at, 1.0, 1.0)
                 .in_source(SoundSource::Neutral);
             self.play_bound_sound(scrape, self.mobs[index].id, None);
-            self.level_event_at(3004, block, 0);
+            self.server_level_event_at(3004, block, 0);
             self.damage_held_tool();
             return true;
         }
@@ -455,7 +455,7 @@ impl Game<'_> {
             let scrape = LevelSound::new("minecraft:item.axe.scrape", at, 1.0, 1.0)
                 .in_source(SoundSource::Neutral);
             self.play_bound_sound(scrape, id, None);
-            self.level_event_at(3005, block, 0);
+            self.server_level_event_at(3005, block, 0);
             self.damage_held_tool();
             return true;
         }

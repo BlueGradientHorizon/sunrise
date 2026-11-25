@@ -681,40 +681,6 @@ impl Game<'_> {
         }
         Ok(count)
     }
-    /// `ItemStack.getDisplayName`: the hover name (custom name in italics,
-    /// a written book's title, a potion's effect name, a lodestone compass, else the item's
-    /// translated name) in brackets, in the rarity colour and showing the
-    /// stack on hover unless it is empty.
-    pub(in crate::game) fn stack_display_name(&self, s: &ItemStack) -> Text {
-        let item = &*s.item;
-        let empty = item == "minecraft:air" || s.count == 0;
-        let custom = s.data().and_then(|data| data.custom_name.as_ref());
-        let hover = self.stack_hover_name_text(s);
-        // Component.empty().append(getHoverName()), italic for a custom name.
-        let mut name = Text::empty().append(hover);
-        if custom.is_some() {
-            name = name.italic();
-        }
-        let wrapped = Text::translate("chat.square_brackets", &[name]);
-        if empty {
-            return wrapped;
-        }
-
-        // HoverEvent.ShowItem: the count only when it is not one.
-        let mut shown = serde_json::json!({"action": "show_item", "id": item});
-        if s.count != 1 {
-            shown["count"] = s.count.into();
-        }
-        // ItemStackTemplate.fromNonEmptyStack keeps the stack's component patch.
-        if let Some(patch) = sunrise_client::item_data::encode_components(s, self.items())
-            && let Ok(components) = sunrise_core::json_nbt::tag_to_json(&patch)
-        {
-            shown["components"] = components;
-        }
-        wrapped
-            .with_color(self.stack_rarity_color(s))
-            .with_component_fields(vec![("hover_event".into(), shown)])
-    }
     pub(in crate::game) fn teleport_to(
         &mut self,
         t: Target,
@@ -1453,7 +1419,7 @@ impl Game<'_> {
                         | sunrise_world::level::flags::UPDATE_SKIP_ALL_SIDEEFFECTS,
                 );
             });
-            self.process_level_events()
+            self.server_process_level_events()
                 .map_err(|e| CommandError::new(Text::literal(e.to_string())))?;
         } else if command {
             self.level_set_with_flags(
@@ -1495,7 +1461,7 @@ impl Game<'_> {
                 old,
             );
         });
-        self.process_level_events()
+        self.server_process_level_events()
             .map_err(|e| CommandError::new(Text::literal(e.to_string())))
     }
     /// `Level.destroyBlock(pos, true)` through the behaviour library: the
@@ -1518,7 +1484,7 @@ impl Game<'_> {
             level.drop_breaker_at = entity.map(|_| at);
             b.destroy_block(level, ticks, at, true)
         });
-        self.process_level_events()
+        self.server_process_level_events()
             .map_err(|e| CommandError::new(Text::literal(e.to_string())))
     }
     /// The block entity part of `BlockInput.place`: load the block entity

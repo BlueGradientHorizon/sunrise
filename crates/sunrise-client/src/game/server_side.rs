@@ -852,8 +852,8 @@ pub(in crate::game) mod trading;
 #[cfg(test)]
 #[path = "runtime/transaction_entities_tests.rs"]
 pub(in crate::game) mod transaction_entities_tests;
-#[path = "runtime/transactions.rs"]
-pub(in crate::game) mod transactions;
+#[path = "runtime/transactions_server.rs"]
+pub(in crate::game) mod transactions_server;
 #[path = "mobs/trial_spawner.rs"]
 pub(in crate::game) mod trial_spawner;
 #[path = "items/trident.rs"]
@@ -930,6 +930,18 @@ pub(in crate::game) mod chat_server;
 pub(in crate::game) mod command_blocks_server;
 #[path = "administration/commands/mod_server.rs"]
 pub(in crate::game) mod commands_server;
+#[path = "world/wake_time.rs"]
+pub(in crate::game) mod wake_time;
+#[path = "interface/perf_remote.rs"]
+pub(in crate::game) mod perf_remote;
+#[path = "modding/native_console.rs"]
+pub(in crate::game) mod native_console;
+#[path = "modding/native_book_settings.rs"]
+pub(in crate::game) mod native_book_settings;
+#[path = "administration/commands/mod.rs"]
+pub(in crate::game) mod commands;
+#[path = "administration/command_minecarts_server.rs"]
+pub(in crate::game) mod command_minecarts_server;
 #[cfg(test)]
 #[path = "runtime/core_tests_server.rs"]
 pub(in crate::game) mod core_tests_server;
@@ -1212,11 +1224,7 @@ pub(in crate::game) struct ServerState {
     /// Scheduled end of the server tick (`MinecraftServer.haveTime`).
     pub(in crate::game::server_side) server_tick_deadline: Option<Instant>,
     /// The block a guest is acting on (game/network/lan_actions/interaction.rs).
-    pub(in crate::game) forced_hit: Option<Hit>,
-    /// Non-window simulation's tick-local block ray. Windows use client_pick.
-    pub(in crate::game) tick_hit: std::cell::Cell<Option<Option<Hit>>>,
-    /// Non-window simulation's tick-local mob ray, including the held attack range.
-    pub(in crate::game) tick_mob: Option<Option<(usize, f64, [f64; 3])>>,
+    pub(in crate::game::server_side) forced_hit: Option<Hit>,
     /// The part of a right click a guest's packet asks for (game/network/lan_actions/interaction.rs).
     pub(in crate::game::server_side) guest_use: Option<GuestUse>,
     /// The last `use_hand` that ended the click did so with `FAIL`, which
@@ -1351,6 +1359,7 @@ pub(in crate::game) struct ServerState {
     pub(in crate::game) pending_explosions: Vec<crate::lan::server_effects::ServerExplosion>,
     pub(in crate::game) pending_native_sounds: Vec<creatures::NativeSound>,
     pub(in crate::game) effect_rng: sunrise_core::random::LegacyRandom,
+    pub(in crate::game::server_side) sculk: sculk_server::SculkState,
 }
 
 impl ServerState {
@@ -1443,8 +1452,6 @@ impl ServerState {
             spawn_policies: HashMap::new(),
             server_tick_deadline: None,
             forced_hit: None,
-            tick_hit: Default::default(),
-            tick_mob: None,
             guest_use: None,
             use_failed: false,
             block_use_original: Vec::new(),
@@ -1501,6 +1508,7 @@ impl ServerState {
             pending_explosions: Vec::new(),
             pending_native_sounds: Vec::new(),
             effect_rng: sunrise_core::random::LegacyRandom::new(0),
+            sculk: Default::default(),
         }
     }
 }

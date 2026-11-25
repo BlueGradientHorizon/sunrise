@@ -314,7 +314,7 @@ impl Game<'_> {
                         s.client_event(id);
                     }
                 }
-                SpawnerEvent::LevelEvent(id) => self.level_event_at(id, pos, 0),
+                SpawnerEvent::LevelEvent(id) => self.server_level_event_at(id, pos, 0),
                 SpawnerEvent::EntityPlace(mob, at) => {
                     let who = ids.get(&mob).map(|id| Who::Mob(*id));
                     self.post_block_game_event("minecraft:entity_place", at, who, None);

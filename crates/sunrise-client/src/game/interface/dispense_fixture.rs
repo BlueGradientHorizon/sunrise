@@ -383,7 +383,7 @@ impl Game<'_> {
         } else if case.get("hopper").is_some() {
             // HopperBlockEntity.pushItemsTick, once.
             self.hopper_try_move_items((origin.x, origin.y, origin.z));
-            self.process_level_events()?;
+            self.server_process_level_events()?;
         } else {
             self.dispense_from(origin, state)?;
             // CrafterBlockEntity.serverTick, the crafting animation running down.
@@ -638,7 +638,7 @@ impl Game<'_> {
             });
             consumed = result.consumes_action();
         }
-        self.process_level_events()?;
+        self.server_process_level_events()?;
         let mut out = Vec::new();
         if let Some(s) = &stack {
             let used = self.stats.get("used", &s.item) - used_before;
@@ -735,7 +735,7 @@ impl Game<'_> {
         self.server.forced_hit = None;
         let messages = self.server.chat_capture.take().unwrap_or_default();
         used?;
-        self.process_level_events()?;
+        self.server_process_level_events()?;
         let mut out = Vec::new();
         for m in messages {
             let key = m.component()["translate"]
@@ -911,7 +911,7 @@ impl Game<'_> {
             }
             _ => return Err("an attack case has a living target or armor stand".into()),
         };
-        self.process_level_events()?;
+        self.server_process_level_events()?;
         let mut out = Vec::new();
         // What the player's tick makes of its own hurt (the victim's Thorns):
         // the combat record with its statistic, the hurt sound where it
@@ -1152,7 +1152,7 @@ impl Game<'_> {
             "mine" => return self.fixture_mine(origin, op),
             other => return Err(format!("unknown removal {other}").into()),
         }
-        self.process_level_events()?;
+        self.server_process_level_events()?;
         Ok(Vec::new())
     }
 

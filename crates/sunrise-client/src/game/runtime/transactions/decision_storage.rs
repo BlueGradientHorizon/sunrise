@@ -108,7 +108,7 @@ pub(in crate::game) trait ActionHost {
 /// by the action's game-side caller and checked against the live lifecycle on
 /// each validation, not recovered from mod-controlled output.
 pub(in crate::game) struct GameHost<'a, 'g> {
-    pub game: &'a mut super::super::super::Game<'g>,
+    pub game: &'a mut crate::game::Game<'g>,
     pub identity: Identity,
 }
 

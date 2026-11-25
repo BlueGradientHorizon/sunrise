@@ -402,7 +402,7 @@ pub(in crate::game) fn start_client_game<'a>(
         super::ClientGame::construct(res, pack, gui, options, settings, audio, prepared, stage)?;
     // `new DebugRenderer()` refreshes its list.
     game.refresh_debug_renderers();
-    game.rest_loader.0 = rest_loader;
+    game.rest_loader = rest_loader;
     game.ui.vanilla_root = vanilla_root;
     if game.options.benchmark.is_some() {
         // The same conditions on every machine: no VSync, no frame cap, no

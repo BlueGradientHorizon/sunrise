@@ -217,12 +217,6 @@ impl Game<'_> {
         )
     }
 
-    /// The local player in a logged-in client world.
-    pub(in crate::game) fn local_player(&self) -> Option<PlayerRef> {
-        let remote = self.remote.as_ref().filter(|remote| remote.logged_in)?;
-        self.player(remote.profile)
-    }
-
     pub(in crate::game) fn native_menu_guest(&self, menu: MenuRef) -> Option<&Guest> {
         let guest = self.native_menu_player(menu.fields().player)?;
         let host = self.lan.as_ref()?;

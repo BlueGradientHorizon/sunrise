@@ -30,7 +30,7 @@ impl Game<'_> {
             return false;
         }
         let changed = self.set_block_live(pos, state, flags, true);
-        let _ = self.process_level_events();
+        let _ = self.server_process_level_events();
         changed
     }
     /// The item entities of the server level `dimension` whose box meets

@@ -19,7 +19,9 @@ pub(in crate::game) struct ClientPick {
     pub(in crate::game) entity_reach: f64,
     pub(in crate::game) result: Option<CrosshairTarget>,
     pub entity_metadata: (bool, bool),
-    pub rider_candidates: Vec<crate::game::pick_accumulator::PickCandidate>,
+    pub rider_candidates: Vec<crate::game::pick_ray::PickCandidate>,
+    #[cfg(test)]
+    pub(in crate::game::client_side) test_forced_hit: Option<crate::game::Hit>,
     pub sections: std::cell::RefCell<crate::game::pick_entity::pick_sections::PickSectionStorage>,
     pub(in crate::game) dispatching: bool,
     /// How many picks have been taken.
@@ -30,7 +32,7 @@ impl Game<'_> {
     /// A window always has a decision, including before the first pick (a miss).
     /// None in the outer option means a server ray or the current pick computation.
     pub(in crate::game) fn cached_entity_pick(&self) -> Option<Option<(EntityRef, f64, [f64; 3])>> {
-        self.uses_stored_pick()
+        self.side_uses_stored_pick()
             .then(|| match self.crosshair_target() {
                 Some(CrosshairTarget::Entity { entity, point }) => {
                     Some((entity, self.pick_distance(point), point))

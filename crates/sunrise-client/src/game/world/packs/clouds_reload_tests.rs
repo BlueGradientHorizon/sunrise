@@ -142,7 +142,7 @@ fn startup_rollback_waits_for_world_resources() {
     use crate::game::{Progress, WorldRestLoader};
     with_client_game(|game| {
         let (release, wait) = std::sync::mpsc::channel();
-        game.rest_loader.0 = Some(WorldRestLoader {
+        game.rest_loader = Some(WorldRestLoader {
             progress: Progress::new(),
             handle: std::thread::spawn(move || wait.recv().map_err(|e| e.to_string())),
         });
@@ -160,7 +160,7 @@ fn startup_rollback_waits_for_world_resources() {
         game.resume_world_entry().unwrap();
         assert!(game.pack_reload.0.is_none());
         release.send(()).unwrap();
-        game.rest_loader.0.take().unwrap().finish().unwrap();
+        game.rest_loader.take().unwrap().finish().unwrap();
         game.resume_world_entry().unwrap();
         assert!(!game.client.pending_pack_reload);
         assert!(game.pack_reload.0.is_some());

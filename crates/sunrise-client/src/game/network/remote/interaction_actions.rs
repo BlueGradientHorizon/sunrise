@@ -252,7 +252,7 @@ impl Game<'_> {
         };
         let stop = std::mem::take(&mut r.stop_mining);
         let ready = r.loaded_sent && self.sleeping.is_none() && !self.mod_mappings_screen_open();
-        self.refresh_client_pick(1.0);
+        self.side_refresh_client_pick(1.0);
         if stop || !ready {
             self.stop_remote_mining();
         }

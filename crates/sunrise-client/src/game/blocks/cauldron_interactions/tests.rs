@@ -1652,7 +1652,7 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
             point: [0.5, 65.0, 0.5],
             inside: false,
         };
-        game.server.forced_hit = Some(hit);
+        game.set_test_forced_hit(Some(hit));
         let client_swings = game.swings_started;
         let hold = matches!(case.as_str(), "hold-drop" | "hold-release")
             .then(|| game.hold_packets().unwrap());

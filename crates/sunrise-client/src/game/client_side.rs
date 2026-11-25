@@ -147,8 +147,8 @@ pub(in crate::game) mod hand;
 #[cfg(test)]
 #[path = "items/hand_part_tests.rs"]
 pub(in crate::game) mod hand_part_tests;
-#[path = "items/held_items.rs"]
-pub(in crate::game) mod held_items;
+#[path = "player_client.rs"]
+pub(in crate::game) mod player_client;
 #[cfg(test)]
 #[path = "interface/highlight_tip_tests.rs"]
 pub(in crate::game) mod highlight_tip_tests;
@@ -316,8 +316,6 @@ pub(in crate::game) mod native_recipes;
 #[cfg(test)]
 #[path = "modding/native_render_pair_tests.rs"]
 pub(in crate::game) mod native_render_pair_tests;
-#[path = "modding/native_ride_player.rs"]
-pub(in crate::game) mod native_ride_player;
 #[path = "modding/native_scene.rs"]
 pub(in crate::game) mod native_scene;
 #[path = "modding/native_scene_live.rs"]
@@ -584,6 +582,38 @@ pub(in crate::game) mod cauldron_interactions_client;
 pub(in crate::game) mod combat_client;
 #[path = "administration/commands/mod_client.rs"]
 pub(in crate::game) mod commands_client;
+#[path = "mobs/thrown_item_draw.rs"]
+pub(in crate::game) mod thrown_item_draw;
+#[path = "administration/command_minecarts.rs"]
+pub(in crate::game) mod command_minecarts;
+#[path = "administration/jigsaw_edit.rs"]
+pub(in crate::game) mod jigsaw_edit;
+#[path = "administration/structure_edit.rs"]
+pub(in crate::game) mod structure_edit;
+#[path = "administration/test_block_edit.rs"]
+pub(in crate::game) mod test_block_edit;
+#[path = "administration/test_instance_edit.rs"]
+pub(in crate::game) mod test_instance_edit;
+#[path = "interface/screenshot_writer.rs"]
+pub(in crate::game) mod screenshot_writer;
+#[path = "interface/perf_link.rs"]
+pub(in crate::game) mod perf_link;
+#[path = "network/remote_stations.rs"]
+pub(in crate::game) mod remote_stations;
+#[path = "network/swing_packet.rs"]
+pub(in crate::game) mod swing_packet;
+#[path = "network/remote_mob_use.rs"]
+pub(in crate::game) mod remote_mob_use;
+#[path = "network/cauldron_prediction_client.rs"]
+pub(in crate::game) mod cauldron_prediction_client;
+#[path = "modding/native_book_receive.rs"]
+pub(in crate::game) mod native_book_receive;
+#[path = "modding/native_book_net_client.rs"]
+pub(in crate::game) mod native_book_net_client;
+#[path = "modding/native_book_placement_client.rs"]
+pub(in crate::game) mod native_book_placement_client;
+#[path = "modding/native_book_settings_client.rs"]
+pub(in crate::game) mod native_book_settings_client;
 #[path = "items/consume_client.rs"]
 pub(in crate::game) mod consume_client;
 #[cfg(test)]
@@ -714,8 +744,6 @@ pub(in crate::game) mod paintings_client;
 pub(in crate::game) mod pandas_client;
 #[path = "entities/passengers_client.rs"]
 pub(in crate::game) mod passengers_client;
-#[path = "blocks/piston_carry_state_client.rs"]
-pub(in crate::game) mod piston_carry_state_client;
 #[path = "world/player_spawn_client.rs"]
 pub(in crate::game) mod player_spawn_client;
 #[path = "blocks/potent_sulfur_client.rs"]
@@ -757,8 +785,19 @@ pub(in crate::game) mod vehicle_removal_tests_client;
 pub(in crate::game) mod wind_client;
 #[path = "world/world_entry_client.rs"]
 pub(in crate::game) mod world_entry_client;
+#[path = "blocks/composter_client.rs"]
+pub(in crate::game) mod composter_client;
+#[path = "mobs/zombie_villagers_client.rs"]
+pub(in crate::game) mod zombie_villagers_client;
+#[path = "mobs/creatures/world_view_client.rs"]
+pub(in crate::game) mod world_view_client;
+#[path = "runtime/transactions_client.rs"]
+pub(in crate::game) mod transactions_client;
+#[path = "items/using_item_client.rs"]
+pub(in crate::game) mod using_item_client;
 
 pub(in crate::game) struct ClientState {
+    pub(in crate::game::client_side) darkness_blend: (f32, f32),
     /// `DebugEntryChunkGeneration`'s `lastPos` and `result`: F3's `Density` line is sampled
     /// again only when the feet block (or the dimension) changes.
     pub(in crate::game::client_side) debug_density: RefCell<debug_keys::DensityCache>,
@@ -1130,7 +1169,7 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game::client_side) block_display_parts_scratch: Vec<u32>,
     pub(in crate::game::client_side) display_inline_profiles_scratch:
         Vec<std::sync::Arc<serde_json::Value>>,
-    pub(in crate::game) interactions:
+    pub(in crate::game::client_side) interactions:
         std::collections::HashMap<i32, interactions::RemoteInteraction>,
     /// The fence knots a server tracks to this client, by entity id, at their
     /// block (`LeashFenceKnotEntity`).
@@ -1143,7 +1182,10 @@ pub(in crate::game) struct ClientState {
     /// The horse inventory (game/interface/mount_menu.rs).
     pub(in crate::game::client_side) mount_menu: mount_menu::MountMenu,
     /// The other players' hooks a server tracks to this client.
-    pub(in crate::game) remote_hooks: Vec<fishing::RemoteHook>,
+    pub(in crate::game::client_side) remote_hooks: Vec<fishing::RemoteHook>,
+    pub(in crate::game::client_side) tick_hit: std::cell::Cell<Option<Option<Hit>>>,
+    pub(in crate::game::client_side) tick_mob: Option<Option<(usize, f64, [f64; 3])>>,
+    pub(in crate::game::client_side) predicted_equipment_modifiers: Vec<(String, String)>,
     pub(in crate::game::client_side) trident_model: Option<sunrise_client::mobs::Part>,
     pub(in crate::game::client_side) arrow_model: Option<sunrise_client::mobs::Part>,
     pub(in crate::game::client_side) bee_stinger_model: Option<sunrise_client::mobs::Part>,
@@ -1509,6 +1551,9 @@ impl ClientState {
             cart_models: prepared.cart_models,
             mount_menu: Default::default(),
             remote_hooks: Vec::new(),
+            tick_hit: Default::default(),
+            tick_mob: None,
+            predicted_equipment_modifiers: Vec::new(),
             trident_model: prepared.trident_model,
             arrow_model: prepared.arrow_model,
             bee_stinger_model: prepared.bee_stinger_model,
@@ -1571,6 +1616,7 @@ impl ClientState {
             links_ui: Default::default(),
             camera_type: Default::default(),
             requested_camera_type: Default::default(),
+            darkness_blend: (0.0, 0.0),
             player_model: None,
         }
     }

@@ -7,8 +7,6 @@ pub(in crate::game::server_side) use crate::game::condition_reload_state::Prepar
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::event_loop::EventLoopCtl;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::hand::interact_location;
-#[allow(unused_imports)]
 #[cfg(test)]
 pub(in crate::game::server_side) use crate::game::hud_render::block_outline_drawn;
 #[allow(unused_imports)]
@@ -438,7 +436,7 @@ impl Game<'_> {
             }
         }
         self.pending.clear(pos);
-        self.process_level_events()?;
+        self.server_process_level_events()?;
         Ok(removed)
     }
     /// Let go of every entity of the level (saved first): the next world
@@ -450,7 +448,6 @@ impl Game<'_> {
         self.orbs.clear();
         self.creatures.projectiles.clear();
         self.falling.clear();
-        self.clear_entities_client_transient_blocks();
         self.tnts.clear();
         self.boats.clear();
         self.carts.clear();
@@ -475,7 +472,23 @@ impl Game<'_> {
         self.clear_remote_objects();
         self.clear_remote_projectiles();
         self.levels.0.clear();
-        self.clear_entities_client_render_caches();
+        self.side_clear_render_caches();
+    }
+    pub(in crate::game) fn server_clear_render_caches(&mut self) {}
+    pub(in crate::game) fn server_expire_cracks(&mut self) {}
+    pub(in crate::game) fn server_pick_camera_id(&self) -> Option<u32> {
+        self.player.as_ref().map(|p| p.entity_id as u32).filter(|&id| id != 0)
+    }
+    pub(in crate::game) fn server_is_pick_camera(&self, id: u32) -> bool {
+        self.server_pick_camera_id() == Some(id)
+    }
+    pub(in crate::game) fn server_live_remote_camera_id(&self) -> Option<u32> {
+        None
+    }
+    pub(in crate::game) fn server_outline_camera_kind(
+        &self,
+    ) -> sunrise_world::collision_context::EntityContextKind {
+        sunrise_world::collision_context::EntityContextKind::Player
     }
     #[inline(always)]
     pub(in crate::game::server_side) fn clear_entities_server_missing_professions(&mut self) {
@@ -541,8 +554,6 @@ impl Game<'_> {
         &mut self,
         prepared: world_loading::PreparedWorld,
     ) -> Result<functions::PackStack> {
-        self.reset_tutorial();
-        self.finish_open_world_client_clear_debug_density();
         let world_loading::PreparedWorld {
             save_root,
             shapes,
@@ -668,7 +679,6 @@ impl Game<'_> {
         book.recipes.retain(|r| index.contains(r));
         book.to_be_displayed.retain(|r| index.contains(r));
         self.enter_opened_dim(dim);
-        self.finish_open_world_client_set_world_icon(&save_root);
         self.world_flat = sunrise_client::save::WorldGen::read(&save_root)
             .is_some_and(|w| w.preset == sunrise_client::save::WorldPreset::Flat);
         self.server.world_debug = sunrise_client::save::WorldGen::read(&save_root)
@@ -710,8 +720,6 @@ impl Game<'_> {
         };
         self.carried = None;
         self.using = None;
-        self.clear_lod();
-        self.finish_open_world_sections_client();
         self.apply_settings();
         let facts = self.dimension_type_of(dim);
         self.streaming.sky_light = facts.height.has_skylight;
@@ -841,32 +849,6 @@ impl Game<'_> {
             }
         }
         inventory
-    }
-    /// The mob hit along the view, its distance, and the hit point relative to its feet.
-    pub(in crate::game) fn mob_hit(&self) -> Option<(usize, f64, [f64; 3])> {
-        if let Some(hit) = self.cached_entity_pick() {
-            let (entity, distance, point) = hit?;
-            let index = self.mobs.iter().position(|m| m.id == entity.id())?;
-            let feet = self.mobs[index].position;
-            return Some((
-                index,
-                distance,
-                [point[0] - feet.x, point[1] - feet.y, point[2] - feet.z],
-            ));
-        }
-        if let Some(hit) = self.server.tick_mob {
-            return hit;
-        }
-        let pick_entity::CrosshairDecision::Entity(hit) = self.compute_crosshair_decision() else {
-            return None;
-        };
-        let i = self.mob_index.find_ref(&self.mobs, hit.id)?;
-        let point = Vec3::new(hit.point[0], hit.point[1], hit.point[2]);
-        Some((
-            i,
-            hit.distance_sq.sqrt(),
-            interact_location(point, self.mobs[i].position),
-        ))
     }
     /// Menus opened by PlayerEffect::OpenMenu.
     pub(in crate::game) fn open_block_effect_menu(&mut self, pos: [i32; 3]) {
@@ -1057,54 +1039,8 @@ impl Game<'_> {
         }
         followed
     }
-    /// Voxel traversal against non-air, non-fluid blocks, clipped against
-    /// each block's outline shape (`BlockGetter.clip` with `ClipContext.Block.OUTLINE`).
-    pub(in crate::game) fn pick(&self) -> Option<Hit> {
-        // A guest of a hosted world acts on the block their client targeted.
-        if let Some(hit) = self.server.forced_hit {
-            return Some(hit);
-        }
-        if self.uses_stored_pick() {
-            return match self.crosshair_target() {
-                Some(mod_api::CrosshairTarget::Block { pos, hit, .. }) => Some(Hit {
-                    pos: [pos.x, pos.y, pos.z],
-                    face: hit.face,
-                    point: hit.point,
-                    inside: hit.inside,
-                }),
-                _ => None,
-            };
-        }
-        if let Some(hit) = self.server.tick_hit.get() {
-            return hit;
-        }
-        match self.compute_crosshair_decision() {
-            pick_entity::CrosshairDecision::Block(hit) => Some(hit),
-            _ => None,
-        }
-    }
-    /// The raw outline ray out to the larger interaction range, before range filtering.
-    /// Used once by client_pick and by non-window simulation, never by window actions.
-    pub(crate) fn pick_unfiltered(&self) -> Option<Hit> {
-        if let Some(hit) = self.server.forced_hit {
-            return Some(hit);
-        }
-        let (origin, dir) = self.aim()?;
-        self.clip_ray(origin, dir, self.block_reach.max(self.entity_reach))
-    }
-    /// Side effects reported by the behaviour library, in vanilla order.
-    pub(in crate::game) fn process_level_events(&mut self) -> Result<()> {
+    pub(in crate::game) fn server_process_level_events(&mut self) -> Result<()> {
         let events = std::mem::take(&mut self.level_events);
-        if self.is_logical_server() {
-            self.process_server_level_events(events)
-        } else {
-            self.process_client_level_events(events)
-        }
-    }
-    pub(in crate::game::server_side) fn process_server_level_events(
-        &mut self,
-        events: Vec<LevelEvent>,
-    ) -> Result<()> {
         self.lan_record_events(&events);
         dispense_fixture::record_events(&events);
         for event in events {
@@ -2048,7 +1984,7 @@ impl Game<'_> {
             else {
                 return Ok(UseResult::Fail);
             };
-            self.process_level_events()?;
+            self.server_process_level_events()?;
             // `player.awardStat(Stats.ITEM_USED.get(this))`,
             // `getPickupSound` and `level.gameEvent(player, FLUID_PICKUP)`.
             self.award_stat("used", "minecraft:bucket", 1);
@@ -2113,7 +2049,7 @@ impl Game<'_> {
             // Shift no longer counts.
             let sneaking = self.server_acting_sneak();
             let emptied = self.empty_player_bucket(pos, beside, content, sound, sneaking);
-            self.process_level_events()?;
+            self.server_process_level_events()?;
             let Some(emptied) = emptied else {
                 return Ok(UseResult::Fail);
             };
@@ -2173,7 +2109,7 @@ impl Game<'_> {
                         self.sculk_actor(),
                         Some(now),
                     );
-                    self.level_event_at(3003, other, 0);
+                    self.server_level_event_at(3003, other, 0);
                     self.wax_on_sound(at(hit.pos));
                 }
                 self.award_stat("used", &stack.item, 1);
@@ -2267,11 +2203,6 @@ impl Game<'_> {
     }
     /// `Player.stopSleepInBed`: preserve the flags of the owning wake caller.
     pub(in crate::game) fn wake_up(&mut self, wake_immediately: bool, update_level: bool) {
-        if !self.is_logical_server() {
-            // InBedChatScreen.sendWakeUp: the server wakes the player.
-            self.remote_stop_sleeping();
-            return;
-        }
         // PlayerWakeUpEvent: heard at the start of stopSleepInBed, still in bed;
         // a listener may have woken the player, so the sleep is read after it.
         self.native_acting_bed_leave(wake_immediately, update_level);

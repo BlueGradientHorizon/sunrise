@@ -2138,9 +2138,6 @@ pub(in crate::game) mod tests {
     pub(in crate::game) mod camera_draw_tests {
         include!("camera_draw_tests.rs");
     }
-    pub(in crate::game) mod client_camera_tests {
-        include!("client_camera_tests.rs");
-    }
     pub(in crate::game) mod camera_parity_red_tests {
         include!("camera_parity_red_tests.rs");
     }

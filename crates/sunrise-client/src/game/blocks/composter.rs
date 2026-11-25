@@ -105,7 +105,7 @@ impl Game<'_> {
         let after = self.with_level(|b, level, ticks| b.composter_insert(level, ticks, at, layers));
         self.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
         // The game event and level event 1500 happen here, before the caller goes on.
-        let _ = self.process_level_events();
+        let _ = self.server_process_level_events();
         after != before
     }
     /// `ComposterBlock.useItemOn` with the main-hand stack: true when it
@@ -137,17 +137,6 @@ impl Game<'_> {
         // ServerPlayerGameMode.useItemOn: the action was consumed.
         self.trigger_block("minecraft:item_used_on_block", pos, stack);
         true
-    }
-    /// `ComposterBlock.useItemOn` on a client's level: whether `held` is
-    /// compostable and the composter at `pos` below level 8 (SUCCESS).
-    pub(in crate::game) fn composter_takes(&self, pos: [i32; 3], held: Option<&ItemStack>) -> bool {
-        self.composter_level(pos).is_some_and(|level| level < 8)
-            && held.is_some_and(|stack| {
-                self.res
-                    .items()
-                    .get(&stack.item)
-                    .is_some_and(|i| i.compostable.is_some())
-            })
     }
     /// `HopperBlockEntity.addItem` into the composter's `InputContainer`
     /// (levels 0 to 6; one item, compostable, from above): the remainder.
@@ -244,7 +233,7 @@ impl Game<'_> {
                 );
             }
         });
-        let _ = self.process_level_events();
+        let _ = self.server_process_level_events();
     }
     /// `WorkAtComposter.compostItems` for the villager at `mob`: a full
     /// composter is emptied, then up to 20 wheat or beetroot seeds go in
@@ -257,7 +246,7 @@ impl Game<'_> {
         };
         if before == 8 {
             self.with_level(|b, level, ticks| b.composter_extract(level, ticks, at));
-            let _ = self.process_level_events();
+            let _ = self.server_process_level_events();
             before = 0;
         }
         let mut remaining = 20;
@@ -295,7 +284,7 @@ impl Game<'_> {
         self.with_level(|b, level, ticks| {
             b.composter_fill_effects(level, ticks, at, after != before)
         });
-        let _ = self.process_level_events();
+        let _ = self.server_process_level_events();
     }
     /// `ComposterBlock.insertItem` with a villager's stack: below level 7 a
     /// compostable item is used up and may add a layer.
@@ -311,7 +300,7 @@ impl Game<'_> {
         let at = BlockPos::new(pos[0], pos[1], pos[2]);
         self.with_level(|b, level, ticks| b.composter_layer(level, ticks, at, layers));
         self.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
-        let _ = self.process_level_events();
+        let _ = self.server_process_level_events();
         let inventory = &mut villager::ext_mut(&mut self.mobs[mob]).inventory;
         inventory[slot].count -= 1;
         if inventory[slot].count == 0 {

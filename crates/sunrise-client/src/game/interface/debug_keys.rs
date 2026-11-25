@@ -939,10 +939,6 @@ impl Game<'_> {
             self.send(Serverbound::ChangeGameMode(ChangeGameMode { mode }));
             return;
         }
-        if self.set_game_mode(mode) {
-            let name = Text::translate(&format!("gameMode.{}", mode.name()), &[]);
-            self.feedback(Text::translate("commands.gamemode.success.self", &[name]));
-        }
     }
     /// `KeyboardHandler.copyRecreateCommand`: the targeted block or mob as a
     /// `/setblock` or `/summon` command. The server's data (no Shift) comes
@@ -975,17 +971,7 @@ impl Game<'_> {
                 return;
             }
             // Entity.saveWithoutId.
-            let tag = if add_nbt {
-                self.command_target_nbt(super::commands::Target::Mob(id))
-                    .map(|mut tag| {
-                        if let Tag::Compound(c) = &mut tag {
-                            c.remove(&"id".into());
-                        }
-                        tag
-                    })
-            } else {
-                None
-            };
+            let tag = None;
             self.copy_create_entity_command(&kind, position, tag);
             self.debug_translated(&format!("debug.inspect.{side}.entity"));
             return;
@@ -1013,20 +999,6 @@ impl Game<'_> {
         };
         self.copy_create_block_command(pos, &state, tag.as_ref());
         self.debug_translated(&format!("debug.inspect.{side}.block"));
-    }
-    /// `BlockEntity.saveWithoutMetadata` of the block entity at `pos`, if
-    /// there is one: its data without the id or the position.
-    pub(in crate::game) fn block_entity_tag(&self, pos: [i32; 3]) -> Option<Tag> {
-        let e = self.world.block_entities.get(&(pos[0], pos[1], pos[2]))?;
-        let name = self.data_block_name(pos);
-        let mut tag =
-            self.encode_live_block_entity((pos[0], pos[1], pos[2]), e, &name, self.res.items());
-        if let Tag::Compound(c) = &mut tag {
-            for key in ["id", "x", "y", "z", "keepPacked"] {
-                c.remove(&key.into());
-            }
-        }
-        Some(tag)
     }
     /// `ClientPacketListener.handleTagQueryPacket`: the server's answer to
     /// the last debug query (`DebugQueryHandler.handleResponse`) completes

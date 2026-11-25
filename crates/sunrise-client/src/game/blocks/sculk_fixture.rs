@@ -412,8 +412,8 @@ impl Game<'_> {
         };
         self.level.seed = 0;
         self.potions.effects = Default::default();
-        self.sculk = Default::default();
-        self.sculk.tracker_loaded = true;
+        self.server.sculk = Default::default();
+        self.server.sculk.tracker_loaded = true;
         self.sculk_prepare();
         Ok(())
     }
@@ -441,9 +441,9 @@ impl Game<'_> {
         self.server_clear_acting_input();
         // The oracle sets the new player's shift state for every scenario.
         self.server_set_acting_sneak(s.sneak);
-        self.sculk.tracker = WardenSpawnTracker::default();
+        self.server.sculk.tracker = WardenSpawnTracker::default();
         if let Some(level) = s.warning {
-            self.sculk.tracker.set_warning_level(level);
+            self.server.sculk.tracker.set_warning_level(level);
         }
         // The blocks, in order (sculk block entities tick in the order they
         // were placed), with `Level.setBlock(pos, state, 2 | 16)` at game time 1000.
@@ -470,8 +470,8 @@ impl Game<'_> {
             }
         });
         self.level_events.clear();
-        self.sculk.known = self.world.chunks.keys().copied().collect();
-        self.sculk.known_revision = Some(self.world.chunks.membership_revision());
+        self.server.sculk.known = self.world.chunks.keys().copied().collect();
+        self.server.sculk.known_revision = Some(self.world.chunks.membership_revision());
         self.sculk_sync_index();
         let mut names: HashMap<u32, String> = HashMap::new();
         let mut sources: Vec<u32> = Vec::new();
@@ -548,7 +548,7 @@ impl Game<'_> {
                     }
                 }
             }
-            let tr = self.sculk.tracker;
+            let tr = self.server.sculk.tracker;
             let dark = self
                 .potions
                 .effects
@@ -690,7 +690,7 @@ impl Game<'_> {
         // Scheduled block and fluid ticks, then block events.
         self.tick_scheduled()?;
         self.with_level(|b, level, ticks| b.run_block_events(level, ticks));
-        self.process_level_events()?;
+        self.server_process_level_events()?;
         // The scenario's actions happen among the entities.
         for (tick, words) in &s.actions {
             if *tick != t {
@@ -805,7 +805,7 @@ impl Game<'_> {
                     self.with_level(|b, level, ticks| {
                         b.set_block(level, ticks, pos, state, 3);
                     });
-                    self.process_level_events()?;
+                    self.server_process_level_events()?;
                 }
                 other => return Err(format!("unknown action {other}").into()),
             }

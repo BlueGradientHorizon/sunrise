@@ -628,15 +628,6 @@ impl Game<'_> {
             check: Some(check),
         }
     }
-    /// A client mod's command (the `command` hook); a server never asks.
-    pub(in crate::game) fn client_mod_command(&mut self, command: &str) -> bool {
-        if self.server.lan_acting.is_some() {
-            return false;
-        }
-        let mut ran = false;
-        self.native_command(command, &mut ran);
-        ran
-    }
     /// Deliver what the batch just ticked recorded, in order: `minecart_pass`
     /// to the parts, and the writes a landing, step, or mid-walk `entity_inside`
     /// contact asked for to the level. A write is skipped when the block at

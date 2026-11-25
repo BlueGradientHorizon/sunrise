@@ -1839,21 +1839,6 @@ impl super::Game<'_> {
             self.native_block_entity_submit(pos, block, state, &api, draw);
         }
     }
-    pub(in crate::game) fn api_block_entity_render_bounding_box(
-        &self,
-        pos: [i32; 3],
-        block: &str,
-        state: sunrise_world::registry::BlockStateId,
-        entity: &crate::containers::ModBlockEntity,
-        bounds: &mut [f32; 6],
-    ) {
-        if !mod_api::__private::has_part_hook(mod_api::HookId::BlockEntityRenderBoundingBox) {
-            return;
-        }
-        if let Ok(api) = entity.try_into_api() {
-            self.native_block_entity_render_bounding_box(pos, block, state, &api, bounds);
-        }
-    }
     /// Shared click metadata borrows the already-converted API snapshot for this call.
     pub(in crate::game) fn block_click<'a>(
         &mut self,

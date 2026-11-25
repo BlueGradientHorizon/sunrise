@@ -383,12 +383,32 @@ pub(in crate::game) use client_side::command_blocks;
 pub(in crate::game) use server_side::combat;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::command_harness;
-#[path = "game/administration/command_minecarts.rs"]
-mod command_minecarts;
+pub(in crate::game) use client_side::command_minecarts;
+#[path = "game/side_ops/mod.rs"]
+mod side_ops;
+#[path = "game/world/clocks.rs"]
+mod clocks;
+#[path = "game/interface/chat_common.rs"]
+mod chat_common;
+#[path = "game/world/integrated_common.rs"]
+mod integrated_common;
+#[path = "game/world/world_entry_common.rs"]
+mod world_entry_common;
+#[path = "game/runtime/memory_common.rs"]
+mod memory_common;
+#[path = "game/items/stack_names.rs"]
+mod stack_names;
+#[path = "game/interface/books_common.rs"]
+mod books_common;
+#[path = "game/blocks/machines/crafter_common.rs"]
+mod crafter_common;
+#[path = "game/administration/commands_common.rs"]
+mod commands_common;
+#[path = "game/administration/command_blocks_common.rs"]
+mod command_blocks_common;
 #[path = "game/interface/command_registries.rs"]
 mod command_registries;
-#[path = "game/administration/commands/mod.rs"]
-mod commands;
+pub(in crate::game) use server_side::commands;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::composter;
 #[path = "game/world/condition_reload_state.rs"]
@@ -866,8 +886,7 @@ mod item_use_stacks;
 pub(in crate::game) use server_side::item_void_tests;
 #[path = "game/administration/jigsaw_blocks.rs"]
 mod jigsaw_blocks;
-#[path = "game/administration/jigsaw_edit.rs"]
-mod jigsaw_edit;
+pub(in crate::game) use client_side::jigsaw_edit;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::jukebox;
 #[allow(unused_imports)]
@@ -1150,12 +1169,10 @@ pub(in crate::game) use server_side::native_book_invalidation;
 pub(in crate::game) use server_side::native_book_net;
 #[path = "game/modding/native_book_placement.rs"]
 mod native_book_placement;
-#[path = "game/modding/native_book_receive.rs"]
-mod native_book_receive;
+pub(in crate::game) use client_side::native_book_receive;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_book_scope;
-#[path = "game/modding/native_book_settings.rs"]
-mod native_book_settings;
+pub(in crate::game) use server_side::native_book_settings;
 #[path = "game/modding/native_book_transport.rs"]
 mod native_book_transport;
 #[allow(unused_imports)]
@@ -1217,8 +1234,7 @@ pub(in crate::game) use server_side::native_config_files;
 mod native_configs;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_connection_groups;
-#[path = "game/modding/native_console.rs"]
-mod native_console;
+pub(in crate::game) use server_side::native_console;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_console_tests;
@@ -1544,23 +1560,20 @@ pub(in crate::game) use server_side::native_menu_inventory_tests;
 pub(in crate::game) use server_side::native_menu_places;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_menus;
-#[path = "game/modding/native_merchant_refs.rs"]
-mod native_merchant_refs;
+pub(in crate::game) use server_side::native_merchant_refs;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::native_mob_draw;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_minecart_refs;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_mob_goals;
-#[path = "game/modding/native_mob_navigation.rs"]
-mod native_mob_navigation;
+pub(in crate::game) use server_side::native_mob_navigation;
 #[cfg(test)]
 #[path = "game/modding/native_mob_navigation_flags_tests.rs"]
 mod native_mob_navigation_flags_tests;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_mob_refs;
-#[path = "game/modding/native_mob_wanted_position.rs"]
-mod native_mob_wanted_position;
+pub(in crate::game) use server_side::native_mob_wanted_position;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_mob_wanted_position_tests;
@@ -1734,7 +1747,7 @@ mod native_render_visibility;
 #[path = "game/modding/native_requires_tool_tests.rs"]
 mod native_requires_tool_tests;
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::native_ride_player;
+pub(in crate::game) use server_side::native_ride_player;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_resources;
 #[path = "game/modding/native_rotate.rs"]
@@ -1916,10 +1929,8 @@ pub(in crate::game) use server_side::part_shearing;
 pub(in crate::game) use server_side::passengers;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::pending_births;
-#[path = "game/interface/perf_link.rs"]
-mod perf_link;
-#[path = "game/interface/perf_remote.rs"]
-mod perf_remote;
+pub(in crate::game) use client_side::perf_link;
+pub(in crate::game) use server_side::perf_remote;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::perspective;
 #[allow(unused_imports)]
@@ -2070,8 +2081,7 @@ mod remote_chunks;
 pub(in crate::game) use client_side::remote_mob_data;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::remote_mob_particles;
-#[path = "game/network/remote_mob_use.rs"]
-mod remote_mob_use;
+pub(in crate::game) use client_side::remote_mob_use;
 #[cfg(test)]
 #[path = "game/network/remote_mob_use_tests.rs"]
 mod remote_mob_use_tests;
@@ -2084,8 +2094,7 @@ pub(in crate::game) use client_side::remote_removal;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::remote_save_tests;
-#[path = "game/network/remote_stations.rs"]
-mod remote_stations;
+pub(in crate::game) use client_side::remote_stations;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::remote_tags;
 #[allow(unused_imports)]
@@ -2164,8 +2173,7 @@ pub(in crate::game) use client_side::screen_widgets;
 pub(in crate::game) use client_side::screens;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::screenshot_sequence;
-#[path = "game/interface/screenshot_writer.rs"]
-mod screenshot_writer;
+pub(in crate::game) use client_side::screenshot_writer;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::sculk;
 #[allow(unused_imports)]
@@ -2182,6 +2190,9 @@ pub(in crate::game) use server_side::server_lifecycle;
 pub(in crate::game) use server_side::server_reload;
 #[path = "game/server_side.rs"]
 pub(in crate::game) mod server_side;
+#[path = "game/side_ops/mod.rs"] pub(in crate::game) mod side_ops;
+#[path = "game/world/light_emission.rs"] pub(in crate::game) mod light_emission;
+#[path = "game/blocks/block_entity_anims_common.rs"] pub(in crate::game) mod block_entity_anims_common;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side as server_state;
 #[allow(unused_imports)]
@@ -2310,8 +2321,7 @@ pub(in crate::game) use server_side::stats;
 pub(in crate::game) use server_side::storage_alias_tests;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::structure_blocks;
-#[path = "game/administration/structure_edit.rs"]
-mod structure_edit;
+pub(in crate::game) use client_side::structure_edit;
 #[path = "game/administration/structures.rs"]
 mod structures;
 #[allow(unused_imports)]
@@ -2328,23 +2338,19 @@ pub(in crate::game) use server_side::sulfur_cubes;
 #[cfg(test)]
 #[path = "game/mobs/sulfur_prime_phase_tests.rs"]
 mod sulfur_prime_phase_tests;
-#[path = "game/network/swing_packet.rs"]
-mod swing_packet;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::sync_background_tests;
 #[path = "game/items/table_enchant.rs"]
 mod table_enchant;
-#[path = "game/administration/test_block_edit.rs"]
-mod test_block_edit;
+pub(in crate::game) use client_side::test_block_edit;
 #[path = "game/administration/test_blocks.rs"]
 mod test_blocks;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::test_entities;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::test_environments;
-#[path = "game/administration/test_instance_edit.rs"]
-mod test_instance_edit;
+pub(in crate::game) use client_side::test_instance_edit;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::text_displays;
 #[cfg(test)]
@@ -2355,8 +2361,6 @@ pub(in crate::game) use server_side::test_instances;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::test_pos_guest_tests;
-#[path = "game/mobs/thrown_item_draw.rs"]
-mod thrown_item_draw;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::tick_script;
 #[allow(unused_imports)]
@@ -2380,8 +2384,7 @@ pub(in crate::game) use server_side::trading;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::transaction_entities_tests;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::transactions;
+#[path = "game/runtime/transactions.rs"] pub(in crate::game) mod transactions;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::trial_spawner;
 #[allow(unused_imports)]
@@ -2431,8 +2434,7 @@ pub(in crate::game) use server_side::villagers;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::visibility_unwind_tests;
-#[path = "game/world/wake_time.rs"]
-mod wake_time;
+pub(in crate::game) use server_side::wake_time;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::wandering_trader;
 #[path = "game/blocks/waxing.rs"]
@@ -3424,7 +3426,7 @@ struct TickScratch {
 struct Game<'a> {
     /// Shared with an integrated server; `collision` and `motion` borrow from it.
     res: Arc<Resources>,
-    rest_loader: client_side::ClientShared<Option<WorldRestLoader>>,
+    rest_loader: Option<WorldRestLoader>,
     pending_entry: client_side::ClientOnly<Option<PendingWorldEntry>>,
     /// A pack reload staged on a worker until `drive_pack_reload` applies it.
     pack_reload: client_side::ClientOnly<Option<packs::PackReload>>,
@@ -3540,7 +3542,6 @@ struct Game<'a> {
     /// `mobs` by network id, for the packets that name one (`game/mobs/mob_index.rs`).
     mob_index: mob_index::MobIndex,
     creatures: creatures::Creatures,
-    sculk: sculk::SculkState,
     raiding: server_side::ServerShared<raids::Raiding>,
     /// Client-ticked block-entity animation state (`game/blocks/block_entity_anims.rs`).
     be_anims: sunrise_client::block_entity_anim::BlockEntityAnims,
@@ -3621,13 +3622,13 @@ struct Game<'a> {
     crystals: sunrise_client::join_seq::JoinList<dragon::Crystal>,
     breath_clouds: sunrise_client::join_seq::ResidentList<dragon::Breath>,
     text_displays:
-        client_side::ClientShared<indexmap::IndexMap<i32, text_displays::RemoteTextDisplay>>,
+        client_side::ClientOnly<indexmap::IndexMap<i32, text_displays::RemoteTextDisplay>>,
     /// Player skin downloads, and which skin each atlas skin slot holds
     /// (least recently shown first).
     skin_downloads: client_side::ClientOnly<RefCell<sunrise_client::skins::Downloader>>,
     /// `ProfileResolver.Cached`: `Dynamic` profiles (name- or id-only heads
     /// and mannequins) resolve through the services in the background.
-    skin_profiles: client_side::ClientOnly<RefCell<sunrise_client::skins::Resolver>>,
+    skin_profiles: RefCell<sunrise_client::skins::Resolver>,
     /// The boat the player rides.
     riding: Option<u32>,
     /// The mount the last `position_rider` put the player on, to tell the tick
@@ -4244,10 +4245,7 @@ impl Game<'_> {
         Some(b)
     }
     fn outline_context_kind(&self) -> sunrise_world::collision_context::EntityContextKind {
-        self.camera_subject().map_or(
-            sunrise_world::collision_context::EntityContextKind::Player,
-            |c| c.collision_kind,
-        )
+        self.side_outline_camera_kind()
     }
     /// A block's outline boxes in world space (`getShape` plus the random offset).
     fn outline_boxes(&self, pos: [i32; 3]) -> Vec<[f64; 6]> {
@@ -4508,8 +4506,8 @@ impl Game<'_> {
         // ServerPlayer.drop: the drop statistics, only when an item entity came of it.
         let (item, count) = (thrown.item.clone(), thrown.count as i32);
         let dropped = self.throw_from_eyes(thrown, eye, false, true)?;
-        self.award_stat("dropped", &item, count);
-        self.award_custom_stat("drop", 1);
+        self.side_award_stat("dropped", &item, count);
+        self.side_award_custom_stat("drop", 1);
         Some(dropped)
     }
     /// `Player.drop(stack, false, thrown_from_hand)`: the stack thrown from the eyes along the
@@ -4653,7 +4651,7 @@ impl Game<'_> {
         });
         // NoteBlock.attack awards the statistic.
         if note {
-            self.award_custom_stat("play_noteblock", 1);
+            self.side_award_custom_stat("play_noteblock", 1);
         }
         self.process_level_events()
     }
@@ -4928,7 +4926,7 @@ impl Game<'_> {
         let who = vibration
             .from_entity
             .then_some(sunrise_client::mobs::Who::Player);
-        self.post_block_game_event(vibration.event, at, who, Some(vibration.state));
+        self.side_post_block_game_event(vibration.event, at, who, Some(vibration.state));
     }
     /// `Blocks.AIR.defaultBlockState`: what a landing's destroy leaves.
     fn air_state(&self) -> BlockStateId {
@@ -5033,75 +5031,6 @@ impl Game<'_> {
         self.block_entity_reach_entry(state).0
     }
 
-    /// `FallingBlockRenderer` for the falling blocks of `run`, drawn with their baked model,
-    /// including non-cubic shapes.
-    fn falling_geometry(
-        &self,
-        camera: glam::DVec3,
-        alpha: f64,
-        setup: &FallingSetup<'_>,
-        run: std::ops::Range<usize>,
-        out: &mut Vec<Vertex>,
-    ) {
-        let FallingSetup {
-            view: falling_view,
-            forward: falling_forward,
-        } = *setup;
-        let tables = &self.pack.context.tables;
-        for f in &self.falling[run] {
-            if self.hides_as_camera(f.id) {
-                continue;
-            }
-            let p = f.model_origin(alpha, |state, x, z| tables.offset(state, x, z)) - camera;
-            let o = p.as_vec3();
-            // Only rear-origin models pay for the envelope/depth check. The
-            // full posed-camera test still decides rejection, including models
-            // whose origin is behind but whose geometry reaches into view.
-            if falling_forward.dot(o) < 0.0
-                && falling_view.is_some_and(|view| {
-                    self.pack
-                        .render
-                        .model_catalog
-                        .render_bounds(f.state)
-                        .is_some_and(|[lo, hi]| {
-                            let lo = glam::Vec3::from_array(lo) + o;
-                            let hi = glam::Vec3::from_array(hi) + o;
-                            let magnitude = o
-                                .abs()
-                                .max_element()
-                                .max(lo.abs().max_element())
-                                .max(hi.abs().max_element());
-                            let padding =
-                                glam::Vec3::splat(1.0e-4 + magnitude * f32::EPSILON * 4.0);
-                            !view.intersects_depth(lo - padding, hi + padding)
-                        })
-                })
-            {
-                continue;
-            }
-            // `FallingBlockEntity.blockPosition()`: the cell its feet are in.
-            let (x, y, z) = (
-                f.position.x.floor() as i32,
-                f.position.y.floor() as i32,
-                f.position.z.floor() as i32,
-            );
-            if !falling_block_visible(f.state, self.world.block(x, y, z)) {
-                continue;
-            }
-            let Some((_, tint)) = self.falling_block_face_sprite(f.state) else {
-                continue;
-            };
-            let light = self.world.light(x, y + 1, z);
-            let packed = (u32::from(light >> 4) * 16) | ((u32::from(light & 15) * 16) << 8);
-            let start = out.len();
-            self.mark_motion(start, crate::game::MOTION_OBJECT | u64::from(f.id));
-            self.falling_model_vertices(f.state, f.start_pos, o, packed, out);
-            let tint = sunrise_client::mobs::render::abgr(tint);
-            for vertex in &mut out[start..] {
-                vertex.color = sunrise_client::hud_layout::multiply(vertex.color, tint);
-            }
-        }
-    }
     /// The orb's sprite and the camera's axes, once a frame however many runs of orbs draw.
     pub(super) fn orb_frame(&self) -> OrbFrame {
         let sprite = self
@@ -5265,7 +5194,7 @@ impl Game<'_> {
 
     /// The brush's `ProjectileUtil.getHitResultOnViewVector` excludes only the source entity.
     pub(super) fn mob_hit_within(&self, reach: f64) -> Option<(usize, f64, [f64; 3])> {
-        let source = self.pick_camera_id();
+        let source = self.side_pick_camera_id();
         let (eye, dir) = self.aim()?;
         let mut nearest = f64::INFINITY;
         let mut best: Option<(usize, f64, [f64; 3])> = None;
@@ -5652,10 +5581,10 @@ impl Game<'_> {
         };
         let neighbour = [pos[0] + dx, pos[1], pos[2] + dz];
         let state = self.world.block(neighbour[0], neighbour[1], neighbour[2]);
-        self.post_block_game_event(
+        self.side_post_block_game_event(
             "minecraft:block_change",
             neighbour,
-            self.sculk_actor(),
+            self.side_sculk_actor(),
             Some(state),
         );
         self.transform_particle(particle, neighbour);
@@ -5740,11 +5669,6 @@ impl Game<'_> {
         }
         self.native_player_level_changed(old_level);
     }
-    fn render_frame(&mut self) -> Result<bool> {
-        self.render_with(|renderer, frame| {
-            sunrise_client::spans::time("renderer", || renderer.render(frame))
-        })
-    }
 }
 
 /// `mark_motion` ids of entities that aren't mobs or dropped items (boats, minecarts, armor
@@ -5763,64 +5687,11 @@ fn autosave_interval(rate: f32) -> i64 {
     i64::from((rate * 300.0) as i32).max(100)
 }
 
-/// The parts of a window key used by IME and preset editor dispatch. The original winit
-/// event carries platform data for the rest of the window's input handling.
-struct WindowKeyInput<'a> {
-    physical: PhysicalKey,
-    state: ElementState,
-    repeat: bool,
-    text: Option<&'a str>,
-    shortcut: Option<sunrise_client::clipboard::EditShortcut>,
-}
 
 /// winit's events for a window's game, with any loop: a headless client (#4951) has no
 /// winit loop and calls these from its own.
 impl Game<'_> {
-    fn pointer_projection(
-        &self,
-        framebuffer: [u32; 2],
-    ) -> sunrise_client::window::PointerProjection {
-        use sunrise_client::window::{GuiSize, PointerProjection};
-        let inputs = self.settings.gui_scale_inputs();
-        PointerProjection {
-            gui: GuiSize::new(framebuffer, inputs.requested, inputs.unicode),
-            window: self.pointer_space(framebuffer),
-        }
-    }
 
-    /// Route a winit key event and its text independently: Windows Alt-code
-    /// characters can arrive without a physical key (`KeyboardHandler.charTyped`).
-    fn dispatch_window_keyboard(
-        &mut self,
-        event_loop: &dyn EventLoopCtl,
-        key: Option<KeyCode>,
-        pressed: bool,
-        repeat: bool,
-        shortcut: Option<sunrise_client::clipboard::EditShortcut>,
-        text: Option<&str>,
-    ) -> Result<()> {
-        let has_screen = self.observed_screen_view().is_some();
-        if let Some(key) = key
-            && !self.dispatch_screen_key(
-                event_loop,
-                key,
-                pressed,
-                repeat,
-                shortcut,
-                Source::Keyboard,
-            )?
-            && !self.key_press_canceled(key, pressed, repeat)
-        {
-            self.native_panel_key_event(key, pressed, repeat);
-            self.mapped_key_event(key, pressed, repeat)?;
-        }
-        // GLFW's character event follows the key, even if KeyPressed.Pre canceled.
-        if pressed && has_screen {
-            self.settle_title_mode();
-            self.screen_chars_typed(text);
-        }
-        Ok(())
-    }
 }
 /// misc/forcefield.png for the world border wall (square, power of two).
 fn load_forcefield(root: &sunrise_assets::resource_source::ResourceSource) -> (u32, u32, Vec<u8>) {
@@ -5867,7 +5738,7 @@ struct ConstructEffects {
 
 // Out-of-line init bundles for wrapped Game fields so finish_construct's unoptimised stack stays small.
 struct WrappedClientInit {
-    rest_loader: client_side::ClientShared<Option<WorldRestLoader>>,
+    rest_loader: Option<WorldRestLoader>,
     pending_entry: client_side::ClientOnly<Option<PendingWorldEntry>>,
     pack_reload: client_side::ClientOnly<Option<packs::PackReload>>,
     server_packs: client_side::ClientOnly<server_packs::ServerPackState>,
@@ -5896,7 +5767,7 @@ struct WrappedClientInit {
         client_side::ClientOnly<Option<std::thread::JoinHandle<std::result::Result<(), String>>>>,
     title: client_side::ClientShared<Option<Title>>,
     text_displays:
-        client_side::ClientShared<indexmap::IndexMap<i32, text_displays::RemoteTextDisplay>>,
+        client_side::ClientOnly<indexmap::IndexMap<i32, text_displays::RemoteTextDisplay>>,
     recipe_ui: client_side::ClientOnly<recipe_book::RecipeUi>,
     spawners: client_side::ClientOnly<spawner::SpawnerState>,
     mod_screen: client_side::ClientOnly<Option<native_hooks::OpenNativeScreen>>,
@@ -5970,7 +5841,7 @@ struct WrappedPrepInit {
     armor_stand_assets: client_side::ClientOnly<armor_stands::ArmorStandAssets>,
     creative_screen: client_side::ClientOnly<Creative>,
     skin_downloads: client_side::ClientOnly<RefCell<sunrise_client::skins::Downloader>>,
-    skin_profiles: client_side::ClientOnly<RefCell<sunrise_client::skins::Resolver>>,
+    skin_profiles: RefCell<sunrise_client::skins::Resolver>,
     registered_debug_entries: client_side::ClientOnly<
         std::sync::Arc<[sunrise_client::debug_entries::RegisteredDebugEntry]>,
     >,
@@ -5999,7 +5870,7 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
     #[inline(never)]
     fn build_wrapped_client() -> Box<WrappedClientInit> {
         Box::new(WrappedClientInit {
-            rest_loader: client_side::ClientShared::new(None),
+            rest_loader: None,
             pending_entry: client_side::ClientOnly::new(None),
             pack_reload: client_side::ClientOnly::new(None),
             server_packs: client_side::ClientOnly::new(Default::default()),
@@ -6021,7 +5892,7 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             pickups: client_side::ClientShared::new(Default::default()),
             creation_job: client_side::ClientOnly::new(None),
             title: client_side::ClientShared::new(None),
-            text_displays: client_side::ClientShared::new(Default::default()),
+            text_displays: client_side::ClientOnly::new(Default::default()),
             recipe_ui: client_side::ClientOnly::new(Default::default()),
             spawners: client_side::ClientOnly::new(Default::default()),
             mod_screen: client_side::ClientOnly::new(None),
@@ -6127,7 +5998,7 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             armor_stand_assets: client_side::ClientOnly::new(prep.armor_stand_assets),
             creative_screen: client_side::ClientOnly::new(prep.creative_screen),
             skin_downloads: client_side::ClientOnly::new(effects.skin_downloads),
-            skin_profiles: client_side::ClientOnly::new(effects.skin_profiles),
+            skin_profiles: effects.skin_profiles,
             registered_debug_entries: client_side::ClientOnly::new(
                 effects.registered_debug_entries,
             ),
@@ -6245,7 +6116,6 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             mobs: Default::default(),
             mob_index: Default::default(),
             creatures: Default::default(),
-            sculk: Default::default(),
             raiding: ws.raiding,
             be_anims: Self::build_be_anims(registry),
             using: None,

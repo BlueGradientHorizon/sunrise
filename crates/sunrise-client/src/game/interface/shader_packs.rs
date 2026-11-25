@@ -650,7 +650,7 @@ impl Game<'_> {
             }
             None => (
                 true,
-                CameraFogEffects::from_effects(&self.potions.effects, self.sculk.darkness),
+                CameraFogEffects::from_effects(&self.potions.effects, self.client.darkness_blend),
                 self.night_vision_intensity(partial),
                 self.client.ambience.moodiness,
             ),

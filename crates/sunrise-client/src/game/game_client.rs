@@ -170,22 +170,6 @@ pub(in crate::game::client_side) use {
 };
 
 impl Game<'_> {
-    /// Where targeting starts and points: the eyes along the view. Every
-    /// crosshair target (blocks, fluids, entities, mod raycasts) is found
-    /// along this ray, so a tracked controller can stand in for it.
-    pub(in crate::game) fn aim(&self) -> Option<([f64; 3], [f64; 3])> {
-        if let Some(ray) = self.client.client_pick.ray {
-            return Some(ray);
-        }
-        // Minecraft.pick: from the camera entity's eyes along its view
-        // (LivingEntity.getViewYRot: the head's yaw).
-        if let Some(e) = self.spectated_camera_snapshot() {
-            let [x, y, z] = e.position;
-            let eye = [x, y + f64::from(e.eye_height), z];
-            return Some((eye, view_vector(e.y_rot, e.x_rot)));
-        }
-        Some((self.eye_position()?, view_vector(self.yaw, self.pitch)))
-    }
     /// `Entity.doWaterSplashEffect` for a dropped item. The client draws the
     /// bubble and splash particles (`Level.addParticle` is empty on a server).
     /// The server plays `entity.generic.splash` (`Entity.playSound`); a
@@ -1249,30 +1233,6 @@ impl Game<'_> {
         self.capture(false);
         Ok(())
     }
-    #[inline(always)]
-    pub(in crate::game) fn finish_open_world_client_clear_debug_density(&mut self) {
-        // Another world: its generator, not the last one's Density line.
-        self.client.debug_density.borrow_mut().clear();
-    }
-    #[inline(always)]
-    pub(in crate::game) fn finish_open_world_client_set_world_icon(
-        &mut self,
-        save_root: &std::path::Path,
-    ) {
-        // LevelStorageAccess.getIconFile: this save's icon.png is what the
-        // Select World list shows.
-        self.client.world_icon = Some(WorldIcon {
-            path: save_root.join("icon.png"),
-            last_attempt: None,
-        });
-    }
-    #[inline(always)]
-    pub(in crate::game) fn finish_open_world_sections_client(&mut self) {
-        self.pending_uploads.0.clear();
-        if let Some(r) = self.renderer.0.as_mut() {
-            r.clear_sections(self.world.layout());
-        }
-    }
     /// One window event, in the order vanilla's `KeyboardHandler` and `MouseHandler` see it.
     ///
     /// A controller doesn't come through here in play: `pad_action` goes straight to the mappings
@@ -1836,7 +1796,7 @@ impl Game<'_> {
                                     .into(),
                             );
                         }
-                        sunrise_client::spans::time("update_world", || self.update_world());
+                        sunrise_client::spans::time("update_world", || self.client_update_world());
                         if self.title.0.is_none() && self.is_logical_server() {
                             sunrise_client::spans::time("spawn_player", || self.spawn_player())?;
                         }
@@ -3407,7 +3367,7 @@ impl Game<'_> {
                     kind: "note_custom_sound",
                     ..
                 } => {}
-                other @ (LevelEvent::ContainerLootTable { .. }
+                (LevelEvent::ContainerLootTable { .. }
                 | LevelEvent::FallingBlock { .. }
                 | LevelEvent::Player { .. }
                 | LevelEvent::PrimeTnt { .. }
@@ -3417,13 +3377,7 @@ impl Game<'_> {
                         | "test_block_tick" | "brushable" | "hatch" | "hatch_sniffer" | "hatch_turtles"
                         | "portal_spawn" | "spawn_ghastling" | "shrieker_respond",
                     ..
-                }) => {
-                    let _ = &other;
-                    debug_assert!(
-                        false,
-                        "server-only LevelEvent reached process_client_level_events: {other:?}"
-                    );
-                }
+                }) => {}
                 LevelEvent::GrowTree { .. }
                 | LevelEvent::PlaceFeature { .. }
                 | LevelEvent::BlockEvent { .. } => {}
@@ -3591,19 +3545,6 @@ impl Game<'_> {
             self.client.cursor = projection.project_pointer(position).subpixel();
         }
     }
-    pub(in crate::game) fn remove_local_player_body(&mut self) {
-        self.reset_client_item_use();
-        self.hook.discard();
-        let id = self.player.as_ref().map(|player| player.entity_id as u32);
-        self.resident_entities.local_player.retire();
-        self.player_state.attachments.retire();
-        self.player = None;
-        if self.remote.is_some()
-            && let Some(id) = id
-        {
-            self.pick_section_remove(id);
-        }
-    }
     pub(in crate::game::client_side) fn render(&mut self) -> Result<bool> {
         if self.screenshot_sequence.0.is_some() {
             return self.render_sequence_frame();
@@ -3749,7 +3690,7 @@ impl Game<'_> {
             return Ok(false);
         }
         if self.pending_entry.0.is_some() {
-            if let (Some(renderer), Some(loader)) = (&mut self.renderer.0, &self.rest_loader.0) {
+            if let (Some(renderer), Some(loader)) = (&mut self.renderer.0, &self.rest_loader) {
                 sunrise_client::widgets::begin_screen(|| {
                     screen_info::level_loading(Some(loader.progress.fraction()), &screen_info::tr)
                 });
@@ -4799,16 +4740,10 @@ impl Game<'_> {
                 } else {
                     self.inventory_pick_release()
                 };
-                if let Some(key) = self.container {
-                    self.container_changed(key);
-                }
                 handled
             }
             Screen::Inventory if pressed => {
                 self.inventory_press(!left);
-                if let Some(key) = self.container {
-                    self.container_changed(key);
-                }
                 true
             }
             Screen::Inventory => {
@@ -5055,6 +4990,9 @@ impl Game<'_> {
     pub(in crate::game) fn set_client_message(&mut self, text: String) {
         self.client.message = Some((text, Instant::now()));
     }
+    pub(in crate::game) fn client_award_stat(&mut self, _: &str, _: &str, _: i32) {}
+    pub(in crate::game) fn client_award_custom_stat(&mut self, _: &str, _: i32) {}
+    pub(in crate::game) fn client_container_changed(&mut self, _: (i32, i32, i32)) {}
     pub(in crate::game::client_side) fn set_window_cursor(
         &mut self,
         sample: sunrise_client::window::PointerSample,

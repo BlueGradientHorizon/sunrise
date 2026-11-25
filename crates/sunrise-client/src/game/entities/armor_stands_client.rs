@@ -287,7 +287,7 @@ impl Game<'_> {
                         .iter()
                         .find(|(k, _)| k == "minecraft:profile")
                 })
-                .map(|(_, t)| self.skin_profiles.0.borrow_mut().head_profile_nbt(t))
+                .map(|(_, t)| self.skin_profiles.borrow_mut().head_profile_nbt(t))
                 .unwrap_or_else(|| std::sync::Arc::new(serde_json::Value::Null));
             self.pack.item_renderer.submit_special(
                 &special,
