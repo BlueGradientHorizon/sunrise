@@ -15,7 +15,9 @@ pub enum ActionRefused {
     /// Another player's turn, an open transaction, or another `perform_action` is running.
     /// A `level_tick_pre` or `level_tick_post` listener's own failure boundary is not an open
     /// transaction here: the action runs outside it, so the listener's panic doesn't undo the
-    /// action. A `host.transaction` the listener opens is one.
+    /// action. That panic still rolls back the listener's own writes, and a write it made
+    /// before the action, at a place the action then changed, is put back over the action's
+    /// result there. A `host.transaction` the listener opens is an open transaction.
     Busy,
     /// The block or entity is out of the player's reach, or the hit isn't on the block
     /// (`ServerGamePacketListenerImpl`'s `handleUseItemOn`, `handleInteract` and
