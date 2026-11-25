@@ -57,8 +57,9 @@ impl Bundle {
             }
             let size = entry.size();
             let mut bytes = Vec::new();
+            // One byte more than declared, so an entry longer than its header says is seen, not cut.
             (&mut entry)
-                .take(size)
+                .take(size.saturating_add(1))
                 .read_to_end(&mut bytes)
                 .map_err(|e| format!("{name}: {e}"))?;
             if bytes.len() as u64 != size {
