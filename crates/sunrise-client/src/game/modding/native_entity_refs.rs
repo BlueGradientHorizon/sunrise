@@ -352,6 +352,11 @@ impl Game<'_> {
             Target::Dragon(_)
         ))
     }
+    /// `Entity.getPickResult` of the entity, on the side that holds it.
+    pub(super) fn entity_pick_result(&self, entity: EntityRef) -> Option<ItemStack> {
+        self.native_entity_read_target(entity)?;
+        self.pick_result_of(i32::try_from(entity.id()).ok()?)
+    }
     /// `IEntityExtension.getParts` in `EnderDragon.getSubEntities` order.
     pub(super) fn entity_visit_parts(
         &self,

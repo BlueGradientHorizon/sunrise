@@ -115,6 +115,7 @@ impl Game<'_> {
                     causing: *causing,
                     direct: *direct,
                     position: *position,
+                    direct_type: None,
                 };
                 self.hurt_armor(&source, *amount);
             }

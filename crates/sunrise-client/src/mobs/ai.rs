@@ -451,7 +451,7 @@ mod inside_walk_tests {
 }
 #[cfg(test)]
 #[path = "effect_modifier_tests.rs"]
-mod effect_modifier_tests;
+pub(crate) mod effect_modifier_tests;
 #[cfg(test)]
 #[path = "fall_flying_tests.rs"]
 mod fall_flying_tests;
@@ -512,6 +512,10 @@ pub struct Ai {
     /// last started on. On the mob, not the goal, so the mob tick can tell that a pet
     /// has nothing new to read without building the level's player views.
     pub owner_hurt_timestamp: i32,
+    /// `OwnerHurtByTargetGoal.timestamp`: the owner's `getLastHurtByMobTimestamp` the
+    /// goal last started on. On the mob, not the goal, so the mob tick can tell that a
+    /// pet has nothing new to read without building the level's player views.
+    pub owner_hurt_by_timestamp: i64,
     /// Sensing: line-of-sight results cached for one tick.
     pub seen_cache: Vec<(Who, bool)>,
     /// Swing animation progress (attackAnim) and ticks.
@@ -6367,7 +6371,10 @@ fn tick_effects_until_hurt(
                 m.extra.effects[i].update_from_instance(&hidden);
                 // `tickServer`'s onExpire: `onEffectUpdated(instance, true, null)`,
                 // the modifiers of the amplifier that is active now.
-                m.set_effect_modifiers(effect, Some(hidden.amplifier));
+                let def = m.extra.effects[i]
+                    .registry_index
+                    .and_then(sunrise_client_core::potions::effect_by_index);
+                m.set_effect_modifiers(effect, def, Some(hidden.amplifier));
                 m.extra.ambient_effects.retain(|e| *e != effect);
                 if hidden.ambient {
                     m.extra.ambient_effects.push(effect);

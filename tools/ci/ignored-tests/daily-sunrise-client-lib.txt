@@ -327,6 +327,7 @@ sunrise-client-lib mobs::tame::pet_pose_tests::ordering_a_pet_to_sit_in_water_le
 sunrise-client-lib mobs::tame::tamable_panic_tests::tamable_animals_panic_from_the_damage_they_fear lib daily resources
 sunrise-client-lib mobs::tame::tests::a_cat_stops_fleeing_when_it_is_tamed lib daily resources
 sunrise-client-lib mobs::tame::tests::a_leashed_or_riding_pet_stays_put lib daily resources
+sunrise-client-lib mobs::tame::tests::a_pet_avenges_its_owner_on_a_player_when_pvp_allows_it lib daily resources
 sunrise-client-lib mobs::tame::tests::a_pet_does_not_avenge_its_owner_on_a_dead_attacker lib daily resources
 sunrise-client-lib mobs::tame::tests::a_pet_targets_the_player_its_owner_hurt_when_pvp_allows_it lib daily resources
 sunrise-client-lib mobs::tame::tests::a_sitting_tame_mob_still_looks_for_a_mate lib daily resources

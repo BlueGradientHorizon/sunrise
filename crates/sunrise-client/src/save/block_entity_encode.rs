@@ -131,6 +131,15 @@ fn fields(
         if write_items {
             write_mod_items(&mut map, m, items);
         }
+        // `RandomizableContainer.trySaveLootTable`: a pending table is saved in place of an
+        // empty inventory.
+        if let Some(pending) = pending {
+            let items = map.get(&"Items".into()).cloned();
+            pending.write_tags(&mut map);
+            if m.items.iter().any(Option::is_some) {
+                map.extend(items.map(|items| ("Items".into(), items)));
+            }
+        }
         if let Some(lock) = lock {
             map.insert("lock".into(), lock.clone());
         }

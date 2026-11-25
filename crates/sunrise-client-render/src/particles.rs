@@ -4803,14 +4803,16 @@ impl ParticleEngine {
                 let before = (
                     output.explicit.opaque.len(),
                     output.explicit.translucent.len(),
+                    output.explicit.additive.len(),
                     output.quads.out.len(),
                     output.quads.additive.len(),
                 );
                 if let Err(error) = provided.extract(p, &view, &mut output) {
                     output.explicit.opaque.truncate(before.0);
                     output.explicit.translucent.truncate(before.1);
-                    output.quads.out.truncate(before.2);
-                    output.quads.additive.truncate(before.3);
+                    output.explicit.additive.truncate(before.2);
+                    output.quads.out.truncate(before.3);
+                    output.quads.additive.truncate(before.4);
                     log::warn!("Could not extract particle: {error}");
                 }
             } else if !p.removed
@@ -4818,7 +4820,12 @@ impl ParticleEngine {
                     .as_ref()
                     .is_none_or(|view| view_cull::in_view(view, p, camera))
             {
-                quads.draw_default::<CULL>(p, blend, None);
+                quads.draw_default::<CULL>(
+                    p,
+                    blend,
+                    None,
+                    provider_pass.as_mut().map(|(_, explicit)| &mut **explicit),
+                );
             }
         }
         let frame = polytone_gpu::QuadFrame {
@@ -4838,12 +4845,14 @@ impl ParticleEngine {
 pub struct ParticleQuads {
     pub opaque: Vec<Vertex>,
     pub translucent: Vec<Vertex>,
+    pub additive: Vec<Vertex>,
 }
 
 impl ParticleQuads {
     pub fn clear(&mut self) {
         self.opaque.clear();
         self.translucent.clear();
+        self.additive.clear();
     }
 }
 
@@ -4883,6 +4892,7 @@ impl ParticleQuadFrame<'_> {
         p: &Particle,
         blend: Option<ParticleBlend>,
         light_coords: Option<u32>,
+        explicit: Option<&mut ParticleQuads>,
     ) {
         let Self {
             camera,
@@ -4949,9 +4959,11 @@ impl ParticleQuadFrame<'_> {
             },
         };
         let Some(r) = rect else { return };
+        let group_additive = matches!(blend, Some(ParticleBlend::Additive));
         let layer = match blend {
             Some(ParticleBlend::Opaque) => false,
             Some(ParticleBlend::Translucent) => true,
+            Some(_) => false,
             None => layer,
         };
         let (center, size) = culled_geometry.unwrap_or_else(|| {
@@ -5056,13 +5068,20 @@ impl ParticleQuadFrame<'_> {
             r.u0 + du * p.uv[2],
             r.v0 + dv * p.uv[3],
         );
-        let target: &mut Vec<Vertex> = if p.additive { self.additive } else { self.out };
-        let overlay = if p.additive {
-            crate::gfx::ADDITIVE_PARTICLE_OVERLAY
+        let (target, overlay): (&mut Vec<Vertex>, u32) = if group_additive {
+            match explicit {
+                Some(explicit) => (
+                    &mut explicit.additive,
+                    crate::gfx::EXPLICIT_PARTICLE_OVERLAY,
+                ),
+                None => (&mut *self.additive, crate::gfx::ADDITIVE_PARTICLE_OVERLAY),
+            }
+        } else if p.additive {
+            (&mut *self.additive, crate::gfx::ADDITIVE_PARTICLE_OVERLAY)
         } else if layer {
-            crate::gfx::TRANSLUCENT_PARTICLE_OVERLAY
+            (&mut *self.out, crate::gfx::TRANSLUCENT_PARTICLE_OVERLAY)
         } else {
-            0
+            (&mut *self.out, 0)
         };
         // A Polytone model particle: its model's faces, scaled by its size and turned as
         // its quad would be.
@@ -5137,7 +5156,9 @@ impl<const CULL: bool> mod_api::QuadParticleRenderState for ProviderQuadSink<'_,
         ];
         let target = match quad.layer {
             ParticleBlend::Opaque => &mut self.explicit.opaque,
-            ParticleBlend::Translucent => &mut self.explicit.translucent,
+            ParticleBlend::Additive => &mut self.explicit.additive,
+            // Translucent and any future #[non_exhaustive] variant.
+            _ => &mut self.explicit.translucent,
         };
         let [a, r, g, b] = quad.color.to_be_bytes();
         if !write_particle_quad::<true, true>(
@@ -5155,8 +5176,12 @@ impl<const CULL: bool> mod_api::QuadParticleRenderState for ProviderQuadSink<'_,
     }
 
     fn add_default(&mut self) {
-        self.quads
-            .draw_default::<CULL>(self.particle, self.blend, Some(self.light_coords));
+        self.quads.draw_default::<CULL>(
+            self.particle,
+            self.blend,
+            Some(self.light_coords),
+            Some(self.explicit),
+        );
     }
 }
 

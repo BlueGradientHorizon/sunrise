@@ -914,10 +914,32 @@ An optional `sort_order` (an integer) sets where the effect sits among the HUD's
 as NeoForge's `IMobEffectExtension.getSortOrder` does: the lists compare it where vanilla compares the colour, and it
 is the colour when left out. It is fixed per effect, where NeoForge may answer per instance.
 
+An optional `attribute_modifiers` list is what the effect's constructor would add with
+`MobEffect.addAttributeModifier(attribute, id, amount, operation)`:
+
+```json
+{
+  "category": "harmful",
+  "color": 16111426,
+  "attribute_modifiers": [
+    { "attribute": "minecraft:movement_speed", "id": "ruby:effect/stun_speed", "amount": -1.0, "operation": "add_multiplied_total" },
+    { "attribute": "minecraft:jump_strength", "id": "ruby:effect/stun_jump", "amount": -1.0, "operation": "add_multiplied_total" }
+  ]
+}
+```
+
+`attribute` is vanilla's or a mod's attribute and `id` the modifier's id, both `namespace:path`; `operation` is
+`add_value`, `add_multiplied_base` or `add_multiplied_total`. One entry per attribute, as vanilla keeps one per
+attribute: a second for the same attribute, or an attribute the game does not have, refuses the mod. While the
+effect is on an entity, player or mob, each modifier is on it with `amount × (amplifier + 1)`, replaced when the
+amplifier changes and removed with the effect, however it ends (expiry, milk, `/effect clear`, death); an entity with
+no such attribute gets none. The modifiers are saved and synced as the entity's others are, and a potion's "When
+Applied:" lines list them, for the potion's own effects and its `custom_effects`.
+
 It is the effect `<id>:<name>`: `/effect give @s ruby:glow 30` gives it, saves and mobs keep it, and it reaches LAN and
 dedicated server players who run the same mods (its network id follows vanilla's). Its name is the translation
 `effect.<id>.<name>` from the mod's `assets/<id>/lang/`, its icon `assets/<id>/textures/mob_effect/<name>.png` (18x18,
-as vanilla's; without one it draws as the missing texture). The declaration supplies neither tick behaviour nor attribute modifiers. A world opened without the mod drops the effect from its players and mobs. Clients join a server
+as vanilla's; without one it draws as the missing texture). The declaration supplies no tick behaviour. A world opened without the mod drops the effect from its players and mobs. Clients join a server
 only with the same mods' effects, as with its blocks.
 
 Code mods read a registered type's classification with `effect_key.category(host)`,

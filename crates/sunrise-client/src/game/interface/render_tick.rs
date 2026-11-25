@@ -189,7 +189,7 @@ impl Game<'_> {
         title: bool,
         sky: &sunrise_client::environment::Sky,
     ) -> Option<[f32; 2]> {
-        if title || !sunrise_client::clouds::visible(&self.settings.clouds, sky.cloud_color[3]) {
+        if title || !sunrise_client::clouds::visible(self.effective_clouds(), sky.cloud_color[3]) {
             return None;
         }
         let white = self.gui.atlas.sprites.get("sunrise/white")?;

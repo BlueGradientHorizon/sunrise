@@ -362,3 +362,5 @@ against live handles, attackability, reach, held-item range and ordinary block o
 does not mine the block behind it; an empty list on a block or miss keeps the ordinary
 path. Each accepted hit uses normal attack packets and prediction. Server validation
 and cooldowns apply.
+
+`ClientHost::jump_riding_scale()` is how far the local player has charged the jump of its jumpable vehicle (`LocalPlayer.getJumpRidingScale`), 0.0 to 1.0; the jump bar draws the same value.

@@ -161,7 +161,9 @@ generation's structures, `/place template`, the structure block, jigsaw blocks a
 template snapshots. `event.state` is already mirrored, `event.pos` is where it goes and
 `event.rotation` the template's turn. `event.rotated` starts at the game's own turned state; set
 it to another state of the same block, for example
-`context.state_with_property(event.state, "facing", "north")`.
+`context.state_with_property(event.state, "facing", "north")`. Read the value to turn with
+`context.state_property(event.state, "facing")` (vanilla's `state.getValue(FACING)`), an owned
+`String`, or `None` for a key the state does not have.
 
 Jigsaw connector discovery is different from block placement: matching and expansion read
 the connector's plain rotated state, without calling `BlockPart::rotate`, as

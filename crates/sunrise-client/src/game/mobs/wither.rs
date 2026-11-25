@@ -200,6 +200,14 @@ impl Game<'_> {
             Some(Who::Mob(id)) => Some(id),
             _ => None,
         };
+        // A live player owner is the lent attack's attacker; no owner at all
+        // names no causing entity (`magic()`), even though the skull's attack
+        // still carries the dead shooter.
+        let cause = match live_owner {
+            Some(Who::Mob(id)) => super::creatures::KnownCause::Entity(id),
+            Some(Who::Player) => super::creatures::KnownCause::Attack,
+            None => super::creatures::KnownCause::None,
+        };
         let from = [p.previous.x, p.previous.y, p.previous.z];
         let skull = skull_source(live_owner, from);
         let (amount, kind) = (skull.amount, skull.kind);
@@ -217,8 +225,7 @@ impl Game<'_> {
                     self.combat.projectile_direct = None;
                 }
                 let damage_type = super::creatures::damage_type(kind, false);
-                let hit =
-                    self.hurt_player_from(amount, skull.from, damage_type, Some(owner), false);
+                let hit = self.hurt_player_from(amount, skull.from, damage_type, cause, false);
                 // A totem that fired saves the player inside hurtServer:
                 // still alive, so run the enchantments instead of healing the owner.
                 let killed = self.player.as_ref().is_some_and(|pl| {

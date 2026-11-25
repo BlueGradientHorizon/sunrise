@@ -42,7 +42,7 @@ sunrise-client-lib = { path = "../sunrise-client-lib", default-features = false,
 sunrise-gameplay = { path = "../sunrise-gameplay", optional = true }
 sunrise-client-gameplay = { path = "../sunrise-client-gameplay", optional = true }
 sunrise-assets = { path = "../sunrise-assets", optional = true }
-sunrise-client-core = { path = "../sunrise-client-core", features = ["test-language-publication"], optional = true }
+sunrise-client-core = { path = "../sunrise-client-core", features = ["test-language-publication", "test-effect-registry"], optional = true }
 sunrise-client-input = { path = "../sunrise-client-input", optional = true }
 sunrise-client-render = { path = "../sunrise-client-render", features = ["test-support"], optional = true }
 sunrise-command = { path = "../sunrise-command", optional = true }

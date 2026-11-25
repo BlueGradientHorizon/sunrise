@@ -1129,7 +1129,7 @@ impl Game<'_> {
             S::PickItemFromEntity(p) => {
                 self.guest_pick_item(conn, true, [0; 3], p.id, |g| {
                     g.within_entity_range(p.id)
-                        .then(|| g.entity_pick_result(p.id))
+                        .then(|| g.pick_result_of(p.id))
                         .flatten()
                 });
             }

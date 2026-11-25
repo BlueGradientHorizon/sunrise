@@ -361,7 +361,7 @@ impl MobTypes {
     pub fn load_with_defaults(
         root: &Path,
         defaults: &sunrise_world::item_defaults::Defaults,
-        attributes: &sunrise_world::attributes::entity::Catalog,
+        attributes: &Arc<sunrise_world::attributes::entity::Catalog>,
     ) -> crate::Result<Self> {
         Self::load_with_models(root, true, None, Some(defaults), attributes)
     }
@@ -371,7 +371,7 @@ impl MobTypes {
     /// rather than parsing and retaining every entity-model layer.
     pub fn load_for_server(
         root: &Path,
-        attributes: &sunrise_world::attributes::entity::Catalog,
+        attributes: &Arc<sunrise_world::attributes::entity::Catalog>,
     ) -> crate::Result<Self> {
         Self::load_with_models(root, false, None, None, attributes)
     }
@@ -393,16 +393,16 @@ impl MobTypes {
         root: &Path,
         document: &EntityModelDocument,
         defaults: &sunrise_world::item_defaults::Defaults,
-        attributes: &sunrise_world::attributes::entity::Catalog,
+        attributes: &Arc<sunrise_world::attributes::entity::Catalog>,
     ) -> crate::Result<Self> {
         Self::load_with_models(root, true, Some(document), Some(defaults), attributes)
     }
 
-    fn root_catalog(root: &Path) -> crate::Result<sunrise_world::attributes::entity::Catalog> {
+    fn root_catalog(root: &Path) -> crate::Result<Arc<sunrise_world::attributes::entity::Catalog>> {
         let json = sunrise_world::json_file::read(&root.join("attributes.json"))?;
-        Ok(sunrise_world::attributes::entity::Catalog::from_json(
-            &json,
-        )?)
+        Ok(Arc::new(
+            sunrise_world::attributes::entity::Catalog::from_json(&json)?,
+        ))
     }
 
     /// `attributes`: the catalog whose bounds the types' mobs clamp to.
@@ -411,7 +411,7 @@ impl MobTypes {
         models_needed: bool,
         document: Option<&EntityModelDocument>,
         item_defaults: Option<&sunrise_world::item_defaults::Defaults>,
-        attributes: &sunrise_world::attributes::entity::Catalog,
+        attributes: &Arc<sunrise_world::attributes::entity::Catalog>,
     ) -> crate::Result<Self> {
         let attribute_bounds = finalize::AttrBounds::of(attributes);
         let bytes = fs::read(root.join("entity-types.json"))?;
@@ -537,7 +537,7 @@ impl MobTypes {
                     shadow: crate::shadows::content_shadow(t),
                     species: def.species,
                     item_stack_limits: item_stack_limits.clone(),
-                    attribute_bounds,
+                    attribute_bounds: attribute_bounds.clone(),
                     width: t["width"].as_f64().unwrap_or(0.6),
                     height: t["height"].as_f64().unwrap_or(1.8),
                     eye_height: t["eye_height"].as_f64().unwrap_or(1.6),
@@ -789,6 +789,13 @@ pub enum DamageKind {
     WitherSkull,
 }
 impl DamageKind {
+    /// `DamageSource.is(DamageTypes.X)`: the registered damage type's identity,
+    /// whatever variant carries it, so a contact `minecraft:thorns` reacts as
+    /// `DamageKind::Thorns` does. Tags stay the level's (`has`).
+    pub fn is(self, registry_id: &str) -> bool {
+        crate::health::damage_type(self, false) == registry_id
+    }
+
     /// DamageTypeTags.IS_EXPLOSION.
     fn is_explosion(self) -> bool {
         match self {
@@ -1104,8 +1111,10 @@ pub struct Extra {
     /// `UnspawnedMobEditor`): the level keeps a joined entity's tags with its
     /// saved data, so they move there when the mob joins.
     pub spawn_tags: Vec<String>,
-    /// Command-created armor instances, shared by commands and runtime damage.
-    pub armor_attributes: Option<Box<sunrise_world::attributes::entity::EntityAttributes>>,
+    /// The instances of the attributes outside `finalize`'s store (armor,
+    /// toughness, a sulfur cube's archetype, every other attribute): what
+    /// `/attribute` and the effects' modifiers write, shared with runtime damage.
+    pub generic_attributes: Option<Box<sunrise_world::attributes::entity::EntityAttributes>>,
     /// `Mob.lootTable`: the table its death rolls instead of its type's
     /// (saved as `DeathLootTable`).
     pub death_loot_table: Option<String>,
@@ -4848,10 +4857,17 @@ impl Mob {
             && self.species() == Species::Horse
             && self.extra.body_id().is_some()
         {
+            let hurt = crate::health::mob_source(&source, level.attack());
             self.outbox.push(MobEvent::ArmorHurt {
                 mob: self.id,
                 amount: damage,
-                source: crate::health::mob_source(&source, level.attack()),
+                source: crate::health::HurtSource {
+                    damage_type: crate::health::source_damage_type(source),
+                    causing: hurt.causing,
+                    direct: hurt.direct,
+                    direct_type: None,
+                    position: hurt.position,
+                },
             });
         }
         // Animal.actuallyHurt: damage taken ends love mode (`resetLove`);
@@ -5012,7 +5028,7 @@ impl Mob {
             };
             // playSecondaryHurtSound: a thorns hit sounds where the mob
             // stands, silent or not.
-            let thorns = (kind == DamageKind::Thorns).then_some(villager::HurtSound(
+            let thorns = kind.is("minecraft:thorns").then_some(villager::HurtSound(
                 "enchant.thorns.hit",
                 at,
                 1.0,
@@ -5282,30 +5298,24 @@ impl Mob {
         let before = self.extra.effects.len();
         // Empty, so no allocation, on the ticks nothing is removed.
         let mut removed = Vec::new();
-        let mut absorption_removed = false;
         self.extra.effects.retain(|e| {
             let keep = keep(e);
             if !keep {
-                removed.push(e.id);
+                removed.push((e.id, e.registry_index));
             }
-            absorption_removed |= !keep && e.id == "minecraft:absorption";
             keep
         });
-        // `removeModifier` dirties `max_absorption` only when the modifier
-        // is there, permanent or a mod's transient one with its id: a loaded
-        // Absorption, which added none, clamps nothing.
-        let (cap, absorption_id) = (finalize::Attr::MaxAbsorption, "minecraft:effect.absorption");
-        let cap_removed = absorption_removed
-            && (finalize::modifier_amount(self, cap, absorption_id).is_some()
-                || finalize::has_transient_modifier(self, cap, absorption_id));
-        for effect in removed {
-            self.set_effect_modifiers(effect, None);
+        // One `onEffectsRemoved` for all of them: each effect's modifiers
+        // come off, then `refreshDirtyAttributes` runs once, so the
+        // absorption is clamped to the maximum the whole batch leaves
+        // (`onAttributeUpdated`); removing Absorption does not subtract the
+        // hearts it granted.
+        let mut dirty = finalize::DirtyAttributes::default();
+        for (effect, index) in removed {
+            let def = index.and_then(sunrise_client_core::potions::effect_by_index);
+            dirty.merge(self.write_effect_modifiers(effect, def, None));
         }
-        if cap_removed {
-            // LivingEntity.onAttributeUpdated clamps to the remaining maximum;
-            // removing Absorption does not subtract the hearts it granted.
-            self.absorption = self.absorption.min(armor::max_absorption(self));
-        }
+        self.refresh_dirty_attributes(dirty);
         let changed = self.extra.effects.len() != before;
         if changed {
             self.extra.effects_revision += 1;
@@ -5410,7 +5420,10 @@ impl Mob {
         // `onEffectAdded` for a new effect, `onEffectUpdated(_, true, _)` for a
         // changed one: the modifiers follow the active amplifier.
         if changed {
-            self.set_effect_modifiers(effect, Some(active.amplifier));
+            let def = active
+                .registry_index
+                .and_then(sunrise_client_core::potions::effect_by_index);
+            self.set_effect_modifiers(effect, def, Some(active.amplifier));
         }
         // Then `MobEffectInstance.onEffectStarted`, for every `addEffect`:
         // `AbsorptionMobEffect` raises the amount within the maximum the
@@ -5467,23 +5480,29 @@ impl Mob {
         if source.kind.bypasses_invulnerability() {
             return None;
         }
-        let (slot, protector, effects) =
-            crate::health::PROTECTION_HANDS
-                .into_iter()
-                .find_map(|(hand, slot)| {
-                    let stack = self.extra.slot_stack(slot)?;
-                    let effects = level.death_protection(stack)?;
-                    if level.totem_canceled(crate::health::Hurting::Mob(self, source), hand, stack)
-                    {
-                        return None;
-                    }
-                    Some((slot, stack.clone(), effects.to_vec()))
-                })?;
-        let cell = &mut self.extra.equipment[slot];
-        *cell = cell.take().and_then(|mut remaining| {
-            remaining.count -= 1;
-            (remaining.count > 0).then_some(remaining)
-        });
+        let in_hand = crate::health::PROTECTION_HANDS
+            .into_iter()
+            .find_map(|(hand, slot)| {
+                let stack = self.extra.slot_stack(slot)?;
+                let effects = level.death_protection(stack)?;
+                if level.totem_canceled(crate::health::Hurting::Mob(self, source), hand, stack) {
+                    return None;
+                }
+                Some((Some(slot), stack.clone(), effects.to_vec()))
+            });
+        // Then a mod's protector from outside the hands, which nothing here uses up.
+        let (slot, protector, effects) = in_hand.or_else(|| {
+            let stack = level.mod_protector(crate::health::Hurting::Mob(self, source))?;
+            let effects = level.death_protection(&stack)?.to_vec();
+            Some((None, stack, effects))
+        })?;
+        if let Some(slot) = slot {
+            let cell = &mut self.extra.equipment[slot];
+            *cell = cell.take().and_then(|mut remaining| {
+                remaining.count -= 1;
+                (remaining.count > 0).then_some(remaining)
+            });
+        }
         self.health = 1.0;
         if level.defers_death_protection_effects() {
             return Some((protector, effects));
@@ -5511,13 +5530,12 @@ impl Mob {
                 self.retain_effects(|_| false);
             }
             // `RemoveStatusEffectsConsumeEffect.apply`: `removeEffect` for each,
-            // `onEffectsRemoved` for what the mob had.
+            // in the component's order, each its own `onEffectsRemoved`.
             ConsumeEffect::RemoveEffects(ids) => {
-                self.retain_effects(|e| {
-                    let held = e.id.trim_start_matches("minecraft:");
-                    !ids.iter()
-                        .any(|id| id.trim_start_matches("minecraft:") == held)
-                });
+                for id in ids {
+                    let id = id.trim_start_matches("minecraft:");
+                    self.retain_effects(|e| e.id.trim_start_matches("minecraft:") != id);
+                }
             }
             // `ApplyStatusEffectsConsumeEffect.apply`: one random draw, even at
             // probability 1.
@@ -7216,6 +7234,19 @@ mod magic_absorb_tests {
         m.damage(level, 8.0, thorns);
         assert!(sounds(&m).is_empty(), "inside the hurt cooldown");
 
+        // A contact hit carries the registered type; the identity is
+        // `minecraft:thorns` whatever variant carries it.
+        let mut contact = witch();
+        contact.position = Vec3::new(1.0, 2.0, 3.0);
+        contact.silent = true;
+        let typed = Damage::of(DamageKind::Named(NamedDamage::new("minecraft:thorns", 0)));
+        assert!(contact.damage(level, 4.0, typed));
+        assert_eq!(
+            sounds(&contact),
+            vec![("enchant.thorns.hit", [1.0, 2.0, 3.0], 1.0, 1.0)]
+        );
+        contact.outbox.clear();
+
         let mut loud = witch();
         assert!(loud.damage(level, 4.0, thorns));
         let heard = sounds(&loud);
@@ -8004,7 +8035,7 @@ fn content_mob_tag_slot_uses_the_entity_registry_index() {
         "attributes": [], "entities": {},
     }))
     .unwrap();
-    let types = MobTypes::load_for_server(root, &attributes).unwrap();
+    let types = MobTypes::load_for_server(root, &Arc::new(attributes)).unwrap();
     let defaults = sunrise_world::item_defaults::read(root).unwrap();
     let items = Items::tags_only(root, &PackOverlay::NONE, &defaults).unwrap();
     let ids = items.component_registry.ids(EntityTypeTags::REGISTRY);

@@ -202,7 +202,8 @@ rotations. Each `frame` is an existing index into the bind-time sprite list. UVs
 sprite: `[0.0, 0.0, 1.0, 1.0]` selects it whole. `color` is `0xAARRGGBB`; for packed light use the
 view's value or vanilla's `LightCoordsUtil.pack`/`smoothPack` layout. The explicit layer wins over
 the group's blend. Opaque quads replace covered pixels after the alpha cut; translucent quads
-blend. Both are depth tested and culled from the back. The group still controls admission of the particle,
+blend; additive quads draw after the translucent layer with depth writes off and additive blending.
+All three are depth tested and culled from the back. The group still controls admission of the particle,
 not the number of quads it emits. The sink ignores an unresolved frame or non-finite geometry/UV
 without dropping other quads.
 

@@ -146,6 +146,15 @@ draws at and one `Above` it the height after it. A row that is hidden, cancelled
 nothing, and a replacement does not reserve space for the rows after it. Outside the HUD layers
 the read is `None`.
 
+To make room for a row of your own, raise a column with
+`host.set_gui_status_heights([left, right])` (assigning NeoForge's `Hud.leftHeight` and
+`rightHeight`). The vanilla rows that draw after your layer start from the new heights and add
+their own on top: a layer `Above("minecraft:armor_level".into())` that draws a row and raises the
+left column by its height moves the rows drawn after it. A wrapper that sets the heights before
+`ctx.draw_previous()` moves the row it wraps as well. Rows already drawn stay where they are, both
+columns go back to 39 at the start of each HUD pass, and the call returns false, setting nothing,
+outside the HUD layers.
+
 Adding a taller status bar does not move the selected item name or the action bar. The name starts
 59 GUI pixels from the bottom (45 outside survival and adventure); the action bar is centred 68
 pixels from the bottom. A mod that needs to move either can cancel and redraw its layer:

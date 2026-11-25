@@ -2063,11 +2063,34 @@ pub(super) fn use_totem(
     cancel
 }
 
+/// `native_living_death_protection` for the damage code: a mod's protector from outside the
+/// hands, once neither hand protected.
+pub(super) fn death_protection_source(
+    level: DamageLevel<'_>,
+    hurting: Hurting<'_>,
+) -> Option<ItemStack> {
+    if !mod_api::__private::listened(mod_api::HookId::LivingDeathProtection) {
+        return None;
+    }
+    let (entity, kind, source) = hurt_server_args(hurting, level.attack());
+    let mut protector = None;
+    HitLevel(level).native_living_death_protection(entity, kind, &source, &mut protector);
+    protector
+}
+
 /// The level a hit or a landing happens in, as its hooks' level host: its blocks, its random and its
 /// own attachments. Not `GameLevel`, which a hit can't build: a mob's hit lands in the mob
 /// tick, where the world is read by every mob and its random is lent out, and building one
 /// per hit would allocate its entity boxes.
 pub(super) struct HitLevel<'a>(pub(super) DamageLevel<'a>);
+
+impl<'a> HitLevel<'a> {
+    /// The item table a mod's stack is checked against as it comes back into the hit
+    /// (`living_death_protection`'s protector): the authoritative world's, as for the hit's reads.
+    pub(in crate::game) fn stack_boundary_items(&self) -> Option<&'a sunrise_client::items::Items> {
+        self.0.tags()
+    }
+}
 
 /// Let listeners override the vanilla invulnerability decision for this hit.
 pub(super) fn invulnerability_check(
@@ -2582,6 +2605,7 @@ pub(super) const DAMAGE_HOOKS: DamageHooks = DamageHooks {
     owner_post_listened: Some(|| mod_api::__private::listened(mod_api::HookId::LivingDamagePost)),
     knockback: Some(knockback),
     totem: Some(use_totem),
+    protector: Some(death_protection_source),
     shield: Some(shield_block),
     accepted: Some(living_death::capture_hit),
 };
@@ -3894,13 +3918,6 @@ impl Game<'_> {
         if let Some(page) = row.and_then(|m| m.native.as_mut()) {
             page.settings = settings;
         }
-    }
-    /// What native mods hand shader packs in this frame (`native_shader_params`),
-    /// with values that aren't finite as 0.
-    pub(super) fn native_shader_params_now(&self, partial: f32) -> [[f32; 4]; 8] {
-        let mut params = [[0.0; 4]; 8];
-        self.native_shader_params(partial, &mut params);
-        finite_params(params)
     }
 }
 

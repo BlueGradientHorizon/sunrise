@@ -1014,8 +1014,6 @@ mod mob_looting;
 mod mob_sounds;
 #[path = "game/modding/mod_api_host.rs"]
 mod mod_api_host;
-#[path = "game/interface/mod_browser.rs"]
-mod mod_browser;
 #[path = "game/modding/mod_container_openers.rs"]
 mod mod_container_openers;
 #[cfg(test)]
@@ -1739,6 +1737,8 @@ mod native_scoreboard;
 #[path = "game/modding/native_scoreboard_teams.rs"]
 mod native_scoreboard_teams;
 
+#[path = "game/modding/native_section_dirty.rs"]
+mod native_section_dirty;
 #[path = "game/modding/native_section_visibility.rs"]
 mod native_section_visibility;
 #[path = "game/modding/native_server.rs"]
@@ -3423,6 +3423,15 @@ struct TickScratch {
     later: Vec<BlockPos>,
 }
 
+/// Video options a mod set for this session only, over the player's saved ones.
+#[derive(Default)]
+struct SessionVideo {
+    vsync: Option<bool>,
+    /// As `options.txt` names it: `false`, `fast` or `true`.
+    clouds: Option<&'static str>,
+    view_bobbing: Option<bool>,
+}
+
 struct Game<'a> {
     /// Shared with an integrated server; `collision` and `motion` borrow from it.
     res: Arc<Resources>,
@@ -3465,6 +3474,8 @@ struct Game<'a> {
     motion: &'a MotionResources,
     /// This world's frozen damage definitions and reloadable tag snapshot.
     pub(super) health_resources: sunrise_client::health::HealthResources,
+    /// Contact hurts a vehicle tick queued; applied once its copy is stored.
+    pub(super) vehicle_contact_hurts: Vec<crate::game::entity::ContactHurt>,
     damage_tag_generation: u64,
     /// The registries native mods registered data map types for, as of the
     /// server tables' last build: what `data_maps_updated` fires for.
@@ -3599,6 +3610,12 @@ struct Game<'a> {
     /// Controller connection notices.
     controller_notice: sunrise_client::controller_notice::NoticeSlot,
     focused: bool,
+    /// The pointer is over the window, as the window system last told (its enter and leave
+    /// events, or a move inside it).
+    window_hovered: bool,
+    /// The window is fully hidden (`WindowEvent::Occluded`): covered, on another desktop, or
+    /// minimized where the system reports that.
+    window_occluded: bool,
     /// The visible window of a game an agent started, until a person clicks into it: its
     /// pointer grab stays inside the game as `--offscreen`'s does, so the person's pointer is
     /// never taken, hidden or moved, and their keys and mouse don't reach the game.
@@ -3726,6 +3743,9 @@ struct Game<'a> {
     hud_layer_bounds: Vec<(&'static str, [f32; 4])>,
     /// The status columns' heights in this HUD pass (NeoForge's `Hud.leftHeight`, `rightHeight`).
     hud_status_heights: hud_layout::StatusBarHeights,
+    /// Heights a mod set during the current HUD layer (`set_gui_status_heights`), applied to
+    /// `hud_status_heights` before the next body draws. A cell, as mods write through `&self`.
+    hud_status_heights_set: std::cell::Cell<Option<[i32; 2]>>,
     /// The mod block entities' view distances, asked of the parts once (`native_block_entity_draw`).
     mod_view_distances: std::cell::OnceCell<native_block_entity_draw::ViewDistances>,
     /// What drawing a block entity asks of its block, by state id (`block_entity_reach`):
@@ -3788,7 +3808,10 @@ struct Game<'a> {
     music_notes: sunrise_client::toasts::MusicNotes,
     ambience: sunrise_client::ambience::Ambience,
     /// The sound engine was told the game paused (pauseAllExcept).
-    sound_paused: bool,
+    /// The sounds' pause as last applied: (the game's pause, a mod's `set_sounds_paused`).
+    sound_paused: (bool, bool),
+    /// A client mod paused every sound (`set_sounds_paused`).
+    mod_sounds_paused: bool,
     /// Minecarts whose `MinecartSoundInstance` is playing.
     cart_sounds: HashSet<u32>,
     /// The minecart the riding sounds were started for (`LocalPlayer.startRiding`).
@@ -3829,9 +3852,8 @@ struct Game<'a> {
     lectern_pulses: Vec<((i32, i32, i32), i32)>,
     /// LevelLoadingScreen.smoothedProgress while the player is not placed yet.
     loading_progress: f32,
-    /// `CreateWorldScreen.openCreateWorldScreen`'s data read, on a worker,
-    /// while the title says `createWorld.preparing`.
-    creation_job: Option<std::thread::JoinHandle<std::result::Result<(), String>>>,
+    /// `createWorld.preparing` has been drawn: the data read runs on the next poll.
+    creation_read_started: bool,
     /// When `loading_progress` last eased (the server thread's load, 50 ms a step).
     loading_progress_at: Option<std::time::Instant>,
     /// A received packet started or ended a piston's move: `poll_remote`
@@ -3960,6 +3982,9 @@ struct Game<'a> {
     clicks: sunrise_client::first_person::Clicks<Option<ItemStack>>,
     hand_strength: sunrise_client::attack_strength::AttackStrength,
     settings: Settings,
+    /// Video options a mod set for this session only (`set_session_vsync`,
+    /// `set_session_clouds`): never in `settings`, so never saved.
+    session_video: SessionVideo,
     look: look::LookCache,
     tutorial: tutorial::Tutorial,
     toast_manager: toast_manager::ToastManager,
@@ -4242,8 +4267,6 @@ struct Game<'a> {
     pvp: pvp::PvpState,
     /// Sunrise mods (`game/modding/mods/mod.rs`), none running unless turned on.
     mods: mods::ModsState,
-    /// The in-game browser's worker, separate from the cloneable reload inputs.
-    mod_jobs: mod_browser::Jobs,
     /// Live recipe and known-display tables for typed mod reads.
     recipe_tables: native_recipes::RecipeTables,
     /// The item panel beside container screens (`game/modding/native_panel.rs`).
@@ -4587,6 +4610,8 @@ struct Game<'a> {
     /// A dedicated server's operator, whitelist and ban lists, for `/op`,
     /// `/ban` and friends (`DedicatedPlayerList`).
     server_lists: Option<std::sync::Arc<std::sync::Mutex<dedicated::Lists>>>,
+    /// `Services.nameToIdCache`: the server thread's usercache.json.
+    user_cache: Option<sunrise_client::server::user_cache::UserCache>,
     /// State of `/spectate`, `/posteffect`, `/debug`, `/waypoint` and friends.
     cmds: commands::extra::CommandExtras,
     /// The retained server reload listeners of the last successful reload.
@@ -5406,7 +5431,16 @@ impl Game<'_> {
         let key = (pos[0], pos[1], pos[2]);
         match self.world.block_entities.get(&key) {
             Some(entity) => {
-                Some(self.encode_live_block_entity(key, entity, block, self.res.items()))
+                let items = self.res.items();
+                let current = self.encode_live_block_entity(key, entity, block, items);
+                Some(spill::live_full_metadata(
+                    &self.world,
+                    key,
+                    entity,
+                    block,
+                    items,
+                    current,
+                ))
             }
             None => spill::saved_entity(&self.world, pos),
         }
@@ -7880,6 +7914,7 @@ impl Game<'_> {
         let dispatch_hud = !gui_canceled && !replaying;
         self.hud_layer_next = dispatch_hud.then_some(0);
         self.hud_status_heights = Default::default();
+        self.hud_status_heights_set.set(None);
         self.ui.room = self.hud_room(w, h, show_hud);
         let mut guide_from = 0;
         if dispatch_hud {
@@ -8200,6 +8235,7 @@ impl Game<'_> {
             });
             self.draw_mod_gui_layers(None, &mut batch);
             self.hud_layer_next = None;
+            self.hud_status_heights_set.set(None);
             self.native_render_gui_post(&mut batch);
             self.hud_layer_bounds.clear();
         }
@@ -10666,14 +10702,17 @@ impl Game<'_> {
                 &self.gui.atlas.sprites,
                 &self.gui.atlas.translucent,
             );
-            self.standalone_geometry =
-                native_block_entity_draw::StandaloneGeometry::new(&self.pack, &self.gui);
+            self.standalone_geometry = native_block_entity_draw::StandaloneGeometry::new(
+                &self.pack,
+                &self.gui,
+                self.res.try_block_entity_render(),
+            );
             let (pool, mut names) = self.gui.atlas.dynamic_names();
             self.dynamic_textures.rebind(pool, &mut names);
             sunrise_client::ui_theme::reset_atlas();
             self.native_texture_atlas_stitched(mod_api::TextureAtlas::Gui);
         }
-        let (mut renderer, clouds) = build_renderer(
+        let (mut renderer, required) = build_renderer(
             window,
             self.options.offscreen,
             &self.pack,
@@ -10682,13 +10721,13 @@ impl Game<'_> {
             None,
             self.settings.sunrise.api,
             self.settings.sunrise.translucent_batching,
-            self.settings.vsync,
+            self.effective_vsync(),
             &self.settings.sunrise,
             shader_packs::picked_pack_shape(&self.settings),
             display,
             self.settings.texture_atlas_settings(),
         )?;
-        clouds?;
+        required?;
         (renderer.screenshot, renderer.screenshot_result) = (screenshot, screenshot_result);
         self.adopt_renderer(renderer);
         log::info!("Sunrise: graphics device recovered; rebuilding world meshes");
@@ -12107,6 +12146,7 @@ impl Game<'_> {
         let skybox = self.dimension_type().skybox;
         let camera_fog = self.camera_fog_type(camera.to_array());
         let boss_world_fog = self.boss_overlay.should_create_world_fog();
+        let fast_clouds = self.effective_clouds() == "fast";
         let frame = Frame {
             weather: &weather,
             weather_time: sunrise_client::weather::Time::new(self.world.game_time, alpha as f32),
@@ -12183,7 +12223,7 @@ impl Game<'_> {
                     time: self.world.game_time,
                     partial_tick: alpha,
                     range: self.settings.cloud_range,
-                    fast: self.settings.clouds == "fast",
+                    fast: fast_clouds,
                     color: sky.cloud_color,
                     height: sky.cloud_height,
                 }),
@@ -14284,7 +14324,11 @@ impl<'a> Game<'a> {
             1,
         );
         streaming.paused = true;
-        let standalone_geometry = native_block_entity_draw::StandaloneGeometry::new(&pack, &gui);
+        let standalone_geometry = native_block_entity_draw::StandaloneGeometry::new(
+            &pack,
+            &gui,
+            res.try_block_entity_render(),
+        );
         let mut game = Game {
             structure_spawns: sunrise_client::mobs::spawn_selection::StructureSpawns::load(
                 &options.resources,
@@ -14311,6 +14355,7 @@ impl<'a> Game<'a> {
             collision: res.collision(),
             motion: res.motion(),
             health_resources: res.motion().health.clone(),
+            vehicle_contact_hurts: Vec::new(),
             damage_tag_generation: 1,
             data_map_registries: Vec::new(),
             pending_initial_models: None,
@@ -14392,6 +14437,8 @@ impl<'a> Game<'a> {
             pointer_grab_request: std::cell::Cell::new(None),
             controller_notice: Default::default(),
             focused: true,
+            window_hovered: false,
+            window_occluded: false,
             unclaimed_window: false,
             unclaimed_modifiers: None,
             focus_after_run: None,
@@ -14455,6 +14502,7 @@ impl<'a> Game<'a> {
             hud_layer_next: None,
             hud_layer_bounds,
             hud_status_heights: Default::default(),
+            hud_status_heights_set: Default::default(),
             mod_view_distances: Default::default(),
             block_entity_reach: Default::default(),
             item_level_cache: Default::default(),
@@ -14493,7 +14541,8 @@ impl<'a> Game<'a> {
             music_toast_state: settings.file.int("musicToast").clamp(0, 2) as u8,
             music_notes: Default::default(),
             ambience: Default::default(),
-            sound_paused: false,
+            sound_paused: (false, false),
+            mod_sounds_paused: false,
             cart_sounds: HashSet::new(),
             riding_cart_sounds: None,
             riding_sound: None,
@@ -14513,7 +14562,7 @@ impl<'a> Game<'a> {
             book_last_click: None,
             lectern_pulses: Vec::new(),
             loading_progress: 0.0,
-            creation_job: None,
+            creation_read_started: false,
             loading_progress_at: None,
             moving_pistons_stale: false,
             spawn_origin: None,
@@ -14581,6 +14630,7 @@ impl<'a> Game<'a> {
             clicks: Default::default(),
             hand_strength: Default::default(),
             settings,
+            session_video: SessionVideo::default(),
             look: Default::default(),
             tutorial,
             toast_manager: Default::default(),
@@ -14759,7 +14809,6 @@ impl<'a> Game<'a> {
             extras: Default::default(),
             pvp: Default::default(),
             mods: mod_sources,
-            mod_jobs: Default::default(),
             recipe_tables: Default::default(),
             panel: Default::default(),
             native_shaders: Default::default(),
@@ -14904,6 +14953,7 @@ impl<'a> Game<'a> {
             console_broadcast: None,
             rcon_source: false,
             server_lists: None,
+            user_cache: None,
             world_tables: None,
             server_loot: Default::default(),
             server_items: None,

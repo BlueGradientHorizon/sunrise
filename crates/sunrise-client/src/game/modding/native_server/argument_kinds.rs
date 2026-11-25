@@ -11,7 +11,7 @@ use sunrise_client::command::{
 /// The argument kinds a native usage may name, each with a [`parser`]; `resource:<registry>`,
 /// the bounded `integer(min,max)` and `long(min,max)` ([`bounded_parser`]) and `mod_id` come on
 /// top.
-pub(super) const KINDS: [&str; 20] = [
+pub(super) const KINDS: [&str; 23] = [
     "word",
     "string",
     "text",
@@ -20,6 +20,7 @@ pub(super) const KINDS: [&str; 20] = [
     "number",
     "boolean",
     "player",
+    "game_profile",
     "entity",
     "entities",
     "players",
@@ -27,6 +28,8 @@ pub(super) const KINDS: [&str; 20] = [
     "block_pos",
     "vec3",
     "vec3_uncentered",
+    "vec2",
+    "vec2_uncentered",
     "column_pos",
     "rotation",
     "dimension",
@@ -34,8 +37,9 @@ pub(super) const KINDS: [&str; 20] = [
     "id",
 ];
 
-/// The tree property marking `vec3_uncentered`: vanilla's `vec3(false)` has the same parser id
-/// and properties as `vec3()`, so the report format cannot tell them apart.
+/// The tree property marking `vec3_uncentered` and `vec2_uncentered`: vanilla's `vec3(false)` and
+/// `vec2(false)` have the same parser id and properties as `vec3()` and `vec2()`, so the report
+/// format cannot tell them apart.
 pub(super) const UNCENTERED: &str = "uncentered";
 
 /// The custom argument types the mods registered, by namespaced id, for the command tree being
@@ -137,6 +141,7 @@ pub(super) fn parser(kind: &str) -> Option<(&'static str, Value, ArgType)> {
             },
         ),
         "boolean" => ("brigadier:bool", Value::Null, ArgType::Bool),
+        "game_profile" => ("minecraft:game_profile", Value::Null, ArgType::GameProfile),
         "entity" | "entities" | "player" | "players" => {
             let single = matches!(kind, "entity" | "player");
             let players = matches!(kind, "player" | "players");
@@ -161,6 +166,17 @@ pub(super) fn parser(kind: &str) -> Option<(&'static str, Value, ArgType)> {
             "minecraft:vec3",
             Value::Null,
             ArgType::Vec3 { center: false },
+        ),
+        // `Vec2Argument.vec2()` centres whole x and z on their block, `vec2(false)` does not.
+        "vec2" => (
+            "minecraft:vec2",
+            Value::Null,
+            ArgType::Vec2 { center: true },
+        ),
+        "vec2_uncentered" => (
+            "minecraft:vec2",
+            Value::Null,
+            ArgType::Vec2 { center: false },
         ),
         "column_pos" => ("minecraft:column_pos", Value::Null, ArgType::ColumnPos),
         "rotation" => ("minecraft:rotation", Value::Null, ArgType::Rotation),
@@ -304,8 +320,9 @@ pub(super) fn parsed_type<'a>(
     })
 }
 
-/// What a `vec3`, `vec3_uncentered`, `column_pos`, `rotation` or `block_pos` argument delivers:
-/// `position` is `coordinates` resolved against the source, `rotation` the source's yaw and pitch.
+/// What a `vec3`, `vec3_uncentered`, `vec2`, `vec2_uncentered`, `column_pos`, `rotation` or
+/// `block_pos` argument delivers: `position` is `coordinates` resolved against the source,
+/// `rotation` the source's yaw and pitch.
 pub(super) fn positional_value(
     ty: Option<&ArgType>,
     coordinates: &Coordinates,
@@ -315,6 +332,7 @@ pub(super) fn positional_value(
     use mod_api::CommandArgumentValue as Value;
     match ty {
         Some(ArgType::Vec3 { .. }) => Value::Vec3(position),
+        Some(ArgType::Vec2 { .. }) => Value::Vec2([position[0] as f32, position[2] as f32]),
         Some(ArgType::ColumnPos) => {
             Value::ColumnPos([position[0].floor() as i32, position[2].floor() as i32])
         }
@@ -438,6 +456,9 @@ pub(super) fn argument_type(node: &Value, arguments: &CommandArguments) -> ArgTy
     }
     if node["parser"] == "minecraft:vec3" && node[UNCENTERED] == true {
         return ArgType::Vec3 { center: false };
+    }
+    if node["parser"] == "minecraft:vec2" && node[UNCENTERED] == true {
+        return ArgType::Vec2 { center: false };
     }
     if node["parser"] == "brigadier:integer" {
         let (min, max) = integer_bounds(node);

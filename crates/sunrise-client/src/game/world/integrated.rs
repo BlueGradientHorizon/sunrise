@@ -962,8 +962,15 @@ impl Game<'_> {
         tasks: Receiver<OwnerRequest>,
         opening: Opening,
     ) -> Result<(Pipe, String)> {
-        // The mods' server configs, read before the server starts.
+        // Minecraft creates Services in the game directory, shared by all its worlds.
         if let Ok(dir) = std::env::current_dir() {
+            let (cache, warnings) =
+                sunrise_client::server::user_cache::UserCache::load(dir.join("usercache.json"));
+            for warning in warnings {
+                log::warn!("{warning}");
+            }
+            self.user_cache = Some(cache);
+            // The mods' server configs, read before the server starts.
             self.native_configs_server_start(&dir.join("saves").join(&launch.folder), false);
         }
         let prepared = self.prepare_early_game_rules(opening.world?)?;
@@ -1315,7 +1322,8 @@ impl Game<'_> {
                 host.settings = settings;
                 host.hub.config.force_game_mode = settings.force_game_mode;
                 // IntegratedServer.setGuestCommandAccess, then updatePermissions.
-                host.hub.config.guest_commands = settings.guest_commands && allow_commands;
+                host.hub.allow_commands = allow_commands;
+                host.hub.config.guest_commands = settings.guest_commands;
                 self.resend_commands_filtered();
             }
             Publish::Close => {
@@ -1385,10 +1393,11 @@ impl Game<'_> {
         };
         let published = self.published_port().is_some();
         if let Some(host) = self.lan.as_mut() {
+            host.hub.allow_commands = allow;
             let level = if allow { 4 } else { 0 };
             host.hub.ops.insert(owner, level);
             if published {
-                host.hub.config.guest_commands = allow && host.settings.guest_commands;
+                host.hub.config.guest_commands = host.settings.guest_commands;
             }
             self.resend_commands_filtered();
         }

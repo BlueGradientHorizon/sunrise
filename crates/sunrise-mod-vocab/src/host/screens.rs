@@ -188,6 +188,17 @@ pub trait ScreensClientHost {
     /// The last window focus state reported by the window system.
     fn window_focused(&self) -> bool;
     /// Side: client.
+    /// Whether the pointer is over the game window, focused or not, as the window system last
+    /// reported its enter and leave. Vanilla 26.3 has a cursor-enter event only; the leave
+    /// comes from the window system. With [`Self::window_focused`] false, true means the window
+    /// is hovered in the background. False before the pointer has entered the window.
+    fn window_hovered(&self) -> bool;
+    /// Side: client.
+    /// Whether the window is fully hidden (occluded): covered by other windows, on another
+    /// desktop, or minimized, where the window system reports it (some report only minimizing,
+    /// and some nothing). A hidden window's frames are not seen, so a mod may draw less.
+    fn window_occluded(&self) -> bool;
+    /// Side: client.
     /// The same screen identifier provided to screen hooks.
     fn observed_screen_id(&self) -> Option<ScreenId>;
     /// Side: client.

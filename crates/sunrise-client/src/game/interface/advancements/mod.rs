@@ -362,8 +362,12 @@ impl adv::World for View<'_, '_> {
     fn smokey(&self, p: [i32; 3]) -> bool {
         sunrise_client::beehive::smokey(&self.0.mob_world_base(&[]), p)
     }
+    /// The same `saveWithFullMetadata` a loot roll's `match_block` reads: the live block
+    /// entity over the NBT it was loaded from, else its saved row.
     fn block_entity_nbt(&self, p: [i32; 3]) -> Option<sunrise_core::nbt::Tag> {
-        self.0.block_entity_nbt(p)
+        self.0
+            .block_entity_nbt(p)
+            .or_else(|| crate::game::spill::saved_full_metadata(&self.0.world, p))
     }
     fn in_tag(&self, registry: &str, tag: &str, id: &str) -> bool {
         let tags = TagSources {
@@ -4208,7 +4212,8 @@ mod movement_predicate_tests {
         assert!(game.run_command("forceload add 0 0"));
         assert!(game.run_command("fill 0 199 0 15 199 15 stone"));
         assert!(game.world.loaded(4, 4));
-        let root = std::env::current_dir().unwrap().join("movement-world");
+        let scratch = tempfile::tempdir().unwrap();
+        let root = scratch.path().join("movement-world");
         let pack = root.join("datapacks/movement");
         let folder = pack.join("data/motion/predicate");
         std::fs::create_dir_all(&folder).unwrap();
