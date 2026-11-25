@@ -875,6 +875,8 @@ static SHARED_DATA: std::sync::Mutex<Vec<SharedEntry>> = std::sync::Mutex::new(V
 /// Bundles with data packs kept besides the plain ones: a world's dimensions
 /// share one, and returning to a world finds it.
 const SHARED_WITH_PACKS: usize = 2;
+/// Plain bundles kept across distinct registry lifetimes so test registries stay bounded.
+const SHARED_PLAIN: usize = 2;
 /// Let go of the bundles `shared_data` loaded: for a preload no world used
 /// (game/world/world_loading.rs). A generator that holds one keeps it.
 pub fn forget_shared_data() {
@@ -952,6 +954,11 @@ pub fn shared_data_with(
         && cache.iter().filter(|e| !e.1.is_empty()).count() >= SHARED_WITH_PACKS
     {
         let oldest = cache.iter().position(|e| !e.1.is_empty());
+        cache.remove(oldest.expect("counted"));
+    } else if overrides.is_empty()
+        && cache.iter().filter(|e| e.1.is_empty()).count() >= SHARED_PLAIN
+    {
+        let oldest = cache.iter().position(|e| e.1.is_empty());
         cache.remove(oldest.expect("counted"));
     }
     cache.push((dir.to_owned(), overrides.clone(), data.clone()));
