@@ -572,9 +572,8 @@ impl PlacementContext for DatapackReadWorld<'_, '_> {
     }
 
     fn unobstructed_block(&mut self, position: [i32; 3]) -> Result<bool, PlacementQueryError> {
-        Ok(self
-            .game
-            .is_datapack_block_unobstructed(self.level, self.world, position))
+        self.game
+            .is_datapack_block_unobstructed(self.level, self.world, position)
     }
 
     fn biome_identity(&mut self, position: [i32; 3]) -> Result<BiomeId, PlacementQueryError> {
@@ -911,16 +910,17 @@ impl<'g> Game<'g> {
         })
     }
 
-    /// `EntityGetter.isUnobstructed(null, Shapes.block().move(pos))`: lazily checks every live
+    /// `EntityGetter.isUnobstructed(null, Shapes.block().move(pos))`: checks every live
     /// non-spectator player (including LAN guests and dedicated-server players) and every
-    /// `blocksBuilding` entity in `level` (active or parked), without allocating on unobstructed
-    /// cells.
+    /// `blocksBuilding` entity in `level` (active or parked). Mobs come from the level's entity
+    /// lookup by the cell's box, as `EntityGetter.getEntities(source, shape.bounds())` does,
+    /// not from a walk over every mob.
     fn is_datapack_block_unobstructed(
         &self,
         level: LevelRef,
         world: &World,
         position: [i32; 3],
-    ) -> bool {
+    ) -> Result<bool, PlacementQueryError> {
         let cell = Aabb::new(
             Vec3::new(
                 f64::from(position[0]),
@@ -957,12 +957,12 @@ impl<'g> Game<'g> {
             && !self.spectator()
             && self.player.as_ref().is_some_and(|p| obstructs(p.bounds()))
         {
-            return false;
+            return Ok(false);
         }
         if self.is_logical_server() {
             if self.lan_acting.is_some() {
                 if self.lan_building_boxes.iter(dim).any(&mut obstructs) {
-                    return false;
+                    return Ok(false);
                 }
             } else if let Some(host) = self.lan.as_ref()
                 && host
@@ -972,7 +972,7 @@ impl<'g> Game<'g> {
                     .filter(|g| g.dimension == dim_id && g.loaded && !g.dead && !g.spectator())
                     .any(|g| obstructs(g.bounds()))
             {
-                return false;
+                return Ok(false);
             }
         }
 
@@ -980,44 +980,56 @@ impl<'g> Game<'g> {
             let remote = (!self.is_logical_server())
                 .then_some(self.remote.as_ref())
                 .flatten();
-            let mob_obstructs = self.mobs.iter().any(|mob| {
-                if mob.removed {
-                    return false;
-                }
-                if &*mob.kind.id == "minecraft:player"
-                    && remote
-                        .is_some_and(|r| r.remote_player_info_game_mode(mob.id as i32) == Some(3))
-                {
-                    return false;
-                }
-                obstructs(mob.bounds())
-            });
+            let mut mob_obstructs = false;
+            self.level_visit_entities_in(
+                level,
+                cell.min_position().components(),
+                cell.max_position().components(),
+                &mut |entity| {
+                    let Some(index) = self.mob_index.find_ref(&self.mobs, entity.id()) else {
+                        return std::ops::ControlFlow::Continue(());
+                    };
+                    let mob = &self.mobs[index];
+                    if !mob.removed
+                        && !(&*mob.kind.id == "minecraft:player"
+                            && remote.is_some_and(|r| {
+                                r.remote_player_info_game_mode(mob.id as i32) == Some(3)
+                            }))
+                        && obstructs(mob.bounds())
+                    {
+                        mob_obstructs = true;
+                        return std::ops::ControlFlow::Break(());
+                    }
+                    std::ops::ControlFlow::Continue(())
+                },
+            )
+            .map_err(|_| PlacementQueryError::Unavailable)?;
             if mob_obstructs
                 || self
                     .dragon
                     .as_ref()
                     .is_some_and(|dragon| obstructs(dragon.body_bounds()))
             {
-                return false;
+                return Ok(false);
             }
             let entities = crate::game::entity::entity_lists_of!(self);
-            return !entities
+            return Ok(!entities
                 .non_mob_building_blocker_boxes(
                     self.carts
                         .iter()
                         .map(crate::game::minecarts::Minecart::bounds),
                     &self.crystals,
                 )
-                .any(obstructs);
+                .any(obstructs));
         }
 
         if self.is_logical_server()
             && let Some(parked) = self.levels.parked_of(dim_id)
         {
-            return !parked.any_building_blocker(obstructs);
+            return Ok(!parked.any_building_blocker(obstructs));
         }
 
-        true
+        Ok(true)
     }
 
     pub(super) fn datapack_int_provider_sample(
