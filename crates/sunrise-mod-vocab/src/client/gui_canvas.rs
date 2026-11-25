@@ -167,6 +167,24 @@ pub trait GuiCanvas {
     /// to commit.
     fn item(&mut self, stack: &ItemStack, at: [f32; 2], seed: i32) -> Result<(), GuiDrawError>;
 
+    /// [`Self::item`] with every vertex it draws, the enchantment glint's included, multiplied
+    /// by straight-alpha ARGB `argb`: a fading pickup icon, a translucent ghost item in a recipe
+    /// preview, a dimmed unavailable slot. `0xFFFFFFFF` draws exactly what [`Self::item`] draws,
+    /// and a zero alpha (`argb >> 24 == 0`) draws nothing, as [`Self::text`] does: the item is
+    /// not drawn at all, so its model hooks do not run for that call. An OptiFine CIT glint
+    /// layer of a resource pack takes the tint's alpha only, as its own colour comes from the
+    /// pack. The current
+    /// pose and scissor apply as for [`Self::item`]. Vanilla 26.3's `GuiGraphicsExtractor.item`
+    /// always draws opaque (its item blit's colour is `-1`); this is the multiplier
+    /// `RenderSystem.setShaderColor` gave around `GuiGraphics.renderItem` before 1.21.6.
+    fn item_tinted(
+        &mut self,
+        stack: &ItemStack,
+        at: [f32; 2],
+        seed: i32,
+        argb: u32,
+    ) -> Result<(), GuiDrawError>;
+
     /// Draw the stack's bar, cooldown, count and custom item decorations at `at`, in that order.
     /// In an item decorator's canvas or its children, this paints only the standard bar, cooldown
     /// and count, without invoking item decorators again.
