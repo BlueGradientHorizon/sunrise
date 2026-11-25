@@ -3702,7 +3702,12 @@ impl Game<'_> {
     }
     /// Rebuild GPU-owned state after the backend reports device loss.
     pub(in crate::game::client_side) fn recover_device(&mut self) -> Result<()> {
-        if !self.renderer.0.as_ref().is_some_and(Renderer::device_lost) {
+        if !self
+            .renderer
+            .0
+            .as_deref()
+            .is_some_and(Renderer::device_lost)
+        {
             return Ok(());
         }
         let now = Instant::now();
@@ -3754,7 +3759,7 @@ impl Game<'_> {
         )?;
         clouds?;
         (renderer.screenshot, renderer.screenshot_result) = (screenshot, screenshot_result);
-        self.adopt_renderer(renderer);
+        self.adopt_renderer(Box::new(renderer));
         log::info!("Sunrise: graphics device recovered; rebuilding world meshes");
         Ok(())
     }
@@ -3777,7 +3782,15 @@ impl Game<'_> {
         let rendered = match self.render() {
             // The callback can fire during this frame; rebuild on
             // the next redraw rather than exiting on its error.
-            Err(_) if self.renderer.0.as_ref().is_some_and(Renderer::device_lost) => false,
+            Err(_)
+                if self
+                    .renderer
+                    .0
+                    .as_deref()
+                    .is_some_and(Renderer::device_lost) =>
+            {
+                false
+            }
             result => result?,
         };
         self.finish_render_frame(elapsed);

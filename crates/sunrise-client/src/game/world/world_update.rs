@@ -26,7 +26,7 @@ impl Game<'_> {
         if self
             .renderer
             .0
-            .as_mut()
+            .as_deref_mut()
             .is_some_and(Renderer::take_dropped_sections)
         {
             self.clear_lod();

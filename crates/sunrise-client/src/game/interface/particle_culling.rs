@@ -12,7 +12,7 @@ macro_rules! section_scene {
         sunrise_client_gameplay::section_scene::SectionScene {
             world: &$game.world,
             facts: $game.res.facts(),
-            renderer: $game.renderer.0.as_ref(),
+            renderer: $game.renderer.0.as_deref(),
             streaming: &$game.streaming,
             pending_uploads: &$game.pending_uploads.0,
         }

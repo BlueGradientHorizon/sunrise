@@ -586,7 +586,7 @@ impl Game<'_> {
                     self.options.offscreen,
                     &pack,
                     &gui,
-                    self.renderer.0.as_ref(),
+                    self.renderer.0.as_deref(),
                     Some(textures),
                     self.settings.sunrise.api,
                     self.settings.sunrise.translucent_batching,
@@ -602,7 +602,7 @@ impl Game<'_> {
                 )
                 .and_then(|(renderer, clouds)| {
                     clouds?;
-                    Ok(renderer)
+                    Ok(Box::new(renderer))
                 })
             })
             .transpose()

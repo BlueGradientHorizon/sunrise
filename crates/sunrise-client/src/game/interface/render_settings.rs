@@ -28,13 +28,13 @@ impl Game<'_> {
         window: Arc<Window>,
         pack: &PackResources,
         gui: &UiResources,
-    ) -> Result<Renderer> {
+    ) -> Result<Box<Renderer>> {
         build_renderer(
             window,
             self.options.offscreen,
             pack,
             gui,
-            self.renderer.0.as_ref(),
+            self.renderer.0.as_deref(),
             None,
             self.settings.sunrise.api,
             self.settings.sunrise.translucent_batching,
@@ -50,7 +50,7 @@ impl Game<'_> {
         )
         .and_then(|(renderer, clouds)| {
             clouds?;
-            Ok(renderer)
+            Ok(Box::new(renderer))
         })
     }
     /// Under `SUNRISE_HDR_FRAME=float` the frame follows what draws the picture: when HDR,
@@ -266,20 +266,20 @@ impl Game<'_> {
         sunrise_client::ui_theme::reset_atlas();
     }
 
-    pub(in crate::game) fn new_renderer(&self, window: Arc<Window>) -> Result<Renderer> {
+    pub(in crate::game) fn new_renderer(&self, window: Arc<Window>) -> Result<Box<Renderer>> {
         self.renderer_for(window, &self.pack, &self.gui)
     }
 
     /// A renderer made again from the resources loaded takes over: what named the old one's
     /// atlas slots is forgotten, the world is meshed again, and the shader pack and the
     /// settings are applied again.
-    pub(in crate::game::client_side) fn adopt_renderer(&mut self, renderer: Renderer) {
+    pub(in crate::game::client_side) fn adopt_renderer(&mut self, renderer: Box<Renderer>) {
         self.adopt(renderer, false);
     }
 
     /// `adopt_renderer`; with `world_kept`, a renderer that took the old one's sections and far
     /// tiles (`Renderer::take_world`): they and the meshes on their way stay.
-    fn adopt(&mut self, mut renderer: Renderer, world_kept: bool) {
+    fn adopt(&mut self, mut renderer: Box<Renderer>, world_kept: bool) {
         if !world_kept {
             // A new renderer starts with the vanilla column.
             renderer.clear_sections(self.world.layout());

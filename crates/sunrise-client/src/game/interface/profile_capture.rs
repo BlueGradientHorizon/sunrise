@@ -728,7 +728,7 @@ impl Game<'_> {
     pub(in crate::game::client_side) fn gpu_readout(
         &self,
     ) -> Option<sunrise_client::gfx::pack_timing::GpuReadout> {
-        gpu_readout(self.profile.gpu, self.renderer.0.as_ref())
+        gpu_readout(self.profile.gpu, self.renderer.0.as_deref())
     }
 
     pub(in crate::game::client_side) fn client_syntax_failure(
@@ -1084,7 +1084,7 @@ impl Game<'_> {
             .as_ref()
             .and_then(|r| r.session.counters.lock().unwrap().clone());
         self.profile.perf.set_connection(connection);
-        let (wanted, renderer) = (self.profile.gpu, self.renderer.0.as_ref());
+        let (wanted, renderer) = (self.profile.gpu, self.renderer.0.as_deref());
         let entities = self.client_perf_entity_count() as u32;
         let memory = &mut self.profile.memory;
         self.profile.perf.frame_with_gpu(

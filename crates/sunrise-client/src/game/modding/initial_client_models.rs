@@ -22,7 +22,7 @@ impl Game<'_> {
         &mut self,
         atlas: &Arc<super::RenderAssets>,
         gui: UiResources,
-        renderer: Option<Renderer>,
+        renderer: Option<Box<Renderer>>,
     ) -> Option<PreparedModels> {
         let mut prepared = None;
         if let Some(mut renderer) = renderer {
@@ -56,7 +56,7 @@ impl Game<'_> {
         &mut self,
         models: InitialModelGeneration,
         client_applies: Vec<client_reload::PreparedClientReload>,
-        renderer: Option<Renderer>,
+        renderer: Option<Box<Renderer>>,
     ) -> sunrise_client::Result<()> {
         self.join_world_rest()?;
         let InitialModelGeneration { pack, gui } = models;

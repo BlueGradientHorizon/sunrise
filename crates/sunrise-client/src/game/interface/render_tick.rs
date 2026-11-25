@@ -152,7 +152,7 @@ impl Game<'_> {
             min_y: world.bottom_y(),
             top: &top,
         };
-        let renderer = self.renderer.0.as_mut().map(|r| r as _);
+        let renderer = self.renderer.0.as_deref_mut().map(|r| r as _);
         self.particles
             .0
             .polytone_gpu_decide(renderer, camera, &source);
@@ -166,7 +166,7 @@ impl Game<'_> {
         alpha: f64,
     ) {
         let world = &self.world;
-        let renderer = self.renderer.0.as_mut().map(|r| r as _);
+        let renderer = self.renderer.0.as_deref_mut().map(|r| r as _);
         self.particles
             .0
             .polytone_gpu_hand_over(renderer, camera, alpha as f32, &|b| {

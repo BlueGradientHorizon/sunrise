@@ -378,7 +378,7 @@ pub(in crate::game) fn start_client_game<'a>(
         game.window.0 = Some(window);
         let ready = game.apply_pending_client_start(
             pending.expect("loading screen has a client"),
-            Ok(Some(renderer)),
+            Ok(Some(Box::new(renderer))),
         )?;
         Ok(ready.then_some(game))
     } else if let Some(pending) = pending {
@@ -443,7 +443,7 @@ impl Game<'_> {
     pub(in crate::game::client_side) fn apply_pending_client_start(
         &mut self,
         pending: initial_client_models::PendingClientStart,
-        renderer: Result<Option<Renderer>>,
+        renderer: Result<Option<Box<Renderer>>>,
     ) -> Result<bool> {
         self.apply_initial_model_generation(pending.models, pending.applies, renderer?)?;
         self.client.world_renderer_ready = self.renderer.0.is_some();

@@ -3685,7 +3685,7 @@ struct Game<'a> {
     pause: bool,
     screen_state: client_side::ClientOnly<screen_build::ScreenState>,
     window: client_side::ClientShared<Option<Arc<Window>>>,
-    renderer: client_side::ClientShared<Option<Renderer>>,
+    renderer: client_side::ClientShared<Option<Box<Renderer>>>,
     /// Mob models posed on the GPU (`Frame::skin`, `mobs::skin`): the models stored there,
     /// and this frame's draws.
     skin_models:
@@ -5634,7 +5634,7 @@ struct WrappedServerInit {
 }
 
 struct WrappedRendererInit {
-    renderer: client_side::ClientShared<Option<Renderer>>,
+    renderer: client_side::ClientShared<Option<Box<Renderer>>>,
 }
 
 struct WrappedPrepInit {
