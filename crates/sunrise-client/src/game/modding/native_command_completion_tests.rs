@@ -220,6 +220,7 @@ fn custom_id_reads_a_mid_command_identifier_and_sends_its_vanilla_parser() {
             let (mut game, rx) = game_with_guest(&mut resources, "IdTester");
             game.ui.dispatcher.0 = Arc::new(dispatcher);
             game.lan.as_mut().unwrap().hub.set_mod_commands(0, tree);
+            game.send_player_command_tree(2);
             let packet = last_tree(&rx);
             let root = packet
                 .nodes
