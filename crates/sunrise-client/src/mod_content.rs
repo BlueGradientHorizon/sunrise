@@ -233,6 +233,109 @@ pub fn fluid_look(id: &str) -> Option<FluidLook> {
         .cloned()
 }
 
+fn face_rules_json(rules: &[mod_api::FaceRule]) -> J {
+    let state_obj = |map: &BTreeMap<String, String>| -> J {
+        J::Obj(
+            map.iter()
+                .map(|(k, v)| (k.clone(), J::Str(v.clone())))
+                .collect(),
+        )
+    };
+    let dir_name = |d: sunrise_core::geometry::Direction| match d {
+        sunrise_core::geometry::Direction::Down => "down",
+        sunrise_core::geometry::Direction::Up => "up",
+        sunrise_core::geometry::Direction::North => "north",
+        sunrise_core::geometry::Direction::South => "south",
+        sunrise_core::geometry::Direction::West => "west",
+        sunrise_core::geometry::Direction::East => "east",
+    };
+    J::Arr(
+        rules
+            .iter()
+            .map(|rule| {
+                let mut fields = Vec::new();
+                match &rule.neighbor {
+                    mod_api::FaceNeighbor::Any => {}
+                    mod_api::FaceNeighbor::SameBlock { state } => {
+                        let val = if state.is_empty() {
+                            J::Str("self".into())
+                        } else {
+                            J::Obj(vec![
+                                ("block".into(), J::Str("self".into())),
+                                ("state".into(), state_obj(state)),
+                            ])
+                        };
+                        fields.push(("neighbor".into(), val));
+                    }
+                    mod_api::FaceNeighbor::Block { id, state } => {
+                        let val = if state.is_empty() {
+                            J::Str(id.clone())
+                        } else {
+                            J::Obj(vec![
+                                ("block".into(), J::Str(id.clone())),
+                                ("state".into(), state_obj(state)),
+                            ])
+                        };
+                        fields.push(("neighbor".into(), val));
+                    }
+                    mod_api::FaceNeighbor::Tag { id, state } => {
+                        let val = if state.is_empty() {
+                            J::Str(format!("#{id}"))
+                        } else {
+                            J::Obj(vec![
+                                ("tag".into(), J::Str(id.clone())),
+                                ("state".into(), state_obj(state)),
+                            ])
+                        };
+                        fields.push(("neighbor".into(), val));
+                    }
+                }
+                if !rule.state.is_empty() {
+                    fields.push(("state".into(), state_obj(&rule.state)));
+                }
+                if !rule.same.is_empty() {
+                    fields.push((
+                        "same".into(),
+                        J::Arr(rule.same.iter().cloned().map(J::Str).collect()),
+                    ));
+                }
+                match &rule.faces {
+                    mod_api::FaceDirections::All => {}
+                    mod_api::FaceDirections::Horizontal => {
+                        fields.push(("faces".into(), J::Str("horizontal".into())));
+                    }
+                    mod_api::FaceDirections::Vertical => {
+                        fields.push(("faces".into(), J::Str("vertical".into())));
+                    }
+                    mod_api::FaceDirections::Only(dirs) => {
+                        fields.push((
+                            "faces".into(),
+                            J::Arr(dirs.iter().map(|&d| J::Str(dir_name(d).into())).collect()),
+                        ));
+                    }
+                }
+                if !rule.facts.is_empty() {
+                    let mut facts = Vec::new();
+                    if let Some(v) = rule.facts.is_air {
+                        facts.push(("is_air".into(), J::Bool(v)));
+                    }
+                    if let Some(v) = rule.facts.can_occlude {
+                        facts.push(("can_occlude".into(), J::Bool(v)));
+                    }
+                    if let Some(v) = rule.facts.is_solid_render {
+                        facts.push(("is_solid_render".into(), J::Bool(v)));
+                    }
+                    if let Some(v) = rule.facts.liquid {
+                        facts.push(("liquid".into(), J::Bool(v)));
+                    }
+                    fields.push(("facts".into(), J::Obj(facts)));
+                }
+                J::Obj(fields)
+            })
+            .collect(),
+    )
+}
+
 /// JSON with its object keys in file order, so a rewritten table differs
 /// from the original only by what was added.
 #[derive(Clone, Debug, PartialEq)]
@@ -2437,11 +2540,19 @@ impl<'a> Plan<'a> {
                     let Some(entry) = doc.get_mut(&b.decl.id) else {
                         continue;
                     };
-                    if !model && let Some(skip) = b.decl.properties.skip_same_block_faces {
-                        entry.set(
-                            "rule",
-                            J::Str(if skip { "same_block" } else { "never" }.into()),
-                        );
+                    if !model {
+                        if let Some(rules) = &b.decl.properties.skip_rendering {
+                            entry.set("skip_rendering", face_rules_json(rules));
+                        }
+                        if !b.decl.properties.hides_neighbor_face.is_empty() {
+                            entry.set(
+                                "hides_neighbor_face",
+                                face_rules_json(&b.decl.properties.hides_neighbor_face),
+                            );
+                        }
+                        if let Some(supports) = b.decl.properties.supports_external_face_hiding {
+                            entry.set("supports_external_face_hiding", J::Bool(supports));
+                        }
                     }
                     // Faces beside a block that occludes nothing are drawn (`Block.shouldRenderFace`).
                     if !model && let Some(can_occlude) = b.decl.properties.occludes {
