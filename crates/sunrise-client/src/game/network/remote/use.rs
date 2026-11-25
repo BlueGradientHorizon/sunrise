@@ -173,6 +173,7 @@ impl Game<'_> {
                 ticks: 0,
                 crack: None,
             }));
+            self.native_local_break_progress(hit.pos, 0.0);
             return true;
         }
         let Some((pos, last_face, done)) = self.remote.as_ref().and_then(|r| r.destroying) else {
@@ -206,6 +207,8 @@ impl Game<'_> {
                 r.destroy_delay = 5;
             }
             self.mining = None;
+            // continueDestroyBlock tells its level the reset progress: the crack goes.
+            self.native_local_break_progress(pos, 0.0);
         } else {
             if last_face != face {
                 self.send(S::PlayerAction(play::PlayerAction {
@@ -225,6 +228,7 @@ impl Game<'_> {
                 ticks,
                 crack: None,
             }));
+            self.native_local_break_progress(pos, done);
         }
         true
     }

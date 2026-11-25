@@ -2529,6 +2529,9 @@ pub(in crate::game) mod tests {
     mod client_block_changed_tests {
         include!("client_block_changed_tests.rs");
     }
+    mod client_break_progress_tests {
+        include!("client_break_progress_tests.rs");
+    }
     pub(in crate::game) mod camera_draw_tests {
         include!("camera_draw_tests.rs");
     }
