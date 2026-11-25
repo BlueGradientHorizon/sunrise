@@ -366,6 +366,7 @@ fn entity_layer_and_scene_entity_receive_their_view_and_placement() {
                 entity: &EntityRenderState,
                 _: Option<&dyn FrameModel>,
                 draw: &mut dyn BlockEntityDrawContext,
+                _: &mut dyn mod_api::StockLayerDraw,
             ) -> Result<(), String> {
                 self.log
                     .lock()
