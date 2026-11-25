@@ -448,82 +448,45 @@ pub(in crate::game) mod shriek_capture_tests {
             game.state_property(game.world.block(7, 200, 4), "waterlogged"),
             Some("true")
         );
-        game.particles.0.requested = Some(Vec::new());
-        game.particles.0.seed_randoms(6500, 6501, 6502);
-        let mut random = LegacyRandom::new(6500);
         let clock = game.world.game_time;
         let mut world_random = game.world.random.clone();
         let effect = "minecraft:block.sculk_shrieker.shriek";
         let before = "minecraft:block.note_block.pling";
         let after = "minecraft:block.amethyst_block.chime";
-        game.audio.0.capture = Some(Vec::new());
-        game.audio
-            .0
-            .play_on(4, before, Some([1.5, 200.0, 4.5]), 1.0, 1.0);
+        let dry_state = game.world.block(4, 200, 4);
+        let wet_state = game.world.block(7, 200, 4);
+        // Server role: does not play 3007 locally or record it into pending_sounds.
+        game.start_audio_capture();
+        game.server_play_sound_on(4, before, [1.5, 200.0, 4.5], 1.0, 1.0);
         game.level_events.push(LevelEvent::LevelEvent {
             source: None,
             id: 3007,
             pos: BlockPos::new(4, 200, 4),
             data: 0,
         });
-        game.client_process_level_events().unwrap();
-        assert_eq!(
-            game.audio.0.heard.get(effect),
-            Some(&1),
-            "dry effect must still play locally"
-        );
-        random.next_float(); // Same single pitch draw after the particle requests.
-        assert_eq!(
-            game.particles.0.random().next_long(),
-            random.next_long(),
-            "dry random continuation"
-        );
         game.level_events.push(LevelEvent::LevelEvent {
             source: None,
             id: 3007,
             pos: BlockPos::new(7, 200, 4),
             data: 0,
         });
-        game.client_process_level_events().unwrap();
-        assert_eq!(
-            game.audio.0.heard.get(effect),
-            Some(&1),
-            "waterlogged effect stays silent"
+        game.server_process_level_events().unwrap();
+        game.server_play_sound_on(4, after, [2.5, 200.0, 4.5], 0.5, 1.25);
+        assert!(
+            game.audio.0.heard.is_empty(),
+            "server must not play shriek locally"
         );
-        assert_eq!(
-            game.particles.0.random().next_long(),
-            random.next_long(),
-            "wet branch consumes no pitch draw"
-        );
-        let requests = game.particles.0.requested.as_ref().unwrap();
-        assert_eq!(requests.len(), 20);
-        for (i, (options, position, velocity)) in requests.iter().enumerate() {
-            assert_eq!(options.ty, ParticleType::Shriek);
-            assert_eq!(options.scale, ((i % 10) * 5) as f32);
-            assert_eq!(*position, [if i < 10 { 4.5 } else { 7.5 }, 200.5, 4.5]);
-            assert_eq!(*velocity, [0.0; 3]);
-        }
-        game.audio
-            .0
-            .play_on(4, after, Some([2.5, 200.0, 4.5]), 0.5, 1.25);
-        assert_eq!(game.audio.0.heard.get(before), Some(&1));
-        assert_eq!(game.audio.0.heard.get(after), Some(&1));
         assert_eq!(game.world.game_time, clock);
         assert_eq!(
             game.world.random.next_long(),
             world_random.next_long(),
             "level random continuation"
         );
-        let shared = game
-            .audio
-            .0
-            .capture
-            .as_ref()
-            .expect("shared capture restored");
+        let shared = &game.server.pending_sounds;
         assert_eq!(
             shared.iter().map(|s| s.event.as_str()).collect::<Vec<_>>(),
             vec![before, after],
-            "client-level shriek entered shared capture"
+            "shriek level event must not enter pending_sounds"
         );
         for (sound, (position, volume, pitch)) in shared.iter().zip([
             ([1.5, 200.0, 4.5], 1.0, 1.0),
@@ -535,6 +498,99 @@ pub(in crate::game) mod shriek_capture_tests {
             );
             assert_eq!((sound.entity, sound.except_entity), (None, None));
         }
+        // Client role: plays dry shriek locally with client particle RNG and unshared audio, silent when wet.
+        let client_settings = Settings::default();
+        let client_loaded = load_resources(
+            sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
+            Vec::new(),
+            None,
+            &root,
+            &client_settings,
+            std::time::Instant::now(),
+            false,
+            crate::game::execution_role::ExecutionRole::Client,
+            &Progress::new(),
+            &mut |_, _| unreachable!(),
+        )
+        .unwrap();
+        let mut client_options = Options::parse(std::iter::empty()).unwrap().unwrap();
+        client_options.resources = root.clone();
+        client_options.execution_role = crate::game::execution_role::ExecutionRole::Client;
+        let mut client = Game::new(
+            &client_loaded.resources,
+            client_loaded.pack,
+            client_loaded.gui.unwrap(),
+            client_options,
+            client_settings,
+            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
+                root,
+            )),
+            None,
+        )
+        .unwrap();
+        client
+            .world
+            .chunks
+            .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+        client.world.set(4, 200, 4, dry_state).unwrap();
+        client.world.set(7, 200, 4, wet_state).unwrap();
+        client.particles.0.requested = Some(Vec::new());
+        client.particles.0.seed_randoms(6500, 6501, 6502);
+        client.audio.0.capture = Some(Vec::new());
+        let mut random = LegacyRandom::new(6500);
+        let mut client_world_random = client.world.random.clone();
+        client.level_events.push(LevelEvent::LevelEvent {
+            source: None,
+            id: 3007,
+            pos: BlockPos::new(4, 200, 4),
+            data: 0,
+        });
+        client.client_process_level_events().unwrap();
+        assert_eq!(
+            client.audio.0.heard.get(effect),
+            Some(&1),
+            "dry effect must play locally on client"
+        );
+        random.next_float();
+        assert_eq!(
+            client.particles.0.random().next_long(),
+            random.next_long(),
+            "dry random continuation"
+        );
+        client.level_events.push(LevelEvent::LevelEvent {
+            source: None,
+            id: 3007,
+            pos: BlockPos::new(7, 200, 4),
+            data: 0,
+        });
+        client.client_process_level_events().unwrap();
+        assert_eq!(
+            client.audio.0.heard.get(effect),
+            Some(&1),
+            "waterlogged effect stays silent"
+        );
+        assert_eq!(
+            client.particles.0.random().next_long(),
+            random.next_long(),
+            "wet branch consumes no pitch draw"
+        );
+        let requests = client.particles.0.requested.as_ref().unwrap();
+        assert_eq!(requests.len(), 20);
+        for (i, (options, position, velocity)) in requests.iter().enumerate() {
+            assert_eq!(options.ty, ParticleType::Shriek);
+            assert_eq!(options.scale, ((i % 10) * 5) as f32);
+            assert_eq!(*position, [if i < 10 { 4.5 } else { 7.5 }, 200.5, 4.5]);
+            assert_eq!(*velocity, [0.0; 3]);
+        }
+        assert_eq!(
+            client.world.random.next_long(),
+            client_world_random.next_long(),
+            "client level random untouched"
+        );
+        assert!(
+            client.audio.0.capture.as_ref().unwrap().is_empty(),
+            "client local shriek must not enter capture"
+        );
     }
 }
 

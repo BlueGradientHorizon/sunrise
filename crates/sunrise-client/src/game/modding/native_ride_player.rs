@@ -381,14 +381,14 @@ mod tests {
                 std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
             );
             let (reply, _answer) = std::sync::mpsc::channel();
-            game.begin_control_save(true, reply).unwrap();
+            game.test_begin_control_save(true, reply).unwrap();
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
             while game.pending_save.0.is_some() {
                 assert!(
                     std::time::Instant::now() < deadline,
                     "the save did not finish"
                 );
-                let _ = game.poll_closing_save();
+                let _ = game.test_poll_closing_save();
             }
         });
     }

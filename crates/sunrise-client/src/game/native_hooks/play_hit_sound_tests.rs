@@ -53,12 +53,12 @@ fn play_hit_sound_helper_and_eight_mining_ticks() {
                 game.client.screen = Screen::Playing;
                 game.title.0 = None;
                 game.set_mapping_held("key.attack", true);
-                game.server.forced_hit = Some(Hit {
+                game.set_test_forced_hit(Some(Hit {
                     pos: [5, 63, 4],
                     face: [-1, 0, 0],
                     point: [5.0, 63.5, 4.5],
                     inside: false,
-                });
+                }));
                 let stone = game
                     .pack
                     .assets

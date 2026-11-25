@@ -944,7 +944,7 @@ pub(in crate::game) mod tests {
                     .into_iter()
                     .filter_map(|(p, id, count, _)| (p == at && id == 1).then_some(count))
                     .collect::<Vec<_>>();
-                let sounds = std::mem::take(game.audio.0.capture.as_mut().unwrap())
+                let sounds = std::mem::take(&mut game.server.pending_sounds)
                     .into_iter()
                     .map(|sound| sound.event)
                     .collect::<Vec<_>>();
@@ -957,7 +957,7 @@ pub(in crate::game) mod tests {
                 (lids, sounds, events)
             };
             for block in ["chest", "ender_chest", "shulker_box"] {
-                game.audio.0.capture = None;
+                game.stop_audio_capture();
                 let state = game
                     .pack
                     .assets
@@ -968,7 +968,7 @@ pub(in crate::game) mod tests {
                     game.level_set_block(level, at, state, BlockUpdateFlags::NEIGHBORS),
                     Ok(true)
                 );
-                game.audio.0.capture = Some(Vec::new());
+                game.start_audio_capture();
                 TEST_POSTED_EVENTS.with(|posted| *posted.borrow_mut() = Some(Vec::new()));
                 let count = |game: &Game<'_>| {
                     if block == "shulker_box" {

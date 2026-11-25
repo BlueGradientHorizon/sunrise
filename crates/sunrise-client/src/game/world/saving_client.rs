@@ -108,6 +108,18 @@ impl Game<'_> {
     }
     /// Control saves acknowledge only after durable completion, while their
     /// snapshot work is spread across event-loop turns too.
+    #[cfg(test)]
+    pub(in crate::game) fn test_begin_control_save(
+        &mut self,
+        all: bool,
+        reply: std::sync::mpsc::Sender<String>,
+    ) -> Result<()> {
+        self.begin_control_save(all, reply)
+    }
+    #[cfg(test)]
+    pub(in crate::game) fn test_poll_closing_save(&mut self) -> Result<bool> {
+        self.poll_closing_save()
+    }
     #[allow(dead_code)]
     pub(in crate::game::client_side) fn begin_control_save(
         &mut self,

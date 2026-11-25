@@ -321,7 +321,7 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-pub(super) mod tests {
+pub(in crate::game) mod tests {
     use super::super::api_values::{StackReadError, TryIntoApi, TryIntoEngine};
     use super::super::native_entity_refs::tests::with_game;
     use super::*;

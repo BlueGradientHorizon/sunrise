@@ -4,7 +4,6 @@ use crate::game::{
     Game, Hit,
     commands_common::Target,
     dragon::{SPECIAL, dragon_part_index},
-    entity::Entity as _,
     game_mode_common::mode_from_id,
     pick_entity::{CrosshairDecision, aabb_extents},
     pick_ray::{PickAccumulator, pick_ray_segment},

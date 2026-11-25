@@ -2107,3 +2107,23 @@ impl Game<'_> {
         }
     }
 }
+
+#[cfg(test)]
+impl Game<'_> {
+    pub(in crate::game) fn test_ender_items(&self) -> &[Option<sunrise_client::items::ItemStack>] {
+        &self.server.ender_items
+    }
+    pub(in crate::game) fn test_lan_guest_swaps(&self) -> &[u32] {
+        &self.server.lan_guest_swaps
+    }
+    pub(in crate::game) fn test_clear_hopper(&mut self, pos: (i32, i32, i32)) {
+        self.server.hoppers.remove(&pos);
+    }
+    pub(in crate::game) fn test_attachment_slot(
+        &mut self,
+        holder: mod_api::Holder,
+        access: mod_api::AttachmentAccess,
+    ) -> std::result::Result<&mut mod_api::Attachments, mod_api::AttachmentError> {
+        self.attachment_slot(holder, access)
+    }
+}

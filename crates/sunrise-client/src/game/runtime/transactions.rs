@@ -2336,14 +2336,14 @@ pub(in crate::game) mod tests {
                 Ok::<_, ()>(())
             })
             .unwrap();
-            game.server.hoppers.remove(&(0, 64, 4));
+            game.test_clear_hopper((0, 64, 4));
             game.hopper_try_move_items((0, 64, 4));
             assert_eq!(slots(game, (1, 64, 4)), 270);
             let _ = game.storage_transaction(|host, tx| {
                 assert_eq!(target.set_max_stack_size(host, tx, 64), Ok(true));
                 Err::<(), ()>(())
             });
-            game.server.hoppers.remove(&(0, 64, 4));
+            game.test_clear_hopper((0, 64, 4));
             game.hopper_try_move_items((0, 64, 4));
             assert_eq!(slots(game, (1, 64, 4)), 270);
             assert_eq!(slots(game, (0, 64, 4)), 1);
@@ -2891,7 +2891,7 @@ pub(in crate::game) mod tests {
             {
                 items.fill(None);
             }
-            game.server.hoppers.remove(&(0, 64, 4));
+            game.test_clear_hopper((0, 64, 4));
             game.hopper_try_move_items((0, 64, 4));
             assert_eq!(slots(&game, (0, 64, 4)), 2 - moved, "{id}");
             assert_eq!(slots(&game, (2, 64, 4)), moved, "{id}");

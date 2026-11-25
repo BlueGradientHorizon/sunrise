@@ -2971,3 +2971,10 @@ pub(in crate::game) mod command_damage_listener_tests {
         }
     }
 }
+
+#[cfg(test)]
+impl Game<'_> {
+    pub(in crate::game) fn test_sculk_mut(&mut self) -> &mut SculkState {
+        &mut self.server.sculk
+    }
+}

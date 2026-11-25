@@ -746,7 +746,7 @@ pub(super) fn emit<'a>(
                 .collect::<Vec<_>>()
                 .join(", ");
             fire.push_str(&format!(
-                "#[inline] pub(in crate::game) fn fire_{name}({}) {{ super::{name}({forwarded}); }}\n",
+                "#[inline] pub(super) fn fire_{name}({}) {{ super::{name}({forwarded}); }}\n",
                 dispatch_params.join(", ")
             ));
             continue;

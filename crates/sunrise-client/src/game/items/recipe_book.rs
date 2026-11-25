@@ -18,7 +18,7 @@ use sunrise_client::{
     containers::{BlockEntity, FurnaceKind},
     hud::{HudBatch, Rect, rgba},
     items::ItemStack,
-    menu::place::{PostPlace, Stacked},
+    menu::place::Stacked,
     random_source,
     recipe_book::{Book, BookType, ClientBook, Collection, Entry, GhostTarget, Tab},
     recipe_book_screen::{
@@ -1743,7 +1743,7 @@ impl Game<'_> {
     /// `ServerboundPlaceRecipePacket`: the server places the recipe
     /// (`ServerPlaceRecipe` on the menu engine) and answers with a ghost
     /// recipe when the items are missing.
-    fn place_book_recipe(&mut self, book_type: BookType, entry_index: usize, use_max: bool) {
+    fn place_book_recipe(&mut self, _book_type: BookType, entry_index: usize, use_max: bool) {
         let Some(entry) = self
             .recipe_ui
             .0

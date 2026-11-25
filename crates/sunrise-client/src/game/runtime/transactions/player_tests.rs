@@ -130,7 +130,7 @@ fn abort_restores_player_inventory_and_data_after_the_acting_player_dies() {
             assert_player_storage(
                 game.level.player_extra.as_ref(),
                 &game.inventory,
-                &game.server.ender_items,
+                game.test_ender_items(),
                 13,
             );
         })
@@ -150,12 +150,12 @@ fn abort_restores_the_suspended_guest_without_touching_the_inner_guest() {
             game.open_storage_transaction();
             write_player_storage(game, outer, 29);
             game.as_guest(13, |game| {
-                assert_eq!(game.server.lan_guest_swaps, [12, 13]);
+                assert_eq!(game.test_lan_guest_swaps(), [12, 13]);
                 game.close_storage_transaction(false);
                 assert_player_storage(
                     game.level.player_extra.as_ref(),
                     &game.inventory,
-                    &game.server.ender_items,
+                    game.test_ender_items(),
                     23,
                 );
             })
@@ -163,7 +163,7 @@ fn abort_restores_the_suspended_guest_without_touching_the_inner_guest() {
             assert_player_storage(
                 game.level.player_extra.as_ref(),
                 &game.inventory,
-                &game.server.ender_items,
+                game.test_ender_items(),
                 19,
             );
         })
@@ -204,7 +204,7 @@ fn nested_player_turns_preserve_binding_and_rollback_whole_membership() {
             bindings.push(storage.bind_index(&index, AttachmentHolder::Player(player)));
         }
         let mut saved = game
-            .attachment_slot(Holder::Player(112), AttachmentAccess::Existing)
+            .test_attachment_slot(Holder::Player(112), AttachmentAccess::Existing)
             .unwrap()
             .clone();
         let saved_nbt = saved.to_nbt();
@@ -219,7 +219,7 @@ fn nested_player_turns_preserve_binding_and_rollback_whole_membership() {
             OTHER.remove(host, Holder::Player(112)).unwrap();
             game.as_guest(13, |game| {
                 assert!(
-                    game.attachment_slot(Holder::Player(112), AttachmentAccess::Existing)
+                    game.test_attachment_slot(Holder::Player(112), AttachmentAccess::Existing)
                         .is_err()
                 );
                 game.open_storage_transaction();
@@ -264,7 +264,7 @@ fn retained_player_records_and_save_snapshots_do_not_keep_residency() {
         for (conn, uuid) in [(12, 112), (13, 113)] {
             let player = game.player(uuid).unwrap();
             let map = game
-                .attachment_slot(Holder::Player(uuid), AttachmentAccess::Existing)
+                .test_attachment_slot(Holder::Player(uuid), AttachmentAccess::Existing)
                 .unwrap();
             VALUE.set(map, Holder::Level, uuid as i32).unwrap();
             game.lan
@@ -281,7 +281,7 @@ fn retained_player_records_and_save_snapshots_do_not_keep_residency() {
             .unwrap()
             .snapshot(&("player_test".into(), "value".into()));
         let mut saved = game
-            .attachment_slot(Holder::Player(112), AttachmentAccess::Existing)
+            .test_attachment_slot(Holder::Player(112), AttachmentAccess::Existing)
             .unwrap()
             .clone();
         let mut removed = game.lan.as_mut().unwrap().hub.guests.remove(0);

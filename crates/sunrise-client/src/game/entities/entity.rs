@@ -565,6 +565,7 @@ impl sunrise_client::block_contact::InsideWalk for ProjectileInside<'_, '_> {
 #[cfg(test)]
 pub(in crate::game) mod render_bounds_tests {
     use super::*;
+    use crate::game::client_side::entity_client::RenderEntityBounds;
 
     #[test]
     fn armor_stand_bounds_include_raised_equipment_space() {
