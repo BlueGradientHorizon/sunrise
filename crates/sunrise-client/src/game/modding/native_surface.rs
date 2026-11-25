@@ -824,7 +824,7 @@ mod tests {
         use sunrise_client::chunk::Chunk;
 
         if run_fresh_cases(
-            "game::server_side::native_surface::tests::a_server_friction_part_reads_its_block_entitys_saved_material",
+            "game::native_surface::tests::a_server_friction_part_reads_its_block_entitys_saved_material",
             "SUNRISE_FRICTION_BLOCK_ENTITY_CHILD",
             &["server"],
         ) {

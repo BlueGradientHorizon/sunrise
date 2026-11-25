@@ -5,35 +5,11 @@ api_values	impl TryIntoApi for sunrise_client::boss_overlay::ModBar	try_into_api
 api_values	impl TryIntoEngine for mod_api::ItemDisplayContext	try_into_engine	-	client	role-reachability:client
 api_values	impl super::Game<'_>	api_block_entity_submit	-	client	role-reachability:client
 api_values	impl<T: TryIntoApi, E: Clone> TryIntoApi for Result<T, E>	try_into_api	-	client	role-reachability:client
-armor_stands	impl ArmorStandAssets	apply_resources	-	client	role-reachability:client
-armor_stands	impl ArmorStandAssets	trim_texture	-	client	role-reachability:client
-armor_stands	impl Game<'_>	armor_layers	-	client	touches only client-owned fields
-armor_stands	impl Game<'_>	armor_stand_geometry	-	client	touches only client-owned fields
-armor_stands	impl Game<'_>	armor_stand_items	-	client	touches only client-owned fields
-armor_stands	impl Game<'_>	armor_stand_vertices	-	client	touches only client-owned fields
-armor_stands	impl Game<'_>	break_armor_stand_by_anything	-	client	touches only client-owned fields
-armor_stands	impl Game<'_>	break_armor_stand_by_hit	-	client	touches only client-owned fields
-armor_stands	impl Game<'_>	cit_worn_rule	-	client	role-reachability:client
-armor_stands	impl Game<'_>	draw_smithing_armor_stand	-	client	touches only client-owned fields
-armor_stands	impl Game<'_>	player_armor_layers	-	client	role-reachability:client
-armor_stands	impl Game<'_>	prepare_trims	-	client	touches only client-owned fields
-armor_stands	impl Game<'_>	show_breaking_particles	-	client	touches only client-owned fields
-armor_stands	impl Game<'_>	stack_armor_layers	-	client	role-reachability:client
-armor_stands	impl Game<'_>	worn_armor_layers	-	client	role-reachability:client
-armor_stands::setup_anim_tests	-	armor_stand_prepares_humanoid_then_overrides_only_rotations	#[cfg(test)]	client	touches only client-owned fields
 autosave	impl Game<'_>	finish_player_autosaves	-	server	touches only server-owned fields
 autosave	impl Game<'_>	on_tick_rate_changed	-	server	touches only server-owned fields
 autosave	impl Game<'_>	save_game_metadata	-	server	touches only server-owned fields
 banners	impl Game<'_>	banner_layers_at	-	client	role-reachability:client
 banners	impl Game<'_>	map_banner_at	-	server	role-reachability:server
-beehives	impl HiveHost for GameHive<'_, '_>	add	-	client	whole trait impl touches only client-owned fields
-beehives	impl HiveHost for GameHive<'_, '_>	bees_stay_in_hive	-	client	whole trait impl touches only client-owned fields
-beehives	impl HiveHost for GameHive<'_, '_>	blocked	-	client	whole trait impl touches only client-owned fields
-beehives	impl HiveHost for GameHive<'_, '_>	load	-	client	whole trait impl touches only client-owned fields
-beehives	impl HiveHost for GameHive<'_, '_>	random	-	client	whole trait impl touches only client-owned fields
-beehives	impl HiveHost for GameHive<'_, '_>	set_changed	-	client	whole trait impl touches only client-owned fields
-beehives	impl HiveHost for GameHive<'_, '_>	set_honey_level	-	client	whole trait impl touches only client-owned fields
-beehives	impl HiveHost for GameHive<'_, '_>	sound	-	client	whole trait impl touches only client-owned fields
 block_breaking	impl Game<'_>	break_block	-	server	role-reachability:server
 block_breaking	impl Game<'_>	destroy_progress_event	-	server	role-reachability:server
 block_breaking	impl Game<'_>	drop_bundle_content	-	server	role-reachability:server
@@ -44,16 +20,6 @@ block_entity_anims_common	impl Game<'_>	block_anim	-	client	role-reachability:cl
 block_entity_anims_common	impl Game<'_>	chest_lid	-	client	role-reachability:client
 block_entity_anims_common	impl Game<'_>	finish_block_entity_anims	-	client	role-reachability:client
 block_entity_anims_common	impl Game<'_>	tick_chest_lid	-	client	role-reachability:client
-block_entity_ticks	impl Drop for Enclosing<'_, '_>	drop	-	server	role-reachability:server
-block_entity_ticks	impl Game<'_>	block_ticking_area	-	server	role-reachability:server
-block_entity_ticks	impl Game<'_>	tick_block_entities	-	server	role-reachability:server
-block_entity_ticks	impl Game<'_>	tick_furnace	-	server	role-reachability:server
-block_entity_ticks	impl Game<'_>	ticking_states	-	server	role-reachability:server
-block_items	impl Game<'_>	apply_predicted_item	-	client	role-reachability:client
-block_particles	impl Game<'_>	add_breaking_particle	-	client	touches only client-owned fields
-block_particles	impl Game<'_>	destroy_particles	-	client	touches only client-owned fields
-block_particles	impl Game<'_>	honey_entity_particles	-	client	touches only client-owned fields
-block_particles	impl Game<'_>	transform_particle	-	server	retain-in-server-mirror
 block_screen_effect_draw_tests	-	sample_eye_in_water	#[cfg(test)]	server	touches only server-owned fields
 bossbars	impl Game<'_>	apply_boss_event	-	client	touches only client-owned fields
 bossbars	impl Game<'_>	publish_boss_bars_client	-	client	touches only client-owned fields
@@ -81,8 +47,6 @@ cauldrons	impl Game<'_>	cauldron_outcome	-	client	role-reachability:client
 cauldrons	impl Game<'_>	use_on_cauldron	-	server	role-reachability:server
 chat_common	impl Game<'_>	set_allow_commands	-	server	role-reachability:server
 chat_common	impl Game<'_>	translate_with_fallback	-	client	role-reachability:client
-client_cracks	impl Game<'_>	set_client_mining	-	server	role-reachability:server
-client_cracks	impl Game<'_>	update_local_crack	-	server	role-reachability:server
 clocks	impl Game<'_>	advance_clock	-	server	role-reachability:server
 clocks	impl Game<'_>	hub_clock_snapshot	-	server	role-reachability:server
 clocks	impl Game<'_>	network_clock_rate	-	server	role-reachability:server
@@ -92,30 +56,7 @@ combat::bee_sting_tests	-	a_landed_sting_sets_the_stinger_and_poisons_on_normal_
 combat::bee_sting_tests	-	a_refused_sting_leaves_the_bee_alone	#[cfg(test)]	client	touches only client-owned fields
 combat::bee_sting_tests	-	sting_sounds	#[cfg(test)]	client	touches only client-owned fields
 commands_common	impl Game<'_>	block_entity_tag	-	server	role-reachability:server
-consume	impl Game<'_>	entity_teleport_particles	-	client	touches only client-owned fields
-consume	impl Game<'_>	portal_particles	-	client	role-reachability:client
-consume	impl TeleportConsumeWorld for MobTeleporter<'_, '_>	block_position	-	client	whole trait impl touches only client-owned fields
-consume	impl TeleportConsumeWorld for MobTeleporter<'_, '_>	directional_particles	-	client	whole trait impl touches only client-owned fields
-consume	impl TeleportConsumeWorld for MobTeleporter<'_, '_>	get_random	-	client	whole trait impl touches only client-owned fields
-consume	impl TeleportConsumeWorld for MobTeleporter<'_, '_>	is_fox	-	client	whole trait impl touches only client-owned fields
-consume	impl TeleportConsumeWorld for MobTeleporter<'_, '_>	is_passenger	-	client	whole trait impl touches only client-owned fields
-consume	impl TeleportConsumeWorld for MobTeleporter<'_, '_>	logical_height	-	client	whole trait impl touches only client-owned fields
-consume	impl TeleportConsumeWorld for MobTeleporter<'_, '_>	min_y	-	client	whole trait impl touches only client-owned fields
-consume	impl TeleportConsumeWorld for MobTeleporter<'_, '_>	position	-	client	whole trait impl touches only client-owned fields
-consume	impl TeleportConsumeWorld for MobTeleporter<'_, '_>	position_field	-	client	whole trait impl touches only client-owned fields
-consume	impl TeleportConsumeWorld for MobTeleporter<'_, '_>	random_source	-	client	whole trait impl touches only client-owned fields
-consume	impl TeleportConsumeWorld for MobTeleporter<'_, '_>	random_teleport	-	client	whole trait impl touches only client-owned fields
-consume	impl TeleportConsumeWorld for MobTeleporter<'_, '_>	reset_fall_distance	-	client	whole trait impl touches only client-owned fields
-consume	impl TeleportConsumeWorld for MobTeleporter<'_, '_>	reset_impulse	-	client	whole trait impl touches only client-owned fields
-consume	impl TeleportConsumeWorld for MobTeleporter<'_, '_>	stop_riding	-	client	whole trait impl touches only client-owned fields
-consume	impl TeleportConsumeWorld for MobTeleporter<'_, '_>	teleport_allowed	-	client	whole trait impl touches only client-owned fields
-consume	impl TeleportConsumeWorld for MobTeleporter<'_, '_>	teleport_event	-	client	whole trait impl touches only client-owned fields
-consume	impl TeleportConsumeWorld for MobTeleporter<'_, '_>	teleport_sound	-	client	whole trait impl touches only client-owned fields
 control	impl Game<'_>	control_save	-	server	role-reachability:server
-copper_golems	impl Game<'_>	golem_chest_open	-	server	role-reachability:server
-copper_golems	impl Game<'_>	golem_chest_slot	-	server	role-reachability:server
-copper_golems	impl Game<'_>	interact_copper_golem	-	server	role-reachability:server
-copper_golems	impl Game<'_>	receive_gift	-	server	role-reachability:server
 core_tests	-	client_modifier_snapshot_tracks_focus_loss	#[cfg(test)]	client	touches only client-owned fields
 core_tests	-	eager_saves_wait_for_an_open_world_and_for_light	#[cfg(test)]	server	touches only server-owned fields
 core_tests	-	exercise_blank_inventory_presses	#[cfg(test)]	client	touches only client-owned fields
@@ -137,11 +78,6 @@ creative_screen	impl Game<'_>	draw_creative	-	client	retain-in-client-mirror
 creative_screen	impl Game<'_>	draw_creative_pages	-	client	retain-in-client-mirror
 creative_screen	impl Game<'_>	tooltip	-	client	retain-in-client-mirror
 creatures_client	impl Game<'_>	interact_armadillo	-	server	role-reachability:server
-crossbow::tests	-	bow_and_crossbow_shots_sound_at_the_feet_not_the_eye	#[cfg(test)]	client	touches only client-owned fields
-crossbow::tests	-	game_with_player	#[cfg(test)]	client	touches only client-owned fields
-cushions	impl Game<'_>	cushion_geometry	-	client	touches only client-owned fields
-cushions	impl Game<'_>	state_suffocating	-	client	role-reachability:client
-cushions	impl Game<'_>	state_view_blocking	-	client	role-reachability:client
 debug_lines	impl Game<'_>	crosshair_entity_type	-	client	retain-in-client-mirror
 debug_lines	impl Game<'_>	debug_biome_line	-	client	retain-in-client-mirror
 debug_lines	impl Game<'_>	debug_block_hit	-	client	retain-in-client-mirror
@@ -157,65 +93,25 @@ debug_lines	impl Game<'_>	debug_looking_at_fluid	-	client	retain-in-client-mirro
 debug_lines	impl Game<'_>	fluid_state	-	client	retain-in-client-mirror
 debug_lines	impl Game<'_>	server_debug	-	client	retain-in-client-mirror
 debug_lines	impl Game<'_>	server_debug_lines	-	server	touches only server-owned fields
-decorated_pot	impl Game<'_>	pot_tag	-	server	retain-in-server-mirror
-decorated_pot	impl Game<'_>	use_decorated_pot	-	server	retain-in-server-mirror
 developer_launch	impl Game<'_>	connect_local	-	client	role-reachability:client
 developer_launch	impl Game<'_>	join_server	-	client	role-reachability:client
 developer_launch	impl Game<'_>	lan_host	-	server	role-reachability:server
 disabled_block_tests::tests	-	inert_dispense_keeps_a_legacy_over_max_stack_without_events	#[cfg(test)]; #[cfg(test)]	client	touches only client-owned fields
 disabled_block_tests::tests	-	rejected_dispense_reply_preserves_the_disabled_owners_fallback	#[cfg(test)]; #[cfg(test)]	client	touches only client-owned fields
 durability	impl Game<'_>	damage_living_stack	-	server	role-reachability:server
-end_client	impl Game<'_>	throw_ender_eye	-	server	role-reachability:server
-end_client	impl Game<'_>	tick_eyes	-	server	role-reachability:server
-entity_initialization	impl Game<'_>	forget_remote_entity_construction	-	client	role-reachability:client
-entity_sections	impl Game<'_>	client_entity_sections_stepped	-	client	role-reachability:client
-entity_sections	impl Game<'_>	handle_packet	-	client	role-reachability:client
-entity_sections	impl Game<'_>	tick_projectiles	-	server	role-reachability:server
-entity_sections	impl LiveSectionObserver	new	-	server	role-reachability:server
-entity_sections::observer_cache	impl ObserverCache	begin	-	server	role-reachability:server
 entity_type_rows	impl EntityTypeRows	contains	-	client	role-reachability:client
 entity_type_rows	impl EntityTypeRows	dimensions	-	client	role-reachability:client
 entity_type_rows	impl EntityTypeRows	is_living	-	client	role-reachability:client
 extinguish::extinguish_tests	-	heard	#[cfg(test)]	client	touches only client-owned fields
-falling_blocks	impl Game<'_>	falling_model_vertices	-	client	touches only client-owned fields
-fireworks	impl Game<'_>	advance_rocket	-	server	role-reachability:server
-fireworks	impl Game<'_>	boost_firework	-	server	touches only server-owned fields
-fireworks	impl Game<'_>	explode_rocket	-	server	role-reachability:server
-fireworks	impl Game<'_>	launch_angled_rocket	-	server	touches only server-owned fields
-fireworks	impl Game<'_>	launch_firework	-	server	touches only server-owned fields
-fireworks	impl Game<'_>	rocket_blast_player	-	server	role-reachability:server
-fireworks	impl Game<'_>	rocket_explode_event	-	server	touches only server-owned fields
-fireworks	impl Game<'_>	rocket_hurt_mobs	-	server	touches only server-owned fields
-fireworks	impl Game<'_>	rocket_hurt_player	-	server	touches only server-owned fields
-fireworks	impl Game<'_>	rocket_moved	-	server	touches only server-owned fields
-fireworks	impl Game<'_>	rocket_owner	-	server	role-reachability:server
-fireworks	impl Game<'_>	rocket_splash	-	server	role-reachability:server
-fireworks	impl Game<'_>	rocket_struck	-	server	role-reachability:server
-fireworks	impl Game<'_>	shooter_who	-	server	role-reachability:server
-fireworks	impl Game<'_>	store_rocket_back	-	server	role-reachability:server
-fireworks	impl Game<'_>	tick_rocket	-	server	role-reachability:server
-fireworks	impl Game<'_>	tick_rockets	-	server	role-reachability:server
-fireworks	impl Rocket	motion	-	server	role-reachability:server
-fireworks	impl Rocket	update_rotation	-	server	role-reachability:server
-fireworks::hit_attempt_tests	-	fresh_player	#[cfg(test)]	server	touches only server-owned fields
-fireworks::hit_attempt_tests	-	remaining_hit_callers_observe_refusals_and_zero_damage	#[cfg(test)]	server	touches only server-owned fields
-fireworks::impact	impl Game<'_>	rocket_impact	-	server	role-reachability:server
-fireworks::impact::tests	-	rocket_impact_listener_can_save_the_advanced_rocket	#[cfg(test)]	server	touches only server-owned fields
 fishing_client	impl Game<'_>	send_particles	-	server	role-reachability:server
 fluid_interactions	impl Game<'_>	install_fluid_interactions	-	server	retain-in-server-mirror
 frames	impl Game<'_>	frame_geometry	-	client	touches only client-owned fields
 game_mode_common	impl Game<'_>	can_hurt_player	-	client	role-reachability:client
 game_mode_common	impl Game<'_>	may_use_on	-	server	role-reachability:server
 game_mode_common	impl Game<'_>	stack_can_place_on_in_adventure	-	client	role-reachability:client
-ghasts	impl Game<'_>	interact_happy_ghast	-	server	role-reachability:server
-golems	impl Game<'_>	try_spawn_copper_golem	-	client	touches only client-owned fields
 growth	impl Game<'_>	install_live_features	-	server	role-reachability:server
 growth	impl Game<'_>	shears_crop	-	server	role-reachability:server
 growth	impl Game<'_>	use_bone_meal	-	server	role-reachability:server
-hand_part_tests	-	remote_mining_component_update_restarts_unless_the_part_refuses	#[cfg(test)]	server	touches only server-owned fields
-held_items	impl Game<'_>	attack_damage	-	server	role-reachability:server
-held_items	impl Game<'_>	held_range_allows	-	server	role-reachability:server
-held_items	impl Game<'_>	wear_glider	-	server	role-reachability:server
 host::draw	impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_>	animation_time	-	client	role-reachability:client
 host::draw	impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_>	block	-	client	role-reachability:client
 host::draw	impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_>	cube	-	client	role-reachability:client
@@ -294,215 +190,14 @@ inventory_slots	impl Game<'_>	slot_position	-	client	retain-in-client-mirror
 inventory_slots	impl Game<'_>	slot_view	-	client	retain-in-client-mirror
 inventory_slots	impl Game<'_>	slots	-	client	retain-in-client-mirror
 item_abilities	impl Game<'_>	held_shears	-	server	role-reachability:server
-item_actions	impl Game<'_>	bucket_empty_cancelled	-	server	retain-in-server-mirror
-item_actions	impl Game<'_>	interact_entity	-	server	retain-in-server-mirror
-item_actions	impl Game<'_>	same_item_and_count	-	server	retain-in-server-mirror
-item_actions	impl Game<'_>	use_context	-	server	retain-in-server-mirror
-item_actions	impl Game<'_>	use_item	-	server	retain-in-server-mirror
-item_actions	impl Game<'_>	use_item_as_player	-	server	retain-in-server-mirror
 item_entities::thrown_items_tests	-	sound	#[cfg(test)]	client	touches only client-owned fields
 item_entities::thrown_items_tests	-	with_remote_game	#[cfg(test)]	client	touches only client-owned fields
-item_entity_spawn	impl Game<'_>	push_item_entity	-	server	retain-in-server-mirror
-item_use	impl Game<'_>	finish_result	-	client	role-reachability:client
-item_use	impl Game<'_>	remote_use_item_finished	-	client	role-reachability:client
-item_use::tests	-	a_mod_draws_in_a_hand_that_holds_an_item	#[cfg(test)]	client	touches only client-owned fields
-item_use::tests	-	item_animation_dispatches_vanilla_parts_and_refuses_invalid_spears	#[cfg(test)]	client	touches only client-owned fields
-item_use::tests	-	render_hand_submits_both_skinned_arms_in_draw_order	#[cfg(test)]	client	touches only client-owned fields
-jigsaw_blocks	impl Game<'_>	lan_set_jigsaw_block	-	server	role-reachability:server
-jukebox	impl Game<'_>	start_song_server	-	server	touches only server-owned fields
-jukebox	impl Game<'_>	stop_song	-	server	touches only server-owned fields
-lan	impl Game<'_>	lan_control	-	client	touches only client-owned fields
-lan	impl Game<'_>	lan_port	-	client	role-reachability:client
-lan::merchant_packet_tests	-	merchant_take_keeps_packet_snapshot_until_price_refresh	#[cfg(test)]	client	touches only client-owned fields
-lan::tracking_hook_tests	-	a_stop_waiting_for_a_sound_is_heard_after_its_removal	#[cfg(test)]	client	touches only client-owned fields
-lan_actions	impl GuestPlay	decay_recipe_checks	-	server	role-reachability:server
-lan_actions	impl GuestPlay	dig_ended	-	server	role-reachability:server
-lan_actions	impl GuestPlay	dig_start_for	-	server	role-reachability:server
-lan_actions	impl GuestPlay	recipe_check_available	-	server	role-reachability:server
-lan_actions	impl Rules for ItemRules<'_>	enchantments	-	server	role-reachability:server
-lan_actions	impl Rules for ItemRules<'_>	items	-	server	role-reachability:server
-lan_actions	impl Rules for ItemRules<'_>	max_stack	-	server	role-reachability:server
-lan_actions	impl Rules for ItemRules<'_>	mod_container_insert_rule	-	server	role-reachability:server
-lan_actions	impl Rules for ItemRules<'_>	slot_rules	-	server	role-reachability:server
-lan_actions	impl Rules for ItemRules<'_>	stacked	-	server	role-reachability:server
-lan_actions::attack_checks	impl Game<'_>	guest_attack_stops	-	server	role-reachability:server
-lan_actions::attack_checks	impl Game<'_>	holds_piercing_weapon	-	server	role-reachability:server
-lan_actions::attack_checks::tests	-	attacking_an_item_an_orb_oneself_or_an_arrow_kicks_the_player	#[cfg(test)]	server	touches only server-owned fields
-lan_actions::boat_holder_movement_tests	-	scene	#[cfg(test)]	server	touches only server-owned fields
-lan_actions::commands	impl Game<'_>	guest_command	-	server	touches only server-owned fields
-lan_actions::commands	impl Game<'_>	guest_suggestions	-	server	touches only server-owned fields
-lan_actions::commands	impl Game<'_>	guest_try_suggestions	-	server	role-reachability:server
-lan_actions::commands	impl Game<'_>	run_guest_command	-	server	role-reachability:server
-lan_actions::commands	impl Game<'_>	run_guest_command_told	-	server	touches only server-owned fields
-lan_actions::commands	impl Game<'_>	run_guest_commands	-	server	role-reachability:server
-lan_actions::commands	impl Game<'_>	send_admin_feedback	-	server	touches only server-owned fields
-lan_actions::crack_feedback_tests	-	run_crack_packets_follow_start_clock_and_strict_observer_radius	#[cfg(test)]	server	touches only server-owned fields
-lan_actions::death_state	impl Game<'_>	guest_death_canceled	-	server	touches only server-owned fields
-lan_actions::death_state	impl Game<'_>	guest_fatal_source	-	server	touches only server-owned fields
-lan_actions::effects	impl Game<'_>	guest_instrument_sound	-	server	touches only server-owned fields
-lan_actions::effects	impl Game<'_>	guest_use_sounds	-	server	touches only server-owned fields
-lan_actions::effects	impl Game<'_>	lan_broadcast_effects	-	server	touches only server-owned fields
-lan_actions::effects	impl Game<'_>	lan_broken_block_positions	-	server	touches only server-owned fields
-lan_actions::effects	impl Game<'_>	lan_living_flags	-	server	role-reachability:server
-lan_actions::effects	impl Game<'_>	lan_prepare_captured_sounds	-	server	touches only server-owned fields
-lan_actions::effects	impl Game<'_>	lan_stuck	-	server	touches only server-owned fields
-lan_actions::effects	impl Game<'_>	lan_swing_back	-	server	role-reachability:server
-lan_actions::effects	impl Game<'_>	lan_swings	-	server	role-reachability:server
-lan_actions::effects	impl Game<'_>	send_captured_level_sound	-	server	role-reachability:server
-lan_actions::guest_body	impl Game<'_>	guest_accepted_move	-	server	touches only server-owned fields
-lan_actions::guest_body	impl Game<'_>	guest_motion_events	-	server	touches only server-owned fields
-lan_actions::guest_body	impl Game<'_>	guest_server_tick	-	server	touches only server-owned fields
-lan_actions::guest_body	impl Game<'_>	record_guest_motion_combat	-	server	role-reachability:server
-lan_actions::guest_body::tests::fall_reset	-	scene	#[cfg(test)]	server	touches only server-owned fields
-lan_actions::guest_body::tests::travel	-	send	#[cfg(test)]	server	touches only server-owned fields
-lan_actions::guest_close_listener_tests	-	ordinary_guest_final_close_posts_to_actual_listener	#[cfg(test)]	server	touches only server-owned fields
-lan_actions::hub_click	impl Game<'_>	hub_click_run	-	server	touches only server-owned fields
-lan_actions::hub_click	impl Game<'_>	lan_hub_click	-	server	touches only server-owned fields
-lan_actions::hub_click	impl Game<'_>	with_lan_lifted	-	server	role-reachability:server
-lan_actions::interaction	impl Game<'_>	block_between	-	server	role-reachability:server
-lan_actions::interaction	impl Game<'_>	creative_item_enabled	-	client	touches only client-owned fields
-lan_actions::interaction	impl Game<'_>	guest_attack	-	server	role-reachability:server
-lan_actions::interaction	impl Game<'_>	guest_interact	-	server	touches only server-owned fields
-lan_actions::interaction	impl Game<'_>	guest_jab	-	server	touches only server-owned fields
-lan_actions::interaction	impl Game<'_>	guest_target_box	-	server	role-reachability:server
-lan_actions::interaction	impl Game<'_>	guest_tick_death	-	server	role-reachability:server
-lan_actions::interaction	impl Game<'_>	guest_use_item	-	server	touches only server-owned fields
-lan_actions::interaction	impl Game<'_>	guest_use_item_on	-	server	touches only server-owned fields
-lan_actions::interaction	impl Game<'_>	inside_border	-	server	role-reachability:server
-lan_actions::interaction	impl Game<'_>	knot_at_id	-	server	touches only server-owned fields
-lan_actions::interaction	impl Game<'_>	look_at_entity	-	server	role-reachability:server
-lan_actions::menus	impl Game<'_>	chest_vehicle_still_valid	-	server	role-reachability:server
-lan_actions::menus	impl Game<'_>	container_menu_valid	-	server	role-reachability:server
-lan_actions::menus	impl Game<'_>	guest_close_menus_for_travel	-	server	role-reachability:server
-lan_actions::menus	impl Game<'_>	guest_container_opener	-	server	touches only server-owned fields
-lan_actions::menus	impl Game<'_>	guest_disconnected	-	server	role-reachability:server
-lan_actions::menus	impl Game<'_>	guest_may_open	-	server	touches only server-owned fields
-lan_actions::menus	impl Game<'_>	guest_menu_still_valid	-	server	role-reachability:server
-lan_actions::menus	impl Game<'_>	guest_validate_menu	-	server	role-reachability:server
-lan_actions::menus	impl Game<'_>	lan_containers_tick	-	server	role-reachability:server
-lan_actions::mining	impl Game<'_>	guest_delayed_destroy	-	server	role-reachability:server
-lan_actions::mining	impl Game<'_>	guest_destroy	-	server	role-reachability:server
-lan_actions::mining	impl Game<'_>	guest_destroy_at	-	server	role-reachability:server
-lan_actions::mining	impl Game<'_>	guest_dig_feedback	-	server	role-reachability:server
-lan_actions::mining	impl Game<'_>	guest_stop_digging	-	server	role-reachability:server
-lan_actions::movement	impl Game<'_>	guest_can_glide	-	server	role-reachability:server
-lan_actions::movement	impl Game<'_>	guest_glide_tick	-	server	role-reachability:server
-lan_actions::movement	impl Game<'_>	in_wall	-	server	role-reachability:server
-lan_actions::movement	impl Game<'_>	lan_start_gliding	-	server	role-reachability:server
-lan_actions::movement	impl Game<'_>	lan_start_riding_jump	-	server	role-reachability:server
-lan_actions::packets	impl Game<'_>	build_limit_message	-	server	role-reachability:server
-lan_actions::packets	impl Game<'_>	creative_stack_valid	-	server	role-reachability:server
-lan_actions::packets	impl Game<'_>	guest_may_set_creative_slot	-	server	touches only server-owned fields
-lan_actions::packets	impl Game<'_>	guest_pick_item	-	server	role-reachability:server
-lan_actions::packets	impl Game<'_>	guest_spectate_teleport	-	server	role-reachability:server
-lan_actions::packets	impl Game<'_>	item_from_network	-	server	role-reachability:server
-lan_actions::packets	impl Game<'_>	lan_default_container_click	-	server	role-reachability:server
-lan_actions::packets	impl Game<'_>	lan_flight_toggled	-	server	role-reachability:server
-lan_actions::packets	impl Game<'_>	lan_guest_packet	-	server	role-reachability:server
-lan_actions::packets	impl Game<'_>	lan_guest_packet_inner	-	server	touches only server-owned fields
-lan_actions::packets	impl Game<'_>	level_entity_tag	-	server	role-reachability:server
-lan_actions::packets	impl Game<'_>	spawn_protection_message	-	server	role-reachability:server
-lan_actions::packets	impl Game<'_>	under_spawn_protection	-	server	role-reachability:server
-lan_actions::packets	impl Game<'_>	was_block_placement_attempt	-	server	role-reachability:server
-lan_actions::pickups	impl Game<'_>	guest_arrows	-	server	role-reachability:server
-lan_actions::pickups	impl Game<'_>	guest_orbs	-	server	touches only server-owned fields
-lan_actions::pickups	impl Game<'_>	guest_pickups	-	server	touches only server-owned fields
-lan_actions::pickups::pickup_post_tests	-	guest_pickup_hooks_name_the_ground_item_entity	#[cfg(test)]	server	touches only server-owned fields
-lan_actions::pickups::pickup_post_tests	-	host_animations	#[cfg(test)]	client	touches only client-owned fields
-lan_actions::pickups::pickup_post_tests	-	host_pickup_tells_whole_and_partial_pickups_and_keeps_listener_changes	#[cfg(test)]	server	touches only server-owned fields
-lan_actions::respawn	impl Game<'_>	commit_player_respawn	-	server	role-reachability:server
-lan_actions::respawn	impl Game<'_>	guest_catalyst_trigger	-	server	touches only server-owned fields
-lan_actions::respawn	impl Game<'_>	guest_combat_record	-	server	touches only server-owned fields
-lan_actions::respawn	impl Game<'_>	guest_damage_source	-	server	touches only server-owned fields
-lan_actions::respawn	impl Game<'_>	guest_death_message	-	server	touches only server-owned fields
-lan_actions::respawn	impl Game<'_>	guest_die	-	server	touches only server-owned fields
-lan_actions::respawn	impl Game<'_>	guest_entity_view	-	server	touches only server-owned fields
-lan_actions::respawn	impl Game<'_>	guest_kill_credit_type	-	server	touches only server-owned fields
-lan_actions::respawn	impl Game<'_>	guest_respawn	-	server	role-reachability:server
-lan_actions::respawn	impl Game<'_>	place_cloned_player	-	server	touches only server-owned fields
-lan_actions::respawn	impl Game<'_>	remove_old_player_for_clone	-	server	role-reachability:server
-lan_actions::respawn	impl Game<'_>	with_dying_guest	-	server	touches only server-owned fields
-lan_actions::respawn_world_point_tests	-	guest_respawn_keeps_world_information_distinct_from_personal_landing	#[cfg(test)]	server	touches only server-owned fields
-lan_actions::sleep	impl Game<'_>	announce_guest_advancements	-	server	role-reachability:server
-lan_actions::sleep	impl Game<'_>	announce_sleep_status	-	server	touches only server-owned fields
-lan_actions::sleep	impl Game<'_>	enough_slept	-	server	role-reachability:server
-lan_actions::sleep	impl Game<'_>	guest_counts_for_sleep	-	server	role-reachability:server
-lan_actions::sleep	impl Game<'_>	guest_sleep_tick	-	server	role-reachability:server
-lan_actions::sleep	impl Game<'_>	sleep_counts	-	server	touches only server-owned fields
-lan_actions::sleep	impl Game<'_>	sleepers_needed	-	server	role-reachability:server
-lan_actions::sleep	impl Game<'_>	wake_guest	-	server	role-reachability:server
-lan_actions::sleep	impl Game<'_>	wake_guest_from	-	server	role-reachability:server
-lan_actions::sleep	impl Game<'_>	wake_guests	-	server	role-reachability:server
-lan_actions::sleep	impl Game<'_>	wake_woken_guests	-	server	role-reachability:server
-lan_actions::tests	-	block_menu_click_keeps_spent_action_on_cancellation	#[cfg(test)]	server	touches only server-owned fields
-lan_actions::tests	-	block_parts_pick_and_use_on_the_server_and_for_a_guest	#[cfg(test)]	server	touches only server-owned fields
-lan_actions::tests	-	fake_body_does_not_count_toward_sleep	#[cfg(test)]	server	touches only server-owned fields
-lan_actions::tick	impl Game<'_>	advance_guest_entity_clock	-	server	role-reachability:server
-lan_actions::tick	impl Game<'_>	finish_guest_connection_level	-	server	role-reachability:server
-lan_actions::tick	impl Game<'_>	guest_body_ticks	-	server	role-reachability:server
-lan_actions::tick	impl Game<'_>	guest_jump	-	server	touches only server-owned fields
-lan_actions::tick	impl Game<'_>	guest_player_tick	-	server	role-reachability:server
-lan_actions::tick	impl Game<'_>	server_spin_attack	-	server	role-reachability:server
-lan_actions::tick	impl Game<'_>	tick_guest_connection	-	server	role-reachability:server
-lan_actions::tick	impl Game<'_>	tick_guest_connection_body	-	server	touches only server-owned fields
-lan_actions::tick	impl Game<'_>	tick_guest_connections	-	server	touches only server-owned fields
-lan_actions::tick	impl Game<'_>	tick_guest_connections_inner	-	server	touches only server-owned fields
-lan_actions::tick	impl Game<'_>	tick_guests_inner	#[cfg(test)]	server	touches only server-owned fields
-lan_actions::tick	impl Game<'_>	tick_level_guests	-	server	role-reachability:server
-lan_actions::tick	impl Game<'_>	tick_level_guests_inner	-	server	touches only server-owned fields
-lan_actions::tick::building_cache_tests	-	seen_by_builder	#[cfg(test)]	server	touches only server-owned fields
-lan_actions::tick::dig_tick_order_tests	-	advancement_criteria_straddle_the_player_body_even_with_entity_cancel	#[cfg(test)]	server	touches only server-owned fields
-lan_actions::tick::dig_tick_order_tests	-	player_tick_hooks_observe_advanced_dig_progress_and_skipped_body_still_ticks_game_mode	#[cfg(test)]	server	touches only server-owned fields
-lan_actions::tick::spectator_body_tick_tests	-	leftover_sleep_countdown_waits_at_the_unloaded_edge_then_resumes	#[cfg(test)]	server	touches only server-owned fields
-lan_actions::tick::spectator_body_tick_tests	-	pre_teleport_to_unloaded_edge_keeps_the_resolved_body_tick	#[cfg(test)]	server	touches only server-owned fields
-lan_actions::turns	impl Game<'_>	as_guest_messaged	-	server	touches only server-owned fields
-lan_actions::turns	impl Game<'_>	combat_player	-	server	touches only server-owned fields
-lan_actions::turns	impl Game<'_>	for_each_player	-	server	touches only server-owned fields
-lan_actions::turns	impl Game<'_>	guest_turn	-	server	touches only server-owned fields
-lan_actions::turns	impl Game<'_>	projectile_player_owner_id	-	server	touches only server-owned fields
-lan_actions::turns	impl Game<'_>	record_interrupted_turn	-	server	touches only server-owned fields
-lan_actions::turns	impl Game<'_>	record_open_turns	-	server	touches only server-owned fields
-lan_actions::turns	impl Game<'_>	remember_player_projectile_target	-	server	touches only server-owned fields
-lan_actions::turns	impl Game<'_>	with_own_record	-	server	touches only server-owned fields
-lan_mount_menu	impl Game<'_>	lan_mount_valid	-	server	role-reachability:server
 lan_op	impl Game<'_>	lan_op_control	-	client	role-reachability:client
-lan_particles	impl Game<'_>	client_landing_dust	-	client	touches only client-owned fields
-lan_particles	impl Game<'_>	remote_explode	-	client	touches only client-owned fields
-lan_particles	impl Game<'_>	remote_level_particles	-	client	touches only client-owned fields
-lan_particles	impl Game<'_>	vibration_destination	-	client	role-reachability:client
-lan_stations	impl Game<'_>	lan_lectern_valid	-	server	role-reachability:server
-lan_stations	impl Game<'_>	lan_station_closed	-	server	role-reachability:server
-lan_stations	impl Game<'_>	lan_station_own_slots	-	server	role-reachability:server
-lan_stations	impl Game<'_>	lan_station_valid	-	server	role-reachability:server
-lan_trade_decisions	impl Game<'_>	apply_merchant_take	-	server	retain-in-server-mirror
-lan_trade_decisions	impl Game<'_>	commit_merchant_effect	-	server	retain-in-server-mirror
-lan_trade_decisions	impl Game<'_>	journal_trade_sequences	-	server	retain-in-server-mirror
-lan_trade_decisions	impl Game<'_>	lan_merchant_click	-	server	retain-in-server-mirror
-lan_trade_decisions	impl Game<'_>	menu_click_in_progress	-	server	retain-in-server-mirror
-lan_trade_decisions	impl Game<'_>	resend_merchant_take	-	server	retain-in-server-mirror
-lan_trade_decisions	impl Game<'_>	run_merchant_take	-	server	retain-in-server-mirror
-lan_trade_decisions	impl Game<'_>	send_merchant_take	-	server	retain-in-server-mirror
-lan_trade_decisions	impl Journal	merge	-	server	retain-in-server-mirror
-lan_trade_decisions	impl Journal	rollback	-	server	retain-in-server-mirror
-lan_trade_decisions	impl TakeReads	fresh	-	server	retain-in-server-mirror
 lan_trade_decisions_tests	-	restock_after_hero_change	#[cfg(test)]	client	touches only client-owned fields
-lan_vehicles	impl Game<'_>	object_target	-	client	touches only client-owned fields
 launch_options	impl Options	is_client_start	-	client	role-reachability:client
 launch_options	impl Options	time_limit	-	client	role-reachability:client
-leads	impl Game<'_>	lead_sound	-	client	touches only client-owned fields
-leads	impl Game<'_>	leash_geometry	-	client	touches only client-owned fields
-leads	impl Game<'_>	player_rope_hold	-	client	touches only client-owned fields
-level_sounds	impl Game<'_>	play_client_level_sound	-	client	touches only client-owned fields
-level_sounds	impl Game<'_>	play_client_local_sound	-	client	touches only client-owned fields
-level_sounds	impl Game<'_>	play_client_player_sound	-	client	role-reachability:client
 light_emission	impl Game<'_>	ask_updated_light_emission	-	client	role-reachability:client
 mace	impl Game<'_>	smash_dust	-	client	touches only client-owned fields
-maps	impl Game<'_>	held_map	-	client	role-reachability:client
-maps	impl Game<'_>	map_texture	-	client	touches only client-owned fields
-maps	impl Game<'_>	map_vertices	-	client	touches only client-owned fields
-maps	impl Game<'_>	maps_status	-	client	role-reachability:client
-maps	impl Game<'_>	mod_map_decorations	-	client	role-reachability:client
-maps	impl Game<'_>	two_handed_map_geometry	-	client	role-reachability:client
 memory_common	impl Drop for ServerMemoryRequest	drop	-	server	role-reachability:server
 memory_common	impl Generation	of	-	server	role-reachability:server
 memory_common	impl MemoryCancellation	cancel	-	client	role-reachability:client
@@ -510,98 +205,25 @@ memory_common	impl PendingMemory	cancel	-	client	role-reachability:client
 memory_common	impl PendingMemory	poll	-	client	role-reachability:client
 memory_common	impl PendingMemory	spawn	-	client	role-reachability:client
 memory_common	impl ServerMemoryRequest	collect	-	server	role-reachability:server
-menu_clicks	impl Game<'_>	anvil_menu_session	-	client	retain-in-client-mirror
-menu_clicks	impl Game<'_>	click_inventory	-	client	retain-in-client-mirror
-menu_clicks	impl Game<'_>	click_open_inventory	-	client	retain-in-client-mirror
-menu_clicks	impl Game<'_>	creative_display_click	-	client	retain-in-client-mirror
-menu_clicks	impl Game<'_>	deliver_client_anvil_update	-	client	retain-in-client-mirror
-menu_clicks	impl Game<'_>	hovered_inventory_slot	-	client	retain-in-client-mirror
-menu_clicks	impl Game<'_>	menu_ops	-	client	retain-in-client-mirror
-menu_clicks	impl Game<'_>	menu_session_with_game	-	client	retain-in-client-mirror
-menu_clicks	impl Game<'_>	reset_inventory_clicks	-	client	retain-in-client-mirror
-menu_clicks	impl Game<'_>	run_client_anvil_click	-	client	retain-in-client-mirror
-minecart_moves	impl Game<'_>	move_cart	-	server	retain-in-server-mirror
-minecarts	impl CartIndex	carts_near	-	server	role-reachability:server
-minecarts	impl CartIndex	forget_carts	-	server	role-reachability:server
-minecarts	impl CartIndex	mobs_near	-	server	role-reachability:server
-minecarts	impl CartIndex	moved	-	server	role-reachability:server
-minecarts	impl CartIndex	usable	-	server	role-reachability:server
 minecarts	impl CartKind	interact_passes	-	client	role-reachability:client
-minecarts	impl Game<'_>	activate_cart	-	server	role-reachability:server
-minecarts	impl Game<'_>	adjust_cart_to_rails	-	server	role-reachability:server
-minecarts	impl Game<'_>	arrow_hits_cart	-	server	role-reachability:server
 minecarts	impl Game<'_>	baked_model_vertices	-	client	role-reachability:client
 minecarts	impl Game<'_>	block_display_light	-	client	role-reachability:client
 minecarts	impl Game<'_>	block_display_model_vertices	-	client	role-reachability:client
 minecarts	impl Game<'_>	block_model_vertices	-	client	role-reachability:client
-minecarts	impl Game<'_>	cart_block_effects	-	server	role-reachability:server
 minecarts	impl Game<'_>	cart_geometry	-	client	touches only client-owned fields
-minecarts	impl Game<'_>	cart_inside_blocks	-	server	role-reachability:server
-minecarts	impl Game<'_>	cart_lava_tick	-	server	role-reachability:server
-minecarts	impl Game<'_>	cart_max_speed	-	server	role-reachability:server
-minecarts	impl Game<'_>	come_off_track	-	server	role-reachability:server
-minecarts	impl Game<'_>	conductor	-	server	role-reachability:server
 minecarts	impl Game<'_>	default_block_tint	-	client	role-reachability:client
 minecarts	impl Game<'_>	display_state	-	client	role-reachability:client
 minecarts	impl Game<'_>	display_state_unfiltered	-	client	role-reachability:client
-minecarts	impl Game<'_>	finish_cart_step	-	server	role-reachability:server
-minecarts	impl Game<'_>	interact_cart	-	server	role-reachability:server
-minecarts	impl Game<'_>	is_descending	-	server	role-reachability:server
-minecarts	impl Game<'_>	max_speed	-	server	role-reachability:server
-minecarts	impl Game<'_>	max_speed_new	-	server	role-reachability:server
-minecarts	impl Game<'_>	move_along_track	-	server	role-reachability:server
-minecarts	impl Game<'_>	move_along_track_new	-	server	role-reachability:server
-minecarts	impl Game<'_>	natural_slowdown	-	server	role-reachability:server
-minecarts	impl Game<'_>	new_step_along_track	-	server	role-reachability:server
-minecarts	impl Game<'_>	note_cart_pass	-	server	role-reachability:server
-minecarts	impl Game<'_>	open_cart_container	-	server	role-reachability:server
-minecarts	impl Game<'_>	pickup_from_cart	-	server	role-reachability:server
-minecarts	impl Game<'_>	place_minecart	-	server	touches only server-owned fields
-minecarts	impl Game<'_>	push_carts	-	server	role-reachability:server
-minecarts	impl Game<'_>	push_carts_from_mobs	-	server	role-reachability:server
-minecarts	impl Game<'_>	push_from_cart	-	server	role-reachability:server
-minecarts	impl Game<'_>	push_from_ticked_cart	-	server	role-reachability:server
 minecarts	impl Game<'_>	rail_pos_offs	-	client	role-reachability:client
-minecarts	impl Game<'_>	record_cart_step	-	server	role-reachability:server
-minecarts	impl Game<'_>	redstone_direction	-	server	role-reachability:server
 minecarts	impl Game<'_>	remote_tnt_cart_event	-	client	role-reachability:client
-minecarts	impl Game<'_>	set_cart_rotation	-	server	role-reachability:server
 minecarts	impl Game<'_>	special_block_model	-	client	role-reachability:client
 minecarts	impl Game<'_>	start_cart_sounds	-	client	touches only client-owned fields
-minecarts	impl Game<'_>	tick_cart	-	server	role-reachability:server
-minecarts	impl Game<'_>	tick_cart_riding	-	server	role-reachability:server
-minecarts	impl Game<'_>	tick_carts	-	server	role-reachability:server
-minecarts	impl Game<'_>	tick_carts_now	-	server	role-reachability:server
 minecarts	impl Game<'_>	tinted_block_model_vertices	-	client	role-reachability:client
-minecarts	impl Game<'_>	unpack_cart_loot	-	server	role-reachability:server
 minecarts	impl Minecart	accumulate_rotation	-	client	role-reachability:client
-minecarts	impl Minecart	container_signal	-	server	role-reachability:server
-minecarts	impl Minecart	horizontal	-	server	role-reachability:server
 minecarts	impl Minecart	rotate_passenger	-	client	role-reachability:client
 minecarts	impl PreparedModelFace	gpu_vertex	-	client	role-reachability:client
 minecarts	impl PreparedModelFace	hidden_by	-	client	role-reachability:client
-minecarts::hit	impl CartHit	player	-	server	role-reachability:server
-minecarts::hit	impl CartHit	projectile	-	server	role-reachability:server
-minecarts::lifetime_tests	-	a_bound_cart_survives_the_parked_level_swap	#[cfg(test)]	server	touches only server-owned fields
-minecarts::lifetime_tests	-	bound_cart_case	#[cfg(test)]	server	touches only server-owned fields
-minecarts::lifetime_tests	-	destroyed_carts_retain_authoritative_state_and_retire_their_registration	#[cfg(test)]	server	touches only server-owned fields
-minecarts::lifetime_tests	-	disabled_tnt_rule_discards_primed_carts_but_keeps_unprimed_ticks	#[cfg(test)]	server	touches only server-owned fields
-minecarts::lifetime_tests	-	terminal_vehicle_damage_and_native_removal_retire_residency	#[cfg(test)]	server	touches only server-owned fields
 minecarts::minecart_tnt_tests	-	flint_and_steel_passes_on_a_tnt_cart_without_lighting_it	#[cfg(test)]	client	touches only client-owned fields
-minecarts::minecart_tnt_tests	-	tnt_cart	#[cfg(test)]	server	touches only server-owned fields
-minecarts::save_lending	impl Game<'_>	explode_cart	-	server	touches only server-owned fields
-mod_container_openers_tests::tests	-	a_shulker_close_sounds_at_its_centre_when_the_listener_replaces_it	#[cfg(test)]; #[cfg(test)]	client	touches only client-owned fields
-mods	impl Game<'_>	applied_mods	-	client	role-reachability:client
-mods	impl Game<'_>	apply_mods_reload	-	server	touches only server-owned fields
-mods	impl Game<'_>	install_loop_context	-	client	touches only client-owned fields
-mods	impl Game<'_>	mods_reloaded	-	client	role-reachability:client
-mods	impl Game<'_>	switch_mods	-	client	role-reachability:client
-mods	impl Game<'_>	sync_native_switches	-	client	touches only client-owned fields
-mods	impl ModsState	startup_admission	-	client	role-reachability:client
-mods::package_files	impl StartupAdmission	matches_selection	-	client	role-reachability:client
-mods::tests::inventory	-	code_only_reload_publishes_one_new_inventory_after_prepare_and_preserves_old_readers	#[cfg(test)]	server	touches only server-owned fields
-mounts	impl Game<'_>	draw_jump_bar	-	client	role-reachability:client
-mounts	impl Game<'_>	mount_jumping	-	client	role-reachability:client
 moving_pistons	impl Game<'_>	moving_block_vertices	-	client	retain-in-client-mirror
 moving_pistons	impl Game<'_>	moving_piston_blocks	-	client	retain-in-client-mirror
 moving_pistons	impl Game<'_>	moving_piston_geometry	-	client	retain-in-client-mirror
@@ -609,457 +231,33 @@ moving_pistons	impl Game<'_>	section_mesh_pending	-	client	retain-in-client-mirr
 moving_pistons	impl Game<'_>	section_mesh_pending_in	-	client	retain-in-client-mirror
 moving_pistons	impl Game<'_>	section_upload_pending	-	client	retain-in-client-mirror
 names	impl Game<'_>	name_mob	-	server	touches only server-owned fields
-native_block_sounds	impl Game<'_>	own_sound_type	-	client	role-reachability:client
-native_block_sounds	impl Game<'_>	play_break_sound	-	client	touches only client-owned fields
 native_book_placement	impl Server	new	-	server	role-reachability:server
-native_colliders	impl Game<'_>	forget_client_collider	-	client	role-reachability:client
-native_colliders	impl Game<'_>	remote_collider_sync	-	client	role-reachability:client
-native_components	impl Game<'_>	item_combat_component	-	server	role-reachability:server
-native_components	impl Game<'_>	item_combat_stack	-	server	role-reachability:server
-native_components	impl Game<'_>	item_resource_attack_damage_bonus	-	server	touches only server-owned fields
-native_components	impl Game<'_>	item_resource_enchant_randomly	-	server	touches only server-owned fields
-native_components::item_resource_property_tests	-	run_effective_resource_properties_match_vanilla	#[cfg(test)]	server	touches only server-owned fields
 native_configs	impl Game<'_>	native_configs_tick_client	-	client	role-reachability:client
-native_entity_motion	impl Game<'_>	entity_eye_height	-	client	touches only client-owned fields
-native_entity_refs_common	impl Game<'_>	native_client_entity_target	-	client	role-reachability:client
 native_entity_riding::tests	-	mounting_a_leashed_mob_drops_one_lead_without_a_break_sound	#[cfg(test)]	client	touches only client-owned fields
 native_entity_riding::tests	-	natural_boarding_drops_a_lead_only_after_a_successful_mount	#[cfg(test)]	client	touches only client-owned fields
 native_guest_turn_tests	-	level_event_excludes_its_source_even_during_another_guests_turn	#[cfg(test)]	client	touches only client-owned fields
-native_hooks	impl Drop for ContentsChangedGuard<'_, '_>	drop	-	server	whole trait impl touches only server-owned fields
-native_hooks	impl Game<'_>	animal_tame_cancelled	-	server	role-reachability:server
-native_hooks	impl Game<'_>	attack_of	-	server	touches only server-owned fields
-native_hooks	impl Game<'_>	finish_damage_post	-	server	touches only server-owned fields
-native_hooks	impl Game<'_>	item_use_first	-	server	pre-switch server-only split
-native_hooks	impl Game<'_>	mob_place_block	-	server	role-reachability:server
-native_hooks	impl Game<'_>	mod_menu_button	-	server	pre-switch server-only split
-native_hooks	impl Game<'_>	native_carried_slot	-	server	role-reachability:server
-native_hooks	impl Game<'_>	native_clicker	-	server	touches only server-owned fields
-native_hooks	impl Game<'_>	native_containers	-	server	role-reachability:server
-native_hooks	impl Game<'_>	native_energy_tables	-	server	role-reachability:server
-native_hooks	impl Game<'_>	native_fluid_tables	-	server	role-reachability:server
-native_hooks	impl Game<'_>	native_hurt_enemy_event	-	server	role-reachability:server
-native_hooks	impl Game<'_>	native_inventory_ticks	-	server	role-reachability:server
-native_hooks	impl Game<'_>	native_slot_tick	-	server	role-reachability:server
-native_hooks	impl Game<'_>	native_ticks	-	server	role-reachability:server
-native_hooks	impl Game<'_>	native_with_mod_block_entity	-	server	pre-switch server-only split
-native_hooks	impl Game<'_>	pet_tamed	-	server	role-reachability:server
-native_hooks	impl Game<'_>	place_canceled	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	block_entity_sync	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_anvil_craft_post	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_anvil_craft_pre	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_armor_stand_manipulate	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_arrow_loose	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_attack_entity	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_beacon_state_change	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_block_break_progress_update	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_block_cook	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_block_damage_abort	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_block_entity_container	-	server	role-reachability:server
-native_hooks::base	impl Game<'_>	native_block_entity_energy	-	server	role-reachability:server
-native_hooks::base	impl Game<'_>	native_block_entity_fluids	-	server	role-reachability:server
-native_hooks::base	impl Game<'_>	native_block_receive_game	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_break_block	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_brewing_complete	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_brewing_fuel	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_brewing_start	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_bucket_empty	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_campfire_start	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_chunk_load	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_compost_item	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_creative_slot	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_creeper_ignite	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_creeper_power	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_critical_hit	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_enchant_effect	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_enchant_item	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_ender_pearl_teleport	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_entities_unload	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_entity_break_door	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_entity_breed	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_entity_change_block	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_entity_drop_item	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_entity_enter_block	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_entity_enter_love_mode	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_entity_join_level	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_entity_portal	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_entity_pose_change	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_entity_shoot_bow	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_entity_tame	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_entity_toggle_glide	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_exp_bottle	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_experience_orb_can_merge	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_experience_orb_merge	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_fill_bucket	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_firework_explode	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_furnace_burn	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_furnace_extract	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_furnace_smelt	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_furnace_start_smelt	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_hanging_place	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_hopper_inventory_search	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_hurt_enemy	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_inventory_tick	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_item_consumption_teleport	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_item_despawn	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_item_expire	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_left_click_block	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_level_load	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_level_unload	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_living_equipment_change	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_living_equipment_listened	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_menu_clicked	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_menu_closed	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_mob_effect_added	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_on_effect_added	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_on_equip	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_pickup_xp	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_arm_swing	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_attack_cooldown_reset	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_bucket_entity	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_bundle_item_select	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_change_beacon_effect	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_changed_dimension	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_client_loaded_world	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_clone	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_command	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_deep_sleep	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_edit_book	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_egg_throw	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_elytra_boost	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_exp_cooldown_change	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_fish	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_flower_pot_manipulate	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_handshake	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_input	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_insert_lectern_book	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_item_frame_change	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_item_mend	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_jump	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_kicked	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_lectern_page_change	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_load_from_file	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_logged_in	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_login	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_login_profile	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_loom_pattern_select	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_map_filled	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_name_entity	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_pick_item	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_pickup_arrow	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_ready_arrow	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_recipe_book_click	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_recipe_book_settings_change	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_respawn_position	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_respawned	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_riptide	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_shear_entity	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_sprint	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_start_tracking	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_stonecutter_recipe_select	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_stop_spectating_entity	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_stop_tracking	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_stop_using_item	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_swap_with_equipment_slot	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_switch_hotbar_slot_post	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_switch_hotbar_slot_pre	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_take_lectern_book	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_teleport_end_gateway	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_toggle_entity_age_lock	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_toggle_flight	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_toggle_sneak	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_trade	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_player_velocity	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_portal_create	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_potion_splash	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_prepare_hopper_transfer	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_prepare_item_craft	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_prepare_item_enchant	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_prepare_smithing	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_projectile_impact	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_raid_spawn_wave	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_register_commands	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_resource_pack_status	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_server_about_to_start	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_server_starting	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_server_stopped	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_server_stopping	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_server_tick	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_sign_changed	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_sleep_finished_time	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_tab_complete	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_target_hit	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_trade_select	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_vault_change_state	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_vault_loot	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_vehicle_moved	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	native_world_border_bounds_change_finish	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	set_block_property	-	server	pre-switch server-only split
-native_hooks::base	impl Game<'_>	set_block_property_with	-	server	pre-switch server-only split
-native_hooks::base::held_break_slot_tests	-	held_durability_retains_the_stack_hand_and_explicit_break_slot	#[cfg(test)]	server	touches only server-owned fields
-native_hooks::block_entity_neighbors_tests	-	installed_block_entity_neighbor_parts_dispatch_through_game	#[cfg(test)]	server	touches only server-owned fields
-native_hooks::block_entity_on_load	impl Game<'_>	tick_mod_block_entity	-	server	role-reachability:server
-native_hooks::block_entity_save_additional_tests::tests	-	break_only_serializes_admitted_loot_not_removal_notices	#[cfg(test)]	server	touches only server-owned fields
-native_hooks::block_entity_save_additional_tests::tests	-	save_edits_slotless_items_but_keeps_declared_slots_after_a_skipped_tick	#[cfg(test)]	server	touches only server-owned fields
-native_hooks::block_entity_save_additional_tests::tests	-	structure_capture_refuses_lossy_listener_keys_and_strings	#[cfg(test)]	server	touches only server-owned fields
-native_hooks::block_entity_tick	impl BlockEntityAccess for ResidentBlockEntityAccess<'_, '_>	host	-	server	whole trait impl touches only server-owned fields
-native_hooks::block_entity_tick	impl BlockEntityAccess for ResidentBlockEntityAccess<'_, '_>	with_current_transaction_scope	-	server	whole trait impl touches only server-owned fields
-native_hooks::block_entity_tick	impl BlockEntityAccess for ResidentBlockEntityAccess<'_, '_>	with_transaction_scope	-	server	whole trait impl touches only server-owned fields
-native_hooks::block_entity_tick	impl BlockEntityAccess for ResidentBlockEntityAccess<'_, '_>	with_view	-	server	whole trait impl touches only server-owned fields
-native_hooks::block_entity_tick	impl Game<'_>	resident_block_entity_target	-	server	role-reachability:server
-native_hooks::block_entity_tick	impl Game<'_>	tick_mod_block_entity_loaded	-	server	role-reachability:server
-native_hooks::block_entity_tick	impl<'g, 'w> ResidentBlockEntityAccess<'g, 'w>	blockless	-	server	role-reachability:server
-native_hooks::block_entity_tick	impl<'g, 'w> ResidentBlockEntityAccess<'g, 'w>	for_handle	-	server	role-reachability:server
-native_hooks::block_entity_tick	impl<'g, 'w> ResidentBlockEntityAccess<'g, 'w>	items_changed	-	server	role-reachability:server
-native_hooks::block_entity_tick::tests	-	replacement_and_item_stack_journals_close_in_their_own_dimensions	#[cfg(test)]	server	touches only server-owned fields
-native_hooks::build_creative_mode_tab_contents::tests	-	install_dedicated_holders	#[cfg(test)]	server	touches only server-owned fields
-native_hooks::can_start_swimming	impl Game<'_>	ask_swim_eligibility	-	server	touches only server-owned fields
-native_hooks::client_information_updated	impl Game<'_>	announce_login	-	server	role-reachability:server
-native_hooks::contents_changed	impl Game<'_>	contents_notice_active	-	server	touches only server-owned fields
-native_hooks::damage_item	impl Game<'_>	damage_item_loss	-	server	role-reachability:server
-native_hooks::death_source_tests	-	guest_player_bow_death_keeps_the_connected_shooter_without_a_local_player	#[cfg(test)]	server	touches only server-owned fields
-native_hooks::death_source_tests	-	player	#[cfg(test)]	server	touches only server-owned fields
-native_hooks::death_source_tests	-	zombie_ai_melee_armor_hurt_retains_the_real_source	#[cfg(test)]	server	touches only server-owned fields
-native_hooks::enchanted_block_loot::tests	-	a_listener_sets_the_level_a_block_table_reads	#[cfg(test)]	server	touches only server-owned fields
-native_hooks::enchanted_block_loot::tests	-	break_gravel	#[cfg(test)]	server	touches only server-owned fields
-native_hooks::entity_inside::sweep_tests	-	a_killing_write_stops_the_items_flush	#[cfg(test)]	server	touches only server-owned fields
-native_hooks::exp_drop	impl Game<'_>	entity_block_dropped	-	server	role-reachability:server
-native_hooks::exp_drop	impl Game<'_>	live_block_entity	-	server	role-reachability:server
-native_hooks::exp_drop	impl Game<'_>	player_block_dropped	-	server	role-reachability:server
-native_hooks::exp_drop	impl Game<'_>	prepare_part_break_experience	-	server	role-reachability:server
-native_hooks::exp_drop	impl GameLevel<'_>	resident_block_entity	-	server	role-reachability:server
-native_hooks::explosion_notice_containment	impl Game<'_>	contained_block_exploded	-	server	role-reachability:server
-native_hooks::farmland_trample	impl Game<'_>	trample_farmland	-	server	touches only server-owned fields
-native_hooks::farmland_trample::tests	-	ordinary_moves_and_short_farmland_landings_do_not_pause	#[cfg(test)]	server	touches only server-owned fields
-native_hooks::fire_behaviour	impl GameLevel<'_>	player_near_fire	-	server	role-reachability:server
-native_hooks::general_entity_tick	impl EntityServerAccess for GeneralTickAccess<'_, '_, '_>	host	-	server	role-reachability:server
-native_hooks::general_entity_tick	impl EntityServerAccess for GeneralTickAccess<'_, '_, '_>	with_current_transaction_scope	-	server	role-reachability:server
-native_hooks::general_entity_tick	impl EntityServerAccess for GeneralTickAccess<'_, '_, '_>	with_transaction_scope	-	server	role-reachability:server
-native_hooks::general_entity_tick	impl EntityServerAccess for GeneralTickAccess<'_, '_, '_>	with_view	-	server	role-reachability:server
-native_hooks::general_entity_tick	impl Game<'_>	tick_general_row_scoped	-	server	role-reachability:server
-native_hooks::general_entity_tick	impl ResidentGeneralEntity for ResidentGeneralRow<'_>	kind	-	server	role-reachability:server
-native_hooks::general_entity_tick	impl ResidentGeneralEntity for ResidentGeneralRow<'_>	position	-	server	role-reachability:server
-native_hooks::general_entity_tick	impl ResidentGeneralEntity for ResidentGeneralRow<'_>	reset_fall_distance	-	server	role-reachability:server
-native_hooks::general_entity_tick	impl ResidentGeneralEntity for ResidentGeneralRow<'_>	rotation	-	server	role-reachability:server
-native_hooks::general_entity_tick	impl ResidentGeneralEntity for ResidentGeneralRow<'_>	set_rotation	-	server	role-reachability:server
-native_hooks::general_entity_tick	impl ResidentGeneralEntity for ResidentGeneralRow<'_>	set_velocity	-	server	role-reachability:server
-native_hooks::general_entity_tick	impl ResidentGeneralEntity for ResidentGeneralRow<'_>	uuid	-	server	role-reachability:server
-native_hooks::general_entity_tick	impl ResidentGeneralEntity for ResidentGeneralRow<'_>	velocity	-	server	role-reachability:server
-native_hooks::general_entity_tick::tests	-	general_subject_and_host_writes_commit_or_abort_together	#[cfg(test)]	server	touches only server-owned fields
-native_hooks::incoming_tests	-	held_durability_retains_the_stack_hand_and_explicit_break_slot	-	server	touches only server-owned fields
-native_hooks::item_attack	impl Game<'_>	native_left_click_entity_event	-	server	role-reachability:server
-native_hooks::item_fall_on_tests	-	a_dropped_item_lands_on_a_fall_on_part	#[cfg(test)]	server	touches only server-owned fields
-native_hooks::item_fall_on_tests	-	item_fall_on_returns_progressed_level_loan_after_part_panic	#[cfg(test)]	server	touches only server-owned fields
-native_hooks::item_fallthrough	impl Game<'_>	use_item_fallthrough	-	server	role-reachability:server
-native_hooks::item_fallthrough	impl Game<'_>	use_target_then_item	-	server	touches only server-owned fields
-native_hooks::item_picked_up	impl Game<'_>	native_pickup_allowed	-	server	role-reachability:server
-native_hooks::item_picked_up	impl Game<'_>	native_pickup_answer	-	server	role-reachability:server
-native_hooks::item_picked_up	impl Game<'_>	native_pickup_insert	-	server	role-reachability:server
-native_hooks::item_picked_up	impl Game<'_>	native_pickup_lent	-	server	role-reachability:server
-native_hooks::item_picked_up	impl Game<'_>	native_pickup_post	-	server	role-reachability:server
-native_hooks::item_picked_up	impl Game<'_>	native_player_pickups	-	server	role-reachability:server
-native_hooks::item_picked_up	impl Game<'_>	pickup_decision	-	server	role-reachability:server
-native_hooks::item_toss	impl Game<'_>	toss_item	-	server	touches only server-owned fields
-native_hooks::level_world	impl Game<'_>	level_random_mut	-	server	touches only server-owned fields
-native_hooks::living_breathe	impl Game<'_>	ask_breath	-	server	role-reachability:server
-native_hooks::living_breathe	impl Game<'_>	ask_mob_breath	-	server	role-reachability:server
-native_hooks::living_breathe	impl Game<'_>	ask_player_breath	-	server	role-reachability:server
-native_hooks::living_breathe	impl Game<'_>	ask_stand_breath	-	server	role-reachability:server
-native_hooks::living_death	impl Game<'_>	mob_death_canceled	-	server	touches only server-owned fields
-native_hooks::living_death_post::tests	-	sheep	#[cfg(test)]	server	touches only server-owned fields
-native_hooks::loot	impl Game<'_>	native_block_loot	-	server	touches only server-owned fields
-native_hooks::mod_mismatch	impl Game<'_>	check_mod_mismatch	-	server	touches only server-owned fields
-native_hooks::on_block_placed_by_tests	-	block_items_notify_after_setup_and_before_consumption	#[cfg(test)]	server	touches only server-owned fields
-native_hooks::on_block_placed_by_tests	-	place	#[cfg(test)]	server	touches only server-owned fields
-native_hooks::on_chunk_unloaded	impl Game<'_>	native_chunk_and_block_entities_unload	-	server	role-reachability:server
-native_hooks::on_entity_item_update	impl Game<'_>	item_update_halts	-	server	role-reachability:server
-native_hooks::on_entity_item_update	impl Game<'_>	item_update_round	-	server	role-reachability:server
-native_hooks::on_entity_item_update	impl mod_api::ItemEntityServerAccess for ItemEntityTickAccess<'_, '_>	host	-	server	role-reachability:server
-native_hooks::on_entity_item_update	impl mod_api::ItemEntityServerAccess for ItemEntityTickAccess<'_, '_>	with_current_transaction_scope	-	server	role-reachability:server
-native_hooks::on_entity_item_update	impl mod_api::ItemEntityServerAccess for ItemEntityTickAccess<'_, '_>	with_transaction_scope	-	server	role-reachability:server
-native_hooks::on_entity_item_update	impl mod_api::ItemEntityServerAccess for ItemEntityTickAccess<'_, '_>	with_view	-	server	role-reachability:server
-native_hooks::on_entity_item_update	impl mod_api::ResidentItemEntity for ResidentDroppedItem<'_, '_>	age	-	server	role-reachability:server
-native_hooks::on_entity_item_update	impl mod_api::ResidentItemEntity for ResidentDroppedItem<'_, '_>	owner	-	server	role-reachability:server
-native_hooks::on_entity_item_update	impl mod_api::ResidentItemEntity for ResidentDroppedItem<'_, '_>	pickup_delay	-	server	role-reachability:server
-native_hooks::on_entity_item_update	impl mod_api::ResidentItemEntity for ResidentDroppedItem<'_, '_>	position	-	server	role-reachability:server
-native_hooks::on_entity_item_update	impl mod_api::ResidentItemEntity for ResidentDroppedItem<'_, '_>	set_pickup_delay	-	server	role-reachability:server
-native_hooks::on_entity_item_update	impl mod_api::ResidentItemEntity for ResidentDroppedItem<'_, '_>	set_stack	-	server	role-reachability:server
-native_hooks::on_entity_item_update	impl mod_api::ResidentItemEntity for ResidentDroppedItem<'_, '_>	set_target	-	server	role-reachability:server
-native_hooks::on_entity_item_update	impl mod_api::ResidentItemEntity for ResidentDroppedItem<'_, '_>	set_velocity	-	server	role-reachability:server
-native_hooks::on_entity_item_update	impl mod_api::ResidentItemEntity for ResidentDroppedItem<'_, '_>	target	-	server	role-reachability:server
-native_hooks::on_entity_item_update	impl mod_api::ResidentItemEntity for ResidentDroppedItem<'_, '_>	velocity	-	server	role-reachability:server
-native_hooks::on_entity_item_update	impl mod_api::ResidentItemEntity for ResidentDroppedItem<'_, '_>	with_stack	-	server	role-reachability:server
-native_hooks::on_entity_item_update::on_entity_item_update_tests	-	rest	#[cfg(test)]	server	touches only server-owned fields
-native_hooks::piston_push_reaction_tests	-	piston_push_reaction_position_state_opens_ticks_and_saves	#[cfg(test)]	server	touches only server-owned fields
-native_hooks::placement_context_tests	-	player_and_dispenser_apply_only_the_context_seen_by_the_veto	#[cfg(test)]	server	touches only server-owned fields
-native_hooks::placement_context_tests	-	state_for_placement_distinguishes_player_and_dispenser_sources	#[cfg(test)]	server	touches only server-owned fields
-native_hooks::placement_context_tests	-	substituted_placement_uses_the_held_item_preclear_and_selected_placed_by	#[cfg(test)]	server	touches only server-owned fields
-native_hooks::player_bed_leave	impl Game<'_>	native_acting_bed_leave	-	server	touches only server-owned fields
-native_hooks::player_bed_leave	impl Game<'_>	native_player_bed_leave	-	server	pre-switch server-only split
-native_hooks::player_leave	impl Game<'_>	announce_guest_left	-	server	role-reachability:server
-native_hooks::player_leave	impl Game<'_>	native_guest_left	-	server	role-reachability:server
-native_hooks::player_leave::player_leave_tests	-	first_of_two_leaves	#[cfg(test)]	server	touches only server-owned fields
-native_hooks::player_leave::player_leave_tests	-	what_a_listener_changes_on_a_leaving_player_is_saved	#[cfg(test)]	server	touches only server-owned fields
-native_hooks::register_enchantment_damage_effects::tests	-	custom_enchantment_changes_real_hit_damage_and_observes_hit_context	#[cfg(test)]	server	touches only server-owned fields
-native_hooks::remove_block	impl GameLevel<'_>	removal_replacement	-	server	role-reachability:server
-native_hooks::server_tick_rate_changed::server_tick_rate_changed_tests	-	a_listener_runs_before_the_autosave_wait_is_adjusted	#[cfg(test)]	server	touches only server-owned fields
-native_hooks::server_tick_rate_changed::server_tick_rate_changed_tests	-	a_mod_hears_every_route_of_on_tick_rate_changed_once	#[cfg(test)]	server	touches only server-owned fields
-native_hooks::trident_family_tests	-	fixture	#[cfg(test)]	server	touches only server-owned fields
-native_item_entity_refs	impl Game<'_>	item_entity_owner	-	server	role-reachability:server
 native_item_places::tests	-	stand_equipment_effects_wait_for_root_commit	#[cfg(test)]	client	touches only client-owned fields
-native_knockback_credit	impl Game<'_>	knockback_credit_entity	-	server	retain-in-server-mirror
-native_knockback_credit	impl Game<'_>	knockback_player_credit	-	server	retain-in-server-mirror
-native_knockback_credit	impl Game<'_>	prepare_knockback_credit	-	server	retain-in-server-mirror
 native_level_sound_except_tests	-	cross_level_transaction_replays_effects_in_request_level_and_preserves_packet_order	#[cfg(test)]	client	touches only client-owned fields
-native_lifecycle	impl Game<'_>	native_lifecycle_world_closed	-	client	touches only client-owned fields
 native_living_body	impl Game<'_>	causer_id	-	server	retain-in-server-mirror
 native_living_body	impl Game<'_>	native_living_body	-	server	retain-in-server-mirror
 native_living_body	impl Game<'_>	native_parked_causer	-	server	retain-in-server-mirror
-native_living_writes::tests	-	with_uses	#[cfg(test)]	client	touches only client-owned fields
-native_menu_refs	impl Game<'_>	menu_carried	-	server	touches only server-owned fields
-native_menu_refs	impl Game<'_>	menu_slot	-	server	touches only server-owned fields
-native_menu_refs	impl Game<'_>	native_menu_player	-	server	touches only server-owned fields
-native_menu_refs	impl Game<'_>	native_menu_rules	-	server	touches only server-owned fields
-native_menu_refs	impl Game<'_>	native_menu_storage	-	server	touches only server-owned fields
-native_menu_refs::tests	-	a_server_closes_a_guests_menu_and_sets_their_selected_slot	#[cfg(test)]	server	touches only server-owned fields
-native_menu_refs::tests	-	menus_read_storage_and_invalidate_on_replacement_wrap_and_reconnect	#[cfg(test)]	server	touches only server-owned fields
 native_mob_refs::tests	-	fox_enderman_and_zombified_piglin_take_targets_with_their_side_effects	#[cfg(test)]	client	touches only client-owned fields
 native_mob_refs::tests	-	piglin_target_write_drives_anger_sound_and_alert	#[cfg(test)]	client	touches only client-owned fields
-native_passages	impl Game<'_>	forget_chunk_passages	-	client	role-reachability:client
 native_player_level_tests	-	a_give_that_fits_plays_pickup_in_the_players_level	#[cfg(test)]	client	touches only client-owned fields
-native_server	impl Game<'_>	acting_in_level_in_place	-	server	touches only server-owned fields
-native_server	impl Game<'_>	cleanup_fake_player	-	server	touches only server-owned fields
-native_server	impl Game<'_>	cleanup_fake_player_client	-	client	touches only client-owned fields
-native_server	impl Game<'_>	client_abilities	-	client	role-reachability:client
-native_server	impl Game<'_>	cloning_guest	-	server	touches only server-owned fields
-native_server	impl Game<'_>	fake_action_actor	-	server	touches only server-owned fields
-native_server	impl Game<'_>	fake_blocks	-	server	touches only server-owned fields
-native_server	impl Game<'_>	fake_player	-	server	touches only server-owned fields
-native_server	impl Game<'_>	native_acting_player	-	server	touches only server-owned fields
-native_server	impl Game<'_>	native_as_player	-	server	touches only server-owned fields
-native_server	impl Game<'_>	native_as_player_handle	-	server	role-reachability:server
-native_server	impl Game<'_>	native_command_origin	-	server	touches only server-owned fields
-native_server	impl Game<'_>	native_failure	-	server	touches only server-owned fields
-native_server	impl Game<'_>	native_feedback	-	server	touches only server-owned fields
-native_server	impl Game<'_>	native_filter_commands	-	server	touches only server-owned fields
-native_server	impl Game<'_>	native_item_place_player	-	server	touches only server-owned fields
-native_server	impl Game<'_>	native_refresh_commands	-	server	touches only server-owned fields
-native_server	impl Game<'_>	native_send_all	-	server	touches only server-owned fields
-native_server	impl Game<'_>	native_server_players	-	server	role-reachability:server
-native_server	impl Game<'_>	perform_fake_action	-	server	touches only server-owned fields
-native_server	impl Game<'_>	perform_native_command	-	server	touches only server-owned fields
-native_server	impl Game<'_>	perform_native_console_command	-	server	touches only server-owned fields
-native_server	impl Game<'_>	player_collision_flags	-	server	touches only server-owned fields
-native_server	impl Game<'_>	player_counts_for_sleep	-	server	touches only server-owned fields
-native_server	impl Game<'_>	player_dimension_key	-	server	touches only server-owned fields
-native_server	impl Game<'_>	player_handle_read	-	server	touches only server-owned fields
-native_server	impl Game<'_>	player_is_fake	-	server	touches only server-owned fields
-native_server	impl Game<'_>	player_lookup	-	server	touches only server-owned fields
-native_server	impl Game<'_>	player_name	-	server	touches only server-owned fields
-native_server	impl Game<'_>	player_perform_action_scoped	-	server	touches only server-owned fields
-native_server	impl Game<'_>	player_remove_fake	-	server	touches only server-owned fields
-native_server	impl Game<'_>	player_respawn_config	-	server	touches only server-owned fields
-native_server	impl Game<'_>	player_set_abilities	-	server	touches only server-owned fields
-native_server	impl Game<'_>	player_set_selected_slot	-	server	touches only server-owned fields
-native_server	impl Game<'_>	remove_level_fake_players	-	server	role-reachability:server
-native_server	impl Game<'_>	run_chunk_ticket_level_updates	-	server	touches only server-owned fields
-native_server	impl Game<'_>	run_chunk_watches	-	server	role-reachability:server
-native_server	impl Game<'_>	run_console_command	-	server	touches only server-owned fields
-native_server	impl Game<'_>	run_native_command	-	server	touches only server-owned fields
-native_server	impl Game<'_>	world_dir	-	server	touches only server-owned fields
-native_server::command_failure_tests	-	tracked_executor_failure_survives_saved_depth_boundary	#[cfg(test)]	server	touches only server-owned fields
-native_server::fake_action_tests	-	a_fakes_action_is_refused_before_anything_runs	#[cfg(test)]	server	touches only server-owned fields
-native_server::fake_action_tests	-	a_fakes_action_leaves_the_per_action_state_as_it_was	#[cfg(test)]	server	touches only server-owned fields
-native_server::fake_action_tests	-	a_shulker_box_and_an_ender_chest_a_fake_player_used_are_left_shut	#[cfg(test)]	server	touches only server-owned fields
-native_server::fake_action_tests	-	attack_entity_runs_before_the_blow_resets_the_attack_charge	#[cfg(test)]	server	touches only server-owned fields
-native_server::fake_action_tests	-	attack_strength_rejects_non_finite_partial_without_restricting_finite_ticks	#[cfg(test)]	server	touches only server-owned fields
-native_server::fake_action_tests	-	attack_strength_scale_reads_the_charge_at_the_hook_and_not_after_the_swing	#[cfg(test)]	server	touches only server-owned fields
-native_server::fake_action_tests	-	scoped_fake_attack_with_full_charge_deals_the_weapons_full_damage	#[cfg(test)]	server	touches only server-owned fields
-native_server::fake_action_tests	-	scoped_fake_use_hooks_see_the_setup_and_fail_is_not_consumed	#[cfg(test)]	server	touches only server-owned fields
-native_server::fake_action_tests	-	scoped_fake_use_uses_viewpoint_secondary_use_and_restores_on_refusal	#[cfg(test)]	server	touches only server-owned fields
-native_server::fake_action_tests	-	the_servers_own_player_state_comes_back_after_a_fake_use	#[cfg(test)]	server	touches only server-owned fields
-native_server::registered_commands	impl Game<'_>	build_native_commands	-	server	touches only server-owned fields
-native_server::registered_commands	impl Game<'_>	rebind_native_commands	-	server	touches only server-owned fields
-native_server::registered_commands	impl Game<'_>	register_native_commands	-	server	touches only server-owned fields
-native_server::registered_commands	impl Game<'_>	restore_native_commands	-	server	touches only server-owned fields
-native_server::registered_commands	impl Game<'_>	send_native_command_report	-	server	touches only server-owned fields
-native_server::registered_commands	impl NativeCommandState	level	-	server	role-reachability:server
-native_server::selector_tests	-	in_two_levels	#[cfg(test)]	server	touches only server-owned fields
-native_server::selector_tests	-	native_selectors_deliver_ordered_handles_once_and_refuse_invalid_selections	#[cfg(test)]	server	touches only server-owned fields
-native_server::tests	-	command_refresh_rebuilds_the_typed_dispatcher_only_on_request	#[cfg(test)]	server	touches only server-owned fields
-native_server::tests	-	native_command_feedback_respects_track_output_and_silence	#[cfg(test)]	server	touches only server-owned fields
-native_server::tests	-	native_commands_keep_function_block_and_cart_sources	#[cfg(test)]	server	touches only server-owned fields
-native_server::tests	-	native_typed_commands_reach_listeners_after_parse_and_source_resolution	#[cfg(test)]	server	touches only server-owned fields
 native_state_shapes	impl Game<'_>	outline_edges_iter	-	client	role-reachability:client
 nautili	impl Game<'_>	interact_nautilus	-	server	touches only server-owned fields
 nautili	impl Game<'_>	item_tagged	-	server	role-reachability:server
 nautili	impl Game<'_>	nautilus_clicked	-	server	role-reachability:server
 nautili	impl Game<'_>	nautilus_sound	-	server	role-reachability:server
 nautili	impl Game<'_>	use_nautilus_food	-	server	role-reachability:server
-nether_portal	impl Game<'_>	client_portal_effect	-	client	touches only client-owned fields
-nether_portal::portal_spawn_tests	-	a_portal_over_obsidian_spawns_a_grunting_piglin	#[cfg(test)]	client	touches only client-owned fields
-nether_portal::respawn_attributes	impl Game<'_>	apply_own_attributes	-	client	role-reachability:client
-nether_portal::respawn_attributes	impl Game<'_>	drop_remote_player	-	client	role-reachability:client
-nether_portal::respawn_attributes	impl Game<'_>	take_carried_attributes	-	client	role-reachability:client
-nether_portal::respawn_attributes	impl RespawnAttributes	respawn	-	client	role-reachability:client
-nether_portal::stand_tests	-	the_portal_effect_keeps_the_screens_that_allow_it	#[cfg(test)]	client	touches only client-owned fields
-pad::hardware	impl Game<'_>	idle_use_feel	#[cfg(feature = "controllers")]	server	touches only server-owned fields
 pandas	impl Game<'_>	panda_effects	-	client	touches only client-owned fields
-passengers	impl Game<'_>	passenger_riding_position_inner	-	client	touches only client-owned fields
-passengers	impl Game<'_>	position_riders	-	client	touches only client-owned fields
-passengers	impl Game<'_>	seat_own_stands	-	client	role-reachability:client
-pick_entity	impl Game<'_>	pick_knot_fence	-	server	touches only server-owned fields
-pick_entity::tests	-	server_entity_pick_returns_lead_and_delegates_dragon_parts	#[cfg(test)]	server	touches only server-owned fields
 pick_ray	impl PickAccumulator	nearest_sq	-	client	role-reachability:client
 pick_ray	impl PickAccumulator	recording_with	-	client	role-reachability:client
 pick_ray	impl PickAccumulator	take_candidates	-	client	role-reachability:client
 piston_carry	impl Game<'_>	forget_moving_piston	-	client	role-reachability:client
-piston_push	impl Game<'_>	finish_pushed_restitution	-	server	touches only server-owned fields
-piston_push	impl Game<'_>	lid_push_local	-	client	role-reachability:client
-piston_push	impl Game<'_>	move_local_player	-	server	touches only server-owned fields
-piston_push	impl Game<'_>	push_entities_up	-	server	touches only server-owned fields
-piston_push	impl Game<'_>	push_shulker_entities	-	server	role-reachability:server
-piston_push	impl Game<'_>	push_shulker_local	-	client	role-reachability:client
-piston_push	impl Game<'_>	set_pushed_on_ground	-	server	touches only server-owned fields
-piston_push::h255_mob_piston_ground_tests	-	with_role_game	#[cfg(test)]	server	touches only server-owned fields
-play_keys	impl Game<'_>	own_swap_hands	-	server	role-reachability:server
-play_keys::swap_hands_tests	-	a_guest_swap_through_its_connection_is_heard_once_and_sends_the_hands	#[cfg(test)]	server	touches only server-owned fields
 player_equip	impl Game<'_>	put_equipment_modifiers	-	server	retain-in-server-mirror
 player_identity	impl Game<'_>	remove_local_player_body	-	client	role-reachability:client
 player_spawn	impl Game<'_>	spawn_player_client	-	client	touches only client-owned fields
-potent_sulfur	impl Game<'_>	client_tick_potent_sulfur	-	client	touches only client-owned fields
-potent_sulfur	impl Game<'_>	launch_local_player_ticker	-	client	role-reachability:client
-potent_sulfur	impl Game<'_>	spawn_geyser_particle	-	client	touches only client-owned fields
-potent_sulfur	impl Game<'_>	spawn_noxious_gas_cloud_particle	-	client	touches only client-owned fields
-potions	impl CloudSettings	lingering	-	server	role-reachability:server
-potions	impl Game<'_>	apply_effect_action	-	server	touches only server-owned fields
-potions	impl Game<'_>	apply_indirect_effect_action	-	server	role-reachability:server
-potions	impl Game<'_>	arrow_post_hurt_effects	-	server	touches only server-owned fields
-potions	impl Game<'_>	breath_affect_mob	-	server	role-reachability:server
-potions	impl Game<'_>	cloud_affect	-	server	touches only server-owned fields
-potions	impl Game<'_>	cloud_fluid_step	-	server	role-reachability:server
-potions	impl Game<'_>	effects_on_death	-	server	role-reachability:server
-potions	impl Game<'_>	fill_held	-	server	role-reachability:server
-potions	impl Game<'_>	finish_drinking	-	server	role-reachability:server
-potions	impl Game<'_>	potion_attack	-	server	role-reachability:server
-potions	impl Game<'_>	potion_owner	-	server	touches only server-owned fields
-potions	impl Game<'_>	restore_effects	-	server	role-reachability:server
-potions	impl Game<'_>	spawn_cobwebs_around	-	server	role-reachability:server
-potions	impl Game<'_>	spawn_creeper_cloud	-	server	role-reachability:server
-potions	impl Game<'_>	splash	-	server	touches only server-owned fields
-potions	impl Game<'_>	splash_on_player	-	server	role-reachability:server
-potions	impl Game<'_>	tick_drinking	-	server	role-reachability:server
-potions	impl Game<'_>	tick_potion_cloud	-	server	role-reachability:server
-potions	impl Game<'_>	tick_potion_clouds	-	server	role-reachability:server
-potions	impl Game<'_>	use_potion_item	-	server	touches only server-owned fields
-potions	impl Game<'_>	use_water_bottle_on_block	-	server	role-reachability:server
-potions	impl PotionCloud	particle	-	server	role-reachability:server
-potions	impl PotionOwner	who	-	server	role-reachability:server
-potions	impl PotionState	thrown_ids	-	server	role-reachability:server
-potions::cloud_water_tests	-	run_a_cloud_in_water_resets_its_fall_distance_and_a_dry_one_keeps_it	#[cfg(test)]	server	touches only server-owned fields
-potions::tests	-	cloud_spawns_during_pass	#[cfg(test)]	server	touches only server-owned fields
-potions::tests	-	residency_cloud_load_expiry_bottling_and_late_ids	#[cfg(test)]	server	touches only server-owned fields
-powder_snow	impl Game<'_>	pick_up_powder_snow	-	server	role-reachability:server
-powder_snow	impl Game<'_>	rain_extinguish_player	-	server	role-reachability:server
 primary_items	impl Game<'_>	server_clear_loot_enchantment_answers	-	server	retain-in-server-mirror
 primary_items	impl Game<'_>	server_resolve_primary_items_server	-	server	retain-in-server-mirror
 profile_capture	impl Profile	new	-	server	role-reachability:server
@@ -1068,508 +266,6 @@ projectile_spawned_tests	-	requirements_draw_the_level_random_before_each_effect
 projectile_spawned_tests	-	stack_then_weapon_in_component_order	#[cfg(test)]	client	touches only client-owned fields
 raids::bar_players_tests	-	raid_bars	#[cfg(test)]	client	touches only client-owned fields
 recipe_book	impl Game<'_>	menu_transfer_answer	-	server	role-reachability:server
-remote	impl Game<'_>	apply_packet	-	client	touches only client-owned fields
-remote	impl Game<'_>	connection_group_limit	-	client	role-reachability:client
-remote	impl Game<'_>	decode_remote_stack	-	client	role-reachability:client
-remote	impl Game<'_>	draw_reconfiguring	-	client	touches only client-owned fields
-remote	impl Game<'_>	hashed_stack	-	client	role-reachability:client
-remote	impl Game<'_>	item_name	-	client	role-reachability:client
-remote	impl Game<'_>	next_sequence	-	client	role-reachability:client
-remote	impl Game<'_>	own_latency	-	client	role-reachability:client
-remote	impl Game<'_>	patched_held_use	-	client	role-reachability:client
-remote	impl Game<'_>	play_predicted_sounds	-	client	role-reachability:client
-remote	impl Game<'_>	player_position	-	client	role-reachability:client
-remote	impl Game<'_>	poll_remote	-	client	role-reachability:client
-remote	impl Game<'_>	poll_remote_before_tick	-	client	role-reachability:client
-remote	impl Game<'_>	poll_remote_with	-	client	touches only client-owned fields
-remote	impl Game<'_>	predict_map_on_banner	-	client	role-reachability:client
-remote	impl Game<'_>	predict_use	-	client	role-reachability:client
-remote	impl Game<'_>	reconfigure_layout	-	client	role-reachability:client
-remote	impl Game<'_>	remote_abilities	-	client	role-reachability:client
-remote	impl Game<'_>	remote_attack_clicks_queued	-	client	role-reachability:client
-remote	impl Game<'_>	remote_backlog	-	client	role-reachability:client
-remote	impl Game<'_>	remote_bone_meal_succeeds	-	client	role-reachability:client
-remote	impl Game<'_>	remote_carts	-	client	role-reachability:client
-remote	impl Game<'_>	remote_drop	-	client	role-reachability:client
-remote	impl Game<'_>	remote_hurt_sound	-	client	role-reachability:client
-remote	impl Game<'_>	remote_item_data	-	client	role-reachability:client
-remote	impl Game<'_>	remote_minecart_lerp	-	client	role-reachability:client
-remote	impl Game<'_>	remote_player_names	-	client	role-reachability:client
-remote	impl Game<'_>	remote_player_uuid	-	client	touches only client-owned fields
-remote	impl Game<'_>	remote_respawn	-	client	role-reachability:client
-remote	impl Game<'_>	remote_screen_up	-	client	role-reachability:client
-remote	impl Game<'_>	remote_seat_passengers	-	client	role-reachability:client
-remote	impl Game<'_>	remote_secondary_use_skips_block	-	client	role-reachability:client
-remote	impl Game<'_>	remote_server_data	-	client	role-reachability:client
-remote	impl Game<'_>	remote_shift_down	-	client	role-reachability:client
-remote	impl Game<'_>	remote_stop_sleeping	-	client	role-reachability:client
-remote	impl Game<'_>	remote_synced	-	client	role-reachability:client
-remote	impl Game<'_>	remote_synced_since	-	client	role-reachability:client
-remote	impl Game<'_>	remote_vehicle_ids	-	client	role-reachability:client
-remote	impl Game<'_>	send_action	-	client	role-reachability:client
-remote	impl Game<'_>	send_suggestion_request	-	client	role-reachability:client
-remote	impl Game<'_>	snap_player_to	-	client	role-reachability:client
-remote	impl Game<'_>	to_stack	-	client	role-reachability:client
-remote	impl PlayerTextures	new	-	client	role-reachability:client
-remote	impl Remote	display_address_for	-	client	role-reachability:client
-remote	impl ServicesKeys	fetching	-	client	role-reachability:client
-remote	impl ServicesKeys	fetching_with	-	client	role-reachability:client
-remote	impl sunrise_client::interaction_input::InteractionWorld for RemoteInputWorld<'_, '_>	can_continue_attack	-	client	whole trait impl touches only client-owned fields
-remote	impl sunrise_client::interaction_input::InteractionWorld for RemoteInputWorld<'_, '_>	consume_click	-	client	whole trait impl touches only client-owned fields
-remote	impl sunrise_client::interaction_input::InteractionWorld for RemoteInputWorld<'_, '_>	continue_attack	-	client	whole trait impl touches only client-owned fields
-remote	impl sunrise_client::interaction_input::InteractionWorld for RemoteInputWorld<'_, '_>	handle_keys	-	client	whole trait impl touches only client-owned fields
-remote	impl sunrise_client::interaction_input::InteractionWorld for RemoteInputWorld<'_, '_>	is_down	-	client	whole trait impl touches only client-owned fields
-remote	impl sunrise_client::interaction_input::InteractionWorld for RemoteInputWorld<'_, '_>	pending_clicks	-	client	whole trait impl touches only client-owned fields
-remote	impl sunrise_client::interaction_input::InteractionWorld for RemoteInputWorld<'_, '_>	pick	-	client	whole trait impl touches only client-owned fields
-remote	impl sunrise_client::interaction_input::InteractionWorld for RemoteInputWorld<'_, '_>	pick_hit_result	-	client	whole trait impl touches only client-owned fields
-remote	impl sunrise_client::interaction_input::InteractionWorld for RemoteInputWorld<'_, '_>	release_hit_result	-	client	whole trait impl touches only client-owned fields
-remote	impl sunrise_client::interaction_input::InteractionWorld for RemoteInputWorld<'_, '_>	release_using	-	client	whole trait impl touches only client-owned fields
-remote	impl sunrise_client::interaction_input::InteractionWorld for RemoteInputWorld<'_, '_>	spectator_hotbar	-	client	whole trait impl touches only client-owned fields
-remote	impl sunrise_client::interaction_input::InteractionWorld for RemoteInputWorld<'_, '_>	start_attack	-	client	whole trait impl touches only client-owned fields
-remote	impl sunrise_client::interaction_input::InteractionWorld for RemoteInputWorld<'_, '_>	start_use	-	client	whole trait impl touches only client-owned fields
-remote	impl sunrise_client::interaction_input::InteractionWorld for RemoteInputWorld<'_, '_>	use_delay	-	client	whole trait impl touches only client-owned fields
-remote	impl sunrise_client::interaction_input::InteractionWorld for RemoteInputWorld<'_, '_>	using_item	-	client	whole trait impl touches only client-owned fields
-remote::abilities	impl Game<'_>	apply_remote_abilities	-	client	role-reachability:client
-remote::abilities	impl Game<'_>	remote_rotation	-	client	role-reachability:client
-remote::abilities	impl Game<'_>	set_remote_flying_speed	-	client	role-reachability:client
-remote::abilities	impl Game<'_>	sync_remote_player_game_mode	-	client	role-reachability:client
-remote::abilities	impl Remote	own_player_info_game_mode	-	client	role-reachability:client
-remote::abilities	impl Remote	sync_body_flight	-	client	role-reachability:client
-remote::abilities	impl Remote	update_local_mode_abilities	-	client	role-reachability:client
-remote::abilities::gamemode_split_tests	-	run_resolved_player_info_retains_identity_across_remove_and_readd_26_3	#[cfg(test)]	client	touches only client-owned fields
-remote::abilities::gamemode_split_tests	-	run_split_local_and_player_info_physics_matrix_26_3	#[cfg(test)]	client	touches only client-owned fields
-remote::abilities::gamemode_split_tests	-	setup_client	#[cfg(test)]	client	touches only client-owned fields
-remote::attack_target	impl Game<'_>	remote_attack_damage	-	client	touches only client-owned fields
-remote::attack_target::tests	-	sprint_hits_isolated	#[cfg(test)]	client	touches only client-owned fields
-remote::block_entity_data	impl Game<'_>	remote_block_entity_data	-	client	role-reachability:client
-remote::block_entity_data	impl Game<'_>	remote_block_entity_packet	-	client	role-reachability:client
-remote::block_entity_data	impl Game<'_>	remote_open_command_block	-	client	role-reachability:client
-remote::block_entity_data	impl Game<'_>	sync_block_entity	-	client	role-reachability:client
-remote::break_prediction	impl Game<'_>	check_active_group_updates	-	client	role-reachability:client
-remote::break_prediction	impl Game<'_>	retire_client_block_entity	-	client	role-reachability:client
-remote::break_prediction	impl Game<'_>	stop_remote_mining	-	client	role-reachability:client
-remote::break_prediction	impl Game<'_>	supersede_group_predictions	-	client	role-reachability:client
-remote::camera_view_tests	-	a_view_on_another_entity_has_none_of_the_players_values	#[cfg(test)]	client	touches only client-owned fields
-remote::camera_view_tests	-	the_frame_reads_the_eye_light_in_first_and_third_person	#[cfg(test)]	client	touches only client-owned fields
-remote::camera_view_tests	-	the_view_light_is_at_the_camera_entitys_eye	#[cfg(test)]	client	touches only client-owned fields
-remote::camera_view_tests	-	the_view_reads_the_spectated_entitys_effects	#[cfg(test)]	client	touches only client-owned fields
-remote::chat	impl ChatTrust	tag	-	client	role-reachability:client
-remote::chat	impl Game<'_>	add_chat_line	-	client	role-reachability:client
-remote::chat	impl Game<'_>	chat_trust	-	client	role-reachability:client
-remote::chat	impl Game<'_>	decorate_chat	-	client	role-reachability:client
-remote::chat	impl Game<'_>	handle_chat_message_error	-	client	role-reachability:client
-remote::chat	impl Game<'_>	handle_delete_chat	-	client	role-reachability:client
-remote::chat	impl Game<'_>	push_chat_line	-	client	touches only client-owned fields
-remote::chat	impl Game<'_>	remote_chat	-	client	role-reachability:client
-remote::chat	impl Game<'_>	send_chat_from_screen	-	client	role-reachability:client
-remote::chat	impl Game<'_>	send_signed_chat_input	-	client	role-reachability:client
-remote::chat	impl Game<'_>	show_queued_chat	-	client	role-reachability:client
-remote::chat_audit_tests	-	delayed_player_chat_checks_block_filter_and_visibility_on_accept	#[cfg(test)]	client	touches only client-owned fields
-remote::chat_audit_tests	-	validation_error_acks_on_accept_and_checks_the_current_block_list	#[cfg(test)]	client	touches only client-owned fields
-remote::chat_queue	impl Game<'_>	chat_delay_ms	-	client	role-reachability:client
-remote::chat_queue	impl Game<'_>	chat_queue_len	-	client	role-reachability:client
-remote::chat_queue	impl Remote	remove_queued_chat	-	client	role-reachability:client
-remote::chat_received	impl Game<'_>	chat_received	-	client	role-reachability:client
-remote::claimed_item_use_tests	-	owner_gets_release_or_reset_with_live_typed_stack	#[cfg(test)]	client	touches only client-owned fields
-remote::client_camera_tests	-	a_named_mob_the_server_camera_is_attached_to_shows_no_name_tag	#[cfg(test)]	client	client camera test moved to remote_client
-remote::client_camera_tests	-	client_camera_entity_returns_to_player_after_removal	#[cfg(test)]	client	client camera test moved to remote_client
-remote::client_camera_tests	-	run_a_named_mob_the_server_camera_is_attached_to_shows_no_name_tag	#[cfg(test)]	client	client camera test moved to remote_client
-remote::client_level_tick	impl Game<'_>	tick_remote_level	-	client	role-reachability:client
-remote::client_level_tick	impl Game<'_>	tick_remote_level_body	-	client	touches only client-owned fields
-remote::client_level_tick	impl Game<'_>	tick_remote_level_with	-	client	role-reachability:client
-remote::client_level_tick::boss_darken_tests	-	boss_darkening_interpolates_across_zero_and_holds_the_negative_endpoint	#[cfg(test)]	client	touches only client-owned fields
-remote::commands	impl Game<'_>	handle_command_suggestions	-	client	role-reachability:client
-remote::connection	impl Game<'_>	connect_cancel	-	client	role-reachability:client
-remote::connection	impl Game<'_>	connect_screen_click	-	client	touches only client-owned fields
-remote::connection	impl Game<'_>	connect_server	-	client	role-reachability:client
-remote::connection	impl Game<'_>	connect_server_with_options	-	client	touches only client-owned fields
-remote::connection	impl Game<'_>	connection_ended	-	client	touches only client-owned fields
-remote::connection	impl Game<'_>	connection_joined	-	client	touches only client-owned fields
-remote::connection	impl Game<'_>	connection_left	-	client	touches only client-owned fields
-remote::connection	impl Game<'_>	connection_starts	-	client	touches only client-owned fields
-remote::connection	impl Game<'_>	follow_retry	-	client	touches only client-owned fields
-remote::connection	impl Game<'_>	is_level_player	-	client	role-reachability:client
-remote::connection	impl Game<'_>	offer_retry	-	client	touches only client-owned fields
-remote::connection	impl Game<'_>	server_address	-	client	touches only client-owned fields
-remote::connection	impl Game<'_>	server_is_lan	-	client	touches only client-owned fields
-remote::connection	impl Game<'_>	set_registries	-	client	touches only client-owned fields
-remote::dry_level	impl PredictionBase for crate::game::GameLevel<'_>	fire_odds_level	-	client	role-reachability:client
-remote::dry_level	impl<'w> DryLevel<'w>	new	-	client	role-reachability:client
-remote::effect	impl Game<'_>	remote_effect	-	client	touches only client-owned fields
-remote::entity_section_steps	impl Game<'_>	remote_entity_is_ticking	-	client	touches only client-owned fields
-remote::entity_section_steps	impl Game<'_>	remote_entity_section_step	-	client	role-reachability:client
-remote::entity_section_steps	impl Game<'_>	remote_move_entity_and_file	-	client	role-reachability:client
-remote::entity_section_steps	impl Game<'_>	remote_move_vehicle_and_file	-	client	role-reachability:client
-remote::entity_section_steps	impl Game<'_>	remote_position_sync_and_file	-	client	role-reachability:client
-remote::fall_sound	impl Game<'_>	block_fall	-	client	role-reachability:client
-remote::fall_sound::tests	-	heard_stone_fall	#[cfg(test)]	client	touches only client-owned fields
-remote::frozen_screen_effects_tests	-	a_frozen_level_eases_the_vignette_as_vanillas_does	#[cfg(test)]	client	touches only client-owned fields
-remote::gamemode_actions_tests	-	ordinary_entity_attacks_check_both_range_edges_and_set_only_instabuild_delay	#[cfg(test)]	client	touches only client-owned fields
-remote::gamemode_actions_tests	-	out_of_range_entity_click_still_swings_without_attacking_or_resetting	#[cfg(test)]	client	touches only client-owned fields
-remote::gamemode_actions_tests	-	spectator_entity_use_sends_both_hands_without_feeding_or_swinging	#[cfg(test)]	client	touches only client-owned fields
-remote::general	impl Game<'_>	forget_remote_general	-	client	role-reachability:client
-remote::general	impl Game<'_>	remote_general_entity	-	client	role-reachability:client
-remote::general	impl RemoteGeneral	new	-	client	role-reachability:client
-remote::general	impl RemoteGeneral	publish_attachments	-	client	role-reachability:client
-remote::general	impl RemoteGenerals	attachments_arrived	-	client	role-reachability:client
-remote::general	impl RemoteGenerals	clear	-	client	role-reachability:client
-remote::general::tests	-	a_shown_pickable_general_row_receives_the_named_use_and_attack	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_actions	impl Game<'_>	block_meets_player	-	client	role-reachability:client
-remote::interaction_actions	impl Game<'_>	block_swallows_click	-	client	role-reachability:client
-remote::interaction_actions	impl Game<'_>	block_takes_click	-	client	role-reachability:client
-remote::interaction_actions	impl Game<'_>	can_hint_block_placement	-	client	role-reachability:client
-remote::interaction_actions	impl Game<'_>	client_block_answer	-	client	role-reachability:client
-remote::interaction_actions	impl Game<'_>	held_until_released	-	client	role-reachability:client
-remote::interaction_actions	impl Game<'_>	hud_disconnected	-	client	touches only client-owned fields
-remote::interaction_actions	impl Game<'_>	place_ghast_under	-	client	role-reachability:client
-remote::interaction_actions	impl Game<'_>	predict_place	-	client	role-reachability:client
-remote::interaction_actions	impl Game<'_>	remote_animate	-	client	touches only client-owned fields
-remote::interaction_actions	impl Game<'_>	remote_can_place	-	client	role-reachability:client
-remote::interaction_actions	impl Game<'_>	remote_continue_attack_inner	-	client	touches only client-owned fields
-remote::interaction_actions	impl Game<'_>	remote_handle_input	-	client	role-reachability:client
-remote::interaction_actions	impl Game<'_>	remote_hud	-	client	touches only client-owned fields
-remote::interaction_actions	impl Game<'_>	remote_look_at	-	client	role-reachability:client
-remote::interaction_actions	impl Game<'_>	remote_start_attack_inner	-	client	touches only client-owned fields
-remote::interaction_actions	impl Game<'_>	remote_use_inner	-	client	touches only client-owned fields
-remote::interaction_actions	impl Game<'_>	remote_would_place	-	client	role-reachability:client
-remote::interaction_actions	impl Game<'_>	use_finds_no_target	-	client	role-reachability:client
-remote::interaction_actions	impl Game<'_>	with_interaction_swing_scope	-	client	role-reachability:client
-remote::interaction_event_tests	-	a_placed_powder_snow_bucket_leaves_a_bucket_in_hand_on_both_sides	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_event_tests	-	a_spectator_fires_right_click_block_on_the_client_and_its_cancel_answers	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_event_tests	-	a_spectators_passing_block_click_skips_item_use_for_both_hands	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_event_tests	-	air_event_skips_the_item_and_consuming_results_end_the_click	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_event_tests	-	an_item_used_from_the_off_hand_reaches_the_use_hooks_on_the_server	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_event_tests	-	before_block_cancellation_pass_continues_but_fail_and_consuming_results_stop	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_event_tests	-	canceled_item_results_keep_the_stack_wrappers_side_effects	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_event_tests	-	item_use_overlap_matrix_on_the_server	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_event_tests	-	on_item_use_first_runs_before_the_block_and_ends_the_click	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_event_tests	-	phase_events_replace_the_behaviour_before_its_part_on_both_sides	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_event_tests	-	resource_gated_unknown_held_item_forced_use_predicts_pass_without_a_swing	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_event_tests	-	right_click_block_explicit_allow_overrides_sneak_skip_on_both_sides	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_event_tests	-	right_click_block_forced_item_use_reaches_empty_hand_on_both_sides	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_event_tests	-	setup_interaction_guest	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_event_tests	-	use_block	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_event_tests::interaction_key_tests	-	interaction_key_literal_matrix_preserves_actions_and_swing_independently	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_event_tests::interaction_key_tests	-	no_interaction_listener_attack_mining_offhand_and_pick	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_event_tests::interaction_key_tests	-	no_listener_preserves_natural_swing_and_unsuccessful_use_stays_quiet	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_event_tests::interaction_key_tests	-	pick_keeps_packet_veto_and_never_swings	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_event_tests::interaction_key_tests	-	silent_policy_does_not_leak_into_next_ordinary_use	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_event_tests::interaction_matrix_tests	-	matrix	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_event_tests::item_fallthrough_tests	-	assert_block_item_before_fallthrough	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_event_tests::item_fallthrough_tests	-	block_pass_falls_through_but_fail_and_success_stop_the_apple	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_event_tests::item_fallthrough_tests	-	server_use_item_packet_fires_once_after_use_item_on_with_block_crosshair	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_event_tests::item_fallthrough_tests	-	targeted_item_fallthrough_keeps_hand_and_fail_vetoes_item_action	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_event_tests::item_used_on_block_tests	-	compass_criterion_sees_two_compasses_before_the_block_takes_one	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_event_tests::item_used_on_block_tests	-	the_item_phase_criterion_sees_the_stack_from_before_the_block_phase	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_event_tests::item_used_on_block_tests	-	tnt_reads_the_hand_the_block_phase_listener_left	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_event_tests::mapping_press_tests	-	a_creative_drop_sends_no_creative_slot	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_event_tests::mapping_press_tests	-	a_mod_releases_the_toolbar_mapping_while_its_physical_key_stays_down	#[cfg(test)]	client	touches only client-owned fields
-remote::interaction_event_tests::mapping_press_tests	-	a_toolbar_load_goes_out_before_a_drop_in_its_tick	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_event_tests::mapping_press_tests	-	clicking_attack_on_nothing_punches_and_waits_out_the_miss_cooldown	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_event_tests::mapping_press_tests	-	opening_a_screen_releases_mod_holds	#[cfg(test)]	client	touches only client-owned fields
-remote::interaction_event_tests::mapping_press_tests	-	stone_under_the_crosshair	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_event_tests::mapping_press_tests	-	with_callback_game	#[cfg(test)]	client	touches only client-owned fields
-remote::interaction_event_tests::mapping_press_tests::input_burst_tests	-	a_large_burst_is_not_capped_at_1024	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_event_tests::mapping_press_tests::input_burst_tests	-	a_mods_burst_drains_all_clicks_in_one_tick	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_event_tests::mapping_press_tests::input_burst_tests	-	a_players_burst_acts_on_the_next_tick_in_handle_keybinds_order	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_event_tests::mapping_press_tests::input_burst_tests	-	the_inventory_poll_releases_live_queues_only_when_it_opens_a_screen	#[cfg(test)]	client	touches only client-owned fields
-remote::interaction_event_tests::predicted_use_tests	-	matrix	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_event_tests::use_item_hand_tests	-	identical_instant_stacks_report_the_selected_interaction_hand	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_event_tests::use_item_hand_tests	-	the_item_event_names_the_guest_who_clicked_not_the_host	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_event_tests::use_item_hand_tests	-	the_item_event_names_the_host_player_on_its_own_click	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_event_tests::use_item_result_tests	-	failed_item_part_still_tries_the_off_hand	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_event_tests::use_item_result_tests	-	item_part_results_control_real_server_and_client_use	#[cfg(test)]	server	touches only server-owned fields
-remote::interaction_prediction	impl Game<'_>	finish_remote_item_on	-	client	role-reachability:client
-remote::interaction_prediction	impl Game<'_>	predict_item_on_block	-	client	role-reachability:client
-remote::interaction_prediction	impl Game<'_>	receive_cauldron_use	-	client	role-reachability:client
-remote::interaction_prediction	impl Game<'_>	remote_armor_stand_fits	-	client	role-reachability:client
-remote::interaction_prediction	impl Game<'_>	remote_item_after_block	-	client	role-reachability:client
-remote::interaction_prediction	impl Game<'_>	remote_item_use_aim	-	client	role-reachability:client
-remote::interaction_prediction	impl Game<'_>	remote_use_entity	-	client	touches only client-owned fields
-remote::interaction_prediction	impl Game<'_>	remote_use_item_on	-	client	role-reachability:client
-remote::interaction_prediction	impl Game<'_>	remote_vanilla_item_on	-	client	role-reachability:client
-remote::interaction_prediction	impl Game<'_>	use_entity_geometry	-	client	touches only client-owned fields
-remote::inventory	impl Game<'_>	menu_slot_index	-	client	role-reachability:client
-remote::inventory	impl Game<'_>	open_menu_name	-	client	role-reachability:client
-remote::inventory	impl Game<'_>	remote_creative_slot_add	-	server	role-reachability:server
-remote::inventory	impl Game<'_>	remote_hand_slot_set	-	client	role-reachability:client
-remote::inventory	impl Game<'_>	remote_menu_id	-	client	role-reachability:client
-remote::inventory	impl Game<'_>	set_menu_slot	-	client	role-reachability:client
-remote::item_use	impl Game<'_>	predict_fire_starter	-	client	touches only client-owned fields
-remote::item_use::tests	-	remote_item_use_tnt_predicts_success_without_consumption_or_sound	#[cfg(test)]	client	touches only client-owned fields
-remote::kept_columns	impl Game<'_>	forget_all_remote_columns	-	client	role-reachability:client
-remote::kept_columns	impl Game<'_>	forget_remote_columns	-	client	role-reachability:client
-remote::kept_columns	impl Game<'_>	forget_remote_packets	-	client	role-reachability:client
-remote::kept_columns	impl Game<'_>	free_remote_columns	-	client	touches only client-owned fields
-remote::kept_columns	impl Game<'_>	remote_chunk_in_range	-	client	role-reachability:client
-remote::kept_columns	impl Game<'_>	set_remote_chunk_cache_center	-	client	role-reachability:client
-remote::kept_columns	impl Game<'_>	set_remote_chunk_cache_radius	-	client	role-reachability:client
-remote::kept_columns	impl Game<'_>	update_remote_chunk_view	-	client	touches only client-owned fields
-remote::level_format	impl crate::game::Game<'_>	track_remote_levels	-	client	role-reachability:client
-remote::level_sound_tests	-	game_events_ask_client_level_before_playback	#[cfg(test)]	client	touches only client-owned fields
-remote::level_sound_tests	-	local_level_requests_can_mute_sound_without_undoing_prediction	#[cfg(test)]	client	touches only client-owned fields
-remote::menu_interactions	impl Game<'_>	close_creative_menu	-	client	role-reachability:client
-remote::menu_interactions	impl Game<'_>	creative_drop_features	-	client	touches only client-owned fields
-remote::menu_interactions	impl Game<'_>	creative_screen_drop	-	client	role-reachability:client
-remote::menu_interactions	impl Game<'_>	prepare_clicks	-	client	role-reachability:client
-remote::menu_interactions	impl Game<'_>	refresh_remote_language	-	client	role-reachability:client
-remote::menu_interactions	impl Game<'_>	remote_button_click	-	client	role-reachability:client
-remote::menu_interactions	impl Game<'_>	remote_creative_drop	-	client	touches only client-owned fields
-remote::menu_interactions	impl Game<'_>	remote_creative_throw	-	client	touches only client-owned fields
-remote::menu_interactions	impl Game<'_>	remote_menu	-	client	role-reachability:client
-remote::menu_interactions	impl Game<'_>	remote_menu_ops	-	client	role-reachability:client
-remote::menu_interactions	impl Game<'_>	remote_menu_state	-	client	role-reachability:client
-remote::menu_interactions	impl Game<'_>	remote_menu_title	-	client	role-reachability:client
-remote::menu_interactions	impl Game<'_>	remote_merchant_offers	-	client	role-reachability:client
-remote::menu_interactions	impl Game<'_>	remote_open_merchant	-	client	role-reachability:client
-remote::menu_interactions	impl Game<'_>	remote_open_mount	-	client	touches only client-owned fields
-remote::menu_interactions	impl Game<'_>	remote_open_screen	-	client	touches only client-owned fields
-remote::menu_interactions	impl Game<'_>	remote_quick_move_all	-	client	role-reachability:client
-remote::menu_interactions	impl Game<'_>	remote_quick_move_unpredicted	-	client	role-reachability:client
-remote::menu_interactions	impl Game<'_>	remote_reject_container	-	client	touches only client-owned fields
-remote::menu_interactions	impl Game<'_>	remote_stacked_menu_ops	-	client	role-reachability:client
-remote::menu_interactions	impl Game<'_>	remote_storage_open	-	client	role-reachability:client
-remote::menu_interactions	impl Game<'_>	remote_throw	-	client	role-reachability:client
-remote::menu_interactions	impl Game<'_>	remove_remote_menu_screen	-	client	touches only client-owned fields
-remote::menu_interactions	impl Game<'_>	send_clicks	-	client	role-reachability:client
-remote::menu_interactions	impl Game<'_>	send_unpredicted_clicks	-	client	role-reachability:client
-remote::menu_interactions	impl Game<'_>	try_send_creative_drop_packet	-	client	touches only client-owned fields
-remote::minecarts	impl CartLerp	at	-	client	role-reachability:client
-remote::minecarts	impl CartLerp	new	-	client	role-reachability:client
-remote::minecarts	impl CartLerp	tick	-	client	role-reachability:client
-remote::minecarts	impl Game<'_>	remote_move_minecart	-	client	role-reachability:client
-remote::motion	impl Game<'_>	cancel_driven_mount_interpolation	-	client	role-reachability:client
-remote::motion	impl Game<'_>	driven_mount_heading	-	client	role-reachability:client
-remote::motion	impl Game<'_>	interpolate_driven_mount	-	client	role-reachability:client
-remote::motion	impl Game<'_>	interpolate_driven_mount_to	-	client	role-reachability:client
-remote::motion	impl Game<'_>	move_entity	-	client	role-reachability:client
-remote::motion	impl Game<'_>	remote_motion	-	client	role-reachability:client
-remote::movement	impl MovePacket	snaps	-	client	role-reachability:client
-remote::movement_input_tests	-	connect	#[cfg(test)]	client	touches only client-owned fields
-remote::movement_input_tests	-	native_movement_input_keys_axes_and_sprint	#[cfg(test)]	server	touches only server-owned fields
-remote::movement_input_tests::local_rotation_tests	-	a_mod_set_look_is_clamped_and_sent_once_by_the_tick	#[cfg(test)]	client	touches only client-owned fields
-remote::movement_input_tests::local_rotation_tests	-	a_player_dead_for_twenty_ticks_sends_nothing_until_it_respawns	#[cfg(test)]	client	touches only client-owned fields
-remote::native_entity_tests	-	a_client_reads_the_entities_and_menu_the_server_shows_it	#[cfg(test)]	client	touches only client-owned fields
-remote::native_entity_tests	-	a_villager_raid_sweat_event_draws_particles	#[cfg(test)]	client	touches only client-owned fields
-remote::packets_entity	impl Game<'_>	apply_damage_event_packet	-	client	role-reachability:client
-remote::packets_entity	impl Game<'_>	apply_entity_event_packet	-	client	touches only client-owned fields
-remote::packets_entity	impl Game<'_>	apply_remove_mob_effect_packet	-	client	role-reachability:client
-remote::packets_entity	impl Game<'_>	apply_set_entity_data_entry	-	client	role-reachability:client
-remote::packets_entity	impl Game<'_>	apply_set_entity_data_packet	-	client	role-reachability:client
-remote::packets_entity	impl Game<'_>	apply_set_equipment_packet	-	client	role-reachability:client
-remote::packets_entity	impl Game<'_>	apply_update_attributes_packet	-	client	touches only client-owned fields
-remote::packets_entity	impl Game<'_>	remote_entity_kind	-	client	role-reachability:client
-remote::packets_object	impl Game<'_>	apply_add_entity_packet	-	client	touches only client-owned fields
-remote::packets_object	impl Game<'_>	apply_entity_position_sync_packet	-	client	role-reachability:client
-remote::packets_object	impl Game<'_>	apply_hurt_animation_packet	-	client	role-reachability:client
-remote::packets_object	impl Game<'_>	apply_move_vehicle_packet	-	client	role-reachability:client
-remote::packets_object	impl Game<'_>	apply_projectile_power_packet	-	client	role-reachability:client
-remote::packets_object	impl Game<'_>	apply_remove_entities_packet	-	client	role-reachability:client
-remote::packets_object	impl Game<'_>	apply_rotate_head_packet	-	client	role-reachability:client
-remote::packets_object	impl Game<'_>	apply_set_entity_link_packet	-	client	touches only client-owned fields
-remote::packets_object	impl Game<'_>	apply_set_entity_motion_packet	-	client	role-reachability:client
-remote::packets_object	impl Game<'_>	apply_swing_animation_packet	-	client	role-reachability:client
-remote::packets_object	impl Game<'_>	apply_take_item_entity_packet	-	client	touches only client-owned fields
-remote::packets_object	impl Game<'_>	apply_teleport_entity_packet	-	client	touches only client-owned fields
-remote::packets_player	impl Game<'_>	apply_award_stats_packet	-	client	role-reachability:client
-remote::packets_player	impl Game<'_>	apply_clear_titles_packet	-	client	touches only client-owned fields
-remote::packets_player	impl Game<'_>	apply_commands_packet	-	client	role-reachability:client
-remote::packets_player	impl Game<'_>	apply_container_set_content_packet	-	client	role-reachability:client
-remote::packets_player	impl Game<'_>	apply_container_set_data_packet	-	client	role-reachability:client
-remote::packets_player	impl Game<'_>	apply_container_set_slot_packet	-	client	touches only client-owned fields
-remote::packets_player	impl Game<'_>	apply_disguised_chat_packet	-	client	role-reachability:client
-remote::packets_player	impl Game<'_>	apply_login_packet	-	client	touches only client-owned fields
-remote::packets_player	impl Game<'_>	apply_player_abilities_packet	-	client	role-reachability:client
-remote::packets_player	impl Game<'_>	apply_player_chat_packet	-	client	role-reachability:client
-remote::packets_player	impl Game<'_>	apply_player_combat_kill_packet	-	client	touches only client-owned fields
-remote::packets_player	impl Game<'_>	apply_player_info_remove_packet	-	client	role-reachability:client
-remote::packets_player	impl Game<'_>	apply_player_info_update_packet	-	client	role-reachability:client
-remote::packets_player	impl Game<'_>	apply_respawn_packet	-	client	touches only client-owned fields
-remote::packets_player	impl Game<'_>	apply_set_cursor_item_packet	-	client	role-reachability:client
-remote::packets_player	impl Game<'_>	apply_set_display_objective_packet	-	client	role-reachability:client
-remote::packets_player	impl Game<'_>	apply_set_experience_packet	-	client	role-reachability:client
-remote::packets_player	impl Game<'_>	apply_set_health_packet	-	client	touches only client-owned fields
-remote::packets_player	impl Game<'_>	apply_set_held_slot_packet	-	client	role-reachability:client
-remote::packets_player	impl Game<'_>	apply_set_player_inventory_packet	-	client	role-reachability:client
-remote::packets_player	impl Game<'_>	apply_set_score_packet	-	client	role-reachability:client
-remote::packets_player	impl Game<'_>	apply_system_chat_packet	-	client	touches only client-owned fields
-remote::packets_player	impl Game<'_>	apply_tab_list_packet	-	client	touches only client-owned fields
-remote::packets_world	impl Game<'_>	apply_block_destruction_packet	-	client	role-reachability:client
-remote::packets_world	impl Game<'_>	apply_block_event_packet	-	client	touches only client-owned fields
-remote::packets_world	impl Game<'_>	apply_forget_level_chunk_packet	-	client	role-reachability:client
-remote::packets_world	impl Game<'_>	apply_game_event_packet	-	client	touches only client-owned fields
-remote::packets_world	impl Game<'_>	apply_initialize_border_packet	-	client	role-reachability:client
-remote::packets_world	impl Game<'_>	apply_section_blocks_update_packet	-	client	role-reachability:client
-remote::packets_world	impl Game<'_>	apply_set_border_lerp_size_packet	-	client	role-reachability:client
-remote::packets_world	impl Game<'_>	apply_set_default_spawn_position_packet	-	client	role-reachability:client
-remote::packets_world	impl Game<'_>	apply_set_time_packet	-	client	role-reachability:client
-remote::packets_world	impl Game<'_>	apply_sound_entity_packet	-	client	role-reachability:client
-remote::packets_world	impl Game<'_>	apply_sound_packet	-	client	role-reachability:client
-remote::passage_cross_tests	-	a_window_crosses_and_keeps_its_velocity_through_the_acceptance	#[cfg(test)]	server	touches only server-owned fields
-remote::placement_prediction_tests	-	an_active_vault_ends_a_held_item_s_click_on_the_client	#[cfg(test)]	server	touches only server-owned fields
-remote::player_tick_tests	-	client_player_ticks_on_the_death_screen_too	#[cfg(test)]	client	touches only client-owned fields
-remote::r#use	impl Game<'_>	finish_remote_use_block	-	client	touches only client-owned fields
-remote::r#use	impl Game<'_>	remote_block_reacts	-	client	role-reachability:client
-remote::r#use	impl Game<'_>	remote_block_template	-	client	role-reachability:client
-remote::r#use	impl Game<'_>	remote_click	-	client	touches only client-owned fields
-remote::r#use	impl Game<'_>	remote_complete_using	-	client	role-reachability:client
-remote::r#use	impl Game<'_>	remote_place_preview	-	client	role-reachability:client
-remote::r#use	impl Game<'_>	remote_player_eating	-	client	touches only client-owned fields
-remote::r#use	impl Game<'_>	remote_start_held_use	-	client	role-reachability:client
-remote::r#use	impl Game<'_>	remote_use_block	-	client	role-reachability:client
-remote::r#use	impl Game<'_>	remote_use_bucket	-	client	role-reachability:client
-remote::r#use	impl Game<'_>	remote_use_hands	-	client	touches only client-owned fields
-remote::r#use	impl Game<'_>	remote_use_instrument	-	client	role-reachability:client
-remote::raw_ingress	impl Game<'_>	apply_post_effects_packet	-	client	touches only client-owned fields
-remote::raw_ingress	impl Game<'_>	apply_staged_attachment_sync	-	client	role-reachability:client
-remote::raw_ingress	impl Game<'_>	dispatch_packet_turn	-	client	role-reachability:client
-remote::raw_ingress	impl Game<'_>	finish_remote_disconnect	-	client	role-reachability:client
-remote::raw_ingress	impl Game<'_>	handle_listener_transfer	-	client	role-reachability:client
-remote::raw_ingress	impl Game<'_>	handle_play_bundle	-	client	role-reachability:client
-remote::raw_ingress	impl Game<'_>	handle_remote_event	-	client	touches only client-owned fields
-remote::raw_ingress	impl Game<'_>	poll_remote_events	-	client	touches only client-owned fields
-remote::raw_ingress	impl Game<'_>	record_packet_error	-	client	role-reachability:client
-remote::raw_ingress	impl Remote	receive_credited_backlog	-	client	role-reachability:client
-remote::raw_ingress::bundle_parity_tests	-	dependent_entity_bundle_body	#[cfg(test)]	client	touches only client-owned fields
-remote::raw_ingress::bundle_parity_tests	-	entity_data_validation_inline_painting_and_pre_login_bundle_case	#[cfg(test)]	client	touches only client-owned fields
-remote::raw_ingress::post_effects_parity_tests	-	post_effects_before_login_disconnects_case	#[cfg(test)]	client	touches only client-owned fields
-remote::raw_ingress::post_effects_parity_tests	-	post_effects_cleared_on_login_respawn_and_reconfigure_body	#[cfg(test)]	client	touches only client-owned fields
-remote::raw_ingress::tests	-	executor_waits_for_entity_removal_behind_a_decoding_chunk	#[cfg(test)]	client	touches only client-owned fields
-remote::recipe_properties	impl Game<'_>	client_logging_out	-	client	touches only client-owned fields
-remote::recipe_properties	impl Game<'_>	refresh_remote_stonecutter	-	client	touches only client-owned fields
-remote::recipe_properties	impl Game<'_>	remote_recipe_properties	-	client	touches only client-owned fields
-remote::recipe_properties::tests	-	guest_stonecutter_uses_packet_tags_components_and_authoritative_buttons	#[cfg(test)]	server	touches only server-owned fields
-remote::recipe_properties::tests	-	guest_stonecutter_waits_for_deferred_recipe_publication	#[cfg(test)]	server	touches only server-owned fields
-remote::remote_state	impl Remote	clock_time	-	client	role-reachability:client
-remote::remote_state	impl Remote	level_player	-	client	role-reachability:client
-remote::remote_state	impl Remote	listed_player_count	-	client	role-reachability:client
-remote::remote_state	impl Remote	named_clock_time	-	client	role-reachability:client
-remote::remote_state	impl Remote	new_chat_validator	-	client	role-reachability:client
-remote::remote_state	impl Remote	player_entity	-	client	role-reachability:client
-remote::remote_state	impl Remote	resolve_clocks	-	client	role-reachability:client
-remote::remote_state	impl Remote	sent_radius	-	client	role-reachability:client
-remote::remote_state	impl Remote	set_tracked_position	-	client	role-reachability:client
-remote::remote_state	impl Remote	take_object_lerp	-	client	role-reachability:client
-remote::remote_state	impl Remote	validate_chat	-	client	role-reachability:client
-remote::rider_tick_tests	-	a_boat_clamps_the_riders_yaw_without_changing_the_previous_yaw	#[cfg(test)]	client	touches only client-owned fields
-remote::rider_tick_tests	-	a_riders_move_takes_the_look_of_the_tick_and_leaves_it_off_the_ground	#[cfg(test)]	client	touches only client-owned fields
-remote::rider_tick_tests	-	mounted_local_spectator_forces_flight_and_sends_abilities	#[cfg(test)]	client	touches only client-owned fields
-remote::riptide_tests	-	client_tick_to_server	#[cfg(test)]	server	touches only server-owned fields
-remote::riptide_tests	-	riptide_ground_release_keeps_launch_velocity	#[cfg(test)]	client	touches only client-owned fields
-remote::selector_metadata	impl Game<'_>	receive_selector_tokens	-	client	role-reachability:client
-remote::session	impl Game<'_>	client_refresh_infiniburn	-	client	touches only client-owned fields
-remote::session	impl Game<'_>	close_server_session	-	client	touches only client-owned fields
-remote::session	impl Game<'_>	connect_remote_session	-	client	role-reachability:client
-remote::session	impl Game<'_>	enter_remote_dimension	-	client	touches only client-owned fields
-remote::session	impl Game<'_>	finish_remote_level	-	client	touches only client-owned fields
-remote::session	impl Game<'_>	init_remote_for_replay	-	client	touches only client-owned fields
-remote::session	impl Game<'_>	init_remote_for_replay_server	-	server	touches only server-owned fields
-remote::session	impl Game<'_>	install_remote_session	-	client	touches only client-owned fields
-remote::session	impl Game<'_>	install_remote_session_server	-	server	touches only server-owned fields
-remote::session	impl Game<'_>	install_remote_transfer	-	client	role-reachability:client
-remote::session	impl Game<'_>	leave_server	-	client	role-reachability:client
-remote::session	impl Game<'_>	open_remote_session	-	client	touches only client-owned fields
-remote::session	impl Game<'_>	refuse_play_payload	-	client	role-reachability:client
-remote::session	impl Game<'_>	retain_remote_player_on_login	-	client	role-reachability:client
-remote::session	impl Game<'_>	start_remote_transfer	-	client	role-reachability:client
-remote::skin	impl Game<'_>	again_skin	-	client	touches only client-owned fields
-remote::skin	impl Game<'_>	player_face_skin	-	client	touches only client-owned fields
-remote::skin	impl Game<'_>	resolve_inline_profiles	-	client	touches only client-owned fields
-remote::skin	impl Game<'_>	store_skin	-	client	touches only client-owned fields
-remote::status	impl Game<'_>	remote_status	-	client	touches only client-owned fields
-remote::status	impl Game<'_>	update_remote_skins	-	client	touches only client-owned fields
-remote::sync	impl Game<'_>	apply_remote_health	-	client	role-reachability:client
-remote::sync	impl Game<'_>	apply_remote_push	-	client	touches only client-owned fields
-remote::sync	impl Game<'_>	creative_stacks	-	client	role-reachability:client
-remote::sync	impl Game<'_>	local_player_removed_by_death	-	client	touches only client-owned fields
-remote::sync	impl Game<'_>	remote_effect_def	-	client	role-reachability:client
-remote::sync	impl Game<'_>	remote_effect_id	-	client	role-reachability:client
-remote::sync	impl Game<'_>	remote_effect_network_id	-	client	role-reachability:client
-remote::sync	impl Game<'_>	remote_objective	-	client	role-reachability:client
-remote::sync	impl Game<'_>	remote_pushes	-	client	touches only client-owned fields
-remote::sync	impl Game<'_>	remote_send_carried	-	client	role-reachability:client
-remote::sync	impl Game<'_>	remote_send_state	-	client	role-reachability:client
-remote::sync	impl Game<'_>	remote_sound_entity_state	-	client	role-reachability:client
-remote::sync	impl Game<'_>	remote_sound_name	-	client	role-reachability:client
-remote::sync	impl Game<'_>	remote_team	-	client	role-reachability:client
-remote::sync	impl Game<'_>	remote_teleport	-	client	touches only client-owned fields
-remote::sync	impl Game<'_>	send_creative_item_add	-	client	touches only client-owned fields
-remote::sync	impl Game<'_>	send_creative_slots	-	client	role-reachability:client
-remote::sync	impl Remote	player_info_by_name	-	server	role-reachability:server
-remote::tables	impl Game<'_>	install_server_items	-	client	role-reachability:client
-remote::tests	-	declared_gate_uses_its_class_for_blasts_and_predicted_use	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::camera_death_tests	-	run_a_spectated_dying_living_entity_squeezes_the_fov_26_3	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::camera_draw_tests	-	run_local_player_and_camera_entity_draw_like_the_real_client	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::camera_parity_red_tests	-	run_any_tracked_entity_resolves_as_camera_26_3	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::camera_parity_red_tests	-	run_camera_consumers_bob_fog_dark_disc_and_vignette_26_3	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::camera_parity_red_tests	-	run_camera_consumers_streaming_particles_debug_and_spectator_crosshair_26_3	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::camera_parity_red_tests	-	run_camera_entity_hidden_in_first_person_for_all_kinds_and_local_player_hidden_26_3	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::camera_parity_red_tests	-	run_camera_player_fov_modifier_and_death_isolation_26_3	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::camera_parity_red_tests	-	run_interaction_camera_eye_rotation_move_and_teleport_26_3	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::camera_parity_red_tests	-	run_particle_camera_before_first_frame_and_after_reset_26_3	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::camera_parity_red_tests	-	run_removing_camera_entity_keeps_detached_camera_26_3	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::camera_parity_red_tests	-	run_review_followup_camera_parity_26_3	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::camera_parity_red_tests	-	run_sleeping_spectated_living_entity_bed_view_and_visibility_26_3	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::camera_parity_red_tests	-	setup_remote_overworld	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::chat_window_and_input_tests	-	mod_open_chat_fills_the_box_only_over_the_world	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::click_ending_tests	-	an_end_crystal_click_on_a_block_ends_there	#[cfg(test)]	server	touches only server-owned fields
-remote::tests::click_ending_tests	-	flint_and_steel_use_on_ends_the_click	#[cfg(test)]	server	touches only server-owned fields
-remote::tests::client_admission_tests	-	add_player_requires_info_before_replacing_a_tracked_entity	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::client_close_tests	-	server_close_keeps_shown_native_screen_alive_for_closing_and_veto	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::client_close_tests	-	server_close_notifies_the_outgoing_receiver_and_only_opens_real_screens	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::client_close_tests	-	server_close_restores_inventory_under_chat_without_echo	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::client_close_tests	-	server_close_runs_sign_and_inventory_removal_without_echo	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::client_day_time_tests	-	client_day_time_reads_overworld_clock_across_packets_and_levels	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::client_emitters_tests	-	assert_bursts	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::client_emitters_tests	-	capture_requests	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::client_explosion_tests	-	explosion_validates_impulse_and_result_without_suppressing_effects	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::client_hud_camera_tests	-	a_watched_rider_gets_hearts_for_the_dragon_and_local_player_but_not_a_boat	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::client_hud_camera_tests	-	set_up	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::client_level_environment_tests	-	client_clouds_fog_and_precipitation_follow_the_joined_level	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::client_level_lifecycle_tests	-	a_reconfiguring_client_plays_menu_music_and_never_indexes_past_the_biomes	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::client_level_lifecycle_tests	-	a_reconfiguring_client_stops_flat_audio_streams_before_configuration	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::client_level_lifecycle_tests	-	client_level_transitions_stop_streams_opened_during_unload	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::client_menu_tests	-	client_menu_close_and_button_click_reach_the_server	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::client_menu_tests	-	client_menu_reads_follow_packets_and_lifetimes	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::client_vanilla_reads_tests	-	stand	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::container_drop_tests	-	canceled_creative_drop_keeps_throttle_budget_for_next_take	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::container_drop_tests	-	creative_drop_guards_charge_only_sent_drops	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::container_drop_tests	-	creative_screen_throws_wait_for_loaded_player_tick	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::container_drop_tests	-	playing_menu_throw_uses_only_container_click_and_server_drops_once	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::dig_abort_tests	-	stopping_a_retained_client_dig_aborts_only_once	#[cfg(test)]	server	touches only server-owned fields
-remote::tests::dimension_transition_tests	-	a_failed_presentation_discards_its_draws_without_disabling_its_factory	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::menu_packets_tests	-	a_mount_chest_beyond_the_slot_range_ends_the_connection	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::menu_packets_tests	-	rejected_menu_packets_retire_the_previous_client_menu	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::menu_packets_tests	-	rejected_mounts_preserve_the_previous_client_menu_without_sending_close	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::menu_packets_tests	-	remote_mount_is_installed_before_screen_init_and_keeps_all_columns	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::particle_group_tests	-	connection_and_dimension_replacement_clear_every_particle_group	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::play_bundle_tests	-	a_split_frame_group_bundle_refuses_a_mismatched_companion	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::spear_jab_tests	-	a_spear_jab_sends_only_its_stab	#[cfg(test)]	client	touches only client-owned fields
-remote::tests::tracking_state_tests	-	tracking_emitters_follow_the_packet_target	#[cfg(test)]	client	touches only client-owned fields
-remote::tick	impl Game<'_>	client_passenger	-	client	role-reachability:client
-remote::tick	impl Game<'_>	count_client_tick	-	client	role-reachability:client
-remote::tick	impl Game<'_>	count_told_client_tick	-	client	role-reachability:client
-remote::tick	impl Game<'_>	count_untold_client_ticks	-	client	touches only client-owned fields
-remote::tick	impl Game<'_>	game_side_client	-	client	touches only client-owned fields
-remote::tick	impl Game<'_>	remote_clock_tick	-	client	role-reachability:client
-remote::tick	impl Game<'_>	tick_client_load	-	client	touches only client-owned fields
-remote::tick	impl Game<'_>	tick_local_player	-	client	touches only client-owned fields
-remote::tick	impl Game<'_>	tick_local_water_vision	-	client	touches only client-owned fields
-remote::tick	impl Game<'_>	tick_remote	-	client	role-reachability:client
-remote::tick	impl Game<'_>	tick_remote_arm_poses	-	client	role-reachability:client
-remote::tick	impl Game<'_>	tick_remote_block_entities	-	client	role-reachability:client
-remote::tick	impl Game<'_>	tick_remote_entities	-	client	touches only client-owned fields
-remote::tick	impl Game<'_>	tick_remote_entity_turns	-	client	touches only client-owned fields
-remote::tick	impl Game<'_>	tick_remote_guardian_eyes	-	client	touches only client-owned fields
-remote::tick	impl Game<'_>	tick_remote_own_player	-	client	touches only client-owned fields
-remote::tick	impl Game<'_>	tick_remote_player	-	client	touches only client-owned fields
-remote::tracking	impl Game<'_>	detach_remote_tracking_entity	-	client	touches only client-owned fields
-remote::tracking	impl Game<'_>	remote_entity_tracking_body	-	client	touches only client-owned fields
-remote::tracking	impl Game<'_>	spawn_entity	-	client	role-reachability:client
-remote::ui	impl Game<'_>	remote_overlay	-	client	touches only client-owned fields
-remote::ui	impl Game<'_>	remote_player_attack	-	client	touches only client-owned fields
-remote::use_item	impl Game<'_>	remote_tick_using	-	client	role-reachability:client
-remote::use_item	impl Game<'_>	remote_use_item	-	client	role-reachability:client
 remote_tags::tests	-	reload_publishes_retained_and_bound_empty_tags_to_loot_and_clients	#[cfg(test)]	server	touches only server-owned fields
 repro	impl Game<'_>	start_recording_world_root_server	-	server	touches only server-owned fields
 resident_state	impl Default for ResidentEntities	default	-	server	role-reachability:server
@@ -1592,17 +288,7 @@ resource_tables	impl Resources	player_arm	-	client	role-reachability:client
 resource_tables	impl Resources	spin_attack	-	client	role-reachability:client
 resource_tables	impl UiResources	load	-	client	role-reachability:client
 resource_tables	impl UiResources	with_splashes	-	client	role-reachability:client
-saving	impl Game<'_>	poll_closing_save_chunks_server	-	server	touches only server-owned fields
-saving	impl Game<'_>	poll_closing_save_entities_server	-	server	touches only server-owned fields
-saving	impl Game<'_>	poll_closing_save_flush_server	-	server	touches only server-owned fields
-saving	impl Game<'_>	save_chunk_tickets	-	server	touches only server-owned fields
-saving	impl Game<'_>	save_level	-	server	touches only server-owned fields
 scheduled_tasks	impl ScheduledTasks	begin_tick	-	server	role-reachability:server
-scoreboard	impl Game<'_>	draw_scoreboard	-	client	role-reachability:client
-scoreboard	impl Game<'_>	draw_tab_list	-	client	touches only client-owned fields
-scoreboard	impl Game<'_>	flush_skin_slots	-	client	touches only client-owned fields
-scoreboard	impl Game<'_>	sidebar_objective	-	client	role-reachability:client
-scoreboard	impl Game<'_>	sidebar_status	-	client	role-reachability:client
 screen_backgrounds	impl Game<'_>	border_draw	-	client	retain-in-client-mirror
 screen_backgrounds	impl Game<'_>	draw_dimension_transition_screen	-	client	retain-in-client-mirror
 screen_backgrounds	impl Game<'_>	draw_level_loading_background	-	client	retain-in-client-mirror
@@ -1625,47 +311,12 @@ screen_widgets	impl Default for MountedScreenWidgets	default	-	server	role-reach
 screen_widgets	impl Drop for MountedScreenWidgets	drop	-	server	role-reachability:server
 shader_packs::player_status_tests	-	pack_status_follows_the_player	#[cfg(test)]	server	touches only server-owned fields
 shader_packs::player_status_tests	-	pack_status_leaves_queued_effects_alone	#[cfg(test)]	server	touches only server-owned fields
-sheep_dye	impl Game<'_>	sheep_would_take_dye	-	client	role-reachability:client
-sniffers	impl Game<'_>	lay_sniffer_egg	-	server	role-reachability:server
-sniffers	impl Game<'_>	tick_sniffer_server	-	server	role-reachability:server
 social	impl Default for Social	default	-	server	role-reachability:server
-spear	impl Game<'_>	cannot_attack_with_item	-	server	retain-in-server-mirror
-spear	impl Game<'_>	clip_collider	-	server	retain-in-server-mirror
-spear	impl Game<'_>	damage_stats_and_hearts	-	server	retain-in-server-mirror
-spear	impl Game<'_>	jab	-	server	retain-in-server-mirror
-spear	impl Game<'_>	kinetic_hit_feedback	-	server	retain-in-server-mirror
-spear	impl Game<'_>	kinetic_hit_ticks	-	server	retain-in-server-mirror
-spear	impl Game<'_>	remote_kinetic_hit	-	server	retain-in-server-mirror
-spear	impl Game<'_>	server_play_at_feet	-	server	retain-in-server-mirror
-spear	impl Game<'_>	spear_hit_feedback	-	server	retain-in-server-mirror
-spear	impl Game<'_>	spear_tick	-	server	retain-in-server-mirror
-spear	impl Game<'_>	stab_mob	-	server	retain-in-server-mirror
-spear	impl Game<'_>	stab_targets	-	server	retain-in-server-mirror
-spear	impl Game<'_>	use_spear	-	server	retain-in-server-mirror
 stack_names	impl Game<'_>	styled_stack_name	-	client	role-reachability:client
 stacked_on_other_tests	-	a_lan_hub_click_is_decided_the_same_way	#[cfg(test)]	server	touches only server-owned fields
 stacked_on_other_tests::item_part_tests	-	item_part_client_prediction_reconciliation_and_creative_pickups	#[cfg(test)]	client	touches only client-owned fields
 state_resolver	impl Game<'_>	resolve_per_state	-	server	role-reachability:server
 state_resolver	impl Game<'_>	resolve_per_state_fluid	-	client	role-reachability:client
-stations	impl Game<'_>	add_experience_levels	-	server	touches only server-owned fields
-stations	impl Game<'_>	close_station_server	-	server	touches only server-owned fields
-stations	impl Game<'_>	enchantment_performed	-	server	role-reachability:server
-stations	impl Game<'_>	open_station	-	server	touches only server-owned fields
-stations	impl Game<'_>	play_at	-	server	role-reachability:server
-stations	impl Game<'_>	play_level_up	-	server	touches only server-owned fields
-stations	impl Game<'_>	tick_brewing_stand	-	server	touches only server-owned fields
-storage	impl Game<'_>	close_ender_chest	-	server	touches only server-owned fields
-storage	impl Game<'_>	open_ender_chest	-	server	touches only server-owned fields
-storage	impl Game<'_>	spectator_open_menu	-	server	touches only server-owned fields
-storage	impl Game<'_>	tick_container_reach	-	server	touches only server-owned fields
-storage	impl Game<'_>	tick_craft_table	-	server	touches only server-owned fields
-tables	impl Game<'_>	block_provider_options	-	client	role-reachability:client
-tables	impl Game<'_>	craft_recipe	-	client	role-reachability:client
-tables	impl Game<'_>	display_index	-	client	role-reachability:client
-tables	impl Game<'_>	falling_block_face_sprite	-	client	role-reachability:client
-tables	impl Game<'_>	mesh_biomes	-	client	role-reachability:client
-tables	impl Game<'_>	synced_recipes	-	client	role-reachability:client
-tables	impl Game<'_>	worker_context	-	client	role-reachability:client
 test_entities	impl Game<'_>	discard_entities_in	-	server	retain-in-server-mirror
 test_instances	impl Game<'_>	highlight_test_pos	-	client	touches only client-owned fields
 test_instances	impl Game<'_>	test_instance_marker_geometry	-	client	touches only client-owned fields
@@ -1676,9 +327,6 @@ toast_manager	impl Game<'_>	add_system_toast	-	client	retain-in-client-mirror
 toast_manager	impl Game<'_>	draw_every_toast	-	client	retain-in-client-mirror
 toast_manager	impl ToastManager	system_mut	-	client	retain-in-client-mirror
 toast_manager	impl ToastManager	update	-	client	retain-in-client-mirror
-totem	impl Game<'_>	apply_totem	-	server	touches only server-owned fields
-totem	impl Game<'_>	finish_guest_damage_before_resume	-	server	touches only server-owned fields
-totem	impl Game<'_>	sync_mob_death_protection	-	server	role-reachability:server
 trading	impl Game<'_>	draw_merchant	-	client	touches only client-owned fields
 trading	impl Game<'_>	merchant_click	-	client	touches only client-owned fields
 trading	impl Game<'_>	merchant_drag	-	client	touches only client-owned fields
@@ -1704,21 +352,3 @@ wind	impl Game<'_>	wind_charge_geometry	-	client	touches only client-owned field
 wind::wind_charged_tests	-	a_silent_wind_charge_bursts_without_a_sound	#[cfg(test)]	client	touches only client-owned fields
 wind::wind_charged_tests	-	a_wind_charged_mob_bursts_with_the_breezes_sound_unless_it_is_silent	#[cfg(test)]	client	touches only client-owned fields
 wind::wind_charged_tests	-	heard	#[cfg(test)]	client	touches only client-owned fields
-world_entry	impl Game<'_>	client_acting_player_uuid	-	client	touches only client-owned fields
-world_entry	impl Game<'_>	client_resolve_enchant_particles	-	client	touches only client-owned fields
-world_entry	impl Game<'_>	client_tags_ready	-	client	touches only client-owned fields
-world_entry	impl Game<'_>	client_world_tables	-	client	touches only client-owned fields
-world_entry	impl Game<'_>	defer_world_entry	-	client	touches only client-owned fields
-world_entry	impl Game<'_>	install_world_tables	-	server	retain-in-server-mirror
-world_entry	impl Game<'_>	load_server_loot	-	server	retain-in-server-mirror
-world_entry	impl Game<'_>	open_world_tables	-	server	retain-in-server-mirror
-world_entry	impl Game<'_>	poll_world_creation	-	client	touches only client-owned fields
-world_entry	impl Game<'_>	prepare_world_reload	-	server	retain-in-server-mirror
-world_entry	impl Game<'_>	resolve_block_paths	#[cfg(test)]	server	retain-in-server-mirror
-world_entry	impl Game<'_>	resume_world_entry	-	client	touches only client-owned fields
-world_entry	impl Game<'_>	server_acting_player_uuid	-	server	retain-in-server-mirror
-world_entry	impl Game<'_>	server_clear_random_tick_sections	-	server	retain-in-server-mirror
-world_entry	impl Game<'_>	server_resolve_block_paths	-	server	retain-in-server-mirror
-world_entry	impl Game<'_>	server_tags_ready	-	server	retain-in-server-mirror
-world_entry	impl Game<'_>	server_world_tables	-	server	retain-in-server-mirror
-world_entry	impl Game<'_>	stage_world_tables	-	server	retain-in-server-mirror

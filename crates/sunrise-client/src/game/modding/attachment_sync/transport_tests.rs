@@ -14,8 +14,7 @@ use sunrise_protocol::{
     payload_negotiation::{self as negotiation, Control},
 };
 
-const NAME: &str =
-    "game::attachment_sync::transport_tests::attachment_sync_follows_the_negotiated_route";
+const NAME: &str = "game::server_side::attachment_sync::transport_tests::attachment_sync_follows_the_negotiated_route";
 
 pub(super) static VALUE: AttachmentType<i32> = AttachmentType {
     namespace: "sync_route",

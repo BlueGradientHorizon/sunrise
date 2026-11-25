@@ -144,7 +144,7 @@ fn malformed_known_recipe_stops_dedicated_world_startup() {
 #[ignore = "daily"]
 fn load_conditions_recipe_reload_counts_and_failed_candidates_keep_old_recipes() {
     if run_fresh_cases(
-        "game::server_side::load_conditions::tests::load_conditions_recipe_reload_counts_and_failed_candidates_keep_old_recipes",
+        "game::load_conditions::tests::load_conditions_recipe_reload_counts_and_failed_candidates_keep_old_recipes",
         "SUNRISE_LOAD_CONDITIONS_RELOAD_CHILD",
         &["reload"],
     ) {

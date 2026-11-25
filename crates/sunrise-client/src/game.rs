@@ -3958,7 +3958,7 @@ struct Game<'a> {
     previous_mode: Option<sunrise_client::command::args::GameMode>,
     /// The system clipboard (`KeyboardHandler.clipboardManager`).
     clipboard: client_side::ClientOnly<sunrise_client::clipboard::SystemClipboard>,
-    pending_save: client_side::ClientShared<Option<saving::ClosingSave>>,
+    pending_save: client_side::ClientOnly<Option<saving::ClosingSave>>,
     /// `Player.entityInteractionRange` and `blockInteractionRange`, refreshed
     /// each tick from the attribute (a server's reach modifier, creative's
     /// +2): the pick helpers' `&self` reach.
@@ -3990,7 +3990,7 @@ struct Game<'a> {
     mount: mounts::MountState,
     stats: stats::Stats,
     score: scoreboard::ScoreState,
-    fns: server_side::ServerShared<functions::FnState>,
+    fns: server_side::ServerOnly<functions::FnState>,
     exec: server_side::ServerOnly<commands::execute::ExecState>,
     border: sunrise_client::worldborder::WorldBorder,
     /// `Hud.tabList`: the player list's header, footer and heart states.
@@ -5597,7 +5597,7 @@ struct WrappedClientInit {
     command_block_screen: client_side::ClientOnly<Option<command_blocks::CommandBlockScreen>>,
     block_editor: client_side::ClientOnly<Option<block_editor::BlockEditScreen>>,
     clipboard: client_side::ClientOnly<sunrise_client::clipboard::SystemClipboard>,
-    pending_save: client_side::ClientShared<Option<saving::ClosingSave>>,
+    pending_save: client_side::ClientOnly<Option<saving::ClosingSave>>,
     tab_list: client_side::ClientOnly<sunrise_client::tab_list::TabList>,
     adv_ui: client_side::ClientOnly<advancements_screen::AdvUi>,
 }
@@ -5629,7 +5629,7 @@ struct WrappedServerInit {
     reload_resources: server_side::ServerOnly<mod_api::RetainedListeners>,
     combat: server_side::ServerOnly<combat::CombatTracker>,
     guest_combat: server_side::ServerOnly<std::collections::HashMap<u32, combat::CombatTracker>>,
-    fns: server_side::ServerShared<functions::FnState>,
+    fns: server_side::ServerOnly<functions::FnState>,
     exec: server_side::ServerOnly<commands::execute::ExecState>,
 }
 
@@ -5720,7 +5720,7 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             command_block_screen: client_side::ClientOnly::new(None),
             block_editor: client_side::ClientOnly::new(None),
             clipboard: client_side::ClientOnly::new(Default::default()),
-            pending_save: client_side::ClientShared::new(None),
+            pending_save: client_side::ClientOnly::new(None),
             tab_list: client_side::ClientOnly::new(Default::default()),
             adv_ui: client_side::ClientOnly::new(Default::default()),
         })
@@ -5771,7 +5771,7 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             reload_resources: server_side::ServerOnly::new(Default::default()),
             combat: server_side::ServerOnly::new(Default::default()),
             guest_combat: server_side::ServerOnly::new(Default::default()),
-            fns: server_side::ServerShared::new(Default::default()),
+            fns: server_side::ServerOnly::new(Default::default()),
             exec: server_side::ServerOnly::new(Default::default()),
         })
     }

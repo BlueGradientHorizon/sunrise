@@ -14,7 +14,7 @@ use sunrise_protocol::{
     packets::play,
 };
 
-const NAME: &str = "game::attachment_sync::route_cases_tests::a_dedicated_server_sends_only_trackers_in_packet_order";
+const NAME: &str = "game::server_side::attachment_sync::route_cases_tests::a_dedicated_server_sends_only_trackers_in_packet_order";
 
 /// What a peer is sent, reduced to what this test orders: system chat text and the level's
 /// synced values, until it has seen `count` of them.

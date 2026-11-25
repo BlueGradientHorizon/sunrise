@@ -41,7 +41,7 @@ bindings = [{ name = "game", ty = "&mut Game<'_>", value = "&mut *self" }]
 # function is copied for the slots' type, and this row is applied to that copy.
 [[native.mixin]]
 id = "inside"
-target = "sunrise_client::game::block_entity_ticks::Game<'_>::tick_block_entities_with"
+target = "sunrise_client::game::server_side::block_entity_ticks::Game<'_>::tick_block_entities_with"
 kind = "MODIFY_EXPRESSION_VALUE"
 selector = "ticking(pos.0, pos.2)"
 require = 1

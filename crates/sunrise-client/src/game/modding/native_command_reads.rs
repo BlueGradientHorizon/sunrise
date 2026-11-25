@@ -192,7 +192,7 @@ mod tests {
     #[ignore = "daily"]
     fn a_console_command_executes_in_the_level_execute_in_names() {
         crate::game::in_own_process(
-            "game::native_command_reads::tests::a_console_command_executes_in_the_level_execute_in_names",
+            "game::server_side::native_command_reads::tests::a_console_command_executes_in_the_level_execute_in_names",
             || {
                 use std::sync::{Arc, Mutex};
                 type Heard = Arc<Mutex<Vec<(mod_api::CommandSource, CommandInvocation)>>>;

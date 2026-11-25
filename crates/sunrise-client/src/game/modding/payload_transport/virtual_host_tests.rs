@@ -4,7 +4,8 @@ use mod_api::{Flow, Hooks, ModEntry, PlayerHandshakeEvent, ServerHost, VirtualHo
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-const NAME: &str = "game::client_side::payload_transport::virtual_host_tests::virtual_host_is_the_rewritten_handshake_host";
+const NAME: &str =
+    "game::payload_transport::virtual_host_tests::virtual_host_is_the_rewritten_handshake_host";
 
 struct Rewrite(Arc<Mutex<Vec<Option<VirtualHost>>>>);
 #[mod_api::__subscriptions]

@@ -405,7 +405,7 @@ cargo = [
   { package = "sunrise-client", target = "lib", filter = "game::client_side::gui_entity::" },
   { package = "sunrise-client", target = "lib", filter = "game::host::" },
   { package = "sunrise-client", target = "lib", filter = "game::server_side::api_values::" },
-  { package = "sunrise-client", target = "lib", filter = "game::server_side::load_conditions::" },
+  { package = "sunrise-client", target = "lib", filter = "game::load_conditions::" },
   { package = "sunrise-client", target = "lib", filter = "game::creatures::pending_birth_matrix_tests" },
 ]
 harnesses = []

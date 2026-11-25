@@ -1250,7 +1250,7 @@ def scan_child_mod_decls(
                 errors.append(f"{rel}:{line}: child module `{mod_name}` resolved file `{path_val}` does not exist")
             return
 
-        if file_path.name == "mod.rs":
+        if is_path_loaded or file_path.name == "mod.rs":
             search = file_path.parent
         else:
             search = file_path.parent / file_path.stem
@@ -3404,7 +3404,9 @@ def collect_moved_subtrees_and_includes(
             all_include_sites.setdefault(site.target, []).append((site, scope_str))
             walk_moved_file(site.target, side, eff_depth, is_path_loaded)
 
-        children, cerrs = scan_child_mod_decls(txt, resolved, root, depth, is_path_loaded, tokens=tokens)
+        children, cerrs = scan_child_mod_decls(
+            txt, resolved, root, depth, is_path_loaded, tokens=tokens, allow_raw_with_path=True
+        )
         errors.extend(cerrs)
         for child_path, child_depth, child_path_loaded in children:
             walk_moved_file(child_path, side, child_depth, child_path_loaded)
@@ -3763,7 +3765,7 @@ def run_check(
     problems.extend(reexp_errs)
 
     for mod_name in sorted(set(all_arms) & set(table)):
-        want, _, expected_paths = table[mod_name]
+        want, mod_reason, expected_paths = table[mod_name]
         actual = current_parents[mod_name]
         if actual != want:
             problems.append(f"module `{mod_name}` is in `{actual}`, expected `{want}` per game_module_sides.tsv")
@@ -3779,6 +3781,8 @@ def run_check(
                 problems.append(cfg_err)
                 continue
             rlist = reexports.get(mod_name, [])
+            if not rlist and mod_reason.startswith("hand-authored "):
+                continue
             if len(rlist) != 1 or rlist[0].side_mod != SIDE_MOD_NAME[want]:
                 problems.append(
                     f"crates/sunrise-client/src/game.rs: moved module `{mod_name}` missing re-export from `{SIDE_MOD_NAME[want]}`"

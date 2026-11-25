@@ -14,7 +14,7 @@ use sunrise_protocol::{
     packets::{Empty, configuration as cfg, play},
 };
 
-const NAME: &str = "game::client_side::payload_transport::raw_fault_tests::a_failing_raw_handler_rolls_back_alone_and_the_next_one_commits";
+const NAME: &str = "game::payload_transport::raw_fault_tests::a_failing_raw_handler_rolls_back_alone_and_the_next_one_commits";
 const CHANNEL: &str = "faultprobe:message";
 const PLAYER: &str = "RawFault";
 const STAGED: f32 = 3.0;

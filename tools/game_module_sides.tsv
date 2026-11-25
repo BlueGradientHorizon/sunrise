@@ -12,34 +12,48 @@ allay_pickup_cooldown_tests	game	touches neither ClientState nor ServerState fie
 allays	server	re-homed server module	game/mobs/allays.rs
 allays_client	client	re-homed client module	game/mobs/allays_client.rs
 api_values	server	touches only server-owned fields	game/modding/api_values.rs
+api_values_common	game	common dual-role module	game/modding/api_values_common.rs
 armor_stand_refind_tests	server	touches only ServerState fields	game/entities/armor_stand_refind_tests.rs
 armor_stands	server	touches only server-owned fields (opposite-side functions moved to armor_stands_client)	game/entities/armor_stands.rs
+armor_stands_client	client	hand-authored client role-split module	game/entities/armor_stands_client.rs
 atlas_slots	game	touches neither ClientState nor ServerState fields	game/interface/atlas_slots.rs
 attachment_index	server	touches only ServerState fields	game/modding/attachment_index/mod.rs
 attachment_instruction_bench	game	touches neither ClientState nor ServerState fields	game/modding/attachment_instruction_bench.rs
-attachment_sync	game	touches neither ClientState nor ServerState fields	game/modding/attachment_sync.rs
+attachment_sync	server	wave 3 role-split (game -> server)	game/modding/attachment_sync.rs
+attachment_sync_client	client	hand-authored client role-split module	game/modding/attachment_sync_client.rs
 autosave	game	touches both ClientState and ServerState fields	game/world/autosave.rs
 baked_model_keys_tests	game	touches neither ClientState nor ServerState fields	game/modding/baked_model_keys_tests.rs
 banners	game	touches neither ClientState nor ServerState fields	game/blocks/banners.rs
 bare_declaration_names_tests	game	touches neither ClientState nor ServerState fields	game/modding/bare_declaration_names_tests.rs
 beacon	client	touches only ClientState fields	game/blocks/beacon.rs
+beacon_common	game	common dual-role module	game/blocks/beacon_common.rs
 beacon_cull_tests	client	touches only client-owned fields	game/blocks/beacon_cull_tests.rs
+beacon_server	server	hand-authored server role-split module	game/blocks/beacon_server.rs
 beds	server	touches only ServerState fields	game/blocks/beds.rs
 beehives	server	touches only ServerState fields	game/mobs/beehives.rs
+beehives_client	server	hand-authored server role-split module	game/mobs/beehives_client.rs
+beehives_common	game	common dual-role module	game/mobs/beehives_common.rs
 block_breaking	client	touches only client-owned fields (opposite-side functions moved to block_breaking_server)	game/blocks/block_breaking.rs
 block_drops_pops_tests	server	touches only ServerState fields	game/blocks/block_drops_pops_tests.rs
 block_editor	client	touches only ClientState fields	game/interface/block_editor.rs
 block_edits	server	touches only server-owned fields	game/blocks/block_edits.rs
+block_edits_common	game	common dual-role module	game/blocks/block_edits_common.rs
 block_entity_anims	server	touches only ServerState fields	game/blocks/block_entity_anims.rs
 block_entity_anims_client	client	hand-authored client role-split module	game/blocks/block_entity_anims_client.rs
 block_entity_anims_common	game	common dual-role module	game/blocks/block_entity_anims_common.rs
 block_entity_part_state_tests	server	touches only server-owned fields	game/modding/block_entity_part_state_tests.rs
 block_entity_reach_draw_tests	game	touches neither ClientState nor ServerState fields	game/blocks/block_entity_reach_draw_tests.rs
-block_entity_ticks	game	defines published loop loop:block_entities.tick	game/blocks/block_entity_ticks.rs
+block_entity_ticks	server	wave 3 role-split (game -> server)	game/blocks/block_entity_ticks.rs
+block_entity_ticks_server	server	hand-authored server role-split module	game/blocks/block_entity_ticks_server.rs
 block_items	game	touches neither ClientState nor ServerState fields	game/blocks/block_items.rs
+block_items_client	client	hand-authored client role-split module	game/blocks/block_items_client.rs
+block_items_server	server	hand-authored server role-split module	game/blocks/block_items_server.rs
 block_notifications	game	touches neither ClientState nor ServerState fields	game/modding/block_notifications.rs
 block_part_tool_tests	game	touches neither ClientState nor ServerState fields	game/blocks/block_part_tool_tests.rs
-block_particles	game	promote-for-common-fns:2	game/blocks/block_particles.rs
+block_particles	client	wave 3 role-split (game -> client)	game/blocks/block_particles.rs
+block_particles_client	client	hand-authored client role-split module	game/blocks/block_particles_client.rs
+block_particles_server	server	hand-authored server role-split module	game/blocks/block_particles_server.rs
+block_props	game	common dual-role module	game/blocks/block_props.rs
 block_screen_effect_draw_tests	client	touches only client-owned fields (opposite-side functions moved to block_screen_effect_draw_tests_server)	game/interface/block_screen_effect_draw_tests.rs
 block_ticks	server	touches only ServerState fields	game/blocks/block_ticks.rs
 block_use_completion	server	touches only ServerState fields	game/modding/block_use_completion.rs
@@ -53,10 +67,12 @@ boat_refind_tests	game	touches neither ClientState nor ServerState fields	game/e
 boat_rider_fixture	client	touches only ClientState fields	game/entities/boat_rider_fixture.rs
 boats	server	touches only server-owned fields (opposite-side functions moved to boats_client)	game/entities/boats/mod.rs
 boats_client	client	hand-authored client role-split module	game/entities/boats/mod_client.rs
+boats_common	game	common dual-role module	game/entities/boats_common.rs
 books	client	touches only client-owned fields (opposite-side functions moved to books_server)	game/interface/books.rs
 books_common	game	common dual-role module	game/interface/books_common.rs
 books_server	server	hand-authored server role-split module	game/interface/books_server.rs
 bookshelves	client	touches only ClientState fields	game/blocks/bookshelves.rs
+bookshelves_common	game	common dual-role module	game/blocks/bookshelves_common.rs
 bossbars	server	touches only server-owned fields (opposite-side functions moved to bossbars_client)	game/interface/bossbars.rs
 breezes	game	touches neither ClientState nor ServerState fields	game/mobs/breezes.rs
 brewing_remainder	server	touches only server-owned fields	game/blocks/brewing_remainder.rs
@@ -74,6 +90,8 @@ campfire_douse	game	promote-for-common-fns:2	game/blocks/campfire_douse.rs
 carrier_transfers	server	touches only ServerState fields	game/world/carrier_transfers.rs
 cart_rails	game	touches neither ClientState nor ServerState fields	game/entities/cart_rails.rs
 cartography	game	touches neither ClientState nor ServerState fields	game/blocks/cartography.rs
+cartography_client	client	hand-authored client role-split module	game/blocks/cartography_client.rs
+cartography_server	server	hand-authored server role-split module	game/blocks/cartography_server.rs
 cat_spawner	server	role-reachability:server	game/mobs/cat_spawner.rs
 cauldron_interactions	server	touches only ServerState fields	game/blocks/cauldron_interactions.rs
 cauldron_prediction	game	touches neither ClientState nor ServerState fields	game/network/cauldron_prediction.rs
@@ -83,7 +101,7 @@ cauldrons	game	touches neither ClientState nor ServerState fields	game/blocks/ca
 chat	client	touches only client-owned fields (opposite-side functions moved to chat_server)	game/interface/chat.rs
 chat_common	game	common dual-role module	game/interface/chat_common.rs
 chat_server	server	hand-authored server role-split module	game/interface/chat_server.rs
-chiseled_bookshelf	client	touches only client-owned fields	game/blocks/chiseled_bookshelf.rs
+chiseled_bookshelf	server	wave 3 role-split (client -> server)	game/blocks/chiseled_bookshelf.rs
 class_tags	game	touches neither ClientState nor ServerState fields	game/world/class_tags.rs
 class_tags_tests	game	touches neither ClientState nor ServerState fields	game/world/class_tags_tests.rs
 client_ambient	client	touches only client-owned fields	game/interface/client_ambient.rs
@@ -102,6 +120,7 @@ closest_space	game	touches neither ClientState nor ServerState fields	game/entit
 cloud_height_frame_tests	client	touches only ClientState fields	game/interface/cloud_height_frame_tests.rs
 code_of_conduct	client	touches only ClientState fields	game/interface/code_of_conduct.rs
 collision_source	game	touches neither ClientState nor ServerState fields	game/entities/collision_source.rs
+collision_source_server	server	hand-authored server role-split module	game/entities/collision_source_server.rs
 combat	server	touches only ServerState fields	game/items/combat.rs
 command_blocks	client	touches only ClientState fields	game/administration/command_blocks.rs
 command_blocks_common	game	common dual-role module	game/administration/command_blocks_common.rs
@@ -118,6 +137,7 @@ composter	server	re-homed server module	game/blocks/composter.rs
 composter_client	client	re-homed client module	game/blocks/composter_client.rs
 condition_reload_state	game	touches neither ClientState nor ServerState fields	game/world/condition_reload_state.rs
 consume	server	touches only ServerState fields	game/items/consume.rs
+consume_client	client	hand-authored client role-split module	game/items/consume_client.rs
 consume_effect_dispatch	game	touches neither ClientState nor ServerState fields	game/modding/consume_effect_dispatch.rs
 consume_effect_dispatch_tests	game	touches neither ClientState nor ServerState fields	game/modding/consume_effect_dispatch_tests.rs
 contained_fluid_tests	game	touches neither ClientState nor ServerState fields	game/interface/contained_fluid_tests.rs
@@ -126,7 +146,8 @@ container_layout	client	touches only ClientState fields	game/interface/container
 container_loot	server	touches only ServerState fields	game/world/container_loot.rs
 control	client	touches only ClientState fields	game/runtime/control.rs
 conversion_place_tests	game	touches neither ClientState nor ServerState fields	game/mobs/conversion_place_tests.rs
-copper_golems	client	touches only client-owned fields	game/mobs/copper_golems.rs
+copper_golems	game	wave 3 role-split (client -> game)	game/mobs/copper_golems.rs
+copper_golems_server	server	hand-authored server role-split module	game/mobs/copper_golems_server.rs
 core_tests	game	touches both ClientState and ServerState fields	game/runtime/core_tests.rs
 crafter_common	game	common dual-role module	game/blocks/machines/crafter_common.rs
 crafting_recipe_kind_tests	game	touches both ClientState and ServerState fields	game/modding/crafting_recipe_kind_tests.rs
@@ -140,10 +161,12 @@ creatures_client	client	hand-authored client role-split module	game/mobs/creatur
 creatures_server	server	hand-authored server role-split module	game/mobs/creatures/mod_server.rs
 crop_grow_tests	game	touches neither ClientState nor ServerState fields	game/interface/crop_grow_tests.rs
 crossbow	server	touches only ServerState fields	game/items/crossbow.rs
+crossbow_client	client	hand-authored client role-split module	game/items/crossbow_client.rs
 crosshair_pick_tests	client	touches only ClientState fields	game/entities/crosshair_pick_tests.rs
 cushion_refind_tests	game	touches neither ClientState nor ServerState fields	game/entities/cushion_refind_tests.rs
 cushions	server	touches only server-owned fields (opposite-side functions moved to cushions_client)	game/entities/cushions.rs
-custom_arm_pose	game	touches neither ClientState nor ServerState fields	game/interface/custom_arm_pose.rs
+cushions_client	client	hand-authored client role-split module	game/entities/cushions_client.rs
+custom_arm_pose	client	wave 3 role-split (game -> client)	game/interface/custom_arm_pose.rs
 custom_sky	client	touches only ClientState fields	game/interface/custom_sky.rs
 custom_spawner_level	server	role-reachability:server	game/mobs/custom_spawner_level.rs
 custom_spawners	server	role-reachability:server	game/mobs/custom_spawners.rs
@@ -160,19 +183,21 @@ debug_stick	server	role-reachability:server	game/blocks/debug_stick.rs
 decided_action	server	role-reachability:server	game/modding/decided_action.rs
 declared_vegetation_tests	game	touches neither ClientState nor ServerState fields	game/modding/declared_vegetation_tests.rs
 decorated_pot	game	promote-for-common-fns:4	game/blocks/decorated_pot.rs
+decorated_pot_server	server	hand-authored server role-split module	game/blocks/decorated_pot_server.rs
 dedicated	server	touches only ServerState fields	game/interface/dedicated/mod.rs
 deflect	server	touches only ServerState fields	game/items/deflect.rs
 demo_intro	client	touches only ClientState fields	game/interface/demo_intro.rs
 developer_launch	game	touches neither ClientState nor ServerState fields	game/interface/developer_launch.rs
 dialogs	client	touches only ClientState fields	game/interface/dialogs.rs
 disabled_block_tests	server	touches only server-owned fields (opposite-side functions moved to disabled_block_tests_client)	game/modding/disabled_block_tests.rs
-dispense_bucket	game	touches neither ClientState nor ServerState fields	game/blocks/dispense_bucket.rs
+dispense_bucket	server	wave 3 role-split (game -> server)	game/blocks/dispense_bucket.rs
 dispense_container_tests	game	touches neither ClientState nor ServerState fields	game/blocks/dispense_container_tests.rs
 dispense_fixture	server	touches only ServerState fields	game/interface/dispense_fixture.rs
 dispenser	server	touches only ServerState fields	game/blocks/dispenser.rs
 dragon	server	touches only server-owned fields (opposite-side functions moved to dragon_client)	game/mobs/dragon.rs
 dragon_boss_bar_name_tests	client	touches only ClientState fields	game/interface/dragon_boss_bar_name_tests.rs
 dragon_client	client	hand-authored client role-split module	game/mobs/dragon_client.rs
+dragon_common	game	common dual-role module	game/mobs/dragon_common.rs
 dragon_fireball_motion_tests	server	touches only ServerState fields	game/mobs/dragon_fireball_motion_tests.rs
 draw_boundary	client	role-reachability:client	game/modding/draw_boundary.rs
 dropped_by_player_tests	game	touches neither ClientState nor ServerState fields	game/items/dropped_by_player_tests.rs
@@ -189,23 +214,32 @@ enchant_pick_parts_tests	server	touches only ServerState fields	game/items/encha
 enchant_power_beam_tests	client	touches only ClientState fields	game/blocks/enchant_power_beam_tests.rs
 end	server	touches only server-owned fields (opposite-side functions moved to end_client)	game/world/end.rs
 end_client	client	hand-authored client role-split module	game/world/end_client.rs
-enderman	game	touches neither ClientState nor ServerState fields	game/mobs/enderman.rs
+end_client_server	server	hand-authored server role-split module	game/world/end_client_server.rs
+end_common	game	common dual-role module	game/world/end_common.rs
+enderman	server	wave 3 role-split (game -> server)	game/mobs/enderman.rs
 enderman_hurt_teleport_tests	server	touches only ServerState fields	game/mobs/enderman_hurt_teleport_tests.rs
 enderman_placement_tests	game	touches neither ClientState nor ServerState fields	game/interface/enderman_placement_tests.rs
 entity	server	touches only ServerState fields	game/entities/entity.rs
 entity_client	client	client-side entity presentation and RenderEntityBounds	game/entities/entity_client.rs
+entity_common	game	common dual-role module	game/entities/entity_common.rs
 entity_culling	client	touches only ClientState fields	game/interface/entity_culling/mod.rs
 entity_die_tests	server	touches only server-owned fields	game/entities/entity_die_tests.rs
 entity_initialization	server	touches only ServerState fields	game/modding/entity_initialization.rs
+entity_initialization_client	client	hand-authored client role-split module	game/modding/entity_initialization_client.rs
+entity_initialization_common	game	common dual-role module	game/modding/entity_initialization_common.rs
 entity_inside_tests	game	touches neither ClientState nor ServerState fields	game/entities/entity_inside_tests.rs
 entity_model_loading_tests	game	touches neither ClientState nor ServerState fields	game/interface/entity_model_loading_tests.rs
 entity_part_state	client	role-reachability:client	game/modding/entity_part_state.rs
 entity_part_state_tests	server	touches only ServerState fields	game/modding/entity_part_state_tests.rs
 entity_residency	server	touches only ServerState fields	game/entities/entity_residency.rs
 entity_sections	game	touches neither ClientState nor ServerState fields	game/modding/entity_sections.rs
+entity_sections_client	client	hand-authored client role-split module	game/modding/entity_sections_client.rs
+entity_sections_server	server	hand-authored server role-split module	game/modding/entity_sections_server.rs
 entity_sizes	server	touches only server-owned fields (opposite-side functions moved to entity_sizes_client)	game/modding/entity_sizes.rs
 entity_sizes_client	client	hand-authored client role-split module	game/modding/entity_sizes_client.rs
+entity_sizes_common	game	common dual-role module	game/modding/entity_sizes_common.rs
 entity_sounds	client	touches only client-owned fields	game/entities/entity_sounds.rs
+entity_sounds_server	server	hand-authored server role-split module	game/entities/entity_sounds_server.rs
 entity_type_rows	game	touches neither ClientState nor ServerState fields	game/modding/entity_type_rows.rs
 equip_answers	game	touches neither ClientState nor ServerState fields	game/items/equip_answers.rs
 equipment_piece	client	touches only client-owned fields	game/entities/equipment_piece.rs
@@ -221,18 +255,21 @@ extinguish	server	touches only ServerState fields	game/entities/extinguish.rs
 extras	client	touches only ClientState fields	game/interface/extras.rs
 falling_air_tick_tests	game	touches neither ClientState nor ServerState fields	game/runtime/falling_air_tick_tests.rs
 falling_blocks	server	touches only server-owned fields (opposite-side functions moved to falling_blocks_client)	game/blocks/falling_blocks.rs
+falling_blocks_client	client	hand-authored client role-split module	game/blocks/falling_blocks_client.rs
 falling_damage	server	touches only ServerState fields	game/entities/falling_damage.rs
 falling_save	server	touches only ServerState fields	game/entities/falling_save.rs
 falling_tick	server	touches only ServerState fields	game/entities/falling_tick.rs
 falling_tick_tests	game	touches neither ClientState nor ServerState fields	game/entities/falling_tick_tests.rs
 fangs	server	touches only server-owned fields (opposite-side functions moved to fangs_client)	game/mobs/fangs.rs
 fangs_client	client	hand-authored client role-split module	game/mobs/fangs_client.rs
+fangs_common	game	common dual-role module	game/mobs/fangs_common.rs
 far_terrain_edits	client	touches only ClientState fields	game/world/far_terrain_edits.rs
 fence_leash_force_tests	server	touches only ServerState fields	game/mobs/fence_leash_force_tests.rs
 fertile_part_tests	game	touches neither ClientState nor ServerState fields	game/blocks/fertile_part_tests.rs
 finalize_spawn	server	touches only ServerState fields	game/mobs/finalize_spawn.rs
 fireworks	game	touches both ClientState and ServerState fields (opposite side in tests)	game/entities/fireworks.rs
 fireworks_client	client	hand-authored client role-split module	game/entities/fireworks_client.rs
+fireworks_server	server	hand-authored server role-split module	game/entities/fireworks_server.rs
 first_tick_registration_tests	server	touches only server-owned fields	game/blocks/first_tick_registration_tests.rs
 fishing	server	touches only server-owned fields (opposite-side functions moved to fishing_client)	game/items/fishing.rs
 fishing_client	client	hand-authored client role-split module	game/items/fishing_client.rs
@@ -254,7 +291,8 @@ game_tests	server	touches only ServerState fields	game/administration/game_tests
 gamemode_switcher	client	touches only ClientState fields	game/interface/gamemode_switcher.rs
 general	server	touches only ServerState fields	game/entities/general.rs
 general_draw	client	touches only client-owned fields	game/mobs/general_draw.rs
-ghasts	client	touches only client-owned fields	game/mobs/ghasts.rs
+ghasts	server	wave 3 role-split (client -> server)	game/mobs/ghasts.rs
+ghasts_server	server	hand-authored server role-split module	game/mobs/ghasts_server.rs
 glide_wear	game	touches neither ClientState nor ServerState fields	game/items/glide_wear.rs
 glide_wear_tests	game	touches neither ClientState nor ServerState fields	game/items/glide_wear_tests.rs
 global_loot_modifiers	game	touches neither ClientState nor ServerState fields	game/modding/global_loot_modifiers.rs
@@ -272,10 +310,12 @@ gui_paint_items_tests	game	touches neither ClientState nor ServerState fields	ga
 gui_pose	client	role-reachability:client	game/modding/gui_pose.rs
 hand	client	touches only client-owned fields (opposite-side functions moved to hand_server)	game/items/hand.rs
 hand_part_tests	client	touches only client-owned fields (opposite-side functions moved to hand_part_tests_server)	game/items/hand_part_tests.rs
+hand_part_tests_server	server	hand-authored server role-split module	game/items/hand_part_tests_server.rs
 hand_server	server	hand-authored server role-split module	game/items/hand_server.rs
 hanging_refind_tests	game	touches neither ClientState nor ServerState fields	game/entities/hanging_refind_tests.rs
 headless	client	role-reachability:client	game/runtime/headless.rs
 held_items	game	common dual-role module	game/items/held_items.rs
+held_items_server	server	hand-authored server role-split module	game/items/held_items_server.rs
 highlight_tip_tests	client	touches only ClientState fields	game/interface/highlight_tip_tests.rs
 hit	game	touches neither ClientState nor ServerState fields	game/interface/hit.rs
 hoglin_repeat_attack_tests	server	touches only ServerState fields	game/mobs/hoglin_repeat_attack_tests.rs
@@ -307,13 +347,16 @@ invulnerable_time_tests	game	touches neither ClientState nor ServerState fields	
 item_abilities	game	touches neither ClientState nor ServerState fields	game/items/item_abilities.rs
 item_abilities_tests	server	touches only ServerState fields	game/items/item_abilities_tests.rs
 item_actions	game	promote-for-common-fns:1	game/items/item_actions.rs
+item_actions_server	server	hand-authored server role-split module	game/items/item_actions_server.rs
 item_attack_tests	game	touches neither ClientState nor ServerState fields	game/items/item_attack_tests.rs
 item_contact_tests	server	touches only ServerState fields	game/entities/item_contact_tests.rs
 item_draw	client	touches only ClientState fields	game/interface/item_draw.rs
 item_drop_state_tests	server	touches only ServerState fields	game/modding/item_drop_state_tests.rs
 item_durability	server	touches only ServerState fields	game/items/item_durability.rs
 item_entities	server	touches only ServerState fields	game/items/item_entities.rs
+item_entity_server	server	hand-authored server role-split module	game/runtime/transactions/item_entity_server.rs
 item_entity_spawn	game	promote-for-common-fns:3	game/items/item_entity_spawn.rs
+item_entity_spawn_server	server	hand-authored server role-split module	game/items/item_entity_spawn_server.rs
 item_hurt	server	touches only ServerState fields	game/entities/item_hurt.rs
 item_interact_mob_tests	game	touches both ClientState and ServerState fields	game/items/item_interact_mob_tests.rs
 item_menu_parts_tests	game	touches neither ClientState nor ServerState fields	game/items/item_menu_parts_tests.rs
@@ -326,12 +369,16 @@ item_pickup_shape_tests	server	touches only ServerState fields	game/items/item_p
 item_slot_command_tests	game	touches neither ClientState nor ServerState fields	game/interface/item_slot_command_tests.rs
 item_snapshot	game	common dual-role module	game/modding/item_snapshot.rs
 item_use	server	touches only server-owned fields (opposite-side functions moved to item_use_client)	game/items/item_use.rs
+item_use_client	client	hand-authored client role-split module	game/items/item_use_client.rs
 item_use_stacks	game	touches neither ClientState nor ServerState fields	game/items/item_use_stacks.rs
 item_void_tests	server	touches only ServerState fields	game/entities/item_void_tests.rs
 jigsaw_blocks	game	touches neither ClientState nor ServerState fields	game/administration/jigsaw_blocks.rs
+jigsaw_blocks_server	server	hand-authored server role-split module	game/administration/jigsaw_blocks_server.rs
 jigsaw_edit	client	touches only client-owned fields	game/administration/jigsaw_edit.rs
 journal_level_write	server	touches only ServerState fields	game/modding/journal_level_write.rs
 jukebox	client	touches only client-owned fields (opposite-side functions moved to jukebox_server)	game/blocks/jukebox.rs
+jukebox_common	game	common dual-role module	game/blocks/jukebox_common.rs
+jukebox_server	server	hand-authored server role-split module	game/blocks/jukebox_server.rs
 key_codes	game	touches neither ClientState nor ServerState fields	game/interface/key_codes.rs
 key_focus	game	touches neither ClientState nor ServerState fields	game/interface/key_focus.rs
 keymap_tests	game	touches neither ClientState nor ServerState fields	game/interface/keymap_tests.rs
@@ -340,9 +387,12 @@ kill_die_vibration_tests	server	touches only ServerState fields	game/entities/ki
 knot_residency_tests	server	touches only ServerState fields	game/entities/knot_residency_tests.rs
 lan	server	touches only ServerState fields	game/network/lan/mod.rs
 lan_actions	game	touches both ClientState and ServerState fields	game/network/lan_actions/mod.rs
+lan_actions_client	client	hand-authored client role-split module	game/network/lan_actions/mod_client.rs
+lan_actions_server	server	hand-authored server role-split module	game/network/lan_actions/mod_server.rs
 lan_attributes	server	role-reachability:server	game/network/lan_attributes.rs
 lan_camera	server	touches only server-owned fields	game/network/lan_camera.rs
 lan_chat	server	touches only ServerState fields	game/network/lan_chat.rs
+lan_client	client	hand-authored client role-split module	game/network/lan/mod_client.rs
 lan_configuration_tasks	server	touches only ServerState fields	game/network/lan_configuration_tasks.rs
 lan_crafting	server	touches only ServerState fields	game/network/lan_crafting.rs
 lan_entities	server	touches only ServerState fields	game/network/lan_entities.rs
@@ -350,29 +400,36 @@ lan_far	server	role-reachability:server	game/network/lan_far.rs
 lan_menus	server	role-reachability:server	game/network/lan_menus.rs
 lan_menus_tests	server	touches only ServerState fields	game/network/lan_menus_tests.rs
 lan_mobs	server	touches only ServerState fields	game/network/lan_mobs.rs
-lan_mount_menu	game	touches neither ClientState nor ServerState fields	game/network/lan_mount_menu.rs
+lan_mount_menu	server	wave 3 role-split (game -> server)	game/network/lan_mount_menu.rs
+lan_mount_menu_server	server	hand-authored server role-split module	game/network/lan_mount_menu_server.rs
 lan_op	game	touches neither ClientState nor ServerState fields	game/administration/lan_op.rs
 lan_particles	server	touches only ServerState fields	game/network/lan_particles.rs
+lan_particles_client	client	hand-authored client role-split module	game/network/lan_particles_client.rs
 lan_pickup	server	role-reachability:server	game/network/lan_pickup.rs
 lan_pvp	server	touches only ServerState fields	game/network/lan_pvp.rs
 lan_quiet	server	role-reachability:server	game/network/lan_quiet.rs
 lan_screen	client	touches only ClientState fields	game/network/lan_screen.rs
-lan_stations	client	touches only client-owned fields	game/network/lan_stations.rs
-lan_trade_decisions	game	promote-for-common-fns:8	game/network/lan_trade_decisions.rs
+lan_stations	server	wave 3 role-split (client -> server)	game/network/lan_stations.rs
+lan_stations_server	server	hand-authored server role-split module	game/network/lan_stations_server.rs
+lan_trade_decisions	server	wave 3 role-split (game -> server)	game/network/lan_trade_decisions.rs
+lan_trade_decisions_server	server	hand-authored server role-split module	game/network/lan_trade_decisions_server.rs
 lan_trade_decisions_tests	server	touches only ServerState fields	game/network/lan_trade_decisions_tests.rs
 lan_trading	server	touches only ServerState fields	game/network/lan_trading.rs
 lan_vehicles	server	touches only server-owned fields (opposite-side functions moved to lan_vehicles_client)	game/network/lan_vehicles.rs
+lan_vehicles_client	client	hand-authored client role-split module	game/network/lan_vehicles_client.rs
 lan_waypoints	server	touches only ServerState fields	game/network/lan_waypoints.rs
 last_hurt_by_mob_tests	game	touches neither ClientState nor ServerState fields	game/mobs/last_hurt_by_mob_tests.rs
 launch_api	game	touches neither ClientState nor ServerState fields	game/runtime/launch_api.rs
 launch_options	game	touches neither ClientState nor ServerState fields	game/runtime/launch_options.rs
 launch_timeout	client	touches only ClientState fields	game/runtime/launch_timeout.rs
 leads	server	touches only server-owned fields (opposite-side functions moved to leads_client)	game/entities/leads.rs
+leads_client	client	hand-authored client role-split module	game/entities/leads_client.rs
 level_access	game	touches neither ClientState nor ServerState fields	game/blocks/level_access.rs
 level_control_hooks	game	touches neither ClientState nor ServerState fields	game/modding/level_control_hooks.rs
 level_particles	server	touches only ServerState fields	game/interface/level_particles.rs
 level_particles_client	client	hand-authored client role-split module	game/interface/level_particles_client.rs
 level_sounds	server	touches only ServerState fields	game/interface/level_sounds.rs
+level_sounds_client	client	hand-authored client role-split module	game/interface/level_sounds_client.rs
 level_tick	server	touches only ServerState fields	game/world/level_tick.rs
 levels	server	touches only ServerState fields	game/world/levels.rs
 light_emission	game	common dual-role module	game/world/light_emission.rs
@@ -383,8 +440,9 @@ lightning_item_tests	game	touches neither ClientState nor ServerState fields	gam
 lightning_server	server	hand-authored server role-split module	game/entities/lightning_server.rs
 living_attributes	server	touches only ServerState fields	game/mobs/living_attributes.rs
 llamas	server	touches only ServerState fields	game/mobs/llamas.rs
-load_conditions	server	re-homed server module	game/modding/load_conditions.rs
+load_conditions	game	wave 3 role-split (server -> game)	game/modding/load_conditions.rs
 loading_screen	client	touches only ClientState fields	game/runtime/loading_screen.rs
+loading_server	server	hand-authored server role-split module	game/runtime/loading_server.rs
 loading_window	client	touches only ClientState fields	game/runtime/loading_window.rs
 location_world	game	touches neither ClientState nor ServerState fields	game/blocks/location_world.rs
 locator_bar	client	touches only ClientState fields	game/interface/locator_bar.rs
@@ -399,14 +457,19 @@ machines	server	touches only ServerState fields	game/blocks/machines/mod.rs
 machines_client	client	hand-authored client role-split module	game/blocks/machines/mod_client.rs
 mannequin_save_tests	game	touches neither ClientState nor ServerState fields	game/entities/mannequin_save_tests.rs
 maps	server	touches only server-owned fields (opposite-side functions moved to maps_client)	game/blocks/maps/mod.rs
+maps_client	client	hand-authored client role-split module	game/blocks/maps/mod_client.rs
 melee	server	touches only ServerState fields	game/entities/melee.rs
 memory	server	touches only server-owned fields (opposite-side functions moved to memory_client)	game/runtime/memory.rs
 memory_client	client	hand-authored client role-split module	game/runtime/memory_client.rs
 memory_common	game	common dual-role module	game/runtime/memory_common.rs
 mending_pick_tests	server	touches only ServerState fields	game/items/mending_pick_tests.rs
 menu_clicks	game	promote-for-common-fns:3	game/interface/menu_clicks.rs
-minecart_moves	game	promote-for-common-fns:2	game/entities/minecart_moves.rs
+menu_clicks_client	client	hand-authored client role-split module	game/interface/menu_clicks_client.rs
+minecart_moves	server	wave 3 role-split (game -> server)	game/entities/minecart_moves.rs
+minecart_moves_server	server	hand-authored server role-split module	game/entities/minecart_moves_server.rs
 minecarts	game	touches both ClientState and ServerState fields	game/entities/minecarts.rs
+minecarts_ops_server	server	hand-authored server role-split module	game/entities/minecarts_ops_server.rs
+minecarts_server	server	hand-authored server role-split module	game/entities/minecarts_server.rs
 mining_component_tests	server	touches only ServerState fields	game/runtime/mining_component_tests.rs
 mob_blocks	client	touches only ClientState fields	game/mobs/mob_blocks.rs
 mob_discard_tests	game	touches neither ClientState nor ServerState fields	game/mobs/mob_discard_tests.rs
@@ -418,9 +481,11 @@ mob_light	client	role-reachability:client	game/mobs/mob_light.rs
 mob_looting	server	touches only server-owned fields	game/mobs/mob_looting.rs
 mob_sounds	client	touches only ClientState fields	game/mobs/mob_sounds.rs
 mod_api_host	server	touches only ServerState fields	game/modding/mod_api_host.rs
+mod_api_host_common	game	common dual-role module	game/modding/mod_api_host_common.rs
 mod_browser	client	touches only client-owned fields	game/interface/mod_browser.rs
 mod_container_openers	server	touches only ServerState fields	game/modding/mod_container_openers.rs
 mod_container_openers_tests	server	touches only ServerState fields	game/modding/mod_container_openers_tests.rs
+mod_container_openers_tests_client	client	hand-authored client role-split module	game/modding/mod_container_openers_tests_client.rs
 mod_crafting_commands	game	touches neither ClientState nor ServerState fields	game/modding/mod_crafting_commands.rs
 mod_menu_decisions_tests	client	touches only ClientState fields	game/modding/mod_menu_decisions_tests.rs
 mod_raycast_tests	client	touches only client-owned fields	game/modding/mod_raycast_tests.rs
@@ -430,9 +495,13 @@ modapi_client	client	client side-op implementations for mod_api_host	game/side_o
 modapi_server	server	server side-op implementations for mod_api_host	game/side_ops/modapi_server.rs
 model_baking_completed_tests	client	touches only client-owned fields	game/modding/model_baking_completed_tests.rs
 mods	game	touches both ClientState and ServerState fields	game/modding/mods/mod.rs
+mods_client	client	hand-authored client role-split module	game/modding/mods/mod_client.rs
+mods_server	server	hand-authored server role-split module	game/modding/mods/mod_server.rs
 motion_ids	client	role-reachability:client	game/blocks/motion_ids.rs
 mount_menu	client	touches only client-owned fields (opposite-side functions moved to mount_menu_server)	game/interface/mount_menu.rs
 mounts	server	touches only server-owned fields (opposite-side functions moved to mounts_client)	game/mobs/mounts.rs
+mounts_client	client	hand-authored client role-split module	game/mobs/mounts_client.rs
+mounts_common	game	common dual-role module	game/mobs/mounts_common.rs
 move_gate	game	touches neither ClientState nor ServerState fields	game/entities/move_gate.rs
 moving_pistons	game	promote-for-common-fns:1	game/blocks/moving_pistons.rs
 music	client	touches only ClientState fields	game/interface/music.rs
@@ -440,7 +509,7 @@ names	client	touches only client-owned fields (opposite-side functions moved to 
 narrator	client	touches only ClientState fields	game/interface/narrator.rs
 native_ai_pause	server	touches only ServerState fields	game/modding/native_ai_pause.rs
 native_audio_streams	client	touches only client-owned fields	game/modding/native_audio_streams.rs
-native_biome_colors	game	touches neither ClientState nor ServerState fields	game/modding/native_biome_colors.rs
+native_biome_colors	client	wave 3 role-split (game -> client)	game/modding/native_biome_colors.rs
 native_biome_keys	server	touches only server-owned fields	game/modding/native_biome_keys.rs
 native_biome_keys_tests	server	touches only ServerState fields	game/modding/native_biome_keys_tests.rs
 native_biome_source	game	touches neither ClientState nor ServerState fields	game/modding/native_biome_source.rs
@@ -452,7 +521,8 @@ native_block_entity_refs	server	touches only ServerState fields	game/modding/nat
 native_block_entity_transform	game	touches neither ClientState nor ServerState fields	game/modding/native_block_entity_transform.rs
 native_block_entity_transform_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_block_entity_transform_tests.rs
 native_block_extra_models	game	touches neither ClientState nor ServerState fields	game/modding/native_block_extra_models.rs
-native_block_sounds	server	touches only ServerState fields	game/modding/native_block_sounds.rs
+native_block_sounds	game	wave 3 role-split (server -> game)	game/modding/native_block_sounds.rs
+native_block_sounds_client	client	hand-authored client role-split module	game/modding/native_block_sounds_client.rs
 native_block_sprites	client	touches only client-owned fields	game/modding/native_block_sprites.rs
 native_block_states	game	touches neither ClientState nor ServerState fields	game/modding/native_block_states.rs
 native_block_tables	game	touches neither ClientState nor ServerState fields	game/modding/native_block_tables.rs
@@ -474,13 +544,14 @@ native_book_settings_client	client	client-side role split module	game/modding/na
 native_book_transport	server	role-reachability:server	game/modding/native_book_transport.rs
 native_boss_bar_refs	server	touches only ServerState fields	game/modding/native_boss_bar_refs.rs
 native_bots	server	touches only ServerState fields	game/modding/native_bots.rs
+native_bots_common	game	common dual-role module	game/modding/native_bots_common.rs
 native_capability_cache_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_capability_cache_tests.rs
 native_cauldron_contents	game	touches neither ClientState nor ServerState fields	game/modding/native_cauldron_contents.rs
-native_chat_recipients	game	touches neither ClientState nor ServerState fields	game/modding/native_chat_recipients.rs
+native_chat_recipients	server	wave 3 role-split (game -> server)	game/modding/native_chat_recipients.rs
 native_chat_recipients_tests	server	touches only ServerState fields	game/modding/native_chat_recipients_tests.rs
 native_chunk_areas	server	re-homed server module	game/modding/native_chunk_areas.rs
 native_chunk_generator	game	touches neither ClientState nor ServerState fields	game/modding/native_chunk_generator.rs
-native_chunk_queries	game	touches neither ClientState nor ServerState fields	game/modding/native_chunk_queries.rs
+native_chunk_queries	server	wave 3 role-split (game -> server)	game/modding/native_chunk_queries.rs
 native_chunk_relight_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_chunk_relight_tests.rs
 native_chunk_save	server	touches only ServerState fields	game/modding/native_chunk_save.rs
 native_claimed_items	client	touches only ClientState fields	game/modding/native_claimed_items.rs
@@ -490,12 +561,14 @@ native_client_screens	client	touches only ClientState fields	game/interface/nati
 native_client_services	client	touches only ClientState fields	game/modding/native_client_services.rs
 native_client_session	client	touches only ClientState fields	game/modding/native_client_session.rs
 native_colliders	server	touches only ServerState fields	game/modding/native_colliders.rs
+native_colliders_client	client	hand-authored client role-split module	game/modding/native_colliders_client.rs
 native_colliders_tests	server	touches only ServerState fields	game/modding/native_colliders_tests.rs
 native_collision_exclusions	server	touches only ServerState fields	game/modding/native_collision_exclusions.rs
 native_collision_shape	game	touches neither ClientState nor ServerState fields	game/modding/native_collision_shape.rs
 native_command_completion_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_command_completion_tests.rs
-native_command_reads	game	touches neither ClientState nor ServerState fields	game/modding/native_command_reads.rs
-native_components	client	touches only ClientState fields	game/modding/native_components.rs
+native_command_reads	server	wave 3 role-split (game -> server)	game/modding/native_command_reads.rs
+native_components	game	wave 3 role-split (client -> game)	game/modding/native_components.rs
+native_components_server	server	hand-authored server role-split module	game/modding/native_components_server.rs
 native_config_files	server	touches only ServerState fields	game/modding/native_config_files.rs
 native_configs	game	touches neither ClientState nor ServerState fields	game/modding/native_configs.rs
 native_connection_groups	client	role-reachability:client	game/modding/native_connection_groups.rs
@@ -511,7 +584,7 @@ native_data_maps	server	touches only ServerState fields	game/modding/native_data
 native_datafix	game	touches neither ClientState nor ServerState fields	game/modding/native_datafix.rs
 native_datafix_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_datafix_tests.rs
 native_datapack_refs	game	touches neither ClientState nor ServerState fields	game/modding/native_datapack_refs.rs
-native_death_weapon	game	touches neither ClientState nor ServerState fields	game/modding/native_death_weapon.rs
+native_death_weapon	server	wave 3 role-split (game -> server)	game/modding/native_death_weapon.rs
 native_dimensions	game	touches neither ClientState nor ServerState fields	game/modding/native_dimensions.rs
 native_disconnect	client	touches only client-owned fields	game/modding/native_disconnect.rs
 native_disconnect_tests	client	touches only client-owned fields	game/modding/native_disconnect_tests.rs
@@ -523,7 +596,7 @@ native_effect_category	game	touches neither ClientState nor ServerState fields	g
 native_entities	server	touches only ServerState fields	game/modding/native_entities.rs
 native_entity_commands	server	touches only ServerState fields	game/modding/native_entity_commands.rs
 native_entity_data	server	touches only ServerState fields	game/modding/native_entity_data.rs
-native_entity_extinguish	client	touches only client-owned fields	game/modding/native_entity_extinguish.rs
+native_entity_extinguish	server	wave 3 role-split (client -> server)	game/modding/native_entity_extinguish.rs
 native_entity_extinguish_tests	server	touches only ServerState fields	game/modding/native_entity_extinguish_tests.rs
 native_entity_index_parity_tests	server	touches only server-owned fields	game/modding/native_entity_index_parity_tests.rs
 native_entity_invulnerable	server	touches only ServerState fields	game/modding/native_entity_invulnerable.rs
@@ -531,6 +604,7 @@ native_entity_kind	server	touches only server-owned fields	game/modding/native_e
 native_entity_layers	client	role-reachability:client	game/modding/native_entity_layers.rs
 native_entity_layers_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_entity_layers_tests.rs
 native_entity_motion	server	touches only server-owned fields (opposite-side functions moved to native_entity_motion_client)	game/modding/native_entity_motion.rs
+native_entity_motion_client	client	hand-authored client role-split module	game/modding/native_entity_motion_client.rs
 native_entity_move_correction_tests	server	touches only ServerState fields	game/modding/native_entity_move_correction_tests.rs
 native_entity_move_player_tests	server	touches only ServerState fields	game/modding/native_entity_move_player_tests.rs
 native_entity_move_sweep_tests	server	touches only ServerState fields	game/modding/native_entity_move_sweep_tests.rs
@@ -540,13 +614,16 @@ native_entity_physics	server	touches only server-owned fields	game/modding/nativ
 native_entity_refs	server	touches only ServerState fields	game/modding/native_entity_refs.rs
 native_entity_refs_client	client	hand-authored client role-split module	game/modding/native_entity_refs_client.rs
 native_entity_refs_common	game	common dual-role module	game/modding/native_entity_refs_common.rs
+native_entity_refs_common_client	client	hand-authored client role-split module	game/modding/native_entity_refs_common_client.rs
 native_entity_remove	server	touches only ServerState fields	game/modding/native_entity_remove.rs
 native_entity_renderers	client	role-reachability:client	game/modding/native_entity_renderers.rs
 native_entity_renderers_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_entity_renderers_tests.rs
 native_entity_riding	server	touches only ServerState fields	game/modding/native_entity_riding.rs
 native_entity_selectors	game	role-reachability:common	game/modding/native_entity_selectors.rs
+native_entity_selectors_server	server	hand-authored server role-split module	game/modding/native_entity_selectors_server.rs
 native_entity_sounds	server	touches only ServerState fields	game/modding/native_entity_sounds.rs
 native_entity_state	server	touches only ServerState fields	game/modding/native_entity_state.rs
+native_entity_state_client	client	hand-authored client role-split module	game/modding/native_entity_state_client.rs
 native_experience_orb_renderers_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_experience_orb_renderers_tests.rs
 native_explosion_destroy	server	re-homed server module	game/modding/native_explosion_destroy.rs
 native_explosion_destroy_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_explosion_destroy_tests.rs
@@ -566,6 +643,7 @@ native_game_event_keys_tests	server	touches only ServerState fields	game/modding
 native_game_rules_read	game	touches neither ClientState nor ServerState fields	game/modding/native_game_rules_read.rs
 native_general_renderers_tests	client	touches only ClientState fields	game/modding/native_general_renderers_tests.rs
 native_give_stack	game	touches neither ClientState nor ServerState fields	game/modding/native_give_stack.rs
+native_give_stack_server	server	hand-authored server role-split module	game/modding/native_give_stack_server.rs
 native_give_stack_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_give_stack_tests.rs
 native_goal_ticks	server	touches only ServerState fields	game/modding/native_goal_ticks/mod.rs
 native_ground	game	touches neither ClientState nor ServerState fields	game/modding/native_ground.rs
@@ -573,6 +651,8 @@ native_guest_turn_tests	server	touches only ServerState fields	game/modding/nati
 native_hanging	server	re-homed server module	game/modding/native_hanging.rs
 native_hanging_tests	server	touches only ServerState fields	game/modding/native_hanging_tests.rs
 native_harvest_queries	server	touches only ServerState fields	game/modding/native_harvest_queries.rs
+native_harvest_queries_client	client	hand-authored client role-split module	game/modding/native_harvest_queries_client.rs
+native_harvest_queries_common	game	common dual-role module	game/modding/native_harvest_queries_common.rs
 native_held_out_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_held_out_tests.rs
 native_hit_attempt_tests	server	touches only ServerState fields	game/modding/native_hit_attempt_tests.rs
 native_hit_causer_tests	server	touches only ServerState fields	game/modding/native_hit_causer_tests.rs
@@ -581,6 +661,7 @@ native_hit_sounds_tests	server	touches only ServerState fields	game/modding/nati
 native_hit_view_tests	server	touches only ServerState fields	game/modding/native_hit_view_tests.rs
 native_hooks	game	touches both ClientState and ServerState fields	game/native_hooks/mod.rs
 native_hooks_client	client	client-side native hooks module	game/native_hooks/mod_client.rs
+native_hooks_server	server	hand-authored server role-split module	game/native_hooks/mod_server.rs
 native_hotbar_slot	client	touches only ClientState fields	game/modding/native_hotbar_slot.rs
 native_hover_name_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_hover_name_tests.rs
 native_humanoid_setup_anim_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_humanoid_setup_anim_tests.rs
@@ -594,6 +675,7 @@ native_item_bundle	game	touches neither ClientState nor ServerState fields	game/
 native_item_bundle_tests	game	touches both ClientState and ServerState fields	game/modding/native_item_bundle_tests.rs
 native_item_container	game	touches neither ClientState nor ServerState fields	game/modding/native_item_container.rs
 native_item_entity_refs	game	touches neither ClientState nor ServerState fields	game/modding/native_item_entity_refs.rs
+native_item_entity_refs_server	server	hand-authored server role-split module	game/modding/native_item_entity_refs_server.rs
 native_item_frame_renderers_tests	client	touches only ClientState fields	game/modding/native_item_frame_renderers_tests.rs
 native_item_menu_parts	game	touches neither ClientState nor ServerState fields	game/modding/native_item_menu_parts.rs
 native_item_particles	client	role-reachability:client	game/modding/native_item_particles.rs
@@ -602,6 +684,7 @@ native_item_registry	game	touches neither ClientState nor ServerState fields	gam
 native_key_mappings	client	touches only ClientState fields	game/modding/native_key_mappings.rs
 native_key_mappings_tests	client	touches only ClientState fields	game/modding/native_key_mappings_tests.rs
 native_knockback_credit	game	promote-for-common-fns:6	game/modding/native_knockback_credit.rs
+native_knockback_credit_server	server	hand-authored server role-split module	game/modding/native_knockback_credit_server.rs
 native_knockback_credit_site_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_knockback_credit_site_tests.rs
 native_knockback_tests	server	touches only ServerState fields	game/modding/native_knockback_tests.rs
 native_level_block_states_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_level_block_states_tests.rs
@@ -613,16 +696,19 @@ native_level_notify_tests	client	touches only ClientState fields	game/modding/na
 native_level_placement_tests	server	touches only ServerState fields	game/modding/native_level_placement_tests.rs
 native_level_players	server	touches only ServerState fields	game/modding/native_level_players.rs
 native_level_refs	server	touches only ServerState fields	game/modding/native_level_refs.rs
-native_level_signals	server	touches only ServerState fields	game/modding/native_level_signals.rs
+native_level_signals	game	wave 3 role-split (server -> game)	game/modding/native_level_signals.rs
 native_level_sound_except_tests	server	touches only ServerState fields	game/modding/native_level_sound_except_tests.rs
 native_level_spawning	server	touches only ServerState fields	game/modding/native_level_spawning.rs
 native_level_ticking	server	touches only server-owned fields	game/modding/native_level_ticking.rs
-native_level_weather	game	role-reachability:common	game/modding/native_level_weather.rs
+native_level_weather	server	wave 3 role-split (game -> server)	game/modding/native_level_weather.rs
 native_level_world	server	touches only ServerState fields	game/modding/native_level_world.rs
 native_lifecycle	server	touches only server-owned fields (opposite-side functions moved to native_lifecycle_client)	game/modding/native_lifecycle.rs
+native_lifecycle_client	client	hand-authored client role-split module	game/modding/native_lifecycle_client.rs
+native_lifecycle_common	game	common dual-role module	game/modding/native_lifecycle_common.rs
 native_live_holder_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_live_holder_tests.rs
 native_living_absorption	game	touches neither ClientState nor ServerState fields	game/modding/native_living_absorption.rs
-native_living_blocking	client	touches only ClientState fields	game/modding/native_living_blocking.rs
+native_living_absorption_server	server	hand-authored server role-split module	game/modding/native_living_absorption_server.rs
+native_living_blocking	game	wave 3 role-split (client -> game)	game/modding/native_living_blocking.rs
 native_living_body	game	promote-for-common-fns:15	game/modding/native_living_body.rs
 native_living_effects	server	touches only server-owned fields (opposite-side functions moved to native_living_effects_client)	game/modding/native_living_effects.rs
 native_living_effects_client	client	hand-authored client role-split module	game/modding/native_living_effects_client.rs
@@ -633,6 +719,7 @@ native_living_renderers_tests	game	touches neither ClientState nor ServerState f
 native_living_travel_sweep_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_living_travel_sweep_tests.rs
 native_living_travel_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_living_travel_tests.rs
 native_living_writes	server	touches only server-owned fields (opposite-side functions moved to native_living_writes_client)	game/modding/native_living_writes.rs
+native_living_writes_client	client	hand-authored client role-split module	game/modding/native_living_writes_client.rs
 native_local_player_writes	client	touches only ClientState fields	game/modding/native_local_player_writes.rs
 native_local_sounds	client	touches only ClientState fields	game/modding/native_local_sounds.rs
 native_makes_piglins_neutral_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_makes_piglins_neutral_tests.rs
@@ -640,13 +727,15 @@ native_mapping_presses	client	touches only ClientState fields	game/modding/nativ
 native_menu_inventory_tests	server	touches only ServerState fields	game/modding/native_menu_inventory_tests.rs
 native_menu_places	server	touches only ServerState fields	game/modding/native_menu_places.rs
 native_menu_refs	client	touches only client-owned fields (opposite-side functions moved to native_menu_refs_server)	game/modding/native_menu_refs.rs
+native_menu_refs_common	game	common dual-role module	game/modding/native_menu_refs_common.rs
+native_menu_refs_server	server	hand-authored server role-split module	game/modding/native_menu_refs_server.rs
 native_menu_slot_kinds	client	touches only ClientState fields	game/modding/native_menu_slot_kinds.rs
 native_menus	server	touches only ServerState fields	game/modding/native_menus.rs
 native_merchant_refs	server	touches only server-owned fields	game/modding/native_merchant_refs.rs
 native_minecart_refs	server	touches only ServerState fields	game/modding/native_minecart_refs.rs
 native_mob_draw	client	re-homed client module	game/modding/native_mob_draw.rs
 native_mob_goals	server	touches only ServerState fields	game/modding/native_mob_goals.rs
-native_mob_navigation	game	role-reachability:common	game/modding/native_mob_navigation.rs
+native_mob_navigation	server	wave 3 role-split (game -> server)	game/modding/native_mob_navigation.rs
 native_mob_navigation_flags_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_mob_navigation_flags_tests.rs
 native_mob_refs	server	touches only ServerState fields	game/modding/native_mob_refs.rs
 native_mob_wanted_position	server	touches only server-owned fields	game/modding/native_mob_wanted_position.rs
@@ -668,21 +757,24 @@ native_part_tables	client	role-reachability:client	game/modding/native_part_tabl
 native_part_tables_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_part_tables_tests.rs
 native_passage_cross	client	touches only ClientState fields	game/modding/native_passage_cross.rs
 native_passages	server	touches only ServerState fields	game/modding/native_passages.rs
+native_passages_client	client	hand-authored client role-split module	game/modding/native_passages_client.rs
 native_path_types_tests	server	touches only ServerState fields	game/modding/native_path_types_tests.rs
 native_pending_children	server	touches only server-owned fields	game/modding/native_pending_children.rs
 native_place_feature	server	re-homed server module	game/modding/native_place_feature.rs
 native_place_feature_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_place_feature_tests.rs
 native_placement_state_tests	server	touches only server-owned fields	game/modding/native_placement_state_tests.rs
-native_player_attack	game	touches neither ClientState nor ServerState fields	game/modding/native_player_attack.rs
+native_player_attack	server	wave 3 role-split (game -> server)	game/modding/native_player_attack.rs
 native_player_break	server	touches only ServerState fields	game/modding/native_player_break.rs
 native_player_cooldowns	server	touches only ServerState fields	game/modding/native_player_cooldowns.rs
 native_player_death	game	touches neither ClientState nor ServerState fields	game/modding/native_player_death.rs
+native_player_death_server	server	hand-authored server role-split module	game/modding/native_player_death_server.rs
 native_player_destroyed_block_tests	server	touches only ServerState fields	game/modding/native_player_destroyed_block_tests.rs
 native_player_disconnect	server	re-homed server module	game/modding/native_player_disconnect.rs
 native_player_disconnect_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_player_disconnect_tests.rs
 native_player_ender_chest	server	touches only ServerState fields	game/modding/native_player_ender_chest.rs
 native_player_ender_chest_tests	server	touches only ServerState fields	game/modding/native_player_ender_chest_tests.rs
 native_player_food	game	touches neither ClientState nor ServerState fields	game/modding/native_player_food.rs
+native_player_food_server	server	hand-authored server role-split module	game/modding/native_player_food_server.rs
 native_player_inventory	server	role-reachability:server	game/modding/native_player_inventory.rs
 native_player_inventory_tests	client	touches only client-owned fields	game/modding/native_player_inventory_tests.rs
 native_player_level_tests	server	touches only ServerState fields	game/modding/native_player_level_tests.rs
@@ -691,7 +783,7 @@ native_player_move_tests	server	touches only ServerState fields	game/modding/nat
 native_player_moves	server	role-reachability:server	game/modding/native_player_moves.rs
 native_player_persistent_data	server	role-reachability:server	game/modding/native_player_persistent_data.rs
 native_player_persistent_data_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_player_persistent_data_tests.rs
-native_player_place	game	touches neither ClientState nor ServerState fields	game/modding/native_player_place.rs
+native_player_place	server	wave 3 role-split (game -> server)	game/modding/native_player_place.rs
 native_player_place_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_player_place_tests.rs
 native_player_reach	game	touches neither ClientState nor ServerState fields	game/modding/native_player_reach.rs
 native_player_respawn	server	touches only ServerState fields	game/modding/native_player_respawn.rs
@@ -701,17 +793,18 @@ native_player_stats	server	touches only ServerState fields	game/modding/native_p
 native_player_visibility	server	touches only ServerState fields	game/modding/native_player_visibility.rs
 native_player_visibility_tests	server	touches only ServerState fields	game/modding/native_player_visibility_tests.rs
 native_pool_elements	game	touches neither ClientState nor ServerState fields	game/modding/native_pool_elements.rs
-native_portal_destination	game	touches neither ClientState nor ServerState fields	game/modding/native_portal_destination.rs
-native_profiles	client	touches only client-owned fields	game/modding/native_profiles.rs
+native_portal_destination	server	wave 3 role-split (game -> server)	game/modding/native_portal_destination.rs
+native_profiles	server	wave 3 role-split (client -> server)	game/modding/native_profiles.rs
 native_projectile_launch	server	touches only ServerState fields	game/modding/native_projectile_launch.rs
 native_projectile_launch_tests	server	touches only ServerState fields	game/modding/native_projectile_launch_tests.rs
 native_projectile_refs	server	touches only ServerState fields	game/modding/native_projectile_refs.rs
 native_projectiles	server	touches only ServerState fields	game/modding/native_projectiles.rs
 native_quick_move	server	re-homed server module	game/modding/native_quick_move.rs
 native_raid_refs	server	touches only ServerState fields	game/modding/native_raid_refs.rs
-native_recipe_sync	game	touches neither ClientState nor ServerState fields	game/modding/native_recipe_sync.rs
+native_recipe_sync	server	wave 3 role-split (game -> server)	game/modding/native_recipe_sync.rs
 native_recipe_sync_tests	server	touches only ServerState fields	game/modding/native_recipe_sync_tests.rs
 native_recipes	client	touches only client-owned fields	game/modding/native_recipes.rs
+native_recipes_server	server	hand-authored server role-split module	game/modding/native_recipes_server.rs
 native_registry_entries	server	touches only server-owned fields	game/modding/native_registry_entries.rs
 native_registry_entries_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_registry_entries_tests.rs
 native_registry_history_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_registry_history_tests.rs
@@ -728,12 +821,15 @@ native_scene	client	touches only ClientState fields	game/modding/native_scene.rs
 native_scene_live	client	touches only ClientState fields	game/modding/native_scene_live.rs
 native_scene_live_tests	client	touches only ClientState fields	game/modding/native_scene_live_tests.rs
 native_scoreboard	server	touches only ServerState fields	game/modding/native_scoreboard.rs
-native_scoreboard_teams	game	touches neither ClientState nor ServerState fields	game/modding/native_scoreboard_teams.rs
+native_scoreboard_client	client	hand-authored client role-split module	game/modding/native_scoreboard_client.rs
+native_scoreboard_teams	server	wave 3 role-split (game -> server)	game/modding/native_scoreboard_teams.rs
 native_section_visibility	client	role-reachability:client	game/modding/native_section_visibility.rs
 native_server	game	touches both ClientState and ServerState fields	game/modding/native_server.rs
+native_server_client	client	hand-authored client role-split module	game/modding/native_server_client.rs
 native_server_distances	server	re-homed server module	game/modding/native_server_distances.rs
 native_server_max_players	game	touches neither ClientState nor ServerState fields	game/modding/native_server_max_players.rs
 native_server_max_players_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_server_max_players_tests.rs
+native_server_server	server	hand-authored server role-split module	game/modding/native_server_server.rs
 native_shaders	client	touches only ClientState fields	game/modding/native_shaders.rs
 native_shield_totem_tests	server	touches only ServerState fields	game/modding/native_shield_totem_tests.rs
 native_singleplayer_owner	server	touches only ServerState fields	game/modding/native_singleplayer_owner.rs
@@ -749,14 +845,15 @@ native_structure_placement	server	re-homed server module	game/modding/native_str
 native_structure_types	game	touches neither ClientState nor ServerState fields	game/modding/native_structure_types.rs
 native_structures	server	re-homed server module	game/modding/native_structures.rs
 native_success_broadcast_tests	server	touches only ServerState fields	game/modding/native_success_broadcast_tests.rs
-native_surface	server	touches only ServerState fields	game/modding/native_surface.rs
+native_surface	game	wave 3 role-split (server -> game)	game/modding/native_surface.rs
 native_tags	game	touches neither ClientState nor ServerState fields	game/modding/native_tags.rs
 native_terrain_model	client	touches only ClientState fields	game/modding/native_terrain_model.rs
 native_text_json	game	touches neither ClientState nor ServerState fields	game/modding/native_text_json.rs
 native_text_legacy	game	touches neither ClientState nor ServerState fields	game/modding/native_text_legacy.rs
 native_text_nbt	game	touches neither ClientState nor ServerState fields	game/modding/native_text_nbt.rs
 native_tick_time	server	touches only ServerState fields	game/modding/native_tick_time.rs
-native_ticks	server	touches only server-owned fields	game/modding/native_ticks.rs
+native_ticks	game	wave 3 role-split (server -> game)	game/modding/native_ticks.rs
+native_ticks_server	server	hand-authored server role-split module	game/modding/native_ticks_server.rs
 native_tnt_renderers_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_tnt_renderers_tests.rs
 native_trapdoor_ladder	game	touches neither ClientState nor ServerState fields	game/modding/native_trapdoor_ladder.rs
 native_tree_grow	game	touches neither ClientState nor ServerState fields	game/modding/native_tree_grow.rs
@@ -764,6 +861,8 @@ native_unspawned_mob	server	touches only server-owned fields	game/modding/native
 native_viewed_levels	client	touches only client-owned fields	game/modding/native_viewed_levels.rs
 native_visuals	client	touches only client-owned fields	game/modding/native_visuals.rs
 native_world_columns	game	touches neither ClientState nor ServerState fields	game/modding/native_world_columns.rs
+native_world_columns_client	client	hand-authored client role-split module	game/modding/native_world_columns_client.rs
+native_world_columns_server	server	hand-authored server role-split module	game/modding/native_world_columns_server.rs
 native_world_edit	server	re-homed server module	game/modding/native_world_edit.rs
 native_world_read	server	touches only server-owned fields	game/modding/native_world_read.rs
 native_worldgen	game	touches neither ClientState nor ServerState fields	game/modding/native_worldgen.rs
@@ -775,9 +874,11 @@ neoforge_block_maps	server	touches only server-owned fields	game/modding/neoforg
 neoforge_mob_maps	server	touches only server-owned fields	game/modding/neoforge_mob_maps.rs
 net_harness	client	touches only client-owned fields	game/network/net_harness.rs
 nether_portal	server	touches only server-owned fields (opposite-side functions moved to nether_portal_client)	game/blocks/nether_portal.rs
+nether_portal_client	client	hand-authored client role-split module	game/blocks/nether_portal_client.rs
 no_resources	client	role-reachability:client	game/runtime/no_resources.rs
 ominous_item_spawner	server	touches only ServerState fields	game/mobs/ominous_item_spawner/mod.rs
 ominous_item_spawner_client	client	hand-authored client role-split module	game/mobs/ominous_item_spawner/mod_client.rs
+ominous_item_spawner_common	game	common dual-role module	game/mobs/ominous_item_spawner/common.rs
 options	client	touches only ClientState fields	game/interface/options.rs
 options_close_tests	client	touches only ClientState fields	game/interface/options_close_tests.rs
 orb_data_tests	server	touches only ServerState fields	game/entities/orb_data_tests.rs
@@ -788,12 +889,14 @@ original_player	server	re-homed server module	game/modding/original_player.rs
 owner_link	server	touches only ServerState fields	game/world/owner_link.rs
 pack_clouds_frame_tests	client	touches only ClientState fields	game/interface/pack_clouds_frame_tests.rs
 pack_finders	server	touches only ServerState fields	game/modding/pack_finders/mod.rs
+pack_finders_common	game	common dual-role module	game/modding/pack_finders/common.rs
 pack_sources_tests	client	touches only client-owned fields	game/interface/pack_sources_tests.rs
 packs	client	touches only ClientState fields	game/world/packs/mod.rs
 pad	client	touches only client-owned fields (opposite-side functions moved to pad_server)	game/interface/pad/mod.rs
 pad_actions	client	touches only ClientState fields	game/interface/pad_actions.rs
 pad_craft	client	touches only ClientState fields	game/interface/pad_craft.rs
 pad_menu	client	touches only ClientState fields	game/interface/pad_menu.rs
+pad_server	server	hand-authored server role-split module	game/interface/pad/mod_server.rs
 paintings	server	touches only ServerState fields	game/entities/paintings.rs
 paintings_client	client	hand-authored client role-split module	game/entities/paintings_client.rs
 pandas	server	touches only ServerState fields	game/mobs/pandas.rs
@@ -803,7 +906,9 @@ part_admission_tests	game	touches neither ClientState nor ServerState fields	gam
 part_shearing	server	touches only ServerState fields	game/mobs/part_shearing.rs
 particle_culling	client	touches only client-owned fields	game/interface/particle_culling.rs
 passengers	server	touches only server-owned fields (opposite-side functions moved to passengers_client)	game/entities/passengers.rs
-payload_transport	client	touches only ClientState fields	game/modding/payload_transport.rs
+passengers_client	client	hand-authored client role-split module	game/entities/passengers_client.rs
+passengers_common	game	common dual-role module	game/entities/passengers_common.rs
+payload_transport	game	wave 3 role-split (client -> game)	game/modding/payload_transport.rs
 pending_births	server	touches only ServerState fields	game/mobs/pending_births.rs
 perf_link	client	touches only client-owned fields	game/interface/perf_link.rs
 perf_remote	server	touches only server-owned fields	game/interface/perf_remote.rs
@@ -811,25 +916,34 @@ persist	server	touches only ServerState fields	game/world/persist.rs
 perspective	client	touches only ClientState fields	game/interface/perspective.rs
 pick_accumulator	client	touches only ClientState fields	game/entities/pick_accumulator.rs
 pick_entity	client	touches only client-owned fields (opposite-side functions moved to pick_entity_server)	game/entities/pick_entity.rs
+pick_entity_common	game	common dual-role module	game/entities/pick_entity_common.rs
+pick_entity_server	server	hand-authored server role-split module	game/entities/pick_entity_server.rs
 pick_hotbar	server	role-reachability:server	game/items/pick_hotbar.rs
 pick_ray	game	common dual-role module	game/entities/pick_ray.rs
 pickups	client	touches only client-owned fields	game/entities/pickups.rs
 piglin_admire_tests	server	touches only server-owned fields	game/mobs/piglin_admire_tests.rs
 piglin_conversion_tests	server	touches only server-owned fields	game/mobs/piglin_conversion_tests.rs
 piglins	server	touches only ServerState fields	game/mobs/piglins.rs
+piglins_common	game	common dual-role module	game/mobs/piglins_common.rs
 piston_carry	game	touches neither ClientState nor ServerState fields	game/blocks/piston_carry.rs
 piston_carry_state	server	touches only server-owned fields (opposite-side functions moved to piston_carry_state_client)	game/blocks/piston_carry_state.rs
 piston_nbt	game	touches neither ClientState nor ServerState fields	game/world/piston_nbt.rs
 piston_push	game	touches both ClientState and ServerState fields (opposite side in tests)	game/blocks/piston_push.rs
+piston_push_carrying_server	server	hand-authored server role-split module	game/blocks/piston_push/carrying_server.rs
+piston_push_client	client	hand-authored client role-split module	game/blocks/piston_push_client.rs
+piston_push_server	server	hand-authored server role-split module	game/blocks/piston_push_server.rs
+piston_push_shoving_server	server	hand-authored server role-split module	game/blocks/piston_push/shoving_server.rs
 place_feature_tests	server	touches only ServerState fields	game/blocks/place_feature_tests.rs
 play_input	client	touches only ClientState fields	game/interface/play_input.rs
 play_keys	client	touches only client-owned fields (opposite-side functions moved to play_keys_server)	game/interface/play_keys.rs
+play_keys_server	server	hand-authored server role-split module	game/interface/play_keys_server.rs
 play_ping_tests	server	touches only ServerState fields	game/interface/play_ping_tests.rs
 player_client	client	client-side role split module	game/player_client.rs
 player_destroy	server	role-reachability:server	game/blocks/player_destroy.rs
 player_destroy_item_tests	game	touches both ClientState and ServerState fields	game/items/player_destroy_item_tests.rs
 player_destroy_tests	server	touches only ServerState fields	game/blocks/player_destroy_tests.rs
 player_equip	game	promote-for-common-fns:3	game/entities/player_equip.rs
+player_equip_ops_server	server	hand-authored server role-split module	game/entities/player_equip_ops_server.rs
 player_equipment_change_tests	game	touches neither ClientState nor ServerState fields	game/modding/player_equipment_change_tests.rs
 player_hit_sources	server	role-reachability:server	game/items/player_hit_sources.rs
 player_identity	game	common dual-role module	game/player_identity.rs
@@ -844,8 +958,12 @@ polytone_frame_tests	client	touches only ClientState fields	game/interface/polyt
 portal_ticking_tests	game	touches neither ClientState nor ServerState fields	game/world/portal_ticking_tests.rs
 postprocess	server	role-reachability:server	game/world/postprocess.rs
 potent_sulfur	server	touches only ServerState fields	game/blocks/potent_sulfur.rs
+potent_sulfur_client	client	hand-authored client role-split module	game/blocks/potent_sulfur_client.rs
+potent_sulfur_common	game	common dual-role module	game/blocks/potent_sulfur_common.rs
 potions	client	touches only client-owned fields (opposite-side functions moved to potions_server)	game/items/potions.rs
-powder_snow	client	touches only client-owned fields	game/blocks/powder_snow.rs
+potions_server	server	hand-authored server role-split module	game/items/potions_server.rs
+powder_snow	game	wave 3 role-split (client -> game)	game/blocks/powder_snow.rs
+powder_snow_server	server	hand-authored server role-split module	game/blocks/powder_snow_server.rs
 primary_items	game	promote-for-common-fns:1	game/items/primary_items.rs
 profile_capture	client	touches only client-owned fields	game/interface/profile_capture.rs
 profile_lines	game	touches neither ClientState nor ServerState fields	game/interface/profile_lines.rs
@@ -874,6 +992,7 @@ remote_block_writes	client	touches only ClientState fields	game/network/remote_b
 remote_camera	client	touches only ClientState fields	game/network/remote_camera.rs
 remote_chat	client	touches only ClientState fields	game/network/remote_chat.rs
 remote_chunks	client	role-reachability:client	game/network/remote_chunks.rs
+remote_client	client	hand-authored client role-split module	game/network/remote/mod_client.rs
 remote_mob_data	client	touches only client-owned fields	game/network/remote_mob_data.rs
 remote_mob_particles	client	touches only client-owned fields	game/network/remote_mob_particles.rs
 remote_mob_use	client	touches only client-owned fields	game/network/remote_mob_use.rs
@@ -882,6 +1001,7 @@ remote_objects	client	touches only ClientState fields	game/network/remote_object
 remote_projectiles	client	touches only client-owned fields	game/network/remote_projectiles.rs
 remote_removal	client	touches only ClientState fields	game/network/remote_removal.rs
 remote_save_tests	client	touches only ClientState fields	game/world/remote_save_tests.rs
+remote_server	server	hand-authored server role-split module	game/network/remote/mod_server.rs
 remote_stations	client	touches only client-owned fields	game/network/remote_stations.rs
 remote_tags	client	touches only client-owned fields (opposite-side functions moved to remote_tags_server)	game/network/remote_tags.rs
 remote_vehicles	client	touches only ClientState fields	game/network/remote_vehicles.rs
@@ -908,8 +1028,10 @@ save_pass_tests	server	touches only ServerState fields	game/world/save_pass_test
 saves_control	client	touches only client-owned fields	game/runtime/saves_control.rs
 saving	game	touches both ClientState and ServerState fields	game/world/saving.rs
 saving_client	client	hand-authored client role-split module	game/world/saving_client.rs
+saving_server	server	hand-authored server role-split module	game/world/saving_server.rs
 scheduled_tasks	game	touches neither ClientState nor ServerState fields	game/modding/scheduled_tasks.rs
 scoreboard	server	touches only server-owned fields (opposite-side functions moved to scoreboard_client)	game/interface/scoreboard/mod.rs
+scoreboard_client	client	hand-authored client role-split module	game/interface/scoreboard/mod_client.rs
 screen_backgrounds	game	promote-for-common-fns:1	game/interface/screen_backgrounds.rs
 screen_build	client	touches only ClientState fields	game/interface/screen_build.rs
 screen_build_fixture	client	touches only ClientState fields	game/interface/screen_build_fixture.rs
@@ -934,8 +1056,11 @@ setblock_order_tests	game	touches neither ClientState nor ServerState fields	gam
 shader_pack_switch_tests	client	touches only ClientState fields	game/interface/shader_pack_switch_tests.rs
 shader_packs	client	touches only client-owned fields (opposite-side functions moved to shader_packs_server)	game/interface/shader_packs.rs
 shear_refind_tests	server	touches only ServerState fields	game/mobs/shear_refind_tests.rs
-sheep_dye	game	touches neither ClientState nor ServerState fields	game/mobs/sheep_dye.rs
+sheep_dye_client	client	hand-authored client role-split module	game/mobs/sheep_dye_client.rs
+sheep_dye_server	server	hand-authored server role-split module	game/mobs/sheep_dye_server.rs
 shelf	client	touches only client-owned fields	game/blocks/shelf.rs
+shelf_common	game	common dual-role module	game/blocks/shelf_common.rs
+shelf_server	server	hand-authored server role-split module	game/blocks/shelf_server.rs
 shield	server	touches only ServerState fields	game/items/shield.rs
 shoulders	server	touches only server-owned fields	game/mobs/shoulders.rs
 side_ops	game	role-dispatched side operations	game/side_ops/mod.rs
@@ -952,6 +1077,7 @@ slot_take_tests	server	touches only server-owned fields	game/modding/slot_take_t
 slot_takes	server	re-homed server module	game/modding/slot_takes.rs
 smithing_icons	game	touches neither ClientState nor ServerState fields	game/interface/smithing_icons.rs
 sniffers	client	touches only client-owned fields	game/mobs/sniffers.rs
+sniffers_server	server	hand-authored server role-split module	game/mobs/sniffers_server.rs
 social	client	touches only ClientState fields	game/network/social.rs
 spawn_save_tests	server	touches only server-owned fields	game/world/spawn_save_tests.rs
 spawn_yaw_tests	game	touches neither ClientState nor ServerState fields	game/mobs/spawn_yaw_tests.rs
@@ -962,6 +1088,7 @@ spawner_server	server	hand-authored server role-split module	game/mobs/spawner_s
 spear	game	promote-for-common-fns:1	game/items/spear.rs
 spear_client	client	hand-authored client role-split module	game/items/spear_client.rs
 spear_players	server	touches only ServerState fields	game/items/spear_players.rs
+spear_server	server	hand-authored server role-split module	game/items/spear_server.rs
 special_attack_fixture	server	touches only ServerState fields	game/items/special_attack_fixture.rs
 special_attacks	server	touches only ServerState fields	game/items/special_attacks.rs
 spectator	client	touches only ClientState fields	game/interface/spectator.rs
@@ -969,7 +1096,8 @@ spill	server	touches only ServerState fields	game/blocks/spill.rs
 splash_water	server	touches only ServerState fields	game/blocks/splash_water.rs
 stack_attribute_tooltip	client	role-reachability:client	game/items/stack_attribute_tooltip.rs
 stack_names	game	common dual-role module	game/items/stack_names.rs
-stacked_on_other	client	touches only ClientState fields	game/modding/stacked_on_other.rs
+stacked_on_other	game	wave 3 role-split (client -> game)	game/modding/stacked_on_other.rs
+stacked_on_other_client	client	hand-authored client role-split module	game/modding/stacked_on_other_client.rs
 stacked_on_other_tests	game	touches both ClientState and ServerState fields	game/modding/stacked_on_other_tests.rs
 stand_break_loot_tests	server	touches only ServerState fields	game/entities/stand_break_loot_tests.rs
 stand_command_hurt_tests	server	touches only ServerState fields	game/entities/stand_command_hurt_tests.rs
@@ -986,10 +1114,14 @@ state_resolver	game	touches neither ClientState nor ServerState fields	game/modd
 stateful_block_entity_tests	game	touches neither ClientState nor ServerState fields	game/runtime/stateful_block_entity_tests.rs
 station_control	client	touches only ClientState fields	game/runtime/station_control.rs
 stations	client	touches only client-owned fields (opposite-side functions moved to stations_server)	game/blocks/stations.rs
+stations_common	game	common dual-role module	game/blocks/stations_common.rs
+stations_server	server	hand-authored server role-split module	game/blocks/stations_server.rs
 stats	server	touches only ServerState fields	game/interface/stats.rs
 stats_screen	client	touches only ClientState fields	game/interface/stats_screen.rs
 storage	client	touches only client-owned fields (opposite-side functions moved to storage_server)	game/world/storage.rs
 storage_alias_tests	server	touches only ServerState fields	game/runtime/storage_alias_tests.rs
+storage_common	game	common dual-role module	game/world/storage_common.rs
+storage_server	server	hand-authored server role-split module	game/world/storage_server.rs
 structure_blocks	server	touches only ServerState fields	game/administration/structure_blocks.rs
 structure_edit	client	touches only client-owned fields	game/administration/structure_edit.rs
 structures	game	touches neither ClientState nor ServerState fields	game/administration/structures.rs
@@ -1003,8 +1135,9 @@ swing_packet	client	touches only client-owned fields	game/network/swing_packet.r
 sync_background_tests	client	touches only ClientState fields	game/interface/sync_background_tests.rs
 table_enchant	server	role-reachability:server	game/items/table_enchant.rs
 tables	game	read-only world content tables shared by both roles	game/world/tables.rs
+tables_client	client	hand-authored client role-split module	game/world/tables_client.rs
 test_block_edit	client	touches only client-owned fields	game/administration/test_block_edit.rs
-test_blocks	game	touches neither ClientState nor ServerState fields	game/administration/test_blocks.rs
+test_blocks	server	wave 3 role-split (game -> server)	game/administration/test_blocks.rs
 test_entities	game	promote-for-common-fns:1	game/administration/test_entities.rs
 test_environments	server	touches only server-owned fields	game/administration/test_environments.rs
 test_instance_edit	client	touches only client-owned fields	game/administration/test_instance_edit.rs
@@ -1020,6 +1153,7 @@ tnt_client	client	hand-authored client role-split module	game/entities/tnt_clien
 toast_manager	game	promote-for-common-fns:2	game/interface/toast_manager.rs
 tool_modification	game	touches neither ClientState nor ServerState fields	game/blocks/tool_modification.rs
 totem	client	touches only client-owned fields (opposite-side functions moved to totem_server)	game/items/totem.rs
+totem_server	server	hand-authored server role-split module	game/items/totem_server.rs
 trading	server	touches only server-owned fields (opposite-side functions moved to trading_client)	game/items/trading.rs
 transaction_entities_tests	server	touches only ServerState fields	game/runtime/transaction_entities_tests.rs
 transactions	game	common dual-role module	game/runtime/transactions.rs
@@ -1050,6 +1184,7 @@ viewed_worlds	client	touches only client-owned fields	game/network/viewed_worlds
 villager_client	game	touches neither ClientState nor ServerState fields	game/network/villager_client.rs
 villager_professions	server	touches only ServerState fields	game/world/villager_professions.rs
 villagers	server	touches only ServerState fields	game/mobs/villagers.rs
+villagers_client	client	hand-authored client role-split module	game/mobs/villagers_client.rs
 visibility_unwind_tests	server	touches only ServerState fields	game/world/visibility_unwind_tests.rs
 wake_time	server	touches only server-owned fields	game/world/wake_time.rs
 wandering_trader	server	touches only ServerState fields	game/mobs/wandering_trader.rs
@@ -1063,12 +1198,17 @@ window_title	client	touches only ClientState fields	game/runtime/window_title.rs
 wither	server	touches only ServerState fields	game/mobs/wither.rs
 wither_star_tests	server	touches only ServerState fields	game/mobs/wither_star_tests.rs
 world_entry	game	promote-for-common-fns:4	game/world/world_entry.rs
+world_entry_client	client	hand-authored client role-split module	game/world/world_entry_client.rs
 world_entry_common	game	common dual-role module	game/world/world_entry_common.rs
+world_entry_server	server	hand-authored server role-split module	game/world/world_entry_server.rs
 world_fluid_tests	game	touches neither ClientState nor ServerState fields	game/interface/world_fluid_tests.rs
 world_fluids	server	touches only server-owned fields	game/blocks/world_fluids.rs
-world_fluids_tests	game	touches neither ClientState nor ServerState fields	game/blocks/world_fluids_tests.rs
+world_fluids_tests	server	hand-authored server role-split test module	game/blocks/world_fluids_tests.rs
+world_fluids_tests_client	client	hand-authored client role-split module	game/blocks/world_fluids_tests_client.rs
 world_loading	server	touches only ServerState fields	game/world/world_loading.rs
 world_name_tag_tests	client	touches only ClientState fields	game/modding/world_name_tag_tests.rs
+world_ops_client	client	hand-authored client role-split module	game/world/world_ops_client.rs
+world_ops_server	server	hand-authored server role-split module	game/world/world_ops_server.rs
 world_rest	client	role-reachability:client	game/world/world_rest.rs
 world_session	client	touches only ClientState fields	game/world/world_session.rs
 world_test_def_tests	server	touches only ServerState fields	game/blocks/world_test_def_tests.rs

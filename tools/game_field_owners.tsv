@@ -515,7 +515,7 @@ user_input	std::cell::Cell<bool>	client	client (survey + review)	512	side	-
 text_selection	sunrise_client::clipboard::AppendSelection	client	client (survey + review)	513	side	-
 client_quit	std::cell::Cell<saving::ClientQuit>	client	client (survey + review)	514	side	-
 saved_for_exit	bool	client	client (survey + review)	515	game	-
-pending_save	Option<saving::ClosingSave>	game	drop-order (client): Option<ClosingSave> holds reply Sender and write-completion Receiver; precedes player_state (553), ui (578), fangs (603)	516	-	client_shared
+pending_save	Option<saving::ClosingSave>	game	drop-order (client): Option<ClosingSave> holds reply Sender and write-completion Receiver; precedes player_state (553), ui (578), fangs (603)	516	-	client_only
 server_tick_deadline	Option<Instant>	server	server (survey; review=common from unpruned BFS, group=server-levels)	517	side	-
 frame_drawn	bool	client	client (survey + review)	518	side	-
 world_icon	Option<WorldIcon>	client	client (survey; review=common from unpruned BFS, group=startup-packs)	519	side	-
@@ -583,7 +583,7 @@ guest_combat	std::collections::HashMap<u32, combat::CombatTracker>	game	drop-ord
 mount	mounts::MountState	game	shared (survey + review)	581	-	-
 stats	stats::Stats	game	shared (survey + review)	582	-	-
 score	scoreboard::ScoreState	game	shared (survey + review)	583	-	-
-fns	functions::FnState	game	drop-order (server): FnState holds Vec<Arc<DataPack>> whose ResourceSource retains open archive files; precedes fangs (603)	584	-	server_shared
+fns	functions::FnState	game	drop-order (server): FnState holds Vec<Arc<DataPack>> whose ResourceSource retains open archive files; precedes fangs (603)	584	-	server_only
 bosses	bossbars::BossState	server	server (survey; review=common from unpruned BFS, group=commands)	585	side	-
 boss_overlay	sunrise_client::boss_overlay::BossOverlay	client	client (survey; review=common from unpruned BFS, group=hud)	586	side	-
 exec	commands::execute::ExecState	game	drop-order (server): ExecState retains PreparedFunctionCall sharing Arc<FunctionCall> with fns (584); precedes border (590) and fangs (603)	587	-	server_only
