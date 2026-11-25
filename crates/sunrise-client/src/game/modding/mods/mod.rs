@@ -2435,6 +2435,7 @@ impl Game<'_> {
         self.instance_groups
             .borrow_mut()
             .retire_disabled(&effective);
+        self.prepared_items.borrow_mut().retire_disabled(&effective);
         self.mods.apply_code_switches(&effective);
     }
 }

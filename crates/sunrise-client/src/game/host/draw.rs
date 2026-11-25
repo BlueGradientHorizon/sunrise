@@ -299,19 +299,19 @@ impl DrawContext for GameDrawContext<'_, '_> {
     }
 }
 /// [`BlockEntityDrawContext`] on the game's `crate::game::native_block_entity_draw::BlockEntityDraw`.
-pub(crate) struct GameBlockEntityDrawContext<'a, 'g> {
+pub(crate) struct GameBlockEntityDrawContext<'a, 'g, 'v> {
     pub(crate) game: &'a Game<'g>,
-    pub(crate) surface: &'a mut crate::game::native_block_entity_draw::BlockEntityDraw,
+    pub(crate) surface: &'a mut crate::game::native_block_entity_draw::BlockEntityDraw<'v>,
 }
-impl<'a, 'g> GameBlockEntityDrawContext<'a, 'g> {
+impl<'a, 'g, 'v> GameBlockEntityDrawContext<'a, 'g, 'v> {
     pub(crate) fn new(
         game: &'a Game<'g>,
-        surface: &'a mut crate::game::native_block_entity_draw::BlockEntityDraw,
+        surface: &'a mut crate::game::native_block_entity_draw::BlockEntityDraw<'v>,
     ) -> Self {
         Self { game, surface }
     }
 }
-impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_> {
+impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_, '_> {
     fn push(&mut self) {
         self.game.native_draw_push(&mut *self.surface)
     }
@@ -330,6 +330,9 @@ impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_> {
     }
     fn keep(&mut self) {
         self.game.native_draw_keep(&mut *self.surface)
+    }
+    fn view(&self) -> &WorldRenderView<'_> {
+        self.surface.view()
     }
     fn partial(&self) -> f32 {
         self.game.native_draw_partial(&*self.surface)
@@ -427,12 +430,20 @@ impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_> {
         self.game
             .native_draw_model_part(&mut *self.surface, part, sprite, tint)
     }
+    fn instance_group(&mut self, group: InstanceGroupRef) -> Result<(), GroupError> {
+        self.game
+            .native_draw_instance_group(&mut *self.surface, group)
+    }
+    fn prepared_item(&mut self, item: PreparedItemRef) -> Result<(), ModelError> {
+        self.game
+            .native_draw_prepared_item(&mut *self.surface, item)
+    }
     fn fluid_box(&mut self, stack: &FluidStack, bounds: [f32; 6], options: FluidBoxOptions) {
         self.game
             .native_draw_fluid_box(&mut *self.surface, stack, bounds, options)
     }
 }
-impl HandDrawContext for GameBlockEntityDrawContext<'_, '_> {
+impl HandDrawContext for GameBlockEntityDrawContext<'_, '_, '_> {
     fn render_arm(&mut self, arm: MainHand) {
         if let Some(normals) = self.surface.normal_pose() {
             self.game.submit_first_person_arm(

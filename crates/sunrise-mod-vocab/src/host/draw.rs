@@ -275,6 +275,14 @@ pub trait BlockEntityDrawContext {
     fn keep(&mut self) {
         unimplemented!("BlockEntityDrawContext::draw_keep")
     }
+    /// Read-only frame state for the world view this draw belongs to.
+    ///
+    /// [`Self::partial`], [`Self::game_time`] and [`Self::animation_time`] are shorthands
+    /// returning the same values as this view. In [`DrawContext::draw_scene`], the view carries
+    /// the scene's camera and clock with `camera_entity_eye: None`.
+    fn view(&self) -> &WorldRenderView<'_> {
+        unimplemented!("BlockEntityDrawContext::view")
+    }
     /// The frame's partial tick, 0 to 1 (`BlockEntityRenderState`).
     fn partial(&self) -> f32 {
         unimplemented!("BlockEntityDrawContext::draw_partial")
@@ -475,6 +483,20 @@ pub trait BlockEntityDrawContext {
     /// sprite. API @API:model_layers@.
     fn model_part(&mut self, part: &ModelPart, sprite: &str, tint: u32) -> bool {
         unimplemented!("BlockEntityDrawContext::draw_model_part")
+    }
+    /// Draws a retained [`InstanceGroupRef`] under `draw`'s current pose: each live copy in the
+    /// group is transformed by the group transform and then by `draw`'s pose stack. Works in
+    /// entity renderers, entity layers, block entities, and screen scenes. Stale, destroyed, or
+    /// disabled-owner groups return [`GroupError::Stale`] without appending geometry.
+    fn instance_group(&mut self, group: InstanceGroupRef) -> Result<(), GroupError> {
+        unimplemented!("BlockEntityDrawContext::instance_group")
+    }
+    /// Draws a [`PreparedItemRef`] resolved by
+    /// [`ClientRenderClientHost::prepare_item`](crate::prelude::ClientRenderClientHost::prepare_item)
+    /// under `draw`'s current pose, matching [`Self::item`] without resolving the stack's model
+    /// again. A stale or destroyed handle draws nothing and returns [`ModelError::StaleModel`].
+    fn prepared_item(&mut self, item: PreparedItemRef) -> Result<(), ModelError> {
+        unimplemented!("BlockEntityDrawContext::prepared_item")
     }
     /// Draws `stack` as a still fluid filling `bounds` (`[x0, y0, z0, x1, y1, z1]` in blocks
     /// under `draw`'s pose), as a tank's contents: `minecraft:water`, `minecraft:lava` or any

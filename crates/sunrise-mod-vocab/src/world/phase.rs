@@ -275,6 +275,16 @@ pub trait ClientReloadHost:
     ) -> bool {
         false
     }
+    /// Resolve `stack`'s item model once for `display` and `seed`, returning a retained
+    /// [`crate::PreparedItemRef`] for [`crate::BlockEntityDrawContext::prepared_item`].
+    fn prepare_item(
+        &self,
+        _stack: &crate::ItemStack,
+        _display: crate::ItemDisplayContext,
+        _seed: i32,
+    ) -> Result<crate::PreparedItemRef, crate::ModelError> {
+        Err(crate::ModelError::UnknownModel)
+    }
     /// Resolved block sprites for each requested block state.
     fn block_sprites(&self, blocks: &[crate::BlockState]) -> Vec<Option<crate::BlockSprites>> {
         vec![None; blocks.len()]

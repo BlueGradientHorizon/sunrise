@@ -10092,7 +10092,7 @@ impl Game<'_> {
                 }
                 continue;
             }
-            if self.thrown_item_geometry(a, alpha, at, c, packed, out) {
+            if self.thrown_item_geometry(a, alpha, at, camera, c, packed, out) {
                 continue;
             }
             // `Entity.displayFireAnimation`: a thrown item that flew through a

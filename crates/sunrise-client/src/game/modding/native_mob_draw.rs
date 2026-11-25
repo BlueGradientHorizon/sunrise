@@ -95,13 +95,21 @@ pub(super) fn mob_render<'a>(m: &'a Mob, id: u32, partial: f32) -> MobRender<'a>
 
 /// The frame of `m` at `partial` an entity renderer or layer reads, told as entity `id`:
 /// `LivingEntityRenderer.extractRenderState`'s `LivingEntityRenderState`.
-pub(super) fn entity_render_state(m: &Mob, id: u32, partial: f32) -> EntityRenderState {
+pub(super) fn entity_render_state(
+    m: &Mob,
+    id: u32,
+    partial: f32,
+    camera: DVec3,
+) -> EntityRenderState {
     let body_rot = anim::body_rot(m, partial);
     let pose = anim::state(m, partial);
     // `isEntityUpsideDown` turns the head's angles over with the body.
     let upside_down = anim::upside_down(m);
     let flip = if upside_down { -1.0 } else { 1.0 };
     let baby = m.is_baby();
+    let feet = m.previous.lerp(m.position, f64::from(partial));
+    let position = [feet.x, feet.y, feet.z];
+    let distance_to_camera_sq = (DVec3::from_array(position) - camera).length_squared();
     let living = mod_api::__private::built::LivingRenderState {
         body_rot,
         y_rot: pose.y_rot * flip,
@@ -131,6 +139,10 @@ pub(super) fn entity_render_state(m: &Mob, id: u32, partial: f32) -> EntityRende
         age: pose.age,
         yaw: m.previous_yaw + sunrise_client::mobs::living::wrap(m.yaw - m.previous_yaw) * partial,
         pitch: pose.x_rot,
+        position,
+        size: [m.width(), m.height()],
+        eye_height: m.eye_height() as f32,
+        distance_to_camera_sq,
         living: Some(living.into()),
         tnt_fuse: None,
         orb_value: None,
@@ -244,19 +256,39 @@ impl Game<'_> {
         in_level: bool,
         out: &mut Vec<Vertex>,
     ) -> bool {
+        self.mod_living_renderer_geometry_with_view(
+            mob, partial, camera, None, light, in_level, out,
+        )
+    }
+
+    /// [`Self::mod_living_renderer_geometry`] with an explicit [`mod_api::WorldRenderView`].
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn mod_living_renderer_geometry_with_view(
+        &self,
+        mob: &Mob,
+        partial: f32,
+        render_origin: DVec3,
+        explicit_view: Option<&mod_api::WorldRenderView<'_>>,
+        light: u32,
+        in_level: bool,
+        out: &mut Vec<Vertex>,
+    ) -> bool {
         let Some(resolved) = super::native_entity_renderers::living_renderer(mob) else {
             return false;
         };
-        let entity = entity_render_state(mob, mob.id, partial);
+        let view_camera = explicit_view.map_or(render_origin, |v| DVec3::from(v.camera.position));
+        let entity = entity_render_state(mob, mob.id, partial, view_camera);
         let feet = mob.previous.lerp(mob.position, f64::from(partial));
         let feet = DVec3::new(feet.x, feet.y, feet.z);
         let block = [feet.x, feet.y, feet.z].map(|c| c.floor() as i32);
-        self.mod_entity_renderer_geometry(
+        self.mod_entity_renderer_geometry_with_view(
             &resolved,
             &entity,
             &mob.kind.id,
-            feet - camera,
+            feet - render_origin,
             in_level.then_some(feet),
+            view_camera,
+            explicit_view,
             block,
             light,
             out,
@@ -278,10 +310,39 @@ impl Game<'_> {
         light: u32,
         out: &mut Vec<Vertex>,
     ) {
+        self.mod_layer_geometry_with_view(
+            mob, who, model, layers, partial, camera, None, light, out,
+        );
+    }
+
+    /// [`Self::mod_layer_geometry`] with an explicit [`mod_api::WorldRenderView`].
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn mod_layer_geometry_with_view(
+        &self,
+        mob: &Mob,
+        who: Option<PlayerRender<'_>>,
+        model: Option<&dyn FrameModel>,
+        layers: Option<super::native_entity_layers::Layers>,
+        partial: f32,
+        render_origin: DVec3,
+        explicit_view: Option<&mod_api::WorldRenderView<'_>>,
+        light: u32,
+        out: &mut Vec<Vertex>,
+    ) {
         if let Some(layers) = layers {
             let local = who.as_ref().is_some_and(|who| who.local);
             let id = render_id(mob.id, local, self.own_entity_id());
-            self.registered_layer_geometry(mob, id, &layers, model, partial, camera, light, out);
+            self.registered_layer_geometry_with_view(
+                mob,
+                id,
+                &layers,
+                model,
+                partial,
+                render_origin,
+                explicit_view,
+                light,
+                out,
+            );
         }
     }
     /// The mods' post hooks for `mob`, whose pre hooks weren't canceled: `render_living_post`,
@@ -325,28 +386,28 @@ impl Game<'_> {
         camera: DVec3,
         light: u32,
         out: &mut Vec<Vertex>,
-        hook: impl FnOnce(&MobRender<'_>, &mut BlockEntityDraw),
+        hook: impl FnOnce(&MobRender<'_>, &mut BlockEntityDraw<'_>),
     ) {
         let render = mob_render(mob, render_id(mob.id, local, self.own_entity_id()), partial);
         let a = f64::from(partial);
         let feet = mob.previous.lerp(mob.position, a);
         let feet = DVec3::new(feet.x, feet.y, feet.z);
-        let mut draw = BlockEntityDraw::posed(
-            partial,
-            self.world.game_time,
-            light,
-            [feet.x, feet.y, feet.z].map(|c| c.floor() as i32),
-            mob_pose(feet - camera, render.body_yaw),
-            diffuse_lights(self.nether_lighting()),
-            std::mem::take(out),
-        )
-        .with_quad_budget(
-            self.entity_quad_capacity(),
-            self.entity_batch_reserved_quads(),
-        )
-        .animated(self.animation_time());
-        hook(&render, &mut draw);
-        *out = draw.into_vertices();
+        self.with_world_view(camera, partial, None, |view| {
+            let mut draw = BlockEntityDraw::posed_with_view(
+                view,
+                light,
+                [feet.x, feet.y, feet.z].map(|c| c.floor() as i32),
+                mob_pose(feet - camera, render.body_yaw),
+                diffuse_lights(self.nether_lighting()),
+                std::mem::take(out),
+            )
+            .with_quad_budget(
+                self.entity_quad_capacity(),
+                self.entity_batch_reserved_quads(),
+            );
+            hook(&render, &mut draw);
+            *out = draw.into_vertices();
+        });
     }
 }
 

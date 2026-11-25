@@ -28,6 +28,12 @@ pub enum ModelError {
     StaleModel,
 }
 
+impl crate::NoBackend for ModelError {
+    fn no_backend() -> Self {
+        Self::UnknownModel
+    }
+}
+
 /// An item requested at registration; its load-owned slot identifies the canonical name.
 // no wire: decoding validates the u32 slot with ItemKey::from_slot on the host.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
