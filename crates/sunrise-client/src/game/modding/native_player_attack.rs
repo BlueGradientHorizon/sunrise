@@ -99,7 +99,7 @@ impl Game<'_> {
             });
         };
         if !self.lan_guest_swaps.is_empty()
-            || !self.transactions.is_empty()
+            || !(self.transactions.is_empty() || self.in_level_tick_boundary_alone())
             || self.fake_action.acting()
         {
             return Err(AttackRefused::Busy);
@@ -114,8 +114,12 @@ impl Game<'_> {
             return Err(AttackRefused::Unsupported);
         }
         let id = i32::try_from(target.id()).map_err(|_| AttackRefused::Stale)?;
-        let _acting = Acting::start_unswung(&self.fake_action);
-        match self.guest_player_attack(conn, gi, id, false) {
+        // As a fake player's `perform_action`, beside a level tick listener's transaction.
+        let struck = self.beside_listener_journal(|game| {
+            let _acting = Acting::start_unswung(&game.fake_action);
+            game.guest_player_attack(conn, gi, id, false)
+        });
+        match struck {
             Ok(struck) => Ok(struck != Struck::Stopped),
             // No body Sunrise strikes along the player's aim.
             Err(ActionRefused::InvalidTarget) => Err(AttackRefused::Unsupported),

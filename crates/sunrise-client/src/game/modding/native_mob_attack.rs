@@ -23,7 +23,7 @@ impl Game<'_> {
             return Err(AttackRefused::Stale);
         }
         if !self.lan_guest_swaps.is_empty()
-            || !self.transactions.is_empty()
+            || !(self.transactions.is_empty() || self.in_level_tick_boundary_alone())
             || self.fake_action.acting()
             || self.held_out.contains(&entity.id())
         {
@@ -40,13 +40,17 @@ impl Game<'_> {
         let conn = match self.native_entity_target(target) {
             Some(Target::Mob(other)) if other == id => return Err(AttackRefused::Unsupported),
             Some(Target::Mob(other)) => {
-                let _acting = Acting::start(&self.fake_action);
-                let (events, answer) = self
-                    .mob_strike(id, Who::Mob(other))
-                    .ok_or(AttackRefused::Stale)?;
-                self.combat.hit_landed = false;
-                let _ = self.handle_mob_events(events);
-                return Ok(answer.unwrap_or(self.combat.hit_landed));
+                // As a fake player's `perform_action`, beside a level tick listener's
+                // transaction.
+                return self.beside_listener_journal(|game| {
+                    let _acting = Acting::start(&game.fake_action);
+                    let (events, answer) = game
+                        .mob_strike(id, Who::Mob(other))
+                        .ok_or(AttackRefused::Stale)?;
+                    game.combat.hit_landed = false;
+                    let _ = game.handle_mob_events(events);
+                    Ok(answer.unwrap_or(game.combat.hit_landed))
+                });
             }
             Some(Target::Guest(conn)) => conn,
             // The player whose turn runs now.
@@ -62,9 +66,14 @@ impl Game<'_> {
         if !in_place {
             return Err(AttackRefused::OtherLevel);
         }
+        self.beside_listener_journal(|game| game.mob_strike_on_guest(id, conn))
+    }
+
+    /// Mob `id`'s strike on guest `conn`: it sees the guest as its player, and what it does to
+    /// them runs as theirs, as the mob tick routes it (game/network/lan_mobs.rs), its other
+    /// events first.
+    fn mob_strike_on_guest(&mut self, id: u32, conn: u32) -> Result<bool, AttackRefused> {
         let _acting = Acting::start(&self.fake_action);
-        // The strike sees the guest as its player, and what it does to them runs as theirs, as
-        // the mob tick routes it (game/network/lan_mobs.rs): its other events first.
         let (events, answer) = self
             .as_guest(conn, |g| g.mob_strike(id, Who::Player))
             .flatten()

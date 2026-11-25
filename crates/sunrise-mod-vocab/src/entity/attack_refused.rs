@@ -16,7 +16,10 @@ pub enum AttackRefused {
     OtherLevel,
     /// Another player's turn, an open transaction, or another `attack`, `do_hurt_target` or
     /// fake player's `perform_action` is running, or the mob is held out of the level for its
-    /// own tick. A player's swapped-in state must not reach another one's call.
+    /// own tick. A player's swapped-in state must not reach another one's call. As for
+    /// `perform_action`, a `level_tick_pre` or `level_tick_post` listener's own failure
+    /// boundary is not an open transaction here: the attack runs outside it, so the listener's
+    /// panic doesn't undo the attack. A `host.transaction` the listener opens is one.
     Busy,
     /// Sunrise cannot run this attack on this target: a player's on itself or on an entity it
     /// keeps no attack for, or a mob's on an entity that is neither a player nor a mob (an

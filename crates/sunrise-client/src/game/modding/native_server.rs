@@ -883,7 +883,7 @@ impl Game<'_> {
 
     /// Whether the only open transaction is the one a server level tick's dispatch opens around
     /// each listener (#5750): a machine's fake player acts from its level tick.
-    fn in_level_tick_boundary_alone(&self) -> bool {
+    pub(super) fn in_level_tick_boundary_alone(&self) -> bool {
         LevelTickListeners::marked() && self.transactions.len() == 1
     }
 
@@ -893,7 +893,7 @@ impl Game<'_> {
     /// commit their own transactions. A rollback of the listener's own earlier writes still
     /// puts back what they changed, over the action's result at the same place. With no
     /// transaction open this is just `act`.
-    fn beside_listener_journal<T>(&mut self, act: impl FnOnce(&mut Self) -> T) -> T {
+    pub(super) fn beside_listener_journal<T>(&mut self, act: impl FnOnce(&mut Self) -> T) -> T {
         if self.transactions.is_empty() {
             return act(self);
         }
