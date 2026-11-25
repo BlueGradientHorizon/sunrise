@@ -241,7 +241,7 @@ impl Game<'_> {
         if self.finish_drinking(slot, stack) {
             self.use_item_finished(stack);
             self.use_vibration(stack, "minecraft:item_interact_finish");
-            self.stopped_using(stack, None, hand, 0);
+            self.stopped_using(stack, Some(self.own_entity_id()), hand, 0);
             return;
         }
         self.using = None;
@@ -255,7 +255,7 @@ impl Game<'_> {
         self.use_item_finished(stack);
         // `LivingEntity.completeUsingItem` ends with `stopUsingItem`.
         self.use_vibration(stack, "minecraft:item_interact_finish");
-        self.stopped_using(stack, None, hand, 0);
+        self.stopped_using(stack, Some(self.own_entity_id()), hand, 0);
     }
     /// `LivingEntityUseItemEvent.Finish` after `finishUsingItem` of `stack`
     /// (no ticks left): the hand holds what a mod made the result.
@@ -309,7 +309,7 @@ impl Game<'_> {
         }
         *self.stack_in_mut(slot) = result.filter(|s| s.count > 0);
         self.remote_synced_since(&before);
-        self.stopped_using(stack, None, hand, 0);
+        self.stopped_using(stack, Some(self.own_entity_id()), hand, 0);
     }
     /// What `Item.finishUsingItem` leaves in the hand on a server's client: a
     /// stack that is not a consumable stays as it is (a spyglass); a
