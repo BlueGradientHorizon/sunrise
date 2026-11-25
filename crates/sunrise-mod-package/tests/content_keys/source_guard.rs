@@ -50,6 +50,7 @@ const NOT_DECLARATIONS: &[(&str, &str)] = &[
     ("sunrise_assets::model::CuboidModel", "asset reference check, not a declaration"),
     ("sunrise_assets::model::Loader", "asset reference check, not a declaration"),
     ("sunrise_assets::model::TextureSlot", "asset reference check, not a declaration"),
+    ("sunrise_core::identifier::Identifier::parse_namespaced", "validates attribute modifier identifiers, not a Serde declaration"),
 ];
 
 type Reviewed = (

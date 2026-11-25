@@ -2874,6 +2874,7 @@ mod ignite_tests {
         sword.enchant("test:zombie_bane", 1);
         let mut random = LegacyRandom::new(0);
         let zombie = EffectContext {
+            damage_type: Some("minecraft:mob_attack"),
             attacker: Some("minecraft:zombie"),
             ..Default::default()
         };
@@ -2882,6 +2883,7 @@ mod ignite_tests {
             2.0
         );
         let skeleton = EffectContext {
+            damage_type: Some("minecraft:mob_attack"),
             attacker: Some("minecraft:skeleton"),
             ..Default::default()
         };
