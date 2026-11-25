@@ -114,6 +114,15 @@ pub enum ResolvedSet1Entry {
         view: wgpu::TextureView,
         format: wgpu::TextureFormat,
     },
+    /// Transient frame-graph target colour attachment, resolved to a pooled GPU texture view
+    /// right before executing the pass in [`super::mod_frame_graph`].
+    TransientColor {
+        target: mod_api::TransientTargetId,
+        attachment: u8,
+    },
+    /// Transient frame-graph target depth attachment, resolved to a pooled GPU texture view
+    /// right before executing the pass in [`super::mod_frame_graph`].
+    TransientDepth { target: mod_api::TransientTargetId },
 }
 
 /// Resolved set-1 resource bindings for one [`PipelineDraw`] in exact declaration order.
@@ -690,10 +699,6 @@ pub struct ModPipelines {
     transient_ibuf: Option<wgpu::Buffer>,
     oit_transient_vbuf: Option<wgpu::Buffer>,
     oit_transient_ibuf: Option<wgpu::Buffer>,
-    offscreen_transient_vbuf: Option<wgpu::Buffer>,
-    offscreen_transient_ibuf: Option<wgpu::Buffer>,
-    offscreen_inline_buf: Option<wgpu::Buffer>,
-    offscreen_texel_buf: Option<wgpu::Buffer>,
     /// Per-frame growing GPU uniform ring buffer for `UniformValue::Inline` and push constants.
     inline_uniform_buf: Option<wgpu::Buffer>,
     inline_uniform_staging: Vec<u8>,
@@ -736,16 +741,18 @@ pub struct ModPipelines {
     variant_ids: HashMap<Vec<u32>, u32>,
     draws: Vec<PreparedDraw>,
     oit_draws: Vec<PreparedDraw>,
+    /// The compute pipelines of the same load (`mod_compute`).
+    pub(super) compute: super::mod_compute::ModCompute,
 }
 
-fn sampler_filter_idx(filter: SamplerFilter) -> usize {
+pub(super) fn sampler_filter_idx(filter: SamplerFilter) -> usize {
     match filter {
         SamplerFilter::Linear => 1,
         _ => 0,
     }
 }
 
-fn sampler_address_idx(address: SamplerAddress) -> usize {
+pub(super) fn sampler_address_idx(address: SamplerAddress) -> usize {
     match address {
         SamplerAddress::Repeat => 1,
         SamplerAddress::MirroredRepeat => 2,
@@ -753,7 +760,7 @@ fn sampler_address_idx(address: SamplerAddress) -> usize {
     }
 }
 
-fn create_mod_samplers(device: &wgpu::Device) -> [[wgpu::Sampler; 3]; 2] {
+pub(super) fn create_mod_samplers(device: &wgpu::Device) -> [[wgpu::Sampler; 3]; 2] {
     let filters = [wgpu::FilterMode::Nearest, wgpu::FilterMode::Linear];
     let addresses = [
         wgpu::AddressMode::ClampToEdge,
@@ -1126,10 +1133,6 @@ impl ModPipelines {
             transient_ibuf: None,
             oit_transient_vbuf: None,
             oit_transient_ibuf: None,
-            offscreen_transient_vbuf: None,
-            offscreen_transient_ibuf: None,
-            offscreen_inline_buf: None,
-            offscreen_texel_buf: None,
             inline_uniform_buf: None,
             inline_uniform_staging: Vec::new(),
             texel_storage_buf: None,
@@ -1138,6 +1141,7 @@ impl ModPipelines {
             storage_uses: HashMap::new(),
             storage_conflicts: HashSet::new(),
             warned_storage_conflicts: HashSet::new(),
+            compute: Default::default(),
             fan_indices: FanIndices::default(),
             generation: 0,
             oit_generation: 0,
@@ -1893,7 +1897,9 @@ impl ModPipelines {
         set: &Pipelines,
         textures: Option<TextureSources<'_>>,
     ) -> Result<(), String> {
-        self.build_with(set, |this, built| this.pipeline(device, built, textures))
+        self.build_with(set, |this, built| this.pipeline(device, built, textures))?;
+        self.compute.build(device, set.compute());
+        Ok(())
     }
 
     fn build_with(
@@ -2360,6 +2366,12 @@ impl ModPipelines {
             && self.draws.is_empty()
             && self.oit_draws.is_empty()
         {
+            if let Some(blocks) = vanilla_blocks {
+                self.last_vanilla_blocks.copy_from_slice(blocks);
+                upload(&self.vanilla, blocks);
+                let pack_blocks = pack_vanilla_blocks(blocks);
+                upload(&self.pack_vanilla, &pack_blocks);
+            }
             return 0;
         }
         self.prepare_set1_bindings(device, upload, batch);
@@ -2535,22 +2547,23 @@ impl ModPipelines {
             self.fan_indices
                 .ensure_with_upload(device, upload, max_fan_verts);
         }
-        upload_transient_bytes(
-            &mut self.offscreen_transient_vbuf,
-            device,
-            upload,
-            "Mod offscreen transient vertices",
-            wgpu::BufferUsages::VERTEX,
-            data.transient_vertices,
-        );
-        upload_transient_bytes(
-            &mut self.offscreen_transient_ibuf,
-            device,
-            upload,
-            "Mod offscreen transient indices",
-            wgpu::BufferUsages::INDEX,
-            data.transient_indices,
-        );
+        // Per-pass immutable GPU buffers so multiple offscreen passes in one CommandEncoder
+        // (e.g. a multi-pass frame graph) never clobber each other's vertices, indices, or set-1
+        // staging data.
+        let transient_vbuf = (!data.transient_vertices.is_empty()).then(|| {
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Mod offscreen transient vertices"),
+                contents: data.transient_vertices,
+                usage: wgpu::BufferUsages::VERTEX,
+            })
+        });
+        let transient_ibuf = (!data.transient_indices.is_empty()).then(|| {
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Mod offscreen transient indices"),
+                contents: data.transient_indices,
+                usage: wgpu::BufferUsages::INDEX,
+            })
+        });
 
         // Stage per-draw set-1 inline uniforms and texel buffers into dedicated offscreen
         // buffers so main-pass buffers are never overwritten before submission.
@@ -2635,42 +2648,20 @@ impl ModPipelines {
             staged_meta.push(ok.then_some((inline_spans, texel_spans)));
         }
 
-        if !inline_staging.is_empty() {
-            let need = inline_staging.len() as u64;
-            if self
-                .offscreen_inline_buf
-                .as_ref()
-                .is_none_or(|b| b.size() < need)
-            {
-                self.offscreen_inline_buf = Some(device.create_buffer(&wgpu::BufferDescriptor {
-                    label: Some("Mod offscreen inline uniforms"),
-                    size: need.next_power_of_two().max(4096),
-                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                    mapped_at_creation: false,
-                }));
-            }
-            if let Some(buf) = &self.offscreen_inline_buf {
-                queue.write_buffer(buf, 0, &inline_staging);
-            }
-        }
-        if !texel_staging.is_empty() {
-            let need = texel_staging.len() as u64;
-            if self
-                .offscreen_texel_buf
-                .as_ref()
-                .is_none_or(|b| b.size() < need)
-            {
-                self.offscreen_texel_buf = Some(device.create_buffer(&wgpu::BufferDescriptor {
-                    label: Some("Mod offscreen texel buffers"),
-                    size: need.next_power_of_two().max(4096),
-                    usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-                    mapped_at_creation: false,
-                }));
-            }
-            if let Some(buf) = &self.offscreen_texel_buf {
-                queue.write_buffer(buf, 0, &texel_staging);
-            }
-        }
+        let inline_buf = (!inline_staging.is_empty()).then(|| {
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Mod offscreen inline uniforms"),
+                contents: &inline_staging,
+                usage: wgpu::BufferUsages::UNIFORM,
+            })
+        });
+        let texel_buf = (!texel_staging.is_empty()).then(|| {
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Mod offscreen texel buffers"),
+                contents: &texel_staging,
+                usage: wgpu::BufferUsages::STORAGE,
+            })
+        });
 
         let mut prepared_draws: Vec<PreparedDraw> = Vec::with_capacity(data.draws.len());
         for (cmd, meta) in data.draws.iter().zip(staged_meta) {
@@ -2712,7 +2703,7 @@ impl ModPipelines {
                             let (offset, size) = inline_spans[inline_i];
                             inline_i += 1;
                             dynamic_offsets.push(offset);
-                            let Some(buf) = self.offscreen_inline_buf.as_ref() else {
+                            let Some(buf) = inline_buf.as_ref() else {
                                 valid = false;
                                 break;
                             };
@@ -2746,7 +2737,7 @@ impl ModPipelines {
                         ) => {
                             let (offset, size) = texel_spans[texel_i];
                             texel_i += 1;
-                            let Some(buf) = self.offscreen_texel_buf.as_ref() else {
+                            let Some(buf) = texel_buf.as_ref() else {
                                 valid = false;
                                 break;
                             };
@@ -2781,7 +2772,7 @@ impl ModPipelines {
                 if valid && let Some((pc_binding, _)) = compiled.push_constant_slot {
                     let (offset, size) = inline_spans[inline_i];
                     dynamic_offsets.push(offset);
-                    if let Some(buf) = self.offscreen_inline_buf.as_ref() {
+                    if let Some(buf) = inline_buf.as_ref() {
                         bg_entries.push(wgpu::BindGroupEntry {
                             binding: pc_binding,
                             resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
@@ -2926,8 +2917,8 @@ impl ModPipelines {
                 self.issue_prepared_draw(
                     &mut rpass,
                     indices,
-                    self.offscreen_transient_vbuf.as_ref(),
-                    self.offscreen_transient_ibuf.as_ref(),
+                    transient_vbuf.as_ref(),
+                    transient_ibuf.as_ref(),
                     cmd,
                 );
             }

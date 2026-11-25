@@ -172,6 +172,14 @@ impl RenderAssets {
         self.mod_pipelines.resolve(id)
     }
 
+    /// The handle of the registered compute pipeline `id` in this published store.
+    pub fn compute_pipeline(
+        &self,
+        id: &mod_api::Identifier,
+    ) -> std::result::Result<mod_api::ComputePipelineRef, mod_api::ComputePipelineError> {
+        self.mod_pipelines.compute().resolve(id)
+    }
+
     /// The handle of the registered pipeline modifier `id` (static across resource reloads).
     pub fn pipeline_modifier(
         &self,

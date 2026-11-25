@@ -1039,7 +1039,7 @@ impl PackGlslInput {
 }
 
 /// Whether `name` is a valid ASCII GLSL identifier (`[A-Za-z_][A-Za-z0-9_]*`).
-fn is_valid_glsl_identifier(name: &str) -> bool {
+pub(crate) fn is_valid_glsl_identifier(name: &str) -> bool {
     let mut bytes = name.bytes();
     let Some(first) = bytes.next() else {
         return false;
@@ -1051,7 +1051,7 @@ fn is_valid_glsl_identifier(name: &str) -> bool {
 /// Whether `value` is a safe, non-empty single-line GLSL `#define` value token sequence:
 /// no ASCII control characters (including newlines), no leading/trailing whitespace, no
 /// backslash continuations, no preprocessor `#`, and no `//`, `/*`, or `*/` comment tokens.
-fn is_valid_glsl_define_value(value: &str) -> bool {
+pub(crate) fn is_valid_glsl_define_value(value: &str) -> bool {
     !value.is_empty()
         && value.trim() == value
         && !value.bytes().any(|b| b.is_ascii_control())
@@ -2446,6 +2446,13 @@ pub enum TextureSource<'a> {
     /// target the active offscreen pass renders into is allowed as long as the range does not
     /// contain the pass's [`OffscreenPass::mip_level`].
     RenderTargetColorMip(RenderTargetMipView),
+    /// Colour attachment `attachment` (`0..color_targets.len()`) of a transient per-frame target
+    /// allocated via [`crate::FrameGraphContext::create_transient`].
+    TransientTargetColor(crate::TransientTargetId, u8),
+    /// Depth aspect of a transient per-frame target allocated via
+    /// [`crate::FrameGraphContext::create_transient`] (must be bound to a non-filtering
+    /// [`SamplerFilter::Nearest`] sampler).
+    TransientTargetDepth(crate::TransientTargetId),
 }
 
 /// A view of a mip range of a render target colour attachment (vanilla's `GpuTextureView`:
@@ -2532,6 +2539,13 @@ pub struct RenderCapabilities {
     /// images on this adapter. [`StorageImageAccess::WriteOnly`] and
     /// [`StorageImageAccess::ReadOnly`] work for every [`RenderTargetFormat`].
     pub read_write_storage: Vec<RenderTargetFormat>,
+    /// Whether the adapter runs compute shaders that use subgroup operations
+    /// (`GL_KHR_shader_subgroup_*`). A [`crate::ComputePipeline`] that uses them is refused with
+    /// [`crate::ComputePipelineError::UnsupportedFeature`] without it.
+    pub subgroup: bool,
+    /// Whether an indirect draw's `first_instance` may be non-zero on this adapter
+    /// (`INDIRECT_FIRST_INSTANCE`).
+    pub indirect_first_instance: bool,
 }
 
 /// Why a mod-owned offscreen [`RenderTargetRef`] operation was refused.
@@ -3964,9 +3978,11 @@ mod tests {
     #[test]
     fn stamps_owner_on_new_pipelines_across_namespaces_and_preserves_duplicates_for_freeze() {
         let mut pipelines = Vec::new();
+        let mut compute_pipelines = Vec::new();
         let mut event = crate::RegisterRenderPipelinesEvent {
             mod_id: "first_mod",
             pipelines: &mut pipelines,
+            compute_pipelines: &mut compute_pipelines,
         };
         event.register(pipeline("other:glow"));
         event.mod_id = "owning_mod";
@@ -3993,10 +4009,12 @@ mod tests {
     #[test]
     fn a_mod_can_register_more_than_vanillas_pipeline_count() {
         let mut pipelines = Vec::new();
+        let mut compute_pipelines = Vec::new();
         {
             let mut event = crate::RegisterRenderPipelinesEvent {
                 mod_id: "mine",
                 pipelines: &mut pipelines,
+                compute_pipelines: &mut compute_pipelines,
             };
             for i in 0..131 {
                 event.register(pipeline(&format!("mine:p{i}")));
@@ -4008,6 +4026,7 @@ mod tests {
         crate::RegisterRenderPipelinesEvent {
             mod_id: "next",
             pipelines: &mut pipelines,
+            compute_pipelines: &mut compute_pipelines,
         }
         .register(pipeline("next:glow"));
         assert_eq!(pipelines.len(), 132);

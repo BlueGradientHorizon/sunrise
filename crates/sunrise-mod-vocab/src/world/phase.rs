@@ -214,6 +214,12 @@ impl crate::RenderAssets for EmptyClientReloadServices {
     ) -> Result<crate::RenderPipelineRef, crate::RenderPipelineError> {
         Err(crate::RenderPipelineError::Unknown)
     }
+    fn compute_pipeline(
+        &self,
+        _: &crate::Identifier,
+    ) -> Result<crate::ComputePipelineRef, crate::ComputePipelineError> {
+        Err(crate::ComputePipelineError::Unknown)
+    }
     fn pipeline_modifier(
         &self,
         _: &crate::Identifier,
