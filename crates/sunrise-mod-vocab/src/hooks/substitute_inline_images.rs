@@ -8,8 +8,9 @@ pub trait Hooks {
     /// order. The first valid, nonoverlapping proposal wins in hook dispatch order. Missing sprites
     /// and invalid ranges are ignored, leaving the original characters available to later proposals.
     ///
-    /// An accepted range draws one 8×8 `minecraft:gui` sprite or dynamic texture glyph with an advance of 8, using
-    /// the span's color, or white when the span has none; on a sign, the sign's dye never tints it.
+    /// An accepted range draws one 8×8 `minecraft:gui` sprite or dynamic texture glyph with an
+    /// advance of 8, using the span's color, or white when the span has none; on a sign, the
+    /// sign's dye never tints it.
     /// Chat hover and click use the span's style at the glyph's displayed position.
     /// The source component, chat history and signatures, and sign editing are not changed.
     /// Cached layout can reuse answers while the text, resources, sprite geometry and enabled mods

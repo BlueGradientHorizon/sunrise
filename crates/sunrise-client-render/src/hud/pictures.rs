@@ -41,14 +41,6 @@ impl Cache {
             ..Self::default()
         }
     }
-    /// The standalone texture `id`, the exact resource `assets/<namespace>/<path>`, from the
-    /// first root that has it (`ResourceManager.getResource`), sampled as its `.mcmeta` says:
-    /// the topmost one from the image's root or a root above it
-    /// (`FallbackResourceManager.createStackMetadataFinder`), as the pack stack itself keeps only
-    /// a `.mcmeta` from the image's pack or above. Decoded once per resource generation; a missing
-    /// or undecodable image, or a `.mcmeta` that cannot be read or parsed
-    /// ([`TextureFlags::read_mcmeta`]), is vanilla's missing texture
-    /// (`TextureManager.loadContentsSafe`, `TextureContents.createMissing`).
     /// Whether the resource `assets/<namespace>/<path>` of `id` is in a root: an image that is
     /// there but cannot be decoded still is, and draws vanilla's missing texture.
     fn has(&self, id: &Identifier) -> bool {
@@ -70,6 +62,14 @@ impl Cache {
         crate::resource_source::stays_inside(&name)
             && self.roots.iter().any(|root| root.contains(&name))
     }
+    /// The standalone texture `id`, the exact resource `assets/<namespace>/<path>`, from the
+    /// first root that has it (`ResourceManager.getResource`), sampled as its `.mcmeta` says:
+    /// the topmost one from the image's root or a root above it
+    /// (`FallbackResourceManager.createStackMetadataFinder`), as the pack stack itself keeps only
+    /// a `.mcmeta` from the image's pack or above. Decoded once per resource generation; a missing
+    /// or undecodable image, or a `.mcmeta` that cannot be read or parsed
+    /// ([`TextureFlags::read_mcmeta`]), is vanilla's missing texture
+    /// (`TextureManager.loadContentsSafe`, `TextureContents.createMissing`).
     fn texture(&mut self, id: &Identifier) -> Arc<Picture> {
         let (namespace, path) = (id.namespace(), id.path());
         if let Some(texture) = self.textures.get(namespace).and_then(|t| t.get(path)) {
