@@ -53,7 +53,7 @@ fn digging_posts_entity_action_every_ten_ticks_outside_the_dust_window() {
             m.age = age;
             m.anim.states[3].start(0.0);
             TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
-            game.tick_sniffer_effects();
+            game.tick_sniffer_server();
             let events = posted();
             let action = events
                 .iter()
@@ -77,12 +77,13 @@ fn digging_posts_entity_action_every_ten_ticks_outside_the_dust_window() {
 #[ignore = "daily"]
 fn a_silent_sniffer_still_plays_the_local_searching_and_hit_sounds() {
     game(|game| {
+        game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
         let _ = digging_sniffer(game);
         game.mobs[0].silent = true;
         game.mobs[0].age = 20;
         sniffer::set_state(&mut game.mobs[0], sniffer::SEARCHING);
         game.audio.0.heard.clear();
-        game.tick_sniffer_effects();
+        game.tick_sniffer_client();
         assert_eq!(
             game.audio.0.heard.get("minecraft:entity.sniffer.searching"),
             Some(&1)
@@ -91,7 +92,7 @@ fn a_silent_sniffer_still_plays_the_local_searching_and_hit_sounds() {
         game.mobs[0].age = 40;
         game.mobs[0].anim.states[3].start(0.0);
         game.audio.0.heard.clear();
-        game.tick_sniffer_effects();
+        game.tick_sniffer_client();
         assert_eq!(
             game.audio.0.heard.get("minecraft:block.stone.hit"),
             Some(&1)

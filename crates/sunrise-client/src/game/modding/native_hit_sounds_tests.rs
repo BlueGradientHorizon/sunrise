@@ -161,11 +161,11 @@ fn check(attacker: i32, expected_at: [f64; 3], hit: impl FnOnce(&mut super::Game
                 .hub
                 .set_sound_seeds(LegacyRandom::new(0x5eed));
             let mut level_random = game.world.random.clone();
-            game.creatures.lan_sounds.clear();
+            game.server.pending_native_sounds.clear();
 
             hit(game);
 
-            let sounds = &game.creatures.lan_sounds;
+            let sounds = &game.server.pending_native_sounds;
             assert_eq!(sounds.len(), 2);
             assert_eq!(sounds[0].sound, "minecraft:entity.player.attack.strong");
             assert_eq!(sounds[0].at, [1.0, 64.0, 2.0]);

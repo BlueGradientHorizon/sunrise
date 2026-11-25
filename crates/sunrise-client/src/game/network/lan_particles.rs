@@ -897,7 +897,7 @@ pub(in crate::game) mod tests {
         guest::Guest,
         hub::{Hub, HubConfig},
     };
-    use sunrise_client::particles::{ExplosionParticle, ParticleOptions, ParticleType};
+    use sunrise_client::particles::{ParticleOptions, ParticleType};
     use sunrise_core::random::LegacyRandom;
     use sunrise_protocol::packets::play;
 

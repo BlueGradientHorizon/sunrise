@@ -4933,7 +4933,10 @@ pub(in crate::game) mod mod_capability_tests {
             );
             game.selected = 0;
             game.creative = false;
-            game.inventory[0] = Some(ItemStack::new("minecraft:water_bucket", 1));
+            game.inventory[0] = Some(sunrise_client::items::ItemStack::new(
+                "minecraft:water_bucket",
+                1,
+            ));
             let before = game.stats.get("custom", "minecraft:fill_cauldron");
             game.start_audio_capture();
             game.open_storage_transaction();

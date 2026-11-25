@@ -58,7 +58,7 @@ fn a_trident_joining_after_tracking_is_paired_before_its_throw_sound() {
     };
     hub.note_joined(std::slice::from_ref(&trident), None);
     hub.captured_sound(
-        &crate::audio::CapturedSound {
+        &sunrise_client_core::sound_source::ServerSound {
             event: "minecraft:item.trident.throw".into(),
             position: trident.position,
             volume: 1.0,
@@ -66,8 +66,7 @@ fn a_trident_joining_after_tracking_is_paired_before_its_throw_sound() {
             source: 7,
             entity: Some(37),
             except_entity: None,
-            seed: 0,
-            particles_before: 0,
+            seed: None,
         },
         None,
     );
@@ -155,7 +154,7 @@ fn a_captured_sound_reaches_the_client_before_its_emitter_is_removed() {
     // This is the current game's end-of-tick order: tracking sees the
     // discarded mooshroom, then lan_flush_effects drains the level sounds.
     ctx.entities = &[];
-    let sound = crate::audio::CapturedSound {
+    let sound = sunrise_client_core::sound_source::ServerSound {
         event: "minecraft:entity.mooshroom.shear".into(),
         position: mooshroom.position,
         volume: 1.0,
@@ -163,8 +162,7 @@ fn a_captured_sound_reaches_the_client_before_its_emitter_is_removed() {
         source: 7,
         entity: Some(37),
         except_entity: None,
-        seed: 0,
-        particles_before: 0,
+        seed: None,
     };
     let mut sounds = vec![sound];
     hub.prepare_captured_sounds(&mut sounds, ctx.entities);
@@ -256,7 +254,7 @@ fn a_new_pair_does_not_reorder_sounds_or_remove_an_old_emitter_early() {
             while rx.try_recv().is_ok() {}
             *hub.sound_seeds.lock().unwrap() = LegacyRandom::new(0);
             let mut random = LegacyRandom::new(0);
-            let old_sound = crate::audio::CapturedSound {
+            let old_sound = sunrise_client_core::sound_source::ServerSound {
                 event: "minecraft:entity.mooshroom.shear".into(),
                 position: old.position,
                 volume: 1.0,
@@ -264,10 +262,9 @@ fn a_new_pair_does_not_reorder_sounds_or_remove_an_old_emitter_early() {
                 source: 7,
                 entity: Some(37),
                 except_entity: None,
-                seed: 0,
-                particles_before: 0,
+                seed: None,
             };
-            let fresh_sound = crate::audio::CapturedSound {
+            let fresh_sound = sunrise_client_core::sound_source::ServerSound {
                 event: "minecraft:entity.ghastling.spawn".into(),
                 source: 4,
                 entity: Some(38),
@@ -364,7 +361,7 @@ fn a_new_pair_does_not_reorder_sounds_or_remove_an_old_emitter_early() {
 fn direct_removals_split_the_sound_emitters_and_do_not_leak_into_the_next_batch() {
     for targeted in [false, true] {
         let (hub, rx) = hub_with_a_guest();
-        let sound = crate::audio::CapturedSound {
+        let sound = sunrise_client_core::sound_source::ServerSound {
             event: "fixture:bound".into(),
             position: [0.5, 64.0, 0.5],
             volume: 1.0,
@@ -372,12 +369,11 @@ fn direct_removals_split_the_sound_emitters_and_do_not_leak_into_the_next_batch(
             source: 6,
             entity: Some(38),
             except_entity: None,
-            seed: 0,
-            particles_before: 0,
+            seed: None,
         };
         let mut sounds = vec![
             sound.clone(),
-            crate::audio::CapturedSound {
+            sunrise_client_core::sound_source::ServerSound {
                 entity: Some(37),
                 ..sound
             },
@@ -423,7 +419,7 @@ fn captured_entity_sound_routes_by_player_dimension_range_and_exclusion() {
     let (mut hub, rx) = hub_with_a_guest();
     *hub.sound_seeds.lock().unwrap() = LegacyRandom::new(0);
     let mut random = LegacyRandom::new(0);
-    let mut sound = crate::audio::CapturedSound {
+    let mut sound = sunrise_client_core::sound_source::ServerSound {
         event: "fixture:bound".into(),
         position: [0.0; 3],
         volume: 1.0,
@@ -431,8 +427,7 @@ fn captured_entity_sound_routes_by_player_dimension_range_and_exclusion() {
         source: 6,
         entity: Some(37),
         except_entity: None,
-        seed: 0,
-        particles_before: 0,
+        seed: None,
     };
     hub.guests.update(0, |g| g.position = [0.0; 3]);
     // The server broadcasts by distance even if this player does not track
@@ -509,7 +504,7 @@ fn captured_and_direct_sounds_share_the_server_seed_stream_and_synced_registry()
     let (hub, rx) = hub_with_sync(sync);
     *hub.sound_seeds.lock().unwrap() = LegacyRandom::new(0);
     let mut random = LegacyRandom::new(0);
-    let sound = crate::audio::CapturedSound {
+    let sound = sunrise_client_core::sound_source::ServerSound {
         event: "fixture:bound".into(),
         position: [0.5, 64.0, 0.5],
         volume: 1.0,
@@ -517,8 +512,7 @@ fn captured_and_direct_sounds_share_the_server_seed_stream_and_synced_registry()
         source: 6,
         entity: Some(37),
         except_entity: None,
-        seed: 0,
-        particles_before: 0,
+        seed: None,
     };
     hub.sound("fixture:bound", sound.position, 1.0, 1.0, 6, None);
     let C::Sound(packet) = next_sent_packet(&rx) else {

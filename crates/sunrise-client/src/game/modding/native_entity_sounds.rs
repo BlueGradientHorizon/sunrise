@@ -240,7 +240,7 @@ mod tests {
         super::super::native_guest_turn_tests::with_guests(|game| {
             let cow = spawn(game, 10, "minecraft:cow");
             assert!(game.entity_play_sound(cow, "minecraft:entity.cow.ambient", 0.5, 1.5));
-            let sound = &game.creatures.lan_sounds[0];
+            let sound = &game.server.pending_native_sounds[0];
             assert_eq!(sound.sound, "minecraft:entity.cow.ambient");
             assert_eq!(sound.at, [1.5, 64.0, 2.5]);
             assert_eq!(sound.source as usize, SoundSource::Neutral.index());
@@ -250,19 +250,19 @@ mod tests {
             assert!(!game.entity_play_sound(cow, "minecraft:entity.cow.ambient", 1.0, 1.0));
             game.mobs[0].silent = false;
             assert!(!game.entity_play_sound(cow, "minecraft:entity.cow.ambient", 1.0, f32::NAN));
-            assert_eq!(game.creatures.lan_sounds.len(), 1);
+            assert_eq!(game.server.pending_native_sounds.len(), 1);
             // A player doesn't hear their own sound, silent or not.
             game.as_guest(12, |game| {
                 let player = game.entity(12).unwrap();
                 assert!(game.entity_play_sound(player, "minecraft:entity.player.burp", 1.0, 1.0));
-                let sound = &game.creatures.lan_sounds[1];
+                let sound = &game.server.pending_native_sounds[1];
                 assert_eq!(sound.source as usize, SoundSource::Players.index());
                 assert_eq!(sound.except, Some(12));
             })
             .expect("the sound's real guest turn runs");
             let stale = EntityRef::new(WorldEpoch::new(cow.epoch().get() + 1), 10);
             assert!(!game.entity_play_sound(stale, "minecraft:entity.cow.ambient", 1.0, 1.0));
-            assert_eq!(game.creatures.lan_sounds.len(), 2);
+            assert_eq!(game.server.pending_native_sounds.len(), 2);
         });
     }
 

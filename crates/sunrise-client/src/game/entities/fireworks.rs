@@ -1253,12 +1253,12 @@ pub(in crate::game) mod tests {
         leashed(3, here, someone_else);
         game.inventory[game.selected] = Some(super::ItemStack::new("minecraft:firework_rocket", 1));
         let stack = game.inventory[game.selected].clone().unwrap();
-        game.audio.0.capture = Some(Vec::new());
+        game.start_audio_capture();
 
         assert!(!game.boost_firework(&stack));
         assert_eq!(game.mobs[0].extra.leash, Some(Holder::Player));
         assert!(game.dropped.is_empty());
-        assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
+        assert!(game.server.pending_sounds.is_empty());
 
         game.player.as_mut().unwrap().fall_flying = true;
         assert!(game.boost_firework(&stack));
@@ -1274,7 +1274,7 @@ pub(in crate::game) mod tests {
             .filter(|d| &*d.stack.item == "minecraft:lead")
             .collect();
         assert_eq!(leads.len(), 1);
-        let heard = game.audio.0.capture.take().unwrap_or_default();
+        let heard = std::mem::take(&mut game.server.pending_sounds);
         let snaps: Vec<_> = heard
             .iter()
             .filter(|s| s.event == "minecraft:item.lead.break")

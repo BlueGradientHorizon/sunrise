@@ -335,7 +335,7 @@ pub(in crate::game) fn setup(
     game.hand = Hand::Main;
     game.inventory.fill(None);
     game.inventory[0] = Some(ItemStack::new(item, count));
-    game.creatures.lan_sounds.clear();
+    game.server.pending_native_sounds.clear();
     game.audio.0.capture = Some(Vec::new());
     crate::game::sculk::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
 }
@@ -398,8 +398,8 @@ fn cauldron_syrup_applies_once() {
         assert_eq!(game.stats.get("custom", "minecraft:use_cauldron"), 1);
         assert_eq!(game.stats.get("used", "test:syrup_bottle"), 1);
         assert_eq!(
-            game.creatures
-                .lan_sounds
+            game.server
+                .pending_native_sounds
                 .iter()
                 .filter(|sound| sound.sound == "minecraft:item.bucket.empty")
                 .count(),

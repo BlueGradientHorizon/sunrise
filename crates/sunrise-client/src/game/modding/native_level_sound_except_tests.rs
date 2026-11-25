@@ -61,12 +61,12 @@ fn a_level_sound_leaves_out_the_player_asked() {
         let play = |game: &mut super::Game<'_>, except| {
             game.level_play_sound(level, sound, at, SoundSource::Blocks, 1.0, 1.0, except)
         };
-        let queued = |game: &super::Game<'_>| game.creatures.lan_sounds.len();
+        let queued = |game: &super::Game<'_>| game.server.pending_native_sounds.len();
         let before = queued(game);
         assert!(play(game, Some(player)));
-        assert_eq!(game.creatures.lan_sounds.last().unwrap().except, Some(13));
+        assert_eq!(game.server.pending_native_sounds.last().unwrap().except, Some(13));
         assert!(play(game, None));
-        assert_eq!(game.creatures.lan_sounds.last().unwrap().except, None);
+        assert_eq!(game.server.pending_native_sounds.last().unwrap().except, None);
         assert_eq!(queued(game), before + 2);
         let gone = mod_api::__private::game::player_ref(
             mod_api::EntityRef::new(
@@ -147,7 +147,7 @@ fn a_level_sound_inside_a_transaction_waits_for_commit_and_discards_on_rollback(
                         Some(gone)
                     ));
                     assert!(
-                        game.creatures.lan_sounds.is_empty(),
+                        game.server.pending_native_sounds.is_empty(),
                         "deferred sound must not queue before commit"
                     );
                     assert!(sound_packets(&rx12).is_empty());
@@ -155,7 +155,7 @@ fn a_level_sound_inside_a_transaction_waits_for_commit_and_discards_on_rollback(
                     Err::<(), ()>(())
                 });
                 assert!(rolled.is_err());
-                assert!(game.creatures.lan_sounds.is_empty());
+                assert!(game.server.pending_native_sounds.is_empty());
                 assert!(sound_packets(&rx12).is_empty());
                 assert!(sound_packets(&rx13).is_empty());
 
@@ -190,7 +190,7 @@ fn a_level_sound_inside_a_transaction_waits_for_commit_and_discards_on_rollback(
                     });
                     assert!(inner_commit.is_ok());
                     // Still inside the outer transaction: neither queued nor sent yet.
-                    assert!(game.creatures.lan_sounds.is_empty());
+                    assert!(game.server.pending_native_sounds.is_empty());
                     assert!(sound_packets(&rx12).is_empty());
                     assert!(sound_packets(&rx13).is_empty());
                     Ok::<(), ()>(())
@@ -208,7 +208,7 @@ fn a_level_sound_inside_a_transaction_waits_for_commit_and_discards_on_rollback(
                 );
 
                 // Outside a transaction, `level_play_sound` keeps queueing immediately as before.
-                let before = game.creatures.lan_sounds.len();
+                let before = game.server.pending_native_sounds.len();
                 assert!(game.level_play_sound(
                     level,
                     anvil,
@@ -218,7 +218,7 @@ fn a_level_sound_inside_a_transaction_waits_for_commit_and_discards_on_rollback(
                     1.0,
                     None
                 ));
-                assert_eq!(game.creatures.lan_sounds.len(), before + 1);
+                assert_eq!(game.server.pending_native_sounds.len(), before + 1);
             });
         },
     );
@@ -303,8 +303,8 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                 let flame = ParticleOptions::simple(ParticleType::Flame);
 
                 let clear_queues = |game: &mut super::Game<'_>| {
-                    game.creatures.lan_sounds.clear();
-                    game.creatures.lan_particles.clear();
+                    game.server.pending_native_sounds.clear();
+                    game.server.pending_particles.clear();
                     game.level_events.clear();
                     game.server.lan_events.clear();
                     game.server.lan_global_events.clear();
@@ -357,8 +357,8 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                     assert!(game.level_send_particles(level, &heart, None, at, [0.0; 3], 0.0, 2));
                     assert!(game.level_level_event(level, 1500, pos, 0));
                     assert!(game.level_global_level_event(level, 1038, pos, 0));
-                    assert!(game.creatures.lan_sounds.is_empty());
-                    assert!(game.creatures.lan_particles.is_empty());
+                    assert!(game.server.pending_native_sounds.is_empty());
+                    assert!(game.server.pending_particles.is_empty());
                     assert!(game.server.lan_events.is_empty());
                     assert!(game.server.lan_global_events.is_empty());
                     assert!(game.server.lan_entity_events.is_empty());
@@ -368,8 +368,8 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                     Err::<(), ()>(())
                 });
                 assert!(rolled.is_err());
-                assert!(game.creatures.lan_sounds.is_empty());
-                assert!(game.creatures.lan_particles.is_empty());
+                assert!(game.server.pending_native_sounds.is_empty());
+                assert!(game.server.pending_particles.is_empty());
                 assert!(game.server.lan_events.is_empty());
                 assert!(game.server.lan_global_events.is_empty());
                 assert!(game.server.lan_entity_events.is_empty());
@@ -454,8 +454,8 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                     assert!(kept_child.is_ok());
 
                     // Nothing published before outermost commit.
-                    assert!(game.creatures.lan_sounds.is_empty());
-                    assert!(game.creatures.lan_particles.is_empty());
+                    assert!(game.server.pending_native_sounds.is_empty());
+                    assert!(game.server.pending_particles.is_empty());
                     assert!(game.server.lan_events.is_empty());
                     assert!(game.server.lan_global_events.is_empty());
                     assert!(game.server.lan_entity_events.is_empty());
@@ -631,10 +631,10 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                 assert!(game.level_send_particles(level, &heart, None, at, [0.0; 3], 0.0, 1));
                 assert!(game.level_level_event(level, 1500, pos, 0));
                 assert!(game.level_global_level_event(level, 1038, pos, 0));
-                assert_eq!(game.creatures.lan_sounds.len(), 2);
-                assert_eq!(game.creatures.lan_sounds[0].entity, None);
-                assert_eq!(game.creatures.lan_sounds[1].entity, Some(entity13_id));
-                assert_eq!(game.creatures.lan_particles.len(), 1);
+                assert_eq!(game.server.pending_native_sounds.len(), 2);
+                assert_eq!(game.server.pending_native_sounds[0].entity, None);
+                assert_eq!(game.server.pending_native_sounds[1].entity, Some(entity13_id));
+                assert_eq!(game.server.pending_particles.len(), 1);
                 assert_eq!(game.server.lan_events.len(), 1);
                 assert_eq!(game.server.lan_global_events.len(), 1);
                 assert_eq!(game.server.lan_entity_events, vec![(entity13_id, 35)]);
@@ -758,8 +758,8 @@ fn committed_effects_leave_unrelated_queues_intact_prevent_sound_recursion_and_k
                     assert!(game.level_level_event(level, 1000, pos, 0));
                     assert!(game.level_global_level_event(level, 1028, pos, 0));
                     assert!(game.entity_broadcast_event(entity13, 2));
-                    assert_eq!(game.creatures.lan_sounds.len(), 1);
-                    assert_eq!(game.creatures.lan_particles.len(), 1);
+                    assert_eq!(game.server.pending_native_sounds.len(), 1);
+                    assert_eq!(game.server.pending_particles.len(), 1);
                     assert_eq!(game.server.lan_events.len(), 1);
                     assert_eq!(game.server.lan_global_events.len(), 1);
                     assert_eq!(game.server.lan_entity_events, vec![(entity13_id, 2)]);
@@ -799,10 +799,10 @@ fn committed_effects_leave_unrelated_queues_intact_prevent_sound_recursion_and_k
                     assert!(committed.is_ok());
 
                     // Unrelated queued effects must remain untouched on the normal flush path!
-                    assert_eq!(game.creatures.lan_sounds.len(), 1);
-                    assert_eq!(game.creatures.lan_sounds[0].sound, burp);
-                    assert_eq!(game.creatures.lan_particles.len(), 1);
-                    assert_eq!(game.creatures.lan_particles[0].count, 4);
+                    assert_eq!(game.server.pending_native_sounds.len(), 1);
+                    assert_eq!(game.server.pending_native_sounds[0].sound, burp);
+                    assert_eq!(game.server.pending_particles.len(), 1);
+                    assert_eq!(game.server.pending_particles[0].count, 4);
                     assert_eq!(game.server.lan_events.len(), 1);
                     assert_eq!(game.server.lan_events[0].kind, 1000);
                     assert_eq!(game.server.lan_global_events.len(), 1);
@@ -1064,7 +1064,7 @@ fn sound_listener_transaction_preserves_mixed_play_and_stop_packet_order() {
                     });
                     assert!(aborted.is_err());
                     assert!(decode_packets(&rx12).is_empty());
-                    assert!(game.creatures.lan_sounds.is_empty());
+                    assert!(game.server.pending_native_sounds.is_empty());
 
                     // 2. Committed transaction: listener plays anvil, stops anvil, and plays burp inside
                     // its callback; all resolve at the call, commit runs no mod callbacks and sends
@@ -1096,7 +1096,7 @@ fn sound_listener_transaction_preserves_mixed_play_and_stop_packet_order() {
                         calls_at_closure_end,
                         "commit replay runs no mod listeners"
                     );
-                    assert!(game.creatures.lan_sounds.is_empty());
+                    assert!(game.server.pending_native_sounds.is_empty());
                     let packets = decode_packets(&rx12);
                     let sound_seeds: Vec<i64> = packets
                         .iter()
@@ -1186,7 +1186,7 @@ fn sound_listener_transaction_preserves_mixed_play_and_stop_packet_order() {
                     game.flush_native_sounds();
                     assert_eq!(classify(decode_packets(&rx12)), ["hit_sound"]);
                     assert_eq!(calls.load(Ordering::SeqCst), 1);
-                    assert!(game.creatures.lan_sounds.is_empty());
+                    assert!(game.server.pending_native_sounds.is_empty());
                 });
             });
         },
@@ -1398,7 +1398,7 @@ fn always_producing_sound_listener_stops_at_one_nested_sound_in_and_out_of_trans
                     assert_eq!(entity_calls.load(Ordering::SeqCst), 0);
                     assert_eq!(active_depth.load(Ordering::SeqCst), 0);
                     assert_eq!(max_depth.load(Ordering::SeqCst), 1);
-                    assert!(game.creatures.lan_sounds.is_empty());
+                    assert!(game.server.pending_native_sounds.is_empty());
                     assert_eq!(
                         classify(decode_packets(&rx12)),
                         vec!["pos_anvil", "pos_bell"]
@@ -1421,7 +1421,7 @@ fn always_producing_sound_listener_stops_at_one_nested_sound_in_and_out_of_trans
                     assert_eq!(entity_calls.load(Ordering::SeqCst), 0);
                     assert_eq!(active_depth.load(Ordering::SeqCst), 0);
                     assert_eq!(max_depth.load(Ordering::SeqCst), 1);
-                    assert!(game.creatures.lan_sounds.is_empty());
+                    assert!(game.server.pending_native_sounds.is_empty());
                     assert_eq!(
                         classify(decode_packets(&rx12)),
                         vec!["pos_anvil", "pos_bell"]
@@ -1445,7 +1445,7 @@ fn always_producing_sound_listener_stops_at_one_nested_sound_in_and_out_of_trans
                     assert_eq!(entity_calls.load(Ordering::SeqCst), 1);
                     assert_eq!(active_depth.load(Ordering::SeqCst), 0);
                     assert_eq!(max_depth.load(Ordering::SeqCst), 1);
-                    assert!(game.creatures.lan_sounds.is_empty());
+                    assert!(game.server.pending_native_sounds.is_empty());
                     assert_eq!(
                         classify(decode_packets(&rx12)),
                         vec!["pos_burp", "ent_anvil", "ent_bell"]
@@ -1465,7 +1465,7 @@ fn always_producing_sound_listener_stops_at_one_nested_sound_in_and_out_of_trans
                     assert_eq!(entity_calls.load(Ordering::SeqCst), 2);
                     assert_eq!(active_depth.load(Ordering::SeqCst), 0);
                     assert_eq!(max_depth.load(Ordering::SeqCst), 1);
-                    assert!(game.creatures.lan_sounds.is_empty());
+                    assert!(game.server.pending_native_sounds.is_empty());
                     assert_eq!(
                         classify(decode_packets(&rx12)),
                         vec!["pos_burp", "ent_anvil", "ent_bell"]
@@ -1511,7 +1511,7 @@ fn always_producing_sound_listener_stops_at_one_nested_sound_in_and_out_of_trans
                     assert_eq!(pos_calls.load(Ordering::SeqCst), 3);
                     assert_eq!(after_panic_calls.load(Ordering::SeqCst), 1);
                     assert_eq!(max_depth.load(Ordering::SeqCst), 1);
-                    assert!(game.creatures.lan_sounds.is_empty());
+                    assert!(game.server.pending_native_sounds.is_empty());
                     assert_eq!(
                         classify(decode_packets(&rx12)),
                         vec!["pos_anvil", "pos_bell"]

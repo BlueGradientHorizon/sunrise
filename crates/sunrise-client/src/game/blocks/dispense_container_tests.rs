@@ -1118,7 +1118,7 @@ fn a_container_that_could_give_picks_up_first_and_its_event_comes_before_the_cli
         // Holding 1000 of 2000, it could empty into the air or take more: with a source in
         // front it takes more.
         set_front(game, "minecraft:water");
-        game.creatures.lan_sounds.clear();
+        game.server.pending_native_sounds.clear();
         dispense_fixture::start_recording();
         let full = dispense(game, half.unwrap());
         let lines = dispense_fixture::stop_recording();
@@ -1130,8 +1130,8 @@ fn a_container_that_could_give_picks_up_first_and_its_event_comes_before_the_cli
         let click = lines.iter().position(|line| line.starts_with("L 1000 "));
         assert!(pickup.is_some() && pickup < click, "{lines:?}");
         let sounds: Vec<_> = game
-            .creatures
-            .lan_sounds
+            .server
+            .pending_native_sounds
             .iter()
             .map(|s| s.sound.clone())
             .collect();
@@ -1154,7 +1154,7 @@ fn a_container_that_could_give_picks_up_first_and_its_event_comes_before_the_cli
                 ("amount", Tag::Int(1500)),
             ])),
         );
-        game.creatures.lan_sounds.clear();
+        game.server.pending_native_sounds.clear();
         dispense_fixture::start_recording();
         let placed = dispense(game, almost_full);
         let lines = dispense_fixture::stop_recording();
@@ -1182,8 +1182,8 @@ fn a_container_that_could_give_picks_up_first_and_its_event_comes_before_the_cli
             "{lines:?}"
         );
         let sounds: Vec<_> = game
-            .creatures
-            .lan_sounds
+            .server
+            .pending_native_sounds
             .iter()
             .map(|s| s.sound.clone())
             .collect();
