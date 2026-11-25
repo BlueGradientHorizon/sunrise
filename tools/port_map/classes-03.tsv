@@ -6,7 +6,7 @@ BlockCollisions.computeNext	port	crates/sunrise-world/src/block_collision_scan.r
 BlockCollisions.getChunk	inline	crates/sunrise-world/src/block_collision_scan.rs::BlockCollisionScan::find_next	chunk fetch through collision_chunk inside find_next
 CardinalLighting.byFace	port	crates/sunrise-client-render/src/mesher/lighting.rs::cardinal	per-face directional shade; nether flag handled in the same fn
 ClipContext.getFluidShape	inline	crates/sunrise-world/src/world_ray.rs::clip_world	pick_fluid decides canPick; the shape is clipped in clip_world
-ColorMapColorUtil.get	port	crates/sunrise-client-render/src/biome.rs::sample	colormap lookup by temperature and downfall
+ColorMapColorUtil.get	port	crates/sunrise-level/src/biome.rs::sample	colormap lookup by temperature and downfall
 EntityBasedExplosionDamageCalculator.getBlockExplosionResistance	port	crates/sunrise-client/src/game/entities/explosion.rs::Game::exploded_positions	the blast source's own override: one block's resistance is passed in (the respawn anchor's water-like block), a dangerous wither skull caps a destroyable block at 0.8 and a TNT minecart spares rails
 ExplosionDamageCalculator.getEntityDamageAmount	inline	crates/sunrise-client/src/game/entities/explosion.rs::Game::explosion_hurt_entities	damage formula inline; the player copy is in explosion_hurt_player
 LevelSettings.copy	skip:java		immutable record copy; Sunrise keeps level fields on its own struct
@@ -103,7 +103,7 @@ BlastFurnaceBlock.openContainer	port	crates/sunrise-world/src/level/interact.rs:
 BonemealableFeaturePlacerBlock.performBonemeal	port	crates/sunrise-world/src/level/bonemeal.rs::Behaviours::place_feature	places the configured feature
 BrewingStandBlock.animateTick	port	crates/sunrise-client/src/animate_tick.rs::block_animate_tick	brewing bubbles
 BrewingStandBlock.createBlockStateDefinition	skip:data		block state definition is data (blocks table in sunrise-items)
-BrewingStandBlock.getTicker	port	crates/sunrise-client-render/src/brewing.rs::BrewingStand::brew	the stand's brewing step
+BrewingStandBlock.getTicker	port	crates/sunrise-level/src/brewing.rs::BrewingStand::brew	the stand's brewing step
 BuddingAmethystBlock.randomTick	port	crates/sunrise-world/src/level/tick.rs::Sim::budding_amethyst_tick
 BushBlock.performBonemeal	port	crates/sunrise-world/src/level/bonemeal.rs::Sim::perform_bonemeal
 CactusFlowerBlock.mayPlaceOn	port	crates/sunrise-world/src/level/survive.rs::Sim::may_place_on

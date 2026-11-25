@@ -69,7 +69,7 @@ pub struct LightTables {
     dynamic: bool,
 }
 #[derive(Clone, Copy, Default)]
-pub(crate) struct SectionStatus {
+pub struct SectionStatus {
     pub occupied: SectionMask,
     pub fully_lit_from: Option<usize>,
 }
@@ -105,11 +105,7 @@ impl LightTables {
     }
     /// Publish the storage supported by non-air sections and gather the inputs
     /// for initializing omitted layers in a light-correct saved chunk.
-    pub(crate) fn publish_section_status(
-        &self,
-        chunk: &mut Chunk,
-        shape: LevelShape,
-    ) -> SectionStatus {
+    pub fn publish_section_status(&self, chunk: &mut Chunk, shape: LevelShape) -> SectionStatus {
         let first = chunk.min_y() >> 4;
         let mut status = SectionStatus::default();
         chunk.light_support = SectionMask::EMPTY;
@@ -286,7 +282,7 @@ impl LightTables {
         Ok(tables)
     }
     /// Assembled tables (tests and benchmarks): derives the packed light cache.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     fn from_parts(cells: Vec<Cell>, occludes: Vec<bool>, faces: usize) -> Self {
         let mut tables = Self {
             air_states: (0..cells.len()).map(|id| id == 0).collect(),
@@ -1247,7 +1243,7 @@ pub fn update_light_layers<L: AsRef<[u8]>>(
 }
 
 /// `markNewInconsistencies`: drop layers whose last section-status support went away.
-pub(crate) fn remove_light_layers(chunk: &mut Chunk, removed: SectionMask) -> Vec<usize> {
+pub fn remove_light_layers(chunk: &mut Chunk, removed: SectionMask) -> Vec<usize> {
     edit_light_layers::<&[u8]>(chunk, &[], removed, chunk.light_sky)
 }
 
@@ -1938,11 +1934,13 @@ fn relight_layer(
     }
 }
 
-#[cfg(test)]
-pub(crate) mod tests {
+#[cfg(any(test, feature = "test-support"))]
+#[cfg_attr(not(test), allow(dead_code, unused_imports))]
+pub mod tests {
     use super::*;
     use crate::chunk::{HEIGHT, MIN_Y, SECTIONS};
 
+    #[cfg(test)]
     #[test]
     fn changed_cells_dirty_only_the_sections_within_a_block() {
         let dirty = |cells: &[(usize, usize, usize)]| {
@@ -1968,13 +1966,13 @@ pub(crate) mod tests {
         assert_eq!(dirty(&[(0, 0, 0)]).len(), 8);
     }
 
-    pub(crate) const AIR: u32 = 0;
+    pub const AIR: u32 = 0;
     const STONE: u32 = 1;
-    pub(crate) const TORCH: u32 = 2;
+    pub const TORCH: u32 = 2;
     const SLAB: u32 = 3;
     /// Air, stone, torch and a bottom slab (full bottom face, half sides,
     /// empty top), with a third face shape for the half sides.
-    pub(crate) fn tables() -> LightTables {
+    pub fn tables() -> LightTables {
         let cell = |dampening, emission, faces: [u16; 6]| Cell {
             dampening,
             emission,
@@ -1994,7 +1992,7 @@ pub(crate) mod tests {
             3,
         )
     }
-    pub(crate) fn world(edit: impl Fn(&mut Chunk)) -> HashMap<(i32, i32), Arc<Chunk>> {
+    pub fn world(edit: impl Fn(&mut Chunk)) -> HashMap<(i32, i32), Arc<Chunk>> {
         world_of(crate::chunk::ColumnLayout::VANILLA, edit)
     }
     /// Lit chunks around (0, 0) of `layout`, stone up to y 0.
@@ -2080,6 +2078,7 @@ pub(crate) mod tests {
 
     /// A `dynamic_light` cell emits its chunk's stored answer when its chunk is lit, and its
     /// state's own light without one.
+    #[cfg(test)]
     #[test]
     fn a_light_job_seeds_dynamic_cells_from_their_answers() {
         let tables = lamp_tables();
@@ -2095,6 +2094,7 @@ pub(crate) mod tests {
     /// The relight of an edit takes a `dynamic_light` cell's stored answer, as the cell is
     /// placed and as its source again once brighter light around it goes, and ends where the
     /// full light of the same blocks does.
+    #[cfg(test)]
     #[test]
     fn relights_seed_dynamic_cells_from_their_answers() {
         let tables = lamp_tables();
@@ -2139,6 +2139,7 @@ pub(crate) mod tests {
 
     /// The cells the game asks: those holding a `dynamic_light` state, with their answer's key
     /// and their world position, in a chunk away from the origin and below y 0.
+    #[cfg(test)]
     #[test]
     fn dynamic_cells_name_the_lamps_of_a_chunk() {
         let tables = lamp_tables();
@@ -2157,6 +2158,7 @@ pub(crate) mod tests {
         assert!(tables.dynamic_cells(&chunk, |s| s != 0).is_empty());
     }
 
+    #[cfg(test)]
     #[test]
     fn torch_light_falls_off_by_one_per_block() {
         let w = world(|c| {
@@ -2167,6 +2169,7 @@ pub(crate) mod tests {
         assert_eq!(block(&w, 8, 3, 8), 11);
         assert_eq!(block(&w, 8, -1, 8), 0);
     }
+    #[cfg(test)]
     #[test]
     fn bottom_slab_takes_sky_from_above_but_not_through_its_bottom() {
         // A slab roof over a closed stone room at y 0..2.
@@ -2196,6 +2199,7 @@ pub(crate) mod tests {
     /// bring that back from a column it doesn't read. Columns like that are
     /// lit again whole; without it the border stays at 0 for good once
     /// (1, 0)'s light lands beside it.
+    #[cfg(test)]
     #[test]
     fn an_edit_beside_a_column_not_lit_yet_lights_the_column_again() {
         let tables = tables();
@@ -2253,6 +2257,7 @@ pub(crate) mod tests {
         assert_eq!(block(&w, 14, 0, 8), 6);
         assert!(again.contains(&(0, 0)), "{again:?}");
     }
+    #[cfg(test)]
     #[test]
     fn relight_keeps_unchanged_and_unlit_sections() {
         let mut w = world(|_| {});
@@ -2291,6 +2296,7 @@ pub(crate) mod tests {
     /// Emitters placed in light at most as bright as theirs (flowing lava
     /// next to lava) only brighten: nothing they lit is darkened and lit
     /// again, and the result is the full relight's.
+    #[cfg(test)]
     #[test]
     fn emitters_placed_in_their_own_light_only_brighten() {
         let mut w = world(|c| {
@@ -2331,6 +2337,7 @@ pub(crate) mod tests {
             }
         }
     }
+    #[cfg(test)]
     #[test]
     fn random_border_relights_match_full_relight() {
         // Edits around every border of chunk (0, 0), at the top and bottom of
@@ -2399,6 +2406,7 @@ pub(crate) mod tests {
             assert!((0..4096).all(|i| a.light(i) == b.light(i)));
         }
     }
+    #[cfg(test)]
     #[test]
     fn a_tall_column_is_lit_to_its_top() {
         let layout = crate::chunk::ColumnLayout::new(-64, 2096).unwrap();
@@ -2425,6 +2433,7 @@ pub(crate) mod tests {
         apply_lighting(&mut lit, vec![Light::Uniform(0xF0); 131]);
         assert!(Arc::ptr_eq(&chunk.sections[top], &lit.sections[top]));
     }
+    #[cfg(test)]
     #[test]
     #[ignore = "daily"]
     fn a_tall_column_relights_as_its_full_light_and_keys_its_sections() {
@@ -2468,6 +2477,7 @@ pub(crate) mod tests {
         changed.dirty_sections(|s| dirty.push(s.1));
         assert!(dirty.iter().all(|&sy| (0..131).contains(&sy)), "{dirty:?}");
     }
+    #[cfg(test)]
     #[test]
     fn incremental_relight_matches_full_relight() {
         let mut w = world(|c| {
@@ -2505,6 +2515,7 @@ pub(crate) mod tests {
             }
         }
     }
+    #[cfg(test)]
     #[test]
     fn lighting_result_preserves_current_edits_and_snapshots() {
         let mut current = Chunk::empty(0, 0);
@@ -2553,6 +2564,7 @@ pub(crate) mod tests {
         }
     }
 
+    #[cfg(test)]
     #[test]
     fn relighting_reports_exactly_the_changed_positions() {
         let mut chunk = Chunk::empty(1, -1);
@@ -2597,6 +2609,7 @@ pub(crate) mod tests {
         assert!(copied <= 3, "{copied} sections copied");
     }
 
+    #[cfg(test)]
     #[test]
     fn changes_dirty_the_sections_within_a_block_of_each_cell() {
         // Cells inside sections, on each face and corner, at the bottom and
@@ -2648,6 +2661,7 @@ pub(crate) mod tests {
         }
     }
 
+    #[cfg(test)]
     #[test]
     fn stored_layers_fill_the_column_as_vanilla_reads_them() {
         // Section 10's sky layer is 7 on its bottom row and 3 above; no
@@ -2693,6 +2707,7 @@ pub(crate) mod tests {
         assert_eq!(chunk.light(0, MIN_Y - 1, 0), 0x46);
     }
 
+    #[cfg(test)]
     #[test]
     fn changing_a_bottom_sky_row_refreshes_the_layers_that_inherit_it() {
         let mut chunk = Chunk::empty(0, 0);
@@ -2714,6 +2729,7 @@ pub(crate) mod tests {
         assert_eq!(chunk.stored_light_layers(4), Some([false, true]));
     }
 
+    #[cfg(test)]
     #[test]
     fn block_only_upper_pad_has_no_sky_in_a_no_sky_level() {
         let mut chunk = Chunk::empty(0, 0);
@@ -2729,6 +2745,7 @@ pub(crate) mod tests {
         assert_eq!(chunk.stored_light_layers(SECTIONS + 1), Some([false, true]));
     }
 
+    #[cfg(test)]
     #[test]
     fn a_computed_block_layer_replaces_an_omitted_one_without_storing_inherited_sky() {
         let mut chunk = Chunk::empty(0, 0);
@@ -2740,6 +2757,7 @@ pub(crate) mod tests {
         assert_eq!(chunk.light(0, MIN_Y, 0), 0xF4);
     }
 
+    #[cfg(test)]
     #[test]
     fn computed_sky_refreshes_inherited_light_without_storing_it() {
         for incremental in [false, true] {
@@ -2786,6 +2804,7 @@ pub(crate) mod tests {
         }
     }
 
+    #[cfg(test)]
     #[test]
     fn a_mixed_air_section_does_not_create_a_dark_border() {
         use crate::world::World;
@@ -2811,6 +2830,7 @@ pub(crate) mod tests {
         assert_eq!(world.light(16, 0, 0), 0);
     }
 
+    #[cfg(test)]
     #[test]
     fn empty_chunk_missing_neighbours_and_no_sky() {
         let mut chunk = Chunk::empty(0, 0);
@@ -2876,6 +2896,7 @@ pub(crate) mod tests {
         }
     }
 
+    #[cfg(test)]
     #[test]
     #[ignore = "microbenchmark; run with --ignored --nocapture"]
     fn benchmark_worker_light_results() {
@@ -2968,6 +2989,7 @@ pub(crate) mod tests {
     /// Relight cost for torches placed and removed near chunk borders with
     /// slabs flickering around them (fluids next to lava, in the game).
     /// `cargo test --profile fast -p sunrise-client relight_bench -- --ignored --nocapture`
+    #[cfg(test)]
     #[test]
     #[ignore]
     fn relight_bench() {
@@ -2998,6 +3020,7 @@ pub(crate) mod tests {
         );
     }
 
+    #[cfg(test)]
     #[test]
     #[ignore]
     fn relight_single_block_bench() {
@@ -3029,6 +3052,7 @@ pub(crate) mod tests {
         );
     }
 
+    #[cfg(test)]
     #[test]
     #[ignore = "benchmark"]
     fn benchmark_light_chunk() {
@@ -3077,6 +3101,7 @@ pub(crate) mod tests {
         );
     }
 
+    #[cfg(test)]
     #[test]
     fn scratch_queues_shrink_above_capacity_cap() {
         let mut scratch = LightScratch::new();
@@ -3262,6 +3287,7 @@ pub(crate) mod tests {
     /// writes, for every palette the collector can hold: one value, a list of
     /// up to 256 (four to eight bits wide) and the global palette beyond it,
     /// with and without a light source in the palette.
+    #[cfg(test)]
     #[test]
     fn section_states_match_the_unpacked_ids() {
         let tables = info_tables();
@@ -3333,6 +3359,7 @@ pub(crate) mod tests {
 
     /// Threads lighting at once each take their own scratch from the pool: every result is what the old
     /// flood fill gives, and the pool keeps no more than its cap afterwards.
+    #[cfg(test)]
     #[test]
     fn pooled_scratch_lights_like_the_old_algorithm_across_threads() {
         let t = tables();
@@ -3369,6 +3396,7 @@ pub(crate) mod tests {
         assert!(SCRATCH_POOL.lock().unwrap().len() <= kept_scratch());
     }
 
+    #[cfg(test)]
     #[test]
     fn light_chunk_matches_old_algorithm() {
         let t = tables();

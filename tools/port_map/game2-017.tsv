@@ -10,9 +10,9 @@ BlockEntity.loadStatic	port	crates/sunrise-client/src/save/block_entity_decode.r
 BlockEntity.fillCrashReportCategory	skip:debug		crash report detail
 BlockEntity.applyComponents	inline	crates/sunrise-client/src/block_entity_item.rs::place	implicit components applied as part of placing the item's data
 BlockEntity.collectComponents	port	crates/sunrise-client/src/block_entity_item.rs::collected_components	explicit plus implicit components for picked items and creative shulker drops
-BrewingStandBlockEntity.getPotionBits	inline	crates/sunrise-client-render/src/brewing.rs::BrewingStand::tick	bottle occupancy sent as out.bottles
-BrewingStandBlockEntity.isBrewable	port	crates/sunrise-client-render/src/brewing.rs::BrewingStand::brewable
-BrewingStandBlockEntity.doBrew	port	crates/sunrise-client-render/src/brewing.rs::BrewingStand::brew
+BrewingStandBlockEntity.getPotionBits	inline	crates/sunrise-level/src/brewing.rs::BrewingStand::tick	bottle occupancy sent as out.bottles
+BrewingStandBlockEntity.isBrewable	port	crates/sunrise-level/src/brewing.rs::BrewingStand::brewable
+BrewingStandBlockEntity.doBrew	port	crates/sunrise-level/src/brewing.rs::BrewingStand::brew
 BrewingStandBlockEntity.getSlotsForFace	port	crates/sunrise-client/src/game/blocks/machines/mod.rs::View::slots_for_face_iter
 BrushableBlockEntity.dropContent	port	crates/sunrise-client/src/game/blocks/brush_server.rs::Game::brushing_completed	item drops from the hit face; loot is unpacked in unpack_brush_loot
 BrushableBlockEntity.tryLoadLootTable	port	crates/sunrise-client/src/game/blocks/brush_server.rs::Game::unpack_brush_loot	reads LootTable and seed from the saved tag
@@ -45,14 +45,14 @@ ContainerOpenersCounter.decrementOpeners	port	crates/sunrise-client/src/game/blo
 ContainerOpenersCounter.hasContainerOpen	port	crates/sunrise-client/src/mobs/transport_items.rs::has_open	golems only; players are counted in lid_openers
 ContainerOpenersCounter.incrementOpeners	port	crates/sunrise-client/src/game/blocks/block_entity_anims.rs::Game::count_opener	the open or close and the first opener's scheduleRecheck
 ContainerOpenersCounter.recheckOpeners	port	crates/sunrise-client/src/game/blocks/level_access.rs::GameLevel::recheck_container_openers	the level asks, from ChestBlock.tick, EnderChestBlock.tick and BarrelBlock.tick
-CrafterBlockEntity.isSlotDisabled	port	crates/sunrise-client-render/src/containers.rs::Crafter::can_place	disabled check (disabled[slot]) inside can_place
+CrafterBlockEntity.isSlotDisabled	port	crates/sunrise-level/src/containers.rs::Crafter::can_place	disabled check (disabled[slot]) inside can_place
 CrafterBlockEntity.canPlaceItem	port	crates/sunrise-client/src/game/blocks/machines/mod.rs::Containers::can_place	calls Crafter::can_place
-CrafterBlockEntity.smallerStackExist	port	crates/sunrise-client-render/src/containers.rs::Crafter::can_place	the smaller-stack check later in the slots
+CrafterBlockEntity.smallerStackExist	port	crates/sunrise-level/src/containers.rs::Crafter::can_place	the smaller-stack check later in the slots
 CrafterBlockEntity.saveAdditional	port	crates/sunrise-client/src/save/block_entity_encode.rs::encode	crafter arm: items, disabled slots, triggered, ticks
 CrafterBlockEntity.isEmpty	port	crates/sunrise-client/src/game/blocks/machines/mod.rs::Containers::is_empty
 CrafterBlockEntity.fillStackedContents	port	crates/sunrise-client/src/menu/place.rs::Menu::stacked_contents	the crafter's nine slots are the menu's MAIN container (`CrafterMenu.addSlots`), accounted like a grid (`accountSimpleStack`) for the recipe book's craftable check
 CrafterBlockEntity.addDisabledSlots	port	crates/sunrise-client/src/save/block_entity_encode.rs::encode	disabled_slots in the crafter arm
-CrafterBlockEntity.slotCanBeDisabled	port	crates/sunrise-client-render/src/containers.rs::Crafter::slot_can_be_disabled
+CrafterBlockEntity.slotCanBeDisabled	port	crates/sunrise-level/src/containers.rs::Crafter::slot_can_be_disabled
 CreakingHeartBlockEntity.updateCreakingState	inline	crates/sunrise-client/src/mobs/creaking_heart.rs::server_tick	creaking_heart_state set in server_tick
 CreakingHeartBlockEntity.setCreakingInfo	inline	crates/sunrise-client/src/mobs/creaking_heart.rs::protector	uuid reset and ticks reset inside protector
 CreakingHeartBlockEntity.isProtector	port	crates/sunrise-client/src/mobs/creaking_heart.rs::protector

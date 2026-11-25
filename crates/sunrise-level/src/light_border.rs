@@ -83,7 +83,7 @@ impl World {
         self.install_light_column_initialized(chunk, SectionStatus::default());
     }
 
-    pub(crate) fn install_light_column_initialized(&mut self, chunk: Chunk, status: SectionStatus) {
+    pub fn install_light_column_initialized(&mut self, chunk: Chunk, status: SectionStatus) {
         let key = (chunk.x, chunk.z);
         let proto = self.proto_light_support.remove(&key).unwrap_or_default();
         let mut chunk = Arc::new(chunk);

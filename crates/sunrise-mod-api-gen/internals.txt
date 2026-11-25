@@ -4,8 +4,8 @@ sunrise_client_lib::vanillagen::shared_data_with
 sunrise_client_render::assets::RenderAssets::load_with
 sunrise_client_render::camera::view_matrix
 sunrise_client_render::chat::Chat::add
-sunrise_client_render::chunk::Chunk::get
-sunrise_client_render::chunk::Section::unpack
+sunrise_level::chunk::Chunk::get
+sunrise_level::chunk::Section::unpack
 sunrise_client_render::fog::fog_type
 sunrise_client_render::font::Font::load
 sunrise_client_render::font::Font::take_patches
@@ -51,7 +51,7 @@ sunrise_level::assets::Assets
 sunrise_client_render::camera::NearPlane
 sunrise_client_render::chat::ChatScreen
 sunrise_client_render::chat::ChatSource
-sunrise_client_render::chunk::Chunk
+sunrise_level::chunk::Chunk
 sunrise_client_render::font::Font
 sunrise_client_render::gfx::renderer::Renderer
 sunrise_client_render::gfx::frame::Frame
@@ -71,7 +71,7 @@ sunrise_client_render::screen_effects::ScreenInputs
 sunrise_client_render::sprite_cache::Decoded
 sunrise_client_render::sprites::Sprites
 sunrise_client_render::ui::Caret
-sunrise_client_render::world::World
+sunrise_level::world::World
 sunrise_core::geometry::Direction
 sunrise_core::position::BlockPos
 sunrise_items::blocks::BlockFacts
@@ -88,9 +88,9 @@ sunrise_world::worldgen::structure::legacy::PieceRandom
 
 # Treefall: typed lower-crate reads used by its Blocks/Host adapter.
 # Each is an API request; optional references remain call-scoped nodes.
-sunrise_client_render::world::World::loaded
-sunrise_client_render::world::World::block
-sunrise_client_render::world::World::is_air
+sunrise_level::world::World::loaded
+sunrise_level::world::World::block
+sunrise_level::world::World::is_air
 sunrise_items::blocks::BlockFacts::get
 sunrise_items::blocks::BlockFacts::is_air
 sunrise_items::items::Items::get

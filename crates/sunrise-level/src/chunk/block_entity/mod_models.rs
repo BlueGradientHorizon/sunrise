@@ -169,12 +169,12 @@ impl ModBlockEntity {
     /// The block entity's immutable type id (`mymod:machine`).
     ///
     /// ```compile_fail
-    /// let mut entity = sunrise_client_render::containers::ModBlockEntity::default();
+    /// let mut entity = sunrise_level::containers::ModBlockEntity::default();
     /// entity.id = "other:machine".into();
     /// ```
     ///
     /// ```compile_fail
-    /// let mut entity = sunrise_client_render::containers::ModBlockEntity::default();
+    /// let mut entity = sunrise_level::containers::ModBlockEntity::default();
     /// entity.id().push_str("_changed");
     /// ```
     pub fn id(&self) -> &str {

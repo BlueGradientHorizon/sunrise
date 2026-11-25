@@ -47,10 +47,10 @@ Screenshot.grab	port	crates/sunrise-client/src/game/interface/chat.rs::Game::tak
 Screenshot.takeScreenshot	port	crates/sunrise-client/src/lan/playerdata.rs::save_now	gap: minor: full size only, no downscale factor
 Screenshot.getFile	port	crates/sunrise-client/src/game/interface/chat.rs::screenshot_name	minor: UTC instead of local time in the name
 ScrollWheelHandler.getNextScrollWheelSelection	port	crates/sunrise-client-input/src/mouse.rs::ScrollWheelHandler::next_selection
-SectionUpdateTracker.setDirty	port	crates/sunrise-client-render/src/world.rs::DirtySections::insert	gap: minor: the from-player flag that orders remeshing is not kept
+SectionUpdateTracker.setDirty	port	crates/sunrise-level/src/world.rs::DirtySections::insert	gap: minor: the from-player flag that orders remeshing is not kept
 SectionUpdateTracker.hasAllNeighbors	inline	crates/sunrise-client-render/src/streaming.rs::Streaming::update	the meshing loop waits until all eight neighbouring columns are lit and not lighting, and Streaming::region yields None unless all nine chunks are there, as doesChunkExistAt's chunk-at-FULL test
 SectionUpdateTracker.doesChunkExistAt	inline	crates/sunrise-client-render/src/streaming.rs::Streaming::region	region() looks up each of the 3x3 chunks and gives None if one is absent; the light-on-in-column half is the `lit` set the update loop waits on
-SectionUpdateTracker.SectionDirtyState.setDirty	port	crates/sunrise-client-render/src/world.rs::DirtySections::insert	gap: minor: the from-player flag is not kept
+SectionUpdateTracker.SectionDirtyState.setDirty	port	crates/sunrise-level/src/world.rs::DirtySections::insert	gap: minor: the from-player flag is not kept
 SectionUpdateTracker.SectionDirtyState.setSectionNode	skip:java		section node exists only for the rotating storage; Sunrise keys sections by coordinates
 StringSplitter.stringWidth	port	crates/sunrise-client-render/src/font.rs::Font::width
 StringSplitter.plainIndexAtWidth	port	crates/sunrise-client-render/src/screen_draw.rs::Measure::plain	gap: minor: measures without the style (bold widths)

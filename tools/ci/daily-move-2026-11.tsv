@@ -42,10 +42,10 @@ sunrise-client-lib	lib	server_perf::tests::sampled::a_sampled_capture_reads_back
 sunrise-sim	lib	ticket_levels::tests::grid_matches_the_map	crates/sunrise-sim/src/ticket_levels.rs:1052	slow
 sunrise-sim	lib	ticket_levels::tiled_tests::tiles_match_scalar_levels_with_overlaps_and_portals	crates/sunrise-sim/src/ticket_levels.rs:1458	slow
 sunrise-client-render	lib	auth::tests::certificates_response	crates/sunrise-client-render/src/auth.rs:901	slow
-sunrise-client-render	lib	block_edit::tests::tracked_states_are_reported	crates/sunrise-client-render/src/block_edit.rs:269	slow
-sunrise-client-render	lib	chunk::tests::cloning_during_a_height_refresh_keeps_the_new_height	crates/sunrise-client-render/src/chunk.rs:1270	slow
-sunrise-client-render	lib	chunk::tests::motion_blocking_follows_writes	crates/sunrise-client-render/src/chunk.rs:1296	slow
-sunrise-client-render	lib	chunk::tests::world_surface_follows_writes	crates/sunrise-client-render/src/chunk.rs:1170	slow
+sunrise-level	lib	block_edit::tests::tracked_states_are_reported	crates/sunrise-level/src/block_edit.rs:269	slow
+sunrise-level	lib	chunk::tests::cloning_during_a_height_refresh_keeps_the_new_height	crates/sunrise-level/src/chunk.rs:1270	slow
+sunrise-level	lib	chunk::tests::motion_blocking_follows_writes	crates/sunrise-level/src/chunk.rs:1296	slow
+sunrise-level	lib	chunk::tests::world_surface_follows_writes	crates/sunrise-level/src/chunk.rs:1170	slow
 sunrise-client-render	lib	core_shader::glsl_fixups::tests::thousands_of_calls_are_left_as_they_were	crates/sunrise-client-render/src/core_shader/glsl_fixups/tests/mod.rs:231	slow
 sunrise-client-render	lib	gfx::inter_stage_tests::no_pipeline_exceeds_the_weakest_gpus_inter_stage_limit	crates/sunrise-client-render/src/gfx/inter_stage_tests.rs:221	slow
 sunrise-client-render	lib	gfx::occlusion::tests::same_sections_as_vanilla	crates/sunrise-client-render/src/gfx/occlusion.rs:1336	slow
@@ -65,7 +65,7 @@ sunrise-client-render	lib	gfx::tests::fading_sections_go_to_the_cpu_and_come_bac
 sunrise-client-render	lib	gfx::tests::shaders_translate_to_hlsl_for_directx_12_and_glsl_for_opengl	crates/sunrise-client-render/src/gfx.rs:13546	slow
 sunrise-client-render	lib	graphics_ui::tests::hdr_sliders_step_through_every_value_they_can_be_set_to	crates/sunrise-client-render/src/graphics_ui.rs:2777	slow
 sunrise-client-render	lib	hud::pictures::tests::realms_pictures_do_not_enlarge_the_startup_atlas	crates/sunrise-client-render/src/hud/pictures/tests.rs:61	slow
-sunrise-client-render	lib	light::tests::a_tall_column_relights_as_its_full_light_and_keys_its_sections	crates/sunrise-client-render/src/light.rs:1981	slow
+sunrise-level	lib	light::tests::a_tall_column_relights_as_its_full_light_and_keys_its_sections	crates/sunrise-level/src/light.rs:1981	slow
 sunrise-client-render	lib	packs::tests::a_pack_that_unpacks_past_its_budget_fails_and_leaves_nothing	crates/sunrise-client-render/src/packs.rs:2469	slow
 sunrise-level	lib	perf_capture::tests::a_converted_profile_written_to_a_file_reads_back_through_the_queries	crates/sunrise-level/src/perf_capture/tests.rs:502	slow
 sunrise-level	lib	perf_capture::tests::a_stack_becomes_a_root_to_leaf_chain_with_its_context	crates/sunrise-level/src/perf_capture/tests.rs:130	slow

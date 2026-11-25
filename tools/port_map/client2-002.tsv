@@ -139,7 +139,7 @@ ChunkSectionsToRender.renderOit	port	crates/sunrise-client-render/src/gfx.rs::Re
 ChunkSectionsToRender.renderLayers	inline	crates/sunrise-client-render/src/gfx.rs::Renderer::draw_sections	per-layer loop over the page runs
 ChunkSectionsToRender.DrawIndirect.render	port	crates/sunrise-client-render/src/gfx.rs::Renderer::draw_sections	multi-draw indirect branch
 ChunkSectionsToRender.DrawSeparate.render	port	crates/sunrise-client-render/src/gfx.rs::Renderer::draw_sections	per-draw branch without multi-draw
-RenderRegionCache.createRegion	inline	crates/sunrise-client-render/src/chunk.rs::borrow	gap: minor: borrows the 3x3 chunk columns around the section; nothing is copied
+RenderRegionCache.createRegion	inline	crates/sunrise-level/src/chunk.rs::borrow	gap: minor: borrows the 3x3 chunk columns around the section; nothing is copied
 RenderRegionCache.getSectionDataCopy	skip:java		per-thread copy cache; Sunrise borrows the chunks
 RenderSectionRegion.getBlockState	inline	crates/sunrise-client-render/src/mesher.rs::Mesher::mesh	block reads of the mesh loop
 RenderSectionRegion.getFluidState	port	crates/sunrise-client-render/src/mesher/fluid.rs::FlowView::fluid	fluid read used by the fluid mesher

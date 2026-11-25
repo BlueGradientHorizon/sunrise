@@ -392,18 +392,18 @@
     "rationale": "Existing adapter-gated GPU lane in tools/ci/ignored-tests/gpu.txt; a real available adapter is required and the runner handles adapter availability separately from prepared-resource daily selection."
   },
   {
-    "package": "sunrise-client-render",
+    "package": "sunrise-level",
     "target": "lib",
     "test": "light::tests::benchmark_light_chunk",
-    "path": "crates/sunrise-client-render/src/light.rs",
+    "path": "crates/sunrise-level/src/light.rs",
     "reason": "benchmark",
     "rationale": "Opt-in measurement, not an ordinary daily correctness check: benchmark. Run by hand on an idle machine with the optimized profile and its explicitly requested inputs; all assertions remain in the test."
   },
   {
-    "package": "sunrise-client-render",
+    "package": "sunrise-level",
     "target": "lib",
     "test": "light::tests::benchmark_worker_light_results",
-    "path": "crates/sunrise-client-render/src/light.rs",
+    "path": "crates/sunrise-level/src/light.rs",
     "reason": "microbenchmark; run with --ignored --nocapture",
     "rationale": "Opt-in measurement, not an ordinary daily correctness check: microbenchmark; run with --ignored --nocapture. Run by hand on an idle machine with the optimized profile and its explicitly requested inputs; all assertions remain in the test."
   },

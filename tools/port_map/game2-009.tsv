@@ -10,13 +10,13 @@ WindChargeItem.createDispenseConfig	port	crates/sunrise-client/src/game/blocks/d
 alchemy/Potion.hasInstantEffects	inline	crates/sunrise-client/src/game/items/potions_server.rs::Game::splash	the instant check is written inline for the splash level event and sound (2007/1054 vs 2002/1053)
 PotionContents.createItemStack	port	crates/sunrise-items/src/item_data.rs::ItemStack::with_potion	item stack plus the potion in its data
 PotionContents.is	inline	crates/sunrise-client/src/cauldron.rs::interact	gap: minor: only the water check is here; other callers compare the potion id themselves (dispenser.rs, Enderman)
-PotionContents.isPotionWithoutCustomEffects	inline	crates/sunrise-client-render/src/effects.rs::PlayerEffects::potion_effects	Sunrise has no custom effects on a potion stack, so this is always the potion alone
-PotionContents.getAllEffects	port	crates/sunrise-client-render/src/effects.rs::PlayerEffects::contents_effects	the potion's effects and the stack's `custom_effects` (`brewing::contents_effects`), applied by `finish_drinking` at the stack's duration scale
+PotionContents.isPotionWithoutCustomEffects	inline	crates/sunrise-level/src/effects.rs::PlayerEffects::potion_effects	Sunrise has no custom effects on a potion stack, so this is always the potion alone
+PotionContents.getAllEffects	port	crates/sunrise-level/src/effects.rs::PlayerEffects::contents_effects	the potion's effects and the stack's `custom_effects` (`brewing::contents_effects`), applied by `finish_drinking` at the stack's duration scale
 PotionContents.withPotion	port	crates/sunrise-items/src/item_data.rs::ItemStack::with_potion	sets the potion and keeps the other data
 PotionContents.withEffectAdded	inline	crates/sunrise-client/src/game/mobs/dragon.rs::Game::tick_breath	gap: minor: the dragon fireball cloud's instant damage (12) is hard-coded in the tick, not an added effect; the breath cloud's 6 is the same path
 PotionContents.getColorOptional	port	crates/sunrise-client-core/src/potions.rs::potion_color	amplifier-weighted mix; base colour when there are no effects
 PotionContents.hasEffects	inline	crates/sunrise-client/src/game/items/potions_server.rs::Game::splash	a lingering cloud is made only when the potion has effects
-PotionContents.getPotionDescription	port	crates/sunrise-client-render/src/brewing.rs::tooltip	effect name with potency; joined with a space, not the potion.withAmplifier translation
+PotionContents.getPotionDescription	port	crates/sunrise-level/src/brewing.rs::tooltip	effect name with potency; joined with a space, not the potion.withAmplifier translation
 PotionContents.onConsume	port	crates/sunrise-client/src/game/items/potions_server.rs::Game::tick_drinking	gap: minor: duration scale is always 1.0; POTION_DURATION_SCALE is not read
 AttackRange.defaultFor	inline	crates/sunrise-client/src/game/items/held_items.rs::attack_range_contains	gap: minor: fixed reach 0 to 3 with a 0.3 margin; no entity interaction range attribute
 AttackRange.getClosesetHit	port	crates/sunrise-client/src/game/items/hand.rs::Game::attack_range_pick_result	gap: minor: uses the crosshair's entity or block, not the closest hit along the attack range
@@ -99,9 +99,9 @@ Ingredient.of	port	crates/sunrise-client/src/crafting.rs::Ingredient::of	ingredi
 Ingredient.displayForSingleItem	skip:other		no callers in the vanilla source
 Ingredient.getSingleItem	skip:data		only `BrewingRecipeBuilder.defaultId` (datagen) asks for it; the brewing recipes Sunrise reads come from the JSON tables
 PlacementInfo.create	port	crates/sunrise-client/src/crafting.rs::Placement::of	placement for one ingredient, none when it is empty
-PotionIngredient.test	port	crates/sunrise-client-render/src/brewing.rs::PotionIngredient::test	item id and the potion filter
-PotionIngredient.of	port	crates/sunrise-client-render/src/brewing.rs::PotionIngredient::parse	built from the recipe JSON, with the potion filter
-PotionIngredient.isPotionInput	port	crates/sunrise-client-render/src/brewing.rs::Brewing::load	bottle input set (Brewing.inputs) built at load
+PotionIngredient.test	port	crates/sunrise-level/src/brewing.rs::PotionIngredient::test	item id and the potion filter
+PotionIngredient.of	port	crates/sunrise-level/src/brewing.rs::PotionIngredient::parse	built from the recipe JSON, with the potion filter
+PotionIngredient.isPotionInput	port	crates/sunrise-level/src/brewing.rs::Brewing::load	bottle input set (Brewing.inputs) built at load
 Recipe.BookInfo.mapCodec	skip:java		codec
 RecipeManager.finalizeRecipeLoading	port	crates/sunrise-client/src/crafting.rs::Recipes::load	loads the recipes and their placements at load
 RecipeManager.filterDisabled	missing		minor: recipes whose ingredients sit behind a disabled feature flag are not hidden; Sunrise's recipe loading has no feature flag check

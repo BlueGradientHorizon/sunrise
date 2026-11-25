@@ -7,18 +7,18 @@ ServerPlayerGameMode.abortDestroyBlock	inline	crates/sunrise-client/src/game/net
 ServerPlayerGameMode.destroyAndAck	inline	crates/sunrise-client/src/game/network/lan_actions/mod.rs::Game::lan_guest_packet	the sequence ack every PlayerAction arm sends first (Hub::ack -> ClientboundBlockChangedAck in tick_level) takes a vanilla client's predicted block back, and the ABORT arm also sends the state
 SimulationChunkTracker.getLevel	port	crates/sunrise-sim/src/ticket_levels.rs::Map::get	simulation level per chunk, 33 where no ticket reaches
 SimulationChunkTracker.setLevel	inline	crates/sunrise-sim/src/ticket_levels.rs::compute	the whole level map is rebuilt from player and forced tickets instead of updated per node
-ThreadedLevelLightEngine.checkBlock	inline	crates/sunrise-client-render/src/light.rs::relight	a block change relights resident chunks directly, no queued PRE_UPDATE task
+ThreadedLevelLightEngine.checkBlock	inline	crates/sunrise-level/src/light.rs::relight	a block change relights resident chunks directly, no queued PRE_UPDATE task
 ThreadedLevelLightEngine.updateChunkStatus	skip:other		Sunrise lights a chunk in one flood fill and keeps no per-section light state to reset
 ThreadedLevelLightEngine.updateSectionStatus	skip:other		no per-section empty flags: light_chunk reads the sections directly
-ThreadedLevelLightEngine.propagateLightSources	inline	crates/sunrise-client-render/src/light.rs::light_chunk	light_chunk seeds sky and block sources and propagates in one pass
+ThreadedLevelLightEngine.propagateLightSources	inline	crates/sunrise-level/src/light.rs::light_chunk	light_chunk seeds sky and block sources and propagates in one pass
 ThreadedLevelLightEngine.setLightEnabled	skip:other		no light-enabled flag per chunk; relight only touches resident, lit chunks
-ThreadedLevelLightEngine.queueSectionData	inline	crates/sunrise-client-render/src/light.rs::update_light_layers	light layers from a chunk packet are applied at once, not queued
+ThreadedLevelLightEngine.queueSectionData	inline	crates/sunrise-level/src/light.rs::update_light_layers	light layers from a chunk packet are applied at once, not queued
 ThreadedLevelLightEngine.addTask	skip:java		light thread task queue
 ThreadedLevelLightEngine.retainData	skip:other		no retained light data between chunk statuses
 ThreadedLevelLightEngine.initializeLight	skip:other		INITIALIZE_LIGHT step marks sections and enables light; Sunrise has no such step before light_chunk
-ThreadedLevelLightEngine.lightChunk	port	crates/sunrise-client-render/src/light.rs::light_chunk	the chunk's light is computed from its 3x3 neighbourhood
+ThreadedLevelLightEngine.lightChunk	port	crates/sunrise-level/src/light.rs::light_chunk	the chunk's light is computed from its 3x3 neighbourhood
 ThreadedLevelLightEngine.tryScheduleUpdate	skip:java		schedules the light thread
-ThreadedLevelLightEngine.runUpdate	inline	crates/sunrise-client-render/src/light.rs::relight	runLightUpdates: decrease then increase passes, run directly on the changed positions
+ThreadedLevelLightEngine.runUpdate	inline	crates/sunrise-level/src/light.rs::relight	runLightUpdates: decrease then increase passes, run directly on the changed positions
 ThreadedLevelLightEngine.waitForPendingTasks	skip:java		future that completes when the light queue drains
 ThrottlingChunkTaskDispatcher.popTasks	skip:other		caps chunk tasks in flight; Sunrise schedules chunk work on its own worker pool
 ThrottlingChunkTaskDispatcher.getDebugStatus	skip:debug
@@ -97,14 +97,14 @@ EnvironmentAttributeMap.Entry.createFullCodec	skip:data		codec
 EnvironmentAttributeProbe.reset	skip:other		Sunrise keeps no probe state: render recomputes the biome weights each frame
 EnvironmentAttributeProbe.getValue	inline	crates/sunrise-client/src/game/game_client.rs::Game::render	sky, fog and water fog are blended from Gaussian biome weights at the camera each frame, no last and new tick lerp
 EnvironmentAttributeProbe.ValueProbe.getValueFromLevel	inline	crates/sunrise-level/src/environment.rs::Environment::sample	dimension and timeline value; biome blend is applied by the caller
-EnvironmentAttributeProbe.ValueProbe.tick	port	crates/sunrise-client-render/src/biome.rs::gaussian_weights	the per-tick Gaussian sampling of noise biomes around the camera
+EnvironmentAttributeProbe.ValueProbe.tick	port	crates/sunrise-level/src/biome.rs::gaussian_weights	the per-tick Gaussian sampling of noise biomes around the camera
 EnvironmentAttributeProbe.ValueProbe.get	inline	crates/sunrise-client/src/game/game_client.rs::Game::render	per frame values from the camera position instead of lerping last and new tick values
 EnvironmentAttributeReader.getValue	skip:java		overload that centres a BlockPos and passes no interpolator
 EnvironmentAttributeSystem.bakeLayerSampler	skip:java		folds leading constant layers into the base value; load_dimension builds its base values the same way
 EnvironmentAttributeSystem.addStaticLayers	inline	crates/sunrise-level/src/environment.rs::Environment::load_dimension	dimension attributes become base values; biome attributes are read in Biomes::load
 EnvironmentAttributeSystem.addDynamicLayers	inline	crates/sunrise-level/src/environment.rs::Environment::sample	gap: minor: only day.json drives the visual attributes here; moon, early game and villager timelines are read by moon, patrol and villager code; weather is apply_weather
-EnvironmentAttributeSystem.addBiomeLayer	inline	crates/sunrise-client-render/src/biome.rs::Biomes::load	biome attributes (sky, fog, water fog, spawns, fire burnout) are read into BiomeInfo
-EnvironmentAttributeSystem.addBiomeLayerForAttribute	inline	crates/sunrise-client-render/src/biome.rs::blend_rgb	gap: minor: only sky, fog and water fog colours are blended by Gaussian weights; other biome attributes use the biome at the position
+EnvironmentAttributeSystem.addBiomeLayer	inline	crates/sunrise-level/src/biome.rs::Biomes::load	biome attributes (sky, fog, water fog, spawns, fire burnout) are read into BiomeInfo
+EnvironmentAttributeSystem.addBiomeLayerForAttribute	inline	crates/sunrise-level/src/biome.rs::blend_rgb	gap: minor: only sky, fog and water fog colours are blended by Gaussian weights; other biome attributes use the biome at the position
 EnvironmentAttributeSystem.getDimensionValue	inline	crates/sunrise-client-render/src/environment.rs::Environment::sample
 EnvironmentAttributeSystem.getValue	inline	crates/sunrise-level/src/environment.rs::Environment::sample	the sky state at a time of day; other attributes are read straight from dimension and biome data by their users
 EnvironmentAttributeSystem.getConstantBaseValue	skip:debug		VisibleForTesting
@@ -124,7 +124,7 @@ WeatherAttributes.addLayer	port	crates/sunrise-world/src/environment_system.rs::
 BooleanModifier.apply	port	crates/sunrise-client/src/patrol.rs::BoolTrack::apply	and, or, xor, nand, nor, xnor over the timeline track value
 ColorModifier.BlendToGray.lerp	skip:other		only lerps blend_to_gray arguments between keyframes; no timeline uses that modifier
 ListModifier.Append.apply	inline	crates/sunrise-client/src/animate_tick.rs::AnimateTables::load	a biome's ambient_particles list is its argument over an empty dimension list
-MobSpawnSettingsModifier.Overlay.apply	inline	crates/sunrise-client-render/src/biome.rs::Biomes::load	no dimension sets natural_mob_spawns, so the overlay over the empty default is the biome's own spawns
+MobSpawnSettingsModifier.Overlay.apply	inline	crates/sunrise-level/src/biome.rs::Biomes::load	no dimension sets natural_mob_spawns, so the overlay over the empty default is the biome's own spawns
 ClockTimeMarker.getRepetitionCount	skip:other		no vanilla caller
 ClockTimeMarker.resolveTimeToMoveTo	port	crates/sunrise-client/src/game/interface/chat.rs::TimeMarker::resolve
 ClockTimeMarker.occursAt	port	crates/sunrise-client/src/game/interface/chat.rs::TimeMarker::occurs_at

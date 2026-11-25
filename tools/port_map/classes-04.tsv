@@ -166,10 +166,10 @@ RandomizableContainerBlockEntity.applyImplicitComponents	port	crates/sunrise-cli
 RandomizableContainerBlockEntity.canOpen	inline	crates/sunrise-client/src/game/interface/advancements/mod.rs::Game::container_locked_for	the negative of it: a spectator opens any container, and otherwise the lock decides (LockCode.canUnlock)
 RandomizableContainerBlockEntity.collectImplicitComponents	port	crates/sunrise-client/src/block_entity_item.rs::collect	the block's LootTable and LootTableSeed leave on the item as minecraft:container_loot
 RandomizableContainerBlockEntity.createMenu	port	crates/sunrise-client/src/game.rs::Game::open_menu	gap: minor: the spectator and loot-table checks are not ported here
-SculkSensorBlockEntity.loadAdditional	port	crates/sunrise-client-render/src/sculk.rs::SculkEntity::load
-SculkSensorBlockEntity.saveAdditional	port	crates/sunrise-client-render/src/sculk.rs::SculkEntity::to_nbt
-SculkSensorBlockEntity.VibrationUser.canReceiveVibration	port	crates/sunrise-client-render/src/sculk.rs::valid_vibration
-SculkSensorBlockEntity.VibrationUser.onReceiveVibration	port	crates/sunrise-client-render/src/sculk.rs::Data::schedule
+SculkSensorBlockEntity.loadAdditional	port	crates/sunrise-level/src/sculk.rs::SculkEntity::load
+SculkSensorBlockEntity.saveAdditional	port	crates/sunrise-level/src/sculk.rs::SculkEntity::to_nbt
+SculkSensorBlockEntity.VibrationUser.canReceiveVibration	port	crates/sunrise-level/src/sculk.rs::valid_vibration
+SculkSensorBlockEntity.VibrationUser.onReceiveVibration	port	crates/sunrise-level/src/sculk.rs::Data::schedule
 TestBlockEntity	skip:debug		game-test tooling: reset, trigger and logging belong to the test runner, which Sunrise does not have; its NBT is kept
 TestInstanceBlockEntity	skip:debug		game-test tooling: export and chunk forcing belong to the test runner, which Sunrise does not have
 TrialSpawnerConfig.calculateTargetSimultaneousMobs	port	crates/sunrise-client/src/mobs/trial_spawner.rs::TrialConfig::target_simultaneous_mobs
@@ -216,7 +216,7 @@ ChunkStatusTasks.generateFeatures	port	crates/sunrise-world/src/worldgen/generat
 ChunkStatusTasks.generateSpawn	port	crates/sunrise-world/src/worldgen/spawn_finder.rs::find_spawn_position
 ChunkStatusTasks.generateStructureReferences	port	crates/sunrise-world/src/worldgen/generator_structures.rs::StructureState::references
 ChunkStatusTasks.generateStructureStarts	port	crates/sunrise-world/src/worldgen/generator_structures.rs::StructureState::starts_at
-ChunkStatusTasks.initializeLight	port	crates/sunrise-client-render/src/light.rs::light_chunk
+ChunkStatusTasks.initializeLight	port	crates/sunrise-level/src/light.rs::light_chunk
 ChunkStatusTasks.isLighted	skip:other		status check; streaming tracks which chunks are lit
 ChunkStep.apply	inline	crates/sunrise-client-render/src/streaming.rs::Streaming::update	stage advance
 ChunkStep.completeChunkGeneration	inline	crates/sunrise-client-render/src/streaming.rs::Streaming::update	final stage hand-over

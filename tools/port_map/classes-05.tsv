@@ -44,9 +44,9 @@ EuclideanGameEventListenerRegistry.unregister	port	crates/sunrise-client/src/gam
 EuclideanGameEventListenerRegistry.visitInRangeListeners	port	crates/sunrise-client/src/game/blocks/sculk_server.rs::Game::post_game_event	walks the index for listeners in range, then the wardens
 VibrationInfo.getEntity	port	crates/sunrise-client/src/game/blocks/sculk_server.rs::Game::sculk_receive	the source is held as a Who and read there
 VibrationInfo.getProjectileOwner	port	crates/sunrise-client/src/game/blocks/sculk_server.rs::Game::sculk_receive	the projectile owner is captured when posted (info.owner) and read there
-VibrationSelector.addCandidate	port	crates/sunrise-client-render/src/sculk.rs::Selector::add_candidate
-VibrationSelector.chosenCandidate	port	crates/sunrise-client-render/src/sculk.rs::Selector::chosen_candidate
-VibrationSelector.shouldReplaceVibration	port	crates/sunrise-client-render/src/sculk.rs::Selector::should_replace
+VibrationSelector.addCandidate	port	crates/sunrise-level/src/sculk.rs::Selector::add_candidate
+VibrationSelector.chosenCandidate	port	crates/sunrise-level/src/sculk.rs::Selector::chosen_candidate
+VibrationSelector.shouldReplaceVibration	port	crates/sunrise-level/src/sculk.rs::Selector::should_replace
 GameRuleCategory.register	skip:data		static category table; Sunrise's rule categories are static strings (gamerules.rs)
 GameRuleMap.equals	skip:java		value equality of the map
 GameRuleMap.of	port	crates/sunrise-client-core/src/gamerules.rs::GameRules::get	no stored map: a rule that was never set reads its table default

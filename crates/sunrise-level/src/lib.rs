@@ -2,8 +2,8 @@
 //! Zero desktop, GPU, window, audio, gamepad, clipboard or HTTP dependencies.
 #![forbid(unsafe_code)]
 
-#[cfg(test)]
-mod test_log;
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_log;
 
 pub use sunrise_assets::resource_source;
 pub use sunrise_assets::zip;
@@ -31,20 +31,33 @@ pub use sunrise_world::json_folder;
 pub use sunrise_world::moving_colliders;
 
 // --- lowered modules ---
+#[cfg(target_os = "linux")]
 pub mod api_context;
 pub mod assets;
 pub mod audio_capture;
 pub mod bidi;
+pub mod biome;
+pub mod block_edit;
+pub mod block_entities;
 pub mod block_entity_ticks;
+pub mod brewing;
 pub mod camera_math;
 pub mod carrier_fences;
+pub mod chunk;
+pub mod chunk_map;
+pub mod collisions;
 pub mod columns;
+pub mod command_block;
+pub mod containers;
 pub mod crash;
 pub mod datapack;
 pub mod dyes;
+pub mod effects;
 pub mod environment;
 pub mod fast_hash;
 pub mod jigsaw_block;
+pub mod light;
+pub mod light_border;
 pub mod lod_data;
 pub mod logging;
 pub mod mod_chunk_tickets;
@@ -53,12 +66,13 @@ pub mod pack_meta;
 pub mod pack_tags;
 pub mod par;
 pub mod particle_options;
-#[cfg(target_os = "linux")]
 pub mod perf_capture;
+pub mod poi_sections;
 pub mod profile_lookup;
 pub mod providers;
 pub mod random_source;
 pub mod runtime_env;
+pub mod sculk;
 pub mod section_mask;
 pub mod shulker_box;
 pub mod signs_data;
@@ -69,5 +83,7 @@ pub mod structure_block;
 pub mod test_block;
 pub mod test_instance_block;
 pub mod tick_mode;
+pub mod vault;
+pub mod world;
 pub mod worldborder;
 // --- end lowered modules ---

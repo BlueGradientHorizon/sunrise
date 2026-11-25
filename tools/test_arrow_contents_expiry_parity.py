@@ -25,7 +25,7 @@ except ImportError:
 TEST = 'game::server_side::potions_server::arrow_contents::actual_arrow_contents_match_pinned_methods'
 ORACLE = 'VanillaArrowContentsExpiryOracle'
 PRODUCTION = [
-    'crates/sunrise-client-render/src/brewing.rs',
+    'crates/sunrise-level/src/brewing.rs',
     'crates/sunrise-client/src/arrows.rs',
     'crates/sunrise-client/src/game/items/potions_server.rs',
 ]

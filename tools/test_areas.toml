@@ -133,13 +133,13 @@ lan = [
 name = "lighting"
 about = "the light engine and dynamic light"
 paths = [
-  "crates/sunrise-client-render/src/light.rs", "crates/sunrise-client-render/src/dynamic_light.rs",
+  "crates/sunrise-level/src/light.rs", "crates/sunrise-client-render/src/dynamic_light.rs",
   "crates/sunrise-client-render/src/hdr_light.wgsl", "crates/sunrise-client/src/game/world/dynamic_light_emission*",
-  "crates/sunrise-client-render/src/light_border.rs", "crates/sunrise-client-render/src/light_storage_tests.rs",
+  "crates/sunrise-level/src/light_border.rs", "crates/sunrise-client-render/src/light_storage_tests.rs",
   "tools/light_storage_scenario.txt", "tools/light_storage_witness.txt",
 ]
 cargo = [
-  { package = "sunrise-client-render", target = "lib", filter = "light::" },
+  { package = "sunrise-level", target = "lib", filter = "light::" },
   { package = "sunrise-client-render", target = "lib", filter = "light_storage_tests::" },
   { package = "sunrise-client", target = "lib", filter = "game::dynamic_light_emission" },
   { package = "sunrise-client", target = "lib", filter = "game::server_side::dynamic_light_emission" },
@@ -152,7 +152,7 @@ name = "chunks"
 about = "chunk streaming, tickets, loading, random ticks"
 paths = [
   "crates/sunrise-client-render/src/streaming*", "crates/sunrise-client-render/src/chunk*",
-  "crates/sunrise-client-render/src/world.rs", "crates/sunrise-client-render/src/world/*",
+  "crates/sunrise-level/src/world.rs", "crates/sunrise-level/src/world/*",
   "crates/sunrise-level/src/mod_chunk_tickets.rs", "crates/sunrise-sim/src/ticket_levels.rs",
   "crates/sunrise-client/src/tick_chunk_membership.rs", "crates/sunrise-client/src/game/world/world_loading.rs",
   "crates/sunrise-client/src/game/world/world_entry.rs", "crates/sunrise-world/src/chunk*",
@@ -318,7 +318,7 @@ about = "menus, inventories, crafting, the recipe book, workstations"
 paths = [
   "crates/sunrise-client/src/menu.rs", "crates/sunrise-client/src/container_screen.rs", "crates/sunrise-client/src/creative.rs",
   "crates/sunrise-client/src/crafting.rs", "crates/sunrise-client/src/recipe_book*", "crates/sunrise-client/src/stations.rs",
-  "crates/sunrise-client-render/src/containers.rs", "crates/sunrise-world/src/simple_container.rs",
+  "crates/sunrise-level/src/containers.rs", "crates/sunrise-world/src/simple_container.rs",
   "crates/sunrise-client/src/game/interface/container_*",
   "crates/sunrise-client/src/game/interface/extras/mouse_tweaks.rs",
 ]

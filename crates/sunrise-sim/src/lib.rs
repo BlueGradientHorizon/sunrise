@@ -33,20 +33,33 @@ pub use sunrise_world::json_folder;
 pub use sunrise_world::moving_colliders;
 
 // --- lowered level re-exports ---
+#[cfg(target_os = "linux")]
 pub use sunrise_level::api_context;
 pub use sunrise_level::assets;
 pub use sunrise_level::audio_capture;
 pub use sunrise_level::bidi;
+pub use sunrise_level::biome;
+pub use sunrise_level::block_edit;
+pub use sunrise_level::block_entities;
 pub use sunrise_level::block_entity_ticks;
+pub use sunrise_level::brewing;
 pub use sunrise_level::camera_math;
 pub use sunrise_level::carrier_fences;
+pub use sunrise_level::chunk;
+pub use sunrise_level::chunk_map;
+pub use sunrise_level::collisions;
 pub use sunrise_level::columns;
+pub use sunrise_level::command_block;
+pub use sunrise_level::containers;
 pub use sunrise_level::crash;
 pub use sunrise_level::datapack;
 pub use sunrise_level::dyes;
+pub use sunrise_level::effects;
 pub use sunrise_level::environment;
 pub use sunrise_level::fast_hash;
 pub use sunrise_level::jigsaw_block;
+pub use sunrise_level::light;
+pub use sunrise_level::light_border;
 pub use sunrise_level::lod_data;
 pub use sunrise_level::logging;
 pub use sunrise_level::mod_chunk_tickets;
@@ -55,11 +68,12 @@ pub use sunrise_level::pack_meta;
 pub use sunrise_level::pack_tags;
 pub use sunrise_level::par;
 pub use sunrise_level::particle_options;
-#[cfg(target_os = "linux")]
 pub use sunrise_level::perf_capture;
+pub use sunrise_level::poi_sections;
 pub use sunrise_level::profile_lookup;
 pub use sunrise_level::providers;
 pub use sunrise_level::random_source;
+pub use sunrise_level::sculk;
 pub use sunrise_level::section_mask;
 pub use sunrise_level::shulker_box;
 pub use sunrise_level::signs_data;
@@ -70,6 +84,8 @@ pub use sunrise_level::structure_block;
 pub use sunrise_level::test_block;
 pub use sunrise_level::test_instance_block;
 pub use sunrise_level::tick_mode;
+pub use sunrise_level::vault;
+pub use sunrise_level::world;
 pub use sunrise_level::worldborder;
 // --- end lowered level re-exports ---
 

@@ -12,7 +12,7 @@ ChunkGenerationTask.scheduleChunkInLayer	inline	crates/sunrise-client-render/src
 ChunkGenerationTask.waitForScheduledLayer	skip:java		future bookkeeping
 ChunkHolder.addSendDependency	skip:java		future combinator; chunks are only sent once lit (Hub::next_batch)
 ChunkHolder.addSaveDependency	skip:java		future combinator; saving snapshots resident chunks directly
-ChunkHolder.blockChanged	port	crates/sunrise-client-render/src/world.rs::World::set	pushes the position to block_log; block entity only changes go through Game::mark_block_entity_updated
+ChunkHolder.blockChanged	port	crates/sunrise-level/src/world.rs::World::set	pushes the position to block_log; block entity only changes go through Game::mark_block_entity_updated
 ChunkHolder.sectionLightChanged	port	crates/sunrise-client-render/src/streaming.rs::Streaming::mark_light_changes	light_log bit per section; the unsaved mark is world.modified in the Lit result
 ChunkHolder.hasChangesToBroadcast	inline	crates/sunrise-client/src/lan/hub.rs::Hub::broadcast_block_changes	both broadcast fns return early when their log is empty
 ChunkHolder.broadcastBlockEntity	port	crates/sunrise-client/src/lan/hub.rs::Hub::broadcast_block_changes	BlockEntityData for changed positions with data the client shows

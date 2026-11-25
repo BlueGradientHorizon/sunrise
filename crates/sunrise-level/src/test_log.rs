@@ -13,7 +13,7 @@ impl log::Log for Logger {
     }
     fn flush(&self) {}
 }
-pub(crate) fn capture<T>(run: impl FnOnce() -> T) -> (T, Vec<String>) {
+pub fn capture<T>(run: impl FnOnce() -> T) -> (T, Vec<String>) {
     static LOGGER: Logger = Logger;
     static INIT: std::sync::Once = std::sync::Once::new();
     INIT.call_once(|| {

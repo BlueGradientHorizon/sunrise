@@ -32,7 +32,7 @@ TheEndGatewayBlockEntity.findExitPortalXZPosTentative	inline	crates/sunrise-clie
 TheEndGatewayBlockEntity.getChunk	port	crates/sunrise-client/src/game/world/end.rs::Game::chunk_empty	gap: minor: returns whether the chunk is empty, not the chunk; an unloaded chunk reads as None
 TheEndGatewayBlockEntity.findValidSpawnInChunk	inline	crates/sunrise-client/src/game/world/end.rs::Game::resolve_gateway	end stone with two open blocks above it, closest to the origin
 TheEndGatewayBlockEntity.getParticleAmount	port	crates/sunrise-client-render/src/block_entity_render.rs::BlockEntityRenderer::gateway_faces	the count is the number of gateway faces that render; render_tick passes its length to animate_tick, which draws one particle per face
-TrialSpawnerBlockEntity.createDefaultSpawner	port	crates/sunrise-client-render/src/chunk/block_entity.rs::TrialSpawner::default	default cooldown 36000 and range 14; the no-creative player filter is in TrialSpawner::detect
+TrialSpawnerBlockEntity.createDefaultSpawner	port	crates/sunrise-level/src/chunk/block_entity.rs::TrialSpawner::default	default cooldown 36000 and range 14; the no-creative player filter is in TrialSpawner::detect
 TrialSpawnerBlockEntity.setEntityId	inline	crates/sunrise-client/src/game/mobs/spawner.rs::Game::use_spawn_egg_on_spawner
 TrialSpawnerBlockEntity.setEntityData	inline	crates/sunrise-client/src/game/mobs/spawner.rs::Game::use_spawn_egg_on_spawner	the egg's data goes through `override_entity_data` on the spawner it is used on
 TrialSpawnerBlockEntity.getState	port	crates/sunrise-client/src/game/mobs/trial_spawner.rs::Game::trial_spawner_block	reads the state and ominous properties of the block
@@ -59,8 +59,8 @@ TrialSpawnerStateData.isReadyToEjectItems	inline	crates/sunrise-client/src/mobs/
 TrialSpawnerStateData.getOrCreateDisplayEntity	port	crates/sunrise-client/src/game/mobs/spawner_client.rs::Game::update_spawner_display	the shown mob is made again when its type changes; a trial spawner shows one only with a spinning mob
 TrialSpawnerStateData.getDispensingItems	inline	crates/sunrise-client/src/mobs/trial_spawner.rs::TrialSpawner::spawn_ominous_item_spawner	rolls the loot once and keeps a non-empty roll
 TrialSpawnerStateData.lowResolutionPosition	inline	crates/sunrise-client/src/mobs/trial_spawner.rs::TrialSpawner::spawn_ominous_item_spawner	the 30 by 20 by 30 cell of the position plus the level seed
-VaultBlockEntity.saveAdditional	port	crates/sunrise-client-render/src/vault.rs::Vault::save	writes config, shared data and server data
-VaultBlockEntity.loadAdditional	port	crates/sunrise-client-render/src/vault.rs::Vault::load	reads server data, config and shared data back
+VaultBlockEntity.saveAdditional	port	crates/sunrise-level/src/vault.rs::Vault::save	writes config, shared data and server data
+VaultBlockEntity.loadAdditional	port	crates/sunrise-level/src/vault.rs::Vault::load	reads server data, config and shared data back
 VaultBlockEntity.getServerData	skip:other		accessor that is null on the client; Sunrise keeps one Vault struct holding both halves, so there is no server object to return
 VaultBlockEntity.Client.emitDeactivationParticles	inline	crates/sunrise-client/src/game/blocks/trial_visuals.rs::Game::trial_level_event	the 3016 arm draws 20 flame particles in the cage and plays the deactivate sound
 VaultBlockEntity.Client.emitIdleParticles	inline	crates/sunrise-client/src/game/blocks/trial_visuals.rs::Game::client_tick_vault	half the ticks: a smoke and a flame particle inside the cage
@@ -72,19 +72,19 @@ VaultBlockEntity.Client.randomPosCenterOfCage	inline	crates/sunrise-client/src/g
 VaultBlockEntity.Client.randomPosInsideCage	port	crates/sunrise-client/src/game/blocks/trial_visuals.rs::cage_point
 VaultBlockEntity.Client.keyholePos	inline	crates/sunrise-client/src/game/blocks/trial_visuals.rs::Game::vault_connection_particles	keyhole point: bottom centre, 1.75 up, half a block out of the facing side
 VaultBlockEntity.Server.setVaultState	port	crates/sunrise-client/src/game/blocks/vault.rs::Game::set_vault_state	writes the vault_state block property; the exit and entry effects run in Vault::on_transition
-VaultBlockEntity.Server.cycleDisplayItemFromLootTable	port	crates/sunrise-client-render/src/vault.rs::Vault::cycle_display_item
-VaultBlockEntity.Server.getRandomDisplayItemFromLootTable	inline	crates/sunrise-client-render/src/vault.rs::Vault::cycle_display_item	rolls the display table and picks one item at random
-VaultBlockEntity.Server.unlock	inline	crates/sunrise-client-render/src/vault.rs::Vault::try_insert_key	the unlock step sets the ejection list and display item and starts the 14 tick delay
-VaultBlockEntity.Server.resolveItemsToEject	inline	crates/sunrise-client-render/src/vault.rs::Vault::try_insert_key	rolls the vault loot table when a key is inserted
-VaultBlockEntity.Server.isValidToInsert	inline	crates/sunrise-client-render/src/vault.rs::Vault::try_insert_key	the stack must match the key item's components and hold at least its count
-VaultBlockEntity.Server.shouldCycleDisplayItem	inline	crates/sunrise-client-render/src/vault.rs::Vault::server_tick	cycles the display item every 20 ticks while Active
-VaultConfig.validate	port	crates/sunrise-client-render/src/vault.rs::VaultConfig::decode	an activation range above the deactivation range fails the whole config
-VaultServerData.addToRewardedPlayers	inline	crates/sunrise-client-render/src/vault.rs::Vault::try_insert_key	adds the player and keeps at most 128 rewarded players
-VaultServerData.setItemsToEject	inline	crates/sunrise-client-render/src/vault.rs::Vault::try_insert_key	the unlock stores the rolled items as the ejection list
-VaultServerData.getNextItemToEject	inline	crates/sunrise-client-render/src/vault.rs::Vault::try_insert_key	the display item becomes the last item to eject, also after each ejection in tick_and_get_next
-VaultServerData.popNextItemToEject	inline	crates/sunrise-client-render/src/vault.rs::Vault::tick_and_get_next	the ejecting state pops the last item
-VaultSharedData.set	inline	crates/sunrise-client-render/src/vault.rs::Vault::load	the display item, connected players and particles range are read straight into the vault on load
-VaultState.ejectResultItem	inline	crates/sunrise-client-render/src/vault.rs::Vault::tick_and_get_next	the ejecting branch spawns the item upward, sends level event 3017 and plays the eject sound
+VaultBlockEntity.Server.cycleDisplayItemFromLootTable	port	crates/sunrise-level/src/vault.rs::Vault::cycle_display_item
+VaultBlockEntity.Server.getRandomDisplayItemFromLootTable	inline	crates/sunrise-level/src/vault.rs::Vault::cycle_display_item	rolls the display table and picks one item at random
+VaultBlockEntity.Server.unlock	inline	crates/sunrise-level/src/vault.rs::Vault::try_insert_key	the unlock step sets the ejection list and display item and starts the 14 tick delay
+VaultBlockEntity.Server.resolveItemsToEject	inline	crates/sunrise-level/src/vault.rs::Vault::try_insert_key	rolls the vault loot table when a key is inserted
+VaultBlockEntity.Server.isValidToInsert	inline	crates/sunrise-level/src/vault.rs::Vault::try_insert_key	the stack must match the key item's components and hold at least its count
+VaultBlockEntity.Server.shouldCycleDisplayItem	inline	crates/sunrise-level/src/vault.rs::Vault::server_tick	cycles the display item every 20 ticks while Active
+VaultConfig.validate	port	crates/sunrise-level/src/vault.rs::VaultConfig::decode	an activation range above the deactivation range fails the whole config
+VaultServerData.addToRewardedPlayers	inline	crates/sunrise-level/src/vault.rs::Vault::try_insert_key	adds the player and keeps at most 128 rewarded players
+VaultServerData.setItemsToEject	inline	crates/sunrise-level/src/vault.rs::Vault::try_insert_key	the unlock stores the rolled items as the ejection list
+VaultServerData.getNextItemToEject	inline	crates/sunrise-level/src/vault.rs::Vault::try_insert_key	the display item becomes the last item to eject, also after each ejection in tick_and_get_next
+VaultServerData.popNextItemToEject	inline	crates/sunrise-level/src/vault.rs::Vault::tick_and_get_next	the ejecting state pops the last item
+VaultSharedData.set	inline	crates/sunrise-level/src/vault.rs::Vault::load	the display item, connected players and particles range are read straight into the vault on load
+VaultState.ejectResultItem	inline	crates/sunrise-level/src/vault.rs::Vault::tick_and_get_next	the ejecting branch spawns the item upward, sends level event 3017 and plays the eject sound
 TreeGrower.getConfiguredFeature	inline	crates/sunrise-world/src/level/growth.rs::Sim::grow_tree	the flower list is used when a flower is near and the list is not empty, then a weighted pick
 TreeGrower.getSurroundingBlockStates	inline	crates/sunrise-world/src/level/growth.rs::Sim::two_by_two	reads the four blocks of the two by two square
 TreeGrower.removeSaplings	inline	crates/sunrise-world/src/level/growth.rs::Sim::grow_tree	the mega branch clears the four sapling blocks before placing

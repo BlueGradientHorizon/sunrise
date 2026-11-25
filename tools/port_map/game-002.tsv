@@ -13,18 +13,18 @@ ServerBossEvent.setVisible	inline	crates/sunrise-client/src/game/interface/bossb
 ServerChunkCache.<init>	inline	crates/sunrise-client-render/src/streaming.rs::Streaming::new	builds the chunk map and workers per level; forced chunks are loaded in world_loading, no ticket storage object
 ServerChunkCache.storeInCache	skip:java		4-entry last-chunk lookup cache
 ServerChunkCache.getChunk	inline	crates/sunrise-client-render/src/streaming.rs::Streaming::update	chunks load and generate asynchronously around tickets; callers read World::chunks and skip an absent column, nothing waits for a target status
-ServerChunkCache.getChunkNow	port	crates/sunrise-client-render/src/world.rs::World::loaded	World::chunks.get is the lookup itself
+ServerChunkCache.getChunkNow	port	crates/sunrise-level/src/world.rs::World::loaded	World::chunks.get is the lookup itself
 ServerChunkCache.clearCache	skip:java		clears the 4-entry lookup cache
 ServerChunkCache.getChunkFuture	inline	crates/sunrise-client-render/src/streaming.rs::Streaming::update	no futures; the worker pool delivers columns to the game thread
 ServerChunkCache.getChunkFutureMainThread	inline	crates/sunrise-client-render/src/streaming.rs::Streaming::update	no futures or per-request tickets; streaming loads by distance
-ServerChunkCache.hasChunk	port	crates/sunrise-client-render/src/world.rs::World::loaded
+ServerChunkCache.hasChunk	port	crates/sunrise-level/src/world.rs::World::loaded
 ServerChunkCache.getChunkForLighting	inline	crates/sunrise-client-render/src/streaming.rs::Streaming::light_region	the 3x3 region handed to the light workers
 ServerChunkCache.runDistanceManagerUpdates	inline	crates/sunrise-client/src/game.rs::Game::update_chunk_tickets	ticket levels are recomputed once a tick from players and forced chunks
 ServerChunkCache.isPositionTicking	port	crates/sunrise-client/src/game/blocks/level_access.rs::GameLevel::is_ticking_chunk	block-ticking ticket level and a lit chunk with its neighbours loaded
 ServerChunkCache.close	inline	crates/sunrise-client/src/game/world/world_ops_server.rs::Game::save_game	save with wait; nothing else to close
 ServerChunkCache.broadcastChangedChunks	port	crates/sunrise-client/src/lan/hub.rs::Hub::broadcast_block_changes	block changes grouped by section as BlockUpdate or SectionBlocksUpdate, plus block entity data; light is in broadcast_light_changes
 ServerChunkCache.getFullChunk	inline	crates/sunrise-client/src/game/mobs/natural_spawning.rs::Game::spawn_natural	the spawn pass reads World::chunks directly
-ServerChunkCache.blockChanged	inline	crates/sunrise-client-render/src/world.rs::World::set	World::set pushes the position onto block_log, which the hub drains
+ServerChunkCache.blockChanged	inline	crates/sunrise-level/src/world.rs::World::set	World::set pushes the position onto block_log, which the hub drains
 ServerChunkCache.onLightUpdate	port	crates/sunrise-client/src/lan/hub.rs::Hub::broadcast_light_changes	light_log read once a tick; sent to players for whom the column is on the tracked border
 ServerChunkCache.addTicketAndLoadWithRadius	inline	crates/sunrise-client-render/src/streaming.rs::Streaming::update	spawn search and guest placement wait for streaming to produce the columns; no ticket-with-radius future
 ServerChunkCache.MainThreadExecutor.pollTask	inline	crates/sunrise-client-render/src/streaming.rs::Streaming::update	chunk-system updates run once per tick (streaming and ticket levels); there is no task queue to poll
@@ -43,7 +43,7 @@ ServerLevel.findLightningTargetAround	port	crates/sunrise-client/src/game/entiti
 ServerLevel.announceSleepStatus	port	crates/sunrise-client/src/game/network/lan_actions/sleep_server.rs::Game::announce_sleep_status
 ServerLevel.getMoonBrightness	inline	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::local_difficulty	MOON_BRIGHTNESS table indexed by day / 24000 mod 8
 ServerLevel.prepareWeather	port	crates/sunrise-client/src/save/level.rs::Level::read	rain and thunder levels start at 1 when the saved flags are on
-ServerLevel.advanceWeatherCycle	port	crates/sunrise-client-render/src/world.rs::Weather::tick_timers	level fade in tick_levels, game events broadcast in Hub::sync_world
+ServerLevel.advanceWeatherCycle	port	crates/sunrise-level/src/world.rs::Weather::tick_timers	level fade in tick_levels, game events broadcast in Hub::sync_world
 ServerLevel.resetWeatherCycle	inline	crates/sunrise-client/src/game/game_server.rs::Game::tick_sleep	the sleep-through-night reset; /weather sets the timers itself
 ServerLevel.tickFluid	port	crates/sunrise-world/src/level/tick.rs::Behaviours::scheduled_step
 ServerLevel.tickBlock	port	crates/sunrise-world/src/level/tick.rs::Behaviours::scheduled_step
@@ -59,7 +59,7 @@ ServerLevel.addEntity	inline	crates/sunrise-client/src/game/mobs/creatures/mod_s
 ServerLevel.tryAddFreshEntityWithPassengers	inline	crates/sunrise-client/src/game/world/persist.rs::Game::load_mob	gap: minor: loads a mob with its Passengers but never refuses a UUID that is already loaded, so /summon with a fixed UUID twice makes two
 ServerLevel.unload	inline	crates/sunrise-client/src/game.rs::Game::update_world	unloaded columns drop their block entities and names, and their entities are saved out
 ServerLevel.playSeededSound	port	crates/sunrise-client/src/lan/containers.rs::Hub::sound
-ServerLevel.sendBlockUpdated	inline	crates/sunrise-client-render/src/world.rs::World::set	gap: minor: mobs never re-plan a path when a block on it changes (Mob::recompute_path is never triggered by a block update), so they walk a stale path until a goal re-paths
+ServerLevel.sendBlockUpdated	inline	crates/sunrise-level/src/world.rs::World::set	gap: minor: mobs never re-plan a path when a block on it changes (Mob::recompute_path is never triggered by a block update), so they walk a stale path until a goal re-paths
 ServerLevel.neighborChanged	port	crates/sunrise-world/src/level/hooks.rs::Sim::neighbor_changed
 ServerLevel.getDestroyType	port	crates/sunrise-client/src/game/explosion.rs::Game::explode	mob explosions pick Keep, Destroy or DestroyWithDecay from mob_griefing and mob_explosion_drop_decay
 ServerLevel.doBlockEvent	inline	crates/sunrise-world/src/level/pistons.rs::Behaviours::run_block_events
@@ -68,7 +68,7 @@ ServerLevel.getEntityOrPart	inline	crates/sunrise-client/src/game/network/lan_ac
 ServerLevel.findClosestBiome3d	port	crates/sunrise-client/src/vanillagen.rs::VanillaTerrain::find_closest_biome
 ServerLevel.getWorldBorder	inline	crates/sunrise-client/src/game/interface/scoreboard/mod.rs::Game::load_scoreboard	the border is unpacked from saved data next to the scoreboard
 ServerLevel.setChunkForced	port	crates/sunrise-client-render/src/streaming.rs::Streaming::set_forced_loaded	load newly forced columns before returning; repeated adds and removals do not load
-ServerLevel.updatePOIOnBlockStateChange	inline	crates/sunrise-client-render/src/poi_sections.rs::PoiSections::get	no incremental records: a section's POI list is rebuilt from its blocks after any edit
+ServerLevel.updatePOIOnBlockStateChange	inline	crates/sunrise-level/src/poi_sections.rs::PoiSections::get	no incremental records: a section's POI list is rebuilt from its blocks after any edit
 ServerLevel.saveDebugReport	skip:debug
 ServerLevel.dumpEntities	skip:debug
 ServerLevel.dumpBlockEntityTickers	skip:debug

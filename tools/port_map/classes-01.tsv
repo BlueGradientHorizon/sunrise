@@ -153,7 +153,7 @@ PlayerEnderChestContainer.startOpen	port	crates/sunrise-client/src/game/world/st
 PlayerEnderChestContainer.stillValid	inline	crates/sunrise-client/src/game/world/storage_server.rs::Game::tick_container_reach	closes the chest when the player walks away
 PlayerEnderChestContainer.stopOpen	port	crates/sunrise-client/src/game/world/storage_server.rs::Game::close_ender_chest
 PlayerEnderChestContainer.storeAsSlots	skip:java		saves the ender chest as slots; Sunrise writes ender_items
-RecipeCraftingHolder.setRecipeUsed	port	crates/sunrise-client-render/src/containers.rs::recipe_used_key	the recipe a block last crafted is kept under that key and saved (save.rs, furnace.rs)
+RecipeCraftingHolder.setRecipeUsed	port	crates/sunrise-level/src/containers.rs::recipe_used_key	the recipe a block last crafted is kept under that key and saved (save.rs, furnace.rs)
 RemoteSlot.Synchronized.matches	skip:java		compares a slot with its last synced copy; Sunrise sends the slot when it changes
 ResultContainer.isEmpty	port	crates/sunrise-client/src/menu.rs::Menu::has_item	the result slot is empty when it has no item
 ShulkerBoxMenu.quickMoveStack	port	crates/sunrise-client/src/game/world/storage.rs::Game::container_quick_move

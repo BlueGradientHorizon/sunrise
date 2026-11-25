@@ -215,7 +215,7 @@ if __name__ == '__main__':
         'Furnace block entity tick: default and patched cooking_fuel, 200/100/100 '
         'cook times, fuel stack and LIT state, RecipesUsed experience, full output and '
         'timer decay, and input changed mid-cook. --no-change leaves out the change family.',
-        sources=[lab.ROOT / 'crates/sunrise-client-render/src/chunk/block_entity.rs',
+        sources=[lab.ROOT / 'crates/sunrise-level/src/chunk/block_entity.rs',
                  lab.ROOT / 'crates/sunrise-level/src/providers.rs',
                  lab.ROOT / 'crates/sunrise-level/src/providers/evaluation.rs',
                  lab.ROOT / 'crates/sunrise-client/src/game/blocks/machines/furnace_hopper.tsv',

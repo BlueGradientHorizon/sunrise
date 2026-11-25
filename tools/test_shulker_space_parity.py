@@ -42,7 +42,7 @@ def main():
                lab.ROOT / 'Cargo.toml', lab.ROOT / 'Cargo.lock',
                lab.ROOT / 'crates/sunrise-client/src/mobs/shulker.rs',
                lab.ROOT / 'crates/sunrise-client/src/mobs/shulker_space_tests.rs',
-               lab.ROOT / 'crates/sunrise-client-render/src/collisions.rs',
+               lab.ROOT / 'crates/sunrise-level/src/collisions.rs',
                lab.ROOT / 'crates/sunrise-world/src/block_collision.rs',
                lab.ROOT / 'crates/sunrise-world/src/collision_context.rs',
                lab.ROOT / 'mods/sunrise/src/test/java/dev/sunriselab/parity/VanillaShulkerSpaceOracle.java',

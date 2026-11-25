@@ -113,9 +113,9 @@ ClientPackSource.createVanillaPackSource	skip:data		pack source assembly; Sunris
 ClientPackSource.getPackTitle	skip:data		pack display names
 ClientPackSource.populatePackList	skip:data		pack discovery
 DefaultPlayerSkin.create	port	crates/sunrise-level/src/profile_lookup.rs::default_skin	gap: minor: returns the texture path (the model is in the path); no PlayerSkin record
-DryFoliageColorReloadListener.prepare	port	crates/sunrise-client-render/src/biome.rs::colormap	PNG decode of colormap/dry_foliage; the caller loads the three colormaps
-FoliageColorReloadListener.prepare	port	crates/sunrise-client-render/src/biome.rs::colormap	PNG decode of colormap/foliage
-GrassColorReloadListener.prepare	port	crates/sunrise-client-render/src/biome.rs::colormap	PNG decode of colormap/grass
+DryFoliageColorReloadListener.prepare	port	crates/sunrise-level/src/biome.rs::colormap	PNG decode of colormap/dry_foliage; the caller loads the three colormaps
+FoliageColorReloadListener.prepare	port	crates/sunrise-level/src/biome.rs::colormap	PNG decode of colormap/foliage
+GrassColorReloadListener.prepare	port	crates/sunrise-level/src/biome.rs::colormap	PNG decode of colormap/grass
 IndexedAssetSource.createIndexFs	skip:data		legacy objects/ asset index; Sunrise reads assets/ folders directly
 LegacyStuffWrapper.getPixels	port	crates/sunrise-client-render/src/hud/image.rs::decode	gap: minor: PNG decode to bytes; vanilla returns ARGB ints
 MapTextureManager.resetData	skip:other		frees GPU map textures on close; Sunrise keeps its map atlas slots in Game::maps, no gameplay effect
