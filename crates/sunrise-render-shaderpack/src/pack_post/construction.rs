@@ -1578,6 +1578,7 @@ pub fn build_pass(
         ids: geometry.is_some_and(|g| g.ids.is_some()),
         groups: HashMap::new(),
         portal_groups: HashMap::new(),
+        dynamic_groups: HashMap::new(),
         block_atlas_groups: HashMap::new(),
         copies: (image_buffers(&images)
             | if p.group == Group::Translucent {
@@ -1637,6 +1638,7 @@ fn no_draw(device: &wgpu::Device, name: String, group: Group, flip: u16, storage
         ids: false,
         groups: HashMap::new(),
         portal_groups: HashMap::new(),
+        dynamic_groups: HashMap::new(),
         block_atlas_groups: HashMap::new(),
         copies: 0,
         reads: 0,
@@ -1778,6 +1780,7 @@ pub fn build_compute(
         ids: false,
         groups: HashMap::new(),
         portal_groups: HashMap::new(),
+        dynamic_groups: HashMap::new(),
         block_atlas_groups: HashMap::new(),
         buffers: !interface.buffers.is_empty(),
         images,
