@@ -25,12 +25,12 @@ fn only_a_github_api_request_carries_a_token() {
     let api = "https://api.github.com/repos/author/example";
     let both = env(&[("GH_TOKEN", "gh-token"), ("GITHUB_TOKEN", "actions-token")]);
     assert_eq!(
-        github_authorization(api, &both).as_deref(),
+        github_authorization(api, both).as_deref(),
         Some("Bearer gh-token")
     );
     let github = env(&[("GH_TOKEN", " "), ("GITHUB_TOKEN", "actions-token")]);
     assert_eq!(
-        github_authorization(api, &github).as_deref(),
+        github_authorization(api, github).as_deref(),
         Some("Bearer actions-token")
     );
     assert_eq!(github_authorization(api, env(&[])), None);
@@ -43,7 +43,7 @@ fn only_a_github_api_request_carries_a_token() {
         "http://api.github.com/repos/author/example".to_owned(),
         "https://api.github.com.example.invalid/repos/author/example".to_owned(),
     ] {
-        assert_eq!(github_authorization(&other, &both), None, "{other}");
+        assert_eq!(github_authorization(&other, both), None, "{other}");
     }
 }
 const TEMPLATE: &str = "\

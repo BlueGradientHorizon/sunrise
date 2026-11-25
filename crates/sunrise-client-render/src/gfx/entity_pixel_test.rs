@@ -1944,6 +1944,7 @@ fn additive_particles_brighten_when_overlapping_without_writing_depth() {
         0.0,
         [SIZE; 2],
         &[255; 16 * 16 * 4],
+        0.0,
     )
     .expect("software Vulkan frame");
     let shader = frame
@@ -2128,6 +2129,7 @@ pub fn render_hud_frames_lit(
         0.0,
         size,
         lightmap,
+        0.0,
     )?;
     let sampler = frame.device.create_sampler(&Default::default());
     let mut hud = crate::hud::HudRenderer::new(
