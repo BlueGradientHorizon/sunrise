@@ -203,7 +203,7 @@ impl RenderPipeline {
                     None => last_blend = Some(blend_fn),
                     Some(prev) if prev != blend_fn => {
                         return Err(
-                            "blend functions must be the same for all active color targets (vanilla's `RenderPipeline` build check)"
+                            "blend functions must be the same for all active color targets (a pipeline's blend state is one function across its active color targets)"
                                 .to_owned(),
                         );
                     }
@@ -2814,7 +2814,7 @@ pub enum PipelineBlend {
     /// Added to the frame, scaled by the fragment's alpha (colour `SrcAlpha + One`, alpha
     /// `Zero + One`).
     Additive,
-    /// Explicit colour and alpha blend equations (`BlendFunction.java`).
+    /// Explicit colour and alpha blend equations (vanilla's `BlendFunction` contract).
     Custom(BlendFunction),
 }
 
@@ -2836,7 +2836,7 @@ impl PipelineBlend {
     }
 }
 
-/// Per-target blending and channel write mask (`ColorTargetState.java`). The target texture
+/// Per-target blending and channel write mask (vanilla's `ColorTargetState` contract). The target texture
 /// format comes from the active render pass rather than the pipeline descriptor.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
@@ -3014,7 +3014,7 @@ pub enum PolygonMode {
 pub struct PipelineState {
     /// How fragments join colour target 0 (and default MRT targets).
     pub blend: PipelineBlend,
-    /// Depth test, depth write, and depth bias state (`DepthStencilState.java`). `None`
+    /// Depth test, depth write, and depth bias state (vanilla's `DepthStencilState` contract). `None`
     /// indicates a depthless pass (`RenderPipeline.wantsDepthTexture() == false`).
     pub depth_stencil: Option<DepthState>,
     /// Whether back faces are culled (`withCull`). Default: `false` (two-sided).
@@ -3024,7 +3024,7 @@ pub struct PipelineState {
     pub color_write: ColorWrite,
     /// Triangle fill or wireframe (`PolygonMode`). Default: [`PolygonMode::Fill`].
     pub polygon: PolygonMode,
-    /// How vertices are assembled into primitives (`PrimitiveTopology.java`). Default:
+    /// How vertices are assembled into primitives (vanilla's `PrimitiveTopology` contract). Default:
     /// [`PrimitiveTopology::Quads`].
     pub topology: PrimitiveTopology,
 }
@@ -4172,7 +4172,7 @@ mod tests {
             .color_target(MAX_COLOR_TARGETS, Some(ColorTargetState::DEFAULT));
         assert!(out_of_range.validate_state().is_err());
 
-        // Differing blend functions across active MRT targets refused (vanilla's `RenderPipeline` build check).
+        // Differing blend functions across active MRT targets refused (a pipeline's blend state is one function across its active color targets).
         let mixed = pipeline("example:mixed_mrt")
             .color_target(
                 0,
@@ -4205,7 +4205,7 @@ mod tests {
     }
 
     #[test]
-    fn depth_compare_flips_for_standard_z_and_topology_index_counts_match_vanilla() {
+    fn depth_compare_flips_for_standard_z_and_topology_index_counts_are_the_emulated_counts() {
         assert_eq!(
             DepthCompare::GreaterEqual.flip_for_standard_z(),
             DepthCompare::LessEqual
@@ -4241,6 +4241,7 @@ mod tests {
 
         assert_eq!(PrimitiveTopology::Quads.index_count(8), 12);
         assert_eq!(PrimitiveTopology::Lines.index_count(8), 12);
+        // The emulated fan: `(n - 2) * 3` list indices, not vanilla's native fan draw.
         assert_eq!(PrimitiveTopology::TriangleFan.index_count(5), 9);
         assert_eq!(PrimitiveTopology::TriangleFan.index_count(2), 0);
         assert_eq!(PrimitiveTopology::Triangles.index_count(6), 6);
