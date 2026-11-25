@@ -174,12 +174,14 @@ python3() { :; }
 gh() { printf '%s\\n' "$@" > gh-args; for arg in "$@"; do case "$arg" in dist/*) test -f "$arg" || return 1; esac; done; }
 """
             published = subprocess.run([BASH, "-e", "-c", stubs + run_step('gh release create "$TAG"')],
-                                       cwd=root, env=env, text=True, capture_output=True)
+                                       cwd=root, env=dict(env, GITHUB_STEP_SUMMARY=str(root / "summary")),
+                                       text=True, capture_output=True)
             self.assertEqual(published.returncode, 0, published.stderr)
             args = (root / "gh-args").read_text().splitlines()
             self.assertEqual(args[:3], ["release", "create", "dev-2026-11-13-0123456"])
             self.assertIn("Dev 2026-11-13 · 0123456", args)
             self.assertIn("--prerelease", args)
+            self.assertIn("--draft", args)
             self.assertNotIn("nightly", args)
             files = {Path(arg).name for arg in args if arg.startswith("dist/")}
             self.assertEqual(files, present | {"SHA256SUMS", "SHA256SUMS.sig", "SHA256SUMS.v2.sig", "smoke-test.json",
