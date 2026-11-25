@@ -3,7 +3,7 @@
 //! `getMaxZoom`), and the local player drawn as a model: in third person
 //! and in the inventory (`InventoryScreen.extractEntityInInventoryFollowsMouse`).
 #[allow(unused_imports)]
-use super::{Game, Screen, native_mob_draw::PlayerRender, shoulders::shoulder_variants};
+use super::{Game, Screen, native_mob_draw::PlayerRender};
 #[allow(unused_imports)]
 use mod_api::Hand;
 #[allow(unused_imports)]
@@ -561,12 +561,11 @@ impl Game<'_> {
         let bed = self.sleeping.map_or(0, |head| self.bed_facing(head));
         let spectator = self.own_player_is_spectator();
         let ridden = self.ridden_body();
-        // LivingEntity.DATA_ARROW_COUNT_ID and DATA_STINGER_COUNT_ID: as the
-        // server synced them, else the local body's own.
-        let stuck = match &self.remote {
-            Some(r) => (r.own_arrows, r.own_stingers),
-            None => self.local_stuck_counts(),
-        };
+        // LivingEntity.DATA_ARROW_COUNT_ID and DATA_STINGER_COUNT_ID come from the server.
+        let stuck = self
+            .remote
+            .as_ref()
+            .map_or((0, 0), |r| (r.own_arrows, r.own_stingers));
         let Some(m) = self.client.player_model.as_mut() else {
             return;
         };
@@ -663,10 +662,10 @@ impl Game<'_> {
         m.extra.fall_fly_ticks = fly_ticks;
         m.extra.auto_spin_attack = spinning;
         (m.extra.stuck.arrows, m.extra.stuck.stingers) = stuck;
-        m.extra.shoulder_parrots = match &self.remote {
-            Some(r) => r.own_shoulders,
-            None => shoulder_variants(self.level.player_extra.as_ref()),
-        };
+        m.extra.shoulder_parrots = self
+            .remote
+            .as_ref()
+            .map_or([None, None], |r| r.own_shoulders);
         m.extra.main_hand_left = self.settings.main_hand_left;
         m.extra.hidden_model_parts = !self.settings.file.model_customisation() & 0x7F;
         m.extra.spectator = spectator;
@@ -784,14 +783,13 @@ impl Game<'_> {
                 .as_ref()
                 .is_some_and(|p| !p.health.dead_or_dying())
     }
-    /// The player's own team: a server's client is in it by its profile name.
+    /// The player's own team: a client is in it by its remote profile name.
     pub(in crate::game::client_side) fn own_team(
         &self,
     ) -> Option<&sunrise_client::scoreboard::Team> {
-        match &self.remote {
-            Some(r) => self.score.board.players_team(&r.profile_name),
-            None => self.player_team(),
-        }
+        self.remote
+            .as_ref()
+            .and_then(|r| self.score.board.players_team(&r.profile_name))
     }
     /// `Entity.isInvisible` for the player itself (`own_invisible`).
     pub(in crate::game::client_side) fn own_invisible(&self) -> bool {
@@ -1406,13 +1404,13 @@ impl Game<'_> {
         self.transform_selected_arm_poses(m, &mut poses, humanoid);
         poses
     }
-    /// The entity id the local player has on its server: the one it was
-    /// given at login on a client, else the acting player's own.
+    /// The entity id of this game's player: the acting body on a server, the login id on a client.
     pub(in crate::game) fn own_entity_id(&self) -> i32 {
-        self.remote.as_ref().map_or_else(
-            || self.player.as_ref().map_or(0, |p| p.entity_id),
-            |r| r.entity_id,
-        )
+        if self.is_logical_server() {
+            self.player.as_ref().map_or(0, |p| p.entity_id)
+        } else {
+            self.remote.as_ref().map_or(0, |r| r.entity_id)
+        }
     }
     /// `ArrowLayer` and `BeeStingerLayer` (`StuckInBodyLayer`) for a player:
     /// the arrows and bee stingers stuck in the body, placed from the entity

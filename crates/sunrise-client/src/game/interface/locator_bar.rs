@@ -16,7 +16,6 @@ use sunrise_protocol::packets::play::TrackedWaypoint;
 mod tests;
 
 /// `Player.getEyeHeight` while standing.
-const PLAYER_EYES: f64 = 1.62;
 
 impl Game<'_> {
     /// `ClientPacketListener.handleWaypoint`.
@@ -81,9 +80,10 @@ impl Game<'_> {
     }
 
     pub(in crate::game::client_side) fn own_profile_uuid(&self) -> Option<u128> {
-        match &self.remote {
-            Some(r) => Some(r.profile()),
-            None => self.level.player_uuid.map(ints_uuid),
+        if self.is_logical_server() {
+            self.level.player_uuid.map(ints_uuid)
+        } else {
+            self.remote.as_ref().map(|r| r.profile())
         }
     }
     /// `Vec3iWaypoint.position`: a live client's entity, with `Entity.getEyePosition` at its own partial tick.
@@ -111,13 +111,7 @@ impl Game<'_> {
                 frozen,
             )
         } else {
-            let host = self.lan.as_ref()?;
-            let guest = host
-                .hub
-                .guests
-                .iter()
-                .find(|g| g.uuid == uuid && g.placed)?;
-            (guest.position, guest.previous_position, PLAYER_EYES, false)
+            return None;
         };
         let alpha = if frozen {
             self.clock.fraction()

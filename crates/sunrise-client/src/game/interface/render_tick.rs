@@ -11,11 +11,8 @@ use sunrise_client::assets::Properties;
 use sunrise_client::camera::NearPlane;
 use sunrise_client::fog::{FogData, FogInputs, FogType, settle_rain_fog, update_rain_fog};
 use sunrise_client::{
-    animate_tick::{
-        AnimateContext, AnimateSampling, AnimateStep, campfire_particles, marker_particle_target,
-    },
+    animate_tick::{AnimateContext, AnimateSampling, AnimateStep, marker_particle_target},
     blocks::{BlockFacts, Fluid},
-    containers::BlockEntity,
     mobs::Mob,
     motion::{PlayerMotion, WATER},
     particles::{ParticleLevel, ParticleOptions, ParticleType, TrackingBody, TrackingTarget},
@@ -373,18 +370,18 @@ impl Game<'_> {
             partial,
         )
     }
-    /// `ClientLevelData.isFlat`: on the server thread, the world-wide flag.
+    /// `ClientLevelData.isFlat` on a connected client.
     fn level_flat(&self) -> bool {
-        match self.remote.as_ref() {
-            Some(r) => r.flat,
-            None => self.world_flat,
-        }
+        self.remote.as_ref().is_some_and(|r| r.flat)
     }
     /// `Level.getMinY`: the current dimension type's minimum y.
     pub(in crate::game) fn level_min_y(&self) -> i32 {
-        match self.remote.as_ref() {
-            Some(r) => r.dimension.min_y,
-            None => self.world.shape.min_y,
+        if self.is_logical_server() {
+            self.world.shape.min_y
+        } else {
+            self.remote
+                .as_ref()
+                .map_or(self.world.shape.min_y, |r| r.dimension.min_y)
         }
     }
     /// `SkyRenderer.shouldRenderDarkDisc`: uses `minecraft.player` eye and water state, not camera.
@@ -779,33 +776,15 @@ impl Game<'_> {
         let eye = self.eye_position();
         // Vanilla particle culling, weather splashes, and rain fog read `mainCamera().position()` directly.
         let cam_pos = self.client.view.position;
-        if let Some(e) = eye {
-            // A client of a server eases the vignette in `tick_hud`, frozen level or not.
-            if self.remote.is_none() {
-                let ve = self.camera_eye_position().unwrap_or(e);
-                let brightness = self.eye_brightness(ve);
-                self.client.screen_fx.tick_vignette(brightness);
-            }
+        if eye.is_some() {
             let inside_portal = self.client_portal_effect();
             self.client.screen_fx.tick_portal(inside_portal);
-            // LocalPlayer.aiStep: processPortalCooldown after the transition
-            // effect (a local world's player counts down in handlePortal).
+            // LocalPlayer.aiStep: processPortalCooldown after the transition effect.
             if self.remote.is_some() && self.portals.player.cooldown > 0 {
                 self.portals.player.cooldown -= 1;
             }
             let nausea = self.potions.effects.get("nausea").map(nausea_has_effect);
             self.client.screen_fx.tick_spinning(nausea);
-            // A client of a server advances `LocalPlayer.waterVisionTime` in `tick_local_player`
-            // (after `Entity.baseTick`'s fluid sample, matching `LocalPlayer.aiStep`).
-            if self.remote.is_none() {
-                let in_water = self
-                    .player
-                    .as_ref()
-                    .is_some_and(|p| p.is_eye_in_fluid(WATER));
-                self.client
-                    .fog
-                    .tick(in_water, self.own_player_is_spectator());
-            }
             let (rain, sky_light, rains) = self.rain_fog_inputs(cam_pos);
             update_rain_fog(&mut self.client.fog, rain, sky_light, rains, 1.0);
         }
@@ -1048,19 +1027,6 @@ impl Game<'_> {
                         }
                     }
                 }
-            }
-            // A client of a server ticks its campfires with the other block entities.
-            if let Some(r) = self.renderer.0.as_ref().filter(|_| self.remote.is_none()) {
-                campfire_particles(
-                    self.res.animate(),
-                    &mut self.particles.0,
-                    &ctx,
-                    r.block_entities(),
-                    &|pos| match self.world.block_entities.get(&(pos[0], pos[1], pos[2])) {
-                        Some(BlockEntity::Campfire(c)) => c.items.each_ref().map(Option::is_some),
-                        _ => [false; 4],
-                    },
-                );
             }
             laps.lap("tp_rain_campfire");
             break;

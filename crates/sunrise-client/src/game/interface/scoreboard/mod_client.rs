@@ -7,8 +7,6 @@ pub(in crate::game::client_side) use crate::game::server_side::scoreboard::Recor
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::scoreboard::ScoreState;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::scoreboard::local_tab_players;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::scoreboard::tab_players_needed;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::scoreboard::*;
@@ -49,15 +47,10 @@ impl Game<'_> {
         self.flush_skin_slots();
         let key =
             self.client.screen == super::Screen::Playing && self.held_mapping(Action::Playerlist);
-        let count = self.remote.as_ref().map_or_else(
-            || {
-                1 + self
-                    .lan
-                    .as_ref()
-                    .map_or(0, |h| h.hub.guests.iter().filter(|g| g.placed).count())
-            },
-            |r| r.listed_player_count(),
-        );
+        let Some(count) = self.remote.as_ref().map(|r| r.listed_player_count()) else {
+            self.tab_list.0.set_visible(false);
+            return;
+        };
         let has_objective = self.score.board.display_objective(sb::SLOT_LIST).is_some();
         let shown = tab_list::visible(
             // `Hud.extractRenderState` draws the list inside `if (!isHidden)`.
@@ -74,26 +67,8 @@ impl Game<'_> {
             self.publish_tab_object_skins();
             return;
         }
-        let (mut players, online_mode, upside_down) = match self.remote_tab_players() {
-            Some(remote) => remote,
-            None => {
-                // The integrated server: the local player, online mode, no ping.
-                let uuid = self.level.player_uuid.map_or(0, |u| {
-                    u.iter()
-                        .fold(0u128, |a, &w| (a << 32) | u128::from(w as u32))
-                });
-                let mut me = TabPlayer::new(uuid, PLAYER_NAME);
-                me.game_mode = self.mode_id();
-                me.skin = "entity/player/wide/steve".into();
-                let guests = self.lan.as_ref().map_or(&[][..], |h| &h.hub.guests);
-                let players = local_tab_players(me, guests);
-                let upside_down = players
-                    .iter()
-                    .filter(|p| p.name == "Dinnerbone" || p.name == "Grumm")
-                    .map(|p| p.uuid)
-                    .collect();
-                (players, true, upside_down)
-            }
+        let Some((mut players, online_mode, upside_down)) = self.remote_tab_players() else {
+            return;
         };
         if changed {
             // PlayerTabOverlay.setVisible: the names, said as the list comes up.

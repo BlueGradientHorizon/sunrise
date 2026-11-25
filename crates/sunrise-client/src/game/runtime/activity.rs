@@ -27,24 +27,20 @@ impl Game<'_> {
         if self.title.0.is_some() {
             return Activity::Menus;
         }
+        let Some(remote) = &self.remote else {
+            return Activity::Menus;
+        };
         let max = sunrise_client::lan::MAX_PLAYERS;
-        let play = if let Some(host) = &self.lan {
-            Play::Hosting {
-                players: 1 + host.hub.guests.len(),
-                max,
-            }
-        } else if let Some(server) = &self.integrated {
-            match (server.published(), &self.remote) {
-                (Some(_), Some(remote)) => Play::Hosting {
+        let play = if let Some(server) = &self.integrated {
+            match server.published() {
+                Some(_) => Play::Hosting {
                     players: remote.listed_player_count(),
                     max,
                 },
-                _ => Play::Singleplayer,
+                None => Play::Singleplayer,
             }
-        } else if self.remote.is_some() {
-            Play::Multiplayer
         } else {
-            Play::Singleplayer
+            Play::Multiplayer
         };
         Activity::World {
             play,

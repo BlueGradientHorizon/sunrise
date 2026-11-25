@@ -1033,7 +1033,8 @@ fn hidden_tab_skips_players_except_for_visibility_narration() {
 }
 
 /// The host and guests that have entered the world, rebuilt from live state.
-pub(in crate::game) fn local_tab_players(me: TabPlayer, guests: &[Guest]) -> Vec<TabPlayer> {
+#[cfg(test)]
+fn local_tab_players(me: TabPlayer, guests: &[Guest]) -> Vec<TabPlayer> {
     let mut players = vec![me];
     players.extend(guests.iter().filter(|g| g.placed).map(|g| {
         let mut player = TabPlayer::new(g.uuid, &g.name);

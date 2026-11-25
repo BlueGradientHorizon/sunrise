@@ -26,12 +26,3 @@ pub(in crate::game::server_side) use std::{
 };
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_client::Result;
-
-impl Game<'_> {
-    #[inline(always)]
-    pub(in crate::game) fn combat_last_hit(
-        &self,
-    ) -> Option<(i64, String, Option<f32>, Option<String>)> {
-        self.combat.0.last_hit()
-    }
-}

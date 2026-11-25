@@ -56,11 +56,3 @@ pub(in crate::game::server_side) use sunrise_world::{
     registry::BlockStateId,
     world_ray::{RayBlockMode, RayFluidMode, RayWorld, clip_world},
 };
-
-impl Game<'_> {
-    /// Arrows and bee stingers stuck in the local player's body.
-    #[inline(always)]
-    pub(in crate::game) fn local_stuck_counts(&self) -> (i32, i32) {
-        (self.combat.0.stuck.arrows, self.combat.0.stuck.stingers)
-    }
-}

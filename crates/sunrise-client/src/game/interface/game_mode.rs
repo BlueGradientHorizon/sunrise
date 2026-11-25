@@ -39,39 +39,44 @@ impl Game<'_> {
     pub(in crate::game) fn has_miss_time(&self) -> bool {
         self.mode != GameMode::Creative
     }
-    /// `AbstractClientPlayer.gameMode()` on a remote client (`PlayerInfo.getGameMode()` for our UUID), else `Some(self.mode)`.
+    /// `AbstractClientPlayer.gameMode()` on a client (`PlayerInfo.getGameMode()`), or `self.mode` on a server.
     pub(in crate::game) fn player_info_game_mode(&self) -> Option<GameMode> {
-        match self.remote.as_ref() {
-            Some(r) => r.own_player_info_game_mode().map(mode_from_id),
-            None => Some(self.mode),
+        if self.is_logical_server() {
+            Some(self.mode)
+        } else {
+            self.remote
+                .as_ref()
+                .and_then(|r| r.own_player_info_game_mode().map(mode_from_id))
         }
     }
-    /// `Player.isSpectator()`: reads `PlayerInfo` on a remote client and `self.mode` locally.
+    /// `Player.isSpectator()`: reads `PlayerInfo` on a client and `self.mode` on a server.
     pub(in crate::game) fn own_player_is_spectator(&self) -> bool {
         self.player_info_game_mode() == Some(GameMode::Spectator)
     }
-    /// `Player.isCreative()`: reads `PlayerInfo` on a remote client and `self.mode` locally.
+    /// `Player.isCreative()`: reads `PlayerInfo` on a client and `self.mode` on a server.
     pub(in crate::game) fn own_player_is_creative(&self) -> bool {
         self.player_info_game_mode() == Some(GameMode::Creative)
     }
     /// `Abilities.mayBuild`.
     pub(in crate::game) fn may_build(&self) -> bool {
-        if let Some(a) = self.remote_abilities() {
-            return a.may_build;
+        if self.is_logical_server() {
+            self.server.acting_abilities.map_or(
+                matches!(self.mode, GameMode::Survival | GameMode::Creative),
+                |a| a.may_build,
+            )
+        } else {
+            self.remote_abilities().is_some_and(|a| a.may_build)
         }
-        self.server.acting_abilities.map_or(
-            matches!(self.mode, GameMode::Survival | GameMode::Creative),
-            |a| a.may_build,
-        )
     }
     /// `Abilities.instabuild`. A client reads its live `Remote::abilities`.
     pub(in crate::game) fn instabuild(&self) -> bool {
-        if let Some(a) = self.remote_abilities() {
-            return a.instabuild;
+        if self.is_logical_server() {
+            self.server
+                .acting_abilities
+                .map_or(self.creative, |a| a.instabuild)
+        } else {
+            self.remote_abilities().is_some_and(|a| a.instabuild)
         }
-        self.server
-            .acting_abilities
-            .map_or(self.creative, |a| a.instabuild)
     }
     pub(in crate::game) fn mode_id(&self) -> i32 {
         self.mode.id()

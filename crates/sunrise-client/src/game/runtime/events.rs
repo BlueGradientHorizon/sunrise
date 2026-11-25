@@ -249,15 +249,13 @@ pub(in crate::game::client_side) fn parse_wait(
 
 impl Game<'_> {
     pub(in crate::game::client_side) fn snapshot(&self) -> Snapshot {
-        let world = self.title.0.is_none().then(|| self.level.name.clone());
+        let world =
+            (self.title.0.is_none() && self.remote.is_some()).then(|| self.level.name.clone());
         Snapshot {
             screen: self.screen_label(),
             dimension: self.dim.id().to_string(),
-            // A remote client counts the server's lines itself.
-            chat: self
-                .remote
-                .as_ref()
-                .map_or(self.ui.chat.received, |r| r.chat_received),
+            // Without a remote connection, a client has no world chat stream.
+            chat: self.remote.as_ref().map_or(0, |r| r.chat_received),
             counts: if world.is_some() {
                 self.inventory_counts()
             } else {
@@ -271,7 +269,7 @@ impl Game<'_> {
             hit: if self.remote.is_some() {
                 self.events.remote_hit.clone()
             } else {
-                self.combat_last_hit()
+                None
             },
             world,
         }
@@ -300,7 +298,7 @@ impl Game<'_> {
                     .take(new_chat)
                     .map(|(t, _)| t.clone())
                     .collect(),
-                None => self.ui.chat.recent_lines(new_chat),
+                None => Vec::new(),
             };
             let at = self
                 .player

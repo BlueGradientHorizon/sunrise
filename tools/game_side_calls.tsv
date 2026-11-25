@@ -2585,7 +2585,6 @@ server	entity_sizes::tests	impl Hooks for Grow	-	#[cfg(test)]	trait_impl	-	trait
 server	entity_sizes::tests	impl Hooks for Log	-	#[cfg(test)]	trait_impl	-	trait-impl
 server	entity_sizes::tests	impl Hooks for SetSize	-	#[cfg(test)]	trait_impl	-	trait-impl
 server	entity_sizes::tests	impl Hooks for ShortCrouch	-	#[cfg(test)]	trait_impl	-	trait-impl
-server	events_server	impl Game<'_>	combat_last_hit	-	method	client	called
 server	explosion	impl Game<'_>	blast_attacker	-	method	game	called
 server	explosion	impl Game<'_>	blast_rules	-	method	game	called
 server	explosion	impl Game<'_>	cell_explosion_resistance	-	method	game	called
@@ -4619,7 +4618,6 @@ server	persist::object_memory	impl Game<'_>	mob_passenger_ids	-	method	test	call
 server	persist::object_memory	impl Game<'_>	restore_vehicle_tree_state	-	method	test	called
 server	persist::spawn_tree	impl SpawnTree	decode	-	method	client	called
 server	persist::spawn_tree	impl SpawnTree	install	-	method	client	called
-server	perspective_server	impl Game<'_>	local_stuck_counts	-	method	client	called
 server	pick_entity_server	impl Game<'_>	pick_knot_fence	-	method	client	called
 server	piglins	impl Game<'_>	anger_piglins	-	method	game	called
 server	piglins	impl Game<'_>	guarded_by_piglins	-	method	game	called
@@ -4726,7 +4724,6 @@ server	saving_server	impl Game<'_>	poll_closing_save_chunks_server	-	method	clie
 server	saving_server	impl Game<'_>	poll_closing_save_entities_server	-	method	client	called
 server	saving_server	impl Game<'_>	poll_closing_save_flush_server	-	method	client	called
 server	saving_server	impl Game<'_>	save_level	-	method	client,test	called
-server	scoreboard	-	local_tab_players	-	fn	client	called
 server	scoreboard	-	tab_players_needed	-	fn	client	called
 server	scoreboard	impl Game<'_>	cart_push_allowed	-	method	game	called
 server	scoreboard	impl Game<'_>	draw_scoreboard	-	method	client	called

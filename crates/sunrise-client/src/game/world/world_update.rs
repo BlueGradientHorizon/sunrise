@@ -69,7 +69,9 @@ impl Game<'_> {
         }
         let areas = self.streaming.extra.len();
         let dim = self.dim;
-        self.update_world_server(dim);
+        if self.is_logical_server() {
+            self.update_world_server(dim);
+        }
         // `Level.getChunk`'s tickets keep their columns until they expire.
         self.streaming.hold_unknown_tickets();
         self.streaming.upload_backlog = self.pending_uploads.0.len();
@@ -112,7 +114,8 @@ impl Game<'_> {
             .collect();
         let modified = sunrise_client::spans::time("with_entities", || self.with_entities(&dirty));
         self.native_full_chunk_snapshots(&modified);
-        if !modified.is_empty()
+        if self.is_logical_server()
+            && !modified.is_empty()
             && let Err(e) = self.update_world_save_server(&modified)
         {
             log::warn!("Sunrise: failed to save unloaded chunks: {e}");
@@ -171,7 +174,7 @@ impl Game<'_> {
         // resident has its tick containers before a command can schedule into
         // it, even in a frozen level that runs no world tick. The unloaded
         // chunks above were saved with their ticks first.
-        if self.remote.is_none() {
+        if self.is_logical_server() {
             sunrise_client::spans::time("sync_tick_chunks", || self.sync_tick_chunks());
         }
         let (far_distance, far_reduced) =
@@ -508,7 +511,8 @@ impl Game<'_> {
                 self.lod_blue_map.0 = blue_map.clone();
                 terrain::ServerTerrain::new(dir, blue_map) as _
             }),
-            _ => Some(self.streaming.lod_source()),
+            // A client without a server connection has no world for far terrain.
+            (None, _, None) => None,
         };
         if let Some(source) = source {
             self.lod.0 = Some(sunrise_client::lod::Lod::new(source, self.worker_context()));

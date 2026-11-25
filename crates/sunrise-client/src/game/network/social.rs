@@ -52,16 +52,7 @@ impl Game<'_> {
                 let me = self.remote.as_ref().map_or(0, |r| r.profile());
                 (players, me)
             }
-            None => {
-                let uuid = self.level.player_uuid.map_or(0, |u| {
-                    u.iter()
-                        .fold(0u128, |a, &w| (a << 32) | u128::from(w as u32))
-                });
-                let mut me = TabPlayer::new(uuid, super::chat::PLAYER_NAME);
-                me.skin = "entity/player/wide/steve".into();
-                let guests = self.lan.as_ref().map_or(&[][..], |h| &h.hub.guests);
-                (super::scoreboard::local_tab_players(me, guests), uuid)
-            }
+            None => (Vec::new(), 0),
         }
     }
     /// `Minecraft.isBlocked`: whether a player's chat is hidden (never the player's own).
@@ -69,15 +60,7 @@ impl Game<'_> {
         if !self.client.social.hidden.contains(&id) {
             return false;
         }
-        let me = self.remote.as_ref().map_or_else(
-            || {
-                self.level.player_uuid.map_or(0, |u| {
-                    u.iter()
-                        .fold(0u128, |a, &w| (a << 32) | u128::from(w as u32))
-                })
-            },
-            |r| r.profile(),
-        );
+        let me = self.remote.as_ref().map_or(0, |r| r.profile());
         id != me
     }
     /// `new SocialInteractionsScreen(lastScreen)`: it opens on All, with an empty search.
