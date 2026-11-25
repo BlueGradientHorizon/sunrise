@@ -1507,26 +1507,15 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 if c.fuel <= 0 {
                     c.push = Vec3::ZERO;
                 }
-                if c.fuel > 0 && c.random.next_int_bound(4).unwrap_or(1) == 0 {
-                    let at = [c.position.x, c.position.y + 0.8, c.position.z];
-                    self.server_particle_at(
-                        crate::lan::server_effects::ServerParticle::simple(
-                            ParticleType::LargeSmoke,
-                        ),
-                        at,
-                        [0.0; 3],
-                    );
+                if c.fuel > 0 {
+                    // Clients emit LargeSmoke locally; keep c.random aligned with vanilla.
+                    let _ = c.random.next_int_bound(4);
                 }
             }
             CartKind::Tnt => {
                 if c.fuse > 0 {
+                    // Clients emit fuse Smoke locally after entity event 70.
                     c.fuse -= 1;
-                    let at = [c.position.x, c.position.y + 0.5, c.position.z];
-                    self.server_particle_at(
-                        crate::lan::server_effects::ServerParticle::simple(ParticleType::Smoke),
-                        at,
-                        [0.0; 3],
-                    );
                 } else if c.fuse == 0 {
                     let speed = c.velocity.x * c.velocity.x + c.velocity.z * c.velocity.z;
                     if self.explode_cart(c, speed) {

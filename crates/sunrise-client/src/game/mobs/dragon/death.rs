@@ -11,21 +11,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
         d.death_time += 1;
         let t = d.death_time;
         let p = d.position;
-        let r = &mut d.random;
-        let mut off = || {
-            [
-                f64::from((r.next_float() - 0.5) * 8.0),
-                f64::from((r.next_float() - 0.5) * 4.0),
-                f64::from((r.next_float() - 0.5) * 8.0),
-            ]
-        };
         if (180..=200).contains(&t) {
-            let o = off();
-            self.server_particle_at(
-                crate::lan::server_effects::ServerParticle::simple(ParticleType::ExplosionEmitter),
-                [p.x + o[0], p.y + 2.0 + o[1], p.z + o[2]],
-                [0.0; 3],
-            );
+            // Clients emit ExplosionEmitter locally; keep d.random aligned with vanilla.
+            for _ in 0..3 {
+                let _ = d.random.next_float();
+            }
         }
         // Only the fight's own dragon has a fight (`dragonFight`): elsewhere
         // (`/summon`), or summoned in the End after the fight is won, a
