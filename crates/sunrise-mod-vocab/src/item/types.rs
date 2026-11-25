@@ -28,6 +28,12 @@ pub enum ModelError {
     StaleModel,
 }
 
+impl crate::NoBackend for ModelError {
+    fn no_backend() -> Self {
+        Self::UnknownModel
+    }
+}
+
 /// An item requested at registration; its load-owned slot identifies the canonical name.
 // no wire: decoding validates the u32 slot with ItemKey::from_slot on the host.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -46,7 +52,7 @@ impl ItemKey {
     /// Whether this item is in `tag` (`ItemStack.is(TagKey)`), over `tags`'s current
     /// authoritative snapshot. An unknown tag is `Some(false)`; unavailable tags or mappings
     /// return `None`.
-    pub fn is_in_tag(self, tags: &dyn Tags, tag: TagKey) -> Option<bool> {
+    pub fn is_in_tag(self, tags: &dyn Tags, tag: TagKey<ItemKey>) -> Option<bool> {
         tags.is_in_tag(self, tag)
     }
     /// The fluid a filled bucket the game registers holds (`BucketItem.content`), the inverse of

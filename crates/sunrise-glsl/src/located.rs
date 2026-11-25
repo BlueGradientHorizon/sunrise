@@ -104,6 +104,34 @@ impl Lines {
         &self.text
     }
 
+    /// `lines` (one per line of `self`, with no line break) with `self`'s origins, line for line.
+    /// Its one caller, [`crate::run_directives`], makes one line of each line and refuses a
+    /// define holding a line break, the one way a replacement could add a line.
+    pub fn relined(&self, lines: &[String]) -> Self {
+        debug_assert_eq!(lines.len(), self.origins.len());
+        Self {
+            text: lines.join("\n"),
+            origins: self.origins.clone(),
+        }
+    }
+
+    /// The line (from 0) holding byte `at`.
+    pub fn line_of(&self, at: usize) -> usize {
+        self.text[..at.min(self.text.len())].matches('\n').count()
+    }
+
+    /// Where line `line` (from 0) starts.
+    pub fn line_start(&self, line: usize) -> usize {
+        match line.checked_sub(1) {
+            None => 0,
+            Some(before) => self
+                .text
+                .match_indices('\n')
+                .nth(before)
+                .map_or(self.text.len(), |(at, _)| at + 1),
+        }
+    }
+
     /// Where the line holding byte `at` came from.
     pub fn origin_at(&self, at: usize) -> Option<Origin> {
         let line = self.text[..at.min(self.text.len())].matches('\n').count();
@@ -227,6 +255,9 @@ pub struct Expanded {
     pub(crate) lines: Lines,
     /// The stage file first, then each include, by id.
     pub(crate) files: Vec<String>,
+    /// The GLSL version the stage file declares, what `__VERSION__` reads
+    /// ([`crate::stage_version`]).
+    pub(crate) version: u32,
 }
 
 impl Expanded {
@@ -265,7 +296,7 @@ impl Expanded {
             .collect()
     }
 
-    fn located(&self, origin: Option<Origin>, message: String) -> Error {
+    pub(crate) fn located(&self, origin: Option<Origin>, message: String) -> Error {
         self.location(origin).error(message)
     }
 

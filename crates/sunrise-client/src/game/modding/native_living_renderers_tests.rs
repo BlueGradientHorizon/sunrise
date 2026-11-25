@@ -348,7 +348,8 @@ fn a_sleeping_or_baby_frame_reads_as_the_model_lays_it() {
         // A baby asleep in a bed facing east.
         villager.extra.age = -24000;
         villager.extra.ints[1] = 4;
-        let state = super::native_mob_draw::entity_render_state(&villager, 94, 0.5);
+        let state =
+            super::native_mob_draw::entity_render_state(&villager, 94, 0.5, glam::DVec3::ZERO);
         let living = state.living.unwrap();
         assert_eq!(living.pose, Pose::Sleeping);
         assert_eq!(living.bed_orientation, Some(mod_api::Direction::East));
@@ -378,7 +379,7 @@ fn own_yaw_is_independent_of_body_rotation_across_a_wrap() {
         mob.body_yaw = 50.0;
         mob.previous_head_yaw = 70.0;
         mob.head_yaw = 90.0;
-        let state = super::native_mob_draw::entity_render_state(&mob, 95, 0.5);
+        let state = super::native_mob_draw::entity_render_state(&mob, 95, 0.5, glam::DVec3::ZERO);
         assert_eq!(state.yaw, 360.0); // The shortest interpolation reaches 0 degrees modulo 360.
         assert_eq!(state.living.unwrap().body_rot, 40.0);
         assert_eq!(state.living.unwrap().y_rot, 40.0);
@@ -409,7 +410,7 @@ fn extracted_living_signs_death_time_and_hurt_overlay_are_literal() {
         mob.previous_head_pitch = 15.0;
         mob.custom_name = Some("Dinnerbone".into());
         let frame = |mob: &Mob| {
-            super::native_mob_draw::entity_render_state(mob, 96, 0.5)
+            super::native_mob_draw::entity_render_state(mob, 96, 0.5, glam::DVec3::ZERO)
                 .living
                 .unwrap()
         };

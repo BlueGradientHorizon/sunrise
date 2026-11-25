@@ -2639,7 +2639,7 @@ fn mod_block_entity_round_trips() {
 }
 
 #[test]
-fn mod_block_entity_extended_slots_round_trip_without_aliasing() {
+fn mod_block_entity_item_slots_round_trip_as_unsigned_bytes() {
     use crate::{
         containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields},
         items::ItemStack,
@@ -2650,10 +2650,11 @@ fn mod_block_entity_extended_slots_round_trip_without_aliasing() {
     let iron = ItemStack::new("minecraft:iron_ingot", 4);
     let dirt = ItemStack::new("minecraft:dirt", 7);
 
-    let mut items = vec![None; 257];
+    // A container holds at most 256 slots (`Registrar::block_container`): its rows carry
+    // vanilla's unsigned-byte slot, 255 as -1b.
+    let mut items = vec![None; 256];
     items[0] = Some(stone.clone());
     items[255] = Some(iron.clone());
-    items[256] = Some(dirt.clone());
     let entity = ModBlockEntity::new(
         "test:vault".into(),
         ModBlockEntityFields {
@@ -2670,17 +2671,16 @@ fn mod_block_entity_extended_slots_round_trip_without_aliasing() {
     assert_eq!(
         encoded.get("Items"),
         Some(&parse(
-            r#"[{Slot:0b,id:"minecraft:stone",count:3},{Slot:-1b,id:"minecraft:iron_ingot",count:4},{Slot:256,id:"minecraft:dirt",count:7}]"#
+            r#"[{Slot:0b,id:"minecraft:stone",count:3},{Slot:-1b,id:"minecraft:iron_ingot",count:4}]"#
         ))
     );
 
-    // Reloading with the declared shape restores slots 0, 255 and 256 with no aliasing.
+    // Reloading with the declared shape restores slots 0 and 255.
     let reloaded =
-        decode_mod_block_entity("test:vault".into(), &encoded, 257).expect("declared mod vault");
-    assert_eq!(reloaded.items.len(), 257);
+        decode_mod_block_entity("test:vault".into(), &encoded, 256).expect("declared mod vault");
+    assert_eq!(reloaded.items.len(), 256);
     assert_eq!(reloaded.items[0].as_ref(), Some(&stone));
     assert_eq!(reloaded.items[255].as_ref(), Some(&iron));
-    assert_eq!(reloaded.items[256].as_ref(), Some(&dirt));
     assert!(reloaded.nbt.get(&"Items".into()).is_none());
     assert_eq!(
         block_entity_encode::encode(
@@ -2692,62 +2692,19 @@ fn mod_block_entity_extended_slots_round_trip_without_aliasing() {
         encoded
     );
 
-    // Generic decode without a declared shape preserves low slots and leaves extended
-    // rows opaque without growing the modeled vector.
-    let (loaded_pos, BlockEntity::Mod(unknown)) =
-        decode_block_entity(&encoded).expect("unknown-block decode")
-    else {
-        panic!("expected mod block entity");
-    };
-    assert_eq!(loaded_pos, pos);
-    assert_eq!(unknown.items.len(), 256);
-    assert_eq!(unknown.items[0].as_ref(), Some(&stone));
-    assert_eq!(unknown.items[255].as_ref(), Some(&iron));
-    assert_eq!(
-        unknown.nbt.get(&"Items".into()),
-        Some(&parse(r#"[{Slot:256,id:"minecraft:dirt",count:7}]"#))
-    );
-    assert_eq!(
-        block_entity_encode::encode(
-            pos,
-            &BlockEntity::Mod(unknown),
-            "test:vault",
-            &Default::default(),
-        ),
-        encoded
-    );
-
-    // Rows outside the declared shape, invalid negative Ints, noncanonical compact Ints,
-    // duplicates, and slotless entries all remain opaque verbatim.
+    // Rows outside the declared shape, slots past a byte, Int slots that are not the byte
+    // form, duplicates and slotless entries all remain opaque verbatim.
     let mixed = parse(
-        r#"{id:"test:vault",x:4,y:64,z:-2,Items:[{Slot:0b,id:"minecraft:stone",count:3},{Slot:256,id:"minecraft:dirt",count:7},{Slot:257,id:"minecraft:gold_ingot",count:1},{Slot:1000000,id:"minecraft:diamond",count:1},{Slot:-1,id:"minecraft:coal",count:1},{Slot:1,id:"minecraft:sand",count:1},{raw:"no slot"}]}"#,
+        r#"{id:"test:vault",x:4,y:64,z:-2,Items:[{Slot:0b,id:"minecraft:stone",count:3},{Slot:256,id:"minecraft:dirt",count:7},{Slot:-1,id:"minecraft:coal",count:1},{Slot:1,id:"minecraft:sand",count:1},{Slot:5b,id:"minecraft:dirt",count:1},{Slot:5b,id:"minecraft:dirt",count:2},{Slot:9b,id:"minecraft:dirt",count:1},{raw:"no slot"}]}"#,
     );
-    let bounded = decode_mod_block_entity("test:vault".into(), &mixed, 257).expect("bounded vault");
-    assert_eq!(bounded.items.len(), 257);
+    let bounded = decode_mod_block_entity("test:vault".into(), &mixed, 9).expect("bounded vault");
     assert_eq!(bounded.items[0].as_ref(), Some(&stone));
-    assert_eq!(bounded.items[256].as_ref(), Some(&dirt));
+    assert!(bounded.items.iter().skip(1).all(Option::is_none));
     assert_eq!(
         bounded.nbt.get(&"Items".into()),
         Some(&parse(
-            r#"[{Slot:257,id:"minecraft:gold_ingot",count:1},{Slot:1000000,id:"minecraft:diamond",count:1},{Slot:-1,id:"minecraft:coal",count:1},{Slot:1,id:"minecraft:sand",count:1},{raw:"no slot"}]"#
+            r#"[{Slot:256,id:"minecraft:dirt",count:7},{Slot:-1,id:"minecraft:coal",count:1},{Slot:1,id:"minecraft:sand",count:1},{Slot:5b,id:"minecraft:dirt",count:1},{Slot:5b,id:"minecraft:dirt",count:2},{Slot:9b,id:"minecraft:dirt",count:1},{raw:"no slot"}]"#
         ))
-    );
-
-    // Duplicate extended slots stay opaque rather than modeling one over the other.
-    let dup_extended = parse(
-        r#"{id:"test:vault",x:4,y:64,z:-2,Items:[{Slot:256,id:"minecraft:stone",count:1},{Slot:256,id:"minecraft:dirt",count:1}]}"#,
-    );
-    let dup =
-        decode_mod_block_entity("test:vault".into(), &dup_extended, 257).expect("dup extended");
-    assert!(dup.items.is_empty());
-    assert_eq!(
-        block_entity_encode::encode(
-            pos,
-            &BlockEntity::Mod(Box::new(dup)),
-            "test:vault",
-            &Default::default(),
-        ),
-        dup_extended
     );
 
     // Slotless declared shape keeps Items verbatim in nbt.
@@ -2755,20 +2712,16 @@ fn mod_block_entity_extended_slots_round_trip_without_aliasing() {
     assert!(slotless.items.is_empty());
     assert_eq!(slotless.nbt.get(&"Items".into()), encoded.get("Items"));
 
-    // Opaque slot queries, claims and clears distinguish slot 0 from slot 256.
-    let opaque_pair = parse(
+    // Opaque slot queries and claims: writing slot 0 takes over its opaque row.
+    let opaque = parse(
         r#"{id:"test:vault",x:4,y:64,z:-2,Items:[{Slot:0b,raw:"low"},{Slot:256,raw:"high"}]}"#,
     );
     let mut claimed =
-        decode_mod_block_entity("test:vault".into(), &opaque_pair, 257).expect("opaque pair");
+        decode_mod_block_entity("test:vault".into(), &opaque, 256).expect("opaque rows");
     assert!(claimed.has_opaque_item_slot(0));
-    assert!(claimed.has_opaque_item_slot(256));
-    claimed.items.resize(257, None);
-    *claimed.item_slot_mut(0) = Some(stone.clone());
+    claimed.items.resize(256, None);
+    *claimed.item_slot_mut(0) = Some(dirt.clone());
     assert!(!claimed.has_opaque_item_slot(0));
-    assert!(claimed.has_opaque_item_slot(256));
-    *claimed.item_slot_mut(256) = Some(dirt.clone());
-    assert!(!claimed.has_opaque_item_slot(256));
     assert_eq!(
         block_entity_encode::encode(
             pos,
@@ -2778,7 +2731,7 @@ fn mod_block_entity_extended_slots_round_trip_without_aliasing() {
         )
         .get("Items"),
         Some(&parse(
-            r#"[{Slot:0b,id:"minecraft:stone",count:3},{Slot:256,id:"minecraft:dirt",count:7}]"#
+            r#"[{Slot:0b,id:"minecraft:dirt",count:7},{Slot:256,raw:"high"}]"#
         ))
     );
 

@@ -5,8 +5,7 @@
 //! (26.3's `#include` and the older `#moj_import`, which pastes a file once, as
 //! `GlslPreprocessor` imported them), and the define its compiler gives every program.
 
-use naga::ShaderStage;
-use naga::front::glsl::{InterfaceLimits, Options};
+use naga::front::glsl::InterfaceLimits;
 use sunrise_glsl::{Error, Expanded, Glue, ImportError, Includes, Inputs, Stages, Translated};
 
 /// Vanilla's uniform blocks (`shaders/include/*.glsl`) and their bindings in set 0.
@@ -142,15 +141,11 @@ pub(crate) fn expand_core_imports(
     sunrise_glsl::expand_includes(text, file, dir, &includes(&read), Some(&defines))
 }
 
-/// naga's options for one `stage` of a program with the pipeline's `defines`, the backend's
-/// first ([`DEPTH_ZERO_TO_ONE`]), and the device's stage interface `limits`. The core shaders'
-/// and the post shaders' one way in.
-pub(crate) fn glsl_options(
-    stage: ShaderStage,
-    defines: &[&str],
-    limits: InterfaceLimits,
-) -> Options {
-    sunrise_glsl::glsl_options(stage, &program_defines(defines), limits)
+/// `code`'s directives run with the pipeline's `defines`, the backend's first
+/// ([`DEPTH_ZERO_TO_ONE`]) (`sunrise_glsl::run_directives`). The core shaders' and the post
+/// shaders' one way to them.
+pub(crate) fn run_directives(code: &Expanded, defines: &[&str]) -> Result<Expanded, Error> {
+    sunrise_glsl::run_directives(code, &program_defines(defines))
 }
 
 /// A program's defines as vanilla's compiler gives them: the backend's ([`DEPTH_ZERO_TO_ONE`]),

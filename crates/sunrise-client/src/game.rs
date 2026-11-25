@@ -617,6 +617,9 @@ mod fov;
 mod foxes;
 #[path = "game/interface/frame_geometry.rs"]
 mod frame_geometry;
+#[cfg(test)]
+#[path = "game/modding/frame_view_retained_draw_tests.rs"]
+mod frame_view_retained_draw_tests;
 #[path = "game/entities/frames.rs"]
 mod frames;
 #[cfg(feature = "friends")]
@@ -1067,6 +1070,9 @@ mod native_block_sprites;
 mod native_block_states;
 #[path = "game/modding/native_block_tables.rs"]
 mod native_block_tables;
+#[cfg(test)]
+#[path = "game/modding/native_block_tables_tests.rs"]
+mod native_block_tables_tests;
 #[cfg(test)]
 #[path = "game/modding/native_block_use_criteria_tests.rs"]
 mod native_block_use_criteria_tests;
@@ -1667,6 +1673,11 @@ mod native_registry_ids_tests;
 #[cfg(test)]
 #[path = "game/modding/native_registry_processor_tests.rs"]
 mod native_registry_processor_tests;
+#[path = "game/modding/native_render_hooks.rs"]
+mod native_render_hooks;
+#[cfg(test)]
+#[path = "game/modding/native_render_hooks_tests.rs"]
+mod native_render_hooks_tests;
 #[cfg(test)]
 #[path = "game/modding/native_render_pair_tests.rs"]
 pub(in crate::game) mod native_render_pair_tests;
@@ -2794,6 +2805,7 @@ struct GameLevel<'w> {
     /// (`Entity.isIgnoringBlockTriggers`).
     trigger_extras: Vec<Aabb>,
     biomes: &'w Biomes,
+    biome_keys: Option<&'w mod_api::__private::BiomeKeys>,
     /// `BiomeManager`'s zoom over this level's seed, for `biome_name`.
     biome_zoom: sunrise_core::biome::BiomeZoom,
     seed: i64,
@@ -3413,6 +3425,7 @@ struct Game<'a> {
     /// The title and menu bundle (GUI atlas, font and panorama).
     gui: UiResources,
     instance_groups: std::cell::RefCell<native_instance_groups::InstanceGroupStorage>,
+    prepared_items: std::cell::RefCell<native_instance_groups::PreparedItemStorage>,
     standalone_geometry: native_block_entity_draw::StandaloneGeometry,
     /// `FogRenderer`'s evolving state.
     fog: sunrise_client::fog::FogState,
@@ -3995,6 +4008,9 @@ struct Game<'a> {
     /// The camera the last frame drew from (position, yaw, pitch, fov), for the locator bar.
     locator_camera: Option<([f64; 3], f32, f32, f32)>,
     native_camera_frame: Option<mod_api::Camera>,
+    /// The camera entity's interpolated eye position for the current world frame, or `None`
+    /// when there is no camera entity (title screen, scenes).
+    native_camera_entity_eye: Option<[f64; 3]>,
     /// The yaw, pitch and roll a native mod's or spectated camera drew the last frame from,
     /// none when it drew from the local player's vanilla view.
     posed_rotation: Option<(f32, f32, f32)>,
@@ -5748,6 +5764,9 @@ impl Game<'_> {
             building_player_boxes,
             player_collision,
             biomes: world_biomes!(self),
+            biome_keys: (self.serving.is_some() || self.options.dedicated.is_some())
+                .then(|| self.world_tables.as_ref().map(|t| &*t.data_maps.biome_keys))
+                .flatten(),
             biome_zoom: self.streaming.biome_zoom,
             seed: self.level.seed,
             behaviours: self.res.behaviours(),
@@ -9121,6 +9140,11 @@ impl Game<'_> {
                 continue;
             }
             if let Some(resolved) = native_entity_renderers::experience_orb_renderer() {
+                let [width, height, eye_height] = o
+                    .size_answer
+                    .filter(|s| s.vanilla == sunrise_client::entities::ExperienceOrb::DIMENSIONS)
+                    .and_then(|s| s.size)
+                    .unwrap_or(sunrise_client::entities::ExperienceOrb::DIMENSIONS);
                 let entity: mod_api::EntityRenderState =
                     mod_api::__private::built::EntityRenderState {
                         id: o.id,
@@ -9128,6 +9152,11 @@ impl Game<'_> {
                         age: o.age as f32 + partial,
                         yaw: o.rotation[0],
                         pitch: o.rotation[1],
+                        position: at,
+                        size: [width, height],
+                        eye_height,
+                        distance_to_camera_sq: (glam::DVec3::from_array(at) - camera)
+                            .length_squared(),
                         living: None,
                         tnt_fuse: None,
                         orb_value: Some(o.value),
@@ -11676,6 +11705,8 @@ impl Game<'_> {
         self.screen_blur_requested.set(false);
         // GUI and world hooks read the same frame snapshot. Keep its dimension allocation
         // between frames rather than formatting another copy for the world renderer.
+        self.native_camera_entity_eye =
+            (!title && self.camera_subject().is_some()).then_some(self.view.eye);
         let previous_camera = self.native_camera_frame.take();
         self.native_camera_frame = (!title && !mod_api::__private::mods().is_empty()).then(|| {
             let mut dimension =
@@ -14191,6 +14222,7 @@ impl<'a> Game<'a> {
             pack,
             gui,
             instance_groups: Default::default(),
+            prepared_items: Default::default(),
             standalone_geometry,
             fog: Default::default(),
             screen_fx: Default::default(),
@@ -14510,6 +14542,7 @@ impl<'a> Game<'a> {
             waypoints: Default::default(),
             locator_camera: None,
             native_camera_frame: None,
+            native_camera_entity_eye: None,
             posed_rotation: None,
             post_effects: Vec::new(),
             requested_post_effects_buf: Vec::new(),

@@ -1,11 +1,12 @@
 //! Ender dragon handles for native server mods: the `Mob` state the dragon
-//! keeps, its phase and the fight it belongs to.
+//! keeps, its phase and the fight it belongs to, and the End's fight
+//! itself, read and driven through the level.
 use super::{
     Dim, Game,
     commands::Target,
     dragon::{Dragon, Fight},
 };
-use mod_api::{DragonPhase, DragonRef, EntityRef, LivingRef, MobRef};
+use mod_api::{DragonFightState, DragonPhase, DragonRef, EntityRef, LevelRef, LivingRef, MobRef};
 
 impl Game<'_> {
     /// The dragon an entity handle names now.
@@ -67,6 +68,37 @@ impl Game<'_> {
     /// `alive_crystals` is.
     pub(super) fn dragon_previously_killed(&self, dragon: DragonRef) -> Option<bool> {
         Some(self.native_dragon_fight(dragon)?.previously_killed)
+    }
+
+    /// `EnderDragonFight`'s state, read in place or parked: Sunrise keeps the
+    /// End's fight only. None as the host call says.
+    pub(super) fn level_dragon_fight(&self, level: LevelRef) -> Option<DragonFightState> {
+        self.native_level_world(level)?;
+        (level.dimension_id() == Dim::End.id() && self.fight.loaded).then(|| self.fight.api())
+    }
+
+    /// Whether a fight write may run on `level`: the End in place, on the
+    /// server, named by a current handle.
+    fn native_fight_write_allowed(&self, level: LevelRef) -> bool {
+        self.is_logical_server()
+            && self.level_handle_current(level)
+            && self.dim == Dim::End
+            && self.dim.key() == level.dimension()
+    }
+
+    /// `EnderDragonFight.tryRespawn`. True when a respawn started.
+    pub(super) fn level_dragon_fight_try_respawn(&mut self, level: LevelRef) -> bool {
+        self.native_fight_write_allowed(level) && self.try_respawn()
+    }
+
+    /// `EnderDragonFight.resetSpikeCrystals`.
+    pub(super) fn level_dragon_fight_reset_spike_crystals(&mut self, level: LevelRef) -> bool {
+        if !self.native_fight_write_allowed(level) {
+            return false;
+        }
+        self.load_fight();
+        self.reset_spike_crystals();
+        true
     }
 
     /// `EnderDragon.canAttack` (`canBeSeenAsEnemy`) and `Mob.asValidTarget`

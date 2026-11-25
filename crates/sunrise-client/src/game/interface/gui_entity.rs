@@ -246,7 +246,31 @@ impl Game<'_> {
     /// mods' layers. Full bright, seen from its own position.
     pub(in crate::game) fn gui_entity_geometry(&self, mob: &Mob, out: &mut Vec<Vertex>) {
         let p = mob.position;
-        self.gui_entity_geometry_at(mob, 1.0, DVec3::new(p.x, p.y, p.z), out);
+        let origin = DVec3::new(p.x, p.y, p.z);
+        let camera = mod_api::Camera {
+            position: origin.to_array(),
+            eye_height: 0.0,
+            partial_tick: 1.0,
+            yaw: 0.0,
+            pitch: 0.0,
+            roll: 0.0,
+            fov_degrees: 0.0,
+            near: 0.0,
+            far: 0.0,
+            view: Mat4::IDENTITY.to_cols_array(),
+            projection: Mat4::IDENTITY.to_cols_array(),
+            dimension: String::new(),
+        };
+        let view = mod_api::WorldRenderView::new(
+            &camera,
+            None,
+            1.0,
+            self.world.game_time,
+            self.animation_time(),
+            false,
+            &[],
+        );
+        self.gui_entity_geometry_at(mob, 1.0, origin, Some(&view), out);
     }
 
     /// `gui_entity_geometry` at `partial` into the tick, around `camera`: what a screen
@@ -256,6 +280,7 @@ impl Game<'_> {
         mob: &Mob,
         partial: f32,
         camera: DVec3,
+        explicit_view: Option<&mod_api::WorldRenderView<'_>>,
         out: &mut Vec<Vertex>,
     ) {
         let is_player = &*mob.kind.id == "minecraft:player";
@@ -263,8 +288,15 @@ impl Game<'_> {
         let added = resolved.layers;
         // A mod's renderer for the type draws in place of the model only: the mods' layers
         // still follow, as in the world.
-        let modded =
-            self.mod_living_renderer_geometry(mob, partial, camera, FULL_BRIGHT, false, out);
+        let modded = self.mod_living_renderer_geometry_with_view(
+            mob,
+            partial,
+            camera,
+            explicit_view,
+            FULL_BRIGHT,
+            false,
+            out,
+        );
         let hidden = if modded {
             StockLayerMask::EMPTY
         } else {
@@ -310,7 +342,7 @@ impl Game<'_> {
             },
             hidden,
         };
-        self.mod_layer_geometry(
+        self.mod_layer_geometry_with_view(
             mob,
             None,
             frame_draw.model(),
@@ -318,6 +350,7 @@ impl Game<'_> {
             &stock_ctx,
             partial,
             camera,
+            explicit_view,
             FULL_BRIGHT,
             out,
         );

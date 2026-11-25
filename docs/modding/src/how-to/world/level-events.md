@@ -104,6 +104,22 @@ only in the local client's view and requires `&mut dyn ClientHost`, not a server
 host. Local cracks expire after 400 ticks without an update and clear when the
 client changes levels or disconnects.
 
+### Hear breaking cracks on a client
+
+`client_break_progress(dimension, breaker, pos, progress)` tells a client mod each crack its
+client level is told of (`ClientLevel.destroyBlockProgress`): the server's crack packets, and
+the local player's own dig, whose `breaker` is the player's entity id. `progress` `0..=9` is the
+stage; any other value means that breaker's crack went. A server that runs mining itself shows the
+player's own crack only through its packets, so this is how a client mod follows how far the block
+it mines has cracked:
+
+```rust
+{{#include ../../../examples/src/client_misc.rs:client_break_progress}}
+```
+
+A dig tells its stage every tick, so keep the listener cheap. A mod's own
+`set_client_break_progress` is not told back to it.
+
 ### Read tool speed
 
 `level.block_break_speed(host, pos, tool)` reads the tool's destroy speed on that
