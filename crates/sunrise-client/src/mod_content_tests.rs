@@ -8721,22 +8721,24 @@ fn accept_declared_refuses_host_duplicates_of_served_content_and_keeps_served_re
     }
 }
 
+/// Face rules declared in a content block's data reach the visibility table the mesher culls
+/// with, over the prepared game: `skip_rendering`, `hides_neighbor_face` and
+/// `supports_external_face_hiding` decide the face between two neighbours.
 #[test]
 #[ignore = "daily"]
-fn content_block_face_rules_bake_expected_face_counts() {
-    use crate::{
-        biome::Biomes,
-        chunk::{Chunk, MIN_Y},
-        mesher::{BiomeZoom, LeafCullingMode, MeshScratch, MeshTables, Mesher, SectionMesh},
-    };
+fn content_block_face_rules_reach_the_mesher_visibility() {
+    use sunrise_core::geometry::Direction;
+    use sunrise_world::registry::BlockStateId;
     let Some(base) = prepared() else {
         return;
     };
-    let scratch = temp("face-rules-bake");
-    let m = smod(
-        &scratch,
-        "face_rules",
+    let scratch = std::env::temp_dir().join(format!("sunrise-face-rules-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&scratch);
+    let manifest_text = manifest("testmod", "");
+    let m = folder_mod(
+        &scratch.join("mod"),
         &[
+            ("sunrise-mod.toml", manifest_text.as_str()),
             (
                 "data/testmod/sunrise/block/self_skip.json",
                 r#"{"template":"minecraft:glass","item":false,"properties":{"occludes":false,"skip_rendering":[{"neighbor":"self"}]}}"#,
@@ -8756,71 +8758,36 @@ fn content_block_face_rules_bake_expected_face_counts() {
         ],
     );
     let root = resource_root_fixture(&base, Path::new(""), &[m], &scratch.join("cache")).unwrap();
-    let source = sunrise_assets::resource_source::ResourceRoot::directory(root.clone());
     let assets = Assets::load(&root).unwrap();
     let registry = assets.registry;
-    let facts = BlockFacts::load(&root, registry).unwrap();
-    let biomes = Biomes::load(&source).unwrap();
-    let render = assets.reload(&source).unwrap();
-    let visibility = crate::models::load_visibility(&root, registry).unwrap();
-    let tables = MeshTables::new(&assets, &render, &facts, visibility.clone(), None).unwrap();
-
-    let self_skip = registry.default_state("testmod:self_skip").unwrap().0;
-    let no_skip = registry.default_state("testmod:no_skip").unwrap().0;
-    let hider = registry.default_state("testmod:hider").unwrap().0;
-    let opt_out = registry.default_state("testmod:opt_out").unwrap().0;
-
-    let count_pair_faces = |a: u32, b: u32| -> usize {
-        let mut chunk = Chunk::empty(0, 0);
-        chunk.set(4, 4, 4, a);
-        chunk.set(5, 4, 4, b);
-        let mut region = [[None; 3]; 3];
-        region[1][1] = Some(&chunk);
-        let mut mesher = Mesher {
-            nether_shading: false,
-            shader_pack_lighting: false,
-            separate_ao: false,
-            shader_pack: false,
-            assets: &assets,
-            render: &render,
-            tables: &tables,
-            biomes: &biomes,
-            visibility: visibility.clone(),
-            zoom: BiomeZoom::new(0),
-            blend_radius: 0,
-            smooth_lighting: false,
-            cutout_leaves: false,
-            opaque_ice: false,
-            translucent_layers: &[],
-            leaf_culling: LeafCullingMode::Off,
-            hidden_states: &[],
-            part_tables: Default::default(),
-        };
-        let mut mesh_scratch = MeshScratch::default();
-        let sy = (4 - MIN_Y) >> 4;
-        let mesh = mesher.mesh_reusing(&region, sy, SectionMesh::default(), &mut mesh_scratch);
-        (mesh.solid.len() + mesh.translucent.len()) / 4
+    let mut visibility = crate::models::load_visibility(&root, registry).unwrap();
+    let state = |id: &str| BlockStateId(registry.default_state(id).unwrap().0);
+    let (self_skip, no_skip, hider, opt_out) = (
+        state("testmod:self_skip"),
+        state("testmod:no_skip"),
+        state("testmod:hider"),
+        state("testmod:opt_out"),
+    );
+    let mut shown = |a, b| {
+        visibility
+            .should_render_face(a, b, Direction::East, true)
+            .unwrap()
     };
-
-    assert_eq!(
-        count_pair_faces(self_skip, self_skip),
-        10,
-        "skip_rendering self hides the 2 shared faces"
+    assert!(
+        !shown(self_skip, self_skip),
+        "skip_rendering self hides the shared face"
     );
-    assert_eq!(
-        count_pair_faces(no_skip, no_skip),
-        12,
-        "skip_rendering: [] disables glass template's same_block skip"
+    assert!(
+        shown(no_skip, no_skip),
+        "an empty skip_rendering drops glass's same-block skip"
     );
-    assert_eq!(
-        count_pair_faces(no_skip, hider),
-        11,
-        "hides_neighbor_face hides no_skip's face toward hider"
+    assert!(
+        !shown(no_skip, hider),
+        "hides_neighbor_face hides the neighbour's face"
     );
-    assert_eq!(
-        count_pair_faces(opt_out, hider),
-        12,
-        "supports_external_face_hiding: false blocks hider's hides_neighbor_face"
+    assert!(
+        shown(opt_out, hider),
+        "supports_external_face_hiding: false keeps the face"
     );
     let _ = fs::remove_dir_all(&scratch);
 }

@@ -151,7 +151,7 @@ impl Game<'_> {
                 .map(|(tag, ids)| {
                     let members = ids
                         .iter()
-                        .filter_map(|&id| names.name("minecraft:block", id).map(str::to_owned))
+                        .filter_map(|&id| names.name("minecraft:block", id))
                         .collect();
                     (tag.clone(), members)
                 })
@@ -177,7 +177,7 @@ impl Game<'_> {
             hidden_states: old.hidden_states.clone(),
             part_tables: old.part_tables.clone(),
         });
-        self.block_entity_render.set_visibility(visibility);
+        self.res.block_entity_render().set_visibility(visibility);
         let context = self.worker_context();
         self.streaming.reload_resources(&mut self.world, context);
     }
