@@ -76,7 +76,7 @@ fn click_sign(
         .block_entities
         .insert((0, 70, 0), BlockEntity::Sign(sign));
     *game.held_mut() = Some(ItemStack::new("minecraft:oak_hanging_sign", 2));
-    game.audio.0.capture = Some(Vec::new());
+    game.start_audio_capture();
     let hit = Hit {
         pos: [0, 70, 0],
         inside: false,
@@ -97,20 +97,17 @@ fn click_sign(
         let state = game.world.block(pos[0], pos[1], pos[2]);
         game.res.facts().get(state).name.to_string()
     };
+    let sounds = std::mem::take(&mut game.server.pending_sounds)
+        .into_iter()
+        .map(|sound| sound.event)
+        .collect();
+    game.stop_audio_capture();
     Some(Click {
         events,
         chained: name(&game, [face[0], 70 + face[1], face[2]]),
         commanded: name(&game, [5, 70, 5]),
         held: game.held().map_or(0, |stack| stack.count),
-        sounds: game
-            .audio
-            .0
-            .capture
-            .take()
-            .unwrap_or_default()
-            .into_iter()
-            .map(|sound| sound.event)
-            .collect(),
+        sounds,
     })
 }
 

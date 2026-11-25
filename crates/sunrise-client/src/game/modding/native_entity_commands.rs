@@ -338,15 +338,13 @@ mod tests {
             let player = game.player(12).unwrap();
             let entity = player.entity();
             let (tx, rx) = mpsc::channel();
-            game.lan
-                .as_mut()
-                .unwrap()
-                .hub
-                .update_guest(13, |guest| {
-                    guest.permission = 2;
-                    guest.sender = PlayerSender::new(tx, Arc::default());
-                })
-                .unwrap();
+            let hub = &mut game.lan.as_mut().unwrap().hub;
+            hub.ops.insert(13, 2);
+            hub.update_guest(13, |guest| {
+                guest.permission = 2;
+                guest.sender = PlayerSender::new(tx, Arc::default());
+            })
+            .unwrap();
             let op_chat_count = || {
                 rx.try_iter()
                     .filter(|out| {

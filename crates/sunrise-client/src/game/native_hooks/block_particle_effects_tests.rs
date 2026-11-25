@@ -117,7 +117,7 @@ impl Hooks for Register {
 
 pub(in crate::game) fn fresh(name: &str) -> bool {
     run_fresh_cases(
-        &format!("{}::{name}", module_path!().split_once("::").unwrap().1),
+        &format!("game::client_side::native_hooks_client::block_particle_effects_tests::{name}"),
         "SUNRISE_BLOCK_PARTICLE_EFFECT_CHILD",
         &["run"],
     )

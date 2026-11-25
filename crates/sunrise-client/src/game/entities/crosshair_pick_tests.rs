@@ -1063,7 +1063,8 @@ pub(in crate::game::client_side) fn run_singleplayer_and_unstored_pick_share_uni
                 );
                 assert!(game.entity_targeted());
 
-                // E: singleplayer horse excludes ArmorStand and RemoteInteraction co-passengers and picks external falling block.
+                // E: server horse excludes ArmorStand co-passenger, and connected client horse
+                // excludes RemoteInteraction co-passenger, both picking external falling block.
                 game.mobs.clear();
                 game.tnts.clear();
                 let horse_type = game.res.mob_types().get("minecraft:horse").unwrap().clone();
@@ -1072,10 +1073,6 @@ pub(in crate::game::client_side) fn run_singleplayer_and_unstored_pick_share_uni
                 let mut stand = ArmorStand::new(112, Vec3::new(0.5, 65.6, 1.4), 0.0);
                 stand.vehicle = Some(110);
                 game.armor_stands.push(stand);
-                let mut inter = RemoteInteraction::new([0.5, 66.1, 1.9]);
-                inter.vehicle = Some(110);
-                inter.dimensions_refreshed = true;
-                game.client.interactions.insert(113, inter);
                 let behind_fb = Vec3::new(0.5, 66.1, 2.9);
                 game.falling.push(FallingBlock {
                     size_answer: None,
@@ -1106,13 +1103,96 @@ pub(in crate::game::client_side) fn run_singleplayer_and_unstored_pick_share_uni
                 assert_eq!(
                     game.crosshair_entity_id(),
                     Some(202),
-                    "horse co-passenger stand and interaction must be excluded"
+                    "horse co-passenger stand must be excluded"
                 );
                 assert_eq!(
                     game.spectator_click_target(),
                     Some(202),
-                    "spectator_click_target must skip co-passenger stand and interaction"
+                    "spectator_click_target must skip co-passenger stand"
                 );
+                let _pipe = crate::game::native_client_session::tests::logged_client(game);
+                game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
+                game.world
+                    .chunks
+                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                let horse_type = game.res.mob_types().get("minecraft:horse").unwrap().clone();
+                game.mobs
+                    .push(Mob::new(110, horse_type, Vec3::new(0.5, 64.0, 0.5), 0.0));
+                game.falling.push(FallingBlock {
+                    size_answer: None,
+                    attachment_lifetime: Default::default(),
+                    rotation: [0.0, 0.0],
+                    join: Default::default(),
+                    id: 202,
+                    state: sand,
+                    blocks_building: true,
+                    start_pos: BlockPos::new(0, 66, 2),
+                    position: behind_fb,
+                    previous: behind_fb,
+                    velocity: Vec3::ZERO,
+                    age: 0,
+                    no_gravity: false,
+                    portal: Default::default(),
+                    drop_item: false,
+                    fall_distance: 0.0,
+                    ground: Default::default(),
+                    fire_ticks: 0,
+                    sync_velocity: false,
+                    stuck: Vec3::ZERO,
+                    damage: Default::default(),
+                    saved: None,
+                });
+                let mut inter = RemoteInteraction::new([0.5, 66.1, 1.9]);
+                inter.vehicle = Some(110);
+                inter.dimensions_refreshed = true;
+                game.client.interactions.insert(113, inter);
+                game.riding = Some(110);
+                place_player(game, [0.5, 65.0, 0.5], 0.0, 0.0);
+                let remote = game.remote.as_mut().unwrap();
+                remote.entity_id = 1;
+                remote.entities.insert(
+                    113,
+                    crate::game::remote::Tracked {
+                        kind: "minecraft:interaction".into(),
+                        position: [0.5, 66.1, 1.9],
+                        previous: [0.5, 66.1, 1.9],
+                        yaw: 0.0,
+                        pitch: 0.0,
+                        previous_yaw: 0.0,
+                        previous_pitch: 0.0,
+                        codec_base: [0.5, 66.1, 1.9],
+                        on_fire: false,
+                        mod_fire_immune: false,
+                        silent: false,
+                        vehicle: Some(110),
+                        tick_count: 0,
+                        size_answer: None,
+                    },
+                );
+                remote.passenger_vehicles.insert(
+                    113,
+                    crate::game::remote_vehicles::PassengerSeat {
+                        vehicle: 110,
+                        index: 1,
+                    },
+                );
+                game.refresh_client_pick(1.0);
+                assert_eq!(
+                    game.crosshair_entity_id(),
+                    Some(202),
+                    "client horse co-passenger interaction must be excluded"
+                );
+                assert_eq!(
+                    game.spectator_click_target(),
+                    Some(202),
+                    "client spectator_click_target must skip co-passenger interaction"
+                );
+                game.remote = None;
+                game.options.execution_role =
+                    crate::game::execution_role::ExecutionRole::IntegratedServer;
+                game.world
+                    .chunks
+                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
 
                 // F (Finding 9): out-of-reach TNT (at 3.2) in front of chest (at 3.5) yields MISS,
                 // and a block at exact block_reach (4.5) fails strict `<`.
@@ -1278,7 +1358,7 @@ pub(in crate::game::client_side) fn run_singleplayer_and_unstored_pick_share_uni
                 game.riding = Some(300);
                 place_player(game, [0.5, 64.0, 0.5], 0.0, 0.0);
                 assert!(
-                    game.pick_shares_vehicle(305),
+                    game.side_pick_shares_vehicle(305),
                     "vehicle-root walk must traverse retained off-level links past resident count"
                 );
                 assert_eq!(

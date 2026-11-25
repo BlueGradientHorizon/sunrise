@@ -44,6 +44,9 @@ fn inventory_release_post_distinguishes_quick_craft_from_swallowed_release() {
     with_input_game(|game, id, state| {
         use sunrise_client::{chunk::Chunk, containers::BlockEntity};
         let pos = (0, 0, 0);
+        let saved_player = game.player.take();
+        let _pipe = crate::game::native_client_session::tests::logged_client(game);
+        game.player = saved_player;
         game.world
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -57,6 +60,11 @@ fn inventory_release_post_distinguishes_quick_craft_from_swallowed_release() {
         game.world
             .block_entities
             .insert(pos, BlockEntity::Chest(vec![None; 27]));
+        game.remote
+            .as_mut()
+            .unwrap()
+            .menu
+            .set(Some((1, "minecraft:generic_9x3".to_owned())));
         game.container = Some(pos);
         game.open_player_inventory();
         game.carried = Some(ItemStack::new("minecraft:stick", 8));

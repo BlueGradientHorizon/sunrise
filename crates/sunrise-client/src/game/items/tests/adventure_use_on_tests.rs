@@ -331,7 +331,15 @@ fn an_adventure_use_on_is_not_predicted_on_the_client() {
     let Some(mut game) = game(&mut resources) else {
         return;
     };
-    game.set_mode(GameMode::Adventure);
+    game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
+    let saved_player = game.player.take();
+    let _pipe = crate::game::native_client_session::tests::logged_client(&mut game);
+    game.player = saved_player;
+    game.world.chunks.insert(
+        (0, 0),
+        std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+    );
+    game.set_local_mode(GameMode::Adventure);
     let log = [2, 4, 3];
     place(&mut game, log, "minecraft:oak_log", &[]);
     let axe = ItemStack::new("minecraft:iron_axe", 1);
@@ -346,7 +354,7 @@ fn an_adventure_use_on_is_not_predicted_on_the_client() {
         predicts(&mut game, &matching, &hit(log)),
         "a matching can_place_on still predicts the strip"
     );
-    game.set_mode(GameMode::Survival);
+    game.set_local_mode(GameMode::Survival);
     assert!(
         predicts(&mut game, &matching, &hit(log)),
         "a builder's axe still predicts the strip"

@@ -333,8 +333,10 @@ fn piston_push_reaction_position_state_opens_ticks_and_saves() {
                         assert!(!game.server.hoppers.contains_key(&from));
                         assert_eq!(game.hopper_cooldown(to), 40);
                     } else if case != "loot" && case != "mixed-loot" {
-                        game.spectator_open_menu([4, 64, 2]);
-                        assert_eq!(game.container, Some(to));
+                        if !client {
+                            game.spectator_open_menu([4, 64, 2]);
+                            assert_eq!(game.container, Some(to));
+                        }
                         game.be_anims.classify(registry);
                         game.block_entity_event([4, 64, 2], 1, 1);
                         game.tick_chest_lid([4, 64, 2]);

@@ -57,7 +57,7 @@ fn silent_bolt_suppresses_sound_and_posts_strike_event_on_first_tick() {
             })
         };
 
-        // Silent bolt: no event on spawn; strikes rod + posts event on tick 1 without playing thunder/impact audio.
+        // Silent bolt: no event on spawn; strikes rod + posts event on tick 1 without playing audio on client.
         assert!(game.run_command("setblock 4 209 4 minecraft:lightning_rod"));
         crate::game::sculk::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
         game.audio.0.capture = Some(Vec::new());
@@ -84,12 +84,11 @@ fn silent_bolt_suppresses_sound_and_posts_strike_event_on_first_tick() {
                 s.event != "minecraft:entity.lightning_bolt.thunder"
                     && s.event != "minecraft:entity.lightning_bolt.impact"
             }),
-            "Silent:1b bolt must suppress thunder and impact sounds"
+            "server bolt tick must not emit local thunder or impact sounds"
         );
         assert!(game.run_command("execute if block 4 209 4 minecraft:lightning_rod[powered=true]"));
 
-        // Audible bolt: no event on spawn; posts event and plays thunder + impact on tick 1.
-        game.audio.0.capture = Some(Vec::new());
+        // Audible bolt: no event on spawn; posts event on first server tick.
         assert!(game.run_command("summon minecraft:lightning_bolt 8.5 210 4.5 {}"));
         assert_eq!(
             take_strike_events(),
@@ -102,19 +101,40 @@ fn silent_bolt_suppresses_sound_and_posts_strike_event_on_first_tick() {
             1,
             "lightning_strike event posted on first server tick"
         );
+        crate::game::sculk::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = None);
+
+        // Client bolt tick plays thunder + impact once for audible bolts and suppresses both for Silent:1b.
+        game.bolts.clear();
+        assert!(game.run_command("summon minecraft:lightning_bolt 4.5 210 4.5 {Silent:1b}"));
+        game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
+        game.audio.0.capture = Some(Vec::new());
+        game.client_tick_bolts();
+        assert!(
+            game.audio.0.capture.as_ref().unwrap().iter().all(|s| {
+                s.event != "minecraft:entity.lightning_bolt.thunder"
+                    && s.event != "minecraft:entity.lightning_bolt.impact"
+            }),
+            "Silent:1b bolt must suppress thunder and impact sounds on client"
+        );
+
+        game.options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        game.bolts.clear();
+        assert!(game.run_command("summon minecraft:lightning_bolt 8.5 210 4.5 {}"));
+        game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
+        game.audio.0.capture = Some(Vec::new());
+        game.client_tick_bolts();
         let sounds = game.audio.0.capture.take().unwrap();
         assert!(
             sounds
                 .iter()
                 .any(|s| s.event == "minecraft:entity.lightning_bolt.thunder"),
-            "non-silent bolt plays thunder sound on first tick"
+            "non-silent bolt plays thunder sound on first client tick"
         );
         assert!(
             sounds
                 .iter()
                 .any(|s| s.event == "minecraft:entity.lightning_bolt.impact"),
-            "non-silent bolt plays impact sound on first tick"
+            "non-silent bolt plays impact sound on first client tick"
         );
-        crate::game::sculk::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = None);
     });
 }

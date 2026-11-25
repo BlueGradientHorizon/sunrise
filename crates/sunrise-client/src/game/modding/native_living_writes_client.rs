@@ -66,7 +66,7 @@ pub(in crate::game) mod tests {
                 );
                 crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
                 game.client.screen = super::super::Screen::Playing;
-                game.set_mapping_held("key.use", true);
+                game.server_set_acting_use(true);
                 let player = game.living(game.entity(20).unwrap()).unwrap();
                 test(game, &uses, player);
             });

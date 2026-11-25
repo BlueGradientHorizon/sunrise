@@ -218,15 +218,20 @@ fn summon_item_succeeds_with_and_without_nbt_without_leaving_an_entity() {
             "summon minecraft:item 4.5 200 4.5 {}",
         ] {
             let before = game.server.next_entity;
-            assert!(
-                game.run_command(command),
-                "{command}: {:?}",
-                game.ui.chat.recent_lines(3)
-            );
+            game.server.chat_capture = Some(Vec::new());
+            let ok = game.run_command(command);
+            let lines = game.server.chat_capture.take().unwrap_or_default();
+            assert!(ok, "{command}: {lines:?}");
             assert_eq!(game.server.next_entity, before + 1, "{command}");
             assert!(game.dropped.is_empty(), "{command}");
+            let components: Vec<serde_json::Value> = lines
+                .iter()
+                .map(|line| {
+                    serde_json::to_value(line.component()).expect("text component serializes")
+                })
+                .collect();
             assert_eq!(
-                game.ui.chat.recent_components(1),
+                components,
                 vec![serde_json::json!({
                     "translate": "commands.summon.success",
                     "with": [{ "text": "" }],

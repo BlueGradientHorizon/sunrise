@@ -68,7 +68,7 @@ fn an_arrow_does_not_stick_when_the_impact_listener_clears_its_block() {
         Action::Allow
     };
     with_probe(action, true, |game, observed| {
-        game.audio.0.capture = Some(Vec::new());
+        game.start_audio_capture();
         shoot_arrow_at_wall(game, 2, 0.5);
         let hits = observed.hits.lock().unwrap();
         assert_eq!(hits.len(), 1);
@@ -92,11 +92,8 @@ fn an_arrow_does_not_stick_when_the_impact_listener_clears_its_block() {
         assert_eq!(arrow.in_ground, !clear);
         assert_eq!(observed.lands.load(Ordering::Relaxed), usize::from(!clear));
         assert_eq!(
-            game.audio
-                .0
-                .capture
-                .as_ref()
-                .unwrap()
+            game.server
+                .pending_sounds
                 .iter()
                 .any(|sound| { sound.event == "minecraft:entity.arrow.hit" }),
             !clear

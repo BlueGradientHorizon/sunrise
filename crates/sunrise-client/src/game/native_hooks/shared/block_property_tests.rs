@@ -67,12 +67,18 @@ fn a_placement_state_is_built_from_a_blocks_own_properties() {
 #[test]
 fn property_setters_refuse_no_change() {
     // A Windows checkout has CRLF line ends: the searches below look for "\n".
-    let source = include_str!("../base.rs").replace("\r\n", "\n");
-    let code = source.split("#[cfg(test)]").next().unwrap_or_default();
-    for head in [
-        "    pub(in crate::game) fn native_set_block_property(\n        &mut self,\n        ticks:",
-        "    pub(in crate::game) fn set_block_property_with(",
+    for (raw, head) in [
+        (
+            include_str!("../base.rs"),
+            "    pub(in crate::game) fn native_set_block_property(\n        &mut self,\n        ticks:",
+        ),
+        (
+            include_str!("../base_server.rs"),
+            "    pub(in crate::game) fn set_block_property_with(",
+        ),
     ] {
+        let source = raw.replace("\r\n", "\n");
+        let code = source.split("#[cfg(test)]").next().unwrap_or_default();
         let body = code.split(head).nth(1).expect(head);
         let body = &body[..body.find("\n    }\n").expect(head)];
         assert!(body.contains("property_change("), "{head}");

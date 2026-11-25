@@ -343,7 +343,7 @@ pub(in crate::game) fn run_borrowed_creaking_hurt_finishes_before_the_tick_conti
             };
 
             game.server.lan_entity_events.clear();
-            game.audio.0.capture = Some(Vec::new());
+            game.start_audio_capture();
             TEST_POSTED_EVENT_ORDER.with(|order| *order.borrow_mut() = Some(Vec::new()));
             let live_reaction = |game: &Game<'_>| {
                 let flap = (mob as i32, 66);
@@ -354,11 +354,8 @@ pub(in crate::game) fn run_borrowed_creaking_hurt_finishes_before_the_tick_conti
                     .filter(|&&entry| entry == flap)
                     .count();
                 let sways = game
-                    .audio
-                    .0
-                    .capture
-                    .as_ref()
-                    .unwrap()
+                    .server
+                    .pending_sounds
                     .iter()
                     .filter(|sound| sound.event == "minecraft:entity.creaking.sway")
                     .count();
@@ -388,11 +385,8 @@ pub(in crate::game) fn run_borrowed_creaking_hurt_finishes_before_the_tick_conti
                     panic!("missing heart");
                 };
                 let sounds = game
-                    .audio
-                    .0
-                    .capture
-                    .as_ref()
-                    .unwrap()
+                    .server
+                    .pending_sounds
                     .iter()
                     .filter_map(|s| {
                         (s.event == "minecraft:entity.creaking.sway").then_some(&s.event)
@@ -482,11 +476,8 @@ pub(in crate::game) fn run_borrowed_creaking_hurt_finishes_before_the_tick_conti
                 );
                 assert_eq!(poison(pig(4)), Some(59));
                 let sounds: Vec<_> = game
-                    .audio
-                    .0
-                    .capture
-                    .as_ref()
-                    .unwrap()
+                    .server
+                    .pending_sounds
                     .iter()
                     .filter(|s| s.event == "minecraft:entity.puffer_fish.sting")
                     .map(|s| s.position)

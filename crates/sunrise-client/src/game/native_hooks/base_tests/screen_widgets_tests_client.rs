@@ -2353,6 +2353,9 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
             send_mouse_button(game, win_id, MouseButton::Left, false);
 
             // Rebound close skips Post; a rebound slot swap runs even when Post cancels.
+            let saved_player = game.player.take();
+            let _pipe = crate::game::native_client_session::tests::logged_client(game);
+            game.player = saved_player;
             game.settings.keys.set("key.inventory", "key.keyboard.j");
             game.settings.keys.set("key.hotbar.1", "key.keyboard.k");
             game.open_player_inventory();
@@ -2430,6 +2433,11 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
             game.world
                 .block_entities
                 .insert(pos, BlockEntity::Chest(stacks));
+            game.remote
+                .as_mut()
+                .unwrap()
+                .menu
+                .set(Some((1, "minecraft:generic_9x3".to_owned())));
             game.container = Some(pos);
             game.settings.keys.set("key.hotbar.1", "key.keyboard.1");
             game.settings.keys.set("key.drop", "key.keyboard.k");

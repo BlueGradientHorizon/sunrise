@@ -407,7 +407,7 @@ mod tests {
         super::super::native_entity_refs::tests::with_game(|game| {
             let level = game.level(game.dim.id()).unwrap();
             let stale = LevelRef::new(WorldEpoch::new(level.epoch().get() + 1), level.dimension());
-            game.audio.0.capture = Some(Vec::new());
+            game.start_audio_capture();
             game.server.lan_global_events.clear();
             game.server.lan_events.clear();
 

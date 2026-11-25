@@ -91,7 +91,7 @@ fn a_rocket_posts_its_shot_once_and_a_silent_one_launches_quietly() {
                 .iter()
                 .all(|r| r.has_been_shot == (r.position.x == 9.5))
         );
-        game.audio.0.heard.clear();
+        game.start_audio_capture();
         start_events();
         game.tick_rockets();
         let first = take_shots();
@@ -105,6 +105,14 @@ fn a_rocket_posts_its_shot_once_and_a_silent_one_launches_quietly() {
         assert!(second.is_empty());
         assert!(game.rockets.iter().all(|r| r.has_been_shot));
         // Only the rocket that isn't silent launches with a sound.
-        assert_eq!(game.audio.0.heard.get(launch), Some(&1));
+        assert_eq!(
+            game.server
+                .pending_sounds
+                .iter()
+                .filter(|s| s.event == launch)
+                .count(),
+            1
+        );
+        game.stop_audio_capture();
     });
 }
