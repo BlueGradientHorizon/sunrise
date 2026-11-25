@@ -539,7 +539,7 @@ impl Game<'_> {
         self.recipe_ui.0.book = None;
         self.recipe_ui.0.custom = mod_screen::ModRecipeUi::default();
         self.recipe_tables.books = None;
-        self.invalidate_mod_book_placement_catalogues();
+        self.client_invalidate_mod_book_placement_catalogues();
     }
     /// Puts a server's entries over `book` (`Book::use_server_entries`). The
     /// names come from the connection's registries; a tag's items are the ones
@@ -1754,44 +1754,18 @@ impl Game<'_> {
         else {
             return;
         };
-        if self.remote.is_some() {
-            // The server places it and answers with the slots, or a ghost.
-            let container = self.remote_menu_id();
-            self.send(sunrise_protocol::packets::play::Serverbound::PlaceRecipe(
-                sunrise_protocol::packets::recipes::PlaceRecipe {
-                    container,
-                    recipe: entry.display_id,
-                    use_max,
-                },
-            ));
+        if self.remote.is_none() {
             return;
         }
-        let creative = self.creative;
-        let mut post = None;
-        let answer = &mut post;
-        self.menu_session(|menu, env, _| {
-            // handlePlaceRecipe: an impossible recipe is refused outright.
-            if env
-                .recipes
-                .placement(&entry.id)
-                .is_none_or(|p| p.impossible())
-            {
-                return Some(false);
-            }
-            *answer = Some(menu.place_recipe(env, &entry.id, use_max, creative, None));
-            Some(true)
-        });
-        if post == Some(PostPlace::Ghost) {
-            self.fill_ghost(book_type, &entry);
-        }
-        self.recipe_book_changed();
-    }
-    /// The container changed under the book: comparators and saving.
-    fn recipe_book_changed(&mut self) {
-        if let Some(key) = self.container {
-            self.world.modified.insert((key.0 >> 4, key.2 >> 4));
-            self.container_changed(key);
-        }
+        // The server places it and answers with the slots, or a ghost.
+        let container = self.remote_menu_id();
+        self.send(sunrise_protocol::packets::play::Serverbound::PlaceRecipe(
+            sunrise_protocol::packets::recipes::PlaceRecipe {
+                container,
+                recipe: entry.display_id,
+                use_max,
+            },
+        ));
     }
 
     // ---- a server's recipe book ----

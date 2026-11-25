@@ -17,13 +17,11 @@ impl Game<'_> {
             self.send_guest_mod_book_placement(conn, Frame::Invalidate { epoch });
         }
     }
-    pub(in crate::game) fn invalidate_mod_book_placement_catalogues(&mut self) {
+    pub(in crate::game) fn server_invalidate_mod_book_placement_catalogues(&mut self) {
         let connections: Vec<_> = self.native_net.placement.servers.keys().copied().collect();
         for conn in connections {
             self.invalidate_mod_book_placement_connection(conn);
         }
-        self.clear_mod_book_placement_screen();
-        self.ensure_mod_book_catalog();
     }
     pub(in crate::game::server_side) fn invalidate_mod_book_placement_knowledge(&mut self) {
         let Some(uuid) = self.server.lan_acting_uuid else {

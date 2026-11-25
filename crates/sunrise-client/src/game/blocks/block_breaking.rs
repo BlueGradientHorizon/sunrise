@@ -90,7 +90,7 @@ impl Game<'_> {
             .iter()
             .position(|d| d.normal() == face)
             .unwrap_or(1);
-        self.level_event_at(id, pos, direction as i32);
+        self.server_level_event_at(id, pos, direction as i32);
     }
 
     /// `LevelRenderer.destroyBlockProgress`: any stage outside 0..10 clears the breaker.

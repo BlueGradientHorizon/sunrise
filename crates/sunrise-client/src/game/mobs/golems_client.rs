@@ -71,6 +71,6 @@ impl Game<'_> {
             let p = [m.position.x, m.position.y, m.position.z];
             self.server_play_sound("minecraft:entity.copper_golem.spawn", p, 1.0, 1.0);
         }
-        self.process_level_events()
+        self.server_process_level_events()
     }
 }

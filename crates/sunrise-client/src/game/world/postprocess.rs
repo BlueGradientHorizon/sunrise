@@ -61,6 +61,6 @@ impl Game<'_> {
                 }
             });
         }
-        self.process_level_events()
+        self.server_process_level_events()
     }
 }

@@ -17,9 +17,16 @@ pub(in crate::game) const BOB: u128 = 11;
 pub(in crate::game) const SESSION: u128 = 42;
 
 pub(in crate::game) fn with_delayed_chat(test: &str, check: impl FnOnce(&mut Game<'_>)) {
-    let (_, module) = module_path!().split_once("::").unwrap();
+    let full = if test.contains("::") {
+        test.split_once("::")
+            .map_or(test, |(_, rest)| rest)
+            .to_owned()
+    } else {
+        let (_, module) = module_path!().split_once("::").unwrap();
+        format!("{module}::{test}")
+    };
     // The game fixture registers keys and particle providers; keep them in the child.
-    in_own_process(&format!("{module}::{test}"), || {
+    in_own_process(&full, || {
         with_client_game(|game| {
             game.init_remote_for_replay().unwrap();
             game.remote.as_mut().unwrap().has_logical_player = true;

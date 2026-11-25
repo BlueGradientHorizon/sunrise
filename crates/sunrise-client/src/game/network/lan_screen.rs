@@ -54,18 +54,7 @@ enum View {
     Restrictions,
     GameRules,
 }
-#[derive(Clone, Copy, PartialEq)]
-pub(in crate::game) struct Snapshot {
-    default_mode: i32,
-    personal_mode: i32,
-    cheats: bool,
-    difficulty: u8,
-    locked: bool,
-    lan: bool,
-    port: u16,
-    guest_commands: bool,
-    force: bool,
-}
+pub(in crate::game) use super::owner_link::Snapshot;
 
 const MODES: [&str; 4] = ["survival", "creative", "adventure", "spectator"];
 const DIFFICULTIES: [&str; 4] = ["peaceful", "easy", "normal", "hard"];
@@ -657,7 +646,8 @@ impl Game<'_> {
                 Some(state) => state,
                 None => return,
             },
-            None => self.local_server_options(),
+            None if self.external_server() => ServerOptions { default_mode: self.mode_id(), personal_mode: self.mode_id(), cheats: self.ui.registries.permission >= 2, difficulty: self.ui.difficulty, hardcore: self.level.hardcore, difficulty_locked: self.level.difficulty_locked, port: None, guest_commands: false, force: true },
+            None => return,
         };
         if let Some(p) = state.port {
             port.set_value(&p.to_string());
@@ -1364,7 +1354,7 @@ impl Game<'_> {
         let wanted = o.snapshot();
         let before = o.initial;
         self.world_options.0 = Some(o);
-        self.apply_world_options(&before, &wanted);
+        self.apply_world_options_client(&before, &wanted);
         self.close_world_options();
     }
 
@@ -1707,25 +1697,7 @@ impl Game<'_> {
         }
     }
 
-    /// The world options of a world run in the frame.
-    fn local_server_options(&self) -> ServerOptions {
-        let (guest_commands, force) = self.lan.as_ref().map_or((false, true), |h| {
-            (h.settings.guest_commands, h.settings.force_game_mode)
-        });
-        ServerOptions {
-            default_mode: self.level.mode(),
-            personal_mode: self.mode_id(),
-            cheats: self.allow_commands(),
-            difficulty: self.ui.difficulty,
-            hardcore: self.level.hardcore,
-            difficulty_locked: self.level.difficulty_locked,
-            port: self.lan_port(),
-            guest_commands,
-            force,
-        }
-    }
-
-    pub(in crate::game) fn apply_world_options(&mut self, before: &Snapshot, wanted: &Snapshot) {
+    pub(in crate::game::client_side) fn apply_world_options_client(&mut self, before: &Snapshot, wanted: &Snapshot) {
         if self.external_server() {
             if self.ui.registries.permission >= 2 {
                 if wanted.difficulty != before.difficulty {
@@ -1760,45 +1732,6 @@ impl Game<'_> {
                 self.send_publish_message(message);
             }
             return;
-        }
-        if wanted.difficulty != before.difficulty {
-            let name = DIFFICULTIES[usize::from(wanted.difficulty) & 3];
-            self.as_console(|g| g.run_command(&format!("difficulty {name}")));
-        }
-        // ServerboundLockDifficultyPacket(true): MinecraftServer.setDifficultyLocked.
-        if wanted.locked && !before.locked {
-            self.level.difficulty_locked = true;
-        }
-        if wanted.default_mode != before.default_mode {
-            self.set_default_game_mode(wanted.default_mode);
-        }
-        if wanted.personal_mode != before.personal_mode {
-            if self.serving() {
-                self.set_owner_mode(wanted.personal_mode);
-            } else {
-                self.set_mode_id(wanted.personal_mode);
-            }
-        }
-        if wanted.cheats != before.cheats {
-            self.set_allow_commands(wanted.cheats);
-            self.owner_allow_commands(wanted.cheats);
-        }
-        let settings_changed =
-            wanted.guest_commands != before.guest_commands || wanted.force != before.force;
-        if wanted.lan != before.lan || (wanted.lan && wanted.port != before.port) {
-            self.lan_close(before.lan);
-            if wanted.lan {
-                let opened = self.lan_open(LanSettings {
-                    port: wanted.port,
-                    guest_commands: wanted.guest_commands,
-                    force_game_mode: wanted.force,
-                });
-                if opened.is_err() {
-                    self.send_publish_message(Text::translate("commands.publish.failed", &[]));
-                }
-            }
-        } else if settings_changed {
-            self.lan_apply_settings(wanted.guest_commands, wanted.force);
         }
     }
 }

@@ -1622,60 +1622,6 @@ impl Game<'_> {
             lerp(h.previous.z, h.position.z),
         ))
     }
-    /// FishingHookRenderer: the bobbers (this player's and the others' a
-    /// server tracks), camera-facing half-block quads centred on the hooks.
-    pub(in crate::game) fn fishing_geometry(
-        &self,
-        camera: glam::DVec3,
-        alpha: f64,
-        out: &mut Vec<Vertex>,
-    ) {
-        let hooks: Vec<glam::DVec3> = self
-            .hook_position(alpha)
-            .into_iter()
-            .chain(self.remote_hook_ends(alpha).into_iter().map(|(h, _)| h))
-            .collect();
-        if hooks.is_empty() {
-            return;
-        }
-        let Some(r) = self
-            .gui
-            .atlas
-            .sprites
-            .get("entity/fishing/fishing_hook")
-            .copied()
-        else {
-            return;
-        };
-        // FishingHookRenderer.submit: turned by the camera's orientation.
-        let [right, up] = billboard_axes(self.camera_orientation());
-        let s = 0.25;
-        let uv = [[r.u0, r.v1], [r.u1, r.v1], [r.u1, r.v0], [r.u0, r.v0]];
-        for p in hooks {
-            let light =
-                self.world
-                    .light(p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32);
-            let packed = (u32::from(light >> 4) * 16) | ((u32::from(light & 15) * 16) << 8);
-            let corners = [
-                p - right * s - up * s,
-                p + right * s - up * s,
-                p + right * s + up * s,
-                p - right * s + up * s,
-            ];
-            for (v, uv) in corners.iter().zip(uv) {
-                out.push(Vertex {
-                    normal: [0; 4],
-                    pos: (*v - camera).as_vec3().to_array(),
-                    uv,
-                    layer: 0,
-                    color: 0xFFFF_FFFF,
-                    light: packed,
-
-                    glint_uv: [0.0, 0.0],
-                });
-            }
-        }
-    }
     /// FishingHookRenderer: each line, 16 black `lines` segments sagging
     /// from a quarter block above the hook to the rod in its owner's hand,
     /// `width` pixels wide (`Window.getAppropriateLineWidth`).

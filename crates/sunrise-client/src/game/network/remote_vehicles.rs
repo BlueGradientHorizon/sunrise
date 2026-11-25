@@ -864,7 +864,7 @@ impl Game<'_> {
         let mut events = Vec::new();
         let hooks = self.damage_hooks.client_side();
         {
-            let world = self.mob_world_base(&[]);
+            let world = self.client_mob_world_base(&[]);
             let mut level = self.predicting_damage_level(&mut lent, &hooks);
             mob.tick(&world, &mut level, &mut events);
         }
@@ -1202,7 +1202,7 @@ pub(in crate::game) mod tests {
                 *test_level.random() = (*game.world.random).clone();
                 let mut events = Vec::new();
                 server_mount.tick(
-                    &game.mob_world_base(&[]),
+                    &game.client_mob_world_base(&[]),
                     &mut test_level.level(),
                     &mut events,
                 );

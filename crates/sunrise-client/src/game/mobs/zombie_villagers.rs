@@ -35,18 +35,6 @@ fn infects(difficulty: Difficulty, coin: impl FnOnce() -> bool) -> bool {
 }
 
 impl Game<'_> {
-    /// `ZombieVillager.handleEntityEvent(16)`: only the client plays the cure sound.
-    pub(in crate::game) fn zombie_villager_cure_sound(&mut self, id: u32) {
-        if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id)
-            && let Some(sunrise_client::mobs::MobEvent::Sound(name, at, volume, pitch)) =
-                zombie_villager::cure_sound(m)
-        {
-            self.audio
-                .0
-                .play_unshared(&format!("minecraft:{name}"), Some(at), volume, pitch);
-        }
-    }
-
     /// `Zombie.killedEntity`: a villager killed by a zombie may rise as a
     /// zombie villager keeping its profession, trades and gossip.
     pub(in crate::game) fn zombie_killed(&mut self, killer: u32, victim: u32) {
@@ -102,7 +90,7 @@ impl Game<'_> {
         }
         if !self.mobs[k].silent {
             let at = self.mobs[k].position;
-            self.level_event_at(
+            self.server_level_event_at(
                 1026,
                 [
                     at.x.floor() as i32,
@@ -213,7 +201,7 @@ impl Game<'_> {
             v.add_effect("minecraft:nausea", 200, 0);
         }
         if !old.silent {
-            self.level_event_at(
+            self.server_level_event_at(
                 1027,
                 [
                     old.position.x.floor() as i32,

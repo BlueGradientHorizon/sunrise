@@ -15,7 +15,7 @@ fn a_client_start_joins_the_world_rest_worker_before_it_resolves_the_renderers()
             crate::game::client_reload::PreparedClientReload::Vanilla(()),
         ])
         .unwrap();
-        assert!(game.rest_loader.0.is_none(), "the worker was joined");
+        assert!(game.rest_loader.is_none(), "the worker was joined");
         assert!(game.res.rest.get().is_some(), "the rest tables are there");
         assert!(
             game.res.mob_types().contains_key("minecraft:zombie"),
@@ -63,7 +63,7 @@ pub(in crate::game) fn with_loading_client(run: impl FnOnce(&mut Game<'_>)) {
         None,
     )
     .unwrap();
-    game.rest_loader.0 = loaded.rest_loader;
+    game.rest_loader = loaded.rest_loader;
     assert!(game.options.is_client_start());
     run(&mut game);
 }

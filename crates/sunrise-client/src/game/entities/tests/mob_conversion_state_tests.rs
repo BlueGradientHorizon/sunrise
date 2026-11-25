@@ -63,7 +63,7 @@ fn a_struck_pig_leaves_a_zombified_piglin_that_keeps_its_state() {
     };
 
     game.spawn_bolt([8.5, 64.0, 8.5], false);
-    game.tick_bolts();
+    game.server_tick_bolts();
 
     assert!(
         game.mobs
@@ -152,7 +152,7 @@ fn a_struck_villager_leaves_a_witch_that_keeps_its_state() {
         "summon minecraft:villager 2.5 64 2.5 {CustomName:{text:\"Elder\"},Silent:1b}"
     ));
     game.spawn_bolt([2.5, 64.0, 2.5], false);
-    game.tick_bolts();
+    game.server_tick_bolts();
     let witch = game
         .mobs
         .iter()

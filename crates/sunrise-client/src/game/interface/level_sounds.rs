@@ -394,7 +394,7 @@ pub(in crate::game) mod tests {
                     "asked at the end of the tick"
                 );
                 assert!(
-                    game.audio.0.capture.as_ref().unwrap().is_empty(),
+                    game.server.pending_sounds.is_empty(),
                     "not also sent as a positional sound"
                 );
 
@@ -479,24 +479,24 @@ pub(in crate::game) mod tests {
                 let at = [2.0, 64.0, 2.0];
 
                 // The tick's sounds, at their positions.
-                game.audio.0.capture = Some(
+                game.server.pending_sounds.extend(
                     [
                         "minecraft:block.chest.locked",
                         "minecraft:entity.pig.ambient",
                     ]
                     .into_iter()
-                    .map(|event| sunrise_client::audio::CapturedSound {
-                        event: event.into(),
-                        position: at,
-                        volume: 1.0,
-                        pitch: 1.0,
-                        source: SoundSource::Blocks as usize,
-                        entity: None,
-                        except_entity: None,
-                        seed: 0,
-                        particles_before: 0,
-                    })
-                    .collect(),
+                    .map(|event| {
+                        sunrise_client_core::sound_source::ServerSound {
+                            event: event.into(),
+                            position: at,
+                            volume: 1.0,
+                            pitch: 1.0,
+                            source: SoundSource::Blocks as usize,
+                            entity: None,
+                            except_entity: None,
+                            seed: None,
+                        }
+                    }),
                 );
                 game.lan_broadcast_effects();
                 let got = packets(&rx);

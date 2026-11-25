@@ -139,7 +139,7 @@ impl Game<'_> {
         if self.completes_golem(head) {
             let at = sunrise_core::position::BlockPos::new(head[0], head[1], head[2]);
             self.with_level(|b, level, ticks| b.set_block(level, ticks, at, state, 2 | 16));
-            self.process_level_events()?;
+            self.server_process_level_events()?;
         } else {
             self.level_set(head, state)?;
         }
@@ -187,7 +187,7 @@ impl Game<'_> {
                     source: None,
                 });
         }
-        self.process_level_events()
+        self.server_process_level_events()
     }
     /// `CarvedPumpkinBlock.updatePatternBlocks`: neighbours of every cell
     /// hear that air arrived.
@@ -199,7 +199,7 @@ impl Game<'_> {
                 b.update_neighbors_at(level, ticks, pos, b.block(air))
             });
         }
-        self.process_level_events()
+        self.server_process_level_events()
     }
 }
 

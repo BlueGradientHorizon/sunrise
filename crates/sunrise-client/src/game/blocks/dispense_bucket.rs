@@ -71,7 +71,7 @@ impl Game<'_> {
         let emptied = self.with_level(|b, level, ticks| {
             b.bucket_empty(level, ticks, target_pos, None, content, sound, false, false)
         });
-        self.process_level_events()?;
+        self.server_process_level_events()?;
         if emptied.is_none() {
             return Ok(false);
         }

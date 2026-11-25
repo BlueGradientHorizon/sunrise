@@ -332,7 +332,7 @@ fn part_state_saves_with_its_chunk_and_reloads_under_a_fresh_handle() {
         game.world
             .chunks
             .insert(key, Arc::new(Chunk::empty(key.0, key.1)));
-        game.update_world();
+        game.side_update_world();
         let entity = press(game, pos);
         game.world.modified.clear();
         assert_eq!(Press::edit_state(game, entity, |_, n| *n = 7), Ok(()));
@@ -350,7 +350,7 @@ fn part_state_saves_with_its_chunk_and_reloads_under_a_fresh_handle() {
         // eighth update.
         assert!(game.streaming.set_forced(key.0, key.1, false));
         for _ in 0..9 {
-            game.update_world();
+            game.side_update_world();
         }
         assert!(!game.world.chunks.contains_key(&key), "unloaded");
         assert!(game.world.block_entities.attachments(pos).is_none());
@@ -579,7 +579,7 @@ fn a_save_or_unload_during_a_transaction_writes_only_committed_state() {
         game.world
             .chunks
             .insert(key, Arc::new(Chunk::empty(key.0, key.1)));
-        game.update_world();
+        game.side_update_world();
         let entity = press(game, pos);
         assert_eq!(Press::edit_state(game, entity, |_, n| *n = 7), Ok(()));
         let reload = |game: &mut Game<'_>| {
@@ -613,13 +613,13 @@ fn a_save_or_unload_during_a_transaction_writes_only_committed_state() {
             assert_eq!(Press::edit_state(game, entity, |_, n| *n = 11), Ok(()));
             assert!(game.streaming.set_forced(key.0, key.1, false));
             for _ in 0..9 {
-                game.update_world();
+                game.side_update_world();
             }
             assert!(game.world.chunks.contains_key(&key), "kept while tentative");
             assert_eq!(Press::state(game, entity), Ok(11));
             ((), false)
         });
-        game.update_world();
+        game.side_update_world();
         assert!(!game.world.chunks.contains_key(&key), "unloaded");
         game.save_level(true).unwrap();
         assert_eq!(reload(game), Ok(Some(7)));
@@ -737,7 +737,7 @@ fn part_state_counts_ticks_across_chunk_reload() {
                 game.world
                     .chunks
                     .insert(key, Arc::new(Chunk::empty(key.0, key.1)));
-                game.update_world();
+                game.side_update_world();
                 let block = game
                     .pack
                     .assets
@@ -763,7 +763,7 @@ fn part_state_counts_ticks_across_chunk_reload() {
                 // Unloaded by the owner, then loaded back from the region file.
                 assert!(game.streaming.set_forced(key.0, key.1, false));
                 for _ in 0..9 {
-                    game.update_world();
+                    game.side_update_world();
                 }
                 assert!(!game.world.chunks.contains_key(&key), "unloaded");
                 assert!(game.world.block_entities.attachments(pos).is_none());

@@ -104,39 +104,6 @@ pub(in crate::game::server_side) fn list_query_body<T: Entity + Joined, const DI
 }
 
 impl Game<'_> {
-    /// The logged-in window and network id for an entity handle in its current world.
-    pub(in crate::game) fn native_client_entity_context(
-        &self,
-        entity: EntityRef,
-    ) -> Option<(&Remote, i32)> {
-        let remote = self.remote.as_ref().filter(|r| r.logged_in)?;
-        (self.native_lifecycle.epoch() == Some(entity.epoch())).then_some(())?;
-        Some((remote, entity.id() as i32))
-    }
-
-    /// An entity tracked by the remote client but absent from local entity lists.
-    pub(in crate::game) fn native_client_tracked(
-        &self,
-        entity: EntityRef,
-    ) -> Option<(&str, [f64; 3])> {
-        let (remote, id) = self.native_client_entity_context(entity)?;
-        let (kind, position) = remote.tracked_entity(id)?;
-        if Shows::from_kind(kind).is_some() {
-            let display = self.live_client_display(remote, id)?;
-            return Some((kind, display.position().to_array()));
-        }
-        Some((kind, position))
-    }
-
-    pub(in crate::game::server_side) fn native_client_display(
-        &self,
-        entity: EntityRef,
-    ) -> Option<&RemoteTextDisplay> {
-        let (remote, id) = self.native_client_entity_context(entity)?;
-        Shows::from_kind(remote.tracked(id)?.0)?;
-        self.live_client_display(remote, id)
-    }
-
     /// What a handle names now, or None for a stale or foreign one.
     pub(in crate::game) fn native_entity_target(&self, entity: EntityRef) -> Option<Target> {
         self.native_entity_target_with_location(entity)
@@ -187,46 +154,6 @@ impl Game<'_> {
             || location.owner.dimension == dimension)
             .then_some((value, Some(location)))
     }
-    /// What a handle names on a client: the local player, or an entity the
-    /// server told this client of (`ClientLevel.getEntity`, whose entities are
-    /// the ones the server tracks to it). None for a stale handle, with no
-    /// login, or for an entity the client doesn't have.
-    pub(in crate::game) fn native_client_entity_target(&self, entity: EntityRef) -> Option<Target> {
-        let (remote, id) = self.native_client_entity_context(entity)?;
-        if id == remote.entity_id {
-            return self.player.as_ref().map(|_| Target::Player);
-        }
-        // The server tracks the dragon alone; its parts are the client's own copies of it.
-        if self.resident_dragon_part(entity.id()).is_some() {
-            return Some(Target::DragonPart(entity.id()));
-        }
-        let (kind, _) = remote.tracked(id)?;
-        if Shows::from_kind(kind).is_some() {
-            // Displays have their own client bodies; never resolve one through another store.
-            return None;
-        }
-        self.level_entity(id)
-    }
-    /// What a handle names for a read that works on both sides: the server's
-    /// entity (`native_entity_target`) or, on a client, its own copy of it.
-    pub(in crate::game) fn native_entity_read_target(&self, entity: EntityRef) -> Option<Target> {
-        if self.is_logical_server() {
-            self.native_entity_target(entity)
-        } else {
-            self.native_client_entity_target(entity)
-        }
-    }
-    /// The entity `id` (the id events carry) as a handle for the `entity_*`
-    /// methods: None with no world open, or for no such entity in the level
-    /// in place or among the server's players. On a client (API
-    /// @API:client_entity_refs@), any entity the server shows this window,
-    /// this window's own player included. API 373.
-    pub(in crate::game) fn entity(&self, id: u32) -> Option<EntityRef> {
-        let entity = EntityRef::new(self.native_lifecycle.epoch()?, id);
-        (self.native_entity_read_target(entity).is_some()
-            || self.native_client_tracked(entity).is_some())
-        .then_some(entity)
-    }
     /// `ServerLevel.getEntity(UUID)` for [`LevelRef::entity_by_uuid`]: the level's UUID index,
     /// in place or parked, then the same resolution and visibility as any handle of that level.
     pub(in crate::game) fn level_entity_by_uuid(
@@ -254,64 +181,6 @@ impl Game<'_> {
             // A queued departure can overlap a replacement with the same UUID.
             after = Some(id);
         }
-    }
-    /// Whether the entity is made of parts that are entities of their own
-    /// (`Entity.isMultipartEntity`): the dragon, not one of its parts.
-    pub(in crate::game) fn entity_is_multipart(&self, entity: EntityRef) -> Option<bool> {
-        Some(matches!(
-            self.native_entity_read_target(entity)?,
-            Target::Dragon(_)
-        ))
-    }
-    /// The entities a multipart entity is made of (`Entity.getParts`), in
-    /// `getSubEntities` order, each resolved as any handle is (`entity`): the dragon's
-    /// parts have the eight ids after its own. Empty for any other entity.
-    pub(in crate::game) fn entity_parts(&self, entity: EntityRef) -> Option<Vec<EntityRef>> {
-        let Target::Dragon(id) = self.native_entity_read_target(entity)? else {
-            return Some(Vec::new());
-        };
-        (1..=8)
-            .map(|offset| self.entity(id.checked_add(offset)?))
-            .collect()
-    }
-    /// The level `dimension` (`minecraft:the_nether`) as a handle: on a client,
-    /// the level it shows, whatever the server calls it, or one the server opened
-    /// for viewing (`client_level_key`). None with no world open, or for a
-    /// dimension the server hasn't loaded. API 373.
-    pub(in crate::game) fn level(&self, dimension: &str) -> Option<LevelRef> {
-        let epoch = self.native_lifecycle.epoch()?;
-        if !self.is_logical_server() {
-            return Some(LevelRef::new(epoch, self.client_level_key(dimension)?));
-        }
-        let dim = std::iter::once(self.dim)
-            .chain(self.levels.0.parked_dims())
-            .find(|d| d.id() == dimension)?;
-        Some(self.level_ref(epoch, dim.key()))
-    }
-    /// The client level in place as a handle: the level this window shows and
-    /// ticks. None before login, while reconfiguring, or with no world open.
-    pub(in crate::game) fn native_client_level(&self) -> Option<LevelRef> {
-        let epoch = self.native_lifecycle.epoch()?;
-        let remote = self.remote.as_ref().filter(|r| r.has_level())?;
-        Some(LevelRef::new(epoch, remote.level_key))
-    }
-    /// The current world on its owning side, as a handle for a native query.
-    pub(in crate::game) fn native_current_level(&self) -> Option<LevelRef> {
-        if self.is_logical_server() {
-            return Some(self.level_ref(self.native_lifecycle.epoch()?, self.dim.key()));
-        }
-        self.native_client_level()
-    }
-    /// The name of a dimension's key.
-    pub(in crate::game) fn dimension_key_id(&self, key: DimensionKey) -> Option<&str> {
-        mod_api::__private::dimension_id(key)
-    }
-    /// The key of the level in place: on a client the level it shows, which
-    /// `Dim` may have no name for.
-    pub(in crate::game) fn native_level_key(&self) -> DimensionKey {
-        self.remote
-            .as_ref()
-            .map_or_else(|| self.dim.key(), |r| r.level_key)
     }
     /// Loaded server levels, in vanilla dimension order. Empty without a server world.
     pub(in crate::game) fn native_list_levels(&self) -> Vec<LevelRef> {
@@ -502,7 +371,7 @@ impl Game<'_> {
     ) -> Option<Aabb> {
         match member.kind {
             PickKind::RemoteDisplay => {
-                let p = self.native_client_display(entity)?.position();
+                let [x, y, z] = self.side_client_display_position(entity)?; let p = Vec3::new(x, y, z);
                 let p = Vec3::new(p.x, p.y, p.z);
                 Some(Aabb::new(p, p))
             }
@@ -774,7 +643,7 @@ impl Game<'_> {
         let at = sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]);
         let fitted = self
             .with_level(|b, level, ticks| b.update_from_neighbour_shapes(level, ticks, at, state));
-        let _ = self.process_level_events();
+        let _ = self.server_process_level_events();
         Ok(fitted)
     }
     /// Remove a block in place (`Level.removeBlock`), preserving its fluid.
@@ -792,7 +661,7 @@ impl Game<'_> {
         }
         let (state, flags) = self.level_removal_write(pos, moved);
         let changed = self.set_block_live(pos, state, flags, false);
-        let _ = self.process_level_events();
+        let _ = self.server_process_level_events();
         changed
     }
     /// Tell the neighbours of `pos` that a block changed there, as vanilla's own writes do:
@@ -817,7 +686,7 @@ impl Game<'_> {
         self.with_level(|b, level, ticks| {
             b.neighbour_update(level, ticks, at, b.block(source), update)
         });
-        let _ = self.process_level_events();
+        let _ = self.server_process_level_events();
         Ok(true)
     }
     /// Tell the block at `pos` that `source`'s block beside it changed (`Level.neighborChanged`),
@@ -835,7 +704,7 @@ impl Game<'_> {
         }
         let at = sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]);
         self.with_level(|b, level, ticks| b.neighbor_changed_at(level, ticks, at, b.block(source)));
-        let _ = self.process_level_events();
+        let _ = self.server_process_level_events();
         Ok(true)
     }
     /// Destroy a block in the level in place (`Level.destroyBlock`), optionally dropping
@@ -867,7 +736,7 @@ impl Game<'_> {
             let changed = b.destroy_block(level, ticks, at, drop);
             (changed, level.drop_into.take().unwrap_or_default())
         });
-        let _ = self.process_level_events();
+        let _ = self.server_process_level_events();
         changed.then_some(drops)
     }
 
@@ -952,7 +821,7 @@ impl Game<'_> {
                     source: None,
                 });
         }
-        let _ = self.process_level_events();
+        let _ = self.server_process_level_events();
         grown
     }
     /// Set the biome of the cell holding `pos` to `biome` (`/fillbiome` for one cell). False for a
@@ -1116,28 +985,6 @@ impl Game<'_> {
         })
     }
 
-    /// The entity's position (`Entity.position`): its feet, the middle of
-    /// its box for a painting or an item frame. Client displays use their committed tick pose.
-    pub(in crate::game) fn entity_position(&self, entity: EntityRef) -> Option<[f64; 3]> {
-        if self.native_lifecycle.epoch() == Some(entity.epoch())
-            && let Some((id, position)) = self.native_lifecycle.entity_sections.write_position
-            && id == entity.id()
-        {
-            return Some(position);
-        }
-        match self.native_entity_read_target(entity) {
-            Some(target) => self.target_position(target),
-            None => self
-                .native_client_tracked(entity)
-                .map(|(_, position)| position),
-        }
-    }
-    /// The block the entity's position is in (`Entity.blockPosition`). API
-    /// 373.
-    pub(in crate::game) fn entity_block_position(&self, entity: EntityRef) -> Option<[i32; 3]> {
-        self.entity_position(entity)
-            .map(|p| p.map(|v| v.floor() as i32))
-    }
     /// The entity's yaw and pitch in degrees (`Entity.getYRot`, `getXRot`); 0
     /// for the kinds that don't turn. API 373.
     pub(in crate::game) fn entity_rotation(&self, entity: EntityRef) -> Option<[f32; 2]> {

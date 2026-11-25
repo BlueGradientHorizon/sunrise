@@ -124,7 +124,7 @@ fn a_canceled_player_skips_its_server_player_tick_while_the_others_run_it() {
                 uuid: 12,
                 saved: None,
             });
-            game.sculk.tracker.ticks_since_last_warning = 5;
+            game.server.sculk.tracker.ticks_since_last_warning = 5;
             game.tick_guests();
             game.tick_sculk_entities();
             assert!(
@@ -136,7 +136,7 @@ fn a_canceled_player_skips_its_server_player_tick_while_the_others_run_it() {
                 "the other player's container check closed its chest"
             );
             assert_eq!(
-                game.sculk.tracker.ticks_since_last_warning, 5,
+                game.server.sculk.tracker.ticks_since_last_warning, 5,
                 "the canceled owner's warden spawn tracker did not count"
             );
             assert_eq!(

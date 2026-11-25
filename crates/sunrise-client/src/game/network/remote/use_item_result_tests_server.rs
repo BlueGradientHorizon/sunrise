@@ -19,7 +19,7 @@ fn failed_item_part_still_tries_the_off_hand() {
                 };
                 game.inventory[game.selected] = Some(ItemStack::new("minecraft:shield", 1));
                 game.offhand = Some(ItemStack::new("minecraft:shield", 1));
-                game.server.forced_hit = None;
+                game.set_test_forced_hit(None);
                 game.server.guest_use = None;
                 game.swing = Default::default();
                 if client {

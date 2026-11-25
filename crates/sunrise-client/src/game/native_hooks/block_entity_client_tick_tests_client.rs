@@ -200,7 +200,7 @@ fn a_clients_frames_tick_its_declared_copies_until_they_go() {
         while EVENTS.lock().unwrap().is_empty() {
             assert!(Instant::now() < deadline, "the update did not arrive");
             std::thread::sleep(Duration::from_millis(1));
-            game.update_world();
+            game.client_update_world();
         }
         game.client_tick_steps(2, None).unwrap();
         let data = format!("data {:?} 31", HUMS[0]);

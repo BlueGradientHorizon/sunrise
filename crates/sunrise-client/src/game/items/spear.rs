@@ -38,6 +38,13 @@ pub(in crate::game) enum Target {
 }
 
 impl Game<'_> {
+    pub(in crate::game::server_side) fn server_play_at_feet(&mut self, sound: &str) {
+        if let Some(p) = &self.player {
+            let at = [p.position.x, p.position.y, p.position.z];
+            self.server_play_sound(sound, at, 1.0, 1.0);
+        }
+    }
+
     /// `Item.use` of a kinetic weapon: `startUsingItem` with a new
     /// `recentKineticEnemies`, and `KineticWeapon.makeSound` at the user.
     pub(in crate::game::server_side) fn use_spear(&mut self, stack: &ItemStack) -> bool {
@@ -451,7 +458,7 @@ impl Game<'_> {
         self.server.attack_ticks = 0;
         self.post_piercing_attack();
         if hit {
-            self.play_at_feet(kinetic.hit_sound);
+            self.server_play_at_feet(kinetic.hit_sound);
         }
         self.keep_player_stabs(kinetic, false, last_mob, on_players);
         // swingAndResetAttackStrength (ServerPlayer): a swing that starts

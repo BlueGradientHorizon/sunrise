@@ -171,12 +171,12 @@ fn interception_does_not_send_item_use_or_release_packets() {
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
             game.world.set(0, 64, 0, stone).unwrap();
-            game.server.forced_hit = Some(Hit {
+            game.set_test_forced_hit(Some(Hit {
                 pos: [0, 64, 0],
                 face: [0, 1, 0],
                 point: [0.5, 65.0, 0.5],
                 inside: false,
-            });
+            }));
             game.set_mapping_held("key.use", true);
             game.queue_mapping_click(Button::Use.mapping());
             game.queue_mapping_click(Button::Use.mapping());

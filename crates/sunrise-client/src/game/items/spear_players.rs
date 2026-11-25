@@ -354,7 +354,7 @@ impl Game<'_> {
         if batch.charge {
             self.spear_hit_feedback(&batch.kinetic);
         } else {
-            self.play_at_feet(batch.kinetic.hit_sound);
+            self.server_play_at_feet(batch.kinetic.hit_sound);
         }
     }
 }

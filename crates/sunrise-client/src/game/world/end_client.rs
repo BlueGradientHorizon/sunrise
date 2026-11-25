@@ -288,7 +288,7 @@ impl Game<'_> {
         });
         self.end.eyes = eyes;
         for pos in shattered {
-            self.level_event_at(2003, pos, 0);
+            self.server_level_event_at(2003, pos, 0);
         }
     }
 }

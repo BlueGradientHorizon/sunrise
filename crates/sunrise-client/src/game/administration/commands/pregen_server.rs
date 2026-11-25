@@ -165,7 +165,7 @@ impl Game<'_> {
             idle += self
                 .streaming
                 .wait((until - now).min(Duration::from_millis(5)));
-            self.update_world();
+            self.server_update_world();
         }
         idle
     }

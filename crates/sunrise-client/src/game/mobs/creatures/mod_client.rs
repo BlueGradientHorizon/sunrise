@@ -221,7 +221,7 @@ impl Game<'_> {
                     if self.tnt_prime_allowed(pos) {
                         self.spawn_primed_tnt(pos, false, owner, None);
                         self.with_level(|b, level, ticks| b.remove_block(level, ticks, pos, false));
-                        let _ = self.process_level_events();
+                        let _ = self.server_process_level_events();
                     }
                 }
                 BlockReaction::Light(lit) => {

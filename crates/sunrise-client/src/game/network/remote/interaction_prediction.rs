@@ -402,7 +402,7 @@ impl Game<'_> {
                 && self.may_build()
                 && let Some(info) = &consumable
             {
-                self.with_hand(hand, |g| g.start_eating(info));
+                self.with_hand(hand, |g| g.client_start_eating(info));
             }
             if let Some(placed) = placed {
                 self.predict_place(&placed, stack, seq);
@@ -448,7 +448,7 @@ impl Game<'_> {
                 .and_then(|old| self.res.transformers().waxed(registry, old))
                 .is_some();
             if waxes {
-                self.level_event_at(3003, hit.pos, 0);
+                self.client_level_event_at(3003, hit.pos, 0);
                 self.play_client_local_sound(
                     LevelSound::new("minecraft:item.honeycomb.wax_on", at, 1.0, 1.0)
                         .in_source(mod_api::SoundSource::Blocks),
@@ -458,7 +458,7 @@ impl Game<'_> {
                 if let Some(other) =
                     old.and_then(|old| crate::game::storage::chest_connected_pos(old, hit.pos))
                 {
-                    self.level_event_at(3003, other, 0);
+                    self.client_level_event_at(3003, other, 0);
                     self.play_client_local_sound(
                         LevelSound::new("minecraft:item.honeycomb.wax_on", at, 1.0, 1.0)
                             .in_source(mod_api::SoundSource::Blocks),

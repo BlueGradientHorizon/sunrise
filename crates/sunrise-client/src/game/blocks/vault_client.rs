@@ -44,7 +44,7 @@ impl Game<'_> {
             match event {
                 VaultEvent::State(state) => self.set_vault_state(key, state)?,
                 VaultEvent::BlockUpdated => self.mark_block_entity_updated(key),
-                VaultEvent::LevelEvent(id, data) => self.level_event_at(id, pos, data),
+                VaultEvent::LevelEvent(id, data) => self.server_level_event_at(id, pos, data),
                 VaultEvent::Sound(name, volume, pitch) => {
                     self.server_play_sound(&format!("minecraft:{name}"), center, volume, pitch)
                 }

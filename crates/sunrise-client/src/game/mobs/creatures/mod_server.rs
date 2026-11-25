@@ -2117,7 +2117,7 @@ impl Game<'_> {
                     let rang = self
                         .with_level(|b, level, ticks| b.bell_attempt_to_ring(level, ticks, pos));
                     if rang {
-                        let _ = self.process_level_events();
+                        let _ = self.server_process_level_events();
                     }
                 }
                 MobEvent::ChestOpen { chest, open, mob } => self.golem_chest_open(chest, open, mob),
@@ -2356,7 +2356,7 @@ impl Game<'_> {
                             Some(Who::Mob(mob)),
                             None,
                         );
-                        self.level_event_at(2001, pos, old.0 as i32);
+                        self.server_level_event_at(2001, pos, old.0 as i32);
                     }
                 }
                 MobEvent::CrackTurtleEgg { pos } => self.crack_turtle_egg(pos)?,
@@ -2364,7 +2364,7 @@ impl Game<'_> {
                 MobEvent::SetDoorOpen { pos, open } => {
                     let pos = BlockPos::new(pos[0], pos[1], pos[2]);
                     self.with_level(|b, level, ticks| b.set_door_open(level, ticks, pos, open));
-                    self.process_level_events()?;
+                    self.server_process_level_events()?;
                 }
                 MobEvent::TakeBlock { mob, pos, state } => {
                     // The block must still be the one the enderman picked.
@@ -2413,16 +2413,16 @@ impl Game<'_> {
                     let air = self.world.air;
                     let at = BlockPos::new(pos[0], pos[1], pos[2]);
                     self.with_level(|b, level, ticks| b.set_block(level, ticks, at, air, 3));
-                    self.process_level_events()?;
-                    self.level_event_at(1021, pos, 0);
+                    self.server_process_level_events()?;
+                    self.server_level_event_at(1021, pos, 0);
                     let left = self.world.block(pos[0], pos[1], pos[2]);
-                    self.level_event_at(2001, pos, left.0 as i32);
+                    self.server_level_event_at(2001, pos, left.0 as i32);
                     self.native_entity_break_door(mob, &kind, pos);
                 }
                 MobEvent::DestroyProgress { mob, pos, progress } => {
                     self.server_destroy_block_progress(mob as i32, pos, progress);
                 }
-                MobEvent::LevelEvent { id, pos, data } => self.level_event_at(id, pos, data),
+                MobEvent::LevelEvent { id, pos, data } => self.server_level_event_at(id, pos, data),
                 MobEvent::SetBlockName {
                     mob,
                     pos,
@@ -2441,7 +2441,7 @@ impl Game<'_> {
                             .registry
                             .default_state(&self.res.facts().get(old).name)
                             .unwrap_or(old);
-                        self.level_event_at(2001, pos, state.0 as i32);
+                        self.server_level_event_at(2001, pos, state.0 as i32);
                     }
                     if let Some(state) = self.pack.assets.registry.default_state(name) {
                         let old_name = self
@@ -2519,7 +2519,7 @@ impl Game<'_> {
                     let old = self.world.block(pos[0], pos[1], pos[2]);
                     // Block.spawnDestroyParticles: fire breaks leave nothing.
                     if !self.res.facts().get(old).has_class("BaseFireBlock") {
-                        self.level_event_at(2001, pos, old.0 as i32);
+                        self.server_level_event_at(2001, pos, old.0 as i32);
                     }
                     if drop {
                         let entity = by.or(breaker);
@@ -2794,7 +2794,7 @@ impl Game<'_> {
                     // the sand's break sound, and reaches the clients the same
                     // way a broken block's does.
                     let state = self.world.block(block[0], block[1], block[2]);
-                    self.level_event_at(2001, pos, state.0 as i32);
+                    self.server_level_event_at(2001, pos, state.0 as i32);
                 }
                 MobEvent::Darkness { at, radius } => self.apply_darkness(at, radius),
                 MobEvent::CreakingTearDown { center, spread } => {

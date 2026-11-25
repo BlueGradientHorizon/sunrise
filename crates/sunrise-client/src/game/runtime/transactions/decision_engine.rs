@@ -34,7 +34,7 @@ pub(super) struct KeptOwner {
 impl Target {
     /// Check the active action before looking in a slot that an outer action
     /// might have lifted. A missing menu is never the reentrancy mechanism.
-    pub(in crate::game::server_side) fn admit(
+    pub(in crate::game) fn admit(
         game: &Game<'_>,
         conn: u32,
     ) -> Result<Self, Admission> {

@@ -359,7 +359,7 @@ impl Game<'_> {
                 self.set_test_block_state(at, "minecraft:air", flags::UPDATE_ALL);
             }
         }
-        let _ = self.process_level_events();
+        let _ = self.server_process_level_events();
     }
 
     /// `clearErrorMarkers`.

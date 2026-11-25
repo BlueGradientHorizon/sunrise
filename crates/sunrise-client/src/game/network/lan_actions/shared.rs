@@ -99,7 +99,7 @@ pub(in crate::game) struct GuestPlay {
     pub(in crate::game) craft_grid: Vec<Option<ItemStack>>,
     /// The guest's cast fishing hook (`Player.fishing`).
     pub(in crate::game) hook: sunrise_client::join_seq::ResidentSlot<super::fishing::Hook>,
-    pub(in crate::game) sculk: super::sculk::PlayerEvents,
+    pub(in crate::game) sculk: super::sculk_server::PlayerEvents,
     /// What `ServerPlayer` last recorded for the guest's scoreboard criteria
     /// (`lastRecordedHealthAndAbsorption` and the others).
     pub(in crate::game) score_recorded: super::scoreboard::Recorded,

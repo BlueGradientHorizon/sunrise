@@ -34,7 +34,7 @@ pub(in crate::game) fn matrix(mods: mod_api::Mods) {
                     )
                     .unwrap();
                 game.world.set(0, 63, 0, stone).unwrap();
-                game.server.forced_hit = Some(hit());
+                game.set_test_forced_hit(Some(hit()));
                 for hand in [Hand::Main, Hand::Off] {
                     for case in cases(hand) {
                         let state = if case.lever { lever } else { stone };

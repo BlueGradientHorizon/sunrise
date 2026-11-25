@@ -181,9 +181,6 @@ impl Game<'_> {
         } else {
             false
         };
-        if done && let Some(key) = self.container {
-            self.container_changed(key);
-        }
         done
     }
     /// The pick block key bound to a keyboard key, over a slot of the open
@@ -208,11 +205,7 @@ impl Game<'_> {
         else {
             return;
         };
-        if self.click_open_inventory(Some(slot), 0, sunrise_client::menu::Input::Clone)
-            && let Some(key) = self.container
-        {
-            self.container_changed(key);
-        }
+        let _ = self.click_open_inventory(Some(slot), 0, sunrise_client::menu::Input::Clone);
     }
     /// The plain inventory mouse press: starts a quick craft drag when a
     /// stack is held, gathers on a double click, else the normal click.
@@ -547,9 +540,6 @@ impl Game<'_> {
         if self.carried != before {
             self.swing_arm();
         }
-        if let Some(key) = self.container {
-            self.container_changed(key);
-        }
     }
     /// Settle the slot action before releasing a screen child. Return true
     /// only for an early swallowed release or a mouse tweak that took it.
@@ -582,9 +572,6 @@ impl Game<'_> {
                 self.client.inv_drag = None;
                 if !self.click_open_inventory(Some(slot), i32::from(right), input) {
                     self.click_inventory(right);
-                }
-                if let Some(key) = self.container {
-                    self.container_changed(key);
                 }
             }
             (Release::Swallowed, _) => {
@@ -684,9 +671,6 @@ impl Game<'_> {
                 // Not a menu the engine models: the drag is a plain click.
                 self.click_inventory(ty == 1);
             }
-        }
-        if let Some(key) = self.container {
-            self.container_changed(key);
         }
     }
 }

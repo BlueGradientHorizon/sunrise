@@ -74,7 +74,7 @@ fn water_placed_before_the_first_world_tick_keeps_its_flow_tick() {
         .insert(key, Arc::new(Chunk::empty(key.0, key.1)));
     assert_eq!(fluid_ticks(&game, key), None, "not registered yet");
     let time = game.world.game_time;
-    game.update_world();
+    game.server_update_world();
     assert!(
         game.world.chunks.contains_key(&key),
         "the chunk stays loaded"
@@ -124,8 +124,8 @@ fn early_registration_keeps_saved_ticks_and_ticks_nothing() {
     game.world.chunks.insert(key, Arc::new(chunk));
     let time = game.world.game_time;
     let random = game.world.random.clone().next_long();
-    game.update_world();
-    game.update_world();
+    game.server_update_world();
+    game.server_update_world();
     assert_eq!(game.world.game_time, time, "no world tick ran");
     assert_eq!(
         game.world.random.clone().next_long(),
@@ -197,7 +197,7 @@ fn saved_block_and_fluid_ticks_unpack_when_the_chunk_starts_ticking() {
     }
     game.world.chunks.insert(key, Arc::new(chunk));
     game.world.game_time = 500;
-    game.update_world();
+    game.server_update_world();
     game.update_chunk_tickets();
     assert!(
         super::ticking_chunk(&game.world, key.0, key.1),
@@ -247,15 +247,15 @@ fn an_unloaded_chunk_saves_its_ticks_and_a_reloaded_one_gets_them_back() {
     game.world
         .chunks
         .insert(key, Arc::new(Chunk::empty(key.0, key.1)));
-    game.update_world();
+    game.server_update_world();
     assert!(game.run_command("setblock 1283 100 1283 stone"));
     assert!(game.run_command("setblock 1283 101 1283 water"));
     assert_eq!(fluid_ticks(&game, key), Some(1));
     // Left and back before the next update_world: the same queue, once.
     let resident = game.world.chunks.remove(&key).unwrap();
     game.world.chunks.insert(key, resident);
-    game.update_world();
-    game.update_world();
+    game.server_update_world();
+    game.server_update_world();
     assert_eq!(fluid_ticks(&game, key), Some(1), "no second registration");
     // The save an unloaded chunk is written with.
     let mut saved = (*game.world.chunks[&key]).clone();
@@ -269,14 +269,14 @@ fn an_unloaded_chunk_saves_its_ticks_and_a_reloaded_one_gets_them_back() {
     assert_eq!(ticks[0].delay, 5, "saved relative to the save time");
     // Unloaded: the queue goes with the chunk.
     game.world.chunks.remove(&key);
-    game.update_world();
+    game.server_update_world();
     assert!(
         game.block_ticks.fluids.chunk(pos).is_none(),
         "dropped after the save"
     );
     // Loaded back from that save.
     game.world.chunks.insert(key, Arc::new(saved));
-    game.update_world();
+    game.server_update_world();
     assert_eq!(
         game.block_ticks
             .fluids

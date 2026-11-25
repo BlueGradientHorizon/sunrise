@@ -885,7 +885,7 @@ impl Game<'_> {
                 {
                     let lines = self.as_guest(conn, |g| {
                         g.server.chat_capture = Some(Vec::new());
-                        g.change_game_mode(*mode);
+                        g.server_change_game_mode(*mode);
                         g.server
                             .chat_capture
                             .take()

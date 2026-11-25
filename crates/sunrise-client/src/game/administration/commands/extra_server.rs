@@ -372,7 +372,8 @@ impl Game<'_> {
     /// Whether a `/fetchprofile` lookup is still in flight (the command
     /// harness waits for them, as vanilla's oracle resolves at once).
     pub(in crate::game::server_side) fn profile_fetches_pending(&mut self) -> bool {
-        self.profile_fetches_pending_client(&self.cmds.0.profile_fetches)
+        let mut resolver = self.skin_profiles.borrow_mut();
+        self.cmds.0.profile_fetches.iter().any(|f| matches!(resolver.state(&f.key), Resolve::Pending))
     }
     /// `ServerPlayer.openDialog` for each target: the packet to a guest, the
     /// acting player's packet queue otherwise.
@@ -481,7 +482,7 @@ impl Game<'_> {
     pub(in crate::game::server_side) fn tick_profile_fetches(&mut self) {
         let fetches = std::mem::take(&mut self.cmds.0.profile_fetches);
         for fetch in fetches {
-            let state = self.tick_profile_fetches_client(&fetch.key);
+            let state = self.skin_profiles.borrow_mut().state(&fetch.key);
             match state {
                 Resolve::Pending => self.cmds.0.profile_fetches.push(fetch),
                 Resolve::Done(result) => {

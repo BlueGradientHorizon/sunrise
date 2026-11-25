@@ -553,7 +553,7 @@ impl Game<'_> {
                 .chain(super::lan::HELP)
                 .chain(super::friends::HELP)
                 .chain(super::render_control::HELP)
-                .chain(super::sculk::HELP)
+                .chain(super::sculk_server::HELP)
                 .chain(super::agent::HELP)
                 .chain(super::ui_control::HELP)
                 .chain(super::options::CONTROL_HELP)

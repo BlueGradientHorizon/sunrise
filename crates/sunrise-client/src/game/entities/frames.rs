@@ -272,51 +272,6 @@ impl Game<'_> {
         self.award_stat("used", &stack.item, 1);
         true
     }
-    /// The frame under the crosshair within reach and its distance.
-    pub(in crate::game) fn frame_hit(&self) -> Option<(usize, f64)> {
-        if let Some(hit) = self.cached_entity_pick() {
-            let (entity, distance, _) = hit?;
-            let index = self.item_frames.iter().position(|f| f.id == entity.id())?;
-            return Some((index, distance));
-        }
-        let (eye, dir) = self.aim()?;
-        let reach: f64 = self.entity_reach;
-        let (from, to) = super::pick_accumulator::pick_ray_segment(eye, dir, reach);
-        let mut pick = super::pick_accumulator::PickAccumulator::new(reach * reach);
-        let mut best: Option<(usize, f64)> = None;
-        for (i, f) in self.item_frames.iter().enumerate() {
-            let (lo, hi) = f.bounds();
-            let bb = Aabb::new(
-                Vec3::new(lo[0], lo[1], lo[2]),
-                Vec3::new(hi[0], hi[1], hi[2]),
-            );
-            if pick.consider_box(self, f.id, from, to, bb) {
-                best = Some((i, pick.hovered.unwrap().distance_sq.sqrt()));
-            }
-        }
-        best
-    }
-    pub(in crate::game::server_side) fn block_distance(&self) -> Option<f64> {
-        if self.uses_stored_pick() {
-            return match self.crosshair_target() {
-                Some(mod_api::CrosshairTarget::Block { hit, .. }) => {
-                    Some(self.pick_distance(hit.point))
-                }
-                _ => None,
-            };
-        }
-        self.pick_unfiltered().map(|h| {
-            let eye = self.aim().map(|(eye, _)| eye).unwrap_or_default();
-            (0..3)
-                .map(|a| (h.point[a] - eye[a]).powi(2))
-                .sum::<f64>()
-                .sqrt()
-        })
-    }
-    /// Nearer than the targeted block?
-    pub(in crate::game) fn before_block(&self, distance: f64) -> bool {
-        self.block_distance().is_none_or(|block| block > distance)
-    }
     /// `ItemFrame.interact` for the frame under the crosshair, or the one a
     /// guest's interact packet named.
     pub(in crate::game::server_side) fn interact_frame(

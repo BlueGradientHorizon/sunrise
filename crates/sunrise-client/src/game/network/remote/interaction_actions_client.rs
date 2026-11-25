@@ -181,7 +181,7 @@ impl Game<'_> {
             }));
             self.client.hand_strength.reset_attack();
             self.swing_hand(Hand::Main, kinetic.attack_animation());
-            self.play_at_feet(kinetic.attack_sound);
+            self.client_play_at_feet(kinetic.attack_sound);
             return true;
         }
         if self.mod_attack_targets() {

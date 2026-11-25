@@ -249,7 +249,7 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
 
             with_guests(|game| {
                 game.options.dedicated = Some(Vec::new());
-                game.audio.0.capture = Some(Vec::new());
+                game.start_audio_capture();
                 let (tx12, rx12) = mpsc::channel();
                 let (tx13, rx13) = mpsc::channel();
                 game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
@@ -315,9 +315,7 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                     game.server.lan_events.clear();
                     game.server.lan_global_events.clear();
                     game.server.lan_entity_events.clear();
-                    if let Some(captured) = game.audio.0.capture.as_mut() {
-                        captured.clear();
-                    }
+                    game.server.pending_sounds.clear();
                 };
                 clear_queues(game);
                 decode_packets(&rx12);
@@ -478,8 +476,8 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                 assert!(game.server.lan_entity_events.is_empty());
                 assert_eq!(
                     portal_plays(game),
-                    portal_before_commit + 1,
-                    "global_level_event plays its local global sound once on root commit"
+                    portal_before_commit,
+                    "server-role global_level_event delivers packets rather than playing locally"
                 );
 
                 let packets12 = decode_packets(&rx12);
@@ -593,13 +591,13 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                     assert!(game.level_global_level_event(level, 1023, pos, 0));
                     assert!(game.server.lan_events.is_empty());
                     assert!(game.server.lan_global_events.is_empty());
-                    assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
+                    assert!(game.server.pending_sounds.is_empty());
                     Err::<(), ()>(())
                 });
                 assert!(rolled_plain.is_err());
                 assert!(game.server.lan_events.is_empty());
                 assert!(game.server.lan_global_events.is_empty());
-                assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
+                assert!(game.server.pending_sounds.is_empty());
 
                 let committed_plain = game.storage_transaction(|game, _| {
                     assert!(game.level_global_level_event(level, 1023, pos, 0));
@@ -609,7 +607,7 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                 assert!(committed_plain.is_ok());
                 assert!(game.server.lan_global_events.is_empty());
                 assert!(game.server.lan_events.is_empty());
-                assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
+                assert!(game.server.pending_sounds.is_empty());
                 let plain12: Vec<_> = decode_packets(&rx12)
                     .into_iter()
                     .filter_map(|p| match p {

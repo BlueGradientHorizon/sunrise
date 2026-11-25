@@ -13,7 +13,7 @@ use sunrise_core::random::RandomSource;
 use sunrise_world::blocking_rules::{BlockingRules, DamageReduction, ItemDamageFunction};
 
 /// `Inventory.SLOT_OFFHAND`: the `using` slot of an off-hand item.
-pub(in crate::game) const OFFHAND_SLOT: usize = 40;
+pub(in crate::game) use super::held_items::OFFHAND_SLOT;
 
 /// `LivingEntity.getItemBlockingWith`'s delay: an item that blocks attacks blocks once it has been
 /// used for `BlocksAttacks.blockDelayTicks` (`Math.round(seconds * 20)`) ticks.
@@ -38,21 +38,6 @@ impl Game<'_> {
             [p.previous.x, p.previous.y, p.previous.z],
             "minecraft:arrow",
         )
-    }
-    /// The stack in an inventory slot, the off hand at `OFFHAND_SLOT`.
-    pub(in crate::game) fn stack_in(&self, slot: usize) -> Option<&ItemStack> {
-        if slot == OFFHAND_SLOT {
-            self.offhand.as_ref()
-        } else {
-            self.inventory.get(slot)?.as_ref()
-        }
-    }
-    pub(in crate::game) fn stack_in_mut(&mut self, slot: usize) -> &mut Option<ItemStack> {
-        if slot == OFFHAND_SLOT {
-            &mut self.offhand
-        } else {
-            &mut self.inventory[slot]
-        }
     }
     /// The stack's `blocks_attacks`: its own component, else its item's, as the stack's item
     /// parts allow (`shield_block`): a stack they grant the ability to blocks with the

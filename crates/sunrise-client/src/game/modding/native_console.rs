@@ -7,12 +7,12 @@ use sunrise_client::logging;
 impl Game<'_> {
     /// `console_line` for each line logged since the last server tick, while
     /// an enabled mod listens; the lines its listeners log are not kept.
-    pub(super) fn native_console_lines(&mut self) {
+    pub(in crate::game) fn native_console_lines(&mut self) {
         let listened = mod_api::__private::enabled_listened(mod_api::HookId::ConsoleLine);
         self.dispatch_console_lines(logging::take_tapped(listened));
     }
 
-    pub(super) fn dispatch_console_lines(&mut self, lines: Vec<logging::TappedLine>) {
+    pub(in crate::game) fn dispatch_console_lines(&mut self, lines: Vec<logging::TappedLine>) {
         for line in lines {
             let level = line.level.as_str();
             logging::untapped(|| {
@@ -23,7 +23,7 @@ impl Game<'_> {
 
     /// `Commands::run_command_with_output`: `native_run_command` with its feedback kept as
     /// plain text, at most `MAX_FEEDBACK_LINES` lines of `MAX_FEEDBACK_LINE_BYTES` bytes each.
-    pub(super) fn native_run_command_with_output(&mut self, line: &str) -> CommandResult {
+    pub(in crate::game) fn native_run_command_with_output(&mut self, line: &str) -> CommandResult {
         let line = line.trim();
         let line = line.strip_prefix('/').unwrap_or(line);
         if line.trim().is_empty() {
@@ -36,13 +36,13 @@ impl Game<'_> {
 }
 
 /// The most feedback lines `Commands::run_command_with_output` keeps.
-pub(super) const MAX_FEEDBACK_LINES: usize = 256;
+pub(in crate::game) const MAX_FEEDBACK_LINES: usize = 256;
 /// The most bytes it keeps of one feedback line.
-pub(super) const MAX_FEEDBACK_LINE_BYTES: usize = 4096;
+pub(in crate::game) const MAX_FEEDBACK_LINE_BYTES: usize = 4096;
 
 /// `lines` as plain text, at most `MAX_FEEDBACK_LINES` of them, each cut to at most
 /// `MAX_FEEDBACK_LINE_BYTES` bytes at a character boundary.
-pub(super) fn capped_lines(lines: &[sunrise_client::text::Text]) -> Vec<String> {
+pub(in crate::game) fn capped_lines(lines: &[sunrise_client::text::Text]) -> Vec<String> {
     lines
         .iter()
         .take(MAX_FEEDBACK_LINES)

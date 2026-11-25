@@ -71,7 +71,7 @@ fn window(wanted: &Wanted) -> String {
 
 impl Game<'_> {
     /// A `sunrise:perf` payload from `conn`.
-    pub(super) fn guest_perf(&mut self, conn: u32, data: &[u8]) {
+    pub(in crate::game) fn guest_perf(&mut self, conn: u32, data: &[u8]) {
         let Some(guest) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
             return;
         };

@@ -2466,13 +2466,13 @@ impl<'g> Game<'g> {
         holder: BlockEntityIdentity,
     ) {
         let [x, y, z] = holder.position;
-        self.after_commit(self.container_change_effect((x, y, z), Some(holder)));
+        self.after_commit(self.side_tx_container_change_effect((x, y, z), Some(holder)));
     }
 
     /// Runs `after` at once, or at the root commit inside a transaction.
     pub(in crate::game) fn after_commit(&mut self, after: After) {
         let after = match after {
-            After::Changed(pos) => self.container_change_effect(pos, None),
+            After::Changed(pos) => self.side_tx_container_change_effect(pos, None),
             after => after,
         };
         let frame = if after.level_owned() {
@@ -2482,7 +2482,7 @@ impl<'g> Game<'g> {
         };
         match frame {
             Some(level) => level.after.push(after),
-            None => self.run_after(after),
+            None => self.side_tx_run_after(after),
         }
     }
     pub(in crate::game) fn pending_menu_data(&self, key: (u32, u64, usize)) -> Option<i32> {
@@ -2678,7 +2678,7 @@ impl<'g> Game<'g> {
                         step.replay.flags,
                         step.replay.level_host,
                     );
-                    let _ = self.process_level_events();
+                    let _ = self.server_process_level_events();
                 }
                 After::BulkBlocks(publication, tracked, removed, steps) => {
                     for (pos, step) in steps {
@@ -2745,7 +2745,7 @@ impl<'g> Game<'g> {
                         let pos = [pos.0, pos.1, pos.2];
                         if level_host {
                             self.set_block_live(pos, now, flags, true);
-                            let _ = self.process_level_events();
+                            let _ = self.server_process_level_events();
                         } else {
                             let _ = self.level_set_with_flags(pos, now, flags);
                         }
@@ -3487,7 +3487,7 @@ impl<'g> Game<'g> {
             After::InventoryTrigger(uuid) => {
                 self.native_as_player(uuid, |g| g.check_inventory_trigger());
             }
-            After::GrindstoneEvent(pos) => self.level_event_at(1042, pos, 0),
+            After::GrindstoneEvent(pos) => self.server_level_event_at(1042, pos, 0),
             After::StationContent(conn, owner, window) => {
                 if self
                     .lan
@@ -3600,7 +3600,7 @@ pub(in crate::game) mod tests {
         use sunrise_client::lan::{PlayerSender, conn::transaction_packets::Scope};
 
         if run_fresh_cases(
-            "game::server_side::transactions::tests::packet_refusal_rolls_back_the_child_and_reaches_the_transaction_caller",
+            "game::transactions::tests::packet_refusal_rolls_back_the_child_and_reaches_the_transaction_caller",
             "SUNRISE_TRANSACTION_PACKET_REFUSAL_CHILD",
             &["run"],
         ) {
@@ -3648,7 +3648,7 @@ pub(in crate::game) mod tests {
         };
         use std::sync::Mutex;
         if run_fresh_cases(
-            "game::server_side::transactions::tests::cauldron_stat_listener_observes_committed_state_and_can_cancel",
+            "game::transactions::tests::cauldron_stat_listener_observes_committed_state_and_can_cancel",
             "SUNRISE_CAULDRON_STAT_CHILD",
             &["run"],
         ) {
@@ -4154,7 +4154,7 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn an_aborted_transaction_puts_back_what_it_and_its_committed_children_changed() {
         let Some(root) = super::super::native_entity_refs::tests::declared_part_root(
-            "game::server_side::transactions::tests::an_aborted_transaction_puts_back_what_it_and_its_committed_children_changed",
+            "game::transactions::tests::an_aborted_transaction_puts_back_what_it_and_its_committed_children_changed",
         ) else {
             return;
         };
@@ -4704,7 +4704,7 @@ pub(in crate::game) mod mod_capability_tests {
     fn a_chemical_moves_between_two_mods_parts_and_an_abort_puts_it_back() {
         use super::super::native_entity_refs::tests::{declared_part_root, with_game_at};
         let Some(root) = declared_part_root(
-            "game::server_side::transactions::mod_capability_tests::a_chemical_moves_between_two_mods_parts_and_an_abort_puts_it_back",
+            "game::transactions::mod_capability_tests::a_chemical_moves_between_two_mods_parts_and_an_abort_puts_it_back",
         ) else {
             return;
         };

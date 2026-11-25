@@ -579,7 +579,7 @@ fn client_tick_case(
                 }
                 "event" => {
                     let pos = [int(&op[2][0]), int(&op[2][1]), int(&op[2][2])];
-                    game.level_event_at(int(&op[1]), pos, int(&op[3]));
+                    game.client_level_event_at(int(&op[1]), pos, int(&op[3]));
                 }
                 // `ClientboundBlockEventPacket`: the block's `triggerEvent`.
                 "blockEvent" => {

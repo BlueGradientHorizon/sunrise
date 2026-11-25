@@ -191,32 +191,7 @@ impl Game<'_> {
             }
             // Interaction extends Entity and keeps its NO_OP interpolation
             // handler: the server's position replaces its own at once.
-            if let Some(i) = self.client.interactions.get_mut(&id) {
-                let target_pos = Vec3::new(position[0], position[1], position[2]);
-                let d = target_pos.subtract(i.position);
-                let snap = matches!(packet, MovePacket::PositionSyncSnap)
-                    || (matches!(packet, MovePacket::Teleport | MovePacket::PositionSync)
-                        && d.x * d.x + d.y * d.y + d.z * d.z > 4096.0);
-                if snap {
-                    let (yaw, pitch) = rotation.unwrap_or((i.yaw, i.pitch));
-                    i.snap_to(target_pos, yaw, pitch);
-                    if let Some(old) = snap_old {
-                        i.previous = Vec3::new(old.position[0], old.position[1], old.position[2]);
-                        i.previous_yaw = if old.yaw.is_finite() { old.yaw } else { i.yaw };
-                        i.previous_pitch = if old.pitch.is_finite() {
-                            (old.pitch % 360.0).clamp(-90.0, 90.0)
-                        } else {
-                            i.pitch
-                        };
-                    }
-                } else {
-                    if path.is_some() {
-                        i.position = target_pos;
-                    }
-                    if let Some((yaw, pitch)) = rotation {
-                        i.set_rot(yaw, pitch);
-                    }
-                }
+            if self.side_move_remote_interaction(id, position, path.is_some(), rotation, packet, snap_old) {
                 return;
             }
             // Projectiles keep Entity's NO_OP InterpolationHandler too: the
@@ -256,13 +231,7 @@ impl Game<'_> {
                     h.move_to(position, on_ground);
                     return;
                 }
-                if let Some(h) = self
-                    .client
-                    .remote_hooks
-                    .iter_mut()
-                    .find(|h| h.id() == id as u32)
-                {
-                    h.move_to(position, on_ground);
+                if self.side_move_remote_hook(id as u32, position, on_ground) {
                     return;
                 }
             }
@@ -322,7 +291,8 @@ impl Game<'_> {
                 );
                 return;
             }
-            if r.cart_lerps.contains_key(&id) {
+            let has_cart_lerp = self.remote.as_ref().is_some_and(|r| r.cart_lerps.contains_key(&id));
+            if has_cart_lerp {
                 // A minecart on NewMinecartBehavior keeps Entity's NO_OP
                 // InterpolationHandler: a teleport puts it there at once.
                 if let Some(i) = self.carts.iter().position(|c| c.id == id as u32) {
@@ -336,7 +306,7 @@ impl Game<'_> {
                         }
                     });
                 }
-            } else if !self.text_displays.0.contains_key(&id) {
+            } else if !self.side_has_remote_text_display(id) {
                 // AbstractInterpolationHandler.interpolateTo: without a
                 // rotation, the one it was heading for.
                 let rotation = rotation.or_else(|| r.lerps.get(&id).and_then(|l| l.rotation));

@@ -155,7 +155,7 @@ impl Game<'_> {
         self.native_as_player_handle(player, |game| {
             // Loaded first, or the next tick's load would overwrite it.
             game.load_warden_tracker();
-            game.sculk.tracker.cooldown_ticks = i32::try_from(ticks).unwrap_or(i32::MAX);
+            game.server.sculk.tracker.cooldown_ticks = i32::try_from(ticks).unwrap_or(i32::MAX);
         })
     }
 }
@@ -247,7 +247,7 @@ mod tests {
             )]))
         };
         let warns = |game: &mut super::super::Game<'_>| {
-            WardenSpawnTracker::try_warn(&mut [game.sculk.tracker], false)
+            WardenSpawnTracker::try_warn(&mut [game.server.sculk.tracker], false)
         };
         super::super::native_guest_turn_tests::with_guests(|game| {
             // Guest 12 owns the world: their data is the level's, and 13 has
@@ -282,15 +282,15 @@ mod tests {
             })
             .unwrap();
             assert!(!game.player_set_warden_warning_cooldown(stale(a), 40));
-            assert!(!game.sculk.tracker_loaded);
-            assert_eq!(game.sculk.tracker, WardenSpawnTracker::default());
+            assert!(!game.server.sculk.tracker_loaded);
+            assert_eq!(game.server.sculk.tracker, WardenSpawnTracker::default());
             game.tick_sculk_entities();
-            assert_eq!(game.sculk.tracker.warning_level, 2);
+            assert_eq!(game.server.sculk.tracker.warning_level, 2);
 
             // The owner's write keeps the shrieker from warning until it has
             // run out, over the level's saved tracker.
-            game.sculk.tracker = WardenSpawnTracker::default();
-            game.sculk.tracker_loaded = false;
+            game.server.sculk.tracker = WardenSpawnTracker::default();
+            game.server.sculk.tracker_loaded = false;
             assert!(game.player_set_warden_warning_cooldown(a, 40));
             for _ in 0..39 {
                 game.tick_sculk_entities();
@@ -303,7 +303,7 @@ mod tests {
                 assert!(game.player_set_warden_warning_cooldown(a, 5));
             })
             .unwrap();
-            assert_eq!(game.sculk.tracker.cooldown_ticks, 5);
+            assert_eq!(game.server.sculk.tracker.cooldown_ticks, 5);
         });
     }
 }

@@ -158,17 +158,6 @@ impl Game<'_> {
         let m = self.client.player_model.as_ref()?;
         Some((m, self.own_profile_name()))
     }
-    /// The local player's profile name: the remote login name on a client, or the acting player on a server.
-    pub(in crate::game) fn own_profile_name(&self) -> String {
-        if self.is_logical_server() {
-            self.acting_player_name().to_owned()
-        } else {
-            self.remote
-                .as_ref()
-                .filter(|r| !r.profile_name.is_empty())
-                .map_or_else(|| self.options.player_name(), |r| r.profile_name.clone())
-        }
-    }
     /// The names the name tags show this frame (the control socket's status).
     pub(in crate::game) fn shown_name_tags(&self, camera: glam::DVec3) -> Vec<String> {
         self.name_tags(camera, 1.0)

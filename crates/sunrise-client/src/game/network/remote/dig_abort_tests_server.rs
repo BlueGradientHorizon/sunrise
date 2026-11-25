@@ -54,14 +54,14 @@ fn stopping_a_retained_client_dig_aborts_only_once() {
                 .default_state("minecraft:stone")
                 .unwrap();
             game.world.set(0, 64, 0, stone).unwrap();
-            game.server.forced_hit = Some(Hit {
+            game.set_test_forced_hit(Some(Hit {
                 pos,
                 face: [0, 1, 0],
                 point: [0.5, 65.0, 0.5],
                 inside: false,
-            });
+            }));
             game.refresh_client_pick(1.0);
-            game.server.forced_hit = None;
+            game.set_test_forced_hit(None);
             let held = game.main_hand_key();
             let remote = game.remote.as_mut().unwrap();
             remote.destroying = Some((pos, 1, 0.5));

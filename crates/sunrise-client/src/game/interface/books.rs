@@ -229,53 +229,6 @@ impl Game<'_> {
             ClickEvent::SuggestCommand(_) | ClickEvent::OpenFile(_) | ClickEvent::Profiler(_) => {}
         }
     }
-    /// `ServerPlayer.openItemGui` -> `WrittenBookContent.resolveForItem`: the
-    /// selectors and scores of the written book in the acting hand become
-    /// their text for the player opening it, and the book is marked resolved
-    /// (so it is never resolved again). True when the pages were rewritten.
-    pub(in crate::game) fn resolve_held_book(&mut self) -> bool {
-        let Some(mut book) = self
-            .held()
-            .and_then(|s| s.data())
-            .and_then(|d| d.written.clone())
-        else {
-            return false;
-        };
-        if book.resolved {
-            return false;
-        }
-        let string = |v: &Tag| match v {
-            Tag::String(s) => Some(s.to_string_lossy()),
-            _ => None,
-        };
-        let changed = book.resolve(|tag| {
-            let Tag::Compound(c) = tag else { return None };
-            if let Some(Tag::String(selector)) = c.get(&"selector".into()) {
-                let selector = selector.to_string_lossy();
-                return Some(self.resolve_selector_text(&selector));
-            }
-            let score = c.get(&"score".into())?;
-            let name = score.get("name").and_then(string).unwrap_or_default();
-            let objective = score.get("objective").and_then(string).unwrap_or_default();
-            let name = if name == "*" {
-                PLAYER_NAME
-            } else {
-                name.as_str()
-            };
-            Some(
-                self.score
-                    .board
-                    .score(name, &objective)
-                    .map_or_else(String::new, |s| s.value.to_string()),
-            )
-        });
-        if let Some(stack) = self.held_mut() {
-            stack.data_mut().written = Some(book);
-        }
-        // The guest turn restores this inventory to the hub, whose menu
-        // synchronization sends the changed resolved stack back to the client.
-        changed
-    }
     /// The screen a book in hand opens: `BookEditScreen` for a book and
     /// quill, `BookViewScreen` for a written book.
     pub(in crate::game) fn book_screen(&self, stack: &ItemStack) -> Option<BookScreen> {
@@ -392,7 +345,8 @@ impl Game<'_> {
                 title: title.clone(),
             }));
         }
-        self.write_book(slot, pages, title);
+        let author = self.remote.as_ref().map(|r| r.profile_name.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| self.options.player_name());
+        self.write_book_with_author(slot, pages, title, author);
         self.refresh_screen_widgets();
         self.capture(true);
     }
@@ -858,55 +812,6 @@ impl Game<'_> {
             .0
             .play("minecraft:item.book.page_turn", None, 1.0, 1.0);
     }
-    pub(in crate::game) fn set_lectern_powered(&mut self, key: (i32, i32, i32), powered: bool) {
-        self.set_lectern_property(key, "powered", powered);
-        let p = BlockPos::new(key.0, key.1, key.2);
-        let state = self.world.block(key.0, key.1, key.2);
-        self.with_level(|b, level, ticks| {
-            b.lectern_update_below(level, ticks, p, state);
-        });
-    }
-    /// `LecternBlock.resetBookState`: the property with the block change event.
-    pub(in crate::game) fn set_lectern_has_book(
-        &mut self,
-        key: (i32, i32, i32),
-        has_book: bool,
-        who: Option<Who>,
-    ) {
-        // `LecternBlock.resetBookState`: `setBlockAndUpdate` writes the state and
-        // the `block_change` post follows unconditionally, not only when the
-        // state differs.
-        self.set_lectern_property(key, "has_book", has_book);
-        let after = self.world.block(key.0, key.1, key.2);
-        self.post_block_game_event(
-            "minecraft:block_change",
-            [key.0, key.1, key.2],
-            who,
-            Some(after),
-        );
-    }
-    pub(in crate::game::client_side) fn set_lectern_property(
-        &mut self,
-        key: (i32, i32, i32),
-        name: &str,
-        value: bool,
-    ) {
-        let state = self.world.block(key.0, key.1, key.2);
-        let registry = self.pack.assets.registry;
-        let Some(mut s) = registry.state(state).cloned() else {
-            return;
-        };
-        if !s.properties.contains_key(name) {
-            return;
-        }
-        s.properties.insert(name.into(), value.to_string());
-        if let Some(new) = registry.id(&s) {
-            let p = BlockPos::new(key.0, key.1, key.2);
-            self.with_level(|b, level, ticks| {
-                b.set_block(level, ticks, p, new, level_flags::UPDATE_ALL)
-            });
-        }
-    }
     /// `LecternBlock.openScreen`: reading the lectern's book.
     #[allow(dead_code)]
     pub(in crate::game) fn open_lectern(&mut self, pos: [i32; 3]) -> bool {
@@ -921,7 +826,6 @@ impl Game<'_> {
         let Some(book) = &l.book else { return false };
         let pages = view_pages(book.data());
         let page = (l.page.max(0) as usize).min(pages.len().saturating_sub(1));
-        self.award_custom_stat("interact_with_lectern", 1);
         self.open_book(BookScreen::View {
             pages,
             page,
@@ -933,21 +837,10 @@ impl Game<'_> {
     /// lectern, so the screen closes (the server closes the menu once the
     /// book is gone; a server's client closes at once rather than wait).
     pub(in crate::game) fn take_lectern_book(&mut self, key: (i32, i32, i32)) {
-        let before = match self.world.block_entities.get(&key) {
-            Some(BlockEntity::Lectern(l)) => l.book.clone(),
-            _ => None,
-        };
-        self.lectern_button(key, 3);
-        if let (Some(book), Some(player), Some(name)) = (
-            before.filter(|_| {
-                matches!(self.world.block_entities.get(&key),
-                Some(BlockEntity::Lectern(l)) if l.book.is_none())
-            }),
-            self.server.lan_acting_uuid,
-            self.server.lan_acting_name.clone(),
-        ) {
-            self.native_player_take_lectern_book(player, &name, [key.0, key.1, key.2], &book.item);
+        if self.remote.is_none() {
+            return;
         }
+        self.lectern_button(key, 3);
         if self.may_build() && self.lectern_book_open() {
             self.close_book();
         }
@@ -956,10 +849,11 @@ impl Game<'_> {
     /// sent (`handleInventoryButtonClick`); here the lectern's menu takes it
     /// with the player's inventory, and the screen follows the block entity.
     pub(in crate::game) fn lectern_button(&mut self, key: (i32, i32, i32), id: i32) {
+        let _ = key;
         if self.remote.is_some() {
             let _ = self.remote_button_click(id);
-            return;
         }
+        // delete local lectern_menu fallback body below
         let Some(mut menu) = self.lectern_menu(key) else {
             return;
         };
@@ -1076,57 +970,6 @@ impl Game<'_> {
         }) = self.client.book.as_mut()
         {
             *page = (value.max(0) as usize).min(pages.len().saturating_sub(1));
-        }
-    }
-    /// `LecternMenu` over the lectern at `key` (the menu engine, for the
-    /// local player and LAN guests alike): its book and page.
-    pub(in crate::game::client_side) fn lectern_menu(&self, key: (i32, i32, i32)) -> Option<Menu> {
-        let Some(BlockEntity::Lectern(l)) = self.world.block_entities.get(&key) else {
-            return None;
-        };
-        let mut menu = Menu::new(Kind::Lectern);
-        menu.set_registry_id(Some("minecraft:lectern"));
-        menu.set_slot(&self.menu_env(), 0, l.book.clone());
-        menu.data[0] = l.page;
-        Some(menu)
-    }
-    /// The open lectern screen follows its block entity (`LecternScreen`'s
-    /// menu listener): the page, and closing once the book is gone or the
-    /// player is out of `LecternMenu.stillValid`'s reach.
-    pub(in crate::game) fn follow_lectern(&mut self) {
-        let Some(BookScreen::View {
-            lectern: Some(key), ..
-        }) = self.client.book.as_ref()
-        else {
-            return;
-        };
-        if self.remote.is_some() {
-            return;
-        }
-        let key = *key;
-        // `LecternMenu.stillValid` -> `LecternBlockEntity$1.stillValid`:
-        // `Container.stillValidBlockEntity` (the same block entity) and
-        // `hasBook()`, plus the player's reach with the 4-block buffer.
-        let has_book = matches!(
-            self.world.block_entities.get(&key),
-            Some(BlockEntity::Lectern(l)) if l.book.is_some()
-        );
-        let in_reach = self.eye_position().is_some_and(|eye| {
-            sunrise_client::lan::guest::within_block_range(
-                eye,
-                self.reach() + 4.0,
-                [key.0, key.1, key.2],
-            )
-        });
-        if !has_book || !in_reach {
-            self.close_book();
-            return;
-        }
-        let Some(BookScreen::View { page, pages, .. }) = self.client.book.as_mut() else {
-            return;
-        };
-        if let Some(BlockEntity::Lectern(l)) = self.world.block_entities.get(&key) {
-            *page = (l.page.max(0) as usize).min(pages.len().saturating_sub(1));
         }
     }
     pub(in crate::game::client_side) fn book_click(&mut self, size: [u32; 2]) -> bool {
@@ -1809,107 +1652,6 @@ pub(in crate::game) mod lectern_book_removal_tests {
     use super::*;
     use crate::game::game_tests::tests::server_game;
 
-    /// `LecternBlock.resetBookState`: the book coming off a lectern clears
-    /// `has_book` and posts `block_change` at it.
-    #[test]
-    #[ignore = "daily"]
-    fn a_lectern_book_removal_posts_block_change() {
-        let mut game_resources = None;
-        let mut game = server_game(&mut game_resources);
-        let key = (2, 4, 3);
-        let state = game
-            .pack
-            .assets
-            .registry
-            .default_state("minecraft:lectern")
-            .unwrap();
-        game.world.set(key.0, key.1, key.2, state).unwrap();
-        game.world.block_entities.insert(
-            key,
-            BlockEntity::Lectern(Lectern {
-                book: Some(ItemStack::new("minecraft:written_book", 1)),
-                page: 0,
-            }),
-        );
-        game.set_lectern_property(key, "has_book", true);
-        crate::game::sculk::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
-
-        game.set_lectern_has_book(key, false, None);
-
-        let has_book = game
-            .pack
-            .assets
-            .registry
-            .state(game.world.block(key.0, key.1, key.2))
-            .and_then(|s| s.properties.get("has_book").cloned());
-        assert_eq!(
-            has_book.as_deref(),
-            Some("false"),
-            "the lectern has no book"
-        );
-        crate::game::sculk::TEST_POSTED_EVENTS.with(|e| {
-            assert!(
-                e.borrow().as_ref().unwrap().contains(&(
-                    "minecraft:block_change",
-                    [2.5, 4.5, 3.5],
-                    None
-                )),
-                "{:?}",
-                e.borrow()
-            );
-        });
-    }
-}
-
-#[cfg(test)]
-pub(in crate::game) mod lectern_reach_tests {
-    use crate::game::game_tests::tests::server_game;
-    use sunrise_client::{
-        containers::{BlockEntity, Lectern},
-        items::ItemStack,
-        motion::PlayerMotion,
-    };
-    use sunrise_core::geometry::Vec3;
-
-    /// `LecternMenu.stillValid` -> `Container.stillValidBlockEntity`: the open
-    /// lectern screen closes once the player is out of the interaction range
-    /// (with vanilla's four-block buffer), as the guest path already does.
-    #[test]
-    #[ignore = "daily"]
-    fn a_lectern_screen_closes_out_of_reach() {
-        let mut game_resources = None;
-        let mut game = server_game(&mut game_resources);
-        game.player = Some(
-            PlayerMotion::new(game.motion, Vec3::new(8.5, 64.0, 8.5)).expect("a player position"),
-        );
-        let key = (8, 64, 8);
-        let state = game
-            .pack
-            .assets
-            .registry
-            .default_state("minecraft:lectern")
-            .unwrap();
-        game.world.set(key.0, key.1, key.2, state).unwrap();
-        game.world.block_entities.insert(
-            key,
-            BlockEntity::Lectern(Lectern {
-                book: Some(ItemStack::new("minecraft:writable_book", 1)),
-                page: 0,
-            }),
-        );
-        assert!(game.open_lectern([8, 64, 8]));
-        assert!(game.client.book.is_some(), "the lectern screen opened");
-
-        game.tick_lecterns();
-        assert!(game.client.book.is_some(), "the player is within reach");
-
-        game.player.as_mut().unwrap().position = Vec3::new(30.0, 64.0, 10.5);
-        game.tick_lecterns();
-        assert!(
-            game.client.book.is_none(),
-            "the lectern screen stayed open out of reach"
-        );
-    }
 }
 
 #[cfg(test)]

@@ -278,7 +278,7 @@ impl Game<'_> {
                 Some(state),
             );
         }
-        self.process_level_events()
+        self.server_process_level_events()
     }
 
     /// `PotentSulfurBlockEntity.LAUNCH_ENTITY_TICKER` on the server: mobs, items,
@@ -399,20 +399,6 @@ impl Game<'_> {
         if !p.flying && !riding && p.velocity.y < f64::from(0.3f32) + f64::from(water_blocks) * 0.1
         {
             p.velocity.y += f64::from(0.2f32);
-        }
-    }
-
-    /// `PotentSulfurBlock.triggerEvent`: the eruption block event stamps the
-    /// game time the plume counts from; false when `pos` holds no potent
-    /// sulfur block entity.
-    pub(in crate::game::server_side) fn potent_sulfur_eruption_event(&mut self, pos: Pos) -> bool {
-        let time = self.world.game_time;
-        match self.world.block_entities.get_mut(&pos) {
-            Some(BlockEntity::PotentSulfur(sulfur)) => {
-                sulfur.eruption_tick = time;
-                true
-            }
-            _ => false,
         }
     }
 }

@@ -8,7 +8,7 @@
 #[allow(unused_imports)]
 use super::{Game, Target};
 #[allow(unused_imports)]
-use sunrise_client::{command::args::Selector, lan::guest::Guest, text::Text};
+use sunrise_client::{command::args::Selector, lan::guest::Guest};
 #[allow(unused_imports)]
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 
@@ -64,30 +64,4 @@ impl Game<'_> {
             .map(|g| (g.xp_level, mode_name(g.game_mode)))
     }
 
-    /// `Player.getDisplayName`: the name as its team shows it, suggesting a
-    /// `/tell`, showing the player on hover, inserting the name.
-    pub(in crate::game) fn player_text(&self, name: &str, uuid: u128) -> Text {
-        let shown = match self.score.board.players_team(name) {
-            Some(team) => team.formatted_name(Text::literal(name)),
-            None => Text::literal(name),
-        };
-        let mut shown = shown.with_component_fields(vec![
-            (
-                "click_event".into(),
-                serde_json::json!({"action": "suggest_command", "command": format!("/tell {name} ")}),
-            ),
-            (
-                "hover_event".into(),
-                serde_json::json!({"action": "show_entity", "id": "minecraft:player",
-                    "uuid": sunrise_protocol::crypto::uuid_string(uuid), "name": name}),
-            ),
-            ("insertion".into(), name.into()),
-        ]);
-        sunrise_client::lan::hub::native_player_name_format(
-            &self.loop_context,
-            &Text::literal(name),
-            &mut shown,
-        );
-        shown
-    }
 }

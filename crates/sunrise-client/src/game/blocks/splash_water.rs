@@ -84,7 +84,7 @@ impl Game<'_> {
             && !candle
             && let Some(mut lit) = self.lit_campfire(state, &name)
         {
-            self.level_event_at(1009, pos, 0);
+            self.server_level_event_at(1009, pos, 0);
             // `CampfireBlock.douse(entity, ...)`: the block-change game event,
             // sourced from the potion's owner as vanilla passes `getOwner()`.
             self.post_block_game_event("minecraft:block_change", pos, owner, None);
@@ -93,7 +93,7 @@ impl Game<'_> {
                 let _ = self.level_set(pos, unlit);
             }
         }
-        let _ = self.process_level_events();
+        let _ = self.server_process_level_events();
     }
 
     /// `CampfireBlock.isLitCampfire`: the state of a lit block in

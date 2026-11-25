@@ -436,7 +436,7 @@ pub(in crate::game) fn run_camera_consumers_streaming_particles_debug_and_specta
         game.camera_view(1.0);
 
         // 1. Streaming center follows camera entity.
-        game.update_world();
+        game.client_update_world();
         assert_eq!(
             game.streaming.center, want_chunk,
             "streaming.center must follow camera"

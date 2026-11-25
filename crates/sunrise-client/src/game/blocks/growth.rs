@@ -67,7 +67,7 @@ impl Game<'_> {
             let ctx = self.player_context(None);
             self.post_game_event("minecraft:item_interact_finish", [p.x, p.y, p.z], ctx);
         }
-        self.process_level_events()?;
+        self.server_process_level_events()?;
         if used {
             self.swing_arm();
             // ItemStack.useOn: an item interaction counts as a use.

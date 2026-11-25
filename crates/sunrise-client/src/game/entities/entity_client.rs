@@ -25,8 +25,6 @@ pub(in crate::game::client_side) use crate::game::server_side::entity::JoinOrder
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::entity::ProjectileInside;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::entity::RenderEntityBounds;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::entity::THROWN_TRIDENT_DIMENSIONS;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::entity::ThunderHit;

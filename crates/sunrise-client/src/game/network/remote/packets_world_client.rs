@@ -19,7 +19,7 @@ impl Game<'_> {
             b.client_block_event(level, ticks, pos, i32::from(p.b0), i32::from(p.b1))
         });
         self.client.moving_pistons_stale = true;
-        self.process_level_events()?;
+        self.client_process_level_events()?;
         if !triggered {
             let state = self.world.block(p.pos[0], p.pos[1], p.pos[2]);
             let block = &self.res.facts().get(state).name;

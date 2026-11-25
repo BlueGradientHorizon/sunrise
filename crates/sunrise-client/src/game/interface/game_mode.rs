@@ -12,20 +12,6 @@ pub(in crate::game) use sunrise_gameplay::game_modes::{
     loads_chunks, mode_from_id, projectile_predicate_supported,
 };
 
-/// `InventoryScreen.containerTick` / `CreativeModeInventoryScreen.containerTick`:
-/// reconcile an open player inventory with `Player.hasInfiniteMaterials`.
-pub(in crate::game) fn inventory_after_infinite_materials(
-    screen: Screen,
-    player_inventory: bool,
-    infinite_materials: bool,
-) -> Screen {
-    match (screen, player_inventory, infinite_materials) {
-        (Screen::Inventory, true, true) => Screen::Creative,
-        (Screen::Creative, _, false) => Screen::Inventory,
-        _ => screen,
-    }
-}
-
 impl Game<'_> {
     /// `MultiPlayerGameMode.isSpectator()` on a client; `ServerPlayer.isSpectator()` on a server.
     pub(in crate::game) fn spectator(&self) -> bool {
@@ -84,40 +70,6 @@ impl Game<'_> {
     pub(in crate::game) fn set_mode_id(&mut self, id: i32) {
         self.set_mode(mode_from_id(id));
     }
-    /// `MultiPlayerGameMode.setLocalMode(GameType)`: updates only the local mode and `Abilities`.
-    pub(in crate::game) fn set_local_mode(&mut self, mode: GameMode) {
-        if mode != self.mode {
-            self.previous_mode = Some(self.mode);
-        }
-        self.mode = mode;
-        self.update_world_options_personal_mode(mode.id());
-        if let (Some(r), Some(p)) = (self.remote.as_mut(), self.player.as_ref()) {
-            r.sync_body_flight(p.flying, p.flying_speed);
-        }
-        self.finish_local_mode_update(mode);
-    }
-    /// `MultiPlayerGameMode.setLocalMode(GameType, @Nullable GameType)` for `Login` and `Respawn`.
-    pub(in crate::game) fn set_local_mode_with_previous(
-        &mut self,
-        mode: GameMode,
-        previous: Option<GameMode>,
-    ) {
-        self.mode = mode;
-        self.previous_mode = previous;
-        self.finish_local_mode_update(mode);
-    }
-    pub(in crate::game::server_side) fn finish_local_mode_update(&mut self, mode: GameMode) {
-        let r = self
-            .remote
-            .as_mut()
-            .expect("set_local_mode requires a remote client");
-        self.creative = r.update_local_mode_abilities(mode.id());
-        self.apply_remote_abilities();
-        let local_spectator = self.spectator();
-        if let Some(player) = self.player.as_mut() {
-            player.local_spectator = local_spectator;
-        }
-    }
     /// `ServerPlayer.setGameMode` on a local/server world.
     pub(in crate::game) fn set_mode(&mut self, mode: GameMode) {
         debug_assert!(
@@ -141,11 +93,7 @@ impl Game<'_> {
         if mode == GameMode::Spectator {
             self.mining = None;
             self.stop_active_item_use();
-            if self.is_logical_server() {
-                self.server_set_acting_attack(false);
-            } else {
-                self.set_mapping_held("key.attack", false);
-            }
+            self.server_set_acting_attack(false);
             self.dismount_for_spectator();
             if let Some(p) = self.player.as_mut() {
                 p.flying = true;

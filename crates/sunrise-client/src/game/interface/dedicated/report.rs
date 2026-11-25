@@ -170,12 +170,6 @@ impl Game<'_> {
             .collect()
     }
 
-    /// The canonical loaded inventory, with code targets resolved from the native runtime.
-    pub(in crate::game) fn perf_mods(&self) -> Vec<sunrise_perf_format::v1::Mod> {
-        self.mods
-            .perf_metadata(mod_api::__private::loaded_mods().iter())
-    }
-
     /// What a capture of `plan` records of the server as it starts: the typed allowlists, the world and the connections.
     fn capture_options(
         &self,

@@ -51,37 +51,6 @@ pub(in crate::game) fn spans(text: &Text) -> Value {
 }
 
 impl Game<'_> {
-    /// Pump the real client's connection, without predicting movement: the
-    /// oracle's player stays where commands put it. Errors cross the server
-    /// boundary through Integrated::stop, including script and save failures.
-    pub(in crate::game) fn wait_command_harness(&mut self) -> Result<()> {
-        let server = self.integrated.take().ok_or("command harness: no server")?;
-        let client_config = std::env::var_os("SUNRISE_HARNESS_CLIENT_CONFIG");
-        let mut wrote_config = false;
-        while !server.stopped() {
-            self.poll_stationary_client()?;
-            if !wrote_config
-                && let Some(path) = &client_config
-                && let Some(remote) = self.remote.as_ref().filter(|r| r.logged_in && r.joined)
-            {
-                std::fs::write(
-                    path,
-                    json!({
-                        "view_distance": remote.view_distance,
-                        "simulation_distance": remote.simulation_distance,
-                        "render_setting": self.settings.render_distance,
-                        "simulation_setting": self.settings.simulation_distance,
-                        "logged_in": remote.logged_in, "joined": remote.joined,
-                    })
-                    .to_string(),
-                )?;
-                wrote_config = true;
-            }
-            std::thread::sleep(Duration::from_millis(2));
-        }
-        server.stop()
-    }
-
     /// The owner's authoritative body and level, using the same swaps as a
     /// server command. Always put them back, also when a script operation fails.
     fn harness_owner<T>(&mut self, f: impl FnOnce(&mut Self) -> Result<T>) -> Result<T> {
@@ -178,7 +147,7 @@ impl Game<'_> {
     /// Load terrain until the player stands in lit chunks.
     fn harness_settle(&mut self, deadline: Instant, required: Option<&Value>) -> Result<()> {
         loop {
-            self.update_world();
+            self.server_update_world();
             // The oracle's settle takes its tickets at once (getChunk runs the
             // DistanceManager updates); a tick would refresh these too, but a
             // settle runs none, and `/execute if loaded` reads them.
@@ -529,7 +498,7 @@ impl Game<'_> {
                         .collect();
                     self.harness_owner(|g| {
                         loop {
-                            g.update_world();
+                            g.server_update_world();
                             // The oracle's `wait_chunks` ticks the chunk source (even while
                             // frozen, running `DistanceManager.runAllUpdates`); this poll runs
                             // no level tick, and `/execute if loaded` reads the refreshed levels.

@@ -154,16 +154,11 @@ impl Game<'_> {
 
 impl Game<'_> {
     /// The cushion under the crosshair, its distance and the hit point.
-    pub(in crate::game) fn cushion_hit(&self) -> Option<(usize, f64, [f64; 3])> {
-        if let Some(hit) = self.cached_entity_pick() {
-            let (entity, distance, point) = hit?;
-            let index = self.cushions.iter().position(|f| f.id == entity.id())?;
-            return Some((index, distance, point));
-        }
+    pub(in crate::game::server_side) fn cushion_hit(&self) -> Option<(usize, f64, [f64; 3])> {
         let (eye, dir) = self.aim()?;
         let reach: f64 = self.entity_reach;
-        let (from, to) = super::pick_accumulator::pick_ray_segment(eye, dir, reach);
-        let mut pick = super::pick_accumulator::PickAccumulator::new(reach * reach);
+        let (from, to) = super::pick_ray::pick_ray_segment(eye, dir, reach);
+        let mut pick = super::pick_ray::PickAccumulator::new(reach * reach);
         let mut best: Option<(usize, f64, [f64; 3])> = None;
         for (i, c) in self.cushions.iter().enumerate() {
             if pick.consider_box(self, c.id, from, to, aabb(c.bounds())) {

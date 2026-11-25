@@ -97,7 +97,7 @@ impl TeleportConsumeWorld for MobTeleporter<'_, '_> {
         }
         if self.game.dim != self.dim
             || !matches!(self.game.native_living_target(self.consumer),
-                Some(super::commands::Target::Mob(id)) if id == self.id)
+                Some(super::commands_common::Target::Mob(id)) if id == self.id)
             || !self
                 .game
                 .mobs
@@ -151,7 +151,7 @@ impl TeleportConsumeWorld for MobTeleporter<'_, '_> {
     }
     fn directional_particles(&mut self, _: Dim, origin: BlockPos, offset: i32) -> Result<(), ()> {
         self.game
-            .level_event_at(2017, [origin.x, origin.y, origin.z], offset);
+            .server_level_event_at(2017, [origin.x, origin.y, origin.z], offset);
         Ok(())
     }
     fn reset_fall_distance(&mut self) -> Result<(), ()> {

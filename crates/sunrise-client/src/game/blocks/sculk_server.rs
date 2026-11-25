@@ -211,9 +211,7 @@ impl Game<'_> {
                 pos[2].floor() as i32
             )
         });
-        if !self.is_logical_server() {
-            return;
-        }
+        debug_assert!(self.is_logical_server(), "post_game_event_with called on Client role");
         let ctx = if mod_api::__private::listened(mod_api::HookId::VanillaGameEvent) {
             let ctx = make_ctx(self);
             let cause = event_cause(ctx.source, self.server.lan_acting_entity);
@@ -233,15 +231,15 @@ impl Game<'_> {
         } else {
             None
         };
-        if !self.sculk.tables.built {
+        if !self.server.sculk.tables.built {
             return;
         }
         let at = block_of(pos);
         let radius = sculk::notification_radius(event).min(16);
-        let near = self.sculk.index.within(at, radius);
+        let near = self.server.sculk.index.within(at, radius);
         // The wardens and allays that may hear it, in the mobs' order, while
         // the slots taken for the mobs' events hold; else every mob is asked.
-        let mobs = self.sculk.mob_slots.as_ref().and_then(|s| {
+        let mobs = self.server.sculk.mob_slots.as_ref().and_then(|s| {
             let mut near = Vec::new();
             for &(i, id) in &s.listeners {
                 let mob = self.mobs.get(i)?;
@@ -279,8 +277,8 @@ impl Game<'_> {
                         self.mob_listen(i as usize, event, pos, &ctx);
                     }
                 }
-                self.sculk.listeners = slots;
-                self.sculk.listeners_of = Some(stamp);
+                self.server.sculk.listeners = slots;
+                self.server.sculk.listeners_of = Some(stamp);
             }
         }
     }
@@ -322,10 +320,10 @@ impl Game<'_> {
     pub(in crate::game) fn tick_entity_events(&mut self) {
         self.tick_player_sculk_events();
         self.tick_mob_sculk_events();
-        if !self.sculk.falling_items.is_empty() {
+        if !self.server.sculk.falling_items.is_empty() {
             let present: std::collections::HashSet<u32> =
                 self.dropped.iter().map(|item| item.id).collect();
-            self.sculk.falling_items.retain(|id| present.contains(id));
+            self.server.sculk.falling_items.retain(|id| present.contains(id));
         }
         // Dropped items are entities too: Entity.applyEffectsFromBlocks, from
         // ItemEntity.tick, so only for the items in entity-ticking chunks.
@@ -340,7 +338,7 @@ impl Game<'_> {
             .map(|i| [i.position.x, i.position.y, i.position.z])
             .collect();
         for at in items {
-            self.step_on_redstone_ore(at, false, false);
+            self.step_on_redstone_ore(at, false);
         }
     }
     pub(in crate::game) fn tick_mob_sculk_events(&mut self) {
@@ -383,7 +381,7 @@ impl Game<'_> {
             .filter(|(_, m)| matches!(m.species(), Species::Warden | Species::Allay))
             .map(|(i, m)| (i, m.id))
             .collect();
-        self.sculk.mob_slots = Some(MobSlots {
+        self.server.sculk.mob_slots = Some(MobSlots {
             by_id,
             listeners,
             next_entity: self.server.next_entity,
@@ -400,7 +398,7 @@ impl Game<'_> {
             let ticked = self.creatures.ticked.contains(&id)
                 || ticking(at[0].floor() as i32, at[2].floor() as i32);
             if on_ground && ticked {
-                self.step_on_redstone_ore(at, false, false);
+                self.step_on_redstone_ore(at, false);
             }
             // A mob first seen already riding raised its event when it spawned.
             let seen = self
@@ -449,16 +447,16 @@ impl Game<'_> {
                 }
             }
             if let Some(t) = damaged
-                && self.sculk.damaged.get(&id) != Some(&t)
+                && self.server.sculk.damaged.get(&id) != Some(&t)
             {
-                self.sculk.damaged.insert(id, t);
+                self.server.sculk.damaged.insert(id, t);
                 self.post_entity_event("minecraft:entity_damage", Who::Mob(id));
             }
         }
-        self.sculk.mob_slots = None;
+        self.server.sculk.mob_slots = None;
         let alive: FxHashSet<u32> = self.mobs.iter().map(|m| m.id).collect();
-        self.sculk.damaged.retain(|id, _| alive.contains(id));
-        self.sculk.mounts.retain(|who, _| match who {
+        self.server.sculk.damaged.retain(|id, _| alive.contains(id));
+        self.server.sculk.mounts.retain(|who, _| match who {
             Who::Player => true,
             Who::Mob(id) => alive.contains(id),
         });
@@ -477,7 +475,7 @@ impl Game<'_> {
         if let Some((at, on_ground, health, flying)) = player {
             let crouch = self.server_acting_sneak();
             if on_ground && !self.spectator() {
-                self.step_on_redstone_ore(at, crouch, true);
+                self.step_on_redstone_ore(at, crouch);
             }
             self.mount_events(Who::Player, self.riding, true);
             let in_water = self.in_water_at(at);
@@ -490,12 +488,12 @@ impl Game<'_> {
                 flying,
                 false,
             );
-            if let Some(last) = self.sculk.last_health
+            if let Some(last) = self.server.sculk.last_health
                 && health < last
             {
                 self.post_entity_event("minecraft:entity_damage", Who::Player);
             }
-            self.sculk.last_health = Some(health);
+            self.server.sculk.last_health = Some(health);
         }
     }
     /// The block entity phase for sculk: vibration tickers and catalysts, in
@@ -523,7 +521,7 @@ impl Game<'_> {
         // chosen on the next tick at the earliest, as in vanilla).
         let entities = &self.world.block_entities;
         let due: Vec<((i32, i32, i32), bool)> = self
-            .sculk
+            .server.sculk
             .index
             .iter()
             .filter_map(|&key| {

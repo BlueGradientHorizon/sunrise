@@ -6,7 +6,6 @@ use super::{
         capture::{Live, Target},
     },
     lan::LanSettings,
-    lan_screen::Snapshot,
     memory::{ServerMemoryRequest, ServerSide},
     mods::ModsReload,
 };
@@ -20,6 +19,19 @@ use std::{
 };
 use sunrise_core::geometry::Vec3;
 use sunrise_perf_format::v1::StopReason;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(in crate::game) struct Snapshot {
+    pub(in crate::game) default_mode: i32,
+    pub(in crate::game) personal_mode: i32,
+    pub(in crate::game) cheats: bool,
+    pub(in crate::game) difficulty: u8,
+    pub(in crate::game) locked: bool,
+    pub(in crate::game) lan: bool,
+    pub(in crate::game) port: u16,
+    pub(in crate::game) guest_commands: bool,
+    pub(in crate::game) force: bool,
+}
 
 /// Where the server puts the answer to a request the window waits for.
 pub(in crate::game) type Reply<T> = SyncSender<T>;
@@ -160,7 +172,7 @@ impl Game<'_> {
                 wanted,
                 done,
             } => {
-                self.apply_world_options(&before, &wanted);
+                self.apply_world_options_server(&before, &wanted);
                 let _ = done.send(());
             }
             OwnerRequest::LodSource(dim, reply) => {
@@ -273,6 +285,42 @@ impl Game<'_> {
                 )));
             self.restore_native_commands();
             self.send_native_command_report(true);
+        }
+    }
+
+    pub(in crate::game::server_side) fn apply_world_options_server(
+        &mut self,
+        before: &Snapshot,
+        wanted: &Snapshot,
+    ) {
+        if wanted.difficulty != before.difficulty {
+            let name = sunrise_client::title::DIFFICULTIES[usize::from(wanted.difficulty) & 3];
+            self.as_console(|g| g.run_command(&format!("difficulty {name}")));
+        }
+        if wanted.locked && !before.locked {
+            self.level.difficulty_locked = true;
+        }
+        if wanted.default_mode != before.default_mode {
+            self.set_default_game_mode(wanted.default_mode);
+        }
+        self.set_owner_mode(wanted.personal_mode);
+        if wanted.cheats != before.cheats {
+            self.set_allow_commands(wanted.cheats);
+            self.owner_allow_commands(wanted.cheats);
+        }
+        let settings_changed =
+            wanted.guest_commands != before.guest_commands || wanted.force != before.force;
+        if wanted.lan != before.lan || (wanted.lan && wanted.port != before.port) {
+            self.lan_close(before.lan);
+            if wanted.lan {
+                let _ = self.lan_open(LanSettings {
+                    port: wanted.port,
+                    guest_commands: wanted.guest_commands,
+                    force_game_mode: wanted.force,
+                });
+            }
+        } else if settings_changed {
+            self.lan_apply_settings(wanted.guest_commands, wanted.force);
         }
     }
 }

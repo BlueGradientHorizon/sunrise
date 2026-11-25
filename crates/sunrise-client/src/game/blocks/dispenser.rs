@@ -265,8 +265,8 @@ impl Game<'_> {
         facing: Direction,
         event: i32,
     ) {
-        self.level_event_at(event, [pos.0, pos.1, pos.2], 0);
-        self.level_event_at(2000, [pos.0, pos.1, pos.2], data_value(facing));
+        self.server_level_event_at(event, [pos.0, pos.1, pos.2], 0);
+        self.server_level_event_at(2000, [pos.0, pos.1, pos.2], data_value(facing));
     }
 
     /// `DefaultDispenseItemBehavior.execute`: drop one item.
@@ -1233,7 +1233,7 @@ impl Game<'_> {
         let target = Self::pos_of(offset(pos, facing));
         let picked =
             self.with_level(|b, level, ticks| b.bucket_pickup(level, ticks, target, false));
-        self.process_level_events()?;
+        self.server_process_level_events()?;
         match picked {
             Some(filled) => {
                 self.post_block_game_event(
@@ -1330,7 +1330,7 @@ impl Game<'_> {
             {
                 self.spawn_primed_tnt(target_pos, false, None, None);
                 self.with_level(|b, level, ticks| b.remove_block(level, ticks, target_pos, false));
-                self.process_level_events()?;
+                self.server_process_level_events()?;
             } else {
                 success = false;
             }
@@ -1375,7 +1375,7 @@ impl Game<'_> {
                     source: None,
                 });
         }
-        self.process_level_events()?;
+        self.server_process_level_events()?;
         // A canceled `BonemealEvent` that succeeded uses none of the meal.
         let left = if grown && ask.crop != Some(true) {
             shrink(stack)
@@ -1522,10 +1522,10 @@ impl Game<'_> {
             return Ok((Some(stack), FAIL));
         }
         if self.place_item_block(&ctx, false, &stack)?.is_none() {
-            self.process_level_events()?;
+            self.server_process_level_events()?;
             return Ok((Some(stack), FAIL));
         }
-        self.process_level_events()?;
+        self.server_process_level_events()?;
         Ok((shrink(stack), CLICK))
     }
 
@@ -2854,7 +2854,7 @@ impl Game<'_> {
                 data: 0,
                 source: None,
             });
-        self.process_level_events()?;
+        self.server_process_level_events()?;
         self.server_play_sound(
             "minecraft:item.honeycomb.wax_on",
             Self::center(target),

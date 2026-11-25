@@ -58,6 +58,25 @@ pub(in crate::game::server_side) use sunrise_world::registry::{BlockRegistry, Bl
 pub(in crate::game::server_side) use winit::keyboard::KeyCode;
 
 impl Game<'_> {
+    pub(in crate::game) fn server_sound_event_names(&self) -> Vec<String> {
+        // Empty on purpose: build_registries loads sounds from command-registries.json.
+        Vec::new()
+    }
+    pub(in crate::game) fn server_sync_pack_tag_ids(&mut self) {
+        self.sync_pack_tag_ids();
+    }
+    pub(in crate::game) fn server_sync_hub_clocks(&mut self) {
+        if self.lan.is_none() {
+            return;
+        }
+        let snap = self.hub_clock_snapshot();
+        let Some(host) = self.lan.as_mut() else { return };
+        for (name, total, rate) in snap.others {
+            host.hub.set_clock_state(&name, total, rate);
+        }
+        host.hub.overworld_day = snap.overworld_day;
+        host.hub.level_clock = snap.level_clock;
+    }
     /// Commands the game issues itself (the server console, harnesses, the
     /// control socket) run at the owner's level whatever Allow Commands says.
     pub(in crate::game) fn as_console<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {

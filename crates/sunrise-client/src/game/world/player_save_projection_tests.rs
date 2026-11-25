@@ -62,7 +62,7 @@ fn actual_player_save_tracks_mutable_body_and_keeps_guest_context() {
         assert!(game.run_command("tick freeze"));
         assert!(game.clock.frozen());
         let clock = game.world.game_time;
-        let tracker = (game.sculk.tracker, game.sculk.tracker_loaded);
+        let tracker = (game.server.sculk.tracker, game.server.sculk.tracker_loaded);
         let mut failures = Vec::new();
         let initial = game.player_nbt().expect("actual owner getter");
         assert_eq!(
@@ -231,7 +231,7 @@ fn actual_player_save_tracks_mutable_body_and_keeps_guest_context() {
         );
         assert_eq!(game.world.game_time, clock);
         assert_eq!(
-            (game.sculk.tracker, game.sculk.tracker_loaded),
+            (game.server.sculk.tracker, game.server.sculk.tracker_loaded),
             tracker,
             "external-owned tracker must stay untouched"
         );

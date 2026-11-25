@@ -28,30 +28,6 @@ impl Game<'_> {
 /// Helpers for native mods, kept as stable as the hook points.
 // Native mods use these; nothing in Sunrise does.
 impl Game<'_> {
-    /// The opener position for the currently shown mod menu, if known.
-    pub(in crate::game) fn screen_pos(&self) -> Option<[i32; 3]> {
-        self.shown_native_screen()?.menu.pos
-    }
-    /// The `sunrise:menu_extra` payload the server sent just before its
-    /// `OpenScreen`. The pending message must match the opening; its bytes are
-    /// borrowed by that factory and then discarded. A malformed payload logs an
-    /// error and disconnects the client.
-    pub(in crate::game) fn receive_menu_extra(&mut self, data: &[u8]) -> crate::game::Result<()> {
-        match sunrise_protocol::menu_extra::decode(data) {
-            Ok(extra) => {
-                if let Some(r) = self.remote.as_mut() {
-                    r.menu_extra = Some(extra);
-                }
-                Ok(())
-            }
-            Err(e) => {
-                log::error!("Sunrise: malformed menu extra payload: {e}");
-                let reason =
-                    Text::translate("disconnect.genericReason", &[Text::literal(e.to_string())]);
-                self.leave_server(Some(reason))
-            }
-        }
-    }
 }
 
 #[cfg(test)]

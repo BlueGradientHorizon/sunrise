@@ -2219,37 +2219,6 @@ impl Game<'_> {
         });
         self.trigger_killed(view, blow.as_ref());
     }
-    /// The dragon part or crystal under the crosshair within reach.
-    pub(in crate::game) fn dragon_hit(&self) -> Option<(u32, f64)> {
-        if let Some(hit) = self.cached_entity_pick() {
-            let (entity, distance, _) = hit?;
-            let id = entity.id();
-            if let Some(d) = self
-                .dragon
-                .as_ref()
-                .filter(|d| d.id != 0 || self.remote.is_some())
-                && let Some(part) = dragon_part_index(d.id, id)
-            {
-                return Some((SPECIAL + part as u32, distance));
-            }
-            return self
-                .special_targets()
-                .into_iter()
-                .any(|(special, _)| special == id)
-                .then_some((id, distance));
-        }
-        let (eye, dir) = self.aim()?;
-        let reach: f64 = self.entity_reach;
-        let (from, to) = super::pick_accumulator::pick_ray_segment(eye, dir, reach);
-        let mut pick = super::pick_accumulator::PickAccumulator::new(reach * reach);
-        let mut best: Option<(u32, f64)> = None;
-        for (id, b) in self.special_targets() {
-            if pick.consider_box(self, id, from, to, b) {
-                best = Some((id, pick.hovered.unwrap().distance_sq.sqrt()));
-            }
-        }
-        best
-    }
 
     /// The 24 nodes (`findClosestNode` builds them on first use).
     pub(in crate::game::server_side) fn dragon_nodes(&mut self) -> [[i32; 3]; 24] {
@@ -3040,31 +3009,6 @@ impl Game<'_> {
             set(d, 3 + i, x, y, z);
         }
     }
-    /// `Level.getEntity`: revenge goals must resolve the dragon too.
-    pub(in crate::game::server_side) fn dragon_target(
-        &self,
-    ) -> Option<(u32, sunrise_client::mobs::TargetInfo)> {
-        let d = self.dragon.as_ref().filter(|d| d.alive())?;
-        let p = d.position;
-        let bounds = Aabb::new(
-            Vec3::new(p.x - 8.0, p.y, p.z - 8.0),
-            Vec3::new(p.x + 8.0, p.y + 8.0, p.z + 8.0),
-        );
-        Some((
-            d.id,
-            sunrise_client::mobs::TargetInfo {
-                position: p,
-                eye_y: p.y + 6.8,
-                bounds,
-                hitbox: bounds,
-                alive: true,
-                can_be_seen_as_enemy: true,
-                is_player: false,
-                creative: false,
-                passenger: false,
-            },
-        ))
-    }
     /// Wing knockback, head and neck damage, and breaking blocks in the way.
     pub(in crate::game::server_side) fn dragon_contacts(&mut self) {
         let Some(d) = self.dragon.as_ref() else {
@@ -3191,7 +3135,7 @@ impl Game<'_> {
                 75,
                 (96.0 * a.sin()).floor() as i32,
             ];
-            self.level_event_at(3000, pos, 0);
+            self.server_level_event_at(3000, pos, 0);
             let _ = self.place_gateway_at(pos);
         }
         if !self.server.fight.previously_killed
@@ -3260,7 +3204,7 @@ impl Game<'_> {
             victims: Vec::new(),
             potion: None,
         });
-        self.level_event_at(
+        self.server_level_event_at(
             2006,
             [
                 next.x.floor() as i32,
@@ -3624,124 +3568,6 @@ impl Game<'_> {
     /// `EnderDragonRenderer.submitRays`: untextured, additive death rays.
     pub(in crate::game) fn dragon_rays(&self, base: glam::Mat4, t: f32, out: &mut Vec<Vertex>) {
         dragon_rays(base, t, self.gui.atlas.font.white(), out);
-    }
-    /// `submitCrystalBeams`: an eight-sided tube from `from` (+2 up) along
-    /// `delta`, the beam texture scrolling along it.
-    pub(in crate::game) fn crystal_beam(
-        &self,
-        from: glam::DVec3,
-        delta: glam::DVec3,
-        time: f32,
-        camera: glam::DVec3,
-        out: &mut Vec<Vertex>,
-    ) {
-        let Some(s) = self
-            .gui
-            .atlas
-            .sprites
-            .get("entity/end_crystal/end_crystal_beam")
-            .copied()
-        else {
-            return;
-        };
-        // Like the other layer-6 beams, this is a separate pack material from its body.
-        self.mark_stage(out.len(), "NONE");
-        let q = |v: f32| (v * 65535.0).round().clamp(0.0, 65535.0) as u32;
-        let wrap_light = q(s.v0) | q(s.v1 - s.v0) << 16;
-        let (dx, dy, dz) = (delta.x as f32, delta.y as f32, delta.z as f32);
-        let horizontal = (dx * dx + dz * dz).sqrt();
-        let length = (dx * dx + dy * dy + dz * dz).sqrt();
-        let m = glam::Mat4::from_translation(
-            (from - camera).as_vec3() + glam::Vec3::new(0.0, 2.0, 0.0),
-        ) * glam::Mat4::from_rotation_y(-dz.atan2(dx) - std::f32::consts::FRAC_PI_2)
-            * glam::Mat4::from_rotation_x(-horizontal.atan2(dy) - std::f32::consts::FRAC_PI_2);
-        let (v0, v1) = (-time * 0.01, length / 32.0 - time * 0.01);
-        let (mut last_sin, mut last_cos, mut last_u) = (0.0f32, 0.75f32, 0.0f32);
-        let u = |x: f32| s.u0 + (s.u1 - s.u0) * x;
-        for i in 1..=8 {
-            let a = i as f32 * std::f32::consts::TAU / 8.0;
-            let (sin, cos) = (a.sin() * 0.75, a.cos() * 0.75);
-            let uu = i as f32 / 8.0;
-            for (p, uv, c) in [
-                (
-                    glam::Vec3::new(last_sin * 0.2, last_cos * 0.2, 0.0),
-                    [u(last_u), v0],
-                    0xFF00_0000,
-                ),
-                (
-                    glam::Vec3::new(last_sin, last_cos, length),
-                    [u(last_u), v1],
-                    0xFFFF_FFFF,
-                ),
-                (glam::Vec3::new(sin, cos, length), [u(uu), v1], 0xFFFF_FFFF),
-                (
-                    glam::Vec3::new(sin * 0.2, cos * 0.2, 0.0),
-                    [u(uu), v0],
-                    0xFF00_0000,
-                ),
-            ] {
-                out.push(Vertex {
-                    normal: [0; 4],
-                    pos: m.transform_point3(p).to_array(),
-                    uv,
-                    // HDR output: the healing beam shines (entity.wgsl fs_hdr_mark).
-                    layer: 6 | u32::from(sunrise_client::mesher::BRIGHT) << 16,
-                    color: c,
-                    light: wrap_light,
-
-                    glint_uv: [0.0, 0.0],
-                });
-            }
-            (last_sin, last_cos, last_u) = (sin, cos, uu);
-        }
-    }
-    /// Dragon fireballs as the dragon_fireball sprite facing the camera.
-    pub(in crate::game) fn dragon_fireball_geometry(
-        &self,
-        camera: glam::DVec3,
-        alpha: f64,
-        out: &mut Vec<Vertex>,
-    ) {
-        let Some(s) = self
-            .gui
-            .atlas
-            .sprites
-            .get("entity/enderdragon/dragon_fireball")
-            .copied()
-        else {
-            return;
-        };
-        // DragonFireballRenderer.submit: turned by the camera's orientation.
-        let [right, up] = super::billboard_axes(self.camera_orientation());
-        for b in self.creatures.projectiles.iter().filter(|p| {
-            p.kind == sunrise_client::projectiles::ProjectileKind::DragonFireball
-                && !self.hides_as_camera(p.id)
-        }) {
-            let p = glam::DVec3::new(
-                b.previous.x + (b.position.x - b.previous.x) * alpha,
-                b.previous.y + (b.position.y - b.previous.y) * alpha,
-                b.previous.z + (b.position.z - b.previous.z) * alpha,
-            ) - camera;
-            // DragonFireballRenderer: scale 2, full bright.
-            let h = 1.0;
-            for (c, uv) in [
-                (p - right * h - up * h, [s.u0, s.v1]),
-                (p + right * h - up * h, [s.u1, s.v1]),
-                (p + right * h + up * h, [s.u1, s.v0]),
-                (p - right * h + up * h, [s.u0, s.v0]),
-            ] {
-                out.push(Vertex {
-                    normal: [0; 4],
-                    pos: c.as_vec3().to_array(),
-                    uv,
-                    layer: 0,
-                    color: 0xFFFF_FFFF,
-                    light: 240 | 240 << 8,
-
-                    glint_uv: [0.0, 0.0],
-                });
-            }
-        }
     }
     pub(in crate::game::server_side) fn fight_ready(&mut self) -> bool {
         self.load_fight();

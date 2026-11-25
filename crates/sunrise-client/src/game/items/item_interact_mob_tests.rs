@@ -85,8 +85,7 @@ fn setup(game: &mut Game<'_>, probe: &Probe, kind: &str, id: u32) {
     game.offhand = Some(ItemStack::new("minecraft:paper", 3));
     game.swing = Default::default();
     game.swings_started = 0;
-    game.server.tick_hit.set(None);
-    game.server.tick_mob = None;
+    game.side_release_tick_targets();
     game.riding = None;
     probe.calls.lock().unwrap().clear();
     probe.answer.store(1, Ordering::Relaxed);

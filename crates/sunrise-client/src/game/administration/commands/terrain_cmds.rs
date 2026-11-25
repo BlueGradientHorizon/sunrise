@@ -395,13 +395,6 @@ impl Game<'_> {
         self.player_border();
         self.border_damage();
     }
-    /// The player's movement collides with the border as it is now
-    /// (`CollisionGetter.borderCollision`): from inside, its walls stop it.
-    pub(in crate::game) fn player_border(&mut self) {
-        if let Some(p) = self.player.as_mut() {
-            p.border = Some(self.border.geometry().clone());
-        }
-    }
     /// `LivingEntity.baseTick`: a player outside the border, further than
     /// its safe zone, is hurt by the blocks beyond it. The game's player, or
     /// a guest's in their turn (`as_guest`).

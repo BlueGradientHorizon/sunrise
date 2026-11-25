@@ -72,18 +72,6 @@ impl Game<'_> {
     pub(in crate::game) fn has_waypoints(&self) -> bool {
         self.client.waypoints.has_waypoints()
     }
-    /// The local player's UUID, as servers know it.
-    pub(in crate::game) fn own_uuid(&self) -> u128 {
-        self.own_profile_uuid().unwrap_or_default()
-    }
-
-    pub(in crate::game::client_side) fn own_profile_uuid(&self) -> Option<u128> {
-        if self.is_logical_server() {
-            self.level.player_uuid.map(ints_uuid)
-        } else {
-            self.remote.as_ref().map(|r| r.profile())
-        }
-    }
     /// `Vec3iWaypoint.position`: a live client's entity, with `Entity.getEyePosition` at its own partial tick.
     fn waypoint_entity(&self, uuid: u128) -> Option<([i32; 3], [f64; 3])> {
         let (position, previous, eye_height, frozen) = if let Some(p) = &self.player

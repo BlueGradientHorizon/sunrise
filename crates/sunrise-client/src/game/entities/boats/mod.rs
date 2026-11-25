@@ -1181,38 +1181,6 @@ impl Game<'_> {
         let pitch = 2.0 + self.world.random.next_float() * 0.4;
         self.server_play_sound("minecraft:entity.generic.burn", at, 0.4, pitch);
     }
-    /// `AbstractBoat.tick` advances the oars even when this client does not move the hull.
-    pub(in crate::game) fn tick_boat_paddles(b: &mut Boat, audio: &mut super::Audio) {
-        // Paddle sounds at the top of each stroke.
-        for i in 0..2 {
-            if b.paddle_state(i) {
-                let p = b.paddles[i] % (2.0 * PI);
-                if p <= PI / 4.0 && (b.paddles[i] + PI / 8.0) % (2.0 * PI) >= PI / 4.0 {
-                    let sound = match b.status {
-                        Status::InWater | Status::UnderWater | Status::UnderFlowingWater => {
-                            Some("minecraft:entity.boat.paddle_water")
-                        }
-                        Status::OnLand => Some("minecraft:entity.boat.paddle_land"),
-                        Status::InAir => None,
-                    };
-                    if let Some(sound) = sound {
-                        let v = view_vector(b.yaw, 0.0);
-                        let (dx, dz) = if i == 1 { (-v[2], v[0]) } else { (v[2], -v[0]) };
-                        let pitch = 0.8 + 0.4 * b.random.next_float();
-                        audio.play(
-                            sound,
-                            Some([b.position.x + dx, b.position.y, b.position.z + dz]),
-                            1.0,
-                            pitch,
-                        );
-                    }
-                }
-                b.paddles[i] += PI / 8.0;
-            } else {
-                b.paddles[i] = 0.0;
-            }
-        }
-    }
     /// Refuse a removed tick target before carrying its slot into the clone.
     pub(in crate::game) fn store_boat_back(&mut self, index: usize, boat: Boat) -> bool {
         if self
@@ -1967,30 +1935,6 @@ impl Game<'_> {
             return None;
         }
         Some(boat)
-    }
-    pub(in crate::game) fn boat_hit(&self) -> Option<(usize, f64)> {
-        if let Some(hit) = self.cached_entity_pick() {
-            let (entity, distance, _) = hit?;
-            let index = self.boats.iter().position(|f| f.id == entity.id())?;
-            return Some((index, distance));
-        }
-        let (eye, dir) = self.aim()?;
-        let reach: f64 = self.entity_reach;
-        let (from, to) = super::pick_accumulator::pick_ray_segment(eye, dir, reach);
-        let mut pick = super::pick_accumulator::PickAccumulator::new(reach * reach);
-        let mut best: Option<(usize, f64)> = None;
-        for (i, b) in self.boats.iter().enumerate() {
-            if pick.consider_box(
-                self,
-                b.id,
-                from,
-                to,
-                self.client_copy_box(b.id, b.position, b.bounds()),
-            ) {
-                best = Some((i, pick.hovered.unwrap().distance_sq.sqrt()));
-            }
-        }
-        best
     }
     /// `AbstractBoat.interact`: board the boat under the crosshair, or the one
     /// a guest's interact packet named.

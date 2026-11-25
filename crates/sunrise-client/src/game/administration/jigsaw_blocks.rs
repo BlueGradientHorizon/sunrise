@@ -134,6 +134,6 @@ impl Game<'_> {
         for entity in entities {
             self.spawn_entity_from_nbt(Tag::Compound(entity));
         }
-        let _ = self.process_level_events();
+        let _ = self.server_process_level_events();
     }
 }

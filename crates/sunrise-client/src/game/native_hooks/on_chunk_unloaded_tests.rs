@@ -105,7 +105,7 @@ pub(in crate::game) fn pump_until(game: &mut crate::game::Game<'_>, resident: bo
     while game.world.chunks.contains_key(&CHUNK) != resident || game.streaming.busy() {
         assert!(Instant::now() < deadline, "chunk {CHUNK:?} did not change");
         game.streaming.wait(Duration::from_millis(5));
-        game.update_world();
+        game.side_update_world();
     }
 }
 

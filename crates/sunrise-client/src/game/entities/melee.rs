@@ -194,10 +194,10 @@ impl Game<'_> {
         self.server.attack_ticks = 0;
         if admitted {
             if self.extra_knockback(kind, scale).1 {
-                self.play_at_feet("minecraft:entity.player.attack.knockback");
+                self.server_play_at_feet("minecraft:entity.player.attack.knockback");
             }
             self.sweep_decision(scale, false, kind);
-            self.play_at_feet("minecraft:entity.player.attack.nodamage");
+            self.server_play_at_feet("minecraft:entity.player.attack.nodamage");
         }
         self.post_piercing_attack();
         self.swing_arm();

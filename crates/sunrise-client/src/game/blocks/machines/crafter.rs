@@ -10,7 +10,6 @@ use serde_json::Value;
 use sunrise_client::{
     advancements as adv,
     containers::Crafter,
-    hud::{HudBatch, rgba},
     menu::{Maps as _, Menu},
 };
 #[allow(unused_imports)]
@@ -60,7 +59,7 @@ impl Game<'_> {
         self.with_level(|b, level, ticks| {
             b.set_block(level, ticks, BlockPos::new(pos.0, pos.1, pos.2), id, flags)
         });
-        let _ = self.process_level_events();
+        let _ = self.server_process_level_events();
     }
     pub(in crate::game) fn crafter_at(&self, pos: Pos) -> Option<&Crafter> {
         match self.world.block_entities.get(&pos)? {
@@ -117,7 +116,7 @@ impl Game<'_> {
             .map(|(name, result)| (name.to_owned(), result))
             .filter(|(_, result)| result.count > 0);
         let Some((recipe, mut result)) = found else {
-            self.level_event_at(1050, [key.0, key.1, key.2], 0);
+            self.server_level_event_at(1050, [key.0, key.1, key.2], 0);
             return Ok(());
         };
         let Some(facing) = self
@@ -247,8 +246,8 @@ impl Game<'_> {
                 adv::conditions(&c["player"], &ctx, w) && recipe_matches(&c["recipes"], &id)
             });
         }
-        self.level_event_at(1049, [pos.0, pos.1, pos.2], 0);
-        self.level_event_at(2010, [pos.0, pos.1, pos.2], facing as i32);
+        self.server_level_event_at(1049, [pos.0, pos.1, pos.2], 0);
+        self.server_level_event_at(2010, [pos.0, pos.1, pos.2], facing as i32);
     }
     /// The two insert loops of `dispenseItem`: one item at a time when the
     /// container holds fewer than the stack (`Container.getMaxStackSize`) or is
@@ -292,93 +291,6 @@ impl Game<'_> {
 
     // ---- the menu ----
 
-    /// The grid's current recipe result (`CrafterMenu.refreshRecipeResult`).
-    pub(in crate::game) fn crafter_result(&self) -> Option<ItemStack> {
-        let key = self.container?;
-        let c = self.crafter_at(key)?;
-        self.recipes().craft(&self.loop_context, &c.items, 3)
-    }
-    pub(in crate::game) fn crafter_open(&self) -> bool {
-        matches!(self.container_kind(), Some(BlockEntity::Crafter(_)))
-    }
-    /// `CrafterMenu` slot layout: the grid at (26, 17), the result at (134, 35).
-    pub(in crate::game) fn crafter_slot_position(&self, i: usize) -> Option<(f32, f32)> {
-        if !self.crafter_open() {
-            return None;
-        }
-        match i {
-            300..309 => Some((
-                26.0 + ((i - 300) % 3) as f32 * 18.0,
-                17.0 + ((i - 300) / 3) as f32 * 18.0,
-            )),
-            RESULT_SLOT => Some((134.0, 35.0)),
-            _ => None,
-        }
-    }
-    /// `CrafterScreen`'s background, disabled slots and powered arrow (the
-    /// verified `screen_layout::crafter`) and its centred title.
-    pub(in crate::game) fn draw_crafter_screen(&self, batch: &mut HudBatch, ox: f32, oy: f32) {
-        let Some(c) = self.container.and_then(|k| self.crafter_at(k)) else {
-            return;
-        };
-        // CrafterScreen draws the arrow from `menu.isPowered()`: data slot 9, the int, is 1.
-        let powered = c.is_triggered();
-        let draws =
-            sunrise_client::screen_layout::crafter(&sunrise_client::screen_layout::CrafterView {
-                width: 176,
-                height: 166,
-                left: 0,
-                top: 0,
-                disabled: c.disabled,
-                powered,
-            });
-        // The background goes first, then the labels, then the slot decorations.
-        let (background, rest) = draws.split_at(2.min(draws.len()));
-        self.paint_screen(batch, ox, oy, background, true);
-        self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
-        let atlas = &self.gui.atlas;
-        let grey = rgba(64, 64, 64, 255);
-        // A server's crafter menu has the title it was given.
-        let title = self.remote_menu_title().unwrap_or_else(|| {
-            sunrise_client::text::Text::literal(
-                self.container_title(self.translate_with_fallback("container.crafter", "Crafter")),
-            )
-            .resolve_legacy()
-        });
-        crate::game::screen_info::name_container(|| title.plain());
-        let tw = atlas.font.width_text(&title);
-        batch.text_styled(
-            atlas,
-            &title,
-            ox + ((176.0 - tw) / 2.0).trunc(),
-            oy + 6.0,
-            grey,
-            false,
-        );
-        let inventory = self.translate_with_fallback("container.inventory", "Inventory");
-        batch.text(atlas, &inventory, ox + 8.0, oy + 72.0, grey, false);
-        self.paint_screen(batch, ox, oy, rest, true);
-    }
-    /// `gui.togglable_slot` over an empty, enabled grid slot.
-    pub(in crate::game) fn crafter_tooltip(&self, slot: usize) -> Option<String> {
-        let c = self.container.and_then(|k| self.crafter_at(k))?;
-        let i = slot.checked_sub(300).filter(|i| *i < 9)?;
-        (self.carried.is_none() && c.items[i].is_none() && !c.disabled[i] && !self.spectator())
-            .then(|| self.translate_with_fallback("gui.togglable_slot", "Click to disable slot"))
-    }
-    /// A click in the crafter menu: `CrafterMenu` on the verified menu engine.
-    pub(in crate::game) fn crafter_click(&mut self, slot: usize, shift: bool, right: bool) -> bool {
-        if !self.crafter_open() {
-            return false;
-        }
-        let input = if shift {
-            sunrise_client::menu::Input::QuickMove
-        } else {
-            sunrise_client::menu::Input::Pickup
-        };
-        self.click_open_inventory(Some(slot), i32::from(right), input);
-        true
-    }
 }
 
 #[cfg(test)]

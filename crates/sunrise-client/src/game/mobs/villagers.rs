@@ -95,7 +95,7 @@ impl Game<'_> {
                     data: 15,
                     source: None,
                 });
-            let _ = self.process_level_events();
+            let _ = self.server_process_level_events();
         }
     }
     /// `WorkAtComposter.useWorkstation`: at a composter the farmer makes

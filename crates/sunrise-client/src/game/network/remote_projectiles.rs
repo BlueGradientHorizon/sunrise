@@ -459,7 +459,7 @@ impl Game<'_> {
             {
                 let rain = self.arrow_rain();
                 let arrow_scene = self.arrow_scene(&rain);
-                let w = self.mob_world_base(&[]);
+                let w = self.client_mob_world_base(&[]);
                 let world = super::creatures::ProjWorld {
                     w: &w,
                     targets: &[],
@@ -663,7 +663,7 @@ impl Game<'_> {
             {
                 let rain = self.arrow_rain();
                 let scene = self.arrow_scene(&rain);
-                let w = self.mob_world_base(&[]);
+                let w = self.client_mob_world_base(&[]);
                 let world = super::creatures::ProjWorld {
                     w: &w,
                     targets: &[],
@@ -721,7 +721,7 @@ impl Game<'_> {
             {
                 let rain = self.arrow_rain();
                 let scene = self.arrow_scene(&rain);
-                let w = self.mob_world_base(&[]);
+                let w = self.client_mob_world_base(&[]);
                 let world = super::creatures::ProjWorld {
                     w: &w,
                     targets: &[],
@@ -749,7 +749,7 @@ impl Game<'_> {
             Vec::new()
         };
         if !alone {
-            let w = self.mob_world_base(&[]);
+            let w = self.client_mob_world_base(&[]);
             let world = super::creatures::ProjWorld {
                 w: &w,
                 targets: &[],
@@ -792,7 +792,7 @@ impl Game<'_> {
                 continue;
             };
             {
-                let w = self.mob_world_base(&[]);
+                let w = self.client_mob_world_base(&[]);
                 let world = super::creatures::ProjWorld {
                     w: &w,
                     targets: &[],

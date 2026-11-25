@@ -84,7 +84,7 @@ impl Game<'_> {
         })?;
         Ok(index)
     }
-    pub(super) fn remote_mod_book_placement(&mut self, frame: sync::Frame) {
+    pub(in crate::game) fn remote_mod_book_placement(&mut self, frame: sync::Frame) {
         match frame {
             sync::Frame::Ready { epoch, schema } => {
                 if self.native_net.placement.client.ready(epoch, schema) {

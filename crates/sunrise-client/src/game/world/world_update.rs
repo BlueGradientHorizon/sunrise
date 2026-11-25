@@ -5,7 +5,7 @@
 use super::*;
 
 impl Game<'_> {
-    pub(in crate::game) fn update_world(&mut self) {
+    pub(in crate::game) fn client_update_world(&mut self) {
         if let Err(e) = sunrise_client::spans::time("poll_remote", || self.poll_remote()) {
             log::warn!("Sunrise: {e}");
         }
@@ -13,7 +13,7 @@ impl Game<'_> {
             log::warn!("Sunrise Studio replay: {e}");
         }
         // A disconnect during poll_remote ends the client session; stop before world work runs.
-        if !self.is_logical_server() && (self.title.0.is_some() || self.remote.is_none()) {
+        if self.title.0.is_some() || self.remote.is_none() {
             return;
         }
         self.poll_remote_light();
@@ -58,20 +58,12 @@ impl Game<'_> {
             self.streaming.center = ((pos[0].floor() as i32) >> 4, (pos[2].floor() as i32) >> 4);
             self.streaming.center_y = pos[1].floor() as i32;
         }
-        sunrise_client::spans::time("tick_pregen", || self.tick_pregen());
         // A headless game has nothing to draw sections with: like a server's, they aren't
         // meshed while it has no renderer.
         if self.options.headless {
             self.streaming.mesh = self.renderer.0.is_some();
         }
-        if self.defer_chunk_disk_save() {
-            return;
-        }
         let areas = self.streaming.extra.len();
-        let dim = self.dim;
-        if self.is_logical_server() {
-            self.update_world_server(dim);
-        }
         // `Level.getChunk`'s tickets keep their columns until they expire.
         self.streaming.hold_unknown_tickets();
         self.streaming.upload_backlog = self.pending_uploads.0.len();
@@ -107,20 +99,6 @@ impl Game<'_> {
                 .viewed
                 .mesh_frame(|| streaming.viewed_mesh_source(), std::time::Instant::now());
         }
-        let dirty: Vec<_> = unloaded
-            .iter()
-            .filter(|c| self.world.modified.remove(&(c.x, c.z)))
-            .cloned()
-            .collect();
-        let modified = sunrise_client::spans::time("with_entities", || self.with_entities(&dirty));
-        self.native_full_chunk_snapshots(&modified);
-        if self.is_logical_server()
-            && !modified.is_empty()
-            && let Err(e) = self.update_world_save_server(&modified)
-        {
-            log::warn!("Sunrise: failed to save unloaded chunks: {e}");
-        }
-        sunrise_client::spans::time("spawn_fresh_chunks", || self.spawn_fresh_chunks());
         self.ask_loaded_light_emission();
         // Vanilla saves the chunk before its unload hook and drops its block entities afterwards.
         sunrise_client::spans::time("mods_chunks_changed", || {
@@ -157,7 +135,6 @@ impl Game<'_> {
         for chunk in &unloaded {
             self.world.modified.unloaded(&(chunk.x, chunk.z));
         }
-        sunrise_client::spans::time("unload_entities", || self.unload_entities(&unloaded));
         if !unloaded.is_empty() {
             let gone: sunrise_client::fast_hash::FxHashSet<(i32, i32)> =
                 unloaded.iter().map(|c| (c.x, c.z)).collect();
@@ -169,13 +146,6 @@ impl Game<'_> {
             self.world
                 .block_names
                 .retain(|p, _| !gone.contains(&(p.0 >> 4, p.2 >> 4)));
-        }
-        // LevelChunk.registerTickContainerInLevel: a chunk that became
-        // resident has its tick containers before a command can schedule into
-        // it, even in a frozen level that runs no world tick. The unloaded
-        // chunks above were saved with their ticks first.
-        if self.is_logical_server() {
-            sunrise_client::spans::time("sync_tick_chunks", || self.sync_tick_chunks());
         }
         let (far_distance, far_reduced) =
             sunrise_client::spans::time("far_terrain_choice", || self.far_terrain_choice());
@@ -433,6 +403,9 @@ impl Game<'_> {
         if let Some(renderer) = &mut self.renderer.0 {
             renderer.clear_lods();
         }
+    }
+    pub(in crate::game) fn client_clear_lod(&mut self) {
+        self.clear_lod();
     }
     pub(in crate::game::client_side) fn prepare_lod(&mut self) {
         let enabled = self.far_terrain_choice().0 > 0

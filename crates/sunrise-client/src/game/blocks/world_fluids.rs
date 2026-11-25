@@ -263,7 +263,7 @@ impl Game<'_> {
         self.spill.0 = drops;
         self.flush_spill();
         self.with_level(|b, level, ticks| b.fluid_write_effects(level, ticks, &write));
-        let _ = self.process_level_events();
+        let _ = self.server_process_level_events();
         if write.sounds() {
             let pos = [write.pos.x, write.pos.y, write.pos.z];
             self.commit_fluid_effects(FluidEffects {

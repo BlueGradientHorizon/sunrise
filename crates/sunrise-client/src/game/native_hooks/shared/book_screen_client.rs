@@ -1,7 +1,5 @@
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::book_screen::*;
 
 #[path = "book_screen/open_client.rs"]
 pub(in crate::game) mod open;
@@ -31,3 +29,7 @@ impl Game<'_> {
 #[cfg(test)]
 #[path = "book_screen/lifecycle_tests_client.rs"]
 pub(in crate::game) mod lifecycle_tests;
+
+#[cfg(test)]
+#[path = "book_screen/lifecycle_tests.rs"]
+mod lifecycle_tests_shared;

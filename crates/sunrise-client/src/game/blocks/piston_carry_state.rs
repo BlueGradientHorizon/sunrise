@@ -89,11 +89,6 @@ pub(in crate::game) fn land_position_data(world: &mut World, at: Pos, data: &Com
     );
 }
 impl Game<'_> {
-    /// Reject obsolete mesh entries even if an old asynchronous upload arrives after a move.
-    pub(in crate::game) fn live_block_entity_render(&self, pos: [i32; 3], state: u32) -> bool {
-        self.world.block(pos[0], pos[1], pos[2]).0 == state
-            && self.res.block_entity_render().renders(state)
-    }
     /// Runs before with_level returns: no menu, ticker, save or packet sees an old owner.
     pub(in crate::game::server_side) fn finish_piston_position_changes(
         &mut self,
@@ -108,11 +103,9 @@ impl Game<'_> {
                     for at in [from, to] {
                         let p = [at.0, at.1, at.2];
                         self.be_anims.remove_position(p);
-                        self.finish_piston_position_changes_renderer_client(p);
                         self.world.shulkers.remove(&p);
                         self.world.chest_openers.remove(&at);
                         self.server.lid_openers.remove(&at);
-                        self.finish_piston_position_changes_client(at);
                     }
                     self.server
                         .mod_container_viewers

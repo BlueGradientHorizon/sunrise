@@ -263,7 +263,7 @@ mod tests {
             assert!(game.player_destroy_block(player, upper, false));
             assert_eq!(block(game, upper), "minecraft:air");
             // Vanilla takes the lower half out in the same call, by the neighbour update.
-            game.process_level_events().unwrap();
+            game.server_process_level_events().unwrap();
             assert_eq!(
                 block(game, lower),
                 "minecraft:air",

@@ -32,19 +32,6 @@ pub(in crate::game::client_side) use sunrise_items::items::ItemStack;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_world::registry::BlockStateId;
 
-impl Game<'_> {
-    pub(in crate::game) fn live_client_display(
-        &self,
-        remote: &Remote,
-        id: i32,
-    ) -> Option<&RemoteTextDisplay> {
-        if !remote.has_level() {
-            return None;
-        }
-        self.text_displays.0.get(&id)
-    }
-}
-
 #[cfg(test)]
 pub(in crate::game) mod tests {
     #[allow(unused_imports)]

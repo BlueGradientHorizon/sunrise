@@ -345,7 +345,7 @@ impl Game<'_> {
         let Some(BlockEntity::TestInstanceBlock(b)) = self.world.block_entities.get(&pos) else {
             return;
         };
-        let editor = TestInstanceEditor::new(b, self.test_rotation(pos));
+        let editor = TestInstanceEditor::new(b, self.side_test_rotation(pos));
         self.open_block_editor(pos, Box::new(editor));
     }
 }

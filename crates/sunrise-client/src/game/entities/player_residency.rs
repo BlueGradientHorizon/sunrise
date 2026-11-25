@@ -91,50 +91,6 @@ impl Game<'_> {
         self.hook.replace(hook);
     }
 
-    pub(in crate::game) fn bind_local_player_residency(&mut self) {
-        if self.server.lan_acting.is_some() {
-            return;
-        }
-        let journal = self.resident_entities.table.borrow().producer();
-        let Some(player) = &self.player else {
-            self.resident_entities.local_player.retire();
-            return;
-        };
-        let id = player.entity_id as u32;
-        let old = self.resident_entities.local_player.identity();
-        let admitted = self.resident_entities.local_player.bind(
-            &journal,
-            Owner {
-                dimension: self.dim.key(),
-                kind: Kind::Player,
-            },
-            id,
-            Source::LocalPlayer,
-            self.remote
-                .as_ref()
-                .filter(|remote| remote.logged_in)
-                .map(|remote| sunrise_client::lan::playerdata::uuid_ints(remote.profile()))
-                .or(self.level.player_uuid),
-        );
-        if self.remote.is_some() && admitted {
-            if let Some(old) = old.filter(|old| old.id.get() != id) {
-                self.pick_section_remove(old.id.get());
-            }
-            self.pick_section_sync_id(id);
-        }
-        if let Some(remote) = self.remote.as_ref().filter(|remote| remote.logged_in)
-            && let Some(epoch) = self.native_lifecycle.epoch()
-        {
-            remote
-                .session
-                .payload_transport()
-                .bind_player(mod_api::__private::game::player_ref(
-                    mod_api::EntityRef::new(epoch, remote.entity_id as u32),
-                    remote.profile(),
-                ));
-        }
-    }
-
     pub(in crate::game::server_side) fn bind_current_hook_residency(&mut self) {
         let journal = self.resident_entities.table.borrow().producer();
         let (owner, source) = self

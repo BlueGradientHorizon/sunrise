@@ -375,9 +375,7 @@ impl Game<'_> {
     /// Interactions use their saved dimensions. End crystals have their 2 x 2 box.
     /// None for the dragon; a dragon part's is its own. API 379.
     pub(in crate::game) fn entity_bounding_box(&self, entity: EntityRef) -> Option<[[f64; 3]; 2]> {
-        if let Some(display) = self.native_client_display(entity) {
-            return Some([display.position().to_array(); 2]);
-        }
+        if let Some(pos) = self.side_client_display_position(entity) { return Some([pos; 2]); }
         if let Some(row) = self.native_client_general(entity) {
             return Some(corners(row.bounds()));
         }

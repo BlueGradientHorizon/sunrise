@@ -520,7 +520,7 @@ impl Game<'_> {
             // ClientPacketListener.handleLevelEvent: a global one is heard
             // from anywhere (ClientLevel.globalLevelEvent).
             C::LevelEvent(p) if p.global => self.global_level_event_sound(p.kind, p.pos),
-            C::LevelEvent(p) => self.level_event_at(p.kind, p.pos, p.data),
+            C::LevelEvent(p) => self.client_level_event_at(p.kind, p.pos, p.data),
             C::LevelParticles(p) => self.remote_level_particles(&p),
             C::Explode(p) => self.remote_explode(&p),
             C::Sound(p) => self.apply_sound_packet(p),
@@ -1089,7 +1089,7 @@ pub(in crate::game) mod tests {
             assert!(game.with_level(|b, level, ticks| {
                 b.set_block(level, ticks, BlockPos::new(x + 1, y, z), power, 3)
             }));
-            game.process_level_events().unwrap();
+            game.client_process_level_events().unwrap();
             assert!(open(game));
             game.lan_broadcast_effects();
             for listener in [&actor, &other] {
@@ -1125,3 +1125,7 @@ pub(in crate::game) mod player_tick_tests;
 #[cfg(test)]
 #[path = "rider_tick_tests_client.rs"]
 pub(in crate::game) mod rider_tick_tests;
+
+#[cfg(test)]
+#[path = "client_camera_tests.rs"]
+pub(in crate::game) mod client_camera_tests;

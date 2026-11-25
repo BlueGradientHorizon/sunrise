@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use super::level_sounds::LevelSound;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use super::{Game, commands::Target};
+pub(in crate::game::client_side) use super::{Game, commands_common::Target};
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::trident::Catcher;
 #[allow(unused_imports)]

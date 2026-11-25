@@ -39,6 +39,7 @@ impl Game<'_> {
         self.client.item_activation.reset();
         // Kept mod block entity geometry belongs to the world leaving.
         self.client.kept_block_entities.get_mut().clear();
+        self.client.debug_density.borrow_mut().clear();
         self.client.mod_view_distances.take();
         self.clear_narrator();
         // A world is leaving either way: its icon attempt goes with it.

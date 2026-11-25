@@ -1051,7 +1051,7 @@ impl Game<'_> {
         }
         let at = block_pos(pos);
         self.with_level(|b, level, ticks| b.due_block_tick(level, ticks, at));
-        let _ = self.process_level_events();
+        let _ = self.server_process_level_events();
         true
     }
     /// The flow step of the fluid at `pos` now (`Behaviours::scheduled_fluid_tick`, the body of
@@ -1062,7 +1062,7 @@ impl Game<'_> {
         }
         let at = block_pos(pos);
         self.with_level(|b, level, ticks| b.scheduled_fluid_tick(level, ticks, at));
-        let _ = self.process_level_events();
+        let _ = self.server_process_level_events();
         true
     }
     /// `tickChunk`'s random tick of `pos` now (`Behaviours::random_tick`). False as for
@@ -1077,7 +1077,7 @@ impl Game<'_> {
         }
         let at = block_pos(pos);
         self.with_level(|b, level, ticks| b.random_tick(level, ticks, at));
-        let _ = self.process_level_events();
+        let _ = self.server_process_level_events();
         true
     }
     /// Whether a tick may run at `pos`: a current handle of the level in place on the server,

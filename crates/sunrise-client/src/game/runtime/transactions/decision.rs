@@ -105,7 +105,7 @@ pub(in crate::game) struct Menu {
 }
 
 impl Menu {
-    pub(in crate::game::server_side) fn new(state: MenuState) -> Self {
+    pub(in crate::game) fn new(state: MenuState) -> Self {
         Self {
             id: MenuId::fresh(),
             inner: Rc::new(RefCell::new(MenuInner {

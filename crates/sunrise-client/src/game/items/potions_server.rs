@@ -428,9 +428,9 @@ impl Game<'_> {
         if &*stack.item == "minecraft:experience_bottle" {
             // ThrownExperienceBottle.onHit: the water-coloured splash (level
             // event 2002, its sound 1053) and 3 to 11 experience.
-            self.level_event_at(2002, block, 0xFF38_5DC6u32 as i32);
+            self.server_level_event_at(2002, block, 0xFF38_5DC6u32 as i32);
             if !silent {
-                self.level_event_at(1053, block, 0);
+                self.server_level_event_at(1053, block, 0);
             }
             let r = &mut self.world.random;
             let value = 3 + r.next_int_bound(5).unwrap_or(0) + r.next_int_bound(5).unwrap_or(0);
@@ -469,9 +469,9 @@ impl Game<'_> {
         // `PotionContents.getColor`: an explicit `custom_color` wins over the
         // amplifier-weighted mix of the potion's and the stack's custom effects.
         let color = brewing::contents_color(stack);
-        self.level_event_at(if instant { 2007 } else { 2002 }, block, color as i32);
+        self.server_level_event_at(if instant { 2007 } else { 2002 }, block, color as i32);
         if !silent {
-            self.level_event_at(if instant { 1054 } else { 1053 }, block, 0);
+            self.server_level_event_at(if instant { 1054 } else { 1053 }, block, 0);
         }
         // `PotionContents.hasEffects`: the potion's effects and the stack's
         // custom ones; without either `onHitAsPotion` is not called at all.

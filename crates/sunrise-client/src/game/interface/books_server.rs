@@ -95,17 +95,23 @@ impl Game<'_> {
         let Some(BlockEntity::Lectern(l)) = self.world.block_entities.get_mut(&key) else {
             return;
         };
-        let (had, before) = (l.book.is_some(), l.page);
+        let (taken_book, before) = (l.book.clone(), l.page);
         l.book = menu.slot(0).cloned();
         l.page = menu.data[0];
-        if had && l.book.is_none() {
+        if let Some(book) = taken_book.filter(|_| l.book.is_none()) {
             self.set_lectern_powered(key, false);
             self.set_lectern_has_book(key, false, None);
             self.container_changed(key);
+            if let (Some(player), Some(name)) = (
+                self.server.lan_acting_uuid,
+                self.server.lan_acting_name.clone(),
+            ) {
+                self.native_player_take_lectern_book(player, &name, [key.0, key.1, key.2], &book.item);
+            }
         } else if menu.data[0] != before {
             self.set_lectern_powered(key, true);
             self.server.lectern_pulses.push((key, 2));
-            self.level_event_at(1043, [key.0, key.1, key.2], 0);
+            self.server_level_event_at(1043, [key.0, key.1, key.2], 0);
             self.container_changed(key);
             if let (Some(player), Some(name)) = (
                 self.server.lan_acting_uuid,

@@ -1,7 +1,5 @@
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use super::*;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::book_screen::placement::*;
 
 impl Game<'_> {
     pub(in crate::game::client_side) fn apply_screen_with_mod_book(

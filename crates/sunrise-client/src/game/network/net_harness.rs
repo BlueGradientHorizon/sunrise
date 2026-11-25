@@ -44,7 +44,7 @@ impl Game<'_> {
         let entity_tag = std::env::var("SUNRISE_NET_ENTITY_TAG").ok();
         let mut entity_tag_snapshots = Vec::new();
         while Instant::now() < deadline {
-            self.update_world();
+            self.side_update_world();
             if self.remote.is_none() {
                 error = Some(match self.title.0.as_ref().map(|t| &t.mode) {
                     Some(sunrise_client::title::Mode::Multiplayer(

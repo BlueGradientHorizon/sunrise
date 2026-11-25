@@ -59,8 +59,8 @@ fn interaction_key_literal_matrix_preserves_actions_and_swing_independently() {
                         .unwrap();
                     game.world.set(0, 63, 0, stone).unwrap();
                     game.world.set(0, 64, 0, lever).unwrap();
-                    game.server.forced_hit = Some(hit());
-                    let before = game.remote.as_ref().unwrap().sequence;
+                    game.set_test_forced_hit(Some(hit()));
+                    let before =game.remote.as_ref().unwrap().sequence;
                     let before_swings = game.swings_started;
                     if key == InteractionKey::Attack && attempt == InteractionAttempt::Press {
                         game.remote_start_attack();
@@ -127,7 +127,7 @@ fn no_interaction_listener_attack_mining_offhand_and_pick() {
                     .unwrap();
                 game.world.set(0, 63, 0, stone).unwrap();
                 game.world.set(0, 64, 0, stone).unwrap();
-                game.server.forced_hit = Some(hit());
+                game.set_test_forced_hit(Some(hit()));
                 let sequence = game.remote.as_ref().unwrap().sequence;
                 let swings = game.swings_started;
                 match path {
@@ -189,7 +189,7 @@ fn no_listener_preserves_natural_swing_and_unsuccessful_use_stays_quiet() {
                 .unwrap();
             game.world.set(0, 63, 0, stone).unwrap();
             game.world.set(0, 64, 0, lever).unwrap();
-            game.server.forced_hit = Some(hit());
+            game.set_test_forced_hit(Some(hit()));
             let sequence = game.remote.as_ref().unwrap().sequence;
             game.remote_use(InteractionAttempt::Press);
             assert_eq!(game.remote.as_ref().unwrap().sequence - sequence, 1);
@@ -215,7 +215,7 @@ fn no_listener_preserves_natural_swing_and_unsuccessful_use_stays_quiet() {
         with_interaction_game(true, |game| {
             game.inventory[game.selected] = None;
             game.offhand = None;
-            game.server.forced_hit = None;
+            game.set_test_forced_hit(None);
             game.remote_use(InteractionAttempt::Press);
             assert_eq!(game.swings_started, 0);
         })
@@ -247,7 +247,7 @@ fn pick_keeps_packet_veto_and_never_swings() {
                     .default_state("minecraft:stone")
                     .unwrap();
                 game.world.set(0, 64, 0, stone).unwrap();
-                game.server.forced_hit = Some(hit());
+                game.set_test_forced_hit(Some(hit()));
                 use sunrise_client::interaction_input::InteractionWorld;
                 super::super::RemoteInputWorld(game).pick();
                 assert_eq!(
@@ -289,7 +289,7 @@ fn silent_policy_does_not_leak_into_next_ordinary_use() {
                 .unwrap();
             game.world.set(0, 63, 0, stone).unwrap();
             game.world.set(0, 64, 0, lever).unwrap();
-            game.server.forced_hit = Some(hit());
+            game.set_test_forced_hit(Some(hit()));
             game.remote_use(InteractionAttempt::Press);
             assert_eq!(game.swings_started, 0);
             assert_eq!(

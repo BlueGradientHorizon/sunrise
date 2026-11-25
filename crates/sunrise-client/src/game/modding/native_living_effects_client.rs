@@ -71,7 +71,7 @@ pub(in crate::game) mod tests {
                 .effects
                 .list
                 .push(EffectInstance::new("darkness", 200, 0));
-            game.sculk.darkness = (0.0, 0.0);
+            game.client.darkness_blend = (0.0, 0.0);
             // The same effect reads whole on the client: `getEffect`, `getActiveEffects`, `hasEffect`.
             let darkness = mod_platform::__private::part_tests::effect_key("minecraft:darkness");
             assert!(me.potion_affected(game, darkness));

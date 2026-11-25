@@ -681,7 +681,7 @@ impl Game<'_> {
             )
         };
         let thundering = {
-            let w = self.mob_world_base(&[]);
+            let w = self.client_mob_world_base(&[]);
             let players = self.remote.as_ref().map(|r| &r.level_players);
             fluids.clear();
             fluids.extend(self.mobs.iter().map(|m| {
@@ -1397,7 +1397,7 @@ impl Game<'_> {
             );
             self.tick_remote_projectiles(&mut step);
             // LightningBolt.tick on a client.
-            self.tick_bolts();
+            self.client_tick_bolts();
         } else if !frozen_ticking.is_empty() {
             let ticking_set: sunrise_client::fast_hash::FxHashSet<u32> =
                 frozen_ticking.iter().map(|&id| id as u32).collect();

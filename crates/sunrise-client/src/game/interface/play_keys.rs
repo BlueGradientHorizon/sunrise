@@ -86,7 +86,7 @@ impl Game<'_> {
             )
         {
             if matches!(key, KeyCode::Escape | KeyCode::ShiftLeft) {
-                self.wake_up(false, true);
+                self.remote_stop_sleeping();
             }
             return Ok(());
         }

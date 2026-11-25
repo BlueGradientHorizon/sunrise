@@ -19,7 +19,7 @@ fn a_phantom_bite_level_event_plays_the_bite_at_0_3_volume() {
         *g.particles.0.level_random() = LegacyRandom::new(7);
         let pitch = LegacyRandom::new(7).next_float() * 0.1 + 0.9;
         g.audio.0.engine.loaded = true;
-        g.level_event_at(1039, [0, 64, 0], 0);
+        g.client_level_event_at(1039, [0, 64, 0], 0);
         let bite = (0..=8u64)
             .filter_map(|id| g.audio.0.engine.instance(id))
             .find(|i| i.identifier == "minecraft:entity.phantom.bite")

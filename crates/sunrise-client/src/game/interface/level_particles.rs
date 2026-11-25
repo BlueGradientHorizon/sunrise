@@ -115,7 +115,7 @@ impl Game<'_> {
             .rules
             .bool_at(sunrise_client::gamerules::vanilla::GLOBAL_SOUND_EVENTS)
         {
-            self.level_event_at(id, pos, data);
+            self.server_level_event_at(id, pos, data);
             return;
         }
         if self.server.audio_capture_active {
@@ -166,7 +166,7 @@ impl Game<'_> {
         self.crack_particle(pos, face, state);
     }
     /// Queue and play level event `id` at `pos` (`Level.levelEvent`).
-    pub(in crate::game) fn level_event_at(&mut self, id: i32, pos: [i32; 3], data: i32) {
+    pub(in crate::game) fn server_level_event_at(&mut self, id: i32, pos: [i32; 3], data: i32) {
         self.level_event_from(None, id, pos, data);
     }
 
@@ -187,7 +187,7 @@ impl Game<'_> {
             data,
             source: None,
         });
-        let _ = self.process_level_events();
+        let _ = self.server_process_level_events();
         let recorded = std::mem::replace(&mut self.server.lan_events, saved_lan_events);
         let extra_level_events = std::mem::replace(&mut self.level_events, saved_level_events);
         self.level_events.extend(extra_level_events);
@@ -215,7 +215,7 @@ impl Game<'_> {
             data,
             source,
         });
-        let _ = self.process_level_events();
+        let _ = self.server_process_level_events();
     }
 }
 

@@ -25,7 +25,7 @@ impl Game<'_> {
         if self.remote.as_ref().is_some_and(|r| r.entity_id == p.id) {
             let list = &mut self.potions.effects.list;
             match force_add_effect(list, e, blend, &["darkness", "nausea"]) {
-                Some(e) if e.id == "darkness" => self.sculk.darkness = darkness_added(e),
+                Some(e) if e.id == "darkness" => self.client.darkness_blend = darkness_added(e),
                 Some(e) if e.id == "nausea" => {
                     let (o_nausea, nausea) = screen_effects::nausea_blend_added(e, blend);
                     self.client.screen_fx.o_nausea = o_nausea;

@@ -214,7 +214,7 @@ impl Game<'_> {
                 b.entity_on_big_dripleaf(level, ticks, pos, on_ground, feet_y);
             }
         });
-        self.process_level_events()?;
+        self.server_process_level_events()?;
         self.server.contact_drops = first_contact_drop..self.server.next_entity + 1;
         laps.lap("tb_entity_inside");
         // ServerLevel.tick: a Debug world runs no scheduled block or fluid ticks, and
@@ -284,7 +284,7 @@ impl Game<'_> {
             b.run_block_events(level, ticks);
         });
         laps.lap("tb_block_events");
-        self.process_level_events()?;
+        self.server_process_level_events()?;
         laps.lap("tb_level_events");
         self.sync_moving_pistons();
         laps.lap("tb_pistons");
@@ -350,7 +350,7 @@ impl Game<'_> {
         self.with_level(|b, level, ticks| b.tick_block_entities(level, ticks));
         let pushes = std::mem::take(&mut self.block_ticks.piston_pushes);
         self.push_piston_entities(pushes);
-        self.process_level_events()?;
+        self.server_process_level_events()?;
         self.sync_moving_pistons();
         Ok(())
     }
@@ -379,7 +379,7 @@ impl Game<'_> {
                     }
                 });
                 if !self.level_events.is_empty() {
-                    self.process_level_events()?;
+                    self.server_process_level_events()?;
                 }
                 if !more {
                     break;

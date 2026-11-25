@@ -449,14 +449,15 @@ impl Game<'_> {
         if self.creative_inventory_open() {
             if Self::creative_trash_hovered(&batch, self.client.cursor) {
                 if self.has_shift_down() {
-                    let before = self.player_equipment();
                     self.inventory.fill(None);
                     self.armor.fill(None);
                     self.offhand = None;
                     self.equipment = Default::default();
                     self.craft_grid[..4].fill(None);
-                    self.player_equipment_changed(&before);
                     self.apply_equipment();
+                    if self.remote.is_some() {
+                        self.send_creative_slots();
+                    }
                 } else {
                     self.carried = None;
                 }

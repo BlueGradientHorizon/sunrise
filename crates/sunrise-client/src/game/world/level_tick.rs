@@ -80,7 +80,7 @@ impl Game<'_> {
             sunrise_client::spans::time("tick_lecterns", || self.tick_lecterns());
             sunrise_client::spans::time("tick_maps", || self.tick_maps());
             self.tick_lodestone_compasses();
-            sunrise_client::spans::time("tick_bolts", || self.tick_bolts());
+            sunrise_client::spans::time("tick_bolts", || self.server_tick_bolts());
             self.ordered_before(ordered_tick::Batch::Fishing)?;
             sunrise_client::spans::time("tick_fishing", || self.tick_fishing());
             self.ordered_before(ordered_tick::Batch::Tridents)?;

@@ -489,7 +489,7 @@ impl Game<'_> {
         std::mem::take(&mut self.server.ordered.landing_time).record("fall_finish");
         self.server.ordered.pending_buf = pending;
         self.deliver_falling_ticks();
-        if events && let Err(e) = self.process_level_events() {
+        if events && let Err(e) = self.server_process_level_events() {
             first_error.get_or_insert(e);
         }
         first_error.map_or(Ok(()), Err)

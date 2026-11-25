@@ -60,14 +60,14 @@ fn remote_mining_component_update_restarts_unless_the_part_refuses() {
                         .default_state("minecraft:stone")
                         .unwrap();
                     game.world.set(0, 64, 0, stone).unwrap();
-                    game.server.forced_hit = Some(crate::game::Hit {
+                    game.set_test_forced_hit(Some(crate::game::Hit {
                         pos: [0, 64, 0],
                         face: [0, 1, 0],
                         point: [0.5, 65.0, 0.5],
                         inside: false,
-                    });
+                    }));
                     game.refresh_client_pick(1.0);
-                    game.server.forced_hit = None;
+                    game.set_test_forced_hit(None);
                     for _ in 0..4 {
                         game.remote_continue_attack(true);
                     }

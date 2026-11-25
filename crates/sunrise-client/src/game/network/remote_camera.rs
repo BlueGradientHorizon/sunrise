@@ -519,6 +519,19 @@ impl Game<'_> {
             .map(|id| id as u32)
     }
 
+    pub(in crate::game) fn client_live_remote_camera_id(&self) -> Option<u32> {
+        self.live_remote_camera_id()
+    }
+
+    pub(in crate::game) fn client_outline_camera_kind(
+        &self,
+    ) -> sunrise_world::collision_context::EntityContextKind {
+        self.camera_subject().map_or(
+            sunrise_world::collision_context::EntityContextKind::Player,
+            |c| c.collision_kind,
+        )
+    }
+
     /// Snapshot of a detached watched player's HUD state, if the detached camera was a player.
     pub(in crate::game) fn detached_camera_hud(&self) -> Option<&DetachedPlayerHud> {
         self.remote
@@ -825,7 +838,7 @@ impl Game<'_> {
             );
         let dead = self.death_time();
         let fog_effects =
-            CameraFogEffects::from_effects(&self.potions.effects, self.sculk.darkness);
+            CameraFogEffects::from_effects(&self.potions.effects, self.client.darkness_blend);
         let camera = CameraEntity {
             position: [p.position.x, p.position.y, p.position.z],
             previous: [

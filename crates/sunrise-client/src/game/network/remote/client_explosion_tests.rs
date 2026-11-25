@@ -8,8 +8,14 @@ use crate::game::{
 use sunrise_client::particles::ParticleType;
 
 pub(in crate::game) fn with_isolated_client(name: &str, body: impl FnOnce(&mut Game<'_>)) {
-    let (_, module) = module_path!().split_once("::").unwrap();
-    let test = format!("{module}::{name}");
+    let test = if name.contains("::") {
+        name.split_once("::")
+            .map_or(name, |(_, rest)| rest)
+            .to_owned()
+    } else {
+        let (_, module) = module_path!().split_once("::").unwrap();
+        format!("{module}::{name}")
+    };
     crate::game::in_own_process(&test, || with_client_game(body));
 }
 

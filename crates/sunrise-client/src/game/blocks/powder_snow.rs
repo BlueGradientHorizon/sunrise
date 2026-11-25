@@ -42,7 +42,7 @@ impl Game<'_> {
             return;
         }
         self.with_level(|b, level, ticks| b.destroy_block(level, ticks, pos, false));
-        let _ = self.process_level_events();
+        let _ = self.server_process_level_events();
         self.world.modified.insert((at[0] >> 4, at[2] >> 4));
     }
     /// Whether the block at `pos` is powder snow.
@@ -62,7 +62,7 @@ impl Game<'_> {
         let at = BlockPos::new(pos[0], pos[1], pos[2]);
         let creative = self.creative;
         let picked = self.with_level(|b, level, ticks| b.bucket_pickup(level, ticks, at, creative));
-        self.process_level_events()?;
+        self.server_process_level_events()?;
         let Some(filled) = picked else {
             return Ok(());
         };

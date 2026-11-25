@@ -86,7 +86,7 @@ fn load_tank_chunk(game: &mut Game<'_>) {
     while !game.world.chunks.contains_key(&(0, 0)) {
         assert!(Instant::now() < deadline, "chunk (0, 0) did not load");
         game.streaming.wait(Duration::from_millis(5));
-        game.update_world();
+        game.side_update_world();
     }
     game.tick_world(true).unwrap();
 }

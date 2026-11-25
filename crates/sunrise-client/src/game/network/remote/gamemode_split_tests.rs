@@ -979,7 +979,7 @@ pub(in crate::game) fn run_split_mode_hud_rendering_reach_miss_inventory_and_inp
                 game.handle_packet(change_mode_packet(0.0)).unwrap();
                 game.handle_packet(abilities_packet(0x08, 0.05, 0.10))
                     .unwrap();
-                game.server.forced_hit = None;
+                game.set_test_forced_hit(None);
                 game.clicks.miss_time = 0;
                 assert!(game.has_miss_time());
                 game.remote_start_attack();

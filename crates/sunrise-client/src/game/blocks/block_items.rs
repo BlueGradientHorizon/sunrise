@@ -398,7 +398,7 @@ impl Game<'_> {
         if custom_data_loaded {
             self.notify_block_entity_load_additional(key);
         }
-        self.update_spawner_display(key);
+        self.side_update_spawner_display(key);
     }
 }
 

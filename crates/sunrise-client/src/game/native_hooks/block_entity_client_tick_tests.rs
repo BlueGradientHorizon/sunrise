@@ -190,7 +190,7 @@ pub(in crate::game) fn rpm(rpm: i32) -> Compound {
 /// One frame: what the server sent is handled (`update_world`, which a frame runs before its
 /// ticks), then `steps` client ticks. Returns what the probe heard.
 pub(in crate::game) fn frame(game: &mut crate::game::Game<'_>, steps: u32) -> Vec<String> {
-    game.update_world();
+    game.side_update_world();
     game.client_tick_steps(steps, None).unwrap();
     take_events()
 }
@@ -248,7 +248,7 @@ fn a_server_never_ticks_a_client_ticker() {
         while !game.world.chunks.contains_key(&CHUNK) || game.streaming.busy() {
             assert!(Instant::now() < deadline, "chunk {CHUNK:?} did not load");
             game.streaming.wait(Duration::from_millis(5));
-            game.update_world();
+            game.side_update_world();
         }
         game.tick_world(true).unwrap();
         for ([x, y, z], block) in [(HUMS[0], HUM), (QUIET_AT, QUIET)] {

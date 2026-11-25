@@ -266,7 +266,7 @@ fn place_block(game: &mut super::Game<'_>, id: &str, block: &str) {
     game.enter_level(dim).unwrap();
     game.streaming.forced.insert((0, 0));
     for _ in 0..2000 {
-        game.update_world();
+        game.side_update_world();
         if game.world.chunks.contains_key(&(0, 0)) {
             break;
         }
@@ -286,7 +286,7 @@ fn block_at(game: &mut super::Game<'_>, id: &str) -> sunrise_world::registry::Bl
     game.enter_level(dim).unwrap();
     game.streaming.forced.insert((0, 0));
     for _ in 0..2000 {
-        game.update_world();
+        game.side_update_world();
         if game.world.chunks.contains_key(&(0, 0)) {
             break;
         }
@@ -769,7 +769,7 @@ fn a_reopened_level_comes_back_from_its_folder_with_its_block() {
         game.enter_level(dim).unwrap();
         game.streaming.forced.insert((0, 0));
         for _ in 0..2000 {
-            game.update_world();
+            game.side_update_world();
             if game.world.chunks.contains_key(&(0, 0)) {
                 break;
             }
@@ -795,7 +795,7 @@ fn a_reopened_level_comes_back_from_its_folder_with_its_block() {
         game.enter_level(dim).unwrap();
         game.streaming.forced.insert((0, 0));
         for _ in 0..2000 {
-            game.update_world();
+            game.side_update_world();
             if game.world.chunks.contains_key(&(0, 0)) {
                 break;
             }

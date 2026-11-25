@@ -374,7 +374,7 @@ impl Game<'_> {
             }
         };
         if item == "minecraft:honeycomb" {
-            self.level_event_at(3003, pos, 0);
+            self.server_level_event_at(3003, pos, 0);
         }
         self.server_play_sound(sound, centre, 1.0, 1.0);
         self.mark_block_entity_updated(key);

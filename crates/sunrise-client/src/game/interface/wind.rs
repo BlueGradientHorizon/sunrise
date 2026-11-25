@@ -853,7 +853,7 @@ impl Game<'_> {
             if self.with_level(|b, level, ticks| {
                 b.fence_gate_exploded(level, ticks, BlockPos::new(pos[0], pos[1], pos[2]))
             }) {
-                self.process_level_events()?;
+                self.server_process_level_events()?;
             }
             return Ok(());
         }
@@ -872,7 +872,7 @@ impl Game<'_> {
             self.with_level(|b, level, ticks| {
                 b.extinguish_candle(level, ticks, BlockPos::new(pos[0], pos[1], pos[2]))
             });
-            self.process_level_events()?;
+            self.server_process_level_events()?;
             return Ok(());
         }
         if !triggers(&name) {
@@ -885,7 +885,7 @@ impl Game<'_> {
             self.with_level(|b, level, ticks| {
                 b.bell_attempt_to_ring(level, ticks, BlockPos::new(pos[0], pos[1], pos[2]))
             });
-            self.process_level_events()?;
+            self.server_process_level_events()?;
             return Ok(());
         }
         // Doors react in their lower half only; powered ones and pressed
@@ -923,7 +923,7 @@ impl Game<'_> {
                 player,
             )
         });
-        self.process_level_events()?;
+        self.server_process_level_events()?;
         Ok(())
     }
 }

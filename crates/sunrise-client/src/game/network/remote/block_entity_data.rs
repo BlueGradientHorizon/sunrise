@@ -77,7 +77,7 @@ impl Game<'_> {
             if source == BlockEntityDataSource::Chunk {
                 sunrise_client::spans::note_block_entity_loads(1);
             }
-            self.update_spawner_display(key);
+            self.side_update_spawner_display(key);
             // The section is drawn again with what the block entity shows.
             let state = self.world.block(pos[0], pos[1], pos[2]);
             let _ = self.world.set(pos[0], pos[1], pos[2], state);

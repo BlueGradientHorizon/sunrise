@@ -19,7 +19,10 @@ pub(in crate::game::client_side) use sunrise_client::particles::ParticleType;
 #[ignore = "daily"]
 fn explosion_validates_impulse_and_result_without_suppressing_effects() {
     with_isolated_client(
-        "explosion_validates_impulse_and_result_without_suppressing_effects",
+        concat!(
+            module_path!(),
+            "::explosion_validates_impulse_and_result_without_suppressing_effects"
+        ),
         |game| {
             let _reader = logged_in(game);
             game.streaming

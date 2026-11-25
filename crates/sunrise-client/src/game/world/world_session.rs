@@ -248,13 +248,6 @@ impl Game<'_> {
             self.client.saved_for_exit = true;
             return Ok(());
         }
-        if self.is_logical_server() {
-            self.close_container_server();
-            self.award_custom_stat("leave_game", 1);
-            self.lan_close(false);
-            self.free_player_beds()?;
-            self.save_game()?;
-        }
         self.client.saved_for_exit = true;
         Ok(())
     }

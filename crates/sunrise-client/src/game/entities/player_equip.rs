@@ -23,13 +23,6 @@ pub(in crate::game::server_side) fn same(a: Option<&ItemStack>, b: Option<&ItemS
 }
 
 impl Game<'_> {
-    /// The armour (head first) and the off hand, in `EquipmentSlot` order of
-    /// the inventory menu's slots.
-    pub(in crate::game) fn player_equipment(&self) -> [Option<ItemStack>; 5] {
-        let [head, chest, legs, feet] = self.armor.clone();
-        [head, chest, legs, feet, self.offhand.clone()]
-    }
-
     /// `onEquipItem` for every slot that changed since `before`: what the
     /// server does for the creative screen, which sends each changed slot
     /// (`handleSetCreativeModeSlot` sets it by player).
@@ -64,61 +57,16 @@ impl Game<'_> {
 }
 
 impl Game<'_> {
-    /// Equipment attribute modifiers (LivingEntity.collectEquipmentChanges). A guest's
-    /// change waits for its body tick's detectEquipmentUpdates (`equipment_changed`), so a
-    /// swap made and undone between two ticks leaves the modifiers it found.
-    pub(in crate::game) fn apply_equipment(&mut self) {
-        if !self.server.lan_guest_swaps.is_empty() {
-            return;
-        }
-        self.put_equipment_modifiers();
-    }
-
     pub(in crate::game::server_side) fn put_equipment_modifiers(&mut self) {
-        let Some(player) = self.player.as_mut() else {
+        let mut applied = std::mem::take(&mut self.server.applied_modifiers);
+        let ran = self.apply_equipment_modifiers_with(&mut applied);
+        self.server.applied_modifiers = applied;
+        if !ran {
             return;
-        };
-        for (attribute, id) in std::mem::take(&mut self.server.applied_modifiers) {
-            let _ = player.set_modifier_unclamped(&attribute, &id, 0.0, "add_value", false);
         }
-        let slots = ["head", "chest", "legs", "feet"];
-        let mut equipped: Vec<(Option<&ItemStack>, &str)> = self
-            .armor
-            .iter()
-            .zip(slots)
-            .map(|(s, n)| (s.as_ref(), n))
-            .collect();
-        equipped.push((self.inventory[self.selected].as_ref(), "mainhand"));
-        equipped.push((self.offhand.as_ref(), "offhand"));
-        for (stack, slot) in equipped {
-            let Some(stack) = stack else {
-                continue;
-            };
-            for sunrise_items::item_data::ModifierRow {
-                attribute,
-                id,
-                amount,
-                operation: op,
-                slot: group,
-            } in sunrise_client::item_attributes::attribute_modifiers(stack, world_items!(self))
-                .iter()
-            {
-                // The attack code still reads the held item's attack damage and
-                // speed directly; the map copy is what `/attribute` reports.
-                if !sunrise_client::living_attributes::modifier_applies(group, slot) {
-                    continue;
-                }
-                if player
-                    .set_modifier_unclamped(attribute, id, *amount, op, true)
-                    .is_ok()
-                {
-                    self.server
-                        .applied_modifiers
-                        .push((attribute.clone(), id.clone()));
-                }
-            }
+        if let Some(player) = self.player.as_mut() {
+            let _ = player.clamp_health_to_max();
         }
-        let _ = player.clamp_health_to_max();
         self.apply_enchantment_attributes();
     }
 

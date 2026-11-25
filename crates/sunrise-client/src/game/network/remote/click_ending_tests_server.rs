@@ -39,12 +39,12 @@ fn an_end_crystal_click_on_a_block_ends_there() {
         game.selected = 0;
         while peer.recv().is_ok() {}
         let aim = |game: &mut crate::game::Game<'_>, z: i32| {
-            game.server.forced_hit = Some(Hit {
+            game.set_test_forced_hit(Some(Hit {
                 pos: [0, 63, z],
                 face: [0, 1, 0],
                 point: [0.5, 64.0, f64::from(z) + 0.5],
                 inside: false,
-            });
+            }));
         };
         // The whole click (Minecraft.startUseItem): it ends at the block, so neither the main
         // hand's air use nor the offhand's shield is tried, and nothing is held in use.
@@ -127,12 +127,12 @@ fn flint_and_steel_use_on_ends_the_click() {
     game.inventory[0] = Some(ItemStack::new("minecraft:flint_and_steel", 1));
     game.offhand = Some(ItemStack::new("minecraft:stick", 1));
     game.selected = 0;
-    game.server.forced_hit = Some(Hit {
+    game.set_test_forced_hit(Some(Hit {
         pos: [0, 63, 0],
         face: [0, 1, 0],
         point: [0.5, 64.0, 0.5],
         inside: false,
-    });
+    }));
 
     let done = game.remote_use_block(Hand::Main, mod_api::InteractionAttempt::Press, None);
     assert!(done, "flint and steel useOn must end the click");

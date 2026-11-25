@@ -83,7 +83,7 @@ impl Game<'_> {
 
     /// `ClientPacketListener.handleLogin` when `Minecraft.player != null`: retain the live player, run `resetPos`, rebind residency, and reset input.
     pub(in crate::game) fn retain_remote_player_on_login(&mut self) {
-        self.reset_client_item_use();
+        self.side_reset_client_item_use();
         self.hook.discard();
         if let Some(r) = self.remote.as_mut() {
             r.respawn_velocity = None;

@@ -149,6 +149,10 @@ impl Game<'_> {
         );
     }
 
+    pub(in crate::game) fn server_award_stat(&mut self, ty: &str, key: &str, n: i32) {
+        self.award_stat(ty, key, n);
+    }
+
     /// Edit the award before borrowing its owner's stats. The normal counter,
     /// dirty set and scoreboard event are all written by `Stats::add`.
     pub(in crate::game::server_side) fn award_stat_to(
@@ -175,6 +179,10 @@ impl Game<'_> {
     /// `Player.awardStat(Identifier)`: `n` more of the custom statistic `key`.
     pub(in crate::game) fn award_custom_stat(&mut self, key: &str, n: i32) {
         namespaced(key, |key| self.award_stat("custom", key, n));
+    }
+
+    pub(in crate::game) fn server_award_custom_stat(&mut self, key: &str, n: i32) {
+        self.award_custom_stat(key, n);
     }
     /// `ServerPlayer.awardStat` for a causing entity, regardless of who owns the acting turn.
     pub(in crate::game::server_side) fn award_custom_stat_for(

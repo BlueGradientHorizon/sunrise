@@ -42,63 +42,6 @@ pub(in crate::game) struct AnimTick {
 }
 
 impl Game<'_> {
-    /// `BlockEntity.triggerEvent(a, b)` on the client copy of the block entity at `pos`.
-    pub(in crate::game) fn block_entity_event(&mut self, pos: [i32; 3], a: i32, b: i32) {
-        let state = self.world.block(pos[0], pos[1], pos[2]).0;
-        let time = self.world.game_time;
-        // PotentSulfurBlock.triggerEvent.
-        if self.potent_sulfur_eruption_event((pos[0], pos[1], pos[2])) {
-            return;
-        }
-        self.claim_anim(pos);
-        match self.be_anims.ticker(state) {
-            Some(Ticker::Lid) => {
-                self.be_anims
-                    .chests
-                    .entry(pos)
-                    .or_default()
-                    .trigger_event(a, b);
-            }
-            Some(Ticker::Shulker { .. }) => {
-                let shulker = self.be_anims.shulkers.entry(pos).or_default();
-                if shulker.trigger_event(a, b) {
-                    // Diverges from upstream: collision/support queries use a
-                    // snapshot. Publish this status change before entity hooks,
-                    // rather than waiting for tick_block_entities' full sync.
-                    self.world.shulkers.insert(pos, shulker.clone());
-                }
-            }
-            Some(Ticker::Bell) => {
-                let gathered = self.bell_gather(pos);
-                let rung =
-                    self.be_anims
-                        .bells
-                        .entry(pos)
-                        .or_default()
-                        .trigger_event(a, b, time, || gathered);
-                // The server's copy tells the living entities within 32 blocks.
-                if rung && self.is_logical_server() {
-                    self.bell_heard(pos, time);
-                }
-            }
-            Some(Ticker::Gateway) => {
-                let initial = self.gateway_loaded(pos);
-                self.be_anims
-                    .gateways
-                    .entry(pos)
-                    .or_insert(initial)
-                    .trigger_event(a, b);
-            }
-            Some(Ticker::Pot) => {
-                self.be_anims
-                    .pots
-                    .entry(pos)
-                    .or_default()
-                    .trigger_event(a, b, time);
-            }
-            _ => {}
-        }
-    }
     /// A player opened (`open`) or closed the container at `key`: the opener
     /// count block event (`ContainerOpenersCounter` / `ShulkerBoxBlockEntity`
     /// `startOpen`/`stopOpen`) for chests, ender chests and shulker boxes,
@@ -228,7 +171,7 @@ impl Game<'_> {
     }
     /// `BellBlockEntity.updateEntities`: the living entities whose bounding
     /// box meets the bell's block box inflated by 48.
-    pub(in crate::game::server_side) fn bell_gather(&self, pos: [i32; 3]) -> Vec<u64> {
+    pub(in crate::game) fn server_bell_gather(&self, pos: [i32; 3]) -> Vec<u64> {
         let area = Aabb::new(
             Vec3::new(
                 f64::from(pos[0]) - 48.0,
@@ -258,7 +201,7 @@ impl Game<'_> {
     /// `BellBlockEntity.updateEntities`: every gathered entity alive within 32
     /// blocks of the bell's centre gets `HEARD_BELL_TIME` (only villagers
     /// have a brain that reads it).
-    pub(in crate::game::server_side) fn bell_heard(&mut self, pos: [i32; 3], now: i64) {
+    pub(in crate::game) fn server_bell_heard(&mut self, pos: [i32; 3], now: i64) {
         let nearby = self
             .be_anims
             .bells

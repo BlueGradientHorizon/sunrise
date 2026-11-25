@@ -270,7 +270,7 @@ impl Game<'_> {
         for event in events {
             match event {
                 TrialEvent::BlockUpdated => self.mark_block_entity_updated(key),
-                TrialEvent::LevelEvent(id, at, data) => self.level_event_at(id, at, data),
+                TrialEvent::LevelEvent(id, at, data) => self.server_level_event_at(id, at, data),
                 TrialEvent::Sound(name) => {
                     self.server_play_sound(&format!("minecraft:{name}"), center, 1.0, 1.0)
                 }

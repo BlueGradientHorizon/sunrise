@@ -205,14 +205,6 @@ impl Game<'_> {
         });
         Some(())
     }
-    pub(in crate::game) fn data_block_name(&self, p: [i32; 3]) -> String {
-        let state = self.world.block(p[0], p[1], p[2]);
-        self.pack
-            .assets
-            .registry
-            .state(state)
-            .map_or_else(|| "minecraft:air".into(), |s| s.name.to_string())
-    }
     pub(in crate::game) fn raw_mut(&mut self, t: Target) -> Option<&mut Tag> {
         match t {
             Target::Player => Some(self.level.player_extra.get_or_insert_with(empty)),

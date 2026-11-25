@@ -754,7 +754,7 @@ impl Game<'_> {
                 Some("north" | "south") => 2,
                 _ => 1,
             };
-            self.level_event_at(3002, p, axis);
+            self.server_level_event_at(3002, p, axis);
         }
     }
     /// `LightningBolt.clearCopperOnLightningStrike` at the block the bolt struck.
@@ -765,7 +765,7 @@ impl Game<'_> {
             at[2].floor() as i32,
         );
         self.with_level(|b, level, ticks| b.lightning_clear_copper(level, ticks, p));
-        let _ = self.process_level_events();
+        let _ = self.server_process_level_events();
     }
     /// `LightningStrikeTrigger` at the bolt's discard: every player within 256
     /// blocks, with the mobs in its 30-block box that it did not hit.

@@ -7,8 +7,14 @@ use crate::game::{
 };
 
 pub(in crate::game) fn isolated(name: &str, body: impl FnOnce()) {
-    let (_, module) = module_path!().split_once("::").unwrap();
-    let test = format!("{module}::{name}");
+    let test = if name.contains("::") {
+        name.split_once("::")
+            .map_or(name, |(_, rest)| rest)
+            .to_owned()
+    } else {
+        let (_, module) = module_path!().split_once("::").unwrap();
+        format!("{module}::{name}")
+    };
     crate::game::in_own_process(&test, body);
 }
 

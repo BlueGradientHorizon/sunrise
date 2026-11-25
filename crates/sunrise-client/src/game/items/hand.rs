@@ -14,6 +14,7 @@ use sunrise_client::{
 };
 #[allow(unused_imports)]
 use sunrise_core::geometry::{Aabb, Vec3};
+use super::held_items::{attack_range_contains, attack_reach, in_attack_range};
 
 /// The point a `ServerboundInteractPacket` carries: `EntityHitResult.getLocation()
 /// - entity.position()`, measured from the entity's feet, as
@@ -24,24 +25,6 @@ pub(in crate::game) fn interact_location(point: Vec3, feet: Vec3) -> [f64; 3] {
 
 /// The off hand's place in `visible_hands` (the main hand uses its hotbar slot).
 pub(in crate::game) const OFFHAND: usize = usize::MAX;
-
-/// `AttackRange.effectiveMinRange`, `effectiveMaxRange` (for a player) and
-/// `hitboxMargin` of an `attack_range` component.
-pub(in crate::game::client_side) fn attack_reach(
-    range: &serde_json::Value,
-    creative: bool,
-) -> (f32, f32, f32) {
-    let value = |key: &str, default: f32| range[key].as_f64().map_or(default, |v| v as f32);
-    let (min, max) = if creative {
-        (
-            value("min_creative_reach", 0.0),
-            value("max_creative_reach", 5.0),
-        )
-    } else {
-        (value("min_reach", 0.0), value("max_reach", 3.0))
-    };
-    (min, max, value("hitbox_margin", 0.3))
-}
 
 pub(in crate::game::client_side) fn v3(v: [f64; 3]) -> Vec3 {
     Vec3::new(v[0], v[1], v[2])
@@ -63,16 +46,6 @@ pub(in crate::game::client_side) fn reach_pick(
         .into_iter()
         .map(|(_, at)| eye.distance_squared(at).sqrt())
         .reduce(f64::min)
-}
-
-/// `AttackRange.isInRange`: float bounds, then inclusive double comparison.
-pub(in crate::game::client_side) fn attack_range_contains(
-    range: &serde_json::Value,
-    distance: f64,
-    creative: bool,
-) -> bool {
-    let (min, max, margin) = attack_reach(range, creative);
-    in_attack_range(distance, (min, max, margin), 0.0)
 }
 
 /// `FirstPersonHandsAndItems.shouldInstantlyReplaceVisibleItem`'s
@@ -110,74 +83,7 @@ pub(in crate::game) fn matches_for_swap(a: Option<&ItemStack>, b: Option<&ItemSt
     }
 }
 
-/// `AttackRange.isInRange(attacker, box, buffer)` with the reach of
-/// `attack_reach` (or `AttackRange.defaultFor`'s, from the entity interaction
-/// range): the eye's distance to the box, inclusive.
-pub(in crate::game::client_side) fn in_attack_range(
-    distance: f64,
-    (min, max, margin): (f32, f32, f32),
-    buffer: f64,
-) -> bool {
-    mod_api::ItemAttackRange {
-        min,
-        max,
-        hitbox_margin: margin,
-    }
-    .contains(distance, buffer)
-}
-
 impl Game<'_> {
-    /// `getAttributeValue` of an interaction range of the player in place (a
-    /// guest swapped in on a server): creative's modifiers are on it
-    /// (`update_player_attributes`), as are `/attribute`'s and the items'.
-    pub(in crate::game) fn interaction_range(
-        &mut self,
-        attribute: &str,
-        survival: f64,
-        creative: f64,
-    ) -> f64 {
-        let otherwise = if self.creative { creative } else { survival };
-        self.player
-            .as_mut()
-            .and_then(|p| p.attribute(attribute).ok())
-            .unwrap_or(otherwise)
-    }
-
-    /// `Player.entityInteractionRange`/`blockInteractionRange` for the tick's
-    /// picks: the attribute carries creative's and a server's modifiers.
-    pub(in crate::game) fn update_interaction_ranges(&mut self) {
-        self.entity_reach = self.interaction_range("minecraft:entity_interaction_range", 3.0, 5.0);
-        self.block_reach = self.interaction_range("minecraft:block_interaction_range", 4.5, 5.0);
-    }
-
-    /// A stack's `minecraft:attack_range` component, falling back to the spear's
-    /// default reach (`spear::REACH`) for spear items unless explicitly removed.
-    pub(in crate::game::client_side) fn attack_range_component(
-        &self,
-        stack: &ItemStack,
-    ) -> Option<serde_json::Value> {
-        let view_stack = sunrise_client::item_render::stack_view(stack);
-        let view = self.pack.item_renderer.models.components_view(&view_stack);
-        if let Some(val) = view.get("minecraft:attack_range") {
-            return Some(val.clone());
-        }
-        if stack
-            .data()
-            .is_some_and(|d| d.other("!minecraft:attack_range").is_some())
-        {
-            return None;
-        }
-        sunrise_client::spear::Kinetic::of(&stack.item).map(|_| {
-            serde_json::json!({
-                "min_reach": sunrise_client::spear::REACH.min,
-                "max_reach": sunrise_client::spear::REACH.max,
-                "min_creative_reach": sunrise_client::spear::REACH.min_creative,
-                "max_creative_reach": sunrise_client::spear::REACH.max_creative,
-                "hitbox_margin": sunrise_client::spear::REACH.hitbox_margin,
-            })
-        })
-    }
-
     /// ServerGamePacketListenerImpl.handleAttack's
     /// `Player.isWithinAttackRange(mainHandItem, box, 3.0)` for the player in
     /// place: the held item's `attack_range`, else `AttackRange.defaultFor`
@@ -266,13 +172,8 @@ impl Game<'_> {
         self.request_remote_mining_stop();
         self.mining = None;
     }
-    /// `LivingEntity.swing` with `getModifiedSwingDuration`: the item's
-    /// `on_entity_swing` Part first, which may keep the swing from starting.
-    pub(in crate::game) fn swing_hand(&mut self, hand: Hand, animation: SwingAnimation) {
-        self.try_swing_hand(hand, animation);
-    }
     /// Returns false when the interaction policy or item vetoes the swing and its packet.
-    pub(in crate::game) fn try_swing_hand(
+    pub(in crate::game) fn client_swing_hand(
         &mut self,
         hand: Hand,
         animation: SwingAnimation,
@@ -311,14 +212,6 @@ impl Game<'_> {
         }
         true
     }
-    /// `swing(hand)` for the hand that acts, with the default animation.
-    pub(in crate::game) fn swing_arm(&mut self) {
-        self.swing_hand(self.hand, SwingAnimation::DEFAULT);
-    }
-    #[inline(always)]
-    pub(in crate::game) fn reset_attack_strength_client(&mut self) {
-        self.client.hand_strength.reset();
-    }
     /// `handleKeybinds`' number keys: keys 1 to 9 in that order, one click of each
     /// (`keyHotbarSlots[i].consumeClick`), so the highest key clicked this tick wins and a
     /// key's further clicks wait for the next ticks. A creative player holding the load or
@@ -351,24 +244,6 @@ impl Game<'_> {
             }
         }
     }
-    /// `Minecraft.startAttack` on an entity: a main-hand item with an
-    /// `attack_range` attacks only a hit inside it.
-    pub(in crate::game) fn held_range_allows(&self, distance: f64) -> bool {
-        let range = self
-            .held()
-            .and_then(|stack| self.attack_range_component(stack));
-        range.is_none_or(|r| attack_range_contains(&r, distance, self.own_player_is_creative()))
-    }
-    /// `LocalPlayer.raycastHitResult`'s item (`getActiveItem`: the one in
-    /// use, else the main hand's) `attack_range` component.
-    pub(in crate::game::client_side) fn active_attack_range(&self) -> Option<serde_json::Value> {
-        let active = self
-            .using
-            .and_then(|(slot, _)| self.inventory.get(slot).and_then(Option::as_ref))
-            .or_else(|| self.held())?;
-        self.attack_range_component(active)
-    }
-
     pub(in crate::game::client_side) fn client_pick_entity_reach(
         &self,
         direction: [f64; 3],
@@ -1007,24 +882,6 @@ impl Game<'_> {
             _ => name.ends_with("shulker_box"),
         }
     }
-    /// `Attributes.ATTACK_SPEED`'s sanitizer, from the attribute catalog: the
-    /// attack speed a value computed outside the attribute map takes.
-    pub(in crate::game) fn sanitize_attack_speed(&self, value: f64) -> f64 {
-        self.motion
-            .attributes
-            .definition("minecraft:attack_speed")
-            .map_or(value, |definition| definition.sanitize(value))
-    }
-
-    /// `Player.attack`: the attack damage attribute, with the held weapon's
-    /// and the effects' modifiers on it.
-    pub(in crate::game) fn attack_damage(&mut self) -> f32 {
-        self.player
-            .as_mut()
-            .and_then(|p| p.attribute("minecraft:attack_damage").ok())
-            .unwrap_or(1.0) as f32
-    }
-
     /// `evaluateWhichHandsToRender`: which of the main and off hand show.
     pub(in crate::game::client_side) fn hands_to_render(&self) -> [bool; 2] {
         let held = |slot| {
@@ -1149,7 +1006,7 @@ impl HandWorld for GameHands<'_, '_> {
         // The server's part (`PiercingWeapon.attack`), then the client's:
         // the sound `MultiPlayerGameMode.piercingAttack` plays.
         if let Some(sound) = self.game.jab() {
-            self.game.play_at_feet(sound);
+            self.game.client_play_at_feet(sound);
         }
         self.game.client.hand_strength.reset_attack();
     }

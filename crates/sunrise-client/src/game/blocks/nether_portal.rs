@@ -692,7 +692,7 @@ impl Game<'_> {
         let created = self.with_level(|b, level, ticks| {
             b.create_portal(level, ticks, approximate, x_axis, &border, logical)
         });
-        let _ = self.process_level_events();
+        let _ = self.server_process_level_events();
         if let Some(exit) = created {
             let dim = if to_nether {
                 "minecraft:the_nether"

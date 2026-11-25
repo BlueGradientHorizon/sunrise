@@ -228,7 +228,7 @@ impl Game<'_> {
             }
         }
         // Level event 3008 for every player, then the block change.
-        self.level_event_at(3008, pos, state.0 as i32);
+        self.server_level_event_at(3008, pos, state.0 as i32);
         if let Some(base) = self.pack.assets.registry.default_state(turns_into) {
             let _ = self.level_set(pos, base);
         }

@@ -484,7 +484,7 @@ impl Game<'_> {
                     if deliver_now {
                         game.deliver_level_event(id, pos, data);
                     } else {
-                        game.level_event_at(id, pos, data);
+                        game.server_level_event_at(id, pos, data);
                     }
                 });
             }

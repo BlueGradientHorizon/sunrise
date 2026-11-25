@@ -414,7 +414,7 @@ impl Game<'_> {
         });
         for at in shattered {
             self.server_play_sound("minecraft:entity.ender_eye.death", at, 1.0, 1.0);
-            self.level_event_at(2003, at.map(|v| v.floor() as i32), 0);
+            self.server_level_event_at(2003, at.map(|v| v.floor() as i32), 0);
         }
     }
 }
@@ -602,7 +602,7 @@ impl Game<'_> {
         self.consume_held();
         self.swing_arm();
         // EnderEyeItem.useOn emits this event for all nearby players.
-        self.level_event_at(1503, hit.pos, 0);
+        self.server_level_event_at(1503, hit.pos, 0);
         if let Some(c) = self.portal_ring_center(hit.pos) {
             for dz in -1..=1 {
                 for dx in -1..=1 {
@@ -614,7 +614,7 @@ impl Game<'_> {
                     self.set_state_named(p, "minecraft:end_portal", &[])?;
                 }
             }
-            self.process_level_events()?;
+            self.server_process_level_events()?;
             // EnderEyeItem.useOn: global level event 1038 (END_PORTAL_SPAWN),
             // heard by every player (vanilla places it at the frame's corner
             // + (1, 0, 1); only its direction matters).
@@ -1738,7 +1738,7 @@ pub(in crate::game) const GROUND_LIFT: f32 = 0.125;
 /// `ThrownItemRenderer.submit`: the four camera-facing vertices of an eye of ender at `at` (the
 /// entity's position; the quad itself is lifted above it). `right` and `up` are the camera's axes
 /// times the quad's 0.25 half extent.
-pub(in crate::game::server_side) fn eye_quad(
+pub(in crate::game) fn eye_quad(
     at: glam::Vec3,
     right: glam::Vec3,
     up: glam::Vec3,

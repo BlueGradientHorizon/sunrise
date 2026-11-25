@@ -4,10 +4,6 @@ pub(in crate::game::server_side) use super::{
     commands::{Target, execute::Source},
 };
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::sign_edit::SignEditor;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::sign_edit::*;
-#[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_client::{
     containers::BlockEntity,
     hud::{HudBatch, rgba},

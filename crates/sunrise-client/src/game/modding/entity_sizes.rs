@@ -251,35 +251,6 @@ impl Game<'_> {
         }
     }
 
-    /// The size a client's copy `id` of a non-mob entity takes from its `entity_size` answer,
-    /// while that answer holds for its vanilla size.
-    pub(in crate::game) fn client_copy_answer(&self, id: u32) -> Option<[f32; 3]> {
-        let remote = self.remote.as_ref()?;
-        let answer = remote.entities.get(&(id as i32))?.size_answer?;
-        let size = answer.size?;
-        let (kind, _) = remote.tracked_entity(id as i32)?;
-        (self.client_object_dimensions(id, kind)? == answer.vanilla).then_some(size)
-    }
-
-    /// The box of a client's copy `id` of a non-mob entity at `position` (`Entity.getBoundingBox`,
-    /// which `refreshDimensions` remakes): `vanilla`, its kind's own box, or the answer's
-    /// (`EntityDimensions.makeBoundingBox`) on the same bottom.
-    pub(in crate::game) fn client_copy_box(&self, id: u32, position: Vec3, vanilla: Aabb) -> Aabb {
-        let Some([width, height, _]) = self.client_copy_answer(id) else {
-            return vanilla;
-        };
-        let half = f64::from(width / 2.0);
-        let bottom = vanilla.min_position().y;
-        Aabb::new(
-            Vec3::new(position.x - half, bottom, position.z - half),
-            Vec3::new(
-                position.x + half,
-                bottom + f64::from(height),
-                position.z + half,
-            ),
-        )
-    }
-
     /// A body's pose or size changed since it was last asked: ask, and size it by the answer.
     pub(in crate::game::server_side) fn ask_body_size(
         &self,

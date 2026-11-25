@@ -78,7 +78,6 @@ impl Game<'_> {
             kept.insert("Team".into(), team.clone());
         }
         self.remember(id, Some(uuid), sunrise_core::nbt::Tag::Compound(kept));
-        self.load_bolt_client();
         self.bolts.push(bolt);
         Some(id)
     }

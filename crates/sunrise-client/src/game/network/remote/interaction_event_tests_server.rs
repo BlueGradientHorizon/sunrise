@@ -95,7 +95,7 @@ fn a_placed_powder_snow_bucket_leaves_a_bucket_in_hand_on_both_sides() {
                     .default_state("minecraft:stone")
                     .unwrap();
                 game.world.set(0, 64, 0, stone).unwrap();
-                game.server.forced_hit = Some(hit());
+                game.set_test_forced_hit(Some(hit()));
                 game.inventory[game.selected] =
                     Some(ItemStack::new("minecraft:powder_snow_bucket", 1));
                 use_block(game, client);
@@ -133,7 +133,7 @@ fn a_spectator_fires_right_click_block_on_the_client_and_its_cancel_answers() {
                 .default_state("minecraft:stone")
                 .unwrap();
             game.world.set(0, 64, 0, stone).unwrap();
-            game.server.forced_hit = Some(hit());
+            game.set_test_forced_hit(Some(hit()));
             // Nobody answers: the event fired, and the spectator's click ends there, no swing.
             *observer.0.lock().unwrap() = Controls::default();
             let swings = game.swings_started;
@@ -186,7 +186,7 @@ fn a_spectators_passing_block_click_skips_item_use_for_both_hands() {
                 .default_state("minecraft:stone")
                 .unwrap();
             game.world.set(0, 64, 0, stone).unwrap();
-            game.server.forced_hit = Some(hit());
+            game.set_test_forced_hit(Some(hit()));
             *observer.0.lock().unwrap() = Controls {
                 click_answer: Some(Answer::Pass),
                 // Let an erroneous item event reach the Part, which would consume the click.
@@ -324,7 +324,7 @@ fn air_event_skips_the_item_and_consuming_results_end_the_click() {
                     .default_state("minecraft:stone")
                     .unwrap();
                 game.world.set(0, 64, 0, stone).unwrap();
-                game.server.forced_hit = Some(hit());
+                game.set_test_forced_hit(Some(hit()));
                 // A passing target permits the same hand's Item.use hook.
                 assert!(
                     game.right_click_item(Hand::Main, &ItemStack::new("minecraft:stick", 1))
@@ -335,7 +335,7 @@ fn air_event_skips_the_item_and_consuming_results_end_the_click() {
                     [Step::Air(side, Hand::Main)]
                 );
                 observer.0.lock().unwrap().steps.clear();
-                game.server.forced_hit = None;
+                game.set_test_forced_hit(None);
                 let kind = game
                     .res
                     .mob_types()
@@ -422,7 +422,7 @@ fn an_item_used_from_the_off_hand_reaches_the_use_hooks_on_the_server() {
             let stone = registry.default_state("minecraft:stone").unwrap();
             game.world.set(0, 63, 0, stone).unwrap();
             game.world.set(0, 64, 0, stone).unwrap();
-            game.server.forced_hit = Some(hit());
+            game.set_test_forced_hit(Some(hit()));
             for guest in [None, Some(super::super::GuestUse::on_block(Hand::Off))] {
                 game.inventory[game.selected] = None;
                 *observer.0.lock().unwrap() = Controls {
@@ -474,7 +474,7 @@ fn before_block_cancellation_pass_continues_but_fail_and_consuming_results_stop(
                     )
                     .unwrap();
                 game.world.set(0, 63, 0, stone).unwrap();
-                game.server.forced_hit = Some(hit());
+                game.set_test_forced_hit(Some(hit()));
                 // Reference rules: PASS reaches the block; FAIL and each
                 // consuming result stop before it. Expected values are literal,
                 // independent of InteractionResult::consumes_action.
@@ -578,7 +578,7 @@ fn canceled_item_results_keep_the_stack_wrappers_side_effects() {
                     .default_state("minecraft:stone")
                     .unwrap();
                 game.world.set(0, 64, 0, stone).unwrap();
-                game.server.forced_hit = Some(hit());
+                game.set_test_forced_hit(Some(hit()));
                 for answer in [
                     Answer::Success,
                     Answer::SuccessServer,
@@ -618,7 +618,7 @@ fn canceled_item_results_keep_the_stack_wrappers_side_effects() {
                         }
                     );
                 }
-                game.server.forced_hit = None;
+                game.set_test_forced_hit(None);
                 game.server.guest_use = None;
                 for item in ["minecraft:stick", "minecraft:shield"] {
                     for answer in [Answer::Success, Answer::SuccessServer, Answer::Consume] {
@@ -668,7 +668,7 @@ fn item_use_overlap_matrix_on_the_server() {
                 .default_state("minecraft:stone")
                 .unwrap();
             game.world.set(0, 64, 0, stone).unwrap();
-            game.server.forced_hit = Some(hit());
+            game.set_test_forced_hit(Some(hit()));
             item_used_on_block_tests::install_criteria(game, &[0], "minecraft:air");
             for hand in [Hand::Main, Hand::Off] {
                 for held in [false, true] {
@@ -785,7 +785,7 @@ fn on_item_use_first_runs_before_the_block_and_ends_the_click() {
                 .unwrap();
             game.world.set(0, 63, 0, stone).unwrap();
             game.world.set(0, 64, 0, lever).unwrap();
-            game.server.forced_hit = Some(hit());
+            game.set_test_forced_hit(Some(hit()));
             let server = LogicalSide::Server;
 
             // Every non-PASS Part answer stops before the block, including TRY.
@@ -871,7 +871,7 @@ fn phase_events_replace_the_behaviour_before_its_part_on_both_sides() {
                     .unwrap();
                 game.world.set(0, 63, 0, stone).unwrap();
                 game.world.set(0, 64, 0, lever).unwrap();
-                game.server.forced_hit = Some(hit());
+                game.set_test_forced_hit(Some(hit()));
                 *observer.0.lock().unwrap() = Controls::default();
                 assert!(use_block(game, client));
                 assert_ne!(game.world.block(0, 64, 0), lever);
@@ -1097,7 +1097,7 @@ fn resource_gated_unknown_held_item_forced_use_predicts_pass_without_a_swing() {
                     .default_state("minecraft:stone")
                     .unwrap();
                 game.world.set(0, 64, 0, stone).unwrap();
-                game.server.forced_hit = Some(hit());
+                game.set_test_forced_hit(Some(hit()));
                 // Keep the API key resolvable so RightClickBlock really runs,
                 // but remove its gameplay data to exercise the unknown-item
                 // fallback. The suffix also catches premature spawn-egg prediction.
@@ -1161,7 +1161,7 @@ fn right_click_block_explicit_allow_overrides_sneak_skip_on_both_sides() {
                     )
                     .unwrap();
                 game.world.set(0, 63, 0, stone).unwrap();
-                game.server.forced_hit = Some(hit());
+                game.set_test_forced_hit(Some(hit()));
                 game.insert_device_key(winit::keyboard::KeyCode::ShiftLeft);
                 if let Some(remote) = game.remote.as_mut() {
                     remote.last_input |= super::SHIFT_INPUT;
@@ -1220,7 +1220,7 @@ fn right_click_block_forced_item_use_reaches_empty_hand_on_both_sides() {
         for client in [false, true] {
             with_interaction_game(client, |game| {
                 game.inventory[game.selected] = None;
-                game.server.forced_hit = Some(hit());
+                game.set_test_forced_hit(Some(hit()));
                 let side = if client {
                     LogicalSide::Client
                 } else {

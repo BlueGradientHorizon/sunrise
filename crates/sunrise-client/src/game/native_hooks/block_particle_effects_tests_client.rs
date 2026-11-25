@@ -81,7 +81,7 @@ fn break_event_uses_the_destroyed_state_and_keeps_its_sound() {
         game.world.set(4, 64, 4, air).unwrap();
         game.particles.0.requested = Some(Vec::new());
         let before_part = requested_count();
-        game.level_event_at(2001, [4, 64, 4], glass.0 as i32);
+        game.client_level_event_at(2001, [4, 64, 4], glass.0 as i32);
         assert_eq!(game.particles.0.requested.take().unwrap().len(), 1);
         assert_eq!(admit(game), 1, "the part replaces the entire vanilla burst");
         let [sound] = game.audio.0.capture.as_deref().unwrap() else {
@@ -94,7 +94,7 @@ fn break_event_uses_the_destroyed_state_and_keeps_its_sound() {
         );
         assert_eq!(game.world.block(4, 64, 4), air);
         game.particles.0.clear();
-        game.level_event_at(2001, [4, 64, 4], stone.0 as i32);
+        game.client_level_event_at(2001, [4, 64, 4], stone.0 as i32);
         assert_eq!(
             admit(game),
             64,

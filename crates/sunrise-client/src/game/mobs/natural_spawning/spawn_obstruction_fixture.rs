@@ -307,7 +307,7 @@ fn spawn_entity_obstruction() {
                                 state,
                                 hurt_per_distance: None,
                             });
-                        game.process_level_events().unwrap();
+                        game.server_process_level_events().unwrap();
                     } else if id == "minecraft:ender_dragon" {
                         // Game stores one dragon; install each independent case anew.
                         game.discard_resident_dragon();

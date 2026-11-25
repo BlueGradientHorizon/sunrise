@@ -195,7 +195,7 @@ impl Game<'_> {
             &mut self.player_state.attachments,
             std::mem::take(host.hub.guests.attachments_mut(conn).unwrap()),
         );
-        self.sculk.swap_player(&mut play.sculk);
+        self.server.sculk.swap_player(&mut play.sculk);
         // The guest's own CombatTracker: damage to them is not the host's.
         // A new body starts with no record of the last one.
         let guest_combat = if fresh {
@@ -510,7 +510,7 @@ impl Game<'_> {
         }
         // `ServerPlayer.permissions()` back to the host's after the turn.
         self.ui.registries.permission = permission;
-        self.sculk.swap_player(&mut play.sculk);
+        self.server.sculk.swap_player(&mut play.sculk);
         // The guest's damage record back into their slot, the host's in place.
         let guest_combat = std::mem::replace(&mut self.combat.0, host_combat);
         self.guest_combat.0.insert(conn, guest_combat);

@@ -448,37 +448,8 @@ pub(in crate::game) struct Launch {
 }
 
 impl Game<'_> {
-    /// Only the owner window changes its integrated server's command tree. A remote
-    /// server keeps its own choice and permissions.
-    pub(in crate::game) fn sync_pregen_option(&self) {
-        let Some(server) = &self.integrated else {
-            return;
-        };
-        let enabled = self.options.pregen || self.settings.extras.pregen;
-        // Check on the server, after earlier updates have run, so a later toggle
-        // wins. Do not block the window when an unrelated setting changes.
-        server.queue_pregen_option(enabled);
-    }
-
-    /// `Minecraft.hasSingleplayerServer`: a world of this window's own, run on its integrated server.
-    pub(in crate::game) fn has_singleplayer_server(&self) -> bool {
-        self.integrated.is_some()
-    }
-    /// `Minecraft.isMultiplayerServer`: on another's server, or a world of one's own open to the
-    /// network.
-    pub(in crate::game) fn is_multiplayer_server(&self) -> bool {
-        !self.has_singleplayer_server() || self.is_published()
-    }
-    /// `IntegratedServer.isPublished`: the world is open to the network.
-    pub(in crate::game) fn is_published(&self) -> bool {
-        if self.is_logical_server() {
-            self.lan.is_some()
-        } else {
-            self.integrated
-                .as_ref()
-                .is_some_and(|s| s.published().is_some())
-        }
-    }
+    pub(in crate::game) fn server_has_singleplayer_server(&self) -> bool { false }
+    pub(in crate::game) fn server_is_published(&self) -> bool { self.lan.is_some() }
 
     /// `PrepareSpawnTask`'s `LOAD_PLAYER_CHUNKS`, reported to the window's
     /// loading screen: the focus moves to the spawn chunk when the stage

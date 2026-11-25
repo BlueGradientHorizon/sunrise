@@ -875,14 +875,6 @@ impl Game<'_> {
         self.player_read_both(player)?.food()
     }
 
-    /// `Player.getAbilities`; Paper `Player#getAllowFlight/isFlying/getFlySpeed/getWalkSpeed`.
-    pub(in crate::game) fn player_abilities(
-        &self,
-        player: PlayerRef,
-    ) -> Option<mod_api::PlayerAbilities> {
-        self.player_read_both(player)?.abilities()
-    }
-
     /// The real players on this server, in join order, including an integrated
     /// server's own player even when the world is not open to LAN. Empty on a client.
     pub(in crate::game) fn native_server_players(&self) -> Vec<PlayerRef> {

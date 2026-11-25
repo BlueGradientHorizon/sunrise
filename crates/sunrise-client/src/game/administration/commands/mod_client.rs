@@ -67,12 +67,6 @@ pub(in crate::game::client_side) use sunrise_world::registry::BlockStateId;
 #[path = "execute_client.rs"]
 pub(in crate::game) mod execute;
 
-#[path = "extra_client.rs"]
-pub(in crate::game) mod extra;
-
-#[path = "raid_client.rs"]
-pub(in crate::game) mod raid;
-
 #[path = "world_cmds_client.rs"]
 pub(in crate::game) mod world_cmds;
 

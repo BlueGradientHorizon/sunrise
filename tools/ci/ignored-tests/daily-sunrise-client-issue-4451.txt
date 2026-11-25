@@ -2280,7 +2280,7 @@ sunrise-client game::client_side::remote_client::tests::chat_window_and_input_te
 sunrise-client game::server_side::remote_server::tests::click_ending_tests::an_end_crystal_click_on_a_block_ends_there lib daily resources
 sunrise-client game::server_side::remote_server::tests::click_ending_tests::flint_and_steel_use_on_ends_the_click lib daily resources
 sunrise-client game::remote::tests::client_attributes_tests::update_attributes_answers_the_local_players_living_reads lib daily resources
-sunrise-client game::remote::tests::client_camera_tests::client_camera_entity_returns_to_player_after_removal lib daily resources
+sunrise-client game::client_side::remote_client::client_camera_tests::client_camera_entity_returns_to_player_after_removal lib daily resources
 sunrise-client game::client_side::remote_client::tests::client_day_time_tests::client_day_time_reads_overworld_clock_across_packets_and_levels lib daily resources
 sunrise-client game::remote::tests::client_epochs_tests::client_epochs_follow_level_replacement_and_logout lib daily resources
 sunrise-client game::remote::tests::client_handles_tests::client_handle_reads_answer_from_the_clients_copy lib daily resources

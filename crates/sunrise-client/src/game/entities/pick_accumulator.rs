@@ -1,84 +1,23 @@
 //! The running state of `ProjectileUtil.getEntityHitResult`.
 use super::Game;
-use sunrise_core::geometry::{Aabb, Vec3};
 
-#[derive(Clone, Copy, Debug)]
-pub(in crate::game) struct PickCandidate {
-    pub id: u32,
-    pub point: [f64; 3],
-    pub distance_sq: f64,
-    pub inside: bool,
-}
-
-/// Ray segment `(from, to)` matching `LocalPlayer.pick`.
-pub(in crate::game) fn pick_ray_segment(eye: [f64; 3], dir: [f64; 3], reach: f64) -> (Vec3, Vec3) {
-    let from = Vec3::new(eye[0], eye[1], eye[2]);
-    let to = Vec3::new(
-        from.x + dir[0] * reach,
-        from.y + dir[1] * reach,
-        from.z + dir[2] * reach,
-    );
-    (from, to)
-}
-
-pub(in crate::game) struct PickAccumulator {
-    pub hovered: Option<PickCandidate>,
-    nearest_sq: f64,
-    candidates: Option<Vec<PickCandidate>>,
-}
+pub(in crate::game) use crate::game::pick_ray::{PickAccumulator, PickCandidate, pick_ray_segment};
 
 impl PickAccumulator {
-    pub(in crate::game) fn new(max_distance_sq: f64) -> Self {
-        Self {
-            hovered: None,
-            nearest_sq: max_distance_sq,
-            candidates: None,
-        }
-    }
-
-    pub(in crate::game::client_side) fn consider_candidate(
-        &mut self,
-        game: &Game<'_>,
-        candidate: PickCandidate,
-    ) -> bool {
-        if let Some(candidates) = &mut self.candidates {
-            candidates.push(candidate);
-            return false;
-        }
-        self.accept(candidate, game.pick_shares_vehicle(candidate.id), false)
-    }
-
-    pub(in crate::game) fn consider_box(
-        &mut self,
-        game: &Game<'_>,
-        id: u32,
-        from: Vec3,
-        to: Vec3,
-        bb: Aabb,
-    ) -> bool {
-        let Some(candidate) = game.test_pick_box(id, from, to, bb) else {
-            return false;
-        };
-        self.consider_candidate(game, candidate)
-    }
-
     /// Reuses the caller's candidate buffer when `CanRiderInteract` is subscribed.
     pub(in crate::game::client_side) fn recording(
         max_distance_sq: f64,
         mut candidates: Vec<PickCandidate>,
     ) -> Self {
         candidates.clear();
-        Self {
-            candidates: Some(candidates),
-            ..Self::new(max_distance_sq)
-        }
+        Self::recording_with(max_distance_sq, candidates)
     }
 
     pub(in crate::game::client_side) fn dispatch(
         &mut self,
         game: &mut Game<'_>,
     ) -> Vec<PickCandidate> {
-        let candidates = self.candidates.take().unwrap_or_default();
+        let candidates = self.take_candidates();
         let camera = game.pick_camera_id();
         for &candidate in &candidates {
             if game.is_pick_camera(candidate.id) {
@@ -87,7 +26,7 @@ impl PickAccumulator {
             let same_vehicle = game.pick_shares_vehicle(candidate.id);
             let mut allowed = false;
             if !candidate.inside
-                && (candidate.distance_sq < self.nearest_sq || self.nearest_sq == 0.0)
+                && (candidate.distance_sq < self.nearest_sq() || self.nearest_sq() == 0.0)
                 && same_vehicle
                 && let Some(epoch) = game.native_lifecycle.epoch()
                 && let Some(wire_id) = game.wire_entity_id(candidate.id)
@@ -104,73 +43,9 @@ impl PickAccumulator {
         }
         candidates
     }
-
-    fn accept(&mut self, candidate: PickCandidate, same_vehicle: bool, allowed: bool) -> bool {
-        if candidate.inside {
-            if self.nearest_sq < 0.0 {
-                return false;
-            }
-            self.nearest_sq = 0.0;
-        } else if candidate.distance_sq < self.nearest_sq || self.nearest_sq == 0.0 {
-            if same_vehicle && !allowed {
-                if self.nearest_sq != 0.0 {
-                    return false;
-                }
-            } else {
-                self.nearest_sq = candidate.distance_sq;
-            }
-        } else {
-            return false;
-        }
-        self.hovered = Some(candidate);
-        true
-    }
 }
 
 impl Game<'_> {
-    /// Vanilla `ProjectileUtil.getEntityHitResult` per-box test (`AABB.contains` and `AABB.clip`).
-    pub(in crate::game::client_side) fn test_pick_box(
-        &self,
-        id: u32,
-        from: Vec3,
-        to: Vec3,
-        bb: Aabb,
-    ) -> Option<PickCandidate> {
-        if self.is_pick_camera(id) {
-            return None;
-        }
-        let clip_point = bb.clip(from, to);
-        if bb.contains(from) {
-            if !self.pickable_from_inside(id) {
-                return None;
-            }
-            let at = clip_point.unwrap_or(from);
-            Some(PickCandidate {
-                id,
-                point: [at.x, at.y, at.z],
-                distance_sq: 0.0,
-                inside: true,
-            })
-        } else {
-            let at = clip_point?;
-            Some(PickCandidate {
-                id,
-                point: [at.x, at.y, at.z],
-                distance_sq: from.distance_squared(at),
-                inside: false,
-            })
-        }
-    }
-
-    /// `Entity.canBePickedFromInside`, false only for a sulfur cube holding a body item.
-    pub(in crate::game::client_side) fn pickable_from_inside(&self, id: u32) -> bool {
-        !self.mobs.iter().any(|m| {
-            m.id == id
-                && m.species() == sunrise_client::mobs::Species::SulfurCube
-                && sunrise_client::mobs::sulfur_cube::has_body(m)
-        })
-    }
-
     pub(in crate::game) fn pick_camera_id(&self) -> Option<u32> {
         if let Some(remote) = self.remote.as_ref() {
             if let Some(id) = remote.camera {
@@ -194,6 +69,14 @@ impl Game<'_> {
         id == camera || self.wire_entity_id(id) == Some(camera as i32)
     }
 
+    pub(in crate::game) fn client_pick_camera_id(&self) -> Option<u32> {
+        self.pick_camera_id()
+    }
+
+    pub(in crate::game) fn client_is_pick_camera(&self, id: u32) -> bool {
+        self.is_pick_camera(id)
+    }
+
     fn pick_vehicle_step(&self, entity: u32) -> Option<u32> {
         if self.pick_camera_id() == Some(entity) && self.remote_camera_id().is_none() {
             return self.riding.or_else(|| {
@@ -205,25 +88,7 @@ impl Game<'_> {
         if let Some(remote) = &self.remote {
             return remote.passenger_vehicle(entity);
         }
-        self.vehicle_of_any(entity)
-            .or_else(|| {
-                self.armor_stands
-                    .iter()
-                    .find(|a| a.id == entity)
-                    .and_then(|a| a.vehicle)
-            })
-            .or_else(|| {
-                self.client
-                    .interactions
-                    .get(&(entity as i32))
-                    .and_then(|i| i.vehicle)
-            })
-            .or_else(|| {
-                self.text_displays
-                    .0
-                    .get(&(entity as i32))
-                    .and_then(|d| d.vehicle)
-            })
+        None
     }
 
     /// Walks the full vehicle chain (including retained off-level entities) with cycle detection.

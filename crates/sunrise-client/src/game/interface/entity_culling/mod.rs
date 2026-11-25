@@ -1,7 +1,7 @@
 //! Entity mesh occlusion and view-distance checks.
 use super::{
     Game, Vertex,
-    entity::RenderEntityBounds,
+    entity_client::RenderEntityBounds,
     occlusion_culling::{AsyncOcclusionCuller, opaque},
     particle_culling::section_scene,
 };
@@ -364,7 +364,7 @@ impl Game<'_> {
 
 #[cfg(test)]
 mod precheck_envelope_tests {
-    use super::super::entity::RenderEntityBounds;
+    use super::super::entity_client::RenderEntityBounds;
     use std::{path::Path, sync::Arc};
     use sunrise_client::mobs::{Mob, MobData, MobTypes, Species, render};
     use sunrise_core::geometry::Vec3;

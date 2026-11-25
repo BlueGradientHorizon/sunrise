@@ -33,43 +33,7 @@ impl Game<'_> {
     /// `ItemStack.hurtAndBreak` takes `points` of its durability (Unbreaking
     /// may save it). Callers skip creative.
     pub(in crate::game) fn wear_glider(&mut self, points: u32) {
-        // Every 20th glide tick only, so collecting the candidates here is fine.
-        let mut pieces: Vec<usize> = super::glide_wear::gliding_slots(
-            self.res.items(),
-            &self.armor,
-            self.inventory[self.selected].as_ref(),
-            self.offhand.as_ref(),
-        )
-        .collect();
-        if pieces.is_empty() {
-            return;
-        }
-        // `Util.getRandom(slotsWithGliders, this.random)` over `EquipmentSlot.VALUES` order:
-        // mainhand, offhand, feet, legs, chest, head; the entity's own random, which never
-        // touches the level's stream.
-        pieces.sort_unstable_by_key(|&slot| [5, 4, 3, 2, 0, 1][slot]);
-        let pick = random_source::entity().next_int_bound(pieces.len() as i32);
-        let slot = pieces[pick.unwrap_or(0) as usize];
-        let stack = match slot {
-            4 => self.inventory[self.selected].clone(),
-            5 => self.offhand.clone(),
-            i => self.armor[i].clone(),
-        };
-        // `ItemStack.hurtAndBreak` skips a stack that isn't `isDamageableItem` (no `damage`
-        // component, say), though it may still glide.
-        if let Some(stack) = stack
-            && sunrise_client::stations::is_damageable(self.res.items(), &stack)
-        {
-            let loss = self.wear(&stack, points);
-            let target = match slot {
-                4 => &mut self.inventory[self.selected],
-                5 => &mut self.offhand,
-                i => &mut self.armor[i],
-            };
-            if let Some(piece) = target.as_mut() {
-                piece.damage += loss;
-            }
-        }
+        self.side_wear_glider(points);
     }
 
     /// `LivingEntity.canFreeze`'s armor half: any worn piece in
@@ -131,16 +95,11 @@ impl Game<'_> {
     }
 
     /// `insert_stack_into_inventory` with `max` the stack's own maximum.
-    pub(in crate::game::client_side) fn insert_stack_up_to(
+    pub(in crate::game) fn insert_stack_up_to(
         &mut self,
         stack: &mut ItemStack,
         max: u32,
     ) -> bool {
-        let tutorial_item = matches!(
-            self.client.tutorial.step,
-            tutorial::Step::FindTree | tutorial::Step::PunchTree | tutorial::Step::CraftPlanks
-        )
-        .then(|| stack.clone());
         let before = stack.count;
         let left = inventory_add(
             &mut self.inventory,
@@ -150,7 +109,7 @@ impl Game<'_> {
             stack,
         );
         if stack.count < before {
-            self.tutorial_get_item(tutorial_item.as_ref());
+            self.side_on_inventory_item_added(stack);
         }
         left
     }

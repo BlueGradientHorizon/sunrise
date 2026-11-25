@@ -337,7 +337,7 @@ impl Game<'_> {
                 }
             }
             if gs.kind == StationKind::Smithing && std::mem::take(&mut gs.menu.combined) {
-                self.level_event_at(1044, pos, 0);
+                self.server_level_event_at(1044, pos, 0);
             }
             if let Some(button) = gs.menu.enchant_button.take() {
                 self.lan_enchant(gi, &mut gs, button);

@@ -98,7 +98,7 @@ impl Game<'_> {
         // can't be eaten (full and not always-edible) fails the use
         // (InteractionResult.FAIL): startUseItem tries the other hand, and
         // no cooldown or use animation starts.
-        let eating = self.with_hand(hand, |g| g.start_eating(&info));
+        let eating = self.with_hand(hand, |g| g.client_start_eating(&info));
         if info.food.is_some() && !eating {
             return false;
         }
@@ -150,7 +150,7 @@ impl Game<'_> {
     /// its crumbs until the server's USE_ITEM_COMPLETE. The server sends the
     /// stack, its hunger and the sounds.
     pub(in crate::game) fn remote_tick_using(&mut self) {
-        self.tick_client_item_use();
+        self.side_tick_client_item_use();
         let Some((slot, ticks)) = self.using else {
             return;
         };

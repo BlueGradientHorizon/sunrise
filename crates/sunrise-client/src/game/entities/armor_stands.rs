@@ -467,35 +467,6 @@ impl Game<'_> {
         self.swing_arm();
         true
     }
-    /// The armor stand under the crosshair, its distance and the hit point.
-    pub(in crate::game) fn armor_stand_hit(&self) -> Option<(usize, f64, [f64; 3])> {
-        if let Some(hit) = self.cached_entity_pick() {
-            let (entity, distance, point) = hit?;
-            let index = self.armor_stands.iter().position(|f| f.id == entity.id())?;
-            return Some((index, distance, point));
-        }
-        let (eye, dir) = self.aim()?;
-        let reach: f64 = self.entity_reach;
-        let (from, to) = super::pick_accumulator::pick_ray_segment(eye, dir, reach);
-        let mut pick = super::pick_accumulator::PickAccumulator::new(reach * reach);
-        let mut best: Option<(usize, f64, [f64; 3])> = None;
-        for (i, a) in self.armor_stands.iter().enumerate() {
-            if a.marker {
-                continue;
-            }
-            if pick.consider_box(
-                self,
-                a.id,
-                from,
-                to,
-                self.client_copy_box(a.id, a.position, a.bounds()),
-            ) {
-                let hit = pick.hovered.unwrap();
-                best = Some((i, hit.distance_sq.sqrt(), hit.point));
-            }
-        }
-        best
-    }
     pub(in crate::game::server_side) fn equipment_slot(&self, stack: &ItemStack) -> usize {
         match self
             .res

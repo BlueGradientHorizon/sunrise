@@ -176,7 +176,7 @@ impl Game<'_> {
                 UPDATE_CLIENTS,
             );
         });
-        self.process_level_events()
+        self.server_process_level_events()
     }
     /// The block at `pos` has no collision shape.
     pub(in crate::game::server_side) fn collision_empty(&self, pos: [i32; 3]) -> bool {

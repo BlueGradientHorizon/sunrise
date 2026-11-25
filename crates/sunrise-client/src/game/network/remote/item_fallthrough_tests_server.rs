@@ -30,7 +30,7 @@ pub(in crate::game) fn assert_block_item_before_fallthrough(
                 .unwrap();
             game.world.set(0, 63, 0, dirt).unwrap();
             game.world.set(0, 64, 0, state).unwrap();
-            game.server.forced_hit = Some(hit());
+            game.set_test_forced_hit(Some(hit()));
             game.inventory[game.selected] = Some(ItemStack::new(item, 2));
             *observer.0.lock().unwrap() = Controls {
                 air_answer: Some(Answer::Fail),
@@ -75,7 +75,7 @@ fn block_pass_falls_through_but_fail_and_success_stop_the_apple() {
                 .default_state("minecraft:stone")
                 .unwrap();
             game.world.set(0, 64, 0, stone).unwrap();
-            game.server.forced_hit = Some(hit());
+            game.set_test_forced_hit(Some(hit()));
             for (answer, expected) in [(Answer::Pass, 1), (Answer::Fail, 0), (Answer::Success, 0)] {
                 game.inventory[game.selected] = Some(ItemStack::new("minecraft:apple", 1));
                 *observer.0.lock().unwrap() = Controls {
@@ -122,7 +122,7 @@ fn server_use_item_packet_fires_once_after_use_item_on_with_block_crosshair() {
                 .default_state("minecraft:stone")
                 .unwrap();
             game.world.set(0, 64, 0, stone).unwrap();
-            game.server.forced_hit = Some(hit());
+            game.set_test_forced_hit(Some(hit()));
             game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.inventory[g.selected] = Some(ItemStack::new("minecraft:apple", 1));
             });
@@ -203,7 +203,7 @@ fn targeted_item_fallthrough_keeps_hand_and_fail_vetoes_item_action() {
                 } else {
                     LogicalSide::Server
                 };
-                game.server.forced_hit = Some(hit());
+                game.set_test_forced_hit(Some(hit()));
                 for hand in [Hand::Main, Hand::Off] {
                     *observer.0.lock().unwrap() = Controls {
                         air_answer: Some(Answer::Fail),

@@ -6,13 +6,11 @@ use super::Game;
 use std::collections::HashSet;
 use sunrise_client::{
     containers::BlockEntity,
-    gizmos::{Gizmos, InvisibleBlock},
     structure_block::{
-        self, RenderMode, SCAN_CORNER_BLOCKS_RANGE, StructureBlock, StructureMode, UpdateType,
+        self, SCAN_CORNER_BLOCKS_RANGE, StructureBlock, StructureMode, UpdateType,
     },
     text::Text,
 };
-use sunrise_client_render::block_entity_reach::Reach;
 use sunrise_core::position::BlockPos;
 use sunrise_protocol::packets::play;
 use {
@@ -31,69 +29,6 @@ pub(in crate::game) use sunrise_gameplay::structure_blocks::{
 pub use sunrise_gameplay::structure_blocks::{create_seed, template_size};
 
 impl Game<'_> {
-    /// `BlockEntityWithBoundingBoxRenderer`: for a player who may use game
-    /// master blocks (or a spectator), each structure block's box and, with
-    /// Show Invisible Blocks on, a marker for every barrier, light, structure
-    /// void and air block in it, as far as each renderer reaches (`Reach`).
-    pub(in crate::game) fn bounding_box_gizmos(&self, camera: [f64; 3], g: &mut Gizmos) {
-        let game_master = self.can_use_game_master_blocks() || self.spectator();
-        let facts = self.res.facts();
-        let render_distance = self.effective_render_distance();
-        let camera_at = glam::DVec3::from_array(camera);
-        for (pos, entity) in self.world.block_entities.boxes() {
-            let block = [pos.0, pos.1, pos.2];
-            let drawn = |reach: Reach| reach.should_render(block, camera_at, render_distance);
-            let (mode, area) = match entity {
-                BlockEntity::StructureBlock(b) if game_master && drawn(Reach::BoundingBox) => {
-                    (b.render_mode(), b.renderable_box())
-                }
-                BlockEntity::TestInstanceBlock(b) => {
-                    if !game_master || !drawn(Reach::TestInstance) {
-                        continue;
-                    }
-                    // TestInstanceBlockEntity.renderMode: BOX.
-                    let padding = self.test_holder_padding(*pos);
-                    let (offset, size) = b.renderable_box(padding, self.test_rotation(*pos));
-                    (
-                        RenderMode::Box,
-                        sunrise_client::structure_block::RenderableBox { offset, size },
-                    )
-                }
-                _ => continue,
-            };
-            if mode == RenderMode::None {
-                continue;
-            }
-            let invisible = (mode == RenderMode::BoxAndInvisibleBlocks).then(|| {
-                let [sx, sy, sz] = area.size;
-                let mut cells = vec![None; (sx.max(0) * sy.max(0) * sz.max(0)) as usize];
-                for x in 0..sx {
-                    for y in 0..sy {
-                        for z in 0..sz {
-                            let at = [0, 1, 2].map(|i| block[i] + area.offset[i] + [x, y, z][i]);
-                            let state = self.world.block(at[0], at[1], at[2]);
-                            let kind = if facts.is_air(state) {
-                                Some(InvisibleBlock::Air)
-                            } else {
-                                match &*facts.get(state).name {
-                                    "minecraft:structure_void" => {
-                                        Some(InvisibleBlock::StructureVoid)
-                                    }
-                                    "minecraft:barrier" => Some(InvisibleBlock::Barrier),
-                                    "minecraft:light" => Some(InvisibleBlock::Light),
-                                    _ => None,
-                                }
-                            };
-                            cells[(z * sx * sy + y * sx + x) as usize] = kind;
-                        }
-                    }
-                }
-                cells
-            });
-            g.bounding_box(block, area.offset, area.size, invisible.as_deref());
-        }
-    }
-
     fn structure_block_at(&self, pos: Pos) -> Option<&StructureBlock> {
         match self.world.block_entities.get(&pos)? {
             BlockEntity::StructureBlock(b) => Some(b),
@@ -376,7 +311,7 @@ impl Game<'_> {
         let placed = self.with_level(|behaviours, level, ticks| {
             behaviours.place_template(level, ticks, template, at, settings)
         });
-        let _ = self.process_level_events();
+        let _ = self.server_process_level_events();
         let Some((placed, entities)) = placed else {
             return false;
         };
@@ -496,7 +431,7 @@ impl Game<'_> {
             if let Some((lease, entity)) = entity {
                 self.world.block_entities.put(lease, entity);
             }
-            let _ = self.process_level_events();
+            let _ = self.server_process_level_events();
         }
     }
 

@@ -322,7 +322,7 @@ impl Game<'_> {
                     {
                         self.use_duration = self.use_duration(&stack);
                         self.use_start = super::super::using_item::UseStart::of(stack);
-                        self.reset_client_item_use();
+                        self.side_reset_client_item_use();
                     }
                 }
                 _ => {}

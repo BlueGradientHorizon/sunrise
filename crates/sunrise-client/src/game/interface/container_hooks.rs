@@ -514,16 +514,10 @@ impl Game<'_> {
         button: i32,
         input: Input,
     ) -> bool {
-        if self.remote.is_some() {
-            return self.remote_menu_ops(&[(Some(slot), button, input)]);
-        }
-        if !self.click_open_inventory(Some(slot), button, input) {
+        if self.remote.is_none() {
             return false;
         }
-        if let Some(key) = self.container {
-            self.container_changed(key);
-        }
-        true
+        self.remote_menu_ops(&[(Some(slot), button, input)])
     }
     /// Puts the hand's stack (`right`: one of it) in `slot`, as a one-slot
     /// drag (`QUICK_CRAFT`) and not a click: a server that has the hand empty
@@ -536,16 +530,10 @@ impl Game<'_> {
             (Some(slot), kind | 1, Input::QuickCraft),
             (None, kind | 2, Input::QuickCraft),
         ];
-        if self.remote.is_some() {
-            return self.remote_menu_ops(&ops);
-        }
-        if !self.menu_ops(&ops) {
+        if self.remote.is_none() {
             return false;
         }
-        if let Some(key) = self.container {
-            self.container_changed(key);
-        }
-        true
+        self.remote_menu_ops(&ops)
     }
     /// `slot` takes one more of `stack`, by the open menu's rules.
     pub(in crate::game::client_side) fn slot_takes_one(

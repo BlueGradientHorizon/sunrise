@@ -34,12 +34,12 @@ impl<T> MenuOwner<T> {
         self.stamp.id
     }
 
-    pub(in crate::game::server_side) fn stamp(&self) -> OwnerStamp {
+    pub(in crate::game) fn stamp(&self) -> OwnerStamp {
         self.stamp
     }
 
     /// Undo content only. The owner and its revision must never roll back.
-    pub(in crate::game::server_side) fn restore(&mut self, value: T) {
+    pub(in crate::game) fn restore(&mut self, value: T) {
         self.stamp.revision.advance();
         self.value = value;
     }

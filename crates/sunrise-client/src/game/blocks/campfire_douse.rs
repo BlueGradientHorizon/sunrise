@@ -83,7 +83,7 @@ impl Game<'_> {
             return Ok(false);
         };
         // Level event 1009 (SOUND_EXTINGUISH_FIRE) goes to every player.
-        self.level_event_at(1009, pos, 0);
+        self.server_level_event_at(1009, pos, 0);
         self.post_block_game_event("minecraft:block_change", pos, self.sculk_actor(), None);
         self.level_set(pos, unlit)?;
         self.damage_held(1);

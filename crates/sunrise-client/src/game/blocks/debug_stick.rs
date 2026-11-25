@@ -119,7 +119,7 @@ impl Game<'_> {
                     flags::UPDATE_CLIENTS | flags::UPDATE_KNOWN_SHAPE,
                 );
             });
-            self.process_level_events()?;
+            self.server_process_level_events()?;
             self.server_send_overlay_message(text(
                 "item.minecraft.debug_stick.update",
                 &[property.as_str(), value.as_str()],

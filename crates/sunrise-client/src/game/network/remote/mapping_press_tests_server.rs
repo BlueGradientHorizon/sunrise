@@ -30,7 +30,7 @@ pub(in crate::game) mod input_burst_tests;
 fn a_creative_drop_sends_no_creative_slot() {
     with_pressing_game(|game, packets, _| {
         game.set_local_mode(sunrise_client::command::args::GameMode::Creative);
-        game.server.forced_hit = None;
+        game.set_test_forced_hit(None);
         game.inventory[game.selected] = Some(ItemStack::new("minecraft:stone", 16));
         // The setup's stack is the server's as well.
         game.remote_synced();
@@ -65,7 +65,7 @@ fn a_creative_drop_sends_no_creative_slot() {
 fn a_toolbar_load_goes_out_before_a_drop_in_its_tick() {
     with_pressing_game(|game, packets, _| {
         game.set_local_mode(sunrise_client::command::args::GameMode::Creative);
-        game.server.forced_hit = None;
+        game.set_test_forced_hit(None);
         game.inventory[game.selected] = Some(ItemStack::new("minecraft:stone", 16));
         game.remote_synced();
         // handleHotbarLoadOrSave puts the saved stack in the slot and sends it.
@@ -107,7 +107,7 @@ fn a_toolbar_load_goes_out_before_a_drop_in_its_tick() {
 fn clicking_attack_on_nothing_punches_and_waits_out_the_miss_cooldown() {
     with_pressing_game(|game, packets, _| {
         let attack_mapping = game.vanilla_key_mapping("key.attack").unwrap();
-        game.server.forced_hit = None;
+        game.set_test_forced_hit(None);
         assert_eq!(attack_mapping.set_down(game, true), Ok(()));
         assert_eq!(attack_mapping.click(game), Ok(()));
         game.remote_handle_input();
@@ -136,5 +136,5 @@ pub(in crate::game) fn stone_under_the_crosshair(game: &mut Game<'_>) {
         .default_state("minecraft:stone")
         .unwrap();
     game.world.set(0, 64, 0, stone).unwrap();
-    game.server.forced_hit = Some(hit());
+    game.set_test_forced_hit(Some(hit()));
 }

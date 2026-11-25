@@ -952,7 +952,7 @@ impl Game<'_> {
             }
         });
         self.carts.update(i, |stored| std::mem::swap(stored, c));
-        let _ = self.process_level_events();
+        let _ = self.server_process_level_events();
     }
     /// `AbstractMinecart`: `minecart_improvements` picks the smoother
     /// physics.
@@ -1974,30 +1974,6 @@ impl Game<'_> {
         }
         let top = c.bounds().max_position().y;
         target.unwrap_or(Vec3::new(c.position.x, top, c.position.z))
-    }
-    pub(in crate::game) fn cart_hit(&self) -> Option<(usize, f64)> {
-        if let Some(hit) = self.cached_entity_pick() {
-            let (entity, distance, _) = hit?;
-            let index = self.carts.iter().position(|f| f.id == entity.id())?;
-            return Some((index, distance));
-        }
-        let (eye, dir) = self.aim()?;
-        let reach: f64 = self.entity_reach;
-        let (from, to) = super::pick_accumulator::pick_ray_segment(eye, dir, reach);
-        let mut pick = super::pick_accumulator::PickAccumulator::new(reach * reach);
-        let mut best: Option<(usize, f64)> = None;
-        for (i, c) in self.carts.iter().enumerate() {
-            if pick.consider_box(
-                self,
-                c.id,
-                from,
-                to,
-                self.client_copy_box(c.id, c.position, c.bounds()),
-            ) {
-                best = Some((i, pick.hovered.unwrap().distance_sq.sqrt()));
-            }
-        }
-        best
     }
     /// The slots of the cart `id`, for a command: `getChestVehicleItem` and
     /// `setChestVehicleItem` first unpack its loot table with no player, so

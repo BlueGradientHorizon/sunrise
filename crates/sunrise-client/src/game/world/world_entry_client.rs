@@ -13,7 +13,7 @@ impl Game<'_> {
         entry: PendingWorldEntry,
     ) -> Result<bool> {
         self.poll_world_rest()?;
-        if self.rest_loader.0.is_none() {
+        if self.rest_loader.is_none() {
             return Ok(false);
         }
         self.perf.world_opening();
@@ -153,7 +153,7 @@ impl Game<'_> {
         self.poll_integrated_start()?;
         self.poll_world_rest()?;
         self.poll_world_creation();
-        if self.rest_loader.0.is_some() {
+        if self.rest_loader.is_some() {
             return Ok(());
         }
         let on_world_screens = self.title.0.as_ref().is_some_and(|title| {

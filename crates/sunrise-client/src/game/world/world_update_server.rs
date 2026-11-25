@@ -15,6 +15,7 @@ impl Game<'_> {
                 .save_later(modified, self.pack.assets.registry, world_biomes!(self))
         })
     }
+    pub(in crate::game) fn server_clear_lod(&mut self) {}
     #[inline(always)]
     pub(in crate::game) fn update_world_server(&mut self, dim: Dim) {
         // The configuration connection is not a guest and owns no player area.

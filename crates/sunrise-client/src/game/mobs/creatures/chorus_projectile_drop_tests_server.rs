@@ -72,7 +72,7 @@ fn default_drop_rng_continues_identically_with_table_sequence_or_level_fallback(
                 level.items = items;
                 assert!(b.destroy_block(level, ticks, BlockPos::new(4, 200, 4), true));
             });
-            game.process_level_events().unwrap();
+            game.server_process_level_events().unwrap();
             assert_eq!(game.dropped.len(), 1);
             let pool = game.server.rand_sequences.to_nbt();
             let sequence_words = match pool

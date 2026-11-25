@@ -191,35 +191,6 @@ impl Game<'_> {
     ) -> Option<sunrise_client::text::Text> {
         sunrise_client::stations::item_name_part(&self.loop_context, stack)
     }
-    /// `ItemStack.getStyledHoverName`, without the rarity colour applied by the tooltip.
-    pub(in crate::game) fn styled_stack_name(
-        &self,
-        stack: &ItemStack,
-    ) -> sunrise_client::text::Text {
-        let name = self.stack_hover_name_text(stack);
-        if stack.data().is_some_and(|data| data.custom_name.is_some()) {
-            sunrise_client::text::Text::empty().append(name).italic()
-        } else {
-            name
-        }
-    }
-    /// `ItemStack.getHoverName` as a component: the custom name or a written
-    /// book's title, else the name a mod item's Part gives the stack, else
-    /// vanilla's. The Part is asked at most once.
-    pub(in crate::game) fn stack_hover_name_text(
-        &self,
-        stack: &ItemStack,
-    ) -> sunrise_client::text::Text {
-        sunrise_client::stations::hover_name_in(&self.loop_context, &self.pack.names, stack)
-    }
-    /// `ItemStack.getItemName` as a component: the name a mod item's Part gives the stack, else
-    /// vanilla's, without the custom name or a book's title. The Part is asked at most once.
-    pub(in crate::game) fn stack_item_name_text(
-        &self,
-        stack: &ItemStack,
-    ) -> sunrise_client::text::Text {
-        sunrise_client::stations::item_name_in(&self.loop_context, &self.pack.names, stack)
-    }
     /// `ItemStack.isBarVisible`, `getBarWidth`, `getBarColor`, before client-only hooks.
     pub(in crate::game) fn item_resource_bar(&self, stack: &ItemStack) -> Option<mod_api::ItemBar> {
         use super::api_values::TryIntoApi;
@@ -729,7 +700,7 @@ pub(in crate::game) use crate::game::server_side::native_components_server::item
             game.set_mapping_held("key.use", true);
             game.client.screen = crate::game::Screen::Playing;
             game.inventory[game.selected] = Some(stack);
-            assert!(game.start_eating(&info));
+            assert!(game.server_start_eating(&info));
             assert!(game.using.is_some());
             game.tick_using_server();
             assert_eq!(game.held().unwrap().count, 2);

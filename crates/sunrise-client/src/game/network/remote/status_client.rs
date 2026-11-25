@@ -249,7 +249,7 @@ impl Game<'_> {
                         (None, Some(id)) => Some(sunrise_client::skins::NameOrId::Id(id)),
                         _ => None,
                     });
-                    key.and_then(|key| match self.skin_profiles.0.borrow_mut().state(&key) {
+                    key.and_then(|key| match self.skin_profiles.borrow_mut().state(&key) {
                         sunrise_client::skins::Resolve::Done(Some(profile)) => {
                             profile.textures().map(skins::unpack_insecure)
                         }

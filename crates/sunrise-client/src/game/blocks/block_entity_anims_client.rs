@@ -59,7 +59,7 @@ impl Game<'_> {
         // `Dynamic` (name- or id-only) profile.
         let download = skin.download.clone().or_else(|| {
             let key = skin.dynamic.as_ref()?;
-            let skins::Resolve::Done(Some(profile)) = self.skin_profiles.0.borrow_mut().state(key)
+            let skins::Resolve::Done(Some(profile)) = self.skin_profiles.borrow_mut().state(key)
             else {
                 return None;
             };
@@ -198,7 +198,7 @@ impl Game<'_> {
                     // of drawn block entities. Remote clients only animate their copy.
                     if self.remote.is_some() {
                         let tags = self.items().entity_type_tags.clone();
-                        self.tick_bell(pos, &tags);
+                        self.client_tick_bell(pos, &tags);
                     }
                 }
                 Ticker::Conduit => {

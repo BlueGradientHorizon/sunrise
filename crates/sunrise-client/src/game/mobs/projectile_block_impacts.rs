@@ -17,7 +17,7 @@ impl Game<'_> {
         if self.with_level(|blocks, level, ticks| {
             blocks.big_dripleaf_projectile_hit(level, ticks, BlockPos::new(pos[0], pos[1], pos[2]))
         }) {
-            self.process_level_events()?;
+            self.server_process_level_events()?;
         }
         Ok(())
     }
@@ -39,7 +39,7 @@ impl Game<'_> {
             b.target_projectile_hit(level, ticks, block, location, face, arrow)
         });
         if let Some(strength) = hit {
-            let _ = self.process_level_events();
+            let _ = self.server_process_level_events();
             self.native_target_hit(self.dim.id(), pos, strength);
             if p.owner == Some(Who::Player)
                 && (p.guest.is_none() || p.guest == self.server.lan_acting)

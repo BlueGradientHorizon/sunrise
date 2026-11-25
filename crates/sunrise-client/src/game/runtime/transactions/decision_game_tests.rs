@@ -214,7 +214,7 @@ fn real_save_gate_and_save_all_refuse_action_savepoint() {
 #[ignore = "daily"]
 fn a_save_is_refused_in_an_action_savepoint_a_special_item_is_drawn_in() {
     crate::game::in_own_process(
-        "game::server_side::transactions::decision::game_tests::a_save_is_refused_in_an_action_savepoint_a_special_item_is_drawn_in",
+        "game::transactions::decision::game_tests::a_save_is_refused_in_an_action_savepoint_a_special_item_is_drawn_in",
         a_save_is_refused_in_an_action_savepoint_a_special_item_is_drawn_in_isolated,
     );
 }

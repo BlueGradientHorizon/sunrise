@@ -219,7 +219,7 @@ impl Game<'_> {
             b.set_placed_by_state(level, ticks, BlockPos::new(x, y, z), placed);
         });
         let _ = self.set_placed_by(pos, None, stack);
-        let _ = self.process_level_events();
+        let _ = self.server_process_level_events();
     }
 
     /// The game-level part of `Block.setPlacedBy`, once the state-only part has run.

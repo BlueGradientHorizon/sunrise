@@ -742,7 +742,7 @@ impl Game<'_> {
                     _ => None,
                 },
             ),
-            Err(e) => return self.syntax_failure(&e, &line),
+            Err(e) => return self.client_syntax_failure(&e, &line),
         };
         if let Some(job) = match literals.get(1).map(String::as_str) {
             Some("open") => Some(Job::Open),

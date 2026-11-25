@@ -725,7 +725,7 @@ impl TeleportConsumeWorld for Teleporter<'_, '_> {
         offset: i32,
     ) -> Result<(), Infallible> {
         self.0
-            .level_event_at(2017, [origin.x, origin.y, origin.z], offset);
+            .server_level_event_at(2017, [origin.x, origin.y, origin.z], offset);
         Ok(())
     }
     fn reset_fall_distance(&mut self) -> Result<(), Infallible> {

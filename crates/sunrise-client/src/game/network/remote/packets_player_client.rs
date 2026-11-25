@@ -49,6 +49,7 @@ impl Game<'_> {
         self.client.test_highlights.clear();
         // handleLogin: `debugSubscriber.clear()`.
         self.client.debug_charts.clear_subscriptions();
+        self.client.debug_density.borrow_mut().clear();
         self.forget_synced_recipes();
         self.level.hardcore = p.hardcore;
         // handleLogin: startWaitingForNewLevel with Reason.OTHER, which

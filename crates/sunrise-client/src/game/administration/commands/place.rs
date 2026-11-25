@@ -93,7 +93,7 @@ impl Game<'_> {
                             b.place_inline_feature(level, ticks, &json, at)
                         })
                         .ok_or_else(|| err("command.failed", &[]))?;
-                    self.process_level_events()
+                    self.server_process_level_events()
                         .map_err(|_| err("command.failed", &[]))?;
                     if !placed {
                         return Err(err("commands.place.feature.failed", &[]));
@@ -113,7 +113,7 @@ impl Game<'_> {
                 let placed = self
                     .with_level(|b, level, ticks| b.place_feature(level, ticks, &name, at))
                     .ok_or_else(|| err("command.failed", &[]))?;
-                self.process_level_events()
+                self.server_process_level_events()
                     .map_err(|_| err("command.failed", &[]))?;
                 if !placed {
                     return Err(err("commands.place.feature.failed", &[]));
@@ -162,7 +162,7 @@ impl Game<'_> {
                 for entity in entities {
                     self.spawn_entity_from_nbt(Tag::Compound(entity));
                 }
-                self.process_level_events()
+                self.server_process_level_events()
                     .map_err(|_| err("command.failed", &[]))?;
                 if !placed {
                     return Err(err("commands.place.jigsaw.failed", &[]));

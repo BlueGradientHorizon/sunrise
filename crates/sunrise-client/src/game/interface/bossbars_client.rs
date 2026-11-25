@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use super::{
     Dim, Game,
-    commands::{R, Target, err},
+    commands_common::{R, Target, err},
 };
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::bossbars::BossState;

@@ -197,7 +197,7 @@ mod hatch_tests {
                     kind,
                 });
             }
-            game.process_level_events().unwrap();
+            game.server_process_level_events().unwrap();
 
             let (ghastling, tadpoles) = game.mobs.split_first().unwrap();
             assert_eq!(ghastling.kind.id, "minecraft:happy_ghast");

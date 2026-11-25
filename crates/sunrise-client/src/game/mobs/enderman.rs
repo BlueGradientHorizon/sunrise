@@ -161,12 +161,12 @@ impl Game<'_> {
             })
         });
         let Some(candidate) = candidate else {
-            return self.process_level_events();
+            return self.server_process_level_events();
         };
         // Keep the fork's entity_place veto, with the normalized state. A cancel
         // leaves the original carried block intact, even when it normalized to AIR.
         if self.place_canceled(mob, at, candidate.state, candidate.below, None) {
-            return self.process_level_events();
+            return self.server_process_level_events();
         }
         // A listener can change the candidate's blocks or the mob. Refuse that
         // stale attempt instead of overwriting its writes or normalizing twice.
@@ -182,12 +182,12 @@ impl Game<'_> {
             })
             .map(|m| m.kind.id.clone());
         let Some(kind) = kind else {
-            return self.process_level_events();
+            return self.server_process_level_events();
         };
         if self.world.block(pos[0], pos[1], pos[2]) != candidate.target
             || self.world.block(pos[0], pos[1] - 1, pos[2]) != candidate.below
         {
-            return self.process_level_events();
+            return self.server_process_level_events();
         }
         let facts = self.res.facts();
         let from = facts.get(candidate.target).name.clone();
@@ -211,7 +211,7 @@ impl Game<'_> {
         }) {
             m.extra.carried = None;
         }
-        self.process_level_events()?;
+        self.server_process_level_events()?;
         if changed {
             self.native_entity_change_block(mob, &kind, pos, &from, &to);
         }

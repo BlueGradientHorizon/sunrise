@@ -580,7 +580,7 @@ impl Game<'_> {
             (center.y - f64::from(1.0e-5f32)).floor() as i32,
             center.z.floor() as i32,
         ];
-        self.level_event_at(2013, on_pos, 750);
+        self.server_level_event_at(2013, on_pos, 750);
         let heavy = if fall > HEAVY_THRESHOLD { 2.0 } else { 1.0 };
         let player = Some(self.acting_uuid());
         for m in self.mobs.iter_mut().filter(|m| {

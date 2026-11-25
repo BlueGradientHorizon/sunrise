@@ -146,17 +146,7 @@ impl Game<'_> {
         if self.mob_hit().is_some_and(|(_, d, _)| d < t) {
             return false;
         }
-        if !self.uses_stored_pick()
-            && let (Some(hit), Some(eye)) = (self.pick_unfiltered(), self.eye_position())
-        {
-            let d = (0..3)
-                .map(|a| (hit.point[a] - eye[a]).powi(2))
-                .sum::<f64>()
-                .sqrt();
-            if d < t {
-                return false;
-            }
-        }
+        if !self.before_block(t) { return false; }
         if matches!(
             self.creatures.projectiles[i].kind,
             ProjectileKind::ShulkerBullet { .. }
@@ -219,7 +209,7 @@ impl Game<'_> {
             return false;
         };
         // A client's copy takes the box of its `entity_size` answer.
-        let b = self.client_copy_box(p.id, p.position, p.bounds());
+        let b = p.bounds();
         let (lo, hi) = (b.min_position(), b.max_position());
         let (lo, hi) = ([lo.x, lo.y, lo.z], [hi.x, hi.y, hi.z]);
         let d2: f64 = (0..3)

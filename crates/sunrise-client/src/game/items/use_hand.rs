@@ -272,7 +272,7 @@ impl Game<'_> {
                 } else {
                     (InteractionResult::Pass, UseBranch::ItemOn)
                 };
-                self.process_level_events()?;
+                self.server_process_level_events()?;
                 // CakeBlock.useItemOn: the candle is used up and counted.
                 if block_answer.is_none()
                     && adds_candle
@@ -573,7 +573,7 @@ impl Game<'_> {
             return Ok(true);
         }
         // Block foods attempt placement before starting consumption.
-        if !on_block && (info.block.is_none() || block_hit.is_none()) && self.start_eating(&info) {
+        if !on_block && (info.block.is_none() || block_hit.is_none()) && self.server_start_eating(&info) {
             return Ok(true);
         }
         // BoatItem.use also performs its own fluid/block raycast.
@@ -624,7 +624,7 @@ impl Game<'_> {
         }
         if !self.may_use_on(hit.pos) {
             // ItemStack.useOn passes in adventure mode; useItem eats.
-            return Ok(!on_block && self.start_eating(&info));
+            return Ok(!on_block && self.server_start_eating(&info));
         }
         let face = match hit.face {
             [0, 1, 0] => Direction::Up,
@@ -649,10 +649,10 @@ impl Game<'_> {
             can_use_game_master_blocks: self.can_use_game_master_blocks(),
         };
         let Some(placed) = self.place_item_block(&ctx, true, &stack)? else {
-            self.process_level_events()?;
+            self.server_process_level_events()?;
             // BlockItem.useOn: a consumable that could not be placed is used,
             // which ItemStack.useOn counts as a use of the item.
-            if self.start_eating(&info) {
+            if self.server_start_eating(&info) {
                 self.award_stat("used", &stack.item, 1);
             } else {
                 // BlockItem.place's FAIL.
@@ -676,7 +676,7 @@ impl Game<'_> {
                 }
             }
         }
-        self.process_level_events()?;
+        self.server_process_level_events()?;
         self.award_stat("used", &stack.item, 1);
         self.check_golem_spawn(target)?;
         self.consume_placed(&stack);
