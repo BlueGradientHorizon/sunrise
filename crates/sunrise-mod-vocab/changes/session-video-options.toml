@@ -1,0 +1,3 @@
+ids = ["method:prelude::ClientOptionsClientHost::set_session_vsync", "method:prelude::ClientOptionsClientHost::set_session_clouds", "method:prelude::ClientOptionsClientHost::cloud_status", "type:CloudStatus"]
+why = "A client mod changes VSync and the clouds for this session only, without writing options.txt, and the surface is reconfigured as changing the option does (Options.enableVsync, Options.cloudStatus, Minecraft.invalidateSurfaceConfiguration); Dynamic FPS turns them down while the window is in the background (#5553). graphics_options().vsync now reads the VSync in effect."
+migrate = "Nothing to change: additive. graphics_options().vsync is the player's option unless a mod set the session's."

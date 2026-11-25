@@ -629,11 +629,12 @@ impl Game<'_> {
             self.settings.sunrise.save(dir);
         }
         self.hold_fullbright();
+        let vsync = self.effective_vsync();
         let s = &self.settings;
         if let Some(r) = self.renderer.as_mut() {
             r.gamma = s.gamma as f32;
             r.improved_transparency = s.improved_transparency;
-            r.set_present_mode(s.vsync, s.sunrise.present_mode);
+            r.set_present_mode(vsync, s.sunrise.present_mode);
             r.animated_textures = s.sunrise.animated_textures;
             r.screenshot_quality = s.sunrise.screenshot_quality;
             r.set_mipmap_levels(s.mipmap_levels.max(0) as u32);
