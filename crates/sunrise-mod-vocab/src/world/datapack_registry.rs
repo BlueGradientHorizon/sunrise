@@ -345,6 +345,7 @@ pub trait VanillaValueDecoder {
 }
 
 /// A decoder for schemas with no vanilla value kind: every decode is refused.
+// exhaustive: a unit marker with no fields to add
 pub struct NoVanillaValueDecoder;
 impl VanillaValueDecoder for NoVanillaValueDecoder {
     fn decode_int_provider(&mut self, _: &str, _: i32, _: i32) -> Result<IntProviderValue, String> {
