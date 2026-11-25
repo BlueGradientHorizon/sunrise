@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 import subprocess
@@ -30,8 +31,6 @@ ROOT = Path(__file__).resolve().parents[2]
 MANIFEST = ROOT / "tools" / "launcher_mirrors.toml"
 MANIFEST_PATH = "tools/launcher_mirrors.toml"
 MARKER = "launcher-mirror:"
-if str(ROOT / "tools") not in sys.path:
-    sys.path.insert(0, str(ROOT / "tools"))
 PUBLIC = {"struct", "enum", "trait", "fn", "type", "const", "static", "mod", "use", "union", "macro_rules"}
 KEEP_ATTRIBUTES = ("cfg", "non_exhaustive", "doc(hidden)")
 
@@ -99,13 +98,23 @@ def _declaration(values, i):
     return " ".join(header), i
 
 
-def public_surface(source):
-    """Public declarations of one Rust source file, normalized token by token."""
+def _load_code_tokens():
+    """`tools/rust_tokens.code_tokens`, by path: importing this module must not edit `sys.path`."""
     try:
         from tools.rust_tokens import code_tokens
     except ImportError:
-        from rust_tokens import code_tokens
+        spec = importlib.util.spec_from_file_location("rust_tokens", ROOT / "tools" / "rust_tokens.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        code_tokens = module.code_tokens
+    return code_tokens
 
+
+code_tokens = _load_code_tokens()
+
+
+def public_surface(source):
+    """Public declarations of one Rust source file, normalized token by token."""
     values = [value for value, _ in code_tokens(source)]
     surface, i, pending = [], 0, []
     while i < len(values):
