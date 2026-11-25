@@ -232,6 +232,27 @@ pub trait ClientRenderClientHost {
         &self,
         desc: &StorageBufferDescriptor,
     ) -> Result<StorageBufferRef, BufferError>;
+    /// Side: client.
+    /// Allocate a mod-owned offscreen GPU render target (`RenderTarget` / `TextureTarget`),
+    /// returning an owner-checked generational [`RenderTargetRef`] handle.
+    ///
+    /// Size is validated against `1..=device.limits().max_texture_dimension_2d`, colour
+    /// attachments against `0..=MAX_COLOR_TARGETS` (with at least one colour or depth
+    /// attachment), `mip_levels` against `1..=RenderTargetDescriptor::max_mip_levels(size)` and
+    /// a requested storage access against the adapter ([`RenderCapabilities`]): all before any
+    /// GPU call, and the allocation itself sits in error scopes, so a refusal is an `Err`.
+    /// Contents are retained across frames until reallocated by [`RenderTargetRef::resize`]. A
+    /// target survives a resource reload and a world close, and is freed by
+    /// [`RenderTargetRef::release`] or when its mod unloads. A device refusal (out of memory or
+    /// a validation failure) is [`RenderTargetError::Device`].
+    fn create_render_target(
+        &self,
+        desc: &RenderTargetDescriptor,
+    ) -> Result<RenderTargetRef, RenderTargetError>;
+    /// Side: client.
+    /// The optional device features render code can use, read from the adapter the game runs on
+    /// ([`RenderCapabilities`]).
+    fn render_capabilities(&self) -> RenderCapabilities;
 }
 
 /// The retained instance-group and mesh operations behind [`InstanceGroupRef`] and [`MeshRef`].
@@ -322,4 +343,20 @@ pub trait ClientRenderClientBackend {
     /// Writes queued for it and not yet applied are dropped.
     #[manual_handle]
     fn storage_buffer_release(&self, buffer: StorageBufferRef) -> Result<(), BufferError>;
+    /// Resize a mod-owned offscreen render target (no-op if unchanged); called through
+    /// [`RenderTargetRef::resize`].
+    #[manual_handle]
+    fn render_target_resize(
+        &self,
+        target: RenderTargetRef,
+        size: [u32; 2],
+    ) -> Result<(), RenderTargetError>;
+    /// Query a mod-owned offscreen render target's pixel dimensions; called through
+    /// [`RenderTargetRef::size`].
+    #[manual_handle]
+    fn render_target_size(&self, target: RenderTargetRef) -> Result<[u32; 2], RenderTargetError>;
+    /// Free a mod-owned offscreen render target and retire the handle; called through
+    /// [`RenderTargetRef::release`].
+    #[manual_handle]
+    fn render_target_release(&self, target: RenderTargetRef) -> Result<(), RenderTargetError>;
 }

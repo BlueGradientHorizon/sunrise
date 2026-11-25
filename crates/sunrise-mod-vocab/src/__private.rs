@@ -366,6 +366,16 @@ pub mod built {
     pub fn mesh_ref(generation: u64, slot: u32) -> crate::MeshRef {
         crate::MeshRef::from_parts(generation, slot).expect("published mesh generation")
     }
+    /// The renderer's [`crate::RenderCapabilities`].
+    pub fn render_capabilities(
+        float32_filterable: bool,
+        read_write_storage: Vec<crate::RenderTargetFormat>,
+    ) -> crate::RenderCapabilities {
+        crate::RenderCapabilities {
+            float32_filterable,
+            read_write_storage,
+        }
+    }
     /// Wrap a slot in the retained GPU storage buffer store.
     pub fn storage_buffer_ref(generation: u64, slot: u32) -> crate::StorageBufferRef {
         crate::StorageBufferRef::from_parts(generation, slot)
@@ -375,6 +385,11 @@ pub mod built {
     pub fn uniform_buffer_ref(generation: u64, slot: u32) -> crate::UniformBufferRef {
         crate::UniformBufferRef::from_parts(generation, slot)
             .expect("published uniform buffer generation")
+    }
+    /// Wrap a slot in the retained GPU offscreen render target store.
+    pub fn render_target_ref(generation: u64, slot: u32) -> crate::RenderTargetRef {
+        crate::RenderTargetRef::from_parts(generation, slot)
+            .expect("published render target generation")
     }
 }
 

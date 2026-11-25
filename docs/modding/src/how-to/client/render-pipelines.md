@@ -273,6 +273,41 @@ the device's `max_storage_buffer_binding_size` bytes and at least `min_size`
 vertex stage needs `VERTEX_WRITABLE_STORAGE`; a device without it refuses such a pipeline. Every
 refusal is a `BufferError` or `PipelineDrawError`, never a panic.
 
+## Mip chains and storage images on render targets
+
+A render target made with `host.create_render_target(&desc)` can carry a mip chain, the way a
+vanilla `GpuTexture` has `getMipLevels()`: `RenderTargetDescriptor::new(size)
+.color_target(RenderTargetFormat::R32Float).mip_levels(n)`, with `n` from 1 to
+`RenderTargetDescriptor::max_mip_levels(size)` (`32 - max(width, height).leading_zeros()`). A depth
+attachment keeps one level.
+`TextureSource::RenderTargetColorMip(RenderTargetMipView::new(target, attachment, base_mip,
+mip_levels))` samples a range of levels, as vanilla's `GpuTextureView` has `baseMipLevel()` and
+`mipLevels()`. A render pass gives each level one usage, so a level a draw writes as a storage
+image cannot also be sampled, or bound with another storage access, by any draw of that pass:
+a draw that does so itself is refused with `PipelineDrawError::TargetReadWriteHazard`, and the
+conflicting draws of one pass are skipped with one warning per target. Sample level `k` in a draw
+of a different pass than the one that writes level `k + 1`, or sample only levels the pass does not
+write.
+
+For a shader that writes a level directly (a depth pyramid, a blur chain), create the target with
+`.storage(StorageImageAccess::WriteOnly)`, declare the image in the layout with
+`BindEntry::new("Next", BindingKind::StorageImage { access: StorageImageAccess::WriteOnly })`, write
+`layout(r32f) writeonly uniform image2D Next;` in GLSL (`rgba8`, `rgba16f` and `r32f` are the
+formats a target can have; the shader's `readonly`/`writeonly` qualifiers must agree with the
+access), and bind one level with `DrawBindings::new().storage_image("Next",
+StorageImageBinding::new(target, 0, level))`. A target can be used as a storage image only in the
+access it was created for (`ReadWrite` covers both others). A storage image format needs the
+adapter's `TextureFormatFeatures::allowed_usages` to include `STORAGE_BINDING`, and its `flags` to
+include `STORAGE_WRITE_ONLY`, `STORAGE_READ_ONLY` or `STORAGE_READ_WRITE` for the access; a format
+or access the adapter lacks is refused when the target is created, with
+`RenderTargetError::UnsupportedStorage`. `host.render_capabilities()` lists the formats with
+read-write storage in `read_write_storage`, and `float32_filterable` says whether an `R32Float`
+target can be sampled with `SamplerFilter::Linear`. A device refusal of the allocation itself is
+`RenderTargetError::Device`.
+
+A render target survives a resource reload and a world close, and is freed by
+`target.release(host)` or when its mod unloads.
+
 ## Participating in translated shader packs
 
 When an Iris/OptiFine shader pack is active and owns terrain rendering, a mod pipeline without a
