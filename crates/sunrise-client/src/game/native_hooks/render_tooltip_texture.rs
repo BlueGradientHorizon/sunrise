@@ -211,18 +211,14 @@ pub(in crate::game) mod render_tooltip_texture_tests {
     fn a_mod_gives_a_tooltip_its_own_texture_or_colours() {
         let stick = ItemStack::new("minecraft:stick", 1);
         let stone = ItemStack::new("minecraft:stone", 1);
-        let mut unheard = Vec::new();
-        crate::game::native_entity_refs::tests::with_client_game(|game| {
-            unheard = [None, Some(&stick)]
-                .map(|stack| drawn(game, stack))
-                .to_vec();
-        });
-        // The solid fills: the background's three, the two borders' and their gradient sides.
-        assert_eq!(unheard[0].len(), 7 * 6);
-        assert_eq!(unheard[0], unheard[1]);
         let mods: mod_api::Mods = vec![ModEntry::new("gold", Box::new(Gold))].into();
-        with_mods(mods, || {
-            crate::game::native_entity_refs::tests::with_client_game(|game| {
+        // Keep baseline and modded draws on one atlas so `atlas.white`'s UV matches (#4437).
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
+            let unheard = [None, Some(&stick)].map(|stack| drawn(game, stack));
+            // The solid fills: the background's three, the two borders' and their gradient sides.
+            assert_eq!(unheard[0].len(), 7 * 6);
+            assert_eq!(unheard[0], unheard[1]);
+            with_mods(mods, || {
                 let names =
                     ["background", "frame"].map(|part| format!("lobby:tooltip/gold_{part}"));
                 // No pack has the style: the stick keeps the fills.

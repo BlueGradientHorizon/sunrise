@@ -231,21 +231,56 @@ fn primary_answers_are_asked_at_install_and_read_by_selection() {
 #[test]
 #[ignore = "daily"]
 fn a_client_refresh_keeps_and_a_world_close_retires_the_servers_answers() {
-    use crate::game::execution_role::ExecutionRole;
     with_parts(|game, answers| {
         *answers.primary.lock().unwrap() = vec![("minecraft:stick".into(), true)];
         game.resolve_parts().unwrap();
         let level_3 = vec![(SHARPNESS.to_owned(), 3)];
         assert_eq!(sharpness_at_30(game, "minecraft:stick"), level_3);
         let asked = *answers.primary_asked.lock().unwrap();
-        // A logical client's tag install (a client refresh on an integrated server, which may
-        // share this snapshot) neither asks nor clears: the server's answers stay.
-        game.options.execution_role = ExecutionRole::Client;
-        *answers.primary.lock().unwrap() = Vec::new();
-        game.resolve_primary_items();
+        // A client sharing this Resources snapshot neither asks nor clears the server's answers.
+        #[cfg(feature = "client")]
+        {
+            use crate::game::{
+                Audio, ClientGame, Options, Progress, Settings, execution_role::ExecutionRole,
+                load_resources, native_entity_refs::tests::fixture_root,
+            };
+            let root = fixture_root();
+            let saves = tempfile::tempdir().unwrap();
+            let settings = Settings::default();
+            let loaded = load_resources(
+                sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
+                Vec::new(),
+                None,
+                &root,
+                &settings,
+                std::time::Instant::now(),
+                false,
+                ExecutionRole::Client,
+                &Progress::new(),
+                &mut |_, _| unreachable!(),
+            )
+            .unwrap();
+            let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
+            options.resources = root.clone();
+            options.execution_role = ExecutionRole::Client;
+            options.game_dir = Some(saves.path().to_path_buf());
+            let client = ClientGame::new(
+                &game.res,
+                loaded.pack,
+                loaded.gui.unwrap(),
+                options,
+                settings,
+                Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
+                    root,
+                )),
+                None,
+            )
+            .unwrap();
+            *answers.primary.lock().unwrap() = Vec::new();
+            client.resolve_primary_items();
+        }
         assert_eq!(*answers.primary_asked.lock().unwrap(), asked);
         assert_eq!(sharpness_at_30(game, "minecraft:stick"), level_3);
-        game.options.execution_role = ExecutionRole::IntegratedServer;
         // The server's world closes with its parts: the answers are retired.
         game.clear_world_parts();
         assert!(sharpness_at_30(game, "minecraft:stick").is_empty());

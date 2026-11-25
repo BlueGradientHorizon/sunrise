@@ -1356,15 +1356,15 @@ fn data_maps_updated_fires_for_each_registry_on_first_open_and_every_reload() {
                 reads.lock().unwrap()[1],
                 [Ok(Some(25)), Ok(None), Ok(None), unknown, Ok(Some(3))]
             );
-            // A game that isn't a server holds no maps it may answer, even with
-            // tables built.
-            game.options.dedicated = None;
-            game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
+            let _ = std::fs::remove_dir_all(root);
+        });
+        // A client holds no server data maps it may answer.
+        #[cfg(feature = "client")]
+        crate::game::native_entity_refs::tests::with_client_game(|client| {
             assert_eq!(
-                game.data_map_value("minecraft:item", "minecraft:coal", "probe:fuel"),
+                client.data_map_value("minecraft:item", "minecraft:coal", "probe:fuel"),
                 Err(DataMapError::Unavailable)
             );
-            let _ = std::fs::remove_dir_all(root);
         });
     });
 }

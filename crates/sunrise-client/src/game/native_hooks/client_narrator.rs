@@ -1,21 +1,17 @@
 //! `ClientNarratorClientHost::narrate`: a client mod's line for the player's
 //! narrator, through the game's own `GameNarrator` (vanilla's
 //! `Minecraft.getNarrator()`).
-use super::*;
 use mod_api::{NarrateError, Narration};
 use sunrise_narrator::GameNarrator;
 
-impl<__Side: crate::game::Side> Game<'_, __Side> {
+#[cfg(feature = "client")]
+impl crate::game::ClientGame<'_> {
     pub(in crate::game) fn narrate(
         &mut self,
         text: &sunrise_client::text::Text,
         when: Narration,
     ) -> Result<(), NarrateError> {
-        // A server thread's `Game` shares the process's narrator but has no
-        // `Minecraft` to narrate for, as `Game::narrates` says.
-        if !self.options.execution_role.is_client() {
-            return Err(NarrateError::Unavailable);
-        }
+        debug_assert!(self.options.execution_role.is_client());
         let line = text.plain();
         sunrise_narrator::with_narrator(|narrator| say_for_mod(narrator, &line, when))
     }

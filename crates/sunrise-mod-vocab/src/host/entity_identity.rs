@@ -27,14 +27,15 @@ pub trait EntityIdentityBackend {
     /// its tracking pass. A player is not among its own trackers. Fake players track nothing.
     /// None on a client, and for a stale handle or an entity that is not in the level in place.
     fn entity_trackers(&self, entity: EntityRef) -> Option<Vec<PlayerRef>>;
-    /// Side: server.
+    /// Side: both.
     /// The entity's resolved type key (`Entity.getType`). Compare keys directly;
     /// request `key.id(host)` explicitly when its canonical name is needed.
-    /// A general row returns its declared type. This read,
-    /// `entity_uuid` and `entity_level` also answer for a mob a kill credit
+    /// A general row returns its declared type. On a client, answers for the
+    /// local player and tracked entities (including displays). On a server, this
+    /// read, `entity_uuid` and `entity_level` also answer for a mob a kill credit
     /// names in another loaded level. API 373.
     fn entity_kind(&self, entity: EntityRef) -> Option<EntityTypeKey>;
-    /// Side: server.
+    /// Side: both.
     /// The level the entity is in (`Entity.level`): on a client, the
     /// client's level. API 373.
     fn entity_level(&self, entity: EntityRef) -> Option<LevelRef>;

@@ -29,7 +29,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(g) = host.hub.guests.get(gi) else {
             return;
         };
-        let (conn, uuid) = (g.conn, g.uuid);
+        let uuid = g.uuid;
         let eye = [
             g.position[0],
             g.position[1] + g.eye_height() - f64::from(0.3f32),
@@ -37,32 +37,28 @@ impl Game<'_, crate::game::server_side::ServerState> {
         ];
         let (yaw, pitch) = (g.yaw, g.pitch);
         let mut r = sunrise_client::random_source::entity(); // the guest's Entity.random
-        let mut toss = |game: &mut Self, stacks: Vec<ItemStack>| {
-            for stack in stacks {
-                let v = sunrise_client::entities::drop_motion(&mut r, yaw, pitch, false);
-                game.toss_item(stack, eye, v, None);
+        // Emit toss/join directly without opening a guest turn so listeners may remove guests.
+        for stack in stacks {
+            let v = sunrise_client::entities::drop_motion(&mut r, yaw, pitch, false);
+            self.push_item_entity(stack, eye, Some(v), 40, None);
+            let id = self.side.next_entity;
+            if mod_api::__private::listened(mod_api::HookId::ItemToss)
+                && let Some(item) = self.native_item_handle(id)
+            {
+                let mut canceled = false;
+                self.native_lifecycle.held_joins.push(id);
+                self.native_item_toss(uuid, item, &mut canceled);
+                self.native_lifecycle.held_joins.pop();
+                if canceled {
+                    if let Some(at) = self.dropped.iter().rposition(|d| d.id == id) {
+                        self.remove_dropped(at);
+                    }
+                    self.forget_entity(id);
+                    self.native_joins_flush(false, 0);
+                    continue;
+                }
             }
-        };
-        if self.side.lan_acting == Some(conn) {
-            toss(self, stacks);
-            return;
-        }
-        let mut remaining = Some(stacks);
-        let _ = self.as_guest_at(gi, conn, |game| {
-            if let Some(stacks) = remaining.take() {
-                toss(game, stacks);
-            }
-        });
-        // Fallback when `conn` is already suspended under a nested guest turn.
-        if let Some(stacks) = remaining {
-            let prev = self.side.lan_acting_uuid.replace(uuid);
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                toss(self, stacks);
-            }));
-            self.side.lan_acting_uuid = prev;
-            if let Err(payload) = result {
-                std::panic::resume_unwind(payload);
-            }
+            let _ = self.join_item_entity(id, eye);
         }
     }
 

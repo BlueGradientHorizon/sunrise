@@ -177,9 +177,23 @@ fn bumpers_step_the_hotbar_where_the_wheel_does() {
 #[test]
 #[ignore = "daily"]
 fn a_spectators_bumpers_set_the_flying_speed_as_the_wheel_does() {
+    use sunrise_protocol::packets::play::{self, Clientbound as C};
     playing(|game| {
+        let _server = crate::game::native_client_session::tests::logged_client(game);
+        game.side.screen = Screen::Playing;
         with_player(game);
         game.mode = GameMode::Spectator;
+        game.handle_packet(C::PlayerInfoUpdate(play::PlayerInfoUpdate {
+            actions: 0x01 | 0x04 | 0x08,
+            entries: vec![play::PlayerInfo {
+                uuid: 42,
+                name: Some("SessionReadTest".into()),
+                game_mode: Some(GameMode::Spectator.id()),
+                listed: Some(true),
+                ..play::PlayerInfo::default()
+            }],
+        }))
+        .unwrap();
         game.selected = 3;
         let speed = game.player.as_ref().unwrap().flying_speed;
         game.pad_action("pad.hotbarPrevious", true).unwrap();

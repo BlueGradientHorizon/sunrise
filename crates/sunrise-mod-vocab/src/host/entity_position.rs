@@ -12,9 +12,10 @@ pub trait EntityPositionBackend {
     /// position after movement interpolation, not the packet destination or draw-frame
     /// pose. Returns `None` for an unresolved handle.
     fn entity_position(&self, entity: EntityRef) -> Option<[f64; 3]>;
-    /// Side: server.
-    /// The block the entity's position is in (`Entity.blockPosition`). API
-    /// 373.
+    /// Side: both.
+    /// The block the entity's position is in (`Entity.blockPosition`), derived
+    /// from `entity_position`: on a client, answers for the local player and
+    /// tracked entities (including displays). API 373.
     fn entity_block_position(&self, entity: EntityRef) -> Option<[i32; 3]>;
     /// Side: both.
     /// The entity's yaw and pitch in degrees (`Entity.getYRot`, `getXRot`); 0

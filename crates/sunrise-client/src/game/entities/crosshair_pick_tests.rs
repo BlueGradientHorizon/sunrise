@@ -870,15 +870,14 @@ pub(in crate::game::client_side) fn run_singleplayer_and_unstored_pick_share_uni
     in_own_process(
         "game::client_side::crosshair_pick_tests::singleplayer_and_unstored_pick_share_unified_query_and_root_exclusion_26_3",
         || {
-            with_client_game(|game| {
-                game.options.execution_role =
-                    crate::game::execution_role::ExecutionRole::IntegratedServer;
+            with_game(|game| {
                 assert!(
-                    !game.uses_stored_pick(),
-                    "unstored pick path must stay active for singleplayer/unstored cases"
+                    !game.side_uses_stored_pick(),
+                    "with_game exercises the unstored server pick path"
                 );
-                ensure_chunk(game, 0, 0);
-                game.side.title.0 = None;
+                game.world
+                    .chunks
+                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
                 game.block_reach = 4.5;
                 game.entity_reach = 3.0;
                 let registry = game.pack.assets.registry;
@@ -886,7 +885,7 @@ pub(in crate::game::client_side) fn run_singleplayer_and_unstored_pick_share_uni
                 let sand = registry.default_state("minecraft:sand").unwrap();
                 let air = registry.default_state("minecraft:air").unwrap();
 
-                let place_player = |game: &mut crate::game::ClientGame<'_>,
+                let place_player = |game: &mut crate::game::ServerGame<'_>,
                                     pos: [f64; 3],
                                     yaw: f32,
                                     pitch: f32| {
@@ -899,7 +898,7 @@ pub(in crate::game::client_side) fn run_singleplayer_and_unstored_pick_share_uni
                     game.pitch = pitch;
                 };
 
-                // A: singleplayer primed TNT occludes stone behind it and reports no getPickResult.
+                // A: server primed TNT occludes stone behind it and reports no getPickResult.
                 place_player(game, [0.5, 64.0, 0.5], 0.0, 0.0);
                 game.world.set(0, 65, 4, stone).unwrap();
                 let tnt_pos = Vec3::new(0.5, 65.1, 2.5);
@@ -925,28 +924,16 @@ pub(in crate::game::client_side) fn run_singleplayer_and_unstored_pick_share_uni
                     used_portal: false,
                     block_state: None,
                 });
-                assert_eq!(
-                    game.crosshair_entity_id(),
-                    Some(10),
-                    "singleplayer TNT crosshair_entity_id"
-                );
-                assert!(game.entity_targeted(), "singleplayer TNT entity_targeted");
-                assert_eq!(
-                    game.spectator_click_target(),
-                    Some(10),
-                    "singleplayer TNT spectator_click_target"
-                );
-                assert_eq!(
-                    game.pick_entity_hit(),
-                    Some(None),
-                    "singleplayer TNT has no pick result"
-                );
+                let hit = game.server_crosshair_entity_hit().expect("server TNT hit");
+                assert_eq!(hit.id, 10, "singleplayer TNT crosshair_entity_id");
+                assert!(!hit.pickable, "singleplayer TNT has no pick result");
+                assert!(game.pick().is_none(), "singleplayer TNT occludes stone");
                 assert!(
                     game.within_entity_range(10),
                     "singleplayer TNT within_entity_range"
                 );
 
-                // B: singleplayer falling sand occludes stone behind it and reports no getPickResult.
+                // B: server falling sand occludes stone behind it and reports no getPickResult.
                 game.tnts.clear();
                 let fb_pos = Vec3::new(0.5, 65.1, 2.5);
                 game.falling.push(FallingBlock {
@@ -973,31 +960,24 @@ pub(in crate::game::client_side) fn run_singleplayer_and_unstored_pick_share_uni
                     damage: Default::default(),
                     saved: None,
                 });
-                assert_eq!(
-                    game.crosshair_entity_id(),
-                    Some(20),
-                    "singleplayer falling block crosshair_entity_id"
+                let hit = game
+                    .server_crosshair_entity_hit()
+                    .expect("server falling block hit");
+                assert_eq!(hit.id, 20, "singleplayer falling block crosshair_entity_id");
+                assert!(
+                    !hit.pickable,
+                    "singleplayer falling block has no pick result"
                 );
                 assert!(
-                    game.entity_targeted(),
-                    "singleplayer falling block entity_targeted"
-                );
-                assert_eq!(
-                    game.spectator_click_target(),
-                    Some(20),
-                    "singleplayer falling block spectator_click_target"
-                );
-                assert_eq!(
-                    game.pick_entity_hit(),
-                    Some(None),
-                    "singleplayer falling block has no pick result"
+                    game.pick().is_none(),
+                    "singleplayer falling block occludes stone"
                 );
                 assert!(
                     game.within_entity_range(20),
                     "singleplayer falling block within_entity_range"
                 );
 
-                // C: unmounted singleplayer player carrying a pig excludes the pig and hits ceiling stone.
+                // C: unmounted server player carrying a pig excludes the pig and hits ceiling stone.
                 game.falling.clear();
                 game.world.set(0, 65, 4, air).unwrap();
                 game.world.set(0, 68, 0, stone).unwrap();
@@ -1008,23 +988,13 @@ pub(in crate::game::client_side) fn run_singleplayer_and_unstored_pick_share_uni
                 pig.extra.mount = Some(1);
                 pig.extra.passenger = true;
                 game.mobs.push(pig);
-                assert_eq!(
-                    game.crosshair_entity_id(),
-                    None,
-                    "pig riding unmounted player must be excluded"
-                );
                 assert!(
-                    !game.entity_targeted(),
-                    "pig riding unmounted player must not be targeted"
-                );
-                assert_eq!(
-                    game.spectator_click_target(),
-                    None,
-                    "pig riding unmounted player must not be spectator target"
+                    game.server_crosshair_entity_hit().is_none(),
+                    "pig riding unmounted player must be excluded"
                 );
                 assert_eq!(game.pick().map(|h| h.pos), Some([0, 68, 0]));
 
-                // D: singleplayer camel rider with eye inside camel box looks through co-passenger husk to external TNT.
+                // D: server camel rider with eye inside camel box looks through co-passenger husk to external TNT.
                 game.mobs.clear();
                 game.world.set(0, 68, 0, air).unwrap();
                 let camel_type = game.res.mob_types().get("minecraft:camel").unwrap().clone();
@@ -1061,19 +1031,12 @@ pub(in crate::game::client_side) fn run_singleplayer_and_unstored_pick_share_uni
                 game.riding = Some(130);
                 place_player(game, [0.5, 64.17, 0.0], 0.0, 0.0);
                 assert_eq!(
-                    game.crosshair_entity_id(),
+                    game.server_crosshair_entity_hit().map(|h| h.id),
                     Some(201),
                     "unified unstored pick must pick TNT past camel co-passenger"
                 );
-                assert_eq!(
-                    game.spectator_click_target(),
-                    Some(201),
-                    "spectator_click_target must pick TNT past camel co-passenger"
-                );
-                assert!(game.entity_targeted());
 
-                // E: server horse excludes ArmorStand co-passenger, and connected client horse
-                // excludes RemoteInteraction co-passenger, both picking external falling block.
+                // E (server): server horse excludes ArmorStand co-passenger, picking external falling block.
                 game.mobs.clear();
                 game.tnts.clear();
                 let horse_type = game.res.mob_types().get("minecraft:horse").unwrap().clone();
@@ -1110,108 +1073,15 @@ pub(in crate::game::client_side) fn run_singleplayer_and_unstored_pick_share_uni
                 game.riding = Some(110);
                 place_player(game, [0.5, 65.0, 0.5], 0.0, 0.0);
                 assert_eq!(
-                    game.crosshair_entity_id(),
+                    game.server_crosshair_entity_hit().map(|h| h.id),
                     Some(202),
                     "horse co-passenger stand must be excluded"
                 );
-                assert_eq!(
-                    game.spectator_click_target(),
-                    Some(202),
-                    "spectator_click_target must skip co-passenger stand"
-                );
-                with_client_game(|game| {
-                    game.side.title.0 = None;
-                    game.block_reach = 4.5;
-                    game.entity_reach = 3.0;
-                    let sand = game
-                        .pack
-                        .assets
-                        .registry
-                        .default_state("minecraft:sand")
-                        .unwrap();
-                    let _pipe = crate::game::native_client_session::tests::logged_client(game);
-                    game.world
-                        .chunks
-                        .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-                    let horse_type = game.res.mob_types().get("minecraft:horse").unwrap().clone();
-                    game.mobs
-                        .push(Mob::new(110, horse_type, Vec3::new(0.5, 64.0, 0.5), 0.0));
-                    game.falling.push(FallingBlock {
-                        size_answer: None,
-                        attachment_lifetime: Default::default(),
-                        rotation: [0.0, 0.0],
-                        join: Default::default(),
-                        id: 202,
-                        state: sand,
-                        blocks_building: true,
-                        start_pos: BlockPos::new(0, 66, 2),
-                        position: behind_fb,
-                        previous: behind_fb,
-                        velocity: Vec3::ZERO,
-                        age: 0,
-                        no_gravity: false,
-                        portal: Default::default(),
-                        drop_item: false,
-                        fall_distance: 0.0,
-                        ground: Default::default(),
-                        fire_ticks: 0,
-                        sync_velocity: false,
-                        stuck: Vec3::ZERO,
-                        damage: Default::default(),
-                        saved: None,
-                    });
-                    let mut inter = RemoteInteraction::new([0.5, 66.1, 1.9]);
-                    inter.vehicle = Some(110);
-                    inter.dimensions_refreshed = true;
-                    game.side.interactions.insert(113, inter);
-                    game.riding = Some(110);
-                    place_player(game, [0.5, 65.0, 0.5], 0.0, 0.0);
-                    let remote = game.remote.as_mut().unwrap();
-                    remote.entity_id = 1;
-                    remote.entities.insert(
-                        113,
-                        crate::game::remote::Tracked {
-                            kind: "minecraft:interaction".into(),
-                            position: [0.5, 66.1, 1.9],
-                            previous: [0.5, 66.1, 1.9],
-                            yaw: 0.0,
-                            pitch: 0.0,
-                            previous_yaw: 0.0,
-                            previous_pitch: 0.0,
-                            codec_base: [0.5, 66.1, 1.9],
-                            on_fire: false,
-                            mod_fire_immune: false,
-                            silent: false,
-                            vehicle: Some(110),
-                            tick_count: 0,
-                            size_answer: None,
-                        },
-                    );
-                    remote.passenger_vehicles.insert(
-                        113,
-                        crate::game::remote_vehicles::PassengerSeat {
-                            vehicle: 110,
-                            index: 1,
-                        },
-                    );
-                    game.refresh_client_pick(1.0);
-                    assert_eq!(
-                        game.crosshair_entity_id(),
-                        Some(202),
-                        "client horse co-passenger interaction must be excluded"
-                    );
-                    assert_eq!(
-                        game.spectator_click_target(),
-                        Some(202),
-                        "client spectator_click_target must skip co-passenger interaction"
-                    );
-                });
 
                 // F (Finding 9): out-of-reach TNT (at 3.2) in front of chest (at 3.5) yields MISS,
                 // and a block at exact block_reach (4.5) fails strict `<`.
                 game.mobs.clear();
                 game.armor_stands.clear();
-                game.side.interactions.clear();
                 game.falling.clear();
                 game.tnts.clear();
                 game.riding = None;
@@ -1241,7 +1111,7 @@ pub(in crate::game::client_side) fn run_singleplayer_and_unstored_pick_share_uni
                     used_portal: false,
                     block_state: None,
                 });
-                assert_eq!(game.crosshair_entity_id(), None);
+                assert!(game.server_crosshair_entity_hit().is_none());
                 assert!(
                     game.pick().is_none(),
                     "out-of-reach TNT occluding chest must not fall back to chest on unstored pick()"
@@ -1254,56 +1124,6 @@ pub(in crate::game::client_side) fn run_singleplayer_and_unstored_pick_share_uni
                     "block at exact block_reach (4.5) must fail strict <"
                 );
                 game.world.set(0, 65, 5, air).unwrap();
-
-                // I (Finding 13): vehicle-root walk crosses retained off-level links past resident row count.
-                game.mobs.clear();
-                game.persist.off_level.clear();
-                let pig_type = game.res.mob_types().get("minecraft:pig").unwrap().clone();
-                // Only 1 resident mob (id 305), linked through 5 retained off-level mobs (304 -> ... -> 300).
-                for link in 300..305 {
-                    let mut retained =
-                        Mob::new(link, pig_type.clone(), Vec3::new(0.5, 64.0, 0.5), 0.0);
-                    if link > 300 {
-                        retained.extra.mount = Some(link - 1);
-                        retained.extra.passenger = true;
-                    }
-                    game.persist.off_level.insert(link, OffLevel::Mob(retained));
-                }
-                let mut resident_rider = Mob::new(305, pig_type, Vec3::new(0.5, 65.0, 2.0), 0.0);
-                resident_rider.extra.mount = Some(304);
-                resident_rider.extra.passenger = true;
-                game.mobs.push(resident_rider);
-                game.riding = Some(300);
-                place_player(game, [0.5, 64.0, 0.5], 0.0, 0.0);
-                assert!(
-                    game.side_pick_shares_vehicle(305),
-                    "vehicle-root walk must traverse retained off-level links past resident count"
-                );
-                assert_eq!(
-                    game.crosshair_entity_id(),
-                    None,
-                    "same-root rider linked through retained off-level mobs must be excluded"
-                );
-            });
-            with_game(|game| {
-                game.world
-                    .chunks
-                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-                game.block_reach = 4.5;
-                game.entity_reach = 3.0;
-                let sand = game
-                    .pack
-                    .assets
-                    .registry
-                    .default_state("minecraft:sand")
-                    .unwrap();
-                let v = Vec3::new(0.5, 64.0, 0.5);
-                let mut p = PlayerMotion::new(game.motion, v).unwrap();
-                p.entity_id = 1;
-                game.player = Some(p);
-                game.previous_position = v;
-                game.yaw = 0.0;
-                game.pitch = 0.0;
 
                 // G (Finding 2): attacking with TNT or falling block in front of a zombie must not hurt it.
                 let zombie_type = game
@@ -1398,6 +1218,388 @@ pub(in crate::game::client_side) fn run_singleplayer_and_unstored_pick_share_uni
                     })),
                     Some(1),
                     "named interaction must reach a same-root co-passenger"
+                );
+
+                // I (Finding 13): vehicle-root walk crosses retained off-level links past resident row count.
+                game.mobs.clear();
+                game.persist.off_level.clear();
+                let pig_type = game.res.mob_types().get("minecraft:pig").unwrap().clone();
+                // Only 1 resident mob (id 305), linked through 5 retained off-level mobs (304 -> ... -> 300).
+                for link in 300..305 {
+                    let mut retained =
+                        Mob::new(link, pig_type.clone(), Vec3::new(0.5, 64.0, 0.5), 0.0);
+                    if link > 300 {
+                        retained.extra.mount = Some(link - 1);
+                        retained.extra.passenger = true;
+                    }
+                    game.persist.off_level.insert(link, OffLevel::Mob(retained));
+                }
+                let mut resident_rider = Mob::new(305, pig_type, Vec3::new(0.5, 65.0, 2.0), 0.0);
+                resident_rider.extra.mount = Some(304);
+                resident_rider.extra.passenger = true;
+                game.mobs.push(resident_rider);
+                game.riding = Some(300);
+                place_player(game, [0.5, 64.0, 0.5], 0.0, 0.0);
+                assert!(
+                    game.side_pick_shares_vehicle(305),
+                    "vehicle-root walk must traverse retained off-level links past resident count"
+                );
+                assert!(
+                    game.server_crosshair_entity_hit().is_none(),
+                    "same-root rider linked through retained off-level mobs must be excluded"
+                );
+            });
+
+            with_client_game(|game| {
+                let _pipe = crate::game::native_client_session::tests::logged_client(game);
+                game.remote.as_mut().unwrap().entity_id = 1;
+                ensure_chunk(game, 0, 0);
+                game.side.title.0 = None;
+                game.block_reach = 4.5;
+                game.entity_reach = 3.0;
+                let registry = game.pack.assets.registry;
+                let stone = registry.default_state("minecraft:stone").unwrap();
+                let sand = registry.default_state("minecraft:sand").unwrap();
+                let air = registry.default_state("minecraft:air").unwrap();
+
+                let place_player = |game: &mut crate::game::ClientGame<'_>,
+                                    pos: [f64; 3],
+                                    yaw: f32,
+                                    pitch: f32| {
+                    let v = Vec3::new(pos[0], pos[1], pos[2]);
+                    let mut p = PlayerMotion::new(game.motion, v).unwrap();
+                    p.entity_id = 1;
+                    game.player = Some(p);
+                    game.previous_position = v;
+                    game.yaw = yaw;
+                    game.pitch = pitch;
+                };
+                let track = |game: &mut crate::game::ClientGame<'_>,
+                             id: i32,
+                             kind: &str,
+                             position: [f64; 3],
+                             vehicle: Option<u32>| {
+                    game.remote.as_mut().unwrap().entities.insert(
+                        id,
+                        crate::game::remote::Tracked {
+                            kind: kind.into(),
+                            position,
+                            previous: position,
+                            yaw: 0.0,
+                            pitch: 0.0,
+                            previous_yaw: 0.0,
+                            previous_pitch: 0.0,
+                            codec_base: position,
+                            on_fire: false,
+                            mod_fire_immune: false,
+                            silent: false,
+                            vehicle,
+                            tick_count: 0,
+                            size_answer: None,
+                        },
+                    );
+                };
+
+                // A (client): primed TNT occludes stone behind it and reports no getPickResult.
+                place_player(game, [0.5, 64.0, 0.5], 0.0, 0.0);
+                game.world.set(0, 65, 4, stone).unwrap();
+                let tnt_pos = Vec3::new(0.5, 65.1, 2.5);
+                game.tnts.push(PrimedTnt {
+                    size_answer: None,
+                    attachment_lifetime: Default::default(),
+                    rotation: [0.0, 0.0],
+                    join: Default::default(),
+                    no_gravity: false,
+                    id: 10,
+                    position: tnt_pos,
+                    previous: tnt_pos,
+                    velocity: Vec3::ZERO,
+                    fuse: 80,
+                    ticks: 0,
+                    ground: Default::default(),
+                    fall_distance: 0.0,
+                    stuck: Vec3::ZERO,
+                    in_water: false,
+                    owner: None,
+                    guest: None,
+                    power: 4.0,
+                    used_portal: false,
+                    block_state: None,
+                });
+                track(game, 10, "minecraft:tnt", [0.5, 65.1, 2.5], None);
+                game.refresh_client_pick(1.0);
+                assert_eq!(
+                    game.crosshair_entity_id(),
+                    Some(10),
+                    "client TNT crosshair_entity_id"
+                );
+                assert!(game.entity_targeted(), "client TNT entity_targeted");
+                assert_eq!(
+                    game.spectator_click_target(),
+                    Some(10),
+                    "client TNT spectator_click_target"
+                );
+                assert_eq!(
+                    game.pick_entity_hit(),
+                    Some(None),
+                    "client TNT has no pick result"
+                );
+                assert!(
+                    game.within_entity_range(10),
+                    "client TNT within_entity_range"
+                );
+
+                // B (client): falling sand occludes stone behind it and reports no getPickResult.
+                game.tnts.clear();
+                let fb_pos = Vec3::new(0.5, 65.1, 2.5);
+                game.falling.push(FallingBlock {
+                    size_answer: None,
+                    attachment_lifetime: Default::default(),
+                    rotation: [0.0, 0.0],
+                    join: Default::default(),
+                    id: 20,
+                    state: sand,
+                    blocks_building: true,
+                    start_pos: BlockPos::new(0, 65, 2),
+                    position: fb_pos,
+                    previous: fb_pos,
+                    velocity: Vec3::ZERO,
+                    age: 0,
+                    no_gravity: false,
+                    portal: Default::default(),
+                    drop_item: false,
+                    fall_distance: 0.0,
+                    ground: Default::default(),
+                    fire_ticks: 0,
+                    sync_velocity: false,
+                    stuck: Vec3::ZERO,
+                    damage: Default::default(),
+                    saved: None,
+                });
+                track(game, 20, "minecraft:falling_block", [0.5, 65.1, 2.5], None);
+                game.refresh_client_pick(1.0);
+                assert_eq!(
+                    game.crosshair_entity_id(),
+                    Some(20),
+                    "client falling block crosshair_entity_id"
+                );
+                assert!(
+                    game.entity_targeted(),
+                    "client falling block entity_targeted"
+                );
+                assert_eq!(
+                    game.spectator_click_target(),
+                    Some(20),
+                    "client falling block spectator_click_target"
+                );
+                assert_eq!(
+                    game.pick_entity_hit(),
+                    Some(None),
+                    "client falling block has no pick result"
+                );
+                assert!(
+                    game.within_entity_range(20),
+                    "client falling block within_entity_range"
+                );
+
+                // C (client): unmounted player carrying a pig excludes the pig and hits ceiling stone.
+                game.falling.clear();
+                game.world.set(0, 65, 4, air).unwrap();
+                game.world.set(0, 68, 0, stone).unwrap();
+                game.riding = None;
+                place_player(game, [0.5, 64.0, 0.5], 0.0, -90.0);
+                let pig_type = game.res.mob_types().get("minecraft:pig").unwrap().clone();
+                game.mobs
+                    .push(Mob::new(150, pig_type, Vec3::new(0.5, 66.2, 0.5), 0.0));
+                game.remote.as_mut().unwrap().passenger_vehicles.insert(
+                    150,
+                    crate::game::remote_vehicles::PassengerSeat {
+                        vehicle: 1,
+                        index: 0,
+                    },
+                );
+                game.refresh_client_pick(1.0);
+                assert_eq!(
+                    game.crosshair_entity_id(),
+                    None,
+                    "pig riding unmounted client player must be excluded"
+                );
+                assert!(
+                    !game.entity_targeted(),
+                    "pig riding unmounted client player must not be targeted"
+                );
+                assert_eq!(
+                    game.spectator_click_target(),
+                    None,
+                    "pig riding unmounted client player must not be spectator target"
+                );
+                assert_eq!(game.pick().map(|h| h.pos), Some([0, 68, 0]));
+
+                // D (client): camel rider looks through co-passenger husk to external TNT.
+                game.mobs.clear();
+                game.world.set(0, 68, 0, air).unwrap();
+                let camel_type = game.res.mob_types().get("minecraft:camel").unwrap().clone();
+                let husk_type = game.res.mob_types().get("minecraft:husk").unwrap().clone();
+                game.mobs
+                    .push(Mob::new(130, camel_type, Vec3::new(0.5, 64.0, 0.5), 0.0));
+                game.mobs
+                    .push(Mob::new(131, husk_type, Vec3::new(0.5, 64.17, 1.0), 0.0));
+                game.remote.as_mut().unwrap().passenger_vehicles.insert(
+                    131,
+                    crate::game::remote_vehicles::PassengerSeat {
+                        vehicle: 130,
+                        index: 1,
+                    },
+                );
+                let behind_tnt = Vec3::new(0.5, 65.3, 2.5);
+                game.tnts.push(PrimedTnt {
+                    size_answer: None,
+                    attachment_lifetime: Default::default(),
+                    rotation: [0.0, 0.0],
+                    join: Default::default(),
+                    no_gravity: false,
+                    id: 201,
+                    position: behind_tnt,
+                    previous: behind_tnt,
+                    velocity: Vec3::ZERO,
+                    fuse: 80,
+                    ticks: 0,
+                    ground: Default::default(),
+                    fall_distance: 0.0,
+                    stuck: Vec3::ZERO,
+                    in_water: false,
+                    owner: None,
+                    guest: None,
+                    power: 4.0,
+                    used_portal: false,
+                    block_state: None,
+                });
+                track(game, 201, "minecraft:tnt", [0.5, 65.3, 2.5], None);
+                game.riding = Some(130);
+                place_player(game, [0.5, 64.17, 0.0], 0.0, 0.0);
+                game.refresh_client_pick(1.0);
+                assert_eq!(
+                    game.crosshair_entity_id(),
+                    Some(201),
+                    "client pick must pick TNT past camel co-passenger"
+                );
+                assert_eq!(
+                    game.spectator_click_target(),
+                    Some(201),
+                    "client spectator_click_target must pick TNT past camel co-passenger"
+                );
+                assert!(game.entity_targeted());
+
+                // E (client): connected client horse excludes RemoteInteraction co-passenger.
+                game.mobs.clear();
+                game.tnts.clear();
+                let horse_type = game.res.mob_types().get("minecraft:horse").unwrap().clone();
+                game.mobs
+                    .push(Mob::new(110, horse_type, Vec3::new(0.5, 64.0, 0.5), 0.0));
+                let behind_fb = Vec3::new(0.5, 66.1, 2.9);
+                game.falling.push(FallingBlock {
+                    size_answer: None,
+                    attachment_lifetime: Default::default(),
+                    rotation: [0.0, 0.0],
+                    join: Default::default(),
+                    id: 202,
+                    state: sand,
+                    blocks_building: true,
+                    start_pos: BlockPos::new(0, 66, 2),
+                    position: behind_fb,
+                    previous: behind_fb,
+                    velocity: Vec3::ZERO,
+                    age: 0,
+                    no_gravity: false,
+                    portal: Default::default(),
+                    drop_item: false,
+                    fall_distance: 0.0,
+                    ground: Default::default(),
+                    fire_ticks: 0,
+                    sync_velocity: false,
+                    stuck: Vec3::ZERO,
+                    damage: Default::default(),
+                    saved: None,
+                });
+                track(game, 202, "minecraft:falling_block", [0.5, 66.1, 2.9], None);
+                let mut inter = RemoteInteraction::new([0.5, 66.1, 1.9]);
+                inter.vehicle = Some(110);
+                inter.dimensions_refreshed = true;
+                game.side.interactions.insert(113, inter);
+                game.riding = Some(110);
+                place_player(game, [0.5, 65.0, 0.5], 0.0, 0.0);
+                track(
+                    game,
+                    113,
+                    "minecraft:interaction",
+                    [0.5, 66.1, 1.9],
+                    Some(110),
+                );
+                game.remote.as_mut().unwrap().passenger_vehicles.insert(
+                    113,
+                    crate::game::remote_vehicles::PassengerSeat {
+                        vehicle: 110,
+                        index: 1,
+                    },
+                );
+                game.refresh_client_pick(1.0);
+                assert_eq!(
+                    game.crosshair_entity_id(),
+                    Some(202),
+                    "client horse co-passenger interaction must be excluded"
+                );
+                assert_eq!(
+                    game.spectator_click_target(),
+                    Some(202),
+                    "client spectator_click_target must skip co-passenger interaction"
+                );
+
+                // F (client): out-of-reach TNT occluding chest yields MISS; exact block_reach fails strict `<`.
+                game.mobs.clear();
+                game.side.interactions.clear();
+                game.falling.clear();
+                game.tnts.clear();
+                game.riding = None;
+                let chest = registry.default_state("minecraft:chest").unwrap();
+                place_player(game, [0.5, 64.0, 0.5], 0.0, 0.0);
+                game.world.set(0, 65, 4, chest).unwrap();
+                let far_tnt = Vec3::new(0.5, 65.1, 4.19);
+                game.tnts.push(PrimedTnt {
+                    size_answer: None,
+                    attachment_lifetime: Default::default(),
+                    rotation: [0.0, 0.0],
+                    join: Default::default(),
+                    no_gravity: false,
+                    id: 210,
+                    position: far_tnt,
+                    previous: far_tnt,
+                    velocity: Vec3::ZERO,
+                    fuse: 80,
+                    ticks: 0,
+                    ground: Default::default(),
+                    fall_distance: 0.0,
+                    stuck: Vec3::ZERO,
+                    in_water: false,
+                    owner: None,
+                    guest: None,
+                    power: 4.0,
+                    used_portal: false,
+                    block_state: None,
+                });
+                track(game, 210, "minecraft:tnt", [0.5, 65.1, 4.19], None);
+                game.refresh_client_pick(1.0);
+                assert_eq!(game.crosshair_entity_id(), None);
+                assert!(
+                    game.pick().is_none(),
+                    "out-of-reach TNT occluding chest must not fall back to chest on client pick()"
+                );
+                game.tnts.clear();
+                game.world.set(0, 65, 4, air).unwrap();
+                game.world.set(0, 65, 5, stone).unwrap();
+                game.refresh_client_pick(1.0);
+                assert!(
+                    game.pick().is_none(),
+                    "block at exact block_reach (4.5) must fail strict <"
                 );
             });
         },

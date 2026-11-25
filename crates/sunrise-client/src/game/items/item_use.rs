@@ -501,8 +501,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_stacks_use_animation_carries_the_mods_answer_on_both_sides() {
-        use crate::game::execution_role::ExecutionRole;
-        use crate::game::native_entity_refs::tests::{fixture_root, with_game_role};
+        use crate::game::native_entity_refs::tests::with_game;
         use mod_api::{Hooks, Host, ItemPart, ModEntry, Mods, Registrar, UseAnimationEvent};
         crate::game::in_own_process(
             "game::server_side::item_use::tests::a_stacks_use_animation_carries_the_mods_answer_on_both_sides",
@@ -524,35 +523,43 @@ pub(in crate::game) mod tests {
                         r.item_part(stick, Part);
                     }
                 }
+                fn check<S: crate::game::Side>(
+                    game: &crate::game::Game<'_, S>,
+                    host: &dyn Host,
+                    side: &str,
+                ) {
+                    let stack = |id: &str| {
+                        mod_api::ItemStack::of(mod_api::__private::item_key(id).unwrap())
+                    };
+                    assert_eq!(
+                        stack("minecraft:bow").use_animation(host),
+                        UseAnimation::Bow,
+                        "{side}"
+                    );
+                    assert_eq!(
+                        stack("minecraft:stick").use_animation(host),
+                        UseAnimation::Drink,
+                        "{side}"
+                    );
+                    assert_eq!(
+                        game.item_use_animation(&sunrise_client::items::ItemStack::new(
+                            "minecraft:stick",
+                            1
+                        )),
+                        UseAnimation::Drink,
+                        "{side}"
+                    );
+                }
                 let mods: Mods = vec![ModEntry::new("animation", Box::new(Mod))].into();
                 crate::game::api_values::install_parts(&mods).unwrap();
                 mod_platform::testing::with_mods(mods, || {
-                    for role in [ExecutionRole::Client, ExecutionRole::IntegratedServer] {
-                        with_game_role(fixture_root(), role, |game| {
-                            let stack = |id: &str| {
-                                mod_api::ItemStack::of(mod_api::__private::item_key(id).unwrap())
-                            };
-                            let host: &dyn Host = game;
-                            assert_eq!(
-                                stack("minecraft:bow").use_animation(host),
-                                UseAnimation::Bow,
-                                "{role:?}"
-                            );
-                            assert_eq!(
-                                stack("minecraft:stick").use_animation(host),
-                                UseAnimation::Drink,
-                                "{role:?}"
-                            );
-                            assert_eq!(
-                                game.item_use_animation(&sunrise_client::items::ItemStack::new(
-                                    "minecraft:stick",
-                                    1
-                                )),
-                                UseAnimation::Drink,
-                                "{role:?}"
-                            );
-                        });
-                    }
+                    #[cfg(feature = "client")]
+                    crate::game::native_entity_refs::tests::with_client_game(|game| {
+                        check(game, game, "client");
+                    });
+                    with_game(|game| {
+                        check(game, game, "server");
+                    });
                 });
             },
         );

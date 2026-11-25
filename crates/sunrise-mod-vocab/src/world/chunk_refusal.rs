@@ -26,4 +26,8 @@ impl crate::NoBackend for ChunkRefusal {
     fn no_backend() -> Self {
         Self::Stale
     }
+
+    fn wrong_side() -> Self {
+        Self::Client
+    }
 }

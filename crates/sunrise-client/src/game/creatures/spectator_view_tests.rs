@@ -6,6 +6,10 @@ use sunrise_client::chunk::Chunk;
 use sunrise_client::command::args::GameMode;
 use sunrise_client::mobs::{Mob, MobTypes};
 use sunrise_core::geometry::Vec3;
+use sunrise_protocol::{
+    connection::Pipe,
+    packets::play::{self, Clientbound as C},
+};
 
 /// The prepared vanilla resources.
 fn root() -> std::path::PathBuf {
@@ -16,7 +20,7 @@ fn root() -> std::path::PathBuf {
 
 fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
-) -> crate::game::ClientGame<'a> {
+) -> (crate::game::ClientGame<'a>, Pipe) {
     let root = root();
     let settings = Settings::default();
     let loaded = load_resources(
@@ -48,6 +52,7 @@ fn game<'a>(
         None,
     )
     .unwrap();
+    let server = crate::game::native_client_session::tests::logged_client(&mut game);
     // The atlas the game bakes at startup: `mob_geometry` finds a body's texture in it.
     game.gui.atlas = sunrise_client::hud::HudAtlas::build(
         &sunrise_assets::resource_source::ResourceSource::directory(root.clone()),
@@ -67,7 +72,7 @@ fn game<'a>(
             game.world.set(x, 63, z, stone).unwrap();
         }
     }
-    game
+    (game, server)
 }
 
 /// `/effect give @e[type=minecraft:pig,limit=1] minecraft:invisibility 100 0`
@@ -79,7 +84,8 @@ fn game<'a>(
 #[ignore = "daily"]
 fn a_spectator_sees_the_invisible_body() {
     let mut resources = None;
-    let mut game = game(&mut resources);
+    let (mut game, _server) = game(&mut resources);
+    let profile = game.remote.as_ref().unwrap().profile();
     let types = MobTypes::load(&root()).unwrap();
     let kind = Arc::new(types.types["minecraft:pig"].clone());
     let mut pig = Mob::new(1, kind, Vec3::new(0.5, 64.0, 0.5), 0.0);
@@ -88,12 +94,32 @@ fn a_spectator_sees_the_invisible_body() {
     let camera = glam::DVec3::new(6.5, 65.0, 6.5);
 
     // Anyone but a spectator sees no body at all.
+    game.handle_packet(C::PlayerInfoUpdate(play::PlayerInfoUpdate {
+        actions: 1 | 4,
+        entries: vec![play::PlayerInfo {
+            uuid: profile,
+            name: Some("SpectatorViewTest".into()),
+            game_mode: Some(GameMode::Survival.id()),
+            ..Default::default()
+        }],
+    }))
+    .unwrap();
+    game.set_local_mode(GameMode::Survival);
     let mut out = Vec::new();
     game.mob_geometry(camera, 0.0, &mut out);
     assert!(out.is_empty(), "an invisible body is hidden from a player");
 
     // A spectator sees it forced translucent.
-    game.mode = GameMode::Spectator;
+    game.handle_packet(C::PlayerInfoUpdate(play::PlayerInfoUpdate {
+        actions: 4,
+        entries: vec![play::PlayerInfo {
+            uuid: profile,
+            game_mode: Some(GameMode::Spectator.id()),
+            ..Default::default()
+        }],
+    }))
+    .unwrap();
+    game.set_local_mode(GameMode::Spectator);
     let mut out = Vec::new();
     game.mob_geometry(camera, 0.0, &mut out);
     assert!(!out.is_empty(), "a spectator sees the invisible body");

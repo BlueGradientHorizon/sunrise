@@ -54,6 +54,10 @@ impl crate::NoBackend for PlayerWorldRefusal {
     fn no_backend() -> Self {
         Self::Stale
     }
+
+    fn wrong_side() -> Self {
+        Self::Client
+    }
 }
 
 impl From<crate::BlockStateError> for PlayerWorldRefusal {

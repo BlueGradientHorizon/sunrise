@@ -2981,16 +2981,14 @@ pub(in crate::game) mod tests {
         use super::super::execution_role::ExecutionRole;
         use std::sync::Arc;
         use sunrise_client::chunk::Chunk;
+        let mut server_level = None;
         with_game(|game| {
             game.world
                 .chunks
                 .insert((-2, 3), Arc::new(Chunk::empty(-2, 3)));
             let level = game.level(game.dim.id()).unwrap();
-            // The integrated server thread (game/world/integrated.rs sets the role and
-            // `dedicated` on the serving Game) and a dedicated server simulate;
-            // a client never does. A remote client runs with the `Client` role
-            // (connecting changes `remote`, not the role), and the guards read
-            // only the role, so it answers like the title-screen game here.
+            server_level = Some(level);
+            // Server-only write guards do not exist on ClientGame.
             for (role, dedicated) in [
                 (ExecutionRole::IntegratedServer, true),
                 (ExecutionRole::DedicatedServer, true),
@@ -3002,12 +3000,17 @@ pub(in crate::game) mod tests {
                 assert!(game.level_in_place(level));
                 assert!(game.native_level_write_allowed(level, [-32, 64, 48]));
             }
-            game.options.execution_role = ExecutionRole::Client;
-            game.options.dedicated = None;
-            assert!(!game.native_simulates());
-            assert!(game.level(game.dim.id()).is_none());
-            assert!(!game.level_in_place(level));
-            assert!(!game.native_level_write_allowed(level, [-32, 64, 48]));
+        });
+        let level = server_level.unwrap();
+        with_client_game(|client| {
+            client
+                .world
+                .chunks
+                .insert((-2, 3), Arc::new(Chunk::empty(-2, 3)));
+            assert!(!client.is_logical_server());
+            assert!(client.level(client.dim.id()).is_none());
+            assert!(!client.level_in_place(level));
+            assert!(client.native_current_level().is_none());
         });
     }
 

@@ -79,6 +79,10 @@ impl NoBackend for TriggerCriterionError {
     fn no_backend() -> Self {
         Self::NoBackend
     }
+
+    fn wrong_side() -> Self {
+        Self::NotServer
+    }
 }
 
 #[cfg(test)]

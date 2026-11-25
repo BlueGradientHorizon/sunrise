@@ -657,7 +657,7 @@ pub(super) fn game_forwarders(root: &Path) -> Result<String, String> {
                     if refuse_on_this_side {
                         let sig = entry.sig.to_token_stream();
                         let args = signature_args(&entry.sig, name)?;
-                        let value = refusal(&entry.sig, name)?;
+                        let value = side_refusal(&entry.sig, name)?;
                         if args.is_empty() {
                             code.push_str(&format!("{sig} {{ {value} }}\n"));
                         } else {
@@ -997,6 +997,19 @@ fn signature_args(sig: &syn::Signature, name: &str) -> Result<String, String> {
 
 /// A backend read's typed answer where there is no backend to ask.
 fn refusal(sig: &syn::Signature, name: &str) -> Result<&'static str, String> {
+    refusal_with(sig, name, "Err(NoBackend::no_backend())")
+}
+
+/// A backend or host read's typed answer when refused for the wrong logical side.
+fn side_refusal(sig: &syn::Signature, name: &str) -> Result<&'static str, String> {
+    refusal_with(sig, name, "Err(NoBackend::wrong_side())")
+}
+
+fn refusal_with(
+    sig: &syn::Signature,
+    name: &str,
+    result_err: &'static str,
+) -> Result<&'static str, String> {
     let syn::ReturnType::Type(_, ty) = &sig.output else {
         return Err(format!("{name}: a backend read returns a value"));
     };
@@ -1007,7 +1020,7 @@ fn refusal(sig: &syn::Signature, name: &str) -> Result<&'static str, String> {
     match last.as_deref() {
         Some("Option") => Ok("None"),
         Some("bool") => Ok("false"),
-        Some("Result") => Ok("Err(NoBackend::no_backend())"),
+        Some("Result") => Ok(result_err),
         Some("u64" | "u32" | "i32" | "u16" | "u8" | "usize") => Ok("0"),
         _ => Err(format!("{name}: cannot refuse its backend return type")),
     }

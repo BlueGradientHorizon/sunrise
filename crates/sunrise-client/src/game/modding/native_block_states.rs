@@ -1209,6 +1209,7 @@ mod crafting_remainder_tests {
             vec![mod_api::ModEntry::new("remainder", Box::new(RemainderMod))].into();
         crate::game::api_values::install_parts(&mods).unwrap();
         mod_platform::testing::with_mods(mods, || {
+            let mut client_fuel = None;
             super::super::native_entity_refs::tests::with_game(|game| {
                 super::super::native_entity_refs::tests::resolve_parts(game).unwrap();
                 let mut tool = ItemStack {
@@ -1300,12 +1301,20 @@ mod crafting_remainder_tests {
                     crate::game::execution_role::ExecutionRole::DedicatedServer;
                 let remainder = game.crafting_remainder(grid[0].as_ref().unwrap()).unwrap();
                 assert_eq!((remainder.damage, remainder.count), (3, 1));
-                game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
-                let calls = CALLS.load(std::sync::atomic::Ordering::Relaxed);
-                assert!(game.crafting_remainder(grid[0].as_ref().unwrap()).is_none());
-                assert_eq!(CALLS.load(std::sync::atomic::Ordering::Relaxed), calls);
                 game.options.execution_role = role;
-            })
+                client_fuel = grid[0].clone();
+            });
+            let client_fuel = client_fuel.unwrap();
+            super::super::native_entity_refs::tests::with_client_game(|client| {
+                super::super::native_entity_refs::tests::resolve_parts(client).unwrap();
+                assert!(mod_api::__private::item_listens(
+                    mod_api::HookId::CraftingRemainder,
+                    &client_fuel.item
+                ));
+                let calls = CALLS.load(std::sync::atomic::Ordering::Relaxed);
+                assert!(client.crafting_remainder(&client_fuel).is_none());
+                assert_eq!(CALLS.load(std::sync::atomic::Ordering::Relaxed), calls);
+            });
         });
     }
 }

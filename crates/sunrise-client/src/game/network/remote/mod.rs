@@ -2057,6 +2057,8 @@ pub(in crate::game) mod tests {
             None,
         )
         .unwrap();
+        let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
+        client.connect_local(pipe, "AliasTest").unwrap();
         client.world = World::new(client.res.facts().air, 1);
         for x in -1..=1 {
             for z in -1..=1 {
