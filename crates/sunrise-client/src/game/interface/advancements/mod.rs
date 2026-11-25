@@ -23,7 +23,7 @@ use sunrise_client::{
     items::ItemStack,
     motion::PlayerMotion,
     text::{self, Style, Text},
-    toasts::Slide,
+    toasts::{Slide, ToastClock},
 };
 use sunrise_core::geometry::Vec3;
 use sunrise_core::random::RandomSource;
@@ -91,9 +91,9 @@ impl Toast {
     pub(super) fn is_challenge(&self) -> bool {
         !self.is_recipe() && self.frame == Frame::Challenge
     }
-    pub(super) fn update(&mut self, multiplier: f64) -> (Option<bool>, bool) {
+    pub(super) fn update(&mut self, clock: ToastClock, multiplier: f64) -> (Option<bool>, bool) {
         let mut slide = std::mem::take(&mut self.slide);
-        let result = slide.update_now(|fully| self.wants_show(fully, multiplier));
+        let result = slide.update_on(clock, |fully| self.wants_show(fully, multiplier));
         self.slide = slide;
         result
     }
@@ -2743,9 +2743,9 @@ impl Game<'_> {
             mod_api::ToastKind::Advancement
         };
         if self.admit_toast(kind, &mut toast.title, &mut toast.description) {
+            let clock = ToastClock::of(self.clock.still());
             self.toast_manager
-                .queued
-                .push_back(super::toast_manager::Toast::Advancement(toast));
+                .post(clock, super::toast_manager::Toast::Advancement(toast));
         }
     }
 
@@ -3266,12 +3266,17 @@ mod tests {
                             ));
                         }
                         assert_eq!(
-                            game.toast_manager.update(1.0),
+                            game.toast_manager
+                                .update(sunrise_client::toasts::ToastClock::Real, 1.0),
                             (None, true),
                             "both challenges share a promotion sound"
                         );
                         assert_eq!(game.toast_manager.visible.len(), 5);
-                        assert_eq!(game.toast_manager.update(1.0), (Some(true), false));
+                        assert_eq!(
+                            game.toast_manager
+                                .update(sunrise_client::toasts::ToastClock::Real, 1.0),
+                            (Some(true), false)
+                        );
 
                         game.add_toast(mod_api::ModToast::new(mod_api::Text::literal(
                             "Older mod toast",
@@ -3285,7 +3290,11 @@ mod tests {
                             .unwrap();
                         fading.slide.origin = Some(Instant::now() - Duration::from_secs(1));
                         fading.force_hide();
-                        assert_eq!(game.toast_manager.update(1.0), (Some(false), false));
+                        assert_eq!(
+                            game.toast_manager
+                                .update(sunrise_client::toasts::ToastClock::Real, 1.0),
+                            (Some(false), false)
+                        );
                         assert_eq!(
                             game.toast_manager.queued.len(),
                             2,
@@ -3296,7 +3305,11 @@ mod tests {
                             .unwrap()
                             .slide
                             .origin = Some(Instant::now() - Duration::from_secs(2));
-                        assert_eq!(game.toast_manager.update(1.0), (None, false));
+                        assert_eq!(
+                            game.toast_manager
+                                .update(sunrise_client::toasts::ToastClock::Real, 1.0),
+                            (None, false)
+                        );
                         assert!(matches!(
                             game.toast_manager.visible.last().map(|entry| &entry.toast),
                             Some(QueuedToast::Mod(_))
@@ -3313,7 +3326,8 @@ mod tests {
                         narrator.slide.origin = Some(Instant::now() - Duration::from_secs(1));
                         narrator.force_hide();
                         assert_eq!(
-                            game.toast_manager.update(1.0),
+                            game.toast_manager
+                                .update(sunrise_client::toasts::ToastClock::Real, 1.0),
                             (Some(false), false),
                             "the first visibility change wins, even while another family slides in"
                         );

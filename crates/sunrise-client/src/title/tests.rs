@@ -662,23 +662,38 @@ fn backup_toast_slides_in_and_out_with_its_sounds() {
     f.title.poll_backup();
     f.finish_backup();
     let mut toast = f.title.take_pending_toast().unwrap();
-    assert_eq!(toast.update(1.0), (Some(true), false));
-    assert_eq!(toast.update(1.0), (None, false));
+    assert_eq!(
+        toast.update(crate::toasts::ToastClock::Real, 1.0),
+        (Some(true), false)
+    );
+    assert_eq!(
+        toast.update(crate::toasts::ToastClock::Real, 1.0),
+        (None, false)
+    );
     let age = |toast: &mut crate::toasts::SystemToast, ms: u64| {
         *toast.slide.origin.as_mut().unwrap() -= std::time::Duration::from_millis(ms);
     };
     // Half way in: (300 / 600)² of its width shows.
     age(&mut toast, 300);
-    assert_eq!(toast.update(1.0), (None, false));
+    assert_eq!(
+        toast.update(crate::toasts::ToastClock::Real, 1.0),
+        (None, false)
+    );
     let portion = toast.slide.portion;
     assert!((portion - 0.25).abs() < 0.02, "{portion}");
     // Shown in full for the display time, then out.
     age(&mut toast, 300);
-    toast.update(1.0);
+    toast.update(crate::toasts::ToastClock::Real, 1.0);
     age(&mut toast, 5100);
-    assert_eq!(toast.update(1.0), (Some(false), false));
+    assert_eq!(
+        toast.update(crate::toasts::ToastClock::Real, 1.0),
+        (Some(false), false)
+    );
     age(&mut toast, 700);
-    assert_eq!(toast.update(1.0), (None, true));
+    assert_eq!(
+        toast.update(crate::toasts::ToastClock::Real, 1.0),
+        (None, true)
+    );
 }
 
 #[test]
