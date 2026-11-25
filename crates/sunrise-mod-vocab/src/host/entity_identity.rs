@@ -70,6 +70,15 @@ pub trait EntityIdentityBackend {
     /// stale handle.
     fn entity_is_multipart(&self, entity: EntityRef) -> Option<bool>;
     /// Side: both.
+    /// The stack picking the entity gives (`Entity.getPickResult`), on the side that holds it:
+    /// a mob's spawn egg (none for a mob without one), a boat's or a minecart's own item, an
+    /// item frame's framed item (else the frame), a painting, an armor stand, an end crystal, a
+    /// leash knot's lead. An ender dragon part answers its dragon's egg. None for a player and
+    /// the other kinds vanilla gives nothing for (a projectile, a falling block, primed TNT,
+    /// an item), and for a stale handle. The block counterpart is
+    /// `PlayerRef::clone_item_stack`.
+    fn entity_pick_result(&self, entity: EntityRef) -> Option<ItemStack>;
+    /// Side: both.
     /// Visit the entities a multipart entity is made of (NeoForge `IEntityExtension.getParts`).
     /// For the dragon, `EnderDragon.getSubEntities` orders its head, neck, body, three tail
     /// segments and two wings. Each is a handle of the part's own entity id, the eight after

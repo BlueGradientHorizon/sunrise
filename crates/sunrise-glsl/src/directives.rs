@@ -56,10 +56,7 @@ fn arguments(name: &str) -> String {
 pub(crate) fn stopped(stop: Stop) -> String {
     match stop {
         Stop::Work => ImportRefusal::TooMuchScanned.to_string(),
-        Stop::Depth => format!(
-            "a macro call sits more than {} calls deep in arguments",
-            crate::macros::MAX_ARGUMENT_DEPTH
-        ),
+        Stop::Depth => crate::macros::calls_too_deep(),
         Stop::Arguments(name) => arguments(&name),
     }
 }

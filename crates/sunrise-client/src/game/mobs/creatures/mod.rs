@@ -73,7 +73,10 @@ use sunrise_client::{
     mesher::Vertex,
     mobs::{
         Damage, DamageKind, Mob, MobEvent, MobWorld, PlayerView, Seen, SpawnSetup, Species, Who,
-        ai::{eating_sound, eating_sound_is_bound, feed_animal, takes_food},
+        ai::{
+            cat_sound, eating_sound_is_bound, eating_sound_with_variants,
+            feed_animal_with_variants, takes_food,
+        },
         entity_sounds::full_id,
         finalize::Group,
         spawning::{self, BiomeFacts},
@@ -108,6 +111,22 @@ fn arrow_miss(dodged: bool) -> EntityHit {
     }
 }
 pub(super) type SpawnReason = sunrise_client::mobs::spawn_rules::Reason;
+
+/// Who caused a player's hurt, keeping vanilla's `DamageSource.getEntity` cases
+/// apart: a caller can name the entity, say there is none, or leave the one a
+/// non-mob cause already put in the lent attack.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum KnownCause {
+    /// No explicit cause: infer the melee attacker or projectile owner.
+    Infer,
+    /// Explicitly no causing entity: the source names none.
+    None,
+    /// The causing entity the lent attack already carries (a player, guest or
+    /// dragon from `/damage`, `EntityRef::hurt`).
+    Attack,
+    /// The explicitly named causing entity.
+    Entity(u32),
+}
 
 /// Whether vanilla calls `finalizeSpawn` for a mob a spawn site makes, and with
 /// which reason. The reason is vanilla's `EntitySpawnReason` at that site.
@@ -544,14 +563,13 @@ impl Game<'_> {
         Some((uuid, id))
     }
     /// A sulfur cube's attribute map (`LivingEntity.attributes`), from its
-    /// type's defaults, before its first tick adopts the body's archetype
-    /// modifiers. A map already there (commands, armor) is kept.
+    /// type's defaults and what its save kept (`finalize::attribute_map`),
+    /// before its first tick adopts the body's archetype modifiers. A map
+    /// already there (commands, armor) is kept.
     fn init_sulfur_attribute_maps(&mut self) {
         for m in &mut self.mobs {
-            if m.species() == sunrise_client::mobs::Species::SulfurCube
-                && m.extra.armor_attributes.is_none()
-            {
-                m.extra.armor_attributes = self.motion.attributes.create(&m.kind.id).map(Box::new);
+            if m.species() == sunrise_client::mobs::Species::SulfurCube {
+                sunrise_client::mobs::finalize::attribute_map(m, &self.motion.attributes);
             }
         }
     }
@@ -1351,9 +1369,13 @@ impl Game<'_> {
     ) {
         let mut heard = mod_api::Difficulty::from(difficulty);
         let (mut spawn_cancelled, mut skip_finalize) = (false, false);
-        let given = group
-            .as_ref()
-            .and_then(|g| super::native_unspawned_mob::native_spawn_group(g, self.lend_epoch()));
+        let given = group.as_ref().and_then(|g| {
+            super::native_unspawned_mob::native_spawn_group(
+                g,
+                self.lend_epoch(),
+                self.world_variants(),
+            )
+        });
         let mut native_group = given.clone();
         let mut borrowed = self.borrowed_unspawned_mob_mut(kind, at, mob);
         self.native_finalize_spawn(mod_api::__private::FinalizeSpawnCall {
@@ -1371,7 +1393,7 @@ impl Game<'_> {
         if native_group != given {
             *group = native_group
                 .as_ref()
-                .and_then(super::native_unspawned_mob::spawn_group);
+                .and_then(|g| super::native_unspawned_mob::spawn_group(g, self.world_variants()));
         }
         (
             sunrise_client::mobs::finalize::SpawnEvent {
@@ -2273,6 +2295,7 @@ impl Game<'_> {
             damage_type,
             causing: attack.attacker,
             direct: attack.attacker,
+            direct_type: attack.direct_type.as_deref(),
             position: source.from,
         };
         let ctx = attack.enchantment_context(hurt_source, &kind);
@@ -2288,10 +2311,10 @@ impl Game<'_> {
                 amount,
                 source.from,
                 damage_type,
-                Some(match source.attacker {
-                    Some(Who::Mob(id)) => Some(id),
-                    _ => None,
-                }),
+                match source.attacker {
+                    Some(Who::Mob(id)) => KnownCause::Entity(id),
+                    _ => KnownCause::None,
+                },
                 false,
                 false,
             ),
@@ -2613,7 +2636,8 @@ impl Game<'_> {
         };
         let at = self.mobs[i].position.components();
         self.lan_entity_event(id as i32, 35, at);
-        hit.before_post(&mut self.mobs[i]);
+        let variants = world_variants!(self);
+        hit.before_post(&mut self.mobs[i], Some(variants));
         if let Some(post) = hit.post.take() {
             let kind = self.mobs[i].kind.clone();
             self.finish_damage_post(id as i32, &kind.id, post);
@@ -2669,7 +2693,7 @@ impl Game<'_> {
             .mobs
             .iter()
             .find(|m| m.id == mob)
-            .map(|m| drops::loot_entity(m, None));
+            .map(|m| drops::loot_entity_with_variants(m, None, Some(self.world_variants())));
         let stacks = match (loot, this) {
             (Some(loot), Some(this)) if loot.has_table(table) => {
                 let params = EntityLootParams {
@@ -3308,6 +3332,20 @@ impl Game<'_> {
                 } => {
                     self.mob_hits_mob(target, amount, source);
                 }
+                MobEvent::ContactDamageMob {
+                    target,
+                    amount,
+                    kind,
+                    attacker,
+                } => {
+                    let mut source =
+                        Damage::of(Self::damage_kind(&self.health_resources.damage, kind));
+                    if let Some((cube, from)) = attacker {
+                        source.attacker = Some(Who::Mob(cube));
+                        source.from = Some(from);
+                    }
+                    self.mob_hits_mob(target, amount, source);
+                }
                 MobEvent::AttackMobWithEffect {
                     target,
                     amount,
@@ -3353,7 +3391,7 @@ impl Game<'_> {
                         amount,
                         Some(from),
                         "minecraft:mob_attack",
-                        Some(Some(cube)),
+                        KnownCause::Entity(cube),
                         false,
                     ) && let Some(m) = self.mobs.iter_mut().find(|m| m.id == cube)
                     {
@@ -3447,9 +3485,10 @@ impl Game<'_> {
                 MobEvent::Hiss { mob } => {
                     if let Some(m) = self.mobs.iter().find(|m| m.id == mob) {
                         let at = m.center();
-                        let sound = sunrise_client::mobs::finalize::variant_sound(m, "hiss")
-                            .unwrap_or("entity.cat.hiss");
-                        self.play_audio(&full_id(sound), Some(at), 1.0, 1.0);
+                        let sound = cat_sound(m, Some(self.world_variants()), "hiss")
+                            .unwrap_or("entity.cat.hiss")
+                            .to_owned();
+                        self.play_audio(&full_id(&sound), Some(at), 1.0, 1.0);
                     }
                 }
                 MobEvent::StabMemory {
@@ -4469,7 +4508,11 @@ impl Game<'_> {
         partner: u32,
         equine: Option<Box<sunrise_client::mobs::equine::Offspring>>,
         parent_variant: Option<bool>,
-        wolf_voice: Option<u8>,
+        wolf_voice: Option<
+            sunrise_client::lan::data::RegistryRef<
+                sunrise_client::mobs::variants::WolfSoundVariant,
+            >,
+        >,
         experience: sunrise_client::mobs::BreedExperience,
         at_tick_boundary: bool,
     ) -> Option<u32> {
@@ -4563,9 +4606,6 @@ impl Game<'_> {
                 // later in Animal.spawnChildFromBreeding or Fox.FoxBreedGoal.breed.
                 // No Mob.finalizeSpawn either: no follow range bonus, right-handed.
                 spawning::bred_offspring(child);
-                // getBreedOffspring creates the baby without finalizeSpawn: it keeps
-                // the default (`classic`) sound variant.
-                child.extra.sound_variant = None;
                 // Fox.getBreedOffspring runs no finalizeSpawn: nothing in the
                 // baby fox's mouth.
                 if p.species() == Species::Fox {
@@ -4601,10 +4641,10 @@ impl Game<'_> {
                 if p.species() == Species::Cat {
                     // Cat.getBreedOffspring.
                     let other = q.as_ref().unwrap_or(&p);
-                    child.extra.variant = if coin {
-                        p.extra.variant
+                    child.extra.cat_variant = if coin {
+                        p.extra.cat_variant
                     } else {
-                        other.extra.variant
+                        other.extra.cat_variant
                     };
                     if p.extra.tame {
                         child.extra.tame = true;
@@ -4624,10 +4664,10 @@ impl Game<'_> {
                     // Wolf.getBreedOffspring: a parent's variant; tame parents
                     // give a tame baby with their collar colours mixed.
                     let other = q.as_ref().unwrap_or(&p);
-                    child.extra.variant = if coin {
-                        p.extra.variant
+                    child.extra.wolf_variant = if coin {
+                        p.extra.wolf_variant
                     } else {
-                        other.extra.variant
+                        other.extra.wolf_variant
                     };
                     if p.extra.tame {
                         sunrise_client::mobs::tame::set_tame(child, true);
@@ -4641,7 +4681,8 @@ impl Game<'_> {
                         );
                         child.extra.color = mixed;
                     }
-                    child.extra.sound_variant = wolf_voice.or_else(|| self.bred_wolf_voice(parent));
+                    child.extra.wolf_sound_variant =
+                        wolf_voice.or_else(|| self.bred_wolf_voice(parent));
                     break 'offspring;
                 }
                 // Panda.getBreedOffspring: genes from both parents.
@@ -4662,13 +4703,42 @@ impl Game<'_> {
                     child.persistent = true;
                 }
                 // Offspring inherit a parent's variant (pigs/cows/chickens) or mixed wool.
-                child.extra.variant = p.extra.variant;
-                // Fox, Pig, Cow and Chicken.getBreedOffspring: either parent's variant.
-                if sunrise_client::mobs::draws_parent_variant(p.species())
-                    && p.species() != Species::Cat
-                    && !coin
-                {
-                    child.extra.variant = q.as_ref().map_or(p.extra.variant, |q| q.extra.variant);
+                match p.species() {
+                    Species::Pig => {
+                        let other = q.as_ref().unwrap_or(&p);
+                        child.extra.pig_variant = if coin {
+                            p.extra.pig_variant
+                        } else {
+                            other.extra.pig_variant
+                        };
+                    }
+                    Species::Cow => {
+                        let other = q.as_ref().unwrap_or(&p);
+                        child.extra.cow_variant = if coin {
+                            p.extra.cow_variant
+                        } else {
+                            other.extra.cow_variant
+                        };
+                    }
+                    Species::Chicken => {
+                        let other = q.as_ref().unwrap_or(&p);
+                        child.extra.chicken_variant = if coin {
+                            p.extra.chicken_variant
+                        } else {
+                            other.extra.chicken_variant
+                        };
+                    }
+                    _ => {
+                        child.extra.variant = p.extra.variant;
+                        // Fox.getBreedOffspring: either parent's variant.
+                        if sunrise_client::mobs::draws_parent_variant(p.species())
+                            && p.species() != Species::Cat
+                            && !coin
+                        {
+                            child.extra.variant =
+                                q.as_ref().map_or(p.extra.variant, |q| q.extra.variant);
+                        }
+                    }
                 }
                 // The rabbit's own draw above.
                 if let Some(variant) = rabbit_variant {
@@ -4871,14 +4941,15 @@ impl Game<'_> {
         true
     }
     /// `hurtServer` on the player. `from` is the source's position (none: no
-    /// direction), `known`: the causing mob when it is given (`/damage`).
+    /// direction), `known`: who caused it (`KnownCause::Infer` guesses the
+    /// melee attacker nearest to `from`).
     /// A caller's player attack keeps its own source, even with a custom damage type.
     pub(super) fn hurt_player_from(
         &mut self,
         amount: f32,
         from: Option<[f64; 3]>,
         damage_type: &str,
-        known: Option<Option<u32>>,
+        known: KnownCause,
         by_creative_player: bool,
     ) -> bool {
         self.hurt_player_from_inner(amount, from, damage_type, known, by_creative_player, true)
@@ -4889,7 +4960,7 @@ impl Game<'_> {
         amount: f32,
         from: Option<[f64; 3]>,
         damage_type: &str,
-        known: Option<Option<u32>>,
+        known: KnownCause,
         by_creative_player: bool,
         post_attack: bool,
     ) -> bool {
@@ -4909,7 +4980,7 @@ impl Game<'_> {
         // The causing entity for the death message.
         let owner = self.combat.projectile_owner.take();
         let current = self.combat.attack();
-        let player_melee = known.is_none()
+        let player_melee = known == KnownCause::Infer
             && melee.is_none()
             && current.projectile.is_none()
             && current.direct.is_none()
@@ -4919,10 +4990,11 @@ impl Game<'_> {
                 .is_some_and(|actor| actor.kind.as_ref() == "minecraft:player");
         // Only an unrecorded mob swing is inferred from the source position.
         let attacker = match known {
-            Some(known) => known,
-            None if melee.is_some() => melee,
-            None if player_melee => None,
-            None => from
+            KnownCause::Entity(id) => Some(id),
+            KnownCause::Attack | KnownCause::None => None,
+            KnownCause::Infer if melee.is_some() => melee,
+            KnownCause::Infer if player_melee => None,
+            KnownCause::Infer => from
                 .filter(|_| !projectile && damage_type != "minecraft:player_attack")
                 .and_then(|from| {
                     self.mobs
@@ -4974,10 +5046,16 @@ impl Game<'_> {
         // owner of the projectile that hit (`projectile_owner` outlives a
         // projectile's other hits), not the guessed melee attacker.
         let owner = owner.filter(|_| projectile);
-        let causing = known.map_or_else(
-            || attacker.or(owner).map_or(attack.attacker, |id| id as i32),
-            |known| known.map_or(0, |id| id as i32),
-        );
+        let causing = match known {
+            KnownCause::Infer => attacker.or(owner).map_or(attack.attacker, |id| id as i32),
+            // An explicit cause that is not a mob (another player, a guest, the
+            // dragon, a stand) stays in the lent attack's attacker.
+            KnownCause::Attack => attack.attacker,
+            KnownCause::Entity(id) => id as i32,
+            // `magic()` from a projectile whose owner is gone names no entity,
+            // even though the enclosing attack still holds the dead shooter.
+            KnownCause::None => 0,
+        };
         let mut outcome = sunrise_client::health::BlockOutcome::default();
         // The hit's own push, held back until after the shield's (`hurtServer`
         // runs `applyItemBlocking` before `dealDefaultKnockback`).
@@ -5022,6 +5100,7 @@ impl Game<'_> {
                     causing,
                     direct: attack.projectile_direct(damage_type),
                     position: None,
+                    direct_type: None,
                 };
                 default_push = Some(([xd, zd], source));
             }
@@ -5093,6 +5172,7 @@ impl Game<'_> {
                 causing,
                 direct: attack.projectile_direct(damage_type),
                 position: None,
+                direct_type: None,
             };
             self.after_block(outcome, (attacker, projectile), source, &attack);
         }
@@ -7760,11 +7840,21 @@ impl Game<'_> {
                     } else {
                         1
                     };
+                    let chicken_variant = p
+                        .egg_variant
+                        .as_deref()
+                        .and_then(|id| self.world_variants().chicken.lookup(id))
+                        .or_else(|| {
+                            self.world_variants()
+                                .chicken
+                                .default_or_any("minecraft:temperate")
+                        });
                     for _ in 0..n {
                         if let Some(id) = self.spawn_mob_raw("minecraft:chicken", atp, true)
                             && let Some(c) = self.mobs.iter_mut().find(|m| m.id == id)
                         {
-                            (c.extra.age, c.extra.variant) = (-24000, p.egg_variant.unwrap_or(0));
+                            c.extra.age = -24000;
+                            c.extra.chicken_variant = chicken_variant;
                         }
                     }
                 }
@@ -8014,6 +8104,7 @@ impl Game<'_> {
                     mob,
                     block,
                     p.age,
+                    p.id,
                     &owner,
                     self.entity_silent(p.id),
                     p.velocity,
@@ -8550,7 +8641,7 @@ impl Game<'_> {
         let mut give: Option<&str> = None;
         let mut sound: Option<(&str, f32, f32)> = None;
         // Sounds played as vanilla plays them: (event, volume, pitch) at the feet.
-        let mut eat: Option<(&'static str, f32, f32)> = None;
+        let mut eat: Option<(std::borrow::Cow<'static, str>, f32, f32)> = None;
         let mut shear: Option<sunrise_client::sound_engine::SoundEntity> = None;
         let feet = [m.position.x, m.position.y, m.position.z];
         let mut handled = true;
@@ -8600,7 +8691,11 @@ impl Game<'_> {
                         give = Some("minecraft:suspicious_stew");
                         give_stew = Some(effects);
                         // `playSound(.., 1.0F, 1.0F)` at the feet.
-                        eat = Some(("entity.mooshroom.suspicious_milk", 1.0, 1.0));
+                        eat = Some((
+                            std::borrow::Cow::Borrowed("entity.mooshroom.suspicious_milk"),
+                            1.0,
+                            1.0,
+                        ));
                     }
                     None => {
                         give = Some("minecraft:mushroom_stew");
@@ -8623,7 +8718,7 @@ impl Game<'_> {
                 } else {
                     m.extra.stew_effects = Some(effects.to_vec());
                     consume = true;
-                    eat = Some(("entity.mooshroom.eat", 2.0, 1.0));
+                    eat = Some((std::borrow::Cow::Borrowed("entity.mooshroom.eat"), 2.0, 1.0));
                     stew_particles = Some(true);
                 }
             }
@@ -8656,7 +8751,11 @@ impl Game<'_> {
             {
                 armor_drop = m.equipment_stacks()[6].clone();
                 m.extra.set_body_stack(None);
-                eat = Some(("item.armor.unequip_wolf", 1.0, 1.0));
+                eat = Some((
+                    std::borrow::Cow::Borrowed("item.armor.unequip_wolf"),
+                    1.0,
+                    1.0,
+                ));
                 equip_event = Some(false);
                 self.damage_held_tool();
             }
@@ -8687,7 +8786,11 @@ impl Game<'_> {
                 body.extra = held_extra;
                 m.extra.set_body_stack(Some(body));
                 consume = true;
-                eat = Some(("item.armor.equip_wolf", 1.0, 1.0));
+                eat = Some((
+                    std::borrow::Cow::Borrowed("item.armor.equip_wolf"),
+                    1.0,
+                    1.0,
+                ));
                 equip_event = Some(true);
             }
             // Wolf.mobInteract: an armadillo scute repairs a sitting wolf's
@@ -8705,7 +8808,11 @@ impl Game<'_> {
                         - (sunrise_client::mobs::WOLF_ARMOR_DURABILITY as f32 * 0.125) as i32,
                 );
                 consume = true;
-                eat = Some(("item.wolf_armor.repair", 1.0, 1.0));
+                eat = Some((
+                    std::borrow::Cow::Borrowed("item.wolf_armor.repair"),
+                    1.0,
+                    1.0,
+                ));
             }
             Species::Wolf
                 if m.extra.tame
@@ -8821,7 +8928,11 @@ impl Game<'_> {
                 // TamableAnimal.feed.
                 m.heal(&self.loop_context, heal);
                 consume = true;
-                eat = eating_sound(m, &mut self.world.random);
+                let variants = self
+                    .world_tables
+                    .as_ref()
+                    .map_or_else(|| self.res.variants(), |t| &t.variants);
+                eat = eating_sound_with_variants(m, &mut self.world.random, Some(variants));
             }
             // Cat.mobInteract: Animal.mobInteract first breeds an adult or
             // grows a baby with the food; only when it did not does the owner
@@ -8861,7 +8972,11 @@ impl Game<'_> {
                     m.extra.owner = Some(acting);
                     m.extra.sitting = true;
                 }
-                eat = eating_sound(m, &mut self.world.random);
+                let variants = self
+                    .world_tables
+                    .as_ref()
+                    .map_or_else(|| self.res.variants(), |t| &t.variants);
+                eat = eating_sound_with_variants(m, &mut self.world.random, Some(variants));
                 // TamableAnimal.spawnTamingParticles (entity event 7 or 6).
                 self.mob_event_particles(self.mobs[index].id, if tamed { 7 } else { 6 });
                 if tamed {
@@ -8881,7 +8996,11 @@ impl Game<'_> {
             {
                 m.heal(&self.loop_context, 25.0);
                 consume = true;
-                eat = Some(("entity.iron_golem.repair", 1.0, m.golem_repair_pitch()));
+                eat = Some((
+                    std::borrow::Cow::Borrowed("entity.iron_golem.repair"),
+                    1.0,
+                    m.golem_repair_pitch(),
+                ));
             }
             Species::Creeper if creeper_igniter => {
                 m.extra.flag = true;
@@ -8893,7 +9012,11 @@ impl Game<'_> {
                 } else {
                     "item.flintandsteel.use"
                 };
-                eat = Some((event, 1.0, m.random.next_float() * 0.4 + 0.8));
+                eat = Some((
+                    std::borrow::Cow::Borrowed(event),
+                    1.0,
+                    m.random.next_float() * 0.4 + 0.8,
+                ));
                 if damageable {
                     self.damage_held_tool();
                 } else {
@@ -8948,7 +9071,7 @@ impl Game<'_> {
                 consume = true;
                 if !m.silent {
                     let pitch = 1.0 + (m.random.next_float() - m.random.next_float()) * 0.2;
-                    eat = Some(("entity.parrot.eat", 1.0, pitch));
+                    eat = Some((std::borrow::Cow::Borrowed("entity.parrot.eat"), 1.0, pitch));
                 }
                 let rolled = m.random.next_int_bound(10).unwrap_or(1) == 0;
                 let tamed =
@@ -8969,7 +9092,7 @@ impl Game<'_> {
             // Dolphin.mobInteract: a fish makes a baby grow by a tenth and an
             // adult remember it (`gotFish`), to swim to a treasure.
             Species::Dolphin if fish => {
-                eat = Some(("entity.dolphin.eat", 1.0, 1.0));
+                eat = Some((std::borrow::Cow::Borrowed("entity.dolphin.eat"), 1.0, 1.0));
                 if sunrise_client::mobs::ai::can_age_up(m) {
                     let secs = ((-m.extra.age / 20) as f32 * 0.1) as i32;
                     sunrise_client::mobs::ai::age_up(m, secs, true);
@@ -9041,7 +9164,16 @@ impl Game<'_> {
             {
                 // Animal.mobInteract: breed adults, speed up babies, then
                 // playEatingSound (silent unless the species overrides it).
-                match feed_animal(m, &mut self.world.random, Some(acting)) {
+                let variants = self
+                    .world_tables
+                    .as_ref()
+                    .map_or_else(|| self.res.variants(), |t| &t.variants);
+                match feed_animal_with_variants(
+                    m,
+                    &mut self.world.random,
+                    Some(acting),
+                    Some(variants),
+                ) {
                     Some(sound) => {
                         consume = true;
                         eat = sound;
@@ -9147,7 +9279,7 @@ impl Game<'_> {
             self.play_audio_bound("minecraft:entity.sheep.shear", 7, 1.0, 1.0, entity, None);
         }
         if let Some((s, volume, pitch)) = eat {
-            let name = full_id(s);
+            let name = full_id(&s);
             if eating_sound_is_bound(species) {
                 let id = self.mobs[index].id;
                 let sound =
@@ -9424,6 +9556,12 @@ impl Game<'_> {
         );
         let (species, variant, color) =
             (parent.species(), parent.extra.variant, parent.extra.color);
+        let (wolf_variant, pig_variant, cow_variant, chicken_variant) = (
+            parent.extra.wolf_variant,
+            parent.extra.pig_variant,
+            parent.extra.cow_variant,
+            parent.extra.chicken_variant,
+        );
         // `MushroomCow.getBreedOffspring(level, this)`: the egg's mate is the
         // parent itself, so the colour always rolls `nextInt(1024) == 0` to
         // flip, and every other roll spends the coin flip that can only pick
@@ -9452,6 +9590,10 @@ impl Game<'_> {
         };
         if let Some(child) = self.mobs.iter_mut().find(|m| m.id == id) {
             sunrise_client::mobs::finalize::spawn_egg_offspring(child, species, variant, color);
+            child.extra.wolf_variant = wolf_variant;
+            child.extra.pig_variant = pig_variant;
+            child.extra.cow_variant = cow_variant;
+            child.extra.chicken_variant = chicken_variant;
         }
         // `Mob.checkAndHandleImportantInteractions` then calls
         // `onOffspringSpawnedFromEgg`: `Fox`'s makes the baby trust the player
@@ -9556,8 +9698,13 @@ impl Game<'_> {
         };
         // SpawnEggItem.spawnMob: `EntityType.create` finalizes the mob, then
         // `PostSpawnProcessor` puts the egg's components on it.
+        let variants = self
+            .world_tables
+            .as_ref()
+            .map_or_else(|| self.res.variants(), |t| &t.variants);
         if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
             sunrise_client::entity_nbt::apply_item_components(m, stack);
+            sunrise_client::entity_nbt::apply_item_variant_components(m, stack, variants);
         }
         self.apply_spawn_egg_entity_data(id, &data);
         self.post_block_game_event("minecraft:entity_place", p, Some(Who::Player), None);

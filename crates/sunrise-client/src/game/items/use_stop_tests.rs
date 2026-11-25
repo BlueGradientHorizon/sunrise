@@ -171,6 +171,7 @@ fn axe_disabled_shield_posts_finish() {
                 causing: 1,
                 direct: 1,
                 position: None,
+                direct_type: None,
             },
             &NO_ATTACK,
         );

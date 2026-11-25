@@ -428,11 +428,14 @@ fn controller<'a>(m: &Mob, w: &'a MobWorld) -> Option<&'a Seen> {
         })
 }
 /// Vehicle goal flags are independent of whether the rider has a combat target.
-/// Ravager.updateControlFlags permits raiders, unlike Mob.updateControlFlags.
+/// Ravager.updateControlFlags permits a rider in `#minecraft:raiders` (the resolved
+/// tag, so a data pack's change applies), unlike Mob.updateControlFlags.
 pub fn drive(m: &mut Mob, w: &MobWorld) {
     let rider = controller(m, w);
-    let disabled = rider
-        .is_some_and(|r| m.species() != Species::Ravager || !super::raider::is_raider(r.species));
+    let disabled = rider.is_some_and(|r| {
+        m.species() != Species::Ravager
+            || !w.entity_tag_bit(&r.kind, crate::items::EntityTypeTags::RAIDERS)
+    });
     let flags = CONTROLLED
         | if m.species() == Species::Ravager {
             TARGET
@@ -1054,6 +1057,75 @@ mod tests {
                 vehicle.no_ai = true;
                 drive(&mut vehicle, &w);
                 assert_eq!(vehicle.ai.goals.disabled & CONTROLLED, 0);
+            }
+        ));
+    }
+
+    /// `Ravager.updateControlFlags`: a rider in `#minecraft:raiders` keeps the ravager's goals
+    /// on, any other mob rider turns them off. The tag is read as resolved, so a data pack that
+    /// adds a type to it, or takes one out, changes which riders steer.
+    #[test]
+    #[ignore = "daily"]
+    fn a_ravagers_goals_follow_the_raiders_tag_of_its_rider() {
+        let mut ravager = of(81, Species::Ravager);
+        let mut riders = [of(82, Species::Pillager), of(83, Species::Zombie)];
+        // Each its own type, at its place in the two-type registry the tag tables below bind
+        // (the test mobs share one type otherwise).
+        for (slot, (rider, id)) in riders
+            .iter_mut()
+            .zip(["minecraft:pillager", "minecraft:zombie"])
+            .enumerate()
+        {
+            rider.extra.mount = Some(ravager.id);
+            let kind = std::sync::Arc::make_mut(&mut rider.kind);
+            kind.id = id.into();
+            kind.flags.entity_tag_slot = Some(slot);
+        }
+        let ids: Vec<String> = riders.iter().map(|r| r.kind.id.clone()).collect();
+        let raiders = |members: &[&str]| {
+            let mut items = crate::items::Items::empty();
+            items.set_entity_type_tags(crate::items::EntityTypeTags::from_ordered(
+                [(
+                    "minecraft:raiders".into(),
+                    members.iter().map(|m| m.to_string()).collect(),
+                )]
+                .into(),
+                ids.clone().into(),
+            ));
+            items
+        };
+        let retained = riders
+            .each_ref()
+            .map(|r| r.seen(None, &crate::items::Items::empty()));
+        let (pillager, zombie) = (ids[0].as_str(), ids[1].as_str());
+        let root = std::env::var_os("SUNRISE_TEST_RESOURCES").expect("prepared resources required");
+        assert!(crate::mobs::world::with_resource_test_world(
+            std::path::Path::new(&root),
+            &[],
+            true,
+            true,
+            |_, _| {},
+            |w, _| {
+                // (tag members, rider, whether the ravager's goals stay on)
+                let cases = [
+                    (&[pillager][..], 0, true),
+                    (&[pillager][..], 1, false),
+                    (&[pillager, zombie][..], 1, true),
+                    (&[zombie][..], 0, false),
+                ];
+                for (members, rider, steers) in cases {
+                    let items = raiders(members);
+                    let w = MobWorld {
+                        side: sunrise_client::motion::dry_side(),
+                        passenger_objects: &retained,
+                        items: Some(&items),
+                        ..w.clone()
+                    };
+                    ravager.extra.rider = Some(riders[rider].id);
+                    drive(&mut ravager, &w);
+                    let off = ravager.ai.goals.disabled & CONTROLLED == CONTROLLED;
+                    assert_eq!(!off, steers, "{members:?}, rider {}", ids[rider]);
+                }
             }
         ));
     }

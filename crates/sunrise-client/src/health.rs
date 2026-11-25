@@ -80,6 +80,9 @@ pub struct DamageHooks {
     pub knockback: Option<fn(DamageLevel<'_>, Hurting<'_>, &mut Knock) -> bool>,
     /// `LivingUseTotemEvent` for one eligible stack. True refuses this hand only.
     pub totem: Option<fn(DamageLevel<'_>, Hurting<'_>, mod_api::Hand, &ItemStack) -> bool>,
+    /// `native_living_death_protection`: a protector a mod keeps outside the hands, asked once
+    /// neither hand protected. The game takes the stack from nowhere.
+    pub protector: Option<fn(DamageLevel<'_>, Hurting<'_>) -> Option<ItemStack>>,
     /// `native_living_shield_block`: `LivingEntity.applyItemBlocking` of a hit with damage,
     /// for what it hurts, the damage and whether vanilla blocks. It may change the
     /// [`ShieldBlock`].
@@ -97,6 +100,7 @@ impl DamageHooks {
         owner_post_listened: None,
         knockback: None,
         totem: None,
+        protector: None,
         shield: None,
         accepted: None,
     };
@@ -579,6 +583,9 @@ pub struct DamageLevel<'a> {
     /// The entity id the hook's source names as its causing entity (`DamageSource.getEntity`),
     /// 0 for none: the lent attacker is the hit's causer only when it is that entity.
     causing: i32,
+    /// The world's frozen mob variant tables, for variant-backed hurt and death sounds
+    /// (`Wolf.getHurtSound`/`getDeathSound`, `Cat.getHurtSound`/`getDeathSound`).
+    variants: Option<&'a crate::mobs::variants::VariantTables>,
 }
 impl<'a> DamageLevel<'a> {
     /// The level of `world`, whose blocks `registry` names.
@@ -622,6 +629,7 @@ impl<'a> DamageLevel<'a> {
             reads: None,
             victim: None,
             causing: 0,
+            variants: None,
         }
     }
     /// The level of `world`, with the random and attachments `lent` took out of it.
@@ -656,6 +664,7 @@ impl<'a> DamageLevel<'a> {
             reads: None,
             victim: None,
             causing: 0,
+            variants: None,
         }
     }
     /// The same level, whose hit lends `lend` (its causing entity) to its listeners, where the
@@ -673,6 +682,14 @@ impl<'a> DamageLevel<'a> {
     }
     pub(crate) fn mob_uuid(&self, id: u32) -> Option<[i32; 4]> {
         self.mob_uuids?.get(&id).copied()
+    }
+    /// Attach the world's frozen mob variant tables for variant-backed hurt and death sounds.
+    pub fn with_variants(mut self, variants: &'a crate::mobs::variants::VariantTables) -> Self {
+        self.variants = Some(variants);
+        self
+    }
+    pub(crate) fn variants(&self) -> Option<&crate::mobs::variants::VariantTables> {
+        self.variants
     }
     /// The same level, for a shorter borrow.
     pub fn reborrow(&mut self) -> DamageLevel<'_> {
@@ -702,6 +719,7 @@ impl<'a> DamageLevel<'a> {
             reads: self.reads,
             victim: self.victim,
             causing: self.causing,
+            variants: self.variants,
         }
     }
     /// The owner's slot for a hit that must release its borrows before resuming.
@@ -1080,6 +1098,7 @@ impl<'a> DamageLevel<'a> {
                     damage_type: source.damage_type.to_owned(),
                     causing: source.causing,
                     direct: source.direct,
+                    direct_type: source.direct_type.map(str::to_owned),
                     position: source.position,
                     lent_entity: self
                         .effects
@@ -1110,7 +1129,9 @@ pub struct DamageCompletion {
 /// The hand and original stack accepted by `checkTotemDeathProtection`.
 #[derive(Clone, Debug)]
 pub struct PlayerProtection {
-    pub hand: mod_api::Hand,
+    /// The hand it is used up from; None for a mod's protector from outside the hands
+    /// (`living_death_protection`), which the game takes from nowhere.
+    pub hand: Option<mod_api::Hand>,
     pub stack: ItemStack,
 }
 
@@ -1126,6 +1147,7 @@ pub struct DamagePost {
     damage_type: String,
     causing: i32,
     direct: i32,
+    direct_type: Option<String>,
     position: Option<[f64; 3]>,
     lent_entity: Option<i32>,
     state: DamageState,
@@ -1138,6 +1160,7 @@ impl DamagePost {
             damage_type: &self.damage_type,
             causing: self.causing,
             direct: self.direct,
+            direct_type: self.direct_type.as_deref(),
             position: self.position,
         };
         (source, &self.state, self.lent_entity)
@@ -1347,6 +1370,15 @@ impl<'a> DamageLevel<'a> {
         self.hooks
             .totem
             .is_some_and(|hook| hook(self.without_views(), hurting, hand, stack))
+    }
+    /// [`DamageHooks::protector`]'s answer once neither hand protected `hurting`: a stack with
+    /// `death_protection`, else nothing.
+    pub(crate) fn mod_protector(&mut self, hurting: Hurting<'_>) -> Option<ItemStack> {
+        let stack = self
+            .hooks
+            .protector
+            .and_then(|hook| hook(self.without_views(), hurting))?;
+        self.death_protection(&stack).is_some().then_some(stack)
     }
     /// Whether this level belongs to a logical server `Game` whose hooks
     /// apply mob death-protection and effect additions through the owning loop.
@@ -3018,13 +3050,17 @@ impl HurtWorld for Environment<'_> {
                     .totem_canceled(Hurting::Player(self.entity, source), hand, stack)
             {
                 self.protection = Some(PlayerProtection {
-                    hand,
+                    hand: Some(hand),
                     stack: stack.clone(),
                 });
                 return Ok(true);
             }
         }
-        Ok(false)
+        let protector = self
+            .level
+            .mod_protector(Hurting::Player(self.entity, source));
+        self.protection = protector.map(|stack| PlayerProtection { hand: None, stack });
+        Ok(self.protection.is_some())
     }
     #[inline]
     fn death_sound(&mut self, _: &mut State) -> io::Result<()> {
@@ -3239,6 +3275,7 @@ mod tests {
             causing: 0,
             direct: 0,
             position: None,
+            direct_type: None,
         };
         let mut knock = Knock {
             strength: 0.4,

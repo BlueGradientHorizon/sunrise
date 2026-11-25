@@ -1182,6 +1182,22 @@ mod ambient_particle_tests {
         }
     }
 
+    /// `Item.CODEC` refuses air while the biome file is decoded, in either form of the item.
+    #[test]
+    fn an_air_item_particle_is_refused_while_decoding() {
+        let attribute = attribute(AMBIENT_PARTICLES).unwrap();
+        let entry =
+            |item| json!([{"particle": {"type":"minecraft:item", "item":item}, "probability":0.5}]);
+        assert!(attribute.value(&entry(json!("minecraft:apple"))).is_ok());
+        for air in [
+            json!("minecraft:air"),
+            json!("air"),
+            json!({"id":"minecraft:air"}),
+        ] {
+            assert!(attribute.value(&entry(air.clone())).is_err(), "{air}");
+        }
+    }
+
     #[test]
     fn ambient_particle_layers_append_and_crossfade_without_merging() {
         let attribute = attribute(AMBIENT_PARTICLES).unwrap();

@@ -202,7 +202,8 @@ rotations. Each `frame` is an existing index into the bind-time sprite list. UVs
 sprite: `[0.0, 0.0, 1.0, 1.0]` selects it whole. `color` is `0xAARRGGBB`; for packed light use the
 view's value or vanilla's `LightCoordsUtil.pack`/`smoothPack` layout. The explicit layer wins over
 the group's blend. Opaque quads replace covered pixels after the alpha cut; translucent quads
-blend. Both are depth tested and culled from the back. The group still controls admission of the particle,
+blend; additive quads draw after the translucent layer with depth writes off and additive blending.
+All three are depth tested and culled from the back. The group still controls admission of the particle,
 not the number of quads it emits. The sink ignores an unresolved frame or non-finite geometry/UV
 without dropping other quads.
 
@@ -264,9 +265,8 @@ and world, or for non-finite numbers.
 `PlayerInput`, using the game's movement implementation without replacing the
 live player's body. It returns `SimulatedMove` with position, velocity, ground,
 horizontal-collision and sprinting results. It refuses stale or inaccessible players,
-dead players, spectators, riders and invalid numeric input. The prediction includes the
-local player's ordinary wall-escape nudge, which checks solid collider boxes when a collision
-scene is in scope. A supplied velocity is input to the prediction, not a write to the player.
+dead players, spectators, riders and invalid numeric input. A supplied velocity is
+input to the prediction, not a write to the player.
 
 `LevelRef::visit_block_collisions` lends each intersecting, unclipped world-space `VoxelShape`
 for a finite, ordered axis-aligned box. It uses vanilla's `BlockCollisions` walk, skips missing

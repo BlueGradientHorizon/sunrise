@@ -17,7 +17,9 @@ opening the world to LAN. The owner joins the integrated server through memory
 and has an ordinary `PlayerRef`. Sending a payload to that ref reaches the client
 half through the same registration and negotiation as any other player; no
 separate local-player send path is needed.
-Fake players are not included in the connected-player list.
+Fake players are not included in the connected-player list. To look up an
+identity or its permission level without a live handle, use the players
+service's [profile reads](server-commands.md#game-profiles-including-offline-players).
 
 Player and level lookup services accept `&dyn ServerHost` and do not mutate the
 world. These services are unavailable on `Host`, `ClientHost` and restricted
@@ -337,7 +339,7 @@ fires when a world is opened to LAN.
 
 `host.tick_rate_is_frozen()` is `TickRateManager.isFrozen` (`/tick freeze`): `Some(true)` while the server's
 ticking is frozen, `None` on a client. A frozen server still runs the ticks `/tick step` asks for, so
-`server_tick_start`'s `world_running` can be true while it is frozen; read this to tell a frozen server from a
+`server_tick`'s `ServerTickPhase::ServerTickStart { world_running }` can be true while it is frozen; read this to tell a frozen server from a
 paused level.
 
 ## Weather

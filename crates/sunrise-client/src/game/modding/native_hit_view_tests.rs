@@ -439,7 +439,13 @@ fn a_hit_listener_reads_its_victim_and_causer_live_and_their_attachments_read_on
             assert_eq!(post.causing.as_ref().map(|read| read.id), Some(7));
 
             // A hit with no causing entity lends none.
-            game.hurt_player_from(1.0, None, "minecraft:generic", Some(None), false);
+            game.hurt_player_from(
+                1.0,
+                None,
+                "minecraft:generic",
+                crate::game::creatures::KnownCause::None,
+                false,
+            );
             let calls = std::mem::take(&mut *seen.lock().unwrap());
             assert_eq!(calls.len(), 3);
             for call in &calls {

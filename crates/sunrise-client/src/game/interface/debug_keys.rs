@@ -491,7 +491,7 @@ impl Game<'_> {
             } else {
                 ""
             },
-            match s.clouds.as_str() {
+            match self.effective_clouds() {
                 "false" => "",
                 "fast" => "fast-clouds ",
                 _ => "fancy-clouds ",

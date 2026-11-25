@@ -211,6 +211,7 @@ fn hurt_gossip_belongs_to_the_hits_own_player() {
             [at.x, at.y, at.z],
             &crate::text::Text::literal("Cloud"),
             (Some(Who::Player), Some(7)),
+            None,
         );
         assert_eq!(game.villager_reputation_of(91, [0, 0, 0, 9]), -25);
         assert_eq!(game.villager_reputation_of(91, [0, 0, 0, 2]), 0);

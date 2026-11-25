@@ -793,7 +793,7 @@ impl Game<'_> {
     }
 
     /// An `OperatorDto`: the player found, and the level and bypass when given.
-    fn management_op(&self, entry: &Value) -> Option<Op> {
+    fn management_op(&mut self, entry: &Value) -> Option<Op> {
         Some(Op {
             user: self.management_user(&entry["player"])?,
             level: entry["permissionLevel"].as_i64().map(|l| l as i32),
@@ -824,7 +824,7 @@ impl Game<'_> {
 
     /// `UserBanDto.toUserBan`: the player found, the source "Management server" unless one is given; the ban
     /// starts now.
-    fn management_ban(&self, entry: &Value) -> Option<Ban> {
+    fn management_ban(&mut self, entry: &Value) -> Option<Ban> {
         let user = self.management_user(&entry["player"])?;
         let source = entry["source"].as_str().unwrap_or("Management server");
         let reason = entry["reason"].as_str().map(str::to_owned);
@@ -838,16 +838,12 @@ impl Game<'_> {
 
     /// `MinecraftPlayerListService.getUser`: by id, the user cache, else the session service; by name, the
     /// user cache, else the profile service (an offline server's offline player).
-    fn management_user(&self, player: &Value) -> Option<NameAndId> {
+    fn management_user(&mut self, player: &Value) -> Option<NameAndId> {
         if let Some(id) = player["id"]
             .as_str()
             .and_then(|s| u128::from_str_radix(s, 16).ok())
         {
-            let cached = super::USER_CACHE
-                .lock()
-                .unwrap()
-                .as_mut()
-                .and_then(|c| c.get_by_id(id));
+            let cached = self.user_cache.as_mut().and_then(|c| c.get_by_id(id));
             return cached.or_else(|| profiles::find_by_id(&profiles::discovery_url(), id));
         }
         self.resolve_name(player["name"].as_str()?)

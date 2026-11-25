@@ -1820,6 +1820,154 @@ fn explicit_particle_layers_render_in_device_sized_draws() {
     );
 }
 
+#[test]
+#[ignore = "daily"]
+fn additive_particles_brighten_when_overlapping_without_writing_depth() {
+    use super::particle_draws::{EXPLICIT_PARTICLE_OVERLAY, ParticleDraws, ParticlePipelines};
+    let _gpu = crate::gfx::test_gpu::lock();
+    let frame = software_frame_lit(
+        [1, 1],
+        &[255; 4],
+        Mat4::IDENTITY,
+        0.0,
+        [SIZE; 2],
+        &[255; 16 * 16 * 4],
+    )
+    .expect("software Vulkan frame");
+    let shader = frame
+        .device
+        .create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: None,
+            source: wgpu::ShaderSource::Wgsl(entity_shader().into()),
+        });
+    let layout = frame
+        .device
+        .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: None,
+            bind_group_layouts: &[Some(&frame.bindings)],
+            immediate_size: 0,
+        });
+    let buffers = [Some(wgpu::VertexBufferLayout {
+        array_stride: size_of::<Vertex>() as u64,
+        step_mode: wgpu::VertexStepMode::Vertex,
+        attributes: &ENTITY_ATTRIBUTES,
+    })];
+    let reuse = reuse::Reuse::default();
+    let kept = reuse.on(&frame.device);
+    let pipelines = ParticlePipelines::new(entity_pipeline_factory(
+        &kept,
+        &layout,
+        &layout,
+        &shader,
+        &buffers,
+        wgpu::TextureFormat::Rgba8Unorm,
+        false,
+    ));
+    let quad = |x: f32, y: f32, z, color| {
+        [(0.25, -0.25), (0.25, 0.25), (-0.25, 0.25), (-0.25, -0.25)].map(|(dx, dy)| Vertex {
+            pos: [x + dx, y + dy, z],
+            uv: [0.5; 2],
+            layer: EXPLICIT_PARTICLE_OVERLAY,
+            color,
+            light: 0,
+            normal: [0; 4],
+            glint_uv: [0.0; 2],
+        })
+    };
+    let opaque = [quad(-0.5, -0.5, 0.75, 0xff00_0040)];
+    let translucent = [quad(0.5, -0.5, 0.5, 0x80ff_0000)];
+    let additive = [
+        // Single additive particle over black.
+        quad(-0.5, 0.5, 0.75, 0x8000_0080),
+        // Two overlapping additive particles (second further in reverse-Z, testing no depth write).
+        quad(0.5, 0.5, 0.75, 0x8000_0080),
+        quad(0.5, 0.5, 0.5, 0x8000_0080),
+        // Behind the opaque blocker (testing depth test on).
+        quad(-0.5, -0.5, 0.5, 0xff00_ff00),
+        // In front of the translucent particle, drawn after it.
+        quad(0.5, -0.5, 0.75, 0x8000_00ff),
+    ];
+    let mut draws = [
+        ParticleDraws::default(),
+        ParticleDraws::default(),
+        ParticleDraws::default(),
+    ];
+    let mut uploads = super::upload::Uploads::new(&frame.device);
+    let mut encoder = frame.device.create_command_encoder(&Default::default());
+    for (draws, vertices) in draws.iter_mut().zip([
+        opaque.as_flattened(),
+        translucent.as_flattened(),
+        additive.as_flattened(),
+    ]) {
+        let limit = size_of::<[Vertex; 4]>() as u64;
+        assert_eq!(
+            draws.prepare(&frame.device, &mut uploads, &mut encoder, vertices, limit),
+            1
+        );
+    }
+    let index = super::Renderer::quad_indices(&frame.device, 1);
+    {
+        let color = frame.color.create_view(&Default::default());
+        let depth = frame.depth.create_view(&Default::default());
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &color,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: &depth,
+                stencil_ops: None,
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(0.0),
+                    store: wgpu::StoreOp::Store,
+                }),
+            }),
+            ..Default::default()
+        });
+        pass.set_bind_group(0, &frame.group, &[]);
+        pass.set_index_buffer(index.slice(..), wgpu::IndexFormat::Uint32);
+        for (draws, pipeline) in draws.iter().zip([
+            &pipelines.opaque,
+            &pipelines.translucent,
+            &pipelines.additive,
+        ]) {
+            pass.set_pipeline(pipeline);
+            draws.draw(&mut pass);
+        }
+    }
+    uploads.finish(&encoder);
+    let pixels = readback(&frame, encoder).expect("additive particle output readback");
+    let rgb = |x, y| {
+        let at = ((y * SIZE + x) * 4) as usize;
+        &pixels[at..at + 3]
+    };
+    let one = rgb(SIZE / 4, SIZE / 4);
+    let two = rgb(SIZE * 3 / 4, SIZE / 4);
+    assert!(
+        one[0] > 0 && one[1] == 0 && one[2] == 0,
+        "one additive particle lights up over black: {one:?}"
+    );
+    assert!(
+        two[0] > one[0] && two[1] == 0 && two[2] == 0,
+        "two overlapping additive particles brighten further without depth write: one={one:?}, two={two:?}"
+    );
+    assert_eq!(
+        rgb(SIZE / 4, SIZE * 3 / 4),
+        [64, 0, 0],
+        "additive particle behind an opaque surface is depth-rejected"
+    );
+    let over_translucent = rgb(SIZE * 3 / 4, SIZE * 3 / 4);
+    assert!(
+        over_translucent[0] > 0 && over_translucent[2] > 0,
+        "additive particle drawn after translucent adds onto it: {over_translucent:?}"
+    );
+}
+
 /// Draws a real screen batch through the engine HUD pipeline on software Vulkan.
 /// Uses the same adapter, atlas upload and readback as the entity pixel fixtures.
 pub fn render_hud(

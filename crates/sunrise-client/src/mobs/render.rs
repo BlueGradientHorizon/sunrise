@@ -49,6 +49,10 @@ pub trait RenderDataSource {
     fn humanoid_setup(&self) -> Option<&dyn anim::HumanoidSetup> {
         None
     }
+    /// The synced or world variant tables for registry-backed entity textures.
+    fn variants(&self) -> Option<&super::variants::VariantTables> {
+        None
+    }
 }
 
 impl RenderDataSource for MobData {
@@ -240,13 +244,6 @@ fn baby_or<'a>(
 pub mod villager_client;
 use villager_client::interned;
 
-fn climate(m: &Mob) -> &'static str {
-    match m.extra.variant {
-        1 => "warm",
-        2 => "cold",
-        _ => "temperate",
-    }
-}
 /// `AvatarRenderer` entities: a mannequin draws exactly like a player —
 /// the player model, its resolved skin and the same scale.
 pub fn avatar(m: &Mob) -> bool {
@@ -260,6 +257,13 @@ pub fn layers_shown(m: &Mob) -> bool {
 }
 /// The model layer key and texture for the mob's body.
 pub fn body(m: &Mob) -> (Cow<'static, str>, Cow<'_, str>) {
+    body_with_variants(m, None)
+}
+/// [`body`] with the synced or world variant tables for registry-backed textures.
+pub fn body_with_variants<'a>(
+    m: &'a Mob,
+    variants: Option<&super::variants::VariantTables>,
+) -> (Cow<'static, str>, Cow<'a, str>) {
     use Species as S;
     let baby = m.is_baby();
     let b = |s: &str| -> Cow<'static, str> {
@@ -305,7 +309,7 @@ pub fn body(m: &Mob) -> (Cow<'static, str>, Cow<'_, str>) {
         }
         S::Wolf => (
             baby_or(m, "wolf#main", "wolf_baby#main"),
-            super::tame::texture(m).into(),
+            super::tame::texture(m, variants).into(),
         ),
         S::Panda => (
             baby_or(m, "panda#main", "panda_baby#main"),
@@ -320,8 +324,8 @@ pub fn body(m: &Mob) -> (Cow<'static, str>, Cow<'_, str>) {
             },
         ),
         S::Nautilus | S::ZombieNautilus => (
-            super::nautilus::model(m).into(),
-            super::nautilus::texture(m).into(),
+            super::nautilus::model(m, variants).into(),
+            super::nautilus::texture(m, variants).into(),
         ),
         S::SulfurCube => {
             let (model, texture) = super::sulfur_cube::body(m);
@@ -348,12 +352,17 @@ pub fn body(m: &Mob) -> (Cow<'static, str>, Cow<'_, str>) {
         ),
         S::Cat => (
             baby_or(m, "cat#main", "cat_baby#main"),
-            super::tame::cat_texture(m).into(),
+            super::tame::cat_texture(m, variants).into(),
         ),
-        S::Frog => (
-            "frog#main".into(),
-            interned(format_args!("entity/frog/frog_{}", climate(m))),
-        ),
+        S::Frog => {
+            let texture = variants
+                .and_then(|v| {
+                    let r = m.frog_variant(&v.frog)?;
+                    Some(v.frog.get(r)?.texture().to_owned())
+                })
+                .unwrap_or_default();
+            ("frog#main".into(), Cow::Owned(texture))
+        }
         // RabbitRenderer.getTextureLocation: the Toast name tag, else the
         // variant (the killer bunny's id is 99).
         S::Rabbit => {
@@ -439,31 +448,48 @@ pub fn body(m: &Mob) -> (Cow<'static, str>, Cow<'_, str>) {
             )),
         ),
         S::Pig => {
-            let model = if baby {
-                "pig_baby#main".into()
-            } else if m.extra.variant == 2 {
-                "cold_pig#main".into()
+            if let Some(table) = variants.map(|v| &v.pig)
+                && !table.is_empty()
+            {
+                if let Some(entry) = m.pig_variant(table).and_then(|r| table.get(r)) {
+                    (
+                        entry.model_key(baby).into(),
+                        entry.texture(baby).to_owned().into(),
+                    )
+                } else {
+                    (
+                        if baby { "pig_baby#main" } else { "pig#main" }.into(),
+                        Cow::Borrowed(""),
+                    )
+                }
             } else {
-                "pig#main".into()
-            };
-            (
-                model,
-                b(&interned(format_args!("entity/pig/pig_{}", climate(m)))),
-            )
+                (
+                    if baby { "pig_baby#main" } else { "pig#main" }.into(),
+                    b("entity/pig/pig_temperate"),
+                )
+            }
         }
         S::Cow => {
-            let model = match (m.extra.variant, baby) {
-                (1, false) => "warm_cow#main",
-                (1, true) => "warm_cow_baby#main",
-                (2, false) => "cold_cow#main",
-                (2, true) => "cold_cow_baby#main",
-                (_, true) => "cow_baby#main",
-                _ => "cow#main",
-            };
-            (
-                model.into(),
-                b(&interned(format_args!("entity/cow/cow_{}", climate(m)))),
-            )
+            if let Some(table) = variants.map(|v| &v.cow)
+                && !table.is_empty()
+            {
+                if let Some(entry) = m.cow_variant(table).and_then(|r| table.get(r)) {
+                    (
+                        entry.model_key(baby).into(),
+                        entry.texture(baby).to_owned().into(),
+                    )
+                } else {
+                    (
+                        if baby { "cow_baby#main" } else { "cow#main" }.into(),
+                        Cow::Borrowed(""),
+                    )
+                }
+            } else {
+                (
+                    if baby { "cow_baby#main" } else { "cow#main" }.into(),
+                    b("entity/cow/cow_temperate"),
+                )
+            }
         }
         S::Mooshroom => (
             baby_or(m, "mooshroom#main", "mooshroom_baby#main"),
@@ -474,20 +500,36 @@ pub fn body(m: &Mob) -> (Cow<'static, str>, Cow<'_, str>) {
             }),
         ),
         S::Chicken => {
-            let model = if baby {
-                "chicken_baby#main"
-            } else if m.extra.variant == 2 {
-                "cold_chicken#main"
+            if let Some(table) = variants.map(|v| &v.chicken)
+                && !table.is_empty()
+            {
+                if let Some(entry) = m.chicken_variant(table).and_then(|r| table.get(r)) {
+                    (
+                        entry.model_key(baby).into(),
+                        entry.texture(baby).to_owned().into(),
+                    )
+                } else {
+                    (
+                        if baby {
+                            "chicken_baby#main"
+                        } else {
+                            "chicken#main"
+                        }
+                        .into(),
+                        Cow::Borrowed(""),
+                    )
+                }
             } else {
-                "chicken#main"
-            };
-            (
-                model.into(),
-                b(&interned(format_args!(
-                    "entity/chicken/chicken_{}",
-                    climate(m)
-                ))),
-            )
+                (
+                    if baby {
+                        "chicken_baby#main"
+                    } else {
+                        "chicken#main"
+                    }
+                    .into(),
+                    b("entity/chicken/chicken_temperate"),
+                )
+            }
         }
         S::Sheep => (
             baby_or(m, "sheep#main", "sheep_baby#main"),
@@ -1633,10 +1675,10 @@ impl<'a> FrameDraw<'a> {
     pub fn prepare(
         &mut self,
         mob: &'a Mob,
-        data: &MobData,
+        data: &dyn RenderDataSource,
     ) -> Option<&mut dyn mod_api::FrameModelEdit> {
         let body = FrameBody::select(mob, data);
-        let layout = body.layout(data)?.clone();
+        let layout = body.layout(data.mob_data())?.clone();
         let mut poses = Poses::pooled();
         poses.reset(body.model());
         poses.prepare_frame_visibility(layout.clone());
@@ -2074,7 +2116,7 @@ pub fn drawn_textures(m: &Mob, data: &dyn RenderDataSource) -> Vec<String> {
         .cem
         .read()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    let (model_key, texture) = body(m);
+    let (model_key, texture) = body_with_variants(m, data.variants());
     let cem_key = cem_key(&model_key);
     let mut names = Vec::new();
     push(&mut names, cem.layer(cem_key), texture.into_owned());
@@ -2177,7 +2219,7 @@ fn render_visible(
     let (body, mut poses, layout) = match frame.prepared.take() {
         Some((body, prepared)) => (body, prepared.poses, Some(prepared.layout)),
         None => {
-            let body = FrameBody::select(m, data.mob_data());
+            let body = FrameBody::select(m, data);
             let mut poses = Poses::pooled();
             poses.reset(body.model());
             (body, poses, None)
@@ -2344,6 +2386,17 @@ fn render_selected(
         let uv = drawn.map(|(_, uv)| uv).or_else(|| {
             if avatar(m) {
                 atlas(&m.kind.texture)
+            } else if matches!(
+                m.species(),
+                Species::Wolf
+                    | Species::Cat
+                    | Species::Pig
+                    | Species::Cow
+                    | Species::Chicken
+                    | Species::Frog
+                    | Species::ZombieNautilus
+            ) {
+                atlas(crate::hud::MISSING_SPRITE)
             } else {
                 None
             }

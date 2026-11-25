@@ -25,13 +25,11 @@ For mods that run where the world is simulated: a dedicated server, a LAN host, 
   Kinds: `word`, `text` (the rest of the line, last), `integer`,
   `number`, `boolean`, `player`, `item`, `block_pos`, `vec3`, `id`, and any command argument type a mod registered
   (`Registrar::register_command_argument`): its namespaced id is the kind, as in
-  `<machine:mymod:machine>`. A custom argument is one word (or the rest of the line when its type says
-  `Greedy`) and delivers its type's canonical value to the executor. The usages of one command merge into
-  one tree, which every player receives after vanilla's (filtered by their level, as vanilla's is), so their
-  chat box completes and colours it. A client that does not know a custom type still parses and completes it:
-  the tree sends the argument as a Brigadier string and asks the server for its suggestions. Fabric sends
-  the registered argument type's id instead, which an unmodded client cannot read; the string keeps its
-  tree valid. The server also parses player and console invocations against that tree, including each
+  `<machine:mymod:machine>`. A custom argument reads one word, a vanilla identifier (`Id`), or the rest of the
+  line (`Greedy`) and delivers its type's canonical value to the executor. Usages merge into one tree that
+  each player receives alongside vanilla's, filtered by permission. Even a client that does not know the
+  custom type can parse and complete it: the tree sends the matching vanilla parser and asks the server
+  for suggestions. The server parses player and console invocations against that tree, including each
   usage's permission and argument types, before calling the executor as the registering mod.
   Each executable usage keeps its own permission: an operator-only `foo` remains unavailable to ordinary players
   even if `foo bar` is public. Players can traverse the shared `foo` prefix to reach `bar`, but cannot execute
@@ -958,14 +956,16 @@ handle, an entity the client doesn't track and a level it doesn't show:
 
 `level.set_block(host, pos, state, flags)` and `level.remove_block(host, pos, moved)` change the level in place. They return false for a stale handle, client, parked level, unloaded chunk or out-of-height position; parked writes wait for a safe level swap. Removal preserves the fluid's legacy block; `moved` marks a piston move. `BlockUpdateFlags` combines supported vanilla update flags with `|`. `CLIENTS` sends the update, while `INVISIBLE` suppresses notification only on the client, as in `Level.setBlock`. Skipping block-entity side effects suppresses container-content drops when replacing a chest; without it, the contents spill.
 
-`level.destroy_block(host, pos, drop, tool, collect)` uses that same level's destruction and loot path.
-`tool: None` means an empty hand. With `collect`, the returned stacks are not spawned as item entities;
-without it, a successful break returns an empty list after spawning them. The normal block-drop hook
-still runs once before either outcome; tool enchantments and vanilla random ordering are unchanged.
-In the block's level transaction the replacement is readable immediately; entities, experience and
+`level.destroy_block(host, pos, drop, tool, breaker, collect)` uses that same level's destruction and loot path
+(`Level.destroyBlock(pos, drop, breaker, maxUpdates)`). `tool: None` means an empty hand, and `breaker` is
+passed to loot (`this` entity) and the `minecraft:block_destroy` game event. With `collect`, the returned stacks
+are not spawned as item entities; without it, a successful break returns an empty list after spawning them. The
+normal block-drop hook still runs once before either outcome; tool enchantments and vanilla random ordering are
+unchanged. In the block's level transaction the replacement is readable immediately; entities, experience and
 break effects wait for commit. Aborting restores the block. Another level's transaction alone does
 not defer destruction.
-`drop: false` suppresses resources. `None` means nothing broke, including an invalid write or air.
+`drop: false` suppresses resources. `None` means nothing broke, including an invalid write, a stale/foreign
+`breaker`, or air.
 `level.set_break_progress(host, breaker, pos, stage)` shows stages 0..9 or clears the crack otherwise;
 a machine uses a stable negative breaker id.
 
@@ -1156,15 +1156,6 @@ position and aim are unchanged.
   cut to 4 either way; an upward push lifts the player off the ground. A spectator, no player, or a value that isn't
   a number is left alone. A server mod that wants a client pushed sends its client half a message.
 
-### Values for a mod's shader pack
-
-`shader_params(partial, params)` (client) asks every frame, while a Sunrise shader pack is on, for eight
-`[f32; 4]` that every stage of the pack reads as `frame.mods` (`array<vec4<f32>, 8>`, docs/api/shaders-reference.md). What
-they mean is the mod's own: a mod that bundles its pack as `native-<mod id>` writes the slots that pack reads, such as an
-explosion's centre (camera-relative, from `frame.camera_position`) and its age in seconds, for a cloud or a shock wave
-ray marched in a post pass against `scene_depth`. A value that isn't finite reads as 0, and all are 0 when no mod sets
-them. The mod's server half can send what happened to each client half with mod messages.
-
 ### Biome colours
 
 `crates/sunrise-client/src/game/modding/biome_colors.rs`: the grass, leaf and water colours a client mod changes while the
@@ -1178,8 +1169,6 @@ game runs, for seasons (a golden autumn, a pale winter) or a world that greens a
   change and once when the player joins, not every tick: a rebuild takes the workers a few seconds. A slow fade is a
   call a day, not a frame.
 - Block-breaking and falling-leaf particles keep the biome's own colours.
-- A season's mood in a shader pack (warmer grading, a lower sun, more haze) comes from the same mod through
-  `shader_params` (`frame.mods`); its server half can send the season to each client with mod messages.
 
 ### Sounds a client mod plays
 
@@ -1766,10 +1755,6 @@ game `Host`, handle constructors or transactions. Declarations still go on each 
   from its `assets/<id>/sounds.json`, for this player only: an interface sound (`SoundPlay::ui`) or one at a place
   (`SoundPlay::at`), immediately at the audio update or after the requested delay, so a client mod can click its own
   buttons or time a blast's sound to its shock wave. Its `SoundRef` follows and controls the individual play.
-
-- Values for a mod's own shader pack: `shader_params(partial, params)` asks each frame for eight `vec4`s that
-  every stage of a Sunrise shader pack reads as `frame.mods`, so a mod can tell the pack it bundles where and when
-  something happened (an explosion's centre and age for a cloud drawn in a post pass).
 
 - Menus of content mods' own menu types (vanilla's `MenuType`): a mod container's `menu` may name a menu type its content mod declares in `data/<id>/sunrise/menu/` with as many slots ([making a content mod](../how-to/content-mods.md#menu-types)). It opens when the block is used, its data slots are the block entity's `data`, and a Sunrise client shows it through the mod's registered screen factory. Server collect hooks `recipe_sources` and `menu_links` name lent ingredient and linked-slot containers; see the menu-types guide for ordering, skips, write-back, uncapped resolution in both, and `menu_links`'s no-listener tick path.
 
@@ -2712,7 +2697,7 @@ registration path.
 - `ClientHost::create_dynamic_texture(id, width, height, rgba)`, `update_dynamic_texture`, `free_dynamic_texture(id)` and `dynamic_texture_budget()`: vanilla's `DynamicTexture` registered in the `TextureManager` (`register`, `upload`, `release`), kept in the HUD atlas. A client mod names an RGBA image under a namespace it owns (`mymod:dynamic/panel`, its extra manifest namespaces, or a content package it serves via `served_by`); it takes a slot of the atlas's pool, of the smallest of three size classes that holds it (`DYNAMIC_TEXTURE_CLASSES`: 64, 256 and 1024 pixels square, 32, 8 and 2 slots), and its id names it as a GUI sprite, so `DrawContext::sprite`, `gui_nine_slice`, `tiled_sprite` and `gui_sprite` reach it as any sprite. The pool is packed only when a client mod is loaded (decided at load and on a resource reload, with no mixin), so a game without mods has no slot and no atlas growth. An update re-patches the same slot (a size of another class is `ClassChange`), a free drops the name and returns the slot, and a resource reload keeps every name and patches the new atlas from the last pixels, which the game keeps and counts in the calling mod's budget: `DYNAMIC_TEXTURE_MOD_IMAGES` (16) images and `DYNAMIC_TEXTURE_MOD_BYTES` (4 MiB), read with `dynamic_texture_budget`. Every refusal is named (`DynamicTextureError`: `NotOwned`, `BadSize`, `TooLarge` past 1024 pixels, `NoSlot`, `OverBudget`, `NameTaken`, `Unknown`, `ClassChange`, `Unavailable`) and changes nothing. Replaces `native_mod_image`, one 1024 by 1024 slot shared by every mod. Diverges from upstream: horizon-rust/horizon keeps `native_mod_image`.
 - A living entity drowning (`living_drown`), with changeable drowning, damage and bubble count, and cancellation.
 - `Game::native_translate(key)`: the selected language's text for a translation key, or `None` when no language layer defines it (`I18n.exists`), so a mod can fall back its own way (a recipe viewer names an item tag by `tag.item.<namespace>.<path>` and falls back to the id). NeoForge: `I18n.exists` and `I18n.get`. Client-side.
-- Every `Host`, on either side, and `ClientSetupContext` expose `enchantments()`, `enchantment_supports(id, item)` and `enchantment_min_cost(id, level)`. A server reads its own enchantment registry, data packs included; a client reads the table built from the server's synced enchantment entries when available, and the local table otherwise. `enchantments()` lists `EnchantmentInfo { id, max_level, weight, anvil_cost, curse }` in registry order: `weight` is the selection weight (`Enchantment.getWeight`) and `anvil_cost` is the base anvil fee per enchantment level (`Enchantment.getAnvilCost`). `enchantment_supports` checks the entry's `supported_items` (`Enchantment.isSupportedItem`), not Item Part overrides. `enchantment_min_cost` reads the power a level needs (`Enchantment.getMinCost`), or `None` for an unknown enchantment.
+- Every `Host`, on either side, and `ClientSetupContext` expose `enchantments()`, `enchantment_supports(id, item)` and `enchantment_min_cost(id, level)`. A server reads its own enchantment registry, data packs included; a client reads the table built from the server's synced enchantment entries when available, and the local table otherwise. `enchantments()` lists `EnchantmentInfo { id, max_level, weight, anvil_cost, curse, description }` in registry order: `weight` is the selection weight (`Enchantment.getWeight`), `anvil_cost` is the base anvil fee per enchantment level (`Enchantment.getAnvilCost`) and `description` is the definition's name component (`Enchantment.description`). `enchantment_supports` checks the entry's `supported_items` (`Enchantment.isSupportedItem`), not Item Part overrides. `enchantment_min_cost` reads the power a level needs (`Enchantment.getMinCost`), or `None` for an unknown enchantment.
 - `Game::native_fluid(batch, fluid, [x, y], size)` and `Game::native_fluid_name(fluid)`: a fluid (`minecraft:water`, `mymod:oil`) as a square of `size` GUI pixels, the GUI sprite its look names (`data/<mod>/sunrise/fluid/<name>.json`) tinted with its colour, else a flat square of the colour (vanilla water and lava have theirs), and its name as the lang gives it. What a recipe viewer draws for a fluid stack; the slot, the amount and the tooltip are the mod's. NeoForge: `IClientFluidTypeExtensions.getStillTexture` and `getTintColor`. Client-side.
 
 - A living entity's fall (`living_fall`), with changeable distance and multiplier and cancellation.

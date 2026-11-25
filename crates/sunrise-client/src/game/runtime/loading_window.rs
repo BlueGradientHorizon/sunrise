@@ -85,7 +85,7 @@ pub(super) fn build_renderer(
         display,
     ))?;
     let (prepared_vertices, prepared_ranges) =
-        native_block_entity_draw::StandaloneGeometry::new(pack, gui).prepared_upload();
+        native_block_entity_draw::StandaloneGeometry::new(pack, gui, None).prepared_upload();
     renderer.install_prepared_models(
         pack.render.generation,
         &prepared_vertices,
@@ -498,7 +498,7 @@ impl Game<'_> {
                         game.settings.simulation_distance = 2;
                     }
                     // Headless, but with the same server and memory connection as play.
-                    game.open_integrated(&folder, None, Some(seed), creative, None)?;
+                    game.open_integrated(&folder, None, seed, creative, None)?;
                 } else {
                     // Start after the window is handed over, so --world uses the
                     // same responsive initialization path as the title screen.
@@ -509,7 +509,7 @@ impl Game<'_> {
                     game.pending_entry = Some(PendingWorldEntry::Local {
                         folder,
                         name: None,
-                        seed: Some(seed),
+                        seed,
                         creative,
                         create: None,
                     });
