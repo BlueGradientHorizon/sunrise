@@ -16,6 +16,8 @@ sunrise-core = { path = "../sunrise-core" }
 sunrise-items = { path = "../sunrise-items" }
 sunrise-protocol = { path = "../sunrise-protocol" }
 sunrise-world = { path = "../sunrise-world" }
+sunrise-sim = { path = "../sunrise-sim" }
+sunrise-level = { path = "../sunrise-level" }
 
 [lints]
 workspace = true

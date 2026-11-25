@@ -29,7 +29,7 @@ ROOT = Path(__file__).resolve().parents[2]
 # plan replaced (dyna-ci run #952, e8752e146f: sunrise-client 380s, sunrise-client-render
 # 279s, sunrise-client-lib 189s, 16m53s wall); sunrise-world and sunrise-items joined when every library
 # test started running with the data, not only the #[ignore]d ones. Rebalance by editing this tuple only.
-SHARDS = ("sunrise-client", "sunrise-client-lib", "sunrise-client-render", "sunrise-world", "sunrise-items")
+SHARDS = ("sunrise-client", "sunrise-client-lib", "sunrise-client-render", "sunrise-world", "sunrise-items", "sunrise-level", "sunrise-sim")
 # The leg that runs the daily rows (tools/ci/ignored-tests/daily-*.txt) that no package shard above runs: the moved
 # tests of every other package, and of the shard packages' targets their shard does not build (tools/ci/ignored_tests.py
 # daily_rows_groups). Coverage, not speed: without it those tests would run nowhere. Main's full matrix only.

@@ -35,6 +35,8 @@ sunrise-perf-format = { path = "../sunrise-perf-format" }
 # once, not for every phase of every tick.
 rayon = "1.10"
 sunrise-world = { path = "../sunrise-world" }
+sunrise-sim = { path = "../sunrise-sim" }
+sunrise-level = { path = "../sunrise-level" }
 sunrise-protocol = { path = "../sunrise-protocol" }
 # server.properties, eula.txt and the user lists, shared with sunrise-server.
 sunrise-server-files = { path = "../sunrise-server-files" }
@@ -109,19 +111,19 @@ wgpu = { version = "30.0.1", default-features = false, features = ["gles"] }
 
 [features]
 # Thread-local menu callbacks for resource-backed game fixtures only.
-test-menu-validity = []
+test-menu-validity = ["sunrise-sim/test-menu-validity"]
 # Scoped observations for compiled-guest executor tests only.
-test-payload-probe = []
+test-payload-probe = ["sunrise-sim/test-payload-probe"]
 # Isolated server-publication slots for resource-backed game fixtures only.
-test-publication-scope = []
+test-publication-scope = ["sunrise-sim/test-publication-scope"]
 # Thread-local tooltip component factories for isolated game unit tests only.
 test-tooltip-factories = []
 # Non-consuming residency journal observation for game fixtures only.
-test-residency-observer = []
+test-residency-observer = ["sunrise-sim/test-residency-observer"]
 # Local server-pack feedback observation for game fixtures only.
 test-pack-feedback = []
 # A level side with no weather, tags or block entities, for tests and probes that never read them.
-test-dry-side = []
+test-dry-side = ["sunrise-sim/test-dry-side"]
 # Shared immutable resource cloning helpers for sunrise-client test fixtures only.
 test-resource-cache = []
 default = ["audio", "controllers"]
@@ -133,7 +135,7 @@ audio = ["sunrise-client-render/audio"]
 # Controllers: gilrs, and the DualSense's own output. Without it only `sunrise-ctl pad`'s virtual pad.
 controllers = ["dep:gilrs", "sunrise-client-input/controllers"]
 # The sensor_scan_tests mob-kind fixture for the gameplay crates' tests.
-test-mob-kind = []
+test-mob-kind = ["sunrise-sim/test-mob-kind"]
 # Records the call sites of mob random draws (`mob_ai_probe` traces).
 rng-trace = ["sunrise-core/rng-trace"]
 # Opt-in Windows heap experiment; see docs/windows-allocators.md.

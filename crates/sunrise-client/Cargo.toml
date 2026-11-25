@@ -33,6 +33,8 @@ sunrise-optifine = { path = "../sunrise-optifine", optional = true }
 sunrise-threads = { path = "../sunrise-threads" }
 sunrise-perf-format = { path = "../sunrise-perf-format" }
 sunrise-world = { path = "../sunrise-world" }
+sunrise-sim = { path = "../sunrise-sim" }
+sunrise-level = { path = "../sunrise-level" }
 sunrise-protocol = { path = "../sunrise-protocol" }
 # server.properties, eula.txt and the user lists, shared with sunrise-server.
 sunrise-server-files = { path = "../sunrise-server-files" }

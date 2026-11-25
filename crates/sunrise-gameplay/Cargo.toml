@@ -20,6 +20,8 @@ sunrise-protocol = { path = "../sunrise-protocol" }
 sunrise-mod-runtime = { path = "../sunrise-mod-runtime" }
 sunrise-threads = { path = "../sunrise-threads" }
 sunrise-world = { path = "../sunrise-world" }
+sunrise-sim = { path = "../sunrise-sim" }
+sunrise-level = { path = "../sunrise-level" }
 
 [dev-dependencies]
 mod_platform = { package = "sunrise-mod-api", path = "../sunrise-mod-api", features = ["testing"] }

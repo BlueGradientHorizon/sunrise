@@ -16,6 +16,8 @@ sunrise-core = { path = "../sunrise-core" }
 sunrise-protocol = { path = "../sunrise-protocol" }
 sunrise-threads = { path = "../sunrise-threads" }
 sunrise-world = { path = "../sunrise-world" }
+sunrise-sim = { path = "../sunrise-sim" }
+sunrise-level = { path = "../sunrise-level" }
 winit = "0.30.13"
 
 [dev-dependencies]

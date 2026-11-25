@@ -41,6 +41,7 @@ sunrise-shaders = { path = "../sunrise-shaders" }
 sunrise-system = { path = "../sunrise-system" }
 sunrise-threads = { path = "../sunrise-threads" }
 sunrise-world = { path = "../sunrise-world" }
+sunrise-level = { path = "../sunrise-level" }
 ab_glyph = "0.2.32"
 base64 = "0.22"
 bytemuck = { version = "1.24", features = ["derive"] }
@@ -91,7 +92,7 @@ wgpu = { version = "30.0.1", default-features = false, features = ["gles"] }
 # Sound output and input: sunrise-client's `audio` feature.
 audio = ["dep:cpal", "dep:alsa", "dep:libc", "dep:sunrise-audio-input"]
 # Helpers sunrise-client's tests build their fixtures with.
-test-support = []
+test-support = ["sunrise-level/test-support"]
 
 [lints]
 workspace = true

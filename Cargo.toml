@@ -22,6 +22,8 @@ members = [
     "crates/sunrise-threads",
     "crates/sunrise-hdr",
     "crates/sunrise-world",
+    "crates/sunrise-sim",
+    "crates/sunrise-level",
     "crates/sunrise-client",
     "crates/sunrise-parity-fixtures",
     "crates/sunrise-internals",
