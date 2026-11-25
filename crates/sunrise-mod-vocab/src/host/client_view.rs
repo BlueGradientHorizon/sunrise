@@ -131,6 +131,15 @@ pub trait ClientViewClientHost {
     /// controls no such vehicle (a second passenger included), or outside a client world.
     fn jumpable_vehicle(&self) -> Option<EntityRef>;
     /// Side: client.
+    /// How far the local player has charged its mount's jump (`LocalPlayer.getJumpRidingScale`),
+    /// 0.0 to 1.0: the value the HUD's jump bar draws and `Hud.willPrioritizeJumpInfo` tests
+    /// (`> 0`). It rises while the jump key is held on a [`Self::jumpable_vehicle`] and drops
+    /// back to 0.0 when the jump is released and its cooldown runs out. 0.0 once a client tick
+    /// has run with the player controlling no mount that can jump (that tick resets it), and
+    /// outside a client world. Read-only: the jump key
+    /// drives it, and the server checks the jump it is sent.
+    fn jump_riding_scale(&self) -> f32;
+    /// Side: client.
     /// Whether the server tracks any waypoint for this client
     /// (`ClientWaypointManager.hasWaypoints`), the waypoints the locator bar draws. The HUD's
     /// contextual bar reads the same fact. Which bar the HUD shows is not exposed: vanilla's
