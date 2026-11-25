@@ -3070,9 +3070,9 @@ impl Game<'_> {
     }
     /// NeoForge's `LivingEntityUseItemEvent.Start`: `entity` starts using
     /// `stack` in `hand` (`LivingEntity.startUsingItem`), for `duration`
-    /// ticks (`native_use_duration`'s answer). `entity` is a mob's
-    /// `Entity.getId`, None for a player (`native_acting_player` says who);
-    /// a mob fires it only for `LivingRef::start_using_item`. Change `duration` (consumables, potions,
+    /// ticks (`native_use_duration`'s answer). `entity` is the user's
+    /// `Entity.getId`: a player's (the acting one, `native_acting_player`, on the
+    /// server; the local player on a server's client) or a mob's; a mob fires it only for `LivingRef::start_using_item`. Change `duration` (consumables, potions,
     /// spyglasses and mods' items count to it; below 0 refuses the use, and
     /// 0 runs it out on its first tick, as `native_living_entity_use_item_tick`
     /// running it out, unless the item's own is 0 already), or set
@@ -3098,7 +3098,7 @@ impl Game<'_> {
     /// `finishUsingItem` left in the hand (the bowl of a stew, none for the
     /// last apple; a mod's own item is kept) and may be replaced. Fired for
     /// consumables, potions, spyglasses and mods' items. Both sides (a server's client sees its prediction);
-    /// on the server for every player of the world (the helpers read the acting one).
+    /// on the server for every player of the world, `entity` the acting one's id.
     pub(in crate::game) fn native_living_entity_use_item_finish(
         &mut self,
         stack: &ItemStack,

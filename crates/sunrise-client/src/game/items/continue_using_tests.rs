@@ -75,7 +75,7 @@ fn a_part_keeps_or_stops_a_use_whatever_the_hand_holds() {
                 *game.held_mut() = Some(ItemStack::new("minecraft:bow", 1));
                 game.tick_using();
                 assert_eq!(game.using.map(|u| u.1), Some(6));
-                assert_eq!(asked(), [(false, None, false)]);
+                assert_eq!(asked(), [(false, Some(game.own_entity_id()), false)]);
                 // The bow has no part: it is not asked again, and the bow goes on.
                 game.tick_using();
                 assert_eq!(game.using.map(|u| u.1), Some(7));

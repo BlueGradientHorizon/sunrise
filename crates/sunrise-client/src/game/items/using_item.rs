@@ -111,7 +111,7 @@ impl Game<'_> {
         // a refused use stops for the stack it began with, without a release;
         // one that goes on takes the hand's stack as its own (`useItem = held`).
         if let Some(began) = self.use_start.item.take() {
-            if !self.can_continue_using(&began, &stack, None, self.hand) {
+            if !self.can_continue_using(&began, &stack, Some(self.own_entity_id()), self.hand) {
                 self.stop_using_item(&began);
                 return;
             }
@@ -334,7 +334,7 @@ impl Game<'_> {
         self.using = None;
         self.use_start = Default::default();
         self.use_vibration(stack, "minecraft:item_interact_finish");
-        self.stopped_using(stack, None, hand, time_left);
+        self.stopped_using(stack, Some(self.own_entity_id()), hand, time_left);
     }
     /// `IItemExtension.onStopUsing` of `stack`, its use by `entity` (`None` for
     /// the player) in `hand` cleared `time_left` ticks before its end (0 for a

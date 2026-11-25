@@ -316,7 +316,7 @@ a shield) goes on now that the used hand holds `event.held`. `event.stack` is th
 only the parts of its item are asked. `event.can_continue` arrives as vanilla's answer, `true` for the same item, and
 the part may set it either way. `true` goes on with `event.held` as the use's stack, so the next tick asks the parts
 of that item; `false` stops the use as another item would, without a release. It is asked each tick of a use, on the
-server and on a server's client, before `living_entity_use_item_tick`; `event.entity` is `None` for a player. An
+server and on a server's client, before `living_entity_use_item_tick`; `event.entity` is the user's id, a player's included. An
 emptied hand stops the use without asking, and so does a hotbar switch, which stops a main-hand use first.
 
 ## Stopping a use
