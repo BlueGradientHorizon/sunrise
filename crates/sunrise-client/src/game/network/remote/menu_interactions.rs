@@ -221,7 +221,9 @@ impl Game<'_> {
                     return (Err(None), false);
                 }
 
-                if let Some(frozen) = found.filter(|f| Self::stacked_listens_for_side(false, f)) {
+                if let Some(frozen) =
+                    found.filter(|f| crate::game::stacked_listens_for_side(false, f))
+                {
                     let (carried, resolved_slot, primary) =
                         (frozen.carried.clone(), frozen.slot, frozen.primary);
                     let mut step_result: Option<(Vec<Predicted>, bool)> = None;

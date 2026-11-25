@@ -1,9 +1,6 @@
 //! Read-only world content tables shared by server and client games.
-use super::{
-    Biomes, Game, Items, Providers, Recipes, WorldTables, world_items, world_stations,
-};
+use super::{Biomes, Game, Items, Providers, Recipes, Resources, WorldTables};
 use std::sync::Arc;
-use sunrise_client::resources::Resources;
 
 /// [`Game::level_suffocation`] from the fields it reads, for a caller that holds other fields: the
 /// world's own tables (its datapacks' `causes_suffocation`), else the built-in ones.

@@ -5,13 +5,13 @@ pub(in crate::game::server_side) use super::{
     persist::SpawnTree,
 };
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::spawner::Planned;
+pub(in crate::game::server_side) use crate::game::server_side::spawner::Planned;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::spawner::Pos;
+pub(in crate::game::server_side) use crate::game::server_side::spawner::Pos;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::spawner::SpawnerState;
+pub(in crate::game::server_side) use crate::game::server_side::spawner::SpawnerState;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::spawner::*;
+pub(in crate::game::server_side) use crate::game::server_side::spawner::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use std::collections::HashMap;
 #[allow(unused_imports)]

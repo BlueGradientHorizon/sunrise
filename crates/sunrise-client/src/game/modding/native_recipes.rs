@@ -77,7 +77,7 @@ pub(in crate::game) struct RecipeTables {
     /// The server's recipes of the types its native mods sent (`sunrise:
     /// recipe_content`) over the window's own: what `Game::recipes` reads on
     /// a client once they came.
-    synced: Option<sunrise_client::crafting::Recipes>,
+    pub(in crate::game) synced: Option<sunrise_client::crafting::Recipes>,
     /// The display numbers of those recipes: the server numbers its book's
     /// displays over its own recipe set, a world's data pack recipes
     /// included, so the book numbers them the same (`Game::display_index`).

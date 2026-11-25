@@ -812,11 +812,11 @@ fn boundary_arguments(
         {
             format!("crate::game::api_values::stack_value({name}.as_stack())")
         } else {
-            format!("{name}.try_into_engine(crate::game::Game::items(self))")
+            format!("{name}.try_into_engine(Self::items(self))")
         };
         let value = if contains_value(&arg.ty, &["ParticleOptions"]) {
             format!(
-                "match {name}.try_into_engine(crate::game::Game::items(self)) {{ Ok(value) => value, Err(_) => return Default::default() }}"
+                "match {name}.try_into_engine(Self::items(self)) {{ Ok(value) => value, Err(_) => return Default::default() }}"
             )
         } else if text || checked_write {
             format!("{conversion}?")
@@ -1365,10 +1365,10 @@ mod tests {
         let (setup, _, checked_write) =
             boundary_arguments(&write.sig, "write", false, false).unwrap();
         assert!(checked_write);
-        assert!(setup.contains("stack.try_into_engine(crate::game::Game::items(self))?"));
+        assert!(setup.contains("stack.try_into_engine(Self::items(self))?"));
         let owned = entry("fn drop_at(&mut self, stack: ItemStack) -> bool;");
         let (setup, _, _) = boundary_arguments(&owned.sig, "owned", false, false).unwrap();
-        assert!(setup.contains("stack.try_into_engine(crate::game::Game::items(self))"));
+        assert!(setup.contains("stack.try_into_engine(Self::items(self))"));
     }
 
     #[test]
@@ -1541,7 +1541,7 @@ mod tests {
         let (setup, args, checked) =
             boundary_arguments(&mixed.sig, "update", false, false).unwrap();
         assert!(checked);
-        assert!(setup.contains("stack.try_into_engine(crate::game::Game::items(self))?"));
+        assert!(setup.contains("stack.try_into_engine(Self::items(self))?"));
         assert!(setup.contains("text.try_into_engine(&())?"));
         assert_eq!(args, "stack, text.as_ref()");
         let syn::ReturnType::Type(_, output) = &mixed.sig.output else {

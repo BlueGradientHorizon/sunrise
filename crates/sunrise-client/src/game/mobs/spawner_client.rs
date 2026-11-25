@@ -10,7 +10,7 @@ use sunrise_client::{
     particles::{ParticleOptions, ParticleType},
 };
 use sunrise_client_render::block_entity_reach::Reach;
-use sunrise_core::random::RandomSource;
+use sunrise_core::{geometry::Vec3, random::RandomSource};
 
 impl Game<'_> {
     /// The client ticks of these spawners, then the shown mobs of spawners
@@ -34,7 +34,7 @@ impl Game<'_> {
     }
     /// `Mob.handleEntityEvent` 20 (`spawnAnim` on a client): the poof about
     /// mob `id`.
-    pub(in crate::game::client_side) fn poof_particles(&mut self, id: u32) {
+    pub(in crate::game) fn poof_particles(&mut self, id: u32) {
         let Some(m) = self.mobs.iter().find(|m| m.id == id) else {
             return;
         };

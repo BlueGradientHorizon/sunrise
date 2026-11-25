@@ -75,7 +75,7 @@ where
 // Only that choice differs; key resolution, ordered reads and membership stay above.
 macro_rules! impl_tags {
     ($ty:ty, $this:ident, $items:expr) => {
-        impl_tags!($ty, $this, $items; generics());
+        $crate::game::native_tags::impl_tags!($ty, $this, $items; generics());
     };
     ($ty:ty, $this:ident, $items:expr; generics($($g:tt)*)) => {
         impl<$($g)*> mod_api::Tags for $ty {

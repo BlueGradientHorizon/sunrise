@@ -336,7 +336,6 @@ impl Game<'_> {
         if let Some(BlockEntity::Spawner(s)) = self.world.block_entities.get_mut(&key) {
             s.client_loaded();
         }
-        self.spawners.0.displays.remove(&key);
         if let Some(log) = self.world.block_log.as_mut() {
             log.push(key);
         }

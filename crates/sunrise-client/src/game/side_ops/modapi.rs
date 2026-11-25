@@ -1,7 +1,6 @@
 //! Side operations for mod-API host adapters (`AttachmentHost`, `GameHost::residence`).
-use crate::game::{
-    Game, mod_api_host::AttachmentAccess, transactions::decision_storage::Residence,
-};
+use crate::game::{Game, transactions::decision::Residence};
+use mod_api::AttachmentAccess;
 
 impl Game<'_> {
     pub(in crate::game) fn side_attachment_map(

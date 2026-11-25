@@ -3,7 +3,7 @@ pub(in crate::game::server_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::native_hooks::base::LevelView;
 #[allow(unused_imports)]
-use crate::game::native_hooks::base::property_change;
+use crate::game::native_hooks::property_change;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::native_hooks::base::*;
 #[allow(unused_imports)]

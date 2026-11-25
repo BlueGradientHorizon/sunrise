@@ -7209,5 +7209,7 @@ pub(in crate::game) use {
     },
     options::{game_dir, options_path},
     remote::{inventory_screen_slot, inventory_screen_slot_with_type, remote_station_kind},
-    stacked_on_other::{stacked_listened, stacked_listens_for},
+    stacked_on_other::{
+        stacked_listened, stacked_listened_for_side, stacked_listens_for, stacked_listens_for_side,
+    },
 };

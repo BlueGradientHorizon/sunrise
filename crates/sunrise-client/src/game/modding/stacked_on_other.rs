@@ -122,28 +122,6 @@ pub(in crate::game) fn local_pickup_id() -> MenuId {
 }
 
 impl Game<'_> {
-    /// Whether any listener active on `server` side answers `item_stacked_on_other`.
-    ///
-    /// Global `Hooks::item_stacked_on_other` runs on the authoritative server side only;
-    /// `ItemPart::item_stacked_on_other` runs on both sides (including client prediction and
-    /// creative inventory-tab/hotbar pickups).
-    pub(in crate::game::client_side) fn stacked_listened_for_side(server: bool) -> bool {
-        (server && mod_api::__private::listened(mod_api::HookId::ItemStackedOnOther))
-            || mod_api::__private::has_part_hook(mod_api::HookId::ItemStackedOnOther)
-    }
-
-    /// Whether any listener active on `server` side subscribes to `frozen`: lets clicks on
-    /// unrelated items skip the decision transaction.
-    pub(in crate::game) fn stacked_listens_for_side(server: bool, frozen: &StackedClick) -> bool {
-        (server && mod_api::__private::listened(mod_api::HookId::ItemStackedOnOther))
-            || frozen.carried.as_ref().is_some_and(|stack| {
-                mod_api::__private::item_listens(mod_api::HookId::ItemStackedOnOther, &stack.item)
-            })
-            || frozen.clicked.as_ref().is_some_and(|stack| {
-                mod_api::__private::item_listens(mod_api::HookId::ItemStackedOnOther, &stack.item)
-            })
-    }
-
     /// The pickup click whose frozen stacks are `frozen`, decided by the mods and then run by
     /// `perform`, which is given their answer. `current` reads the same stacks again, for the
     /// check that nothing changed them. `probe_carried` runs the shared vanilla carried override
@@ -162,7 +140,7 @@ impl Game<'_> {
         perform: impl FnOnce(&mut Game<'_>, Option<&StackedOutcome>) + 'p,
     ) -> Pickup {
         let server = self.is_logical_server();
-        if !Self::stacked_listened_for_side(server) {
+        if !stacked_listened_for_side(server) {
             perform(self, None);
             return Pickup::Ran;
         }
@@ -230,17 +208,35 @@ impl Game<'_> {
 }
 
 
+/// Whether any listener active on `server` side answers `item_stacked_on_other`.
+pub(in crate::game) fn stacked_listened_for_side(server: bool) -> bool {
+    (server && mod_api::__private::listened(mod_api::HookId::ItemStackedOnOther))
+        || mod_api::__private::has_part_hook(mod_api::HookId::ItemStackedOnOther)
+}
+
+/// Whether any listener active on `server` side subscribes to `frozen`: lets clicks on
+/// unrelated items skip the decision transaction.
+pub(in crate::game) fn stacked_listens_for_side(server: bool, frozen: &StackedClick) -> bool {
+    (server && mod_api::__private::listened(mod_api::HookId::ItemStackedOnOther))
+        || frozen.carried.as_ref().is_some_and(|stack| {
+            mod_api::__private::item_listens(mod_api::HookId::ItemStackedOnOther, &stack.item)
+        })
+        || frozen.clicked.as_ref().is_some_and(|stack| {
+            mod_api::__private::item_listens(mod_api::HookId::ItemStackedOnOther, &stack.item)
+        })
+}
+
 /// Whether any server-side listener (global `Hooks::item_stacked_on_other` or `ItemPart`)
 /// answers `item_stacked_on_other`.
 pub(in crate::game) fn stacked_listened() -> bool {
-    Self::stacked_listened_for_side(true)
+    stacked_listened_for_side(true)
 }
 
 
 /// Whether a server-side global listener or an `ItemPart` on either frozen stack subscribes to
 /// `item_stacked_on_other`.
 pub(in crate::game) fn stacked_listens_for(frozen: &StackedClick) -> bool {
-    Self::stacked_listens_for_side(true, frozen)
+    stacked_listens_for_side(true, frozen)
 }
 
 
@@ -628,7 +624,7 @@ impl Game<'_> {
             return None;
         }
         let server = self.is_logical_server();
-        if !Self::stacked_listened_for_side(server) || ops.is_empty() {
+        if !stacked_listened_for_side(server) || ops.is_empty() {
             return None;
         }
         let is_single_pickup = matches!(ops, [(Some(slot), _, Input::Pickup)] if *slot != 200);
@@ -671,7 +667,7 @@ impl Game<'_> {
         });
         let frozen = found
             .filter(|_| modeled)
-            .filter(|frozen| Self::stacked_listens_for_side(server, frozen))?;
+            .filter(|frozen| stacked_listens_for_side(server, frozen))?;
         let handled = Rc::new(std::cell::Cell::new(false));
         let result = handled.clone();
         let (carried, resolved_slot, primary) =
