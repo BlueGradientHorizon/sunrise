@@ -86,7 +86,8 @@ impl Game<'_> {
                 Some(*player)
             }
             ItemPlace::PlayerCursor { menu } => self
-                .menu_carried(*menu)
+                .native_menu_guest(*menu)
+                .filter(|guest| !Self::menu_cursor_retired(guest))
                 .map(|_| menu.fields().player.uuid()),
             _ => None,
         }
@@ -115,7 +116,7 @@ impl Game<'_> {
             let size = super::mount_menu::mount_columns(m) * 3;
             if m.extra.items.len() < size {
                 let dim = self.dim;
-                if let Some(level) = self.transactions.last_mut() {
+                if let Some(level) = self.transactions.level_frame(dim) {
                     level.keep_mob_length(dim, id, m.extra.items.len());
                 }
                 m.extra.items.resize(size, None);
@@ -325,6 +326,9 @@ impl Game<'_> {
             }
             ItemPlace::PlayerCursor { menu } => {
                 let guest = self.native_menu_guest(*menu)?;
+                if Self::menu_cursor_retired(guest) {
+                    return None;
+                }
                 if self.lan_acting == Some(guest.conn) {
                     self.carried.as_ref()
                 } else {
@@ -400,7 +404,7 @@ impl Game<'_> {
                     return Ok(());
                 };
                 let dim = self.dim;
-                if let Some(level) = self.transactions.last_mut() {
+                if let Some(level) = self.transactions.level_frame(dim) {
                     level.keep_equipment(dim, entity, equipment, mob_gear.as_deref());
                 }
                 let held = equipment[index].as_mut().expect("prepared equipment slot");
@@ -487,6 +491,7 @@ impl Game<'_> {
             ItemPlace::PlayerCursor { menu } => {
                 let guest = self
                     .native_menu_guest(menu)
+                    .filter(|guest| !Self::menu_cursor_retired(guest))
                     .ok_or(ItemPlaceEditError::NotHeld)?;
                 let player = guest.uuid;
                 let (parked, carried) = if self.lan_acting == Some(guest.conn) {
@@ -565,7 +570,7 @@ impl Game<'_> {
         let mut held = if let Some(stack) = &handler_stack {
             super::api_values::stack_value(stack).map_err(|_| CraftedByError::Unavailable)?
         } else {
-            // Read engine storage directly: its API snapshot omits the transient directive.
+            // Read an engine stack directly when the menu owns the slot.
             match slot {
                 Some(slot) => self.menu_slot(menu, slot),
                 None => self.menu_carried(menu),
@@ -1813,22 +1818,16 @@ pub(super) mod tests {
             );
 
             // Stale or closed menu handles refuse with NotHeld before calling the editor.
-            let window = {
-                let host: &mut dyn ServerHost = game;
-                host.open_menu(
-                    123,
+            let player = game.player(123).unwrap();
+            let open_menu = player
+                .open_chest_menu(
+                    game,
                     1,
                     mod_api::Text::literal("box"),
                     Vec::new(),
                     MenuReplace::CloseFirst,
                 )
-                .unwrap()
-                .unwrap()
-            };
-            let open_menu = {
-                let host: &mut dyn ServerHost = game;
-                host.menu(123, window).unwrap()
-            };
+                .unwrap();
             game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.carried = Some(ItemStack::new("minecraft:paper", 2));
             });
@@ -1838,10 +1837,7 @@ pub(super) mod tests {
                 }),
                 Err(ItemPlaceEditError::NotHeld)
             );
-            {
-                let host: &mut dyn ServerHost = game;
-                host.close_menu(123);
-            }
+            assert!(open_menu.close_container(game));
             game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.carried = Some(ItemStack::new("minecraft:paper", 2));
             });
@@ -2032,18 +2028,17 @@ pub(super) mod tests {
             assert!(cursor_packets(&rx).is_empty());
 
             // Open a container menu, populate and snapshot its cursor, then edit while acting.
-            let window = {
-                let host: &mut dyn ServerHost = game;
-                host.open_menu(
-                    123,
+            let player = game.player(123).unwrap();
+            let open_menu = player
+                .open_chest_menu(
+                    game,
                     1,
                     mod_api::Text::literal("box"),
                     Vec::new(),
                     MenuReplace::CloseFirst,
                 )
-                .unwrap()
-                .unwrap()
-            };
+                .unwrap();
+            let window = open_menu.container_id(game).unwrap();
             game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.carried = Some(ItemStack::new("minecraft:paper", 4));
             });
@@ -2056,10 +2051,6 @@ pub(super) mod tests {
             game.lan.as_mut().unwrap().hub.sync_containers(&game.world);
             assert!(cursor_packets(&rx).is_empty());
 
-            let open_menu = {
-                let host: &mut dyn ServerHost = game;
-                host.menu(123, window).unwrap()
-            };
             let acting_name = Tag::String("synced acting cursor".into());
             let mut acting_expected = ItemStack::new("minecraft:paper", 4);
             acting_expected.data_mut().custom_name = Some(acting_name.clone());
@@ -3002,6 +2993,53 @@ pub(super) mod tests {
 
     #[test]
     #[ignore = "daily"]
+    fn player_slot_extracts_a_map_by_its_pending_lock_resource() {
+        use mod_api::{ComponentId, Tag};
+
+        if crate::game::native_entity_refs::tests::run_fresh_cases(
+            "game::native_item_places::tests::player_slot_extracts_a_map_by_its_pending_lock_resource",
+            "SUNRISE_ITEM_RESOURCE_MAP_LOCK_CASE",
+            &["run"],
+        ) {
+            return;
+        }
+
+        with_game(|game| {
+            open_to_lan(game);
+            let slot = ItemPlace::PlayerSlot {
+                player: 123,
+                slot: 3,
+            };
+            let mut map = ItemStack::new("minecraft:filled_map", 1);
+            map.data_mut().map_id = Some(7);
+            let no_directive = ItemResource::of(&map.try_into_api().unwrap());
+            map.data_mut().map_post_processing = Some(0);
+            let mut player = guest(1);
+            player.inventory[3] = Some(map.clone());
+            game.lan.as_mut().unwrap().hub.guests.push(player);
+
+            assert_eq!(
+                game.transaction(|host, tx| slot.extract(host, tx, &no_directive, 1)),
+                Ok(0)
+            );
+            assert_eq!(
+                game.lan.as_ref().unwrap().hub.guests[0].inventory[3],
+                Some(map)
+            );
+
+            let resource = slot.resource(game).unwrap();
+            let post_processing = ComponentId::new("minecraft:map_post_processing").unwrap();
+            assert_eq!(resource.component(&post_processing), Some(Tag::Int(0)));
+            assert_eq!(
+                game.transaction(|host, tx| slot.extract(host, tx, &resource, 1)),
+                Ok(1)
+            );
+            assert!(game.lan.as_ref().unwrap().hub.guests[0].inventory[3].is_none());
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
     fn a_creative_players_selected_stack_takes_what_fits_and_keeps_it() {
         with_game(|game| {
             open_to_lan(game);
@@ -3151,7 +3189,7 @@ pub(super) mod tests {
             let entity = host.entity(500).unwrap();
             let items = entity.capability(host, &ENTITY_ITEMS, ()).unwrap();
             game.native_lifecycle.begin_close();
-            game.native_lifecycle.world_close_final();
+            game.native_lifecycle.retire();
             assert!(entity.capability(game, &ENTITY_ITEMS, ()).is_none());
             let host: &mut dyn ServerHost = game;
             let sticks =
@@ -3412,21 +3450,12 @@ pub(super) mod tests {
         test: impl FnOnce(&mut super::Game<'_>, ItemPlace, i32, mod_api::ItemStack),
     ) {
         use crate::game::maps::MapData;
-        use mod_api::__private::game::Fields;
         use mod_api::{
-            AttachedItems, AttachmentType, Holder, MenuReplace, MenuSlotPlace, ResourceHandler,
-            StackList, TransactionContext,
+            AttachedItems, AttachmentDescriptor, AttachmentKey, Holder, MenuReplace, MenuSlotPlace,
+            ResourceHandler, StackList, TransactionContext,
         };
+        use std::sync::{Arc, Mutex};
         use sunrise_core::nbt::{JavaString, Tag};
-
-        static MAP_SLOT: AttachmentType<StackList<ItemResource>> = AttachmentType {
-            namespace: "crafted_map_fixture",
-            name: "slot",
-            default: Vec::new,
-            codec: None,
-            copy_on_death: false,
-            sync: false,
-        };
 
         struct MapSlotHandler {
             inner: AttachedItems,
@@ -3489,11 +3518,19 @@ pub(super) mod tests {
 
         struct MapStorage {
             accepts_replacement: bool,
+            slot: Arc<Mutex<Option<AttachmentKey<StackList<ItemResource>>>>>,
             on_insert: Option<sunrise_client::lan::PlayerSender>,
         }
         #[mod_api::__subscriptions]
         impl mod_api::Hooks for MapStorage {
             fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+                let slot = r
+                    .register_attachment_type(AttachmentDescriptor::new(
+                        "crafted_map_fixture:slot",
+                        StackList::<ItemResource>::new,
+                    ))
+                    .unwrap();
+                *self.slot.lock().unwrap() = Some(slot.clone());
                 let valid: fn(&ItemResource) -> bool = if self.accepts_replacement {
                     |_| true
                 } else {
@@ -3506,7 +3543,7 @@ pub(super) mod tests {
                     move |_, entity, ()| {
                         Some(Box::new(MapSlotHandler {
                             inner: AttachedItems::single(
-                                &MAP_SLOT,
+                                &slot,
                                 Holder::Entity(entity.id()),
                                 1,
                                 valid,
@@ -3518,10 +3555,12 @@ pub(super) mod tests {
             }
         }
 
+        let slot = Arc::new(Mutex::new(None));
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
             "crafted_map_fixture",
             Box::new(MapStorage {
                 accepts_replacement,
+                slot: slot.clone(),
                 on_insert,
             }),
         )]
@@ -3549,33 +3588,32 @@ pub(super) mod tests {
                 )
                 .unwrap();
 
+                game.world
+                    .chunks
+                    .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
                 pig(game, 700, 64.0);
                 let entity = game.entity(700).unwrap();
-                MAP_SLOT
+                let map_slot = slot.lock().unwrap().clone().expect("MapStorage registered");
+                map_slot
                     .set(
                         game,
                         Holder::Entity(entity.id()),
-                        vec![Some((ItemResource::of(&map), 1))],
+                        StackList::from([(0, (ItemResource::of(&map), 1))]),
                     )
                     .unwrap();
+                let player = game.player(12).unwrap();
                 let host: &mut dyn ServerHost = game;
-                let window = host
-                    .open_menu(
-                        12,
+                let menu = player
+                    .open_chest_menu(
+                        host,
                         3,
                         mod_api::Text::literal("map fixture"),
                         Vec::new(),
                         MenuReplace::CloseFirst,
                     )
-                    .unwrap()
                     .unwrap();
-                let menu = host.menu(12, window).unwrap();
-                game.player_back_mod_menu_slots(
-                    menu.fields().player,
-                    window,
-                    vec![MenuSlotPlace::EntityItems { entity, slot: 0 }],
-                )
-                .unwrap();
+                menu.back_slots(host, vec![MenuSlotPlace::EntityItems { entity, slot: 0 }])
+                    .unwrap();
                 let place = ItemPlace::MenuSlot { menu, slot: 0 };
                 assert_eq!(
                     place.with_stack(game, |stack| stack.project()).flatten(),

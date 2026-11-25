@@ -161,8 +161,6 @@ pub struct Blame {
 pub enum BlameKind {
     /// Its own library didn't compile.
     Compile,
-    /// It has a build script, which a prebuilt build refuses.
-    BuildScript,
     /// It asks for Cargo features, which a prebuilt build refuses.
     Features,
 }
@@ -194,9 +192,6 @@ fn blame(error: &str, ids: &[String]) -> Option<Blame> {
     ids.iter().find_map(|id| {
         let kind = if error.contains(&format!("{} failed (", prebuilt::compiling(id))) {
             BlameKind::Compile
-        } else if error.contains(&prebuilt::Refusal::BuildScript { mod_id: id.clone() }.to_string())
-        {
-            BlameKind::BuildScript
         } else if error.contains(&prebuilt::Refusal::Features { mod_id: id.clone() }.to_string()) {
             BlameKind::Features
         } else {
@@ -324,7 +319,6 @@ fn code_links(
         .map(|(bundle, deps)| dependencies::Mod {
             id: &bundle.manifest.id,
             version: &bundle.manifest.version,
-            has_api: true,
             code: true,
             dependencies: deps,
         })
@@ -398,7 +392,11 @@ fn compile(
             say(question).is_ok() && answer(&mut **asked.borrow_mut())
         })
     };
-    let (binary, libraries) = prebuilt::compile(
+    let prebuilt::Built {
+        binary,
+        libraries,
+        catalog,
+    } = prebuilt::compile(
         &plan.toolchain,
         &plan.package,
         &crate::root().join("prebuilt-build"),
@@ -418,7 +416,6 @@ fn compile(
         false,
     )?
     .expect("build mode returns artifacts");
-    let catalog = crate::internals::Catalog::read(&plan.package.api)?;
     let mut internals = BTreeMap::new();
     for &index in &resolution.order {
         let manifest = &mods[index].manifest;
@@ -536,20 +533,16 @@ mod tests {
     #[test]
     fn a_refused_mod_ends_in_a_failed_event_before_anything_compiles() {
         let dir = crate::tests::dir("contract-refused");
-        let project = dir.join("scripted");
-        crate::tests::write_bundle(&project, "scripted", "");
+        let project = dir.join("optioned");
+        crate::tests::write_bundle(&project, "optioned", "");
         std::fs::write(
             project.join("Cargo.toml"),
-            "[package]\nname='scripted'\nversion='1.0.0'\nedition='2024'\n[dependencies]\nsunrise-mod-api={path='.sunrise/sdk/api/crates/sunrise-mod-api'}\n",
+            "[package]\nname='optioned'\nversion='1.0.0'\nedition='2024'\n[dependencies]\nsunrise-mod-api={path='.sunrise/sdk/api/crates/sunrise-mod-api'}\n[features]\nextra=[]\n",
         )
         .unwrap();
-        std::fs::write(project.join("build.rs"), "fn main() {}").unwrap();
         let mut out = Vec::new();
         let error = run(&plan(&dir), &mut "".as_bytes(), &mut out).unwrap_err();
-        assert!(
-            error.starts_with("E_NATIVE_BUILD_SCRIPT: scripted"),
-            "{error}"
-        );
+        assert!(error.starts_with("E_NATIVE_FEATURES: optioned"), "{error}");
         let lines: Vec<Event> = String::from_utf8(out)
             .unwrap()
             .lines()
@@ -560,8 +553,8 @@ mod tests {
             [Event::Failed {
                 error,
                 blame: Some(Blame {
-                    mod_id: "scripted".into(),
-                    kind: BlameKind::BuildScript,
+                    mod_id: "optioned".into(),
+                    kind: BlameKind::Features,
                 }),
                 used: Vec::new(),
             }]

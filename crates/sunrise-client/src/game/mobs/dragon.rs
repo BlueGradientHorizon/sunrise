@@ -18,10 +18,10 @@ use super::api_values::TryIntoApi;
 use super::commands::Target;
 use super::{
     Game,
-    creatures::{Finalized, SpawnSite},
+    creatures::SpawnSite,
     potions::{Victim, mob_can_be_affected},
 };
-use mod_api::DragonPhase;
+use mod_api::{DragonPhase, DragonRespawnStage};
 use sunrise_client::{
     health::{DamageContainer, DamageLevel, HurtSource, Hurting, Knock, Reduction},
     hud::HudBatch,
@@ -211,6 +211,15 @@ impl Fight {
     pub(super) fn arena_watched(&self) -> bool {
         self.players
     }
+    /// The fight as mods read it.
+    pub(super) fn api(&self) -> mod_api::DragonFightState {
+        mod_api::DragonFightState {
+            won: self.killed,
+            previously_won: self.previously_killed,
+            respawn_stage: self.respawn.map(|(stage, _)| stage.api()),
+            alive_crystals: self.alive_crystals,
+        }
+    }
 }
 impl Respawn {
     fn name(self) -> &'static str {
@@ -230,6 +239,14 @@ impl Respawn {
         ]
         .into_iter()
         .find(|r| r.name() == name)
+    }
+    pub(super) fn api(self) -> DragonRespawnStage {
+        match self {
+            Respawn::Start => DragonRespawnStage::Start,
+            Respawn::Preparing => DragonRespawnStage::PreparingToSummonPillars,
+            Respawn::Pillars => DragonRespawnStage::SummoningPillars,
+            Respawn::Summoning => DragonRespawnStage::SummoningDragon,
+        }
     }
 }
 #[derive(Clone, Debug)]
@@ -442,6 +459,10 @@ pub(in crate::game) struct Dragon {
     pub yaw: f32,
     pub pitch: f32,
     pub previous_yaw: f32,
+    /// LivingEntity.yBodyRot, distinct from the flight and part yaw.
+    pub body_yaw: f32,
+    head_yaw: f32,
+    body_rotation: sunrise_client::mobs::control::BodyRotation,
     yaw_accel: f32,
     pub health: f32,
     pub hurt_time: i32,
@@ -493,7 +514,7 @@ pub(in crate::game) struct Dragon {
     strafe_request: Option<FightWho>,
     /// `Mob.isNoAi` (`NoAI`): it flaps in place, with no phase or flight.
     pub(super) no_ai: bool,
-    random: LegacyRandom,
+    pub(super) random: LegacyRandom,
 }
 /// A player in the fight: the window's own player, or a guest by
 /// connection (a LAN or server player).
@@ -699,6 +720,9 @@ impl Dragon {
             yaw,
             pitch: 0.0,
             previous_yaw: yaw,
+            body_yaw: yaw,
+            head_yaw: yaw,
+            body_rotation: Default::default(),
             yaw_accel: 0.0,
             health: MAX_HEALTH,
             hurt_time: 0,
@@ -1189,7 +1213,7 @@ impl Game<'_> {
         sunrise_client::save::dimension_dir(&self.world_root, "minecraft:the_end").join(FIGHT_FILE)
     }
     /// The saved fight, or `createDefault` with the gateways shuffled by the seed.
-    fn load_fight(&mut self) {
+    pub(super) fn load_fight(&mut self) {
         if self.fight.loaded {
             return;
         }
@@ -1416,21 +1440,28 @@ impl Game<'_> {
     /// `EnderDragonFight.tick`, before the level ticks its entities.
     pub(super) fn tick_fight(&mut self) {
         self.load_fight();
+        let mut canceled = false;
+        if mod_api::__private::listened(mod_api::HookId::DragonFightTick) {
+            self.native_dragon_fight_tick(self.fight_level(), &mut canceled);
+        }
         // updatePlayers, every 20 ticks.
-        self.fight.player_scan += 1;
-        if self.fight.player_scan >= 20 {
-            self.fight.player_scan = 0;
-            self.fight.players = self.fight_has_players();
+        if !canceled {
+            self.fight.player_scan += 1;
+            if self.fight.player_scan >= 20 {
+                self.fight.player_scan = 0;
+                self.fight.players = self.fight_has_players();
+            }
         }
         if !self.arena_loaded() {
             return;
         }
+        // World generation's, not the fight's: placed whatever a mod does.
         if !self.fight.crystals_placed {
             self.place_spike_crystals();
             self.fight.crystals_placed = true;
             self.fight.dirty = true;
         }
-        if self.fight.players {
+        if !canceled && self.fight.players {
             if self.fight.needs_scan {
                 self.scan_state();
                 self.fight.needs_scan = false;
@@ -1461,6 +1492,11 @@ impl Game<'_> {
             }
         }
         self.assign_dragon_and_crystal_ids();
+    }
+
+    /// The End's handle, which the fight's hooks are told.
+    fn fight_level(&self) -> mod_api::LevelRef {
+        self.level_ref(self.lend_epoch(), self.dim.key())
     }
 
     pub(super) fn assign_dragon_and_crystal_ids(&mut self) {
@@ -1590,35 +1626,44 @@ impl Game<'_> {
         by: Option<FightWho>,
         respawn_crystal: bool,
     ) {
+        // `level.getDragonFight()`: only a level with a fight hears of it.
+        if !self.dimension_type().has_ender_dragon_fight {
+            return;
+        }
         if respawn_crystal {
             self.abort_respawn();
-            return;
+        } else {
+            // EnderDragonFight.onCrystalDestroyed.
+            self.count_crystals();
+            // EnderDragon.onCrystalDestroyed: the player behind the damage, else
+            // the one nearest the crystal's block (`CRYSTAL_DESTROY_TARGETING`,
+            // whose range `TargetingConditions.test` skips without a targeter).
+            let player = by.or_else(|| {
+                let p = c.position;
+                let at = Vec3::new(p.x.floor(), p.y.floor(), p.z.floor());
+                let peaceful = self.ui.difficulty == 0;
+                nearest_enemy(&self.fight_players(), peaceful, at, None, |_| true).map(|p| p.who)
+            });
+            if let Some(d) = self.dragon.as_mut() {
+                if d.nearest_crystal == Some(index) {
+                    d.nearest_crystal = None;
+                    self.hurt_dragon(0, 10.0, true, player, DamageKind::Explosion);
+                } else if let Some(n) = d.nearest_crystal.as_mut()
+                    && *n > index
+                {
+                    *n -= 1;
+                }
+                let target =
+                    player.and_then(|who| self.fight_players().into_iter().find(|p| p.who == who));
+                if let Some(d) = self.dragon.as_mut() {
+                    d.strafe_after_crystal(target.as_ref());
+                }
+            }
         }
-        // EnderDragonFight.onCrystalDestroyed.
-        self.count_crystals();
-        // EnderDragon.onCrystalDestroyed: the player behind the damage, else
-        // the one nearest the crystal's block (`CRYSTAL_DESTROY_TARGETING`,
-        // whose range `TargetingConditions.test` skips without a targeter).
-        let player = by.or_else(|| {
+        if mod_api::__private::listened(mod_api::HookId::EndCrystalDestroyed) {
             let p = c.position;
-            let at = Vec3::new(p.x.floor(), p.y.floor(), p.z.floor());
-            let peaceful = self.ui.difficulty == 0;
-            nearest_enemy(&self.fight_players(), peaceful, at, None, |_| true).map(|p| p.who)
-        });
-        let Some(d) = self.dragon.as_mut() else {
-            return;
-        };
-        if d.nearest_crystal == Some(index) {
-            d.nearest_crystal = None;
-            self.hurt_dragon(0, 10.0, true, player, DamageKind::Explosion);
-        } else if let Some(n) = d.nearest_crystal.as_mut()
-            && *n > index
-        {
-            *n -= 1;
-        }
-        let target = player.and_then(|who| self.fight_players().into_iter().find(|p| p.who == who));
-        if let Some(d) = self.dragon.as_mut() {
-            d.strafe_after_crystal(target.as_ref());
+            let pos = BlockPos::new(p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32);
+            self.native_end_crystal_destroyed(self.fight_level(), pos, respawn_crystal);
         }
     }
     /// The boxes of the living dragon's parts a projectile can hit, in `getSubEntities` order.
@@ -2089,13 +2134,6 @@ impl Game<'_> {
             // Mob.playHurtSound: the ambient sound clock starts again.
             d.ambient_time = -AMBIENT_INTERVAL;
             let at = [d.position.x, d.position.y, d.position.z];
-            let pitch = 0.8 + self.world.random.next_float() * 0.3;
-            self.audio
-                .play("minecraft:entity.ender_dragon.hurt", Some(at), 5.0, pitch);
-            if kind == DamageKind::Thorns {
-                self.audio
-                    .play("minecraft:enchant.thorns.hit", Some(at), 1.0, 1.0);
-            }
             if let Some(s) = source {
                 d.last_source = Some((
                     s.damage_type,
@@ -2104,6 +2142,11 @@ impl Game<'_> {
                 ));
             } else {
                 d.last_source = Some(("minecraft:generic", None, None));
+            }
+            let pitch = 0.8 + self.world.random.next_float() * 0.3;
+            self.play_audio("minecraft:entity.ender_dragon.hurt", Some(at), 5.0, pitch);
+            if kind == DamageKind::Thorns {
+                self.play_audio("minecraft:enchant.thorns.hit", Some(at), 1.0, 1.0);
             }
         }
         hurt
@@ -2744,8 +2787,24 @@ impl Game<'_> {
             [look[0] / norm, look[1] / norm, look[2] / norm]
         }
     }
-    /// `EnderDragon.aiStep` (and `tickDeath`) for the dragon's own entity tick.
+    /// The inherited LivingEntity.tick runs Mob.tickHeadTurn after aiStep.
     pub(super) fn tick_dragon(&mut self) {
+        self.dragon_ai_step();
+        if let Some(d) = self.dragon.as_mut() {
+            let (dx, dz) = (d.position.x - d.previous.x, d.position.z - d.previous.z);
+            // EnderDragon inherits Mob.getMaxHeadYRot (75 degrees).
+            d.body_rotation.tick(
+                dx * dx + dz * dz,
+                d.yaw,
+                &mut d.body_yaw,
+                &mut d.head_yaw,
+                75.0,
+            );
+        }
+    }
+
+    /// `EnderDragon.aiStep` (and `tickDeath`) for the dragon's own entity tick.
+    fn dragon_ai_step(&mut self) {
         // updateDragon runs when the fight dragon ticks or dies, but not with NoAI.
         let ticks = self.dragon.as_ref().is_some_and(|d| !d.alive() || !d.no_ai);
         if ticks && self.is_fight_dragon() {
@@ -2753,7 +2812,11 @@ impl Game<'_> {
         }
         // Entity.baseTick: the saved invulnerability window counts down
         // (#916), before the dragon's own borrow of the game.
-        if let Some(id) = self.dragon.as_ref().map(|d| d.id) {
+        if let Some(dragon) = self.dragon.as_ref() {
+            let id = dragon.id;
+            if !dragon.equipment.is_empty() {
+                self.tick_equipment_enchantments(super::commands::Target::Dragon(id), id);
+            }
             self.tick_saved_invulnerable_time(id);
         }
         let target_dead = self
@@ -2790,7 +2853,7 @@ impl Game<'_> {
             // LivingEntity.getVoicePitch, from the dragon's own random.
             let r = &mut d.random;
             let pitch = (r.next_float() - r.next_float()) * 0.2 + 1.0;
-            self.audio.play(
+            self.play_audio(
                 "minecraft:entity.ender_dragon.ambient",
                 Some(at),
                 5.0,
@@ -2815,8 +2878,7 @@ impl Game<'_> {
         let at = [d.position.x, d.position.y, d.position.z];
         if flap_was <= -0.3 && flap_now >= -0.3 {
             let pitch = 0.8 + self.world.random.next_float() * 0.3;
-            self.audio
-                .play("minecraft:entity.ender_dragon.flap", Some(at), 5.0, pitch);
+            self.play_audio("minecraft:entity.ender_dragon.flap", Some(at), 5.0, pitch);
         }
         let d = self.dragon.as_mut().expect("dragon");
         if !d.phase.sitting() {
@@ -2824,8 +2886,7 @@ impl Game<'_> {
             if d.growl < 0 {
                 d.growl = 200 + d.random.next_int_bound(200).unwrap_or(0);
                 let pitch = 0.8 + self.world.random.next_float() * 0.3;
-                self.audio
-                    .play("minecraft:entity.ender_dragon.growl", Some(at), 2.5, pitch);
+                self.play_audio("minecraft:entity.ender_dragon.growl", Some(at), 2.5, pitch);
             }
         }
         // checkCrystals: heal 1 every 10 ticks from the nearest crystal, found
@@ -2925,6 +2986,8 @@ impl Game<'_> {
                 d.velocity.z * slide,
             );
         }
+        // EnderDragon.aiStep assigns the body's angle after flight, before placing parts.
+        d.body_yaw = d.yaw;
         self.place_dragon_parts();
         self.dragon_contacts();
         // The chunks the dragon passes through re-save their entity lists.
@@ -3107,7 +3170,7 @@ impl Game<'_> {
                         self.mob_post_attack(
                             id,
                             Some(sunrise_client::mobs::Who::Mob(frame.dragon_id)),
-                            Some("minecraft:ender_dragon"),
+                            None,
                             Some("minecraft:mob_attack"),
                         );
                     }
@@ -3140,31 +3203,28 @@ impl Game<'_> {
             self.level_event_at(3000, pos, 0);
             let _ = self.place_gateway_at(pos);
         }
-        if !self.fight.previously_killed
+        // getHeightmapPos(MOTION_BLOCKING, getPodiumLocation(origin)).
+        let y = {
+            use sunrise_world::{heightmap::HeightmapType, worldgen::terrain::TerrainBlockStates};
+            let properties = &self.pack.assets.properties;
+            self.world.motion_blocking(0, 0, |s| {
+                HeightmapType::MotionBlocking.is_opaque(properties.heightmap_state(s))
+            })
+        };
+        let previously_won = self.fight.previously_killed;
+        let mut place_egg = None;
+        if mod_api::__private::listened(mod_api::HookId::DragonFightWon) {
+            let pos = BlockPos::new(0, y, 0);
+            self.native_dragon_fight_won(self.fight_level(), pos, previously_won, &mut place_egg);
+        }
+        if place_egg.unwrap_or(!previously_won)
             && let Some(egg) = self
                 .pack
                 .assets
                 .registry
                 .default_state("minecraft:dragon_egg")
         {
-            let y = (0..256)
-                .rev()
-                .find(|&y| {
-                    let f = self.res.facts().get(self.world.block(0, y, 0));
-                    f.full_collision || f.legacy_solid
-                })
-                .map_or(64, |y| y + 1);
-            let pos = BlockPos::new(0, y, 0);
-            let allowed = self.with_level(|_, level, _| {
-                let mut cancel = false;
-                if level.native_authoritative {
-                    level.native_dragon_egg_form(level.dimension, pos, &mut cancel);
-                }
-                !cancel
-            });
-            if allowed {
-                let _ = self.level_set([0, y, 0], egg);
-            }
+            let _ = self.level_set([0, y, 0], egg);
         }
         self.fight.previously_killed = true;
         self.fight.killed = true;
@@ -3187,7 +3247,7 @@ impl Game<'_> {
             }
         };
         let n = normalize(normalize(dir));
-        self.audio.play(
+        self.play_audio(
             "minecraft:entity.ender_dragon.shoot",
             Some([at.x, at.y, at.z]),
             10.0,
@@ -3201,7 +3261,7 @@ impl Game<'_> {
         );
         p.acceleration = 0.1;
         p.velocity = Vec3::new(n.x * 0.1, n.y * 0.1, n.z * 0.1);
-        self.add_projectile(p);
+        self.add_fresh_projectile(p);
     }
     /// `DragonFireball.onHit` where it burst (`next`): the dragon's breath
     /// cloud and level event 2006, as the fireballs of the dragon's own list
@@ -3325,6 +3385,7 @@ impl Game<'_> {
                     c.at[2] + f64::from(a.sin() * d),
                 ];
                 self.particles.add_with(
+                    None,
                     &ParticleOptions::simple(ParticleType::DragonBreath),
                     at,
                     [0.0, 0.0, 0.0],
@@ -3422,30 +3483,6 @@ impl Game<'_> {
             self.thorns(id);
         }
     }
-    /// `DamageEntity.apply`: the dragon's own random, including when the
-    /// wearer's mob source cannot take health from it.
-    pub(super) fn dragon_effect_random(&mut self, id: u32) -> Option<f32> {
-        self.dragon
-            .as_mut()
-            .filter(|d| d.id == id)
-            .map(|d| d.random.next_float())
-    }
-    /// `EnderDragon.hurtServer`: Thorns hits the body part, so damage is
-    /// quartered plus at most one, with the player as its causing entity.
-    pub(super) fn dragon_thorns(&mut self, attacker: u32, min: f32, max: f32) {
-        let Some(d) = self.dragon.as_mut().filter(|d| d.id == attacker) else {
-            return;
-        };
-        let damage = d.random.next_float() * (max - min) + min;
-        self.hurt_dragon(
-            2,
-            damage,
-            true,
-            Some(self.acting_player()),
-            DamageKind::Thorns,
-        );
-    }
-    /// Damage from the dragon, which is its causing entity
     /// (`DamageSources.mobAttack(dragon)`, `indirectMagic(cloud, dragon)`): the
     /// death message names it, or the cloud once the dragon is gone.
     fn dragon_hurts_player(&mut self, damage_type: &str, amount: f32) {
@@ -4252,6 +4289,7 @@ impl Game<'_> {
             minecart_steps: None,
             data: 0,
             meta,
+            display: None,
             forced_meta: [0; 4],
             // Back at their defaults the values leave `meta`, and the clients
             // still hold the old ones.
@@ -4427,10 +4465,11 @@ impl Game<'_> {
             })
     }
     /// `EnderDragonFight.tryRespawn`: a crystal on each side of the portal.
-    fn try_respawn(&mut self) {
+    /// True when a respawn started.
+    pub(super) fn try_respawn(&mut self) -> bool {
         self.load_fight();
         if !self.fight.killed || self.fight.respawn.is_some() {
-            return;
+            return false;
         }
         let origin = match self.fight.exit_portal {
             Some(o) => o,
@@ -4438,7 +4477,7 @@ impl Game<'_> {
                 let _ = self.activate_exit_portal();
                 match self.fight.exit_portal {
                     Some(o) => o,
-                    None => return,
+                    None => return false,
                 }
             }
         };
@@ -4462,7 +4501,7 @@ impl Game<'_> {
                 .map(|c| c.position)
                 .collect();
             if hits.is_empty() {
-                return;
+                return false;
             }
             found.extend(hits);
         }
@@ -4481,6 +4520,8 @@ impl Game<'_> {
         self.fight.respawn = Some((Respawn::Start, 0));
         self.fight.respawn_crystals = found;
         self.fight.dirty = true;
+        self.native_dragon_respawn_stage(self.fight_level(), DragonRespawnStage::Start);
+        true
     }
     fn block_name_at(&self, p: [i32; 3]) -> std::sync::Arc<str> {
         self.res
@@ -4500,16 +4541,18 @@ impl Game<'_> {
     /// `LevelEvent 3001`: the dragon's growl over the island.
     fn respawn_growl(&mut self) {
         let pitch = 0.8 + self.world.random.next_float() * 0.3;
-        self.audio.play(
+        self.play_audio(
             "minecraft:entity.ender_dragon.growl",
             Some([0.5, 128.5, 0.5]),
             64.0,
             pitch,
         );
     }
-    fn set_respawn(&mut self, stage: Option<Respawn>) {
-        self.fight.respawn = stage.map(|s| (s, 0));
+    /// `setRespawnStage` short of `END`.
+    fn set_respawn(&mut self, stage: Respawn) {
+        self.fight.respawn = Some((stage, 0));
         self.fight.dirty = true;
+        self.native_dragon_respawn_stage(self.fight_level(), stage.api());
     }
     /// `EnderDragonFight.tick` with a respawn in progress.
     fn tick_respawn(&mut self) {
@@ -4532,7 +4575,7 @@ impl Game<'_> {
         match stage {
             Respawn::Start => {
                 self.respawn_beams(Some(CENTER));
-                self.set_respawn(Some(Respawn::Preparing));
+                self.set_respawn(Respawn::Preparing);
             }
             Respawn::Preparing => {
                 if time < 100 {
@@ -4540,7 +4583,7 @@ impl Game<'_> {
                         self.respawn_growl();
                     }
                 } else {
-                    self.set_respawn(Some(Respawn::Pillars));
+                    self.set_respawn(Respawn::Pillars);
                 }
             }
             Respawn::Pillars => {
@@ -4561,7 +4604,7 @@ impl Game<'_> {
                         self.rebuild_spike(spike);
                     }
                 } else if start {
-                    self.set_respawn(Some(Respawn::Summoning));
+                    self.set_respawn(Respawn::Summoning);
                 }
             }
             Respawn::Summoning => {
@@ -4675,7 +4718,7 @@ impl Game<'_> {
         }
     }
     /// `resetSpikeCrystals`: spike crystals lose their beams and protection.
-    fn reset_spike_crystals(&mut self) {
+    pub(super) fn reset_spike_crystals(&mut self) {
         let spikes = sunrise_world::worldgen::end_spike::spikes_for_seed(self.level.seed);
         for c in &mut self.crystals {
             let on_spike = spikes.iter().any(|s| {
@@ -4695,6 +4738,9 @@ impl Game<'_> {
         let yaw = self.world.random.next_float() * 360.0;
         let seed = random_source::unique_seed();
         let mut dragon = Dragon::new(Vec3::new(0.0, 128.0, 0.0), yaw, seed);
+        // The fight's snapTo sets only the view yaw, not the new living angles.
+        dragon.body_yaw = 0.0;
+        dragon.head_yaw = 0.0;
         dragon.join = sunrise_client::join_seq::JoinSeq::next();
         dragon.id = self.next_entity + 1;
         dragon.phase = Phase::Holding {
@@ -4819,6 +4865,7 @@ impl Game<'_> {
         }
         self.fight.dirty = true;
         self.count_crystals();
+        self.native_dragon_respawn_stage(self.fight_level(), DragonRespawnStage::End);
     }
     /// `abortRespawnSequence`.
     fn abort_respawn(&mut self) {
@@ -4873,7 +4920,7 @@ impl Game<'_> {
         };
         let at = [d.position.x, d.position.y, d.position.z];
         let pitch = (d.random.next_float() - d.random.next_float()) * 0.2 + 1.0;
-        self.audio.play(
+        self.play_audio(
             "minecraft:entity.ender_dragon.ambient",
             Some(at),
             5.0,
@@ -4917,18 +4964,16 @@ impl Game<'_> {
                 self.finalize_spawn_at("minecraft:ender_dragon", at, reason, None)
                     .0
             }
-            SpawnSite::Plain | SpawnSite::Raw => Finalized::Done,
+            SpawnSite::Plain | SpawnSite::Raw => Default::default(),
         };
-        match finalized {
-            Finalized::Cancelled => return None,
-            Finalized::Skipped => {}
-            Finalized::Done => {
-                // Mob.finalizeSpawn (EnderDragon keeps it): the follow range's
-                // `random.triangle(0, 0.11485)`, then `setLeftHanded(nextFloat() < 0.05)`, from the
-                // level's random. Neither changes how the dragon flies.
-                let _ = self.world.random.triangle(0.0, 0.114_850_000_000_000_01);
-                let _ = self.world.random.next_float();
-            }
+        if !finalized.skip_initialization {
+            // Mob.finalizeSpawn (EnderDragon keeps it): the follow range's
+            // triangle and left-handed roll, neither of which changes how the dragon flies.
+            let _ = self.world.random.triangle(0.0, 0.114_850_000_000_000_01);
+            let _ = self.world.random.next_float();
+        }
+        if finalized.veto_admission {
+            return None;
         }
         // The dragon's own random (`Entity.random`), not the level's.
         let seed = random_source::unique_seed();
@@ -5089,8 +5134,7 @@ impl Game<'_> {
                 }
             }
             if let Some((at, pitch)) = growl {
-                self.audio
-                    .play("minecraft:entity.ender_dragon.growl", Some(at), 2.5, pitch);
+                self.play_audio("minecraft:entity.ender_dragon.growl", Some(at), 2.5, pitch);
             }
             let Some(d) = self.dragon.as_mut() else {
                 return;
@@ -5120,8 +5164,7 @@ impl Game<'_> {
         let at = [d.position.x, d.position.y, d.position.z];
         if flap_was <= -0.3 && flap_now >= -0.3 {
             let pitch = 0.8 + self.world.random.next_float() * 0.3;
-            self.audio
-                .play("minecraft:entity.ender_dragon.flap", Some(at), 5.0, pitch);
+            self.play_audio("minecraft:entity.ender_dragon.flap", Some(at), 5.0, pitch);
         }
         let d = self.dragon.as_mut().expect("dragon");
         if !d.phase.sitting() {
@@ -5129,8 +5172,7 @@ impl Game<'_> {
             if d.growl < 0 {
                 d.growl = 200 + d.random.next_int_bound(200).unwrap_or(0);
                 let pitch = 0.8 + self.world.random.next_float() * 0.3;
-                self.audio
-                    .play("minecraft:entity.ender_dragon.growl", Some(at), 2.5, pitch);
+                self.play_audio("minecraft:entity.ender_dragon.growl", Some(at), 2.5, pitch);
             }
         }
         // checkCrystals' search runs on a client too (the healing beam).
@@ -5209,8 +5251,7 @@ impl Game<'_> {
             );
         }
         if let Some(pitch) = growl {
-            self.audio
-                .play("minecraft:entity.ender_dragon.growl", Some(at), 2.5, pitch);
+            self.play_audio("minecraft:entity.ender_dragon.growl", Some(at), 2.5, pitch);
         }
     }
 }
@@ -5400,7 +5441,7 @@ pub(in crate::game) mod tests {
                 self.joins
                     .lock()
                     .unwrap()
-                    .push((event.entity, event.loaded_from_disk));
+                    .push((event.subject.id(), event.loaded_from_disk));
                 if self.cancel.load(Ordering::Relaxed) {
                     Flow::Cancel
                 } else {
@@ -6425,7 +6466,7 @@ pub(in crate::game) mod tests {
                 )),
             );
             game.dragon.replace(d);
-            game.tick_equipment_attributes();
+            game.refresh_stand_and_dragon_equipment_attributes();
             let resistance = f64::from(0.1_f32);
             assert_eq!(game.dragon_knockback_resistance(), resistance);
             let from = Vec3::new(3.0, 70.0, 4.0);
@@ -6838,6 +6879,28 @@ pub(in crate::game) mod tests {
 
     #[test]
     #[ignore = "daily"]
+    fn a_stationary_no_ai_dragon_runs_its_living_body_turn() {
+        super::super::native_entity_refs::tests::with_game(|game| {
+            game.create_new_dragon();
+            let dragon = game.dragon.as_mut().unwrap();
+            assert_ne!(dragon.yaw, 0.0);
+            assert_eq!((dragon.body_yaw, dragon.head_yaw), (0.0, 0.0));
+            dragon.yaw = 35.0;
+            dragon.no_ai = true;
+            dragon.head_yaw = 90.0;
+            let id = dragon.id;
+            let entity = game.entity(id).unwrap();
+            assert_eq!(entity.set_body_yaw(game, 0.0), Ok(true));
+            game.tick_dragon();
+            // The changed head is 90 degrees off the raw body. With a 75
+            // degree limit the controller turns the body by 15, not the view.
+            assert_eq!(entity.body_yaw(game), Some(15.0));
+            assert_eq!(game.dragon.as_ref().unwrap().yaw, 35.0);
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
     fn the_tracked_dragon_lists_its_data_defaults() {
         use sunrise_protocol::entity_data::serializer;
         super::super::native_entity_refs::tests::with_game(|game| {
@@ -6857,6 +6920,9 @@ pub(in crate::game) mod tests {
     }
 }
 
+#[cfg(test)]
+#[path = "dragon/fight_hooks_tests.rs"]
+mod fight_hooks_tests;
 #[cfg(test)]
 #[path = "dragon/residency_tests.rs"]
 mod residency_tests;

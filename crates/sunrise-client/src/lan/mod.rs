@@ -49,6 +49,7 @@ mod sound_order;
 pub mod tracking;
 pub mod viewed_levels;
 pub mod waypoints;
+mod weather;
 
 pub use body::Body;
 pub use conn::{Holding, PlayerSender, flush_all};
@@ -517,6 +518,14 @@ pub struct Shared {
     shutting_down: AtomicBool,
 }
 impl Shared {
+    /// `IntegratedServer.isSingleplayerOwner`: the integrated server's own player, by name
+    /// (ignoring case). Never anyone on a server without a singleplayer profile.
+    pub fn is_singleplayer_owner(&self, name: &str) -> bool {
+        self.config
+            .singleplayer_profile
+            .as_ref()
+            .is_some_and(|(owner, _)| owner.eq_ignore_ascii_case(name))
+    }
     /// The registries and tags a new connection is sent.
     pub fn sync(&self) -> Arc<data::SyncData> {
         self.sync.lock().unwrap_or_else(|e| e.into_inner()).clone()
@@ -563,8 +572,7 @@ impl Shared {
         }
         // IntegratedPlayerList.canPlayerLogin: the owner's name (ignoring case,
         // `isSingleplayerOwner`) is refused while a player of that name is online.
-        if let Some((owner, _)) = &self.config.singleplayer_profile
-            && owner.eq_ignore_ascii_case(name)
+        if self.is_singleplayer_owner(name)
             && self
                 .online
                 .lock()

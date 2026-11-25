@@ -540,7 +540,8 @@ impl Game<'_> {
             let cull_fov = self
                 .fov_degrees(partial, eye)
                 .max((self.settings.fov as i32) as f32);
-            let (near_yaw, near_pitch) = self.posed_rotation.unwrap_or((self.yaw, self.pitch));
+            let (near_yaw, near_pitch, _) =
+                self.posed_rotation.unwrap_or((self.yaw, self.pitch, 0.0));
             let (near_min, near_max) = sunrise_client::camera::near_plane_bounds(
                 cull_fov,
                 size[0] as f32,
@@ -820,6 +821,7 @@ impl Game<'_> {
         // `ClientLevel.animateTick`, then the rain and the campfires. The sampling stops in each
         // pick whose block has a part, for the game to call it there (`mod_animate_tick`); the
         // context borrows the game, so it is made again for the rest of the tick.
+        let mut rain_sounds = Vec::new();
         loop {
             let marker_options = |state| {
                 // BlockMarker: the particle sprite, untinted.
@@ -833,8 +835,12 @@ impl Game<'_> {
             let world = &self.world;
             let facts = self.res.facts();
             let biomes = world_biomes!(self);
-            let environment =
-                Self::level_environment(self.remote.as_ref(), &self.res, &self.dimension_type().id);
+            let environment = Self::level_environment(
+                self.remote.as_ref(),
+                &self.res,
+                self.dim.id(),
+                &self.dimension_type().id,
+            );
             let ui = &self.ui;
             let remote = self.remote.as_ref();
             let clock = |name: &str| {
@@ -930,6 +936,23 @@ impl Game<'_> {
                     match step {
                         AnimateStep::BlockPart(state, pos) => self.mod_animate_tick(state, pos),
                         AnimateStep::Ambient(options, at) => self.emit_model_ambient(&options, at),
+                        AnimateStep::BookShelf {
+                            table,
+                            offset,
+                            mut valid,
+                        } => {
+                            if let Some(level) = self.native_client_level() {
+                                let [x, y, z] = table;
+                                let [ox, oy, oz] = offset;
+                                self.native_is_valid_book_shelf(
+                                    level,
+                                    BlockPos::new(x, y, z),
+                                    BlockPos::new(ox, oy, oz),
+                                    &mut valid,
+                                );
+                            }
+                            sampling.answer_book_shelf(valid);
+                        }
                     }
                     continue;
                 }
@@ -1028,7 +1051,7 @@ impl Game<'_> {
                             let p = at.map(|c| f64::from(c) + 0.5);
                             // playLocalSound: guests make their own rain, so a host
                             // must not capture it for them.
-                            self.audio.play_unshared(name, Some(p), volume, pitch);
+                            rain_sounds.push((name, p, volume, pitch));
                         }
                     }
                 }
@@ -1048,6 +1071,9 @@ impl Game<'_> {
             }
             laps.lap("tp_rain_campfire");
             break;
+        }
+        for (name, p, volume, pitch) in rain_sounds {
+            self.play_audio_unshared(name, Some(p), volume, pitch);
         }
     }
 
@@ -1080,8 +1106,18 @@ impl Game<'_> {
             _ => unreachable!(),
         };
         if let Some(options) = options {
-            self.particles
-                .add_admitted_with_world(Some(&self.world), &options, at, [0.0; 3]);
+            let level = sunrise_client::particles::ParticleLevel::new(
+                &self.world,
+                self.res.facts(),
+                self.collision,
+            );
+            self.particles.add_admitted_with_level(
+                Some(&level),
+                &options,
+                at,
+                [0.0; 3],
+                override_limiter,
+            );
         }
     }
 
@@ -1155,10 +1191,9 @@ impl Game<'_> {
         let camera = self.particles.camera;
         for (name, at, volume, pitch, delayed) in std::mem::take(&mut self.particles.sounds) {
             if delayed {
-                self.audio
-                    .play_distance_delayed(name, at, volume, pitch, camera);
+                self.play_audio_distance_delayed(name, at, volume, pitch, camera);
             } else {
-                self.audio.play(name, Some(at), volume, pitch);
+                self.play_audio(name, Some(at), volume, pitch);
             }
         }
     }

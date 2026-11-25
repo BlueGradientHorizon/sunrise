@@ -36,7 +36,7 @@ checkout with `gh`; it reads and merges the branches with git and never runs any
 
 Each nightly ships its exact source: sunrise-source.tar.gz (`git archive` of the commit, signed with the builds) on
 the release, and the tag nightly-source/<date>-<short>, which no prune deletes. Native mods pin a nightly's commit
-(docs/native-mods.md), so that commit must stay downloadable after its release and build branch are gone.
+(docs/modding/src/how-to/native-mods.md), so that commit must stay downloadable after its release and build branch are gone.
 """
 from __future__ import annotations
 
@@ -280,21 +280,23 @@ SDK_INDEX = "sdk.json"
 SDK_ASSETS = SDK_ARCHIVES + (SDK_INDEX, "SHA256SUMS", "SHA256SUMS.sig")
 
 
-def published_releases():
+def published_releases(drafts: bool = False):
+    """The releases, drafts only with `drafts` (a Dev build's, before promote-dev.yml makes it public; the token must
+    be able to write to see them)."""
     pages = train.gh_json("api", "--paginate", "repos/sunrise-org/sunrise/releases?per_page=100")
-    return (release for page in pages for release in page if not release["draft"])
+    return (release for page in pages for release in page if drafts or not release["draft"])
 
 
-def ready_sdk_shas() -> set[str]:
-    """Snapshot of the complete published `sdk-<sha>` releases; API failures fail closed."""
+def ready_sdk_shas(drafts: bool = False) -> set[str]:
+    """Snapshot of the complete published `sdk-<sha>` releases (and drafts, with `drafts`); API failures fail closed."""
     return {release["tag_name"].removeprefix("sdk-")
-            for release in published_releases() if re.fullmatch(r"sdk-[0-9a-f]{40}", release["tag_name"])
+            for release in published_releases(drafts) if re.fullmatch(r"sdk-[0-9a-f]{40}", release["tag_name"])
             and set(SDK_ASSETS) <= {asset["name"] for asset in release["assets"]}}
 
 
-def sdk_ready(sha: str) -> bool:
+def sdk_ready(sha: str, drafts: bool = False) -> bool:
     """A fresh check, never cached across selection and publication."""
-    return sha in ready_sdk_shas()
+    return sha in ready_sdk_shas(drafts)
 
 
 REPOSITORY = Path(__file__).resolve().parents[2]
@@ -499,11 +501,13 @@ def previous_sdk(sha: str) -> str:
     return min(behind, key=behind.get) if behind else ""
 
 
-def require_sdk(sha: str) -> None:
-    """Refuse before rotating/publishing Nightly if its SDK disappeared or its index is not this build's."""
+def require_sdk(sha: str, drafts: bool = False) -> None:
+    """Refuse before rotating/publishing Nightly if its SDK disappeared or its index is not this build's. A Dev build's
+    game draft takes its SDK's draft (`drafts`); promote-dev.yml makes the SDK public first."""
     if os.environ.get("GITHUB_REPOSITORY") == "sunrise-org/sunrise":
-        if not sdk_ready(sha):
-            raise SystemExit(f"Nightly publication refused: {sha} has no complete published sdk-{sha} release")
+        if not sdk_ready(sha, drafts):
+            raise SystemExit(f"Nightly publication refused: {sha} has no complete sdk-{sha} release"
+                             + (" or draft" if drafts else ""))
         published_index(sha)
 
 
@@ -565,19 +569,13 @@ def pick(force: bool) -> None:
 
 def pick_dev() -> None:
     """A Dev build (release.yml kind dev, docs/release-flow.md "Dev"): a commit of main that recognizes the Dev
-    version prefix, passed the gate and has a published SDK. It builds alone: no picks, build branch, nightly-state
-    record or daily cap. If dev-<date>-<short> already has a release, skip it (a tag is never replaced)."""
+    version prefix and passed the gate. It builds alone: no picks, build branch, nightly-state record or daily cap.
+    Its SDK is built and published in the same run (nightly-build.yml `sdk`), before its game is signed. If
+    dev-<date>-<short> already has a release, skip it (a tag is never replaced)."""
     require_ref("dev")
     git("fetch", "--quiet", "origin", "+refs/heads/main:refs/remotes/origin/main")
-    repo, dry_run = os.environ.get("GITHUB_REPOSITORY", ""), os.environ.get("DRY_RUN") == "true"
+    dry_run = os.environ.get("DRY_RUN") == "true"
     sha = train.channel_head("dev", os.environ.get("NIGHTLY_BASE", "").strip())
-    sdk = repo != "sunrise-org/sunrise" or sdk_ready(sha)
-    if not sdk:
-        if not dry_run:
-            stop(repo, "", f"the Dev build stopped: {sha} has no complete published SDK "
-                 "(release.yml publishes it first).")
-        print(f"::warning::{sha} has no published SDK yet: a real Dev build publishes sdk-{sha} first; this dry run "
-              "carries no sdk.json")
     today = dt.datetime.now(dt.timezone.utc).date().isoformat()
     tag = train.build_tag("dev", today, sha)
     # A tag is never replaced: skip a published build of the same commit on the same day (a dry run still builds).
@@ -589,7 +587,7 @@ def pick_dev() -> None:
                 f"Run `sunrise-release-sign verify --tag {tag} --signature SHA256SUMS.v2.sig <folder>`. "
                 f"The matching SDK is `sdk-{sha}`.\n\n{train.DISCLAIMER}\n")
     output(build=str(build).lower(), sha=sha, short=sha[:7], source="main", date=today, version=f"dev-{today}",
-           nightly=f"{today} {sha[:7]}", source_tag="", tag=tag, sdk=str(sdk).lower())
+           nightly=f"{today} {sha[:7]}", source_tag="", tag=tag)
     print(f"{'build' if build else f'skip ({tag} is already published)'}: {tag} {sha}")
 
 
@@ -1141,9 +1139,10 @@ DEV = re.compile(r"^dev-(\d{4}-\d{2}-\d{2})-[0-9a-f]{7,40}$")
 
 
 def stale_dev_builds(tags: list[dict], today: dt.date, days: int) -> list[str]:
-    """The Dev pre-releases older than `days`, never the newest one, never anything not named
-    dev-<date>-<short> (an sdk-<sha> SDK above all)."""
-    dev_builds = [r["tagName"] for r in tags if r["isPrerelease"] and DEV.match(r["tagName"])]
+    """The Dev pre-releases older than `days`, never the newest one, never a draft (one not yet tested and promoted),
+    never anything not named dev-<date>-<short> (an sdk-<sha> SDK above all)."""
+    dev_builds = [r["tagName"] for r in tags
+                  if r["isPrerelease"] and not r.get("isDraft") and DEV.match(r["tagName"])]
     if not dev_builds:
         return []
     newest = max(dev_builds, key=lambda tag: DEV.match(tag).group(1))
@@ -1153,7 +1152,7 @@ def stale_dev_builds(tags: list[dict], today: dt.date, days: int) -> list[str]:
 
 
 def prune_dev(days: int) -> None:
-    tags = json.loads(gh("release", "list", "--limit", "200", "--json", "tagName,isPrerelease"))
+    tags = json.loads(gh("release", "list", "--limit", "200", "--json", "tagName,isPrerelease,isDraft"))
     for tag in stale_dev_builds(tags, dt.datetime.now(dt.timezone.utc).date(), days):
         gh("release", "delete", tag, "--cleanup-tag", "--yes")
         print(f"deleted {tag}")
@@ -1222,7 +1221,9 @@ def main() -> None:
     picker.add_argument("--force", action="store_true")
     picker.add_argument("--kind", choices=["nightly", "dev", "stable"], default="nightly")
     sub.add_parser("rotate")
-    sub.add_parser("require-sdk").add_argument("sha")
+    require = sub.add_parser("require-sdk")
+    require.add_argument("sha")
+    require.add_argument("--draft", action="store_true", help="a draft sdk-<sha> counts (a Dev build's)")
     reserve = sub.add_parser("reserve-stable-tag")
     reserve.add_argument("sha")
     reserve.add_argument("tag")
@@ -1262,7 +1263,7 @@ def main() -> None:
         else:
             pick(args.force)
     elif args.cmd == "require-sdk":
-        require_sdk(args.sha)
+        require_sdk(args.sha, args.draft)
     elif args.cmd == "reserve-stable-tag":
         reserve_stable_tag(args.sha, args.tag)
     elif args.cmd == "sdk-archives":

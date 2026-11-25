@@ -1,4 +1,4 @@
-//! The registry repository (`horizon-rust/horizon-mods`, docs/modding/src/reference/registry-index.md):
+//! The registry repository (`sunrise-org/sunrise-mods`, docs/modding/src/reference/registry-index.md):
 //! one `mods/<id>.toml` per project, written by the submission form or by
 //! hand and reviewed in a pull request, plus `revoked.toml`. Its CI turns
 //! them into `index.json` with [`build`], reading every listed file, and
@@ -106,23 +106,8 @@ pub struct NightlySource {
     pub path: Option<String>,
 }
 
-pub(super) fn check_nightly_source(repo: &str, path: Option<&str>) -> Result<(), String> {
-    if !valid_repo(repo) {
-        return Err(format!(
-            "nightly.repo {repo:?} must be owner/name on GitHub"
-        ));
-    }
-    if let Some(path) = path
-        && (path.contains(['\\', ':'])
-            || path.chars().any(char::is_control)
-            || path.split('/').any(|part| matches!(part, "" | "." | "..")))
-    {
-        return Err(format!(
-            "nightly.path {path:?} must be a relative directory in the repository"
-        ));
-    }
-    Ok(())
-}
+pub(super) use super::check_nightly_source;
+pub use super::valid_repo;
 
 /// The page fields a project's repository may hold, in its [`PAGE_FILE`]. Only these: who owns the
 /// project, its key and its kind are decided when it is listed.
@@ -176,20 +161,6 @@ impl Cache {
             Err(e) => Err(format!("{}: {e}", path.display())),
         }
     }
-}
-
-/// `owner/name` of a GitHub repository.
-pub fn valid_repo(repo: &str) -> bool {
-    let part = |p: &str, max: usize| {
-        !p.is_empty()
-            && p.len() <= max
-            && p != "."
-            && p != ".."
-            && p.bytes()
-                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
-    };
-    repo.split_once('/')
-        .is_some_and(|(owner, name)| part(owner, 39) && part(name, 100))
 }
 
 impl Entry {
@@ -420,8 +391,8 @@ pub struct Sources<'a> {
     pub registry: &'a Path,
     /// Every listed file, named by its SHA-256 (CI downloads them there).
     pub files: &'a Path,
-    /// Where the files are published: `<files>/<id>-<version>/<file>`
-    /// ([`super::FILE_HOST`]; `file:///` for a local test registry).
+    /// The base URL for mirrored release assets, including its trailing `/`:
+    /// [`super::FILE_HOST`] for Sunrise, or an explicit base such as `file:///` for tests.
     pub release: &'a str,
     /// Where the registry's site is (its icons): `https://.../sunrise-mods/`.
     pub site: &'a str,

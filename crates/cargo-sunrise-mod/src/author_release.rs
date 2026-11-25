@@ -20,11 +20,11 @@ const DEFAULT_WORKFLOW: &str = "sunrise-org/sunrise-mods/.github/workflows/relea
 const CALLER: &str = ".github/workflows/sunrise-release.yml";
 const CALLER_MARK: &str =
     "# Written by `cargo sunrise-mod release`, which rewrites it: edits here are replaced.\n";
-const NOT_REGISTERED: &str = "This repository isn't registered yet: register it at https://playsunrise.net/mods/submit, or with a Register issue on https://github.com/sunrise-org/sunrise-mods";
+pub(crate) const NOT_REGISTERED: &str = "This repository isn't registered yet: register it at https://playsunrise.net/mods/submit, or with a Register issue on https://github.com/sunrise-org/sunrise-mods";
 
-type Fetch<'a> = &'a dyn Fn(&str) -> Result<Option<String>, String>;
+pub(crate) type Fetch<'a> = &'a dyn Fn(&str) -> Result<Option<String>, String>;
 
-fn fetch(url: &str) -> Result<Option<String>, String> {
+pub(crate) fn fetch(url: &str) -> Result<Option<String>, String> {
     match sunrise_proxy::get(url, &[("User-Agent", "cargo-sunrise-mod")], None) {
         Ok(response) => response
             .into_string()
@@ -35,7 +35,7 @@ fn fetch(url: &str) -> Result<Option<String>, String> {
     }
 }
 
-fn registry_file(fetch: Fetch<'_>, name: &str) -> Result<String, String> {
+pub(crate) fn registry_file(fetch: Fetch<'_>, name: &str) -> Result<String, String> {
     let url = format!("{}/{name}", sunrise_addresses::MOD_REGISTRY_METADATA);
     fetch(&url)?.ok_or_else(|| format!("{url}: not found"))
 }
@@ -43,18 +43,17 @@ fn registry_file(fetch: Fetch<'_>, name: &str) -> Result<String, String> {
 /// `registry/repositories/<numeric repository id>.toml`: one file per registered repository.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Repository {
-    // A name can be reused after a rename: the ID in the file name is the identity.
-    #[serde(rename = "name")]
-    _name: String,
-    package: Vec<RegisteredPackage>,
+pub(crate) struct Repository {
+    /// `owner/name`; a name can be reused after a rename: the ID in the file name is the identity.
+    pub(crate) name: String,
+    pub(crate) package: Vec<RegisteredPackage>,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct RegisteredPackage {
+pub(crate) struct RegisteredPackage {
     path: String,
-    project: String,
+    pub(crate) project: String,
 }
 
 /// The fields of `registry/projects/<project>/project.toml` a release must agree with.
@@ -66,11 +65,11 @@ struct ProjectRecord {
 }
 
 #[derive(Deserialize)]
-struct GitHubRepository {
-    id: u64,
+pub(crate) struct GitHubRepository {
+    pub(crate) id: u64,
 }
 
-fn github_name(origin: &str) -> Option<String> {
+pub(crate) fn github_name(origin: &str) -> Option<String> {
     let url;
     let path = if origin.contains("://") {
         url = url::Url::parse(origin).ok()?;
@@ -509,9 +508,9 @@ impl Change {
 }
 
 #[derive(Default)]
-struct Git {
+pub(crate) struct Git {
     #[cfg(test)]
-    env: Vec<(&'static str, std::ffi::OsString)>,
+    pub(crate) env: Vec<(&'static str, std::ffi::OsString)>,
 }
 
 impl Git {
@@ -523,7 +522,7 @@ impl Git {
         cmd
     }
 
-    fn text(
+    pub(crate) fn text(
         &self,
         root: &Path,
         args: impl IntoIterator<Item: AsRef<OsStr>>,
@@ -667,9 +666,9 @@ fn release(
         .map_err(|_| "check out a branch before releasing")?;
     let head = git.text(root, ["rev-parse", "HEAD"])?;
     // Registration and the existing-tag and branch preflight read origin's one push URL, with
-    // Git's insteadOf and pushInsteadOf rewriting already applied. The push goes through the named
-    // remote, which Git resolves to that same URL; its atomic update enforces the tag and branch
-    // checks again on the repository it actually reaches.
+    // Git's insteadOf and pushInsteadOf rewriting already applied. The pushes go through the named
+    // remote, which Git resolves to that same URL, and each of the two refs is checked again on the
+    // repository it actually reaches.
     let origin = git.text(root, ["remote", "get-url", "--push", "--all", "origin"])?;
     if origin.lines().count() != 1 {
         return Err("origin pushes to more than one URL; release needs exactly one".into());
@@ -840,11 +839,12 @@ fn release(
         ));
     }
     git.text(root, ["tag", &tag, &commit])?;
-    // Publish both refs together, or neither. In particular, a rejected branch must not release a tag.
+    // GitHub starts no workflow for a tag pushed in the same push that first adds its workflow file,
+    // so the branch goes first and the tag in a second push: a rejected branch publishes no tag.
     // Explicit destinations, so no remote.origin.push mapping sends them elsewhere.
     let branch_spec = format!("{commit}:{target}");
     let tag_spec = format!("{tag_ref}:{tag_ref}");
-    git.text(root, ["push", "--atomic", "--no-follow-tags", "origin", &branch_spec, &tag_spec])
+    git.text(root, ["push", "--no-follow-tags", "origin", &branch_spec])
         .map_err(|e| {
             let protected = match &release_branch {
                 Some(_) => String::new(),
@@ -852,6 +852,11 @@ fn release(
             };
             format!("{e}\nThe release commit and {tag} remain local. Resolve the push error, then push both refs to origin.{protected}")
         })?;
+    git.text(root, ["push", "--no-follow-tags", "origin", &tag_spec]).map_err(|e| {
+        format!(
+            "{e}\nThe release commit is on origin and only {tag} remains local. Resolve the push error, then push it with `git push origin {tag_ref}`."
+        )
+    })?;
     println!(
         "Released {version}: pushed {tag} to origin. GitHub Actions will build and attest the release."
     );

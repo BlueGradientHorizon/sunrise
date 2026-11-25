@@ -99,9 +99,12 @@ impl Flight {
         self.upload_queue_work = work;
     }
 
-    pub(in crate::game) fn note_mesh_uploads(&mut self, count: usize, vertex_bytes: u64) {
+    /// `count` meshes uploaded, of `bytes` as the upload budget counts them
+    /// (`Renderer::mesh_upload_bytes`: compact records at their vertices' 24 bytes each, about
+    /// four times what they copy).
+    pub(in crate::game) fn note_mesh_uploads(&mut self, count: usize, bytes: u64) {
         self.mesh_uploads[0] += count as u64;
-        self.mesh_uploads[1] += vertex_bytes;
+        self.mesh_uploads[1] += bytes;
     }
 }
 
@@ -923,16 +926,12 @@ impl Game<'_> {
                 let input = sunrise_client::keybinds::mouse_name(button);
                 match action {
                     "down" => {
-                        self.extras_mouse(button, true);
                         self.mapped_mouse_event_from(button, &input, true, Source::Agent)?;
                     }
                     "up" => {
-                        self.extras_mouse(button, false);
                         self.mapped_mouse_event_from(button, &input, false, Source::Agent)?;
                     }
                     "click" => {
-                        self.extras_mouse(button, true);
-                        self.extras_mouse(button, false);
                         self.mapped_mouse_event_from(button, &input, true, Source::Agent)?;
                         self.mapped_mouse_event_from(button, &input, false, Source::Agent)?;
                     }

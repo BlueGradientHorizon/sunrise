@@ -19,22 +19,20 @@ fn empty_chunk(game: &mut Game<'_>) {
 }
 
 fn shape() -> Collider {
-    Collider {
-        boxes: vec![ColliderBox {
-            min: [-0.25, -3.0, -0.75],
-            max: [0.25, -1.0, 0.75],
-        }],
-        ..Collider::default()
-    }
+    Collider::new(vec![ColliderBox {
+        min: [-0.25, -3.0, -0.75],
+        max: [0.25, -1.0, 0.75],
+    }])
 }
 
 fn holder(game: &mut Game<'_>, x: f64) -> u32 {
     game.options.dedicated = Some(Vec::new());
     game.native_level_opened(game.dim);
     game.native_joins_skip();
-    let id = game
+    let level = game.level(game.dim.id()).unwrap();
+    let entity = level
         .summon(
-            game.dim.id(),
+            game,
             "minecraft:pig",
             [x, PIG_Y, 4.5],
             [
@@ -44,12 +42,10 @@ fn holder(game: &mut Game<'_>, x: f64) -> u32 {
             .into_iter()
             .collect(),
         )
-        .unwrap();
-    game.entity(id)
         .unwrap()
-        .set_collider(game, Some(shape()))
         .unwrap();
-    id
+    entity.set_collider(game, Some(shape())).unwrap();
+    entity.id()
 }
 
 fn shove(game: &mut Game<'_>, holder: u32, x: f64) {
@@ -140,13 +136,10 @@ fn a_later_shove_collides_with_a_holder_already_displaced() {
                     .unwrap()
                     .set_collider(
                         game,
-                        Some(Collider {
-                            boxes: vec![ColliderBox {
-                                min: [-1.0, -0.25, 0.5],
-                                max: [-0.75, 0.75, 1.0],
-                            }],
-                            ..Collider::default()
-                        }),
+                        Some(Collider::new(vec![ColliderBox {
+                            min: [-1.0, -0.25, 0.5],
+                            max: [-0.75, 0.75, 1.0],
+                        }])),
                     )
                     .unwrap();
                 shove(game, source, 6.5);

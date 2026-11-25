@@ -48,6 +48,7 @@ fn parser_id(ty: &ArgType) -> String {
             | CustomArgumentKind::Greedy => "brigadier:string".into(),
             CustomArgumentKind::Integer { .. } => "brigadier:integer".into(),
             CustomArgumentKind::Long { .. } => "brigadier:long".into(),
+            CustomArgumentKind::Id => "minecraft:resource_location".into(),
         },
         ArgType::Entity { .. } => "minecraft:entity".into(),
         ArgType::BlockPos => "minecraft:block_pos".into(),
@@ -106,7 +107,7 @@ fn parser_id(ty: &ArgType) -> String {
         ArgType::Slots => "minecraft:slots".into(),
         ArgType::Slot => "minecraft:item_slot".into(),
         ArgType::SlotSource => "minecraft:slot_source".into(),
-        ArgType::ResourceOrId(r) => match *r {
+        ArgType::ResourceOrId(r) => match r.as_str() {
             "minecraft:loot_table" => "minecraft:loot_table".into(),
             "minecraft:item_modifier" => "minecraft:loot_modifier".into(),
             "minecraft:predicate" => "minecraft:loot_predicate".into(),

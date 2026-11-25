@@ -12,7 +12,11 @@ use sunrise_world::loot::PackOverlay;
 mod offer;
 pub use offer::{ItemCost, MerchantOffer};
 use serde_json::Value;
-use std::{collections::HashMap, path::Path, sync::Arc};
+use std::{
+    collections::{BTreeMap, HashMap},
+    path::Path,
+    sync::Arc,
+};
 
 /// `VillagerData.NEXT_LEVEL_XP_THRESHOLDS`.
 pub const LEVEL_XP: [i32; 5] = [0, 10, 70, 150, 250];
@@ -439,41 +443,40 @@ pub fn trade_update_pitch(
 /// The trade registries.
 pub struct Trades {
     pub professions: std::sync::Arc<crate::mobs::villager::ResolvedProfessions>,
-    pub trades: HashMap<String, Value>,
+    pub trades: BTreeMap<String, Value>,
     /// villager_trade tags, ordered.
     pub tags: HashMap<String, Vec<String>>,
-    pub sets: HashMap<String, Value>,
+    pub sets: BTreeMap<String, Value>,
     /// potion tags, ordered (`set_random_potion` options).
     pub potion_tags: HashMap<String, Vec<String>>,
 }
 /// The `.json` files under `dir` as `minecraft:<path>` ids, through `json_folder` (from the
 /// prepared data file when there is one); a file that doesn't parse is left out.
-fn walk(dir: &Path, out: &mut HashMap<String, Value>) {
+fn walk(dir: &Path) -> BTreeMap<String, Value> {
     let Ok(folder) = sunrise_world::json_folder::read(dir) else {
-        return;
+        return BTreeMap::new();
     };
-    for file in &folder.files {
-        if let Ok(value) = serde_json::from_slice(file.bytes().unwrap_or_default()) {
-            out.insert(format!("minecraft:{}", file.name), value);
-        }
-    }
+    folder
+        .files
+        .iter()
+        .filter(|file| sunrise_world::json_folder::valid_resource_path("minecraft", &file.name))
+        .filter_map(|file| {
+            let value = serde_json::from_slice(file.bytes().unwrap_or_default()).ok()?;
+            Some((format!("minecraft:{}", file.name), value))
+        })
+        .collect()
 }
 impl Trades {
     /// Load from a resource root; `overlay` (the world's data packs'
     /// content files) merges over it, the way a pack stack layers
     /// (`SimpleJsonResourceReloadListener`, `TagLoader`).
-    pub fn load(root: &Path, overlay: &sunrise_world::loot::PackOverlay) -> Self {
+    pub fn load(root: &Path, overlay: &sunrise_world::loot::PackOverlay) -> std::io::Result<Self> {
         let data = root.join("data/minecraft");
-        let (mut trades, mut raw_tags, mut sets) = (HashMap::new(), HashMap::new(), HashMap::new());
-        walk(&data.join("villager_trade"), &mut trades);
-        walk(&data.join("tags/villager_trade"), &mut raw_tags);
-        walk(&data.join("trade_set"), &mut sets);
-        let mut raw_potions = HashMap::new();
-        walk(&data.join("tags/potion"), &mut raw_potions);
+        let mut trades = walk(&data.join("villager_trade"));
+        let mut sets = walk(&data.join("trade_set"));
         // The packs' trade files: a trade or set's top pack file replaces
         // the game's own (`SimpleJsonResourceReloadListener` sees one
-        // resource per id), a tag's entries join in pack order with a
-        // `replace` file dropping the lower sources' (`TagLoader.load`).
+        // resource per id).
         for (id, files) in overlay.kind("villager_trade") {
             if let Ok(v) = serde_json::from_slice(PackOverlay::top(files)) {
                 trades.insert(id.to_owned(), v);
@@ -484,79 +487,22 @@ impl Trades {
                 sets.insert(id.to_owned(), v);
             }
         }
-        let values = |v: Value| -> Vec<String> {
-            v["values"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .filter_map(|e| e.as_str().map(str::to_owned))
-                .collect()
-        };
-        let mut raw_potions: HashMap<String, Vec<String>> = raw_potions
-            .into_iter()
-            .map(|(k, v)| (k, values(v)))
-            .collect();
-        let mut raw: HashMap<String, Vec<String>> = raw_tags
-            .into_iter()
-            .map(|(k, v)| {
-                (
-                    k,
-                    v["values"]
-                        .as_array()
-                        .into_iter()
-                        .flatten()
-                        .filter_map(|e| e.as_str().map(str::to_owned))
-                        .collect(),
-                )
-            })
-            .collect();
-        for (registry, raw) in [("villager_trade", &mut raw), ("potion", &mut raw_potions)] {
-            for (id, files) in overlay.tag_kind(registry) {
-                let slot = raw.entry(id).or_default();
-                for bytes in files {
-                    let Ok(v) = serde_json::from_slice::<Value>(bytes) else {
-                        continue;
-                    };
-                    if v["replace"].as_bool() == Some(true) {
-                        slot.clear();
-                    }
-                    if let Some(vs) = v["values"].as_array() {
-                        slot.extend(vs.iter().filter_map(|e| e.as_str().map(str::to_owned)));
-                    }
-                }
-            }
-        }
-        fn expand(
-            name: &str,
-            raw: &HashMap<String, Vec<String>>,
-            out: &mut Vec<String>,
-            depth: u32,
-        ) {
-            for v in raw.get(name).into_iter().flatten() {
-                match v.strip_prefix('#') {
-                    Some(t) if depth < 16 => expand(t, raw, out, depth + 1),
-                    Some(_) => {}
-                    None if !out.contains(v) => out.push(v.clone()),
-                    None => {}
-                }
-            }
-        }
-        let expand_all = |raw: &HashMap<String, Vec<String>>| {
-            raw.keys()
-                .map(|k| {
-                    let mut v = Vec::new();
-                    expand(k, raw, &mut v, 0);
-                    (k.clone(), v)
-                })
-                .collect()
-        };
-        Self {
+        // Their tags bind through the one tag loader (`TagLoader.load` and `build`).
+        let registries = sunrise_world::tag_layers::builtin_ids(root)?;
+        let potions = registries.get("potion");
+        let tags = sunrise_world::tag_layers::load(root, "villager_trade", overlay, |id| {
+            trades.contains_key(id)
+        })?;
+        let potion_tags = sunrise_world::tag_layers::load(root, "potion", overlay, |id| {
+            potions.is_some_and(|ids| ids.contains(id))
+        })?;
+        Ok(Self {
             trades,
-            tags: expand_all(&raw),
+            tags,
             professions: std::sync::Arc::new(crate::mobs::villager::ResolvedProfessions::vanilla()),
             sets,
-            potion_tags: expand_all(&raw_potions),
-        }
+            potion_tags,
+        })
     }
     /// The random sequence of a trade set (`TradeSet.randomSequence`).
     pub fn sequence(&self, set_id: &str) -> Option<String> {
@@ -1303,7 +1249,7 @@ mod tests {
     fn offers_follow_the_trade_data() {
         let items = items();
         let e = crate::enchant::tests::sample();
-        let mut trades = HashMap::new();
+        let mut trades = BTreeMap::new();
         trades.insert("minecraft:t/boots".into(), json!({"gives":{"id":"minecraft:iron_boots"},"max_uses":12,"reputation_discount":0.2,"wants":{"count":4,"id":"minecraft:emerald"}}));
         trades.insert("minecraft:t/helmet".into(), json!({"gives":{"id":"minecraft:iron_helmet"},"max_uses":12,"reputation_discount":0.2,"wants":{"count":5,"id":"minecraft:emerald"}}));
         trades.insert("minecraft:t/desert".into(), json!({"gives":{"id":"minecraft:sand"},"wants":{"id":"minecraft:emerald"},"merchant_predicate":{"entity":"this","predicate":{"minecraft:predicates":{"minecraft:villager/variant":"minecraft:desert"}},"type":"minecraft:entity_properties"}}));
@@ -1316,7 +1262,7 @@ mod tests {
                 "minecraft:t/desert".into(),
             ],
         );
-        let mut sets = HashMap::new();
+        let mut sets = BTreeMap::new();
         sets.insert(
             "minecraft:t/level_1".into(),
             json!({"amount": 5, "trades": "#minecraft:t/level_1"}),
@@ -1374,10 +1320,10 @@ mod tests {
         let items = items();
         let e = crate::enchant::tests::sample();
         let t = Trades {
-            trades: HashMap::new(),
+            trades: BTreeMap::new(),
             tags: HashMap::new(),
             professions: std::sync::Arc::new(crate::mobs::villager::ResolvedProfessions::vanilla()),
-            sets: HashMap::new(),
+            sets: BTreeMap::new(),
             potion_tags: HashMap::new(),
         };
         let ctx = TradeContext {
@@ -1415,9 +1361,9 @@ mod enchant_select_tests {
         let items = crate::enchant::tests::sample_items();
         let e = crate::enchant::tests::sample();
         let trades = Trades {
-            trades: HashMap::new(),
+            trades: BTreeMap::new(),
             tags: HashMap::new(),
-            sets: HashMap::new(),
+            sets: BTreeMap::new(),
             professions: std::sync::Arc::new(crate::mobs::villager::ResolvedProfessions::vanilla()),
             potion_tags: HashMap::new(),
         };
@@ -1445,5 +1391,52 @@ mod enchant_select_tests {
             .unwrap();
         assert!(stack.enchantments().is_empty());
         assert_eq!(random.next_long(), expected.next_long());
+    }
+
+    /// Potion and villager trade tags bind through `TagLoader`: a pack's file removes and adds
+    /// entries, and a tag with a missing required member is dropped.
+    #[test]
+    fn pack_potion_and_trade_tags_bind_like_tag_loader() {
+        let root = tempfile::tempdir().unwrap();
+        let write = |path: &str, text: &str| {
+            let path = root.path().join("data/minecraft").join(path);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        };
+        std::fs::write(
+            root.path().join("registries.json"),
+            r#"{"minecraft:potion":{"entries":{"minecraft:swiftness":{},"minecraft:strength":{},"minecraft:luck":{}}}}"#,
+        )
+        .unwrap();
+        write("villager_trade/offer.json", "{}");
+        write(
+            "tags/potion/pool.json",
+            r#"{"values":["minecraft:swiftness","minecraft:strength"]}"#,
+        );
+        write(
+            "tags/villager_trade/offers.json",
+            r#"{"values":["minecraft:offer"]}"#,
+        );
+        let files = [
+            (
+                "tags/minecraft:potion/pool".to_owned(),
+                vec![br#"{"values":["minecraft:luck"],"remove":["minecraft:swiftness"]}"#.to_vec()],
+            ),
+            (
+                "tags/minecraft:villager_trade/offers".to_owned(),
+                vec![br#"{"values":[{"id":"minecraft:absent","required":true}]}"#.to_vec()],
+            ),
+            (
+                "tags/minecraft:villager_trade/extra".to_owned(),
+                vec![br##"{"values":[{"id":"minecraft:absent","required":false},"#minecraft:offers"]}"##.to_vec()],
+            ),
+        ];
+        let trades = Trades::load(root.path(), &PackOverlay::new(&files)).unwrap();
+        assert_eq!(
+            trades.potion_tags["minecraft:pool"],
+            ["minecraft:strength", "minecraft:luck"]
+        );
+        assert!(!trades.tags.contains_key("minecraft:offers"));
+        assert!(!trades.tags.contains_key("minecraft:extra"));
     }
 }

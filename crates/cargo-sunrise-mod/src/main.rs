@@ -13,6 +13,8 @@
 //!   and `data/`; a native mod is compiled first (`dev.rs`).
 //! - `release [<version>|patch|minor|major] [--check] [--pull-request]`, `release setup`: prepare or publish a tagged
 //!   release using the registry's shared workflow (`author_release.rs`).
+//! - `collection [--check]`: check a registry collection kept in this folder and propose it from the
+//!   author's fork of the registry (`collection.rs`).
 //! - `run [--game <sunrise-client>] [--resources <folder>] [--jars <dir>] [-- <game args>]`: build, then play with
 //!   the mod.
 //! - `check [--uses] [--release <tag>]` in a mod folder: the package rules, page and render pipeline
@@ -23,7 +25,7 @@
 //! - `sdk diff <build> <build>`: what changed in the surface between two builds.
 //! - `check [<file.smod>] --build <name> [--build <name>]…`: whether the mod fits each build; exit 0 when all
 //!   do, 1 when one does not, 2 when it cannot be told.
-//! - `use-jar <path>`: list an exact original Java jar as a passive asset/data source.
+//! - `use-jar <path | modrinth-url | <project> <version>>`: list an exact original Java jar as a passive asset/data source, downloading it from Modrinth when given a Modrinth reference.
 //! - `native-build < plan.json`: compile native mods against an unpacked SDK, as the launcher does
 //!   (docs/modding/src/reference/sdk/08-native-build.md).
 //! - `native-check < plan.json`: how native mods stand against one build before anything compiles (the same page).
@@ -33,6 +35,7 @@ use sunrise_mod_package::{Content, Manifest, Package, manifest::MANIFEST};
 mod author_release;
 mod bounded;
 mod check;
+mod collection;
 mod dev;
 mod help;
 mod internals;
@@ -102,6 +105,7 @@ fn main() -> ExitCode {
         }),
         Some("build") => build_command(entry, &args[1..]).map(drop),
         Some("release") => author_release::run(entry, Path::new("."), &args[1..]),
+        Some("collection") => collection::run(Path::new("."), &args[1..]),
         Some("run") => run(&args[1..]).map_err(|e| e.to_string()),
         Some("check") => match check_args(&args[1..]) {
             Ok(Check::Folder {
@@ -129,13 +133,34 @@ fn main() -> ExitCode {
         Some("native-layout") => return native_build::layout(&args[1..]),
         Some("internals") => internals::run(&args[1..]),
         Some("pin") => pin_args(&args[1..]).and_then(|build| {
+            // The project's own manifest first: a content mod pins no build, and offline it must
+            // hear that rather than a lookup failure.
+            pinned_manifest(Path::new("."))?;
             // Resolved once: the report and the manifest name the same build, even when a Nightly
             // is published in between.
             let requested = build.unwrap_or(sunrise_release_sign::NIGHTLY);
             let sunrise = resolve_build(requested)?;
-            sdk_cmds::pin_report(entry, Path::new("."), &sunrise)
-                .and_then(|()| repin(Path::new("."), &sdk_fetch::fetch_build, requested, &sunrise))
-                .map(|()| println!("Run `cargo sunrise-mod check`."))
+            let project = Path::new(".");
+            // The lock names the SDK's local packages, so it moves with the pin: a release
+            // refuses a lock Cargo would change. A linked lock would be rewritten outside the
+            // project, so it is refused before the pin moves.
+            let lock = std::fs::symlink_metadata(project.join("Cargo.lock")).ok();
+            if lock.as_ref().is_some_and(|lock| lock.is_symlink()) {
+                return Err("Cargo.lock is a link; pin follows it with the project's own file".into());
+            }
+            sdk_cmds::pin_report(entry, project, &sunrise)
+                .and_then(|()| repin(project, &sdk_fetch::fetch_build, requested, &sunrise))?;
+            if lock.is_some() {
+                sdk_fetch::fetch_pinned(project, &sunrise)
+                    .and_then(|_| dev::native_sdk(&dev::cache_dir()?, &sunrise))
+                    .and_then(|sdk| dev::refresh_lock(&sdk.rust, project))
+                    .map_err(|e| {
+                        format!("Cargo.lock did not follow the new pin: {e}\nRun `cargo sunrise-mod pin {sunrise}` again once that is fixed.")
+                    })?;
+                println!("Updated Cargo.lock to the new SDK");
+            }
+            println!("Run `cargo sunrise-mod check`.");
+            Ok(())
         }),
         None | Some("--help" | "-h") => {
             print!("{}", help::short());
@@ -387,15 +412,26 @@ fn pin_args(args: &[String]) -> Result<Option<&str>, String> {
     Ok(build)
 }
 
-/// Repins a native mod. Declared internals are checked against the new build before writing.
-/// `Cargo.toml` names the SDK by path, so the next command fetches the new one.
-fn repin(dir: &Path, fetch: FetchSdk, requested: &str, sunrise: &str) -> Result<(), String> {
+/// The manifest `pin` works on, read before any build is resolved: its path and text, and the
+/// refusal of a content mod, which pins no game build.
+fn pinned_manifest(dir: &Path) -> Result<(PathBuf, String, Manifest), String> {
     let path = dir.join(MANIFEST);
     let text = bounded::read(&path, bounded::MAX_MANIFEST)?;
     let manifest = Manifest::parse(&text)?;
-    let Some(native) = manifest.native.as_ref() else {
+    if manifest.native.is_none() {
         return Err(format!("{MANIFEST}: a content mod pins no game build"));
-    };
+    }
+    Ok((path, text, manifest))
+}
+
+/// Repins a native mod. Declared internals are checked against the new build before writing.
+/// `Cargo.toml` names the SDK by path, so the next command fetches the new one.
+fn repin(dir: &Path, fetch: FetchSdk, requested: &str, sunrise: &str) -> Result<(), String> {
+    let (path, text, manifest) = pinned_manifest(dir)?;
+    let native = manifest
+        .native
+        .as_ref()
+        .expect("pinned_manifest checked the pin");
     // The new build's SDK must exist and verify before anything is written; the mixins revision
     // is the SDK's own unless the manifest pins one.
     fetch(dir, sunrise).map_err(|e| sdk_fetch::named(requested, sunrise, e))?;
@@ -1314,7 +1350,13 @@ mod tests {
         let names: Vec<_> = bundle.files.keys().map(String::as_str).collect();
         assert_eq!(
             names,
-            ["Cargo.toml", "README.md", "src/lib.rs", "sunrise-mod.toml"]
+            [
+                "Cargo.toml",
+                "README.md",
+                "page.toml",
+                "src/lib.rs",
+                "sunrise-mod.toml"
+            ]
         );
         assert!(path.join("sunrise-mod.toml").is_file());
         for old in [
@@ -1575,44 +1617,13 @@ served_by = \"horizon_java\"
         std::fs::write(root.join(MANIFEST), manifest_text).unwrap();
         // Item references a host-declared crafting remainder in a served namespace, and a recipe
         // references a host-declared item in the same namespace.
+        let recipe = root.join("data/runes/recipe/host_bowl.json");
         std::fs::write(
-            root.join("data/runes/sunrise/item/stew.json"),
-            r#"{"template":"minecraft:mushroom_stew","crafting_remainder":"runes_extra:host_bowl"}"#,
-        )
-        .unwrap();
-        std::fs::write(
-            root.join("data/runes/recipe/host_bowl.json"),
+            &recipe,
             r#"{"type":"minecraft:crafting_shapeless","ingredients":["minecraft:oak_planks"],"result":{"id":"runes_extra:host_bowl"}}"#,
         )
         .unwrap();
-        let manifest = Package::read(&root).unwrap().manifest;
-        let smod = pack_into(
-            &root,
-            &PackageOutput::in_project(&root).unwrap(),
-            &manifest,
-            None,
-            None,
-        )
-        .unwrap();
-        let report = check::inspect(&smod, check::kind_of(&smod).unwrap()).unwrap();
-        assert_eq!(report.facts.id.as_deref(), Some("runes"));
-
-        // Invalid syntax, minecraft:air, foreign namespace, or unserved undeclared remainder still fail.
-        for (label, manifest_override, remainder) in [
-            ("air", None, "minecraft:air"),
-            ("bad-id", None, "runes:Bad"),
-            ("foreign", None, "other:bowl"),
-            (
-                "unserved",
-                Some(manifest_text.replace("served_by = \"horizon_java\"\n", "")),
-                "runes_extra:host_bowl",
-            ),
-        ] {
-            if let Some(text) = &manifest_override {
-                std::fs::write(root.join(MANIFEST), text).unwrap();
-            } else {
-                std::fs::write(root.join(MANIFEST), manifest_text).unwrap();
-            }
+        let stew = |remainder: &str| {
             std::fs::write(
                 root.join("data/runes/sunrise/item/stew.json"),
                 format!(
@@ -1620,19 +1631,60 @@ served_by = \"horizon_java\"
                 ),
             )
             .unwrap();
+        };
+        let pack = || {
             let manifest = Package::read(&root).unwrap().manifest;
+            pack_into(
+                &root,
+                &PackageOutput::in_project(&root).unwrap(),
+                &manifest,
+                None,
+                None,
+            )
+        };
+        let check_remainder = |remainder: &str| {
+            stew(remainder);
+            let smod = pack().unwrap();
+            let report = check::inspect(&smod, check::kind_of(&smod).unwrap()).unwrap();
+            assert_eq!(report.facts.id.as_deref(), Some("runes"));
+            let package = Package::read(&smod).unwrap();
+            let content = Content::read(&smod, &package.manifest).unwrap();
+            assert_eq!(
+                content.items[0].crafting_remainder.as_deref(),
+                Some(remainder)
+            );
+        };
+        check_remainder("runes_extra:host_bowl");
+        check_remainder("other:bowl");
+
+        // Syntax and the sentinel value still fail at the package boundary.
+        for (remainder, reason) in [
+            ("minecraft:air", "is no remainder"),
+            ("runes:Bad", "must be a namespaced item id"),
+        ] {
+            stew(remainder);
+            let error = pack().unwrap_err();
             assert!(
-                pack_into(
-                    &root,
-                    &PackageOutput::in_project(&root).unwrap(),
-                    &manifest,
-                    None,
-                    None,
-                )
-                .is_err(),
-                "{label} ({remainder}) should fail pack_into"
+                error.contains("crafting_remainder") && error.contains(reason),
+                "{error}"
             );
         }
+
+        // Without a host, the recipe checker can still flag an undeclared result in the
+        // package's own namespace. A crafting remainder instead resolves at game load.
+        std::fs::write(
+            root.join(MANIFEST),
+            manifest_text.replace("served_by = \"horizon_java\"\n", ""),
+        )
+        .unwrap();
+        stew("runes_extra:host_bowl");
+        let error = pack().unwrap_err();
+        assert!(
+            error.contains("host_bowl.json") && error.contains("runes_extra:host_bowl"),
+            "{error}"
+        );
+        std::fs::remove_file(recipe).unwrap();
+        check_remainder("runes_extra:host_bowl");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

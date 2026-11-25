@@ -24,6 +24,8 @@ use inventory::{
 };
 mod level_format;
 mod raw_ingress;
+#[cfg(test)]
+pub(in crate::game) use raw_ingress::PacketError;
 mod recipe_properties;
 mod use_item;
 
@@ -73,6 +75,7 @@ use sunrise_client::{
     streaming::{ChunkGenerator, Proto, Streaming},
     tab_list::SPECTATOR,
     text::Text,
+    world::World,
 };
 use sunrise_core::{geometry::Vec3, profile::AccountProperty, random::RandomSource};
 use sunrise_protocol::{
@@ -83,7 +86,6 @@ use sunrise_protocol::{
         play::{self, Clientbound as C, Serverbound as S},
     },
     registry::{Builtin, DimensionType, Dynamic, SyncedNames, ceil_log2},
-    rsa::RsaPublicKey,
     secure_chat::{self, Signature},
     text::{Language, plain},
 };
@@ -202,8 +204,8 @@ struct NoTerrain;
 impl ChunkGenerator for NoTerrain {
     type Worker = ();
     fn worker(&self) {}
-    fn proto(&self, _: &mut (), _: i32, _: i32) -> Proto {
-        Box::new(())
+    fn proto(&self, _: &mut (), _: i32, _: i32) -> std::result::Result<Proto, String> {
+        Ok(Box::new(()))
     }
     fn finish(&self, _: Proto) -> Chunk {
         Chunk::empty(0, 0)
@@ -324,41 +326,37 @@ impl ServicesKeys {
 }
 
 /// One `PlayerInfo` property, shared by the list entry and the entities that kept it.
-struct PlayerTextures {
-    property: AccountProperty,
-    unpacked: std::sync::OnceLock<sunrise_client::skins::Textures>,
-}
+struct PlayerTextures(sunrise_client::skins::PackedTextures);
 
 impl PlayerTextures {
-    fn new(property: AccountProperty) -> Self {
-        Self {
-            property,
-            unpacked: std::sync::OnceLock::new(),
-        }
+    fn new(profile: u128, property: AccountProperty) -> Self {
+        Self(sunrise_client::skins::PackedTextures {
+            profile,
+            value: property.value,
+            signature: property.signature,
+        })
     }
 
     /// `SkinManager.createLookup(profile, requireSecure)`: a secure lookup shows
     /// only textures whose signature the keys verified, so it waits for keys that
     /// are still pending; the local player's shows its textures unverified.
+    /// `SkinManager.getOrLoad` unpacks and verifies on a thread of its own, never
+    /// the game thread: `None` until that answers, and the player shows the
+    /// default skin.
     fn unpack(
         &self,
+        downloads: &mut sunrise_client::skins::Downloader,
         services_keys: &ServicesKeys,
-        valid_uris: &[impl AsRef<str>],
         require_secure: bool,
-    ) -> Option<&sunrise_client::skins::Textures> {
-        use sunrise_client::skins;
-        let signature = self.property.signature.as_deref();
-        let property_keys: &[RsaPublicKey] = match services_keys {
+    ) -> Option<Arc<sunrise_client::skins::Textures>> {
+        match services_keys {
             // Never cache an invalid result for a signature the pending keys could verify.
-            ServicesKeys::Pending if signature.is_some() && require_secure => return None,
-            ServicesKeys::Pending => &[],
-            ServicesKeys::Ready(keys) => &keys.profile_property_keys,
-        };
-        Some(self.unpacked.get_or_init(|| {
-            let value = &self.property.value;
-            let signature = skins::property_signature(value, signature, property_keys);
-            skins::unpack(value, signature, valid_uris)
-        }))
+            ServicesKeys::Pending if self.0.signature.is_some() && require_secure => None,
+            // `PlayerInfo.createSkinLookup`: requireSecure is false for the local player, whose
+            // signed property shows unverified. An unsigned one reads the same whatever the keys.
+            ServicesKeys::Pending => downloads.unpacked(&self.0, &[]),
+            ServicesKeys::Ready(keys) => downloads.unpacked(&self.0, &keys.profile_property_keys),
+        }
     }
 }
 
@@ -399,6 +397,12 @@ pub(in crate::game) enum RemoteDimensionEntry {
     DeathRespawn,
 }
 
+pub(super) struct ConstructingClientLevel {
+    pub(super) handle: mod_api::LevelRef,
+    pub(super) world: World,
+    pub(super) facts: Option<Arc<sunrise_world::dimension_type::DimensionFacts>>,
+}
+
 pub(super) struct Remote {
     pub(super) professions: Arc<sunrise_client::mobs::villager::ResolvedProfessions>,
     pub session: Session,
@@ -419,7 +423,7 @@ pub(super) struct Remote {
     /// The colliders the server sent, by entity id (`sunrise:collider_sync`).
     pub colliders: HashMap<u32, sunrise_client::colliders::ColliderState>,
     /// The colliders at the last client tick, before any packets handled between ticks.
-    pub(super) collider_shove_start:
+    pub(super) collider_pass_start:
         Option<(Dim, sunrise_client_render::moving_colliders::Prepared)>,
     /// How old the copy of the collider carrying the player is (`sunrise:carry_age`).
     pub carry_age: sunrise_client::colliders::CarryAge,
@@ -428,6 +432,8 @@ pub(super) struct Remote {
     pub(super) builtin: Arc<Builtin>,
     lang: Arc<Language>,
     pub(in crate::game) registries: Arc<Dynamic>,
+    /// Data-driven mob variant tables decoded from `registries` in server sync order.
+    pub(in crate::game) variants: Arc<sunrise_client::mobs::variants::VariantTables>,
     /// The block, item and fluid tags of `registries` by name, as native mods read them
     /// (`install_remote_tags`).
     pub(super) tags: Option<sunrise_client::items::Items>,
@@ -474,7 +480,7 @@ pub(super) struct Remote {
     synced_type: Option<(String, serde_json::Value)>,
     /// Both environments by synchronized type name, with what they were built from, so that a
     /// level of an unchanged type is entered again without reading the biome files.
-    level_environments: HashMap<String, level_format::LevelEnvironments>,
+    pub(in crate::game) level_environments: HashMap<String, level_format::LevelEnvironments>,
     /// Connection-owned facts, cached by level and the full named type identity.
     facts_cache: HashMap<
         String,
@@ -533,6 +539,12 @@ pub(super) struct Remote {
     /// The dimension of the client level the mods heard made
     /// (`native_client_level_load`), to be told dropped once.
     pub(super) heard_level: Option<String>,
+    pub(in crate::game) datapacks: sunrise_client::datapack_net::Receiver,
+    /// Decoded vanilla codec values for [`Self::datapacks`], swapped on join and reload.
+    pub(in crate::game) datapack_vanilla_values:
+        Option<Arc<crate::game::native_datapack_values::DatapackVanillaValues>>,
+    /// The constructor's level is visible by name during Load, before Minecraft.setLevel.
+    pub(super) constructing_level: Option<ConstructingClientLevel>,
     /// `ClientPacketListener.levelLoadTracker`: the loading screen after a login
     /// or respawn, until the player's section is shown.
     pub(super) level_load: sunrise_client::level_loading::LevelLoadTracker,
@@ -641,10 +653,9 @@ pub(super) struct Remote {
     /// that base changes, not at each keystroke.
     pub chat_tree: sunrise_client::command::Dispatcher,
     selector_metadata_supported: bool,
-    /// Whether a `ClientboundCommandsPacket` has supplied the server's tree.
-    /// The local fallback is for UI completion only; vanilla signs command
-    /// arguments against an empty tree until the server sends one.
-    pub(super) chat_tree_received: bool,
+    /// The server's original tree, used for signing and verifying remote commands.
+    /// Vanilla uses an empty tree until it receives `ClientboundCommandsPacket`.
+    pub(super) server_chat_tree: Option<sunrise_client::command::Dispatcher>,
     /// The chat session, the last-seen window and the signature cache.
     pub(super) secure_chat: super::remote_chat::SecureChat,
     /// `ClientSuggestionProvider.customCompletionSuggestions`: the extra chat
@@ -832,10 +843,10 @@ impl Game<'_> {
 
     pub(super) fn send(&self, packet: S) {
         if self.remote.is_some() {
-            // MultiPlayerGameMode's attack, interact, useItem, useItemOn, releaseUsingItem, dropItem and
-            // piercingAttack run ensureHasSentCarriedItem before their packet: a slot the number keys
-            // chose this tick goes out first. A miss, a dig's start or a swap waits for the next tick.
-            if let S::Attack(_) | S::Interact(_) | S::UseItem(_) | S::UseItemOn(_) = &packet {
+            // MultiPlayerGameMode's attack, interact, useItem, releaseUsingItem, dropItem and
+            // piercingAttack sync the carried slot before their packet. useItemOn does this
+            // separately, before prediction. A miss, a dig's start or a swap waits for the next tick.
+            if let S::Attack(_) | S::Interact(_) | S::UseItem(_) = &packet {
                 self.remote_send_carried();
             } else if let S::PlayerAction(a) = &packet
                 && matches!(a.action, 4 | 5 | 6 | 8)
@@ -897,7 +908,7 @@ impl Game<'_> {
         self.decode_remote_stack(s.as_ref()?)
     }
 
-    fn decode_remote_stack(&self, stack: &Stack) -> Option<ItemStack> {
+    pub(super) fn decode_remote_stack(&self, stack: &Stack) -> Option<ItemStack> {
         let r = self.remote.as_ref()?;
         if !sunrise_protocol::item::custom::permitted_with_names(
             stack,
@@ -1214,8 +1225,23 @@ impl Game<'_> {
                 self.receive_cauldron_use(&p.data)?;
             }
             // The server's next generation of mod registries: all of it or the connection.
+            // Follows vanilla `ClientCommonPacketListenerImpl.onPacketError`: an invalid
+            // snapshot or vanilla-value decode disconnects cleanly without replacing live state.
             C::CustomPayload(p) if p.channel == sunrise_client::datapack_net::CHANNEL => {
-                sunrise_client::datapack_net::accept_chunk(&p.data)?;
+                let decoded = if let Some(remote) = &mut self.remote {
+                    remote.datapacks.decode_chunk(&p.data).map_err(|error| {
+                        log::warn!("Sunrise: invalid datapack snapshot payload: {error}");
+                        raw_ingress::PacketError("Invalid datapack registry snapshot.")
+                    })?
+                } else {
+                    None
+                };
+                if let Some(set) = decoded {
+                    self.install_client_datapack_set(&set).map_err(|error| {
+                        log::warn!("Sunrise: invalid datapack vanilla value: {error}");
+                        raw_ingress::PacketError("Invalid datapack vanilla value.")
+                    })?;
+                }
             }
             C::CustomPayload(p)
                 if p.channel == sunrise_client::lan::commands::selector_sync::CHANNEL =>
@@ -1242,7 +1268,7 @@ impl Game<'_> {
             }
             // Per-position connected-texture groups synced for the window's chunks.
             C::CustomPayload(p) if p.channel == sunrise_protocol::connection_groups::CHANNEL => {
-                self.refuse_play_payload("connection groups: payload outside its bundle")?;
+                self.refuse_remote_input("connection groups: payload outside its bundle")?;
             }
             // Full-width data slots for the open blockless mod menu.
             C::CustomPayload(p) if p.channel == sunrise_protocol::menu_extra::DATA_CHANNEL => {
@@ -1448,10 +1474,29 @@ impl Game<'_> {
             C::PlayerInfoUpdate(p) => self.apply_player_info_update_packet(p),
             C::PlayerInfoRemove(p) => self.apply_player_info_remove_packet(p),
             C::TabList(p) => self.apply_tab_list_packet(p),
-            C::InitializeBorder(p) => self.apply_initialize_border_packet(p),
-            C::SetBorderCenter(p) => self.border.set_center([p.x, p.z]),
-            C::SetBorderLerpSize(p) => self.apply_set_border_lerp_size_packet(p),
-            C::SetBorderSize(p) => self.border.set_size(p.size),
+            C::InitializeBorder(p) => {
+                if let Err(error) = self.apply_initialize_border_packet(p) {
+                    log::warn!("invalid initialize_border packet: {error}");
+                }
+            }
+            C::SetBorderCenter(p) => {
+                if let Err(error) = self.border.set_center([p.x, p.z]) {
+                    log::warn!("invalid set_border_center packet: {error}");
+                }
+            }
+            C::SetBorderLerpSize(p) => {
+                if let Err(error) = self
+                    .border
+                    .lerp_between(p.old_size, p.new_size, p.lerp_time)
+                {
+                    log::warn!("invalid set_border_lerp_size packet: {error}");
+                }
+            }
+            C::SetBorderSize(p) => {
+                if let Err(error) = self.border.set_size(p.size) {
+                    log::warn!("invalid set_border_size packet: {error}");
+                }
+            }
             C::SetBorderWarningDelay(p) => self.border.warning_time = p.delay,
             C::SetBorderWarningDistance(p) => self.border.warning_distance = p.blocks,
             C::SetObjective(p) => self.remote_objective(p),
@@ -1697,10 +1742,11 @@ impl Game<'_> {
 
     // remote_send_carried: remote/sync.rs
 
-    /// `MultiPlayerGameMode.attack` runs `Player.attack` on this client too: its
-    /// `isSweepAttack` for a damaging hit on `target` (`living`: a
-    /// `LivingEntity`, which may be hit critically), heard by native mods on
-    /// both sides. Only the server sweeps.
+    /// `MultiPlayerGameMode.attack` runs `Player.attack` on this client too:
+    /// for a damaging hit on `target` (`living`: a `LivingEntity`, which may be
+    /// hit critically) its `CriticalHitEvent`, then its `isSweepAttack` with
+    /// the critical hit as decided, heard by native mods on both sides. This
+    /// client only asks: only the server hits critically and sweeps.
     fn remote_sweep_event(&mut self, target: &str, living: bool) {
         if mod_api::__private::mods().is_empty() {
             return;
@@ -1710,7 +1756,12 @@ impl Game<'_> {
         if damage <= 0.0 && magic <= 0.0 {
             return;
         }
-        let crit = living && self.critical_attack(scale);
+        let mut crit = living && self.critical_attack(scale);
+        if living {
+            let vanilla = crit;
+            let mut multiplier = if vanilla { 1.5 } else { 1.0 };
+            self.native_critical_hit(target, vanilla, &mut crit, &mut multiplier);
+        }
         self.sweep_decision(scale, crit, target);
     }
 
@@ -1874,7 +1925,7 @@ impl Game<'_> {
         let r = self.remote.as_ref()?;
         r.level_player_name(id as i32, &r.player_uuid(id)?)
     }
-    pub(super) fn remote_player_uuid(&self, id: u32) -> Option<u128> {
+    pub(in crate::game) fn remote_player_uuid(&self, id: u32) -> Option<u128> {
         let remote = self.remote.as_ref()?;
         if self.player_model.as_ref().is_some_and(|m| m.id == id) {
             Some(remote.profile)
@@ -1986,6 +2037,9 @@ pub(super) type DryUse = (DryChanges, Vec<DrySound>);
 /// Where `BlockItem.place` on the dry level placed, and the blocks it set.
 pub(super) struct DryPlace {
     pub(super) pos: sunrise_core::position::BlockPos,
+    /// The state's sound type is read from BlockItem.place's `placedState`,
+    /// before any further writes from `Block.setPlacedBy`.
+    sound_state: BlockStateId,
     matches_candidate: bool,
     pub(super) changes: DryChanges,
 }
@@ -2374,14 +2428,6 @@ pub(super) fn client_millis() -> u64 {
         .as_millis() as u64
 }
 
-/// What `ChatScreen.handleChatInput` sends of typed chat once `ClientChatEvent` (`ask`, with
-/// the outgoing message and the cancel flag) had its say: nothing when canceled or emptied.
-fn chat_after_event(message: &str, ask: impl FnOnce(&mut String, &mut bool)) -> Option<String> {
-    let mut outgoing = message.to_owned();
-    let mut cancel = false;
-    ask(&mut outgoing, &mut cancel);
-    (!cancel && !outgoing.is_empty()).then_some(outgoing)
-}
 /// `Entity.isOnFire` for the window's player: while the server's flag is set
 /// the predicted tick's countdown never takes `fire_ticks` below 1.
 pub(super) fn hold_server_fire(fire_ticks: i32, server_on_fire: bool) -> i32 {
@@ -2453,6 +2499,15 @@ mod respawn_motion_tests;
 #[cfg(test)]
 mod riptide_tests;
 impl Remote {
+    pub(super) fn constructing(
+        &self,
+        level: mod_api::LevelRef,
+    ) -> Option<&ConstructingClientLevel> {
+        self.constructing_level
+            .as_ref()
+            .filter(|pending| pending.handle == level)
+    }
+
     /// Project the session address for display once, dropping the memory transport's marker.
     pub(super) fn display_address_for(address: &str) -> Option<String> {
         (address != "local").then(|| sunrise_client::net::shown_address(address))
@@ -2493,6 +2548,9 @@ pub(in crate::game) mod tests {
     }
     mod client_block_changed_tests {
         include!("client_block_changed_tests.rs");
+    }
+    mod client_break_progress_tests {
+        include!("client_break_progress_tests.rs");
     }
     pub(in crate::game) mod camera_draw_tests {
         include!("camera_draw_tests.rs");
@@ -2624,29 +2682,22 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn named_remote_players_are_told_one_by_one() {
-        use mod_api::{
-            EntityTickListenedEvent, EntityTickPostEvent, EntityTickPreEvent, Hooks, HostSide,
-            ModEntry, Mods, Registrar,
-        };
+        use mod_api::{EntityTickPostEvent, EntityTickPreEvent, Hooks, HostSide, ModEntry, Mods};
         use std::sync::{Arc, Mutex};
         type Calls = Arc<Mutex<Vec<(bool, Vec<u32>)>>>;
         struct Named(Calls);
         #[mod_api::__subscriptions]
         impl Hooks for Named {
-            fn entity_tick_listened(&self, _: HostSide<'_>, event: &mut EntityTickListenedEvent) {
-                event.listened = true;
-            }
-            fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
-                r.entity_tick_each("minecraft:player");
-            }
-            fn entity_tick_pre(&self, _: HostSide<'_>, event: &mut EntityTickPreEvent<'_>) {
-                self.0.lock().unwrap().push((true, event.entities.to_vec()));
+            fn entity_tick_pre(
+                &self,
+                _: HostSide<'_>,
+                event: &mut EntityTickPreEvent<'_>,
+            ) -> mod_api::Flow {
+                self.0.lock().unwrap().push((true, vec![event.entity]));
+                mod_api::Flow::Continue
             }
             fn entity_tick_post(&self, _: HostSide<'_>, event: &mut EntityTickPostEvent<'_>) {
-                self.0
-                    .lock()
-                    .unwrap()
-                    .push((false, event.entities.to_vec()));
+                self.0.lock().unwrap().push((false, vec![event.entity]));
             }
         }
         let heard: Calls = Arc::default();
@@ -2662,10 +2713,6 @@ pub(in crate::game) mod tests {
                 game.connect_local(client, "avatar-tick-client").unwrap();
                 let remote = game.remote.as_mut().unwrap();
                 let kind = remote.player_type.as_ref().unwrap().clone();
-                assert!(
-                    !kind.flags.tick_alone,
-                    "render model does not select tick routing"
-                );
                 for id in [66, 67] {
                     remote.level_players.insert(id, id as u128);
                     game.mobs.push(sunrise_client::mobs::Mob::new(
@@ -2843,9 +2890,7 @@ pub(in crate::game) mod tests {
         spawn
     }
 
-    use super::{
-        boat_interact_passes, chat_after_event, item_frame_interact_passes, remote_object_swings,
-    };
+    use super::{boat_interact_passes, item_frame_interact_passes, remote_object_swings};
 
     #[test]
     #[ignore = "daily"]

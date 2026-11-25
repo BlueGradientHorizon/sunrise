@@ -1456,7 +1456,13 @@ pub fn main() -> sunrise_client::Result<()> {
                     s.time,
                     test_level.random(),
                 );
-                sunrise_client::mobs::warden::hear_mob_events(&mut mobs, &events, from, &w);
+                sunrise_client::mobs::warden::hear_mob_events(
+                    &mut mobs,
+                    &events,
+                    from,
+                    &w,
+                    &items.game_event_tags,
+                );
                 // Melee hits on other mobs land during the attacker's tick
                 // (LivingEntity.hurtServer), with the sounds they raise.
                 let mut k = from;
@@ -1766,6 +1772,12 @@ pub fn main() -> sunrise_client::Result<()> {
                     );
                 } else if let MobEvent::SoundId(name, _, volume, pitch) = e {
                     let _ = writeln!(out, "{t} sound {name} {} {}", f(*volume), f(*pitch));
+                } else if let MobEvent::ConsumeSound(sound, _) = e {
+                    use sunrise_client::items::ConsumeSound;
+                    let name = match sound {
+                        ConsumeSound::Registered(id) | ConsumeSound::Direct { id, .. } => id,
+                    };
+                    let _ = writeln!(out, "{t} sound {name} {} {}", f(1.0), f(1.0));
                 } else if player_hurt(player.as_ref(), e) {
                     // The oracle's survival player, healed and made hurtable every tick,
                     // takes the damage (LivingEntity.playHurtSound).

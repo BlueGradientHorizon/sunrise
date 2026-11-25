@@ -10,6 +10,9 @@ impl Game<'_> {
         if let Some(t) = r.entities.get(&id) {
             return Some(t.kind.clone());
         }
+        if let Some(row) = r.general.rows.get(&id) {
+            return Some(row.kind().to_owned());
+        }
         self.mobs
             .iter()
             .find(|m| m.id == id as u32)
@@ -82,6 +85,16 @@ impl Game<'_> {
                 }
                 if let Some(t) = r.entities.get_mut(&id) {
                     t.silent = *silent;
+                }
+            }
+            // Entity.DATA_CUSTOM_NAME and DATA_CUSTOM_NAME_VISIBLE of a general row.
+            if let Some(row) = r.general.rows.get_mut(&id) {
+                match (index, value) {
+                    (2, Value::OptText(name)) => {
+                        row.custom_name = name.as_ref().map(sunrise_client::entity_nbt::name_text);
+                    }
+                    (3, Value::Bool(visible)) => row.custom_name_visible = *visible,
+                    _ => {}
                 }
             }
         }
@@ -199,6 +212,8 @@ impl Game<'_> {
         // player lies down in the bed, or gets up.
         if self.remote.as_ref().is_some_and(|r| r.entity_id == id) {
             match (index, value) {
+                // Player.DATA_SCORE_ID: DeathScreen reads this, not the XP packet.
+                (18, Value::Int(score)) => self.player_score = *score,
                 (14, Value::OptPos(bed)) => {
                     if bed.is_some() && self.sleeping.is_none() {
                         self.sleep_timer = 0;

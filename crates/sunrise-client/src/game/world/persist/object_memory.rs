@@ -231,6 +231,9 @@ impl Game<'_> {
         uuid: Option<[i32; 4]>,
         transferred: Option<crate::game::entity_initialization::TransferredEntityState>,
     ) {
+        if transferred.is_none() && uuid.is_some_and(|u| self.target_with_uuid(u).is_some()) {
+            return;
+        }
         entity_nbt::sanitize_custom_name(&mut tag);
         if let Some((state, position, velocity, age, fall_distance)) =
             entity_nbt::falling_block_from_nbt(&tag)
@@ -293,6 +296,7 @@ impl Game<'_> {
             let mut t =
                 crate::game::trident::ThrownTrident::from_nbt(n, &tag, self.pack.assets.registry);
             t.id = self.take_entity_id();
+            self.resolve_trident_loyalty(&mut t);
             // One that came through a portal keeps its cooldown.
             let id = t.id;
             self.tridents.push(t);
@@ -538,6 +542,7 @@ impl Game<'_> {
         admitted: Option<bool>,
     ) -> u32 {
         self.resolve_loaded_profession(&mut m);
+        entity_nbt::read_mob_variants(&mut m, &tag, self.world_variants());
         if sunrise_client::mobs::camel::is_camel(m.species()) {
             sunrise_client::mobs::camel::finish_load(&mut m, self.world.game_time);
         }
@@ -600,10 +605,13 @@ impl Game<'_> {
         if resident {
             self.bind_saved_entity_attachments(id, &mut m.attachment_lifetime);
             self.mobs.push(m);
+            let join = self.mobs.last().unwrap().join;
+            self.flush_resident_mob_parts(id, join);
             if restore_target {
                 self.native_restore_loaded_target(id, anger_uuid);
             }
         } else {
+            self.flush_unjoined_mob_parts(&mut m);
             self.persist.off_level.insert(id, OffLevel::Mob(m));
         }
         id
@@ -772,6 +780,19 @@ impl Game<'_> {
         let prepared = self.prepare_vehicle_transfer(tag, tree)?;
         let mut by_source = HashMap::new();
         let root = self.restore_vehicle_transfer(prepared, &mut by_source)?;
+        // A natural-spawn candidate is still the argument of the spawn callback after
+        // crossing levels in a join listener. Follow the exact restored object, not its UUID.
+        use crate::game::natural_spawning::NaturalAdmission;
+        if let Some(NaturalAdmission::Detached(candidate)) = &self.creatures.natural_admission
+            && let Some(&id) = by_source.get(&candidate.id)
+            && let Some(mob) = self.mob_object(id)
+        {
+            self.creatures.natural_admission = Some(NaturalAdmission::Placed {
+                level: self.dim,
+                id,
+                join: mob.join,
+            });
+        }
         Some(RestoredVehicleTree { root, by_source })
     }
 
@@ -952,7 +973,7 @@ impl Game<'_> {
         // final passenger list, as in the persistent mob tree.
         let paused = self.mob_at(object).ai.ai_paused;
         entity_nbt::write_ai_paused(paused, &mut retained);
-        write_attachments(&mut retained, id, &self.entity_attachments);
+        self.write_entity_attachments(&mut retained, id);
         entity_nbt::write_ai_paused(paused, &mut retained);
         let mut out = entity_nbt::EntityTagWriter::from_saved(retained);
         entity_nbt::write_mob(
@@ -968,6 +989,7 @@ impl Game<'_> {
             entity_nbt::MobSave {
                 include_id,
                 game_time: self.world.game_time,
+                variants: Some(self.world_variants()),
             },
         );
         out.finish()
