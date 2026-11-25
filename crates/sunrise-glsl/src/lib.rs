@@ -13,6 +13,7 @@
 //!   sampler is named;
 //! - the vertex inputs become globals the caller's [`Glue`] fills before the program's `main`
 //!   (renamed `hz_main`) runs, and `gl_VertexID` and `gl_VertexIndex` read the glue's expression;
+//!   the glue's [`Glue::fragment_finish`] runs after the fragment shader's `main`, renamed too;
 //! - varyings get locations by name across the stages, the fragment output location 0;
 //! - an integer texel buffer (`uniform isamplerBuffer Faces;`) becomes a read-only storage buffer
 //!   of `int`s (`uint`s for `usamplerBuffer`), and `texelFetch` on it reads one into the first
@@ -21,9 +22,12 @@
 //!
 //! Each line keeps where it came from through every rewrite ([`Expanded`]), so an error names the
 //! file (the stage's or an include's id) and the line the author wrote ([`Error`]).
+//!
+//! A caller that writes the stage as naga reads it itself (`sunrise-shaders`, for Iris/OptiFine
+//! programs) compiles it through [`compile_stage`] instead, its own resources moved through a
+//! [`BindingMap`].
 
 use std::collections::HashSet;
-use std::fmt::Write;
 
 use naga::ShaderStage;
 use naga::front::glsl::{Frontend, InterfaceLimits, Options};
@@ -31,9 +35,11 @@ use naga::valid::{Capabilities, ValidationFlags, Validator};
 
 mod glsl_fixups;
 mod located;
+mod stage;
 
 pub use located::{Error, Expanded, Location, describe};
 use located::{Lines, Origin};
+pub use stage::{BindingMap, Source, compile_stage};
 
 /// What a program's pipeline gives it, beyond its [`Glue`].
 pub struct Inputs<'a> {
@@ -64,7 +70,8 @@ pub struct Includes<'a> {
     pub once: &'a [&'a str],
 }
 
-/// What the caller's pipeline gives the program's vertex shader.
+/// What the caller's pipeline gives the program's vertex shader, and what it runs after the
+/// fragment shader's.
 pub struct Glue<'a> {
     /// The inputs the program's vertex shader may declare: name and GLSL type.
     pub inputs: &'a [(&'a str, &'a str)],
@@ -76,6 +83,11 @@ pub struct Glue<'a> {
     pub finish: &'a str,
     /// The expression the program's `gl_VertexID` and `gl_VertexIndex` read.
     pub vertex_id: &'a str,
+    /// Statements after the fragment shader's `main` (renamed `hz_main`, as the vertex
+    /// shader's is), on its outputs, however `main` returned; none leaves the fragment shader
+    /// as the program wrote it. Only [`translate`] runs it: a caller of [`compile_stage`]
+    /// writes its own `main`.
+    pub fragment_finish: Option<&'a str>,
     /// The stage interface limits the stages are translated with (a device's, or the lowest
     /// any device has when checking without one).
     pub interface: InterfaceLimits,
@@ -1218,6 +1230,14 @@ fn rewrite(
             }
         }
     }
+    if let (false, Some(finish)) = (vertex, glue.fragment_finish) {
+        let code = &out.text()[pack_start..];
+        let edits = main_at(code)
+            .map(|at| (at + pack_start..at + pack_start + 4, "hz_main".to_owned()))
+            .collect();
+        out.edit(edits);
+        out.push(&format!("void main() {{\nhz_main();\n{finish}\n}}\n"), None);
+    }
     if vertex {
         // The program's `gl_VertexID` and `gl_VertexIndex` both read the glue's expression (a
         // pipeline drawing six vertices per quad turns its own index back into the program's
@@ -1298,14 +1318,7 @@ fn compile(
                 .filter(|s| s.to_range().is_some())
                 .last();
             let span = span.unwrap_or_default();
-            let inner = e.into_inner();
-            let mut message = inner.to_string();
-            let mut source = std::error::Error::source(&inner);
-            while let Some(s) = source {
-                write!(message, ": {s}").unwrap();
-                source = s.source();
-            }
-            vec![code.error_in(span, message)]
+            vec![code.error_in(span, stage::validation_message(e.into_inner()))]
         })?;
     let entry = info.get_entry_point(0);
     for (handle, global) in module.global_variables.iter() {
@@ -1500,6 +1513,7 @@ mod tests {
         setup: "Position = vec3(hz_pos, 0.0); Color = hz_color; UV0 = hz_uv;",
         finish: "gl_Position.z = 0.5 * gl_Position.w;",
         vertex_id: "hz_vertex_id()",
+        fragment_finish: None,
         interface: LIMITS,
     };
 
@@ -1523,6 +1537,74 @@ mod tests {
             translate_core(VANILLA_VSH, VANILLA_FSH, &["IS_GUI"], &include, &GLUE).unwrap();
         assert_eq!(program.vertex.entry_points.len(), 1);
         assert_eq!(program.fragment.entry_points.len(), 1);
+    }
+
+    /// Whether `function`'s body calls the function named `callee`.
+    fn calls(module: &naga::Module, function: &naga::Function, callee: &str) -> bool {
+        function.body.iter().any(|s| {
+            matches!(s, naga::Statement::Call { function, .. }
+                if module.functions[*function].name.as_deref() == Some(callee))
+        })
+    }
+
+    /// The fragment stage's GLSL `main` (naga's entry point calls it).
+    fn glsl_main(module: &naga::Module) -> &naga::Function {
+        let (_, main) = (module.functions.iter())
+            .find(|(_, f)| f.name.as_deref() == Some("main"))
+            .expect("main");
+        main
+    }
+
+    /// `fragment_finish` runs in the fragment stage's `main` after the program's `main`, renamed
+    /// `hz_main` (whose `discard` stays its own).
+    #[test]
+    fn a_fragment_finish_runs_after_the_programs_main() {
+        let glue = Glue {
+            fragment_finish: Some("fragColor = fragColor.bgra;"),
+            ..GLUE
+        };
+        let program = translate_core(VANILLA_VSH, VANILLA_FSH, &["IS_GUI"], &include, &glue)
+            .unwrap_or_else(|e| panic!("{e:?}"));
+        let fragment = &program.fragment;
+        let main = glsl_main(fragment);
+        let body: Vec<&naga::Statement> = main.body.iter().collect();
+        let call = (body.iter())
+            .position(|s| {
+                matches!(s, naga::Statement::Call { function, .. }
+                if fragment.functions[*function].name.as_deref() == Some("hz_main"))
+            })
+            .unwrap_or_else(|| panic!("main calls hz_main: {:#?}", main.body));
+        let bgra = [
+            naga::SwizzleComponent::Z,
+            naga::SwizzleComponent::Y,
+            naga::SwizzleComponent::X,
+            naga::SwizzleComponent::W,
+        ];
+        let swizzled = body[call..].iter().any(|s| {
+            matches!(s, naga::Statement::Store { value, .. }
+                if matches!(main.expressions[*value], naga::Expression::Swizzle { pattern, .. } if pattern == bgra))
+        });
+        assert!(swizzled, "{:#?}", main.body);
+        let (_, program_main) = (fragment.functions.iter())
+            .find(|(_, f)| f.name.as_deref() == Some("hz_main"))
+            .expect("the program's main, renamed");
+        assert!(
+            (program_main.body.iter()).any(|s| matches!(s, naga::Statement::If { .. })),
+            "the program's discard stays in its main"
+        );
+    }
+
+    /// Without `fragment_finish` the fragment stage's `main` is the program's, as written.
+    #[test]
+    fn no_fragment_finish_leaves_the_fragment_main_as_written() {
+        let program = translate_core(VANILLA_VSH, VANILLA_FSH, &["IS_GUI"], &include, &GLUE)
+            .unwrap_or_else(|e| panic!("{e:?}"));
+        let fragment = &program.fragment;
+        assert!(!calls(fragment, glsl_main(fragment), "hz_main"));
+        assert!(
+            (fragment.functions.iter()).all(|(_, f)| f.name.as_deref() != Some("hz_main")),
+            "no hz_main"
+        );
     }
 
     /// A 26.3 pack's `gl_VertexIndex` means vanilla's vertex number, four per quad. The text

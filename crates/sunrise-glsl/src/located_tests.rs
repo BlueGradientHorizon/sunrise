@@ -9,6 +9,7 @@ const GLUE: Glue = Glue {
     setup: "Position = hz_position;",
     finish: "",
     vertex_id: "int(gl_VertexIndex)",
+    fragment_finish: None,
     interface: LIMITS,
 };
 
