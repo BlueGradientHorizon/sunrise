@@ -421,6 +421,10 @@ impl RemoteTextDisplay {
     pub(super) fn position(&self) -> glam::DVec3 {
         self.position
     }
+    /// `Entity.xo`, `yo`, `zo`: where the display was when its tick began (`setOldPosAndRot`).
+    pub(super) fn previous_position(&self) -> glam::DVec3 {
+        self.previous
+    }
     /// `Display.shouldRenderAtSqrDistance`: strict `<`, uninterpolated position, live `view_range`.
     pub(super) fn in_range(&self, camera: glam::DVec3, view_scale: f64) -> bool {
         let range = f64::from(self.data.view_range) * 64.0 * view_scale;

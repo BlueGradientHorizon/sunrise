@@ -1272,6 +1272,11 @@ mod native_entity_move_tests;
 mod native_entity_moves;
 #[path = "game/modding/native_entity_physics.rs"]
 mod native_entity_physics;
+#[path = "game/modding/native_entity_previous.rs"]
+mod native_entity_previous;
+#[cfg(test)]
+#[path = "game/modding/native_entity_previous_tests.rs"]
+mod native_entity_previous_tests;
 #[path = "game/modding/native_entity_refs.rs"]
 mod native_entity_refs;
 #[path = "game/modding/native_entity_remove.rs"]
