@@ -255,6 +255,9 @@ pub struct Expanded {
     pub(crate) lines: Lines,
     /// The stage file first, then each include, by id.
     pub(crate) files: Vec<String>,
+    /// The GLSL version the stage file declares, what `__VERSION__` reads
+    /// ([`crate::stage_version`]).
+    pub(crate) version: u32,
 }
 
 impl Expanded {

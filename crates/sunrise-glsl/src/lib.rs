@@ -573,13 +573,7 @@ pub fn expand_includes(
     includes: &Includes,
     defines: Option<&[&str]>,
 ) -> Result<Expanded, ImportError> {
-    expand_with(
-        text,
-        file,
-        dir,
-        includes,
-        defines.map(import_conditions::Conditions::new),
-    )
+    expand_with(text, file, dir, includes, defines)
 }
 
 /// naga's options for one `stage` of code whose directives have run ([`run_directives`]),
@@ -598,7 +592,7 @@ fn expand_with(
     file: &str,
     dir: &str,
     includes: &Includes,
-    conditions: Option<import_conditions::Conditions>,
+    defines: Option<&[&str]>,
 ) -> Result<Expanded, ImportError> {
     struct Walk<'a> {
         includes: &'a Includes<'a>,
@@ -706,12 +700,6 @@ fn expand_with(
                         match word {
                             "define" => state.define(rest),
                             "undef" => state.undef(rest),
-                            "version" if depth == 0 => {
-                                state.define(&format!(
-                                    "__VERSION__ {}",
-                                    rest.split_whitespace().next().unwrap_or("110")
-                                ));
-                            }
                             "line" => {
                                 let next = match state.line(rest, location) {
                                     Ok(next) => next,
@@ -804,7 +792,7 @@ fn expand_with(
     }
     let mut walk = Walk {
         includes,
-        conditions,
+        conditions: None,
         seen: HashSet::new(),
         pastes: 0,
         scanned: 0,
@@ -815,10 +803,13 @@ fn expand_with(
     let top = walk.file(file);
     walk.scan(text)
         .map_err(|refusal| walk.refused(top, 0, refusal))?;
+    let version = stage_version(text);
+    walk.conditions = defines.map(|defines| import_conditions::Conditions::new(defines, version));
     walk.walk(text, top, dir, 0)?;
     Ok(Expanded {
         lines: walk.out,
         files: walk.files,
+        version,
     })
 }
 
@@ -842,6 +833,30 @@ fn include_id(target: &str, dir: &str, includes: &Includes) -> Option<String> {
         }
     }
     Some(format!("{ns}:{}", parts.join("/")))
+}
+
+/// The GLSL version a stage file declares (GLSL 4.60 §3.3), what its `__VERSION__` reads in
+/// every condition and in its code: the number of its first `#version` line, comments and
+/// continued lines read as the preprocessor reads them. As the GLSL spec allows nothing but
+/// comments and white space before `#version`, the first one counts whatever branch it sits in,
+/// and one in an include is not the stage's. A stage without `#version` targets 1.10 (§3.3), and
+/// a `#version` without a decimal number (or one past `u32`) reads as that too.
+pub(crate) fn stage_version(text: &str) -> u32 {
+    let mut joined = String::with_capacity(text.len());
+    for line in text.split_inclusive('\n') {
+        let part = line
+            .strip_suffix("\\\r\n")
+            .or_else(|| line.strip_suffix("\\\n"));
+        joined.push_str(part.unwrap_or(line));
+    }
+    let clean = strip_comments(&joined);
+    (clean.lines())
+        .filter_map(directives::directive)
+        .find(|(word, _)| *word == "version")
+        .and_then(|(_, rest)| rest.split_whitespace().next())
+        .filter(|number| number.bytes().all(|b| b.is_ascii_digit()))
+        .and_then(|number| number.parse().ok())
+        .unwrap_or(110)
 }
 
 /// Comments as spaces, line breaks kept.
@@ -1259,6 +1274,7 @@ fn rewrite(
     Ok(Expanded {
         lines: out,
         files: source.files.clone(),
+        version: source.version,
     })
 }
 
