@@ -2808,7 +2808,8 @@ mod unused_feature_startup_tests {
         options.resources = resources;
         options.execution_role = execution_role::ExecutionRole::IntegratedServer;
         for (case, height) in [("valid", 0), ("invalid", -1)] {
-            let root = std::env::current_dir().unwrap().join(case);
+            let scratch = tempfile::tempdir().unwrap();
+            let root = scratch.path().join(case);
             let pack = root.join("datapacks/h259");
             std::fs::create_dir_all(pack.join("data/h259/worldgen/feature")).unwrap();
             std::fs::write(pack.join("pack.mcmeta"), r#"{"pack":{"description":"H259 unused feature","min_format":[121,0],"max_format":[121,0]}}"#).unwrap();
@@ -2915,7 +2916,8 @@ mod unused_feature_preservation_tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = resources;
         options.execution_role = execution_role::ExecutionRole::IntegratedServer;
-        let root = std::env::current_dir().unwrap().join("preservation");
+        let scratch = tempfile::tempdir().unwrap();
+        let root = scratch.path().join("preservation");
         let pack = root.join("datapacks/h259");
         let entries = pack.join("data/controls/worldgen/feature");
         std::fs::create_dir_all(&entries).unwrap();

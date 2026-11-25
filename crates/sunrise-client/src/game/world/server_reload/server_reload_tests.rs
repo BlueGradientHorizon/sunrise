@@ -1165,7 +1165,8 @@ fn server_completion_reads_published_data_without_world_access_on_first_open() {
     .into();
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
-            let root = std::env::current_dir().unwrap().join("published-world");
+            let scratch = tempfile::tempdir().unwrap();
+            let root = scratch.path().join("published-world");
             game.load_world(request(&root)).unwrap();
             game.native_tags_updated(TagsUpdateCause::ServerDataLoad { reload: true });
             assert_eq!(

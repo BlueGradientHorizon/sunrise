@@ -4176,7 +4176,8 @@ mod movement_predicate_tests {
         assert!(game.run_command("forceload add 0 0"));
         assert!(game.run_command("fill 0 199 0 15 199 15 stone"));
         assert!(game.world.loaded(4, 4));
-        let root = std::env::current_dir().unwrap().join("movement-world");
+        let scratch = tempfile::tempdir().unwrap();
+        let root = scratch.path().join("movement-world");
         let pack = root.join("datapacks/movement");
         let folder = pack.join("data/motion/predicate");
         std::fs::create_dir_all(&folder).unwrap();
