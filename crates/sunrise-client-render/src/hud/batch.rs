@@ -843,6 +843,17 @@ impl HudBatch {
                     );
                 }
             }
+            InlineObject::Dynamic { handle, size, .. } => {
+                let side = crate::font::INLINE_OBJECT_SIZE;
+                self.dynamic_texture(
+                    *handle,
+                    *size,
+                    [x, y, side, side],
+                    [0.0, 0.0],
+                    [[1, 1], [1, 1]],
+                    tint,
+                );
+            }
             InlineObject::Atlas { .. } => {
                 if let Some(rect) = atlas.inline_object_sprite(object) {
                     let size = crate::font::INLINE_OBJECT_SIZE;

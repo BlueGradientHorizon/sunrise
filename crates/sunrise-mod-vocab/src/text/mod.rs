@@ -10,7 +10,7 @@ pub struct InlineImageReplacement {
     pub start: u32,
     /// Exclusive end byte in the run. Both ends must be UTF-8 character boundaries.
     pub end: u32,
-    /// Sprite id in `minecraft:gui`.
+    /// Sprite id in `minecraft:gui`, including a dynamic texture id.
     pub sprite: crate::Identifier,
 }
 

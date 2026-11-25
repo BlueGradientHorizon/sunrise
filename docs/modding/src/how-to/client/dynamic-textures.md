@@ -79,9 +79,12 @@ the span's style; signing, search and copy still use the original message. On a 
 span's colour, or white if the span has none; the sign's dye does not tint it. Sign data and the editor keep
 the original text. Name tags and the chat input field do not use this hook.
 
-Give the hook the id of a pack sprite: a dynamic texture is a texture of its own, not a GUI atlas sprite, and an
-inline image cannot show one. Keep the listener a cheap match: it may run again when text, resources, sprite
-geometry or the enabled mods change.
+Give the hook the id of a pack sprite or a live dynamic texture: one lookup rule, the dynamic texture first. A dynamic
+texture draws in chat, the HUD's text and screens as its own texture in the glyph's 8×8 box, and a texture released
+after its text was laid out shows vanilla's missing texture. Signs show atlas sprites only: a dynamic id there leaves
+the text alone. Keep the listener a cheap match: it may run again when text, resources, sprite geometry or the
+enabled mods change. For an animation, keep one texture id and update its pixels as frames change; there is no
+need to rebuild the text layout.
 
 A trusted native mod downloading images can use a pinned Cargo HTTP dependency on a background worker. Keep the
 network and decoding off the game thread, and hand the decoded RGBA to a mutable client hook for upload. The image

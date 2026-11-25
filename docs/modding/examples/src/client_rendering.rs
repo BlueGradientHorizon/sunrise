@@ -64,7 +64,7 @@ pub mod inline_images {
             _: &dyn ClientHost,
             event: &mut SubstituteInlineImagesEvent<'_>,
         ) {
-            let sprite = Identifier::parse("mymod:star").unwrap();
+            let sprite = Identifier::parse("mymod:dynamic/star").unwrap();
             for (start, matched) in event.run.match_indices(":star:") {
                 let (Ok(start), Ok(end)) =
                     (u32::try_from(start), u32::try_from(start + matched.len()))

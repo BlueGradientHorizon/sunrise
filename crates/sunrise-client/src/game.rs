@@ -4966,7 +4966,8 @@ impl Game<'_> {
     ) {
         let lid = |p: [i32; 3]| self.chest_lid(p, partial);
         let anim = |p: [i32; 3]| self.block_anim(p, partial);
-        let substitute = |text: &sunrise_client::text::Text| self.substitute_inline_images(text);
+        let substitute =
+            |text: &sunrise_client::text::Text| self.substitute_inline_images(text, false);
         let inline_sprite = |atlas: &str, sprite: &str| self.gui.atlas.inline_sprite(atlas, sprite);
         use block_entity_render::SignOutline;
         let sign_outline =
