@@ -1344,6 +1344,9 @@ impl Pipelines {
         custom: &[RenderSetup],
         id: &Identifier,
     ) -> Result<RenderTypeRef, RenderTypeError> {
+        if self.generation == 0 {
+            return Err(RenderTypeError::Unknown);
+        }
         if let Some(slot) = builtin_render_type_slot(id) {
             return Ok(mod_api::__private::built::render_type_ref(
                 self.generation,
