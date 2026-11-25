@@ -7353,7 +7353,8 @@ mod magic_absorb_tests {
         assert_eq!(m.last_direct, None);
 
         let mut m = Mob::new(1, kind(), Vec3::ZERO, 0.0);
-        let dispensed = Damage::indirect_magic("minecraft:splash_potion", None, [0.0, 1.0, 0.0]);
+        let dispensed =
+            Damage::indirect_magic("minecraft:area_effect_cloud", None, [0.0, 1.0, 0.0]);
         assert!(m.damage_by(level, 1.0, dispensed, "minecraft:area_effect_cloud"));
         assert_eq!(m.last_direct, Some("minecraft:area_effect_cloud"));
         assert_eq!(m.ai.last_hurt_by_player, 0);

@@ -1611,8 +1611,11 @@ impl Game<'_> {
                 6.0,
                 interaction,
                 false,
-                super::explosion::ExplosionSource::default()
-                    .with_damage_direct(c.id, sunrise_client::health::DirectEntity::Other),
+                super::explosion::ExplosionSource::default().with_damage_direct(
+                    c.id,
+                    Some("minecraft:end_crystal"),
+                    sunrise_client::health::DirectEntity::Other,
+                ),
             );
             self.combat.explosion_direct = None;
             self.combat.explosion_in_water = false;

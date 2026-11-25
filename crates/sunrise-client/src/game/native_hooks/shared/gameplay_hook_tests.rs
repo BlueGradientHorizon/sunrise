@@ -45,6 +45,7 @@ fn the_damage_hook_names_the_source() {
             kind,
             attacker,
             from: None,
+            direct: None,
             attacker_species: None,
         };
         let attack = Attack {
@@ -75,6 +76,7 @@ fn the_damage_hook_names_the_source() {
             kind,
             attacker: zombie,
             from: None,
+            direct: None,
             attacker_species: None,
         };
         let attack = Attack {

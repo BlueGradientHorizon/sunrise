@@ -3277,8 +3277,11 @@ impl Game<'_> {
                     let mut source =
                         super::explosion::ExplosionSource::default().with_silence(silent);
                     if let Some(id) = source_mob {
-                        source = source
-                            .with_damage_direct(id, sunrise_client::health::DirectEntity::Living);
+                        source = source.with_damage_direct(
+                            id,
+                            None,
+                            sunrise_client::health::DirectEntity::Living,
+                        );
                     }
                     if let Some(id) = source_mob
                         && matches!(species, Species::Creeper | Species::Wither)

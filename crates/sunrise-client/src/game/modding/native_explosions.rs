@@ -97,12 +97,35 @@ impl Game<'_> {
         if let Some((id, target)) = source {
             blast = blast.with_damage_direct(
                 id,
+                self.blast_target_kind(id, target),
                 Self::target_direct_entity(Some(target), &self.creatures.projectiles),
             );
         }
         let done = self.server_explode_from(center, radius, interaction, fire, blast);
         self.restore_blast_state(outer);
         done.map_err(|_| ExplodeError::Unavailable)
+    }
+
+    /// The entity type of a mod blast's source entity, for a death's loot
+    /// (`DamageSource.getDirectEntity`): primed TNT, a TNT minecart, a projectile or
+    /// an End crystal. None for a mob or a player, which deal the blast themselves.
+    fn blast_target_kind(&self, id: u32, target: Target) -> Option<&'static str> {
+        match target {
+            Target::Tnt(_) => Some("minecraft:tnt"),
+            Target::Cart(_) => self
+                .carts
+                .iter()
+                .any(|c| c.id == id && c.kind == CartKind::Tnt)
+                .then_some("minecraft:tnt_minecart"),
+            Target::Projectile(_) => self
+                .creatures
+                .projectiles
+                .iter()
+                .find(|p| p.id == id)
+                .map(|p| p.entity_type()),
+            Target::Crystal(_) => Some("minecraft:end_crystal"),
+            _ => None,
+        }
     }
 
     /// `settings` checked against the game's registries and resolved for the

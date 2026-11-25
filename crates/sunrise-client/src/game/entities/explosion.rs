@@ -206,6 +206,9 @@ pub(super) struct ExplosionSource {
     /// as its producer knows them: the exploding entity for a default source
     /// (`Explosion.getDefaultDamageSource`), none for a blast without one.
     damage_direct: Option<(u32, sunrise_client::health::DirectEntity)>,
+    /// The entity type of `damage_direct`, when its producer knows it: what a death's loot reads
+    /// as `DamageSource.getDirectEntity()` when it is not the attacker.
+    damage_direct_kind: Option<&'static str>,
 }
 
 /// An explicit blast `DamageSource` (`ServerLevel.explode(source, damageSource, ...)`): its own
@@ -232,14 +235,16 @@ impl ExplosionSource {
         class: sunrise_client::health::DirectEntity,
     ) -> Self {
         self.entity = Some((id, kind));
-        self.with_damage_direct(id, class)
+        self.with_damage_direct(id, Some(kind), class)
     }
     pub(super) fn with_damage_direct(
         mut self,
         id: u32,
+        kind: Option<&'static str>,
         class: sunrise_client::health::DirectEntity,
     ) -> Self {
         self.damage_direct = Some((id, class));
+        self.damage_direct_kind = kind;
         self
     }
 }
@@ -1329,7 +1334,7 @@ impl Game<'_> {
                         // The exploding mob is the damage source's entity, so
                         // victims it kills drop its charged-creeper loot
                         // (`Creeper.killedEntity`).
-                        let source = sunrise_client::mobs::Damage {
+                        let mut source = sunrise_client::mobs::Damage {
                             kind,
                             // A projectile's owner (`getIndirectSourceEntity`),
                             // else the exploding mob itself.
@@ -1361,11 +1366,20 @@ impl Game<'_> {
                                         .map(sunrise_client::mobs::Who::Mob)
                                 }),
                             from: Some(center),
-                            // The primed TNT, cart, fireball, skull or crystal
-                            // that went off; an exploding mob deals it itself.
-                            direct: self.combat.explosion_direct.map(|(_, kind)| kind),
+                            direct: None,
                             attacker_species: cause,
                         };
+                        // The blast damage source's direct entity (`getDirectEntity`): the primed
+                        // TNT, cart, fireball, skull or crystal that went off, or an explicit
+                        // source's. An exploding mob that is also the attacker deals it itself.
+                        let attacked_by_itself = blast_source_spec.damage_direct.as_ref().is_some_and(
+                            |(id, _)| {
+                                matches!(source.attacker, Some(sunrise_client::mobs::Who::Mob(m)) if m == *id)
+                            },
+                        );
+                        if !attacked_by_itself {
+                            source.direct = blast_source_spec.damage_direct_kind;
+                        }
                         // `EXPLOSION_KNOCKBACK_RESISTANCE`, not `KNOCKBACK_RESISTANCE`:
                         // its base is 0 for every mob type, so iron golems and
                         // ravagers are pushed.
@@ -1844,7 +1858,7 @@ impl Game<'_> {
         explicit: Option<ExplicitBlastSource>,
     ) -> Result<()> {
         let source = match &explicit {
-            Some(e) => source.with_damage_direct(e.direct.0, e.direct.2),
+            Some(e) => source.with_damage_direct(e.direct.0, Some(e.direct.1), e.direct.2),
             None => source,
         };
         let blast = |g: &mut Self| {
