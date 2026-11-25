@@ -1826,10 +1826,52 @@ impl Game<'_> {
             // The chunks loading (the players', force-loaded ones, a
             // `/pregen` task) keep the workers fed until the next tick.
             idle = self.pump_chunks(*next, paused);
-            let now = Instant::now();
-            if *next > now {
-                std::thread::sleep(*next - now);
-                idle += now.elapsed();
+            // Integrated servers also service window `OwnerRequest`s while idle
+            // between ticks (`MinecraftServer.waitUntilNextTick`), so synchronous
+            // queries (`StatusExtras`, publish/unpublish, control ops) do not
+            // stall the client frame for up to a full 50 ms server tick.
+            loop {
+                let now = Instant::now();
+                if now >= *next {
+                    break;
+                }
+                let remaining = *next - now;
+                let received = match &self.serving {
+                    Some(serving) => {
+                        if serving
+                            .flags
+                            .stop
+                            .load(std::sync::atomic::Ordering::Relaxed)
+                        {
+                            break;
+                        }
+                        serving.tasks.recv_timeout(remaining)
+                    }
+                    None => {
+                        std::thread::sleep(remaining);
+                        idle += now.elapsed();
+                        break;
+                    }
+                };
+                match received {
+                    Ok(request) => {
+                        idle += now.elapsed();
+                        self.serve_owner_request(request);
+                        self.apply_publish();
+                    }
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                        idle += now.elapsed();
+                        break;
+                    }
+                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                        let now2 = Instant::now();
+                        if *next > now2 {
+                            std::thread::sleep(*next - now2);
+                        }
+                        idle += now.elapsed();
+                        break;
+                    }
+                }
             }
         } else if now - *next > Duration::from_secs(2) {
             let behind = now - *next;
