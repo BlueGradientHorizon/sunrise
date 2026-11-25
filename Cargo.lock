@@ -5299,6 +5299,7 @@ dependencies = [
 name = "sunrise-native-build"
 version = "0.1.0"
 dependencies = [
+ "filetime",
  "flate2",
  "libc",
  "object",
