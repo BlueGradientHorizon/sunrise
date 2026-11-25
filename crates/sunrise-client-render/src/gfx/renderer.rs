@@ -154,6 +154,7 @@ pub struct Renderer {
     pub(super) particle_pipelines: particle_draws::ParticlePipelines,
     pub(super) explicit_opaque_particles: particle_draws::ParticleDraws,
     pub(super) explicit_translucent_particles: particle_draws::ParticleDraws,
+    pub(super) explicit_additive_particles: particle_draws::ParticleDraws,
     pub(crate) static_entity_pipeline: wgpu::RenderPipeline,
     pub(crate) static_entity_group: wgpu::BindGroup,
     pub(crate) static_entity_transform: wgpu::Buffer,
@@ -187,6 +188,13 @@ pub struct Renderer {
     pub(crate) see_through_pipeline: wgpu::RenderPipeline,
     /// Native mods' world primitives (`Frame::world_primitives`), taken briefly during OIT pass.
     pub(crate) world_primitives: Option<world_primitives::WorldPrimitives>,
+    /// Retained GPU vertex/index buffers backing [`mod_api::MeshRef`].
+    pub(crate) mod_meshes: std::sync::Mutex<mod_meshes::ModMeshes>,
+    /// Retained GPU uniform buffers backing [`mod_api::UniformBufferRef`] and cached mod textures.
+    pub(crate) mod_uniforms: std::sync::Mutex<mod_uniforms::ModUniformBuffers>,
+    /// Retained GPU storage buffers backing [`mod_api::StorageBufferRef`]; they outlive a resource
+    /// reload and a world close.
+    pub(crate) mod_storage: std::sync::Mutex<mod_storage::ModStorageBuffers>,
     pub(crate) text_polygon_offset_pipeline: wgpu::RenderPipeline,
     pub(crate) world_text_pipeline: wgpu::RenderPipeline,
     pub(crate) text_mark_pipelines: [wgpu::RenderPipeline; 2],
@@ -457,6 +465,8 @@ pub struct Renderer {
     pub(crate) pack_post: Option<(i32, Option<pack_post::PackPost>)>,
     /// A `shaders/` pack whose pipelines build on a thread of their own (`load_shader_pack`).
     pub(crate) pack_loading: Option<PackLoading>,
+    /// Counts shader packs loaded, switched or turned off (`ShaderPackState::generation`).
+    pub(crate) pack_generation: u32,
     /// The post passes of one of Sunrise's own shader packs; never beside `pack_post`'s.
     pub(crate) native: Option<native_pack::NativePack>,
     /// Time the shader pack's passes on the GPU (F3, or a capture made with `--gpu`).

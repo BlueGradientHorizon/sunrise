@@ -59,6 +59,18 @@ pub trait ClientInputClientHost {
     /// grabbed. A release in a world is undone by the player's next click in it, as vanilla's
     /// is (`MouseHandler.onButton`). Does nothing on a host without a client window.
     fn set_mouse_grabbed(&mut self, grabbed: bool);
+    /// Side: client.
+    /// `Minecraft.rightClickDelay`: the client ticks before a held use key uses again. Each use
+    /// (`startUseItem`) sets it to 4, the client tick counts it down by one, and a held use key
+    /// uses again when it reads 0. None outside a client world.
+    fn right_click_delay(&self) -> Option<u32>;
+    /// Side: client.
+    /// Sets `Minecraft.rightClickDelay` to `ticks`, as a mod that changes how fast a held use
+    /// key repeats does after a use: 0 lets the held key use again on the next client tick's key
+    /// step, a larger value waits longer. The next use sets it back to 4. It changes only this
+    /// client's timing: the server checks every use packet as it always does. Unlike vanilla's
+    /// `int`, it can't be negative. False, changing nothing, outside a client world.
+    fn set_right_click_delay(&mut self, ticks: u32) -> bool;
 }
 
 /// The live client reads behind [`VanillaKeyMappingRef`] and [`ModKeyMappingRef`].

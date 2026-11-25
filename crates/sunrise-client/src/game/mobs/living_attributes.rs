@@ -317,12 +317,7 @@ impl AttributeWrite {
                 || (id == "minecraft:baby" && finalize::transient(m, a).is_some())
         };
         let remove = |m: &mut Mob, id: &str| {
-            if id == "minecraft:baby" && finalize::transient(m, a).is_some() {
-                m.extra
-                    .attributes
-                    .get_or_insert_with(Box::default)
-                    .baby_speed_removed = true;
-            }
+            finalize::remove_baby_modifier(m, a, id);
             finalize::remove_modifier(m, a, id);
         };
         match self {
@@ -338,11 +333,7 @@ impl AttributeWrite {
                     }
                     remove(m, id);
                 }
-                let op = match modifier.operation() {
-                    Operation::AddValue => Op::AddValue,
-                    Operation::AddMultipliedBase => Op::AddMultipliedBase,
-                    Operation::AddMultipliedTotal => Op::AddMultipliedTotal,
-                };
+                let op = Op::from(modifier.operation());
                 if permanent {
                     finalize::add_modifier(m, a, id.to_owned(), modifier.amount(), op);
                 } else {
@@ -516,7 +507,7 @@ impl Game<'_> {
         write: AttributeWrite,
         default: f64,
     ) -> Option<bool> {
-        let map = self.generic_attributes(t, name)?;
+        let map = self.generic_attributes(t)?;
         if !map.has(id) {
             return None;
         }
@@ -527,6 +518,13 @@ impl Game<'_> {
             .ok()?;
         if done {
             self.write_live_attributes(t, name, write, default);
+            // `onAttributeUpdated(SCALE)`: the mob's dimensions follow.
+            if name == "minecraft:scale"
+                && let Target::Mob(id) = t
+                && let Some(m) = self.mobs.iter_mut().find(|m| m.id == id && !m.removed)
+            {
+                sunrise_client::mobs::finalize::scale_changed(m);
+            }
         }
         Some(done)
     }
@@ -1250,7 +1248,7 @@ mod tests {
             assert_eq!(read(game, 12, gravity), (Some(0.2), Some(0.1)));
             // The write is where `/attribute` reads it and the sync sends it.
             let key = game.motion.attributes.id(gravity).unwrap();
-            let map = game.generic_attributes(Target::Mob(12), gravity).unwrap();
+            let map = game.generic_attributes(Target::Mob(12)).unwrap();
             assert_eq!(map.value(key).unwrap(), 0.2);
             let mut synced = Vec::new();
             let zombie_mob = game.mobs[0].clone();

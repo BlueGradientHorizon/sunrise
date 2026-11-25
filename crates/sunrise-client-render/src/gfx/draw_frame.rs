@@ -1589,6 +1589,8 @@ impl Renderer {
                 .as_deref()
                 .map_or(frame.world_primitives, |hooks| hooks.prepared_primitives());
             let mod_blocks = (!batch.pipelines.runs.is_empty()).then(vanilla_blocks);
+            // Mods' queued storage buffer writes land in call order before anything draws.
+            self.flush_mod_storage();
             let prepared = self
                 .world_primitives
                 .as_mut()
@@ -1602,6 +1604,11 @@ impl Renderer {
                     &self.entity_atlas,
                     mod_blocks.as_ref(),
                 );
+            let released = self.take_released_mod_storage();
+            self.world_primitives
+                .as_mut()
+                .expect("world primitives")
+                .forget_storage(&released);
             let bound = self
                 .pack_post
                 .as_ref()
@@ -2122,11 +2129,16 @@ impl Renderer {
             [self.config.width, self.config.height],
         );
         let particle_limit = self.device.limits().max_buffer_size;
-        let (opaque, translucent) = frame
-            .explicit_particles
-            .map_or((&[][..], &[][..]), |quads| {
-                (quads.opaque.as_slice(), quads.translucent.as_slice())
-            });
+        let (opaque, translucent, additive) =
+            frame
+                .explicit_particles
+                .map_or((&[][..], &[][..], &[][..]), |quads| {
+                    (
+                        quads.opaque.as_slice(),
+                        quads.translucent.as_slice(),
+                        quads.additive.as_slice(),
+                    )
+                });
         let opaque_draw = self.explicit_opaque_particles.prepare(
             &self.device,
             &mut self.uploads,
@@ -2139,6 +2151,13 @@ impl Renderer {
             &mut self.uploads,
             &mut encoder,
             translucent,
+            particle_limit,
+        );
+        let additive_draw = self.explicit_additive_particles.prepare(
+            &self.device,
+            &mut self.uploads,
+            &mut encoder,
+            additive,
             particle_limit,
         );
         let max_quads =
@@ -2154,7 +2173,8 @@ impl Renderer {
                 .max(frame.glowing.len() as u32 / 4)
                 .max(outlined / 4)
                 .max(opaque_draw)
-                .max(translucent_draw);
+                .max(translucent_draw)
+                .max(additive_draw);
         let needed_index_quads = max_quads.min(entity_quad_capacity.max_index_quads());
         if needed_index_quads > self.index_quads {
             self.index_quads = entity_quad_capacity.index_buffer_quads(needed_index_quads);
@@ -3530,7 +3550,8 @@ impl Renderer {
                     };
                     // "Features, World Border, Weather": what follows the opaque
                     // world in the classic pass, one stage at a time.
-                    let wp = self.world_primitives.take().expect("world primitives");
+                    let mut wp = self.world_primitives.take().expect("world primitives");
+                    wp.prepare_oit_mod_pipelines(&self.device, oit.cloud_samples());
                     let mut features = |pass: &mut wgpu::RenderPass<'_>, stage: oit::Stage| {
                         let f = oit.features();
                         let s = stage as usize;
@@ -3854,6 +3875,18 @@ impl Renderer {
                 if light_marks(self.output.frame.format, self.hdr.is_some()) {
                     pass.set_pipeline(&self.particle_pipelines.mark);
                     self.explicit_translucent_particles.draw(&mut pass);
+                }
+                pass.set_bind_group(0, &self.group, &[]);
+            }
+            if self.explicit_additive_particles.any() {
+                pass.stage(self.own_timing.as_mut(), "additive provider particles");
+                pass.set_pipeline(&self.particle_pipelines.additive);
+                pass.set_bind_group(0, &self.entity_group, &[]);
+                pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+                self.explicit_additive_particles.draw(&mut pass);
+                if light_marks(self.output.frame.format, self.hdr.is_some()) {
+                    pass.set_pipeline(&self.particle_pipelines.mark);
+                    self.explicit_additive_particles.draw(&mut pass);
                 }
                 pass.set_bind_group(0, &self.group, &[]);
             }

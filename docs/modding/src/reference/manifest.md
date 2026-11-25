@@ -7,9 +7,11 @@ reads its code.
 ## The zip
 
 - A zip archive. Entries are stored or deflate-compressed, the only methods the readers support.
-- A path is relative and `/`-separated: no `\`, no `:`, no empty, `.` or `..` part, and it doesn't start with `/`.
+- A path is relative and `/`-separated: no `\`, no `:`, no empty, `.` or `..` part, no part ending in `.` or a space
+  (a Windows extraction drops it), and it doesn't start with `/`.
   Files must be regular files, not symlinks, devices or executables. Executable payloads are refused even under
-  resource paths.
+  resource paths: by extension, by the executable bit, and by header (prebuilt object code, any `MZ` file, or a
+  `#!` script).
 - Each path appears once. Directory entries carry no payload.
 
 ## Project and archive layout

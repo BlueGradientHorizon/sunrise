@@ -10,6 +10,14 @@ pub trait ScreensClientHost {
     /// existing toast untouched. Calls from `toast_add` itself wait for the following update.
     /// Refuses the whole request if its text or item icon cannot be represented.
     fn add_toast(&self, toast: ModToast) -> Result<(), AddToastError>;
+    /// Side: client.
+    /// Holds new toasts back while `held`, or lets them go: they wait in the toast queue, as
+    /// vanilla's do while no slot is free (`ToastManager.freeSlotCount`), and show once no
+    /// enabled mod holds them, instead of being dropped as a canceled `toast_add` drops them.
+    /// Toasts already on screen go on and leave as usual. Dynamic FPS holds them while the
+    /// window is in the background. Each mod's hold is its own; a disabled mod's holds
+    /// nothing. False, changing nothing, outside a mod's call.
+    fn set_toasts_held(&self, held: bool) -> bool;
     /// A copy of the open `world_preset_editor` screen's working dimension stems.
     /// Stays available to screen hooks while `world_preset_editor` is open alongside the bound
     /// [`PresetEditor`].
@@ -40,26 +48,35 @@ pub trait ScreensClientHost {
     /// screen open.
     fn screen_hovered_stack(&self) -> Option<ItemStack>;
     /// Side: client.
-    /// Where the shown mod menu screen for `menu` puts backing slot `slot` from the next
+    /// Where the shown mod menu screen for `menu` puts menu slot `slot` from the next
     /// frame (`Slot.x`, `Slot.y` in GUI pixels from the screen's top left, the item's top left
-    /// corner): where `set_screen_slot` last put it, else where the screen declared it. None
-    /// for an inactive/hidden slot, another menu type's screen, or no shown mod screen.
+    /// corner): where `set_screen_slot` last put it, else where the screen declared it. `slot`
+    /// ranges over `0..(container_len + player_slots)` as `set_screen_slot` documents. None
+    /// for an inactive/hidden slot, a slot the menu does not have, another menu type's screen,
+    /// or no shown mod screen.
     fn screen_slot(&self, menu: &str, slot: usize) -> Option<[f32; 2]>;
     /// Side: client.
-    /// Moves container slot `slot` of the open screen of mod menu type `menu` to `pos`, or
+    /// Moves menu slot `slot` of the open screen of mod menu type `menu` to `pos`, or
     /// deactivates/hides it with None, as a Java screen that lays its slots out again sets
     /// `Slot.x`/`Slot.y` or toggles `Slot.isActive()` (Tinkers' station layouts). `slot`
-    /// indexes `MenuScreenLayout::slots` (including slots declared `None` at open, which start
-    /// inactive and may be activated later with `Some([x, y])`). From the next frame the slot is
-    /// a vanilla slot at that position: the hovered slot (the 18 by 18 box around it), its
-    /// highlight, its contents, its empty-slot icon and the recipe book's ghost items; a hidden
-    /// one is none of these. A position outside the image is allowed. The change lasts for this
-    /// opening; a replacement starts from the declared layout, even if it reuses the same window
-    /// id. Any mod may read, move, activate or hide slots of the open screen for `menu`.
-    /// This is client-only: a locally hidden slot keeps its item and a shift-click may still
-    /// fill it. It takes `&self`, so a screen callback may call it every frame; repeating a
-    /// slot's current place changes nothing and costs no layout work. Each
-    /// [`ScreenSlotRefusal`] leaves the layout unchanged.
+    /// ranges over `0..(container_len + player_slots)`, in menu order
+    /// (`AbstractContainerMenu.addStandardInventorySlots`): `0..container_len` indexes
+    /// `MenuScreenLayout::slots` (including slots declared `None` at open, which start
+    /// inactive and may be activated later with `Some([x, y])`), and the `player_slots` the
+    /// menu declared (`MenuScreenOpen::player_slots`) follow: the main inventory's three rows,
+    /// then the hotbar. A player slot starts at the screen's `inventory_x`/`inventory_y` grid.
+    /// From the next frame the slot is a vanilla slot at that position: the hovered slot (the
+    /// 18 by 18 box around it), its highlight, its contents, its empty-slot icon and the
+    /// recipe book's ghost items; a hidden one is none of these, and is neither a drag target
+    /// nor swapped by a number key. A position outside the image is allowed. The change lasts for this
+    /// opening: closing the screen and opening it again (or a replacement, even one that reuses
+    /// the same window id) starts every container and player slot from its declared place,
+    /// shown. Any mod may read, move, activate or hide slots of the open screen for `menu`.
+    /// This is client-only and the server never consults it: a locally hidden slot keeps its
+    /// item and a shift-click from another slot may still fill it, which is the menu's own
+    /// quick-move answer; nothing on the client filters that. It takes `&self`, so a screen
+    /// callback may call it every frame; repeating a slot's current place changes nothing and
+    /// costs no layout work. Each [`ScreenSlotRefusal`] leaves the layout unchanged.
     fn set_screen_slot(
         &self,
         menu: &str,
@@ -170,6 +187,17 @@ pub trait ScreensClientHost {
     /// Side: client.
     /// The last window focus state reported by the window system.
     fn window_focused(&self) -> bool;
+    /// Side: client.
+    /// Whether the pointer is over the game window, focused or not, as the window system last
+    /// reported its enter and leave. Vanilla 26.3 has a cursor-enter event only; the leave
+    /// comes from the window system. With [`Self::window_focused`] false, true means the window
+    /// is hovered in the background. False before the pointer has entered the window.
+    fn window_hovered(&self) -> bool;
+    /// Side: client.
+    /// Whether the window is fully hidden (occluded): covered by other windows, on another
+    /// desktop, or minimized, where the window system reports it (some report only minimizing,
+    /// and some nothing). A hidden window's frames are not seen, so a mod may draw less.
+    fn window_occluded(&self) -> bool;
     /// Side: client.
     /// The same screen identifier provided to screen hooks.
     fn observed_screen_id(&self) -> Option<ScreenId>;

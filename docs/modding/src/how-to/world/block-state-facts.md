@@ -28,7 +28,11 @@ known state reads as `Ok(None)`; unavailable metadata, invalid states and refuse
 | `friction(state) -> Option<f32>` | `BlockBehaviour.getFriction()` of the block: 0.6 usually, 0.98 ice, 0.8 slime |
 | `speed_factor(state) -> Option<f32>` | `Block.getSpeedFactor()`: 1.0 usually, 0.4 soul sand and honey; the declared value, which a block's `block_speed_factor` part can change where an entity stands |
 | `jump_factor(state) -> Option<f32>` | `Block.getJumpFactor()`: 1.0 usually, 0.5 honey; the declared value, which a block's `block_jump_factor` part can change |
+| `collision(state) -> Option<StateCollision>` | `BlockState.getCollisionShape(level, pos, CollisionContext.empty())`: `Fixed` boxes the same at every position, `Contextual` boxes an entity's context can change (scaffolding, powder snow, liquids), or `Positional` (bamboo and dripstone offsets, shulker boxes, moving pistons, published shapes, parts that answer collision): read those per position |
+| `landing(state) -> Option<BlockLanding>` | `BlockBehaviour.Properties.bounceRestitution` and `fallDistanceReduction`: 0.75 and 0.5 for beds and the shelf mushroom, a bounce of 1.0 for slime, 0 usually; not a part's `bounce_restitution` or a custom `fallOn` (hay) |
+| `path_type(state) -> Option<PathType>` | `WalkNodeEvaluator.getPathTypeFromState` after parts' `isPathfindable`: the state alone, without the `block_path_type` hook or neighbour rules |
 | `is_solid_render(state) -> Option<bool>` | `BlockState.isSolidRender()`: a full, occluding cube (stone yes; glass, leaves, slabs no) |
+| `poi_type(state) -> Option<Identifier>` | `PoiTypes.forState`: the point of interest type (`minecraft:librarian` for a lectern, `minecraft:meeting` for a bell), mods' `extend_poi_types` states included |
 | `propagates_skylight_down(state) -> Option<bool>` | `BlockState.propagatesSkylightDown()`: sky light passes down unchanged, the block's own answer included (glass and air yes, stone no) |
 | `is_air(state) -> Option<bool>` | `BlockState.isAir()`: air, cave air and void air, by the block's flag rather than the `#minecraft:air` tag |
 | `is_redstone_conductor(state) -> Option<bool>` | `BlockState.isRedstoneConductor` when it depends only on the block state; `None` when a position is needed |

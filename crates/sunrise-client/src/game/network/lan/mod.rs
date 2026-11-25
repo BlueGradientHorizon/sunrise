@@ -36,6 +36,7 @@ use sunrise_client::{
         playerdata,
     },
     mobs::{Mob, Species, Who, leash::Holder},
+    server::user_lists::NameAndId,
     text::Text,
     world::World,
 };
@@ -198,37 +199,88 @@ fn mob_variant_meta(
                 meta.push((18, serializer::INT, Value::Int(i32::from(e.variant))));
             }
         }
-        // Frog.DATA_VARIANT_ID, Pig's, Cow's, Chicken's and ZombieNautilus's
-        // (after the entries of their parents): registry holders.
-        "minecraft:frog"
-        | "minecraft:pig"
-        | "minecraft:cow"
-        | "minecraft:chicken"
-        | "minecraft:zombie_nautilus" => {
-            let (index, serializer, registry) = match kind {
-                "minecraft:frog" => (18, serializer::FROG_VARIANT, "minecraft:frog_variant"),
-                "minecraft:pig" => (19, serializer::PIG_VARIANT, "minecraft:pig_variant"),
-                "minecraft:cow" => (18, serializer::COW_VARIANT, "minecraft:cow_variant"),
-                "minecraft:chicken" => {
-                    (18, serializer::CHICKEN_VARIANT, "minecraft:chicken_variant")
-                }
+        // Pig, Cow and Chicken: `DATA_VARIANT_ID` and `DATA_SOUND_VARIANT_ID`
+        // carry the world table's network ids directly (`RegistryRef<K>`).
+        "minecraft:pig" | "minecraft:cow" | "minecraft:chicken" => {
+            let (v_idx, v_ser, v_reg, s_idx, s_ser, s_reg, v_id, s_id) = match kind {
+                "minecraft:pig" => (
+                    19,
+                    serializer::PIG_VARIANT,
+                    "minecraft:pig_variant",
+                    20,
+                    serializer::PIG_SOUND_VARIANT,
+                    "minecraft:pig_sound_variant",
+                    e.pig_variant.map(|r| r.network_id() as i32),
+                    e.pig_sound_variant.map(|r| r.network_id() as i32),
+                ),
+                "minecraft:cow" => (
+                    18,
+                    serializer::COW_VARIANT,
+                    "minecraft:cow_variant",
+                    19,
+                    serializer::COW_SOUND_VARIANT,
+                    "minecraft:cow_sound_variant",
+                    e.cow_variant.map(|r| r.network_id() as i32),
+                    e.cow_sound_variant.map(|r| r.network_id() as i32),
+                ),
                 _ => (
-                    21,
-                    serializer::ZOMBIE_NAUTILUS_VARIANT,
-                    "minecraft:zombie_nautilus_variant",
+                    18,
+                    serializer::CHICKEN_VARIANT,
+                    "minecraft:chicken_variant",
+                    19,
+                    serializer::CHICKEN_SOUND_VARIANT,
+                    "minecraft:chicken_sound_variant",
+                    e.chicken_variant.map(|r| r.network_id() as i32),
+                    e.chicken_sound_variant.map(|r| r.network_id() as i32),
                 ),
             };
-            // Each registry's default (`define(DATA_VARIANT_ID, ... TEMPERATE)`)
-            // stays out of the pairing data, as other default values do.
-            let name = sunrise_client::mobs::finalize::variant_name(m.species(), e.variant);
-            let name = name.trim_start_matches("minecraft:");
-            if let Some(v) = id(registry, name)
-                && name != "temperate"
+            let default_v = id(v_reg, "temperate");
+            if let Some(v) = v_id.or(default_v)
+                && Some(v) != default_v
             {
-                meta.push((index, serializer, Value::Id(v)));
+                meta.push((v_idx, v_ser, Value::Id(v)));
             }
-            if let Some(v) = id(registry, "temperate") {
-                defaults.push((index, serializer, Value::Id(v)));
+            if let Some(v) = default_v {
+                defaults.push((v_idx, v_ser, Value::Id(v)));
+            }
+            let default_s = id(s_reg, "classic");
+            if let Some(v) = s_id.or(default_s)
+                && Some(v) != default_s
+            {
+                meta.push((s_idx, s_ser, Value::Id(v)));
+            }
+            if let Some(v) = default_s {
+                defaults.push((s_idx, s_ser, Value::Id(v)));
+            }
+        }
+        // Frog.DATA_VARIANT_ID: the world table's network id directly (`RegistryRef<FrogVariant>`).
+        "minecraft:frog" => {
+            let default_id = id("minecraft:frog_variant", "temperate");
+            let variant_id = e.frog_variant.map(|r| r.network_id() as i32).or(default_id);
+            if let Some(v) = variant_id
+                && Some(v) != default_id
+            {
+                meta.push((18, serializer::FROG_VARIANT, Value::Id(v)));
+            }
+            if let Some(v) = default_id {
+                defaults.push((18, serializer::FROG_VARIANT, Value::Id(v)));
+            }
+        }
+        // ZombieNautilus.DATA_VARIANT_ID carries the world table's network id
+        // directly (`RegistryRef<ZombieNautilusVariant>`).
+        "minecraft:zombie_nautilus" => {
+            let default = id("minecraft:zombie_nautilus_variant", "temperate");
+            let variant_id = e
+                .zombie_nautilus_variant
+                .map(|r| r.network_id() as i32)
+                .or(default);
+            if let Some(v) = variant_id
+                && Some(v) != default
+            {
+                meta.push((21, serializer::ZOMBIE_NAUTILUS_VARIANT, Value::Id(v)));
+            }
+            if let Some(v) = default {
+                defaults.push((21, serializer::ZOMBIE_NAUTILUS_VARIANT, Value::Id(v)));
             }
         }
         // Rabbit.DATA_TYPE_ID (after AgeableMob's two) and
@@ -532,20 +584,40 @@ pub(super) fn mob_meta(
             if flags != 0 {
                 meta.push((18, serializer::BYTE, Value::Byte(flags)));
             }
-            let (index, registry, name) = if kind == "minecraft:cat" {
-                let v = sunrise_client::mobs::tame::CAT_VARIANTS[(e.variant as usize).min(10)];
-                (20, "minecraft:cat_variant", v)
+            if kind == "minecraft:cat" {
+                // Cat.DATA_VARIANT_ID and DATA_SOUND_VARIANT_ID carry the world
+                // table's network id directly (`RegistryRef<K>`).
+                let variant_id = e
+                    .cat_variant
+                    .map(|r| r.network_id() as i32)
+                    .or_else(|| id("minecraft:cat_variant", "black"));
+                if let Some(v) = variant_id {
+                    meta.push((20, serializer::CAT_VARIANT, Value::Id(v)));
+                }
+                let sound_id = e
+                    .cat_sound_variant
+                    .map(|r| r.network_id() as i32)
+                    .or_else(|| id("minecraft:cat_sound_variant", "classic"));
+                if let Some(v) = sound_id {
+                    meta.push((24, serializer::CAT_SOUND_VARIANT, Value::Id(v)));
+                }
             } else {
-                let v = sunrise_client::mobs::tame::WOLF_VARIANTS[(e.variant as usize).min(8)].0;
-                (23, "minecraft:wolf_variant", v)
-            };
-            let serializer = if index == 20 {
-                serializer::CAT_VARIANT
-            } else {
-                serializer::WOLF_VARIANT
-            };
-            if let Some(v) = id(registry, name) {
-                meta.push((index, serializer, Value::Id(v)));
+                // Wolf.DATA_VARIANT_ID and DATA_SOUND_VARIANT_ID carry the world
+                // table's network id directly (`RegistryRef<K>`).
+                let variant_id = e
+                    .wolf_variant
+                    .map(|r| r.network_id() as i32)
+                    .or_else(|| id("minecraft:wolf_variant", "pale"));
+                if let Some(v) = variant_id {
+                    meta.push((23, serializer::WOLF_VARIANT, Value::Id(v)));
+                }
+                let sound_id = e
+                    .wolf_sound_variant
+                    .map(|r| r.network_id() as i32)
+                    .or_else(|| id("minecraft:wolf_sound_variant", "classic"));
+                if let Some(v) = sound_id {
+                    meta.push((24, serializer::WOLF_SOUND_VARIANT, Value::Id(v)));
+                }
             }
             // Cat.IS_LYING and RELAX_STATE_ONE.
             if kind == "minecraft:cat" {
@@ -1302,6 +1374,7 @@ impl Game<'_> {
             .then(|| sunrise_client::lod_net::Service::new(net.lod_distance, biome_names.clone()));
         let lan = super::lan_configuration_tasks::start(sync.clone(), net)?;
         let mut hub = Hub::new(lan, sync, encoder, config, self.loop_context.clone());
+        hub.allow_commands = self.allow_commands();
         hub.dispatch_move_effects = true;
         self.bind_guest_residency(&mut hub);
         self.passages.record_on(&mut hub);
@@ -1877,10 +1950,9 @@ impl Game<'_> {
         }
         // An integrated server gives guests commands only where the world
         // allows them (IntegratedServer.getCustomPermissionLevel).
-        let effective = guest_commands && (!self.serving() || self.allow_commands());
         if let Some(host) = self.lan.as_mut() {
             host.settings.guest_commands = guest_commands;
-            host.hub.config.guest_commands = effective;
+            host.hub.config.guest_commands = guest_commands;
         }
         self.set_force_game_mode(force);
         self.resend_commands_filtered();
@@ -2359,7 +2431,7 @@ impl Game<'_> {
                     if self.options.execution_role.is_dedicated_server()
                         && let Some((uuid, name)) =
                             host.hub.guest(conn).map(|g| (g.uuid, g.name.clone()))
-                        && let Some(old) = super::dedicated::cached_user_by_id(uuid)
+                        && let Some(old) = self.user_cache.as_mut().and_then(|c| c.get_by_id(uuid))
                     {
                         if !old.name.eq_ignore_ascii_case(&name) {
                             renamed = Some(old.name.clone());
@@ -2368,15 +2440,23 @@ impl Game<'_> {
                     }
                     self.lan_guest_joined(conn, entities, spawn, prepared);
                     let host = self.lan.as_ref()?;
+                    let guest = host.hub.guest(conn);
                     super::cauldron_prediction::publish_registrations(
                         &super::cauldron_interactions::snapshot(),
-                        host.hub.guest(conn),
+                        guest,
                     );
-                    if self.is_dedicated_server()
-                        && let Some(g) = host.hub.guest(conn)
+                    // PlayerList.placeNewPlayer remembers the joined identity on either server.
+                    if let (Some(cache), Some(g)) =
+                        (self.user_cache.as_mut(), guest.filter(|g| g.placed))
                     {
-                        // PlayerList.placeNewPlayer, then the broadcast join message.
-                        super::dedicated::player_joined(g.uuid, &g.name);
+                        cache.add(NameAndId {
+                            id: g.uuid,
+                            name: g.name.clone(),
+                        });
+                    }
+                    if self.is_dedicated_server()
+                        && let Some(g) = guest
+                    {
                         super::dedicated::events::record(
                             "join",
                             &g.name,

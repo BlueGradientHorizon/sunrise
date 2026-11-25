@@ -560,8 +560,11 @@ impl Game<'_> {
         // A reload from the title can apply before the start's world-rest worker is done.
         self.join_world_rest()?;
         let tab_modifiers = sunrise_client::polytone_creative_tabs::TabModifier::read_all(&root);
-        let standalone_geometry =
-            super::native_block_entity_draw::StandaloneGeometry::new(&pack, &gui);
+        let standalone_geometry = super::native_block_entity_draw::StandaloneGeometry::new(
+            &pack,
+            &gui,
+            self.res.try_block_entity_render(),
+        );
         // Keep the working GPU resources, and hand its window surface over.
         if let Some(renderer) = &mut self.renderer {
             renderer.release_surface();
@@ -582,7 +585,7 @@ impl Game<'_> {
                     Some(textures),
                     self.settings.sunrise.api,
                     self.settings.sunrise.translucent_batching,
-                    self.settings.vsync,
+                    self.effective_vsync(),
                     &self.settings.sunrise,
                     super::shader_packs::picked_pack_shape(&self.settings),
                     self.renderer
@@ -591,8 +594,8 @@ impl Game<'_> {
                         .unwrap_or_default(),
                     self.settings.texture_atlas_settings(),
                 )
-                .and_then(|(renderer, clouds)| {
-                    clouds?;
+                .and_then(|(renderer, required)| {
+                    required?;
                     Ok(renderer)
                 })
             })
@@ -642,6 +645,11 @@ impl Game<'_> {
             game.build_level_environments();
             game.standalone_geometry = standalone_geometry;
             game.instance_groups.borrow_mut().clear();
+            game.prepared_items.borrow_mut().clear();
+            if let Some(renderer) = &game.renderer {
+                renderer.clear_mod_meshes();
+                renderer.clear_mod_uniforms();
+            }
             // The new atlas's skin and map slots are blank: players and maps
             // upload into it again instead of naming sprites it does not have.
             game.skin_slots.forget();
@@ -1333,3 +1341,7 @@ mod tests {
 #[cfg(test)]
 #[path = "clouds_reload_tests.rs"]
 mod clouds_reload_tests;
+
+#[cfg(test)]
+#[path = "core_shaders_reload_tests.rs"]
+mod core_shaders_reload_tests;

@@ -36,13 +36,16 @@ impl Game<'_> {
         entity: i32,
         protection: sunrise_client::health::PlayerProtection,
     ) -> Option<Body> {
-        let slot = match protection.hand {
+        let slot = protection.hand.map(|hand| match hand {
             mod_api::Hand::Main => self.selected,
             mod_api::Hand::Off => super::shield::OFFHAND_SLOT,
-        };
+        });
         let protector = protection.stack;
         self.player.as_ref().filter(|p| p.entity_id == entity)?;
-        self.consume_player_slot(slot, 1);
+        // A mod's protector from outside the hands is its own to take.
+        if let Some(slot) = slot {
+            self.consume_player_slot(slot, 1);
+        }
         self.award_stat("used", &protector.item, 1);
         self.trigger_item("minecraft:used_totem", &protector);
         let p = self.player.as_ref().filter(|p| p.entity_id == entity)?;

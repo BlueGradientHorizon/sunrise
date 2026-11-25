@@ -296,9 +296,11 @@ fn with_frame_scene(
     });
 }
 
-/// A real offscreen renderer and a world for it to draw; the event loop that returns
-/// holds the window.
-pub(in crate::game) fn frame_scene(game: &mut super::Game<'_>) -> winit::event_loop::EventLoop<()> {
+/// A hidden 320 by 240 window and the event loop that holds it.
+pub(in crate::game) fn hidden_window() -> (
+    winit::event_loop::EventLoop<()>,
+    std::sync::Arc<winit::window::Window>,
+) {
     let mut builder = winit::event_loop::EventLoop::builder();
     #[cfg(target_os = "linux")]
     {
@@ -316,6 +318,13 @@ pub(in crate::game) fn frame_scene(game: &mut super::Game<'_>) -> winit::event_l
             )
             .unwrap(),
     );
+    (event_loop, window)
+}
+
+/// A real offscreen renderer and a world for it to draw; the event loop that returns
+/// holds the window.
+pub(in crate::game) fn frame_scene(game: &mut super::Game<'_>) -> winit::event_loop::EventLoop<()> {
+    let (event_loop, window) = hidden_window();
     game.options.offscreen = true;
     game.renderer = Some(game.new_renderer(window).unwrap());
     game.title = None;

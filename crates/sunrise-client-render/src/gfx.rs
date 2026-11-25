@@ -240,7 +240,10 @@ mod linear_blend;
 use frame_policy::frame_format;
 use frame_policy::{frame_configuration, overlay_format, sunrise_tone_curve};
 mod lod;
+pub mod mod_meshes;
 pub mod mod_pipelines;
+pub mod mod_storage;
+pub mod mod_uniforms;
 mod native_material;
 mod native_pack;
 mod native_post;
@@ -869,6 +872,20 @@ impl Renderer {
     /// Device `max_buffer_size`, for instance-room checks while `Renderer` is borrowed by `render`.
     pub fn max_buffer_size(&self) -> u64 {
         self.device.limits().max_buffer_size
+    }
+    /// The largest inline uniform and texel-buffer payloads a mod's set-1 draw may bind: the
+    /// device's `max_uniform_buffer_binding_size` and `max_storage_buffer_binding_size`, each
+    /// capped by `max_buffer_size`.
+    pub fn mod_binding_limits(&self) -> (u64, u64) {
+        let limits = self.device.limits();
+        (
+            limits
+                .max_uniform_buffer_binding_size
+                .min(limits.max_buffer_size),
+            limits
+                .max_storage_buffer_binding_size
+                .min(limits.max_buffer_size),
+        )
     }
     /// Render `frame`, optionally driving mod world-render hooks (`FrameHooks`) at the renderer's
     /// real visibility, sky, prepare, pass-stage, and post-world boundaries.

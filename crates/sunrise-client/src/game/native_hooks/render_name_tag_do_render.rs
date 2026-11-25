@@ -12,7 +12,7 @@ impl Game<'_> {
         content: &str,
         attachment: [f64; 3],
         partial_tick: f32,
-        draw: &mut BlockEntityDraw,
+        draw: &mut BlockEntityDraw<'_>,
         canceled: &mut bool,
     ) {
         self.fire_render_name_tag_do_render(

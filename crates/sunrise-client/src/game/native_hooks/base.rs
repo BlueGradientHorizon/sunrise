@@ -116,18 +116,6 @@ impl GameLevel<'_> {
         self.fire_block_form(dimension, pos, from, to, cancel);
     }
 
-    /// The Ender Dragon fight is about to place its first dragon egg at `pos`.
-    /// Set `cancel` to leave the block unchanged. Server-side.
-    #[inline(always)]
-    pub(in crate::game) fn native_dragon_egg_form(
-        &self,
-        dimension: LevelDimension,
-        pos: BlockPos,
-        cancel: &mut bool,
-    ) {
-        self.fire_dragon_egg_form(dimension, pos, cancel);
-    }
-
     /// An authoritative server is about to deliver `neighborChanged`.
     /// State and block IDs are valid in this level's registries for this call.
     /// The host is the level writer vanilla's `neighborChanged` gets: a part may read
@@ -829,15 +817,6 @@ impl Game<'_> {
     /// `stream: true` in `sounds.json`.
     pub(in crate::game) fn native_music_layers(&self, layers: &mut Vec<MusicLayer>) {
         self.fire_music_layers(layers);
-    }
-    /// The values native mods hand their shader packs in this frame,
-    /// `partial` ticks past the last tick (0 to 1): a pack's WGSL reads
-    /// them as `frame.mods` (eight `vec4<f32>`). Write the slots your own
-    /// pack reads; a mod that bundles its pack as `native-<mod id>` is the
-    /// one that pack is for. Asked once a frame while a pack is on; a value
-    /// that isn't finite reads as 0 (`native_shader_params_now`).
-    pub(in crate::game) fn native_shader_params(&self, partial: f32, params: &mut [[f32; 4]; 8]) {
-        self.fire_shader_params(partial, params);
     }
     /// `WorldlyContainer.canTakeItemThroughFace` for a block entity's subscribed part: whether
     /// `stack` in `slot` may leave through `face`, replacing the declared output slots.

@@ -347,6 +347,7 @@ impl Game<'_> {
             direction: 0,
             sequence: 0,
         }));
+        self.native_client_break_progress(self.own_entity_id(), pos, -1);
         self.reset_attack_strength();
         true
     }

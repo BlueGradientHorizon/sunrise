@@ -28,7 +28,10 @@ pub(super) fn load_world_rest(
         "sunrise-content".into(),
         resource_root.data_changes().clone(),
     );
-    let store = sunrise_client::datapack::DataStore::load(&[&content]);
+    let store =
+        sunrise_client::datapack::DataStore::load(&sunrise_client::datapack::DataPacks::new(&[
+            &content,
+        ]));
     let files = store.files.into_iter().collect::<Vec<_>>();
     let overlay = &sunrise_world::loot::PackOverlay {
         conditions,
@@ -43,6 +46,7 @@ pub(super) fn load_world_rest(
             Items::load(root, registry, facts, overlay, resources.item_defaults())
         })?;
         items.bind_component_damage_catalog(&resources.motion().health.damage);
+        world_entry::bind_world_registry_tags(&mut items, root, overlay, overlay, biomes)?;
         api_values::resolve_item_registry(&items)?;
         log::info!("load items: {:.2}s", started.elapsed().as_secs_f32());
         progress.set(7);
@@ -67,10 +71,10 @@ pub(super) fn load_world_rest(
                 root,
                 &items,
                 overlay,
-                resources.item_defaults(),
+                sunrise_client::banner::Banners::load(root, resources.item_defaults()),
                 (&sources, &recipes),
             )
-        });
+        })?;
         Ok((items, recipes, stations))
     };
     let load_behaviours = || {
@@ -83,12 +87,8 @@ pub(super) fn load_world_rest(
         if !draws {
             return Ok(Default::default());
         }
-        let mut renderer = BlockEntityRenderer::load_with_visibility(
-            resource_root,
-            registry,
-            visibility,
-            resources.item_defaults(),
-        )?;
+        let mut renderer =
+            BlockEntityRenderer::load_with_visibility(resource_root, registry, visibility)?;
         renderer.add_mod_signs(facts, registry);
         Ok(renderer)
     };
@@ -160,14 +160,12 @@ pub(super) fn load_world_rest(
         } else {
             sunrise_client::mobs::cem::CemModels::default()
         }));
-        sunrise_client::mobs::trial_spawner::load_registry(root);
         Ok((mob_types, mob_data))
     };
-    let load_transformers = || -> Result<_> {
-        let _step = startup::step("rest.transformers_models");
-        let transformers = sunrise_client::block_transform::Transformers::load(root, registry)?;
+    let load_player_models = || -> Result<_> {
+        let _step = startup::step("rest.player_models");
         if !draws {
-            return Ok((transformers, (None, [None, None], [None, None], None)));
+            return Ok((None, [None, None], [None, None], None));
         }
         let player_type = match entity_models {
             Some(document) => perspective::player_type_with_document(root, document),
@@ -182,7 +180,7 @@ pub(super) fn load_world_rest(
                 None => sunrise_client::mobs::load_model(root, "minecraft:spin_attack#main"),
             },
         );
-        Ok((transformers, models))
+        Ok(models)
     };
     // The errors cross threads as text.
     fn text<T, E: std::fmt::Display>(
@@ -196,7 +194,7 @@ pub(super) fn load_world_rest(
         block_entity_render,
         animate,
         mobs,
-        transformers,
+        player_models,
         providers,
         music,
         ambient,
@@ -211,7 +209,7 @@ pub(super) fn load_world_rest(
             });
             let animate = named_scope(scope, "animate", || text(load_animate()));
             let mobs = named_scope(scope, "mobs", || text(load_mobs()));
-            let transformers = named_scope(scope, "transformers", || text(load_transformers()));
+            let player_models = named_scope(scope, "player_models", || text(load_player_models()));
             let providers = named_scope(scope, "providers", || {
                 startup::time("rest.providers", || Providers::load(root))
             });
@@ -251,7 +249,7 @@ pub(super) fn load_world_rest(
                 block_entity_render.join().unwrap(),
                 animate.join().unwrap(),
                 mobs.join().unwrap(),
-                transformers.join().unwrap(),
+                player_models.join().unwrap(),
                 providers.join().unwrap(),
                 music.join().unwrap(),
                 ambient.join().unwrap(),
@@ -266,7 +264,7 @@ pub(super) fn load_world_rest(
             text(load_block_entity_render()),
             text(load_animate()),
             text(load_mobs()),
-            text(load_transformers()),
+            text(load_player_models()),
             Providers::load(root),
             startup::time("rest.music", || {
                 sunrise_client::music::MusicTables::load(root, builtin.clone())
@@ -292,7 +290,7 @@ pub(super) fn load_world_rest(
     let (items, recipes, stations) = items?;
     let (animate, fog) = animate?;
     let (mob_types, mut mob_data) = mobs?;
-    let (transformers, (player_type, player_arm, player_arm_slim, spin_attack)) = transformers?;
+    let (player_type, player_arm, player_arm_slim, spin_attack) = player_models?;
     if draws {
         mob_data.frame_models = startup::time("rest.frame_models", || {
             sunrise_client::mobs::render::BakedFrameModels::bake(
@@ -305,6 +303,15 @@ pub(super) fn load_world_rest(
     }
     let nether_environment = nether_environment?;
     let end_environment = end_environment?;
+    let prepared_tests =
+        sunrise_client::lan::data::PackRegistryDefinitions::load_prepared_game_tests(
+            root,
+            item_defaults,
+        );
+    let (test_environments, test_instances) = test_instances::build_game_test_tables(
+        &prepared_tests,
+        &mod_api::GameTestFunctions::default(),
+    );
     log::info!(
         "Sunrise: resources loaded in {:.1}s; {} block states, {} items, {} biomes; {} worker threads",
         started.elapsed().as_secs_f32(),
@@ -318,7 +325,7 @@ pub(super) fn load_world_rest(
         stations,
         items: Arc::new(items),
         recipes,
-        transformers,
+        transformers: Default::default(),
         providers,
         block_entity_render: block_entity_render?,
         animate,
@@ -336,5 +343,7 @@ pub(super) fn load_world_rest(
         player_arm,
         player_arm_slim,
         spin_attack,
+        test_environments,
+        test_instances,
     })
 }

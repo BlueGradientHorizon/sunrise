@@ -138,18 +138,19 @@ impl Game<'_> {
         &mut self,
         batch: &mut sunrise_client::hud::HudBatch,
         hidden: bool,
+        clock: sunrise_client::toasts::ToastClock,
     ) {
         let song = self.now_playing_song();
         let Some(toast) = self.now_playing.as_mut() else {
             return;
         };
-        toast.update(song.is_some(), &mut self.music_notes);
+        toast.update(clock, song.is_some(), &mut self.music_notes);
         let Some(song) = song else {
             return;
         };
         if self.screen == super::Screen::Paused {
             if self.pause_menu && self.final_music_volume() > 0.0 {
-                self.music_notes.tick();
+                self.music_notes.tick(clock);
                 sunrise_client::toasts::draw_now_playing(
                     &self.gui.atlas,
                     batch,
@@ -173,13 +174,16 @@ impl Game<'_> {
             self.sound_entity_state(id)
         });
 
-        if self.pause != self.sound_paused {
-            if self.pause {
-                self.audio.pause();
-            } else {
-                self.audio.resume();
+        let paused = (self.pause, self.mod_sounds_paused);
+        if paused != self.sound_paused {
+            // From whatever was paused, to what is now.
+            self.audio.resume();
+            match sound_pause(self.pause, self.mod_sounds_paused) {
+                SoundPause::All => self.audio.pause_all(),
+                SoundPause::Game => self.audio.pause(),
+                SoundPause::Playing => {}
             }
-            self.sound_paused = self.pause;
+            self.sound_paused = paused;
         }
         let (vehicle, carts) = self.start_cart_sounds();
         let mobs = self.start_mob_sounds();
@@ -431,5 +435,38 @@ mod bound_lookup_tests {
         assert_eq!(a.state().position, [1.0; 3]);
         assert_eq!(replacement.state().position, [4.0; 3]);
         assert!(!replacement.state().removed);
+    }
+}
+
+/// Which sounds a tick holds paused.
+#[derive(Debug, PartialEq)]
+enum SoundPause {
+    /// None.
+    Playing,
+    /// The game's pause (`SoundManager.pause`): all but the music and the interface.
+    Game,
+    /// A mod's `set_sounds_paused`: every sound, whatever the game's pause.
+    All,
+}
+
+/// A mod's pause holds every sound and outlasts the game's; the game's holds its own set.
+fn sound_pause(game: bool, mods: bool) -> SoundPause {
+    match (game, mods) {
+        (_, true) => SoundPause::All,
+        (true, false) => SoundPause::Game,
+        (false, false) => SoundPause::Playing,
+    }
+}
+
+#[cfg(test)]
+mod sound_pause_tests {
+    use super::*;
+
+    #[test]
+    fn a_mods_pause_holds_every_sound_over_the_games() {
+        assert_eq!(sound_pause(false, false), SoundPause::Playing);
+        assert_eq!(sound_pause(true, false), SoundPause::Game);
+        assert_eq!(sound_pause(false, true), SoundPause::All);
+        assert_eq!(sound_pause(true, true), SoundPause::All);
     }
 }

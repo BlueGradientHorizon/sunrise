@@ -45,8 +45,8 @@ use mod_api::{
     InteractionAttempt, InteractionKey, ItemEntityRef, LifecycleContext, LivingRef, LoadConditions,
     NoteBlockChange, ParticleProviders, PathComputationType, Placement, PlayerRef,
     PoiTypeExtensions, RecipeBookCategory, ScreenId, ScreenOpening, ScreenTarget, ScreenWidgets,
-    ScreenshotImage, ServerReloadListeners, ServerTickPhase, SpecialModelRenderers, ToolUse,
-    VillagerProfessions,
+    ScreenshotImage, ServerReloadListeners, ServerTickPhase, ShaderPackState,
+    SpecialModelRenderers, ToolUse, VillagerProfessions,
 };
 use mod_api::{
     ActiveEffect, AttachmentStore, BlockClick, BlockUpdateFlags, BonemealSource, ChunkRef,
@@ -196,6 +196,7 @@ mod chunk_ticket_level_updated;
 mod chunk_watch;
 mod client_attack_target;
 mod client_block_changed;
+mod client_break_progress;
 mod client_chat;
 mod client_chat_received;
 #[cfg(test)]
@@ -214,6 +215,7 @@ mod client_narrator_tests;
 mod client_options;
 mod client_packet;
 mod client_packet_send;
+mod client_particle_add;
 mod client_pause_change;
 mod client_pause_read;
 mod client_pick;
@@ -225,6 +227,9 @@ mod client_services;
 mod client_setup;
 mod client_stopped;
 mod client_stopping;
+mod client_take_item_entity;
+#[cfg(test)]
+mod client_take_item_entity_tests;
 mod client_text;
 mod client_tick_post;
 mod client_tick_pre;
@@ -258,6 +263,7 @@ mod death_source_tests;
 mod default_components_bound;
 mod destroy_progress;
 mod dispense_method;
+mod dragon_fight;
 mod draw_measures;
 mod effect_particle_modification;
 mod empty_contents;
@@ -368,6 +374,7 @@ mod living_damage_pre;
 mod living_death;
 mod living_death_message;
 mod living_death_post;
+mod living_death_protection;
 mod living_destroy_block;
 mod living_drops;
 mod living_experience_drop;
@@ -502,6 +509,7 @@ mod register_mob_parts;
 mod register_model_loaders;
 mod register_particle_groups;
 mod register_particle_providers;
+mod register_pipeline_modifiers;
 mod register_preset_editors;
 mod register_range_select_item_model_property;
 mod register_render_pipelines;
@@ -567,6 +575,8 @@ mod should_check_weak_power;
 mod should_display_fluid_overlay;
 mod should_hide_adjacent_fluid_face;
 mod should_redstone_wire_connect_to;
+mod sleep_status_announce;
+mod sleepers_needed;
 mod sound_and_shader_helpers;
 mod sound_type;
 mod spawn_cluster_size;
@@ -599,6 +609,5 @@ pub(in crate::game) use base::LevelView;
 pub(in crate::game) use bounce_restitution::install_block_contact_hooks;
 pub(in crate::game) use living_change_target::NativeHookHost;
 use mod_api::ModBlockEntity;
-use sound_and_shader_helpers::finite_params;
 pub(super) use sound_and_shader_helpers::sound_id;
 include!("shared.rs");

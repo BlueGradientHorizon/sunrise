@@ -267,22 +267,24 @@ pub trait LevelBlocksBackendMut {
     /// with the same block-entity rules as [`LevelRef::set_block`].
     fn level_remove_block(&mut self, level: LevelRef, pos: [i32; 3], moved: bool) -> bool;
     /// Side: server.
-    /// Destroy a block in the level in place (`Level.destroyBlock`), optionally dropping
-    /// resources with `tool` (None is an empty hand). With `collect`, return the dropped
-    /// stacks without spawning their item entities; otherwise return an empty list after
-    /// spawning them. The one level drop path runs loot, block-drop hooks and experience
-    /// once, in vanilla's random order. `drop` false suppresses resources entirely.
-    /// `Ok(None)` means nothing broke: air, a refused write, a stale handle, a client, an
-    /// unloaded/out-of-height position, or a parked level. In a transaction in the block's
-    /// level, loot is prepared against the old block, the new state is immediately readable,
-    /// and spawning and break effects are deferred to commit. Another level's transaction
-    /// alone does not defer the operation.
+    /// Destroy a block in the level in place (`Level.destroyBlock(pos, drop, breaker, maxUpdates)`),
+    /// optionally dropping resources with `tool` (None is an empty hand) and `breaker` as the
+    /// loot's `this` entity and the `minecraft:block_destroy` game event's source. With `collect`,
+    /// return the dropped stacks without spawning their item entities; otherwise return an empty
+    /// list after spawning them. The one level drop path runs loot, block-drop hooks and
+    /// experience once, in vanilla's random order. `drop` false suppresses resources entirely.
+    /// `Ok(None)` means nothing broke: air, a refused write, a stale or foreign `breaker`, a
+    /// stale handle, a client, an unloaded/out-of-height position, or a parked level. In a
+    /// transaction in the block's level, loot is prepared against the old block, the new state
+    /// is immediately readable, and spawning and break effects are deferred to commit. Another
+    /// level's transaction alone does not defer the operation.
     fn level_destroy_block(
         &mut self,
         level: LevelRef,
         pos: [i32; 3],
         drop: bool,
         tool: Option<&ItemStack>,
+        breaker: Option<EntityRef>,
         collect: bool,
     ) -> Result<Option<Vec<ItemStack>>, StackWriteError>;
     /// Side: server.
@@ -290,6 +292,12 @@ pub trait LevelBlocksBackendMut {
     /// entity, tool)`), without breaking it or spawning anything: its loot table rolled with
     /// `tool` (None is an empty hand) and `entity` as the breaker, with what its block entity
     /// copies into the drops (a shulker box's contents, a banner's patterns, a pot's sherds).
+    /// The roll is given the block's centre as ORIGIN and its block entity as BLOCK_ENTITY,
+    /// saved as `BlockEntity.saveWithFullMetadata` gives it (stored components included), so
+    /// a `minecraft:match_block` tests the block state, then its NBT and components against
+    /// that entity. A `minecraft:location_check` tests this level at the centre moved by its
+    /// offsets (`LocationCheck.test`): its biome, structure, smoke, light, block and fluid
+    /// tests fail where that position isn't loaded (`LocationPredicate.matches`).
     /// The roll draws from the table's random sequence, else the level random, as vanilla's
     /// does, so it moves later draws: that is why this is a write. No `block_drops` event,
     /// item entity or experience: that is `destroy_block`. None for a refused write, a stale or

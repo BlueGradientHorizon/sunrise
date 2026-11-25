@@ -118,6 +118,7 @@ impl Game<'_> {
                     causing: source.causing.map_or(0, |e| e.id() as i32),
                     direct: source.direct.map_or(0, |e| e.id() as i32),
                     position: direct.and_then(|t| self.target_position(t)),
+                    direct_type: None,
                 };
                 let mut rolls = ListenedRolls::new(self, LivingRef::new(entity), &hurt);
                 drops::roll_death_table(&loot, &table, &params, &mut rolls, seed, world_seed)

@@ -298,8 +298,11 @@ cull mask the caller supplies) are Sunrise's options for mod copies.
 `block_state_model(state)` (on `RenderAssets`) resolves a `BlockState` as one model: the parts
 its blockstate file selects for its properties, weighted alternatives at the fixed seed
 `BlockEntityDrawContext::block(state)` uses (which likewise takes a resolved `BlockState`),
-each tinted face in the block's default tint. It draws through `draw_model_instances`,
-instance groups and `draw.terrain_model`, not `draw.model`.
+each tinted face in the block's default tint. A block vanilla also draws with a special
+renderer (a chest, shulker box, banner, head, bell, decorated pot and the other blocks of
+vanilla's `BuiltInBlockModels`) adds that renderer's geometry with no block entity data, as a
+block display shows it: a closed chest, a plain banner. It draws through
+`draw_model_instances`, instance groups and `draw.terrain_model`, not `draw.model`.
 Resolve it once per state in `client_setup` and `client_resources_reloaded`.
 
 ## Terrain materials in a block entity
@@ -418,6 +421,12 @@ reload context. The scoped contexts do not lend a world.
 - `draw.draw_instance_group(group)` explicitly submits the group's live copies for this
   view. Repeated submissions of the same group in one view each draw again. Culling uses
   the composed pose.
+- `draw.instance_group(group)` draws a retained group under the draw context's current pose,
+  in entity renderers, entity layers, block entities and screen scenes. A stale or destroyed
+  group returns `GroupError::Stale` and draws nothing.
+- `host.prepare_item(stack, display, seed)` resolves an item's model once and returns a
+  `PreparedItemRef`; `draw.prepared_item(item)` then draws it as `draw.item` would, without
+  resolving the model again. A stale handle draws nothing and returns `ModelError::StaleModel`.
 - `group.destroy(host)` retires the handle and releases capacity and CPU caches.
   Copies already accepted for a view remain drawn; subsequent calls return `Stale`.
 - `Hooks::prepare_render_buffers` runs once per world view before any pass-bearing render stage.

@@ -324,19 +324,19 @@ impl DrawContext for GameDrawContext<'_, '_> {
     }
 }
 /// [`BlockEntityDrawContext`] on the game's `crate::game::native_block_entity_draw::BlockEntityDraw`.
-pub(crate) struct GameBlockEntityDrawContext<'a, 'g> {
+pub(crate) struct GameBlockEntityDrawContext<'a, 'g, 'v> {
     pub(crate) game: &'a Game<'g>,
-    pub(crate) surface: &'a mut crate::game::native_block_entity_draw::BlockEntityDraw,
+    pub(crate) surface: &'a mut crate::game::native_block_entity_draw::BlockEntityDraw<'v>,
 }
-impl<'a, 'g> GameBlockEntityDrawContext<'a, 'g> {
+impl<'a, 'g, 'v> GameBlockEntityDrawContext<'a, 'g, 'v> {
     pub(crate) fn new(
         game: &'a Game<'g>,
-        surface: &'a mut crate::game::native_block_entity_draw::BlockEntityDraw,
+        surface: &'a mut crate::game::native_block_entity_draw::BlockEntityDraw<'v>,
     ) -> Self {
         Self { game, surface }
     }
 }
-impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_> {
+impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_, '_> {
     #[inline]
     fn push(&mut self) {
         self.game.native_draw_push(&mut *self.surface)
@@ -361,6 +361,10 @@ impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_> {
     #[inline]
     fn keep(&mut self) {
         self.game.native_draw_keep(&mut *self.surface)
+    }
+    #[inline]
+    fn view(&self) -> &WorldRenderView<'_> {
+        self.surface.view()
     }
     #[inline]
     fn partial(&self) -> f32 {
@@ -477,12 +481,22 @@ impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_> {
             .native_draw_model_part(&mut *self.surface, part, sprite, tint)
     }
     #[inline]
+    fn instance_group(&mut self, group: InstanceGroupRef) -> Result<(), GroupError> {
+        self.game
+            .native_draw_instance_group(&mut *self.surface, group)
+    }
+    #[inline]
+    fn prepared_item(&mut self, item: PreparedItemRef) -> Result<(), ModelError> {
+        self.game
+            .native_draw_prepared_item(&mut *self.surface, item)
+    }
+    #[inline]
     fn fluid_box(&mut self, stack: &FluidStack, bounds: [f32; 6], options: FluidBoxOptions) {
         self.game
             .native_draw_fluid_box(&mut *self.surface, stack, bounds, options)
     }
 }
-impl HandDrawContext for GameBlockEntityDrawContext<'_, '_> {
+impl HandDrawContext for GameBlockEntityDrawContext<'_, '_, '_> {
     #[inline]
     fn render_arm(&mut self, arm: MainHand) {
         if let Some(normals) = self.surface.normal_pose() {
@@ -550,6 +564,33 @@ impl WorldDrawContext for GameWorldDrawContext<'_, '_> {
         self.game
             .native_world_draw_pipeline_quads(&mut *self.surface, pipeline, quads)
     }
+    fn draw_mesh(
+        &mut self,
+        pipeline: RenderPipelineRef,
+        mesh: MeshRef,
+        draw: MeshDraw,
+        bindings: &DrawBindings<'_>,
+    ) -> Result<(), PipelineDrawError> {
+        self.game
+            .native_world_draw_mesh(&mut *self.surface, pipeline, mesh, draw, bindings)
+    }
+    fn draw_vertices(
+        &mut self,
+        pipeline: RenderPipelineRef,
+        vertices: &[&[u8]],
+        indices: Option<(IndexFormat, &[u8])>,
+        draw: MeshDraw,
+        bindings: &DrawBindings<'_>,
+    ) -> Result<(), PipelineDrawError> {
+        self.game.native_world_draw_vertices(
+            &mut *self.surface,
+            pipeline,
+            vertices,
+            indices,
+            draw,
+            bindings,
+        )
+    }
     fn name_tag(
         &mut self,
         at: [f64; 3],
@@ -566,6 +607,23 @@ impl WorldDrawContext for GameWorldDrawContext<'_, '_> {
     ) -> Result<(), InstanceError> {
         self.game
             .native_world_draw_model_instances(&mut *self.surface, model, instances)
+    }
+    fn with_pipeline_modifier(
+        &mut self,
+        modifier: PipelineModifierRef,
+        draw: &mut dyn FnMut(&mut dyn WorldDrawContext),
+    ) {
+        use mod_api::__private::game::Fields;
+        let pushed = self.surface.push_pipeline_modifier(modifier.fields().slot);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            draw(self);
+        }));
+        if pushed {
+            self.surface.pop_pipeline_modifier();
+        }
+        if let Err(payload) = result {
+            std::panic::resume_unwind(payload);
+        }
     }
     fn set_pack_uniform(&mut self, name: &str, value: PackUniformValue) -> bool {
         let Some((static_name, ty)) = sunrise_client::mod_pipelines::lookup_pack_uniform(name)
@@ -631,6 +689,104 @@ impl PrepareRenderBuffersContext for GamePrepareRenderBuffersContext<'_, '_> {
         }
         self.surface.prepare_draw(stage, |surface| {
             self.game.native_world_draw_quads(surface, quads)
+        })
+    }
+
+    fn pipeline_quads(
+        &mut self,
+        stage: RenderLevelStage,
+        pipeline: RenderPipelineRef,
+        quads: &[PipelineQuad],
+    ) -> Result<PreparedWorldDraw, PipelineDrawError> {
+        if !stage.has_render_pass() {
+            return Err(PipelineDrawError::Pipeline(RenderPipelineError::Invalid));
+        }
+        let slot = self
+            .game
+            .pack
+            .render
+            .mod_pipelines
+            .slot(pipeline)
+            .map_err(PipelineDrawError::Pipeline)?;
+        if stage.oit_stage().is_some() && !self.game.pack.render.mod_pipelines.is_oit_eligible(slot)
+        {
+            self.game
+                .pack
+                .render
+                .mod_pipelines
+                .warn_oit_ineligible(slot);
+            return Err(PipelineDrawError::Pipeline(RenderPipelineError::Invalid));
+        }
+        self.surface.prepare_draw(stage, |surface| {
+            self.game
+                .native_world_draw_pipeline_quads(surface, pipeline, quads)
+        })
+    }
+
+    fn draw_mesh(
+        &mut self,
+        stage: RenderLevelStage,
+        pipeline: RenderPipelineRef,
+        mesh: MeshRef,
+        draw: MeshDraw,
+        bindings: &DrawBindings<'_>,
+    ) -> Result<PreparedWorldDraw, PipelineDrawError> {
+        if !stage.has_render_pass() {
+            return Err(PipelineDrawError::Pipeline(RenderPipelineError::Invalid));
+        }
+        let slot = self
+            .game
+            .pack
+            .render
+            .mod_pipelines
+            .slot(pipeline)
+            .map_err(PipelineDrawError::Pipeline)?;
+        if stage.oit_stage().is_some() && !self.game.pack.render.mod_pipelines.is_oit_eligible(slot)
+        {
+            self.game
+                .pack
+                .render
+                .mod_pipelines
+                .warn_oit_ineligible(slot);
+            return Err(PipelineDrawError::Pipeline(RenderPipelineError::Invalid));
+        }
+        self.surface.prepare_draw(stage, |surface| {
+            self.game
+                .native_world_draw_mesh(surface, pipeline, mesh, draw, bindings)
+        })
+    }
+
+    fn draw_vertices(
+        &mut self,
+        stage: RenderLevelStage,
+        pipeline: RenderPipelineRef,
+        vertices: &[&[u8]],
+        indices: Option<(IndexFormat, &[u8])>,
+        draw: MeshDraw,
+        bindings: &DrawBindings<'_>,
+    ) -> Result<PreparedWorldDraw, PipelineDrawError> {
+        if !stage.has_render_pass() {
+            return Err(PipelineDrawError::Pipeline(RenderPipelineError::Invalid));
+        }
+        let slot = self
+            .game
+            .pack
+            .render
+            .mod_pipelines
+            .slot(pipeline)
+            .map_err(PipelineDrawError::Pipeline)?;
+        if stage.oit_stage().is_some() && !self.game.pack.render.mod_pipelines.is_oit_eligible(slot)
+        {
+            self.game
+                .pack
+                .render
+                .mod_pipelines
+                .warn_oit_ineligible(slot);
+            return Err(PipelineDrawError::Pipeline(RenderPipelineError::Invalid));
+        }
+        self.surface.prepare_draw(stage, |surface| {
+            self.game
+                .native_world_draw_vertices(surface, pipeline, vertices, indices, draw, bindings)
         })
     }
 }

@@ -512,8 +512,10 @@ impl ScreenChild {
 // no wire: borrowed registrar scoped to a single `screen_init_post` dispatch.
 pub trait ScreenWidgets {
     /// Registered children in initialization order (`ScreenEvent.Init.getListenersList`).
-    /// Includes earlier listeners' accepted edits and this listener's staged edits. Vanilla
-    /// controls are present on screens that register their initialized controls with the engine.
+    /// Includes earlier listeners' accepted edits and this listener's staged edits. The pause
+    /// screen (`PauseScreen.init`) and the title screen (`TitleScreen.init`, with the engine's
+    /// own buttons after Minecraft Realms and its bottom notice last) list their own controls
+    /// first, each labelled with its translation key.
     fn children(&self) -> &[ScreenChild];
 
     /// Mount a vanilla-style push button on the screen (`Screen.addRenderableWidget`).
