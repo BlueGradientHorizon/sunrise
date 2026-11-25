@@ -681,10 +681,13 @@ mod tests {
         let wrong = declaring("    float PolySunAngle;\n", "PolySunAngle");
         assert!(matches!(
             resolve("{}", &wrong),
-            Err(ExpressionRefusal::Globals(GlobalsRefusal::Member {
+            Err(ExpressionRefusal::Globals(at, GlobalsRefusal::Member {
                 index: 0,
                 ..
-            }))
+            })) if at == sunrise_glsl::Location {
+                file: "minecraft:shaders/core/core.fsh".into(),
+                line: 2,
+            }
         ));
     }
 }

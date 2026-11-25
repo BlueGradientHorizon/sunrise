@@ -234,25 +234,30 @@ impl std::fmt::Debug for ExpressionUniform {
 /// Why a pack core shader's expression uniforms refuse it when it loads.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ExpressionRefusal {
-    /// A stage reads the block, and it is not one float.
-    NotOneFloat(String),
+    /// A stage reads the block, and it is not one float: where it is declared, and its name.
+    NotOneFloat(sunrise_glsl::Location, String),
     /// A `shader_modifiers` file of the pipeline's shaders gives a block the game fills
     /// (`LightmapInfo`, `PolyGlobals`).
     Reserved(String),
     /// The shaders declare `PolyGlobals` other than its layout
-    /// (`expression_blocks::check_poly_globals`).
-    Globals(crate::gfx::expression_blocks::GlobalsRefusal),
+    /// (`expression_blocks::check_poly_globals`), at that declaration.
+    Globals(
+        sunrise_glsl::Location,
+        crate::gfx::expression_blocks::GlobalsRefusal,
+    ),
 }
 
 impl std::fmt::Display for ExpressionRefusal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::NotOneFloat(name) => write!(f, "its block {name} is not one float"),
+            Self::NotOneFloat(at, name) => at
+                .error(format!("its block {name} is not one float"))
+                .fmt(f),
             Self::Reserved(name) => write!(
                 f,
                 "a shader_modifiers file of its shaders gives {name}, which the game fills"
             ),
-            Self::Globals(e) => e.fmt(f),
+            Self::Globals(at, e) => at.error(e).fmt(f),
         }
     }
 }
@@ -369,7 +374,7 @@ impl ShaderModifiers {
                 [&program.vertex, &program.fragment],
                 binding,
             )
-            .map_err(ExpressionRefusal::Globals)?;
+            .map_err(|e| ExpressionRefusal::Globals(program.declared_at(binding), e))?;
         }
         let mut uniforms = Vec::new();
         for (i, name) in program.other.iter().enumerate() {
@@ -382,7 +387,10 @@ impl ShaderModifiers {
                 continue;
             }
             if !program.is_float_block(binding) {
-                return Err(ExpressionRefusal::NotOneFloat(name.clone()));
+                return Err(ExpressionRefusal::NotOneFloat(
+                    program.declared_at(binding),
+                    name.clone(),
+                ));
             }
             let order = if stages.contains(wgpu::ShaderStages::FRAGMENT) {
                 [fragment, vertex]
@@ -530,7 +538,13 @@ mod tests {
         let wide = program(&[], &["Wide"], &[]);
         assert_eq!(
             resolved(&modifiers, &wide).unwrap_err(),
-            ExpressionRefusal::NotOneFloat("Wide".into())
+            ExpressionRefusal::NotOneFloat(
+                sunrise_glsl::Location {
+                    file: "minecraft:shaders/core/core.fsh".into(),
+                    line: 5,
+                },
+                "Wide".into()
+            )
         );
         // A `vec4` the vertex stage only declares binds nothing: the fragment stage's float of
         // that name is what the pipeline reads.
