@@ -80,7 +80,7 @@ pub fn mod_items(m: &ModBlockEntity, items: &crate::items::Items) -> Option<Tag>
         .enumerate()
         .filter_map(|(i, stack)| {
             let stack = stack.as_ref()?;
-            let slot = crate::block_entity_nbt::mod_item_slot_tag(i)?;
+            let slot = crate::block_entity_nbt::item_slot_tag(i)?;
             let mut tag = sunrise_items::item_nbt::item_to_nbt(stack, items);
             if let Tag::Compound(fields) = &mut tag {
                 fields.insert("Slot".into(), slot);
