@@ -138,7 +138,10 @@ impl Game<'_> {
     /// `AbstractVillager.getOffers`, as they are now (a copy). Offers not
     /// rolled yet read as empty: they are rolled when a player first trades,
     /// or by `add_offer`; reading never draws a random.
-    pub(in crate::game) fn merchant_offers(&self, merchant: MerchantRef) -> Option<Vec<MerchantOffer>> {
+    pub(in crate::game) fn merchant_offers(
+        &self,
+        merchant: MerchantRef,
+    ) -> Option<Vec<MerchantOffer>> {
         let index = self.native_merchant_index(merchant)?;
         Some(self.merchant_read(index, |offers, _, _| offers.to_vec()))
     }
@@ -187,7 +190,11 @@ impl Game<'_> {
 
     /// Removes offer `index`, the ones after it moving up. False for an index
     /// past the end or a stale handle.
-    pub(in crate::game) fn merchant_remove_offer(&mut self, merchant: MerchantRef, index: u32) -> bool {
+    pub(in crate::game) fn merchant_remove_offer(
+        &mut self,
+        merchant: MerchantRef,
+        index: u32,
+    ) -> bool {
         let Some(mob) = self.native_merchant_index(merchant) else {
             return false;
         };
@@ -202,7 +209,10 @@ impl Game<'_> {
 
     /// `Merchant.getTradingPlayer`: the player whose trading screen is open on
     /// it. None when nobody trades, or the screen is the host window's.
-    pub(in crate::game) fn merchant_trading_player(&self, merchant: MerchantRef) -> Option<PlayerRef> {
+    pub(in crate::game) fn merchant_trading_player(
+        &self,
+        merchant: MerchantRef,
+    ) -> Option<PlayerRef> {
         let index = self.native_merchant_index(merchant)?;
         let conn = self.lan_trade_conn(self.mobs[index].id)?;
         self.player(self.lan_trade_player(conn)?)
@@ -260,7 +270,11 @@ impl Game<'_> {
     /// vanilla. The offers stay as they are; the next level-up adds its trades
     /// (a level past 5 can't level up). A trading guest's session follows,
     /// and gets the sequences a level-up from the new level needs.
-    pub(in crate::game) fn merchant_set_level(&mut self, merchant: MerchantRef, level: i32) -> bool {
+    pub(in crate::game) fn merchant_set_level(
+        &mut self,
+        merchant: MerchantRef,
+        level: i32,
+    ) -> bool {
         let Some(index) = self.native_villager_index(merchant) else {
             return false;
         };
@@ -281,7 +295,11 @@ impl Game<'_> {
     /// `VillagerData.withType`: also the type a trading guest's session
     /// rolls its next level-up offers with. False for an unknown id, a
     /// wandering trader, or a trade open where this can't reach.
-    pub(in crate::game) fn merchant_set_villager_type(&mut self, merchant: MerchantRef, kind: &str) -> bool {
+    pub(in crate::game) fn merchant_set_villager_type(
+        &mut self,
+        merchant: MerchantRef,
+        kind: &str,
+    ) -> bool {
         let Some(index) = self.native_villager_index(merchant) else {
             return false;
         };

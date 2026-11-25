@@ -67,7 +67,7 @@ impl mod_api::Hooks for ContainerFixtureMod {
 #[ignore = "daily"]
 fn actual_data_commands_preserve_same_mod_entity_runtime_state() {
     if crate::game::native_entity_refs::tests::run_fresh_cases(
-        "game::commands::data::mod_block_entity_tests::actual_data_commands_preserve_same_mod_entity_runtime_state",
+        "game::server_side::commands::data::mod_block_entity_tests::actual_data_commands_preserve_same_mod_entity_runtime_state",
         "SUNRISE_MOD_DATA_COMMAND_CHILD",
         &["saved-data"],
     ) {

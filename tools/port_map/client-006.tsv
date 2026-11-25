@@ -82,7 +82,7 @@ BabyWolfModel.createBodyLayer	skip:data		geometry baked into entity-models.json,
 BabyWolfModel.shakeOffWater	port	crates/sunrise-client/src/mobs/tame.rs::anim	shake roll of head, body and tail (body_roll)
 BabyWolfModel.setSittingPose	port	crates/sunrise-client/src/mobs/tame.rs::anim	baby sitting pose: body xRot minus pi/2
 WolfModel.setSittingPose	port	crates/sunrise-client/src/mobs/tame.rs::anim	sitting pose, adult and baby
-EvokerFangsModel.setupAnim	port	crates/sunrise-client/src/game/mobs/fangs.rs::Game::fangs_geometry	jaws, base sink and pre-scale
+EvokerFangsModel.setupAnim	port	crates/sunrise-client/src/game/mobs/fangs_client.rs::Game::fangs_geometry	jaws, base sink and pre-scale
 SpearAnimations.thirdPersonAttackHand	port	crates/sunrise-client/src/spear.rs::third_person_attack_arm	what a STAB swing adds to the swinging arm's x rotation
 SpearAnimations.firstPersonAttack	port	crates/sunrise-client/src/spear.rs::first_person_attack	the first-person jab, applied after the arm transform
 SpearAnimations.UseParams.fromKineticWeapon	port	crates/sunrise-client/src/spear.rs::UseParams::of	the charge timeline and sway values

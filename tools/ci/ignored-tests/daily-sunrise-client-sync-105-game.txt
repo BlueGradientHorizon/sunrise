@@ -12,11 +12,11 @@ sunrise-client game::cat_spawner::cat_spawner_tests::a_cat_spawner_cat_faces_sou
 sunrise-client game::server_side::cauldron_underwater_tests::a_cauldron_under_water_swallows_a_lava_or_powder_snow_bucket lib daily resources
 sunrise-client game::client_side::combat_client::bee_sting_tests::a_landed_sting_sets_the_stinger_and_poisons_on_normal_and_hard lib daily resources
 sunrise-client game::client_side::combat_client::bee_sting_tests::a_refused_sting_leaves_the_bee_alone lib daily resources
-sunrise-client game::commands::execute::score_condition_tests::an_unknown_source_objective_drops_a_forked_condition_silently lib daily resources
-sunrise-client game::commands::execute::score_condition_tests::an_unknown_source_objective_fails_a_terminal_condition lib daily resources
-sunrise-client game::commands::world_cmds::attribute_missing_tests::modifier_add_on_an_attribute_the_player_lacks_is_the_no_attribute_error lib daily resources
-sunrise-client game::commands::world_cmds::attribute_missing_tests::modifier_remove_on_an_attribute_the_player_lacks_is_the_no_attribute_error lib daily resources
-sunrise-client game::commands::world_cmds::attribute_modifier_command_tests::a_command_modifier_is_saved_with_the_player lib daily resources
+sunrise-client game::server_side::commands::execute::score_condition_tests::an_unknown_source_objective_drops_a_forked_condition_silently lib daily resources
+sunrise-client game::server_side::commands::execute::score_condition_tests::an_unknown_source_objective_fails_a_terminal_condition lib daily resources
+sunrise-client game::server_side::commands::world_cmds::attribute_missing_tests::modifier_add_on_an_attribute_the_player_lacks_is_the_no_attribute_error lib daily resources
+sunrise-client game::server_side::commands::world_cmds::attribute_missing_tests::modifier_remove_on_an_attribute_the_player_lacks_is_the_no_attribute_error lib daily resources
+sunrise-client game::server_side::commands::world_cmds::attribute_modifier_command_tests::a_command_modifier_is_saved_with_the_player lib daily resources
 sunrise-client game::server_side::creaking::creaking_heart_events_tests::a_heart_spawn_posts_entity_place_and_the_poof lib daily resources
 sunrise-client game::server_side::creaking::creaking_heart_events_tests::each_resin_clump_posts_block_place lib daily resources
 sunrise-client game::server_side::creaking::creaking_heart_events_tests::shearing_a_copper_golem_posts_shear_at_the_golem lib daily resources

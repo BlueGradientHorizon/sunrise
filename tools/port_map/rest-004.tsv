@@ -144,7 +144,7 @@ LocalPlayer.canStartSprinting	port	crates/sunrise-client/src/sprint.rs::Conditio
 LocalPlayer.onGameModeChanged	missing		minor: switching to spectator keeps vertical momentum
 LocalPlayer.getRopeHoldPosition	port	crates/sunrise-client/src/game/entities/leads_client.rs::Game::player_rope_hold	the first-person rope point from the look angles and the main arm
 LocalPlayer.raycastHitResult	port	crates/sunrise-client/src/game/items/hand.rs::GameHands::hit	gap: minor: block fallback is Game::pick; no separate item attack-range pass
-LocalPlayer.filterHitResult	inline	crates/sunrise-client/src/game/game_server.rs::Game::pick	gap: minor: reach is applied inside the clip; no miss direction is returned
+LocalPlayer.filterHitResult	inline	crates/sunrise-client/src/game/entities/pick_ray.rs::Game::pick	gap: minor: reach is applied inside the clip; no miss direction is returned
 LocalPlayerResolver.fetchByName	missing		minor: unsure: no player-list lookup by name on the client
 LocalPlayerResolver.fetchById	inline	crates/sunrise-client/src/game/network/remote/sync_client.rs::Game::remote_pushes	the uuid -> tab entry lookup is inline wherever a player's name, team or skin is needed
 Options.mouseWheelSensitivity	port	crates/sunrise-client-render/src/options_ui_wheel.rs::kind	IntRange(-200, 100) through logMouse/unlogMouse: the slider runs over 10^(i/100), 0.01 to 10.0

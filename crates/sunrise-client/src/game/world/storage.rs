@@ -425,6 +425,7 @@ impl Game<'_> {
     /// `quickMoveStack` of the open chest-like, hopper, dispenser or furnace
     /// menu for a shift-click on `slot`, run by the verified menu engine
     /// (`sunrise_client::menu`); false when the menu has none.
+    #[allow(dead_code)]
     pub(in crate::game) fn container_quick_move(&mut self, slot: usize) -> bool {
         self.click_open_inventory(Some(slot), 0, sunrise_client::menu::Input::QuickMove)
     }

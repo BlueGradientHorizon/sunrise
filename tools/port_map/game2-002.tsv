@@ -54,7 +54,7 @@ Creeper.registerGoals	port	crates/sunrise-client/src/mobs/hostile.rs::register
 Creeper.getMaxFallDistance	port	crates/sunrise-client/src/mobs/nav.rs::comfortable_fall_distance	the creeper's own override, comfortable_fall_distance(health - 1.0)
 Creeper.defineSynchedData	skip:other		swell, powered and ignited are Mob fields
 Creeper.addAdditionalSaveData	inline	crates/sunrise-client/src/entity_nbt.rs::mob_to_nbt	gap: minor: Fuse and ExplosionRadius are written as constants 30 and 3, not the creeper's values
-Creeper.thunderHit	port	crates/sunrise-client/src/game/entities/lightning.rs::Game::thunder_hit
+Creeper.thunderHit	port	crates/sunrise-client/src/game/entities/lightning_server.rs::Game::thunder_hit
 Creeper.spawnLingeringCloud	port	crates/sunrise-client/src/mobs/hostile.rs::creeper_tick	MobEvent::LingeringCloud after the Explode: radius 2.5, wait 10, 300 ticks, -radius/duration a tick, the creeper's effects at 0.25 of their duration with their ambient and visible flags (game/items/potions.rs::spawn_creeper_cloud); a mob keeps ambient_effects now (NBT, /effect, expiry, conversion, the synchronized particles)
 ElderGuardian.createAttributes	skip:data		attribute defaults come from data tables
 Enderman.registerGoals	port	crates/sunrise-client/src/mobs/enderman.rs::register	gap: minor: no anger-reset target goal (priority 4)

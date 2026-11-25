@@ -177,7 +177,7 @@ fn borrowed_creaking_hurt_finishes_before_the_tick_continues() {
 pub(in crate::game) fn run_borrowed_creaking_hurt_finishes_before_the_tick_continues() {
     const CASE: &str = "SUNRISE_BORROWED_CREAKING_CASE";
     if run_fresh_cases(
-        "game::commands::world_cmds::registered_damage_tests::creaking_borrowed::borrowed_creaking_hurt_finishes_before_the_tick_continues",
+        "game::server_side::commands::world_cmds::registered_damage_tests::creaking_borrowed::borrowed_creaking_hurt_finishes_before_the_tick_continues",
         CASE,
         &[
             "expiry",

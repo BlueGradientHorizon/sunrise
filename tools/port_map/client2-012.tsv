@@ -44,7 +44,7 @@ TabNavigationBar.Builder.addTab	skip:java		builder
 TabNavigationBar.Builder.build	skip:java		builder
 AdvancementToast.update	port	crates/sunrise-client/src/game/interface/advancements/mod.rs::Toast::wants_show	5 s visible, scaled by the notification time option
 AdvancementToast.isChallengeAdvancement	port	crates/sunrise-client/src/game/interface/advancements/mod.rs::Toast::is_challenge	challenge check for the sound when a toast enters a slot
-AdvancementToast.extractRenderState	port	crates/sunrise-client/src/game/interface/advancements/mod.rs::Game::draw_advancement_toast	gap: player: a long title is one line; vanilla wraps it and fades the frame label into it over 1.5 s
+AdvancementToast.extractRenderState	port	crates/sunrise-client/src/game/interface/advancements/mod_client.rs::Game::draw_advancement_toast	gap: player: a long title is one line; vanilla wraps it and fades the frame label into it over 1.5 s
 FriendToast.update	skip:service		friend toasts belong to the friend-request service; Sunrise's friends are an invite code for the open world (sunrise-friends), with no requests and no toasts
 FriendToast.extractRenderState	skip:service		no friend toast is drawn: Sunrise's friends are an invite code for the open world (sunrise-friends)
 FriendToast.add	skip:service		nothing adds a friend toast: no request service, no toast queue entry
@@ -57,7 +57,7 @@ NowPlayingToast.tickMusicNotes	port	crates/sunrise-client/src/toasts.rs::MusicNo
 NowPlayingToast.showToast	port	crates/sunrise-client/src/toasts.rs::NowPlayingToast::show	slide in and count down over 5000 ms times the notification time
 NowPlayingToast.update	port	crates/sunrise-client/src/toasts.rs::NowPlayingToast::update	the slide, the hide when the song ends and the notes ticking
 RecipeToast.update	port	crates/sunrise-client/src/game/interface/advancements/mod.rs::Toast::wants_show	recipe toast visibility; the cycling index is Toast::displayed_recipe
-RecipeToast.extractRenderState	port	crates/sunrise-client/src/game/interface/advancements/mod.rs::Game::draw_advancement_toast	recipe branch: station at 0.6 scale over the cycling result
+RecipeToast.extractRenderState	port	crates/sunrise-client/src/game/interface/advancements/mod_client.rs::Game::draw_advancement_toast	recipe branch: station at 0.6 scale over the cycling result
 SystemToast.height	missing		minor: no multi-line height; a system toast always takes one 32 px slot
 SystemToast.extractRenderState	port	crates/sunrise-client/src/toasts.rs::SystemToast::draw	gap: minor: one line per title and message, no wrapping
 SystemToast.extractTextLines	inline	crates/sunrise-client/src/toasts.rs::SystemToast::draw	text lines drawn in draw

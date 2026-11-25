@@ -7,10 +7,7 @@ use super::*;
 pub(in crate::game) const OFFHAND_SLOT: usize = 40;
 
 /// `AttackRange.effectiveMinRange`, `effectiveMaxRange` (for a player) and `hitboxMargin`.
-pub(in crate::game) fn attack_reach(
-    range: &serde_json::Value,
-    creative: bool,
-) -> (f32, f32, f32) {
+pub(in crate::game) fn attack_reach(range: &serde_json::Value, creative: bool) -> (f32, f32, f32) {
     let value = |key: &str, default: f32| range[key].as_f64().map_or(default, |v| v as f32);
     let (min, max) = if creative {
         (
@@ -156,11 +153,7 @@ impl Game<'_> {
     }
 
     /// `insert_stack_into_inventory` with `max` the stack's own maximum.
-    pub(in crate::game) fn insert_stack_up_to(
-        &mut self,
-        stack: &mut ItemStack,
-        max: u32,
-    ) -> bool {
+    pub(in crate::game) fn insert_stack_up_to(&mut self, stack: &mut ItemStack, max: u32) -> bool {
         let before = stack.count;
         let left = inventory_add(
             &mut self.inventory,
@@ -269,6 +262,7 @@ impl Game<'_> {
     }
 
     /// The armour (head first) and off hand in `EquipmentSlot` order.
+    #[allow(dead_code)]
     pub(in crate::game) fn player_equipment(&self) -> [Option<ItemStack>; 5] {
         let [head, chest, legs, feet] = self.armor.clone();
         [head, chest, legs, feet, self.offhand.clone()]

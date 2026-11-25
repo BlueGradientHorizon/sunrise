@@ -82,6 +82,10 @@ pub(in crate::game) mod clone_dimensions_tests;
 pub(in crate::game) mod combat;
 #[path = "administration/command_harness.rs"]
 pub(in crate::game) mod command_harness;
+#[path = "administration/command_minecarts_server.rs"]
+pub(in crate::game) mod command_minecarts_server;
+#[path = "administration/commands/mod.rs"]
+pub(in crate::game) mod commands;
 #[path = "blocks/composter.rs"]
 pub(in crate::game) mod composter;
 #[path = "items/consume.rs"]
@@ -371,6 +375,8 @@ pub(in crate::game) mod native_book_invalidation;
 pub(in crate::game) mod native_book_net;
 #[path = "modding/native_book_scope.rs"]
 pub(in crate::game) mod native_book_scope;
+#[path = "modding/native_book_settings.rs"]
+pub(in crate::game) mod native_book_settings;
 #[path = "modding/native_boss_bar_refs.rs"]
 pub(in crate::game) mod native_boss_bar_refs;
 #[path = "modding/native_bots.rs"]
@@ -393,6 +399,8 @@ pub(in crate::game) mod native_collision_exclusions;
 pub(in crate::game) mod native_config_files;
 #[path = "modding/native_connection_groups.rs"]
 pub(in crate::game) mod native_connection_groups;
+#[path = "modding/native_console.rs"]
+pub(in crate::game) mod native_console;
 #[cfg(test)]
 #[path = "modding/native_console_tests.rs"]
 pub(in crate::game) mod native_console_tests;
@@ -440,16 +448,6 @@ pub(in crate::game) mod native_entity_moves;
 pub(in crate::game) mod native_entity_physics;
 #[path = "modding/native_entity_refs.rs"]
 pub(in crate::game) mod native_entity_refs;
-#[path = "player_server.rs"]
-pub(in crate::game) mod player_server;
-#[path = "modding/native_merchant_refs.rs"]
-pub(in crate::game) mod native_merchant_refs;
-#[path = "modding/native_mob_navigation.rs"]
-pub(in crate::game) mod native_mob_navigation;
-#[path = "modding/native_mob_wanted_position.rs"]
-pub(in crate::game) mod native_mob_wanted_position;
-#[path = "modding/native_ride_player.rs"]
-pub(in crate::game) mod native_ride_player;
 #[path = "modding/native_entity_remove.rs"]
 pub(in crate::game) mod native_entity_remove;
 #[path = "modding/native_entity_riding.rs"]
@@ -566,12 +564,18 @@ pub(in crate::game) mod native_menu_inventory_tests;
 pub(in crate::game) mod native_menu_places;
 #[path = "modding/native_menus.rs"]
 pub(in crate::game) mod native_menus;
+#[path = "modding/native_merchant_refs.rs"]
+pub(in crate::game) mod native_merchant_refs;
 #[path = "modding/native_minecart_refs.rs"]
 pub(in crate::game) mod native_minecart_refs;
 #[path = "modding/native_mob_goals.rs"]
 pub(in crate::game) mod native_mob_goals;
+#[path = "modding/native_mob_navigation.rs"]
+pub(in crate::game) mod native_mob_navigation;
 #[path = "modding/native_mob_refs.rs"]
 pub(in crate::game) mod native_mob_refs;
+#[path = "modding/native_mob_wanted_position.rs"]
+pub(in crate::game) mod native_mob_wanted_position;
 #[cfg(test)]
 #[path = "modding/native_mob_wanted_position_tests.rs"]
 pub(in crate::game) mod native_mob_wanted_position_tests;
@@ -651,6 +655,8 @@ pub(in crate::game) mod native_registry_entries;
 pub(in crate::game) mod native_registry_ids_tests;
 #[path = "modding/native_resources.rs"]
 pub(in crate::game) mod native_resources;
+#[path = "modding/native_ride_player.rs"]
+pub(in crate::game) mod native_ride_player;
 #[path = "modding/native_scoreboard.rs"]
 pub(in crate::game) mod native_scoreboard;
 #[path = "modding/native_server_distances.rs"]
@@ -715,6 +721,8 @@ pub(in crate::game) mod part_shearing;
 pub(in crate::game) mod passengers;
 #[path = "mobs/pending_births.rs"]
 pub(in crate::game) mod pending_births;
+#[path = "interface/perf_remote.rs"]
+pub(in crate::game) mod perf_remote;
 #[path = "world/persist.rs"]
 pub(in crate::game) mod persist;
 #[cfg(test)]
@@ -746,6 +754,8 @@ pub(in crate::game) mod player_residency_tests;
 #[cfg(test)]
 #[path = "world/player_save_projection_tests.rs"]
 pub(in crate::game) mod player_save_projection_tests;
+#[path = "player_server.rs"]
+pub(in crate::game) mod player_server;
 #[path = "world/player_spawn.rs"]
 pub(in crate::game) mod player_spawn;
 #[path = "blocks/potent_sulfur.rs"]
@@ -787,6 +797,8 @@ pub(in crate::game) mod save_pass_tests;
 pub(in crate::game) mod scoreboard;
 #[path = "blocks/sculk_fixture.rs"]
 pub(in crate::game) mod sculk_fixture;
+#[path = "blocks/sculk_server.rs"]
+pub(in crate::game) mod sculk_server;
 #[path = "entities/seats.rs"]
 pub(in crate::game) mod seats;
 #[path = "server_side/server_effects.rs"]
@@ -897,6 +909,8 @@ pub(in crate::game) mod villagers;
 #[cfg(test)]
 #[path = "world/visibility_unwind_tests.rs"]
 pub(in crate::game) mod visibility_unwind_tests;
+#[path = "world/wake_time.rs"]
+pub(in crate::game) mod wake_time;
 #[path = "mobs/wandering_trader.rs"]
 pub(in crate::game) mod wandering_trader;
 #[path = "interface/wind.rs"]
@@ -940,18 +954,6 @@ pub(in crate::game) mod chat_server;
 pub(in crate::game) mod command_blocks_server;
 #[path = "administration/commands/mod_server.rs"]
 pub(in crate::game) mod commands_server;
-#[path = "world/wake_time.rs"]
-pub(in crate::game) mod wake_time;
-#[path = "interface/perf_remote.rs"]
-pub(in crate::game) mod perf_remote;
-#[path = "modding/native_console.rs"]
-pub(in crate::game) mod native_console;
-#[path = "modding/native_book_settings.rs"]
-pub(in crate::game) mod native_book_settings;
-#[path = "administration/commands/mod.rs"]
-pub(in crate::game) mod commands;
-#[path = "administration/command_minecarts_server.rs"]
-pub(in crate::game) mod command_minecarts_server;
 #[cfg(test)]
 #[path = "runtime/core_tests_server.rs"]
 pub(in crate::game) mod core_tests_server;
@@ -1015,8 +1017,6 @@ pub(in crate::game) mod remote_tags_server;
 pub(in crate::game) mod repro_server;
 #[path = "world/saving_server.rs"]
 pub(in crate::game) mod saving_server;
-#[path = "blocks/sculk_server.rs"]
-pub(in crate::game) mod sculk_server;
 #[path = "interface/shader_packs_server.rs"]
 pub(in crate::game) mod shader_packs_server;
 #[path = "interface/sign_edit_server.rs"]

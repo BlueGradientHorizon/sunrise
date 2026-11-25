@@ -39,7 +39,7 @@ pub(in crate::game) fn riptide(stack: Option<&ItemStack>) -> u32 {
 #[ignore = "daily"]
 fn enchant_reports_single_target_errors_and_counts_only_compatible_living_targets() {
     if run_fresh_cases(
-        "game::commands::enchant_tests::enchant_reports_single_target_errors_and_counts_only_compatible_living_targets",
+        "game::server_side::commands::enchant_tests::enchant_reports_single_target_errors_and_counts_only_compatible_living_targets",
         "SUNRISE_TEST_ENCHANT_LIVING_TARGETS",
         &["living"],
     ) {

@@ -116,7 +116,7 @@ A target is the function's module path, then its type and name:
 
 - a method: `sunrise_client::game::server_side::autosave_server::Game<'_>::on_tick_rate_changed`, where the module is the one
   holding the `impl` block and the type is written as there, lifetimes included;
-- a free function: `sunrise_client::game::commands::misc::millis`;
+- a free function: `sunrise_client::game::server_side::commands::misc::millis`;
 - a trait method: the module of the `impl Trait for Type` block, then `<Type as Trait>` as written, then the
   function: `sunrise_client::game::level_access::<GameLevel<'_> as LevelAccess>::block_state`.
 

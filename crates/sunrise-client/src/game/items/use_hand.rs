@@ -573,7 +573,10 @@ impl Game<'_> {
             return Ok(true);
         }
         // Block foods attempt placement before starting consumption.
-        if !on_block && (info.block.is_none() || block_hit.is_none()) && self.server_start_eating(&info) {
+        if !on_block
+            && (info.block.is_none() || block_hit.is_none())
+            && self.server_start_eating(&info)
+        {
             return Ok(true);
         }
         // BoatItem.use also performs its own fluid/block raycast.

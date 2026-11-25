@@ -371,7 +371,8 @@ impl Game<'_> {
     ) -> Option<Aabb> {
         match member.kind {
             PickKind::RemoteDisplay => {
-                let [x, y, z] = self.side_client_display_position(entity)?; let p = Vec3::new(x, y, z);
+                let [x, y, z] = self.side_client_display_position(entity)?;
+                let p = Vec3::new(x, y, z);
                 let p = Vec3::new(p.x, p.y, p.z);
                 Some(Aabb::new(p, p))
             }
@@ -1539,9 +1540,7 @@ pub(in crate::game) mod tests {
     }
 
     /// The parent runs and checks an isolated child; the child loads the Part fixtures' types.
-    pub(in crate::game) fn declared_part_root(
-        name: &str,
-    ) -> Option<std::path::PathBuf> {
+    pub(in crate::game) fn declared_part_root(name: &str) -> Option<std::path::PathBuf> {
         if run_fresh_cases(name, "SUNRISE_DECLARED_PART_GAME_CHILD", &["valid"]) {
             return None;
         }

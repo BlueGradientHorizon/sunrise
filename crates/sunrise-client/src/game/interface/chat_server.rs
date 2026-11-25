@@ -64,7 +64,9 @@ impl Game<'_> {
             return;
         }
         let snap = self.hub_clock_snapshot();
-        let Some(host) = self.lan.as_mut() else { return };
+        let Some(host) = self.lan.as_mut() else {
+            return;
+        };
         for (name, total, rate) in snap.others {
             host.hub.set_clock_state(&name, total, rate);
         }

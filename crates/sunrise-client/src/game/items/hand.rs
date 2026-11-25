@@ -3,6 +3,9 @@
 //! `continueAttack`, `MultiPlayerGameMode` block breaking), the arm swing
 //! (`LivingEntity.SwingState`) and the first-person equip heights
 //! (`FirstPersonHandsAndItems`) with the item swap ticker they read.
+#[cfg(test)]
+use super::held_items::in_attack_range;
+use super::held_items::{attack_range_contains, attack_reach};
 #[allow(unused_imports)]
 use super::{Game, Mining, minecarts::CartKind};
 #[allow(unused_imports)]
@@ -14,9 +17,6 @@ use sunrise_client::{
 };
 #[allow(unused_imports)]
 use sunrise_core::geometry::{Aabb, Vec3};
-use super::held_items::{attack_range_contains, attack_reach};
-#[cfg(test)]
-use super::held_items::in_attack_range;
 
 /// The point a `ServerboundInteractPacket` carries: `EntityHitResult.getLocation()
 /// - entity.position()`, measured from the entity's feet, as

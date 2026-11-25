@@ -906,7 +906,9 @@ impl LevelAccess for GameLevel<'_> {
         if let Some(signal) = command_blocks::analog_signal(self.world, (pos.x, pos.y, pos.z)) {
             return signal;
         }
-        if let Some(signal) = super::sculk_server::sensor_signal(self.world, self.behaviours, state, pos) {
+        if let Some(signal) =
+            super::sculk_server::sensor_signal(self.world, self.behaviours, state, pos)
+        {
             return signal;
         }
         if let Some((_, comparator)) = jukebox::jukebox_signals(self.world, self.items, pos) {

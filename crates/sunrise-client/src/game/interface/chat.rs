@@ -199,15 +199,14 @@ impl Game<'_> {
     }
 }
 
-
-#[allow(unused_imports)]
-pub use crate::game::chat_common::{PLAYER_NAME, TimeMarker};
 #[allow(unused_imports)]
 pub(in crate::game) use crate::game::chat_common::{
     BLOCK_PROPERTIES, BlockProperties, COMMAND_EXPORTS, OVERWORLD_CLOCK, RESOURCE_IDS, ResourceIds,
     block_properties, command_export, ids_in, json_ids_in, json_ids_of_every_namespace,
     overworld_timelines, owner_permission, resource_ids, summonable_entities, templates_under,
 };
+#[allow(unused_imports)]
+pub use crate::game::chat_common::{PLAYER_NAME, TimeMarker};
 #[allow(unused_imports)]
 pub use sunrise_gameplay::world_clock::WorldClock;
 /// `ChatComponent.Draft`: the text the chat box kept, and whether it was a command.
@@ -404,18 +403,6 @@ pub(in crate::game) mod hud_mode_tests {
         assert!(ui.hand_hidden());
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
 
 impl Game<'_> {
     pub(in crate::game) fn client_sound_event_names(&self) -> Vec<String> {
@@ -1694,7 +1681,6 @@ pub(in crate::game::client_side) fn screenshot_name(
         n += 1;
     }
 }
-
 
 /// `ConfirmLinkScreen`'s buttons, left to right: yes, copy, no.
 pub(in crate::game) const LINK_YES: usize = 0;

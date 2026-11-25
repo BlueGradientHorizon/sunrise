@@ -189,7 +189,7 @@ FlowerBedBlock.performBonemeal	port	crates/sunrise-world/src/level/bonemeal.rs::
 FlowerBedBlock.rotate	port	crates/sunrise-world/src/worldgen/structure.rs::StateTransforms::rotate
 FlowerBlock.makeEffectList	skip:data		the constructor sites' effects are the table in sunrise-items/src/flowers.rs (floor(seconds * 20))
 FrogspawnBlock.mayPlaceOn	port	crates/sunrise-world/src/level/survive.rs::Sim::frogspawn_may_place_on
-FrogspawnBlock.spawnTadpoles	port	crates/sunrise-client/src/game/game_server.rs::Game::process_level_events	handles the hatch block event: 2 to 5 tadpoles
+FrogspawnBlock.spawnTadpoles	port	crates/sunrise-client/src/game/game_server.rs::Game::server_process_level_events	handles the hatch block event: 2 to 5 tadpoles
 FrogspawnBlock.tick	port	crates/sunrise-world/src/level/tick.rs::Sim::tick_block
 FrogspawnBlock.updateShape	port	crates/sunrise-world/src/level/shapes.rs::Sim::update_shape_class
 FrostedIceBlock.fewerNeigboursThan	port	crates/sunrise-world/src/level/hooks.rs::Sim::frosted_ice_fewer_neighbours_than

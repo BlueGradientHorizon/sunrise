@@ -18,12 +18,6 @@ pub(in crate::game::client_side) use sunrise_gameplay::painting_variants::{
     PaintingVariants, Variant, frame_coexists, painting_coexists, painting_facing,
 };
 
-/// Whether the camera at the origin is on the `normal` side of `corners`.
-fn faces_camera(corners: &[glam::DVec3; 4], normal: glam::DVec3) -> bool {
-    let centre = (corners[0] + corners[1] + corners[2] + corners[3]) / 4.0;
-    normal.dot(-centre) > 0.0
-}
-
 impl Game<'_> {
     /// PaintingRenderer: variant on the front, back texture behind and on the edges.
     pub(in crate::game) fn painting_geometry(

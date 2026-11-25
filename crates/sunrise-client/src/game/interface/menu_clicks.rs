@@ -6,6 +6,7 @@ use super::*;
 
 impl Game<'_> {
     /// `quickMoveStack` of the open plain menu for a shift-click.
+    #[allow(dead_code)]
     pub(in crate::game) fn inventory_quick_move(&mut self, slot: usize) -> bool {
         self.click_open_inventory(Some(slot), 0, sunrise_client::menu::Input::QuickMove)
     }
@@ -951,6 +952,7 @@ impl Game<'_> {
             *d = menu.data[i] == 1;
         }
     }
+    #[allow(dead_code)]
     #[inline(always)]
     pub(in crate::game) fn hovered_inventory_slot(&self) -> Option<usize> {
         let size = self

@@ -1,6 +1,6 @@
 field	type	owner	reason	declaration_index	visibility	wrapper
 res	Arc<Resources>	game	shared (survey + review)	0	-	-
-rest_loader	Option<WorldRestLoader>	game	drop-order (client): WorldRestLoader holds JoinHandle; precedes integrated_starting (15) and later effectful Game fields	1	-	client_shared
+rest_loader	Option<WorldRestLoader>	game	shared (world rest loader used on both sides)	1	-	-
 pending_entry	Option<PendingWorldEntry>	game	drop-order (client): Option<PendingWorldEntry> Local.create WorldOptions retains Arc<[Arc<DataPack>]> archive-backed ResourceSource; precedes integrated_starting (15) and streaming (36)	2	-	client_only
 debug_density	RefCell<debug_keys::DensityCache>	client	client (survey; review=common from unpruned BFS, group=debug)	3	side	-
 pending_pack_reload	bool	client	client (survey + review)	4	side	-
@@ -215,8 +215,8 @@ spawn_wait	Vec<(i32, i32)>	server	server (survey; review=common from unpruned BF
 mobs	sunrise_client::join_seq::JoinList<Mob>	game	shared (survey + review)	213	-	-
 mob_index	mob_index::MobIndex	game	shared (survey + review)	214	-	-
 creatures	creatures::Creatures	game	shared (survey + review)	215	-	-
-sculk	sculk::SculkState	game	shared (survey + review)	216	-	-
-raiding	raids::Raiding	game	drop-order (server): Raiding retains shared Arc<GameplayAttributes> and Arc<Vec<[i32; 3]>>; precedes title (234) and reload_resources (577)	217	-	server_shared
+sculk	sculk_server::SculkState	server	server-only sculk/game-event simulation (darkness_blend moved to ClientState)	216	side	-
+raiding	raids::Raiding	game	drop-order (server): Raiding retains shared Arc<GameplayAttributes> and Arc<Vec<[i32; 3]>>; precedes title (234) and reload_resources (577)	217	-	server_only
 attack_ticks	u32	server	server (survey; review=common from unpruned BFS, group=player-actions)	218	side	-
 attack_item	Option<Arc<str>>	server	server (survey; review=common from unpruned BFS, group=player-actions)	219	side	-
 last_hurt_by_player	HashMap<u32, combat::PlayerCredit>	server	server (survey; review=common from unpruned BFS, group=mobs)	220	game	-
@@ -349,19 +349,19 @@ breath_clouds	sunrise_client::join_seq::ResidentList<dragon::Breath>	game	shared
 dragon_model	Option<sunrise_client::mobs::Part>	client	client (survey + review)	347	side	-
 map_patches	Vec<sunrise_client::font::Patch>	client	client (survey + review)	348	side	-
 name_tag_layouts	names::NameTagLayouts	client	client (survey + review)	349	side	-
-text_displays	indexmap::IndexMap<i32, text_displays::RemoteTextDisplay>	game	drop-order (client): RemoteTextDisplay retains HudBatch holding Arc<pictures::Picture> referenced via Weak by gui (25) atlas; precedes skin_downloads (361) and remote (460)	350	-	client_shared
+text_displays	indexmap::IndexMap<i32, text_displays::RemoteTextDisplay>	game	drop-order (client): RemoteTextDisplay retains HudBatch holding Arc<pictures::Picture> referenced via Weak by gui (25) atlas; precedes skin_downloads (361) and remote (460)	350	-	client_only
 see_through_collector	text_displays::SeeThroughCollector	client	client (survey + review)	351	side	-
 translucent_display_collector	text_displays::TranslucentDisplayCollector	client	client (survey + review)	352	side	-
 display_visible_scratch	Vec<(i32, f64)>	client	client (survey + review)	353	side	-
 block_display_parts_scratch	Vec<u32>	client	client (survey + review)	354	side	-
 display_inline_profiles_scratch	Vec<std::sync::Arc<serde_json::Value>>	client	client (survey + review)	355	side	-
-interactions	std::collections::HashMap<i32, interactions::RemoteInteraction>	client	client (survey; review=common from unpruned BFS, group=remote-entities)	356	game	-
+interactions	std::collections::HashMap<i32, interactions::RemoteInteraction>	client	client (survey; review=common from unpruned BFS, group=remote-entities)	356	side	-
 remote_knots	HashMap<u32, [i32; 3]>	client	client (survey; review=common from unpruned BFS, group=remote-entities)	357	side	-
 knot_ids	HashMap<[i32; 3], u32>	server	server (survey; review=common from unpruned BFS, group=entities)	358	game	-
 broken_knots	Vec<[i32; 3]>	server	server (survey; review=common from unpruned BFS, group=entities)	359	game	-
 text_display_vertices	usize	client	client (survey + review)	360	side	-
 skin_downloads	RefCell<sunrise_client::skins::Downloader>	game	drop-order (client): RefCell<Downloader> holds skin download mpsc Sender/Receiver; precedes remote (460), fangs (603)	361	-	client_only
-skin_profiles	RefCell<sunrise_client::skins::Resolver>	game	drop-order (client): RefCell<Resolver> holds profile lookup mpsc Sender/Receiver; precedes remote (460), fangs (603)	362	-	client_only
+skin_profiles	RefCell<sunrise_client::skins::Resolver>	game	shared (skin profile resolver used on both sides)	362	-	-
 skin_slots	sunrise_client::skins::SkinSlots	client	client (survey + review)	363	side	-
 trim_slots	sunrise_client::trims::TrimSlots	client	client (survey + review)	364	side	-
 cart_models	minecarts::CartModels	client	client (survey + review)	365	side	-
@@ -378,7 +378,7 @@ spill	spill::Spill	game	drop-order (server): Spill holds removed Vec<([i32; 3], 
 recipe_ui	recipe_book::RecipeUi	game	drop-order (client): RecipeUi holds Book and ModRecipeUi containing Ingredient impl Drop and IngredientPredicate (RetainedCallback + Arc<IngredientTest> mod closure); precedes hook (378), remote (460) and reload_resources (577)	376	-	client_only
 mount_menu	mount_menu::MountMenu	client	client (survey; review=common from unpruned BFS, group=screens)	377	side	-
 hook	sunrise_client::join_seq::ResidentSlot<fishing::Hook>	game	shared (survey + review)	378	-	-
-remote_hooks	Vec<fishing::RemoteHook>	client	client (survey; review=common from unpruned BFS, group=remote-entities)	379	game	-
+remote_hooks	Vec<fishing::RemoteHook>	client	client (survey; review=common from unpruned BFS, group=remote-entities)	379	side	-
 tridents	sunrise_client::join_seq::JoinList<trident::ThrownTrident>	game	shared (survey + review)	380	-	-
 rockets	sunrise_client::join_seq::JoinList<fireworks::Rocket>	game	shared (survey + review)	381	-	-
 ominous_spawners	sunrise_client::join_seq::ResidentList<ominous_item_spawner::OminousItemSpawner>	game	shared (survey + review)	382	-	-
@@ -519,9 +519,9 @@ pending_save	Option<saving::ClosingSave>	game	drop-order (client): Option<Closin
 server_tick_deadline	Option<Instant>	server	server (survey; review=common from unpruned BFS, group=server-levels)	517	side	-
 frame_drawn	bool	client	client (survey + review)	518	side	-
 world_icon	Option<WorldIcon>	client	client (survey; review=common from unpruned BFS, group=startup-packs)	519	side	-
-forced_hit	Option<Hit>	server	server (survey; review=common from unpruned BFS, group=player-actions)	520	game	-
-tick_hit	std::cell::Cell<Option<Option<Hit>>>	server	server (survey; review=common from unpruned BFS, group=player-actions)	521	game	-
-tick_mob	Option<Option<(usize, f64, [f64; 3])>>	server	server (survey; review=common from unpruned BFS, group=player-actions)	522	game	-
+forced_hit	Option<Hit>	server	server (survey; review=common from unpruned BFS, group=player-actions)	520	side	-
+tick_hit	std::cell::Cell<Option<Option<Hit>>>	client	client (per-tick aim/pick cache)	521	side	-
+tick_mob	Option<Option<(usize, f64, [f64; 3])>>	client	client (per-tick mob pick cache)	522	side	-
 entity_reach	f64	game	shared (survey + review)	523	-	-
 block_reach	f64	game	shared (survey + review)	524	-	-
 client_pick	native_hooks::ClientPick	client	client (survey; review=common from unpruned BFS, group=input)	525	side	-
@@ -612,3 +612,5 @@ pending_particles	Vec<crate::lan::server_effects::ServerQueuedParticle>	server	s
 pending_explosions	Vec<crate::lan::server_effects::ServerExplosion>	server	server (portable server explosion queue)	610	game	-
 pending_native_sounds	Vec<creatures::NativeSound>	server	server (portable server native sound queue)	611	game	-
 effect_rng	sunrise_core::random::LegacyRandom	server	server (server effect pitch RNG)	612	game	-
+predicted_equipment_modifiers	Vec<(String, String)>	client	client predicted equipment attributes (distinct from server applied_modifiers)	613	side	-
+darkness_blend	(f32, f32)	client	client-only darkness effect fade blend (split from SculkState::darkness)	614	side	-

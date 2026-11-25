@@ -71,7 +71,7 @@ Item.getBarColor	port	crates/sunrise-client-render/src/hud_overlays.rs::damage_b
 Item.mineBlock	port	crates/sunrise-client/src/game/blocks/block_breaking.rs::Game::mine_block_with_held
 Item.isCorrectToolForDrops	port	crates/sunrise-items/src/items.rs::Items::correct_for_drops
 Item.getUseAnimation	port	crates/sunrise-items/src/use_animation.rs::consumable_animation	consumable animation; the block and spear poses are handled by the item pose code
-Item.getPlayerPOVHitResult	port	crates/sunrise-client/src/game/game_server.rs::Game::pick	the view ray from the eyes; the fluid variant is Game::pick_fluid
+Item.getPlayerPOVHitResult	port	crates/sunrise-client/src/game/entities/pick_ray.rs::Game::pick	the view ray from the eyes; the fluid variant is Game::pick_fluid
 Item.Properties.food	skip:data		registration builder; Sunrise reads item data from tables
 Item.Properties.usingConvertsTo	skip:data		registration builder
 Item.Properties.durability	skip:data		registration builder
@@ -117,11 +117,11 @@ ItemStack.onCraftedBy	inline	crates/sunrise-client/src/game/menu_clicks.rs::Game
 ItemStack.set	skip:other		component write; Sunrise stores component data in typed fields
 ItemStack.update	skip:java		functional update helper
 ItemStack.applyComponentsAndValidate	missing		a validated component patch has no single counterpart: `/item modify` goes through its own path
-ItemStack.getStyledHoverName	port	crates/sunrise-client/src/game/blocks/stations.rs::Game::stack_hover_name	gap: minor: plain text; the rarity colour and italic style are not applied here
+ItemStack.getStyledHoverName	port	crates/sunrise-client/src/game/items/stack_names.rs::Game::stack_hover_name	gap: minor: plain text; the rarity colour and italic style are not applied here
 ItemStack.addToTooltip	port	crates/sunrise-client/src/item_tooltip.rs::lines
 ItemStack.addUnitComponentToTooltip	inline	crates/sunrise-client/src/game/blocks/stations.rs::Game::stack_tooltip_lines	unit lines such as unbreakable, gated by the tooltip display
-ItemStack.canPlaceOnBlockInAdventureMode	port	crates/sunrise-client/src/game/interface/game_mode.rs::Game::can_place_on_in_adventure	the can_place_on predicates gate a placement in adventure mode
-ItemStack.canBreakBlockInAdventureMode	port	crates/sunrise-client/src/game/interface/game_mode.rs::Game::adventure_predicate	the main-hand stack's `can_break` predicate against the block at the position (one predicate or a list, block ids or tags, exact or ranged state properties; a predicate with `nbt` or `components` never matches), read by `game_mode.rs:200`; the same fn answers `can_place_on`
+ItemStack.canPlaceOnBlockInAdventureMode	port	crates/sunrise-client/src/game/interface/game_mode_common.rs::Game::can_place_on_in_adventure	the can_place_on predicates gate a placement in adventure mode
+ItemStack.canBreakBlockInAdventureMode	port	crates/sunrise-client/src/game/interface/game_mode_common.rs::Game::adventure_predicate	the main-hand stack's `can_break` predicate against the block at the position (one predicate or a list, block ids or tags, exact or ranged state properties; a predicate with `nbt` or `components` never matches), read by `game_mode.rs:200`; the same fn answers `can_place_on`
 ItemStack.getDamageSource	missing		a stack's `damage_type` component is not read when a weapon hits: the attack builds its damage from the mob's own sources (`mobs::Damage`), and `damage_type` is only used for the enchantment damage tags
 ItemStackTemplate.fromNonEmptyStack	port	crates/sunrise-items/src/item_data.rs::template_tag	stack to template tag
 ItemStackTemplate.withCount	skip:java		record copy with a new count
@@ -147,8 +147,8 @@ MapItem.useOn	port	crates/sunrise-client/src/game/blocks/maps/mod.rs::Game::use_
 MobBucketItem.emptyContents	port	crates/sunrise-world/src/level/buckets.rs::Sim::bucket_empty	the MobWater and Nothing contents
 PotionItem.getDefaultInstance	skip:data		default stack data
 PotionItem.useOn	port	crates/sunrise-client/src/game/items/potions.rs::Game::use_water_bottle_on_block	a water bottle poured on #convertible_to_mud makes mud and empties the bottle
-PotionItem.getName	port	crates/sunrise-client/src/game/blocks/stations.rs::Game::stack_hover_name	potion name from the contents
+PotionItem.getName	port	crates/sunrise-client/src/game/items/stack_names.rs::Game::stack_hover_name	potion name from the contents
 ProjectileItem.DispenseConfig.Builder.build	inline	crates/sunrise-client/src/game/blocks/dispenser.rs::Game::dispense_projectile	per-item dispense config
 ProjectileWeaponItem.getHeldProjectile	port	crates/sunrise-client/src/game/items/crossbow.rs::Game::projectile_slot	offhand first, then the held slot
 ProjectileWeaponItem.createProjectile	inline	crates/sunrise-client/src/game/items/crossbow.rs::Game::shoot_crossbow	the arrow from the ammo, with the weapon's piercing
-ShieldItem.getName	port	crates/sunrise-client/src/game/administration/commands/mod.rs::Game::stack_display_name
+ShieldItem.getName	port	crates/sunrise-client/src/game/administration/commands_common.rs::Game::stack_display_name

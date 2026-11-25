@@ -228,7 +228,11 @@ impl Game<'_> {
     /// pathfinder — its own override, else the kind's default (a negative
     /// malus closes the kind). None for a stale or unavailable mob, the
     /// dragon, or on a client.
-    pub(in crate::game) fn mob_pathfinding_malus(&self, mob: MobRef, kind: PathType) -> Option<f32> {
+    pub(in crate::game) fn mob_pathfinding_malus(
+        &self,
+        mob: MobRef,
+        kind: PathType,
+    ) -> Option<f32> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };

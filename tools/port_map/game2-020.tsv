@@ -43,11 +43,11 @@ Visibility.fromFullChunkStatus	missing		unsure: Sunrise has entity_ticking check
 GameEvent.register	skip:data		registers a game event with its default radius; Sunrise reads events from fixed tables (notification_radius)
 GameEventDispatcher.post	port	crates/sunrise-client/src/game/blocks/sculk_server.rs::Game::post_game_event	delivers the event to sensors, shriekers and wardens within the radius
 GameEventDispatcher.handleGameEventMessagesInQueue	inline	crates/sunrise-client/src/game/blocks/sculk_server.rs::Game::post_game_event	gap: minor: no sort by distance before delivery; the selector keeps the nearest candidate, which only differs on ties
-VibrationSystem.Listener.forceScheduleVibration	port	crates/sunrise-client/src/game/blocks/sculk.rs::Game::sculk_stand_on	a step on a sensor schedules the step event after the sensor's own checks
+VibrationSystem.Listener.forceScheduleVibration	port	crates/sunrise-client/src/game/blocks/sculk_server.rs::Game::sculk_stand_on	a step on a sensor schedules the step event after the sensor's own checks
 VibrationSystem.Listener.scheduleVibration	port	crates/sunrise-client-render/src/sculk.rs::Data::schedule	adds the candidate to the selector; the distance is computed by sculk_listen
 VibrationSystem.Ticker.trySelectAndScheduleVibration	port	crates/sunrise-client-render/src/sculk.rs::Data::tick	gap: minor: picks the chosen candidate and travel time; the particle is sent by tick_sculk_block
 VibrationSystem.Ticker.tryReloadVibrationParticle	missing		minor: the travelling vibration particle is sent once when the trip starts; vanilla resends it until a player receives it, which matters only for players who arrive mid-trip
-VibrationSystem.Ticker.receiveVibration	port	crates/sunrise-client/src/game/blocks/sculk.rs::Game::sculk_receive	gap: minor: the adjacent-chunk hold-back is in Data::tick, not here
+VibrationSystem.Ticker.receiveVibration	port	crates/sunrise-client/src/game/blocks/sculk_server.rs::Game::sculk_receive	gap: minor: the adjacent-chunk hold-back is in Data::tick, not here
 VibrationSystem.Ticker.areAdjacentChunksTicking	inline	crates/sunrise-client/src/game/blocks/sculk_server.rs::Game::tick_sculk_blocks	computes the adjacent flag per sensor from the 3x3 block-ticking chunks
 GameRules.codec	skip:java		codec for the saved game rules; to_nbt and from_nbt do the read and write
 GameRules.get	port	crates/sunrise-client-core/src/gamerules.rs::GameRules::get	returns the rule's value, or None for an unknown rule

@@ -255,6 +255,7 @@ impl Game<'_> {
             self.client_refresh_client_pick(partial)
         }
     }
+    #[allow(dead_code)]
     #[inline(always)]
     pub(in crate::game) fn side_release_tick_targets(&mut self) {
         if self.is_logical_server() {

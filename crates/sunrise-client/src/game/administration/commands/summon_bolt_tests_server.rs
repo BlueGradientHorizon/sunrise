@@ -46,7 +46,7 @@ pub(in crate::game) fn run_a_bolt_summoned_with_nbt_strikes_and_goes() {
 
     // Opt in to deterministic thread seeds only in a fresh child process.
     if run_fresh_cases(
-        "game::commands::summon_bolt_tests::a_bolt_summoned_with_nbt_strikes_and_goes",
+        "game::server_side::commands::summon_bolt_tests::a_bolt_summoned_with_nbt_strikes_and_goes",
         "SUNRISE_TEST_SEEDS",
         &["1"],
     ) {

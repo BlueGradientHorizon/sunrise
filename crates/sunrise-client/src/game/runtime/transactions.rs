@@ -175,10 +175,7 @@ impl OpenTransactions {
         }
     }
 
-    pub(in crate::game) fn level_frame(
-        &mut self,
-        dim: super::Dim,
-    ) -> Option<&mut Level> {
+    pub(in crate::game) fn level_frame(&mut self, dim: super::Dim) -> Option<&mut Level> {
         entities::open_in(self, dim)
     }
 
@@ -324,10 +321,7 @@ pub(in crate::game) struct KeptBlock {
 
 pub(in crate::game) type RemovedRow = (Box<BlockEntity>, u64);
 
-pub(in crate::game) fn take_replay_row(
-    world: &mut World,
-    pos: Pos,
-) -> Option<RemovedRow> {
+pub(in crate::game) fn take_replay_row(world: &mut World, pos: Pos) -> Option<RemovedRow> {
     let generation = world.block_entities.generation(&pos);
     world
         .block_entities
@@ -588,10 +582,7 @@ impl Kept {
         }
     }
 
-    pub(in crate::game) fn capture_client(
-        world: &sunrise_client::world::World,
-        pos: Pos,
-    ) -> Self {
+    pub(in crate::game) fn capture_client(world: &sunrise_client::world::World, pos: Pos) -> Self {
         let entity = world.block_entities.get(&pos);
         Self {
             entity: entity.cloned(),
@@ -949,11 +940,7 @@ impl Level {
             });
     }
 
-    pub(in crate::game) fn keep_connection_group(
-        &mut self,
-        pos: Pos,
-        group: Option<u64>,
-    ) {
+    pub(in crate::game) fn keep_connection_group(&mut self, pos: Pos, group: Option<u64>) {
         self.connection_groups.entry(pos).or_insert(group);
     }
 
@@ -1165,10 +1152,7 @@ impl<'g> Game<'g> {
         self.close_storage_transaction(commit)
     }
     /// An engine batch opens a frame only when it has a callback to journal.
-    pub(in crate::game) fn storage_scope_guard(
-        &mut self,
-        open: bool,
-    ) -> StorageScope<'_, 'g> {
+    pub(in crate::game) fn storage_scope_guard(&mut self, open: bool) -> StorageScope<'_, 'g> {
         let frame = open.then(|| self.open_storage_transaction());
         StorageScope { game: self, frame }
     }
@@ -1266,10 +1250,7 @@ impl<'g> Game<'g> {
         self.transactions.last().and_then(|level| level.frame)
     }
     /// Whether `tx` is the live loan for this game's innermost open transaction.
-    pub(in crate::game) fn transaction_context_is_current(
-        &self,
-        tx: &TransactionContext,
-    ) -> bool {
+    pub(in crate::game) fn transaction_context_is_current(&self, tx: &TransactionContext) -> bool {
         self.current_storage_frame()
             .is_some_and(|frame| frame.matches(tx))
     }
@@ -1482,7 +1463,6 @@ impl<'g> Game<'g> {
             level.mount_drags.entry(window).or_insert(before);
         }
     }
-
 
     /// Keeps entity `id`'s inventory as it is, if a transaction is open and hasn't yet.
     pub(in crate::game) fn journal_entity(&mut self, id: u32) {
@@ -1734,12 +1714,8 @@ impl<'g> Game<'g> {
         (result, notices)
     }
 
-
     /// Journal a container notice already bound to the row that received the write.
-    pub(in crate::game) fn after_holder_changed(
-        &mut self,
-        holder: BlockEntityIdentity,
-    ) {
+    pub(in crate::game) fn after_holder_changed(&mut self, holder: BlockEntityIdentity) {
         let [x, y, z] = holder.position;
         self.after_commit(self.side_tx_container_change_effect((x, y, z), Some(holder)));
     }
@@ -1778,7 +1754,6 @@ impl<'g> Game<'g> {
         level.menu_data.insert(key, value);
         true
     }
-
 }
 
 include!("transactions/item_entity.rs");

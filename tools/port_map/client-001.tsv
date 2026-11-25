@@ -111,7 +111,7 @@ ClientLevel.addAlwaysVisibleParticle	port	crates/sunrise-client-render/src/parti
 ClientLevel.doAddParticle	port	crates/sunrise-client-render/src/particles.rs::ParticleEngine::add_with	drops particles beyond 32 blocks and at minimal particle level
 ClientLevel.getSkyFlashTime	inline	crates/sunrise-client/src/game/game_client.rs::Game::render	the flash check with the hideLightningFlashes option
 ClientLevel.calculateBlockTint	port	crates/sunrise-client-render/src/mesher.rs::MeshTables::terrain_particle_tint	gap: minor: returns none for grass-block tints
-ClientLevel.playBreakingSound	port	crates/sunrise-client/src/game/interface/level_particles.rs::Game::breaking_block_effects	the block's hit sound while digging
+ClientLevel.playBreakingSound	port	crates/sunrise-client/src/game/interface/level_particles_client.rs::Game::breaking_block_effects	the block's hit sound while digging
 ClientLevel.getClientLeafTintColor	port	crates/sunrise-client/src/animate_tick.rs::AnimateContext::foliage	leaf tint for tinted leaves particles; the caller is TintedParticleLeavesBlock
 ClientLevel.EntityCallbacks.onTrackingStart	inline	crates/sunrise-client/src/game/network/remote/tracking.rs::Game::spawn_entity	minor: ender dragon parts are placed by the dragon module, with no tracked parts list
 ClientLevel.EntityCallbacks.onTrackingEnd	port	crates/sunrise-client/src/game/network/remote_removal.rs::Game::remove_entity	minor: detaches passengers and removes the dragon's parts; the leave-level event is not posted

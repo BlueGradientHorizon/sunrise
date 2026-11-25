@@ -1170,7 +1170,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::commands::data::eye_item_tests::a_summoned_eye_saves_its_normalised_item_live_and_after_a_reload",
+    "test": "game::server_side::commands::data::eye_item_tests::a_summoned_eye_saves_its_normalised_item_live_and_after_a_reload",
     "path": "crates/sunrise-client/src/game/administration/commands/data/eye_item_tests.rs",
     "reason": "run by tools/test_eye_item_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_eye_item_parity.py records the vanilla 26.3 eye_of_ender Item witness into .local and runs this test against it through SUNRISE_EYE_ITEM_WITNESS, so no recorded vanilla data is committed."
@@ -1186,7 +1186,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::commands::data::rotation_tests::a_cloud_and_a_falling_block_save_the_rotation_they_were_loaded_with",
+    "test": "game::server_side::commands::data::rotation_tests::a_cloud_and_a_falling_block_save_the_rotation_they_were_loaded_with",
     "path": "crates/sunrise-client/src/game/administration/commands/data/rotation_tests.rs",
     "reason": "run by tools/test_cloud_falling_loaded_rotation_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_cloud_falling_loaded_rotation_parity.py records the vanilla 26.3 cloud and falling-block loaded Rotation witness into .local and runs this test against it through SUNRISE_CLOUD_FALLING_ROTATION_WITNESS, so no recorded vanilla data is committed."
@@ -1330,7 +1330,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::commands::data::portal_cooldown_tests::a_mob_saves_its_live_portal_cooldown",
+    "test": "game::server_side::commands::data::portal_cooldown_tests::a_mob_saves_its_live_portal_cooldown",
     "path": "crates/sunrise-client/src/game/administration/commands/data/portal_cooldown_tests.rs",
     "reason": "run by tools/test_mob_portal_cooldown_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_mob_portal_cooldown_parity.py records the vanilla 26.3 mob portal cooldown witness into .local and runs this test against it through SUNRISE_MOB_PORTAL_COOLDOWN_WITNESS, so no recorded vanilla data is committed."
@@ -1338,7 +1338,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::commands::data::stand_living_tests::an_armor_stand_ticks_its_living_counters",
+    "test": "game::server_side::commands::data::stand_living_tests::an_armor_stand_ticks_its_living_counters",
     "path": "crates/sunrise-client/src/game/administration/commands/data/stand_living_tests.rs",
     "reason": "run by tools/test_stand_living_counters_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_stand_living_counters_parity.py records the vanilla 26.3 armor stand living counters witness into .local and runs this test against it through SUNRISE_STAND_LIVING_COUNTERS_WITNESS, so no recorded vanilla data is committed."
@@ -1410,7 +1410,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::commands::summon_item_orb_tests::summon_replies_with_the_custom_name_of_every_kind",
+    "test": "game::server_side::commands::summon_item_orb_tests::summon_replies_with_the_custom_name_of_every_kind",
     "path": "crates/sunrise-client/src/game/administration/commands/summon_item_orb_tests.rs",
     "reason": "run by tools/test_summon_custom_name_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_summon_custom_name_parity.py records the vanilla 26.3 summon custom-name witness into .local and runs this test against it through SUNRISE_SUMMON_CUSTOM_NAME_WITNESS, so no recorded vanilla data is committed."
@@ -1442,7 +1442,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::commands::data::fire_tests::fire_changes_on_eyes_fangs_spawners_clouds_and_bullets",
+    "test": "game::server_side::commands::data::fire_tests::fire_changes_on_eyes_fangs_spawners_clouds_and_bullets",
     "path": "crates/sunrise-client/src/game/administration/commands/data/fire_tests.rs",
     "reason": "run by tools/test_entity_fire_ticks_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_entity_fire_ticks_parity.py records the vanilla 26.3 entity fire-ticks witness into .local and runs this test against it through SUNRISE_ENTITY_FIRE_TICKS_WITNESS, so no recorded vanilla data is committed."
@@ -1450,7 +1450,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::commands::summon_bolt_tests::a_bolt_summoned_with_nbt_strikes_and_goes",
+    "test": "game::server_side::commands::summon_bolt_tests::a_bolt_summoned_with_nbt_strikes_and_goes",
     "path": "crates/sunrise-client/src/game/administration/commands/summon_bolt_tests.rs",
     "reason": "run by tools/test_summon_bolt_nbt_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_summon_bolt_nbt_parity.py records the vanilla 26.3 summon lightning_bolt NBT witness into .local and runs this test against it through SUNRISE_SUMMON_BOLT_NBT_WITNESS, so no recorded vanilla data is committed."

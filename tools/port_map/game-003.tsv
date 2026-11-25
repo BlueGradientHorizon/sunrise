@@ -129,13 +129,13 @@ ClockTimeMarker.getRepetitionCount	skip:other		no vanilla caller
 ClockTimeMarker.resolveTimeToMoveTo	port	crates/sunrise-client/src/game/interface/chat.rs::TimeMarker::resolve
 ClockTimeMarker.occursAt	port	crates/sunrise-client/src/game/interface/chat.rs::TimeMarker::occurs_at
 ClockTimeMarker.durationToNext	inline	crates/sunrise-client/src/game/interface/chat.rs::TimeMarker::resolve	the d > 0 else period + d step
-ServerClockManager.init	inline	crates/sunrise-client/src/game/interface/chat.rs::Game::build_registries	overworld timelines and time markers are loaded; gap: minor: command-only End state is independent, while running/network/save clock initialization remains separate
+ServerClockManager.init	inline	crates/sunrise-client/src/game/interface/chat_common.rs::Game::build_registries	overworld timelines and time markers are loaded; gap: minor: command-only End state is independent, while running/network/save clock initialization remains separate
 ServerClockManager.getInstance	port	crates/sunrise-client/src/game/administration/commands/mod.rs::Game::command_clock_time	clock-keyed command values/state; Overworld stays tied to world.day_time; gap: minor: non-Overworld running clocks, network and save lifecycle remain separate
 ServerClockManager.setTotalTicks	inline	crates/sunrise-client/src/game/administration/commands/mod.rs::Game::cmd_time	/time set <ticks>
 ServerClockManager.moveToTimeMarker	inline	crates/sunrise-client/src/game/administration/commands/mod.rs::Game::cmd_time	/time set <marker>: not found, already there, or moved
 ServerClockManager.addTicks	inline	crates/sunrise-client/src/game/administration/commands/mod.rs::Game::cmd_time	/time add, floored at 0
 ServerClockManager.isAtTimeMarker	inline	crates/sunrise-gameplay/src/village_siege.rs::VillageSiege::tick	ROLL_VILLAGE_SIEGE marker as tick 18000 of the day
-ServerClockManager.commandTimeMarkersForClock	inline	crates/sunrise-client/src/game/interface/chat.rs::Game::build_registries	markers with show_in_commands go to the command suggestions
+ServerClockManager.commandTimeMarkersForClock	inline	crates/sunrise-client/src/game/interface/chat_common.rs::Game::build_registries	markers with show_in_commands go to the command suggestions
 ServerClockManager.ServerClockInstance.loadFrom	port	crates/sunrise-client/src/game/interface/chat_server.rs::Game::load_world_state	total ticks come from level data; rate, partial tick and paused are read from world_clocks.dat
 ServerClockManager.ServerClockInstance.packState	port	crates/sunrise-client/src/game/interface/chat_server.rs::Game::save_world_state
 WorldClocks.bootstrap	skip:data		clock registration

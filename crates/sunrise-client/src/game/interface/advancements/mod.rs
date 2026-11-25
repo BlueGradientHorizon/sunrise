@@ -127,11 +127,7 @@ impl Toast {
     }
     /// `RecipeToast.displayedRecipeIndex`: the displays take turns over the
     /// toast's display time.
-    pub(in crate::game) fn displayed_recipe(
-        &self,
-        fully_for: i64,
-        multiplier: f64,
-    ) -> usize {
+    pub(in crate::game) fn displayed_recipe(&self, fully_for: i64, multiplier: f64) -> usize {
         let n = self.recipes.len() as f64;
         (fully_for as f64 / (5000.0 * multiplier / n).max(1.0) % n) as usize
     }
@@ -2731,7 +2727,6 @@ impl Game<'_> {
                 && c["to"].as_str().is_none_or(|t| adv::full(t) == to_id)
         });
     }
-
 }
 /// The toast's frame label and its colour (`AdvancementToast`: -30465, pink,
 /// for a challenge, else -256, yellow), packed as `hud::rgba` for the batch.
@@ -2855,7 +2850,6 @@ impl Game<'_> {
     }
 }
 impl Game<'_> {
-
     /// Convert the admitted packet's network icon, components and requirements
     /// into the definition used by the screen and toast.
     pub(in crate::game) fn remote_advancement(

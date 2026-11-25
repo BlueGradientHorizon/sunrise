@@ -11,6 +11,7 @@ use sunrise_client::items::ItemStack;
 /// the armour (`Player.doesEmitEquipEvent`: these emit the game event) and
 /// the off hand.
 pub(in crate::game) const ARMOR: [&str; 4] = ["head", "chest", "legs", "feet"];
+#[allow(dead_code)]
 pub(in crate::game) const OFFHAND: &str = "offhand";
 
 /// `ItemStack.isSameItemSameComponents` over optional stacks.
@@ -26,6 +27,7 @@ impl Game<'_> {
     /// `onEquipItem` for every slot that changed since `before`: what the
     /// server does for the creative screen, which sends each changed slot
     /// (`handleSetCreativeModeSlot` sets it by player).
+    #[allow(dead_code)]
     pub(in crate::game) fn player_equipment_changed(&mut self, before: &[Option<ItemStack>; 5]) {
         let after = self.player_equipment();
         for (i, slot) in ARMOR.into_iter().chain([OFFHAND]).enumerate() {

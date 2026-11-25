@@ -134,6 +134,7 @@ impl Game<'_> {
         remainder.filter(|value| value.count > 0)
     }
 
+    #[allow(dead_code)]
     pub(in crate::game) fn craft_grid_remainders(&self, recipe: &str) -> Vec<Option<ItemStack>> {
         self.recipes().remainders(
             &self.loop_context,

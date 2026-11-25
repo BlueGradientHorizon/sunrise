@@ -646,7 +646,17 @@ impl Game<'_> {
                 Some(state) => state,
                 None => return,
             },
-            None if self.external_server() => ServerOptions { default_mode: self.mode_id(), personal_mode: self.mode_id(), cheats: self.ui.registries.permission >= 2, difficulty: self.ui.difficulty, hardcore: self.level.hardcore, difficulty_locked: self.level.difficulty_locked, port: None, guest_commands: false, force: true },
+            None if self.external_server() => ServerOptions {
+                default_mode: self.mode_id(),
+                personal_mode: self.mode_id(),
+                cheats: self.ui.registries.permission >= 2,
+                difficulty: self.ui.difficulty,
+                hardcore: self.level.hardcore,
+                difficulty_locked: self.level.difficulty_locked,
+                port: None,
+                guest_commands: false,
+                force: true,
+            },
             None => return,
         };
         if let Some(p) = state.port {
@@ -1697,7 +1707,11 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game::client_side) fn apply_world_options_client(&mut self, before: &Snapshot, wanted: &Snapshot) {
+    pub(in crate::game::client_side) fn apply_world_options_client(
+        &mut self,
+        before: &Snapshot,
+        wanted: &Snapshot,
+    ) {
         if self.external_server() {
             if self.ui.registries.permission >= 2 {
                 if wanted.difficulty != before.difficulty {

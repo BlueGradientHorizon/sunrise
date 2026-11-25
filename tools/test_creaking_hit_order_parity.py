@@ -15,9 +15,9 @@ except ImportError:
     import test_rust_parity as base
     from integration_env import game_environment
 
-LIVE_TEST = ('game::commands::world_cmds::registered_damage_tests::'
+LIVE_TEST = ('game::server_side::commands::world_cmds::registered_damage_tests::'
              'live_damage_and_blast_creaking_reactions_and_timed_player_credit')
-BORROWED_TEST = ('game::commands::world_cmds::registered_damage_tests::creaking_borrowed::'
+BORROWED_TEST = ('game::server_side::commands::world_cmds::registered_damage_tests::creaking_borrowed::'
                  'borrowed_creaking_hurt_finishes_before_the_tick_continues')
 
 

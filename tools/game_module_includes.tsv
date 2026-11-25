@@ -6,5 +6,4 @@ crates/sunrise-client/src/game/modding/native_components.rs	concat!(env!("CARGO_
 crates/sunrise-client/src/game/modding/native_goal_ticks/mod.rs	concat!(env!("OUT_DIR"),"/mod_api_goal_view_generated.rs")	server:d=1	build-script generated mod API goal view
 crates/sunrise-client/src/game/network/lan/mod.rs	"advancement_save_tests.rs"	server:d=0	LAN advancement save tests
 crates/sunrise-client/src/game/network/lan/mod.rs	"sulfur_cube_meta_tests.rs"	server:d=1	LAN sulfur cube metadata tests
-crates/sunrise-client/src/game/runtime/transactions.rs	"transactions/item_entity.rs"	server:d=0	item entity transaction handlers
 crates/sunrise-client/src/game/world/persist/tests.rs	"position_load_tests.rs"	server:d=1	world persist position load tests

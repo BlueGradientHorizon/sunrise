@@ -20,7 +20,7 @@ fn modprofile_state_and_report_side_effects() {
                 .args([
                     "--include-ignored",
                     "--exact",
-                    "game::commands::modprofile::tests::modprofile_state_and_report_side_effects"
+                    "game::server_side::commands::modprofile::tests::modprofile_state_and_report_side_effects"
                 ])
                 .env("SUNRISE_MODPROFILE_TEST_CHILD", "1")
                 .status()

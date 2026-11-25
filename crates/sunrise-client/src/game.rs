@@ -380,33 +380,33 @@ mod collision_source;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::command_blocks;
 #[allow(unused_imports)]
+pub(in crate::game) use client_side::command_minecarts;
+#[allow(unused_imports)]
 pub(in crate::game) use server_side::combat;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::command_harness;
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::command_minecarts;
-#[path = "game/world/clocks.rs"]
-pub(in crate::game) mod clocks;
-#[path = "game/interface/chat_common.rs"]
-pub(in crate::game) mod chat_common;
-#[path = "game/world/integrated_common.rs"]
-pub(in crate::game) mod integrated_common;
-#[path = "game/world/world_entry_common.rs"]
-pub(in crate::game) mod world_entry_common;
-#[path = "game/runtime/memory_common.rs"]
-pub(in crate::game) mod memory_common;
-#[path = "game/items/stack_names.rs"]
-pub(in crate::game) mod stack_names;
 #[path = "game/interface/books_common.rs"]
 pub(in crate::game) mod books_common;
-#[path = "game/blocks/machines/crafter_common.rs"]
-pub(in crate::game) mod crafter_common;
-#[path = "game/administration/commands_common.rs"]
-pub(in crate::game) mod commands_common;
+#[path = "game/interface/chat_common.rs"]
+pub(in crate::game) mod chat_common;
+#[path = "game/world/clocks.rs"]
+pub(in crate::game) mod clocks;
 #[path = "game/administration/command_blocks_common.rs"]
 pub(in crate::game) mod command_blocks_common;
 #[path = "game/interface/command_registries.rs"]
 mod command_registries;
+#[path = "game/administration/commands_common.rs"]
+pub(in crate::game) mod commands_common;
+#[path = "game/blocks/machines/crafter_common.rs"]
+pub(in crate::game) mod crafter_common;
+#[path = "game/world/integrated_common.rs"]
+pub(in crate::game) mod integrated_common;
+#[path = "game/runtime/memory_common.rs"]
+pub(in crate::game) mod memory_common;
+#[path = "game/items/stack_names.rs"]
+pub(in crate::game) mod stack_names;
+#[path = "game/world/world_entry_common.rs"]
+pub(in crate::game) mod world_entry_common;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::commands;
 #[allow(unused_imports)]
@@ -762,6 +762,8 @@ pub(in crate::game) use client_side::hand;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::hand_part_tests;
+#[path = "game/interface/game_mode_common.rs"]
+pub(in crate::game) mod game_mode_common;
 #[cfg(test)]
 #[path = "game/entities/hanging_refind_tests.rs"]
 mod hanging_refind_tests;
@@ -769,14 +771,12 @@ mod hanging_refind_tests;
 mod headless;
 #[path = "game/items/held_items.rs"]
 pub(in crate::game) mod held_items;
-#[path = "game/interface/game_mode_common.rs"]
-pub(in crate::game) mod game_mode_common;
-#[path = "game/player_identity.rs"]
-pub(in crate::game) mod player_identity;
-#[path = "game/entities/pick_ray.rs"]
-pub(in crate::game) mod pick_ray;
 #[path = "game/modding/native_entity_refs_common.rs"]
 pub(in crate::game) mod native_entity_refs_common;
+#[path = "game/entities/pick_ray.rs"]
+pub(in crate::game) mod pick_ray;
+#[path = "game/player_identity.rs"]
+pub(in crate::game) mod player_identity;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::highlight_tip_tests;
@@ -1567,6 +1567,8 @@ pub(in crate::game) use client_side::native_mapping_presses;
 pub(in crate::game) use client_side::native_menu_refs;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::native_menu_slot_kinds;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::native_mob_draw;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_menu_inventory_tests;
@@ -1576,8 +1578,6 @@ pub(in crate::game) use server_side::native_menu_places;
 pub(in crate::game) use server_side::native_menus;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_merchant_refs;
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::native_mob_draw;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_minecart_refs;
 #[allow(unused_imports)]
@@ -1764,9 +1764,9 @@ mod native_render_visibility;
 #[path = "game/modding/native_requires_tool_tests.rs"]
 mod native_requires_tool_tests;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::native_ride_player;
-#[allow(unused_imports)]
 pub(in crate::game) use server_side::native_resources;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::native_ride_player;
 #[path = "game/modding/native_rotate.rs"]
 pub(crate) mod native_rotate;
 #[allow(unused_imports)]
@@ -1941,21 +1941,21 @@ pub(in crate::game) use client_side::particle_culling;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::payload_transport;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::part_shearing;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::passengers;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::pending_births;
-#[allow(unused_imports)]
 pub(in crate::game) use client_side::perf_link;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::perf_remote;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::perspective;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::pick_accumulator;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::pick_entity;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::part_shearing;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::passengers;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::pending_births;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::perf_remote;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::persist;
 #[path = "game/items/pick_hotbar.rs"]
@@ -2214,12 +2214,12 @@ pub(in crate::game) use server_side::server_lifecycle;
 pub(in crate::game) use server_side::server_reload;
 #[path = "game/server_side.rs"]
 pub(in crate::game) mod server_side;
-#[path = "game/world/light_emission.rs"]
-pub(in crate::game) mod light_emission;
-#[path = "game/blocks/block_entity_anims_common.rs"]
-pub(in crate::game) mod block_entity_anims_common;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side as server_state;
+#[path = "game/blocks/block_entity_anims_common.rs"]
+pub(in crate::game) mod block_entity_anims_common;
+#[path = "game/world/light_emission.rs"]
+pub(in crate::game) mod light_emission;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::server_travel;
 #[cfg(test)]
@@ -2340,14 +2340,14 @@ pub(in crate::game) use client_side::stats_screen;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::storage;
 #[allow(unused_imports)]
+pub(in crate::game) use client_side::structure_edit;
+#[allow(unused_imports)]
 pub(in crate::game) use server_side::stats;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::storage_alias_tests;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::structure_blocks;
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::structure_edit;
 #[path = "game/administration/structures.rs"]
 mod structures;
 #[allow(unused_imports)]
@@ -2374,10 +2374,6 @@ pub(in crate::game) use client_side::test_block_edit;
 #[path = "game/administration/test_blocks.rs"]
 mod test_blocks;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::test_entities;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::test_environments;
-#[allow(unused_imports)]
 pub(in crate::game) use client_side::test_instance_edit;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::text_displays;
@@ -2385,33 +2381,141 @@ pub(in crate::game) use client_side::text_displays;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::text_expression_tests;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::test_instances;
-#[cfg(test)]
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::test_pos_guest_tests;
-#[allow(unused_imports)]
 pub(in crate::game) use client_side::tick_script;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::titles;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::toast_manager;
 #[allow(unused_imports)]
+pub(in crate::game) use server_side::test_entities;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::test_environments;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::test_instances;
+#[cfg(test)]
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::test_pos_guest_tests;
+#[allow(unused_imports)]
 pub(in crate::game) use server_side::tnt;
 #[path = "game/blocks/tool_modification.rs"]
 mod tool_modification;
 #[allow(unused_imports)]
+pub(in crate::game) use client_side::advancements_client;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::block_entity_anims_client;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::boats_client;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::cauldron_prediction_client;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::commands_client;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::creatures_client;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::dragon_client;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::end_client;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::entity_client;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::entity_sizes_client;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::fangs_client;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::fireworks_client;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::fishing_client;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::game_client;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::game_mode_client;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::integrated_client;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::level_particles_client;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::machines_client;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::memory_client;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::native_book_net_client;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::native_book_placement_client;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::native_book_settings_client;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::native_entity_refs_client;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::native_hooks_client;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::native_living_effects_client;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::ominous_item_spawner_client;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::paintings_client;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::player_client;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::saving_client;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::spear_client;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::swing_packet;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::thrown_item_draw;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::tnt_client;
+#[allow(unused_imports)]
 pub(in crate::game) use client_side::totem;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::transactions_client;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::transient_blocks;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::trial_visuals;
 #[allow(unused_imports)]
+pub(in crate::game) use client_side::trident_client;
+#[allow(unused_imports)]
 pub(in crate::game) use client_side::tutorial;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::using_item_client;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::world_view_client;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::zombie_villagers_client;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::books_server;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::chat_server;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::command_blocks_server;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::command_minecarts_server;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::commands_server;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::creatures_server;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::game_server;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::hand_server;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::lightning_server;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::player_server;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::sign_edit_server;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::spawner_server;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::trading;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::transaction_entities_tests;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::transactions_server;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::world_update_server;
 #[path = "game/runtime/transactions.rs"]
 pub(in crate::game) mod transactions;
 #[allow(unused_imports)]
@@ -3572,7 +3676,7 @@ struct Game<'a> {
     /// `mobs` by network id, for the packets that name one (`game/mobs/mob_index.rs`).
     mob_index: mob_index::MobIndex,
     creatures: creatures::Creatures,
-    raiding: server_side::ServerShared<raids::Raiding>,
+    raiding: server_side::ServerOnly<raids::Raiding>,
     /// Client-ticked block-entity animation state (`game/blocks/block_entity_anims.rs`).
     be_anims: sunrise_client::block_entity_anim::BlockEntityAnims,
     /// Item being used (eaten): hotbar slot and ticks used.
@@ -5717,12 +5821,9 @@ fn autosave_interval(rate: f32) -> i64 {
     i64::from((rate * 300.0) as i32).max(100)
 }
 
-
 /// winit's events for a window's game, with any loop: a headless client (#4951) has no
 /// winit loop and calls these from its own.
-impl Game<'_> {
-
-}
+impl Game<'_> {}
 /// misc/forcefield.png for the world border wall (square, power of two).
 fn load_forcefield(root: &sunrise_assets::resource_source::ResourceSource) -> (u32, u32, Vec<u8>) {
     root.read("assets/minecraft/textures/misc/forcefield.png")
@@ -5768,7 +5869,6 @@ struct ConstructEffects {
 
 // Out-of-line init bundles for wrapped Game fields so finish_construct's unoptimised stack stays small.
 struct WrappedClientInit {
-    rest_loader: Option<WorldRestLoader>,
     pending_entry: client_side::ClientOnly<Option<PendingWorldEntry>>,
     pack_reload: client_side::ClientOnly<Option<packs::PackReload>>,
     server_packs: client_side::ClientOnly<server_packs::ServerPackState>,
@@ -5833,7 +5933,7 @@ struct WrappedServerInit {
     player_autosaves: server_side::ServerOnly<sunrise_client::lan::playerdata::Autosaves>,
     session_lock: server_side::ServerShared<Option<sunrise_client::save::SessionLock>>,
     paused_mob_hurt: server_side::ServerOnly<Option<Box<sunrise_client::mobs::PausedMobHurt>>>,
-    raiding: server_side::ServerShared<raids::Raiding>,
+    raiding: server_side::ServerOnly<raids::Raiding>,
     world_tables: server_side::ServerShared<Option<WorldTables>>,
     server_loot: server_side::ServerOnly<sunrise_client::structure_blocks::LootSnapshot>,
     levels: server_side::ServerOnly<levels::Levels>,
@@ -5900,7 +6000,6 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
     #[inline(never)]
     fn build_wrapped_client() -> Box<WrappedClientInit> {
         Box::new(WrappedClientInit {
-            rest_loader: None,
             pending_entry: client_side::ClientOnly::new(None),
             pack_reload: client_side::ClientOnly::new(None),
             server_packs: client_side::ClientOnly::new(Default::default()),
@@ -5979,7 +6078,7 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             player_autosaves: server_side::ServerOnly::new(Default::default()),
             session_lock: server_side::ServerShared::new(None),
             paused_mob_hurt: server_side::ServerOnly::new(None),
-            raiding: server_side::ServerShared::new(Default::default()),
+            raiding: server_side::ServerOnly::new(Default::default()),
             world_tables: server_side::ServerShared::new(None),
             server_loot: server_side::ServerOnly::new(Default::default()),
             levels: server_side::ServerOnly::new(Default::default()),
@@ -6071,7 +6170,7 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             world_biomes: None,
             world_biomes_base: None,
             res: res.clone(),
-            rest_loader: wc.rest_loader,
+            rest_loader: None,
             pending_entry: wc.pending_entry,
             pack_reload: wc.pack_reload,
             server_packs: wc.server_packs,

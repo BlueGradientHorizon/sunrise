@@ -476,6 +476,7 @@ impl Game<'_> {
     }
     #[inline(always)]
     pub(in crate::game) fn server_clear_render_caches(&mut self) {}
+    #[allow(dead_code)]
     #[inline(always)]
     pub(in crate::game) fn server_expire_cracks(&mut self) {}
     #[inline(always)]

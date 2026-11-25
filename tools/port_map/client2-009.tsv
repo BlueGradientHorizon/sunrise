@@ -90,7 +90,7 @@ Hud.setNowPlaying	port	crates/sunrise-client-render/src/hud_overlays.rs::Titles:
 Hud.onDisconnected	port	crates/sunrise-client/src/game/network/remote/interaction_actions_client.rs::Game::hud_disconnected	the tab list, boss bars, toasts, debug charts and titles reset; chat is left alone (ChatComponent.storeState)
 Hud.willPrioritizeJumpInfo	port	crates/sunrise-client/src/locator_bar.rs::ContextualBar::next	the jumping input comes from Game::mount_jumping
 Hud.HeartType.getSprite	port	crates/sunrise-client-render/src/hud_layout.rs::heart
-Hud.HeartType.forPlayer	port	crates/sunrise-client/src/game/native_hooks/shared.rs::Game::player_heart_kind	selects the vanilla heart kind inside the health layer before the hook
+Hud.HeartType.forPlayer	port	crates/sunrise-client/src/game/native_hooks/mod_client.rs::Game::player_heart_kind	selects the vanilla heart kind inside the health layer before the hook
 AbstractButton.extractDefaultSprite	port	crates/sunrise-client-render/src/screen_draw.rs::button	disabled, highlighted and normal sprites
 AbstractButton.keyPressed	port	crates/sunrise-client/src/game/interface/key_focus.rs::act	Enter, Space and keypad Enter are Nav::Select, which presses the focused target (Act::Press), as pad_menu.rs and startup_menu.rs apply it
 AbstractContainerWidget.setFocused	port	crates/sunrise-client-render/src/pack_screen.rs::PackScreen::set_focus	gap: minor: screen-level focus only; no child-container focus

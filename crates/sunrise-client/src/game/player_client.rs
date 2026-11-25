@@ -40,7 +40,9 @@ impl Game<'_> {
 
     pub(in crate::game) fn client_main_hand_attack_speed(&self) -> f64 {
         if let Some(player) = &self.player
-            && let Ok(speed) = player.attributes.computed_value_of("minecraft:attack_speed")
+            && let Ok(speed) = player
+                .attributes
+                .computed_value_of("minecraft:attack_speed")
             && (self.remote.is_some()
                 || !self.client.predicted_equipment_modifiers.is_empty()
                 || self.potions.effects.get("haste").is_some()
@@ -51,7 +53,11 @@ impl Game<'_> {
         let base = self
             .player
             .as_ref()
-            .and_then(|p| p.attributes.computed_value_of("minecraft:attack_speed").ok())
+            .and_then(|p| {
+                p.attributes
+                    .computed_value_of("minecraft:attack_speed")
+                    .ok()
+            })
             .unwrap_or(sunrise_client::attack_strength::BASE_ATTACK_SPEED);
         let held_speed = self
             .held()
@@ -474,6 +480,7 @@ impl Game<'_> {
         self.refresh_client_pick(partial);
     }
 
+    #[allow(dead_code)]
     pub(in crate::game) fn client_release_tick_targets(&mut self) {
         self.release_tick_targets();
     }
@@ -502,7 +509,10 @@ impl Game<'_> {
             return None;
         }
         Shows::from_kind(remote.tracked(id)?.0)?;
-        self.text_displays.0.get(&id).map(|d| d.position().to_array())
+        self.text_displays
+            .0
+            .get(&id)
+            .map(|d| d.position().to_array())
     }
 
     pub(in crate::game) fn client_entity_position(&self, entity: EntityRef) -> Option<[f64; 3]> {

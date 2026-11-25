@@ -64,6 +64,7 @@ impl Game<'_> {
             .retain(|_, crack| now.saturating_sub(crack.updated_at) <= 400);
     }
 
+    #[allow(dead_code)]
     #[inline(always)]
     pub(in crate::game) fn client_expire_cracks(&mut self) {
         self.expire_client_cracks();

@@ -2581,8 +2581,12 @@ impl Game<'_> {
             Some(t) => Self::named_entity(&self.mobs, t.id, |m| m.id)
                 .filter(|&i| {
                     let m = &self.mobs[i];
-                    named_mob_pickable(m.alive(), m.id, self.riding, self.side_live_remote_camera_id())
-                        && !self.side_is_pick_camera(m.id)
+                    named_mob_pickable(
+                        m.alive(),
+                        m.id,
+                        self.riding,
+                        self.side_live_remote_camera_id(),
+                    ) && !self.side_is_pick_camera(m.id)
                 })
                 .map(|i| (i, 0.0, [0.0; 3])),
             None => self.mob_hit(),
@@ -2822,7 +2826,6 @@ impl Game<'_> {
             self.living_geometry::<PRECHECK>(mob, frame, out);
         }
     }
-
 }
 /// `ThrownItemRenderer.submit` turns the item by `CameraRenderState.orientation`
 /// (`Camera.setRotation`): the billboard's right and up axes are the camera's.

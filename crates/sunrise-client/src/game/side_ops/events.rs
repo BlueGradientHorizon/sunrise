@@ -57,6 +57,7 @@ impl Game<'_> {
         }
     }
 
+    #[allow(dead_code)]
     pub(in crate::game) fn side_post_game_event(
         &mut self,
         event: &'static str,
@@ -127,6 +128,7 @@ impl Game<'_> {
         }
     }
 
+    #[allow(dead_code)]
     pub(in crate::game) fn side_container_changed(&mut self, key: (i32, i32, i32)) {
         if self.is_logical_server() {
             self.server_container_changed(key);

@@ -1,8 +1,8 @@
 //! Server-side command-block execution, ticks, chaining, and edit packet handling.
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use super::{Game, commands::execute::Source};
-#[allow(unused_imports)]
 pub(in crate::game::server_side) use super::command_blocks_common::Pos;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use super::{Game, commands::execute::Source};
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_client::{
     command_block::{self, CommandBlock, Mode},

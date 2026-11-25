@@ -24,7 +24,7 @@ except ImportError:
     import test_rust_parity as base
 
 GROUP = 'summon custom name replies'
-TEST = 'game::commands::summon_item_orb_tests::summon_replies_with_the_custom_name_of_every_kind'
+TEST = 'game::server_side::commands::summon_item_orb_tests::summon_replies_with_the_custom_name_of_every_kind'
 ORACLE = lab.ROOT / 'mods/sunrise/src/test/java/dev/sunriselab/parity/VanillaCommandExecOracle.java'
 
 

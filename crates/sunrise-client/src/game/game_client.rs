@@ -3498,19 +3498,10 @@ impl Game<'_> {
                 | LevelEvent::Player { .. }
                 | LevelEvent::PrimeTnt { .. }
                 | LevelEvent::BlockEvent {
-                    kind: "dispense"
-                        | "golem"
-                        | "command_block"
-                        | "structure_block"
-                        | "test_block"
-                        | "test_block_tick"
-                        | "brushable"
-                        | "hatch"
-                        | "hatch_sniffer"
-                        | "hatch_turtles"
-                        | "portal_spawn"
-                        | "spawn_ghastling"
-                        | "shrieker_respond",
+                    kind:
+                        "dispense" | "golem" | "command_block" | "structure_block" | "test_block"
+                        | "test_block_tick" | "brushable" | "hatch" | "hatch_sniffer" | "hatch_turtles"
+                        | "portal_spawn" | "spawn_ghastling" | "shrieker_respond",
                     ..
                 }
                 | LevelEvent::GrowTree { .. }
@@ -3553,9 +3544,8 @@ impl Game<'_> {
         let Some(bounds) = added.bounds() else {
             return;
         };
-        let lift_dy = |body: Aabb| {
-            1.0 + added.collide(Axis::Y, body.move_by(Vec3::new(0.0, 1.0, 0.0)), -1.0)
-        };
+        let lift_dy =
+            |body: Aabb| 1.0 + added.collide(Axis::Y, body.move_by(Vec3::new(0.0, 1.0, 0.0)), -1.0);
         if let Some(p) = self.player.as_mut().filter(|p| !p.spectator) {
             let body = p.bounds();
             if body.intersects(bounds) {
@@ -5208,6 +5198,7 @@ impl Game<'_> {
     pub(in crate::game) fn client_award_stat(&mut self, _: &str, _: &str, _: i32) {}
     #[inline(always)]
     pub(in crate::game) fn client_award_custom_stat(&mut self, _: &str, _: i32) {}
+    #[allow(dead_code)]
     #[inline(always)]
     pub(in crate::game) fn client_container_changed(&mut self, _: (i32, i32, i32)) {}
     pub(in crate::game::client_side) fn set_window_cursor(

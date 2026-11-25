@@ -59,9 +59,10 @@ impl Game<'_> {
 
     pub(in crate::game) fn client_memory_report(&self) -> MemoryReport {
         let inputs = self.client_memory_inputs();
-        let server = self.integrated.as_ref().and_then(|i| {
-            i.ask(|reply| OwnerRequest::Control(ControlRequest::ServerSide(reply)))
-        });
+        let server = self
+            .integrated
+            .as_ref()
+            .and_then(|i| i.ask(|reply| OwnerRequest::Control(ControlRequest::ServerSide(reply))));
         inputs
             .report(server, || true)
             .expect("a manual census cannot be canceled")

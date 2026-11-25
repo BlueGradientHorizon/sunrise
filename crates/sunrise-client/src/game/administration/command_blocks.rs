@@ -110,8 +110,6 @@ impl Game<'_> {
         }
     }
 
-
-
     /// `LocalPlayer.openCommandBlock`.
     pub(in crate::game) fn open_command_block(&mut self, pos: Pos) {
         let Some(block) = self.command_block(pos).cloned() else {

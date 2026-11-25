@@ -17,6 +17,7 @@ impl Game<'_> {
             self.send_guest_mod_book_placement(conn, Frame::Invalidate { epoch });
         }
     }
+    #[allow(dead_code)]
     pub(in crate::game) fn server_invalidate_mod_book_placement_catalogues(&mut self) {
         let connections: Vec<_> = self.native_net.placement.servers.keys().copied().collect();
         for conn in connections {

@@ -106,9 +106,9 @@ AdvancementRequirements.validate	missing		minor: shipped advancement requirement
 AdvancementRequirements.names	skip:java		builds a name set to pre-create progress entries; Sunrise creates them on grant
 AdvancementRewards.grant	port	crates/sunrise-client/src/game/interface/advancements/mod.rs::Game::award	function reward wired through run_advancement_reward_function; existing XP/recipe/loot paths retained, loot-context gap H292 remains
 AdvancementRewards.Builder.build	skip:data		datagen builder; rewards come from advancement JSON
-AdvancementTree.remove	inline	crates/sunrise-client/src/game/interface/advancements/mod.rs::Game::update_remote_advancement_tree	walks insertion-time child links, removing each visited ID without erasing client progress
-AdvancementTree.addAll	inline	crates/sunrise-client/src/game/interface/advancements/mod.rs::Game::update_remote_advancement_tree	retries out-of-order additions while their parents can be admitted; unresolved nodes stay out of the tree
-AdvancementTree.tryInsert	inline	crates/sunrise-client/src/game/interface/advancements/mod.rs::Game::update_remote_advancement_tree	admits a node when its parent is present or absent by definition; replacing an ID keeps the older node's links
+AdvancementTree.remove	inline	crates/sunrise-client/src/game/interface/advancements/mod_client.rs::Game::update_remote_advancement_tree	walks insertion-time child links, removing each visited ID without erasing client progress
+AdvancementTree.addAll	inline	crates/sunrise-client/src/game/interface/advancements/mod_client.rs::Game::update_remote_advancement_tree	retries out-of-order additions while their parents can be admitted; unresolved nodes stay out of the tree
+AdvancementTree.tryInsert	inline	crates/sunrise-client/src/game/interface/advancements/mod_client.rs::Game::update_remote_advancement_tree	admits a node when its parent is present or absent by definition; replacing an ID keeps the older node's links
 AdvancementTree.get	port	crates/sunrise-client/src/advancements.rs::Tree::get	lookup by id
 AdvancementType.createAnnouncement	inline	crates/sunrise-client/src/game/interface/advancements/mod.rs::Game::award	the chat line is built in award from the frame's key
 DisplayInfo.serializeToNetwork	port	crates/sunrise-client/src/lan/advancements.rs::ServerAdvancements::write_advancement	writes title, description, icon, frame, flags and background

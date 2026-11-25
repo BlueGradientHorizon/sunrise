@@ -33,6 +33,7 @@ impl Game<'_> {
     ) {
     }
 
+    #[allow(dead_code)]
     pub(in crate::game) fn client_post_game_event(
         &mut self,
         _event: &'static str,

@@ -1628,10 +1628,7 @@ impl Game<'_> {
     /// Resolves which player body `attachment_slot(Holder::Player(uuid), _)` addresses now:
     /// the acting body when its UUID matches, else the exact guest `conn` resolved in `self.dim`
     /// (online real player across dimensions, or the per-level fake player in `self.dim`).
-    pub(in crate::game) fn attachment_player_body(
-        &self,
-        uuid: u128,
-    ) -> Option<PlayerBodyKey> {
+    pub(in crate::game) fn attachment_player_body(&self, uuid: u128) -> Option<PlayerBodyKey> {
         if self.server.lan_acting_uuid == Some(uuid) {
             return Some(self.acting_player_body());
         }
@@ -1913,7 +1910,8 @@ impl Game<'_> {
             .collect();
         let dimension = self.dim;
         let steps = entities::Step::of(journal.announcements, journal.removals);
-        if let Some(commit) = entities::committing_in(&mut self.transactions.committing, dimension) {
+        if let Some(commit) = entities::committing_in(&mut self.transactions.committing, dimension)
+        {
             commit.removed.extend(removed);
             commit.queue.extend(steps);
             effects(self);
@@ -1933,11 +1931,18 @@ impl Game<'_> {
     }
     /// The step `next` of the queue of the commit at `frame`, with the entities never to join. The
     /// removals of a step are taken when `run`, so they run once.
-    fn commit_step(&mut self, frame: usize, next: usize, run: bool) -> Option<(entities::Step, Vec<u32>)> {
+    fn commit_step(
+        &mut self,
+        frame: usize,
+        next: usize,
+        run: bool,
+    ) -> Option<(entities::Step, Vec<u32>)> {
         let commit = self.transactions.committing.get_mut(frame)?;
         let step = match commit.queue.get_mut(next)? {
             entities::Step::Tell(announcement) => entities::Step::Tell(*announcement),
-            entities::Step::Remove(removals) if run => entities::Step::Remove(std::mem::take(removals)),
+            entities::Step::Remove(removals) if run => {
+                entities::Step::Remove(std::mem::take(removals))
+            }
             entities::Step::Remove(_) => entities::Step::Remove(Vec::new()),
         };
         Some((step, commit.removed.clone()))

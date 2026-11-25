@@ -63,5 +63,4 @@ impl Game<'_> {
         self.command_guest(conn)
             .map(|g| (g.xp_level, mode_name(g.game_mode)))
     }
-
 }

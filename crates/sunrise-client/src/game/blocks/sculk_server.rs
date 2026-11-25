@@ -257,6 +257,7 @@ impl Game<'_> {
         self.post_block_game_event(event, pos, actor, state);
     }
 
+    #[allow(dead_code)]
     pub(in crate::game) fn server_post_game_event(
         &mut self,
         event: &'static str,

@@ -85,7 +85,11 @@ impl Game<'_> {
     }
 
     /// `CloseableCommandBlockSource.sendSystemMessage` for the cart.
-    pub(in crate::game) fn cart_command_output(&mut self, id: u32, format: impl FnOnce(Text) -> Text) {
+    pub(in crate::game) fn cart_command_output(
+        &mut self,
+        id: u32,
+        format: impl FnOnce(Text) -> Text,
+    ) {
         let updated = self.edit_command_cart(id, |c| {
             if !c.command.track_output {
                 return false;
@@ -111,7 +115,11 @@ impl Game<'_> {
     }
 
     /// `ServerGamePacketListenerImpl.handleSetCommandMinecart` for a guest.
-    pub(in crate::game) fn lan_set_command_minecart(&mut self, conn: u32, p: play::SetCommandMinecart) {
+    pub(in crate::game) fn lan_set_command_minecart(
+        &mut self,
+        conn: u32,
+        p: play::SetCommandMinecart,
+    ) {
         let Some(g) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
             return;
         };
@@ -126,7 +134,12 @@ impl Game<'_> {
     }
 
     /// What `handleSetCommandMinecart` does once the player may edit the cart.
-    pub(in crate::game) fn apply_cart_command(&mut self, id: u32, command: String, track_output: bool) {
+    pub(in crate::game) fn apply_cart_command(
+        &mut self,
+        id: u32,
+        command: String,
+        track_output: bool,
+    ) {
         let enabled = self
             .ui
             .rules

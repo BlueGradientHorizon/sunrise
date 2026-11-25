@@ -249,10 +249,7 @@ pub(in crate::game) enum Reply {
 
 /// Boundary helpers for untrusted numbers. No float-to-int saturation or
 /// overflowing arithmetic may turn malformed output into a valid write.
-pub(in crate::game) fn listener_count(
-    value: f64,
-    maximum: u32,
-) -> Result<u32, InvalidReason> {
+pub(in crate::game) fn listener_count(value: f64, maximum: u32) -> Result<u32, InvalidReason> {
     if !value.is_finite() {
         return Err(InvalidReason::Numeric);
     }

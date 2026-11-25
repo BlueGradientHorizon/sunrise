@@ -69,9 +69,9 @@ MerchantOffer.createFromStream	skip:java		wire decoding (stream codec)
 MerchantOffers.copy	skip:java		list copy
 VillagerTrade.builder	skip:data		datagen factory for trade data
 VillagerTrade.Builder	skip:data		datagen builder for trade data
-BaseCommandBlock.createSource	inline	crates/sunrise-client/src/game/administration/command_blocks.rs::Game::command_block_success	the track_output gate that decides whether the source exists
-BaseCommandBlock.CloseableCommandBlockSource.acceptsSuccess	port	crates/sunrise-client/src/game/administration/command_blocks.rs::Game::command_block_success	track_output and send_command_feedback; a removed block gets no output
-BaseCommandBlock.CloseableCommandBlockSource.shouldInformAdmins	port	crates/sunrise-client/src/game/administration/command_blocks.rs::Game::command_block_success	command_block_output rule, with feedback on
+BaseCommandBlock.createSource	inline	crates/sunrise-client/src/game/administration/command_blocks_server.rs::Game::command_block_success	the track_output gate that decides whether the source exists
+BaseCommandBlock.CloseableCommandBlockSource.acceptsSuccess	port	crates/sunrise-client/src/game/administration/command_blocks_server.rs::Game::command_block_success	track_output and send_command_feedback; a removed block gets no output
+BaseCommandBlock.CloseableCommandBlockSource.shouldInformAdmins	port	crates/sunrise-client/src/game/administration/command_blocks_server.rs::Game::command_block_success	command_block_output rule, with feedback on
 BaseSpawner.setEntityData	port	crates/sunrise-client/src/mobs/spawner.rs::Spawner::set_entity_id
 BaseSpawner.getOrCreateDisplayEntity	port	crates/sunrise-client/src/game/mobs/spawner_client.rs::Game::update_spawner_display	display mob made per spawner from its next spawn data
 BaseSpawner.onEventTriggered	port	crates/sunrise-client/src/mobs/spawner.rs::Spawner::client_event	block event 1 resets the client's delay

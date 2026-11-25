@@ -92,7 +92,12 @@ impl Game<'_> {
                 self.server.lan_acting_uuid,
                 self.server.lan_acting_name.clone(),
             ) {
-                self.native_player_take_lectern_book(player, &name, [key.0, key.1, key.2], &book.item);
+                self.native_player_take_lectern_book(
+                    player,
+                    &name,
+                    [key.0, key.1, key.2],
+                    &book.item,
+                );
             }
         } else if menu.data[0] != before {
             self.set_lectern_powered(key, true);

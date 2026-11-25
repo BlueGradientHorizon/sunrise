@@ -290,7 +290,6 @@ impl Game<'_> {
     }
 
     // ---- the menu ----
-
 }
 
 #[cfg(test)]

@@ -69,8 +69,8 @@ TriggerCommand.setValue	port	crates/sunrise-client/src/scoreboard_cmd.rs::trigge
 TriggerCommand.simpleTrigger	port	crates/sunrise-client/src/scoreboard_cmd.rs::trigger	trigger arm without a sub-command
 TriggerCommand.getScore	inline	crates/sunrise-client/src/scoreboard_cmd.rs::trigger	primed check and lock
 VersionCommand.register	port	crates/sunrise-command/src/vanilla.rs::registered	version node
-WardenSpawnTrackerCommand.setWarningLevel	port	crates/sunrise-client/src/game/blocks/sculk.rs::Game::cmd_warden_spawn_tracker	set arm
-WardenSpawnTrackerCommand.resetTracker	port	crates/sunrise-client/src/game/blocks/sculk.rs::Game::cmd_warden_spawn_tracker	clear arm
+WardenSpawnTrackerCommand.setWarningLevel	port	crates/sunrise-client/src/game/blocks/sculk_server.rs::Game::cmd_warden_spawn_tracker	set arm
+WardenSpawnTrackerCommand.resetTracker	port	crates/sunrise-client/src/game/blocks/sculk_server.rs::Game::cmd_warden_spawn_tracker	clear arm
 WaypointCommand.setWaypointStyle	port	crates/sunrise-client/src/game/administration/commands/extra.rs::Game::cmd_waypoint	style arm of the modify branch
 WaypointCommand.setWaypointColor	port	crates/sunrise-client/src/game/administration/commands/extra.rs::Game::cmd_waypoint	color arm of the modify branch
 WaypointCommand.resetWaypointColor	port	crates/sunrise-client/src/game/administration/commands/extra.rs::Game::cmd_waypoint	color reset arm

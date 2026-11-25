@@ -18,9 +18,9 @@ PotionContents.getColorOptional	port	crates/sunrise-client-core/src/potions.rs::
 PotionContents.hasEffects	inline	crates/sunrise-client/src/game/items/potions_server.rs::Game::splash	a lingering cloud is made only when the potion has effects
 PotionContents.getPotionDescription	port	crates/sunrise-client-render/src/brewing.rs::tooltip	effect name with potency; joined with a space, not the potion.withAmplifier translation
 PotionContents.onConsume	port	crates/sunrise-client/src/game/items/potions.rs::Game::tick_drinking	gap: minor: duration scale is always 1.0; POTION_DURATION_SCALE is not read
-AttackRange.defaultFor	inline	crates/sunrise-client/src/game/items/hand.rs::attack_range_contains	gap: minor: fixed reach 0 to 3 with a 0.3 margin; no entity interaction range attribute
+AttackRange.defaultFor	inline	crates/sunrise-client/src/game/items/held_items.rs::attack_range_contains	gap: minor: fixed reach 0 to 3 with a 0.3 margin; no entity interaction range attribute
 AttackRange.getClosesetHit	port	crates/sunrise-client/src/game/items/hand.rs::GameHands::hit	gap: minor: uses the crosshair's entity or block, not the closest hit along the attack range
-AttackRange.effectiveMaxRange	inline	crates/sunrise-client/src/game/items/hand.rs::attack_range_contains	creative or survival reach; the mob factor is not used
+AttackRange.effectiveMaxRange	inline	crates/sunrise-client/src/game/items/held_items.rs::attack_range_contains	creative or survival reach; the mob factor is not used
 BlockItemStateProperties.with	port	crates/sunrise-client/src/game/blocks/block_items.rs::Game::picked_stack	gap: minor: writes only honey_level for beehives and bee nests (BeehiveBlock.getCloneItemStack)
 BlockItemStateProperties.get	port	crates/sunrise-client/src/item_tooltip.rs::honey_line	reads honey_level only
 BlockItemStateProperties.apply	port	crates/sunrise-client/src/game/blocks/block_items.rs::Game::apply_item_block_state	sets the item's block state properties on the placed block
@@ -80,7 +80,7 @@ ResolvableProfile.Static.hashCode	skip:java		hash for collections
 Tool.Rule.minesAndDrops	port	crates/sunrise-items/src/items.rs::Items::load_with	rule read from the item JSON: speed and correct_for_drops set to true
 TooltipDisplay.withHidden	port	crates/sunrise-client/src/game/administration/commands/items_server.rs::Game::apply_item_modifier	both `/item modify toggle_tooltips` and the loot table's `minecraft:toggle_tooltips` (`loot.rs::Context::run`) keep the component's hidden ids; the raid banner's hidden pattern is read in `item_tooltip` shows()
 WrittenBookContent.craftCopy	port	crates/sunrise-client/src/crafting.rs::Special::assemble	book copy: generation plus one, pages kept
-WrittenBookContent.resolveForItem	port	crates/sunrise-client/src/game/interface/books.rs::Game::resolve_held_book	the book in the acting hand resolves when `use_book` opens it, as `ServerPlayer.openItemGui` does before the book screen reads it
+WrittenBookContent.resolveForItem	port	crates/sunrise-client/src/game/interface/books_server.rs::Game::resolve_held_book	the book in the acting hand resolves when `use_book` opens it, as `ServerPlayer.openItemGui` does before the book screen reads it
 WrittenBookContent.resolve	port	crates/sunrise-items/src/item_data.rs::WrittenBook::resolve	every page's selectors and scores become their text (`extra` and `with` recurse), and the book is marked resolved
 WrittenBookContent.markResolved	port	crates/sunrise-items/src/item_data.rs::WrittenBook::resolve	the `resolved` component field is kept and written by the codec; a resolved book is never resolved again
 WrittenBookContent.resolvePage	port	crates/sunrise-items/src/item_data.rs::resolve_page_tag	one page's component with its selectors and scores replaced, recursing into `extra` and `with`

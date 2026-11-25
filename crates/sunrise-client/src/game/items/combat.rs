@@ -1,7 +1,7 @@
 //! The player's `CombatTracker`: the damage taken lately, who dealt it and
 //! where the player fell from, turned into the vanilla death message.
 #[allow(unused_imports)]
-use super::{Game, commands::Target};
+use super::{Game, commands_common::Target};
 
 #[cfg(test)]
 #[path = "tests/infested_roll_tests.rs"]

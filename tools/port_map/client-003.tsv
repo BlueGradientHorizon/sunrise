@@ -115,8 +115,8 @@ ArmorStandRenderer.extractRenderState	port	crates/sunrise-client/src/game/entiti
 ArmorStandRenderer.submit	port	crates/sunrise-client/src/game/entities/armor_stands_client.rs::Game::armor_stand_geometry	small or big model
 ArmorStandRenderer.setupRotations	port	crates/sunrise-client/src/game/entities/armor_stands_client.rs::Game::armor_stand_geometry	the wiggle turn after a hit
 ArmorStandRenderer.getRenderType	port	crates/sunrise-client/src/game/entities/armor_stands_client.rs::Game::armor_stand_geometry	gap: minor: the translucent marker variant is not split out
-ArrowRenderer.submit	inline	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::mob_geometry	the arrow model is drawn here, turned by its yaw and pitch
-ArrowRenderer.extractRenderState	inline	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::mob_geometry	arrow yaw and pitch are read here
+ArrowRenderer.submit	inline	crates/sunrise-client/src/game/mobs/creatures/mod_client.rs::Game::mob_geometry	the arrow model is drawn here, turned by its yaw and pitch
+ArrowRenderer.extractRenderState	inline	crates/sunrise-client/src/game/mobs/creatures/mod_client.rs::Game::mob_geometry	arrow yaw and pitch are read here
 AxolotlRenderer.extractRenderState	port	crates/sunrise-client/src/mobs/axolotl.rs::Animation::tick	in-water, on-ground, moving and playing-dead factors are updated here; poses in body_anim::axolotl
 BatRenderer.extractRenderState	port	crates/sunrise-client/src/mobs/bat.rs::setup_animation_states	flying and resting states; resting() is the flag
 BeeRenderer.extractRenderState	port	crates/sunrise-client/src/mobs/body_anim.rs::bee	stinger, wings on the ground, angry and roll read there

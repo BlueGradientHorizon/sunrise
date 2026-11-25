@@ -15,10 +15,7 @@ impl KeptItemEntity {
         self.velocity = self.velocity.or(child.velocity);
     }
 
-    pub(in crate::game) fn restore(
-        self,
-        item: &mut sunrise_client::entities::ItemEntity,
-    ) {
+    pub(in crate::game) fn restore(self, item: &mut sunrise_client::entities::ItemEntity) {
         if let Some(stack) = self.stack {
             item.stack = stack;
         }
@@ -37,11 +34,7 @@ impl KeptItemEntity {
 impl Game<'_> {
     /// Sets the stack of `id` for an item place. A caller that already has a
     /// validated resident slot uses `journal_set_item_entity_at` instead.
-    pub(in crate::game) fn journal_set_item_entity(
-        &mut self,
-        id: u32,
-        stack: ItemStack,
-    ) -> bool {
+    pub(in crate::game) fn journal_set_item_entity(&mut self, id: u32, stack: ItemStack) -> bool {
         self.dropped
             .iter()
             .position(|item| item.id == id)

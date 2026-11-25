@@ -112,7 +112,7 @@ ArmorStand.isMarker	skip:other		accessor; reads the marker field
 ArmorStand.setBit	skip:other		packed-flag helper; Sunrise keeps separate bools and packs them when sent
 ArmorStand.skipAttackInteraction	missing		minor: adventure-mode protection on stand hits is not checked
 ArmorStand.onSyncedDataUpdated	skip:other		client refresh when flags sync; bounds are computed on demand
-ArmorStand.getDimensionsMarker	inline	crates/sunrise-client/src/game/entities/armor_stands.rs::Game::armor_stand_hit	marker stands are skipped, so they have no box
+ArmorStand.getDimensionsMarker	inline	crates/sunrise-client/src/game/entities/pick_ray.rs::Game::armor_stand_hit	marker stands are skipped, so they have no box
 ArmorStand.getLightProbePosition	port	crates/sunrise-client/src/entities.rs::ArmorStand::light_probe	a marker walks the cells of its non-marker box (BlockPos.betweenClosed, x fastest) for a brightness-15 cell, else the brightest; any other stand is lit from its eye (eyeHeight 1.7775, 0.9875 small)
 ArmorStand.setArmorStandPose	port	crates/sunrise-client/src/entity_nbt.rs::armor_stand_from_nbt	Pose tag read into the six pose parts
 ArmorStand.getArmorStandPose	port	crates/sunrise-client/src/entity_nbt.rs::armor_stand_to_nbt	Pose tag written from the six pose parts
@@ -125,7 +125,7 @@ BlockAttachedEntity.readAdditionalSaveData	port	crates/sunrise-client/src/entity
 Cushion.isBreakingDeniedFor	inline	crates/sunrise-client/src/game/entities/cushions.rs::Game::attack_cushion	the may_build gate
 Cushion.isBreakingDeniedAtPosFor	inline	crates/sunrise-client/src/game/entities/cushions.rs::Game::attack_cushion	the mayInteract gate, folded into the one may_build check
 Cushion.tickAtCheckInterval	inline	crates/sunrise-client/src/game/entities/cushions.rs::Game::tick_cushions	gap: minor: fluid effects not applied; fire and survival checked every 100 ticks
-Cushion.thunderHit	port	crates/sunrise-client/src/game/entities/lightning.rs::Game::thunder_hit	a cushion in the bolt's box breaks and drops its item, last first
+Cushion.thunderHit	port	crates/sunrise-client/src/game/entities/lightning_server.rs::Game::thunder_hit	a cushion in the bolt's box breaks and drops its item, last first
 Cushion.setPos	skip:other		position field write; the block position is kept apart in cushion.pos
 Cushion.canBePlacedAt	port	crates/sunrise-client/src/cushion.rs::can_place
 Cushion.wouldSurviveAt	port	crates/sunrise-client/src/cushion.rs::survives

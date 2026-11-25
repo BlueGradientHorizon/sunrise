@@ -2,7 +2,7 @@
 #[allow(unused_imports)]
 use super::{
     Dim, Game,
-    commands::{R, Target, err},
+    commands_common::{R, Target, err},
 };
 #[allow(unused_imports)]
 use std::collections::{HashMap, HashSet};

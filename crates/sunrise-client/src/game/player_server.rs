@@ -79,7 +79,9 @@ impl Game<'_> {
 
     pub(in crate::game) fn server_main_hand_attack_speed(&self) -> f64 {
         if let Some(player) = &self.player
-            && let Ok(speed) = player.attributes.computed_value_of("minecraft:attack_speed")
+            && let Ok(speed) = player
+                .attributes
+                .computed_value_of("minecraft:attack_speed")
             && (!self.server.applied_modifiers.is_empty()
                 || self.potions.effects.get("haste").is_some()
                 || self.potions.effects.get("mining_fatigue").is_some())
@@ -89,7 +91,11 @@ impl Game<'_> {
         let base = self
             .player
             .as_ref()
-            .and_then(|p| p.attributes.computed_value_of("minecraft:attack_speed").ok())
+            .and_then(|p| {
+                p.attributes
+                    .computed_value_of("minecraft:attack_speed")
+                    .ok()
+            })
             .unwrap_or(sunrise_client::attack_strength::BASE_ATTACK_SPEED);
         let value = base
             + self
@@ -631,6 +637,7 @@ impl Game<'_> {
     }
 
     pub(in crate::game) fn server_refresh_client_pick(&mut self, _partial: f32) {}
+    #[allow(dead_code)]
     pub(in crate::game) fn server_release_tick_targets(&mut self) {}
 
     #[cfg(test)]

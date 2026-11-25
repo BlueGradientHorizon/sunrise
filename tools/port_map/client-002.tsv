@@ -43,7 +43,7 @@ ClientPacketListener.handleGameEvent	port	crates/sunrise-client/src/game/network
 ClientPacketListener.openDemoIntroScreen	port	crates/sunrise-client/src/game/interface/demo_intro.rs::Game::apply_demo_event	GameEvent demo intro creates a parentless popup with the current key bindings
 ClientPacketListener.startWaitingForNewLevel	inline	crates/sunrise-client/src/game/network/remote/session_client.rs::Game::enter_remote_dimension	the tracker starts and the LevelLoadingScreen draws until the player's section is shown
 ClientPacketListener.handleMapItemData	port	crates/sunrise-client/src/game/blocks/maps/mod.rs::Game::remote_map_item_data
-ClientPacketListener.handleUpdateAdvancementsPacket	port	crates/sunrise-client/src/game/interface/advancements/mod.rs::Game::remote_advancements	UpdateAdvancements arm passes the added icons
+ClientPacketListener.handleUpdateAdvancementsPacket	port	crates/sunrise-client/src/game/interface/advancements/mod_client.rs::Game::remote_advancements	UpdateAdvancements arm passes the added icons
 ClientPacketListener.handleSelectAdvancementsTab	missing		minor: the server's advancement tab choice is ignored
 ClientPacketListener.handleCommands	port	crates/sunrise-client/src/game/network/remote/packets_player.rs::Game::apply_commands_packet	Commands arm: command tree from the packet, merged with Sunrise's own
 ClientPacketListener.handleStopSoundEvent	port	crates/sunrise-client/src/game/network/remote/mod_client.rs::Game::apply_packet	StopSound arm: audio stop_sounds

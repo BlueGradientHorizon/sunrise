@@ -73,9 +73,9 @@ SculkSensorBlock.getFluidState	port	crates/sunrise-world/src/registry_fluid.rs::
 SculkSensorBlock.onPlace	port	crates/sunrise-world/src/level/hooks.rs::Sim::on_place	sensor arm: clears a stored power on placement
 SculkSensorBlock.updateShape	port	crates/sunrise-world/src/level/shapes.rs::Sim::update_shape_class	waterlogged water tick
 SculkSensorBlock.updateNeighbours	port	crates/sunrise-world/src/level/sculk.rs::Sim::sensor_update_neighbours
-SculkSensorBlock.getTicker	port	crates/sunrise-client/src/game/blocks/sculk.rs::Game::tick_sculk_block	the vibration tick: pending vibrations start and are received here; the cooldown is the block tick in sunrise-world tick.rs
+SculkSensorBlock.getTicker	port	crates/sunrise-client/src/game/blocks/sculk_server.rs::Game::tick_sculk_block	the vibration tick: pending vibrations start and are received here; the cooldown is the block tick in sunrise-world tick.rs
 SculkSensorBlock.getDirectSignal	port	crates/sunrise-world/src/level/redstone.rs::Sim::state_direct_signal	the upward signal comes from the generated strong facts
-SculkSensorBlock.tryResonateVibration	port	crates/sunrise-client/src/game/blocks/sculk.rs::Game::activate_sensor	resonator game event and amethyst sound; the sensor activation is in the same fn
+SculkSensorBlock.tryResonateVibration	port	crates/sunrise-client/src/game/blocks/sculk_server.rs::Game::activate_sensor	resonator game event and amethyst sound; the sensor activation is in the same fn
 SculkSensorBlock.createBlockStateDefinition	skip:data		block state definition is data (blocks table in sunrise-items)
 SculkSensorBlock.spawnAfterBreak	inline	crates/sunrise-world/src/level/removal.rs::break_experience	sensor experience of 5 in break_experience
 SculkShriekerBlock.createBlockStateDefinition	skip:data		block state definition is data (blocks table in sunrise-items)
@@ -83,7 +83,7 @@ SculkShriekerBlock.updateShape	port	crates/sunrise-world/src/level/shapes.rs::Si
 SculkShriekerBlock.getStateForPlacement	port	crates/sunrise-world/src/level/place.rs::Sim::placement_class	waterlogged from the clicked fluid
 SculkShriekerBlock.getFluidState	port	crates/sunrise-world/src/registry_fluid.rs::RegistryFluidWorld::fluid_state	waterlogged state from block data
 SculkShriekerBlock.spawnAfterBreak	inline	crates/sunrise-world/src/level/removal.rs::break_experience	shrieker experience of 5 in break_experience
-SculkShriekerBlock.getTicker	port	crates/sunrise-client/src/game/blocks/sculk.rs::Game::tick_sculk_block	the vibration tick for shriekers
+SculkShriekerBlock.getTicker	port	crates/sunrise-client/src/game/blocks/sculk_server.rs::Game::tick_sculk_block	the vibration tick for shriekers
 SculkSpreader.save	port	crates/sunrise-client-render/src/sculk.rs::cursors_to_nbt	the cursors tag of a catalyst: pos, charge, decay and update delays, facings
 SculkSpreader.ChargeCursor.shouldUpdate	port	crates/sunrise-world/src/level/sculk.rs::Sim::sculk_cursor_update	gap: minor: the world generation case is in worldgen/sculk.rs; this is the live tick gate
 SculkSpreader.ChargeCursor.mergeWith	inline	crates/sunrise-world/src/level/sculk.rs::Sim::sculk_update_cursors	the merge of cursors on the same position in the update loop

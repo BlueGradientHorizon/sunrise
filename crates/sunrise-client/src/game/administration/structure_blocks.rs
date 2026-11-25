@@ -6,9 +6,7 @@ use super::Game;
 use std::collections::HashSet;
 use sunrise_client::{
     containers::BlockEntity,
-    structure_block::{
-        self, SCAN_CORNER_BLOCKS_RANGE, StructureBlock, StructureMode, UpdateType,
-    },
+    structure_block::{self, SCAN_CORNER_BLOCKS_RANGE, StructureBlock, StructureMode, UpdateType},
     text::Text,
 };
 use sunrise_core::position::BlockPos;

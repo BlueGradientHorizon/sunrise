@@ -21,7 +21,7 @@ Entity.getAvailableSpaceBelow	inline	crates/sunrise-world/src/world_movement.rs:
 Entity.collectAllColliders	inline	crates/sunrise-world/src/world_movement.rs::resolve_world_movement	entity, border and block shapes are gathered inside resolve_world_movement; no standalone list exists, and the creative flight drop on a mode switch has no use of it
 Entity.collideWithShapes	port	crates/sunrise-core/src/geometry/movement.rs::resolve_shape_movement	axis step order from the movement size
 Entity.debugBlockIntersection	skip:debug		debug subscription for the entity block intersection overlay
-Entity.gameEvent	port	crates/sunrise-client/src/game/blocks/sculk.rs::Game::post_entity_event	gap: minor: only players and mobs (Who) can be the source
+Entity.gameEvent	port	crates/sunrise-client/src/game/blocks/sculk_server.rs::Game::post_entity_event	gap: minor: only players and mobs (Who) can be the source
 Entity.playSound	port	crates/sunrise-client/src/mobs.rs::voice	mobs: the silent gate of Entity.playSound, the getSoundVolume volume and the getVoicePitch pitch at the feet; the player and the other entities have their own sound paths
 Entity.playMuffledStepSound	port	crates/sunrise-client/src/motion.rs::MotionWorld::walking_step_sound	gap: minor: players only; mobs play the floor block's own step and never the muffled floor sound under snow, carpet or other combination blocks
 Entity.shouldPlayAmethystStepSound	port	crates/sunrise-client/src/motion.rs::MotionWorld::walking_step_sound	gap: minor: only the player chimes on crystal blocks; mobs walking on amethyst stay silent

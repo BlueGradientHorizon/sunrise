@@ -307,7 +307,7 @@ pub(in crate::game) fn run_live_damage_and_blast_creaking_reactions_and_timed_pl
     use sunrise_core::{geometry::Vec3, position::BlockPos};
 
     if crate::game::native_entity_refs::tests::run_fresh_cases(
-        "game::commands::world_cmds::registered_damage_tests::live_damage_and_blast_creaking_reactions_and_timed_player_credit",
+        "game::server_side::commands::world_cmds::registered_damage_tests::live_damage_and_blast_creaking_reactions_and_timed_player_credit",
         "SUNRISE_CREAKING_LIVE_DAMAGE_CHILD",
         &["live-damage"],
     ) {

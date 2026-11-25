@@ -131,8 +131,8 @@ WardenAi.initIdleActivity	inline	crates/sunrise-client/src/mobs/warden_brain.rs:
 WardenAi.initInvestigateActivity	inline	crates/sunrise-client/src/mobs/warden_brain.rs::activities	roar target and walk to the disturbance
 WardenAi.initSniffingActivity	inline	crates/sunrise-client/src/mobs/warden_brain.rs::activities	roar target and sniffing
 WardenAi.isTarget	port	crates/sunrise-client/src/mobs/warden.rs::brain_target	gap: minor: returns the attack target; the look-at filter is the caller's check
-WardenSpawnTracker.hasNearbyWarden	inline	crates/sunrise-client/src/game/blocks/sculk.rs::Game::try_to_warn	a warden within 24 blocks on each axis stops the warning
-WardenSpawnTracker.getNearbyPlayers	inline	crates/sunrise-client/src/game/blocks/sculk.rs::Game::try_to_warn	gap: minor: only the player who set off the shrieker is counted, not other players within 16 blocks
+WardenSpawnTracker.hasNearbyWarden	inline	crates/sunrise-client/src/game/blocks/sculk_server.rs::Game::try_to_warn	a warden within 24 blocks on each axis stops the warning
+WardenSpawnTracker.getNearbyPlayers	inline	crates/sunrise-client/src/game/blocks/sculk_server.rs::Game::try_to_warn	gap: minor: only the player who set off the shrieker is counted, not other players within 16 blocks
 WardenSpawnTracker.copyData	inline	crates/sunrise-client-render/src/sculk.rs::WardenSpawnTracker::try_warn	every tracker takes the highest one's level, cooldown and tick count
 Drowned.checkDrownedSpawnRules	port	crates/sunrise-client/src/mobs/spawn_rules.rs::check_spawn_rules	water below, spawner or deep enough, dark enough, frequency roll
 Drowned.isPushedByFluid	port	crates/sunrise-client/src/mobs/living.rs::Mob::pushed_by_fluid	`!isSwimming()`: a drowned swimming after its target is not carried by the current

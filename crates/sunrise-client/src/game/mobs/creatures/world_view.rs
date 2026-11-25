@@ -116,9 +116,7 @@ impl Game<'_> {
     }
 
     /// `Level.getEntity`: revenge goals must resolve the dragon too.
-    pub(in crate::game) fn dragon_target(
-        &self,
-    ) -> Option<(u32, sunrise_client::mobs::TargetInfo)> {
+    pub(in crate::game) fn dragon_target(&self) -> Option<(u32, sunrise_client::mobs::TargetInfo)> {
         let d = self.dragon.as_ref().filter(|d| d.alive())?;
         let p = d.position;
         let bounds = Aabb::new(

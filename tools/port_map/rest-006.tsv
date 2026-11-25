@@ -126,7 +126,7 @@ net/minecraft/commands/arguments/selector/EntitySelector#sortAndLimit	inline	cra
 EntitySelectorParser.allowSelectors	inline	crates/sunrise-command/src/args.rs::ArgType::parse	reg.permission >= 2 at each selector call site
 EntitySelectorParser.createAabb	inline	crates/sunrise-client/src/game/administration/commands/mod.rs::Game::select_in_level	dx, dy, dz box from the origin
 EntitySelectorParser.finalizePredicates	port	crates/sunrise-client/src/game/administration/commands/mod.rs::Game::select_in_level	player: x_rotation and y_rotation are parsed but never filter the selection; the level filter is here
-EntitySelectorParser.createRotationPredicate	inline	crates/sunrise-client/src/game/administration/commands/mod.rs::rotation_in	x_rotation is the pitch and y_rotation the yaw, wrapped and compared with the wrapped range that runs through 180 when its minimum is above its maximum
+EntitySelectorParser.createRotationPredicate	inline	crates/sunrise-client/src/game/administration/commands_common.rs::rotation_in	x_rotation is the pitch and y_rotation the yaw, wrapped and compared with the wrapped range that runs through 180 when its minimum is above its maximum
 EntitySelectorParser.shouldInvertValue	port	crates/sunrise-command/src/selector.rs::SelectorParser::should_invert
 EntitySelectorParser.fillSelectorSuggestions	port	crates/sunrise-command/src/selector.rs::SelectorParser::fill_selectors
 EntitySelectorParser.suggestNameOrSelector	inline	crates/sunrise-command/src/selector.rs::SelectorParser::fill_suggestions

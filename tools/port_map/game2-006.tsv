@@ -1,6 +1,6 @@
 FireworkRocketEntity.<init>	port	crates/sunrise-client/src/game/entities/fireworks.rs::Game::new_rocket	launch velocity triangle and lifetime 10*(1+flight)+randoms; the owner and attached target are set by the callers
 FireworkRocketEntity.defineSynchedData	skip:java		SynchedEntityData definitions; Sunrise keeps the rocket fields on the Rocket struct
-FireworkRocketEntity.shouldRender	port	crates/sunrise-client/src/game/entities/fireworks.rs::Game::rocket_geometry	attached rockets are not drawn; camera range is the caller's check
+FireworkRocketEntity.shouldRender	port	crates/sunrise-client/src/game/entities/fireworks_client.rs::Game::rocket_geometry	attached rockets are not drawn; camera range is the caller's check
 FireworkRocketEntity.onHitEntity	port	crates/sunrise-client/src/game/entities/fireworks.rs::Game::tick_rockets	a rocket fired from a crossbow or dispenser tests entity hits in flight and bursts on what it strikes
 FireworkRocketEntity.onHitBlock	inline	crates/sunrise-client/src/game/entities/fireworks.rs::Game::tick_rockets	a block hit ends the angled rocket early and explodes it; vanilla explodes only when it has explosions and skips the block entityInside effect
 FireworkRocketEntity.dealExplosionDamage	port	crates/sunrise-client/src/game/entities/fireworks.rs::Game::explode_rocket	damage 5+2 per explosion; attached target takes the full blast, others within 5 blocks with line of sight

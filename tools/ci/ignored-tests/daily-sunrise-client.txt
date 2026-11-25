@@ -5,8 +5,8 @@ sunrise-client game::server_side::api_values::loot_values::query_tests::queried_
 sunrise-client game::server_side::api_values::read_stack_tests::draw_consumers_render_nonresident_stacks lib daily game-boot
 sunrise-client game::server_side::boarding::tests::the_own_player_boards_behind_a_guest_and_a_pig lib daily resources
 sunrise-client game::server_side::boarding::tests::the_own_player_in_the_third_seat_of_a_happy_ghast_sits_there lib daily resources
-sunrise-client game::commands::modprofile::tests::modprofile_state_and_report_side_effects lib daily child-process
-sunrise-client game::commands::selector_bounds_tests::actual_selector_uses_body_overlap_but_distance_stays_at_the_origin lib daily game-boot
+sunrise-client game::server_side::commands::modprofile::tests::modprofile_state_and_report_side_effects lib daily child-process
+sunrise-client game::server_side::commands::selector_bounds_tests::actual_selector_uses_body_overlap_but_distance_stays_at_the_origin lib daily game-boot
 sunrise-client game::server_side::commands_server::world_cmds::allay_owner_damage_tests::allay_owner_adapters_compare_the_actual_player_uuid lib daily game-boot
 sunrise-client game::server_side::container_loot::tests::commands_clone_and_structures lib daily child-process
 sunrise-client game::server_side::container_loot::tests::player_and_world_triggers lib daily child-process
@@ -55,7 +55,7 @@ sunrise-client game::server_side::mounts::ride_dismount_tests::a_mob_that_boards
 sunrise-client game::server_side::mounts::ride_dismount_tests::a_ride_mount_keeps_the_players_view lib daily resources
 sunrise-client game::server_side::mounts::sneak_dismount_tests::a_destroyed_vehicle_asks_once_to_let_its_local_rider_go lib daily resources
 sunrise-client game::server_side::mounts::tests::a_camel_husk_keeps_itself_once_clicked lib daily game-boot
-sunrise-client game::client_side::mounts_client::tests::a_chest_on_a_donkey_or_mule_plays_its_own_sound_at_full_volume lib daily game-boot
+sunrise-client game::server_side::mounts::tests::a_chest_on_a_donkey_or_mule_plays_its_own_sound_at_full_volume lib daily game-boot
 sunrise-client game::server_side::mounts::tests::feeding_a_mount_draws_from_its_own_random_and_posts_eat lib daily game-boot
 sunrise-client game::server_side::mounts::tests::saddling_and_armouring_play_at_pitch_one_from_the_mounts_own_random lib daily game-boot
 sunrise-client game::native_block_entity_transform_tests::structure_transform_placement_rotations_mirrors_unset_and_refusal lib daily child-process
@@ -158,7 +158,7 @@ sunrise-client game::native_player_respawn_tests::a_player_who_won_the_game_is_r
 sunrise-client game::native_player_respawn_tests::each_respawn_refusal_has_its_own_name_and_changes_nothing lib daily resources
 sunrise-client game::client_side::native_recipes::tests::a_synced_vanilla_recipe_has_one_book_id_the_servers lib daily resources
 sunrise-client game::client_side::native_recipes::tests::synced_vanilla_recipes_keep_their_book_ids lib daily resources
-sunrise-client game::client_side::native_ride_player::tests::a_mob_rides_a_guest_sits_on_it_and_the_guest_is_told lib daily game-boot
+sunrise-client game::server_side::native_ride_player::tests::a_mob_rides_a_guest_sits_on_it_and_the_guest_is_told lib daily game-boot
 sunrise-client game::native_server::network_settings_tests::server_settings_follow_the_network_config lib daily slow
 sunrise-client game::server_side::native_structure_placement::tests::a_carried_structure_places_its_blocks_block_entity_and_entity lib daily resources
 sunrise-client game::server_side::native_structure_placement::tests::a_chunk_the_template_covers_that_is_not_loaded_refuses_and_places_nothing lib daily resources
@@ -236,7 +236,7 @@ sunrise-client game::server_side::transaction_entities_tests::late_id_kinds_spaw
 sunrise-client game::server_side::transaction_entities_tests::outside_a_transaction_joins_and_leaves_are_told_at_the_call lib daily child-process
 sunrise-client game::client_side::viewed_worlds::switch::tests::a_level_opened_after_login_is_forgotten_once_left lib daily resources
 sunrise-client game::server_side::visibility_unwind_tests::visibility_listener_unwind_does_not_block_an_outside_save lib daily child-process
-sunrise-client game::wake_time::tests::a_later_listener_reads_and_replaces_the_earlier_adjustment lib daily resources
+sunrise-client game::server_side::wake_time::tests::a_later_listener_reads_and_replaces_the_earlier_adjustment lib daily resources
 sunrise-client game::server_side::wind::wind_charged_tests::a_mobs_burst_leaves_vehicles_alone_with_mob_griefing_off lib daily game-boot
 sunrise-client game::client_side::wind_client::wind_charged_tests::a_silent_wind_charge_bursts_without_a_sound lib daily game-boot
 sunrise-client game::client_side::wind_client::wind_charged_tests::a_wind_charged_mob_bursts_with_the_breezes_sound_unless_it_is_silent lib daily game-boot

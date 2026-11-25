@@ -76,9 +76,9 @@ sunrise-client game::creatures::projectiles_120_124_tests::witness_trident_ender
 sunrise-client game::creatures::projectiles_120_124_tests::witness_piercing_arrow_multihit_123 tools/test_projectile_targets_parity.py harness
 sunrise-client game::creatures::projectiles_120_124_tests::witness_firework_rocket_targets_124 tools/test_projectile_targets_parity.py harness
 sunrise-client game::creatures::projectiles_120_124_tests::witness_review_round1_regressions tools/test_projectile_targets_parity.py harness
-sunrise-client game::commands::data::eye_item_tests::a_summoned_eye_saves_its_normalised_item_live_and_after_a_reload tools/test_eye_item_parity.py harness
+sunrise-client game::server_side::commands::data::eye_item_tests::a_summoned_eye_saves_its_normalised_item_live_and_after_a_reload tools/test_eye_item_parity.py harness
 sunrise-client-lib projectiles::tests::a_shulker_bullet_turns_halfway_towards_its_motion_26_3 tools/test_shulker_bullet_parity.py harness
-sunrise-client game::commands::data::rotation_tests::a_cloud_and_a_falling_block_save_the_rotation_they_were_loaded_with tools/test_cloud_falling_loaded_rotation_parity.py harness
+sunrise-client game::server_side::commands::data::rotation_tests::a_cloud_and_a_falling_block_save_the_rotation_they_were_loaded_with tools/test_cloud_falling_loaded_rotation_parity.py harness
 sunrise-client-lib mobs::sulfur_cube::tnt_rule_tests::a_loaded_fuse_is_kept_as_it_is_and_leaves_invulnerable_alone tools/test_sulfur_cube_fuse_parity.py harness
 sunrise-client game::server_side::lan::sources_tests::a_loaded_sulfur_cube_fuse_matches_the_pinned_oracle tools/test_sulfur_cube_fuse_parity.py harness
 sunrise-client game::client_side::remote_mob_data::tests::sulfur_cube_max_fuse_sets_the_client_fuse tools/test_sulfur_cube_fuse_parity.py harness
@@ -96,8 +96,8 @@ sunrise-client-lib item_sync::tests::a_tooltip_style_crosses_the_wire tools/test
 sunrise-client-lib mobs::ai::burn_and_rose_tests::a_mob_loaded_in_lava_burns_on_its_first_tick tools/test_first_tick_lava_burn_parity.py harness
 sunrise-client-lib mobs::ai::noai_breather_air_tests::noai_breathers_keep_air_above_their_maximum tools/test_noai_breather_air_parity.py harness
 sunrise-client-lib mobs::ai::noai_breather_air_tests::noai_breathers_match_the_pinned_oracle tools/test_noai_breather_air_parity.py harness
-sunrise-client game::commands::data::portal_cooldown_tests::a_mob_saves_its_live_portal_cooldown tools/test_mob_portal_cooldown_parity.py harness
-sunrise-client game::commands::data::stand_living_tests::an_armor_stand_ticks_its_living_counters tools/test_stand_living_counters_parity.py harness
+sunrise-client game::server_side::commands::data::portal_cooldown_tests::a_mob_saves_its_live_portal_cooldown tools/test_mob_portal_cooldown_parity.py harness
+sunrise-client game::server_side::commands::data::stand_living_tests::an_armor_stand_ticks_its_living_counters tools/test_stand_living_counters_parity.py harness
 sunrise-client-lib mobs::fox::pounce_turn_tests::the_pounce_turn_matches_the_pinned_oracle tools/test_mob_turn_parity.py harness
 sunrise-client-lib mobs::dolphin::jump_turn_tests::the_jump_turn_matches_the_pinned_oracle tools/test_mob_turn_parity.py harness
 sunrise-client game::server_side::dragon::tests::the_scanning_turn_matches_the_pinned_oracle tools/test_mob_turn_parity.py harness
@@ -106,9 +106,9 @@ sunrise-client game::server_side::fangs::ticking_tests::fangs_and_an_ominous_ite
 sunrise-client game::server_side::fangs::ticking_tests::fangs_and_an_ominous_item_spawner_pause_on_scheduled_ticket_removal_and_resume_26_3 tools/test_fangs_ticking_gate_parity.py harness
 sunrise-client game::creatures::projectile_batch_tests::continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_batched_pass tools/test_bounced_projectile_tick_order_parity.py harness
 sunrise-client game::server_side::persist::thrown_item_tests::a_moved_thrown_item_projectile_saves_its_loaded_item tools/test_thrown_item_save_parity.py harness
-sunrise-client game::commands::summon_item_orb_tests::summon_replies_with_the_custom_name_of_every_kind tools/test_summon_custom_name_parity.py harness
+sunrise-client game::server_side::commands::summon_item_orb_tests::summon_replies_with_the_custom_name_of_every_kind tools/test_summon_custom_name_parity.py harness
 sunrise-client-lib projectiles::tests::a_fireball_turns_on_the_tick_it_hits tools/test_fireball_hit_turn_parity.py harness
 sunrise-client game::client_side::potions::cloud_water_tests::a_cloud_in_water_resets_its_fall_distance_and_a_dry_one_keeps_it tools/test_cloud_water_parity.py harness
 sunrise-client game::server_side::fangs::current_tests::fangs_in_a_current_are_pushed_and_fangs_in_still_water_are_not tools/test_fangs_fluid_current_parity.py harness
-sunrise-client game::commands::data::fire_tests::fire_changes_on_eyes_fangs_spawners_clouds_and_bullets tools/test_entity_fire_ticks_parity.py harness
-sunrise-client game::commands::summon_bolt_tests::a_bolt_summoned_with_nbt_strikes_and_goes tools/test_summon_bolt_nbt_parity.py harness
+sunrise-client game::server_side::commands::data::fire_tests::fire_changes_on_eyes_fangs_spawners_clouds_and_bullets tools/test_entity_fire_ticks_parity.py harness
+sunrise-client game::server_side::commands::summon_bolt_tests::a_bolt_summoned_with_nbt_strikes_and_goes tools/test_summon_bolt_nbt_parity.py harness

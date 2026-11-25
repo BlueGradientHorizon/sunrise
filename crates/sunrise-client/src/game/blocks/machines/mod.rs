@@ -941,6 +941,7 @@ impl Game<'_> {
         self.container_changed_without_hook(pos);
     }
 
+    #[allow(dead_code)]
     pub(in crate::game) fn server_container_changed(&mut self, pos: Pos) {
         self.container_changed(pos);
     }

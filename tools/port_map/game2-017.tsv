@@ -1,6 +1,6 @@
 BellBlockEntity.serverTick	port	crates/sunrise-client/src/game/blocks/block_entity_anims.rs::Game::tick_bell_servers	world-owned ringing bells tick without a renderer; clients animate their separate copy
 BellBlockEntity.areRaidersNearby	inline	crates/sunrise-client-render/src/block_entity_anim.rs::Bell::tick	resonation start check (raider within 32 blocks) folded into Bell::tick
-BellBlockEntity.makeRaidersGlow	port	crates/sunrise-client/src/game/blocks/block_entity_anims_client.rs::Game::tick_bell	GLOWING 60 applied to the raiders Bell::tick returns
+BellBlockEntity.makeRaidersGlow	port	crates/sunrise-client/src/game/blocks/block_entity_anims.rs::Game::server_tick_bell	GLOWING 60 applied to the raiders Bell::tick returns
 BellBlockEntity.showBellParticles	port	crates/sunrise-client-render/src/block_entity_anim.rs::Bell::tick	particle positions and colours computed here; emitted in Game::tick_bell
 BellBlockEntity.isRaiderWithinRange	inline	crates/sunrise-client-render/src/block_entity_anim.rs::Bell::tick	raider_in closure (48 blocks)
 BlockEntity.validateBlockState	skip:other		guard that throws on a wrong block state; no player behaviour
@@ -20,7 +20,7 @@ BrushableBlockEntity.trySaveLootTable	skip:other		no own code: the raw saved tag
 BrushableBlockEntity.getUpdateTag	port	crates/sunrise-client/src/lan/chunks.rs::entity_tag	the Brushable arm: hit_direction and the item on top of the base tag
 BrushableBlockEntity.loadAdditional	skip:other		no own code: the raw saved tag (spill::saved_entity) keeps item and LootTable
 BrushableBlockEntity.saveAdditional	skip:other		no own code: the raw saved tag (spill::saved_entity) keeps item and LootTable
-CalibratedSculkSensorBlockEntity.VibrationUser.canReceiveVibration	port	crates/sunrise-client/src/game/blocks/sculk.rs::Game::sculk_listen	calibrated back-signal frequency filter
+CalibratedSculkSensorBlockEntity.VibrationUser.canReceiveVibration	port	crates/sunrise-client/src/game/blocks/sculk_server.rs::Game::sculk_listen	calibrated back-signal frequency filter
 CampfireBlockEntity.markUpdated	port	crates/sunrise-client/src/game/blocks/campfire.rs::Game::tick_campfire	`use_on_campfire` marks the block entity updated (chunk modified, clients synced) and `tick_campfire` marks a moved timer, as `setChanged` + `sendBlockUpdated` do
 CampfireBlockEntity.applyImplicitComponents	port	crates/sunrise-client/src/block_entity_item.rs::place	container components applied when the item's data is placed
 CampfireBlockEntity.collectImplicitComponents	port	crates/sunrise-client/src/block_entity_item.rs::collect	container component collected from Items
@@ -35,7 +35,7 @@ ChiseledBookShelfBlockEntity.setItem	port	crates/sunrise-client/src/game/blocks/
 ChiseledBookShelfBlockEntity.canTakeItem	port	crates/sunrise-client/src/game/machines.rs::Containers::can_take	the target's room: a free slot or a matching stack with room (`hasAnyMatching`); the hopper asks `can_take_into`, which applies it before `can_take`
 ChiseledBookShelfBlockEntity.applyImplicitComponents	port	crates/sunrise-client/src/block_entity_item.rs::place	Items as container component
 ChiseledBookShelfBlockEntity.collectImplicitComponents	port	crates/sunrise-client/src/block_entity_item.rs::collect	Items as container component
-CommandBlockEntity.onModeSwitch	port	crates/sunrise-client/src/game/administration/command_blocks.rs::Game::apply_command_block	mode switch; the AUTO schedule follows the setAutomatic step
+CommandBlockEntity.onModeSwitch	port	crates/sunrise-client/src/game/administration/command_blocks_server.rs::Game::apply_command_block	mode switch; the AUTO schedule follows the setAutomatic step
 CommandBlockEntity.isConditional	port	crates/sunrise-gameplay/src/command_blocks.rs::conditional
 CommandBlockEntity.applyImplicitComponents	port	crates/sunrise-client/src/block_entity_item.rs::place	custom name component
 CommandBlockEntity.collectImplicitComponents	port	crates/sunrise-client/src/block_entity_item.rs::collect	custom name component
@@ -99,13 +99,13 @@ LecternBlockEntity.saveAdditional	port	crates/sunrise-client/src/save/block_enti
 SculkCatalystBlockEntity.CatalystListener.tryAwardItSpreadsAdvancement	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::mob_die	kill_mob_near_sculk_catalyst fires when the catalyst takes a mob's experience
 SculkShriekerBlockEntity.loadAdditional	port	crates/sunrise-client/src/save/block_entity_decode.rs::decode_block_entity	shrieker state from the sculk arm
 SculkShriekerBlockEntity.saveAdditional	port	crates/sunrise-client/src/save/block_entity_encode.rs::encode	shrieker state from the sculk arm
-SculkShriekerBlockEntity.tryGetPlayer	inline	crates/sunrise-client/src/game/blocks/sculk.rs::Game::sculk_listen	ctx.player flag decides whether a player set it off
-SculkShriekerBlockEntity.tryToWarn	port	crates/sunrise-client/src/game/blocks/sculk.rs::Game::try_to_warn
-SculkShriekerBlockEntity.tryRespond	port	crates/sunrise-client/src/game/blocks/sculk.rs::Game::shrieker_respond
-SculkShriekerBlockEntity.playWardenReplySound	port	crates/sunrise-client/src/game/blocks/sculk.rs::Game::warden_reply_sound
+SculkShriekerBlockEntity.tryGetPlayer	inline	crates/sunrise-client/src/game/blocks/sculk_server.rs::Game::sculk_listen	ctx.player flag decides whether a player set it off
+SculkShriekerBlockEntity.tryToWarn	port	crates/sunrise-client/src/game/blocks/sculk_server.rs::Game::try_to_warn
+SculkShriekerBlockEntity.tryRespond	port	crates/sunrise-client/src/game/blocks/sculk_server.rs::Game::shrieker_respond
+SculkShriekerBlockEntity.playWardenReplySound	port	crates/sunrise-client/src/game/blocks/sculk_server.rs::Game::warden_reply_sound
 SculkShriekerBlockEntity.trySummonWarden	port	crates/sunrise-client/src/game/blocks/sculk_server.rs::Game::try_summon_warden
-SculkShriekerBlockEntity.VibrationUser.canReceiveVibration	port	crates/sunrise-client/src/game/blocks/sculk.rs::Game::sculk_listen	not shrieking and a player is the source
-SculkShriekerBlockEntity.VibrationUser.onReceiveVibration	port	crates/sunrise-client/src/game/blocks/sculk.rs::Game::try_shriek
+SculkShriekerBlockEntity.VibrationUser.canReceiveVibration	port	crates/sunrise-client/src/game/blocks/sculk_server.rs::Game::sculk_listen	not shrieking and a player is the source
+SculkShriekerBlockEntity.VibrationUser.onReceiveVibration	port	crates/sunrise-client/src/game/blocks/sculk_server.rs::Game::try_shriek
 ShelfBlockEntity.loadAdditional	skip:other		no own code: the raw saved tag keeps Items (shelf_signal reads it)
 ShelfBlockEntity.saveAdditional	skip:other		no own code: the raw saved tag keeps Items (shelf_signal reads it)
 ShelfBlockEntity.getUpdateTag	port	crates/sunrise-client/src/lan/chunks.rs::entity_tag	the Shelf arm: Items and align_items_to_bottom
@@ -125,11 +125,11 @@ SignBlockEntity.resolveLine	missing		same as SignBlockEntity.resolveLines: no pe
 SignBlockEntity.updateText	port	crates/sunrise-client/src/game/interface/sign_edit_server.rs::Game::lan_sign_update	guest's sign write
 SignBlockEntity.updateMessages	missing		a sign write goes straight to the block entity's lines (`sign_edit.rs::lan_sign_update`, `close_sign_editor`); nothing resolves them first
 SignBlockEntity.setText	port	crates/sunrise-client/src/game/interface/sign_edit.rs::Game::sign_write
-SignBlockEntity.canExecuteClickCommands	port	crates/sunrise-client/src/game/interface/sign_edit.rs::Game::sign_can_execute_click_commands	ticked in #3516; `SignBlockEntity.canExecuteClickCommands` is cited at crates/sunrise-client/src/game/interface/sign_edit.rs:97
-SignBlockEntity.executeClickCommandsIfPresent	port	crates/sunrise-client/src/game/interface/sign_edit.rs::Game::execute_sign_click_commands	ticked in #3516; `SignBlockEntity.executeClickCommandsIfPresent` is cited at crates/sunrise-client/src/game/interface/sign_edit.rs:139
-SignBlockEntity.createCommandSourceStack	port	crates/sunrise-client/src/game/interface/sign_edit.rs::Game::sign_command_source	the acting player at the sign's centre, rotation zero, game master level, silent; run_sign_command runs the click command from it
+SignBlockEntity.canExecuteClickCommands	port	crates/sunrise-client/src/game/interface/sign_edit_server.rs::Game::sign_can_execute_click_commands	ticked in #3516; `SignBlockEntity.canExecuteClickCommands` is cited at crates/sunrise-client/src/game/interface/sign_edit.rs:97
+SignBlockEntity.executeClickCommandsIfPresent	port	crates/sunrise-client/src/game/interface/sign_edit_server.rs::Game::execute_sign_click_commands	ticked in #3516; `SignBlockEntity.executeClickCommandsIfPresent` is cited at crates/sunrise-client/src/game/interface/sign_edit.rs:139
+SignBlockEntity.createCommandSourceStack	port	crates/sunrise-client/src/game/interface/sign_edit_server.rs::Game::sign_command_source	the acting player at the sign's centre, rotation zero, game master level, silent; run_sign_command runs the click command from it
 SignBlockEntity.markUpdated	port	crates/sunrise-client/src/game/mobs/trial_spawner.rs::Game::mark_block_entity_updated
-SignBlockEntity.setWaxed	port	crates/sunrise-client/src/game/interface/sign_edit.rs::Game::use_sign_applicator	honeycomb wax
+SignBlockEntity.setWaxed	port	crates/sunrise-client/src/game/interface/sign_edit_server.rs::Game::use_sign_applicator	honeycomb wax
 SignBlockEntity.playerIsTooFarAwayToEdit	port	crates/sunrise-client/src/game/interface/sign_edit_server.rs::Game::lan_sign_update	reach check when a guest writes
 SignBlockEntity.tick	inline	crates/sunrise-client/src/game/interface/sign_edit_server.rs::Game::lan_sign_update	the edit permission is not cleared on a tick: `lan_sign_update` re-checks `playerIsTooFarAwayToEdit` on every write and drops the guest's `sign_editing` when it is out of reach, so a guest that walks away keeps the flag until its next write
 SignBlockEntity.applyImplicitComponents	port	crates/sunrise-client/src/block_entity_item.rs::place	sign_text_front, sign_text_back and waxed onto front_text, back_text and is_waxed; a client applies them to the sign it predicts through Game::apply_predicted_item (#8102)
@@ -138,8 +138,8 @@ SignBlockEntity.removeComponentsFromTag	port	crates/sunrise-client/src/block_ent
 SignText.load	port	crates/sunrise-client-render/src/signs.rs::SignData::decode	modern String messages remain literal; compound/list components keep their structured path
 SignText.<clinit>	port	crates/sunrise-client/src/item_sync.rs::sign_text_tag	STREAM_CODEC read into the saved CODEC form; lan/guest.rs::sign_text_bytes writes it
 SignText.validateLineCounts	skip:java		codec check of four lines; Sunrise fixes the array size
-SignText.withGlowingText	port	crates/sunrise-client/src/game/interface/sign_edit.rs::Game::use_sign_applicator	glow ink sac
-SignText.withColor	port	crates/sunrise-client/src/game/interface/sign_edit.rs::Game::use_sign_applicator	dye
+SignText.withGlowingText	port	crates/sunrise-client/src/game/interface/sign_edit_server.rs::Game::use_sign_applicator	glow ink sac
+SignText.withColor	port	crates/sunrise-client/src/game/interface/sign_edit_server.rs::Game::use_sign_applicator	dye
 SignText.hasMessage	port	crates/sunrise-client-render/src/signs.rs::SignText::is_empty	inverse of is_empty
 SignText.getRenderMessages	port	crates/sunrise-client-render/src/block_entity_render.rs::sign_text_calls	lines drawn on the sign
 SignText.filteredMessagesForSerialization	skip:service		chat-filtered sign text for clients; Sunrise has no text filter
@@ -151,5 +151,5 @@ SignText.Mutable.asImmutable	skip:java		copy into the immutable record
 SignText.Mutable.setLine	port	crates/sunrise-client/src/game/interface/sign_edit.rs::Game::sign_write	writes the edited lines to the side
 SignText.Mutable.modifyLine	missing		the component resolution of one line; see SignBlockEntity.resolveLines
 SignText.Mutable.modifyLines	missing		the component resolution of every line; see SignBlockEntity.resolveLines
-CommandBlockEntity.onUpdated	port	crates/sunrise-client/src/game/administration/command_blocks.rs::Game::apply_command_block	sends the edited block entity to clients and marks the chunk dirty
+CommandBlockEntity.onUpdated	port	crates/sunrise-client/src/game/administration/command_blocks_server.rs::Game::apply_command_block	sends the edited block entity to clients and marks the chunk dirty
 CrafterBlockEntity.setSlotState	port	crates/sunrise-client/src/game/menu_clicks.rs::Game::menu_click	only an empty slot toggles; the menu's write-back (`apply_crafter_slot_states`) lands on the block entity and marks the chunk (`setChanged`)

@@ -373,7 +373,11 @@ impl Game<'_> {
     /// harness waits for them, as vanilla's oracle resolves at once).
     pub(in crate::game::server_side) fn profile_fetches_pending(&mut self) -> bool {
         let mut resolver = self.skin_profiles.borrow_mut();
-        self.cmds.0.profile_fetches.iter().any(|f| matches!(resolver.state(&f.key), Resolve::Pending))
+        self.cmds
+            .0
+            .profile_fetches
+            .iter()
+            .any(|f| matches!(resolver.state(&f.key), Resolve::Pending))
     }
     /// `ServerPlayer.openDialog` for each target: the packet to a guest, the
     /// acting player's packet queue otherwise.

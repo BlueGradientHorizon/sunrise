@@ -18,7 +18,11 @@ impl Game<'_> {
     }
 
     #[inline(always)]
-    pub(in crate::game) fn try_swing_hand(&mut self, hand: Hand, animation: SwingAnimation) -> bool {
+    pub(in crate::game) fn try_swing_hand(
+        &mut self,
+        hand: Hand,
+        animation: SwingAnimation,
+    ) -> bool {
         self.side_swing_hand(hand, animation)
     }
 
@@ -98,6 +102,7 @@ impl Game<'_> {
         }
     }
 
+    #[allow(dead_code)]
     #[inline(always)]
     pub(in crate::game) fn side_expire_cracks(&mut self) {
         if self.is_logical_server() {
@@ -116,6 +121,7 @@ impl Game<'_> {
         }
     }
 
+    #[allow(dead_code)]
     #[inline(always)]
     pub(in crate::game) fn side_memory_inputs(&self) -> MemoryInputs {
         if self.is_logical_server() {

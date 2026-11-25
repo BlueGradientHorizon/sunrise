@@ -132,7 +132,7 @@ fn particle_options_carry_their_codec_data() {
 #[ignore = "daily"]
 fn typed_particle_commands_suggest_and_execute_the_decoded_value() {
     if crate::game::native_entity_refs::tests::run_fresh_cases(
-        "game::commands::world_cmds::particle_command_tests::typed_particle_commands_suggest_and_execute_the_decoded_value",
+        "game::server_side::commands::world_cmds::particle_command_tests::typed_particle_commands_suggest_and_execute_the_decoded_value",
         "SUNRISE_TEST_TYPED_PARTICLE_COMMAND_CASE",
         &["typed"],
     ) {
@@ -176,7 +176,7 @@ fn typed_particle_commands_suggest_and_execute_the_decoded_value() {
 #[ignore = "daily"]
 fn typed_particle_command_encoder_refusal_does_not_deliver_to_a_guest() {
     if crate::game::native_entity_refs::tests::run_fresh_cases(
-        "game::commands::world_cmds::particle_command_tests::typed_particle_command_encoder_refusal_does_not_deliver_to_a_guest",
+        "game::server_side::commands::world_cmds::particle_command_tests::typed_particle_command_encoder_refusal_does_not_deliver_to_a_guest",
         "SUNRISE_TEST_TYPED_PARTICLE_COMMAND_CASE",
         &["refusal"],
     ) {

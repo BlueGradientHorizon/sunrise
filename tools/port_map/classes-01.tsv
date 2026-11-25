@@ -111,10 +111,10 @@ MinecartChest.interact	inline	crates/sunrise-client/src/game/entities/minecarts.
 MinecartCommandBlock.activateMinecart	inline	crates/sunrise-client/src/game/entities/minecarts.rs::Game::activate_cart	gap: minor: no command ever runs; the cart holds no command since its editor is missing
 MinecartCommandBlock.defineSynchedData	port	crates/sunrise-client/src/game/entities/minecarts.rs::Minecart::new	the cart's `synced_command` and `synced_output` start empty on the cart itself, as `DATA_ID_COMMAND_NAME` and `DATA_ID_LAST_OUTPUT` do
 MinecartCommandBlock.interact	port	crates/sunrise-client/src/game/network/remote/mod.rs::Game::remote_use_entity	the client opens the command editor of the cart it right-clicked
-MinecartCommandBlock.onSyncedDataUpdated	inline	crates/sunrise-client/src/game/administration/command_minecarts.rs::Game::cart_command_updated	the command is the cart's own field rather than synched entity data, which `onUpdated` copies out
+MinecartCommandBlock.onSyncedDataUpdated	inline	crates/sunrise-client/src/game/administration/command_minecarts_server.rs::Game::cart_command_updated	the command is the cart's own field rather than synched entity data, which `onUpdated` copies out
 MinecartCommandBlock.readAdditionalSaveData	inline	crates/sunrise-client/src/game/entities/minecarts.rs::Minecart::from_nbt	loads the base command block and syncs its command/output; a changed command invokes setCommand and resets SuccessCount
-MinecartCommandBlock.MinecartCommandBase.createCommandSourceStack	port	crates/sunrise-client/src/game/administration/command_minecarts.rs::Game::perform_cart_command	the due command runs with the cart as its source: its position, rotation and game master level
-MinecartCommandBlock.MinecartCommandBase.onUpdated	inline	crates/sunrise-client/src/game/administration/command_minecarts.rs::Game::cart_command_updated	copies the command and the last output into the cart's synched fields
+MinecartCommandBlock.MinecartCommandBase.createCommandSourceStack	port	crates/sunrise-client/src/game/administration/command_minecarts_server.rs::Game::perform_cart_command	the due command runs with the cart as its source: its position, rotation and game master level
+MinecartCommandBlock.MinecartCommandBase.onUpdated	inline	crates/sunrise-client/src/game/administration/command_minecarts_server.rs::Game::cart_command_updated	copies the command and the last output into the cart's synched fields
 MinecartFurnace.addAdditionalSaveData	port	crates/sunrise-client/src/game/entities/minecarts.rs::Minecart::to_nbt
 MinecartFurnace.addFuel	inline	crates/sunrise-client/src/game/entities/minecarts.rs::Game::interact_cart	furnace arm: coal or charcoal adds 3600 ticks of fuel up to 32000
 MinecartFurnace.applyNaturalSlowdown	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::natural_slowdown
@@ -193,7 +193,7 @@ CreativeModeTabs.tryRebuildTabContents	port	crates/sunrise-client/src/creative.r
 DebugStickItem	home	crates/sunrise-client/src/game/blocks/debug_stick.rs
 DoubleHighBlockItem.placeBlock	port	crates/sunrise-world/src/level/place.rs::Sim::place	the block above is cleared to air (or water when it was water) before the placed half, as `BlockItem.place` does for a double-high item
 DyeItem.interactLivingEntity	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::interact_mob	a dye recolours an unsheared sheep's wool and a tamed wolf's or cat's collar, consumed with `item.dye.use`
-DyeItem.tryApplyToSign	inline	crates/sunrise-client/src/game/interface/sign_edit.rs::Game::use_sign_applicator	dye colours the sign text
+DyeItem.tryApplyToSign	inline	crates/sunrise-client/src/game/interface/sign_edit_server.rs::Game::use_sign_applicator	dye colours the sign text
 EggItem.asProjectile	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::throw_item	egg kinds in throw_item
 EggItem.use	inline	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::throw_item	egg throw
 EnderpearlItem.use	inline	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::throw_item	ender pearl throw
@@ -204,9 +204,9 @@ FireChargeItem.asProjectile	port	crates/sunrise-client/src/game/blocks/dispenser
 FireChargeItem.createDispenseConfig	port	crates/sunrise-client/src/game/blocks/dispenser.rs::Game::dispense_projectile	dispensed fire charge flight
 FireChargeItem.useOn	inline	crates/sunrise-client/src/game/game_server.rs::Game::use_tool	lights a campfire or candle, else sets fire above the clicked block, with the fire charge's own pitch and one charge used
 GameMasterBlockItem.getPlacementState	port	crates/sunrise-client/src/game/blocks/block_items.rs::Game::apply_item_block_state	default state for the placed block
-GlowInkSacItem.tryApplyToSign	inline	crates/sunrise-client/src/game/interface/sign_edit.rs::Game::use_sign_applicator	glow ink on a sign
+GlowInkSacItem.tryApplyToSign	inline	crates/sunrise-client/src/game/interface/sign_edit_server.rs::Game::use_sign_applicator	glow ink on a sign
 HangingSignItem.canPlace	inline	crates/sunrise-world/src/level/place.rs::Sim::placement	a wall hanging sign also needs `wall_hanging_sign_can_place` (the same-axis wall sign or a sturdy face), and either kind must survive where it goes
-InkSacItem.tryApplyToSign	inline	crates/sunrise-client/src/game/interface/sign_edit.rs::Game::use_sign_applicator	ink on a sign
+InkSacItem.tryApplyToSign	inline	crates/sunrise-client/src/game/interface/sign_edit_server.rs::Game::use_sign_applicator	ink on a sign
 InstrumentItem.create	skip:java		builds the horn stack
 InstrumentItem.getInstrument	skip:data		instrument read from the item data
 InstrumentItem.getUseDuration	port	crates/sunrise-client/src/game/interface/item_draw.rs::use_duration	goat horn use duration 72000

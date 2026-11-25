@@ -48,7 +48,7 @@ Villager.shouldIncreaseLevel	inline	crates/sunrise-client/src/merchant.rs::Sessi
 Villager.increaseMerchantCareer	inline	crates/sunrise-client/src/merchant.rs::Session::notify_trade	level plus the new level trade set
 Villager.handleEntityEvent	port	crates/sunrise-client/src/game/mobs/villagers.rs::Game::entity_event_particles	villager event particles from the entity event table
 Villager.finalizeSpawn	port	crates/sunrise-client/src/mobs/finalize.rs::Ctx::finalize	villager arm: breeding resets the profession, then type and the baby group
-Villager.thunderHit	port	crates/sunrise-client/src/game/entities/lightning.rs::Game::thunder_hit	villager struck by lightning becomes a witch; gap: minor: releaseAllPois is not done on conversion
+Villager.thunderHit	port	crates/sunrise-client/src/game/entities/lightning_server.rs::Game::thunder_hit	villager struck by lightning becomes a witch; gap: minor: releaseAllPois is not done on conversion
 Villager.wantsToPickUp	port	crates/sunrise-client/src/game/mobs/villagers.rs::Game::villager_pickups	the want test (food, pick-up tag, requested items) inside the pickup loop
 Villager.countFoodPointsInInventory	port	crates/sunrise-client/src/mobs/villager.rs::Ext::food_in_inventory
 Villager.updateTrades	port	crates/sunrise-client/src/game/items/trading.rs::Game::ensure_offers	generates the trade set for profession and level; the level-up reroll is in merchant.rs notify_trade
@@ -139,7 +139,7 @@ StackedContents.RecipePicker.clearAllVisited	port	crates/sunrise-client/src/menu
 StackedItemContents.getBiggestCraftableStack	port	crates/sunrise-client/src/menu/place.rs::Stacked::try_pick_all	the largest craftable count, found by a bounded search
 EvokerFangs.readAdditionalSaveData	port	crates/sunrise-client/src/game/world/persist.rs::Game::spawn_loaded_entities	Warmup defaults to 0 and enters active fangs; gap: Owner resolution only finds already-loaded mobs
 EvokerFangs.addAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt.rs::evoker_fangs_to_nbt	live Warmup, known owner UUID, unresolved Owner retained from raw NBT
-EvokerFangs.getAnimationProgress	port	crates/sunrise-client/src/game/mobs/fangs.rs::Game::fangs_geometry	the bite progress that positions the fang model
+EvokerFangs.getAnimationProgress	port	crates/sunrise-client/src/game/mobs/fangs_client.rs::Game::fangs_geometry	the bite progress that positions the fang model
 EyeOfEnder.setItem	skip:ui		the item sprite a flying eye shows; Sunrise draws the eye itself
 EyeOfEnder.shouldRenderAtSqrDistance	skip:ui		render distance culling only
 EyeOfEnder.spawnParticles	port	crates/sunrise-client/src/game/world/end_client.rs::Game::eye_break_particles	the portal crumbs drawn in toward the eye

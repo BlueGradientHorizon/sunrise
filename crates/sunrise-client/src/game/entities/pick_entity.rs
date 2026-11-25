@@ -5,7 +5,7 @@ pub(in crate::game) mod pick_sections;
 #[allow(unused_imports)]
 use super::Game;
 #[allow(unused_imports)]
-use super::pick_accumulator::{PickAccumulator, PickCandidate, pick_ray_segment};
+use super::pick_ray::{PickAccumulator, PickCandidate, pick_ray_segment};
 #[allow(unused_imports)]
 use mod_api::{BlockPos, CrosshairTarget, EntityRef};
 #[allow(unused_imports)]

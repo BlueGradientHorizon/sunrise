@@ -109,11 +109,11 @@ CommandBlockEditScreen.enableControls	skip:other		Sunrise opens the screen with 
 CommandBlockEditScreen.updateGui	inline	crates/sunrise-client/src/game/administration/command_blocks.rs::Game::open_command_block	fills the box and buttons from the block entity
 CommandBlockEditScreen.populateAndSendPacket	port	crates/sunrise-client/src/game/administration/command_blocks.rs::Game::set_command_block	SetCommandBlock on a server, applied here otherwise
 ContainerScreen.extractBackground	port	crates/sunrise-client/src/game/world/storage.rs::Game::draw_chest_screen
-CrafterScreen.init	inline	crates/sunrise-client/src/game/blocks/machines/crafter.rs::Game::draw_crafter_screen	title centred
+CrafterScreen.init	inline	crates/sunrise-client/src/game/blocks/machines/crafter_client.rs::Game::draw_crafter_screen	title centred
 CrafterScreen.updateSlotState	port	crates/sunrise-client/src/game/blocks/machines/crafter_client.rs::Game::crafter_slot_clicked	menu state, ContainerSlotStateChanged and the click sound
 CrafterScreen.extractSlot	port	crates/sunrise-client/src/screen_layout.rs::crafter	disabled slot sprite; no pointing-hand cursor over crafter slots
 CrafterScreen.extractDisabledSlot	port	crates/sunrise-client/src/screen_layout.rs::crafter
-CrafterScreen.extractRenderState	port	crates/sunrise-client/src/game/blocks/machines/crafter.rs::Game::draw_crafter_screen	the Click to disable slot tooltip is crafter_tooltip
+CrafterScreen.extractRenderState	port	crates/sunrise-client/src/game/blocks/machines/crafter_client.rs::Game::draw_crafter_screen	the Click to disable slot tooltip is crafter_tooltip
 CrafterScreen.extractRedstone	port	crates/sunrise-client/src/screen_layout.rs::crafter	powered or unpowered arrow
 CraftingScreen.getRecipeBookButtonPosition	port	crates/sunrise-client/src/game/items/recipe_book.rs::Game::book_button_pos
 CraftingScreen.extractBackground	inline	crates/sunrise-client/src/game/interface/inventory_slots.rs::Game::draw_inventory	crafting table texture

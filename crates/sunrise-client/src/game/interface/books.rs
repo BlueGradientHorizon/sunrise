@@ -345,7 +345,12 @@ impl Game<'_> {
                 title: title.clone(),
             }));
         }
-        let author = self.remote.as_ref().map(|r| r.profile_name.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| self.options.player_name());
+        let author = self
+            .remote
+            .as_ref()
+            .map(|r| r.profile_name.clone())
+            .filter(|n| !n.is_empty())
+            .unwrap_or_else(|| self.options.player_name());
         self.write_book_with_author(slot, pages, title, author);
         self.refresh_screen_widgets();
         self.capture(true);
@@ -1622,13 +1627,6 @@ pub(in crate::game) mod pause_tests {
         assert!(edit(false).pauses_world());
         assert!(edit(true).pauses_world());
     }
-}
-
-#[cfg(test)]
-pub(in crate::game) mod lectern_book_removal_tests {
-    use super::*;
-    use crate::game::game_tests::tests::server_game;
-
 }
 
 #[cfg(test)]

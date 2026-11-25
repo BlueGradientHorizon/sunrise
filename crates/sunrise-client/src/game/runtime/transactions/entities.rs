@@ -81,7 +81,10 @@ pub(in crate::game) enum Step {
 
 impl Step {
     /// A journal's steps: its joins, then its removals, then the rest of what it held.
-    pub(in crate::game) fn of(announcements: Vec<Announcement>, removals: Vec<Removal>) -> Vec<Step> {
+    pub(in crate::game) fn of(
+        announcements: Vec<Announcement>,
+        removals: Vec<Removal>,
+    ) -> Vec<Step> {
         let (joins, rest): (Vec<_>, Vec<_>) = (announcements.into_iter())
             .partition(|announcement| matches!(announcement, Announcement::Joins { .. }));
         let steps = joins.into_iter().map(Step::Tell);
@@ -123,7 +126,10 @@ impl Drop for Telling<'_, '_> {
 
 /// The innermost commit being told in `dimension`: a listener's commit in another level sits
 /// above it on the stack and must not hide it.
-pub(in crate::game) fn committing_in(commits: &mut [Committing], dimension: Dim) -> Option<&mut Committing> {
+pub(in crate::game) fn committing_in(
+    commits: &mut [Committing],
+    dimension: Dim,
+) -> Option<&mut Committing> {
     commits
         .iter_mut()
         .rev()
@@ -138,10 +144,7 @@ pub(in crate::game) fn is_committing(commits: &[Committing], dimension: Dim) -> 
 /// whatever other levels' transactions are open inside it (a command run `in` another level can
 /// open one). What happens in a level with none open (a command run `in` it from another
 /// level's transaction) is not journaled.
-pub(in crate::game) fn open_in(
-    transactions: &mut [Level],
-    dimension: Dim,
-) -> Option<&mut Level> {
+pub(in crate::game) fn open_in(transactions: &mut [Level], dimension: Dim) -> Option<&mut Level> {
     transactions
         .iter_mut()
         .rev()
@@ -203,10 +206,7 @@ impl Game<'_> {
     }
     /// Holds `announcement` for the root commit when a transaction is open in the level the game
     /// is in, or for the end of the commit being told in it: true when it waits.
-    pub(in crate::game) fn hold_announcement(
-        &mut self,
-        announcement: Announcement,
-    ) -> bool {
+    pub(in crate::game) fn hold_announcement(&mut self, announcement: Announcement) -> bool {
         let dim = self.dim;
         if let Some(level) = open_in(&mut self.transactions, dim) {
             level.lifetimes.announce(announcement);
@@ -260,11 +260,7 @@ impl Game<'_> {
     }
     /// [`Self::removal_pending`] of the entity in `dimension`, parked or not: the transactions
     /// stay with the game when a level is swapped out.
-    pub(in crate::game) fn removal_pending_in(
-        &self,
-        dimension: Dim,
-        target: &Target,
-    ) -> bool {
+    pub(in crate::game) fn removal_pending_in(&self, dimension: Dim, target: &Target) -> bool {
         let id = super::super::native_entities::target_id(*target);
         let open = self.transactions.iter().any(|level| {
             level.dimension == Some(dimension)

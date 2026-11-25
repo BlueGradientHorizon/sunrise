@@ -74,10 +74,7 @@ impl Game<'_> {
     }
 
     /// The first slot of lent scratch place `slot`.
-    pub(in crate::game) fn scratch_held(
-        &self,
-        slot: ScratchSlot,
-    ) -> Option<&ItemStack> {
+    pub(in crate::game) fn scratch_held(&self, slot: ScratchSlot) -> Option<&ItemStack> {
         self.transactions.scratch.get(&slot.id())?.stack.as_ref()
     }
 
@@ -85,11 +82,7 @@ impl Game<'_> {
     /// the same components, up to the item's stack size; a two-slot copy takes any item into its
     /// first slot where that is empty or holds the same, and what doesn't fit into its second.
     /// How many went.
-    pub(in crate::game) fn scratch_insert(
-        &mut self,
-        slot: ScratchSlot,
-        offer: &ItemStack,
-    ) -> u32 {
+    pub(in crate::game) fn scratch_insert(&mut self, slot: ScratchSlot, offer: &ItemStack) -> u32 {
         if offer.count == 0 {
             return 0;
         }

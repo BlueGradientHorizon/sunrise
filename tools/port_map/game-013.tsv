@@ -81,7 +81,7 @@ Pig.mobInteract	port	crates/sunrise-client/src/game/mobs/mounts.rs::Game::intera
 Pig.canUseSlot	port	crates/sunrise-gameplay/src/dispense_rules.rs::mob_can_use_slot	the saddle needs an alive, grown pig
 Pig.canDispenserEquipIntoSlot	port	crates/sunrise-gameplay/src/dispense_rules.rs::mob_can_dispenser_equip	the saddle always
 Pig.getEquipSound	port	crates/sunrise-gameplay/src/dispense_rules.rs::equip_sound	entity.pig.saddle
-Pig.thunderHit	port	crates/sunrise-client/src/game/entities/lightning.rs::Game::thunder_hit	a pig outside peaceful becomes a zombified piglin
+Pig.thunderHit	port	crates/sunrise-client/src/game/entities/lightning_server.rs::Game::thunder_hit	a pig outside peaceful becomes a zombified piglin
 Pig.tickRidden	inline	crates/sunrise-client/src/mobs/equine.rs::ridden_step	turns to the rider's yaw, pitch halved, and ticks the boost
 Pig.getRiddenSpeed	inline	crates/sunrise-client/src/mobs/equine.rs::ridden_step	movement speed times 0.225 times the boost factor
 Pig.getBreedOffspring	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::breed	gap: minor: the baby always takes the first parent's variant, not either parent's by a coin

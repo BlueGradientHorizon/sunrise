@@ -448,8 +448,12 @@ pub(in crate::game) struct Launch {
 }
 
 impl Game<'_> {
-    pub(in crate::game) fn server_has_singleplayer_server(&self) -> bool { false }
-    pub(in crate::game) fn server_is_lan_published(&self) -> bool { self.lan.is_some() }
+    pub(in crate::game) fn server_has_singleplayer_server(&self) -> bool {
+        false
+    }
+    pub(in crate::game) fn server_is_lan_published(&self) -> bool {
+        self.lan.is_some()
+    }
 
     /// `PrepareSpawnTask`'s `LOAD_PLAYER_CHUNKS`, reported to the window's
     /// loading screen: the focus moves to the spawn chunk when the stage
