@@ -11,6 +11,14 @@ use sunrise_client::{
     particles::ELDER_GUARDIAN_LIFETIME,
 };
 
+/// Where and how lit a mob's blocks and layers are drawn this frame.
+#[derive(Clone, Copy)]
+pub(in crate::game) struct MobView {
+    pub camera: glam::DVec3,
+    pub alpha: f64,
+    pub light: u32,
+}
+
 // `FishingRodCast`: the main hand takes precedence when both hold rods.
 fn fishing_cast_item(
     player_id: u32,
@@ -203,22 +211,24 @@ impl Game<'_> {
         cull_back_quads(out, first);
     }
     /// The blocks one mob holds or carries.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn mob_block_geometry(
         &self,
         mob: &Mob,
-        camera: glam::DVec3,
-        alpha: f64,
-        light: u32,
+        view: MobView,
         hidden_layers: StockLayerMask,
         skin: Option<&mut super::creatures::Skinned>,
         out: &mut Vec<Vertex>,
     ) {
+        let MobView {
+            camera,
+            alpha,
+            light,
+        } = view;
         let draw_head = !hidden_layers.contains(StockLayer::CustomHead);
         if draw_head {
             self.captain_banner_geometry(mob, camera, alpha, light, out);
         }
-        self.held_item_geometry(mob, camera, alpha, light, true, hidden_layers, skin, out);
+        self.held_item_geometry(mob, view, true, hidden_layers, skin, out);
         self.worn_block_geometry(mob, camera, alpha, light, hidden_layers, out);
         if draw_head {
             self.head_item_geometry(mob, camera, alpha, light, true, out);
@@ -420,18 +430,20 @@ impl Game<'_> {
     /// `ItemInHandLayer`: both hands through the item model pipeline. World
     /// draws take the held-item tint, level lighting and the mob's GPU path
     /// when supported. GUI previews light the projected quads themselves.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn held_item_geometry(
         &self,
         mob: &Mob,
-        camera: glam::DVec3,
-        alpha: f64,
-        light: u32,
+        view: MobView,
         in_world: bool,
         hidden_layers: StockLayerMask,
         mut skin: Option<&mut super::creatures::Skinned>,
         out: &mut Vec<Vertex>,
     ) {
+        let MobView {
+            camera,
+            alpha,
+            light,
+        } = view;
         // ItemInHandLayer submits with OverlayTexture.NO_OVERLAY: no hurt tint.
         for (slot, off_hand) in [
             (sunrise_items::equipment::MAINHAND, false),

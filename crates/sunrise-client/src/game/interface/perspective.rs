@@ -2,6 +2,7 @@
 //! in front, cycled by F5), the detached camera (`Camera.setup` with
 //! `getMaxZoom`), and the local player drawn as a model: in third person
 //! and in the inventory (`InventoryScreen.extractEntityInInventoryFollowsMouse`).
+use super::mob_blocks::MobView;
 use super::stock_layer_mask::StockLayerMask;
 use super::{Game, Screen, native_mob_draw::PlayerRender, shoulders::shoulder_variants};
 use mod_api::Hand;
@@ -1010,16 +1011,13 @@ impl Game<'_> {
             if !hidden.contains(mod_api::StockLayer::ParrotOnShoulder) {
                 self.shoulder_parrots_geometry(m, camera, alpha as f32, packed, out);
             }
-            self.stuck_in_body_geometry(
-                m,
-                self.own_entity_id(),
+            let view = MobView {
                 camera,
-                alpha as f32,
-                packed,
-                hidden,
-                out,
-            );
-            self.held_item_geometry(m, camera, alpha, packed, true, hidden, None, out);
+                alpha,
+                light: packed,
+            };
+            self.stuck_in_body_geometry(m, self.own_entity_id(), view, hidden, out);
+            self.held_item_geometry(m, view, true, hidden, None, out);
             // CustomHeadLayer: a pumpkin, skull or other head item.
             if !hidden.contains(mod_api::StockLayer::CustomHead) {
                 self.head_item_geometry(m, camera, alpha, packed, true, out);
@@ -1182,7 +1180,12 @@ impl Game<'_> {
         if !hidden.contains(mod_api::StockLayer::ParrotOnShoulder) {
             self.shoulder_parrots_geometry(&m, camera, 1.0, light, &mut verts);
         }
-        self.held_item_geometry(&m, camera, 1.0, light, false, hidden, None, &mut verts);
+        let view = MobView {
+            camera,
+            alpha: 1.0,
+            light,
+        };
+        self.held_item_geometry(&m, view, false, hidden, None, &mut verts);
         if !hidden.contains(mod_api::StockLayer::CustomHead) {
             self.head_item_geometry(&m, camera, 1.0, light, false, &mut verts);
         }
@@ -1560,17 +1563,20 @@ impl Game<'_> {
     /// `ArrowLayer` and `BeeStingerLayer` (`StuckInBodyLayer`) for a player:
     /// the arrows and bee stingers stuck in the body, placed from the entity
     /// id `id`.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn stuck_in_body_geometry(
         &self,
         m: &Mob,
         id: i32,
-        camera: glam::DVec3,
-        partial: f32,
-        light: u32,
+        view: MobView,
         hidden_layers: StockLayerMask,
         out: &mut Vec<sunrise_client_render::render_geometry::Vertex>,
     ) {
+        let MobView {
+            camera,
+            alpha,
+            light,
+        } = view;
+        let partial = alpha as f32;
         let sprites = &self.gui.atlas.sprites;
         let layers = [
             (

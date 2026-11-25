@@ -8,6 +8,7 @@
 //! ([`Game::guarded_entity_draw`]), with a [`StockLayerDraw`] handle to redraw any hidden stock
 //! layer conditionally per entity. With no layer added and no stock layer hidden, a frame checks
 //! one atomic flag per entity and builds nothing.
+use super::mob_blocks::MobView;
 use super::stock_layer_mask::StockLayerMask;
 use super::{
     Game,
@@ -580,10 +581,12 @@ impl StockLayerDraw for StockDraw<'_, '_> {
                             |name: &str| atlas.sprites.get(name).map(|r| [r.u0, r.v0, r.u1, r.v1]);
                         render::render_equipment_layers(
                             self.mob,
-                            partial,
-                            self.ctx.camera,
+                            render::LayerFrame {
+                                alpha: partial,
+                                camera: self.ctx.camera,
+                                light: self.ctx.light,
+                            },
                             &lookup,
-                            self.ctx.light,
                             self.game,
                             equipment,
                             self.out,
@@ -631,9 +634,11 @@ impl StockLayerDraw for StockDraw<'_, '_> {
                 };
                 self.game.held_item_geometry(
                     self.mob,
-                    self.ctx.camera,
-                    self.ctx.alpha,
-                    self.ctx.light,
+                    MobView {
+                        camera: self.ctx.camera,
+                        alpha: self.ctx.alpha,
+                        light: self.ctx.light,
+                    },
                     self.ctx.in_world,
                     hide_other,
                     None,
@@ -705,9 +710,11 @@ impl StockLayerDraw for StockDraw<'_, '_> {
                     self.game.stuck_in_body_geometry(
                         self.mob,
                         self.entity_id as i32,
-                        self.ctx.camera,
-                        partial,
-                        self.ctx.light,
+                        MobView {
+                            camera: self.ctx.camera,
+                            alpha: f64::from(partial),
+                            light: self.ctx.light,
+                        },
                         StockLayerMask::only(StockLayer::BeeStinger),
                         self.out,
                     );
@@ -718,15 +725,16 @@ impl StockLayerDraw for StockDraw<'_, '_> {
                     self.game.stuck_in_body_geometry(
                         self.mob,
                         self.entity_id as i32,
-                        self.ctx.camera,
-                        partial,
-                        self.ctx.light,
+                        MobView {
+                            camera: self.ctx.camera,
+                            alpha: f64::from(partial),
+                            light: self.ctx.light,
+                        },
                         StockLayerMask::only(StockLayer::Arrow),
                         self.out,
                     );
                 }
             }
-            _ => return Err(format!("unsupported stock layer {layer:?}")),
         }
         Ok(())
     }

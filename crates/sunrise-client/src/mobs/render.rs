@@ -2209,7 +2209,6 @@ pub fn stock_item_layers(m: &Mob) -> (bool, bool, bool) {
 
 /// Draws `extra` (player armour layers) with the same body pose and transform as
 /// [`render_with_frame`], for a mod layer calling `StockLayerDraw::draw_stock_layer`.
-#[allow(clippy::too_many_arguments)]
 pub fn render_extra_layers(
     m: &Mob,
     alpha: f32,
@@ -2254,19 +2253,32 @@ pub fn render_extra_layers(
     }
 }
 
+/// Where and how lit a mob is drawn this frame.
+#[derive(Clone, Copy)]
+pub struct LayerFrame {
+    /// The partial tick.
+    pub alpha: f32,
+    /// The camera's position.
+    pub camera: glam::DVec3,
+    /// The packed light the layers are drawn with.
+    pub light: u32,
+}
+
 /// Draws `equipment` (non-player mob armour layers) with the same body pose and transform as
 /// [`render_with_frame`], for a mod layer calling `StockLayerDraw::draw_stock_layer`.
-#[allow(clippy::too_many_arguments)]
 pub fn render_equipment_layers(
     m: &Mob,
-    alpha: f32,
-    camera: glam::DVec3,
+    frame: LayerFrame,
     atlas: Atlas,
-    light: u32,
     data: &dyn RenderDataSource,
     equipment: Vec<Layer>,
     out: &mut Vec<Vertex>,
 ) {
+    let LayerFrame {
+        alpha,
+        camera,
+        light,
+    } = frame;
     if equipment.is_empty() || !layers_shown(m) {
         return;
     }

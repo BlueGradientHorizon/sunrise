@@ -1,6 +1,7 @@
 //! One living entity's draw (`LivingEntityRenderer.submit` and the layers, hooks, outline
 //! and beam around it). The ordered entity pass shares one `LivingFrame` across its mob runs.
-use super::stock_layer_mask::StockLayerMask;
+use super::super::mob_blocks::MobView;
+use super::super::stock_layer_mask::StockLayerMask;
 use super::*;
 use sunrise_client::mobs::render::FrameDraw;
 
@@ -280,22 +281,24 @@ impl Game<'_> {
             if !hidden.contains(mod_api::StockLayer::SpinAttackEffect) {
                 self.spin_attack_geometry(mob, camera, alpha as f32, packed, out);
             }
-            self.stuck_in_body_geometry(
-                mob,
-                mob.id as i32,
+            let view = MobView {
                 camera,
-                alpha as f32,
-                packed,
-                hidden,
-                out,
-            );
+                alpha,
+                light: packed,
+            };
+            self.stuck_in_body_geometry(mob, mob.id as i32, view, hidden, out);
         }
         // CustomHeadLayer (a pumpkin, skull or head item) included.
         if layers {
             if !modded {
                 // Held items join the GPU path's draws, their silhouette too.
                 let skin = (skinning && silhouette_on_gpu).then_some(&mut skinned);
-                self.mob_block_geometry(mob, camera, alpha, packed, hidden, skin, out);
+                let view = MobView {
+                    camera,
+                    alpha,
+                    light: packed,
+                };
+                self.mob_block_geometry(mob, view, hidden, skin, out);
             }
             let stock_ctx = super::super::native_entity_layers::StockLayerContext {
                 is_player,
