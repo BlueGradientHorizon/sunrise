@@ -1014,8 +1014,6 @@ mod mob_looting;
 mod mob_sounds;
 #[path = "game/modding/mod_api_host.rs"]
 mod mod_api_host;
-#[path = "game/interface/mod_browser.rs"]
-mod mod_browser;
 #[path = "game/modding/mod_container_openers.rs"]
 mod mod_container_openers;
 #[cfg(test)]
@@ -4251,8 +4249,6 @@ struct Game<'a> {
     pvp: pvp::PvpState,
     /// Sunrise mods (`game/modding/mods/mod.rs`), none running unless turned on.
     mods: mods::ModsState,
-    /// The in-game browser's worker, separate from the cloneable reload inputs.
-    mod_jobs: mod_browser::Jobs,
     /// Live recipe and known-display tables for typed mod reads.
     recipe_tables: native_recipes::RecipeTables,
     /// The item panel beside container screens (`game/modding/native_panel.rs`).
@@ -14780,7 +14776,6 @@ impl<'a> Game<'a> {
             extras: Default::default(),
             pvp: Default::default(),
             mods: mod_sources,
-            mod_jobs: Default::default(),
             recipe_tables: Default::default(),
             panel: Default::default(),
             native_shaders: Default::default(),
