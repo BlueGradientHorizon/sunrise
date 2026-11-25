@@ -1,5 +1,5 @@
 //! Render pipelines a client mod registers as plain data, and the quads it draws with them.
-use crate::{Identifier, WorldDepth};
+use crate::{Identifier, StorageBufferSlice, WorldDepth};
 
 /// A pipeline registered by `Hooks::register_render_pipelines`: a GLSL core shader program
 /// (`assets/<ns>/shaders/core/<path>.vsh` and `.fsh`, optionally reusing another program's
@@ -2044,6 +2044,22 @@ pub enum BindingKind {
         /// Integer texel format.
         format: TexelBufferFormat,
     },
+    /// A std430 storage buffer block (`layout(std430) [readonly] buffer Name { ... };`), bound
+    /// to a range of a retained [`StorageBufferRef`] ([`BindingValue::StorageBuffer`]). The
+    /// GLSL block's `readonly` qualifier must agree with `read_only`. Writes are gated as
+    /// `wgpu` gates them: a vertex-stage write needs `VERTEX_WRITABLE_STORAGE`, and a pipeline
+    /// that uses a writable block in the vertex stage on a device without it is refused at
+    /// registration. Like [`BindingKind::UniformBuffer`], the block declares its minimum byte
+    /// size: a bound range shorter than `min_size` is refused with
+    /// [`BufferError::BelowMinSize`] instead of failing inside the render pass.
+    StorageBuffer {
+        /// Whether shaders only read the block.
+        read_only: bool,
+        /// Minimum byte size of a range bound here; at least the shader's required minimum
+        /// (for example 16 for a `vec4[]` block). Must be non-zero and at most the device's
+        /// `max_storage_buffer_binding_size`.
+        min_size: u32,
+    },
 }
 
 /// One named binding in a mod-declared set-1 [`BindGroupLayout`]
@@ -2082,6 +2098,8 @@ pub enum BindGroupLayoutError {
     ReservedName(String),
     /// A `UniformBuffer` entry declared `min_size == 0`.
     ZeroUniformSize(String),
+    /// A `StorageBuffer` entry declared `min_size == 0`.
+    ZeroStorageSize(String),
     /// `push_constant_size` exceeds [`MAX_PUSH_CONSTANT_SIZE`] (`RenderPipeline.java:406`).
     PushConstantTooLarge(u32),
     /// `push_constant_size` is not a multiple of 4 bytes.
@@ -2099,6 +2117,9 @@ impl std::fmt::Display for BindGroupLayoutError {
             ),
             Self::ZeroUniformSize(name) => {
                 write!(f, "uniform buffer `{name}` must have min_size > 0")
+            }
+            Self::ZeroStorageSize(name) => {
+                write!(f, "storage buffer `{name}` must have min_size > 0")
             }
             Self::PushConstantTooLarge(size) => write!(
                 f,
@@ -2144,7 +2165,7 @@ impl BindGroupLayout {
 
     /// Validate every entry name, uniqueness (`BindGroupLayout.ensureCompatible`), vanilla
     /// `BindGroupLayouts.java` reservations (plus `SpriteRect` when `textured` is true), and
-    /// positive uniform `min_size`.
+    /// positive uniform and storage `min_size`.
     pub fn validate(&self, textured: bool) -> Result<(), BindGroupLayoutError> {
         let mut seen = std::collections::BTreeSet::new();
         for entry in &self.entries {
@@ -2161,6 +2182,9 @@ impl BindGroupLayout {
             }
             if let BindingKind::UniformBuffer { min_size: 0 } = entry.kind {
                 return Err(BindGroupLayoutError::ZeroUniformSize(entry.name.clone()));
+            }
+            if let BindingKind::StorageBuffer { min_size: 0, .. } = entry.kind {
+                return Err(BindGroupLayoutError::ZeroStorageSize(entry.name.clone()));
             }
         }
         Ok(())
@@ -2238,12 +2262,19 @@ pub enum BufferError {
     NotOwned,
     /// Buffer byte length was zero.
     Empty,
-    /// Byte offset or byte length is not 4-byte aligned (`wgpu::COPY_BUFFER_ALIGNMENT`).
+    /// Byte offset or byte length is not 4-byte aligned (`wgpu::COPY_BUFFER_ALIGNMENT`), or a
+    /// storage buffer range's offset is not a multiple of the device's
+    /// `min_storage_buffer_offset_alignment`.
     InvalidAlignment,
     /// `byte_offset + bytes.len()` exceeds the buffer's capacity.
     OutOfRange,
     /// Requested buffer size exceeds the active device's uniform/buffer binding limit.
     ExceedsDeviceLimit,
+    /// A storage buffer range is longer than the device's `max_storage_buffer_binding_size`.
+    ExceedsBindingLimit,
+    /// A storage buffer range is shorter than the `min_size` its [`BindingKind::StorageBuffer`]
+    /// entry declares.
+    BelowMinSize,
 }
 
 impl std::fmt::Display for BufferError {
@@ -2256,6 +2287,8 @@ impl std::fmt::Display for BufferError {
             Self::InvalidAlignment => "buffer offset and byte length must be 4-byte aligned",
             Self::OutOfRange => "buffer write exceeds buffer capacity",
             Self::ExceedsDeviceLimit => "buffer size exceeds active device limit",
+            Self::ExceedsBindingLimit => "buffer range exceeds the device's storage binding limit",
+            Self::BelowMinSize => "buffer range is shorter than the binding's min_size",
         })
     }
 }
@@ -2389,6 +2422,8 @@ pub enum BindingValue<'a> {
     /// Raw texel elements matching the entry's [`TexelBufferFormat`] (1 byte/texel for `R8*`,
     /// 4 bytes/texel for `R32*`).
     TexelBuffer(&'a [u8]),
+    /// A range of a retained [`StorageBufferRef`] for a [`BindingKind::StorageBuffer`] entry.
+    StorageBuffer(StorageBufferSlice),
 }
 
 /// Per-draw set-1 resource bindings passed to [`crate::WorldDrawContext::draw_mesh`] and
@@ -2433,6 +2468,13 @@ impl<'a> DrawBindings<'a> {
     /// Bind a [`TextureSource`] to combined image sampler entry `name`.
     pub fn texture(mut self, name: &'a str, source: TextureSource<'a>) -> Self {
         self.entries.push((name, BindingValue::Texture(source)));
+        self
+    }
+
+    /// Bind `slice` of a retained storage buffer to storage buffer entry `name`.
+    pub fn storage_buffer(mut self, name: &'a str, slice: StorageBufferSlice) -> Self {
+        self.entries
+            .push((name, BindingValue::StorageBuffer(slice)));
         self
     }
 
@@ -4517,6 +4559,19 @@ mod tests {
             Err(BindGroupLayoutError::ZeroUniformSize(
                 "EmptyBlock".to_owned()
             ))
+        );
+        let zero_storage = BindGroupLayout {
+            entries: vec![BindEntry::new(
+                "Tints",
+                BindingKind::StorageBuffer {
+                    read_only: true,
+                    min_size: 0,
+                },
+            )],
+        };
+        assert_eq!(
+            zero_storage.validate(false),
+            Err(BindGroupLayoutError::ZeroStorageSize("Tints".to_owned()))
         );
 
         // Push constants: <= 128 B and 4-byte aligned accepted; > 128 B or unaligned refused.
