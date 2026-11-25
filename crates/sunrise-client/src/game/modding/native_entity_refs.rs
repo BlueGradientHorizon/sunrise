@@ -1175,7 +1175,7 @@ impl Game<'_> {
             && self.world.loaded(pos[0], pos[2])
             && self.world.shape.contains_y(pos[1])
     }
-    /// The supplied state's block-local outline or collision boxes at a level
+    /// The supplied state's block-local outline, collision or visual boxes at a level
     /// position with an empty context. The world is never modified. Returns None
     /// for a stale or unavailable level. Unloaded neighbors
     /// read as air; collision errors return no boxes, like `visit_block_collision`.
@@ -1247,14 +1247,14 @@ impl Game<'_> {
         )
     }
 
-    /// Clip an empty-context ray against collider or outline shapes and fluids
+    /// Clip an empty-context ray against collider, outline or visual shapes and fluids
     /// (`BlockGetter.clip` / `BlockGetter.clipWithInteractionOverride`), without the world border,
     /// in the resident world `native_level_view_world` reads, with no traversal cell cap.
     /// Out-of-height cells and missing columns read as air without loading chunks. Collider mode
     /// uses `SceneCollisions`'s full registry/context shapes; outline mode returns None when dynamic
-    /// outline geometry has no implementation. Fluid modes return None until the tag
-    /// tables mods read are installed (`native_tag_items`). Also None for unavailable levels,
-    /// non-finite endpoints or shape query errors.
+    /// outline geometry has no implementation; visual mode reads `StateFacts::visual_shape`.
+    /// Fluid modes return None until the tag tables mods read are installed (`native_tag_items`).
+    /// Also None for unavailable levels, non-finite endpoints or shape query errors.
     pub(super) fn level_clip(
         &self,
         level: LevelRef,
@@ -1287,6 +1287,7 @@ impl Game<'_> {
         let mode = match blocks {
             ClipBlock::Collider => RayBlockMode::Collider,
             ClipBlock::Outline => RayBlockMode::Outline,
+            ClipBlock::Visual => RayBlockMode::Visual,
             _ => unreachable!("ClipBlock: unhandled variant"),
         };
         let fluid = match fluids {
@@ -5255,6 +5256,65 @@ pub(super) mod tests {
                     .block,
                 [4805, 64, 0]
             );
+        });
+    }
+
+    /// `ClipContext.Block.VISUAL` (`BlockState.getVisualShape`): a ray passes glass, iron
+    /// bars and powder snow, which a collider ray stops on (powder snow has no empty-context
+    /// collision either), and stops on soul sand, mud, a snow layer and a fence at their
+    /// visual top, not their collision top.
+    #[test]
+    #[ignore = "daily"]
+    fn level_clip_visual_passes_see_through_blocks_and_stops_on_visual_shapes() {
+        use mod_api::{BlockFace as Face, ClipBlock as Block, ClipFluid as Fluid};
+        use std::sync::Arc;
+        use sunrise_client::chunk::Chunk;
+        with_game(|game| {
+            let level = game.level(game.dim.id()).unwrap();
+            let place = |game: &mut super::Game<'_>, block: &str| {
+                game.world
+                    .chunks
+                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                let state = game.pack.assets.registry.default_state(block).unwrap();
+                game.world.set(1, 64, 0, state).unwrap();
+            };
+            let (from, to) = ([0.5, 64.5, 0.5], [2.5, 64.5, 0.5]);
+            for (block, collider) in [
+                ("minecraft:glass", Some([1.0, 64.5, 0.5])),
+                ("minecraft:iron_bars", Some([1.4375, 64.5, 0.5])),
+                ("minecraft:powder_snow", None),
+            ] {
+                place(game, block);
+                let hit = level.clip(game, from, to, Block::Visual, Fluid::None);
+                let hit = hit.unwrap();
+                assert!(hit.miss, "{block}");
+                assert_eq!(hit.location, to, "{block}");
+                let hit = level
+                    .clip(game, from, to, Block::Collider, Fluid::None)
+                    .unwrap();
+                assert_eq!((!hit.miss).then_some(hit.location), collider, "{block}");
+            }
+            let (from, to) = ([1.5, 66.0, 0.5], [1.5, 63.5, 0.5]);
+            for (block, visual, collider) in [
+                ("minecraft:soul_sand", 65.0, Some(64.875)),
+                ("minecraft:mud", 65.0, Some(64.875)),
+                ("minecraft:snow", 64.125, None),
+                ("minecraft:oak_fence", 65.0, Some(65.5)),
+            ] {
+                place(game, block);
+                let hit = level
+                    .clip(game, from, to, Block::Visual, Fluid::None)
+                    .unwrap();
+                assert!(!hit.miss, "{block}");
+                assert_eq!(hit.block, [1, 64, 0], "{block}");
+                assert_eq!(hit.face, Face::Up, "{block}");
+                assert_eq!(hit.location, [1.5, visual, 0.5], "{block}");
+                assert!(!hit.inside && !hit.world_border, "{block}");
+                let hit = level
+                    .clip(game, from, to, Block::Collider, Fluid::None)
+                    .unwrap();
+                assert_eq!((!hit.miss).then_some(hit.location[1]), collider, "{block}");
+            }
         });
     }
 
