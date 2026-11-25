@@ -1053,7 +1053,13 @@ pub(crate) struct PackLoading {
     _cancel: CancelOnDrop,
     #[allow(clippy::type_complexity)]
     thread: std::thread::JoinHandle<
-        std::result::Result<std::result::Result<pack_post::PackPost, pack_post::Refused>, String>,
+        std::result::Result<
+            (
+                std::result::Result<pack_post::PackPost, pack_post::Refused>,
+                Vec<i32>,
+            ),
+            String,
+        >,
     >,
     label: String,
     started: std::time::Instant,
@@ -1062,6 +1068,10 @@ pub(crate) struct PackLoading {
     /// the frames drawn meanwhile keep (`Renderer::pack_pending`).
     draws: PackDraws,
 }
+
+/// A running `shaders/` pack's block ids (`Renderer::pack_block_ids`).
+#[derive(Debug)]
+pub(crate) struct PackBlockIds(pub(crate) Vec<i32>);
 
 /// What a pack's programs will draw, as the built pack's `has_terrain`, `has_shadow` and
 /// `draws_sections` will say.
