@@ -125,50 +125,20 @@ impl StandaloneGeometry {
             );
             slots[index] = Some(prepared);
         }
-        let empty_world =
-            block_entity_render.map(|_| sunrise_client::world::World::new(BlockStateId(0), 0));
-        let lid = |_: [i32; 3]| 0.0;
-        let anim = |_: [i32; 3]| sunrise_client::block_entity_render::BlockAnim::default();
-        let sign = |_: [i32; 3]| None;
-        let banner = |_: [i32; 3]| Vec::new();
-        let skull = |_: [i32; 3]| None;
-        let glyph = |c: char| gui.atlas.glyph_cell(c);
-        let special_scene =
-            empty_world
-                .as_ref()
-                .map(|world| sunrise_client::block_entity_render::Scene {
-                    camera: DVec3::ZERO,
-                    sign_outline: sunrise_client::block_entity_render::SignOutline::None,
-                    orientation: Quat::IDENTITY,
-                    anim: &anim,
-                    texts: None,
-                    partial: 0.0,
-                    game_time: 0,
-                    max_y: world.shape.max_y() - 1,
-                    world,
-                    sprites: &gui.atlas.sprites,
-                    emissive: &gui.atlas.emissive,
-                    translucent_sprites: &gui.atlas.translucent,
-                    atlas_revision: gui.atlas.revision,
-                    nether: false,
-                    lid: &lid,
-                    sign: &sign,
-                    banner: &banner,
-                    skull: &skull,
-                    glyph: &glyph,
-                    glyphs: gui.atlas.font.epoch(),
-                    font: Some(&gui.atlas.font),
-                    inline_images: None,
-                    dynamic_visible: None,
-                });
+        // The special parts are sized in an empty world, with no level loaded yet.
+        let special_renderer = block_entity_render.map(|renderer| {
+            (
+                renderer,
+                sunrise_client::world::World::new(BlockStateId(0), 0),
+            )
+        });
         let mut special_scratch = Vec::new();
         let states = (0..pack.assets.registry.len() as u32)
             .map(|state| {
                 let id = BlockStateId(state);
                 // `BuiltInBlockModels.addDefaults`: only run the special renderer for blocks
                 // that have one, widening the state's bounds with its default geometry.
-                let special = special_scene.as_ref().and_then(|scene| {
-                    let renderer = block_entity_render?;
+                let special = special_renderer.as_ref().and_then(|(renderer, world)| {
                     if !pack
                         .assets
                         .registry
@@ -180,7 +150,17 @@ impl StandaloneGeometry {
                         return None;
                     }
                     special_scratch.clear();
-                    renderer.render_state(scene, id.0, Mat4::IDENTITY, 0, &mut special_scratch);
+                    super::minecarts::render_default_state(
+                        renderer,
+                        gui,
+                        world,
+                        0,
+                        false,
+                        id,
+                        Mat4::IDENTITY,
+                        0,
+                        &mut special_scratch,
+                    );
                     point_bounds(special_scratch.iter().map(|vertex| vertex.pos))
                 });
                 Self::bind_state(pack, &layer_sprites, id, special)

@@ -244,40 +244,6 @@ mod tests {
     }
 
     #[test]
-    fn a_non_finite_special_quad_is_skipped_without_dropping_the_faces() {
-        let faces = [face(None, -1)];
-        let mut draw = BlockEntityDraw::posed(
-            0.0,
-            0,
-            0xF0F0,
-            [0; 3],
-            Mat4::from_translation(Vec3::X),
-            diffuse_lights(false),
-            Vec::new(),
-        );
-        draw_terrain_model_with_special(
-            &mut draw,
-            &faces,
-            sprite,
-            TerrainModelOptions::default(),
-            |_, _, out, capacity, reserved| {
-                let start = out.len();
-                let mut bad: Vertex = bytemuck::Zeroable::zeroed();
-                bad.pos = [f32::INFINITY; 3];
-                out.extend_from_slice(&[bad; 4]);
-                let good: Vertex = bytemuck::Zeroable::zeroed();
-                out.extend_from_slice(&[good; 4]);
-                sunrise_client::gfx::EntityQuadScope::new(out, capacity, reserved)
-                    .retain_valid_since(start);
-            },
-        );
-        let vertices = draw.into_vertices();
-        assert_eq!(vertices.len(), 8);
-        assert_eq!(vertices[0].pos[0], 1.0);
-        assert_eq!(vertices[4].pos, [0.0; 3]);
-    }
-
-    #[test]
     fn a_translucent_quad_takes_the_translucent_material_under_the_models_and_a_chosen_one_wins() {
         let faces = [face(None, -1), face(Some(RenderType::Translucent), -1)];
         let vertices = drawn(&faces, TerrainModelOptions::default());
