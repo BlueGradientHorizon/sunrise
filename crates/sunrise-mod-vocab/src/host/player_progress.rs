@@ -1,4 +1,4 @@
-//! The `player_progress` area: statistics and criteria triggers. Host method declarations; access defaults and game forwarders are generated.
+//! The `player_progress` area: statistics, advancement progress and criteria triggers. Host method declarations; access defaults and game forwarders are generated.
 #![allow(unused_variables)]
 use crate::*;
 /// The handles' reads of the `player_progress` area, implemented by the game and reached through [`Backend`].
@@ -18,6 +18,24 @@ pub trait PlayerProgressBackend {
     /// A reachable player without counters has an empty `stats` map. Returns `None` on
     /// a client or for a stale or unavailable player.
     fn player_statistics(&self, player: PlayerRef) -> Option<String>;
+    /// Side: server.
+    /// An owned snapshot of the player's live progress on advancement `id`, mirroring
+    /// `ServerPlayer.getAdvancements().getOrStartProgress(holder)`.
+    ///
+    /// A loaded advancement the player has never touched answers with every criterion
+    /// unobtained (`obtained_at: None`), `completed_requirements == 0`, and `done == false`.
+    /// Reads live state rather than the save file, including inside
+    /// `player_advancement_progress` and `player_advancement_done` (after the criterion
+    /// change) and when a nested player turn has displaced the player.
+    ///
+    /// Returns `None` for an unknown advancement id, a stale, offline or unavailable
+    /// player, or a client host, and until the engine has loaded the player's
+    /// advancements, which happens by the player's first tick.
+    fn player_advancement_progress(
+        &self,
+        player: PlayerRef,
+        id: &Identifier,
+    ) -> Option<AdvancementProgress>;
 }
 /// The handles' writes of the `player_progress` area, implemented by the game and reached through [`BackendMut`].
 // hidden: a handle's backend, reached through `Backend`; mods call the handle, never this trait

@@ -1,0 +1,1 @@
+sunrise-client game::native_player_stats::tests::player_advancement_progress_reads_live_state_and_refuses_unavailable lib daily resources

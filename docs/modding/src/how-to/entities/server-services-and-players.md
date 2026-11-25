@@ -117,6 +117,13 @@ JSON (`Option<String>`): namespaced statistic types and entries under `stats`,
 with the current `DataVersion`. An online player without counters has an empty
 map; a stale or unavailable player gives `None`, as does a client host.
 
+On the server, `player.advancement_progress(host, &id)` takes `&dyn Host` and
+returns `Option<AdvancementProgress>`, the same owned snapshot carried by
+`player_advancement_progress`: criteria with their stored grant dates (or `None`),
+requirement groups, satisfied group count, and `done`. An untouched loaded
+advancement answers with all criteria remaining and `done == false`; an unknown id,
+stale or offline player, or client host answers `None`.
+
 `player.set_statistics(host, snapshot)` takes `&mut dyn ServerHost` and borrowed
 JSON. It upgrades older saves, reports decode errors and keeps recoverable
 registered counters. An absent or empty `stats` map clears the counters. It
