@@ -1338,6 +1338,12 @@ pub trait WorldgenHost {
         key: &str,
         value: &str,
     ) -> Option<crate::BlockState>;
+
+    /// `BlockState.getValue`: the value of `state`'s property `key` as its block's state
+    /// definition spells it (`north`, `true`, `3`), so a `rotate` part can read the property it
+    /// turns. None when its block has no such property, for a state this game does not have, and
+    /// in a context with no block states at hand.
+    fn state_property(&self, state: crate::BlockState, key: &str) -> Option<String>;
 }
 
 // no wire: a process-local borrow of frozen worldgen metadata.
@@ -1359,12 +1365,16 @@ pub trait WorldgenReader: Sync {
 pub struct OwningWorldgen<'a> {
     source: &'a dyn WorldgenReader,
     state_with_property: &'a StateWithProperty<'a>,
+    state_property: Option<&'a StateProperty<'a>>,
     mods: LoadedMods,
 }
 
 /// `BlockState.setValue` as the game answers it for [`OwningWorldgen`].
 type StateWithProperty<'a> =
     dyn Fn(crate::BlockState, &str, &str) -> Option<crate::BlockState> + 'a;
+
+/// `BlockState.getValue` as the game answers it for [`OwningWorldgen`].
+type StateProperty<'a> = dyn Fn(crate::BlockState, &str) -> Option<String> + 'a;
 
 impl<'a> OwningWorldgen<'a> {
     /// Borrow the owning engine's frozen metadata reader and block-state query.
@@ -1375,8 +1385,16 @@ impl<'a> OwningWorldgen<'a> {
         Self {
             source,
             state_with_property,
+            state_property: None,
             mods: LoadedMods::enabled_at_startup(),
         }
+    }
+
+    /// Answer [`WorldgenHost::state_property`] with the owning engine's block-state read;
+    /// without it, every read is None.
+    pub fn with_state_property(mut self, state_property: &'a StateProperty<'a>) -> Self {
+        self.state_property = Some(state_property);
+        self
     }
 }
 
@@ -1397,6 +1415,9 @@ impl WorldgenHost for OwningWorldgen<'_> {
         value: &str,
     ) -> Option<crate::BlockState> {
         (self.state_with_property)(state, key, value)
+    }
+    fn state_property(&self, state: crate::BlockState, key: &str) -> Option<String> {
+        self.state_property.and_then(|read| read(state, key))
     }
 }
 

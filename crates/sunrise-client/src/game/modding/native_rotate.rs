@@ -116,6 +116,30 @@ mod tests {
             panic!("a part that panics");
         }
     }
+    /// What the dispenser's part read: its `facing`, and a key its block does not have.
+    static READ: Mutex<Vec<(Option<String>, Option<String>)>> = Mutex::new(Vec::new());
+    /// A dispenser turned as vanilla's `rotate` overrides turn one: read `facing`, turn it, set it.
+    struct ReadsFacing;
+    #[mod_api::sunrise_part]
+    impl BlockPart for ReadsFacing {
+        fn rotate(&self, context: &dyn WorldgenHost, event: &mut RotateEvent<'_>) {
+            let facing = context.state_property(event.state, "facing");
+            READ.lock().unwrap_or_else(PoisonError::into_inner).push((
+                facing.clone(),
+                context.state_property(event.state, "no_such_property"),
+            ));
+            let turned = match (event.rotation, facing.as_deref()) {
+                (StructureRotation::Clockwise90, Some("north")) => "east",
+                (StructureRotation::Clockwise90, Some("east")) => "south",
+                (StructureRotation::Clockwise90, Some("south")) => "west",
+                (StructureRotation::Clockwise90, Some("west")) => "north",
+                _ => return,
+            };
+            *event.rotated = context
+                .state_with_property(event.state, "facing", turned)
+                .unwrap();
+        }
+    }
     struct Turns;
     #[mod_api::__subscriptions]
     impl Hooks for Turns {
@@ -126,6 +150,8 @@ mod tests {
             r.block_part(smoker, Stone);
             let lectern = r.block_key("minecraft:lectern");
             r.block_part(lectern, Panics);
+            let dispenser = r.block_key("minecraft:dispenser");
+            r.block_part(dispenser, ReadsFacing);
         }
     }
 
@@ -135,9 +161,13 @@ mod tests {
         crate::game::native_hooks::with_property(registry, default, "facing", facing).unwrap()
     }
 
-    #[test]
-    #[ignore = "daily"]
-    fn a_part_turns_its_block_as_a_template_places_it() {
+    /// Runs `test` on a server game that resolved and published `Turns`' parts and a worldgen
+    /// context, with `place(name)`: `/place template … clockwise_90 left_right` of `name` facing
+    /// north (LEFT_RIGHT turns north to south, then a clockwise quarter turn makes it west), as
+    /// the parts place it and as the game's own table does.
+    fn with_published_parts(
+        test: impl FnOnce(&BlockRegistry, &Index, &dyn Fn(&str) -> (EngineState, EngineState)),
+    ) {
         let _publishing = native_worldgen_parts::PUBLISHING
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
@@ -163,8 +193,6 @@ mod tests {
                 sunrise_world::native_worldgen_hooks::publish_context(Arc::new(
                     load.worldgen_context([]),
                 ));
-                // `/place template … clockwise_90 left_right`: LEFT_RIGHT turns north to south,
-                // then a clockwise quarter turn makes it west.
                 let place = |name: &str| {
                     let mirrored =
                         transforms.mirror(facing(registry, name, "north"), Mirror::LeftRight);
@@ -174,28 +202,54 @@ mod tests {
                         table,
                     )
                 };
-                let (blast, table) = place("minecraft:blast_furnace");
-                assert_eq!(blast, facing(registry, "minecraft:blast_furnace", "west"));
-                assert_eq!(blast, table);
-                let (furnace, _) = place("minecraft:furnace");
-                assert_eq!(furnace, facing(registry, "minecraft:furnace", "north"));
-                let asked = ASKED.lock().unwrap_or_else(PoisonError::into_inner).clone();
-                let south = index
-                    .to_api(facing(registry, "minecraft:furnace", "south"))
-                    .unwrap();
-                assert_eq!(asked, [south]);
-                // A state of another block, and a panicking part, keep the game's state.
-                let (smoker, table) = place("minecraft:smoker");
-                assert_eq!(
-                    (smoker, table),
-                    (table, facing(registry, "minecraft:smoker", "west"))
-                );
-                let (lectern, table) = place("minecraft:lectern");
-                assert_eq!(
-                    (lectern, table),
-                    (table, facing(registry, "minecraft:lectern", "west"))
-                );
+                test(registry, &index, &place);
             });
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_part_turns_its_block_as_a_template_places_it() {
+        with_published_parts(|registry, index, place| {
+            let (blast, table) = place("minecraft:blast_furnace");
+            assert_eq!(blast, facing(registry, "minecraft:blast_furnace", "west"));
+            assert_eq!(blast, table);
+            let (furnace, _) = place("minecraft:furnace");
+            assert_eq!(furnace, facing(registry, "minecraft:furnace", "north"));
+            let asked = ASKED.lock().unwrap_or_else(PoisonError::into_inner).clone();
+            let south = index
+                .to_api(facing(registry, "minecraft:furnace", "south"))
+                .unwrap();
+            assert_eq!(asked, [south]);
+            // A state of another block, and a panicking part, keep the game's state.
+            let (smoker, table) = place("minecraft:smoker");
+            assert_eq!(
+                (smoker, table),
+                (table, facing(registry, "minecraft:smoker", "west"))
+            );
+            let (lectern, table) = place("minecraft:lectern");
+            assert_eq!(
+                (lectern, table),
+                (table, facing(registry, "minecraft:lectern", "west"))
+            );
+        });
+    }
+
+    /// `WorldgenHost::state_property` reads the state a part is asked with, so a part turns its
+    /// block as vanilla's `rotate` overrides do (`state.getValue(FACING)`) and lands where the
+    /// game's own table puts it; a key the block does not have reads None.
+    #[test]
+    #[ignore = "daily"]
+    fn a_part_reads_the_property_it_turns() {
+        with_published_parts(|registry, _, place| {
+            READ.lock().unwrap_or_else(PoisonError::into_inner).clear();
+            let (dispenser, table) = place("minecraft:dispenser");
+            assert_eq!(dispenser, facing(registry, "minecraft:dispenser", "west"));
+            assert_eq!(dispenser, table);
+            assert_eq!(
+                *READ.lock().unwrap_or_else(PoisonError::into_inner),
+                [(Some("south".to_owned()), None)]
+            );
         });
     }
 }
