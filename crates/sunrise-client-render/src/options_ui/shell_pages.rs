@@ -102,7 +102,10 @@ impl OptionsUi {
             .filter(|_| self.selected_key == Some(super::pages::PAGE_KEY))
             .and_then(super::pages::find_page_key)
             .map(|(page, row)| shell::Capture::Page(page, row));
-        pad.or(page).or(self.selected_key.map(shell::Capture::Key))
+        pad.or(page).or(self
+            .selected_key
+            .filter(|k| *k != super::pages::PAGE_KEY)
+            .map(shell::Capture::Key))
     }
     /// What a shell screen's outputs do to these options.
     pub(super) fn shell_events(
